@@ -188,7 +188,7 @@ function MonitoringPageContent() {
   };
 
   return (
-    <div className="w-full h-full overflow-y-auto">
+    <div className="w-full h-full overflow-y-auto overflow-x-hidden">
       {/* Filters and Refresh Button - Sticky */}
       <div className="sticky top-[-1.5rem] z-10 -ml-[2rem] -mr-[1.5rem] -mt-[1.5rem] pt-[1.5rem] pb-4 bg-background">
         <div className="ml-[2rem] mr-[1.5rem] px-[0.8rem]">
@@ -379,26 +379,18 @@ function MonitoringPageContent() {
 
                 {!loading &&
                   (!data || !data.messages || data.messages.length === 0) && (
-                    <div className="text-center text-muted-foreground py-16">
+                    <div className="flex flex-col items-center justify-center text-muted-foreground py-16 gap-2">
                       <svg
-                        className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30"
-                        fill="none"
+                        className="h-[3rem] w-[3rem]"
+                        xmlns="http://www.w3.org/2000/svg"
                         viewBox="0 0 24 24"
-                        stroke="currentColor"
+                        fill="currentColor"
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={1.5}
-                          d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
-                        />
+                        <path d="M6.45455 19L2 22.5V4C2 3.44772 2.44772 3 3 3H21C21.5523 3 22 3.44772 22 4V18C22 18.5523 21.5523 19 21 19H6.45455ZM4 18.3851L5.76282 17H20V5H4V18.3851Z"></path>
                       </svg>
-                      <p className="text-base font-medium mb-2">
+                      <div className="text-sm">
                         {t('monitoring.messageList.noMessages')}
-                      </p>
-                      <p className="text-sm">
-                        {t('monitoring.messageList.noMessagesDescription')}
-                      </p>
+                      </div>
                     </div>
                   )}
               </div>
@@ -600,23 +592,18 @@ function MonitoringPageContent() {
                   (!data ||
                     !data.modelCalls ||
                     data.modelCalls.length === 0) && (
-                    <div className="text-center text-muted-foreground py-16">
+                    <div className="flex flex-col items-center justify-center text-muted-foreground py-16 gap-2">
                       <svg
-                        className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30"
-                        fill="none"
+                        className="h-[3rem] w-[3rem]"
+                        xmlns="http://www.w3.org/2000/svg"
                         viewBox="0 0 24 24"
-                        stroke="currentColor"
+                        fill="currentColor"
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={1.5}
-                          d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                        />
+                        <path d="M10.6144 17.7956C10.277 18.5682 9.20776 18.5682 8.8704 17.7956L7.99275 15.7854C7.21171 13.9966 5.80589 12.5726 4.0523 11.7942L1.63658 10.7219C.868536 10.381.868537 9.26368 1.63658 8.92276L3.97685 7.88394C5.77553 7.08552 7.20657 5.60881 7.97427 3.75892L8.8633 1.61673C9.19319.821767 10.2916.821765 10.6215 1.61673L11.5105 3.75894C12.2782 5.60881 13.7092 7.08552 15.5079 7.88394L17.8482 8.92276C18.6162 9.26368 18.6162 10.381 17.8482 10.7219L15.4325 11.7942C13.6789 12.5726 12.2731 13.9966 11.492 15.7854L10.6144 17.7956ZM19.4014 22.6899 19.6482 22.1242C20.0882 21.1156 20.8807 20.3125 21.8695 19.8732L22.6299 19.5353C23.0412 19.3526 23.0412 18.7549 22.6299 18.5722L21.9121 18.2532C20.8978 17.8026 20.0911 16.9698 19.6586 15.9269L19.4052 15.3156C19.2285 14.8896 18.6395 14.8896 18.4628 15.3156L18.2094 15.9269C17.777 16.9698 16.9703 17.8026 15.956 18.2532L15.2381 18.5722C14.8269 18.7549 14.8269 19.3526 15.2381 19.5353L15.9985 19.8732C16.9874 20.3125 17.7798 21.1156 18.2198 22.1242L18.4667 22.6899C18.6473 23.104 19.2207 23.104 19.4014 22.6899Z"></path>
                       </svg>
-                      <p className="text-base font-medium">
+                      <div className="text-sm">
                         {t('monitoring.modelCalls.noData')}
-                      </p>
+                      </div>
                     </div>
                   )}
               </div>
@@ -775,23 +762,18 @@ function MonitoringPageContent() {
 
                 {!loading &&
                   (!data || !data.errors || data.errors.length === 0) && (
-                    <div className="text-center text-muted-foreground py-16">
+                    <div className="flex flex-col items-center justify-center text-muted-foreground py-16 gap-2">
                       <svg
-                        className="w-16 h-16 mx-auto mb-4 text-green-300 dark:text-green-600"
-                        fill="none"
+                        className="h-[3rem] w-[3rem] text-green-500 dark:text-green-600"
+                        xmlns="http://www.w3.org/2000/svg"
                         viewBox="0 0 24 24"
-                        stroke="currentColor"
+                        fill="currentColor"
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={1.5}
-                          d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
+                        <path d="M12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22ZM12 20C16.4183 20 20 16.4183 20 12C20 7.58172 16.4183 4 12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20ZM11.0026 16L6.75999 11.7574L8.17421 10.3431L11.0026 13.1716L16.6595 7.51472L18.0737 8.92893L11.0026 16Z"></path>
                       </svg>
-                      <p className="text-base font-medium text-green-600 dark:text-green-400">
+                      <div className="text-sm text-green-600 dark:text-green-400">
                         {t('monitoring.errors.noErrors')}
-                      </p>
+                      </div>
                     </div>
                   )}
               </div>
