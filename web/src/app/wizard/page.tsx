@@ -30,6 +30,7 @@ import {
 } from '@/app/infra/entities/pipeline';
 import {
   DynamicFormItemConfig,
+  getDefaultValues,
   parseDynamicFormItemType,
 } from '@/app/home/components/dynamic-form/DynamicFormItemConfig';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
@@ -222,11 +223,15 @@ export default function WizardPage() {
         : selectedAdapter;
       setBotName(defaultName);
 
+      const defaultConfig = adapter
+        ? getDefaultValues(adapter.spec.config)
+        : {};
+
       const bot: Bot = {
         name: defaultName,
         description: '',
         adapter: selectedAdapter,
-        adapter_config: {},
+        adapter_config: defaultConfig,
         enable: false,
       };
       const resp = await httpClient.createBot(bot);

@@ -17,7 +17,7 @@ spec:
         zh_Hans: 令牌
       type: string
       required: true
-      default: ""
+      default: "token_from_botfather"
     - name: markdown_card
       label:
         en_US: Markdown Card
