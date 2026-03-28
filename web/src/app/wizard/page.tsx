@@ -99,9 +99,12 @@ function saveWizardState(state: WizardState): void {
   }
 }
 
+const WIZARD_DISMISSED_KEY = 'langbot_wizard_dismissed';
+
 function clearWizardState(): void {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(WIZARD_STORAGE_KEY);
+  localStorage.setItem(WIZARD_DISMISSED_KEY, '1');
 }
 
 // ---------------------------------------------------------------------------

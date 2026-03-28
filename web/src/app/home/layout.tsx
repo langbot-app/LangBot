@@ -16,7 +16,8 @@ import {
 } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { I18nObject } from '@/app/infra/entities/common';
 import { userInfo, initializeUserInfo } from '@/app/infra/http';
-import { usePathname } from 'next/navigation';
+import { httpClient } from '@/app/infra/http/HttpClient';
+import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { CircleHelp } from 'lucide-react';
@@ -50,12 +51,32 @@ export default function HomeLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const router = useRouter();
+
   // Initialize user info if not already initialized
   useEffect(() => {
     if (!userInfo) {
       initializeUserInfo();
     }
   }, []);
+
+  // Auto-redirect to wizard on first visit (no bots and wizard never dismissed)
+  useEffect(() => {
+    const dismissed = localStorage.getItem('langbot_wizard_dismissed');
+    if (dismissed) return;
+
+    httpClient
+      .getBots()
+      .then((res) => {
+        const bots = res?.bots ?? [];
+        if (bots.length === 0) {
+          router.replace('/wizard');
+        }
+      })
+      .catch(() => {
+        // If fetching bots fails, don't redirect — user can manually access wizard
+      });
+  }, [router]);
 
   return (
     <SidebarDataProvider>
