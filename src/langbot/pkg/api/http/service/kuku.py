@@ -38,6 +38,8 @@ class KukuService:
 
     async def list_personas(self) -> list[dict]:
         """Return the fixed MVP persona list."""
+        # Return a copy so request-time consumers can shape or serialize the payload
+        # without mutating the in-process MVP catalog.
         return [
             {
                 'id': persona['id'],
@@ -114,6 +116,8 @@ class KukuService:
         return self._row_to_dict(saved)
 
     async def _validate_kuku_scope(self, bot_uuid: str, platform: str, group_id: str) -> None:
+        # The persisted config is intentionally constrained to the current Discord-first
+        # MVP so later runtime work can rely on one validated adapter path.
         if platform != 'discord':
             raise ValueError('KUKU MVP only supports discord')
 
@@ -179,6 +183,8 @@ class KukuService:
         insert_stmt = self._get_insert_statement(settings_table).values(uuid=setting_uuid, **setting_data)
         update_values = dict(setting_data)
         update_values['updated_at'] = sqlalchemy.func.now()
+        # Reuse the same composite scope across SQLite and PostgreSQL so repeated setup
+        # calls overwrite the group config instead of creating duplicate rows.
         return insert_stmt.on_conflict_do_update(
             index_elements=['bot_uuid', 'platform', 'group_id'],
             set_=update_values,

@@ -36,6 +36,8 @@ class KukuRouterGroup(group.RouterGroup):
                 return self.http_status(400, 400, 'JSON body required')
 
             payload = dict(data)
+            # Always take the route scope from the URL so callers cannot persist
+            # settings under a different bot/platform/group than the resource being updated.
             payload.update(
                 {
                     'bot_uuid': bot_uuid,

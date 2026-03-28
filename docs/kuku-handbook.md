@@ -28,6 +28,30 @@ What is **not** implemented yet:
 
 So at this point, the branch gives LangBot a place to store KUKU configuration and an API to manage and read it back.
 
+## Why This Exists In The Current PR
+
+This PR is intentionally the setup-and-persistence slice, not the full KUKU runtime.
+
+We are doing this first because the later runtime work needs a stable contract for:
+
+- which Discord bot and group KUKU is attached to
+- whether KUKU is enabled for that group
+- which persona and operational thresholds the future silence detector should use
+
+Without this persistence layer first, later work such as silence detection and proactive messaging would either hardcode configuration or keep it only in memory, which would make the MVP harder to test and demo safely.
+
+## What Is Still Needed After This PR
+
+This branch does not yet make KUKU speak in Discord. The main missing pieces are:
+
+- a runtime loop that watches Discord group activity and evaluates silence windows
+- the logic that turns saved group settings into actual proactive KUKU messages
+- prompt assembly and LLM invocation for proactive and reactive KUKU replies
+- end-to-end integration from Discord events into the KUKU runtime path
+- frontend or operator UX beyond calling the setup/read APIs directly
+
+For review purposes, that means this PR should be evaluated as backend groundwork, not as a feature-complete KUKU MVP.
+
 ## Files Added or Updated
 
 Core implementation:
@@ -120,6 +144,28 @@ Expected result:
 - the saved values are returned
 - invalid platforms are rejected
 - malformed booleans, integers, or quiet-hours payloads are rejected before persistence
+
+## Demo Today
+
+For a demo today, position this branch as "KUKU setup is now persisted and retrievable inside LangBot".
+
+Recommended flow:
+
+1. Start LangBot and confirm migration `25` has been applied.
+2. Show that a Discord bot already exists in LangBot and copy its `bot_uuid`.
+3. Call `GET /api/v1/kuku/personas` to show the MVP persona catalog.
+4. Call the `PUT /api/v1/kuku/groups/<bot_uuid>/discord/<group_id>` endpoint with a real or sample Discord group ID.
+5. Call the matching `GET` endpoint and show that the same values come back from persistence.
+6. Trigger one invalid request, such as `platform=slack` or `enabled=\"maybe\"`, to show the guardrails.
+7. Close by stating that the runtime behavior is the next slice and this PR is the foundation that makes that runtime configurable.
+
+If you want the smoothest demo, prepare these ahead of time:
+
+- one valid auth token or API key
+- one known Discord bot UUID
+- one sample Discord group ID
+- one saved `curl` command for the success case
+- one saved `curl` command for the invalid-input case
 
 ## Current Scope
 
