@@ -231,7 +231,6 @@ export default function WizardPage() {
       };
       const resp = await httpClient.createBot(bot);
       setCreatedBotUuid(resp.uuid);
-      toast.success(t('wizard.botCreateSuccess'));
       // Advance to Step 1
       setCurrentStep(1);
     } catch (err) {
@@ -325,7 +324,6 @@ export default function WizardPage() {
         use_pipeline_uuid: pipelineResp.uuid,
       });
 
-      toast.success(t('wizard.createSuccess'));
       setCurrentStep(3);
     } catch (err) {
       const apiErr = err as { msg?: string };
