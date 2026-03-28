@@ -20,7 +20,7 @@ class SystemRouterGroup(group.RouterGroup):
                 )
                 row = result.first()
                 if row:
-                    wizard_status = row[0].value
+                    wizard_status = row.value
             except Exception:
                 pass
 
