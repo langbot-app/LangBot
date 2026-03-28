@@ -38,7 +38,17 @@ export default function SkillForm({
   useEffect(() => {
     if (initSkillName) {
       loadSkill(initSkillName);
+      return;
     }
+    setSkill({
+      name: '',
+      display_name: '',
+      description: '',
+      instructions: '',
+      package_root: '',
+      auto_activate: true,
+    });
+    setShowAdvanced(false);
   }, [initSkillName]);
 
   async function loadSkill(skillName: string) {
@@ -90,24 +100,24 @@ export default function SkillForm({
       return;
     }
 
-    const skillData: Partial<Skill> & { name: string } = {
+    const baseSkillData = {
       name: skill.name,
       display_name: skill.display_name || '',
-      description: skill.description,
+      description: skill.description || '',
       instructions: skill.instructions || '',
       auto_activate: skill.auto_activate ?? true,
     };
 
-    if (!initSkillName) {
-      skillData.package_root = skill.package_root || '';
-    }
-
     try {
       if (initSkillName) {
-        const resp = await httpClient.updateSkill(initSkillName, skillData);
+        const resp = await httpClient.updateSkill(initSkillName, baseSkillData);
         toast.success(t('skills.saveSuccess'));
         onSkillUpdated(resp.skill.name);
       } else {
+        const skillData: Omit<Skill, 'name'> & { name: string } = {
+          ...baseSkillData,
+          package_root: skill.package_root || '',
+        };
         const resp = await httpClient.createSkill(skillData);
         toast.success(t('skills.createSuccess'));
         onNewSkillCreated(resp.skill.name);

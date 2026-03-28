@@ -1198,6 +1198,8 @@ const zhHans = {
     selectSkills: '选择技能',
     builtin: '内置',
     importFromGithub: '从 GitHub 导入',
+    uploadZip: '上传 ZIP 包',
+    uploadZipOnly: '仅支持 .zip 技能包',
     installSuccess: '技能安装成功',
     installError: '安装技能失败：',
     enterRepoUrl: '输入 GitHub 仓库地址',
@@ -1221,6 +1223,9 @@ const zhHans = {
     installing: '正在安装技能...',
     loading: '加载中...',
     previewLoadError: '加载预览失败',
+    selectFromSidebar: '从侧边栏选择一个技能',
+    dangerZone: '危险区域',
+    dangerZoneDescription: '不可逆的操作',
   },
   wizard: {
     sidebarDescription: '通过引导步骤创建机器人',

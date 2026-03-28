@@ -119,6 +119,7 @@ const ENTITY_CATEGORY_IDS = [
   'knowledge',
   'plugins',
   'mcp',
+  'skills',
 ] as const;
 type EntityCategoryId = (typeof ENTITY_CATEGORY_IDS)[number];
 
@@ -129,6 +130,7 @@ const DETAIL_PAGE_CATEGORIES: EntityCategoryId[] = [
   'knowledge',
   'plugins',
   'mcp',
+  'skills',
 ];
 
 // Categories that support creating new entities from the sidebar
@@ -138,6 +140,7 @@ const CREATABLE_CATEGORIES: EntityCategoryId[] = [
   'knowledge',
   'mcp',
   'plugins',
+  'skills',
 ];
 
 // Categories where clicking the parent only toggles collapse (no list page)
@@ -146,6 +149,7 @@ const COLLAPSIBLE_ONLY_CATEGORIES: EntityCategoryId[] = [
   'pipelines',
   'knowledge',
   'mcp',
+  'skills',
 ];
 
 function isEntityCategory(id: string): id is EntityCategoryId {
@@ -155,13 +159,14 @@ function isEntityCategory(id: string): id is EntityCategoryId {
 // Map sidebar config IDs to SidebarDataContext keys
 const ENTITY_KEY_MAP: Record<
   EntityCategoryId,
-  'bots' | 'pipelines' | 'knowledgeBases' | 'plugins' | 'mcpServers'
+  'bots' | 'pipelines' | 'knowledgeBases' | 'plugins' | 'mcpServers' | 'skills'
 > = {
   bots: 'bots',
   pipelines: 'pipelines',
   knowledge: 'knowledgeBases',
   plugins: 'plugins',
   mcp: 'mcpServers',
+  skills: 'skills',
 };
 
 // Route prefix map for entity detail pages
@@ -171,6 +176,7 @@ const ENTITY_ROUTE_MAP: Record<EntityCategoryId, string> = {
   knowledge: '/home/knowledge',
   plugins: '/home/plugins',
   mcp: '/home/mcp',
+  skills: '/home/skills',
 };
 
 // localStorage key for collapsible section open/closed state

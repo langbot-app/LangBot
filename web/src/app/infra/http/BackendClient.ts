@@ -599,6 +599,7 @@ export class BackendClient extends BaseHttpClient {
     }>;
     owner: string;
     repo: string;
+    source_subdir?: string;
   }> {
     return this.post('/api/v1/plugins/github/releases', { repo_url: repoUrl });
   }
@@ -641,13 +642,51 @@ export class BackendClient extends BaseHttpClient {
     owner: string,
     repo: string,
     releaseTag: string,
-  ): Promise<ApiRespSkill> {
+    sourcePaths?: string[],
+    sourceSubdir?: string,
+  ): Promise<ApiRespSkills> {
     return this.post('/api/v1/skills/install/github', {
       asset_url: assetUrl,
       owner,
       repo,
       release_tag: releaseTag,
+      source_paths: sourcePaths,
+      source_subdir: sourceSubdir,
     });
+  }
+
+  public previewSkillInstallFromGithub(
+    assetUrl: string,
+    owner: string,
+    repo: string,
+    releaseTag: string,
+    sourceSubdir?: string,
+  ): Promise<{ skills: Skill[] }> {
+    return this.post('/api/v1/skills/install/github/preview', {
+      asset_url: assetUrl,
+      owner,
+      repo,
+      release_tag: releaseTag,
+      source_subdir: sourceSubdir,
+    });
+  }
+
+  public previewSkillInstallFromUpload(file: File): Promise<{ skills: Skill[] }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.postFile('/api/v1/skills/install/upload/preview', formData);
+  }
+
+  public installSkillFromUpload(
+    file: File,
+    sourcePaths?: string[],
+  ): Promise<ApiRespSkills> {
+    const formData = new FormData();
+    formData.append('file', file);
+    for (const sourcePath of sourcePaths || []) {
+      formData.append('source_paths', sourcePath);
+    }
+    return this.postFile('/api/v1/skills/install/upload', formData);
   }
 
   public installPluginFromMarketplace(

@@ -1255,6 +1255,8 @@ const enUS = {
     selectSkills: 'Select Skills',
     builtin: 'Built-in',
     importFromGithub: 'Import from GitHub',
+    uploadZip: 'Upload ZIP Package',
+    uploadZipOnly: 'Only .zip skill packages are supported',
     installSuccess: 'Skill installed successfully',
     installError: 'Failed to install skill: ',
     enterRepoUrl: 'Enter GitHub repository URL',
@@ -1278,6 +1280,9 @@ const enUS = {
     installing: 'Installing skill...',
     loading: 'Loading...',
     previewLoadError: 'Failed to load preview',
+    selectFromSidebar: 'Select a skill from the sidebar',
+    dangerZone: 'Danger Zone',
+    dangerZoneDescription: 'Irreversible and destructive actions',
   },
   wizard: {
     sidebarDescription: 'Create a bot with guided steps',

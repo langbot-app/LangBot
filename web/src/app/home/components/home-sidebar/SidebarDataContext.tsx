@@ -38,11 +38,13 @@ export interface SidebarDataContextValue {
   knowledgeBases: SidebarEntityItem[];
   plugins: SidebarEntityItem[];
   mcpServers: SidebarEntityItem[];
+  skills: SidebarEntityItem[];
   refreshBots: () => Promise<void>;
   refreshPipelines: () => Promise<void>;
   refreshKnowledgeBases: () => Promise<void>;
   refreshPlugins: () => Promise<void>;
   refreshMCPServers: () => Promise<void>;
+  refreshSkills: () => Promise<void>;
   refreshAll: () => Promise<void>;
   // Breadcrumb: entity name shown when viewing a detail page
   detailEntityName: string | null;
@@ -64,6 +66,7 @@ export function SidebarDataProvider({
   const [knowledgeBases, setKnowledgeBases] = useState<SidebarEntityItem[]>([]);
   const [plugins, setPlugins] = useState<SidebarEntityItem[]>([]);
   const [mcpServers, setMCPServers] = useState<SidebarEntityItem[]>([]);
+  const [skills, setSkills] = useState<SidebarEntityItem[]>([]);
   const [detailEntityName, setDetailEntityName] = useState<string | null>(null);
   const [pendingPluginInstallAction, setPendingPluginInstallAction] =
     useState<PluginInstallAction>(null);
@@ -185,6 +188,22 @@ export function SidebarDataProvider({
     }
   }, []);
 
+  const refreshSkills = useCallback(async () => {
+    try {
+      const resp = await httpClient.getSkills();
+      setSkills(
+        resp.skills.map((skill) => ({
+          id: skill.name,
+          name: skill.display_name || skill.name,
+          description: skill.description,
+          updatedAt: skill.updated_at,
+        })),
+      );
+    } catch (error) {
+      console.error('Failed to fetch skills for sidebar:', error);
+    }
+  }, []);
+
   const refreshAll = useCallback(async () => {
     await Promise.all([
       refreshBots(),
@@ -192,6 +211,7 @@ export function SidebarDataProvider({
       refreshKnowledgeBases(),
       refreshPlugins(),
       refreshMCPServers(),
+      refreshSkills(),
     ]);
   }, [
     refreshBots,
@@ -199,6 +219,7 @@ export function SidebarDataProvider({
     refreshKnowledgeBases,
     refreshPlugins,
     refreshMCPServers,
+    refreshSkills,
   ]);
 
   // Fetch all entity lists on mount
@@ -214,11 +235,13 @@ export function SidebarDataProvider({
         knowledgeBases,
         plugins,
         mcpServers,
+        skills,
         refreshBots,
         refreshPipelines,
         refreshKnowledgeBases,
         refreshPlugins,
         refreshMCPServers,
+        refreshSkills,
         refreshAll,
         detailEntityName,
         setDetailEntityName,

@@ -117,7 +117,6 @@ export const sidebarConfigList = [
     },
     section: 'home',
   }),
-
   // ── Extensions section ──
   new SidebarChildVO({
     id: 'plugins',
@@ -181,6 +180,27 @@ export const sidebarConfigList = [
     helpLink: {
       en_US: '',
       zh_Hans: '',
+    },
+    section: 'extensions',
+  }),
+  new SidebarChildVO({
+    id: 'skills',
+    name: t('skills.title'),
+    icon: (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="currentColor"
+      >
+        <path d="M14 2H10V6H14V2ZM8 2C8 0.895431 8.89543 0 10 0H14C15.1046 0 16 0.895431 16 2V6H18C19.1046 6 20 6.89543 20 8V10H24V14H20V16C20 17.1046 19.1046 18 18 18H16V22C16 23.1046 15.1046 24 14 24H10C8.89543 24 8 23.1046 8 22V18H6C4.89543 18 4 17.1046 4 16V14H0V10H4V8C4 6.89543 4.89543 6 6 6H8V2ZM10 18V22H14V18H10ZM6 8V16H18V8H6Z"></path>
+      </svg>
+    ),
+    route: '/home/skills',
+    description: t('skills.description'),
+    helpLink: {
+      en_US: '',
+      zh_Hans: '',
+      ja_JP: '',
     },
     section: 'extensions',
   }),
