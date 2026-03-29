@@ -1,0 +1,1 @@
+from .kuku import KukuGroupSetting
