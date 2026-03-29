@@ -2,7 +2,13 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { ThumbsUp, ThumbsDown, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import {
+  ThumbsUp,
+  ThumbsDown,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+} from 'lucide-react';
 
 interface FeedbackCardProps {
   title: string;
@@ -28,8 +34,10 @@ export function FeedbackCard({
 }: FeedbackCardProps) {
   const variantStyles = {
     default: 'bg-white dark:bg-[#2a2a2e] border-gray-200 dark:border-gray-700',
-    success: 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800',
-    warning: 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800',
+    success:
+      'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800',
+    warning:
+      'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800',
     danger: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800',
   };
 
@@ -64,7 +72,9 @@ export function FeedbackCard({
   }
 
   return (
-    <div className={`p-6 rounded-xl border shadow-sm ${variantStyles[variant]}`}>
+    <div
+      className={`p-6 rounded-xl border shadow-sm ${variantStyles[variant]}`}
+    >
       <div className="flex items-start justify-between">
         <div className="flex-1">
           <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
@@ -79,15 +89,28 @@ export function FeedbackCard({
             </p>
           )}
           {trend && (
-            <div className={`flex items-center mt-2 text-sm ${trendStyles[trend.direction]}`}>
-              {trend.direction === 'up' && <TrendingUp className="w-4 h-4 mr-1" />}
-              {trend.direction === 'down' && <TrendingDown className="w-4 h-4 mr-1" />}
-              {trend.direction === 'neutral' && <Minus className="w-4 h-4 mr-1" />}
-              <span>{trend.value > 0 ? '+' : ''}{trend.value}%</span>
+            <div
+              className={`flex items-center mt-2 text-sm ${trendStyles[trend.direction]}`}
+            >
+              {trend.direction === 'up' && (
+                <TrendingUp className="w-4 h-4 mr-1" />
+              )}
+              {trend.direction === 'down' && (
+                <TrendingDown className="w-4 h-4 mr-1" />
+              )}
+              {trend.direction === 'neutral' && (
+                <Minus className="w-4 h-4 mr-1" />
+              )}
+              <span>
+                {trend.value > 0 ? '+' : ''}
+                {trend.value}%
+              </span>
             </div>
           )}
         </div>
-        <div className={`p-3 rounded-lg bg-gray-100 dark:bg-gray-800 ${iconStyles[variant]}`}>
+        <div
+          className={`p-3 rounded-lg bg-gray-100 dark:bg-gray-800 ${iconStyles[variant]}`}
+        >
           {icon}
         </div>
       </div>
@@ -139,7 +162,11 @@ export function FeedbackStatsCards({ stats, loading }: FeedbackStatsProps) {
           <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z" />
         </svg>
       ),
-      variant: (stats && stats.satisfactionRate >= 80 ? 'success' : stats && stats.satisfactionRate >= 50 ? 'warning' : 'danger') as 'default' | 'success' | 'warning' | 'danger',
+      variant: (stats && stats.satisfactionRate >= 80
+        ? 'success'
+        : stats && stats.satisfactionRate >= 50
+          ? 'warning'
+          : 'danger') as 'default' | 'success' | 'warning' | 'danger',
     },
   ];
 

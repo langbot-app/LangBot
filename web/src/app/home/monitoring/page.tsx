@@ -118,8 +118,14 @@ function MonitoringPageContent() {
     loading: feedbackLoading,
     refetch: refetchFeedback,
   } = useFeedbackData({
-    botIds: filterState.selectedBots.length > 0 ? filterState.selectedBots : undefined,
-    pipelineIds: filterState.selectedPipelines.length > 0 ? filterState.selectedPipelines : undefined,
+    botIds:
+      filterState.selectedBots.length > 0
+        ? filterState.selectedBots
+        : undefined,
+    pipelineIds:
+      filterState.selectedPipelines.length > 0
+        ? filterState.selectedPipelines
+        : undefined,
     startTime: feedbackTimeRange.startTime,
     endTime: feedbackTimeRange.endTime,
     limit: 50,

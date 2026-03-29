@@ -2,7 +2,13 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { ThumbsUp, ThumbsDown, ChevronRight, ChevronDown, ExternalLink } from 'lucide-react';
+import {
+  ThumbsUp,
+  ThumbsDown,
+  ChevronRight,
+  ChevronDown,
+  ExternalLink,
+} from 'lucide-react';
 import { FeedbackRecord } from '../types/monitoring';
 import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
@@ -13,7 +19,11 @@ interface FeedbackListProps {
   onViewMessage?: (messageId: string) => void;
 }
 
-export function FeedbackList({ feedback, loading, onViewMessage }: FeedbackListProps) {
+export function FeedbackList({
+  feedback,
+  loading,
+  onViewMessage,
+}: FeedbackListProps) {
   const { t } = useTranslation();
   const [expandedId, setExpandedId] = React.useState<string | null>(null);
 
@@ -80,9 +90,13 @@ export function FeedbackList({ feedback, loading, onViewMessage }: FeedbackListP
                 {/* Expand Icon */}
                 <div className="mr-3 mt-0.5">
                   {expandedId === item.id ? (
-                    <ChevronDown className={`w-5 h-5 ${item.feedbackType === 'like' ? 'text-green-500' : 'text-red-500'}`} />
+                    <ChevronDown
+                      className={`w-5 h-5 ${item.feedbackType === 'like' ? 'text-green-500' : 'text-red-500'}`}
+                    />
                   ) : (
-                    <ChevronRight className={`w-5 h-5 ${item.feedbackType === 'like' ? 'text-green-500' : 'text-red-500'}`} />
+                    <ChevronRight
+                      className={`w-5 h-5 ${item.feedbackType === 'like' ? 'text-green-500' : 'text-red-500'}`}
+                    />
                   )}
                 </div>
 
@@ -95,8 +109,12 @@ export function FeedbackList({ feedback, loading, onViewMessage }: FeedbackListP
                     ) : (
                       <ThumbsDown className="w-5 h-5 text-red-500" />
                     )}
-                    <span className={`text-sm font-medium ${item.feedbackType === 'like' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                      {item.feedbackType === 'like' ? t('monitoring.feedback.like') : t('monitoring.feedback.dislike')}
+                    <span
+                      className={`text-sm font-medium ${item.feedbackType === 'like' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}
+                    >
+                      {item.feedbackType === 'like'
+                        ? t('monitoring.feedback.like')
+                        : t('monitoring.feedback.dislike')}
                     </span>
                     {item.botName && (
                       <>
@@ -119,18 +137,19 @@ export function FeedbackList({ feedback, loading, onViewMessage }: FeedbackListP
                     </p>
                   )}
 
-                  {item.inaccurateReasons && item.inaccurateReasons.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {item.inaccurateReasons.map((reason, idx) => (
-                        <span
-                          key={idx}
-                          className="text-xs px-2 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"
-                        >
-                          {reason}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  {item.inaccurateReasons &&
+                    item.inaccurateReasons.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {item.inaccurateReasons.map((reason, idx) => (
+                          <span
+                            key={idx}
+                            className="text-xs px-2 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"
+                          >
+                            {reason}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                 </div>
               </div>
 
@@ -145,9 +164,13 @@ export function FeedbackList({ feedback, loading, onViewMessage }: FeedbackListP
 
           {/* Expanded Details */}
           {expandedId === item.id && (
-            <div className={`border-t p-5 bg-white dark:bg-gray-900 ${
-              item.feedbackType === 'like' ? 'border-green-200 dark:border-green-900' : 'border-red-200 dark:border-red-900'
-            }`}>
+            <div
+              className={`border-t p-5 bg-white dark:bg-gray-900 ${
+                item.feedbackType === 'like'
+                  ? 'border-green-200 dark:border-green-900'
+                  : 'border-red-200 dark:border-red-900'
+              }`}
+            >
               <div className="space-y-4 pl-8 border-l-2 border-gray-200 dark:border-gray-700 ml-4">
                 {/* Context Info */}
                 <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">

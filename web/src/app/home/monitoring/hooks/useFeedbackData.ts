@@ -54,10 +54,7 @@ export function useFeedbackData(params: UseFeedbackDataParams = {}) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  const paramsStr = useMemo(
-    () => JSON.stringify(params),
-    [params],
-  );
+  const paramsStr = useMemo(() => JSON.stringify(params), [params]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -66,7 +63,9 @@ export function useFeedbackData(params: UseFeedbackDataParams = {}) {
         params.botIds.forEach((id) => queryParams.append('botId', id));
       }
       if (params.pipelineIds) {
-        params.pipelineIds.forEach((id) => queryParams.append('pipelineId', id));
+        params.pipelineIds.forEach((id) =>
+          queryParams.append('pipelineId', id),
+        );
       }
       if (params.startTime) {
         queryParams.append('startTime', params.startTime);
@@ -91,7 +90,8 @@ export function useFeedbackData(params: UseFeedbackDataParams = {}) {
             totalFeedback: bot.total,
             totalLikes: bot.likes,
             totalDislikes: bot.dislikes,
-            satisfactionRate: bot.total > 0 ? Math.round((bot.likes / bot.total) * 100) : 0,
+            satisfactionRate:
+              bot.total > 0 ? Math.round((bot.likes / bot.total) * 100) : 0,
           })),
         });
       }
@@ -110,7 +110,9 @@ export function useFeedbackData(params: UseFeedbackDataParams = {}) {
         params.botIds.forEach((id) => queryParams.append('botId', id));
       }
       if (params.pipelineIds) {
-        params.pipelineIds.forEach((id) => queryParams.append('pipelineId', id));
+        params.pipelineIds.forEach((id) =>
+          queryParams.append('pipelineId', id),
+        );
       }
       if (params.startTime) {
         queryParams.append('startTime', params.startTime);
@@ -119,7 +121,10 @@ export function useFeedbackData(params: UseFeedbackDataParams = {}) {
         queryParams.append('endTime', params.endTime);
       }
       if (params.feedbackType) {
-        queryParams.append('feedbackType', params.feedbackType === 'like' ? '1' : '2');
+        queryParams.append(
+          'feedbackType',
+          params.feedbackType === 'like' ? '1' : '2',
+        );
       }
       if (params.limit) {
         queryParams.append('limit', params.limit.toString());
@@ -134,25 +139,27 @@ export function useFeedbackData(params: UseFeedbackDataParams = {}) {
       }>(`/api/v1/monitoring/feedback?${queryParams.toString()}`);
 
       if (result) {
-        const transformedFeedback: FeedbackRecord[] = result.feedback.map((item) => ({
-          id: item.id,
-          timestamp: new Date(item.timestamp),
-          feedbackId: item.feedback_id,
-          feedbackType: item.feedback_type === 1 ? 'like' : 'dislike',
-          feedbackContent: item.feedback_content,
-          inaccurateReasons: item.inaccurate_reasons
-            ? JSON.parse(item.inaccurate_reasons)
-            : undefined,
-          botId: item.bot_id,
-          botName: item.bot_name,
-          pipelineId: item.pipeline_id,
-          pipelineName: item.pipeline_name,
-          sessionId: item.session_id,
-          messageId: item.message_id,
-          streamId: item.stream_id,
-          userId: item.user_id,
-          platform: item.platform,
-        }));
+        const transformedFeedback: FeedbackRecord[] = result.feedback.map(
+          (item) => ({
+            id: item.id,
+            timestamp: new Date(item.timestamp),
+            feedbackId: item.feedback_id,
+            feedbackType: item.feedback_type === 1 ? 'like' : 'dislike',
+            feedbackContent: item.feedback_content,
+            inaccurateReasons: item.inaccurate_reasons
+              ? JSON.parse(item.inaccurate_reasons)
+              : undefined,
+            botId: item.bot_id,
+            botName: item.bot_name,
+            pipelineId: item.pipeline_id,
+            pipelineName: item.pipeline_name,
+            sessionId: item.session_id,
+            messageId: item.message_id,
+            streamId: item.stream_id,
+            userId: item.user_id,
+            platform: item.platform,
+          }),
+        );
 
         setFeedback(transformedFeedback);
         setTotal(result.total);
