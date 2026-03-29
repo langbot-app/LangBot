@@ -15,46 +15,51 @@ Get the current repo code running locally on `http://127.0.0.1:5300`, with:
 
 Use this when:
 
-- Docker LangBot is already running on port `5300`
-- the browser UI works, but the locally checked-out KUKU API routes are missing
-- you need to demo local repo code instead of an older container image
+- you want to run the locally checked-out KUKU API routes
+- you want a repeatable local demo flow with one bot UUID and one API key
 
-## Two audiences
+## What `kuku-bootstrap.sh` does
 
-| Path | Who | What you run |
-|------|-----|----------------|
-| **Returning** | You already have `data/langbot.db` with bots (e.g. you bootstrap often) | `./scripts/kuku-bootstrap.sh` — does **not** stop Docker or overwrite the DB |
-| **First-time from Docker** | You run LangBot in Docker today and want the **same** DB + users/bots under `uv run main.py` | `./scripts/kuku-bootstrap.sh --first-time-from-docker` — stops Docker containers, backs up local `data/langbot.db`, copies `docker/data/langbot.db` → `data/langbot.db` |
+`./scripts/kuku-bootstrap.sh` is a **prep script**. It does **not** start the LangBot backend.
 
-The script always (re)writes **`.kuku-demo.env`** at the repo root with `KUKU_API_KEY`, `KUKU_BOT_UUID`, etc., so demo `curl` commands stay consistent. That file is gitignored.
+It does these things:
+
+- makes sure there is a demo API key in `data/langbot.db`
+- reads one bot UUID from the `bots` table
+- writes `.kuku-demo.env` with `KUKU_API_KEY`, `KUKU_BOT_UUID`, `KUKU_GROUP_ID`, and `KUKU_API_BASE_URL`
+- optionally creates `web/.env` from `web/.env.example`
+
+It does **not** do these things:
+
+- it does **not** run `uv run main.py`
+- it does **not** run `pnpm dev`
+- it does **not** create a bot for you
+
+The script always (re)writes **`.kuku-demo.env`** at the repo root so demo `curl` commands stay consistent. That file is gitignored.
+
+## Which path should I use?
+
+| Situation | Use this |
+|------|-----|
+| You already have `data/langbot.db` with at least one bot and just want to re-run the KUKU demo flow | **Returning user** |
+| You have no local DB yet, or you have a fresh empty DB with no bot rows | **Brand-new setup** |
 
 ---
 
-## Fast path (recommended)
+## Quick start
+
+### Returning user
+
+Use this if `data/langbot.db` already exists and already has at least one bot.
 
 From the **repository root**:
 
 ```bash
-# Returning user (default)
 ./scripts/kuku-bootstrap.sh
-
-# OR first-time migration from Docker (stops containers + copies DB)
-./scripts/kuku-bootstrap.sh --first-time-from-docker
-```
-
-Optional: create `web/.env` if missing (Next.js → backend on `5300`):
-
-```bash
-./scripts/kuku-bootstrap.sh --setup-web-env
-```
-
-Load variables into your shell (required for the `curl` examples below):
-
-```bash
 source .kuku-demo.env
 ```
 
-Start the backend in another terminal:
+Then start the backend in another terminal:
 
 ```bash
 uv run main.py
@@ -63,11 +68,38 @@ uv run main.py
 Optional web UI:
 
 ```bash
+./scripts/kuku-bootstrap.sh --setup-web-env
 cd web && pnpm install && pnpm dev
-# http://127.0.0.1:3000 — needs web/.env (see section 4 notes below)
+```
+
+### Brand-new setup
+
+Use this if `data/langbot.db` does not exist yet, or it exists but the `bots` table is empty.
+
+1. Start LangBot once:
+
+```bash
+uv run main.py
+```
+
+2. Finish the normal first-time setup in the UI and create at least one bot.
+3. Stop LangBot.
+4. Run:
+
+```bash
+./scripts/kuku-bootstrap.sh --setup-web-env
+source .kuku-demo.env
+```
+
+5. Start LangBot again:
+
+```bash
+uv run main.py
 ```
 
 Script help: `./scripts/kuku-bootstrap.sh --help`
+
+If you specifically need to import an existing Docker DB, the script still supports `--first-time-from-docker`, but that is an optional migration path and not the normal local workflow.
 
 ### API key behavior
 
@@ -78,7 +110,7 @@ Script help: `./scripts/kuku-bootstrap.sh --help`
 
 ---
 
-## One-Time Commands Per Machine
+## One-time commands per machine
 
 If needed:
 
@@ -91,39 +123,7 @@ uv sync --dev
 
 ## Manual bootstrap (if you prefer not to use the script)
 
-### 1. Stop Docker LangBot if it is using the same ports
-
-Check:
-
-```bash
-docker ps --format 'table {{.Names}}\t{{.Ports}}'
-```
-
-If you see `langbot` or `langbot_plugin_runtime`, stop them:
-
-```bash
-docker stop langbot langbot_plugin_runtime
-```
-
-Why:
-
-- the Docker image may not include your local repo changes
-- it occupies ports `5300` and `5401`
-
-**Returning users:** skip this if nothing is bound to those ports.
-
-### 2. Reuse the Docker database state locally (first-time / Docker users only)
-
-Back up the local DB and copy the Docker DB over it:
-
-```bash
-cp data/langbot.db data/langbot.db.bak.$(date +%Y%m%d%H%M%S)
-cp docker/data/langbot.db data/langbot.db
-```
-
-**Returning users** who already have the right `data/langbot.db`: skip this step.
-
-### 3. Start LangBot from the local repo checkout
+### 1. Start LangBot from the local repo checkout
 
 Run:
 
@@ -137,7 +137,7 @@ Expected startup signals:
 - LangBot listens on `http://0.0.0.0:5300`
 - plugin runtime listens on port `5401`
 
-### 4. Optionally start the frontend
+### 2. Optionally start the frontend
 
 If you need the web UI:
 
@@ -278,14 +278,8 @@ When done:
 
 Use `Ctrl+C` in the terminal running `uv run main.py`.
 
-### Restart the Docker version if you want the old setup back
-
-```bash
-docker start langbot langbot_plugin_runtime
-```
-
 ## Notes
 
 - If the Discord bot token was ever shown on screen or in screenshots, rotate it after the demo.
 - The KUKU APIs are backend-only today. They do not make KUKU talk in Discord yet.
-- If `5300` or `5401` are already in use, check Docker first before debugging the Python process.
+- If `5300` or `5401` are already in use, check what process is listening before debugging LangBot itself.

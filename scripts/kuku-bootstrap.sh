@@ -16,7 +16,8 @@ SETUP_WEB_ENV=false
 
 usage() {
   cat <<'EOF'
-KUKU local demo bootstrap — writes .kuku-demo.env and seeds a demo API key if needed.
+KUKU local demo bootstrap — prep only. It writes .kuku-demo.env and seeds a demo API key if needed.
+It does NOT start uv run main.py or pnpm dev.
 
 Usage:
   ./scripts/kuku-bootstrap.sh [options]
