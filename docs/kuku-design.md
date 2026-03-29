@@ -1,8 +1,8 @@
 # KUKU AI Agent — Engineering Design Doc
 
 > Based on KUKU AI Agent IP PRD v1.0
-> Status: Approved
-> Last updated: 2026-03-20
+> Status: Approved target architecture
+> Last updated: 2026-03-28
 
 ---
 
@@ -16,6 +16,24 @@ The implementation direction is:
 - Add Feishu next by reusing the same core and adding a second platform adapter
 
 **MVP core loop:** detect group silence -> generate a natural conversation opener -> send it -> repeat.
+
+## 1.1 Current implementation status
+
+The repository does not implement the full KUKU runtime described below yet.
+
+What exists today:
+- persisted KUKU group settings in `kuku_group_settings`
+- KUKU setup/read APIs under `/api/v1/kuku/...`
+- Discord-only validation for the current MVP boundary
+- one fixed persona, `kuku-sunny`
+
+What does not exist yet:
+- silence detection and proactive KUKU messaging
+- plugin runtime behavior
+- Discord runtime integration beyond storing and reading KUKU config
+- Feishu support
+
+Read the rest of this document as the approved target design, not as a statement that every component already exists in the codebase.
 
 ---
 
@@ -37,11 +55,11 @@ The implementation direction is:
 
 ---
 
-## 3. Architecture
+## 3. Target Architecture
 
 KUKU should not be implemented as a Discord-only standalone service. Since Feishu is the planned next platform, the core behavior must live inside LangBot and platform differences should stay at the adapter boundary.
 
-KUKU is implemented as a **LangBot Plugin**. LangBot handles platform abstraction, message ingestion, and pipeline execution. The plugin adds KUKU-specific behavior and is shared across platforms.
+KUKU is intended to be implemented as a **LangBot Plugin**. LangBot handles platform abstraction, message ingestion, and pipeline execution. The plugin adds KUKU-specific behavior and is shared across platforms.
 
 ```
 Discord / Feishu

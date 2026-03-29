@@ -1,12 +1,12 @@
 # KUKU Bootstrap Runbook
 
-This runbook is for bootstrapping the local LangBot environment when you need to demo the KUKU setup APIs from the current branch.
+This runbook is for bootstrapping a local LangBot environment when you need to demo the KUKU setup APIs currently implemented in this repository.
 
 ## Goal
 
 Get the current repo code running locally on `http://127.0.0.1:5300`, with:
 
-- the KUKU API routes from this branch
+- the KUKU API routes from this repository
 - a working local database
 - a known bot UUID
 - a temporary API key for demo requests
@@ -16,8 +16,8 @@ Get the current repo code running locally on `http://127.0.0.1:5300`, with:
 Use this when:
 
 - Docker LangBot is already running on port `5300`
-- the browser UI works, but new API routes from your branch are missing
-- you need to demo the current branch instead of an older container image
+- the browser UI works, but the locally checked-out KUKU API routes are missing
+- you need to demo local repo code instead of an older container image
 
 ## Preconditions
 
@@ -52,7 +52,7 @@ docker stop langbot langbot_plugin_runtime
 
 Why:
 
-- the Docker image may not include your branch changes
+- the Docker image may not include your local repo changes
 - it occupies ports `5300` and `5401`
 
 ### 2. Reuse the Docker database state locally
@@ -69,7 +69,7 @@ Why:
 - this keeps your existing LangBot user and bot data
 - it avoids having to recreate the Discord bot in a fresh local DB
 
-### 3. Start LangBot from the current branch
+### 3. Start LangBot from the local repo checkout
 
 Run:
 
@@ -102,7 +102,7 @@ http://127.0.0.1:3000
 Why:
 
 - the local backend may warn that built WebUI files are missing
-- the Next.js dev server is the easiest way to get a UI while keeping the branch backend on `5300`
+- the Next.js dev server is the easiest way to get a UI while keeping the local backend on `5300`
 
 ## Demo Bootstrap Data
 
@@ -183,19 +183,19 @@ Expected result:
 
 Use this sequence:
 
-1. Show that LangBot is running from the current branch locally.
+1. Show that LangBot is running from the local repo checkout.
 2. Show that the Discord bot already exists.
 3. Show the KUKU persona catalog.
 4. Save KUKU settings for one Discord group.
 5. Read them back to prove persistence.
 6. Trigger one invalid request to show validation.
-7. Close by explaining that runtime behavior is not implemented in this PR yet; this branch is the persistence and setup foundation.
+7. Close by explaining that runtime behavior is not implemented yet; the current KUKU slice is the persistence and setup foundation.
 
 ## Shutdown And Restore
 
 When done:
 
-### Stop the local branch backend
+### Stop the local backend
 
 Use `Ctrl+C` in the terminal running `uv run main.py`.
 
@@ -208,5 +208,5 @@ docker start langbot langbot_plugin_runtime
 ## Notes
 
 - If the Discord bot token was ever shown on screen or in screenshots, rotate it after the demo.
-- The KUKU APIs in this branch are backend-only. They do not make KUKU talk in Discord yet.
+- The KUKU APIs are backend-only today. They do not make KUKU talk in Discord yet.
 - If `5300` or `5401` are already in use, check Docker first before debugging the Python process.
