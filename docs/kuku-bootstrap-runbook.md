@@ -87,8 +87,18 @@ Expected startup signals:
 
 If you need the web UI:
 
+**One-time:** create `web/.env` so the browser calls the Python API on `5300`, not the Next.js origin on `3000`:
+
 ```bash
 cd web
+cp .env.example .env
+```
+
+`web/.env.example` sets `NEXT_PUBLIC_API_BASE_URL=http://localhost:5300`. Without this (or if the variable is wrong), the login screen shows **Unable to connect to the LangBot backend** because API requests default to same-origin (`/`). After editing `.env`, restart `pnpm dev` so Next.js picks up `NEXT_PUBLIC_*` values.
+
+Then:
+
+```bash
 pnpm install
 pnpm dev
 ```
@@ -103,6 +113,8 @@ Why:
 
 - the local backend may warn that built WebUI files are missing
 - the Next.js dev server is the easiest way to get a UI while keeping the local backend on `5300`
+
+Do **not** commit `web/.env`; it is gitignored. Only `web/.env.example` belongs in the repo.
 
 ## Demo Bootstrap Data
 
