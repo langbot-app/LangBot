@@ -5,16 +5,34 @@ metadata:
   label:
     en_US: WeCom
     zh_Hans: 企业微信
+    zh_Hant: 企業微信
   description:
     en_US: WeCom Adapter
-    zh_Hans: 企业微信适配器，请查看文档了解使用方式
+    zh_Hans: 企业微信内部机器人，请查看文档了解使用方式
+    zh_Hant: 企業微信內部機器人，請查看文件了解使用方式
   icon: wecom.png
 spec:
+  categories:
+    - popular
+    - china
   config:
+    - name: webhook_url
+      label:
+        en_US: Webhook Callback URL
+        zh_Hans: Webhook 回调地址
+        zh_Hant: Webhook 回調地址
+      description:
+        en_US: Copy this URL and paste it into your WeCom app's webhook configuration
+        zh_Hans: 复制此地址并粘贴到企业微信应用的 Webhook 配置中
+        zh_Hant: 複製此地址並貼到企業微信應用的 Webhook 設定中
+      type: webhook-url
+      required: false
+      default: ""
     - name: corpid
       label:
         en_US: Corpid
         zh_Hans: 企业ID
+        zh_Hant: 企業ID
       type: string
       required: true
       default: ""
@@ -22,6 +40,7 @@ spec:
       label:
         en_US: Secret
         zh_Hans: 密钥 (Secret)
+        zh_Hant: 密鑰 (Secret)
       type: string
       required: true
       default: ""
@@ -29,6 +48,7 @@ spec:
       label:
         en_US: Token
         zh_Hans: 令牌 (Token)
+        zh_Hant: 令牌 (Token)
       type: string
       required: true
       default: ""
@@ -36,13 +56,7 @@ spec:
       label:
         en_US: EncodingAESKey
         zh_Hans: 消息加解密密钥 (EncodingAESKey)
-      type: string
-      required: true
-      default: ""
-    - name: contacts_secret
-      label:
-        en_US: Contacts Secret
-        zh_Hans: 通讯录密钥
+        zh_Hant: 訊息加解密密鑰 (EncodingAESKey)
       type: string
       required: true
       default: ""
@@ -50,9 +64,11 @@ spec:
       label:
         en_US: API Base URL
         zh_Hans: API 基础 URL
+        zh_Hant: API 基礎 URL
       description:
         en_US: API Base URL, used for accessing the WeCom API. If you are deploying in an internal network environment and accessing the WeCom Customer Service API through a reverse proxy, please fill in this item according to the documentation.
         zh_Hans: 可选，若您部署在内网环境并通过反向代理访问企业微信 API，可根据文档填写此项
+        zh_Hant: 可選，若您部署在內網環境並透過反向代理存取企業微信 API，可根據文件填寫此項
       type: string
       required: false
       default: "https://qyapi.weixin.qq.com/cgi-bin"

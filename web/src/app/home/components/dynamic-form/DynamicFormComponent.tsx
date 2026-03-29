@@ -11,9 +11,138 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import DynamicFormItemComponent from '@/app/home/components/dynamic-form/DynamicFormItemComponent';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { useTranslation } from 'react-i18next';
+import { cn } from '@/lib/utils';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Copy, Check, Globe } from 'lucide-react';
+import { systemInfo } from '@/app/infra/http';
+
+/**
+ * Resolve the value referenced by a `show_if.field` string.
+ *
+ * Fields prefixed with `__system.` are looked up in the caller-supplied
+ * `systemContext` dictionary (e.g. `__system.is_wizard` → `systemContext.is_wizard`).
+ * All other field names are resolved from the live form values first, then
+ * fall back to `externalDependentValues`.
+ */
+function resolveShowIfValue(
+  field: string,
+  watchedValues: Record<string, unknown>,
+  externalDependentValues?: Record<string, unknown>,
+  systemContext?: Record<string, unknown>,
+): unknown {
+  if (field.startsWith('__system.')) {
+    const key = field.slice('__system.'.length);
+    return systemContext?.[key];
+  }
+  if (watchedValues[field] !== undefined) {
+    return watchedValues[field];
+  }
+  return externalDependentValues?.[field];
+}
+
+/**
+ * Display-only component for webhook URL fields.
+ * Rendered outside of react-hook-form binding since the value is
+ * read-only and comes from systemContext, not user input.
+ */
+function WebhookUrlField({
+  label,
+  description,
+  url,
+  extraUrl,
+}: {
+  label: string;
+  description?: string;
+  url: string;
+  extraUrl?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [extraCopied, setExtraCopied] = useState(false);
+  const { t } = useTranslation();
+
+  const handleCopy = (text: string, setter: (v: boolean) => void) => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard
+        .writeText(text)
+        .then(() => {
+          setter(true);
+          setTimeout(() => setter(false), 2000);
+        })
+        .catch(() => {});
+    }
+  };
+
+  return (
+    <FormItem>
+      <FormLabel>{label}</FormLabel>
+      <div className="flex items-center gap-2">
+        <Input
+          value={url}
+          readOnly
+          className="flex-1 bg-muted"
+          onClick={(e) => (e.target as HTMLInputElement).select()}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => handleCopy(url, setCopied)}
+        >
+          {copied ? (
+            <Check className="h-4 w-4 text-green-600" />
+          ) : (
+            <Copy className="h-4 w-4" />
+          )}
+        </Button>
+      </div>
+      {extraUrl && (
+        <div className="flex items-center gap-2 mt-2">
+          <Input
+            value={extraUrl}
+            readOnly
+            className="flex-1 bg-muted"
+            onClick={(e) => (e.target as HTMLInputElement).select()}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => handleCopy(extraUrl, setExtraCopied)}
+          >
+            {extraCopied ? (
+              <Check className="h-4 w-4 text-green-600" />
+            ) : (
+              <Copy className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
+      )}
+      {description && (
+        <p className="text-sm text-muted-foreground">{description}</p>
+      )}
+      {systemInfo.edition === 'community' && (
+        <div className="flex items-start gap-2.5 rounded-md border border-border/60 bg-muted/40 px-3 py-2.5 mt-1 max-w-2xl">
+          <Globe className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            {t('bots.webhookSaasHint')}{' '}
+            <a
+              href="https://space.langbot.app/cloud?utm_source=local_webui&utm_medium=webhook_alert&utm_campaign=saas_conversion"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary underline-offset-4 hover:underline font-medium"
+            >
+              {t('bots.webhookSaasLink')}
+            </a>
+          </p>
+        </div>
+      )}
+    </FormItem>
+  );
+}
 
 export default function DynamicFormComponent({
   itemConfigList,
@@ -22,6 +151,7 @@ export default function DynamicFormComponent({
   onFileUploaded,
   isEditing,
   externalDependentValues,
+  systemContext,
 }: {
   itemConfigList: IDynamicFormItemSchema[];
   onSubmit?: (val: object) => unknown;
@@ -29,6 +159,9 @@ export default function DynamicFormComponent({
   onFileUploaded?: (fileKey: string) => void;
   isEditing?: boolean;
   externalDependentValues?: Record<string, unknown>;
+  /** Extra variables accessible via the `__system.*` namespace in show_if conditions.
+   *  e.g. `{ is_wizard: true }` makes `show_if: { field: "__system.is_wizard", ... }` work. */
+  systemContext?: Record<string, unknown>;
 }) {
   const isInitialMount = useRef(true);
   const previousInitialValues = useRef(initialValues);
@@ -60,12 +193,26 @@ export default function DynamicFormComponent({
         fallbacks: [],
       };
     }
+    if (item.type === 'prompt-editor') {
+      if (Array.isArray(value)) {
+        return value;
+      }
+      // Default to a single empty system prompt entry
+      return [{ role: 'system', content: '' }];
+    }
     return value;
   };
 
+  // Filter out display-only field types (e.g. webhook-url) that should not
+  // participate in form state, validation, or value emission.
+  const editableItems = useMemo(
+    () => itemConfigList.filter((item) => item.type !== 'webhook-url'),
+    [itemConfigList],
+  );
+
   // 根据 itemConfigList 动态生成 zod schema
   const formSchema = z.object(
-    itemConfigList.reduce(
+    editableItems.reduce(
       (acc, item) => {
         let fieldSchema;
         switch (item.type) {
@@ -143,7 +290,7 @@ export default function DynamicFormComponent({
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: itemConfigList.reduce((acc, item) => {
+    defaultValues: editableItems.reduce((acc, item) => {
       // 优先使用 initialValues，如果没有则使用默认值
       const rawValue = initialValues?.[item.name] ?? item.default;
       return {
@@ -171,7 +318,7 @@ export default function DynamicFormComponent({
 
     if (initialValues && hasRealChange) {
       // 合并默认值和初始值
-      const mergedValues = itemConfigList.reduce(
+      const mergedValues = editableItems.reduce(
         (acc, item) => {
           const rawValue = initialValues[item.name] ?? item.default;
           acc[item.name] = normalizeFieldValue(item, rawValue) as object;
@@ -186,7 +333,7 @@ export default function DynamicFormComponent({
 
       previousInitialValues.current = initialValues;
     }
-  }, [initialValues, form, itemConfigList]);
+  }, [initialValues, form, editableItems]);
 
   // Get reactive form values for conditional rendering
   const watchedValues = form.watch();
@@ -202,7 +349,7 @@ export default function DynamicFormComponent({
     // even if the user saves without modifying any field.
     // form.watch(callback) only fires on subsequent changes, not on mount.
     const formValues = form.getValues();
-    const initialFinalValues = itemConfigList.reduce(
+    const initialFinalValues = editableItems.reduce(
       (acc, item) => {
         acc[item.name] = formValues[item.name] ?? item.default;
         return acc;
@@ -222,7 +369,7 @@ export default function DynamicFormComponent({
 
     const subscription = form.watch(() => {
       const formValues = form.getValues();
-      const finalValues = itemConfigList.reduce(
+      const finalValues = editableItems.reduce(
         (acc, item) => {
           acc[item.name] = formValues[item.name] ?? item.default;
           return acc;
@@ -233,21 +380,19 @@ export default function DynamicFormComponent({
       previousInitialValues.current = finalValues as Record<string, object>;
     });
     return () => subscription.unsubscribe();
-  }, [form, itemConfigList]);
+  }, [form, editableItems]);
 
   return (
     <Form {...form}>
       <div className="space-y-4">
         {itemConfigList.map((config) => {
           if (config.show_if) {
-            const dependValue =
-              watchedValues[
-                config.show_if.field as keyof typeof watchedValues
-              ] !== undefined
-                ? watchedValues[
-                    config.show_if.field as keyof typeof watchedValues
-                  ]
-                : externalDependentValues?.[config.show_if.field];
+            const dependValue = resolveShowIfValue(
+              config.show_if.field,
+              watchedValues as Record<string, unknown>,
+              externalDependentValues,
+              systemContext,
+            );
 
             if (
               config.show_if.operator === 'eq' &&
@@ -272,6 +417,69 @@ export default function DynamicFormComponent({
 
           // All fields are disabled when editing (creation_settings are immutable)
           const isFieldDisabled = !!isEditing;
+
+          // Webhook URL fields are display-only; render outside of form binding
+          if (config.type === 'webhook-url') {
+            const webhookUrl = (systemContext?.webhook_url as string) || '';
+            const extraWebhookUrl =
+              (systemContext?.extra_webhook_url as string) || '';
+
+            if (!webhookUrl) return null;
+
+            return (
+              <WebhookUrlField
+                key={config.id}
+                label={extractI18nObject(config.label)}
+                description={
+                  config.description
+                    ? extractI18nObject(config.description)
+                    : undefined
+                }
+                url={webhookUrl}
+                extraUrl={extraWebhookUrl || undefined}
+              />
+            );
+          }
+
+          // Boolean fields use a special inline layout
+          if (config.type === 'boolean') {
+            return (
+              <FormField
+                key={config.id}
+                control={form.control}
+                name={config.name as keyof FormValues}
+                render={({ field }) => (
+                  <FormItem>
+                    <div
+                      className={cn(
+                        'flex flex-row items-center justify-between rounded-lg border p-4 max-w-2xl',
+                        isFieldDisabled && 'pointer-events-none opacity-60',
+                      )}
+                    >
+                      <div className="space-y-0.5">
+                        <FormLabel className="text-base">
+                          {extractI18nObject(config.label)}
+                        </FormLabel>
+                        {config.description && (
+                          <p className="text-sm text-muted-foreground">
+                            {extractI18nObject(config.description)}
+                          </p>
+                        )}
+                      </div>
+                      <FormControl>
+                        <DynamicFormItemComponent
+                          config={config}
+                          field={field}
+                          onFileUploaded={onFileUploaded}
+                        />
+                      </FormControl>
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            );
+          }
 
           return (
             <FormField

@@ -288,10 +288,10 @@ class AnthropicMessages(requester.ProviderAPIRequester):
             think_started = False
             think_ended = False
             finish_reason = False
-            content = ''
             tool_name = ''
             tool_id = ''
             async for chunk in await self.client.messages.create(**args):
+                content = ''
                 tool_call = {'id': None, 'function': {'name': None, 'arguments': None}, 'type': 'function'}
                 if isinstance(
                     chunk, anthropic.types.raw_content_block_start_event.RawContentBlockStartEvent

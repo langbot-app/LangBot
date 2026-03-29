@@ -5,20 +5,52 @@ metadata:
   label:
     en_US: LINE
     zh_Hans: LINE
+    zh_Hant: LINE
+    th_TH: LINE
+    vi_VN: LINE
+    es_ES: LINE
   description:
-    en_US: LINE Adapter
-    zh_Hans: LINE适配器，请查看文档了解使用方式
-    ja_JP: LINEアダプター、ドキュメントを参照してください
-    zh_Hant: LINE適配器，請查看文檔了解使用方式
+    en_US: LINE Adapter, requires a public URL to receive LINE message pushes, please refer to the documentation for usage details
+    zh_Hans: LINE适配器，需要公网地址以接收 LINE 消息推送，请查看文档了解使用方式
+    zh_Hant: LINE 適配器，需要公網地址以接收 LINE 訊息推送，請查看文件了解使用方式
+    ja_JP: LINEアダプター、LINEのメッセージプッシュを受信するためにパブリックURLが必要です。使用方法の詳細については、ドキュメントを参照してください。
+    th_TH: อะแดปเตอร์ LINE ต้องการ URL สาธารณะเพื่อรับการแจ้งเตือนข้อความจาก LINE โปรดดูเอกสารประกอบสำหรับรายละเอียดการใช้งาน
+    vi_VN: Bộ điều hợp LINE, cần URL công cộng để nhận thông báo tin nhắn LINE, vui lòng xem tài liệu để biết chi tiết cách sử dụng
+    es_ES: Adaptador de LINE, requiere una URL pública para recibir notificaciones de mensajes de LINE, consulte la documentación para obtener detalles de uso
   icon: line.png
 spec:
+  categories:
+    - global
   config:
+    - name: webhook_url
+      label:
+        en_US: Webhook Callback URL
+        zh_Hans: Webhook 回调地址
+        ja_JP: Webhook コールバック URL
+        zh_Hant: Webhook 回調地址
+        th_TH: URL การเรียกกลับ Webhook
+        vi_VN: URL gọi lại Webhook
+        es_ES: URL de devolución de llamada Webhook
+      description:
+        en_US: Copy this URL and paste it into your LINE channel's webhook configuration
+        zh_Hans: 复制此地址并粘贴到 LINE 频道的 Webhook 配置中
+        ja_JP: この URL をコピーして LINE チャンネルの Webhook 設定に貼り付けてください
+        zh_Hant: 複製此地址並貼到 LINE 頻道的 Webhook 設定中
+        th_TH: คัดลอก URL นี้แล้ววางในการตั้งค่า Webhook ของช่อง LINE ของคุณ
+        vi_VN: Sao chép URL này và dán vào cấu hình webhook của kênh LINE của bạn
+        es_ES: Copie esta URL y péguela en la configuración de webhook de su canal LINE
+      type: webhook-url
+      required: false
+      default: ""
     - name: channel_access_token
       label:
         en_US: Channel access token
         zh_Hans: 频道访问令牌
         ja_JP: チャンネルアクセストークン
-        zh_Hant: 頻道訪問令牌
+        zh_Hant: 頻道存取令牌
+        th_TH: โทเค็นการเข้าถึงช่อง
+        vi_VN: Mã truy cập kênh
+        es_ES: Token de acceso del canal
       type: string
       required: true
       default: ""
@@ -27,12 +59,18 @@ spec:
         en_US: Channel secret
         zh_Hans: 消息密钥
         ja_JP: チャンネルシークレット
-        zh_Hant: 消息密钥
+        zh_Hant: 訊息密鑰
+        th_TH: รหัสลับช่อง
+        vi_VN: Khóa bí mật kênh
+        es_ES: Secreto del canal
       description:
         en_US: Only valid when webhook mode is enabled, please fill in the encrypt key
         zh_Hans: 请填写加密密钥
         ja_JP: Webhookモードが有効な場合にのみ、暗号化キーを入力してください
-        zh_Hant: 請填寫加密密钥
+        zh_Hant: 請填寫加密密鑰
+        th_TH: กรุณากรอกคีย์เข้ารหัส
+        vi_VN: Vui lòng điền khóa mã hóa
+        es_ES: Por favor, introduzca la clave de cifrado
       type: string
       required: true
       default: ""

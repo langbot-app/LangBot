@@ -126,16 +126,16 @@ export default function TrafficChart({
 
   if (loading) {
     return (
-      <div className="bg-white dark:bg-[#2a2a2e] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-6">
+      <div className="bg-card rounded-xl border p-6">
         <div className="flex items-center justify-between mb-4">
-          <div className="h-5 w-32 bg-gray-200 dark:bg-gray-700 animate-pulse rounded"></div>
+          <div className="h-5 w-32 bg-muted animate-pulse rounded"></div>
           <div className="flex gap-4">
-            <div className="h-4 w-24 bg-gray-200 dark:bg-gray-700 animate-pulse rounded"></div>
-            <div className="h-4 w-24 bg-gray-200 dark:bg-gray-700 animate-pulse rounded"></div>
+            <div className="h-4 w-24 bg-muted animate-pulse rounded"></div>
+            <div className="h-4 w-24 bg-muted animate-pulse rounded"></div>
           </div>
         </div>
         <div className="h-[300px] flex items-center justify-center">
-          <div className="animate-pulse w-full h-full bg-gray-100 dark:bg-gray-800 rounded"></div>
+          <div className="animate-pulse w-full h-full bg-muted rounded"></div>
         </div>
       </div>
     );
@@ -143,35 +143,28 @@ export default function TrafficChart({
 
   if (chartData.length === 0) {
     return (
-      <div className="bg-white dark:bg-[#2a2a2e] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-6">
-        <h3 className="text-base font-semibold text-gray-800 dark:text-gray-200 mb-4">
+      <div className="bg-card rounded-xl border p-6">
+        <h3 className="text-base font-semibold text-foreground mb-4">
           {t('monitoring.trafficChart.title')}
         </h3>
-        <div className="h-[300px] flex flex-col items-center justify-center text-gray-400 dark:text-gray-500">
+        <div className="h-[300px] flex flex-col items-center justify-center text-muted-foreground gap-2">
           <svg
-            className="w-16 h-16 mb-4 text-gray-300 dark:text-gray-600"
-            fill="none"
+            className="h-[3rem] w-[3rem]"
+            xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 24 24"
-            stroke="currentColor"
+            fill="currentColor"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-            />
+            <path d="M2 13H8V21H2V13ZM16 8H22V21H16V8ZM9 3H15V21H9V3ZM4 15V19H6V15H4ZM11 5V19H13V5H11ZM18 10V19H20V10H18Z"></path>
           </svg>
-          <p className="text-sm font-medium">
-            {t('monitoring.trafficChart.noData')}
-          </p>
+          <div className="text-sm">{t('monitoring.trafficChart.noData')}</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-white dark:bg-[#2a2a2e] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
-      <h3 className="text-base font-semibold text-gray-800 dark:text-gray-200 mb-6">
+    <div className="bg-card rounded-xl border p-6 transition-shadow duration-300">
+      <h3 className="text-base font-semibold text-foreground mb-6">
         {t('monitoring.trafficChart.title')}
       </h3>
       <div className="h-[300px]">
@@ -192,38 +185,38 @@ export default function TrafficChart({
             </defs>
             <CartesianGrid
               strokeDasharray="3 3"
-              stroke="#e5e7eb"
-              className="dark:stroke-gray-700"
+              stroke="var(--border)"
               vertical={false}
             />
             <XAxis
               dataKey="time"
-              tick={{ fontSize: 12, fill: '#9ca3af' }}
+              tick={{ fontSize: 12, fill: 'var(--muted-foreground)' }}
               tickLine={false}
-              axisLine={{ stroke: '#e5e7eb' }}
+              axisLine={{ stroke: 'var(--border)' }}
               dy={10}
             />
             <YAxis
-              tick={{ fontSize: 12, fill: '#9ca3af' }}
+              tick={{ fontSize: 12, fill: 'var(--muted-foreground)' }}
               tickLine={false}
-              axisLine={{ stroke: '#e5e7eb' }}
+              axisLine={{ stroke: 'var(--border)' }}
               width={40}
               allowDecimals={false}
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: 'rgba(255, 255, 255, 0.98)',
-                border: '1px solid #e5e7eb',
+                backgroundColor: 'var(--card)',
+                border: '1px solid var(--border)',
                 borderRadius: '12px',
                 boxShadow:
                   '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
                 fontSize: '13px',
                 padding: '12px',
+                color: 'var(--foreground)',
               }}
               labelStyle={{
                 fontWeight: 600,
                 marginBottom: '8px',
-                color: '#374151',
+                color: 'var(--foreground)',
               }}
               itemStyle={{ padding: '4px 0' }}
             />

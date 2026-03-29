@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import asyncio
+import io
+import time
+import zipfile
 from typing import Any
 import typing
 import os
@@ -192,6 +195,30 @@ class PluginRuntimeConnector:
 
         return await self.handler.ping()
 
+    def _extract_deps_metadata(
+        self,
+        file_bytes: bytes,
+        task_context: taskmgr.TaskContext | None,
+    ):
+        """Extract dependency count from requirements.txt inside plugin zip."""
+        if task_context is None:
+            return
+        try:
+            with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
+                for name in zf.namelist():
+                    if name.endswith('requirements.txt'):
+                        content = zf.read(name).decode('utf-8', errors='ignore')
+                        deps = [
+                            line.strip()
+                            for line in content.splitlines()
+                            if line.strip() and not line.strip().startswith('#')
+                        ]
+                        task_context.metadata['deps_total'] = len(deps)
+                        task_context.metadata['deps_list'] = deps
+                        break
+        except Exception:
+            pass
+
     async def install_plugin(
         self,
         install_source: PluginInstallSource,
@@ -201,23 +228,44 @@ class PluginRuntimeConnector:
         if install_source == PluginInstallSource.LOCAL:
             # transfer file before install
             file_bytes = install_info['plugin_file']
+            self._extract_deps_metadata(file_bytes, task_context)
             file_key = await self.handler.send_file(file_bytes, 'lbpkg')
             install_info['plugin_file_key'] = file_key
             del install_info['plugin_file']
             self.ap.logger.info(f'Transfered file {file_key} to plugin runtime')
         elif install_source == PluginInstallSource.GITHUB:
-            # download and transfer file
+            # download and transfer file with streaming progress
             try:
                 async with httpx.AsyncClient(
                     trust_env=True,
                     follow_redirects=True,
-                    timeout=20,
+                    timeout=60,
                 ) as client:
-                    response = await client.get(
-                        install_info['asset_url'],
-                    )
-                    response.raise_for_status()
-                    file_bytes = response.content
+                    async with client.stream('GET', install_info['asset_url']) as response:
+                        response.raise_for_status()
+                        total = int(response.headers.get('content-length', 0))
+                        downloaded = 0
+                        chunks: list[bytes] = []
+                        start_time = time.time()
+
+                        if task_context is not None:
+                            task_context.set_current_action('downloading plugin package')
+                            task_context.metadata['download_total'] = total
+                            task_context.metadata['download_current'] = 0
+                            task_context.metadata['download_speed'] = 0
+
+                        async for chunk in response.aiter_bytes(chunk_size=8192):
+                            chunks.append(chunk)
+                            downloaded += len(chunk)
+
+                            if task_context is not None:
+                                elapsed = time.time() - start_time
+                                task_context.metadata['download_current'] = downloaded
+                                task_context.metadata['download_total'] = total
+                                task_context.metadata['download_speed'] = downloaded / elapsed if elapsed > 0 else 0
+
+                    file_bytes = b''.join(chunks)
+                    self._extract_deps_metadata(file_bytes, task_context)
                     file_key = await self.handler.send_file(file_bytes, 'lbpkg')
                     install_info['plugin_file_key'] = file_key
                     self.ap.logger.info(f'Transfered file {file_key} to plugin runtime')
@@ -235,6 +283,11 @@ class PluginRuntimeConnector:
             if trace is not None:
                 if task_context is not None:
                     task_context.trace(trace)
+
+            # Forward structured metadata from runtime
+            metadata = ret.get('metadata', None)
+            if metadata is not None and task_context is not None:
+                task_context.metadata.update(metadata)
 
     async def upgrade_plugin(
         self,

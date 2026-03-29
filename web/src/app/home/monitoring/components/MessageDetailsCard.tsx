@@ -22,11 +22,11 @@ export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
   }, [details.message?.variables]);
 
   return (
-    <div className="space-y-4 pl-8 border-l-2 border-gray-200 dark:border-gray-700 ml-4">
+    <div className="space-y-4 pl-8 border-l-2 border-border ml-4">
       {/* Context Info Section */}
       {details.message && (
-        <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
-          <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center">
+        <div className="bg-muted rounded-lg p-3">
+          <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center">
             <svg
               className="w-4 h-4 mr-2"
               xmlns="http://www.w3.org/2000/svg"
@@ -41,37 +41,37 @@ export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
           {/* Metadata Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
             {details.message.platform && (
-              <div className="bg-white dark:bg-gray-900 rounded p-2">
-                <div className="text-gray-500 dark:text-gray-400">
+              <div className="bg-background rounded p-2">
+                <div className="text-muted-foreground">
                   {t('monitoring.messageList.platform')}
                 </div>
-                <div className="font-medium text-gray-900 dark:text-white">
+                <div className="font-medium text-foreground">
                   {details.message.platform}
                 </div>
               </div>
             )}
             {details.message.userId && (
-              <div className="bg-white dark:bg-gray-900 rounded p-2">
-                <div className="text-gray-500 dark:text-gray-400">
+              <div className="bg-background rounded p-2">
+                <div className="text-muted-foreground">
                   {t('monitoring.messageList.user')}
                 </div>
-                <div className="font-medium text-gray-900 dark:text-white truncate">
+                <div className="font-medium text-foreground truncate">
                   {details.message.userId}
                 </div>
               </div>
             )}
             {details.message.runnerName && (
-              <div className="bg-white dark:bg-gray-900 rounded p-2">
-                <div className="text-gray-500 dark:text-gray-400">
+              <div className="bg-background rounded p-2">
+                <div className="text-muted-foreground">
                   {t('monitoring.messageList.runner')}
                 </div>
-                <div className="font-medium text-gray-900 dark:text-white">
+                <div className="font-medium text-foreground">
                   {details.message.runnerName}
                 </div>
               </div>
             )}
-            <div className="bg-white dark:bg-gray-900 rounded p-2">
-              <div className="text-gray-500 dark:text-gray-400">
+            <div className="bg-background rounded p-2">
+              <div className="text-muted-foreground">
                 {t('monitoring.messageList.level')}
               </div>
               <div
@@ -80,7 +80,7 @@ export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
                     ? 'text-red-600 dark:text-red-400'
                     : details.message.level === 'warning'
                       ? 'text-yellow-600 dark:text-yellow-400'
-                      : 'text-gray-900 dark:text-white'
+                      : 'text-foreground'
                 }`}
               >
                 {details.message.level.toUpperCase()}
@@ -92,8 +92,8 @@ export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
 
       {/* LLM Calls Section */}
       {details.llmCalls && details.llmCalls.length > 0 && (
-        <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
-          <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center">
+        <div className="bg-muted rounded-lg p-3">
+          <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center">
             <svg
               className="w-4 h-4 mr-2"
               xmlns="http://www.w3.org/2000/svg"
@@ -136,13 +136,10 @@ export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
           {/* Individual LLM Calls */}
           <div className="space-y-2">
             {details.llmCalls.map((call, index) => (
-              <div
-                key={call.id}
-                className="bg-white dark:bg-gray-900 rounded p-2 text-sm"
-              >
+              <div key={call.id} className="bg-background rounded p-2 text-sm">
                 <div className="flex justify-between items-start mb-2">
                   <div>
-                    <span className="font-medium text-gray-900 dark:text-white">
+                    <span className="font-medium text-foreground">
                       #{index + 1} {call.modelName}
                     </span>
                     <span
@@ -155,27 +152,21 @@ export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
                       {call.status}
                     </span>
                   </div>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                  <span className="text-xs text-muted-foreground">
                     {call.duration}ms
                   </span>
                 </div>
-                <div className="grid grid-cols-3 gap-2 text-xs text-gray-600 dark:text-gray-400">
+                <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
                   <div>
-                    <span className="text-gray-500 dark:text-gray-500">
-                      In:
-                    </span>{' '}
+                    <span className="text-muted-foreground">In:</span>{' '}
                     {call.tokens.input.toLocaleString()}
                   </div>
                   <div>
-                    <span className="text-gray-500 dark:text-gray-500">
-                      Out:
-                    </span>{' '}
+                    <span className="text-muted-foreground">Out:</span>{' '}
                     {call.tokens.output.toLocaleString()}
                   </div>
                   <div>
-                    <span className="text-gray-500 dark:text-gray-500">
-                      Total:
-                    </span>{' '}
+                    <span className="text-muted-foreground">Total:</span>{' '}
                     {call.tokens.total.toLocaleString()}
                   </div>
                 </div>
@@ -192,7 +183,7 @@ export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
 
       {/* Errors Section */}
       {details.errors && details.errors.length > 0 && (
-        <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
+        <div className="bg-muted rounded-lg p-3">
           <h4 className="text-sm font-semibold text-red-700 dark:text-red-400 mb-3 flex items-center">
             <svg
               className="w-4 h-4 mr-2"
@@ -236,8 +227,8 @@ export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
       {queryVariables &&
         Object.keys(queryVariables).length > 0 &&
         details.message?.runnerName !== 'local-agent' && (
-          <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
-            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center">
+          <div className="bg-muted rounded-lg p-3">
+            <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center">
               <svg
                 className="w-4 h-4 mr-2"
                 xmlns="http://www.w3.org/2000/svg"
@@ -250,22 +241,21 @@ export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
             </h4>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
               {Object.entries(queryVariables).map(([key, value]) => (
-                <div
-                  key={key}
-                  className="bg-white dark:bg-gray-900 rounded p-2"
-                >
-                  <div className="text-gray-500 dark:text-gray-400">{key}</div>
+                <div key={key} className="bg-background rounded p-2">
+                  <div className="text-muted-foreground">{key}</div>
                   <div
-                    className="font-medium text-gray-900 dark:text-white truncate"
+                    className="font-medium text-foreground truncate"
                     title={
                       typeof value === 'string' ? value : JSON.stringify(value)
                     }
                   >
                     {value === null || value === undefined ? (
-                      <span className="text-gray-400 italic">null</span>
+                      <span className="text-muted-foreground italic">null</span>
                     ) : typeof value === 'string' ? (
                       value || (
-                        <span className="text-gray-400 italic">empty</span>
+                        <span className="text-muted-foreground italic">
+                          empty
+                        </span>
                       )
                     ) : (
                       JSON.stringify(value)
@@ -283,7 +273,7 @@ export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
         (details.message?.runnerName === 'local-agent' ||
           !queryVariables ||
           Object.keys(queryVariables).length === 0) && (
-          <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+          <div className="text-sm text-muted-foreground text-center py-4">
             {t('monitoring.messageDetails.noData')}
           </div>
         )}

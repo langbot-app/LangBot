@@ -17,10 +17,22 @@ class I18nString(pydantic.BaseModel):
     """英文"""
 
     zh_Hans: typing.Optional[str] = None
-    """中文"""
+    """简体中文"""
+
+    zh_Hant: typing.Optional[str] = None
+    """繁体中文"""
 
     ja_JP: typing.Optional[str] = None
     """日文"""
+
+    th_TH: typing.Optional[str] = None
+    """泰文"""
+
+    vi_VN: typing.Optional[str] = None
+    """越南文"""
+
+    es_ES: typing.Optional[str] = None
+    """西班牙文"""
 
     def to_dict(self) -> dict:
         """转换为字典"""
@@ -29,8 +41,16 @@ class I18nString(pydantic.BaseModel):
             dic['en_US'] = self.en_US
         if self.zh_Hans is not None:
             dic['zh_Hans'] = self.zh_Hans
+        if self.zh_Hant is not None:
+            dic['zh_Hant'] = self.zh_Hant
         if self.ja_JP is not None:
             dic['ja_JP'] = self.ja_JP
+        if self.th_TH is not None:
+            dic['th_TH'] = self.th_TH
+        if self.vi_VN is not None:
+            dic['vi_VN'] = self.vi_VN
+        if self.es_ES is not None:
+            dic['es_ES'] = self.es_ES
         return dic
 
 

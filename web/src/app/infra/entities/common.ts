@@ -3,6 +3,9 @@ export interface I18nObject {
   zh_Hans: string;
   zh_Hant?: string;
   ja_JP?: string;
+  th_TH?: string;
+  vi_VN?: string;
+  es_ES?: string;
 }
 
 export interface ComponentManifest {

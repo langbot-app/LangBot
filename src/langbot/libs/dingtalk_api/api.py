@@ -272,15 +272,30 @@ class DingTalkClient:
 
                 message_data['Type'] = 'audio'
             elif incoming_message.message_type == 'file':
-                down_list = incoming_message.get_down_list()
-                if len(down_list) >= 2:
-                    message_data['File'] = await self.get_file_url(down_list[0])
-                    message_data['Name'] = down_list[1]
+                # 获取原始数据字典并提取嵌套的文件信息
+                raw_data = incoming_message.to_dict()
+                file_info = raw_data.get('content', {})
+
+                # 兼容处理：如果 content 仍为 JSON 字符串则进行解析
+                if isinstance(file_info, str):
+                    try:
+                        file_info = json.loads(file_info)
+                    except (json.JSONDecodeError, TypeError):
+                        file_info = {}
+
+                download_code = file_info.get('downloadCode')
+                file_name = file_info.get('fileName')
+
+                if download_code and file_name:
+                    # 转换 downloadCode 为可下载的真实 URL
+                    message_data['File'] = await self.get_file_url(download_code)
+                    message_data['Name'] = file_name
                 else:
                     if self.logger:
-                        await self.logger.error(f'get_down_list() returned fewer than 2 elements: {down_list}')
+                        await self.logger.error(f'Failed to extract file info from message content: {file_info}')
                     message_data['File'] = None
                     message_data['Name'] = None
+
                 message_data['Type'] = 'file'
 
             copy_message_data = message_data.copy()

@@ -5,11 +5,21 @@ metadata:
   label:
     en_US: "WebSocket Chat"
     zh_Hans: "WebSocket 聊天"
+    zh_Hant: "WebSocket 聊天"
+    th_TH: "แชท WebSocket"
+    vi_VN: "Trò chuyện WebSocket"
+    es_ES: "Chat WebSocket"
   description:
     en_US: "WebSocket adapter for bidirectional real-time communication"
     zh_Hans: "用于双向实时通信的 WebSocket 适配器"
+    zh_Hant: "用於雙向即時通訊的 WebSocket 適配器"
+    th_TH: "อะแดปเตอร์ WebSocket สำหรับการสื่อสารแบบเรียลไทม์สองทิศทาง"
+    vi_VN: "Bộ điều hợp WebSocket cho giao tiếp thời gian thực hai chiều"
+    es_ES: "Adaptador WebSocket para comunicación bidireccional en tiempo real"
   icon: ""
 spec:
+  categories:
+    - protocol
   config: []
 execution:
   python:

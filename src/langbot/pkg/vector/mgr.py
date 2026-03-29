@@ -97,6 +97,7 @@ class VectorDBManager:
         filter: dict | None = None,
         search_type: str = 'vector',
         query_text: str = '',
+        vector_weight: float | None = None,
     ) -> list[dict]:
         """Proxy: Search vectors.
 
@@ -111,6 +112,7 @@ class VectorDBManager:
             search_type=search_type,
             query_text=query_text,
             filter=filter,
+            vector_weight=vector_weight,
         )
 
         if not results or 'ids' not in results or not results['ids']:

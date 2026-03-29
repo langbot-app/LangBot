@@ -5,16 +5,21 @@ metadata:
   label:
     en_US: KOOK
     zh_Hans: KOOK
+    zh_Hant: KOOK
   description:
     en_US: KOOK Adapter (formerly KaiHeiLa)
     zh_Hans: KOOK 适配器(原开黑啦)，支持频道消息和私聊消息
+    zh_Hant: KOOK 適配器（原開黑啦），支援頻道訊息和私聊訊息
   icon: kook.png
 spec:
+  categories:
+    - china
   config:
     - name: token
       label:
         en_US: Bot Token
         zh_Hans: 机器人令牌
+        zh_Hant: 機器人令牌
       type: string
       required: true
       default: ""

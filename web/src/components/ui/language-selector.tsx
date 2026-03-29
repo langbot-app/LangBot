@@ -39,6 +39,15 @@ export function LanguageSelector({
     } else if (i18n.language === 'ja' || i18n.language === 'ja-JP') {
       setCurrentLanguage('ja-JP');
       localStorage.setItem('langbot_language', 'ja-JP');
+    } else if (i18n.language === 'th' || i18n.language === 'th-TH') {
+      setCurrentLanguage('th-TH');
+      localStorage.setItem('langbot_language', 'th-TH');
+    } else if (i18n.language === 'vi' || i18n.language === 'vi-VN') {
+      setCurrentLanguage('vi-VN');
+      localStorage.setItem('langbot_language', 'vi-VN');
+    } else if (i18n.language === 'es' || i18n.language === 'es-ES') {
+      setCurrentLanguage('es-ES');
+      localStorage.setItem('langbot_language', 'es-ES');
     } else {
       setCurrentLanguage('en-US');
       localStorage.setItem('langbot_language', 'en-US');
@@ -58,6 +67,15 @@ export function LanguageSelector({
           detectedLanguage = 'zh-Hant';
         } else if (browserLanguage === 'ja' || browserLanguage === 'ja-JP') {
           detectedLanguage = 'ja-JP';
+        } else if (browserLanguage === 'th' || browserLanguage === 'th-TH') {
+          detectedLanguage = 'th-TH';
+        } else if (browserLanguage === 'vi' || browserLanguage === 'vi-VN') {
+          detectedLanguage = 'vi-VN';
+        } else if (
+          browserLanguage === 'es' ||
+          browserLanguage.startsWith('es-')
+        ) {
+          detectedLanguage = 'es-ES';
         } else {
           detectedLanguage = 'en-US';
         }
@@ -92,6 +110,9 @@ export function LanguageSelector({
         <SelectItem value="zh-Hant">繁體中文</SelectItem>
         <SelectItem value="en-US">English</SelectItem>
         <SelectItem value="ja-JP">日本語</SelectItem>
+        <SelectItem value="th-TH">ภาษาไทย</SelectItem>
+        <SelectItem value="vi-VN">Tiếng Việt</SelectItem>
+        <SelectItem value="es-ES">Español</SelectItem>
       </SelectContent>
     </Select>
   );

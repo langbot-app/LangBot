@@ -97,6 +97,10 @@ export class CloudServiceClient extends BaseHttpClient {
     return this.get<GitHubRelease[]>('/api/v1/dist/info/releases');
   }
 
+  public getGitHubRepoInfo(): Promise<GitHubRepoInfo> {
+    return this.get<GitHubRepoInfo>('/api/v1/dist/info/repo');
+  }
+
   public getAllTags(): Promise<{ tags: PluginTag[] }> {
     return this.get<{ tags: PluginTag[] }>('/api/v1/marketplace/tags');
   }
@@ -133,4 +137,14 @@ export interface GitHubRelease {
   published_at: string;
   prerelease: boolean;
   draft: boolean;
+}
+
+export interface GitHubRepoInfo {
+  repo: {
+    stargazers_count: number;
+    forks_count: number;
+    open_issues_count: number;
+    [key: string]: unknown;
+  };
+  contributors: unknown[];
 }

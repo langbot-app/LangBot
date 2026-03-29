@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+from decimal import Decimal
+import re
 from typing import Any, Dict, List
 
 
@@ -101,8 +103,28 @@ class SeekDBVectorDatabase(VectorDatabase):
             }
         )
 
+    def _normalize_collection_name(self, collection: str) -> str:
+        """SeekDB only accepts [a-zA-Z0-9_], while LangBot uses UUID-like KB IDs."""
+        normalized = re.sub(r'[^A-Za-z0-9_]', '_', collection)
+        if normalized != collection:
+            self.ap.logger.info(f"Normalized SeekDB collection name: '{collection}' -> '{normalized}'")
+        return normalized
+
+    def _json_safe(self, value: Any) -> Any:
+        """Convert SeekDB result values into JSON-serializable Python primitives."""
+        if isinstance(value, Decimal):
+            return float(value)
+        if isinstance(value, dict):
+            return {k: self._json_safe(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [self._json_safe(v) for v in value]
+        if isinstance(value, tuple):
+            return [self._json_safe(v) for v in value]
+        return value
+
     async def _get_or_create_collection_internal(self, collection: str, vector_size: int = None) -> Any:
         """Internal method to get or create a collection with proper configuration."""
+        collection = self._normalize_collection_name(collection)
         if collection in self._collections:
             return self._collections[collection]
 
@@ -173,6 +195,7 @@ class SeekDBVectorDatabase(VectorDatabase):
         if not embeddings_list:
             return
 
+        collection = self._normalize_collection_name(collection)
         # Ensure collection exists with correct dimension
         vector_size = len(embeddings_list[0])
         coll = await self._get_or_create_collection_internal(collection, vector_size)
@@ -194,6 +217,7 @@ class SeekDBVectorDatabase(VectorDatabase):
         search_type: str = 'vector',
         query_text: str = '',
         filter: Dict[str, Any] | None = None,
+        vector_weight: float | None = None,
     ) -> Dict[str, Any]:
         """Search for the most similar vectors in the specified collection.
 
@@ -210,6 +234,7 @@ class SeekDBVectorDatabase(VectorDatabase):
         Returns:
             Dictionary with 'ids', 'metadatas', 'distances' keys
         """
+        collection = self._normalize_collection_name(collection)
         # Check if collection exists
         exists = await asyncio.to_thread(self.client.has_collection, collection)
         if not exists:
@@ -271,6 +296,17 @@ class SeekDBVectorDatabase(VectorDatabase):
                     query_cfg['where'] = filter
                     knn_cfg['where'] = filter
 
+                # Apply vector_weight via pyseekdb's native boost parameter
+                if vector_weight is not None:
+                    knn_cfg['boost'] = vector_weight
+                    query_cfg['boost'] = 1.0 - vector_weight
+                self.ap.logger.info(
+                    f"SeekDB hybrid fusion config in '{collection}': "
+                    f'vector_weight={vector_weight}, '
+                    f'knn_boost={knn_cfg.get("boost", 1.0)}, '
+                    f'query_boost={query_cfg.get("boost", 1.0)}'
+                )
+
                 results = await asyncio.to_thread(
                     coll.hybrid_search,
                     query=query_cfg,
@@ -279,6 +315,9 @@ class SeekDBVectorDatabase(VectorDatabase):
                     n_results=k,
                     include=['documents', 'metadatas'],
                 )
+                self.ap.logger.info(
+                    f"SeekDB hybrid search in '{collection}' returned {len(results.get('ids', [[]])[0])} results."
+                )
         else:
             # Default: vector search via query()
             query_kwargs = {'n_results': k, 'query_embeddings': query_embedding}
@@ -286,6 +325,7 @@ class SeekDBVectorDatabase(VectorDatabase):
                 query_kwargs['where'] = filter
             results = await asyncio.to_thread(coll.query, **query_kwargs)
 
+        results = self._json_safe(results)
         self.ap.logger.info(
             f"SeekDB {search_type} search in '{collection}' returned {len(results.get('ids', [[]])[0])} results"
         )
@@ -299,6 +339,7 @@ class SeekDBVectorDatabase(VectorDatabase):
             collection: Collection name
             file_id: File ID to delete
         """
+        collection = self._normalize_collection_name(collection)
         # Check if collection exists
         exists = await asyncio.to_thread(self.client.has_collection, collection)
         if not exists:
@@ -325,6 +366,7 @@ class SeekDBVectorDatabase(VectorDatabase):
             collection: Collection name
             filter: Chroma-style ``where`` filter dict
         """
+        collection = self._normalize_collection_name(collection)
         exists = await asyncio.to_thread(self.client.has_collection, collection)
         if not exists:
             self.ap.logger.warning(f"SeekDB collection '{collection}' not found for deletion")
@@ -347,6 +389,7 @@ class SeekDBVectorDatabase(VectorDatabase):
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[Dict[str, Any]], int]:
+        collection = self._normalize_collection_name(collection)
         exists = await asyncio.to_thread(self.client.has_collection, collection)
         if not exists:
             return [], 0
@@ -367,6 +410,7 @@ class SeekDBVectorDatabase(VectorDatabase):
 
         results = await asyncio.to_thread(coll.get, **get_kwargs)
 
+        results = self._json_safe(results)
         ids = results.get('ids', [])
         metadatas = results.get('metadatas', []) or [None] * len(ids)
         documents = results.get('documents', []) or [None] * len(ids)
@@ -390,6 +434,7 @@ class SeekDBVectorDatabase(VectorDatabase):
         Args:
             collection: Collection name
         """
+        collection = self._normalize_collection_name(collection)
         # Remove from cache
         if collection in self._collections:
             del self._collections[collection]

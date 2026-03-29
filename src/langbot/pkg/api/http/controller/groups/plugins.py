@@ -265,6 +265,8 @@ class PluginsRouterGroup(group.RouterGroup):
                 return self.http_status(400, -1, 'Missing asset_url parameter')
 
             ctx = taskmgr.TaskContext.new()
+            ctx.metadata['plugin_name'] = f'{owner}/{repo}'
+            ctx.metadata['install_source'] = 'github'
             install_info = {
                 'asset_url': asset_url,
                 'owner': owner,
@@ -295,12 +297,17 @@ class PluginsRouterGroup(group.RouterGroup):
 
             data = await quart.request.json
 
+            plugin_author = data.get('plugin_author', '')
+            plugin_name = data.get('plugin_name', '')
+
             ctx = taskmgr.TaskContext.new()
+            ctx.metadata['plugin_name'] = f'{plugin_author}/{plugin_name}'
+            ctx.metadata['install_source'] = 'marketplace'
             wrapper = self.ap.task_mgr.create_user_task(
                 self.ap.plugin_connector.install_plugin(PluginInstallSource.MARKETPLACE, data, task_context=ctx),
                 kind='plugin-operation',
                 name='plugin-install-marketplace',
-                label=f'Installing plugin from marketplace ...{data}',
+                label=f'Installing plugin from marketplace {plugin_author}/{plugin_name}',
                 context=ctx,
             )
 
@@ -323,11 +330,13 @@ class PluginsRouterGroup(group.RouterGroup):
             }
 
             ctx = taskmgr.TaskContext.new()
+            ctx.metadata['plugin_name'] = file.filename or 'local plugin'
+            ctx.metadata['install_source'] = 'local'
             wrapper = self.ap.task_mgr.create_user_task(
                 self.ap.plugin_connector.install_plugin(PluginInstallSource.LOCAL, data, task_context=ctx),
                 kind='plugin-operation',
                 name='plugin-install-local',
-                label=f'Installing plugin from local ...{file.filename}',
+                label=f'Installing plugin from local {file.filename}',
                 context=ctx,
             )
 

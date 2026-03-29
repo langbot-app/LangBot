@@ -117,6 +117,7 @@ export interface Adapter {
   description: I18nObject;
   icon?: string;
   spec: {
+    categories?: string[];
     config: IDynamicFormItemSchema[];
   };
 }
@@ -251,6 +252,14 @@ export interface SystemLimitation {
   max_extensions: number;
 }
 
+export interface WizardProgress {
+  step: number;
+  selected_adapter: string | null;
+  created_bot_uuid: string | null;
+  bot_saved: boolean;
+  selected_runner: string | null;
+}
+
 export interface ApiRespSystemInfo {
   debug: boolean;
   version: string;
@@ -260,6 +269,8 @@ export interface ApiRespSystemInfo {
   allow_modify_login_info: boolean;
   disable_models_service: boolean;
   limitation: SystemLimitation;
+  wizard_status: string; // 'none' | 'skipped' | 'completed'
+  wizard_progress: WizardProgress | null;
 }
 
 export interface RagMigrationStatusResp {
@@ -288,12 +299,14 @@ export interface AsyncTaskRuntimeInfo {
 export interface AsyncTaskTaskContext {
   current_action: string;
   log: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface AsyncTask {
   id: number;
   kind: string;
   name: string;
+  label: string;
   task_type: string; // system or user
   runtime: AsyncTaskRuntimeInfo;
   task_context: AsyncTaskTaskContext;

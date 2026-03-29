@@ -5,16 +5,26 @@ metadata:
   label:
     en_US: Lark
     zh_Hans: 飞书
+    zh_Hant: 飛書
+    ja_JP: Lark
   description:
-    en_US: Lark Adapter
-    zh_Hans: 飞书适配器，请查看文档了解使用方式
+    en_US: Lark Adapter, supports both long connection and Webhook modes. Please refer to the documentation for usage details.
+    zh_Hans: 飞书适配器，支持长连接和 Webhook 两种接入方式，请查看文档了解使用方式
+    zh_Hant: 飛書適配器，支援長連線和 Webhook 兩種接入方式，請查看文件了解使用方式
+    ja_JP: Lark アダプター、長期接続およびWebhookモードの両方をサポートしています。使用方法の詳細については、ドキュメントを参照してください。
   icon: lark.svg
 spec:
+  categories:
+    - popular
+    - china
+    - global
   config:
     - name: app_id
       label:
         en_US: App ID
         zh_Hans: 应用ID
+        zh_Hant: 應用ID
+        ja_JP: アプリ ID
       type: string
       required: true
       default: ""
@@ -22,6 +32,8 @@ spec:
       label:
         en_US: App Secret
         zh_Hans: 应用密钥
+        zh_Hant: 應用密鑰
+        ja_JP: アプリシークレット
       type: string
       required: true
       default: ""
@@ -29,9 +41,13 @@ spec:
       label:
         en_US: Bot Name
         zh_Hans: 机器人名称
+        zh_Hant: 機器人名稱
+        ja_JP: ボット名
       description:
         en_US: Must be the same as the name of the bot in Lark, otherwise the bot will not be able to receive messages in the group
         zh_Hans: 必须与飞书机器人名称一致，否则机器人将无法在群内正常接收消息
+        zh_Hant: 必須與飛書機器人名稱一致，否則機器人將無法在群組內正常接收訊息
+        ja_JP: Lark のボット名と一致する必要があります。一致しない場合、グループ内でメッセージを受信できません
       type: string
       required: true
       default: ""
@@ -39,29 +55,63 @@ spec:
       label:
         en_US: Enable Webhook Mode
         zh_Hans: 启用Webhook模式
+        zh_Hant: 啟用 Webhook 模式
+        ja_JP: Webhook モードを有効化
       description:
         en_US: If enabled, the bot will use webhook mode to receive messages. Otherwise, it will use WS long connection mode
         zh_Hans: 如果启用，机器人将使用 Webhook 模式接收消息。否则，将使用 WS 长连接模式
+        zh_Hant: 如果啟用，機器人將使用 Webhook 模式接收訊息。否則，將使用 WS 長連線模式
+        ja_JP: 有効にすると、ボットは Webhook モードでメッセージを受信します。無効の場合は WS 長期接続モードを使用します
       type: boolean
       required: true
       default: false
+    - name: webhook_url
+      label:
+        en_US: Webhook Callback URL
+        zh_Hans: Webhook 回调地址
+        zh_Hant: Webhook 回調地址
+        ja_JP: Webhook コールバック URL
+      description:
+        en_US: Copy this URL and paste it into your Lark app's webhook configuration
+        zh_Hans: 复制此地址并粘贴到飞书应用的 Webhook 配置中
+        zh_Hant: 複製此地址並貼到飛書應用的 Webhook 設定中
+        ja_JP: この URL をコピーして Lark アプリの Webhook 設定に貼り付けてください
+      type: webhook-url
+      required: false
+      default: ""
+      show_if:
+        field: enable-webhook
+        operator: eq
+        value: true
     - name: encrypt-key
       label:
         en_US: Encrypt Key
         zh_Hans: 加密密钥
+        zh_Hant: 加密密鑰
+        ja_JP: 暗号化キー
       description:
         en_US: Only valid when webhook mode is enabled, please fill in the encrypt key
         zh_Hans: 仅在启用 Webhook 模式时有效，请填写加密密钥
+        zh_Hant: 僅在啟用 Webhook 模式時有效，請填寫加密密鑰
+        ja_JP: Webhook モードが有効な場合にのみ有効です。暗号化キーを入力してください
       type: string
       required: true
       default: ""
+      show_if:
+        field: enable-webhook
+        operator: eq
+        value: true
     - name: enable-stream-reply
       label:
         en_US: Enable Stream Reply Mode
         zh_Hans: 启用飞书流式回复模式
+        zh_Hant: 啟用飛書串流回覆模式
+        ja_JP: ストリーミング返信モードを有効化
       description:
         en_US: If enabled, the bot will use the stream of lark reply mode
         zh_Hans: 如果启用，将使用飞书流式方式来回复内容
+        zh_Hant: 如果啟用，將使用飛書串流方式來回覆內容
+        ja_JP: 有効にすると、ボットはストリーミングモードでメッセージに返信します
       type: boolean
       required: true
       default: false
@@ -69,28 +119,40 @@ spec:
       label:
         en_US: App Type
         zh_Hans: 应用类型
+        zh_Hant: 應用類型
+        ja_JP: アプリタイプ
       description:
         en_US: Default to self-built application, refer to https://open.feishu.cn/document/platform-overveiw/overview
         zh_Hans: 默认为企业自建应用，参考 https://open.feishu.cn/document/platform-overveiw/overview
+        zh_Hant: 預設為企業自建應用，參考 https://open.feishu.cn/document/platform-overveiw/overview
+        ja_JP: デフォルトはカスタムアプリです。詳細は https://open.feishu.cn/document/platform-overveiw/overview を参照してください
       type: select
       options:
         - name: self
           label:
             en_US: Self-built Application
             zh_Hans: 自建应用
+            zh_Hant: 自建應用
+            ja_JP: カスタムアプリ
         - name: isv
           label:
             en_US: Store Application
             zh_Hans: 商店应用
+            zh_Hant: 商店應用
+            ja_JP: ストアアプリ
       required: false
       default: self
     - name: bot_added_welcome
       label:
         en_US: Bot Welcome Message
         zh_Hans: 机器人进群欢迎语
+        zh_Hant: 機器人進群歡迎語
+        ja_JP: ボット参加時のウェルカムメッセージ
       description:
         en_US: Welcome message when the bot is added to a group, supports Markdown format
         zh_Hans: 机器人进群欢迎语，支持 Markdown 格式
+        zh_Hant: 機器人進群歡迎語，支援 Markdown 格式
+        ja_JP: ボットがグループに追加された際のウェルカムメッセージ。Markdown 形式に対応しています
       type: text
       required: false
       default: ""

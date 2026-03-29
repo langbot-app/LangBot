@@ -5,16 +5,34 @@ metadata:
   label:
     en_US: Discord
     zh_Hans: Discord
+    zh_Hant: Discord
+    ja_JP: Discord
+    th_TH: Discord
+    vi_VN: Discord
+    es_ES: Discord
   description:
     en_US: Discord Adapter
-    zh_Hans: Discord 适配器，请查看文档了解使用方式
+    zh_Hans: Discord 适配器，需要可连接 Discord 服务器的网络环境
+    zh_Hant: Discord 適配器，需要可連線 Discord 伺服器的網路環境
+    ja_JP: Discord アダプター、Discord サーバーに接続可能なネットワーク環境が必要です
+    th_TH: อะแดปเตอร์ Discord ต้องการสภาพแวดล้อมเครือข่ายที่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ Discord ได้
+    vi_VN: Bộ điều hợp Discord, cần môi trường mạng có thể kết nối với máy chủ Discord
+    es_ES: Adaptador de Discord, requiere un entorno de red con acceso al servidor de Discord
   icon: discord.svg
 spec:
+  categories:
+    - popular
+    - global
   config:
     - name: client_id
       label:
         en_US: Client ID
         zh_Hans: 客户端ID
+        zh_Hant: 用戶端ID
+        ja_JP: クライアント ID
+        th_TH: รหัสไคลเอนต์
+        vi_VN: ID khách hàng
+        es_ES: ID de cliente
       type: string
       required: true
       default: ""
@@ -22,6 +40,11 @@ spec:
       label:
         en_US: Token
         zh_Hans: 令牌
+        zh_Hant: 令牌
+        ja_JP: トークン
+        th_TH: โทเค็น
+        vi_VN: Mã thông báo
+        es_ES: Token
       type: string
       required: true
       default: ""

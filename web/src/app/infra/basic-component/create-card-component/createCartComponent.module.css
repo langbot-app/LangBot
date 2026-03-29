@@ -1,7 +1,7 @@
 .cardContainer {
   background-color: #fff;
   border-radius: 9px;
-  box-shadow: 0 0 5px 0 rgba(0, 0, 0, 0.1);
+  border: 1px solid #e4e4e7;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -12,15 +12,15 @@
 
 :global(.dark) .cardContainer {
   background-color: #1f1f22;
-  box-shadow: 0;
+  border-color: #27272a;
 }
 
 .cardContainer:hover {
-  box-shadow: 0 0 15px 0 rgba(0, 0, 0, 0.05);
+  border-color: #a1a1aa;
 }
 
 :global(.dark) .cardContainer:hover {
-  box-shadow: 0;
+  border-color: #3f3f46;
 }
 
 .createCardContainer {

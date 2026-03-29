@@ -5,19 +5,25 @@ metadata:
   label:
     en_US: OneBot v11
     zh_Hans: OneBot v11
+    zh_Hant: OneBot v11
   description:
-    en_US: OneBot v11 Adapter
-    zh_Hans: OneBot v11 适配器，请查看文档了解使用方式
+    en_US: OneBot v11 Adapter, used for QQ bots
+    zh_Hans: OneBot v11 适配器，用于接入 QQ 机器人协议端，请查看文档了解使用方式
+    zh_Hant: OneBot v11 適配器，用於接入 QQ 機器人協定端，請查看文件了解使用方式
   icon: onebot.png
 spec:
+  categories:
+    - protocol
   config:
     - name: host
       label:
         en_US: Host
         zh_Hans: 主机
+        zh_Hant: 主機
       description:
         en_US: The host that OneBot v11 listens on for reverse WebSocket connections. Unless you know what you're doing, use 0.0.0.0
         zh_Hans: OneBot v11 监听的反向 WS 主机，除非你知道自己在做什么，否则请写 0.0.0.0
+        zh_Hant: OneBot v11 監聽的反向 WS 主機，除非你知道自己在做什麼，否則請填 0.0.0.0
       type: string
       required: true
       default: 0.0.0.0
@@ -25,9 +31,11 @@ spec:
       label:
         en_US: Port
         zh_Hans: 端口
+        zh_Hant: 連接埠
       description:
         en_US: Port
         zh_Hans: 监听的端口
+        zh_Hant: 監聽的連接埠
       type: integer
       required: true
       default: 2280
@@ -35,9 +43,11 @@ spec:
       label:
         en_US: Access Token
         zh_Hans: 访问令牌
+        zh_Hant: 存取令牌
       description:
         en_US: Custom connection token for the protocol endpoint. If the protocol endpoint is not set, don't fill it
         zh_Hans: 自定义的与协议端的连接令牌，若协议端未设置，则不填
+        zh_Hant: 自訂的與協定端的連線令牌，若協定端未設定，則不填
       type: string
       required: false
       default: ""

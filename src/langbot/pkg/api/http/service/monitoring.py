@@ -16,6 +16,57 @@ class MonitoringService:
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
 
+    # ========== Cleanup Methods ==========
+
+    async def cleanup_expired_records(self, retention_days: int) -> dict[str, int]:
+        """Delete monitoring records older than the specified retention period.
+
+        Args:
+            retention_days: Number of days to retain records.
+
+        Returns:
+            A dict mapping table name to the number of deleted rows.
+        """
+        cutoff = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) - datetime.timedelta(
+            days=retention_days
+        )
+
+        tables_and_columns: list[tuple[str, type, sqlalchemy.Column]] = [
+            (
+                'monitoring_messages',
+                persistence_monitoring.MonitoringMessage,
+                persistence_monitoring.MonitoringMessage.timestamp,
+            ),
+            (
+                'monitoring_llm_calls',
+                persistence_monitoring.MonitoringLLMCall,
+                persistence_monitoring.MonitoringLLMCall.timestamp,
+            ),
+            (
+                'monitoring_embedding_calls',
+                persistence_monitoring.MonitoringEmbeddingCall,
+                persistence_monitoring.MonitoringEmbeddingCall.timestamp,
+            ),
+            (
+                'monitoring_errors',
+                persistence_monitoring.MonitoringError,
+                persistence_monitoring.MonitoringError.timestamp,
+            ),
+            (
+                'monitoring_sessions',
+                persistence_monitoring.MonitoringSession,
+                persistence_monitoring.MonitoringSession.last_activity,
+            ),
+        ]
+
+        deleted_counts: dict[str, int] = {}
+
+        for table_name, model_cls, ts_column in tables_and_columns:
+            result = await self.ap.persistence_mgr.execute_async(sqlalchemy.delete(model_cls).where(ts_column < cutoff))
+            deleted_counts[table_name] = result.rowcount
+
+        return deleted_counts
+
     # ========== Recording Methods ==========
 
     async def record_message(

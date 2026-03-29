@@ -42,6 +42,7 @@ export enum DynamicFormItemType {
   KNOWLEDGE_BASE_MULTI_SELECTOR = 'knowledge-base-multi-selector',
   PLUGIN_SELECTOR = 'plugin-selector',
   BOT_SELECTOR = 'bot-selector',
+  WEBHOOK_URL = 'webhook-url',
 }
 
 export interface IFileConfig {

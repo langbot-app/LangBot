@@ -5,16 +5,54 @@ metadata:
   label:
     en_US: Slack
     zh_Hans: Slack
+    zh_Hant: Slack
+    ja_JP: Slack
+    th_TH: Slack
+    vi_VN: Slack
+    es_ES: Slack
   description:
     en_US: Slack Adapter
-    zh_Hans: Slack 适配器，请查看文档了解使用方式
+    zh_Hans: Slack 适配器，需要公网地址以接收 Slack 消息推送，请查看文档了解使用方式
+    zh_Hant: Slack 適配器，需要公網地址以接收 Slack 訊息推送，請查看文件了解使用方式
+    ja_JP: Slack アダプター、Slackのメッセージプッシュを受信するためにパブリックURLが必要です。使用方法の詳細については、ドキュメントを参照してください。
+    th_TH: อะแดปเตอร์ Slack ต้องการที่อยู่สาธารณะเพื่อรับการแจ้งเตือนข้อความจาก Slack โปรดดูเอกสารประกอบสำหรับวิธีการใช้งาน
+    vi_VN: Bộ điều hợp Slack, cần địa chỉ công cộng để nhận thông báo tin nhắn từ Slack, vui lòng xem tài liệu để biết cách sử dụng
+    es_ES: Adaptador de Slack, requiere una dirección pública para recibir notificaciones de mensajes de Slack, consulte la documentación para obtener instrucciones de uso
   icon: slack.png
 spec:
+  categories:
+    - popular
+    - global
   config:
+    - name: webhook_url
+      label:
+        en_US: Webhook Callback URL
+        zh_Hans: Webhook 回调地址
+        zh_Hant: Webhook 回調地址
+        ja_JP: Webhook コールバック URL
+        th_TH: URL การเรียกกลับ Webhook
+        vi_VN: URL gọi lại Webhook
+        es_ES: URL de devolución de llamada Webhook
+      description:
+        en_US: Copy this URL and paste it into your Slack app's event subscription configuration
+        zh_Hans: 复制此地址并粘贴到 Slack 应用的事件订阅配置中
+        zh_Hant: 複製此地址並貼到 Slack 應用的事件訂閱設定中
+        ja_JP: この URL をコピーして Slack アプリのイベントサブスクリプション設定に貼り付けてください
+        th_TH: คัดลอก URL นี้แล้ววางในการตั้งค่าการสมัครรับเหตุการณ์ของแอป Slack ของคุณ
+        vi_VN: Sao chép URL này và dán vào cấu hình đăng ký sự kiện của ứng dụng Slack của bạn
+        es_ES: Copie esta URL y péguela en la configuración de suscripción de eventos de su aplicación Slack
+      type: webhook-url
+      required: false
+      default: ""
     - name: bot_token
       label:
         en_US: Bot Token
         zh_Hans: 机器人令牌
+        zh_Hant: 機器人令牌
+        ja_JP: ボットトークン
+        th_TH: โทเค็นบอท
+        vi_VN: Mã thông báo Bot
+        es_ES: Token del bot
       type: string
       required: true
       default: ""
@@ -22,6 +60,11 @@ spec:
       label:
         en_US: signing_secret
         zh_Hans: 密钥
+        zh_Hant: 密鑰
+        ja_JP: 署名シークレット
+        th_TH: คีย์ลายเซ็น
+        vi_VN: Khóa ký
+        es_ES: Secreto de firma
       type: string
       required: true
       default: ""

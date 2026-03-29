@@ -4,17 +4,22 @@ metadata:
   name: wechatpad
   label:
     en_US: WeChatPad
-    zh_CN: WeChatPad（个人微信ipad）
+    zh_Hans: WeChatPad（个人微信ipad）
+    zh_Hant: WeChatPad（個人微信iPad）
   description:
     en_US: WeChatPad Adapter
-    zh_CN: WeChatPad 适配器
+    zh_Hans: WeChatPad 适配器，基于WeChatPad的个人微信解决方案，请查看文档了解使用方式
+    zh_Hant: WeChatPad 適配器，基於 WeChatPad 的個人微信解決方案，請查看文件了解使用方式
   icon: wechatpad.png
 spec:
+  categories:
+    - china
   config:
     - name: wechatpad_url
       label:
         en_US: WeChatPad ERL
         zh_CN: WeChatPad URL
+        zh_Hant: WeChatPad URL
       type: string
       required: true
       default: ""
@@ -22,6 +27,7 @@ spec:
       label:
         en_US: WeChatPad_Ws
         zh_CN: WeChatPad_Ws
+        zh_Hant: WeChatPad_Ws
       type: string
       required: true
       default: ""
@@ -29,6 +35,7 @@ spec:
       label:
         en_US: Admin_Key
         zh_CN: 管理员密匙
+        zh_Hant: 管理員密鑰
       type: string
       required: true
       default: ""
@@ -36,6 +43,7 @@ spec:
       label:
         en_US: Token
         zh_CN: 令牌
+        zh_Hant: 令牌
       type: string
       required: true
       default: ""
@@ -43,6 +51,7 @@ spec:
       label:
         en_US: wxid
         zh_CN: wxid
+        zh_Hant: wxid
       type: string
       required: true
       default: ""

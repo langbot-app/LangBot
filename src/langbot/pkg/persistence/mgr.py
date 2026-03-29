@@ -2,18 +2,16 @@ from __future__ import annotations
 
 import datetime
 import typing
-import json
-import uuid
+
 
 import sqlalchemy.ext.asyncio as sqlalchemy_asyncio
 import sqlalchemy
 
 from . import database, migration
-from ..entity.persistence import base, pipeline, metadata, model as persistence_model
+from ..entity.persistence import base, metadata, model as persistence_model
 from ..entity import persistence
 from ..core import app
 from ..utils import constants, importutil
-from ..api.http.service import pipeline as pipeline_service
 from . import databases, migrations
 
 importutil.import_modules_in_pkg(databases)
@@ -78,7 +76,6 @@ class PersistenceManager:
 
             self.ap.logger.info(f'Successfully upgraded database to version {last_migration_number}.')
 
-        await self.write_default_pipeline()
         await self.write_space_model_providers()
 
     async def create_tables(self):
@@ -100,29 +97,6 @@ class PersistenceManager:
             row = result.first()
             if row is None:
                 await self.execute_async(sqlalchemy.insert(metadata.Metadata).values(item))
-
-    async def write_default_pipeline(self):
-        # write default pipeline
-        result = await self.execute_async(sqlalchemy.select(pipeline.LegacyPipeline))
-        default_pipeline_uuid = None
-        if result.first() is None:
-            self.ap.logger.info('Creating default pipeline...')
-
-            pipeline_config = json.loads(importutil.read_resource_file('templates/default-pipeline-config.json'))
-
-            default_pipeline_uuid = str(uuid.uuid4())
-            pipeline_data = {
-                'uuid': default_pipeline_uuid,
-                'for_version': self.ap.ver_mgr.get_current_version(),
-                'stages': pipeline_service.default_stage_order,
-                'is_default': True,
-                'name': 'ChatPipeline',
-                'description': 'Default pipeline, new bots will be bound to this pipeline | 默认提供的流水线，您配置的机器人将自动绑定到此流水线',
-                'config': pipeline_config,
-                'extensions_preferences': {},
-            }
-
-            await self.execute_async(sqlalchemy.insert(pipeline.LegacyPipeline).values(pipeline_data))
 
     async def write_space_model_providers(self):
         space_models_gateway_api_url = self.ap.instance_config.data.get('space', {}).get(

@@ -200,6 +200,34 @@ class Application:
                     scopes=[core_entities.LifecycleControlScope.APPLICATION],
                 )
 
+            # Start monitoring data cleanup task if enabled
+            monitoring_cfg = self.instance_config.data.get('monitoring', {})
+            auto_cleanup_cfg = monitoring_cfg.get('auto_cleanup', {})
+            if auto_cleanup_cfg.get('enabled', True):
+                retention_days = auto_cleanup_cfg.get('retention_days', 30)
+                check_interval_hours = auto_cleanup_cfg.get('check_interval_hours', 1)
+
+                async def monitoring_cleanup_loop():
+                    check_interval_seconds = check_interval_hours * 3600
+                    while True:
+                        try:
+                            deleted = await self.monitoring_service.cleanup_expired_records(retention_days)
+                            total_deleted = sum(deleted.values())
+                            if total_deleted > 0:
+                                self.logger.info(
+                                    f'Monitoring auto-cleanup: deleted {total_deleted} expired records '
+                                    f'(retention={retention_days}d): {deleted}'
+                                )
+                        except Exception as e:
+                            self.logger.warning(f'Monitoring auto-cleanup error: {e}')
+                        await asyncio.sleep(check_interval_seconds)
+
+                self.task_mgr.create_task(
+                    monitoring_cleanup_loop(),
+                    name='monitoring-cleanup',
+                    scopes=[core_entities.LifecycleControlScope.APPLICATION],
+                )
+
             self.task_mgr.create_task(
                 never_ending(),
                 name='never-ending-task',

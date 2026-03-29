@@ -1,4 +1,12 @@
 const enUS = {
+  sidebar: {
+    home: 'Home',
+    extensions: 'Extensions',
+    installedPlugins: 'Installed Plugins',
+    pluginMarket: 'Marketplace',
+    mcpServers: 'MCP Servers',
+    quickStart: 'Quick Start',
+  },
   common: {
     login: 'Login',
     logout: 'Logout',
@@ -22,6 +30,7 @@ const enUS = {
     language: 'Language',
     helpDocs: 'Get Help',
     featureRequest: 'Feature Request',
+    starOnGitHub: 'Star on GitHub',
     create: 'Create',
     edit: 'Edit',
     delete: 'Delete',
@@ -37,6 +46,7 @@ const enUS = {
     confirmDelete: 'Confirm Delete',
     deleteConfirmation: 'Are you sure you want to delete this?',
     selectOption: 'Select an option',
+    selectPreset: 'Select Preset',
     required: 'Required',
     enable: 'Enable',
     name: 'Name',
@@ -136,6 +146,9 @@ const enUS = {
     apiKeyCreatedMessage:
       'Please copy this API key, if the button is invalid, please copy manually.',
     none: 'None',
+    more: 'More ({{count}})',
+    less: 'Less',
+    noItems: 'No items',
   },
   notFound: {
     title: 'Page not found',
@@ -219,6 +232,10 @@ const enUS = {
     loginWithSpace: 'Login with Space',
     loginToUseModels: 'Login with Space to use cloud models',
     noModels: 'No models configured',
+    langbotModels: 'LangBot Models',
+    spaceTrialTooltip:
+      'Free trial credits available! Login with Space to access cloud models with zero configuration.',
+    unlockModels: 'Login to use',
     editProvider: 'Edit Provider',
     addProvider: 'Add Provider',
     addProviderHint: 'Add providers to use models from other sources',
@@ -251,6 +268,7 @@ const enUS = {
     description:
       'Create and manage bots, which are the entry points for LangBot to connect with various platforms',
     createBot: 'Create Bot',
+    selectFromSidebar: 'Select a bot from the sidebar',
     editBot: 'Edit Bot',
     getBotListError: 'Failed to get bot list: ',
     botName: 'Bot Name',
@@ -284,12 +302,32 @@ const enUS = {
     log: 'Log',
     configuration: 'Configuration',
     logs: 'Logs',
+    basicInfo: 'Basic Information',
+    basicInfoDescription: 'Set the bot name and description',
+    routingConnection: 'Routing & Connection',
+    routingConnectionDescription:
+      'Bind the pipeline that processes messages for this bot',
+    adapterConfigDescription: 'Configure the selected platform adapter',
+    dangerZone: 'Danger Zone',
+    dangerZoneDescription: 'Irreversible and destructive actions',
+    deleteBotAction: 'Delete this bot',
+    deleteBotHint:
+      'Once deleted, all associated configuration will be permanently removed.',
     webhookUrl: 'Webhook Callback URL',
     webhookUrlCopied: 'Webhook URL copied',
     webhookUrlHint:
       'Click the input to select all, then press Ctrl+C (Mac: Cmd+C) to copy, or click the button',
     webhookUrlHintEither:
       'Use either of the two URLs above in your platform configuration',
+    webhookSaasHint:
+      'Webhook requires a publicly accessible domain. LangBot Cloud provides a ready-to-use public endpoint for your bot.',
+    webhookSaasLink: 'Learn more about LangBot Cloud',
+    adapterCategory: {
+      popular: 'Popular',
+      china: 'China',
+      global: 'Global',
+      protocol: 'Protocol',
+    },
     logLevel: 'Log Level',
     allLevels: 'All Levels',
     selectLevel: 'Select Level',
@@ -298,6 +336,7 @@ const enUS = {
     viewDetails: 'Details',
     collapse: 'Collapse',
     imagesAttached: 'image(s) attached',
+    noLogs: 'No logs yet',
     sessionMonitor: {
       title: 'Sessions',
       sessions: 'Sessions',
@@ -453,6 +492,28 @@ const enUS = {
     assetSize: 'Size: {{size}}',
     confirmInstall: 'Confirm Install',
     installFromGithubDesc: 'Install plugin from GitHub Release',
+    goToMarketplace: 'Go to Marketplace',
+    installProgress: {
+      title: 'Installing {{name}}',
+      titleGeneric: 'Plugin Installation',
+      overallProgress: 'Overall Progress',
+      downloading: 'Downloading Plugin',
+      installingDeps: 'Installing Dependencies',
+      initializing: 'Initializing Settings',
+      launching: 'Launching Plugin',
+      completed: 'Completed',
+      failed: 'Failed',
+      downloadSize: 'Package size: {{size}}',
+      depsInfo: '{{count}} dependencies to install',
+      depsProgress:
+        '{{installed}}/{{total}} installed · {{remaining}} remaining',
+      installComplete: 'Plugin installed successfully',
+      dismiss: 'Dismiss',
+      background: 'Run in Background',
+      taskQueue: 'Install Tasks',
+      clearCompleted: 'Clear Completed',
+      noTasks: 'No install tasks',
+    },
   },
   market: {
     searchPlaceholder: 'Search plugins...',
@@ -590,12 +651,20 @@ const enUS = {
     sseTimeoutNonNegative: 'SSE timeout cannot be negative',
     updateSuccess: 'Updated successfully',
     updateFailed: 'Update failed: ',
+    selectFromSidebar: 'Select an MCP server from the sidebar',
+    dangerZone: 'Danger Zone',
+    dangerZoneDescription:
+      'Irreversible and destructive actions for this MCP server.',
+    deleteMCPAction: 'Delete this MCP server',
+    deleteMCPHint:
+      'Once deleted, this MCP server configuration cannot be recovered.',
   },
   pipelines: {
     title: 'Pipelines',
     description:
       'Pipelines define the processing flow for message events, used to bind to bots',
     createPipeline: 'Create Pipeline',
+    selectFromSidebar: 'Select a pipeline from the sidebar',
     editPipeline: 'Edit Pipeline',
     chat: 'Chat',
     configuration: 'Configuration',
@@ -610,7 +679,8 @@ const enUS = {
     earliestCreated: 'Earliest Created',
     recentlyEdited: 'Recently Edited',
     earliestEdited: 'Earliest Edited',
-    basicInfo: 'Basic',
+    basicInfo: 'Basic Information',
+    basicInfoDescription: 'Set the pipeline name, icon and description',
     aiCapabilities: 'AI',
     triggerConditions: 'Trigger',
     safetyControls: 'Safety',
@@ -631,6 +701,14 @@ const enUS = {
     copyConfirmation:
       'Are you sure you want to copy this pipeline? This will create a new pipeline with all configurations.',
     unsavedChanges: 'You have unsaved changes',
+    dangerZone: 'Danger Zone',
+    dangerZoneDescription: 'Irreversible and destructive actions',
+    deletePipelineAction: 'Delete this pipeline',
+    deletePipelineHint:
+      'Once deleted, bots bound to this pipeline will stop working.',
+    copyPipelineAction: 'Copy this pipeline',
+    copyPipelineHint:
+      'Create a new pipeline with all configurations duplicated.',
     extensions: {
       title: 'Extensions',
       loadError: 'Failed to load plugins',
@@ -685,9 +763,14 @@ const enUS = {
       replyTo: 'Reply to',
       showMarkdown: 'Show Markdown',
       showRaw: 'Show Raw',
+      allMembers: 'All Members',
+      file: 'File',
+      voice: 'Voice',
+      uploadImage: 'Upload Image',
+      uploading: 'Uploading...',
     },
     monitoring: {
-      title: 'Monitoring',
+      title: 'Dashboard',
       description:
         'View execution logs and errors for this pipeline (last 24 hours)',
       detailedLogs: 'Detailed Logs',
@@ -696,6 +779,7 @@ const enUS = {
   knowledge: {
     title: 'Knowledge',
     createKnowledgeBase: 'Create Knowledge Base',
+    selectFromSidebar: 'Select a knowledge base from the sidebar',
     editKnowledgeBase: 'Edit Knowledge Base',
     selectKnowledgeBase: 'Select Knowledge Base',
     selectKnowledgeBases: 'Select Knowledge Bases',
@@ -773,9 +857,20 @@ const enUS = {
     builtInEngine: 'Built-in Engine',
     cannotChangeKnowledgeEngine:
       'Knowledge engine cannot be changed after creation',
+    basicInfo: 'Basic Information',
+    basicInfoDescription: 'Set the knowledge base name, icon and description',
     engineSettings: 'Engine Settings',
+    engineSettingsDescription:
+      'Configuration for the selected knowledge engine',
     engineSettingsReadonly: 'read-only in edit mode',
     retrievalSettings: 'Retrieval Settings',
+    retrievalSettingsDescription:
+      'Configure how documents are retrieved from this knowledge base',
+    dangerZone: 'Danger Zone',
+    dangerZoneDescription: 'Irreversible and destructive actions',
+    deleteKbAction: 'Delete this knowledge base',
+    deleteKbHint:
+      'Once deleted, all documents and data in this knowledge base will be permanently removed.',
     noEnginesAvailable: 'No knowledge base engines available',
     installEngineHint: 'Please install a "Knowledge Engine" plugin first',
     createKnowledgeBaseFailed: 'Failed to create knowledge base: ',
@@ -901,7 +996,7 @@ const enUS = {
       'Space login email does not match the local account email',
   },
   monitoring: {
-    title: 'Monitoring',
+    title: 'Dashboard',
     description: 'Monitor bot activities, LLM calls, and system performance',
     overview: 'Overview',
     totalMessages: 'Total Messages',
@@ -1050,6 +1145,70 @@ const enUS = {
       'Maximum number of pipelines ({{max}}) reached. Please remove an existing pipeline before creating a new one.',
     maxExtensionsReached:
       'Maximum number of extensions ({{max}}) reached. Please remove an existing MCP server or plugin before adding a new one.',
+  },
+  wizard: {
+    sidebarDescription: 'Create a bot with guided steps',
+    loading: 'Loading wizard...',
+    loadError: 'Failed to load wizard data',
+    skip: 'Skip',
+    skipConfirmMessage:
+      'You can re-enter the Quick Start wizard from the account menu later, or create a bot manually.',
+    skipConfirmOk: 'OK',
+    prev: 'Previous',
+    next: 'Next',
+    finish: 'Create & Deploy',
+    confirmCreateBot: 'Confirm, Create Bot',
+    createSuccess: 'Pipeline created and linked to bot successfully!',
+    botCreateSuccess: 'Bot created successfully!',
+    botSaveSuccess: 'Bot configuration saved and enabled!',
+    createError: 'Failed to create resources',
+    spaceAuthError: 'Failed to initiate Space authorization',
+    skipSaveError: 'Failed to save skip status. Please try again.',
+    completeSaveError: 'Failed to save completion status. Please try again.',
+    step: {
+      platform: 'Platform',
+      botConfig: 'Bot Setup',
+      aiEngine: 'AI Engine',
+      done: 'Done',
+    },
+    platform: {
+      title: 'Select a Platform',
+      description: 'Choose the messaging platform your bot will connect to.',
+    },
+    botConfig: {
+      title: 'Configure Your Bot',
+      description: 'Set up your bot and verify it works before continuing.',
+      saveBot: 'Save & Enable Bot',
+      resaveBot: 'Re-save Configuration',
+      botSaved:
+        'Bot configuration saved and enabled. Check the logs to verify the connection.',
+      logsTitle: 'Bot Logs',
+      logsDescription:
+        'Monitor bot activity to verify the platform connection is working.',
+    },
+    aiEngine: {
+      title: 'Select an AI Engine',
+      description:
+        "Choose the AI engine that will power your bot's intelligence.",
+    },
+    spaceBanner: {
+      message:
+        'Connect to LangBot Space for free trial model credits and zero-config instant setup!',
+      action: 'Authorize with Space',
+    },
+    config: {
+      botInfo: 'Bot Information',
+      botNamePlaceholder: 'Enter bot name',
+      botDescPlaceholder: 'Enter bot description (optional)',
+      platformConfig: '{{platform}} Configuration',
+      aiConfig: '{{engine}} Configuration',
+    },
+    done: {
+      title: 'All Set!',
+      description:
+        'Your bot has been created and connected to the AI pipeline. You can now manage it from the workbench.',
+      backToWorkbench: 'Back to Workbench',
+    },
   },
 };
 

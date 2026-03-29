@@ -17,9 +17,13 @@ class TaskContext:
     log: str
     """Log"""
 
+    metadata: dict
+    """Structured metadata for progress reporting"""
+
     def __init__(self):
         self.current_action = 'default'
         self.log = ''
+        self.metadata = {}
 
     def _log(self, msg: str):
         self.log += msg + '\n'
@@ -38,7 +42,7 @@ class TaskContext:
         self._log(f'{datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")} | {self.current_action} | {msg}')
 
     def to_dict(self) -> dict:
-        return {'current_action': self.current_action, 'log': self.log}
+        return {'current_action': self.current_action, 'log': self.log, 'metadata': self.metadata}
 
     @staticmethod
     def new() -> TaskContext:
@@ -211,9 +215,14 @@ class AsyncTaskManager:
     def get_tasks_dict(
         self,
         type: str = None,
+        kind: str = None,
     ) -> dict:
         return {
-            'tasks': [t.to_dict() for t in self.tasks if type is None or t.task_type == type],
+            'tasks': [
+                t.to_dict()
+                for t in self.tasks
+                if (type is None or t.task_type == type) and (kind is None or t.kind == kind)
+            ],
             'id_index': TaskWrapper._id_index,
         }
 

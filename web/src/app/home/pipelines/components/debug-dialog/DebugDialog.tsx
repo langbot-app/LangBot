@@ -29,6 +29,17 @@ import rehypeSanitize from 'rehype-sanitize';
 import rehypeSlug from 'rehype-slug';
 import rehypeAutolinkHeadings from 'rehype-autolink-headings';
 import '@/styles/github-markdown.css';
+import {
+  User,
+  Users,
+  ImageIcon,
+  Paperclip,
+  Send,
+  Reply,
+  Music,
+  Code,
+  AlignLeft,
+} from 'lucide-react';
 
 interface DebugDialogProps {
   open: boolean;
@@ -71,7 +82,7 @@ export default function DebugDialog({
   const isInitializingRef = useRef<boolean>(false);
 
   const scrollToBottom = useCallback(() => {
-    // 使用setTimeout确保在DOM更新后执行滚动
+    // Use setTimeout to ensure scroll happens after DOM update
     setTimeout(() => {
       const scrollArea = document.querySelector('.scroll-area') as HTMLElement;
       if (scrollArea) {
@@ -80,7 +91,7 @@ export default function DebugDialog({
           behavior: 'smooth',
         });
       }
-      // 同时确保messagesEndRef也滚动到视图
+      // Also ensure messagesEndRef scrolls into view
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, 0);
   }, []);
@@ -100,10 +111,10 @@ export default function DebugDialog({
     [sessionType],
   );
 
-  // 初始化WebSocket连接
+  // Initialize WebSocket connection
   const initWebSocket = useCallback(
     async (pipelineId: string) => {
-      // 防止重复初始化
+      // Prevent duplicate initialization
       if (isInitializingRef.current) {
         return;
       }
@@ -111,13 +122,13 @@ export default function DebugDialog({
       try {
         isInitializingRef.current = true;
 
-        // 断开旧连接
+        // Disconnect old connection
         if (wsClientRef.current) {
           wsClientRef.current.disconnect();
           wsClientRef.current = null;
         }
 
-        // 创建新连接
+        // Create new connection
         const wsClient = new WebSocketClient(pipelineId, sessionType);
 
         wsClient
@@ -126,31 +137,31 @@ export default function DebugDialog({
             isInitializingRef.current = false;
           })
           .onMessage((wsMessage) => {
-            // 将 WebSocketMessage 转换为 Message 类型
+            // Convert WebSocketMessage to Message type
             const message: Message = {
               ...wsMessage,
               message_chain: wsMessage.message_chain as MessageChainComponent[],
             };
 
             setMessages((prevMessages) => {
-              // 查找是否已存在相同ID的消息
+              // Check if message with same ID already exists
               const existingIndex = prevMessages.findIndex(
                 (m) => m.id === message.id,
               );
 
               if (existingIndex >= 0) {
-                // 更新已存在的消息（流式输出）
+                // Update existing message (streaming output)
                 const newMessages = [...prevMessages];
                 newMessages[existingIndex] = message;
                 return newMessages;
               } else {
-                // 添加新消息
+                // Add new message
                 return [...prevMessages, message];
               }
             });
           })
           .onError((error) => {
-            console.error('WebSocket错误:', error);
+            console.error('WebSocket error:', error);
             setIsConnected(false);
             isInitializingRef.current = false;
             toast.error(t('pipelines.debugDialog.connectionError'));
@@ -166,7 +177,7 @@ export default function DebugDialog({
         await wsClient.connect();
         wsClientRef.current = wsClient;
       } catch (error) {
-        console.error('WebSocket连接失败:', error);
+        console.error('WebSocket connection failed:', error);
         setIsConnected(false);
         isInitializingRef.current = false;
         toast.error(t('pipelines.debugDialog.connectionFailed'));
@@ -175,17 +186,17 @@ export default function DebugDialog({
     [sessionType, t],
   );
 
-  // 在useEffect中监听messages变化时滚动
+  // Scroll when messages change
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
-  // 监听 open 和 pipelineId 变化，进入时连接，离开时断开
+  // Watch open and pipelineId changes: connect on open, disconnect on close
   useEffect(() => {
     if (open) {
       setSelectedPipelineId(pipelineId);
     } else {
-      // 关闭对话框时立即断开WebSocket
+      // Disconnect WebSocket immediately when dialog closes
       if (wsClientRef.current) {
         wsClientRef.current.disconnect();
         wsClientRef.current = null;
@@ -195,7 +206,7 @@ export default function DebugDialog({
     }
 
     return () => {
-      // 组件卸载时断开WebSocket
+      // Disconnect WebSocket on component unmount
       if (wsClientRef.current) {
         wsClientRef.current.disconnect();
         wsClientRef.current = null;
@@ -204,17 +215,17 @@ export default function DebugDialog({
     };
   }, [open, pipelineId]);
 
-  // 监听 sessionType 和 selectedPipelineId 变化，重新加载消息和连接
+  // Reload messages and reconnect when sessionType or selectedPipelineId changes
   useEffect(() => {
     if (open) {
-      // 清空当前消息，避免显示旧的消息
+      // Clear current messages to avoid showing stale messages
       setMessages([]);
       loadMessages(selectedPipelineId);
       initWebSocket(selectedPipelineId);
     }
   }, [sessionType, selectedPipelineId, open, loadMessages, initWebSocket]);
 
-  // 通知父组件连接状态变化
+  // Notify parent of connection status changes
   useEffect(() => {
     onConnectionStatusChange?.(isConnected);
   }, [isConnected, onConnectionStatusChange]);
@@ -321,9 +332,9 @@ export default function DebugDialog({
 
       const messageChain = [];
 
-      // 添加引用消息(如果有)
+      // Add quoted message if present
       if (quotedMessage) {
-        // 获取被引用消息的Source组件以获取message_id
+        // Get message_id from the quoted message Source component
         const sourceComponent = quotedMessage.message_chain.find(
           (c) => c.type === 'Source',
         ) as Source | undefined;
@@ -353,7 +364,7 @@ export default function DebugDialog({
         });
       }
 
-      // 添加文本
+      // Add text content
       if (text_content) {
         messageChain.push({
           type: 'Plain',
@@ -361,7 +372,7 @@ export default function DebugDialog({
         });
       }
 
-      // 上传图片并添加到消息链
+      // Upload images and add to message chain
       for (const image of selectedImages) {
         try {
           const result = await httpClient.uploadWebSocketImage(
@@ -373,20 +384,20 @@ export default function DebugDialog({
             path: result.file_key,
           });
         } catch (error) {
-          console.error('图片上传失败:', error);
+          console.error('Image upload failed:', error);
           toast.error(t('pipelines.debugDialog.imageUploadFailed'));
         }
       }
 
-      // 清空输入框、图片和引用消息
+      // Clear input, images, and quoted message
       setInputValue('');
       setHasAt(false);
       setQuotedMessage(null);
       selectedImages.forEach((img) => URL.revokeObjectURL(img.preview));
       setSelectedImages([]);
 
-      // 通过WebSocket发送消息
-      // 不在本地添加消息，等待后端广播回来（带有正确的ID）
+      // Send message via WebSocket
+      // Do not add locally; wait for backend broadcast with correct ID
       wsClientRef.current.sendMessage(messageChain, streamOutput);
     } catch (error) {
       console.error('Failed to send message:', error);
@@ -407,7 +418,7 @@ export default function DebugDialog({
 
       case 'At': {
         const atComponent = component as At;
-        // 优先使用 display，如果没有则使用 target
+        // Prefer display name, fall back to target
         const displayName =
           atComponent.display || atComponent.target?.toString() || '';
         return (
@@ -420,7 +431,10 @@ export default function DebugDialog({
       case 'AtAll':
         return (
           <span key={index} className="inline-flex align-middle mx-1">
-            <AtBadge targetName="全体成员" readonly={true} />
+            <AtBadge
+              targetName={t('pipelines.debugDialog.allMembers')}
+              readonly={true}
+            />
           </span>
         );
 
@@ -449,10 +463,10 @@ export default function DebugDialog({
         const file = component as MessageChainComponent & { name?: string };
         return (
           <div key={index} className="my-2 flex items-center gap-2 text-sm">
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M8 4a3 3 0 00-3 3v4a5 5 0 0010 0V7a1 1 0 112 0v4a7 7 0 11-14 0V7a5 5 0 0110 0v4a3 3 0 11-6 0V7a1 1 0 012 0v4a1 1 0 102 0V7a3 3 0 00-3-3z" />
-            </svg>
-            <span>[文件] {file.name || 'Unknown'}</span>
+            <Paperclip className="size-4" />
+            <span>
+              [{t('pipelines.debugDialog.file')}] {file.name || 'Unknown'}
+            </span>
           </div>
         );
       }
@@ -462,15 +476,13 @@ export default function DebugDialog({
         const voiceUrl = voice.url || (voice.base64 ? voice.base64 : '');
 
         if (!voiceUrl) {
-          return <span key={index}>[语音]</span>;
+          return <span key={index}>[{t('pipelines.debugDialog.voice')}]</span>;
         }
 
         return (
           <div key={index} className="my-2 flex items-center gap-2">
-            <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M18 3a1 1 0 00-1.196-.98l-10 2A1 1 0 006 5v9.114A4.369 4.369 0 005 14c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V7.82l8-1.6v5.894A4.37 4.37 0 0015 12c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V3z" />
-              </svg>
+            <div className="flex items-center gap-2 px-3 py-2 bg-muted rounded-lg">
+              <Music className="size-5" />
               <audio
                 controls
                 src={voiceUrl}
@@ -480,7 +492,7 @@ export default function DebugDialog({
                 Your browser does not support the audio element.
               </audio>
               {voice.length && voice.length > 0 && (
-                <span className="text-xs text-gray-500 dark:text-gray-400">
+                <span className="text-xs text-muted-foreground">
                   {voice.length}s
                 </span>
               )}
@@ -494,7 +506,7 @@ export default function DebugDialog({
         return (
           <div
             key={index}
-            className="mb-2 pl-3 border-l-2 border-gray-400 dark:border-gray-500"
+            className="mb-2 pl-3 border-l-2 border-muted-foreground/50"
           >
             <div className="text-sm opacity-75">
               {quote.origin?.map((comp, idx) =>
@@ -506,7 +518,7 @@ export default function DebugDialog({
       }
 
       case 'Source':
-        // Source 不显示
+        // Source is not rendered
         return null;
 
       default:
@@ -515,7 +527,7 @@ export default function DebugDialog({
   };
 
   const getMessageTimestamp = (message: Message): number => {
-    // 首先尝试从message_chain中的Source组件获取时间戳
+    // Try to get timestamp from Source component in message_chain
     const sourceComponent = message.message_chain.find(
       (c) => c.type === 'Source',
     ) as Source | undefined;
@@ -524,8 +536,8 @@ export default function DebugDialog({
       return sourceComponent.timestamp;
     }
 
-    // 如果没有Source组件，使用message.timestamp
-    // 假设timestamp是ISO字符串，转换为Unix时间戳（秒）
+    // Fall back to message.timestamp if no Source component
+    // Assume ISO string, convert to Unix timestamp (seconds)
     if (message.timestamp) {
       return Math.floor(new Date(message.timestamp).getTime() / 1000);
     }
@@ -542,13 +554,13 @@ export default function DebugDialog({
     const hours = date.getHours().toString().padStart(2, '0');
     const minutes = date.getMinutes().toString().padStart(2, '0');
 
-    // 判断是否是今天
+    // Check if today
     const isToday = now.toDateString() === date.toDateString();
     if (isToday) {
       return `${hours}:${minutes}`;
     }
 
-    // 判断是否是昨天
+    // Check if yesterday
     const yesterday = new Date(now);
     yesterday.setDate(yesterday.getDate() - 1);
     const isYesterday = yesterday.toDateString() === date.toDateString();
@@ -556,7 +568,7 @@ export default function DebugDialog({
       return `${t('bots.yesterday')} ${hours}:${minutes}`;
     }
 
-    // 判断是否是今年
+    // Check if this year
     const isThisYear = now.getFullYear() === date.getFullYear();
     if (isThisYear) {
       const month = date.getMonth() + 1;
@@ -564,7 +576,7 @@ export default function DebugDialog({
       return t('bots.dateFormat', { month, day });
     }
 
-    // 更早的日期
+    // Earlier dates
     return t('bots.earlier');
   };
 
@@ -685,49 +697,37 @@ export default function DebugDialog({
 
   const renderContent = () => (
     <div className="flex flex-1 h-full min-h-0">
-      <div className="w-14 bg-white dark:bg-black p-2 pl-0  flex-shrink-0 flex flex-col justify-start gap-2">
+      <div className="w-14 p-2 pl-0 shrink-0 flex flex-col justify-start gap-2">
         <Button
           variant="ghost"
           size="icon"
-          className={`w-10 h-10 justify-center rounded-md transition-none ${
+          className={cn(
+            'w-10 h-10 justify-center rounded-md transition-none border-0 shadow-none',
             sessionType === 'person'
-              ? 'bg-[#2288ee] text-white hover:bg-[#2288ee] hover:text-white'
-              : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
-          } border-0 shadow-none`}
+              ? 'bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground'
+              : 'bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+          )}
           onClick={() => setSessionType('person')}
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="currentColor"
-            className="w-6 h-6"
-          >
-            <path d="M4 22C4 17.5817 7.58172 14 12 14C16.4183 14 20 17.5817 20 22H18C18 18.6863 15.3137 16 12 16C8.68629 16 6 18.6863 6 22H4ZM12 13C8.685 13 6 10.315 6 7C6 3.685 8.685 1 12 1C15.315 1 18 3.685 18 7C18 10.315 15.315 13 12 13ZM12 11C14.21 11 16 9.21 16 7C16 4.79 14.21 3 12 3C9.79 3 8 4.79 8 7C8 9.21 9.79 11 12 11Z"></path>
-          </svg>
+          <User className="size-5" />
         </Button>
         <Button
           variant="ghost"
           size="icon"
-          className={`w-10 h-10 justify-center rounded-md transition-none ${
+          className={cn(
+            'w-10 h-10 justify-center rounded-md transition-none border-0 shadow-none',
             sessionType === 'group'
-              ? 'bg-[#2288ee] text-white hover:bg-[#2288ee] hover:text-white'
-              : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
-          } border-0 shadow-none`}
+              ? 'bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground'
+              : 'bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+          )}
           onClick={() => setSessionType('group')}
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="currentColor"
-            className="w-6 h-6"
-          >
-            <path d="M2 22C2 17.5817 5.58172 14 10 14C14.4183 14 18 17.5817 18 22H16C16 18.6863 13.3137 16 10 16C6.68629 16 4 18.6863 4 22H2ZM10 13C6.685 13 4 10.315 4 7C4 3.685 6.685 1 10 1C13.315 1 16 3.685 16 7C16 10.315 13.315 13 10 13ZM10 11C12.21 11 14 9.21 14 7C14 4.79 12.21 3 10 3C7.79 3 6 4.79 6 7C6 9.21 7.79 11 10 11ZM18.2837 14.7028C21.0644 15.9561 23 18.752 23 22H21C21 19.564 19.5483 17.4671 17.4628 16.5271L18.2837 14.7028ZM17.5962 3.41321C19.5944 4.23703 21 6.20361 21 8.5C21 11.3702 18.8042 13.7252 16 13.9776V11.9646C17.6967 11.7222 19 10.264 19 8.5C19 7.11935 18.2016 5.92603 17.041 5.35635L17.5962 3.41321Z"></path>
-          </svg>
+          <Users className="size-5" />
         </Button>
       </div>
 
       <div className="flex-1 flex flex-col w-[10rem] h-full min-h-0">
-        <ScrollArea className="flex-1 p-6 overflow-y-auto min-h-0 bg-white dark:bg-black scroll-area">
+        <ScrollArea className="flex-1 p-6 overflow-y-auto min-h-0 scroll-area">
           <div className="space-y-6">
             {messages.length === 0 ? (
               <div className="text-center text-muted-foreground py-12 text-lg">
@@ -746,17 +746,15 @@ export default function DebugDialog({
                     className={cn(
                       'max-w-3xl px-5 py-3 rounded-2xl',
                       message.role === 'user'
-                        ? 'user-message-bubble bg-blue-100 dark:bg-blue-900 text-gray-900 dark:text-gray-100 rounded-br-none'
-                        : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-none',
+                        ? 'user-message-bubble bg-primary/10 text-foreground rounded-br-none'
+                        : 'bg-muted text-foreground rounded-bl-none',
                     )}
                   >
                     {renderMessageContent(message)}
                     <div
                       className={cn(
                         'text-xs mt-2 flex items-center justify-between gap-2',
-                        message.role === 'user'
-                          ? 'text-gray-600 dark:text-gray-300'
-                          : 'text-gray-500 dark:text-gray-400',
+                        'text-muted-foreground',
                       )}
                     >
                       <div className="flex items-center gap-2">
@@ -767,12 +765,11 @@ export default function DebugDialog({
                         </span>
                         {hasPlainText(message) && (
                           <button
+                            type="button"
                             onClick={() => toggleRawMode(message)}
                             className={cn(
                               'px-1.5 py-0.5 rounded text-[10px] transition-colors',
-                              message.role === 'user'
-                                ? 'hover:bg-blue-200 dark:hover:bg-blue-800'
-                                : 'hover:bg-gray-200 dark:hover:bg-gray-700',
+                              'hover:bg-accent',
                             )}
                             title={
                               rawModeMessages.has(getMessageKey(message))
@@ -782,58 +779,27 @@ export default function DebugDialog({
                           >
                             {rawModeMessages.has(getMessageKey(message)) ? (
                               <span className="flex items-center gap-0.5">
-                                <svg
-                                  className="w-3 h-3"
-                                  viewBox="0 0 16 16"
-                                  fill="currentColor"
-                                >
-                                  <path d="M14.85 3H1.15C.52 3 0 3.52 0 4.15v7.69C0 12.48.52 13 1.15 13h13.69c.64 0 1.15-.52 1.15-1.15v-7.7C16 3.52 15.48 3 14.85 3zM9 11H7V8L5.5 9.92 4 8v3H2V5h2l1.5 2L7 5h2v6zm2.99.5L9.5 8H11V5h2v3h1.5l-2.51 3.5z" />
-                                </svg>
+                                <Code className="size-3" />
                                 MD
                               </span>
                             ) : (
                               <span className="flex items-center gap-0.5">
-                                <svg
-                                  className="w-3 h-3"
-                                  fill="none"
-                                  viewBox="0 0 24 24"
-                                  stroke="currentColor"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M4 6h16M4 12h16M4 18h7"
-                                  />
-                                </svg>
+                                <AlignLeft className="size-3" />
                                 {t('pipelines.debugDialog.showRaw')}
                               </span>
                             )}
                           </button>
                         )}
                         <button
+                          type="button"
                           onClick={() => setQuotedMessage(message)}
                           className={cn(
                             'px-1.5 py-0.5 rounded text-[10px] transition-colors flex items-center gap-0.5',
-                            message.role === 'user'
-                              ? 'hover:bg-blue-200 dark:hover:bg-blue-800'
-                              : 'hover:bg-gray-200 dark:hover:bg-gray-700',
+                            'hover:bg-accent',
                           )}
                           title={t('pipelines.debugDialog.reply')}
                         >
-                          <svg
-                            className="w-3 h-3"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"
-                            />
-                          </svg>
+                          <Reply className="size-3" />
                           {t('pipelines.debugDialog.reply')}
                         </button>
                       </div>
@@ -849,18 +815,18 @@ export default function DebugDialog({
           </div>
         </ScrollArea>
 
-        {/* 引用消息预览区域 */}
+        {/* Quoted message preview */}
         {quotedMessage && (
-          <div className="px-4 py-2 bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
+          <div className="px-4 py-2 bg-muted/50 border-t">
             <div className="flex items-start gap-2">
-              <div className="flex-1 pl-3 border-l-2 border-[#2288ee]">
-                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+              <div className="flex-1 pl-3 border-l-2 border-primary">
+                <div className="text-xs text-muted-foreground mb-1">
                   {t('pipelines.debugDialog.replyTo')}{' '}
                   {quotedMessage.role === 'user'
                     ? t('pipelines.debugDialog.userMessage')
                     : t('pipelines.debugDialog.botMessage')}
                 </div>
-                <div className="text-sm text-gray-700 dark:text-gray-300 line-clamp-2">
+                <div className="text-sm text-foreground/70 line-clamp-2">
                   {quotedMessage.message_chain
                     .filter((c) => c.type === 'Plain')
                     .map((c) => (c as Plain).text)
@@ -868,8 +834,9 @@ export default function DebugDialog({
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setQuotedMessage(null)}
-                className="w-5 h-5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                className="w-5 h-5 text-muted-foreground hover:text-foreground"
               >
                 ×
               </button>
@@ -877,20 +844,21 @@ export default function DebugDialog({
           </div>
         )}
 
-        {/* 图片预览区域 */}
+        {/* Image preview area */}
         {selectedImages.length > 0 && (
-          <div className="px-4 pb-2 bg-white dark:bg-black">
+          <div className="px-4 pb-2">
             <div className="flex gap-2 flex-wrap">
               {selectedImages.map((image, index) => (
                 <div key={index} className="relative group">
                   <img
                     src={image.preview}
                     alt={`preview-${index}`}
-                    className="w-20 h-20 object-cover rounded-lg border border-gray-300 dark:border-gray-600"
+                    className="w-20 h-20 object-cover rounded-lg border"
                   />
                   <button
+                    type="button"
                     onClick={() => handleRemoveImage(index)}
-                    className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute -top-2 -right-2 w-5 h-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     ×
                   </button>
@@ -900,17 +868,16 @@ export default function DebugDialog({
           </div>
         )}
 
-        <div className="p-4 pb-0 bg-white dark:bg-black flex gap-2">
+        <div className="p-4 pb-0 flex gap-2">
           <div className="flex gap-2 items-center">
             <div className="flex items-center gap-1">
-              <span className="text-xs text-gray-500 dark:text-gray-400">
+              <span className="text-xs text-muted-foreground">
                 {t('pipelines.debugDialog.streamOutput')}
               </span>
               <Switch
                 checked={streamOutput}
                 onCheckedChange={setStreamOutput}
                 disabled={!isConnected}
-                className="data-[state=checked]:bg-[#2288ee]"
               />
             </div>
             <input
@@ -926,22 +893,10 @@ export default function DebugDialog({
               size="icon"
               onClick={() => fileInputRef.current?.click()}
               disabled={!isConnected || isUploading}
-              className="w-10 h-10 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
-              title="上传图片"
+              className="w-10 h-10 rounded-md hover:bg-accent"
+              title={t('pipelines.debugDialog.uploadImage')}
             >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                />
-              </svg>
+              <ImageIcon className="size-5" />
             </Button>
           </div>
           <div className="flex-1 flex items-center gap-2">
@@ -961,25 +916,23 @@ export default function DebugDialog({
                       : t('pipelines.debugDialog.groupChat'),
                 })}
                 disabled={!isConnected || isUploading}
-                className="flex-1 rounded-md px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 focus:border-[#2288ee] transition-none text-base disabled:opacity-50"
+                className="flex-1 rounded-md px-3 py-2 transition-none text-base disabled:opacity-50"
               />
               {showAtPopover && (
                 <div
                   ref={popoverRef}
-                  className="absolute bottom-full left-0 mb-2 w-auto rounded-md border bg-white dark:bg-gray-800 dark:border-gray-600 shadow-lg"
+                  className="absolute bottom-full left-0 mb-2 w-auto rounded-md border bg-popover text-popover-foreground shadow-lg"
                 >
                   <div
                     className={cn(
                       'flex items-center gap-2 px-4 py-1.5 rounded cursor-pointer',
-                      isHovering
-                        ? 'bg-gray-100 dark:bg-gray-700'
-                        : 'bg-white dark:bg-gray-800',
+                      isHovering ? 'bg-accent' : '',
                     )}
                     onClick={handleAtSelect}
                     onMouseEnter={() => setIsHovering(true)}
                     onMouseLeave={() => setIsHovering(false)}
                   >
-                    <span className="text-gray-800 dark:text-gray-200">
+                    <span>
                       @websocketbot - {t('pipelines.debugDialog.atTips')}
                     </span>
                   </div>
@@ -997,16 +950,23 @@ export default function DebugDialog({
               !isConnected ||
               isUploading
             }
-            className="rounded-md bg-[#2288ee] hover:bg-[#2288ee] w-20 text-white px-6 py-2 text-base font-medium transition-none flex items-center gap-2 shadow-none disabled:opacity-50"
+            className="rounded-md w-20 px-6 py-2 text-base font-medium transition-none flex items-center gap-2 shadow-none disabled:opacity-50"
           >
-            {isUploading ? '上传中...' : t('pipelines.debugDialog.send')}
+            {isUploading ? (
+              t('pipelines.debugDialog.uploading')
+            ) : (
+              <>
+                <Send className="size-4" />
+                {t('pipelines.debugDialog.send')}
+              </>
+            )}
           </Button>
         </div>
       </div>
     </div>
   );
 
-  // 如果是嵌入模式，直接返回内容
+  // Embedded mode: return content directly
   if (isEmbedded) {
     return (
       <>
@@ -1022,10 +982,10 @@ export default function DebugDialog({
     );
   }
 
-  // 原有的Dialog包装
+  // Dialog wrapper mode
   return (
     <>
-      <DialogContent className="!max-w-[70vw] max-w-6xl h-[70vh] p-6 flex flex-col rounded-2xl shadow-2xl bg-white dark:bg-black">
+      <DialogContent className="!max-w-[70vw] max-w-6xl h-[70vh] p-6 flex flex-col rounded-2xl shadow-2xl">
         {renderContent()}
       </DialogContent>
       <ImagePreviewDialog

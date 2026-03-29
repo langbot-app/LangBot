@@ -172,7 +172,7 @@ export function ExportDropdown({ filterState }: ExportDropdownProps) {
         <Button
           variant="outline"
           size="sm"
-          className="bg-white dark:bg-[#2a2a2e] hover:bg-gray-50 dark:hover:bg-gray-800 border-gray-300 dark:border-gray-600 shadow-sm flex-shrink-0"
+          className="shadow-sm flex-shrink-0"
           disabled={exporting !== null}
         >
           {exporting ? (

@@ -701,8 +701,29 @@ export class BackendClient extends BaseHttpClient {
     return this.get('/api/v1/system/info');
   }
 
-  public getAsyncTasks(): Promise<ApiRespAsyncTasks> {
-    return this.get('/api/v1/system/tasks');
+  public updateWizardStatus(status: 'skipped' | 'completed'): Promise<void> {
+    return this.post('/api/v1/system/wizard/completed', { status });
+  }
+
+  public saveWizardProgress(progress: {
+    step: number;
+    selected_adapter: string | null;
+    created_bot_uuid: string | null;
+    bot_saved: boolean;
+    selected_runner: string | null;
+  }): Promise<void> {
+    return this.put('/api/v1/system/wizard/progress', progress);
+  }
+
+  public getAsyncTasks(params?: {
+    type?: string;
+    kind?: string;
+  }): Promise<ApiRespAsyncTasks> {
+    const query = new URLSearchParams();
+    if (params?.type) query.set('type', params.type);
+    if (params?.kind) query.set('kind', params.kind);
+    const qs = query.toString();
+    return this.get(`/api/v1/system/tasks${qs ? `?${qs}` : ''}`);
   }
 
   public getAsyncTask(id: number): Promise<AsyncTask> {

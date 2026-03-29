@@ -5,23 +5,46 @@ metadata:
   label:
     en_US: Telegram
     zh_Hans: 电报
+    zh_Hant: Telegram
+    ja_JP: Telegram
+    th_TH: Telegram
+    vi_VN: Telegram
+    es_ES: Telegram
   description:
     en_US: Telegram Adapter
-    zh_Hans: 电报适配器，请查看文档了解使用方式
+    zh_Hans: Telegram 适配器，请查看文档了解使用方式
+    zh_Hant: Telegram 適配器，請查看文件了解使用方式
+    ja_JP: Telegram アダプター。使用方法の詳細については、ドキュメントを参照してください。
+    th_TH: อะแดปเตอร์ Telegram โปรดดูเอกสารประกอบสำหรับวิธีการใช้งาน
+    vi_VN: Bộ điều hợp Telegram, vui lòng xem tài liệu để biết cách sử dụng
+    es_ES: Adaptador de Telegram, consulte la documentación para obtener instrucciones de uso
   icon: telegram.svg
 spec:
+  categories:
+    - popular
+    - global
   config:
     - name: token
       label:
         en_US: Token
         zh_Hans: 令牌
+        zh_Hant: 令牌
+        ja_JP: トークン
+        th_TH: โทเค็น
+        vi_VN: Mã thông báo
+        es_ES: Token
       type: string
       required: true
-      default: ""
+      default: "token_from_botfather"
     - name: markdown_card
       label:
         en_US: Markdown Card
         zh_Hans: 是否使用 Markdown 卡片
+        zh_Hant: 是否使用 Markdown 卡片
+        ja_JP: Markdown カードを使用
+        th_TH: การ์ด Markdown
+        vi_VN: Thẻ Markdown
+        es_ES: Tarjeta Markdown
       type: boolean
       required: false
       default: true
@@ -29,9 +52,19 @@ spec:
       label:
         en_US: Enable Stream Reply Mode
         zh_Hans: 启用电报流式回复模式
+        zh_Hant: 啟用 Telegram 串流回覆模式
+        ja_JP: ストリーミング返信モードを有効化
+        th_TH: เปิดใช้งานโหมดตอบกลับแบบสตรีม
+        vi_VN: Bật chế độ trả lời trực tuyến
+        es_ES: Habilitar modo de respuesta en streaming
       description:
         en_US: If enabled, the bot will use the stream of telegram reply mode
         zh_Hans: 如果启用，将使用电报流式方式来回复内容
+        zh_Hant: 如果啟用，將使用 Telegram 串流方式來回覆內容
+        ja_JP: 有効にすると、ボットはストリーミングモードでメッセージに返信します
+        th_TH: หากเปิดใช้งาน บอทจะใช้โหมดสตรีมของ Telegram ในการตอบกลับ
+        vi_VN: Nếu bật, bot sẽ sử dụng chế độ trả lời trực tuyến của Telegram
+        es_ES: Si está habilitado, el bot usará el modo de respuesta en streaming de Telegram
       type: boolean
       required: true
       default: false

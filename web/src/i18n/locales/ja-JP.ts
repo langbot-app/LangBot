@@ -1,4 +1,12 @@
 ﻿const jaJP = {
+  sidebar: {
+    home: 'ホーム',
+    extensions: '拡張機能',
+    installedPlugins: 'インストール済みプラグイン',
+    pluginMarket: 'プラグインマーケット',
+    mcpServers: 'MCPサーバー',
+    quickStart: 'クイックスタート',
+  },
   common: {
     login: 'ログイン',
     logout: 'ログアウト',
@@ -23,6 +31,7 @@
     language: '言語',
     helpDocs: 'ヘルプドキュメント',
     featureRequest: '機能リクエスト',
+    starOnGitHub: 'GitHubでStarする',
     create: '作成',
     edit: '編集',
     delete: '削除',
@@ -38,6 +47,7 @@
     confirmDelete: '削除の確認',
     deleteConfirmation: '本当に削除しますか？',
     selectOption: 'オプションを選択',
+    selectPreset: 'プリセットを選択',
     required: '必須',
     enable: '有効にする',
     name: '名前',
@@ -138,6 +148,9 @@
     apiKeyCreatedMessage:
       'この API キーをコピーしてください。もしボタンが無効な場合は手動でコピーしてください。',
     none: 'なし',
+    more: 'もっと見る ({{count}})',
+    less: '折りたたむ',
+    noItems: '項目がありません',
   },
   notFound: {
     title: 'ページが見つかりません',
@@ -224,6 +237,10 @@
     loginWithSpace: 'Space でログイン',
     loginToUseModels: 'Space でログインしてクラウドモデルを使用',
     noModels: 'モデルがありません',
+    langbotModels: 'LangBot モデル',
+    spaceTrialTooltip:
+      '無料トライアルクレジットが利用可能！Space でログインして、設定不要でクラウドモデルを使用できます。',
+    unlockModels: 'ログインして使用',
     editProvider: 'プロバイダーを編集',
     addProvider: 'プロバイダーを追加',
     addProviderHint:
@@ -256,6 +273,7 @@
     description:
       'ボットの作成と管理を行います。LangBotと各プラットフォームを接続するためのエントリーポイントです',
     createBot: 'ボットを作成',
+    selectFromSidebar: 'サイドバーからボットを選択してください',
     editBot: 'ボットを編集',
     getBotListError: 'ボットリストの取得に失敗しました：',
     botName: 'ボット名',
@@ -289,16 +307,37 @@
     log: 'ログ',
     configuration: '設定',
     logs: 'ログ',
+    basicInfo: '基本情報',
+    basicInfoDescription: 'ボットの名前と説明を設定',
+    routingConnection: 'ルーティングと接続',
+    routingConnectionDescription:
+      'このボットのメッセージを処理するパイプラインを紐付け',
+    adapterConfigDescription: '選択したプラットフォームアダプターを設定',
+    dangerZone: '危険ゾーン',
+    dangerZoneDescription: '元に戻せない操作',
+    deleteBotAction: 'このボットを削除',
+    deleteBotHint:
+      '削除すると、関連する全ての設定が完全に削除され、復元できません。',
     webhookUrl: 'Webhook コールバック URL',
     webhookUrlCopied: 'Webhook URL をコピーしました',
     webhookUrlHint:
       '入力ボックスをクリックして全選択し、Ctrl+C (Mac: Cmd+C) でコピーするか、右側のボタンをクリックしてください',
     webhookUrlHintEither:
       '上記の2つのURLのいずれかをプラットフォーム設定に使用してください',
+    webhookSaasHint:
+      'Webhook には公開アクセス可能なドメインが必要です。LangBot Cloud では、ボット用のパブリックエンドポイントをすぐにご利用いただけます。',
+    webhookSaasLink: 'LangBot Cloud の詳細はこちら',
+    adapterCategory: {
+      popular: '人気',
+      china: '中国',
+      global: 'グローバル',
+      protocol: 'プロトコル',
+    },
     logLevel: 'ログレベル',
     allLevels: 'すべてのレベル',
     selectLevel: 'レベルを選択',
     levelsSelected: 'レベル選択済み',
+    noLogs: 'ログはまだありません',
     sessionMonitor: {
       title: 'セッション監視',
       sessions: 'セッション一覧',
@@ -453,6 +492,28 @@
     assetSize: 'サイズ: {{size}}',
     confirmInstall: 'インストールを確認',
     installFromGithubDesc: 'GitHubリリースからプラグインをインストール',
+    goToMarketplace: 'マーケットプレイスへ',
+    installProgress: {
+      title: '{{name}} をインストール中',
+      titleGeneric: 'プラグインのインストール',
+      overallProgress: '全体の進捗',
+      downloading: 'プラグインをダウンロード中',
+      installingDeps: '依存関係をインストール中',
+      initializing: '設定を初期化中',
+      launching: 'プラグインを起動中',
+      completed: '完了',
+      failed: '失敗',
+      downloadSize: 'パッケージサイズ: {{size}}',
+      depsInfo: '{{count}} 個の依存関係をインストール',
+      depsProgress:
+        '{{installed}}/{{total}} インストール済み · 残り {{remaining}} 個',
+      installComplete: 'プラグインのインストール完了',
+      dismiss: '閉じる',
+      background: 'バックグラウンドで実行',
+      taskQueue: 'インストールタスク',
+      clearCompleted: '完了を消去',
+      noTasks: 'インストールタスクはありません',
+    },
   },
   market: {
     searchPlaceholder: 'プラグインを検索...',
@@ -591,12 +652,18 @@
     sseTimeoutNonNegative: 'SSEタイムアウトは負の数にできません',
     updateSuccess: '更新に成功しました',
     updateFailed: '更新に失敗しました：',
+    selectFromSidebar: 'サイドバーからMCPサーバーを選択してください',
+    dangerZone: '危険ゾーン',
+    dangerZoneDescription: 'このMCPサーバーに対する不可逆的な操作です。',
+    deleteMCPAction: 'このMCPサーバーを削除',
+    deleteMCPHint: '削除すると、このMCPサーバーの設定は復元できません。',
   },
   pipelines: {
     title: 'パイプライン',
     description:
       'メッセージイベントの処理フローを定義し、ボットに紐付けて使用するパイプラインです',
     createPipeline: 'パイプラインを作成',
+    selectFromSidebar: 'サイドバーからパイプラインを選択してください',
     editPipeline: 'パイプラインを編集',
     chat: 'チャット',
     configuration: '設定',
@@ -612,6 +679,7 @@
     recentlyEdited: '最近編集',
     earliestEdited: '最古編集',
     basicInfo: '基本情報',
+    basicInfoDescription: 'パイプラインの名前、アイコン、説明を設定',
     aiCapabilities: 'AI機能',
     triggerConditions: 'トリガー条件',
     safetyControls: '安全制御',
@@ -633,6 +701,13 @@
     copyConfirmation:
       'このパイプラインをコピーしますか？すべての設定を含む新しいパイプラインが作成されます。',
     unsavedChanges: '未保存の変更があります',
+    dangerZone: '危険ゾーン',
+    dangerZoneDescription: '元に戻せない操作',
+    deletePipelineAction: 'このパイプラインを削除',
+    deletePipelineHint:
+      '削除すると、このパイプラインに紐付けられたボットは動作しなくなります。',
+    copyPipelineAction: 'このパイプラインをコピー',
+    copyPipelineHint: 'すべての設定を複製した新しいパイプラインを作成します。',
     extensions: {
       title: 'プラグイン統合',
       loadError: 'プラグインリストの読み込みに失敗しました',
@@ -688,9 +763,14 @@
       replyTo: '返信先',
       showMarkdown: 'Markdownで表示',
       showRaw: '原文で表示',
+      allMembers: '全メンバー',
+      file: 'ファイル',
+      voice: '音声',
+      uploadImage: '画像をアップロード',
+      uploading: 'アップロード中...',
     },
     monitoring: {
-      title: 'モニタリング',
+      title: 'ダッシュボード',
       description: 'このパイプラインの実行ログとエラー情報を表示（過去24時間）',
       detailedLogs: '詳細ログ',
     },
@@ -698,6 +778,7 @@
   knowledge: {
     title: '知識ベース',
     createKnowledgeBase: '知識ベースを作成',
+    selectFromSidebar: 'サイドバーから知識ベースを選択してください',
     editKnowledgeBase: '知識ベースを編集',
     selectKnowledgeBase: '知識ベースを選択',
     selectKnowledgeBases: '知識ベースを選択',
@@ -769,6 +850,18 @@
     fileName: 'ファイル名',
     noResults: '検索結果がありません',
     retrieveError: '検索に失敗しました：',
+    basicInfo: '基本情報',
+    basicInfoDescription: 'ナレッジベースの名前、アイコン、説明を設定',
+    engineSettings: 'エンジン設定',
+    engineSettingsDescription: '選択したナレッジエンジンの設定',
+    engineSettingsReadonly: '編集モードでは変更できません',
+    retrievalSettings: '検索設定',
+    retrievalSettingsDescription: 'このナレッジベースからの文書検索方法を設定',
+    dangerZone: '危険ゾーン',
+    dangerZoneDescription: '元に戻せない操作',
+    deleteKbAction: 'このナレッジベースを削除',
+    deleteKbHint:
+      '削除すると、このナレッジベース内のすべての文書とデータが完全に削除されます。',
     noEnginesAvailable: '利用可能なナレッジエンジンがありません',
     installEngineHint:
       '先に「ナレッジエンジン」プラグインをインストールしてください',
@@ -894,7 +987,7 @@
       'Spaceログインのメールアドレスがローカルアカウントのメールアドレスと一致しません',
   },
   monitoring: {
-    title: 'モニタリング',
+    title: 'ダッシュボード',
     description:
       'ボットアクティビティ、LLM呼び出し、システムパフォーマンスを監視',
     overview: '概要',
@@ -1026,6 +1119,72 @@
       'パイプライン数が上限（{{max}}個）に達しました。新しいパイプラインを作成するには、既存のパイプラインを削除してください。',
     maxExtensionsReached:
       '拡張機能数が上限（{{max}}個）に達しました。新しい MCP サーバーやプラグインを追加するには、既存のものを削除してください。',
+  },
+  wizard: {
+    sidebarDescription: 'ガイド付きステップでボットを作成',
+    loading: 'ウィザードを読み込み中...',
+    loadError: 'ウィザードデータの読み込みに失敗しました',
+    skip: 'スキップ',
+    skipConfirmMessage:
+      'アカウントメニューからクイックスタートウィザードに再度アクセスするか、手動でボットを作成できます。',
+    skipConfirmOk: 'OK',
+    prev: '前へ',
+    next: '次へ',
+    finish: '作成＆デプロイ',
+    confirmCreateBot: '確定、ボットを作成',
+    createSuccess: 'パイプラインが作成され、ボットにリンクされました！',
+    botCreateSuccess: 'ボットが正常に作成されました！',
+    botSaveSuccess: 'ボット設定が保存され、有効になりました！',
+    createError: 'リソースの作成に失敗しました',
+    spaceAuthError: 'Space 認証の開始に失敗しました',
+    skipSaveError: 'スキップ状態の保存に失敗しました。もう一度お試しください。',
+    completeSaveError: '完了状態の保存に失敗しました。もう一度お試しください。',
+    step: {
+      platform: 'プラットフォーム',
+      botConfig: 'ボット設定',
+      aiEngine: 'AIエンジン',
+      done: '完了',
+    },
+    platform: {
+      title: 'プラットフォームを選択',
+      description:
+        'ボットが接続するメッセージングプラットフォームを選択してください。',
+    },
+    botConfig: {
+      title: 'ボットを設定',
+      description:
+        'ボットをセットアップし、正常に動作することを確認してから続行してください。',
+      saveBot: '保存して有効化',
+      resaveBot: '設定を再保存',
+      botSaved:
+        'ボット設定が保存され、有効になりました。ログを確認して接続を検証してください。',
+      logsTitle: 'ボットログ',
+      logsDescription:
+        'ボットの活動を監視して、プラットフォーム接続が正常に動作していることを確認します。',
+    },
+    aiEngine: {
+      title: 'AIエンジンを選択',
+      description:
+        'ボットのインテリジェンスを駆動するAIエンジンを選択してください。',
+    },
+    spaceBanner: {
+      message:
+        'LangBot Spaceに接続して、無料トライアルモデルクレジットとゼロ設定の即時セットアップを入手！',
+      action: 'Spaceで認証',
+    },
+    config: {
+      botInfo: 'ボット情報',
+      botNamePlaceholder: 'ボット名を入力',
+      botDescPlaceholder: 'ボットの説明を入力（任意）',
+      platformConfig: '{{platform}} 設定',
+      aiConfig: '{{engine}} 設定',
+    },
+    done: {
+      title: '完了しました！',
+      description:
+        'ボットが作成され、AIパイプラインに接続されました。ワークベンチから管理できます。',
+      backToWorkbench: 'ワークベンチに戻る',
+    },
   },
 };
 

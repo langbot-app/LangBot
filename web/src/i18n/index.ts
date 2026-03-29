@@ -8,6 +8,9 @@ import enUS from './locales/en-US';
 import zhHans from './locales/zh-Hans';
 import zhHant from './locales/zh-Hant';
 import jaJP from './locales/ja-JP';
+import thTH from './locales/th-TH';
+import viVN from './locales/vi-VN';
+import esES from './locales/es-ES';
 
 i18n
   .use(LanguageDetector)
@@ -25,6 +28,15 @@ i18n
       },
       'ja-JP': {
         translation: jaJP,
+      },
+      'th-TH': {
+        translation: thTH,
+      },
+      'vi-VN': {
+        translation: viVN,
+      },
+      'es-ES': {
+        translation: esES,
       },
     },
     fallbackLng: 'zh-Hans',

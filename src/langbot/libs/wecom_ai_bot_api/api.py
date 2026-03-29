@@ -6,7 +6,8 @@ import traceback
 import uuid
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+import re
+from typing import Any, Callable, Optional, Tuple
 from urllib.parse import unquote
 
 import httpx
@@ -199,50 +200,137 @@ class StreamSessionManager:
                 self._msg_index.pop(msg_id, None)
 
 
-async def download_encrypted_file(download_url: str, encoding_aes_key: str, logger: EventLogger) -> Optional[str]:
-    """Download an AES-encrypted file from WeChat Work and return as data URI.
+def _decrypt_file(encrypted_data: bytes, aes_key_str: str) -> bytes:
+    """Decrypt AES-256-CBC encrypted file data.
+
+    Aligned with the official WeCom AI Bot Python SDK (crypto_utils.py).
 
     Args:
-        download_url: The encrypted file download URL.
-        encoding_aes_key: The AES key used for decryption (base64-encoded, without trailing '=').
-        logger: Logger instance.
+        encrypted_data: The raw encrypted bytes.
+        aes_key_str: Base64-encoded AES key (may lack padding).
 
     Returns:
-        A data URI string (e.g. 'data:image/jpeg;base64,...') or None on failure.
+        Decrypted bytes with PKCS#7 padding removed.
     """
-    if not download_url:
-        return None
-    async with httpx.AsyncClient() as client:
-        response = await client.get(download_url)
-        if response.status_code != 200:
-            await logger.error(f'failed to get file: {response.text}')
-            return None
-        encrypted_bytes = response.content
+    if not encrypted_data:
+        raise ValueError('encrypted_data is empty')
+    if not aes_key_str:
+        raise ValueError('aes_key is empty')
 
-    aes_key = base64.b64decode(encoding_aes_key + '=')
-    iv = aes_key[:16]
+    # Python's base64.b64decode requires proper padding (length % 4 == 0).
+    # Node.js Buffer.from tolerates missing '=', so we must pad manually.
+    remainder = len(aes_key_str) % 4
+    if remainder != 0:
+        aes_key_str = aes_key_str + '=' * (4 - remainder)
+    key = base64.b64decode(aes_key_str)
 
-    cipher = AES.new(aes_key, AES.MODE_CBC, iv)
-    decrypted = cipher.decrypt(encrypted_bytes)
+    iv = key[:16]
+
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+
+    # Ensure encrypted data is aligned to AES block size (16 bytes).
+    # Node.js setAutoPadding(false) silently handles unaligned data,
+    # but PyCryptodome will raise an error.
+    block_size = 16
+    data_remainder = len(encrypted_data) % block_size
+    if data_remainder != 0:
+        encrypted_data = encrypted_data + b'\x00' * (block_size - data_remainder)
+
+    decrypted = cipher.decrypt(encrypted_data)
+
+    # Remove PKCS#7 padding with validation
+    if len(decrypted) == 0:
+        raise ValueError('Decrypted data is empty')
 
     pad_len = decrypted[-1]
-    decrypted = decrypted[:-pad_len]
+    if pad_len < 1 or pad_len > 32 or pad_len > len(decrypted):
+        raise ValueError(f'Invalid PKCS#7 padding value: {pad_len}')
 
-    if decrypted.startswith(b'\xff\xd8'):
+    # Verify all padding bytes are consistent
+    for i in range(len(decrypted) - pad_len, len(decrypted)):
+        if decrypted[i] != pad_len:
+            raise ValueError('Invalid PKCS#7 padding: padding bytes mismatch')
+
+    return decrypted[: len(decrypted) - pad_len]
+
+
+def _extract_filename(content_disposition: str) -> Optional[str]:
+    """Extract filename from a Content-Disposition header value."""
+    if not content_disposition:
+        return None
+    # RFC 5987: filename*=UTF-8''xxx
+    utf8_match = re.search(r"filename\*=UTF-8''([^;\s]+)", content_disposition, re.IGNORECASE)
+    if utf8_match:
+        return unquote(utf8_match.group(1))
+    # Standard: filename="xxx" or filename=xxx
+    match = re.search(r'filename="?([^";\s]+)"?', content_disposition, re.IGNORECASE)
+    if match:
+        return unquote(match.group(1))
+    return None
+
+
+def _bytes_to_data_uri(data: bytes) -> str:
+    """Convert raw bytes to a data URI with auto-detected MIME type."""
+    if data.startswith(b'\xff\xd8'):
         mime_type = 'image/jpeg'
-    elif decrypted.startswith(b'\x89PNG'):
+    elif data.startswith(b'\x89PNG'):
         mime_type = 'image/png'
-    elif decrypted.startswith((b'GIF87a', b'GIF89a')):
+    elif data.startswith((b'GIF87a', b'GIF89a')):
         mime_type = 'image/gif'
-    elif decrypted.startswith(b'BM'):
+    elif data.startswith(b'BM'):
         mime_type = 'image/bmp'
-    elif decrypted.startswith(b'II*\x00') or decrypted.startswith(b'MM\x00*'):
+    elif data.startswith(b'II*\x00') or data.startswith(b'MM\x00*'):
         mime_type = 'image/tiff'
+    elif data[:4] == b'%PDF':
+        mime_type = 'application/pdf'
+    elif data[:4] == b'PK\x03\x04':
+        mime_type = 'application/zip'
     else:
         mime_type = 'application/octet-stream'
 
-    base64_str = base64.b64encode(decrypted).decode('utf-8')
+    base64_str = base64.b64encode(data).decode('utf-8')
     return f'data:{mime_type};base64,{base64_str}'
+
+
+async def download_encrypted_file(
+    download_url: str, aes_key: str, logger: EventLogger
+) -> Tuple[Optional[bytes], Optional[str]]:
+    """Download an AES-encrypted file from WeChat Work and decrypt it.
+
+    Args:
+        download_url: The encrypted file download URL.
+        aes_key: The AES key for decryption (base64-encoded, per-message aeskey
+                 or platform EncodingAESKey).
+        logger: Logger instance.
+
+    Returns:
+        A tuple of (decrypted_bytes, filename) or (None, None) on failure.
+    """
+    if not download_url:
+        return None, None
+    if not aes_key:
+        await logger.error('download_encrypted_file: aes_key is empty, cannot decrypt')
+        return None, None
+
+    filename: Optional[str] = None
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(download_url)
+            if response.status_code != 200:
+                await logger.error(f'Failed to download file (HTTP {response.status_code}): {response.text[:200]}')
+                return None, None
+            encrypted_bytes = response.content
+            filename = _extract_filename(response.headers.get('content-disposition', ''))
+    except Exception:
+        await logger.error(f'Failed to download file: {traceback.format_exc()}')
+        return None, None
+
+    try:
+        decrypted = _decrypt_file(encrypted_bytes, aes_key)
+        return decrypted, filename
+    except Exception:
+        await logger.error(f'Failed to decrypt file: {traceback.format_exc()}')
+        return None, None
 
 
 async def parse_wecom_bot_message(
@@ -273,10 +361,22 @@ async def parse_wecom_bot_message(
 
     max_inline_file_size = 5 * 1024 * 1024
 
-    async def _safe_download(url: str):
+    async def _safe_download(url: str, per_msg_aeskey: str = '') -> Tuple[Optional[bytes], Optional[str]]:
+        """Download and decrypt a file, preferring per-message aeskey over platform key."""
         if not url:
-            return None
-        return await download_encrypted_file(url, encoding_aes_key, logger)
+            return None, None
+        key = per_msg_aeskey or encoding_aes_key
+        if not key:
+            await logger.warning('No AES key available for file decryption, skipping download')
+            return None, None
+        return await download_encrypted_file(url, key, logger)
+
+    async def _safe_download_as_data_uri(url: str, per_msg_aeskey: str = '') -> Optional[str]:
+        """Download, decrypt, and convert to data URI for backward compatibility."""
+        data, _filename = await _safe_download(url, per_msg_aeskey)
+        if data:
+            return _bytes_to_data_uri(data)
+        return None
 
     if msg_type == 'text':
         message_data['content'] = msg_json.get('text', {}).get('content')
@@ -285,14 +385,17 @@ async def parse_wecom_bot_message(
             'content', ''
         )
     elif msg_type == 'image':
-        picurl = msg_json.get('image', {}).get('url', '')
-        base64_data = await _safe_download(picurl)
+        image_info = msg_json.get('image', {})
+        picurl = image_info.get('url', '')
+        per_msg_aeskey = image_info.get('aeskey', '')
+        base64_data = await _safe_download_as_data_uri(picurl, per_msg_aeskey)
         if base64_data:
             message_data['picurl'] = base64_data
             message_data['images'] = [base64_data]
     elif msg_type == 'voice':
         voice_info = msg_json.get('voice', {}) or {}
         download_url = voice_info.get('url')
+        per_msg_aeskey = voice_info.get('aeskey', '')
         message_data['voice'] = {
             'url': download_url,
             'md5sum': voice_info.get('md5sum') or voice_info.get('md5'),
@@ -302,12 +405,13 @@ async def parse_wecom_bot_message(
         if voice_info.get('content'):
             message_data['content'] = voice_info.get('content')
         if (message_data['voice'].get('filesize') or 0) <= max_inline_file_size:
-            voice_base64 = await _safe_download(download_url)
+            voice_base64 = await _safe_download_as_data_uri(download_url, per_msg_aeskey)
             if voice_base64:
                 message_data['voice']['base64'] = voice_base64
     elif msg_type == 'video':
         video_info = msg_json.get('video', {}) or {}
         download_url = video_info.get('url')
+        per_msg_aeskey = video_info.get('aeskey', '')
         video_data = {
             'url': download_url,
             'filesize': video_info.get('filesize') or video_info.get('size'),
@@ -316,13 +420,14 @@ async def parse_wecom_bot_message(
             'filename': video_info.get('filename') or video_info.get('name'),
         }
         if (video_data.get('filesize') or 0) <= max_inline_file_size:
-            video_base64 = await _safe_download(download_url)
+            video_base64 = await _safe_download_as_data_uri(download_url, per_msg_aeskey)
             if video_base64:
                 video_data['base64'] = video_base64
         message_data['video'] = video_data
     elif msg_type == 'file':
         file_info = msg_json.get('file', {}) or {}
         download_url = file_info.get('url') or file_info.get('fileurl')
+        per_msg_aeskey = file_info.get('aeskey', '')
         file_data = {
             'filename': file_info.get('filename') or file_info.get('name'),
             'filesize': file_info.get('filesize') or file_info.get('size'),
@@ -332,9 +437,11 @@ async def parse_wecom_bot_message(
             'extra': file_info,
         }
         if (file_data.get('filesize') or 0) <= max_inline_file_size:
-            file_base64 = await _safe_download(download_url)
-            if file_base64:
-                file_data['base64'] = file_base64
+            file_bytes, dl_filename = await _safe_download(download_url, per_msg_aeskey)
+            if file_bytes:
+                file_data['base64'] = _bytes_to_data_uri(file_bytes)
+                if dl_filename and not file_data.get('filename'):
+                    file_data['filename'] = dl_filename
         message_data['file'] = file_data
     elif msg_type == 'link':
         message_data['link'] = msg_json.get('link', {})
@@ -355,13 +462,16 @@ async def parse_wecom_bot_message(
             if item_type == 'text':
                 texts.append(item.get('text', {}).get('content', ''))
             elif item_type == 'image':
-                img_url = item.get('image', {}).get('url')
-                base64_data = await _safe_download(img_url)
+                img_info = item.get('image', {})
+                img_url = img_info.get('url')
+                img_aeskey = img_info.get('aeskey', '')
+                base64_data = await _safe_download_as_data_uri(img_url, img_aeskey)
                 if base64_data:
                     images.append(base64_data)
             elif item_type == 'file':
                 file_info = item.get('file', {}) or {}
                 download_url = file_info.get('url') or file_info.get('fileurl')
+                item_aeskey = file_info.get('aeskey', '')
                 file_data = {
                     'filename': file_info.get('filename') or file_info.get('name'),
                     'filesize': file_info.get('filesize') or file_info.get('size'),
@@ -371,13 +481,16 @@ async def parse_wecom_bot_message(
                     'extra': file_info,
                 }
                 if (file_data.get('filesize') or 0) <= max_inline_file_size:
-                    file_base64 = await _safe_download(download_url)
-                    if file_base64:
-                        file_data['base64'] = file_base64
+                    file_bytes, dl_filename = await _safe_download(download_url, item_aeskey)
+                    if file_bytes:
+                        file_data['base64'] = _bytes_to_data_uri(file_bytes)
+                        if dl_filename and not file_data.get('filename'):
+                            file_data['filename'] = dl_filename
                 files.append(file_data)
             elif item_type == 'voice':
                 voice_info = item.get('voice', {}) or {}
                 download_url = voice_info.get('url')
+                item_aeskey = voice_info.get('aeskey', '')
                 voice_data = {
                     'url': download_url,
                     'md5sum': voice_info.get('md5sum') or voice_info.get('md5'),
@@ -387,13 +500,14 @@ async def parse_wecom_bot_message(
                 if voice_info.get('content'):
                     texts.append(voice_info.get('content'))
                 if (voice_data.get('filesize') or 0) <= max_inline_file_size:
-                    voice_base64 = await _safe_download(download_url)
+                    voice_base64 = await _safe_download_as_data_uri(download_url, item_aeskey)
                     if voice_base64:
                         voice_data['base64'] = voice_base64
                 voices.append(voice_data)
             elif item_type == 'video':
                 video_info = item.get('video', {}) or {}
                 download_url = video_info.get('url')
+                item_aeskey = video_info.get('aeskey', '')
                 video_data = {
                     'url': download_url,
                     'filesize': video_info.get('filesize') or video_info.get('size'),
@@ -402,7 +516,7 @@ async def parse_wecom_bot_message(
                     'filename': video_info.get('filename') or video_info.get('name'),
                 }
                 if (video_data.get('filesize') or 0) <= max_inline_file_size:
-                    video_base64 = await _safe_download(download_url)
+                    video_base64 = await _safe_download_as_data_uri(download_url, item_aeskey)
                     if video_base64:
                         video_data['base64'] = video_base64
                 videos.append(video_data)
@@ -770,7 +884,10 @@ class WecomBotClient:
         return decorator
 
     async def download_url_to_base64(self, download_url, encoding_aes_key):
-        return await download_encrypted_file(download_url, encoding_aes_key, self.logger)
+        data, _filename = await download_encrypted_file(download_url, encoding_aes_key, self.logger)
+        if data:
+            return _bytes_to_data_uri(data)
+        return None
 
     async def run_task(self, host: str, port: int, *args, **kwargs):
         """

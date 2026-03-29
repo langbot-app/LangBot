@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -46,9 +47,24 @@ function MarketPageContent({
   installPlugin: (plugin: PluginV4) => void;
 }) {
   const { t } = useTranslation();
+  const searchParams = useSearchParams();
+
+  const validCategories = [
+    'Tool',
+    'Command',
+    'EventListener',
+    'KnowledgeEngine',
+    'Parser',
+  ];
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [componentFilter, setComponentFilter] = useState<string>('all');
+  const [componentFilter, setComponentFilter] = useState<string>(() => {
+    const category = searchParams.get('category');
+    if (category && validCategories.includes(category)) {
+      return category;
+    }
+    return 'all';
+  });
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [availableTags, setAvailableTags] = useState<PluginTag[]>([]);
   const [tagNames, setTagNames] = useState<Record<string, string>>({});
@@ -66,6 +82,7 @@ function MarketPageContent({
   const pageSize = 12; // 每页12个
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const isComposingRef = useRef(false);
 
   // 排序选项
   const sortOptions: SortOption[] = [
@@ -151,7 +168,15 @@ function MarketPageContent({
           );
 
         const data: ApiRespMarketplacePlugins = response;
-        const newPlugins = data.plugins.map(transformToVO);
+        const newPlugins = data.plugins
+          .filter((plugin) => {
+            // Hide plugins that only contain deprecated KnowledgeRetriever components
+            const keys = Object.keys(plugin.components || {});
+            return !(
+              keys.length > 0 && keys.every((k) => k === 'KnowledgeRetriever')
+            );
+          })
+          .map(transformToVO);
         const total = data.total;
 
         if (reset || page === 1) {
@@ -250,10 +275,14 @@ function MarketPageContent({
         clearTimeout(searchTimeoutRef.current);
       }
 
+      if (isComposingRef.current) {
+        return;
+      }
+
       // 设置新的定时器
       searchTimeoutRef.current = setTimeout(() => {
         handleSearch(value);
-      }, 300);
+      }, 500);
     },
     [handleSearch],
   );
@@ -271,6 +300,18 @@ function MarketPageContent({
     setComponentFilter(value);
     setCurrentPage(1);
     setPlugins([]);
+
+    // Update URL query param to keep it in sync
+    const params = new URLSearchParams(window.location.search);
+    if (value === 'all') {
+      params.delete('category');
+    } else {
+      params.set('category', value);
+    }
+    const newUrl = params.toString()
+      ? `${window.location.pathname}?${params.toString()}`
+      : window.location.pathname;
+    window.history.replaceState({}, '', newUrl);
     // fetchPlugins will be called by useEffect when componentFilter changes
   }, []);
 
@@ -398,6 +439,13 @@ function MarketPageContent({
               placeholder={t('market.searchPlaceholder')}
               value={searchQuery}
               onChange={(e) => handleSearchInputChange(e.target.value)}
+              onCompositionStart={() => {
+                isComposingRef.current = true;
+              }}
+              onCompositionEnd={(e) => {
+                isComposingRef.current = false;
+                handleSearchInputChange((e.target as HTMLInputElement).value);
+              }}
               onKeyPress={(e) => {
                 if (e.key === 'Enter') {
                   // Immediately search, clear debounce timer
@@ -422,68 +470,70 @@ function MarketPageContent({
         {/* Component filter and sort */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 px-3 sm:px-4">
           {/* Component filter */}
-          <div className="flex flex-col sm:flex-row items-center gap-2">
+          <div className="flex flex-col sm:flex-row items-center gap-2 min-w-0 max-w-full">
             <span className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">
               {t('market.filterByComponent')}:
             </span>
-            <ToggleGroup
-              type="single"
-              spacing={2}
-              size="sm"
-              value={componentFilter}
-              onValueChange={(value) => {
-                if (value) handleComponentFilterChange(value);
-              }}
-              className="justify-start"
-            >
-              <ToggleGroupItem
-                value="all"
-                aria-label="All components"
-                className="text-xs sm:text-sm cursor-pointer"
+            <div className="overflow-x-auto max-w-full [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              <ToggleGroup
+                type="single"
+                spacing={2}
+                size="sm"
+                value={componentFilter}
+                onValueChange={(value) => {
+                  if (value) handleComponentFilterChange(value);
+                }}
+                className="justify-start flex-nowrap"
               >
-                {t('market.allComponents')}
-              </ToggleGroupItem>
-              <ToggleGroupItem
-                value="Tool"
-                aria-label="Tool"
-                className="text-xs sm:text-sm cursor-pointer"
-              >
-                <Wrench className="h-4 w-4 mr-1" />
-                {t('plugins.componentName.Tool')}
-              </ToggleGroupItem>
-              <ToggleGroupItem
-                value="Command"
-                aria-label="Command"
-                className="text-xs sm:text-sm cursor-pointer"
-              >
-                <Hash className="h-4 w-4 mr-1" />
-                {t('plugins.componentName.Command')}
-              </ToggleGroupItem>
-              <ToggleGroupItem
-                value="EventListener"
-                aria-label="EventListener"
-                className="text-xs sm:text-sm cursor-pointer"
-              >
-                <AudioWaveform className="h-4 w-4 mr-1" />
-                {t('plugins.componentName.EventListener')}
-              </ToggleGroupItem>
-              <ToggleGroupItem
-                value="KnowledgeEngine"
-                aria-label="KnowledgeEngine"
-                className="text-xs sm:text-sm cursor-pointer"
-              >
-                <Book className="h-4 w-4 mr-1" />
-                {t('plugins.componentName.KnowledgeEngine')}
-              </ToggleGroupItem>
-              <ToggleGroupItem
-                value="Parser"
-                aria-label="Parser"
-                className="text-xs sm:text-sm cursor-pointer"
-              >
-                <FileText className="h-4 w-4 mr-1" />
-                {t('plugins.componentName.Parser')}
-              </ToggleGroupItem>
-            </ToggleGroup>
+                <ToggleGroupItem
+                  value="all"
+                  aria-label="All components"
+                  className="text-xs sm:text-sm cursor-pointer"
+                >
+                  {t('market.allComponents')}
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="Tool"
+                  aria-label="Tool"
+                  className="text-xs sm:text-sm cursor-pointer"
+                >
+                  <Wrench className="h-4 w-4 mr-1" />
+                  {t('plugins.componentName.Tool')}
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="Command"
+                  aria-label="Command"
+                  className="text-xs sm:text-sm cursor-pointer"
+                >
+                  <Hash className="h-4 w-4 mr-1" />
+                  {t('plugins.componentName.Command')}
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="EventListener"
+                  aria-label="EventListener"
+                  className="text-xs sm:text-sm cursor-pointer"
+                >
+                  <AudioWaveform className="h-4 w-4 mr-1" />
+                  {t('plugins.componentName.EventListener')}
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="KnowledgeEngine"
+                  aria-label="KnowledgeEngine"
+                  className="text-xs sm:text-sm cursor-pointer"
+                >
+                  <Book className="h-4 w-4 mr-1" />
+                  {t('plugins.componentName.KnowledgeEngine')}
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="Parser"
+                  aria-label="Parser"
+                  className="text-xs sm:text-sm cursor-pointer"
+                >
+                  <FileText className="h-4 w-4 mr-1" />
+                  {t('plugins.componentName.Parser')}
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
           </div>
 
           {/* Sort dropdown */}
@@ -539,10 +589,17 @@ function MarketPageContent({
             <LoadingSpinner text={t('market.loading')} />
           </div>
         ) : plugins.length === 0 ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="text-muted-foreground">
-              {searchQuery ? t('market.noResults') : t('market.noPlugins')}
-            </div>
+          <div className="text-center text-muted-foreground py-12">
+            {searchQuery ? t('market.noResults') : t('market.noPlugins')}
+            {' · '}
+            <a
+              href="https://github.com/langbot-app/langbot-plugin-demo/issues/new?template=plugin-request.yml"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+            >
+              {t('market.requestPlugin')}
+            </a>
           </div>
         ) : (
           <>

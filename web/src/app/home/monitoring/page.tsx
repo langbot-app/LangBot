@@ -188,11 +188,11 @@ function MonitoringPageContent() {
   };
 
   return (
-    <div className="w-full h-full">
+    <div className="w-full h-full overflow-y-auto overflow-x-hidden">
       {/* Filters and Refresh Button - Sticky */}
-      <div className="sticky top-[-1.5rem] z-10 -ml-[2rem] -mr-[1.5rem] -mt-[1.5rem] pt-[1.5rem] pb-4 bg-[#fafafa] dark:bg-[#151518]">
+      <div className="sticky top-[-1.5rem] z-10 -ml-[2rem] -mr-[1.5rem] -mt-[1.5rem] pt-[1.5rem] pb-4 bg-background">
         <div className="ml-[2rem] mr-[1.5rem] px-[0.8rem]">
-          <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-white dark:bg-[#2a2a2e] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-card rounded-xl border">
             <MonitoringFilters
               selectedBots={filterState.selectedBots}
               selectedPipelines={filterState.selectedPipelines}
@@ -207,7 +207,7 @@ function MonitoringPageContent() {
                 variant="outline"
                 size="sm"
                 onClick={refetch}
-                className="bg-white dark:bg-[#2a2a2e] hover:bg-gray-50 dark:hover:bg-gray-800 border-gray-300 dark:border-gray-600 shadow-sm flex-shrink-0"
+                className="shadow-sm flex-shrink-0"
               >
                 <svg
                   className="w-4 h-4 mr-2"
@@ -235,30 +235,21 @@ function MonitoringPageContent() {
         />
 
         {/* Tabs Section */}
-        <div className="bg-white dark:bg-[#2a2a2e] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+        <div className="bg-card rounded-xl border overflow-hidden">
           <Tabs
             value={activeTab}
             onValueChange={setActiveTab}
             className="w-full"
           >
             <div className="px-6 pt-4">
-              <TabsList className="bg-gray-100 dark:bg-[#1a1a1e] h-12 p-1">
-                <TabsTrigger
-                  value="messages"
-                  className="px-6 py-2 text-sm font-medium cursor-pointer data-[state=active]:bg-white dark:data-[state=active]:bg-[#2a2a2e] data-[state=active]:shadow-sm"
-                >
+              <TabsList className="h-12 p-1">
+                <TabsTrigger value="messages" className="px-6 py-2">
                   {t('monitoring.tabs.messages')}
                 </TabsTrigger>
-                <TabsTrigger
-                  value="modelCalls"
-                  className="px-6 py-2 text-sm font-medium cursor-pointer data-[state=active]:bg-white dark:data-[state=active]:bg-[#2a2a2e] data-[state=active]:shadow-sm"
-                >
+                <TabsTrigger value="modelCalls" className="px-6 py-2">
                   {t('monitoring.tabs.modelCalls')}
                 </TabsTrigger>
-                <TabsTrigger
-                  value="errors"
-                  className="px-6 py-2 text-sm font-medium cursor-pointer data-[state=active]:bg-white dark:data-[state=active]:bg-[#2a2a2e] data-[state=active]:shadow-sm"
-                >
+                <TabsTrigger value="errors" className="px-6 py-2">
                   {t('monitoring.tabs.errors')}
                 </TabsTrigger>
               </TabsList>
@@ -290,11 +281,11 @@ function MonitoringPageContent() {
                         .map((msg) => (
                           <div
                             key={msg.id}
-                            className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden hover:shadow-md transition-all duration-200"
+                            className="border rounded-xl overflow-hidden transition-all duration-200"
                           >
                             {/* Message Header - Always Visible */}
                             <div
-                              className="p-5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                              className="p-5 cursor-pointer hover:bg-accent transition-colors"
                               onClick={() => toggleMessageExpand(msg.id)}
                             >
                               <div className="flex items-start justify-between">
@@ -302,39 +293,41 @@ function MonitoringPageContent() {
                                   {/* Expand Icon */}
                                   <div className="mr-3 mt-0.5">
                                     {expandedMessageId === msg.id ? (
-                                      <ChevronDown className="w-5 h-5 text-gray-500" />
+                                      <ChevronDown className="w-5 h-5 text-muted-foreground" />
                                     ) : (
-                                      <ChevronRight className="w-5 h-5 text-gray-500" />
+                                      <ChevronRight className="w-5 h-5 text-muted-foreground" />
                                     )}
                                   </div>
 
                                   {/* Message Info */}
                                   <div className="flex-1">
                                     <div className="flex items-center gap-2 mb-1">
-                                      <span className="text-xs text-gray-400 dark:text-gray-500 font-mono">
+                                      <span className="text-xs text-muted-foreground font-mono">
                                         ID: {msg.id}
                                       </span>
                                     </div>
                                     <div className="flex items-center gap-2 mb-2">
-                                      <span className="font-medium text-sm text-gray-700 dark:text-gray-300">
+                                      <span className="font-medium text-sm text-foreground">
                                         {msg.botName}
                                       </span>
-                                      <span className="text-gray-400">→</span>
-                                      <span className="text-sm text-gray-600 dark:text-gray-400">
+                                      <span className="text-muted-foreground">
+                                        →
+                                      </span>
+                                      <span className="text-sm text-muted-foreground">
                                         {msg.pipelineName}
                                       </span>
                                       {msg.runnerName && (
                                         <>
-                                          <span className="text-gray-400">
+                                          <span className="text-muted-foreground">
                                             →
                                           </span>
-                                          <span className="text-sm text-gray-600 dark:text-gray-400">
+                                          <span className="text-sm text-muted-foreground">
                                             {msg.runnerName}
                                           </span>
                                         </>
                                       )}
                                     </div>
-                                    <div className="text-base text-gray-800 dark:text-gray-200">
+                                    <div className="text-base text-foreground">
                                       <MessageContentRenderer
                                         content={msg.messageContent}
                                         maxLines={3}
@@ -345,7 +338,7 @@ function MonitoringPageContent() {
 
                                 {/* Status and Timestamp */}
                                 <div className="flex flex-col items-end gap-2 ml-4">
-                                  <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                                  <span className="text-xs text-muted-foreground whitespace-nowrap">
                                     {msg.timestamp.toLocaleString()}
                                   </span>
                                   <span
@@ -365,7 +358,7 @@ function MonitoringPageContent() {
 
                             {/* Expanded Details */}
                             {expandedMessageId === msg.id && (
-                              <div className="border-t border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-900">
+                              <div className="border-t p-4 bg-muted">
                                 {loadingDetails[msg.id] && (
                                   <div className="py-4 flex justify-center">
                                     <LoadingSpinner size="sm" text="" />
@@ -386,26 +379,18 @@ function MonitoringPageContent() {
 
                 {!loading &&
                   (!data || !data.messages || data.messages.length === 0) && (
-                    <div className="text-center text-gray-500 dark:text-gray-400 py-16">
+                    <div className="flex flex-col items-center justify-center text-muted-foreground py-16 gap-2">
                       <svg
-                        className="w-16 h-16 mx-auto mb-4 text-gray-300 dark:text-gray-600"
-                        fill="none"
+                        className="h-[3rem] w-[3rem]"
+                        xmlns="http://www.w3.org/2000/svg"
                         viewBox="0 0 24 24"
-                        stroke="currentColor"
+                        fill="currentColor"
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={1.5}
-                          d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
-                        />
+                        <path d="M6.45455 19L2 22.5V4C2 3.44772 2.44772 3 3 3H21C21.5523 3 22 3.44772 22 4V18C22 18.5523 21.5523 19 21 19H6.45455ZM4 18.3851L5.76282 17H20V5H4V18.3851Z"></path>
                       </svg>
-                      <p className="text-base font-medium mb-2">
+                      <div className="text-sm">
                         {t('monitoring.messageList.noMessages')}
-                      </p>
-                      <p className="text-sm">
-                        {t('monitoring.messageList.noMessagesDescription')}
-                      </p>
+                      </div>
                     </div>
                   )}
               </div>
@@ -427,14 +412,14 @@ function MonitoringPageContent() {
                       {data.modelCalls.map((call) => (
                         <div
                           key={call.id}
-                          className="border border-gray-200 dark:border-gray-700 rounded-xl p-5 hover:shadow-md transition-all duration-200"
+                          className="border rounded-xl p-5 transition-all duration-200"
                         >
                           <div className="flex justify-between items-start mb-3">
                             <div className="flex-1">
                               {/* Query ID - only show if messageId exists */}
                               {call.messageId && (
                                 <div className="flex items-center gap-2 mb-1">
-                                  <span className="text-xs text-gray-400 dark:text-gray-500 font-mono">
+                                  <span className="text-xs text-muted-foreground font-mono">
                                     Query ID: {call.messageId}
                                   </span>
                                   <Button
@@ -496,19 +481,19 @@ function MonitoringPageContent() {
                                 </span>
                               </div>
                               {/* Model Name */}
-                              <div className="font-medium text-sm text-gray-700 dark:text-gray-300 mb-2">
+                              <div className="font-medium text-sm text-foreground mb-2">
                                 {call.modelName}
                               </div>
                               {/* Context Info - only for LLM calls */}
                               {call.modelType === 'llm' &&
                                 call.botName &&
                                 call.pipelineName && (
-                                  <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">
+                                  <div className="text-xs text-muted-foreground mb-1">
                                     {call.botName} → {call.pipelineName}
                                   </div>
                                 )}
                               {/* Token Info */}
-                              <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+                              <div className="text-xs text-muted-foreground space-y-1">
                                 <div className="flex flex-wrap gap-4">
                                   {call.modelType === 'llm' && call.tokens && (
                                     <>
@@ -572,14 +557,14 @@ function MonitoringPageContent() {
                                 {/* Query Text for Embedding Retrieve */}
                                 {call.modelType === 'embedding' &&
                                   call.queryText && (
-                                    <div className="mt-2 p-2 bg-gray-50 dark:bg-gray-800 rounded text-sm">
-                                      <span className="text-gray-500 dark:text-gray-400">
+                                    <div className="mt-2 p-2 bg-muted rounded text-sm">
+                                      <span className="text-muted-foreground">
                                         {t(
                                           'monitoring.embeddingCalls.queryText',
                                         )}
                                         :{' '}
                                       </span>
-                                      <span className="text-gray-700 dark:text-gray-300">
+                                      <span className="text-foreground">
                                         {call.queryText.length > 100
                                           ? call.queryText.substring(0, 100) +
                                             '...'
@@ -594,7 +579,7 @@ function MonitoringPageContent() {
                                 </div>
                               )}
                             </div>
-                            <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap ml-4">
+                            <span className="text-xs text-muted-foreground whitespace-nowrap ml-4">
                               {call.timestamp.toLocaleString()}
                             </span>
                           </div>
@@ -607,23 +592,18 @@ function MonitoringPageContent() {
                   (!data ||
                     !data.modelCalls ||
                     data.modelCalls.length === 0) && (
-                    <div className="text-center text-gray-500 dark:text-gray-400 py-16">
+                    <div className="flex flex-col items-center justify-center text-muted-foreground py-16 gap-2">
                       <svg
-                        className="w-16 h-16 mx-auto mb-4 text-gray-300 dark:text-gray-600"
-                        fill="none"
+                        className="h-[3rem] w-[3rem]"
+                        xmlns="http://www.w3.org/2000/svg"
                         viewBox="0 0 24 24"
-                        stroke="currentColor"
+                        fill="currentColor"
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={1.5}
-                          d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                        />
+                        <path d="M10.6144 17.7956C10.277 18.5682 9.20776 18.5682 8.8704 17.7956L7.99275 15.7854C7.21171 13.9966 5.80589 12.5726 4.0523 11.7942L1.63658 10.7219C.868536 10.381.868537 9.26368 1.63658 8.92276L3.97685 7.88394C5.77553 7.08552 7.20657 5.60881 7.97427 3.75892L8.8633 1.61673C9.19319.821767 10.2916.821765 10.6215 1.61673L11.5105 3.75894C12.2782 5.60881 13.7092 7.08552 15.5079 7.88394L17.8482 8.92276C18.6162 9.26368 18.6162 10.381 17.8482 10.7219L15.4325 11.7942C13.6789 12.5726 12.2731 13.9966 11.492 15.7854L10.6144 17.7956ZM19.4014 22.6899 19.6482 22.1242C20.0882 21.1156 20.8807 20.3125 21.8695 19.8732L22.6299 19.5353C23.0412 19.3526 23.0412 18.7549 22.6299 18.5722L21.9121 18.2532C20.8978 17.8026 20.0911 16.9698 19.6586 15.9269L19.4052 15.3156C19.2285 14.8896 18.6395 14.8896 18.4628 15.3156L18.2094 15.9269C17.777 16.9698 16.9703 17.8026 15.956 18.2532L15.2381 18.5722C14.8269 18.7549 14.8269 19.3526 15.2381 19.5353L15.9985 19.8732C16.9874 20.3125 17.7798 21.1156 18.2198 22.1242L18.4667 22.6899C18.6473 23.104 19.2207 23.104 19.4014 22.6899Z"></path>
                       </svg>
-                      <p className="text-base font-medium">
+                      <div className="text-sm">
                         {t('monitoring.modelCalls.noData')}
-                      </p>
+                      </div>
                     </div>
                   )}
               </div>
@@ -642,7 +622,7 @@ function MonitoringPageContent() {
                     {data.errors.map((error) => (
                       <div
                         key={error.id}
-                        className="border border-red-200 dark:border-red-900 rounded-xl overflow-hidden hover:shadow-md transition-all duration-200"
+                        className="border border-red-200 dark:border-red-900 rounded-xl overflow-hidden transition-all duration-200"
                       >
                         {/* Error Header - Always Visible */}
                         <div
@@ -664,7 +644,7 @@ function MonitoringPageContent() {
                               <div className="flex-1">
                                 {/* Query ID */}
                                 <div className="flex items-center gap-2 mb-1">
-                                  <span className="text-xs text-gray-400 dark:text-gray-500 font-mono">
+                                  <span className="text-xs text-muted-foreground font-mono">
                                     Query ID: {error.messageId || '-'}
                                   </span>
                                   {error.messageId && (
@@ -689,11 +669,11 @@ function MonitoringPageContent() {
                                     {error.errorType}
                                   </span>
                                   <span className="text-red-400">→</span>
-                                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                                  <span className="text-sm text-muted-foreground">
                                     {error.botName}
                                   </span>
                                   <span className="text-red-400">→</span>
-                                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                                  <span className="text-sm text-muted-foreground">
                                     {error.pipelineName}
                                   </span>
                                 </div>
@@ -705,7 +685,7 @@ function MonitoringPageContent() {
 
                             {/* Timestamp */}
                             <div className="flex flex-col items-end gap-2 ml-4">
-                              <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                              <span className="text-xs text-muted-foreground whitespace-nowrap">
                                 {error.timestamp.toLocaleString()}
                               </span>
                             </div>
@@ -714,7 +694,7 @@ function MonitoringPageContent() {
 
                         {/* Expanded Details */}
                         {expandedErrorId === error.id && (
-                          <div className="border-t border-red-200 dark:border-red-900 p-5 bg-white dark:bg-gray-900">
+                          <div className="border-t border-red-200 dark:border-red-900 p-5 bg-background">
                             <div className="space-y-4 pl-8 border-l-2 border-red-300 dark:border-red-800 ml-4">
                               {/* Error Details */}
                               <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3">
@@ -727,33 +707,33 @@ function MonitoringPageContent() {
                               </div>
 
                               {/* Context Info */}
-                              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
-                                <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
+                              <div className="bg-muted rounded-lg p-3">
+                                <h4 className="text-sm font-semibold text-foreground mb-3">
                                   {t('monitoring.messageList.viewDetails')}
                                 </h4>
                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
-                                  <div className="bg-white dark:bg-gray-900 rounded p-2">
-                                    <div className="text-gray-500 dark:text-gray-400">
+                                  <div className="bg-background rounded p-2">
+                                    <div className="text-muted-foreground">
                                       {t('monitoring.messageList.bot')}
                                     </div>
-                                    <div className="font-medium text-gray-900 dark:text-white">
+                                    <div className="font-medium text-foreground">
                                       {error.botName}
                                     </div>
                                   </div>
-                                  <div className="bg-white dark:bg-gray-900 rounded p-2">
-                                    <div className="text-gray-500 dark:text-gray-400">
+                                  <div className="bg-background rounded p-2">
+                                    <div className="text-muted-foreground">
                                       {t('monitoring.messageList.pipeline')}
                                     </div>
-                                    <div className="font-medium text-gray-900 dark:text-white">
+                                    <div className="font-medium text-foreground">
                                       {error.pipelineName}
                                     </div>
                                   </div>
                                   {error.sessionId && (
-                                    <div className="bg-white dark:bg-gray-900 rounded p-2">
-                                      <div className="text-gray-500 dark:text-gray-400">
+                                    <div className="bg-background rounded p-2">
+                                      <div className="text-muted-foreground">
                                         {t('monitoring.sessions.sessionId')}
                                       </div>
-                                      <div className="font-medium text-gray-900 dark:text-white truncate">
+                                      <div className="font-medium text-foreground truncate">
                                         {error.sessionId}
                                       </div>
                                     </div>
@@ -763,11 +743,11 @@ function MonitoringPageContent() {
 
                               {/* Stack Trace */}
                               {error.stackTrace && (
-                                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
-                                  <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
+                                <div className="bg-muted rounded-lg p-3">
+                                  <h4 className="text-sm font-semibold text-foreground mb-3">
                                     {t('monitoring.errors.stackTrace')}
                                   </h4>
-                                  <pre className="text-xs text-gray-600 dark:text-gray-400 overflow-auto max-h-60 bg-white dark:bg-gray-900 p-3 rounded whitespace-pre-wrap break-words">
+                                  <pre className="text-xs text-muted-foreground overflow-auto max-h-60 bg-background p-3 rounded whitespace-pre-wrap break-words">
                                     {error.stackTrace}
                                   </pre>
                                 </div>
@@ -782,23 +762,18 @@ function MonitoringPageContent() {
 
                 {!loading &&
                   (!data || !data.errors || data.errors.length === 0) && (
-                    <div className="text-center text-gray-500 dark:text-gray-400 py-16">
+                    <div className="flex flex-col items-center justify-center text-muted-foreground py-16 gap-2">
                       <svg
-                        className="w-16 h-16 mx-auto mb-4 text-green-300 dark:text-green-600"
-                        fill="none"
+                        className="h-[3rem] w-[3rem] text-green-500 dark:text-green-600"
+                        xmlns="http://www.w3.org/2000/svg"
                         viewBox="0 0 24 24"
-                        stroke="currentColor"
+                        fill="currentColor"
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={1.5}
-                          d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
+                        <path d="M12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22ZM12 20C16.4183 20 20 16.4183 20 12C20 7.58172 16.4183 4 12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20ZM11.0026 16L6.75999 11.7574L8.17421 10.3431L11.0026 13.1716L16.6595 7.51472L18.0737 8.92893L11.0026 16Z"></path>
                       </svg>
-                      <p className="text-base font-medium text-green-600 dark:text-green-400">
+                      <div className="text-sm text-green-600 dark:text-green-400">
                         {t('monitoring.errors.noErrors')}
-                      </p>
+                      </div>
                     </div>
                   )}
               </div>

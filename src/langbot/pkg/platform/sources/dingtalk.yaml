@@ -5,16 +5,21 @@ metadata:
   label:
     en_US: DingTalk
     zh_Hans: 钉钉
+    zh_Hant: 釘釘
   description:
     en_US: DingTalk Adapter
     zh_Hans: 钉钉适配器，请查看文档了解使用方式
+    zh_Hant: 釘釘適配器，請查看文件了解使用方式
   icon: dingtalk.svg
 spec:
+  categories:
+    - china
   config:
     - name: client_id
       label:
         en_US: Client ID
         zh_Hans: 客户端ID
+        zh_Hant: 用戶端ID
       type: string
       required: true
       default: ""
@@ -22,6 +27,7 @@ spec:
       label:
         en_US: Client Secret
         zh_Hans: 客户端密钥
+        zh_Hant: 用戶端密鑰
       type: string
       required: true
       default: ""
@@ -29,6 +35,7 @@ spec:
       label:
         en_US: Robot Code
         zh_Hans: 机器人代码
+        zh_Hant: 機器人代碼
       type: string
       required: true
       default: ""
@@ -36,6 +43,7 @@ spec:
       label:
         en_US: Robot Name
         zh_Hans: 机器人名称
+        zh_Hant: 機器人名稱
       type: string
       required: true
       default: ""
@@ -43,6 +51,7 @@ spec:
       label:
         en_US: Markdown Card
         zh_Hans: 是否使用 Markdown 卡片
+        zh_Hant: 是否使用 Markdown 卡片
       type: boolean
       required: false
       default: true
@@ -50,9 +59,11 @@ spec:
       label:
         en_US: Enable Stream Reply Mode
         zh_Hans: 启用钉钉卡片流式回复模式
+        zh_Hant: 啟用釘釘卡片串流回覆模式
       description:
         en_US: If enabled, the bot will use the stream of lark reply mode
         zh_Hans: 如果启用，将使用钉钉卡片流式方式来回复内容
+        zh_Hant: 如果啟用，將使用釘釘卡片串流方式來回覆內容
       type: boolean
       required: true
       default: false
@@ -60,6 +71,7 @@ spec:
       label:
         en_US: Card Auto Layout
         zh_Hans: 卡片宽屏自动布局
+        zh_Hant: 卡片寬螢幕自動佈局
       type: boolean
       required: false
       default: false
@@ -67,6 +79,7 @@ spec:
       label:
         en_US: card template id
         zh_Hans: 卡片模板ID
+        zh_Hant: 卡片範本ID
       type: string
       required: true
       default: "填写你的卡片template_id"

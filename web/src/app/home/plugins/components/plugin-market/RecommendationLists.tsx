@@ -59,7 +59,11 @@ function RecommendationListRow({
   const [perPage, setPerPage] = useState(4);
   const gridRef = useRef<HTMLDivElement>(null);
 
-  const plugins = list.plugins || [];
+  const plugins = (list.plugins || []).filter((plugin) => {
+    // Hide plugins that only contain deprecated KnowledgeRetriever components
+    const keys = Object.keys(plugin.components || {});
+    return !(keys.length > 0 && keys.every((k) => k === 'KnowledgeRetriever'));
+  });
 
   // Measure how many columns the CSS grid actually renders
   const measureCols = useCallback(() => {

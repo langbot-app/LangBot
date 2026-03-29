@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: openclaw-weixin
+  label:
+    en_US: OpenClaw WeChat
+    zh_Hans: 个人微信机器人
+    zh_Hant: 個人微信機器人
+  description:
+    en_US: OpenClaw WeChat adapter, supports personal WeChat via QR code login
+    zh_Hans: 微信官方个人助手，扫码即可登录使用
+    zh_Hant: 微信官方個人助手，掃碼即可登入使用
+  icon: wechat.png
+spec:
+  categories:
+    - popular
+    - china
+  config:
+    - name: base_url
+      label:
+        en_US: API Base URL
+        zh_Hans: API 基础地址
+        zh_Hant: API 基礎地址
+      description:
+        en_US: The base URL of the OpenClaw WeChat backend API
+        zh_Hans: OpenClaw 微信后端 API 的基础地址
+        zh_Hant: OpenClaw 微信後端 API 的基礎地址
+      type: string
+      required: true
+      default: "https://ilinkai.weixin.qq.com"
+    - name: token
+      label:
+        en_US: Token
+        zh_Hans: 令牌
+        zh_Hant: 令牌
+      description:
+        en_US: Bearer token obtained after QR code login authorization. Leave empty to trigger QR code login on startup.
+        zh_Hans: 扫码登录授权后获取的 Bearer 令牌。请留空并保存，将在启动时输出二维码到日志，扫码后即可自动登录。
+        zh_Hant: 掃碼登入授權後取得的 Bearer 令牌。請留空並儲存，將在啟動時輸出 QR Code 到日誌，掃碼後即可自動登入。
+      type: string
+      required: false
+      default: ""
+    - name: account_id
+      label:
+        en_US: Account ID
+        zh_Hans: 账号标识
+        zh_Hant: 帳號標識
+      description:
+        en_US: A label for this WeChat account (used for display purposes)
+        zh_Hans: 此微信账号的标识（用于显示）
+        zh_Hant: 此微信帳號的標識（用於顯示）
+      type: string
+      required: false
+      default: "openclaw-weixin"
+    - name: poll_timeout
+      label:
+        en_US: Poll Timeout (seconds)
+        zh_Hans: 轮询超时（秒）
+        zh_Hant: 輪詢逾時（秒）
+      description:
+        en_US: Long-poll timeout for getUpdates, the server may hold the request up to this duration
+        zh_Hans: getUpdates 长轮询超时时间，服务端最多持有请求的时长
+        zh_Hant: getUpdates 長輪詢逾時時間，伺服端最多持有請求的時長
+      type: integer
+      required: false
+      default: 35
+execution:
+  python:
+    path: ./openclaw_weixin.py
+    attr: OpenClawWeixinAdapter

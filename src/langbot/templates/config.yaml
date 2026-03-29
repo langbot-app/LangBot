@@ -78,6 +78,14 @@ plugin:
     runtime_ws_url: 'ws://langbot_plugin_runtime:5400/control/ws'
     enable_marketplace: true
     display_plugin_debug_url: 'ws://localhost:5401/plugin/debug/ws'
+monitoring:
+    auto_cleanup:
+        # Enable automatic cleanup of expired monitoring records
+        enabled: true
+        # Retention period in days, records older than this will be deleted
+        retention_days: 30
+        # Cleanup check interval in hours
+        check_interval_hours: 1
 space:
     # Space service URL for OAuth and API
     url: 'https://space.langbot.app'

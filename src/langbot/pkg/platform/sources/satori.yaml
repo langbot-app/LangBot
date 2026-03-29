@@ -5,36 +5,66 @@ metadata:
   label:
     en_US: Satori
     zh_Hans: Satori
+    zh_Hant: Satori
+    th_TH: Satori
+    vi_VN: Satori
+    es_ES: Satori
   description:
     en_US: SatoriAdapter
-    zh_Hans: 古明地觉协议适配器
+    zh_Hans: Satori 协议适配器，支持多种平台的接入，请查看文档了解使用方式
+    zh_Hant: Satori 協定適配器，支援多種平台的接入，請查看文件了解使用方式
+    th_TH: อะแดปเตอร์โปรโตคอล Satori รองรับการเชื่อมต่อหลายแพลตฟอร์ม โปรดดูเอกสารประกอบสำหรับวิธีการใช้งาน
+    vi_VN: Bộ điều hợp giao thức Satori, hỗ trợ kết nối nhiều nền tảng, vui lòng xem tài liệu để biết cách sử dụng
+    es_ES: Adaptador del protocolo Satori, soporta acceso a múltiples plataformas, consulte la documentación para obtener instrucciones de uso
   icon: satori.png
 spec:
+  categories:
+    - protocol
   config:
     - name: platform
       label:
         en_US: Platform
         zh_Hans: 平台名称
+        zh_Hant: 平台名稱
+        th_TH: ชื่อแพลตฟอร์ม
+        vi_VN: Tên nền tảng
+        es_ES: Nombre de la plataforma
       type: string
       required: true
       default: "llonebot"
       description:
         en_US: The platform name (e.g., llonebot, discord, telegram)
         zh_Hans: 平台名称（如 llonebot, discord, telegram）
+        zh_Hant: 平台名稱（如 llonebot、discord、telegram）
+        th_TH: ชื่อแพลตฟอร์ม (เช่น llonebot, discord, telegram)
+        vi_VN: "Tên nền tảng (ví dụ: llonebot, discord, telegram)"
+        es_ES: El nombre de la plataforma (p. ej., llonebot, discord, telegram)
     - name: host
       label:
         en_US: Host
         zh_Hans: 主机地址
+        zh_Hant: 主機地址
+        th_TH: ที่อยู่โฮสต์
+        vi_VN: Địa chỉ máy chủ
+        es_ES: Dirección del host
       type: string
       required: true
       default: "127.0.0.1"
       description:
         en_US: The host address of LLOneBot Satori server (e.g., 127.0.0.1, localhost, 192.168.1.100)
         zh_Hans: LLOneBot Satori服务器的主机地址（如 127.0.0.1, localhost, 192.168.1.100）
+        zh_Hant: LLOneBot Satori 伺服器的主機地址（如 127.0.0.1、localhost、192.168.1.100）
+        th_TH: ที่อยู่โฮสต์ของเซิร์ฟเวอร์ LLOneBot Satori (เช่น 127.0.0.1, localhost, 192.168.1.100)
+        vi_VN: "Địa chỉ máy chủ LLOneBot Satori (ví dụ: 127.0.0.1, localhost, 192.168.1.100)"
+        es_ES: La dirección del host del servidor LLOneBot Satori (p. ej., 127.0.0.1, localhost, 192.168.1.100)
     - name: port
       label:
         en_US: Port
         zh_Hans: 监听端口
+        zh_Hant: 監聽連接埠
+        th_TH: พอร์ต
+        vi_VN: Cổng
+        es_ES: Puerto
       type: integer
       required: true
       default: 5600
@@ -42,6 +72,10 @@ spec:
       label:
         en_US: Satori API Endpoint
         zh_Hans: Satori API 终结点
+        zh_Hant: Satori API 端點
+        th_TH: จุดปลาย Satori API
+        vi_VN: Điểm cuối Satori API
+        es_ES: Punto de acceso de la API Satori
       type: string
       required: true
       default: "http://localhost:5600/v1"
@@ -49,6 +83,10 @@ spec:
       label:
         en_US: Satori WebSocket Endpoint
         zh_Hans: Satori WebSocket 终结点
+        zh_Hant: Satori WebSocket 端點
+        th_TH: จุดปลาย Satori WebSocket
+        vi_VN: Điểm cuối Satori WebSocket
+        es_ES: Punto de acceso WebSocket de Satori
       type: string
       required: true
       default: "ws://localhost:5600/v1/events"
@@ -56,6 +94,10 @@ spec:
       label:
         en_US: Token
         zh_Hans: 令牌
+        zh_Hant: 令牌
+        th_TH: โทเค็น
+        vi_VN: Mã thông báo
+        es_ES: Token
       type: string
       required: true
       default: ""

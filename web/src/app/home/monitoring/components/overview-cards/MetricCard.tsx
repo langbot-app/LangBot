@@ -23,9 +23,9 @@ export default function MetricCard({
 }: MetricCardProps) {
   if (loading) {
     return (
-      <Card className="bg-white dark:bg-[#2a2a2e] border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all duration-300">
+      <Card className="transition-all duration-300">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-          <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
             {title}
           </CardTitle>
           <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 flex items-center justify-center">
@@ -35,17 +35,17 @@ export default function MetricCard({
           </div>
         </CardHeader>
         <CardContent>
-          <div className="h-9 w-28 bg-gray-200 dark:bg-gray-700 animate-pulse rounded"></div>
-          <div className="h-4 w-20 bg-gray-100 dark:bg-gray-800 animate-pulse rounded mt-2"></div>
+          <div className="h-9 w-28 bg-muted animate-pulse rounded"></div>
+          <div className="h-4 w-20 bg-muted animate-pulse rounded mt-2"></div>
         </CardContent>
       </Card>
     );
   }
 
   return (
-    <Card className="bg-white dark:bg-[#2a2a2e] border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all duration-300 group">
+    <Card className="transition-all duration-300 group">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-        <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
+        <CardTitle className="text-sm font-medium text-muted-foreground">
           {title}
         </CardTitle>
         <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
@@ -53,9 +53,7 @@ export default function MetricCard({
         </div>
       </CardHeader>
       <CardContent>
-        <div className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-          {value}
-        </div>
+        <div className="text-3xl font-bold text-foreground mb-2">{value}</div>
         {trend && (
           <div className="flex items-center gap-1.5">
             <span
@@ -82,7 +80,7 @@ export default function MetricCard({
               </svg>
               {Math.abs(trend.value)}%
             </span>
-            <span className="text-xs text-gray-500 dark:text-gray-400">
+            <span className="text-xs text-muted-foreground">
               vs previous period
             </span>
           </div>
