@@ -2,6 +2,8 @@
 
 This runbook is for bootstrapping a local LangBot environment when you need to demo the KUKU setup APIs currently implemented in this repository.
 
+**End-to-end Discord proactive behavior (silence loop, LLM opener, `send_message`):** see [kuku-discord-runtime-runbook.md](./kuku-discord-runtime-runbook.md).
+
 ## Goal
 
 Get the current repo code running locally on `http://127.0.0.1:5300`, with:
