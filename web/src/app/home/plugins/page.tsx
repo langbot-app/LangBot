@@ -52,6 +52,10 @@ import { useTranslation } from 'react-i18next';
 import { systemInfo } from '@/app/infra/http/HttpClient';
 import { ApiRespPluginSystemStatus } from '@/app/infra/entities/api';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
+import {
+  PluginInstallTaskQueue,
+  usePluginInstallTasks,
+} from '@/app/home/plugins/components/plugin-install-task';
 
 enum PluginInstallStatus {
   WAIT_INPUT = 'wait_input',
@@ -99,6 +103,7 @@ function PluginListView() {
     pendingPluginInstallAction,
     setPendingPluginInstallAction,
   } = useSidebarData();
+  const { addTask, setSelectedTaskId } = usePluginInstallTasks();
   const [modalOpen, setModalOpen] = useState(false);
   const [installSource, setInstallSource] = useState<string>('local');
   const [installInfo] = useState<Record<string, any>>({}); // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -163,15 +168,12 @@ function PluginListView() {
         if (resp.runtime.done) {
           clearInterval(interval);
           if (resp.runtime.exception) {
-            setInstallError(resp.runtime.exception);
-            setPluginInstallStatus(PluginInstallStatus.ERROR);
+            // Error is shown via task queue progress dialog
           } else {
             if (!alreadySuccess) {
               toast.success(t('plugins.installSuccess'));
               alreadySuccess = true;
             }
-            resetGithubState();
-            setModalOpen(false);
             pluginInstalledRef.current?.refreshPluginList();
             refreshPlugins();
           }
@@ -300,6 +302,8 @@ function PluginListView() {
   ) {
     setPluginInstallStatus(PluginInstallStatus.INSTALLING);
     if (installSource === 'github') {
+      const pluginDisplayName = `${installInfo.owner}/${installInfo.repo}`;
+      const assetSize = selectedAsset?.size;
       httpClient
         .installPluginFromGithub(
           installInfo.asset_url,
@@ -309,6 +313,16 @@ function PluginListView() {
         )
         .then((resp) => {
           const taskId = resp.task_id;
+          const taskKey = `github-${taskId}`;
+          addTask({
+            taskId,
+            pluginName: pluginDisplayName,
+            source: 'github',
+            fileSize: assetSize,
+          });
+          setSelectedTaskId(taskKey);
+          resetGithubState();
+          setModalOpen(false);
           watchTask(taskId);
         })
         .catch((err) => {
@@ -316,10 +330,21 @@ function PluginListView() {
           setPluginInstallStatus(PluginInstallStatus.ERROR);
         });
     } else if (installSource === 'local') {
+      const fileName = installInfo.file?.name || 'local plugin';
+      const fileSize = installInfo.file?.size;
       httpClient
         .installPluginFromLocal(installInfo.file)
         .then((resp) => {
           const taskId = resp.task_id;
+          const taskKey = `local-${taskId}`;
+          addTask({
+            taskId,
+            pluginName: fileName,
+            source: 'local',
+            fileSize: fileSize,
+          });
+          setSelectedTaskId(taskKey);
+          setModalOpen(false);
           watchTask(taskId);
         })
         .catch((err) => {
@@ -546,8 +571,10 @@ function PluginListView() {
         style={{ display: 'none' }}
       />
 
-      {/* Header bar with debug info and install button */}
+      {/* Header bar with debug info, task queue, and install button */}
       <div className="flex flex-row justify-end items-center px-[0.8rem] pb-4 flex-shrink-0 gap-2">
+        <PluginInstallTaskQueue />
+
         <Popover open={debugPopoverOpen} onOpenChange={setDebugPopoverOpen}>
           <PopoverTrigger asChild>
             <Button

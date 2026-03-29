@@ -40,6 +40,10 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
+import {
+  PluginInstallTaskProvider,
+  PluginInstallProgressDialog,
+} from '@/app/home/plugins/components/plugin-install-task';
 
 // Routes that belong to the "Extensions" section
 const EXTENSIONS_ROUTES = ['/home/plugins', '/home/market', '/home/mcp'];
@@ -82,7 +86,10 @@ export default function HomeLayout({
 
   return (
     <SidebarDataProvider>
-      <HomeLayoutInner>{children}</HomeLayoutInner>
+      <PluginInstallTaskProvider>
+        <HomeLayoutInner>{children}</HomeLayoutInner>
+        <PluginInstallProgressDialog />
+      </PluginInstallTaskProvider>
     </SidebarDataProvider>
   );
 }

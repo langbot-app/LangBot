@@ -17,9 +17,13 @@ class TaskContext:
     log: str
     """Log"""
 
+    metadata: dict
+    """Structured metadata for progress reporting"""
+
     def __init__(self):
         self.current_action = 'default'
         self.log = ''
+        self.metadata = {}
 
     def _log(self, msg: str):
         self.log += msg + '\n'
@@ -38,7 +42,7 @@ class TaskContext:
         self._log(f'{datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")} | {self.current_action} | {msg}')
 
     def to_dict(self) -> dict:
-        return {'current_action': self.current_action, 'log': self.log}
+        return {'current_action': self.current_action, 'log': self.log, 'metadata': self.metadata}
 
     @staticmethod
     def new() -> TaskContext:

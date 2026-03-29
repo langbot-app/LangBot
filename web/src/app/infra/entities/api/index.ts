@@ -299,6 +299,7 @@ export interface AsyncTaskRuntimeInfo {
 export interface AsyncTaskTaskContext {
   current_action: string;
   log: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface AsyncTask {
