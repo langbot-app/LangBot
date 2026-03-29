@@ -156,6 +156,8 @@ class Application:
 
     monitoring_service: monitoring_service.MonitoringService = None
 
+    kuku_runtime: object | None = None
+
     def __init__(self):
         pass
 
@@ -190,6 +192,13 @@ class Application:
                 name='http-api-controller',
                 scopes=[core_entities.LifecycleControlScope.APPLICATION],
             )
+
+            if self.kuku_runtime is not None:
+                self.task_mgr.create_task(
+                    self.kuku_runtime.run_background_loop(),
+                    name='kuku-runtime',
+                    scopes=[core_entities.LifecycleControlScope.APPLICATION],
+                )
 
             self.task_mgr.create_task(
                 never_ending(),

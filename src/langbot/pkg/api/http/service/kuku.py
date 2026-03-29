@@ -36,6 +36,30 @@ class KukuService:
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
 
+    async def get_persona(self, persona_id: str) -> dict | None:
+        """Return a single MVP persona by id, or None if unknown."""
+        for persona in MVP_PERSONAS:
+            if persona['id'] == persona_id:
+                return {
+                    'id': persona['id'],
+                    'name': persona['name'],
+                    'tags': list(persona['tags']),
+                    'tagline': persona['tagline'],
+                    'system_prompt': persona['system_prompt'],
+                    'silence_trigger_style': persona['silence_trigger_style'],
+                }
+        return None
+
+    async def list_enabled_discord_group_settings(self) -> list[dict]:
+        """All enabled KUKU rows for Discord (for the runtime loop)."""
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_kuku.KukuGroupSetting.__table__).where(
+                (persistence_kuku.KukuGroupSetting.platform == 'discord')
+                & (persistence_kuku.KukuGroupSetting.enabled.is_(True))
+            )
+        )
+        return [self._row_to_dict(row) for row in result.mappings().all()]
+
     async def list_personas(self) -> list[dict]:
         """Return the fixed MVP persona list."""
         # Return a copy so request-time consumers can shape or serialize the payload
@@ -113,7 +137,11 @@ class KukuService:
         if saved is None:
             raise RuntimeError('Failed to load saved KUKU group settings')
 
-        return self._row_to_dict(saved)
+        saved_dict = self._row_to_dict(saved)
+        runtime = getattr(self.ap, 'kuku_runtime', None)
+        if runtime is not None:
+            runtime.invalidate_settings_cache(bot_uuid, group_id)
+        return saved_dict
 
     async def _validate_kuku_scope(self, bot_uuid: str, platform: str, group_id: str) -> None:
         # The persisted config is intentionally constrained to the current Discord-first

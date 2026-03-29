@@ -116,6 +116,12 @@ class RuntimeBot:
                     event, self.bot_entity.uuid, adapter.__class__.__name__
                 )
 
+            if self.bot_entity.adapter == 'discord' and self.ap.kuku_runtime is not None:
+                await self.ap.kuku_runtime.record_discord_channel_activity(
+                    self.bot_entity.uuid,
+                    str(event.group.id),
+                )
+
             # Only add to query pool if no webhook requested to skip pipeline
             if not skip_pipeline:
                 launcher_id = event.group.id

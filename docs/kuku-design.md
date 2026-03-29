@@ -26,11 +26,12 @@ What exists today:
 - KUKU setup/read APIs under `/api/v1/kuku/...`
 - Discord-only validation for the current MVP boundary
 - one fixed persona, `kuku-sunny`
+- in-process KUKU runtime (`KukuRuntime`): per-channel human activity tracking on Discord, periodic silence checks, `quiet_hours` / `cooldown_minutes`, LLM opener via the bot’s pipeline `local-agent` model, `send_message` to the Discord channel
 
 What does not exist yet:
-- silence detection and proactive KUKU messaging
-- plugin runtime behavior
-- Discord runtime integration beyond storing and reading KUKU config
+- Mem0 (or equivalent) message memory and recall
+- LangBot plugin packaging for KUKU (runtime is host-native for now)
+- user profile builder and richer persona flows
 - non-Discord platform adapters for KUKU
 
 Read the rest of this document as the approved target design, not as a statement that every component already exists in the codebase.

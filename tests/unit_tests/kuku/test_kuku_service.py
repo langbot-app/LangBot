@@ -510,6 +510,73 @@ async def test_migration_25_creates_indexes_for_kuku_group_settings():
     assert 'uq_kuku_group_settings_scope' in unique_constraints
 
 
+@pytest.mark.asyncio
+async def test_get_persona_resolves_mvp_catalog():
+    app = SimpleNamespace(
+        logger=Mock(),
+        persistence_mgr=SimpleNamespace(db=SimpleNamespace(name='sqlite')),
+    )
+    kuku_service = KukuService(app)
+
+    persona = await kuku_service.get_persona('kuku-sunny')
+    assert persona is not None
+    assert persona['id'] == 'kuku-sunny'
+    assert 'cheerful' in persona['system_prompt'].lower() or 'KUKU' in persona['system_prompt']
+
+    assert await kuku_service.get_persona('unknown-persona') is None
+
+
+@pytest.mark.asyncio
+async def test_list_enabled_discord_group_settings_excludes_disabled_rows():
+    engine = sqlalchemy.create_engine(
+        'sqlite://',
+        connect_args={'check_same_thread': False},
+        poolclass=StaticPool,
+    )
+
+    Base.metadata.create_all(engine)
+    _seed_bot(engine, adapter='discord')
+
+    with engine.begin() as conn:
+        conn.execute(
+            sqlalchemy.insert(KukuGroupSetting).values(
+                uuid='ks-off',
+                bot_uuid='bot-1',
+                platform='discord',
+                group_id='off',
+                persona_id='kuku-sunny',
+                silence_minutes=30,
+                quiet_hours={},
+                cooldown_minutes=10,
+                enabled=False,
+            )
+        )
+        conn.execute(
+            sqlalchemy.insert(KukuGroupSetting).values(
+                uuid='ks-on',
+                bot_uuid='bot-1',
+                platform='discord',
+                group_id='on',
+                persona_id='kuku-sunny',
+                silence_minutes=30,
+                quiet_hours={},
+                cooldown_minutes=10,
+                enabled=True,
+            )
+        )
+
+    app = SimpleNamespace(
+        logger=Mock(),
+        persistence_mgr=FakePersistenceManager(engine),
+    )
+    kuku_service = KukuService(app)
+
+    rows = await kuku_service.list_enabled_discord_group_settings()
+    assert len(rows) == 1
+    assert rows[0]['group_id'] == 'on'
+    assert rows[0]['enabled'] is True
+
+
 def _seed_bot(engine: sqlalchemy.Engine, adapter: str) -> None:
     with engine.begin() as conn:
         conn.execute(

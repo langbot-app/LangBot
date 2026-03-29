@@ -27,6 +27,7 @@ from ...api.http.service import knowledge as knowledge_service
 from ...api.http.service import mcp as mcp_service
 from ...api.http.service import apikey as apikey_service
 from ...api.http.service import kuku as kuku_service
+from ...kuku import KukuRuntime
 from ...api.http.service import webhook as webhook_service
 from ...api.http.service import monitoring as monitoring_service
 from ...discover import engine as discover_engine
@@ -144,6 +145,8 @@ class BuildAppStage(stage.BootingStage):
         pipeline_mgr = pipelinemgr.PipelineManager(ap)
         await pipeline_mgr.initialize()
         ap.pipeline_mgr = pipeline_mgr
+
+        ap.kuku_runtime = KukuRuntime(ap)
 
         # Initialize message aggregator (after pipeline_mgr, as it needs pipeline config)
         msg_aggregator_inst = message_aggregator.MessageAggregator(ap)
