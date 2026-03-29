@@ -5,9 +5,9 @@ import { useTranslation } from 'react-i18next';
 import { Progress } from '@/components/ui/progress';
 import {
   Download,
-  FolderOpen,
   Package,
-  FlaskConical,
+  Settings,
+  Rocket,
   CheckCircle2,
   XCircle,
   Loader2,
@@ -30,9 +30,9 @@ import { cn } from '@/lib/utils';
 
 const STAGE_ICONS: Record<string, React.ElementType> = {
   [InstallStage.DOWNLOADING]: Download,
-  [InstallStage.EXTRACTING]: FolderOpen,
   [InstallStage.INSTALLING_DEPS]: Package,
-  [InstallStage.TESTING]: FlaskConical,
+  [InstallStage.INITIALIZING]: Settings,
+  [InstallStage.LAUNCHING]: Rocket,
   [InstallStage.DONE]: CheckCircle2,
   [InstallStage.ERROR]: XCircle,
 };
@@ -56,12 +56,12 @@ function TaskQueueItem({
     switch (task.stage) {
       case InstallStage.DOWNLOADING:
         return t('plugins.installProgress.downloading');
-      case InstallStage.EXTRACTING:
-        return t('plugins.installProgress.extracting');
       case InstallStage.INSTALLING_DEPS:
         return t('plugins.installProgress.installingDeps');
-      case InstallStage.TESTING:
-        return t('plugins.installProgress.testing');
+      case InstallStage.INITIALIZING:
+        return t('plugins.installProgress.initializing');
+      case InstallStage.LAUNCHING:
+        return t('plugins.installProgress.launching');
       case InstallStage.DONE:
         return t('plugins.installProgress.completed');
       case InstallStage.ERROR:
@@ -79,9 +79,12 @@ function TaskQueueItem({
       <div
         className={cn(
           'flex items-center justify-center w-7 h-7 rounded-full shrink-0',
-          isDone && 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400',
-          isError && 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400',
-          isRunning && 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400',
+          isDone &&
+            'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400',
+          isError &&
+            'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400',
+          isRunning &&
+            'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400',
         )}
       >
         {isRunning ? (
@@ -138,10 +141,7 @@ export default function PluginInstallTaskQueue() {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          className="relative px-4 py-5 cursor-pointer"
-        >
+        <Button variant="outline" className="relative px-4 py-5 cursor-pointer">
           <ListTodo className="w-4 h-4 mr-2" />
           {t('plugins.installProgress.taskQueue')}
           {runningCount > 0 && (
@@ -151,12 +151,6 @@ export default function PluginInstallTaskQueue() {
             >
               {runningCount}
             </Badge>
-          )}
-          {runningCount > 0 && (
-            <span className="absolute top-1 right-1 flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary" />
-            </span>
           )}
         </Button>
       </PopoverTrigger>

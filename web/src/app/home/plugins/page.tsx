@@ -103,7 +103,12 @@ function PluginListView() {
     pendingPluginInstallAction,
     setPendingPluginInstallAction,
   } = useSidebarData();
-  const { addTask, setSelectedTaskId } = usePluginInstallTasks();
+  const {
+    addTask,
+    setSelectedTaskId,
+    registerOnTaskComplete,
+    unregisterOnTaskComplete,
+  } = usePluginInstallTasks();
   const [modalOpen, setModalOpen] = useState(false);
   const [installSource, setInstallSource] = useState<string>('local');
   const [installInfo] = useState<Record<string, any>>({}); // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -160,27 +165,20 @@ function PluginListView() {
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
   }
 
-  function watchTask(taskId: number) {
-    let alreadySuccess = false;
-
-    const interval = setInterval(() => {
-      httpClient.getAsyncTask(taskId).then((resp) => {
-        if (resp.runtime.done) {
-          clearInterval(interval);
-          if (resp.runtime.exception) {
-            // Error is shown via task queue progress dialog
-          } else {
-            if (!alreadySuccess) {
-              toast.success(t('plugins.installSuccess'));
-              alreadySuccess = true;
-            }
-            pluginInstalledRef.current?.refreshPluginList();
-            refreshPlugins();
-          }
-        }
-      });
-    }, 1000);
-  }
+  // Register task completion callback for toast and plugin list refresh
+  useEffect(() => {
+    const onComplete = (_taskId: number, success: boolean) => {
+      if (success) {
+        toast.success(t('plugins.installSuccess'));
+        pluginInstalledRef.current?.refreshPluginList();
+        refreshPlugins();
+      }
+    };
+    registerOnTaskComplete(onComplete);
+    return () => {
+      unregisterOnTaskComplete(onComplete);
+    };
+  }, [registerOnTaskComplete, unregisterOnTaskComplete, refreshPlugins, t]);
 
   const pluginInstalledRef = useRef<PluginInstalledComponentRef>(null);
 
@@ -323,7 +321,6 @@ function PluginListView() {
           setSelectedTaskId(taskKey);
           resetGithubState();
           setModalOpen(false);
-          watchTask(taskId);
         })
         .catch((err) => {
           setInstallError(err.msg);
@@ -345,7 +342,6 @@ function PluginListView() {
           });
           setSelectedTaskId(taskKey);
           setModalOpen(false);
-          watchTask(taskId);
         })
         .catch((err) => {
           setInstallError(err.msg);

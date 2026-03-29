@@ -215,9 +215,14 @@ class AsyncTaskManager:
     def get_tasks_dict(
         self,
         type: str = None,
+        kind: str = None,
     ) -> dict:
         return {
-            'tasks': [t.to_dict() for t in self.tasks if type is None or t.task_type == type],
+            'tasks': [
+                t.to_dict()
+                for t in self.tasks
+                if (type is None or t.task_type == type) and (kind is None or t.kind == kind)
+            ],
             'id_index': TaskWrapper._id_index,
         }
 

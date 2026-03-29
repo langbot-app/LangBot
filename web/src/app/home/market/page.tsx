@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Download } from 'lucide-react';
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { systemInfo } from '@/app/infra/http/HttpClient';
 import { toast } from 'sonner';
@@ -42,7 +42,12 @@ export default function MarketplacePage() {
 function MarketplaceContent() {
   const { t } = useTranslation();
   const { refreshPlugins } = useSidebarData();
-  const { addTask, setSelectedTaskId } = usePluginInstallTasks();
+  const {
+    addTask,
+    setSelectedTaskId,
+    registerOnTaskComplete,
+    unregisterOnTaskComplete,
+  } = usePluginInstallTasks();
   const [modalOpen, setModalOpen] = useState(false);
   const [installInfo, setInstallInfo] = useState<Record<string, string>>({});
   const [pluginInstallStatus, setPluginInstallStatus] =
@@ -71,26 +76,19 @@ function MarketplaceContent() {
     return true;
   }
 
-  function watchTask(taskId: number) {
-    let alreadySuccess = false;
-
-    const interval = setInterval(() => {
-      httpClient.getAsyncTask(taskId).then((resp) => {
-        if (resp.runtime.done) {
-          clearInterval(interval);
-          if (resp.runtime.exception) {
-            // Error is shown via task queue progress dialog
-          } else {
-            if (!alreadySuccess) {
-              toast.success(t('plugins.installSuccess'));
-              alreadySuccess = true;
-            }
-            refreshPlugins();
-          }
-        }
-      });
-    }, 1000);
-  }
+  // Register task completion callback for toast and plugin list refresh
+  useEffect(() => {
+    const onComplete = (_taskId: number, success: boolean) => {
+      if (success) {
+        toast.success(t('plugins.installSuccess'));
+        refreshPlugins();
+      }
+    };
+    registerOnTaskComplete(onComplete);
+    return () => {
+      unregisterOnTaskComplete(onComplete);
+    };
+  }, [registerOnTaskComplete, unregisterOnTaskComplete, refreshPlugins, t]);
 
   const handleInstallPlugin = useCallback(
     async (plugin: PluginV4) => {
@@ -126,7 +124,6 @@ function MarketplaceContent() {
         });
         setSelectedTaskId(taskKey);
         setModalOpen(false);
-        watchTask(taskId);
       })
       .catch((err) => {
         setInstallError(err.msg);

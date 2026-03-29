@@ -715,8 +715,15 @@ export class BackendClient extends BaseHttpClient {
     return this.put('/api/v1/system/wizard/progress', progress);
   }
 
-  public getAsyncTasks(): Promise<ApiRespAsyncTasks> {
-    return this.get('/api/v1/system/tasks');
+  public getAsyncTasks(params?: {
+    type?: string;
+    kind?: string;
+  }): Promise<ApiRespAsyncTasks> {
+    const query = new URLSearchParams();
+    if (params?.type) query.set('type', params.type);
+    if (params?.kind) query.set('kind', params.kind);
+    const qs = query.toString();
+    return this.get(`/api/v1/system/tasks${qs ? `?${qs}` : ''}`);
   }
 
   public getAsyncTask(id: number): Promise<AsyncTask> {

@@ -11,9 +11,9 @@ import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import {
   Download,
-  FolderOpen,
   Package,
-  FlaskConical,
+  Settings,
+  Rocket,
   CheckCircle2,
   XCircle,
   Loader2,
@@ -37,19 +37,19 @@ const STAGES: {
     i18nKey: 'plugins.installProgress.downloading',
   },
   {
-    key: InstallStage.EXTRACTING,
-    icon: FolderOpen,
-    i18nKey: 'plugins.installProgress.extracting',
-  },
-  {
     key: InstallStage.INSTALLING_DEPS,
     icon: Package,
     i18nKey: 'plugins.installProgress.installingDeps',
   },
   {
-    key: InstallStage.TESTING,
-    icon: FlaskConical,
-    i18nKey: 'plugins.installProgress.testing',
+    key: InstallStage.INITIALIZING,
+    icon: Settings,
+    i18nKey: 'plugins.installProgress.initializing',
+  },
+  {
+    key: InstallStage.LAUNCHING,
+    icon: Rocket,
+    i18nKey: 'plugins.installProgress.launching',
   },
 ];
 
@@ -88,18 +88,29 @@ function StageRow({
     <div
       className={cn(
         'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-300',
-        isActive && !isError && 'bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800',
-        isCompleted && 'bg-green-50/50 dark:bg-green-950/15 border border-green-100 dark:border-green-900/50',
-        isError && isActive && 'bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900',
+        isActive &&
+          !isError &&
+          'bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800',
+        isCompleted &&
+          'bg-green-50/50 dark:bg-green-950/15 border border-green-100 dark:border-green-900/50',
+        isError &&
+          isActive &&
+          'bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900',
       )}
     >
       {/* Left: status indicator */}
       <div
         className={cn(
           'flex items-center justify-center w-7 h-7 rounded-full shrink-0',
-          isCompleted && 'bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400',
-          isActive && !isError && !isCompleted && 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400',
-          isError && isActive && 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400',
+          isCompleted &&
+            'bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400',
+          isActive &&
+            !isError &&
+            !isCompleted &&
+            'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400',
+          isError &&
+            isActive &&
+            'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400',
         )}
       >
         {isCompleted ? (
@@ -119,7 +130,10 @@ function StageRow({
           <span
             className={cn(
               'text-sm font-medium',
-              isActive && !isError && !isCompleted && 'text-blue-700 dark:text-blue-300',
+              isActive &&
+                !isError &&
+                !isCompleted &&
+                'text-blue-700 dark:text-blue-300',
               isCompleted && 'text-green-600 dark:text-green-400',
               isError && isActive && 'text-red-600 dark:text-red-400',
             )}
@@ -130,17 +144,24 @@ function StageRow({
           <Icon
             className={cn(
               'w-3.5 h-3.5 shrink-0',
-              isActive && !isError && !isCompleted && 'text-blue-400 dark:text-blue-500',
+              isActive &&
+                !isError &&
+                !isCompleted &&
+                'text-blue-400 dark:text-blue-500',
               isCompleted && 'text-green-400 dark:text-green-500',
               isError && isActive && 'text-red-400 dark:text-red-500',
             )}
           />
         </div>
         {detail && (
-          <div className={cn(
-            'text-xs mt-0.5',
-            isCompleted ? 'text-green-600/70 dark:text-green-400/70' : 'text-blue-600/70 dark:text-blue-400/70',
-          )}>
+          <div
+            className={cn(
+              'text-xs mt-0.5',
+              isCompleted
+                ? 'text-green-600/70 dark:text-green-400/70'
+                : 'text-blue-600/70 dark:text-blue-400/70',
+            )}
+          >
             {detail}
           </div>
         )}
@@ -259,20 +280,28 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
       {/* Overall progress bar — always blue */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <span className={cn(
-            'text-sm font-medium',
-            isDone ? 'text-green-700 dark:text-green-300' : 'text-blue-700 dark:text-blue-300',
-          )}>
+          <span
+            className={cn(
+              'text-sm font-medium',
+              isDone
+                ? 'text-green-700 dark:text-green-300'
+                : 'text-blue-700 dark:text-blue-300',
+            )}
+          >
             {isDone
               ? t('plugins.installProgress.completed')
               : isError
                 ? t('plugins.installProgress.failed')
                 : t('plugins.installProgress.overallProgress')}
           </span>
-          <span className={cn(
-            'text-sm font-medium',
-            isDone ? 'text-green-600 dark:text-green-400' : 'text-blue-600 dark:text-blue-400',
-          )}>
+          <span
+            className={cn(
+              'text-sm font-medium',
+              isDone
+                ? 'text-green-600 dark:text-green-400'
+                : 'text-blue-600 dark:text-blue-400',
+            )}
+          >
             {isDone ? '100%' : `${task.overallProgress}%`}
           </span>
         </div>
@@ -282,52 +311,52 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
             'h-2.5',
             '[&>div]:bg-blue-500 dark:[&>div]:bg-blue-400',
             'bg-blue-100 dark:bg-blue-900/30',
-            isDone && '[&>div]:bg-green-500 dark:[&>div]:bg-green-400 bg-green-100 dark:bg-green-900/30',
-            isError && '[&>div]:bg-red-500 dark:[&>div]:bg-red-400 bg-red-100 dark:bg-red-900/30',
+            isDone &&
+              '[&>div]:bg-green-500 dark:[&>div]:bg-green-400 bg-green-100 dark:bg-green-900/30',
+            isError &&
+              '[&>div]:bg-red-500 dark:[&>div]:bg-red-400 bg-red-100 dark:bg-red-900/30',
           )}
         />
       </div>
 
       {/* Stage display */}
       <div className="space-y-1.5">
-        {isDone ? (
-          /* When done: show all stages with completed style */
-          STAGES.map((stageConfig) => (
-            <StageRow
-              key={stageConfig.key}
-              icon={stageConfig.icon}
-              label={t(stageConfig.i18nKey)}
-              isActive={false}
-              isCompleted={true}
-              isError={false}
-              detail={getStageDetail(stageConfig.key, true)}
-            />
-          ))
-        ) : isError ? (
-          /* Error: show the failed stage */
-          currentStageIndex >= 0 && (
-            <StageRow
-              icon={STAGES[currentStageIndex].icon}
-              label={t(STAGES[currentStageIndex].i18nKey)}
-              isActive={true}
-              isCompleted={false}
-              isError={true}
-              detail={task.error}
-            />
-          )
-        ) : (
-          /* In progress: only show the current active stage */
-          currentStageIndex >= 0 && (
-            <StageRow
-              icon={STAGES[currentStageIndex].icon}
-              label={t(STAGES[currentStageIndex].i18nKey)}
-              isActive={true}
-              isCompleted={false}
-              isError={false}
-              detail={getStageDetail(STAGES[currentStageIndex].key, false)}
-            />
-          )
-        )}
+        {isDone
+          ? /* When done: show all stages with completed style */
+            STAGES.map((stageConfig) => (
+              <StageRow
+                key={stageConfig.key}
+                icon={stageConfig.icon}
+                label={t(stageConfig.i18nKey)}
+                isActive={false}
+                isCompleted={true}
+                isError={false}
+                detail={getStageDetail(stageConfig.key, true)}
+              />
+            ))
+          : isError
+            ? /* Error: show the failed stage */
+              currentStageIndex >= 0 && (
+                <StageRow
+                  icon={STAGES[currentStageIndex].icon}
+                  label={t(STAGES[currentStageIndex].i18nKey)}
+                  isActive={true}
+                  isCompleted={false}
+                  isError={true}
+                  detail={task.error}
+                />
+              )
+            : /* In progress: only show the current active stage */
+              currentStageIndex >= 0 && (
+                <StageRow
+                  icon={STAGES[currentStageIndex].icon}
+                  label={t(STAGES[currentStageIndex].i18nKey)}
+                  isActive={true}
+                  isCompleted={false}
+                  isError={false}
+                  detail={getStageDetail(STAGES[currentStageIndex].key, false)}
+                />
+              )}
       </div>
 
       {/* Done banner */}

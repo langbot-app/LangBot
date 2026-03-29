@@ -306,6 +306,7 @@ export interface AsyncTask {
   id: number;
   kind: string;
   name: string;
+  label: string;
   task_type: string; // system or user
   runtime: AsyncTaskRuntimeInfo;
   task_context: AsyncTaskTaskContext;

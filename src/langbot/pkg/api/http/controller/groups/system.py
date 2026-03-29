@@ -118,11 +118,14 @@ class SystemRouterGroup(group.RouterGroup):
         @self.route('/tasks', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:
             task_type = quart.request.args.get('type')
+            task_kind = quart.request.args.get('kind')
 
             if task_type == '':
                 task_type = None
+            if task_kind == '':
+                task_kind = None
 
-            return self.success(data=self.ap.task_mgr.get_tasks_dict(task_type))
+            return self.success(data=self.ap.task_mgr.get_tasks_dict(task_type, task_kind))
 
         @self.route('/tasks/<task_id>', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
         async def _(task_id: str) -> str:
