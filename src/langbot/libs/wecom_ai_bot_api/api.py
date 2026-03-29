@@ -900,8 +900,7 @@ class WecomBotClient:
             session = self.stream_sessions.get_session_by_feedback_id(feedback_id)
             if session:
                 await self.logger.info(
-                    f'反馈关联到会话: stream_id={session.stream_id}, msg_id={session.msg_id}, '
-                    f'user_id={session.user_id}'
+                    f'反馈关联到会话: stream_id={session.stream_id}, msg_id={session.msg_id}, user_id={session.user_id}'
                 )
                 for handler in self._message_handlers.get('feedback', []):
                     try:

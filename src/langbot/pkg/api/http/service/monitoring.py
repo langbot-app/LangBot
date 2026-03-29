@@ -1301,28 +1301,19 @@ class MonitoringService:
         satisfaction_rate = (total_likes / total_feedback * 100) if total_feedback > 0 else 0
 
         # Get feedback by bot
-        bot_stats_query = (
-            sqlalchemy.select(
-                persistence_monitoring.MonitoringFeedback.bot_id,
-                persistence_monitoring.MonitoringFeedback.bot_name,
-                sqlalchemy.func.count(persistence_monitoring.MonitoringFeedback.id).label('total'),
-                sqlalchemy.func.sum(
-                    sqlalchemy.case(
-                        (persistence_monitoring.MonitoringFeedback.feedback_type == 1, 1),
-                        else_=0
-                    )
-                ).label('likes'),
-                sqlalchemy.func.sum(
-                    sqlalchemy.case(
-                        (persistence_monitoring.MonitoringFeedback.feedback_type == 2, 1),
-                        else_=0
-                    )
-                ).label('dislikes'),
-            )
-            .group_by(
-                persistence_monitoring.MonitoringFeedback.bot_id,
-                persistence_monitoring.MonitoringFeedback.bot_name,
-            )
+        bot_stats_query = sqlalchemy.select(
+            persistence_monitoring.MonitoringFeedback.bot_id,
+            persistence_monitoring.MonitoringFeedback.bot_name,
+            sqlalchemy.func.count(persistence_monitoring.MonitoringFeedback.id).label('total'),
+            sqlalchemy.func.sum(
+                sqlalchemy.case((persistence_monitoring.MonitoringFeedback.feedback_type == 1, 1), else_=0)
+            ).label('likes'),
+            sqlalchemy.func.sum(
+                sqlalchemy.case((persistence_monitoring.MonitoringFeedback.feedback_type == 2, 1), else_=0)
+            ).label('dislikes'),
+        ).group_by(
+            persistence_monitoring.MonitoringFeedback.bot_id,
+            persistence_monitoring.MonitoringFeedback.bot_name,
         )
         if conditions:
             bot_stats_query = bot_stats_query.where(sqlalchemy.and_(*conditions))
@@ -1433,7 +1424,9 @@ class MonitoringService:
                 'id': row[0].id if isinstance(row, tuple) else row.id,
                 'timestamp': self._format_timestamp(row[0].timestamp if isinstance(row, tuple) else row.timestamp),
                 'feedback_id': row[0].feedback_id if isinstance(row, tuple) else row.feedback_id,
-                'feedback_type': 'like' if (row[0].feedback_type if isinstance(row, tuple) else row.feedback_type) == 1 else 'dislike',
+                'feedback_type': 'like'
+                if (row[0].feedback_type if isinstance(row, tuple) else row.feedback_type) == 1
+                else 'dislike',
                 'feedback_content': row[0].feedback_content if isinstance(row, tuple) else row.feedback_content,
                 'inaccurate_reasons': row[0].inaccurate_reasons if isinstance(row, tuple) else row.inaccurate_reasons,
                 'bot_id': row[0].bot_id if isinstance(row, tuple) else row.bot_id,
