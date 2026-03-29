@@ -420,6 +420,48 @@ def test_postgresql_upsert_statement_uses_pg_dialect_conflict_path():
     assert 'updated_at' in compiled_sql
 
 
+def test_migration_25_uses_explicit_backend_specific_column_sql():
+    original_core_pkg = sys.modules.get('langbot.pkg.core')
+    original_core_app = sys.modules.get('langbot.pkg.core.app')
+    core_pkg = types.ModuleType('langbot.pkg.core')
+    core_pkg.__path__ = []  # type: ignore[attr-defined]
+    core_app = types.ModuleType('langbot.pkg.core.app')
+    core_app.Application = object
+    sys.modules['langbot.pkg.core'] = core_pkg
+    sys.modules['langbot.pkg.core.app'] = core_app
+
+    try:
+        from langbot.pkg.persistence.migrations.dbm025_kuku_group_settings import DBMigrateKukuGroupSettings
+
+        postgres_migration = DBMigrateKukuGroupSettings(
+            SimpleNamespace(persistence_mgr=SimpleNamespace(db=SimpleNamespace(name='postgresql')))
+        )
+        sqlite_migration = DBMigrateKukuGroupSettings(
+            SimpleNamespace(persistence_mgr=SimpleNamespace(db=SimpleNamespace(name='sqlite')))
+        )
+    finally:
+        if original_core_pkg is None:
+            sys.modules.pop('langbot.pkg.core', None)
+        else:
+            sys.modules['langbot.pkg.core'] = original_core_pkg
+
+        if original_core_app is None:
+            sys.modules.pop('langbot.pkg.core.app', None)
+        else:
+            sys.modules['langbot.pkg.core.app'] = original_core_app
+
+    postgres_sql = postgres_migration._build_create_table_sql()
+    sqlite_sql = sqlite_migration._build_create_table_sql()
+
+    assert "quiet_hours JSONB NOT NULL DEFAULT '{}'::jsonb" in postgres_sql
+    assert 'enabled BOOLEAN NOT NULL DEFAULT TRUE' in postgres_sql
+    assert 'created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP' in postgres_sql
+
+    assert "quiet_hours JSON NOT NULL DEFAULT '{}'" in sqlite_sql
+    assert 'enabled BOOLEAN NOT NULL DEFAULT 1' in sqlite_sql
+    assert 'created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP' in sqlite_sql
+
+
 @pytest.mark.asyncio
 async def test_migration_25_creates_indexes_for_kuku_group_settings():
     engine = sqlalchemy.create_engine(
