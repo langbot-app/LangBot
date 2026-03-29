@@ -80,6 +80,26 @@ docker compose up -d
 
 ---
 
+## Local development
+
+### Inspecting the SQLite database
+
+When you run LangBot from a git checkout, the default database file is `data/langbot.db` at the repository root.
+
+**Command line:**
+
+```bash
+sqlite3 data/langbot.db "select uuid, name, adapter from bots;"
+```
+
+**GUI (e.g. [TablePlus](https://tableplus.com/)):** Add a SQLite connection whose database path is `data/langbot.db`, connect, then open the `bots` table in the sidebar (other tables such as `api_keys` are listed the same way). This is equivalent to running the SQL above in a shell.
+
+![TablePlus browsing the bots table in langbot.db](docs/assets/tableplus-langbot-sqlite-bots.png)
+
+Treat `adapter_config` and similar columns as sensitive—they can contain tokens. Redact them in screenshots or exports if you share anything publicly.
+
+---
+
 ## Supported Platforms
 
 | Platform | Status | Notes |

@@ -132,6 +132,12 @@ Example:
 4b78ca5c-9801-4bf6-9ea3-4144d1d2247a|LangBotTest|discord
 ```
 
+**GUI alternative:** Open `data/langbot.db` in [TablePlus](https://tableplus.com/) or any SQLite client (database path = repo root’s `data/langbot.db`), select the `bots` table, and read `uuid` from the grid—same data as the query above. Example:
+
+![TablePlus browsing the bots table in langbot.db](assets/tableplus-langbot-sqlite-bots.png)
+
+Redact `adapter_config` in screenshots if needed; it can contain tokens. The root **README.md** (*Local development → Inspecting the SQLite database*) documents the same CLI and TablePlus workflow.
+
 Use the UUID for your demo bot.
 
 ### 6. Create a temporary API key for demo calls
