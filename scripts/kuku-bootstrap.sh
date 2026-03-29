@@ -1,161 +1,102 @@
 #!/usr/bin/env bash
-# Prepare local KUKU demo variables and optional first-time Docker DB migration.
-# Usage: see --help. Typical: ./scripts/kuku-bootstrap.sh && source .kuku-demo.env
+# Prepare local KUKU demo files and variables.
+# Typical use: ./scripts/kuku-bootstrap.sh && source .kuku-demo.env
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-FIRST_TIME_FROM_DOCKER=false
-STOP_DOCKER=false
-COPY_DOCKER_DB=false
-FORCE_NEW_API_KEY=false
-EXPORT_ONLY=false
-SETUP_WEB_ENV=false
-
 usage() {
   cat <<'EOF'
-KUKU local demo bootstrap — prep only. It writes .kuku-demo.env and seeds a demo API key if needed.
-It does NOT start uv run main.py or pnpm dev.
+KUKU local demo bootstrap — prep only.
+
+What it does on every run:
+- rewrites web/.env with NEXT_PUBLIC_API_BASE_URL=http://localhost:5300
+- resets the demo API key in data/langbot.db to demo-kuku-key
+- reads one bot UUID from the bots table
+- writes .kuku-demo.env for curl examples
+
+What it does NOT do:
+- it does not start uv run main.py
+- it does not start pnpm dev
+- it does not create a bot for you
 
 Usage:
-  ./scripts/kuku-bootstrap.sh [options]
+  ./scripts/kuku-bootstrap.sh
 
-Returning users (default):
-  Does not stop Docker or overwrite your DB. Ensures api_keys row name=demo-kuku exists,
-  reuses its key if present, otherwise inserts demo-kuku-key.
-
-First-time from Docker:
-  ./scripts/kuku-bootstrap.sh --first-time-from-docker
-  Stops langbot containers, backs up data/langbot.db, copies docker/data/langbot.db → data/langbot.db.
-
-Options:
-  --first-time-from-docker   Stop Docker LangBot, migrate DB from docker/data/langbot.db
-  --stop-docker            Only docker stop langbot langbot_plugin_runtime (no DB copy)
-  --copy-docker-db         Only backup local DB and copy docker/data/langbot.db → data/langbot.db
-  --force-new-api-key      Delete demo-kuku key row and insert demo-kuku-key again
-  --setup-web-env          If web/.env is missing, copy web/.env.example → web/.env
-  --export-only            Print export lines to stdout (for eval), do not write .kuku-demo.env
-  -h, --help               Show this help
-
-After running (unless --export-only):
+After running successfully:
   source .kuku-demo.env
-
-Then start the backend (separate terminal):
   uv run main.py
-
-Demo curl (after source):
-  curl -s "${KUKU_API_BASE_URL}/api/v1/kuku/personas" -H "X-API-Key: ${KUKU_API_KEY}"
 EOF
 }
 
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --first-time-from-docker)
-      FIRST_TIME_FROM_DOCKER=true
-      STOP_DOCKER=true
-      COPY_DOCKER_DB=true
-      ;;
-    --stop-docker) STOP_DOCKER=true ;;
-    --copy-docker-db) COPY_DOCKER_DB=true ;;
-    --force-new-api-key) FORCE_NEW_API_KEY=true ;;
-    --export-only) EXPORT_ONLY=true ;;
-    --setup-web-env) SETUP_WEB_ENV=true ;;
-    -h | --help)
-      usage
-      exit 0
-      ;;
-    *)
-      echo "Unknown option: $1" >&2
-      usage >&2
-      exit 1
-      ;;
-  esac
-  shift
-done
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+if [[ $# -gt 0 ]]; then
+  echo "Unknown option: $1" >&2
+  usage >&2
+  exit 1
+fi
 
 if ! command -v sqlite3 >/dev/null 2>&1; then
   echo "error: sqlite3 not found (install SQLite CLI)" >&2
   exit 1
 fi
 
-if $STOP_DOCKER; then
-  docker stop langbot langbot_plugin_runtime 2>/dev/null || true
-fi
-
-if $COPY_DOCKER_DB; then
-  src="$REPO_ROOT/docker/data/langbot.db"
-  dst="$REPO_ROOT/data/langbot.db"
-  if [[ ! -f "$src" ]]; then
-    echo "warning: $src not found — skipping Docker DB copy" >&2
-  else
-    mkdir -p "$REPO_ROOT/data"
-    if [[ -f "$dst" ]]; then
-      cp "$dst" "$dst.bak.$(date +%Y%m%d%H%M%S)"
-    fi
-    cp "$src" "$dst"
-    echo "Copied Docker SQLite DB to $dst"
-  fi
-fi
+mkdir -p "$REPO_ROOT/web"
+printf 'NEXT_PUBLIC_API_BASE_URL=http://localhost:5300\n' >"$REPO_ROOT/web/.env"
+echo "Wrote $REPO_ROOT/web/.env"
 
 db="$REPO_ROOT/data/langbot.db"
 if [[ ! -f "$db" ]]; then
-  echo "error: $db not found. Start LangBot once to create it, or use --first-time-from-docker if migrating from Docker." >&2
-  exit 1
+  echo ""
+  echo "No $db yet."
+  echo "Next:"
+  echo "  1. Start LangBot: uv run main.py"
+  echo "  2. Start the web UI: cd web && pnpm install && pnpm dev"
+  echo "  3. Open http://127.0.0.1:3000"
+  echo "  4. If prompted, create a local account and sign in"
+  echo "  5. Go to Bots, click Create Bot, and save one Discord bot"
+  echo "  6. Stop LangBot and run ./scripts/kuku-bootstrap.sh again"
+  exit 0
 fi
 
-new_key="demo-kuku-key"
-
-if $FORCE_NEW_API_KEY; then
-  sqlite3 "$db" "DELETE FROM api_keys WHERE name='demo-kuku';"
-fi
-
-existing=$(sqlite3 "$db" "SELECT key FROM api_keys WHERE name='demo-kuku' LIMIT 1;" || true)
-if [[ -n "$existing" ]]; then
-  api_key="$existing"
-else
-  sqlite3 "$db" "INSERT INTO api_keys (name,key,description) VALUES ('demo-kuku','$new_key','Temporary local API key for KUKU demo (scripts/kuku-bootstrap.sh)');"
-  api_key="$new_key"
-fi
+sqlite3 "$db" "DELETE FROM api_keys WHERE name='demo-kuku' OR key='demo-kuku-key';"
+sqlite3 "$db" "INSERT INTO api_keys (name,key,description) VALUES ('demo-kuku','demo-kuku-key','Temporary local API key for KUKU demo (scripts/kuku-bootstrap.sh)');"
 
 bot_uuid=$(sqlite3 "$db" "SELECT uuid FROM bots WHERE adapter='discord' LIMIT 1;" || true)
 if [[ -z "$bot_uuid" ]]; then
   bot_uuid=$(sqlite3 "$db" "SELECT uuid FROM bots LIMIT 1;" || true)
 fi
+
 if [[ -z "$bot_uuid" ]]; then
-  echo "error: no rows in bots table — configure a bot first" >&2
-  exit 1
-fi
-
-group_id="${KUKU_GROUP_ID:-demo-group}"
-base_url="${KUKU_API_BASE_URL:-http://127.0.0.1:5300}"
-
-lines=$(
-  cat <<EOF
-export KUKU_API_BASE_URL='${base_url}'
-export KUKU_API_KEY='${api_key}'
-export KUKU_BOT_UUID='${bot_uuid}'
-export KUKU_GROUP_ID='${group_id}'
-EOF
-)
-
-if $EXPORT_ONLY; then
-  printf '%s\n' "$lines"
+  echo ""
+  echo "Reset demo API key to demo-kuku-key in $db."
+  echo "No bot found in the bots table yet, so .kuku-demo.env was not written."
+  echo "Next:"
+  echo "  1. Start LangBot: uv run main.py"
+  echo "  2. Start the web UI: cd web && pnpm install && pnpm dev"
+  echo "  3. Open http://127.0.0.1:3000"
+  echo "  4. If prompted, create a local account and sign in"
+  echo "  5. Go to Bots, click Create Bot, and save one Discord bot"
+  echo "  6. Stop LangBot and run ./scripts/kuku-bootstrap.sh again"
   exit 0
 fi
 
 env_file="$REPO_ROOT/.kuku-demo.env"
 {
   printf '%s\n' '# Generated by scripts/kuku-bootstrap.sh — do not commit'
-  printf '%s\n' "$lines"
+  printf "%s\n" "export KUKU_API_BASE_URL='http://127.0.0.1:5300'"
+  printf "%s\n" "export KUKU_API_KEY='demo-kuku-key'"
+  printf "%s\n" "export KUKU_BOT_UUID='${bot_uuid}'"
+  printf "%s\n" "export KUKU_GROUP_ID='demo-group'"
 } >"$env_file"
 
-if $SETUP_WEB_ENV && [[ ! -f "$REPO_ROOT/web/.env" ]] && [[ -f "$REPO_ROOT/web/.env.example" ]]; then
-  cp "$REPO_ROOT/web/.env.example" "$REPO_ROOT/web/.env"
-  echo "Created web/.env from web/.env.example"
-fi
-
+echo "Reset demo API key to demo-kuku-key in $db"
 echo "Wrote $env_file"
 echo ""
 echo "  source $env_file"

@@ -11,38 +11,43 @@ Get the current repo code running locally on `http://127.0.0.1:5300`, with:
 - a known bot UUID
 - a temporary API key for demo requests
 
-## When You Need This Runbook
-
-Use this when:
-
-- you want to run the locally checked-out KUKU API routes
-- you want a repeatable local demo flow with one bot UUID and one API key
-
 ## What `kuku-bootstrap.sh` does
 
-`./scripts/kuku-bootstrap.sh` is a **prep script**. It does **not** start the LangBot backend.
+`./scripts/kuku-bootstrap.sh` is a **prep script**. It does **not** start the LangBot backend or frontend.
 
-It does these things:
+On every run it:
 
-- makes sure there is a demo API key in `data/langbot.db`
+- rewrites `web/.env` with `NEXT_PUBLIC_API_BASE_URL=http://localhost:5300`
+- resets the demo API key in `data/langbot.db` to `demo-kuku-key`
 - reads one bot UUID from the `bots` table
-- writes `.kuku-demo.env` with `KUKU_API_KEY`, `KUKU_BOT_UUID`, `KUKU_GROUP_ID`, and `KUKU_API_BASE_URL`
-- optionally creates `web/.env` from `web/.env.example`
+- writes `.kuku-demo.env` for the demo `curl` commands
 
-It does **not** do these things:
+It does **not** create a bot for you.
 
-- it does **not** run `uv run main.py`
-- it does **not** run `pnpm dev`
-- it does **not** create a bot for you
+## What `.kuku-demo.env` is
 
-The script always (re)writes **`.kuku-demo.env`** at the repo root so demo `curl` commands stay consistent. That file is gitignored.
+`.kuku-demo.env` is only a **generated convenience file** for your shell. It is **not** the source of truth.
 
-## Which path should I use?
+- the **database** is the real source of truth
+- `.kuku-demo.env` just exports values read from the DB so the demo `curl` commands are easy to run
 
-| Situation | Use this |
-|------|-----|
-| You already have `data/langbot.db` with at least one bot and just want to re-run the KUKU demo flow | **Returning user** |
-| You have no local DB yet, or you have a fresh empty DB with no bot rows | **Brand-new setup** |
+Today it exports:
+
+- `KUKU_API_BASE_URL`
+- `KUKU_API_KEY`
+- `KUKU_BOT_UUID`
+- `KUKU_GROUP_ID`
+
+That file is gitignored.
+
+## How the script picks the bot
+
+The script reads `KUKU_BOT_UUID` from the `bots` table with this logic:
+
+1. first Discord bot: `SELECT uuid FROM bots WHERE adapter='discord' LIMIT 1;`
+2. otherwise the first bot in the table: `SELECT uuid FROM bots LIMIT 1;`
+
+If you want a **truly fresh** local setup with no old data, move or delete `data/langbot.db` first and create a new bot in the UI.
 
 ---
 
@@ -52,7 +57,7 @@ The script always (re)writes **`.kuku-demo.env`** at the repo root so demo `curl
 
 Use this if `data/langbot.db` already exists and already has at least one bot.
 
-From the **repository root**:
+From the repository root:
 
 ```bash
 ./scripts/kuku-bootstrap.sh
@@ -68,45 +73,62 @@ uv run main.py
 Optional web UI:
 
 ```bash
-./scripts/kuku-bootstrap.sh --setup-web-env
 cd web && pnpm install && pnpm dev
 ```
 
 ### Brand-new setup
 
-Use this if `data/langbot.db` does not exist yet, or it exists but the `bots` table is empty.
+Use this if you want a fresh local start.
 
-1. Start LangBot once:
+If you want to make sure no old local DB data is reused, move the DB aside first:
+
+```bash
+[ -f data/langbot.db ] && mv data/langbot.db "data/langbot.db.bak.$(date +%Y%m%d%H%M%S)"
+```
+
+Run the prep script once so `web/.env` is ready:
+
+```bash
+./scripts/kuku-bootstrap.sh
+```
+
+Then start LangBot:
 
 ```bash
 uv run main.py
 ```
 
-2. Finish the normal first-time setup in the UI and create at least one bot.
-3. Stop LangBot.
-4. Run:
+Start the web UI in another terminal:
 
 ```bash
-./scripts/kuku-bootstrap.sh --setup-web-env
+cd web && pnpm install && pnpm dev
+```
+
+Open `http://127.0.0.1:3000`, then do this in the UI:
+
+1. If prompted, create a local account and sign in.
+2. Open **Bots**.
+3. Click **Create Bot**.
+4. Choose the `discord` adapter.
+5. Fill in the required bot fields and save it.
+
+After that:
+
+1. Stop LangBot.
+2. Run:
+
+```bash
+./scripts/kuku-bootstrap.sh
 source .kuku-demo.env
 ```
 
-5. Start LangBot again:
+3. Start LangBot again:
 
 ```bash
 uv run main.py
 ```
 
 Script help: `./scripts/kuku-bootstrap.sh --help`
-
-If you specifically need to import an existing Docker DB, the script still supports `--first-time-from-docker`, but that is an optional migration path and not the normal local workflow.
-
-### API key behavior
-
-- If a row `api_keys.name = 'demo-kuku'` already exists, the script **reuses** its `key` (good for returning users).
-- If not, it inserts `demo-kuku-key`.
-- To recreate the key row (e.g. after manual DB edits): `./scripts/kuku-bootstrap.sh --force-new-api-key`
-- If you still have an older value in the DB (e.g. `demo-kuku-key-YYYYMMDD`), the script keeps using it until you run `--force-new-api-key`, which resets the secret to `demo-kuku-key`.
 
 ---
 
@@ -196,11 +218,12 @@ Use the UUID for your demo bot (or rely on `./scripts/kuku-bootstrap.sh`, which 
 
 ### 6. Create a temporary API key for demo calls
 
-**Preferred:** run `./scripts/kuku-bootstrap.sh` and `source .kuku-demo.env` — the script inserts or reuses the `demo-kuku` key and keeps `KUKU_API_KEY` in sync.
+**Preferred:** run `./scripts/kuku-bootstrap.sh` and `source .kuku-demo.env` — the script always resets the demo key to `demo-kuku-key` and keeps `KUKU_API_KEY` in sync.
 
 **Manual:** use the same key string everywhere:
 
 ```bash
+sqlite3 data/langbot.db "DELETE FROM api_keys WHERE name='demo-kuku' OR key='demo-kuku-key';"
 sqlite3 data/langbot.db "INSERT INTO api_keys (name,key,description) VALUES ('demo-kuku','demo-kuku-key','Temporary local API key for KUKU demo');"
 ```
 
