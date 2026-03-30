@@ -20,7 +20,7 @@ Then LangBot will:
 
 - Record **human** message timestamps per `(bot_uuid, discord, channel_id)`.
 - About every **20 seconds**, scan enabled rows in `kuku_group_settings`.
-- When **silence_minutes** have passed with no new human messages, and **quiet_hours** / **cooldown_minutes** allow it, call the pipeline’s **local-agent primary model** and post **one** proactive message in the channel.
+- When **`silence_seconds`** of human inactivity have elapsed (per stored settings), and **quiet_hours** / **cooldown_minutes** allow it, call the pipeline’s **local-agent primary model** and post **one** proactive message in the channel.
 
 No separate plugin package is required; the runtime lives in `src/langbot/pkg/kuku/`.
 
@@ -107,8 +107,8 @@ Use:
 
 | Field | Purpose |
 |--------|---------|
-| `silence_minutes` | Minutes after the last **human** message before KUKU may speak when **`silence_seconds`** is not set (default in templates is often 30; use **`1`** for quick manual tests). |
-| `silence_seconds` | Optional. When set to a positive integer, **seconds** of quiet after the last **human** message (overrides the minute-based threshold). See [kuku-silence-debug-handbook.md](./kuku-silence-debug-handbook.md). |
+| `silence_seconds` | **Seconds** after the last **human** message before KUKU may speak (**1–86400**). Omitted on PUT → **1800** (30 minutes). For quick tests use **`60`** (one minute). See [kuku-silence-debug-handbook.md](./kuku-silence-debug-handbook.md). |
+| `silence_minutes` | *Deprecated.* If sent **without** `silence_seconds`, converted as `silence_minutes * 60` (must be **> 0**). Prefer `silence_seconds`. |
 | `cooldown_minutes` | Minimum minutes between KUKU proactive sends for that scope (use **`1`** for quick tests). |
 | `quiet_hours` | Optional. Object with `start`, `end` (`HH:MM`), and optional `timezone` (IANA name, e.g. `UTC`). Empty `{}` disables. |
 | `persona_id` | Optional; default **`kuku-sunny`**. |
@@ -122,7 +122,7 @@ The route **always** overwrites `bot_uuid`, `platform`, and `group_id` from the 
 curl -s -X PUT "${KUKU_API_BASE_URL}/api/v1/kuku/groups/${KUKU_BOT_UUID}/discord/${KUKU_GROUP_ID}" \
   -H "Authorization: Bearer ${KUKU_API_KEY}" \
   -H "Content-Type: application/json" \
-  -d '{"silence_minutes":1,"cooldown_minutes":1,"enabled":true,"quiet_hours":{}}'
+  -d '{"silence_seconds":60,"cooldown_minutes":1,"enabled":true,"quiet_hours":{}}'
 ```
 
 ### Verify
@@ -140,8 +140,8 @@ You should receive JSON with `data.group` including your settings.
 
 1. Keep **`uv run main.py`** running so the **KUKU background loop** is active.
 2. In Discord, in the **same text channel** as `group_id`, send a message as a **normal user** (not as another bot). This seeds “last human activity” for KUKU.
-3. **Stop typing** in that channel; wait at least **`silence_minutes`**.
-4. You should see **one** new message from the bot (the opener). Subsequent messages respect **`cooldown_minutes`** and a new **`silence_minutes`** window after human silence.
+3. **Stop typing** in that channel; wait at least **`silence_seconds`** (from your GET response).
+4. You should see **one** new message from the bot (the opener). Subsequent messages respect **`cooldown_minutes`** and a new full **`silence_seconds`** quiet window after human silence.
 
 ### Logs
 
@@ -156,7 +156,7 @@ Python logger name: **`langbot.kuku`**. LLM failures, `send_message` errors, or 
 | Nothing happens | At least **one human** message in the channel **after** KUKU was enabled; **channel id** in the URL matches the channel you are testing. |
 | Still nothing | Bot **enabled** in LangBot; Discord process connected; `enabled: true` on the KUKU row. |
 | Errors about LLM / model | Pipeline must be **`local-agent`** with a resolvable **primary** model UUID. Fix normal chat first. |
-| Very long wait | Lower **`silence_minutes`** in the PUT for testing (e.g. `1`). |
+| Very long wait | Lower **`silence_seconds`** in the PUT for testing (e.g. **`60`** for one minute). |
 | Wrong channel | `group_id` must be the **text channel** snowflake, not the guild (server) id. |
 | Token / security | If the bot token appeared in a screen recording or shared log, **rotate** it in the Discord portal. |
 

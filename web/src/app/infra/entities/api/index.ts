@@ -167,9 +167,8 @@ export interface KukuGroupSettings {
   platform?: string;
   group_id: string;
   persona_id?: string;
-  silence_minutes?: number;
-  /** When set, detection uses this many seconds of quiet instead of silence_minutes. */
-  silence_seconds?: number | null;
+  /** Required human-quiet period before a proactive opener (seconds). Default 1800 (30 minutes). */
+  silence_seconds?: number;
   quiet_hours?: {
     start?: string;
     end?: string;
@@ -183,8 +182,7 @@ export interface KukuGroupSettings {
 
 export interface UpdateKukuGroupSettingsRequest {
   persona_id: string;
-  silence_minutes: number;
-  silence_seconds?: number | null;
+  silence_seconds: number;
   quiet_hours: Record<string, string>;
   cooldown_minutes: number;
   enabled: boolean;

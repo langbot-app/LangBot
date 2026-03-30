@@ -12,8 +12,7 @@ export interface KukuSettingsFormValues {
 export interface KukuGroupSettingsLike {
   group_id?: string;
   persona_id?: string;
-  silence_minutes?: number;
-  silence_seconds?: number | null;
+  silence_seconds?: number;
   cooldown_minutes?: number;
   enabled?: boolean;
   quiet_hours?: {
@@ -41,10 +40,11 @@ export function mapGroupSettingsToFormValues(
 ): KukuSettingsFormValues {
   const defaults = createDefaultKukuSettingsFormValues();
 
+  const silenceSec = settings.silence_seconds ?? 1800;
   return {
     groupId: settings.group_id ?? defaults.groupId,
     personaId: settings.persona_id ?? defaults.personaId,
-    silenceMinutes: String(settings.silence_minutes ?? defaults.silenceMinutes),
+    silenceMinutes: String(Math.max(1, Math.round(silenceSec / 60))),
     cooldownMinutes: String(
       settings.cooldown_minutes ?? defaults.cooldownMinutes,
     ),
@@ -60,7 +60,7 @@ export function buildKukuGroupSettingsPayload(values: KukuSettingsFormValues): {
   groupId: string;
   payload: {
     persona_id: string;
-    silence_minutes: number;
+    silence_seconds: number;
     cooldown_minutes: number;
     enabled: boolean;
     quiet_hours: Record<string, string>;
@@ -71,10 +71,11 @@ export function buildKukuGroupSettingsPayload(values: KukuSettingsFormValues): {
     throw new Error('groupId is required');
   }
 
-  const silenceMinutes = parseRequiredNonNegativeInt(
+  const silenceMinutes = parseRequiredPositiveInt(
     values.silenceMinutes,
     'silenceMinutes',
   );
+  const silenceSeconds = Math.min(86400, Math.max(60, silenceMinutes * 60));
   const cooldownMinutes = parseRequiredNonNegativeInt(
     values.cooldownMinutes,
     'cooldownMinutes',
@@ -95,7 +96,7 @@ export function buildKukuGroupSettingsPayload(values: KukuSettingsFormValues): {
     groupId,
     payload: {
       persona_id: values.personaId,
-      silence_minutes: silenceMinutes,
+      silence_seconds: silenceSeconds,
       cooldown_minutes: cooldownMinutes,
       enabled: values.enabled,
       quiet_hours: quietHours,
@@ -113,5 +114,13 @@ function parseRequiredNonNegativeInt(value: string, fieldName: string): number {
     throw new Error(`${fieldName} must be a non-negative integer`);
   }
 
+  return parsed;
+}
+
+function parseRequiredPositiveInt(value: string, fieldName: string): number {
+  const parsed = parseRequiredNonNegativeInt(value, fieldName);
+  if (parsed < 1) {
+    throw new Error(`${fieldName} must be at least 1`);
+  }
   return parsed;
 }

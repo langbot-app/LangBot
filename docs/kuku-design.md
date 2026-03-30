@@ -28,7 +28,7 @@ What exists today:
 - KUKU setup/read APIs under `/api/v1/kuku/...`
 - Discord-only validation for the current MVP boundary
 - one fixed persona, `kuku-sunny`
-- in-process KUKU runtime (`KukuRuntime`): per-channel human activity tracking on Discord, periodic silence checks, optional per-group **`silence_seconds`** (sub-minute threshold), `quiet_hours` / `cooldown_minutes`, reactive replies on mention or reply-to-bot, LLM opener via the bot’s pipeline `local-agent` model, Discord `send_message` / `reply_message`; **debug:** `KUKU_SILENCE_DEBUG` and `KUKU_SILENCE_TICK_INTERVAL_SEC` (see `docs/kuku-silence-debug-handbook.md`)
+- in-process KUKU runtime (`KukuRuntime`): per-channel human activity tracking on Discord, periodic silence checks, per-group **`silence_seconds`** (stored quiet threshold), `quiet_hours` / `cooldown_minutes`, reactive replies on mention or reply-to-bot, LLM opener via the bot’s pipeline `local-agent` model, Discord `send_message` / `reply_message`; **debug:** `KUKU_SILENCE_DEBUG` and `KUKU_SILENCE_TICK_INTERVAL_SEC` (see `docs/kuku-silence-debug-handbook.md`)
 
 What does not exist yet:
 

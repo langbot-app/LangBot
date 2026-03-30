@@ -39,14 +39,16 @@ uv run main.py
 
 ---
 
-## 3. Sub-minute silence: `silence_seconds`
+## 3. Silence threshold: `silence_seconds` only
 
-Group settings support an optional **`silence_seconds`** field. When it is a **positive integer**, the runtime uses it as the **required quiet period** (in seconds) after the last **human** message before KUKU may send a proactive opener. When it is **omitted** or **null**, behavior falls back to **`silence_minutes`** (same as before).
+The stored threshold is **`silence_seconds`**: how many **seconds** must pass after the last **human** message before KUKU may send a proactive opener.
 
-- Upper bound: **86400** (24 hours), enforced by the API.
-- **`silence_seconds`: 0** or omitting the field clears the override (stored as SQL `NULL`); threshold uses `silence_minutes` only.
+- Allowed range: **1–86400** (enforced by the API).
+- If you **omit** `silence_seconds` on PUT, the service defaults to **1800** (30 minutes).
 
-Database note: schema version **26** adds the `silence_seconds` column. Run the backend once so migrations apply, or run your usual migration path.
+**Deprecated (backward compatible):** you may still send **`silence_minutes`** alone; it is converted to `silence_minutes * 60` when `silence_seconds` is not in the body. Prefer `silence_seconds` in new integrations.
+
+Database: migration **26** consolidates on a single `silence_seconds` column (see `dbm026_kuku_silence_seconds.py`). Run the backend once so migrations apply.
 
 ### Example PUT (30-second silence, minimal cooldown)
 
@@ -57,7 +59,6 @@ curl -s -X PUT "${KUKU_API_BASE_URL}/api/v1/kuku/groups/${KUKU_BOT_UUID}/discord
   -H "Authorization: Bearer ${KUKU_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
-    "silence_minutes": 30,
     "silence_seconds": 30,
     "cooldown_minutes": 0,
     "enabled": true,
@@ -90,7 +91,7 @@ Then:
 ## 5. Returning to normal thresholds
 
 1. Stop using debug env vars (or unset them) and restart LangBot.
-2. PUT settings **without** `silence_seconds`, or set **`silence_seconds` to `null`** in JSON if your client sends explicit nulls, so the stored value is cleared and **`silence_minutes`** alone defines the threshold.
+2. PUT a normal value for **`silence_seconds`** (for example **1800** for a 30‑minute quiet period).
 
 ---
 

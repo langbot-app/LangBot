@@ -40,13 +40,14 @@ def test_unwrap_invoke_llm_tuple_vs_message():
     assert _unwrap_invoke_llm_result('plain') == 'plain'
 
 
-def test_silence_threshold_seconds_prefers_silence_seconds():
-    assert silence_threshold_seconds({'silence_seconds': 30, 'silence_minutes': 60}) == 30.0
-    assert silence_threshold_seconds({'silence_seconds': 0, 'silence_minutes': 2}) == 120.0
+def test_silence_threshold_seconds_uses_stored_seconds():
+    assert silence_threshold_seconds({'silence_seconds': 30}) == 30.0
+    assert silence_threshold_seconds({'silence_seconds': 120}) == 120.0
 
 
-def test_silence_threshold_seconds_falls_back_to_minutes():
-    assert silence_threshold_seconds({'silence_minutes': 2}) == 120.0
+def test_silence_threshold_seconds_invalid_falls_back_to_minimum():
+    assert silence_threshold_seconds({'silence_seconds': 0}) == 1.0
+    assert silence_threshold_seconds({}) == 1.0
 
 
 def test_silence_duration_prompt_phrase():

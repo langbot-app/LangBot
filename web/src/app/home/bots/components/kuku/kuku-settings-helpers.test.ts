@@ -23,7 +23,7 @@ describe('buildKukuGroupSettingsPayload', () => {
       groupId: '1234567890',
       payload: {
         persona_id: 'kuku-sunny',
-        silence_minutes: 30,
+        silence_seconds: 1800,
         cooldown_minutes: 10,
         enabled: true,
         quiet_hours: {},
@@ -47,7 +47,7 @@ describe('buildKukuGroupSettingsPayload', () => {
       groupId: '1234567890',
       payload: {
         persona_id: 'kuku-sunny',
-        silence_minutes: 15,
+        silence_seconds: 900,
         cooldown_minutes: 5,
         enabled: false,
         quiet_hours: {
@@ -64,7 +64,7 @@ describe('buildKukuGroupSettingsPayload', () => {
       buildKukuGroupSettingsPayload({
         groupId: '   ',
         personaId: 'kuku-sunny',
-        silenceMinutes: '0',
+        silenceMinutes: '30',
         cooldownMinutes: '10',
         enabled: true,
         quietHoursStart: '',
@@ -72,6 +72,19 @@ describe('buildKukuGroupSettingsPayload', () => {
         quietHoursTimezone: '',
       }),
     ).toThrow('groupId');
+
+    expect(() =>
+      buildKukuGroupSettingsPayload({
+        groupId: '1234567890',
+        personaId: 'kuku-sunny',
+        silenceMinutes: '0',
+        cooldownMinutes: '10',
+        enabled: true,
+        quietHoursStart: '',
+        quietHoursEnd: '',
+        quietHoursTimezone: '',
+      }),
+    ).toThrow('silenceMinutes');
 
     expect(() =>
       buildKukuGroupSettingsPayload({
@@ -94,7 +107,7 @@ describe('mapGroupSettingsToFormValues', () => {
       mapGroupSettingsToFormValues({
         group_id: '99887766',
         persona_id: 'kuku-sunny',
-        silence_minutes: 12,
+        silence_seconds: 720,
         cooldown_minutes: 7,
         enabled: true,
         quiet_hours: {

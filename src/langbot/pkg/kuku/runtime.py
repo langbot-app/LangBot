@@ -34,15 +34,11 @@ def _silence_debug_enabled() -> bool:
 def silence_threshold_seconds(row: dict) -> float:
     """Seconds of human inactivity before KUKU may send a proactive opener."""
     ss = row.get('silence_seconds')
-    if ss is not None:
-        try:
-            n = int(ss)
-        except (TypeError, ValueError):
-            n = 0
-        if n > 0:
-            return float(n)
-    minutes = int(row.get('silence_minutes') or 30)
-    return float(max(1, minutes) * 60)
+    try:
+        n = int(ss)
+    except (TypeError, ValueError):
+        n = 0
+    return float(max(1, n))
 
 
 def silence_duration_prompt_phrase(silence_seconds: int) -> str:

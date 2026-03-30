@@ -120,8 +120,7 @@ class KukuService:
             'platform': platform,
             'group_id': group_id,
             'persona_id': payload.get('persona_id') or 'kuku-sunny',
-            'silence_minutes': self._as_non_negative_int(payload.get('silence_minutes'), 30, 'silence_minutes'),
-            'silence_seconds': self._normalize_silence_seconds(payload.get('silence_seconds')),
+            'silence_seconds': self._resolve_silence_seconds(payload),
             'quiet_hours': self._normalize_quiet_hours(payload.get('quiet_hours')),
             'cooldown_minutes': self._as_non_negative_int(payload.get('cooldown_minutes'), 10, 'cooldown_minutes'),
             'enabled': self._parse_bool(payload.get('enabled', True), 'enabled'),
@@ -172,22 +171,30 @@ class KukuService:
             raise ValueError(f'{field_name} must be an integer greater than or equal to 0')
         return parsed
 
-    def _normalize_silence_seconds(self, value) -> int | None:
-        """Optional sub-minute silence threshold. None = use silence_minutes only."""
-        if value is None:
-            return None
+    def _resolve_silence_seconds(self, payload: dict) -> int:
+        """Required quiet period in seconds (default 1800 = 30 minutes).
+
+        Prefer ``silence_seconds``. For backward compatibility, ``silence_minutes`` is still accepted
+        and converted to seconds when ``silence_seconds`` is omitted.
+        """
+        if 'silence_seconds' in payload and payload.get('silence_seconds') is not None:
+            return self._as_silence_seconds(payload.get('silence_seconds'), 'silence_seconds')
+        if 'silence_minutes' in payload and payload.get('silence_minutes') is not None:
+            minutes = self._as_non_negative_int(payload.get('silence_minutes'), 30, 'silence_minutes')
+            if minutes == 0:
+                raise ValueError('silence_minutes must be greater than 0 when used without silence_seconds')
+            return min(86400, max(1, minutes * 60))
+        return 1800
+
+    def _as_silence_seconds(self, value, field_name: str) -> int:
         if isinstance(value, bool):
-            raise ValueError('silence_seconds must be a positive integer or omitted')
+            raise ValueError(f'{field_name} must be an integer between 1 and 86400')
         try:
             parsed = int(value)
         except (TypeError, ValueError) as exc:
-            raise ValueError('silence_seconds must be a positive integer or omitted') from exc
-        if parsed < 0:
-            raise ValueError('silence_seconds must be a positive integer or omitted')
-        if parsed == 0:
-            return None
-        if parsed > 86400:
-            raise ValueError('silence_seconds must be at most 86400 (24 hours)')
+            raise ValueError(f'{field_name} must be an integer between 1 and 86400') from exc
+        if parsed < 1 or parsed > 86400:
+            raise ValueError(f'{field_name} must be an integer between 1 and 86400')
         return parsed
 
     def _normalize_quiet_hours(self, value) -> dict:

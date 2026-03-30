@@ -250,7 +250,7 @@ curl -s "${KUKU_API_BASE_URL}/api/v1/kuku/personas" \
 curl -s -X PUT "${KUKU_API_BASE_URL}/api/v1/kuku/groups/${KUKU_BOT_UUID}/discord/${KUKU_GROUP_ID}" \
   -H "X-API-Key: ${KUKU_API_KEY}" \
   -H "Content-Type: application/json" \
-  -d '{"persona_id":"kuku-sunny","silence_minutes":30,"cooldown_minutes":10,"quiet_hours":{"start":"00:00","end":"08:00","timezone":"UTC"},"enabled":true}'
+  -d '{"persona_id":"kuku-sunny","silence_seconds":1800,"cooldown_minutes":10,"quiet_hours":{"start":"00:00","end":"08:00","timezone":"UTC"},"enabled":true}'
 ```
 
 ### Read KUKU group settings back
@@ -306,5 +306,5 @@ Use `Ctrl+C` in the terminal running `uv run main.py`.
 ## Notes
 
 - If the Discord bot token was ever shown on screen or in screenshots, rotate it after the demo.
-- With KUKU enabled for a Discord channel, LangBot runs a background loop: after `silence_minutes` of no human messages (and respecting `cooldown_minutes` / `quiet_hours`), it uses the bot pipeline’s `local-agent` model to post a proactive opener in that channel.
+- With KUKU enabled for a Discord channel, LangBot runs a background loop: after `silence_seconds` of no human messages (and respecting `cooldown_minutes` / `quiet_hours`), it uses the bot pipeline’s `local-agent` model to post a proactive opener in that channel.
 - If `5300` or `5401` are already in use, check what process is listening before debugging LangBot itself.
