@@ -496,10 +496,11 @@ export default function WizardPage() {
   const handleSkipConfirm = useCallback(async () => {
     setIsSkipping(true);
     try {
-      if (systemInfo.wizard_status === 'none') {
-        await httpClient.updateWizardStatus('skipped');
-        systemInfo.wizard_status = 'skipped';
-      }
+      // Always persist skip on the server (idempotent). A strict `=== 'none'` check skipped
+      // the API when client state diverged from the DB, so /home refetched `none` and sent
+      // the user back to /wizard.
+      await httpClient.updateWizardStatus('skipped');
+      systemInfo.wizard_status = 'skipped';
       // Always clear persisted progress so re-entering starts fresh
       await httpClient.saveWizardProgress({
         step: 0,
@@ -1150,10 +1151,8 @@ function StepDone() {
   const handleBack = useCallback(async () => {
     setIsCompleting(true);
     try {
-      if (systemInfo.wizard_status === 'none') {
-        await httpClient.updateWizardStatus('completed');
-        systemInfo.wizard_status = 'completed';
-      }
+      await httpClient.updateWizardStatus('completed');
+      systemInfo.wizard_status = 'completed';
       // Always clear persisted progress so re-entering starts fresh
       await httpClient.saveWizardProgress({
         step: 0,

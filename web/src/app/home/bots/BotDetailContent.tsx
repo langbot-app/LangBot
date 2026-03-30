@@ -25,6 +25,7 @@ import BotForm from '@/app/home/bots/components/bot-form/BotForm';
 import { BotLogListComponent } from '@/app/home/bots/components/bot-log/view/BotLogListComponent';
 import BotSessionMonitor from '@/app/home/bots/components/bot-session/BotSessionMonitor';
 import type { BotSessionMonitorHandle } from '@/app/home/bots/components/bot-session/BotSessionMonitor';
+import KukuDiscordSetupCard from '@/app/home/bots/components/kuku/KukuDiscordSetupCard';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { useTranslation } from 'react-i18next';
@@ -240,6 +241,8 @@ export default function BotDetailContent({ id }: { id: string }) {
                 onNewBotCreated={handleNewBotCreated}
                 onDirtyChange={setFormDirty}
               />
+
+              <KukuDiscordSetupCard botId={id} />
 
               {/* Card: Danger Zone */}
               <Card className="border-destructive/50">

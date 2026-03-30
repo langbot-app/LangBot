@@ -6,6 +6,7 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
+    "test": "vitest run",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
     "lint-staged": "lint-staged"
@@ -102,7 +103,8 @@
     "prettier": "^3.5.3",
     "tw-animate-css": "^1.2.9",
     "typescript": "^5.8.3",
-    "typescript-eslint": "^8.31.1"
+    "typescript-eslint": "^8.31.1",
+    "vitest": "^4.1.2"
   },
   "packageManager": "pnpm@8.9.2+sha512.b9d35fe91b2a5854dadc43034a3e7b2e675fa4b56e20e8e09ef078fa553c18f8aed44051e7b36e8b8dd435f97eb0c44c4ff3b44fc7c6fa7d21e1fac17bbe661e",
   "pnpm": {

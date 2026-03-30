@@ -34,6 +34,8 @@ import {
   ApiRespPluginSystemStatus,
   ApiRespMCPServers,
   ApiRespMCPServer,
+  ApiRespKukuPersonas,
+  ApiRespKukuGroupSettings,
   MCPServer,
   ApiRespModelProviders,
   ApiRespModelProvider,
@@ -41,6 +43,7 @@ import {
   ApiRespKnowledgeEngines,
   ApiRespParsers,
   RagMigrationStatusResp,
+  UpdateKukuGroupSettingsRequest,
 } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
@@ -330,6 +333,33 @@ export class BackendClient extends BaseHttpClient {
 
   public deleteBot(uuid: string): Promise<object> {
     return this.delete(`/api/v1/platform/bots/${uuid}`);
+  }
+
+  // ============ KUKU API ============
+  public getKukuPersonas(): Promise<ApiRespKukuPersonas> {
+    return this.get('/api/v1/kuku/personas');
+  }
+
+  public getKukuGroupSettings(
+    botUuid: string,
+    platform: string,
+    groupId: string,
+  ): Promise<ApiRespKukuGroupSettings> {
+    return this.get(
+      `/api/v1/kuku/groups/${encodeURIComponent(botUuid)}/${encodeURIComponent(platform)}/${encodeURIComponent(groupId)}`,
+    );
+  }
+
+  public updateKukuGroupSettings(
+    botUuid: string,
+    platform: string,
+    groupId: string,
+    payload: UpdateKukuGroupSettingsRequest,
+  ): Promise<ApiRespKukuGroupSettings> {
+    return this.put(
+      `/api/v1/kuku/groups/${encodeURIComponent(botUuid)}/${encodeURIComponent(platform)}/${encodeURIComponent(groupId)}`,
+      payload,
+    );
   }
 
   public getBotLogs(

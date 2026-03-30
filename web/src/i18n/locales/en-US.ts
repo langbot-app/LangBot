@@ -337,6 +337,41 @@ const enUS = {
     collapse: 'Collapse',
     imagesAttached: 'image(s) attached',
     noLogs: 'No logs yet',
+    kuku: {
+      title: 'KUKU for Discord',
+      description:
+        'Enable and tune KUKU proactive chat settings for a Discord text channel.',
+      loadBootstrapError: 'Failed to load KUKU setup data: ',
+      loadSettings: 'Load Settings',
+      loadingSettings: 'Loading...',
+      loadSuccess: 'KUKU settings loaded',
+      loadError: 'Failed to load KUKU settings: ',
+      saveSuccess: 'KUKU settings saved',
+      saveError: 'Failed to save KUKU settings: ',
+      saveSettings: 'Save KUKU Settings',
+      groupId: 'Discord Channel ID',
+      groupIdPlaceholder: 'Paste a Discord text channel ID',
+      groupIdRequired: 'Discord channel ID is required',
+      channelHint:
+        'KUKU setup is Discord-only in this MVP. Use the text channel ID as the group scope, then load existing settings or save new ones.',
+      persona: 'Persona',
+      enabled: 'Enabled',
+      enabledHint: 'Allow KUKU to send proactive messages in this channel.',
+      silenceMinutes: 'Silence Minutes',
+      cooldownMinutes: 'Cooldown Minutes',
+      quietHours: 'Quiet Hours',
+      quietHoursHint:
+        'Optional. Leave blank to disable quiet hours for this channel.',
+      quietStart: 'Start',
+      quietEnd: 'End',
+      timezone: 'Timezone',
+      loadedState: 'Loaded saved KUKU settings for this channel.',
+      missingState:
+        'No saved KUKU settings exist for this channel yet. Saving will create them.',
+      idleState:
+        'Enter a Discord channel ID to load existing settings or create a new setup.',
+      notConfiguredYet: 'No saved KUKU settings found for this channel yet.',
+    },
     sessionMonitor: {
       title: 'Sessions',
       sessions: 'Sessions',

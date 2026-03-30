@@ -341,6 +341,41 @@ const viVN = {
     collapse: 'Thu gọn',
     imagesAttached: 'hình ảnh đính kèm',
     noLogs: 'Chưa có nhật ký',
+    kuku: {
+      title: 'KUKU cho Discord',
+      description:
+        'Bật và điều chỉnh cấu hình trò chuyện chủ động của KUKU cho một kênh văn bản Discord.',
+      loadBootstrapError: 'Không thể tải dữ liệu cấu hình KUKU: ',
+      loadSettings: 'Tải cấu hình',
+      loadingSettings: 'Đang tải...',
+      loadSuccess: 'Đã tải cấu hình KUKU',
+      loadError: 'Không thể tải cấu hình KUKU: ',
+      saveSuccess: 'Đã lưu cấu hình KUKU',
+      saveError: 'Không thể lưu cấu hình KUKU: ',
+      saveSettings: 'Lưu cấu hình KUKU',
+      groupId: 'ID kênh Discord',
+      groupIdPlaceholder: 'Dán ID kênh văn bản Discord',
+      groupIdRequired: 'Bắt buộc phải có ID kênh Discord',
+      channelHint:
+        'Trong MVP này, KUKU chỉ hỗ trợ Discord. Dùng ID kênh văn bản làm phạm vi nhóm, sau đó tải cấu hình hiện có hoặc lưu cấu hình mới.',
+      persona: 'Nhân cách',
+      enabled: 'Bật',
+      enabledHint: 'Cho phép KUKU gửi tin nhắn chủ động trong kênh này.',
+      silenceMinutes: 'Số phút im lặng',
+      cooldownMinutes: 'Số phút hồi chiêu',
+      quietHours: 'Khung giờ yên lặng',
+      quietHoursHint:
+        'Tùy chọn. Để trống để tắt khung giờ yên lặng cho kênh này.',
+      quietStart: 'Bắt đầu',
+      quietEnd: 'Kết thúc',
+      timezone: 'Múi giờ',
+      loadedState: 'Đã tải cấu hình KUKU đã lưu cho kênh này.',
+      missingState:
+        'Chưa có cấu hình KUKU đã lưu cho kênh này. Lưu sẽ tạo mới.',
+      idleState:
+        'Nhập ID kênh Discord để tải cấu hình hiện có hoặc tạo cấu hình mới.',
+      notConfiguredYet: 'Chưa tìm thấy cấu hình KUKU đã lưu cho kênh này.',
+    },
     sessionMonitor: {
       title: 'Phiên',
       sessions: 'Phiên',
