@@ -19,6 +19,7 @@ def _apply_env_overrides_to_config(cfg: dict) -> dict:
     to represent nested keys. For example:
     - CONCURRENCY__PIPELINE overrides concurrency.pipeline
     - PLUGIN__RUNTIME_WS_URL overrides plugin.runtime_ws_url
+    - PLUGIN__WS_DEBUG_PORT overrides plugin.ws_debug_port (plugin debug WebSocket port)
 
     Arrays and dict types are ignored.
 
