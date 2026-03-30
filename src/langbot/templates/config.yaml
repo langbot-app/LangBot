@@ -77,6 +77,8 @@ plugin:
     enable: true
     runtime_ws_url: 'ws://langbot_plugin_runtime:5400/control/ws'
     enable_marketplace: true
+    # Port for plugin remote debug WebSocket (child `lbp rt` process). Must match display_plugin_debug_url.
+    ws_debug_port: 5401
     display_plugin_debug_url: 'ws://localhost:5401/plugin/debug/ws'
 monitoring:
     auto_cleanup:

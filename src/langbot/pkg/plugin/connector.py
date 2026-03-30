@@ -106,6 +106,9 @@ class PluginRuntimeConnector:
             self.ap.logger.info('Connected to plugin runtime.')
             await self.handler_task
 
+        plugin_cfg = self.ap.instance_config.data.get('plugin', {})
+        ws_debug_port = int(plugin_cfg.get('ws_debug_port', 5401))
+
         task: asyncio.Task | None = None
 
         if platform.get_platform() == 'docker' or platform.use_websocket_to_connect_plugin_runtime():  # use websocket
@@ -143,6 +146,8 @@ class PluginRuntimeConnector:
                     '-m',
                     'langbot_plugin.cli.__init__',
                     'rt',
+                    '--ws-debug-port',
+                    str(ws_debug_port),
                     env=env,
                 )
 
@@ -176,7 +181,14 @@ class PluginRuntimeConnector:
             env = os.environ.copy()
             self.ctrl = stdio_client_controller.StdioClientController(
                 command=python_path,
-                args=['-m', 'langbot_plugin.cli.__init__', 'rt', '-s'],
+                args=[
+                    '-m',
+                    'langbot_plugin.cli.__init__',
+                    'rt',
+                    '-s',
+                    '--ws-debug-port',
+                    str(ws_debug_port),
+                ],
                 env=env,
             )
             task = self.ctrl.run(new_connection_callback)

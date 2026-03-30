@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+from typing import TYPE_CHECKING
+import copy
 import datetime
 import logging
 import time
@@ -11,6 +13,9 @@ import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
 from ..core.app import Application
+
+if TYPE_CHECKING:
+    from ..platform.botmgr import RuntimeBot
 
 TICK_INTERVAL_SEC = 20
 
@@ -87,6 +92,56 @@ class KukuRuntime:
         scope = (bot_uuid, 'discord', str(channel_id))
         self._last_human_message_ts[scope] = now
 
+    async def maybe_handle_discord_group_message(self, bot_uuid: str, event) -> bool:
+        """Immediately reply when a Discord group message directly targets KUKU."""
+        now = time.time()
+        group_id = str(event.group.id)
+        settings = await self._get_settings_cached(bot_uuid, 'discord', group_id, now)
+        if not settings or not settings.get('enabled', True):
+            return False
+
+        runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(bot_uuid)
+        if runtime_bot is None or not runtime_bot.enable:
+            return False
+        if runtime_bot.bot_entity.adapter != 'discord':
+            return False
+
+        bot_account_id = str(getattr(runtime_bot.adapter, 'bot_account_id', '') or '')
+        if not bot_account_id:
+            return False
+
+        mentions_bot, cleaned_message_chain = _strip_direct_bot_mentions(event.message_chain, bot_account_id)
+        is_reply_to_bot = _is_reply_to_discord_bot(
+            getattr(event, 'source_platform_object', None),
+            bot_account_id,
+        )
+        if not mentions_bot and not is_reply_to_bot:
+            return False
+
+        persona_id = settings.get('persona_id') or 'kuku-sunny'
+        persona = await self.ap.kuku_service.get_persona(persona_id)
+        if persona is None:
+            self._logger.warning('KUKU: persona %s not found', persona_id)
+            return False
+
+        reply_text = await self._generate_reactive_reply(
+            persona,
+            runtime_bot,
+            cleaned_message_chain,
+            reply_context=_get_discord_reply_context(getattr(event, 'source_platform_object', None)),
+        )
+        if not reply_text:
+            return False
+
+        reply_chain = platform_message.MessageChain([platform_message.Plain(text=reply_text)])
+        try:
+            await runtime_bot.adapter.reply_message(event, reply_chain, quote_origin=True)
+        except Exception:
+            self._logger.error('KUKU reply_message failed:\n%s', traceback.format_exc())
+            return False
+
+        return True
+
     async def _get_settings_cached(self, bot_uuid: str, platform: str, group_id: str, now: float) -> dict | None:
         cache_key = (bot_uuid, group_id)
         hit = self._settings_cache.get(cache_key)
@@ -158,6 +213,54 @@ class KukuRuntime:
             return text or None
         except Exception:
             self._logger.error('KUKU LLM invoke failed:\n%s', traceback.format_exc())
+            return None
+
+    async def _generate_reactive_reply(
+        self,
+        persona: dict,
+        runtime_bot: RuntimeBot,
+        message_chain: platform_message.MessageChain,
+        reply_context: str | None = None,
+    ) -> str | None:
+        if runtime_bot is None:
+            return None
+        llm_model = await self._resolve_llm_model(runtime_bot.bot_entity.use_pipeline_uuid)
+        if llm_model is None:
+            return None
+
+        system = str(persona.get('system_prompt') or '')
+        user_text = str(message_chain).strip()
+        context_lines = []
+        if reply_context:
+            context_lines.append(f'The user is replying to this previous KUKU message:\n{reply_context}')
+        if user_text:
+            context_lines.append(f'The user said:\n{user_text}')
+        else:
+            context_lines.append('The user directly mentioned you in the channel.')
+
+        user_instruction = (
+            '\n\n'.join(context_lines)
+            + '\n\nWrite ONE short, natural in-character reply. '
+            'No preface, no meta commentary, no quotes.'
+        )
+        messages = [
+            provider_message.Message(role='system', content=[provider_message.ContentElement.from_text(system)]),
+            provider_message.Message(role='user', content=[provider_message.ContentElement.from_text(user_instruction)]),
+        ]
+        try:
+            raw = await llm_model.provider.invoke_llm(
+                None,
+                llm_model,
+                messages,
+                [],
+                extra_args=llm_model.model_entity.extra_args,
+            )
+            assistant = _unwrap_invoke_llm_result(raw)
+            chain = assistant.get_content_platform_message_chain()
+            text = str(chain).strip()
+            return text or None
+        except Exception:
+            self._logger.error('KUKU reactive LLM invoke failed:\n%s', traceback.format_exc())
             return None
 
     async def _try_send_kuku(self, settings: dict) -> bool:
@@ -239,3 +342,37 @@ class KukuRuntime:
             except Exception:
                 self._logger.error('KUKU tick error:\n%s', traceback.format_exc())
             await asyncio.sleep(TICK_INTERVAL_SEC)
+
+
+def _strip_direct_bot_mentions(
+    message_chain: platform_message.MessageChain,
+    bot_account_id: str,
+) -> tuple[bool, platform_message.MessageChain]:
+    cleaned = copy.deepcopy(message_chain)
+    found = False
+    filtered_root = []
+    for component in cleaned.root:
+        if isinstance(component, platform_message.At) and str(component.target) == str(bot_account_id):
+            found = True
+            continue
+        filtered_root.append(component)
+    cleaned.root = filtered_root
+    return found, cleaned
+
+
+def _is_reply_to_discord_bot(source_platform_object, bot_account_id: str) -> bool:
+    try:
+        return str(source_platform_object.reference.resolved.author.id) == str(bot_account_id)
+    except AttributeError:
+        return False
+
+
+def _get_discord_reply_context(source_platform_object) -> str | None:
+    try:
+        content = source_platform_object.reference.resolved.content
+    except AttributeError:
+        return None
+    if content is None:
+        return None
+    text = str(content).strip()
+    return text or None
