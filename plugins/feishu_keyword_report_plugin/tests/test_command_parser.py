@@ -63,6 +63,11 @@ class CommandParserTest(unittest.TestCase):
         self.assertTrue(result.triggered)
         self.assertIn("摸料参数无效", result.error)
 
+    def test_parse_touch_material_c_segment_should_still_fail(self) -> None:
+        result = parse_touch_material_command("摸料 C1", {"摸料"})
+        self.assertTrue(result.triggered)
+        self.assertIn("摸料参数无效", result.error)
+
     def test_parse_sheet_image_basic(self) -> None:
         result = parse_sheet_image_command("图片 S18-A线", {"图片"})
         self.assertTrue(result.triggered)

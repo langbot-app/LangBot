@@ -5,6 +5,8 @@
 - `日报`：优先读 Feishu Sheets 生成标准日报，失败可回退 Feishu Bitable 简报。
 - `摸料`：联动窑炉批次表 + 烧结表 + Sheets 配方表，返回指定段位当前出窑批次与压实信息。
 
+默认情况下，`日报` 与 `摸料` 的配方表检索都会自动纳入符合 `S18-*线` / `S006-*线` 规则的工作表；后续新增 `S006-A线`、`S18-C线`、`S006-D线` 等无需改代码。
+
 ## 口令协议
 
 ### 1. 日报（兼容原行为）
@@ -32,6 +34,7 @@
 规则：
 
 - 仅支持单段位。
+- 当前仅开放 `A1|A2|B1|B2`；底层已兼容未来线别扩展，但本次不开放 `C/D` 口令。
 - 大小写不敏感（如 `摸料 a2`）。
 - 可去标点（如 `摸料，A2`）。
 - 参数无效时回复：`摸料参数无效，请使用：摸料 A1|A2|B1|B2。`
@@ -111,7 +114,7 @@
 - `keyword_commands`（默认 `日报`）
 - `data_source_mode`：`auto|sheets|bitable`
 - `sheets_spreadsheet_token`
-- `sheets_sheet_names`
+- `sheets_sheet_names`：可选补充工作表列表；未配置也会自动扫描并纳入 `S18-*线` / `S006-*线`
 - `sheets_range`
 - `sheet_snapshot_header_rows`（截图固定保留前几行，默认 `3`）
 - `sheet_snapshot_tail_nonempty_rows`（截图保留尾部有效行数，默认 `20`）
@@ -128,6 +131,7 @@
 - `touch_material_commands`（默认 `摸料`）
 - `kiln_batch_table_ids`
 - `kiln_batch_table_names`（默认 `窑炉批次进窑出窑表`）
+- 配方表检索默认复用日报的自动选表逻辑，会自动纳入新增的 `S18-*线` / `S006-*线`
 - `touch_recipe_field_aliases_json`
 - `touch_material_infer_rules_json`
 - `touch_material_no_data_text`（默认 `未查到当前出窑批次或烧结压实数据。`）

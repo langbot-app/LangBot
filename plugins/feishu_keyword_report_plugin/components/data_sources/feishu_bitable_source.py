@@ -46,10 +46,10 @@ class FeishuBitableSource:
         normalized = re.sub(r"\s*-\s*", "-", FeishuBitableSource.field_to_text(batch_text).upper())
         if not normalized:
             return ""
-        match = re.search(r"(D[AB]\d{4}-\d+)", normalized)
+        match = re.search(r"(D[A-Z]\d{4}-\d+)", normalized)
         if match:
             return str(match.group(1))
-        match = re.search(r"([AB]\d{4}-\d+)", normalized)
+        match = re.search(r"([A-Z]\d{4}-\d+)", normalized)
         if match:
             return f"D{match.group(1)}"
         return normalized
@@ -81,12 +81,51 @@ class FeishuBitableSource:
         return ("sintering" in route) or ("-SC-" in batch)
 
     @staticmethod
+    def _normalize_line_code(raw: Any) -> str:
+        text = FeishuBitableSource.field_to_text(raw).strip().upper()
+        if not text:
+            return ""
+
+        patterns = (
+            r"(?:^|[^A-Z])LINE[._/\-\s]*([A-Z])(?:[^A-Z]|$)",
+            r"(?:产线|线别)\s*([A-Z])(?:线|\d+)?(?:[^A-Z]|$)",
+            r"([A-Z])线",
+            r"^([A-Z])$",
+            r"^([A-Z])\d+$",
+        )
+        for pattern in patterns:
+            match = re.search(pattern, text)
+            if match:
+                return str(match.group(1))
+        return ""
+
+    @classmethod
+    def _infer_line_from_common_fields(cls, fields: dict[str, Any]) -> str:
+        for key, value in fields.items():
+            key_text = cls.field_to_text(key).strip().lower()
+            if not key_text:
+                continue
+            if not any(token in key_text for token in ("产线", "线别", "line")):
+                continue
+            line_code = cls._normalize_line_code(value)
+            if line_code:
+                return line_code
+        return ""
+
+    @staticmethod
     def infer_line(fields: dict[str, Any], route_field: str, batch_field: str) -> str:
-        route = FeishuBitableSource.field_to_text(fields.get(route_field)).lower()
-        if route.endswith(".a"):
-            return "A"
-        if route.endswith(".b"):
-            return "B"
+        route = FeishuBitableSource.field_to_text(fields.get(route_field))
+        line_code = FeishuBitableSource._normalize_line_code(route)
+        if line_code:
+            return line_code
+
+        line_code = FeishuBitableSource._infer_line_from_common_fields(fields)
+        if line_code:
+            return line_code
+
+        line_code = FeishuBitableSource._normalize_line_code(fields.get("窑炉段"))
+        if line_code:
+            return line_code
 
         batch = FeishuBitableSource.field_to_text(fields.get(batch_field)).upper()
         if "-DA" in batch:
@@ -94,6 +133,13 @@ class FeishuBitableSource:
         if "-DB" in batch:
             return "B"
         return ""
+
+    @staticmethod
+    def _line_sort_key(line_code: str) -> tuple[int, str]:
+        normalized = FeishuBitableSource._normalize_line_code(line_code)
+        if normalized:
+            return (0, normalized)
+        return (1, FeishuBitableSource.field_to_text(line_code).upper())
 
     @staticmethod
     def time_to_sort_key(raw: str) -> float:
@@ -257,14 +303,12 @@ class FeishuBitableSource:
             return no_data_text
 
         lines = [title_text]
-        for line_code in ("A", "B"):
+        for line_code in sorted(latest_by_line.keys(), key=FeishuBitableSource._line_sort_key):
             item = latest_by_line.get(line_code)
             if item is None:
-                lines.append(f"{line_code}线：暂无数据")
                 continue
             fields = item.get("fields", {})
             if not isinstance(fields, dict):
-                lines.append(f"{line_code}线：暂无数据")
                 continue
 
             batch_id = FeishuBitableSource.field_to_text(fields.get(batch_field))
@@ -454,7 +498,7 @@ class FeishuBitableSource:
                 continue
 
             full_match = re.search(
-                rf"([A-Z0-9]+-SC-D[AB]\d{{4}}-\d+-{target_segment}-(\d+)-(\d+)\s*MIN)",
+                rf"([A-Z0-9]+-SC-D[A-Z]\d{{4}}-\d+-{target_segment}-(\d+)-(\d+)\s*MIN)",
                 key_upper,
             )
             if full_match:
@@ -612,7 +656,7 @@ class FeishuBitableSource:
                     continue
 
                 line = self.infer_line(fields, route_field=route_field, batch_field=batch_field)
-                if line not in {"A", "B"}:
+                if not line:
                     continue
 
                 current_time_text = self.field_to_text(fields.get(message_time_field))

@@ -165,10 +165,48 @@ class KeywordBitableReportListener(EventListener):
             return "auto"
         return mode
 
-    def _resolve_target_sheets(self, command_sheets: list[str]) -> list[str]:
+    @staticmethod
+    def _dedupe_sheet_names(sheet_names: list[str]) -> list[str]:
+        ordered: list[str] = []
+        seen: set[str] = set()
+        for sheet_name in sheet_names:
+            normalized = str(sheet_name).strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            ordered.append(normalized)
+        return ordered
+
+    @staticmethod
+    def _is_auto_target_sheet_name(sheet_name: str) -> bool:
+        return bool(re.fullmatch(r"(S18|S006)-.+线", str(sheet_name).strip(), flags=re.IGNORECASE))
+
+    async def _resolve_target_sheets(
+        self, headers: dict[str, str], spreadsheet_token: str, command_sheets: list[str]
+    ) -> list[str]:
+        explicit_targets = self._dedupe_sheet_names(command_sheets)
+        if explicit_targets:
+            return explicit_targets
+
+        available_titles = await self._sheets_source.list_sheet_titles(spreadsheet_token, headers)
+        if not available_titles:
+            return []
+
+        available_set = set(available_titles)
+        configured_targets = self._dedupe_sheet_names(self._split_csv(self._get_str_config("sheets_sheet_names", "")))
+        auto_targets = [title for title in available_titles if self._is_auto_target_sheet_name(title)]
+        merged_targets = self._dedupe_sheet_names([*configured_targets, *auto_targets])
+        return [title for title in merged_targets if title in available_set]
+
+    @staticmethod
+    def _resolve_touch_prefer_line(segment: str) -> str:
+        match = re.search(r"[A-Z]", str(segment).strip().upper())
+        return str(match.group(0)) if match else ""
+
+    def _resolve_target_sheet_names_for_error(self, command_sheets: list[str]) -> list[str]:
         if command_sheets:
-            return command_sheets
-        return self._split_csv(self._get_str_config("sheets_sheet_names", ""))
+            return self._dedupe_sheet_names(command_sheets)
+        return self._dedupe_sheet_names(self._split_csv(self._get_str_config("sheets_sheet_names", "")))
 
     def _get_sheet_snapshot_header_rows(self) -> int:
         return self._get_int_config("sheet_snapshot_header_rows", 3, 0, 50)
@@ -232,15 +270,6 @@ class KeywordBitableReportListener(EventListener):
 
     def _resolve_touch_no_data_text(self) -> str:
         return self._get_str_config("touch_material_no_data_text", "未查到当前出窑批次或烧结压实数据。")
-
-    @staticmethod
-    def _resolve_touch_prefer_line(segment: str) -> str:
-        segment_text = str(segment).strip().upper()
-        if segment_text.startswith("A"):
-            return "A"
-        if segment_text.startswith("B"):
-            return "B"
-        return ""
 
     @staticmethod
     def _resolve_touch_prefer_model(batch_core: str) -> str:
@@ -502,9 +531,9 @@ class KeywordBitableReportListener(EventListener):
         if not spreadsheet_token:
             raise ValueError("未配置 sheets_spreadsheet_token。")
 
-        target_sheets = self._resolve_target_sheets(command_sheets)
         cell_range = self._get_str_config("sheets_range", "A1:ZZ2000") or "A1:ZZ2000"
         headers = await self._build_auth_headers()
+        target_sheets = await self._resolve_target_sheets(headers, spreadsheet_token, command_sheets)
 
         matrices, available_titles, missing = await self._sheets_source.fetch_line_matrices(
             spreadsheet_token=spreadsheet_token,
@@ -517,7 +546,7 @@ class KeywordBitableReportListener(EventListener):
             available = "、".join(available_titles) if available_titles else "无"
             raise ValueError(f"指定线别不存在：{'、'.join(missing)}；可选：{available}")
 
-        selected_sheets = target_sheets if target_sheets else available_titles
+        selected_sheets = target_sheets if target_sheets else self._resolve_target_sheet_names_for_error(command_sheets)
         report = day_metrics.build_standard_report_from_matrices(
             sheet_matrices=matrices,
             selected_sheets=selected_sheets,
@@ -586,9 +615,6 @@ class KeywordBitableReportListener(EventListener):
                 "source": "bitable",
             }
 
-        if mode == "bitable":
-            return await self._run_bitable_brief_report(title_text="当前出窑批次及烧结压实（多维表模式）：")
-
         try:
             return await self._run_sheets_report(date_arg=date_arg, command_sheets=command_sheets)
         except Exception as sheets_exc:
@@ -601,15 +627,6 @@ class KeywordBitableReportListener(EventListener):
                 "used_sheets": [],
                 "source": "bitable_fallback",
             }
-
-        try:
-            return await self._run_sheets_report(date_arg=date_arg, command_sheets=command_sheets)
-        except Exception as sheets_exc:
-            try:
-                fallback = await self._run_bitable_brief_report(title_text="当前出窑批次及烧结压实（多维表回退）：")
-            except Exception as bitable_exc:
-                raise RuntimeError(f"在线表格失败：{sheets_exc}；多维表回退失败：{bitable_exc}") from bitable_exc
-            return f"【在线表格查询失败，已回退多维表】{sheets_exc}\n{fallback}"
 
     async def _build_report_reply_chain(self, payload: dict[str, Any]) -> platform_message.MessageChain:
         components: list[platform_message.Plain | platform_message.Image] = []
@@ -634,30 +651,6 @@ class KeywordBitableReportListener(EventListener):
     async def _run_sheet_snapshot_reply(self, sheet_name: str) -> platform_message.MessageChain:
         components = await self._build_sheet_snapshot_components([sheet_name], strict=True)
         return platform_message.MessageChain(components)
-
-        spreadsheet_token = self._get_str_config("sheets_spreadsheet_token", "")
-        if not spreadsheet_token:
-            raise ValueError("未配置 sheets_spreadsheet_token。")
-
-        cell_range = self._get_str_config("sheets_range", "A1:ZZ2000") or "A1:ZZ2000"
-        headers = await self._build_auth_headers()
-        matrices, available_titles, missing = await self._sheets_source.fetch_line_matrices(
-            spreadsheet_token=spreadsheet_token,
-            headers=headers,
-            target_sheet_names=[sheet_name],
-            cell_range=cell_range,
-            value_render_option="FormattedValue",
-        )
-        if missing:
-            available = "、".join(available_titles) if available_titles else "无"
-            raise ValueError(f"指定表名不存在：{'、'.join(missing)}；可选：{available}")
-
-        values = matrices.get(sheet_name)
-        if not isinstance(values, list) or not values:
-            raise ValueError(f"{sheet_name} 没有可截图的数据。")
-
-        snapshot = render_sheet_snapshot(sheet_title=sheet_name, values=values, header_rows=3, tail_nonempty_rows=20)
-        return platform_message.MessageChain([platform_message.Image(base64=snapshot.data_url)])
 
     @staticmethod
     def _safe_recipe_value(recipe: dict[str, str], field: str) -> str:
@@ -774,10 +767,11 @@ class KeywordBitableReportListener(EventListener):
         spreadsheet_token = self._get_str_config("sheets_spreadsheet_token", "")
         if spreadsheet_token:
             try:
+                recipe_target_sheets = await self._resolve_target_sheets(headers, spreadsheet_token, [])
                 recipe = await self._sheets_source.query_recipe_by_batch(
                     spreadsheet_token=spreadsheet_token,
                     headers=headers,
-                    target_sheet_names=self._resolve_target_sheets([]),
+                    target_sheet_names=recipe_target_sheets,
                     cell_range=self._get_str_config("sheets_range", "A1:ZZ2000") or "A1:ZZ2000",
                     batch_core=batch_core or batch_display,
                     prefer_line=self._resolve_touch_prefer_line(segment),

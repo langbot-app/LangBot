@@ -4,7 +4,7 @@ metadata:
   author: local
   name: feishu_keyword_report_plugin
   repository: "https://open.feishu.cn/"
-  version: 0.1.14
+  version: 0.1.15
   description:
     en_US: Reply keyword commands for daily report and touch-material query with Feishu Sheets + Bitable.
     zh_Hans: 通过口令查询日报与摸料信息，联动飞书在线表格和多维表。
@@ -66,11 +66,11 @@ spec:
         en_US: Sheets Names
         zh_Hans: 在线表格工作表
       description:
-        en_US: Comma separated sheet titles. Empty means all sheets.
-        zh_Hans: 逗号分隔工作表标题；为空时尝试全部工作表。
+        en_US: Optional extra sheet titles. Empty still auto-discovers matching S18-*/S006-* line sheets.
+        zh_Hans: 可选补充工作表标题；为空时仍会自动发现符合 S18-*线 / S006-*线 规则的工作表。
       type: string
       required: false
-      default: "S18-A线,S18-B线,S006-A线,S006-B线"
+      default: ""
     - name: sheets_range
       label:
         en_US: Sheets Range

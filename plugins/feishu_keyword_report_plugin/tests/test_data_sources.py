@@ -218,6 +218,54 @@ class SheetsSourceTest(unittest.IsolatedAsyncioTestCase):
 
 
 class BitableSourceTest(unittest.IsolatedAsyncioTestCase):
+    def test_infer_line_prefers_route_fields_segment_and_batch_fallback(self) -> None:
+        self.assertEqual(
+            FeishuBitableSource.infer_line(
+                {
+                    "路由": "line.c.sintering",
+                    "产线": "A线",
+                    "窑炉段": "D1",
+                    "批次号": "S18-SC-DB2603-005",
+                },
+                route_field="路由",
+                batch_field="批次号",
+            ),
+            "C",
+        )
+        self.assertEqual(
+            FeishuBitableSource.infer_line(
+                {
+                    "产线": "D线",
+                    "窑炉段": "A1",
+                    "批次号": "S18-SC-DB2603-005",
+                },
+                route_field="路由",
+                batch_field="批次号",
+            ),
+            "D",
+        )
+        self.assertEqual(
+            FeishuBitableSource.infer_line(
+                {
+                    "窑炉段": "C2",
+                    "批次号": "S18-SC-DB2603-005",
+                },
+                route_field="路由",
+                batch_field="批次号",
+            ),
+            "C",
+        )
+        self.assertEqual(
+            FeishuBitableSource.infer_line(
+                {
+                    "批次号": "S18-SC-DA2603-005",
+                },
+                route_field="路由",
+                batch_field="批次号",
+            ),
+            "A",
+        )
+
     async def test_query_latest_brief(self) -> None:
         async def fake_api(method, endpoint, headers, payload=None, params=None):
             if endpoint.endswith("/tables"):
@@ -274,6 +322,73 @@ class BitableSourceTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIn("A线：S18-SC-DA2603-005", text)
         self.assertIn("B线：S006-SC-DB2602-130", text)
+
+    async def test_query_latest_brief_supports_dynamic_lines(self) -> None:
+        async def fake_api(method, endpoint, headers, payload=None, params=None):
+            if endpoint.endswith("/tables"):
+                return {"items": [{"name": "烧结汇总", "table_id": "tbl"}], "has_more": False}
+            if endpoint.endswith("/tables/tbl/records"):
+                return {
+                    "items": [
+                        {
+                            "fields": {
+                                "路由": "line.a.sintering",
+                                "批次号": "S18-SC-DA2603-005",
+                                "消息时间": "2026-03-03T10:55:14+08:00",
+                                "A1-均值": 2.364,
+                            }
+                        },
+                        {
+                            "fields": {
+                                "路由": "",
+                                "批次号": "S006-SC-DB2602-130",
+                                "消息时间": "2026-03-03T10:48:22+08:00",
+                                "B1-均值": 2.491,
+                            }
+                        },
+                        {
+                            "fields": {
+                                "路由": "line.c.sintering",
+                                "批次号": "S006-SC-DB2602-131",
+                                "消息时间": "2026-03-03T10:58:22+08:00",
+                                "C1-均值": 2.521,
+                            }
+                        },
+                        {
+                            "fields": {
+                                "产线": "D线",
+                                "批次号": "S18-SC-DA2603-006",
+                                "消息时间": "2026-03-03T10:59:22+08:00",
+                                "D1-均值": 2.401,
+                            }
+                        },
+                    ],
+                    "has_more": False,
+                }
+            raise AssertionError(f"Unexpected endpoint: {endpoint}")
+
+        source = FeishuBitableSource(fake_api)
+        text = await source.query_latest_brief(
+            app_token="app_token",
+            headers={"Authorization": "Bearer test"},
+            table_ids_raw="",
+            table_names_raw="烧结汇总",
+            route_field="路由",
+            batch_field="批次号",
+            message_time_field="消息时间",
+            scan_limit=1000,
+            detail_max_fields=4,
+            no_data_text="无数据",
+            title_text="当前出窑批次及烧结压实：",
+        )
+        self.assertIn("A线：S18-SC-DA2603-005", text)
+        self.assertIn("B线：S006-SC-DB2602-130", text)
+        self.assertIn("C线：S006-SC-DB2602-131", text)
+        self.assertIn("D线：S18-SC-DA2603-006", text)
+        self.assertNotIn("暂无数据", text)
+        self.assertLess(text.index("A线："), text.index("B线："))
+        self.assertLess(text.index("B线："), text.index("C线："))
+        self.assertLess(text.index("C线："), text.index("D线："))
 
     async def test_query_latest_kiln_batch_by_segment_segment_mode(self) -> None:
         async def fake_api(method, endpoint, headers, payload=None, params=None):
