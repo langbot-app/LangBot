@@ -1,6 +1,6 @@
 'use client';
 
-import React, { Suspense, useState, useMemo, useCallback } from 'react';
+import React, { Suspense, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -114,9 +114,7 @@ function MonitoringPageContent() {
   const {
     feedback: feedbackList,
     stats: feedbackStats,
-    total: feedbackTotal,
     loading: feedbackLoading,
-    refetch: refetchFeedback,
   } = useFeedbackData({
     botIds:
       filterState.selectedBots.length > 0
