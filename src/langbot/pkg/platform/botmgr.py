@@ -121,6 +121,12 @@ class RuntimeBot:
                     self.bot_entity.uuid,
                     str(event.group.id),
                 )
+                if await self.ap.kuku_runtime.maybe_handle_discord_group_message(
+                    self.bot_entity.uuid,
+                    event,
+                ):
+                    await self.logger.info('KUKU handled group message reactively')
+                    return
 
             # Only add to query pool if no webhook requested to skip pipeline
             if not skip_pipeline:
