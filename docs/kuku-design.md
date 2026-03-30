@@ -2,7 +2,7 @@
 
 > Based on KUKU AI Agent IP PRD v1.0
 > Status: Approved target architecture
-> Last updated: 2026-03-28
+> Last updated: 2026-03-29
 
 ---
 
@@ -28,7 +28,7 @@ What exists today:
 - KUKU setup/read APIs under `/api/v1/kuku/...`
 - Discord-only validation for the current MVP boundary
 - one fixed persona, `kuku-sunny`
-- in-process KUKU runtime (`KukuRuntime`): per-channel human activity tracking on Discord, periodic silence checks, `quiet_hours` / `cooldown_minutes`, LLM opener via the bot’s pipeline `local-agent` model, `send_message` to the Discord channel
+- in-process KUKU runtime (`KukuRuntime`): per-channel human activity tracking on Discord, periodic silence checks, optional per-group **`silence_seconds`** (sub-minute threshold), `quiet_hours` / `cooldown_minutes`, reactive replies on mention or reply-to-bot, LLM opener via the bot’s pipeline `local-agent` model, Discord `send_message` / `reply_message`; **debug:** `KUKU_SILENCE_DEBUG` and `KUKU_SILENCE_TICK_INTERVAL_SEC` (see `docs/kuku-silence-debug-handbook.md`)
 
 What does not exist yet:
 

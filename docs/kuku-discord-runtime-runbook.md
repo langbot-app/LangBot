@@ -4,6 +4,8 @@ This runbook walks through **verifying the in-process KUKU runtime**: silence de
 
 For API keys, `.kuku-demo.env`, and database bootstrap only, see [kuku-bootstrap-runbook.md](./kuku-bootstrap-runbook.md).
 
+For **short silence thresholds**, **tick cadence**, and **heartbeat logging** while debugging, see [kuku-silence-debug-handbook.md](./kuku-silence-debug-handbook.md).
+
 ---
 
 ## What you are validating
@@ -105,7 +107,8 @@ Use:
 
 | Field | Purpose |
 |--------|---------|
-| `silence_minutes` | Minutes after the last **human** message before KUKU may speak (default in templates is often 30; use **`1`** for quick manual tests). |
+| `silence_minutes` | Minutes after the last **human** message before KUKU may speak when **`silence_seconds`** is not set (default in templates is often 30; use **`1`** for quick manual tests). |
+| `silence_seconds` | Optional. When set to a positive integer, **seconds** of quiet after the last **human** message (overrides the minute-based threshold). See [kuku-silence-debug-handbook.md](./kuku-silence-debug-handbook.md). |
 | `cooldown_minutes` | Minimum minutes between KUKU proactive sends for that scope (use **`1`** for quick tests). |
 | `quiet_hours` | Optional. Object with `start`, `end` (`HH:MM`), and optional `timezone` (IANA name, e.g. `UTC`). Empty `{}` disables. |
 | `persona_id` | Optional; default **`kuku-sunny`**. |

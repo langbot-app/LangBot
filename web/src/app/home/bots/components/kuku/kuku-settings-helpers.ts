@@ -13,6 +13,7 @@ export interface KukuGroupSettingsLike {
   group_id?: string;
   persona_id?: string;
   silence_minutes?: number;
+  silence_seconds?: number | null;
   cooldown_minutes?: number;
   enabled?: boolean;
   quiet_hours?: {

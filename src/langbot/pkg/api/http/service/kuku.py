@@ -121,6 +121,7 @@ class KukuService:
             'group_id': group_id,
             'persona_id': payload.get('persona_id') or 'kuku-sunny',
             'silence_minutes': self._as_non_negative_int(payload.get('silence_minutes'), 30, 'silence_minutes'),
+            'silence_seconds': self._normalize_silence_seconds(payload.get('silence_seconds')),
             'quiet_hours': self._normalize_quiet_hours(payload.get('quiet_hours')),
             'cooldown_minutes': self._as_non_negative_int(payload.get('cooldown_minutes'), 10, 'cooldown_minutes'),
             'enabled': self._parse_bool(payload.get('enabled', True), 'enabled'),
@@ -169,6 +170,24 @@ class KukuService:
             raise ValueError(f'{field_name} must be an integer greater than or equal to 0') from exc
         if parsed < 0:
             raise ValueError(f'{field_name} must be an integer greater than or equal to 0')
+        return parsed
+
+    def _normalize_silence_seconds(self, value) -> int | None:
+        """Optional sub-minute silence threshold. None = use silence_minutes only."""
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            raise ValueError('silence_seconds must be a positive integer or omitted')
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError('silence_seconds must be a positive integer or omitted') from exc
+        if parsed < 0:
+            raise ValueError('silence_seconds must be a positive integer or omitted')
+        if parsed == 0:
+            return None
+        if parsed > 86400:
+            raise ValueError('silence_seconds must be at most 86400 (24 hours)')
         return parsed
 
     def _normalize_quiet_hours(self, value) -> dict:

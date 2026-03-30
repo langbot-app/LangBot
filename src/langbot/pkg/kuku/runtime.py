@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import copy
 import datetime
 import logging
+import os
 import time
 import traceback
 from zoneinfo import ZoneInfo
@@ -17,7 +18,39 @@ from ..core.app import Application
 if TYPE_CHECKING:
     from ..platform.botmgr import RuntimeBot
 
-TICK_INTERVAL_SEC = 20
+def _tick_interval_sec() -> float:
+    raw = os.environ.get('KUKU_SILENCE_TICK_INTERVAL_SEC', '20').strip()
+    try:
+        sec = float(raw)
+    except ValueError:
+        return 20.0
+    return max(5.0, min(sec, 300.0))
+
+
+def _silence_debug_enabled() -> bool:
+    return os.environ.get('KUKU_SILENCE_DEBUG', '').strip().lower() in ('1', 'true', 'yes')
+
+
+def silence_threshold_seconds(row: dict) -> float:
+    """Seconds of human inactivity before KUKU may send a proactive opener."""
+    ss = row.get('silence_seconds')
+    if ss is not None:
+        try:
+            n = int(ss)
+        except (TypeError, ValueError):
+            n = 0
+        if n > 0:
+            return float(n)
+    minutes = int(row.get('silence_minutes') or 30)
+    return float(max(1, minutes) * 60)
+
+
+def silence_duration_prompt_phrase(silence_seconds: int) -> str:
+    silence_seconds = max(1, silence_seconds)
+    if silence_seconds < 60:
+        return f'{silence_seconds} seconds'
+    minutes = (silence_seconds + 59) // 60
+    return f'about {minutes} minutes'
 
 
 def _parse_hhmm(value: str) -> datetime.time | None:
@@ -82,6 +115,7 @@ class KukuRuntime:
         self._settings_ttl_sec = 30.0
         self._tick_lock = asyncio.Lock()
         self._logger = logging.getLogger('langbot.kuku')
+        self._silence_tick_count = 0
 
     async def record_discord_channel_activity(self, bot_uuid: str, channel_id: str) -> None:
         """Record a human Discord message in a channel when KUKU is enabled for that scope."""
@@ -180,7 +214,7 @@ class KukuRuntime:
             self._logger.warning('KUKU: LLM model %s not found for pipeline %s', primary_uuid, pipeline_uuid)
             return None
 
-    async def _generate_opener(self, persona: dict, bot_uuid: str, silence_minutes: int) -> str | None:
+    async def _generate_opener(self, persona: dict, bot_uuid: str, silence_seconds_effective: int) -> str | None:
         runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(bot_uuid)
         if runtime_bot is None:
             return None
@@ -188,10 +222,10 @@ class KukuRuntime:
         if llm_model is None:
             return None
 
-        silence_minutes = max(1, silence_minutes)
+        duration_phrase = silence_duration_prompt_phrase(silence_seconds_effective)
         system = str(persona.get('system_prompt') or '')
         user_instruction = (
-            f'The group chat has had no messages for about {silence_minutes} minutes. '
+            f'The group chat has had no messages for {duration_phrase}. '
             'Write ONE short, natural message to gently restart conversation. '
             'Stay in character. No preface or meta commentary. No quotes.'
         )
@@ -279,8 +313,8 @@ class KukuRuntime:
             self._logger.warning('KUKU: persona %s not found', persona_id)
             return False
 
-        silence_minutes = int(settings.get('silence_minutes') or 30)
-        opener = await self._generate_opener(persona, bot_uuid, silence_minutes)
+        threshold_sec = int(silence_threshold_seconds(settings))
+        opener = await self._generate_opener(persona, bot_uuid, threshold_sec)
         if not opener:
             return False
 
@@ -311,8 +345,8 @@ class KukuRuntime:
             if last_human is None:
                 continue
 
-            silence_minutes = int(row.get('silence_minutes') or 30)
-            if now - last_human < silence_minutes * 60:
+            need_quiet_sec = silence_threshold_seconds(row)
+            if now - last_human < need_quiet_sec:
                 continue
 
             cooldown_minutes = int(row.get('cooldown_minutes') or 10)
@@ -323,7 +357,8 @@ class KukuRuntime:
             async with self._tick_lock:
                 now2 = time.time()
                 last_human2 = self._last_human_message_ts.get(scope)
-                if last_human2 is None or now2 - last_human2 < silence_minutes * 60:
+                need_quiet2 = silence_threshold_seconds(row)
+                if last_human2 is None or now2 - last_human2 < need_quiet2:
                     continue
                 last_kuku2 = self._last_kuku_fire_ts.get(scope, 0.0)
                 if last_kuku2 and now2 - last_kuku2 < cooldown_minutes * 60:
@@ -334,14 +369,23 @@ class KukuRuntime:
 
     async def run_background_loop(self) -> None:
         """Periodic silence checks while the application runs."""
+        interval = _tick_interval_sec()
+        debug_ticks = _silence_debug_enabled()
         while True:
             try:
+                self._silence_tick_count += 1
+                if debug_ticks:
+                    self._logger.info(
+                        'KUKU silence detector tick #%s (interval=%ss)',
+                        self._silence_tick_count,
+                        interval,
+                    )
                 await self._tick_once()
             except asyncio.CancelledError:
                 raise
             except Exception:
                 self._logger.error('KUKU tick error:\n%s', traceback.format_exc())
-            await asyncio.sleep(TICK_INTERVAL_SEC)
+            await asyncio.sleep(interval)
 
 
 def _strip_direct_bot_mentions(

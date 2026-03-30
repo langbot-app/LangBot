@@ -14,6 +14,8 @@ from langbot.pkg.kuku.runtime import (
     _parse_hhmm,
     _unwrap_invoke_llm_result,
     in_quiet_hours,
+    silence_duration_prompt_phrase,
+    silence_threshold_seconds,
 )
 
 
@@ -36,6 +38,20 @@ def test_parse_hhmm_valid_and_invalid():
 def test_unwrap_invoke_llm_tuple_vs_message():
     assert _unwrap_invoke_llm_result(('only', 'extra')) == 'only'
     assert _unwrap_invoke_llm_result('plain') == 'plain'
+
+
+def test_silence_threshold_seconds_prefers_silence_seconds():
+    assert silence_threshold_seconds({'silence_seconds': 30, 'silence_minutes': 60}) == 30.0
+    assert silence_threshold_seconds({'silence_seconds': 0, 'silence_minutes': 2}) == 120.0
+
+
+def test_silence_threshold_seconds_falls_back_to_minutes():
+    assert silence_threshold_seconds({'silence_minutes': 2}) == 120.0
+
+
+def test_silence_duration_prompt_phrase():
+    assert '30 seconds' in silence_duration_prompt_phrase(30)
+    assert 'about 2 minutes' == silence_duration_prompt_phrase(90)
 
 
 def _build_group_event(

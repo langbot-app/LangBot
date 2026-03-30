@@ -168,6 +168,8 @@ export interface KukuGroupSettings {
   group_id: string;
   persona_id?: string;
   silence_minutes?: number;
+  /** When set, detection uses this many seconds of quiet instead of silence_minutes. */
+  silence_seconds?: number | null;
   quiet_hours?: {
     start?: string;
     end?: string;
@@ -182,6 +184,7 @@ export interface KukuGroupSettings {
 export interface UpdateKukuGroupSettingsRequest {
   persona_id: string;
   silence_minutes: number;
+  silence_seconds?: number | null;
   quiet_hours: Record<string, string>;
   cooldown_minutes: number;
   enabled: boolean;

@@ -17,6 +17,7 @@ class KukuGroupSetting(Base):
     group_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=False, index=True)
     persona_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
     silence_minutes = sqlalchemy.Column(sqlalchemy.Integer, nullable=False, default=30)
+    silence_seconds = sqlalchemy.Column(sqlalchemy.Integer, nullable=True)
     quiet_hours = sqlalchemy.Column(sqlalchemy.JSON, nullable=False, default=dict)
     cooldown_minutes = sqlalchemy.Column(sqlalchemy.Integer, nullable=False, default=10)
     enabled = sqlalchemy.Column(sqlalchemy.Boolean, nullable=False, default=True)

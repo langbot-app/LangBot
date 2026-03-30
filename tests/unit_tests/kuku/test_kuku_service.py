@@ -98,6 +98,7 @@ async def test_get_group_settings_returns_existing_row():
     assert result['group_id'] == '123'
     assert result['persona_id'] == 'kuku-sunny'
     assert result['silence_minutes'] == 30
+    assert result.get('silence_seconds') is None
     assert result['quiet_hours'] == {'start': '00:00', 'end': '08:00', 'timezone': 'UTC'}
     assert result['enabled'] is True
 
@@ -183,6 +184,49 @@ async def test_upsert_group_settings_persists_persona_and_threshold():
     assert persisted['cooldown_minutes'] == 10
     assert persisted['enabled'] is True
     assert persisted['quiet_hours'] == {'start': '00:00', 'end': '08:00', 'timezone': 'UTC'}
+
+
+@pytest.mark.asyncio
+async def test_upsert_group_settings_persists_silence_seconds_override():
+    engine = sqlalchemy.create_engine(
+        'sqlite://',
+        connect_args={'check_same_thread': False},
+        poolclass=StaticPool,
+    )
+
+    Base.metadata.create_all(engine)
+    _seed_bot(engine, adapter='discord')
+
+    app = SimpleNamespace(
+        logger=Mock(),
+        persistence_mgr=FakePersistenceManager(engine),
+    )
+    kuku_service = KukuService(app)
+
+    saved = await kuku_service.upsert_group_settings(
+        {
+            'bot_uuid': 'bot-1',
+            'platform': 'discord',
+            'group_id': '123',
+            'persona_id': 'kuku-sunny',
+            'silence_minutes': 30,
+            'silence_seconds': 30,
+            'quiet_hours': {},
+            'enabled': True,
+        }
+    )
+
+    assert saved['silence_seconds'] == 30
+
+    with engine.connect() as conn:
+        persisted = conn.execute(
+            sqlalchemy.select(KukuGroupSetting.__table__).where(
+                KukuGroupSetting.uuid == saved['uuid'],
+            )
+        ).mappings().first()
+
+    assert persisted is not None
+    assert persisted['silence_seconds'] == 30
 
 
 @pytest.mark.asyncio
@@ -327,6 +371,10 @@ async def test_upsert_group_settings_rejects_non_discord_platform():
         ({'quiet_hours': {'start': '00:00', 'bad': 'x'}}, 'quiet_hours may only contain start, end, and timezone'),
         ({'quiet_hours': {'start': ''}}, 'quiet_hours.start must be a non-empty string'),
         ({'quiet_hours': {'timezone': '   '}}, 'quiet_hours.timezone must be a non-empty string'),
+        ({'silence_seconds': -1}, 'silence_seconds must be a positive integer or omitted'),
+        ({'silence_seconds': True}, 'silence_seconds must be a positive integer or omitted'),
+        ({'silence_seconds': 'x'}, 'silence_seconds must be a positive integer or omitted'),
+        ({'silence_seconds': 86401}, 'silence_seconds must be at most 86400'),
     ],
 )
 async def test_upsert_group_settings_rejects_invalid_operational_settings(payload, expected_message):
@@ -409,6 +457,7 @@ def test_postgresql_upsert_statement_uses_pg_dialect_conflict_path():
             'group_id': '123',
             'persona_id': 'kuku-sunny',
             'silence_minutes': 30,
+            'silence_seconds': None,
             'quiet_hours': {},
             'cooldown_minutes': 10,
             'enabled': True,
