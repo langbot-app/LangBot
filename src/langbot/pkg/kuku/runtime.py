@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import TYPE_CHECKING
 import copy
 import datetime
 import logging
@@ -12,6 +13,9 @@ import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
 from ..core.app import Application
+
+if TYPE_CHECKING:
+    from ..platform.botmgr import RuntimeBot
 
 TICK_INTERVAL_SEC = 20
 
@@ -122,7 +126,7 @@ class KukuRuntime:
 
         reply_text = await self._generate_reactive_reply(
             persona,
-            bot_uuid,
+            runtime_bot,
             cleaned_message_chain,
             reply_context=_get_discord_reply_context(getattr(event, 'source_platform_object', None)),
         )
@@ -214,11 +218,10 @@ class KukuRuntime:
     async def _generate_reactive_reply(
         self,
         persona: dict,
-        bot_uuid: str,
+        runtime_bot: RuntimeBot,
         message_chain: platform_message.MessageChain,
         reply_context: str | None = None,
     ) -> str | None:
-        runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(bot_uuid)
         if runtime_bot is None:
             return None
         llm_model = await self._resolve_llm_model(runtime_bot.bot_entity.use_pipeline_uuid)
@@ -358,26 +361,17 @@ def _strip_direct_bot_mentions(
 
 
 def _is_reply_to_discord_bot(source_platform_object, bot_account_id: str) -> bool:
-    if source_platform_object is None:
+    try:
+        return str(source_platform_object.reference.resolved.author.id) == str(bot_account_id)
+    except AttributeError:
         return False
-
-    reference = getattr(source_platform_object, 'reference', None)
-    if reference is None:
-        return False
-
-    resolved = getattr(reference, 'resolved', None)
-    author = getattr(resolved, 'author', None)
-    author_id = getattr(author, 'id', None)
-    if author_id is None:
-        return False
-
-    return str(author_id) == str(bot_account_id)
 
 
 def _get_discord_reply_context(source_platform_object) -> str | None:
-    reference = getattr(source_platform_object, 'reference', None)
-    resolved = getattr(reference, 'resolved', None)
-    content = getattr(resolved, 'content', None)
+    try:
+        content = source_platform_object.reference.resolved.content
+    except AttributeError:
+        return None
     if content is None:
         return None
     text = str(content).strip()

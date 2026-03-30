@@ -104,6 +104,7 @@ async def test_kuku_runtime_replies_immediately_when_discord_message_mentions_bo
 
     assert handled is True
     runtime._generate_reactive_reply.assert_awaited_once()
+    assert runtime._generate_reactive_reply.call_args[0][1] is runtime_bot
     runtime_bot.adapter.reply_message.assert_awaited_once()
 
 
@@ -157,4 +158,5 @@ async def test_kuku_runtime_replies_immediately_when_message_replies_to_bot():
 
     assert handled is True
     runtime._generate_reactive_reply.assert_awaited_once()
+    assert runtime._generate_reactive_reply.call_args[0][1] is runtime_bot
     runtime_bot.adapter.reply_message.assert_awaited_once()
