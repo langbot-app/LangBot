@@ -11,6 +11,7 @@
 KUKU is a family of AI Agent IPs. Each KUKU is a digital group member with a distinct personality that can be added to Discord group chats (guild channels). It perceives group atmosphere, proactively initiates conversation when the group goes silent, and builds a dynamic memory of each member over time.
 
 The implementation direction is:
+
 - Build KUKU as a LangBot-native capability with a shared core
 - Ship Discord as the only platform in scope for this design
 - Keep platform-specific logic behind LangBot adapters so additional IM channels could be integrated later without rewriting the KUKU core (no Feishu or other platform work is planned here)
@@ -22,6 +23,7 @@ The implementation direction is:
 The repository does not implement the full KUKU runtime described below yet.
 
 What exists today:
+
 - persisted KUKU group settings in `kuku_group_settings`
 - KUKU setup/read APIs under `/api/v1/kuku/...`
 - Discord-only validation for the current MVP boundary
@@ -29,6 +31,7 @@ What exists today:
 - in-process KUKU runtime (`KukuRuntime`): per-channel human activity tracking on Discord, periodic silence checks, `quiet_hours` / `cooldown_minutes`, LLM opener via the bot’s pipeline `local-agent` model, `send_message` to the Discord channel
 
 What does not exist yet:
+
 - Mem0 (or equivalent) message memory and recall
 - LangBot plugin packaging for KUKU (runtime is host-native for now)
 - user profile builder and richer persona flows
@@ -41,12 +44,14 @@ Read the rest of this document as the approved target design, not as a statement
 ## 2. Goals & Non-Goals
 
 ### Goals (MVP)
+
 - Deploy a KUKU bot to a Discord channel
 - Detect silence (no messages for N minutes) and proactively send a message
 - Accumulate per-user memory and inject it into every KUKU response
 - Use one fixed KUKU persona across the MVP
 
 ### Non-Goals (MVP)
+
 - Multiple KUKUs in the same group simultaneously
 - Persona selection or persona changes after deployment
 - Discord Activity embedded page (P1)
@@ -81,12 +86,14 @@ Discord
 
 ### Component responsibilities
 
-| Component | Responsibility |
-|---|---|
-| `SilenceDetector` | Track last message time per group; fire callback when threshold exceeded |
-| `MemoryManager` | Wrap Mem0; store every incoming message; retrieve relevant memories on demand |
-| `UserProfileBuilder` | Periodically run LLM over recent messages to extract structured user traits |
-| `KUKUResponder` | Build the final prompt (persona + memories + context) and call the LLM |
+
+| Component            | Responsibility                                                                |
+| -------------------- | ----------------------------------------------------------------------------- |
+| `SilenceDetector`    | Track last message time per group; fire callback when threshold exceeded      |
+| `MemoryManager`      | Wrap Mem0; store every incoming message; retrieve relevant memories on demand |
+| `UserProfileBuilder` | Periodically run LLM over recent messages to extract structured user traits   |
+| `KUKUResponder`      | Build the final prompt (persona + memories + context) and call the LLM        |
+
 
 ### Platform strategy
 
@@ -98,9 +105,11 @@ Discord
 
 ## 4. Platform Support
 
-| Platform | Bot type | Message format | Config flow |
-|---|---|---|---|
-| Discord | Bot (P0), Activity (P1) | Embed cards + button components | Admin adds bot and enables KUKU for the channel/group |
+
+| Platform | Bot type                | Message format                  | Config flow                                           |
+| -------- | ----------------------- | ------------------------------- | ----------------------------------------------------- |
+| Discord  | Bot (P0), Activity (P1) | Embed cards + button components | Admin adds bot and enables KUKU for the channel/group |
+
 
 This document does not specify Feishu or other IM platforms. KUKU logic is written to stay independent of Discord presentation details where possible, but only Discord is in scope for implementation and milestones below.
 
@@ -133,6 +142,7 @@ class SilenceDetector:
 ```
 
 **Considerations:**
+
 - Add jitter to the trigger time so KUKU doesn't always fire at exactly T+30m
 - Respect quiet hours (configurable per group, e.g. 00:00–08:00 local time)
 - Back off if the previous proactive message was ignored (no replies within 10 min)
@@ -140,6 +150,7 @@ class SilenceDetector:
 ### 5.2 Proactive Topic Generation
 
 When silence is detected, KUKU generates an opening message using:
+
 - The fixed KUKU persona prompt
 - The last N messages as context
 - Relevant user profile snippets for active members
@@ -176,12 +187,14 @@ When a user directly @mentions KUKU or replies to a KUKU message, respond immedi
 ### 5.4 MVP rollout
 
 Phase 1:
+
 - Discord only
 - One fixed KUKU persona
 - Proactive silence-breaking messages
 - Reactive replies on mention or reply
 
 Phase 2 (examples — platform TBD if the product expands later):
+
 - Optional: second LangBot-supported platform using the same plugin core
 - Same persona, memory, and silence logic; new adapter and setup UX only
 
@@ -192,6 +205,7 @@ Phase 2 (examples — platform TBD if the product expands later):
 ### 6.1 Memory Layer — Mem0 (MVP)
 
 Use [Mem0](https://github.com/mem0ai/mem0) as the memory backend. It handles:
+
 - Per-`user_id` storage
 - Automatic fact extraction from raw messages ("user is a developer", "user likes anime")
 - Deduplication
@@ -243,7 +257,6 @@ class UserProfile:
 Profiles are built in two ways:
 
 1. **Passive (real-time):** Every message is passed to `MemoryManager.ingest()`. Mem0 continuously extracts and stores facts.
-
 2. **Active (batch):** A background job runs every 24 hours per active user. It feeds the last 7 days of that user's messages to an LLM and asks it to update `personality_tags` and `interests` in the `UserProfile` record.
 
 ```python
@@ -362,38 +375,39 @@ Platform adapter sends message to group
 
 ## 10. Build Order (Recommended)
 
-| Week | Milestone |
-|---|---|
-| 1 | LangBot plugin skeleton; Discord bot in server/channel echoes messages |
-| 2 | Mem0 integration; every message stored; basic memory recall working |
-| 3 | Silence detector; proactive message generation with persona prompts |
-| 4 | User profile builder (batch job); profile injection into prompts; persona selection flow |
-| 5 | Tuning, edge cases, quiet hours, anti-spam backoff |
-| P1 | Discord Activity embedded config page |
+
+| Week | Milestone                                                                                |
+| ---- | ---------------------------------------------------------------------------------------- |
+| 1    | LangBot plugin skeleton; Discord bot in server/channel echoes messages                   |
+| 2    | Mem0 integration; every message stored; basic memory recall working                      |
+| 3    | Silence detector; proactive message generation with persona prompts                      |
+| 4    | User profile builder (batch job); profile injection into prompts; persona selection flow |
+| 5    | Tuning, edge cases, quiet hours, anti-spam backoff                                       |
+| P1   | Discord Activity embedded config page                                                    |
+
 
 ---
 
 ## 11. Open Questions
 
 1. **OpenClaw dependency** — The PRD describes KUKU as "based on OpenClaw" but lists LangBot as the recommended framework. Clarify: is OpenClaw a separate agent runtime layer on top of LangBot, or is LangBot replacing it for MVP?
-
 2. **Discord history backfill** — Building profiles from *existing* group history (before the bot was added) requires reading channel message history via the Discord API. This needs `MESSAGE_CONTENT` privileged intent, which requires bot verification for servers with 100+ members. Plan for this early.
-
 3. **Mem0 storage backend** — Decide on Postgres + Qdrant vs. hosted Mem0 cloud for production. Self-hosted is cheaper and keeps data in-house; hosted is faster to set up.
-
 4. **OpenClaw deployment model** — Cloud-hosted (we manage) vs. self-hosted per deployer? Affects onboarding complexity significantly.
-
 5. **Rate limiting** — Discord has message rate limits. KUKU should not fire more than once per silence event and must respect platform cooldowns.
 
 ---
 
 ## 12. Reference Implementations
 
-| Project | What to steal |
-|---|---|
-| [Mem0](https://github.com/mem0ai/mem0) | Memory layer — use directly |
-| [team-memory-bot](https://github.com/rkarwankar/team-memory-bot) | Mem0 + Discord complete example |
-| [MemoryOS](https://github.com/BAI-LAB/MemoryOS) | Hierarchical memory architecture reference (short/mid/long-term) |
-| [always-on-agent](https://github.com/randomchaos7800hub/always-on-agent) | Silence detection + proactive trigger pattern |
-| [Discord-AI-Selfbot](https://github.com/Najmul190/Discord-AI-Selfbot) | `~analyse` command — user personality analysis from message history |
-| [discord.py](https://github.com/Rapptz/discord.py) | Discord event handling, Embed, Button components |
+
+| Project                                                                  | What to steal                                                       |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| [Mem0](https://github.com/mem0ai/mem0)                                   | Memory layer — use directly                                         |
+| [team-memory-bot](https://github.com/rkarwankar/team-memory-bot)         | Mem0 + Discord complete example                                     |
+| [MemoryOS](https://github.com/BAI-LAB/MemoryOS)                          | Hierarchical memory architecture reference (short/mid/long-term)    |
+| [always-on-agent](https://github.com/randomchaos7800hub/always-on-agent) | Silence detection + proactive trigger pattern                       |
+| [Discord-AI-Selfbot](https://github.com/Najmul190/Discord-AI-Selfbot)    | `~analyse` command — user personality analysis from message history |
+| [discord.py](https://github.com/Rapptz/discord.py)                       | Discord event handling, Embed, Button components                    |
+
+
