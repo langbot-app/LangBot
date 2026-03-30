@@ -347,6 +347,43 @@ const esES = {
     collapse: 'Contraer',
     imagesAttached: 'imagen(es) adjunta(s)',
     noLogs: 'Aún no hay registros',
+    kuku: {
+      title: 'KUKU para Discord',
+      description:
+        'Activa y ajusta la configuración de chat proactivo de KUKU para un canal de texto de Discord.',
+      loadBootstrapError:
+        'No se pudieron cargar los datos de configuración de KUKU: ',
+      loadSettings: 'Cargar ajustes',
+      loadingSettings: 'Cargando...',
+      loadSuccess: 'Ajustes de KUKU cargados',
+      loadError: 'No se pudieron cargar los ajustes de KUKU: ',
+      saveSuccess: 'Ajustes de KUKU guardados',
+      saveError: 'No se pudieron guardar los ajustes de KUKU: ',
+      saveSettings: 'Guardar ajustes de KUKU',
+      groupId: 'ID del canal de Discord',
+      groupIdPlaceholder: 'Pega un ID de canal de texto de Discord',
+      groupIdRequired: 'El ID del canal de Discord es obligatorio',
+      channelHint:
+        'En este MVP, KUKU solo admite Discord. Usa el ID del canal de texto como ámbito del grupo y luego carga ajustes existentes o guarda otros nuevos.',
+      persona: 'Persona',
+      enabled: 'Habilitado',
+      enabledHint: 'Permite que KUKU envíe mensajes proactivos en este canal.',
+      silenceMinutes: 'Minutos de silencio',
+      cooldownMinutes: 'Minutos de enfriamiento',
+      quietHours: 'Horas de silencio',
+      quietHoursHint:
+        'Opcional. Déjalo en blanco para desactivar las horas de silencio de este canal.',
+      quietStart: 'Inicio',
+      quietEnd: 'Fin',
+      timezone: 'Zona horaria',
+      loadedState: 'Se cargaron los ajustes guardados de KUKU para este canal.',
+      missingState:
+        'Todavía no existen ajustes guardados de KUKU para este canal. Al guardar se crearán.',
+      idleState:
+        'Introduce un ID de canal de Discord para cargar ajustes existentes o crear una configuración nueva.',
+      notConfiguredYet:
+        'Todavía no se encontraron ajustes guardados de KUKU para este canal.',
+    },
     sessionMonitor: {
       title: 'Sesiones',
       sessions: 'Sesiones',

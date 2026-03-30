@@ -144,6 +144,49 @@ export interface Bot {
   adapter_runtime_values?: object;
 }
 
+export interface ApiRespKukuPersonas {
+  personas: KukuPersona[];
+}
+
+export interface ApiRespKukuGroupSettings {
+  group: KukuGroupSettings;
+}
+
+export interface KukuPersona {
+  id: string;
+  name: string;
+  tags: string[];
+  tagline: string;
+  system_prompt: string;
+  silence_trigger_style: string;
+}
+
+export interface KukuGroupSettings {
+  uuid?: string;
+  bot_uuid?: string;
+  platform?: string;
+  group_id: string;
+  persona_id?: string;
+  silence_minutes?: number;
+  quiet_hours?: {
+    start?: string;
+    end?: string;
+    timezone?: string;
+  };
+  cooldown_minutes?: number;
+  enabled?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface UpdateKukuGroupSettingsRequest {
+  persona_id: string;
+  silence_minutes: number;
+  quiet_hours: Record<string, string>;
+  cooldown_minutes: number;
+  enabled: boolean;
+}
+
 export interface ApiRespKnowledgeBases {
   bases: KnowledgeBase[];
 }

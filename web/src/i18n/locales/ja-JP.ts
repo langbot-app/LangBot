@@ -338,6 +338,43 @@
     selectLevel: 'レベルを選択',
     levelsSelected: 'レベル選択済み',
     noLogs: 'ログはまだありません',
+    kuku: {
+      title: 'Discord KUKU',
+      description:
+        'Discord テキストチャンネル向けの KUKU 自動会話設定を有効化して調整します。',
+      loadBootstrapError: 'KUKU 設定データの読み込みに失敗しました: ',
+      loadSettings: '設定を読み込む',
+      loadingSettings: '読み込み中...',
+      loadSuccess: 'KUKU 設定を読み込みました',
+      loadError: 'KUKU 設定の読み込みに失敗しました: ',
+      saveSuccess: 'KUKU 設定を保存しました',
+      saveError: 'KUKU 設定の保存に失敗しました: ',
+      saveSettings: 'KUKU 設定を保存',
+      groupId: 'Discord チャンネル ID',
+      groupIdPlaceholder: 'Discord テキストチャンネル ID を貼り付け',
+      groupIdRequired: 'Discord チャンネル ID は必須です',
+      channelHint:
+        'この MVP では KUKU は Discord のみ対応です。テキストチャンネル ID をグループ範囲として使い、既存設定を読み込むか新規保存してください。',
+      persona: 'ペルソナ',
+      enabled: '有効',
+      enabledHint:
+        'このチャンネルで KUKU が自発的なメッセージを送れるようにします。',
+      silenceMinutes: '無言時間（分）',
+      cooldownMinutes: 'クールダウン（分）',
+      quietHours: '静音時間',
+      quietHoursHint:
+        '任意。空欄のままにすると、このチャンネルの静音時間は無効になります。',
+      quietStart: '開始',
+      quietEnd: '終了',
+      timezone: 'タイムゾーン',
+      loadedState: 'このチャンネルの保存済み KUKU 設定を読み込みました。',
+      missingState:
+        'このチャンネルにはまだ保存済みの KUKU 設定がありません。保存すると新規作成されます。',
+      idleState:
+        'Discord チャンネル ID を入力して既存設定を読み込むか、新しい設定を作成してください。',
+      notConfiguredYet:
+        'このチャンネルにはまだ保存済みの KUKU 設定がありません。',
+    },
     sessionMonitor: {
       title: 'セッション監視',
       sessions: 'セッション一覧',
