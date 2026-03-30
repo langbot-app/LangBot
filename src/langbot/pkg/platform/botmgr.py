@@ -142,6 +142,50 @@ class RuntimeBot:
         self.adapter.register_listener(platform_events.FriendMessage, on_friend_message)
         self.adapter.register_listener(platform_events.GroupMessage, on_group_message)
 
+        # Register feedback listener (only effective on adapters that support it)
+        async def on_feedback(
+            event: platform_events.FeedbackEvent,
+            adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+        ):
+            try:
+                # Resolve pipeline name
+                pipeline_name = ''
+                if self.bot_entity.use_pipeline_uuid:
+                    try:
+                        pipeline_result = await self.ap.persistence_mgr.execute_async(
+                            sqlalchemy.select(persistence_pipeline.LegacyPipeline.name).where(
+                                persistence_pipeline.LegacyPipeline.uuid == self.bot_entity.use_pipeline_uuid
+                            )
+                        )
+                        pipeline_row = pipeline_result.first()
+                        if pipeline_row:
+                            pipeline_name = pipeline_row[0]
+                    except Exception:
+                        pass
+
+                await self.ap.monitoring_service.record_feedback(
+                    feedback_id=event.feedback_id,
+                    feedback_type=event.feedback_type,
+                    feedback_content=event.feedback_content,
+                    inaccurate_reasons=event.inaccurate_reasons,
+                    bot_id=self.bot_entity.uuid,
+                    bot_name=self.bot_entity.name,
+                    pipeline_id=self.bot_entity.use_pipeline_uuid or '',
+                    pipeline_name=pipeline_name,
+                    session_id=event.session_id,
+                    message_id=event.message_id,
+                    stream_id=event.stream_id,
+                    user_id=event.user_id,
+                    platform=adapter.__class__.__name__,
+                )
+                await self.logger.info(
+                    f'Recorded feedback: feedback_id={event.feedback_id}, type={event.feedback_type}'
+                )
+            except Exception:
+                await self.logger.error(f'Failed to record feedback: {traceback.format_exc()}')
+
+        self.adapter.register_listener(platform_events.FeedbackEvent, on_feedback)
+
     async def run(self):
         async def exception_wrapper():
             try:
@@ -268,34 +312,11 @@ class PlatformManager:
         adapter_inst = self.adapter_dict[bot_entity.adapter](
             bot_entity.adapter_config,
             logger,
-            ap=self.ap,
         )
 
         # 如果 adapter 支持 set_bot_uuid 方法，设置 bot_uuid（用于统一 webhook）
         if hasattr(adapter_inst, 'set_bot_uuid'):
             adapter_inst.set_bot_uuid(bot_entity.uuid)
-
-        # 如果 adapter 支持 set_bot_info 方法，设置 bot 信息（用于监控记录）
-        if hasattr(adapter_inst, 'set_bot_info'):
-            pipeline_name = ''
-            if bot_entity.use_pipeline_uuid:
-                try:
-                    pipeline_result = await self.ap.persistence_mgr.execute_async(
-                        sqlalchemy.select(persistence_pipeline.LegacyPipeline.name).where(
-                            persistence_pipeline.LegacyPipeline.uuid == bot_entity.use_pipeline_uuid
-                        )
-                    )
-                    pipeline_row = pipeline_result.first()
-                    if pipeline_row:
-                        pipeline_name = pipeline_row[0]
-                except Exception:
-                    pass
-            adapter_inst.set_bot_info(
-                bot_id=bot_entity.uuid,
-                bot_name=bot_entity.name,
-                pipeline_id=bot_entity.use_pipeline_uuid or '',
-                pipeline_name=pipeline_name,
-            )
 
         runtime_bot = RuntimeBot(ap=self.ap, bot_entity=bot_entity, adapter=adapter_inst, logger=logger)
 

@@ -139,7 +139,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         dict  # 回复卡片消息字典，key为消息id，value为回复卡片实例id，用于在流式消息时判断是否发送到指定卡片
     )
 
-    def __init__(self, config: dict, logger: EventLogger, ap=None, **kwargs):
+    def __init__(self, config: dict, logger: EventLogger):
         required_keys = [
             'client_id',
             'client_secret',

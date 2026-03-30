@@ -136,7 +136,7 @@ class LINEAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
     seq: int  # 用于在发送卡片消息中识别消息顺序，直接以seq作为标识
 
-    def __init__(self, config: dict, logger: EventLogger, ap=None, **kwargs):
+    def __init__(self, config: dict, logger: EventLogger):
         configuration = Configuration(access_token=config['channel_access_token'])
         line_webhook = WebhookHandler(config['channel_secret'])
         parser = WebhookParser(config['channel_secret'])

@@ -99,7 +99,7 @@ class SlackAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     event_converter: SlackEventConverter = SlackEventConverter()
     config: dict
 
-    def __init__(self, config: dict, logger: EventLogger, ap=None, **kwargs):
+    def __init__(self, config: dict, logger: EventLogger):
         required_keys = [
             'bot_token',
             'signing_secret',
