@@ -52,3 +52,9 @@ src/langbot/web/
 /dist
 /build
 *.egg-info
+
+# Local agent/workflow artifacts
+.codex/
+docs/superpowers/
+openspec/
+plan/
