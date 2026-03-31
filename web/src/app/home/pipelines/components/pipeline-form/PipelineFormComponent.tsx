@@ -2,12 +2,14 @@ import { useEffect, useRef, useState, useMemo } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { GetPipelineResponseData, Pipeline } from '@/app/infra/entities/api';
 import {
+  DifySessionSettingsValues,
   PipelineConfigTab,
   PipelineConfigStage,
 } from '@/app/infra/entities/pipeline';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import N8nAuthFormComponent from '@/app/home/components/dynamic-form/N8nAuthFormComponent';
+import DifySessionSettingsSection from '@/app/home/pipelines/components/pipeline-form/DifySessionSettingsSection';
 import { Button } from '@/components/ui/button';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -85,15 +87,13 @@ export default function PipelineFormComponent({
 
   type FormValues = z.infer<typeof formSchema>;
   // This could be improved with a dedicated enum or typed config section in the future.
-  const formLabelList: FormTabLabel[] = isEditMode
-    ? [
-        { label: t('pipelines.basicInfo'), name: 'basic' },
-        { label: t('pipelines.aiCapabilities'), name: 'ai' },
-        { label: t('pipelines.triggerConditions'), name: 'trigger' },
-        { label: t('pipelines.safetyControls'), name: 'safety' },
-        { label: t('pipelines.outputProcessing'), name: 'output' },
-      ]
-    : [{ label: t('pipelines.basicInfo'), name: 'basic' }];
+  const formLabelList: FormTabLabel[] = [
+    { label: t('pipelines.basicInfo'), name: 'basic' },
+    { label: t('pipelines.aiCapabilities'), name: 'ai' },
+    { label: t('pipelines.triggerConditions'), name: 'trigger' },
+    { label: t('pipelines.safetyControls'), name: 'safety' },
+    { label: t('pipelines.outputProcessing'), name: 'output' },
+  ];
 
   const [aiConfigTabSchema, setAIConfigTabSchema] =
     useState<PipelineConfigTab>();
@@ -215,7 +215,12 @@ export default function PipelineFormComponent({
 
   function handleCreate(values: FormValues) {
     const pipeline: Pipeline = {
-      config: {},
+      config: {
+        ai: values.ai ?? {},
+        trigger: values.trigger ?? {},
+        safety: values.safety ?? {},
+        output: values.output ?? {},
+      },
       description: values.basic.description,
       name: values.basic.name,
       emoji: values.basic.emoji,
@@ -307,6 +312,12 @@ export default function PipelineFormComponent({
     formName: keyof FormValues,
   ) {
     const currentRunner = form.watch('ai.runner.runner');
+    const currentFormValues =
+      (form.watch(formName) as Record<string, unknown>) || {};
+    const stageInitialValues = (currentFormValues?.[stage.name] ||
+      {}) as Record<string, unknown>;
+    const stageStringInitialValues = (currentFormValues?.[stage.name] ||
+      {}) as Record<string, string>;
 
     if (formName === 'output' && stage.name === 'dify-stream') {
       if (currentRunner !== 'dify-service-api') {
@@ -343,6 +354,23 @@ export default function PipelineFormComponent({
         );
       }
 
+      if (stage.name === 'dify_conversation_store') {
+        if (currentRunner !== 'dify-service-api') {
+          return null;
+        }
+
+        return (
+          <DifySessionSettingsSection
+            key={stage.name}
+            stage={stage}
+            initialValues={stageInitialValues as DifySessionSettingsValues}
+            onSubmit={(values) => {
+              handleDynamicFormEmit(formName, stage.name, values);
+            }}
+          />
+        );
+      }
+
       // Hide runner-specific stages that do not match the current runner.
       if (stage.name !== currentRunner) {
         return null;
@@ -362,11 +390,7 @@ export default function PipelineFormComponent({
             )}
             <N8nAuthFormComponent
               itemConfigList={stage.config}
-              initialValues={
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (form.watch(formName) as Record<string, any>)?.[stage.name] ||
-                {}
-              }
+              initialValues={stageStringInitialValues}
               onSubmit={(values) => {
                 handleDynamicFormEmit(formName, stage.name, values);
               }}
@@ -528,43 +552,37 @@ export default function PipelineFormComponent({
                         </div>
                       )}
 
-                      {isEditMode && (
-                        <>
-                          {formLabel.name === 'ai' && aiConfigTabSchema && (
-                            <div className="space-y-6">
-                              {aiConfigTabSchema.stages.map((stage) =>
-                                renderDynamicForms(stage, 'ai'),
-                              )}
-                            </div>
+                      {formLabel.name === 'ai' && aiConfigTabSchema && (
+                        <div className="space-y-6">
+                          {aiConfigTabSchema.stages.map((stage) =>
+                            renderDynamicForms(stage, 'ai'),
                           )}
+                        </div>
+                      )}
 
-                          {formLabel.name === 'trigger' &&
-                            triggerConfigTabSchema && (
-                              <div className="space-y-6">
-                                {triggerConfigTabSchema.stages.map((stage) =>
-                                  renderDynamicForms(stage, 'trigger'),
-                                )}
-                              </div>
+                      {formLabel.name === 'trigger' &&
+                        triggerConfigTabSchema && (
+                          <div className="space-y-6">
+                            {triggerConfigTabSchema.stages.map((stage) =>
+                              renderDynamicForms(stage, 'trigger'),
                             )}
+                          </div>
+                        )}
 
-                          {formLabel.name === 'safety' &&
-                            safetyConfigTabSchema && (
-                              <div className="space-y-6">
-                                {safetyConfigTabSchema.stages.map((stage) =>
-                                  renderDynamicForms(stage, 'safety'),
-                                )}
-                              </div>
-                            )}
+                      {formLabel.name === 'safety' && safetyConfigTabSchema && (
+                        <div className="space-y-6">
+                          {safetyConfigTabSchema.stages.map((stage) =>
+                            renderDynamicForms(stage, 'safety'),
+                          )}
+                        </div>
+                      )}
 
-                          {formLabel.name === 'output' &&
-                            outputConfigTabSchema && (
-                              <div className="space-y-6">
-                                {outputConfigTabSchema.stages.map((stage) =>
-                                  renderDynamicForms(stage, 'output'),
-                                )}
-                              </div>
-                            )}
-                        </>
+                      {formLabel.name === 'output' && outputConfigTabSchema && (
+                        <div className="space-y-6">
+                          {outputConfigTabSchema.stages.map((stage) =>
+                            renderDynamicForms(stage, 'output'),
+                          )}
+                        </div>
                       )}
                     </TabsContent>
                   ))}
