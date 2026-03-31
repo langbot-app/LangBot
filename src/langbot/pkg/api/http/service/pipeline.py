@@ -15,15 +15,37 @@ def _normalize_launcher_type(launcher_type: typing.Any) -> str:
         return str(launcher_type.value)
     return str(launcher_type)
 
+def _parse_bool_config(value: typing.Any, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {'true', '1', 'yes', 'on'}:
+            return True
+        if normalized in {'false', '0', 'no', 'off'}:
+            return False
+        return default
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if value is None:
+        return default
+    return bool(value)
+
+
 
 def _get_dify_conversation_store(ap: app.Application) -> DifyConversationStore | None:
-    cfg = getattr(getattr(ap, 'instance_config', None), 'data', {}) or {}
-    store_cfg = cfg.get('dify_conversation_store', {}) or {}
+    raw_cfg = getattr(getattr(ap, 'instance_config', None), 'data', {}) or {}
+    cfg = raw_cfg if isinstance(raw_cfg, dict) else {}
+    raw_store_cfg = cfg.get('dify_conversation_store', {}) or {}
+    store_cfg = raw_store_cfg if isinstance(raw_store_cfg, dict) else {}
 
     try:
-        ttl_seconds = int(store_cfg.get('ttl_seconds', 86400))
+        if 'idle_timeout_seconds' in store_cfg:
+            ttl_seconds = int(store_cfg.get('idle_timeout_seconds'))
+        else:
+            ttl_seconds = int(store_cfg.get('ttl_seconds', 43200))
     except (TypeError, ValueError):
-        ttl_seconds = 86400
+        ttl_seconds = 43200
 
     try:
         lock_ttl_seconds = int(store_cfg.get('lock_ttl_seconds', 10))
@@ -38,7 +60,7 @@ def _get_dify_conversation_store(ap: app.Application) -> DifyConversationStore |
         redis_mgr=redis_mgr,
         ttl_seconds=max(1, ttl_seconds),
         lock_ttl_seconds=max(1, lock_ttl_seconds),
-        enabled=bool(store_cfg.get('enabled', True)),
+        enabled=_parse_bool_config(store_cfg.get('enabled', True), True),
     )
 
 

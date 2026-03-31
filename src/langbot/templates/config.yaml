@@ -94,7 +94,8 @@ redis:
     key_prefix: 'langbot'
 dify_conversation_store:
     enabled: true
-    ttl_seconds: 86400
+    # same-scope conversation is reusable only while active within this timeout
+    idle_timeout_seconds: 43200
     lock_ttl_seconds: 130
     contention_wait_retry_count: 15
     contention_wait_interval_ms: 500

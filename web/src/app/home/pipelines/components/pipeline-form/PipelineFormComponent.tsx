@@ -44,7 +44,6 @@ export default function PipelineFormComponent({
 }: {
   pipelineId?: string;
   isEditMode: boolean;
-  disableForm: boolean;
   showButtons?: boolean;
   onFinish: () => void;
   onNewPipelineCreated: (pipelineId: string) => void;
@@ -85,8 +84,8 @@ export default function PipelineFormComponent({
       });
 
   type FormValues = z.infer<typeof formSchema>;
-  // 这里不好，可以改成enum等
-  const formLabelList: FormLabel[] = isEditMode
+  // This could be improved with a dedicated enum or typed config section in the future.
+  const formLabelList: FormTabLabel[] = isEditMode
     ? [
         { label: t('pipelines.basicInfo'), name: 'basic' },
         { label: t('pipelines.aiCapabilities'), name: 'ai' },
@@ -129,25 +128,42 @@ export default function PipelineFormComponent({
   }, [isEditMode, watchedValues]);
 
   useEffect(() => {
-    // get config schema from metadata
-    httpClient.getGeneralPipelineMetadata().then((resp) => {
-      for (const config of resp.configs) {
-        if (config.name === 'ai') {
-          setAIConfigTabSchema(config);
-        } else if (config.name === 'trigger') {
-          setTriggerConfigTabSchema(config);
-        } else if (config.name === 'safety') {
-          setSafetyConfigTabSchema(config);
-        } else if (config.name === 'output') {
-          setOutputConfigTabSchema(config);
-        }
-      }
-    });
+    let isActive = true;
 
-    if (isEditMode) {
+    httpClient
+      .getGeneralPipelineMetadata()
+      .then((resp) => {
+        if (!isActive) {
+          return;
+        }
+
+        for (const config of resp.configs) {
+          if (config.name === 'ai') {
+            setAIConfigTabSchema(config);
+          } else if (config.name === 'trigger') {
+            setTriggerConfigTabSchema(config);
+          } else if (config.name === 'safety') {
+            setSafetyConfigTabSchema(config);
+          } else if (config.name === 'output') {
+            setOutputConfigTabSchema(config);
+          }
+        }
+      })
+      .catch((err) => {
+        if (!isActive) {
+          return;
+        }
+        toast.error(t('pipelines.loadError') + err.msg);
+      });
+
+    if (isEditMode && pipelineId) {
       httpClient
-        .getPipeline(pipelineId || '')
+        .getPipeline(pipelineId)
         .then((resp: GetPipelineResponseData) => {
+          if (!isActive) {
+            return;
+          }
+
           setIsDefaultPipeline(resp.pipeline.is_default ?? false);
           const loadedValues = {
             basic: {
@@ -155,17 +171,27 @@ export default function PipelineFormComponent({
               description: resp.pipeline.description,
               emoji: resp.pipeline.emoji || '⚙️',
             },
-            ai: resp.pipeline.config.ai,
-            trigger: resp.pipeline.config.trigger,
-            safety: resp.pipeline.config.safety,
-            output: resp.pipeline.config.output,
+            ai: resp.pipeline.config.ai ?? {},
+            trigger: resp.pipeline.config.trigger ?? {},
+            safety: resp.pipeline.config.safety ?? {},
+            output: resp.pipeline.config.output ?? {},
           };
           form.reset(loadedValues);
           savedSnapshotRef.current = JSON.stringify(loadedValues);
           initializedStagesRef.current.clear();
+        })
+        .catch((err) => {
+          if (!isActive) {
+            return;
+          }
+          toast.error(t('pipelines.loadError') + err.msg);
         });
     }
-  }, []);
+
+    return () => {
+      isActive = false;
+    };
+  }, [form, isEditMode, pipelineId, t]);
 
   useEffect(() => {
     if (!isEditMode) {
@@ -207,6 +233,11 @@ export default function PipelineFormComponent({
   }
 
   function handleModify(values: FormValues) {
+    if (!pipelineId) {
+      toast.error(t('pipelines.saveError'));
+      return;
+    }
+
     const realConfig = {
       ai: values.ai,
       trigger: values.trigger,
@@ -227,7 +258,7 @@ export default function PipelineFormComponent({
       // is_default: false,
     };
     httpClient
-      .updatePipeline(pipelineId || '', pipeline)
+      .updatePipeline(pipelineId, pipeline)
       .then(() => {
         savedSnapshotRef.current = JSON.stringify(form.getValues());
         onFinish();
@@ -259,9 +290,15 @@ export default function PipelineFormComponent({
 
     if (isFirstEmission) {
       initializedStagesRef.current.add(stageKey);
-      // Synchronously re-capture snapshot so that the useMemo comparison
-      // in the same render cycle still returns false.
-      savedSnapshotRef.current = JSON.stringify(form.getValues());
+      const hadUnsavedChanges =
+        !!savedSnapshotRef.current &&
+        JSON.stringify(form.getValues()) !== savedSnapshotRef.current;
+
+      if (!hadUnsavedChanges) {
+        // Keep the initial mount emission from showing a false positive unsaved state,
+        // but do not clear an unsaved state created by prior user edits.
+        savedSnapshotRef.current = JSON.stringify(form.getValues());
+      }
     }
   }
 
@@ -277,9 +314,9 @@ export default function PipelineFormComponent({
       }
     }
 
-    // 如果是 AI 配置，需要特殊处理
+    // AI stages need runner-aware conditional rendering.
     if (formName === 'ai') {
-      // 如果是 runner 配置项，直接渲染
+      // Render the runner selector stage unconditionally.
       if (stage.name === 'runner') {
         return (
           <div key={stage.name} className="space-y-4 mb-6">
@@ -306,12 +343,12 @@ export default function PipelineFormComponent({
         );
       }
 
-      // 如果不是当前选择的 runner 对应的配置项，则不渲染
+      // Hide runner-specific stages that do not match the current runner.
       if (stage.name !== currentRunner) {
         return null;
       }
 
-      // 对于n8n-service-api配置，使用N8nAuthFormComponent处理表单联动
+      // n8n uses a dedicated auth-aware form component.
       if (stage.name === 'n8n-service-api') {
         return (
           <div key={stage.name} className="space-y-4 mb-6">
@@ -535,7 +572,7 @@ export default function PipelineFormComponent({
               </Tabs>
             </div>
           </form>
-          {/* 按钮栏移到 Tabs 外部，始终固定底部 */}
+          {/* Keep action buttons outside the tabs so they stay pinned at the bottom. */}
           {showButtons && (
             <div className="flex justify-end items-center gap-2 pt-4 border-t mb-0 bg-white dark:bg-black sticky bottom-0 z-10">
               {isEditMode && hasUnsavedChanges && (
@@ -583,7 +620,7 @@ export default function PipelineFormComponent({
         </Form>
       </div>
 
-      {/* 删除确认对话框 */}
+      {/* Delete confirmation dialog */}
       <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <DialogContent>
           <DialogHeader>
@@ -604,7 +641,7 @@ export default function PipelineFormComponent({
         </DialogContent>
       </Dialog>
 
-      {/* 复制确认对话框 */}
+      {/* Copy confirmation dialog */}
       <Dialog open={showCopyConfirm} onOpenChange={setShowCopyConfirm}>
         <DialogContent>
           <DialogHeader>
@@ -622,7 +659,7 @@ export default function PipelineFormComponent({
     </>
   );
 }
-interface FormLabel {
+interface FormTabLabel {
   label: string;
   name: string;
 }

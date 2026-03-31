@@ -163,6 +163,54 @@ stages:
           zh_Hans: API 密钥
         type: string
         required: true
+  - name: dify_conversation_store
+    label:
+      en_US: Dify Session Settings (Advanced)
+      zh_Hans: Dify 会话设置（高级）
+    description:
+      en_US: Advanced Dify conversation store settings. Only effective when the runner is Dify Service API, and controls idle-based session rotation plus lock contention behavior.
+      zh_Hans: Dify 会话存储高级设置。仅在运行器为 Dify 服务 API 时生效，用于控制基于空闲时间的会话切换与锁竞争行为。
+    config:
+      - name: idle_timeout_seconds
+        label:
+          en_US: Session Idle Timeout (Seconds)
+          zh_Hans: 会话空闲超时（秒）
+        description:
+          en_US: Max idle time before an inactive Dify session is considered expired.
+          zh_Hans: Dify 会话无活动后判定过期的最大空闲时长。
+        type: integer
+        required: true
+        default: 43200
+      - name: lock_ttl_seconds
+        label:
+          en_US: Conversation Lock TTL (Seconds)
+          zh_Hans: 会话锁 TTL（秒）
+        description:
+          en_US: Lifetime of the distributed lock used for Dify conversation state updates.
+          zh_Hans: Dify 会话状态更新时分布式锁的存活时间。
+        type: integer
+        required: true
+        default: 130
+      - name: contention_wait_retry_count
+        label:
+          en_US: Lock Contention Retry Count
+          zh_Hans: 锁竞争重试次数
+        description:
+          en_US: Number of retries when the conversation lock is currently occupied.
+          zh_Hans: 会话锁被占用时的重试次数。
+        type: integer
+        required: true
+        default: 15
+      - name: contention_wait_interval_ms
+        label:
+          en_US: Lock Contention Retry Interval (Milliseconds)
+          zh_Hans: 锁竞争重试间隔（毫秒）
+        description:
+          en_US: Wait interval between lock contention retries.
+          zh_Hans: 锁竞争重试之间的等待间隔。
+        type: integer
+        required: true
+        default: 500
   - name: dashscope-app-api
     label:
       en_US: Aliyun Dashscope App API

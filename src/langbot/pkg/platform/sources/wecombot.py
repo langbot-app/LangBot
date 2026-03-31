@@ -275,6 +275,8 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             bot_name=bot_name,
             event_converter=event_converter,
         )
+        # Keep websocket mode as an instance state for runtime checks and tests.
+        self._ws_mode = not enable_webhook
         self.listeners = {}
 
     async def reply_message(

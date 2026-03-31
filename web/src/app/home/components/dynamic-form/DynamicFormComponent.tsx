@@ -25,7 +25,7 @@ export default function DynamicFormComponent({
 }: {
   itemConfigList: IDynamicFormItemSchema[];
   onSubmit?: (val: object) => unknown;
-  initialValues?: Record<string, object>;
+  initialValues?: Record<string, unknown>;
   onFileUploaded?: (fileKey: string) => void;
   isEditing?: boolean;
   externalDependentValues?: Record<string, unknown>;
@@ -63,7 +63,7 @@ export default function DynamicFormComponent({
     return value;
   };
 
-  // 根据 itemConfigList 动态生成 zod schema
+  // Build a zod schema dynamically from the form item configuration.
   const formSchema = z.object(
     itemConfigList.reduce(
       (acc, item) => {
@@ -144,7 +144,7 @@ export default function DynamicFormComponent({
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: itemConfigList.reduce((acc, item) => {
-      // 优先使用 initialValues，如果没有则使用默认值
+      // Prefer initialValues, otherwise fall back to the schema default.
       const rawValue = initialValues?.[item.name] ?? item.default;
       return {
         ...acc,
@@ -153,31 +153,31 @@ export default function DynamicFormComponent({
     }, {} as FormValues),
   });
 
-  // 当 initialValues 变化时更新表单值
-  // 但要避免因为内部表单更新触发的 onSubmit 导致的 initialValues 变化而重新设置表单
+  // Update form values when initialValues changes.
+  // Avoid resetting the form when parent state echoes back values emitted by this form itself.
   useEffect(() => {
-    // 首次挂载时，使用 initialValues 初始化表单
+    // On first mount, trust initialValues as the baseline snapshot.
     if (isInitialMount.current) {
       isInitialMount.current = false;
       previousInitialValues.current = initialValues;
       return;
     }
 
-    // 检查 initialValues 是否真的发生了实质性变化
-    // 使用 JSON.stringify 进行深度比较
+    // Only react when initialValues has changed materially.
+    // Use JSON.stringify for a pragmatic deep comparison here.
     const hasRealChange =
       JSON.stringify(previousInitialValues.current) !==
       JSON.stringify(initialValues);
 
     if (initialValues && hasRealChange) {
-      // 合并默认值和初始值
+      // Merge schema defaults with the incoming initial values.
       const mergedValues = itemConfigList.reduce(
         (acc, item) => {
           const rawValue = initialValues[item.name] ?? item.default;
-          acc[item.name] = normalizeFieldValue(item, rawValue) as object;
+          acc[item.name] = normalizeFieldValue(item, rawValue);
           return acc;
         },
-        {} as Record<string, object>,
+        {} as Record<string, unknown>,
       );
 
       Object.entries(mergedValues).forEach(([key, value]) => {
@@ -204,10 +204,16 @@ export default function DynamicFormComponent({
           ? watchedValues[config.show_if.field as keyof typeof watchedValues]
           : externalDependentValues?.[config.show_if.field];
 
-      if (config.show_if.operator === 'eq' && dependValue !== config.show_if.value) {
+      if (
+        config.show_if.operator === 'eq' &&
+        dependValue !== config.show_if.value
+      ) {
         return false;
       }
-      if (config.show_if.operator === 'neq' && dependValue === config.show_if.value) {
+      if (
+        config.show_if.operator === 'neq' &&
+        dependValue === config.show_if.value
+      ) {
         return false;
       }
       if (
@@ -221,7 +227,7 @@ export default function DynamicFormComponent({
     return true;
   });
 
-  // 监听表单值变化
+  // Watch form value changes and emit a normalized snapshot upward.
   useEffect(() => {
     // Emit initial form values immediately so the parent always has a valid snapshot,
     // even if the user saves without modifying any field.
@@ -232,7 +238,7 @@ export default function DynamicFormComponent({
         acc[item.name] = formValues[item.name] ?? item.default;
         return acc;
       },
-      {} as Record<string, object>,
+      {} as Record<string, unknown>,
     );
     onSubmitRef.current?.(initialFinalValues);
 
@@ -242,7 +248,7 @@ export default function DynamicFormComponent({
     // and won't trigger an infinite update loop.
     previousInitialValues.current = initialFinalValues as Record<
       string,
-      object
+      unknown
     >;
 
     const subscription = form.watch(() => {
@@ -252,10 +258,10 @@ export default function DynamicFormComponent({
           acc[item.name] = formValues[item.name] ?? item.default;
           return acc;
         },
-        {} as Record<string, object>,
+        {} as Record<string, unknown>,
       );
       onSubmitRef.current?.(finalValues);
-      previousInitialValues.current = finalValues as Record<string, object>;
+      previousInitialValues.current = finalValues as Record<string, unknown>;
     });
     return () => subscription.unsubscribe();
   }, [form, itemConfigList]);
@@ -273,7 +279,8 @@ export default function DynamicFormComponent({
             index > 0 && visibleItemConfigList[index - 1].section
               ? extractI18nObject(visibleItemConfigList[index - 1].section!)
               : '';
-          const showSectionHeader = Boolean(currentSection) && currentSection !== previousSection;
+          const showSectionHeader =
+            Boolean(currentSection) && currentSection !== previousSection;
 
           return (
             <div key={config.id} className="space-y-4">
@@ -291,12 +298,16 @@ export default function DynamicFormComponent({
                   <FormItem>
                     <FormLabel>
                       {extractI18nObject(config.label)}{' '}
-                      {config.required && <span className="text-red-500">*</span>}
+                      {config.required && (
+                        <span className="text-red-500">*</span>
+                      )}
                     </FormLabel>
                     <FormControl>
                       <div
                         className={
-                          isFieldDisabled ? 'pointer-events-none opacity-60' : ''
+                          isFieldDisabled
+                            ? 'pointer-events-none opacity-60'
+                            : ''
                         }
                       >
                         <DynamicFormItemComponent

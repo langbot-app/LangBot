@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import sys
+import time
 import types
 from importlib import import_module
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+import yaml
 
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
@@ -28,6 +31,8 @@ def get_wecom_converter():
 
 
 def get_dify_runner():
+    # Keep import order aligned with runtime startup to avoid partial runner module initialization.
+    import_module('langbot.pkg.pipeline.pipelinemgr')
     return import_module('langbot.pkg.provider.runners.difysvapi').DifyServiceAPIRunner
 
 
@@ -90,6 +95,15 @@ def make_dify_pipeline_config(
                 'flush-window-ms': flush_window_ms,
             },
         },
+    }
+
+
+def make_runtime_binding(uuid: str, created_at: int, last_active_at: int, policy_version: int = 2) -> dict:
+    return {
+        'uuid': uuid,
+        'created_at': created_at,
+        'last_active_at': last_active_at,
+        'policy_version': policy_version,
     }
 
 
@@ -435,6 +449,86 @@ def test_dify_stream_uses_output_defaults_when_config_missing():
     assert runner._get_stream_flush_window_ms(query) == 2000
 
 
+@pytest.mark.parametrize(
+    ('enabled_value', 'expected'),
+    [
+        ('false', False),
+        ('0', False),
+        ('no', False),
+        ('off', False),
+        ('true', True),
+        ('1', True),
+        ('yes', True),
+        ('on', True),
+    ],
+)
+def test_dify_stream_flush_window_enabled_parses_common_boolean_strings(enabled_value, expected):
+    DifyServiceAPIRunner = get_dify_runner()
+    app = Mock()
+    app.logger = Mock()
+    runner = DifyServiceAPIRunner(app, make_dify_pipeline_config())
+    query = SimpleNamespace(
+        pipeline_config={
+            'output': {
+                'dify-stream': {
+                    'flush-window-enabled': enabled_value,
+                }
+            }
+        }
+    )
+
+    assert runner._is_stream_flush_window_enabled(query) is expected
+
+
+
+
+@pytest.mark.asyncio
+async def test_dify_chat_stream_does_not_crash_when_output_misc_is_missing():
+    DifyServiceAPIRunner = get_dify_runner()
+    app = Mock()
+    app.logger = Mock()
+    pipeline_config = make_dify_pipeline_config()
+    pipeline_config['output'] = {}
+    runner = DifyServiceAPIRunner(app, pipeline_config)
+
+    async def fake_chat_messages(**kwargs):
+        yield {'event': 'message', 'answer': '你好', 'conversation_id': 'conv-misc-missing'}
+        yield {'event': 'message_end', 'conversation_id': 'conv-misc-missing'}
+
+    runner.dify_client = SimpleNamespace(chat_messages=fake_chat_messages, base_url='https://example.com/v1')
+
+    query = SimpleNamespace(
+        adapter=SimpleNamespace(config={}),
+        session=SimpleNamespace(
+            using_conversation=SimpleNamespace(uuid='conv-1'),
+            launcher_type=provider_session.LauncherTypes.PERSON,
+            launcher_id='user-1',
+        ),
+        variables={},
+        pipeline_config=runner.pipeline_config,
+        user_message=provider_message.Message(role='user', content='hello'),
+    )
+
+    chunks = [chunk async for chunk in runner._chat_messages_chunk(query)]
+
+    assert chunks
+    assert chunks[-1].is_final is True
+
+
+@pytest.mark.asyncio
+async def test_dify_process_thinking_content_does_not_crash_when_output_misc_is_not_dict():
+    DifyServiceAPIRunner = get_dify_runner()
+    app = Mock()
+    app.logger = Mock()
+    pipeline_config = make_dify_pipeline_config()
+    pipeline_config['output'] = {'misc': ''}
+    runner = DifyServiceAPIRunner(app, pipeline_config)
+
+    content, thinking = runner._process_thinking_content('<think>abc</think>hello')
+
+    assert '<think>' in content
+    assert thinking == 'abc'
+
 def test_dify_conversation_store_lock_ttl_is_not_shorter_than_request_window():
     DifyServiceAPIRunner = get_dify_runner()
     app = Mock()
@@ -447,6 +541,134 @@ def test_dify_conversation_store_lock_ttl_is_not_shorter_than_request_window():
     assert cfg['lock_ttl_seconds'] >= 130
     assert cfg['contention_wait_retry_count'] >= 15
     assert cfg['contention_wait_interval_ms'] >= 500
+
+
+def test_dify_conversation_store_config_prefers_idle_timeout_seconds_over_ttl_seconds():
+    DifyServiceAPIRunner = get_dify_runner()
+    app = Mock()
+    app.logger = Mock()
+    app.instance_config = SimpleNamespace(
+        data={'dify_conversation_store': {'idle_timeout_seconds': 321, 'ttl_seconds': 999}}
+    )
+    runner = DifyServiceAPIRunner(app, make_dify_pipeline_config())
+
+    cfg = runner._resolve_conversation_store_config()
+
+    assert cfg['idle_timeout_seconds'] == 321
+    assert cfg['ttl_seconds'] == 321
+
+
+@pytest.mark.parametrize('store_value', ['', [], 123, 0.1, True])
+def test_dify_conversation_store_config_falls_back_to_defaults_when_store_config_is_not_dict(store_value):
+    DifyServiceAPIRunner = get_dify_runner()
+    app = Mock()
+    app.logger = Mock()
+    app.instance_config = SimpleNamespace(data={'dify_conversation_store': store_value})
+    runner = DifyServiceAPIRunner(app, make_dify_pipeline_config())
+
+    cfg = runner._resolve_conversation_store_config()
+
+    assert cfg['enabled'] is True
+    assert cfg['idle_timeout_seconds'] == 43200
+    assert cfg['ttl_seconds'] == 43200
+    assert cfg['lock_ttl_seconds'] == 130
+    assert cfg['contention_wait_retry_count'] == 15
+    assert cfg['contention_wait_interval_ms'] == 500
+
+
+def test_dify_conversation_store_pipeline_idle_timeout_overrides_instance_default():
+    DifyServiceAPIRunner = get_dify_runner()
+    app = Mock()
+    app.logger = Mock()
+    app.instance_config = SimpleNamespace(data={'dify_conversation_store': {'idle_timeout_seconds': 111}})
+    pipeline_config = make_dify_pipeline_config()
+    pipeline_config['ai']['dify_conversation_store'] = {'idle_timeout_seconds': 222}
+    runner = DifyServiceAPIRunner(app, pipeline_config)
+
+    cfg = runner._resolve_conversation_store_config()
+
+    assert cfg['idle_timeout_seconds'] == 222
+    assert cfg['ttl_seconds'] == 222
+
+
+def test_dify_conversation_store_pipeline_lock_ttl_overrides_instance_and_still_applies_floor():
+    DifyServiceAPIRunner = get_dify_runner()
+    app = Mock()
+    app.logger = Mock()
+    app.instance_config = SimpleNamespace(data={'dify_conversation_store': {'lock_ttl_seconds': 200}})
+    pipeline_config = make_dify_pipeline_config()
+    pipeline_config['ai']['dify_conversation_store'] = {'lock_ttl_seconds': 1}
+    runner = DifyServiceAPIRunner(app, pipeline_config)
+
+    cfg = runner._resolve_conversation_store_config()
+
+    assert cfg['lock_ttl_seconds'] == 130
+
+
+def test_dify_conversation_store_pipeline_idle_timeout_overrides_instance_legacy_ttl_seconds():
+    DifyServiceAPIRunner = get_dify_runner()
+    app = Mock()
+    app.logger = Mock()
+    app.instance_config = SimpleNamespace(data={'dify_conversation_store': {'ttl_seconds': 333}})
+    pipeline_config = make_dify_pipeline_config()
+    pipeline_config['ai']['dify_conversation_store'] = {'idle_timeout_seconds': 444}
+    runner = DifyServiceAPIRunner(app, pipeline_config)
+
+    cfg = runner._resolve_conversation_store_config()
+
+    assert cfg['idle_timeout_seconds'] == 444
+    assert cfg['ttl_seconds'] == 444
+
+
+@pytest.mark.parametrize(
+    ('enabled_value', 'expected'),
+    [
+        ('false', False),
+        ('0', False),
+        ('no', False),
+        ('off', False),
+        ('true', True),
+        ('1', True),
+        ('yes', True),
+        ('on', True),
+    ],
+)
+def test_dify_conversation_store_enabled_parses_common_boolean_strings(enabled_value, expected):
+    DifyServiceAPIRunner = get_dify_runner()
+    app = Mock()
+    app.logger = Mock()
+    app.instance_config = SimpleNamespace(data={'dify_conversation_store': {'enabled': enabled_value}})
+    runner = DifyServiceAPIRunner(app, make_dify_pipeline_config())
+
+    cfg = runner._resolve_conversation_store_config()
+
+    assert cfg['enabled'] is expected
+
+
+def test_dify_conversation_store_can_initialize_after_redis_manager_becomes_available():
+    DifyServiceAPIRunner = get_dify_runner()
+    app = Mock()
+    app.logger = Mock()
+    app.redis_mgr = None
+    runner = DifyServiceAPIRunner(app, make_dify_pipeline_config())
+
+    assert runner._get_conversation_store() is None
+
+    app.redis_mgr = Mock()
+    store = runner._get_conversation_store()
+
+    assert store is not None
+    assert store.redis_mgr is app.redis_mgr
+    assert runner._get_conversation_store() is store
+
+
+def test_template_default_dify_idle_timeout_seconds_is_12_hours():
+    config_path = Path(__file__).resolve().parents[3] / 'src' / 'langbot' / 'templates' / 'config.yaml'
+
+    with config_path.open('r', encoding='utf-8') as f:
+        config = yaml.safe_load(f)
+
+    assert config['dify_conversation_store']['idle_timeout_seconds'] == 43200
 
 
 def get_wecom_adapter():
@@ -485,6 +707,7 @@ def test_wecombot_adapter_webhook_mode_normalizes_pull_config():
         make_valid_event_logger(),
     )
 
+    assert adapter._ws_mode is False
     assert adapter.config['enable-webhook'] is True
     assert adapter.config['PullPollTimeoutMs'] == 500
     assert adapter.config['PullStreamMaxLifetimeMs'] == 300000
@@ -492,17 +715,21 @@ def test_wecombot_adapter_webhook_mode_normalizes_pull_config():
 
 
 @pytest.mark.asyncio
-async def test_dify_chat_skips_store_restore_when_memory_conversation_exists():
+async def test_dify_chat_reuses_runtime_binding_when_not_expired_without_store_read(monkeypatch):
     DifyServiceAPIRunner = get_dify_runner()
     app = Mock()
     app.logger = Mock()
+    app.instance_config = SimpleNamespace(data={'dify_conversation_store': {'idle_timeout_seconds': 300}})
     runner = DifyServiceAPIRunner(app, make_dify_pipeline_config())
+
+    dify_module = import_module('langbot.pkg.provider.runners.difysvapi')
+    monkeypatch.setattr(dify_module.time, 'time', lambda: 1000)
 
     store = SimpleNamespace(
         acquire_lock=AsyncMock(return_value='owner-1'),
         release_lock=AsyncMock(return_value=True),
-        get_conversation_id=AsyncMock(return_value='conv-from-store'),
-        set_conversation_id=AsyncMock(),
+        get_conversation_binding=AsyncMock(return_value=make_runtime_binding('conv-from-store', 900, 995)),
+        set_conversation_binding=AsyncMock(),
     )
     runner._get_conversation_store = Mock(return_value=store)
 
@@ -520,7 +747,10 @@ async def test_dify_chat_skips_store_restore_when_memory_conversation_exists():
         bot_uuid='bot-1',
         pipeline_uuid='pipe-1',
         session=SimpleNamespace(
-            using_conversation=SimpleNamespace(uuid='conv-memory'),
+            using_conversation=SimpleNamespace(
+                uuid='conv-memory',
+                dify_conversation_binding=make_runtime_binding('conv-memory', 900, 990),
+            ),
             launcher_type=provider_session.LauncherTypes.PERSON,
             launcher_id='user-1',
         ),
@@ -532,25 +762,38 @@ async def test_dify_chat_skips_store_restore_when_memory_conversation_exists():
     _ = [msg async for msg in runner._chat_messages(query)]
 
     assert observed_request['conversation_id'] == 'conv-memory'
-    store.get_conversation_id.assert_not_awaited()
+    store.get_conversation_binding.assert_not_awaited()
     store.acquire_lock.assert_not_awaited()
     store.release_lock.assert_not_awaited()
-    store.set_conversation_id.assert_awaited_once_with('bot-1', 'pipe-1', 'person', 'user-1', 'conv-final')
+    store.set_conversation_binding.assert_awaited_once_with(
+        'bot-1',
+        'pipe-1',
+        'person',
+        'user-1',
+        'conv-final',
+        now_ts=1000,
+        created_at=1000,
+    )
     assert query.session.using_conversation.uuid == 'conv-final'
+    assert query.session.using_conversation.dify_conversation_binding == make_runtime_binding('conv-final', 1000, 1000)
 
 
 @pytest.mark.asyncio
-async def test_dify_chat_restores_conversation_id_from_store_and_persists_final_id():
+async def test_dify_chat_runtime_binding_expired_clears_and_restores_from_store(monkeypatch):
     DifyServiceAPIRunner = get_dify_runner()
     app = Mock()
     app.logger = Mock()
+    app.instance_config = SimpleNamespace(data={'dify_conversation_store': {'idle_timeout_seconds': 60}})
     runner = DifyServiceAPIRunner(app, make_dify_pipeline_config())
+
+    dify_module = import_module('langbot.pkg.provider.runners.difysvapi')
+    monkeypatch.setattr(dify_module.time, 'time', lambda: 1000)
 
     store = SimpleNamespace(
         acquire_lock=AsyncMock(return_value='owner-1'),
         release_lock=AsyncMock(return_value=True),
-        get_conversation_id=AsyncMock(return_value='conv-restored'),
-        set_conversation_id=AsyncMock(),
+        get_conversation_binding=AsyncMock(return_value=make_runtime_binding('conv-restored', 900, 980)),
+        set_conversation_binding=AsyncMock(),
     )
     runner._get_conversation_store = Mock(return_value=store)
 
@@ -568,7 +811,10 @@ async def test_dify_chat_restores_conversation_id_from_store_and_persists_final_
         bot_uuid='bot-2',
         pipeline_uuid='pipe-2',
         session=SimpleNamespace(
-            using_conversation=SimpleNamespace(uuid=''),
+            using_conversation=SimpleNamespace(
+                uuid='conv-expired',
+                dify_conversation_binding=make_runtime_binding('conv-expired', 500, 900),
+            ),
             launcher_type=provider_session.LauncherTypes.PERSON,
             launcher_id='user-2',
         ),
@@ -580,11 +826,341 @@ async def test_dify_chat_restores_conversation_id_from_store_and_persists_final_
     _ = [msg async for msg in runner._chat_messages(query)]
 
     assert observed_request['conversation_id'] == 'conv-restored'
-    store.get_conversation_id.assert_awaited_once_with('bot-2', 'pipe-2', 'person', 'user-2')
+    store.get_conversation_binding.assert_awaited_once_with('bot-2', 'pipe-2', 'person', 'user-2')
     store.acquire_lock.assert_not_awaited()
     store.release_lock.assert_not_awaited()
-    store.set_conversation_id.assert_awaited_once_with('bot-2', 'pipe-2', 'person', 'user-2', 'conv-final-2')
+    store.set_conversation_binding.assert_awaited_once_with(
+        'bot-2',
+        'pipe-2',
+        'person',
+        'user-2',
+        'conv-final-2',
+        now_ts=1000,
+        created_at=1000,
+    )
     assert query.session.using_conversation.uuid == 'conv-final-2'
+    assert query.session.using_conversation.dify_conversation_binding == make_runtime_binding(
+        'conv-final-2',
+        1000,
+        1000,
+    )
+
+
+@pytest.mark.asyncio
+async def test_dify_chat_runtime_uuid_without_metadata_keeps_runtime_when_store_binding_differs(monkeypatch):
+    DifyServiceAPIRunner = get_dify_runner()
+    app = Mock()
+    app.logger = Mock()
+    app.instance_config = SimpleNamespace(data={'dify_conversation_store': {'idle_timeout_seconds': 60}})
+    runner = DifyServiceAPIRunner(app, make_dify_pipeline_config())
+
+    dify_module = import_module('langbot.pkg.provider.runners.difysvapi')
+    monkeypatch.setattr(dify_module.time, 'time', lambda: 1000)
+
+    store = SimpleNamespace(
+        acquire_lock=AsyncMock(return_value='owner-3'),
+        release_lock=AsyncMock(return_value=True),
+        get_conversation_binding=AsyncMock(return_value=make_runtime_binding('conv-restored-3', 900, 980)),
+        set_conversation_binding=AsyncMock(),
+    )
+    runner._get_conversation_store = Mock(return_value=store)
+
+    observed_request = {}
+
+    async def fake_chat_messages(**kwargs):
+        observed_request.update(kwargs)
+        yield {'event': 'message', 'answer': 'hello', 'conversation_id': 'conv-memory-without-meta'}
+        yield {'event': 'message_end', 'conversation_id': 'conv-memory-without-meta'}
+
+    runner.dify_client = SimpleNamespace(chat_messages=fake_chat_messages, base_url='https://example.com/v1')
+
+    query = SimpleNamespace(
+        adapter=SimpleNamespace(config={}),
+        bot_uuid='bot-3',
+        pipeline_uuid='pipe-3',
+        session=SimpleNamespace(
+            using_conversation=SimpleNamespace(uuid='conv-memory-without-meta'),
+            launcher_type=provider_session.LauncherTypes.PERSON,
+            launcher_id='user-3',
+        ),
+        variables={},
+        pipeline_config=runner.pipeline_config,
+        user_message=provider_message.Message(role='user', content='hello'),
+    )
+
+    _ = [msg async for msg in runner._chat_messages(query)]
+
+    assert observed_request['conversation_id'] == 'conv-memory-without-meta'
+    store.get_conversation_binding.assert_awaited_once_with('bot-3', 'pipe-3', 'person', 'user-3')
+    store.acquire_lock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_dify_restore_from_store_binding_writes_runtime_metadata(monkeypatch):
+    DifyServiceAPIRunner = get_dify_runner()
+    app = Mock()
+    app.logger = Mock()
+    app.instance_config = SimpleNamespace(data={'dify_conversation_store': {'idle_timeout_seconds': 60}})
+    runner = DifyServiceAPIRunner(app, make_dify_pipeline_config())
+
+    dify_module = import_module('langbot.pkg.provider.runners.difysvapi')
+    monkeypatch.setattr(dify_module.time, 'time', lambda: 1000)
+
+    store = SimpleNamespace(
+        acquire_lock=AsyncMock(return_value='owner-restore'),
+        release_lock=AsyncMock(return_value=True),
+        get_conversation_binding=AsyncMock(return_value=make_runtime_binding('conv-restored-meta', 700, 980)),
+    )
+    runner._get_conversation_store = Mock(return_value=store)
+
+    query = SimpleNamespace(
+        bot_uuid='bot-restore',
+        pipeline_uuid='pipe-restore',
+        session=SimpleNamespace(
+            using_conversation=SimpleNamespace(uuid=''),
+            launcher_type=provider_session.LauncherTypes.PERSON,
+            launcher_id='user-restore',
+        ),
+    )
+
+    conversation_id, lock_owner = await runner._restore_conversation_id_if_needed(query)
+
+    assert lock_owner is None
+    assert conversation_id == 'conv-restored-meta'
+    assert query.session.using_conversation.uuid == 'conv-restored-meta'
+    assert query.session.using_conversation.dify_conversation_binding == make_runtime_binding(
+        'conv-restored-meta',
+        700,
+        980,
+    )
+
+
+@pytest.mark.asyncio
+async def test_dify_restore_from_store_binding_ignores_expired_payload(monkeypatch):
+    DifyServiceAPIRunner = get_dify_runner()
+    app = Mock()
+    app.logger = Mock()
+    app.instance_config = SimpleNamespace(data={'dify_conversation_store': {'idle_timeout_seconds': 60}})
+    runner = DifyServiceAPIRunner(app, make_dify_pipeline_config())
+
+    dify_module = import_module('langbot.pkg.provider.runners.difysvapi')
+    monkeypatch.setattr(dify_module.time, 'time', lambda: 1000)
+
+    store = SimpleNamespace(
+        acquire_lock=AsyncMock(return_value='owner-expired'),
+        release_lock=AsyncMock(return_value=True),
+        get_conversation_binding=AsyncMock(
+            side_effect=[
+                make_runtime_binding('conv-expired-store', 100, 700),
+                make_runtime_binding('conv-expired-store', 100, 700),
+            ]
+        ),
+    )
+    runner._get_conversation_store = Mock(return_value=store)
+
+    query = SimpleNamespace(
+        bot_uuid='bot-expired',
+        pipeline_uuid='pipe-expired',
+        session=SimpleNamespace(
+            using_conversation=SimpleNamespace(uuid=''),
+            launcher_type=provider_session.LauncherTypes.PERSON,
+            launcher_id='user-expired',
+        ),
+    )
+
+    conversation_id, lock_owner = await runner._restore_conversation_id_if_needed(query)
+
+    assert conversation_id is None
+    assert lock_owner == 'owner-expired'
+    assert query.session.using_conversation.uuid == ''
+
+
+@pytest.mark.asyncio
+async def test_dify_restore_uses_valid_runtime_binding_when_store_unavailable(monkeypatch):
+    DifyServiceAPIRunner = get_dify_runner()
+    app = Mock()
+    app.logger = Mock()
+    app.instance_config = SimpleNamespace(data={'dify_conversation_store': {'idle_timeout_seconds': 300}})
+    runner = DifyServiceAPIRunner(app, make_dify_pipeline_config())
+
+    dify_module = import_module('langbot.pkg.provider.runners.difysvapi')
+    monkeypatch.setattr(dify_module.time, 'time', lambda: 1000)
+
+    runner._get_conversation_store = Mock(return_value=None)
+
+    query = SimpleNamespace(
+        bot_uuid='bot-runtime-none-store',
+        pipeline_uuid='pipe-runtime-none-store',
+        session=SimpleNamespace(
+            using_conversation=SimpleNamespace(
+                uuid='conv-runtime-valid',
+                dify_conversation_binding=make_runtime_binding('conv-runtime-valid', 900, 990),
+            ),
+            launcher_type=provider_session.LauncherTypes.PERSON,
+            launcher_id='user-runtime-none-store',
+        ),
+    )
+
+    conversation_id, lock_owner = await runner._restore_conversation_id_if_needed(query)
+
+    assert conversation_id == 'conv-runtime-valid'
+    assert lock_owner is None
+    assert query.session.using_conversation.uuid == 'conv-runtime-valid'
+    assert query.session.using_conversation.dify_conversation_binding == make_runtime_binding(
+        'conv-runtime-valid',
+        900,
+        990,
+    )
+
+
+@pytest.mark.asyncio
+async def test_dify_restore_store_unavailable_keeps_runtime_uuid_without_metadata(monkeypatch):
+    DifyServiceAPIRunner = get_dify_runner()
+    app = Mock()
+    app.logger = Mock()
+    app.instance_config = SimpleNamespace(data={'dify_conversation_store': {'idle_timeout_seconds': 60}})
+    runner = DifyServiceAPIRunner(app, make_dify_pipeline_config())
+
+    dify_module = import_module('langbot.pkg.provider.runners.difysvapi')
+    monkeypatch.setattr(dify_module.time, 'time', lambda: 1000)
+
+    runner._get_conversation_store = Mock(return_value=None)
+
+    query = SimpleNamespace(
+        bot_uuid='bot-runtime-without-meta-none-store',
+        pipeline_uuid='pipe-runtime-without-meta-none-store',
+        session=SimpleNamespace(
+            using_conversation=SimpleNamespace(uuid='conv-runtime-without-meta'),
+            launcher_type=provider_session.LauncherTypes.PERSON,
+            launcher_id='user-runtime-without-meta-none-store',
+        ),
+    )
+
+    conversation_id, lock_owner = await runner._restore_conversation_id_if_needed(query)
+
+    assert conversation_id == 'conv-runtime-without-meta'
+    assert lock_owner is None
+    assert query.session.using_conversation.uuid == 'conv-runtime-without-meta'
+    assert getattr(query.session.using_conversation, 'dify_conversation_binding', None) is None
+
+
+@pytest.mark.asyncio
+async def test_dify_restore_store_unavailable_fail_closed_for_expired_runtime_binding(monkeypatch):
+    DifyServiceAPIRunner = get_dify_runner()
+    app = Mock()
+    app.logger = Mock()
+    app.instance_config = SimpleNamespace(data={'dify_conversation_store': {'idle_timeout_seconds': 60}})
+    runner = DifyServiceAPIRunner(app, make_dify_pipeline_config())
+
+    dify_module = import_module('langbot.pkg.provider.runners.difysvapi')
+    monkeypatch.setattr(dify_module.time, 'time', lambda: 1000)
+
+    runner._get_conversation_store = Mock(return_value=None)
+
+    query = SimpleNamespace(
+        bot_uuid='bot-runtime-expired-none-store',
+        pipeline_uuid='pipe-runtime-expired-none-store',
+        session=SimpleNamespace(
+            using_conversation=SimpleNamespace(
+                uuid='conv-runtime-expired',
+                dify_conversation_binding=make_runtime_binding('conv-runtime-expired', 100, 700),
+            ),
+            launcher_type=provider_session.LauncherTypes.PERSON,
+            launcher_id='user-runtime-expired-none-store',
+        ),
+    )
+
+    conversation_id, lock_owner = await runner._restore_conversation_id_if_needed(query)
+
+    assert conversation_id is None
+    assert lock_owner is None
+    assert query.session.using_conversation.uuid is None
+    assert getattr(query.session.using_conversation, 'dify_conversation_binding', None) is None
+
+
+@pytest.mark.asyncio
+async def test_dify_restore_malformed_store_binding_keeps_runtime_uuid_without_metadata(monkeypatch):
+    DifyServiceAPIRunner = get_dify_runner()
+    app = Mock()
+    app.logger = Mock()
+    app.instance_config = SimpleNamespace(data={'dify_conversation_store': {'idle_timeout_seconds': 60}})
+    runner = DifyServiceAPIRunner(app, make_dify_pipeline_config())
+
+    dify_module = import_module('langbot.pkg.provider.runners.difysvapi')
+    monkeypatch.setattr(dify_module.time, 'time', lambda: 1000)
+
+    malformed_payload = {
+        'uuid': 'conv-malformed',
+        'created_at': 'oops',
+        'last_active_at': 900,
+        'policy_version': 2,
+    }
+    store = SimpleNamespace(
+        acquire_lock=AsyncMock(return_value='owner-malformed'),
+        release_lock=AsyncMock(return_value=True),
+        get_conversation_binding=AsyncMock(side_effect=[malformed_payload, malformed_payload]),
+    )
+    runner._get_conversation_store = Mock(return_value=store)
+
+    query = SimpleNamespace(
+        bot_uuid='bot-malformed',
+        pipeline_uuid='pipe-malformed',
+        session=SimpleNamespace(
+            using_conversation=SimpleNamespace(uuid='conv-orphan-runtime'),
+            launcher_type=provider_session.LauncherTypes.PERSON,
+            launcher_id='user-malformed',
+        ),
+    )
+
+    conversation_id, lock_owner = await runner._restore_conversation_id_if_needed(query)
+
+    assert conversation_id == 'conv-orphan-runtime'
+    assert lock_owner is None
+    assert query.session.using_conversation.uuid == 'conv-orphan-runtime'
+    assert getattr(query.session.using_conversation, 'dify_conversation_binding', None) is None
+    assert store.get_conversation_binding.await_count == 1
+    store.acquire_lock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_dify_restore_id_only_store_fallback_marks_binding_as_policy_v1(monkeypatch):
+    DifyServiceAPIRunner = get_dify_runner()
+    app = Mock()
+    app.logger = Mock()
+    app.instance_config = SimpleNamespace(data={'dify_conversation_store': {'idle_timeout_seconds': 60}})
+    runner = DifyServiceAPIRunner(app, make_dify_pipeline_config())
+
+    dify_module = import_module('langbot.pkg.provider.runners.difysvapi')
+    monkeypatch.setattr(dify_module.time, 'time', lambda: 1000)
+
+    store = SimpleNamespace(
+        acquire_lock=AsyncMock(return_value='owner-legacy'),
+        release_lock=AsyncMock(return_value=True),
+        get_conversation_id=AsyncMock(return_value='conv-legacy-only-id'),
+    )
+    runner._get_conversation_store = Mock(return_value=store)
+
+    query = SimpleNamespace(
+        bot_uuid='bot-legacy',
+        pipeline_uuid='pipe-legacy',
+        session=SimpleNamespace(
+            using_conversation=SimpleNamespace(uuid=''),
+            launcher_type=provider_session.LauncherTypes.PERSON,
+            launcher_id='user-legacy',
+        ),
+    )
+
+    conversation_id, lock_owner = await runner._restore_conversation_id_if_needed(query)
+
+    assert conversation_id == 'conv-legacy-only-id'
+    assert lock_owner is None
+    assert query.session.using_conversation.uuid == 'conv-legacy-only-id'
+    assert query.session.using_conversation.dify_conversation_binding == {
+        'uuid': 'conv-legacy-only-id',
+        'created_at': 1000,
+        'last_active_at': 1000,
+        'policy_version': 1,
+    }
 
 
 @pytest.mark.asyncio
@@ -1035,6 +1611,547 @@ async def test_dify_chat_stream_chunk_restore_and_persist_conversation_id():
         'person',
         'user-stream',
         'conv-stream-final',
+    )
+
+
+@pytest.mark.asyncio
+async def test_dify_chat_invalid_conversation_retries_once_with_restored_binding_from_contention_wait(monkeypatch):
+    dify_module = import_module('langbot.pkg.provider.runners.difysvapi')
+    DifyServiceAPIRunner = dify_module.DifyServiceAPIRunner
+    dify_errors = import_module('langbot.libs.dify_service_api.v1.errors')
+    app = Mock()
+    app.logger = Mock()
+    app.instance_config = SimpleNamespace(
+        data={
+            'dify_conversation_store': {
+                'contention_wait_retry_count': 3,
+                'contention_wait_interval_ms': 50,
+            }
+        }
+    )
+    runner = DifyServiceAPIRunner(app, make_dify_pipeline_config())
+
+    async def fake_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(dify_module.asyncio, 'sleep', fake_sleep)
+
+    store = SimpleNamespace(
+        acquire_lock=AsyncMock(return_value=None),
+        release_lock=AsyncMock(return_value=True),
+        get_conversation_id=AsyncMock(side_effect=[None, None, 'conv-recovered-after-invalid']),
+        set_conversation_id=AsyncMock(),
+        delete_conversation_id=AsyncMock(),
+    )
+    runner._get_conversation_store = Mock(return_value=store)
+    now_ts = int(time.time())
+
+    request_args = []
+
+    async def fake_chat_messages(**kwargs):
+        request_args.append(kwargs)
+        if len(request_args) == 1:
+            raise dify_errors.DifyAPIError('400 {"code":"conversation_not_found","message":"Conversation not found"}')
+        yield {'event': 'message', 'answer': 'retry-ok', 'conversation_id': 'conv-after-retry'}
+        yield {'event': 'message_end', 'conversation_id': 'conv-after-retry'}
+
+    runner.dify_client = SimpleNamespace(chat_messages=fake_chat_messages, base_url='https://example.com/v1')
+
+    query = SimpleNamespace(
+        adapter=SimpleNamespace(config={}),
+        bot_uuid='bot-invalid-retry',
+        pipeline_uuid='pipe-invalid-retry',
+        session=SimpleNamespace(
+            using_conversation=SimpleNamespace(
+                uuid='conv-stale',
+                dify_conversation_binding=make_runtime_binding('conv-stale', now_ts - 10, now_ts - 5),
+            ),
+            launcher_type=provider_session.LauncherTypes.PERSON,
+            launcher_id='user-invalid-retry',
+        ),
+        variables={},
+        pipeline_config=runner.pipeline_config,
+        user_message=provider_message.Message(role='user', content='hello'),
+    )
+
+    messages = [msg async for msg in runner._chat_messages(query)]
+
+    assert len(messages) == 1
+    assert messages[0].content == 'retry-ok'
+    assert len(request_args) == 2
+    assert request_args[0]['conversation_id'] == 'conv-stale'
+    assert request_args[1]['conversation_id'] == 'conv-recovered-after-invalid'
+    assert request_args[1]['inputs']['conversation_id'] == 'conv-recovered-after-invalid'
+    store.acquire_lock.assert_awaited_once_with('bot-invalid-retry', 'pipe-invalid-retry', 'person', 'user-invalid-retry')
+    store.delete_conversation_id.assert_awaited_once_with(
+        'bot-invalid-retry',
+        'pipe-invalid-retry',
+        'person',
+        'user-invalid-retry',
+    )
+    store.set_conversation_id.assert_awaited_once_with(
+        'bot-invalid-retry',
+        'pipe-invalid-retry',
+        'person',
+        'user-invalid-retry',
+        'conv-after-retry',
+    )
+
+
+@pytest.mark.asyncio
+async def test_dify_chat_invalid_conversation_retry_reacquires_lock_before_empty_retry():
+    DifyServiceAPIRunner = get_dify_runner()
+    dify_errors = import_module('langbot.libs.dify_service_api.v1.errors')
+    app = Mock()
+    app.logger = Mock()
+    runner = DifyServiceAPIRunner(app, make_dify_pipeline_config())
+
+    store = SimpleNamespace(
+        acquire_lock=AsyncMock(return_value='owner-invalid-retry-lock-holder'),
+        release_lock=AsyncMock(return_value=True),
+        get_conversation_id=AsyncMock(side_effect=[None, None]),
+        set_conversation_id=AsyncMock(),
+        delete_conversation_id=AsyncMock(),
+    )
+    runner._get_conversation_store = Mock(return_value=store)
+    now_ts = int(time.time())
+
+    request_args = []
+
+    async def fake_chat_messages(**kwargs):
+        request_args.append(kwargs)
+        if len(request_args) == 1:
+            raise dify_errors.DifyAPIError('400 {"code":"conversation_not_found","message":"Conversation not found"}')
+        yield {'event': 'message', 'answer': 'retry-ok-lock-holder', 'conversation_id': 'conv-after-lock-holder-retry'}
+        yield {'event': 'message_end', 'conversation_id': 'conv-after-lock-holder-retry'}
+
+    runner.dify_client = SimpleNamespace(chat_messages=fake_chat_messages, base_url='https://example.com/v1')
+
+    query = SimpleNamespace(
+        adapter=SimpleNamespace(config={}),
+        bot_uuid='bot-invalid-retry-lock-holder',
+        pipeline_uuid='pipe-invalid-retry-lock-holder',
+        session=SimpleNamespace(
+            using_conversation=SimpleNamespace(
+                uuid='conv-stale-lock-holder',
+                dify_conversation_binding=make_runtime_binding('conv-stale-lock-holder', now_ts - 10, now_ts - 5),
+            ),
+            launcher_type=provider_session.LauncherTypes.PERSON,
+            launcher_id='user-invalid-retry-lock-holder',
+        ),
+        variables={},
+        pipeline_config=runner.pipeline_config,
+        user_message=provider_message.Message(role='user', content='hello'),
+    )
+
+    messages = [msg async for msg in runner._chat_messages(query)]
+
+    assert len(messages) == 1
+    assert messages[0].content == 'retry-ok-lock-holder'
+    assert len(request_args) == 2
+    assert request_args[0]['conversation_id'] == 'conv-stale-lock-holder'
+    assert request_args[1]['conversation_id'] == ''
+    assert request_args[1]['inputs']['conversation_id'] == ''
+    store.acquire_lock.assert_awaited_once_with(
+        'bot-invalid-retry-lock-holder',
+        'pipe-invalid-retry-lock-holder',
+        'person',
+        'user-invalid-retry-lock-holder',
+    )
+    store.release_lock.assert_awaited_once_with(
+        'bot-invalid-retry-lock-holder',
+        'pipe-invalid-retry-lock-holder',
+        'person',
+        'user-invalid-retry-lock-holder',
+        'owner-invalid-retry-lock-holder',
+    )
+
+
+@pytest.mark.asyncio
+async def test_dify_chat_invalid_conversation_second_failure_raises_after_single_retry():
+    DifyServiceAPIRunner = get_dify_runner()
+    dify_errors = import_module('langbot.libs.dify_service_api.v1.errors')
+    app = Mock()
+    app.logger = Mock()
+    runner = DifyServiceAPIRunner(app, make_dify_pipeline_config())
+
+    store = SimpleNamespace(
+        acquire_lock=AsyncMock(return_value='owner-invalid-double-fail'),
+        release_lock=AsyncMock(return_value=True),
+        get_conversation_id=AsyncMock(side_effect=[None, None]),
+        set_conversation_id=AsyncMock(),
+        delete_conversation_id=AsyncMock(),
+    )
+    runner._get_conversation_store = Mock(return_value=store)
+    now_ts = int(time.time())
+
+    request_args = []
+
+    async def fake_chat_messages(**kwargs):
+        request_args.append(kwargs)
+        raise dify_errors.DifyAPIError('400 {"code":"conversation_not_found","message":"Conversation not found"}')
+        yield  # pragma: no cover
+
+    runner.dify_client = SimpleNamespace(chat_messages=fake_chat_messages, base_url='https://example.com/v1')
+
+    query = SimpleNamespace(
+        adapter=SimpleNamespace(config={}),
+        bot_uuid='bot-invalid-double-fail',
+        pipeline_uuid='pipe-invalid-double-fail',
+        session=SimpleNamespace(
+            using_conversation=SimpleNamespace(
+                uuid='conv-stale-double-fail',
+                dify_conversation_binding=make_runtime_binding(
+                    'conv-stale-double-fail',
+                    now_ts - 10,
+                    now_ts - 5,
+                ),
+            ),
+            launcher_type=provider_session.LauncherTypes.PERSON,
+            launcher_id='user-invalid-double-fail',
+        ),
+        variables={},
+        pipeline_config=runner.pipeline_config,
+        user_message=provider_message.Message(role='user', content='hello'),
+    )
+
+    with pytest.raises(dify_errors.DifyAPIError):
+        _ = [msg async for msg in runner._chat_messages(query)]
+
+    assert len(request_args) == 2
+    assert request_args[0]['conversation_id'] == 'conv-stale-double-fail'
+    assert request_args[1]['conversation_id'] == ''
+    assert request_args[1]['inputs']['conversation_id'] == ''
+    store.acquire_lock.assert_awaited_once_with(
+        'bot-invalid-double-fail',
+        'pipe-invalid-double-fail',
+        'person',
+        'user-invalid-double-fail',
+    )
+    store.release_lock.assert_awaited_once_with(
+        'bot-invalid-double-fail',
+        'pipe-invalid-double-fail',
+        'person',
+        'user-invalid-double-fail',
+        'owner-invalid-double-fail',
+    )
+    store.acquire_lock.assert_awaited_once_with(
+        'bot-invalid-double-fail',
+        'pipe-invalid-double-fail',
+        'person',
+        'user-invalid-double-fail',
+    )
+    store.delete_conversation_id.assert_awaited_once()
+    store.set_conversation_id.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_dify_chat_non_invalid_conversation_error_does_not_retry():
+    DifyServiceAPIRunner = get_dify_runner()
+    dify_errors = import_module('langbot.libs.dify_service_api.v1.errors')
+    app = Mock()
+    app.logger = Mock()
+    runner = DifyServiceAPIRunner(app, make_dify_pipeline_config())
+
+    store = SimpleNamespace(
+        acquire_lock=AsyncMock(return_value='owner-non-invalid'),
+        release_lock=AsyncMock(return_value=True),
+        get_conversation_id=AsyncMock(return_value=None),
+        set_conversation_id=AsyncMock(),
+        delete_conversation_id=AsyncMock(),
+    )
+    runner._get_conversation_store = Mock(return_value=store)
+    now_ts = int(time.time())
+
+    request_args = []
+
+    async def fake_chat_messages(**kwargs):
+        request_args.append(kwargs)
+        raise dify_errors.DifyAPIError('500 internal server error')
+        yield  # pragma: no cover
+
+    runner.dify_client = SimpleNamespace(chat_messages=fake_chat_messages, base_url='https://example.com/v1')
+
+    query = SimpleNamespace(
+        adapter=SimpleNamespace(config={}),
+        bot_uuid='bot-non-invalid',
+        pipeline_uuid='pipe-non-invalid',
+        session=SimpleNamespace(
+            using_conversation=SimpleNamespace(
+                uuid='conv-non-invalid',
+                dify_conversation_binding=make_runtime_binding('conv-non-invalid', now_ts - 10, now_ts - 5),
+            ),
+            launcher_type=provider_session.LauncherTypes.PERSON,
+            launcher_id='user-non-invalid',
+        ),
+        variables={},
+        pipeline_config=runner.pipeline_config,
+        user_message=provider_message.Message(role='user', content='hello'),
+    )
+
+    with pytest.raises(dify_errors.DifyAPIError):
+        _ = [msg async for msg in runner._chat_messages(query)]
+
+    assert len(request_args) == 1
+    assert request_args[0]['conversation_id'] == 'conv-non-invalid'
+    store.delete_conversation_id.assert_not_awaited()
+    assert query.session.using_conversation.uuid == 'conv-non-invalid'
+
+
+@pytest.mark.asyncio
+async def test_dify_chat_stream_invalid_conversation_retries_once_with_restored_binding_from_contention_wait(
+    monkeypatch,
+):
+    dify_module = import_module('langbot.pkg.provider.runners.difysvapi')
+    DifyServiceAPIRunner = dify_module.DifyServiceAPIRunner
+    dify_errors = import_module('langbot.libs.dify_service_api.v1.errors')
+    app = Mock()
+    app.logger = Mock()
+    app.instance_config = SimpleNamespace(
+        data={
+            'dify_conversation_store': {
+                'contention_wait_retry_count': 3,
+                'contention_wait_interval_ms': 50,
+            }
+        }
+    )
+    runner = DifyServiceAPIRunner(app, make_dify_pipeline_config())
+
+    async def fake_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(dify_module.asyncio, 'sleep', fake_sleep)
+
+    store = SimpleNamespace(
+        acquire_lock=AsyncMock(return_value=None),
+        release_lock=AsyncMock(return_value=True),
+        get_conversation_id=AsyncMock(side_effect=[None, None, 'conv-stream-recovered-after-invalid']),
+        set_conversation_id=AsyncMock(),
+        delete_conversation_id=AsyncMock(),
+    )
+    runner._get_conversation_store = Mock(return_value=store)
+    now_ts = int(time.time())
+
+    request_args = []
+
+    async def fake_chat_messages(**kwargs):
+        request_args.append(kwargs)
+        if len(request_args) == 1:
+            raise dify_errors.DifyAPIError('400 {"code":"invalid_conversation","message":"invalid conversation"}')
+        yield {'event': 'message', 'answer': '你', 'conversation_id': 'conv-stream-after-retry'}
+        yield {'event': 'message_end', 'conversation_id': 'conv-stream-after-retry'}
+
+    runner.dify_client = SimpleNamespace(chat_messages=fake_chat_messages, base_url='https://example.com/v1')
+
+    query = SimpleNamespace(
+        adapter=SimpleNamespace(config={}),
+        bot_uuid='bot-stream-invalid-retry',
+        pipeline_uuid='pipe-stream-invalid-retry',
+        session=SimpleNamespace(
+            using_conversation=SimpleNamespace(
+                uuid='conv-stream-stale',
+                dify_conversation_binding=make_runtime_binding('conv-stream-stale', now_ts - 10, now_ts - 5),
+            ),
+            launcher_type=provider_session.LauncherTypes.PERSON,
+            launcher_id='user-stream-invalid-retry',
+        ),
+        variables={},
+        pipeline_config=runner.pipeline_config,
+        user_message=provider_message.Message(role='user', content='hello'),
+    )
+
+    chunks = [chunk async for chunk in runner._chat_messages_chunk(query)]
+
+    assert len(chunks) >= 1
+    assert chunks[-1].is_final is True
+    assert len(request_args) == 2
+    assert request_args[0]['conversation_id'] == 'conv-stream-stale'
+    assert request_args[1]['conversation_id'] == 'conv-stream-recovered-after-invalid'
+    assert request_args[1]['inputs']['conversation_id'] == 'conv-stream-recovered-after-invalid'
+    store.acquire_lock.assert_awaited_once_with(
+        'bot-stream-invalid-retry',
+        'pipe-stream-invalid-retry',
+        'person',
+        'user-stream-invalid-retry',
+    )
+    store.acquire_lock.assert_awaited_once_with(
+        'bot-stream-invalid-retry',
+        'pipe-stream-invalid-retry',
+        'person',
+        'user-stream-invalid-retry',
+    )
+    store.delete_conversation_id.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_dify_chat_invalid_conversation_waits_for_recovered_binding_before_retry(monkeypatch):
+    DifyServiceAPIRunner = get_dify_runner()
+    dify_errors = import_module('langbot.libs.dify_service_api.v1.errors')
+    dify_module = import_module('langbot.pkg.provider.runners.difysvapi')
+    app = Mock()
+    app.logger = Mock()
+    app.instance_config = SimpleNamespace(
+        data={'dify_conversation_store': {'contention_wait_retry_count': 2, 'contention_wait_interval_ms': 50}}
+    )
+    runner = DifyServiceAPIRunner(app, make_dify_pipeline_config())
+
+    async def fake_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(dify_module.asyncio, 'sleep', fake_sleep)
+    now_ts = int(time.time())
+
+    recovered_binding = {
+        'conversation_id': 'conv-recovered-after-invalid',
+        'created_at': now_ts,
+        'last_active_at': now_ts,
+        'policy_version': 2,
+    }
+    store = SimpleNamespace(
+        acquire_lock=AsyncMock(return_value=None),
+        release_lock=AsyncMock(return_value=True),
+        get_conversation_binding=AsyncMock(side_effect=[None, None, recovered_binding]),
+        set_conversation_binding=AsyncMock(),
+        delete_conversation_id=AsyncMock(),
+    )
+    runner._get_conversation_store = Mock(return_value=store)
+
+    request_args = []
+
+    async def fake_chat_messages(**kwargs):
+        request_args.append(kwargs)
+        if len(request_args) == 1:
+            raise dify_errors.DifyAPIError('400 {"code":"conversation_not_found","message":"Conversation not found"}')
+        yield {'event': 'message', 'answer': 'retry-with-restored-binding', 'conversation_id': 'conv-recovered-after-invalid'}
+        yield {'event': 'message_end', 'conversation_id': 'conv-recovered-after-invalid'}
+
+    runner.dify_client = SimpleNamespace(chat_messages=fake_chat_messages, base_url='https://example.com/v1')
+
+    query = SimpleNamespace(
+        adapter=SimpleNamespace(config={}),
+        bot_uuid='bot-invalid-contention',
+        pipeline_uuid='pipe-invalid-contention',
+        session=SimpleNamespace(
+            using_conversation=SimpleNamespace(
+                uuid='conv-stale-contention',
+                dify_conversation_binding=make_runtime_binding('conv-stale-contention', now_ts - 10, now_ts - 5),
+            ),
+            launcher_type=provider_session.LauncherTypes.PERSON,
+            launcher_id='user-invalid-contention',
+        ),
+        variables={},
+        pipeline_config=runner.pipeline_config,
+        user_message=provider_message.Message(role='user', content='hello'),
+    )
+
+    messages = [msg async for msg in runner._chat_messages(query)]
+
+    assert len(messages) == 1
+    assert request_args[0]['conversation_id'] == 'conv-stale-contention'
+    assert request_args[1]['conversation_id'] == 'conv-recovered-after-invalid'
+    assert request_args[1]['inputs']['conversation_id'] == 'conv-recovered-after-invalid'
+    store.delete_conversation_id.assert_awaited_once_with(
+        'bot-invalid-contention',
+        'pipe-invalid-contention',
+        'person',
+        'user-invalid-contention',
+    )
+    store.acquire_lock.assert_awaited_once_with(
+        'bot-invalid-contention',
+        'pipe-invalid-contention',
+        'person',
+        'user-invalid-contention',
+    )
+    assert store.get_conversation_binding.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_dify_agent_invalid_conversation_retries_once_with_empty_conversation_id():
+    DifyServiceAPIRunner = get_dify_runner()
+    dify_errors = import_module('langbot.libs.dify_service_api.v1.errors')
+    app = Mock()
+    app.logger = Mock()
+    config = make_dify_pipeline_config()
+    config['ai']['dify-service-api']['app-type'] = 'agent'
+    runner = DifyServiceAPIRunner(app, config)
+
+    store = SimpleNamespace(
+        acquire_lock=AsyncMock(return_value='owner-agent-invalid-retry'),
+        release_lock=AsyncMock(return_value=True),
+        get_conversation_id=AsyncMock(side_effect=[None, None]),
+        set_conversation_id=AsyncMock(),
+        delete_conversation_id=AsyncMock(),
+    )
+    runner._get_conversation_store = Mock(return_value=store)
+    now_ts = int(time.time())
+
+    request_args = []
+
+    async def fake_agent_chat_messages(**kwargs):
+        request_args.append(kwargs)
+        if len(request_args) == 1:
+            raise dify_errors.DifyAPIError('400 {"code":"invalid_conversation","message":"invalid conversation"}')
+        yield {'event': 'agent_message', 'answer': 'agent-retry-ok', 'conversation_id': 'conv-agent-after-retry'}
+        yield {'event': 'message_end', 'conversation_id': 'conv-agent-after-retry'}
+
+    runner.dify_client = SimpleNamespace(chat_messages=fake_agent_chat_messages, base_url='https://example.com/v1')
+
+    query = SimpleNamespace(
+        adapter=SimpleNamespace(config={}),
+        bot_uuid='bot-agent-invalid-retry',
+        pipeline_uuid='pipe-agent-invalid-retry',
+        session=SimpleNamespace(
+            using_conversation=SimpleNamespace(
+                uuid='conv-agent-stale',
+                dify_conversation_binding=make_runtime_binding('conv-agent-stale', now_ts - 10, now_ts - 5),
+            ),
+            launcher_type=provider_session.LauncherTypes.PERSON,
+            launcher_id='user-agent-invalid-retry',
+        ),
+        variables={},
+        pipeline_config=runner.pipeline_config,
+        user_message=provider_message.Message(role='user', content='hello'),
+    )
+
+    messages = [msg async for msg in runner._agent_chat_messages(query)]
+
+    assert len(messages) == 1
+    assert messages[0].content == 'agent-retry-ok'
+    assert len(request_args) == 2
+    assert request_args[0]['conversation_id'] == 'conv-agent-stale'
+    assert request_args[1]['conversation_id'] == ''
+    assert request_args[1]['inputs']['conversation_id'] == ''
+    store.acquire_lock.assert_awaited_once_with(
+        'bot-agent-invalid-retry',
+        'pipe-agent-invalid-retry',
+        'person',
+        'user-agent-invalid-retry',
+    )
+    store.release_lock.assert_awaited_once_with(
+        'bot-agent-invalid-retry',
+        'pipe-agent-invalid-retry',
+        'person',
+        'user-agent-invalid-retry',
+        'owner-agent-invalid-retry',
+    )
+    store.delete_conversation_id.assert_awaited_once_with(
+        'bot-agent-invalid-retry',
+        'pipe-agent-invalid-retry',
+        'person',
+        'user-agent-invalid-retry',
+    )
+    store.acquire_lock.assert_awaited_once_with(
+        'bot-agent-invalid-retry',
+        'pipe-agent-invalid-retry',
+        'person',
+        'user-agent-invalid-retry',
+    )
+    store.set_conversation_id.assert_awaited_once_with(
+        'bot-agent-invalid-retry',
+        'pipe-agent-invalid-retry',
+        'person',
+        'user-agent-invalid-retry',
+        'conv-agent-after-retry',
     )
 
 

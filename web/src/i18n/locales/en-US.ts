@@ -631,6 +631,9 @@ const enUS = {
     copyConfirmation:
       'Are you sure you want to copy this pipeline? This will create a new pipeline with all configurations.',
     unsavedChanges: 'You have unsaved changes',
+    difySessionSettings: {
+      scopeHint: 'Saved per pipeline. Defaults come from backend metadata.',
+    },
     extensions: {
       title: 'Extensions',
       loadError: 'Failed to load plugins',

@@ -419,3 +419,127 @@ async def test_service_reset_delete_failure_warning_contains_scope_fields(monkey
     assert any('pipeline_uuid=pipe-1' in msg for msg in pipeline_warnings)
     assert any('launcher_type=person' in msg for msg in pipeline_warnings)
     assert any('launcher_id=user-1' in msg for msg in pipeline_warnings)
+
+
+@pytest.mark.parametrize(
+    'module_name',
+    [
+        'langbot.pkg.plugin.handler',
+        'langbot.pkg.api.http.service.bot',
+        'langbot.pkg.api.http.service.pipeline',
+    ],
+)
+def test_get_dify_conversation_store_prefers_idle_timeout_seconds(module_name):
+    import importlib
+
+    target_module = importlib.import_module(module_name)
+    ap = SimpleNamespace(
+        instance_config=SimpleNamespace(
+            data={
+                'dify_conversation_store': {
+                    'idle_timeout_seconds': 321,
+                    'ttl_seconds': 999,
+                    'lock_ttl_seconds': 9,
+                }
+            }
+        ),
+        redis_mgr=object(),
+    )
+
+    store = target_module._get_dify_conversation_store(ap)
+
+    assert store is not None
+    assert store.ttl_seconds == 321
+    assert store.lock_ttl_seconds == 9
+
+
+@pytest.mark.parametrize(
+    'module_name',
+    [
+        'langbot.pkg.plugin.handler',
+        'langbot.pkg.api.http.service.bot',
+        'langbot.pkg.api.http.service.pipeline',
+    ],
+)
+def test_get_dify_conversation_store_uses_legacy_ttl_seconds_when_idle_timeout_missing(module_name):
+    import importlib
+
+    target_module = importlib.import_module(module_name)
+    ap = SimpleNamespace(
+        instance_config=SimpleNamespace(data={'dify_conversation_store': {'ttl_seconds': 654}}),
+        redis_mgr=object(),
+    )
+
+    store = target_module._get_dify_conversation_store(ap)
+
+    assert store is not None
+    assert store.ttl_seconds == 654
+
+
+@pytest.mark.parametrize(
+    'module_name',
+    [
+        'langbot.pkg.plugin.handler',
+        'langbot.pkg.api.http.service.bot',
+        'langbot.pkg.api.http.service.pipeline',
+    ],
+)
+def test_get_dify_conversation_store_uses_12h_default_timeout(module_name):
+    import importlib
+
+    target_module = importlib.import_module(module_name)
+    ap = SimpleNamespace(instance_config=SimpleNamespace(data={}), redis_mgr=object())
+
+    store = target_module._get_dify_conversation_store(ap)
+
+    assert store is not None
+    assert store.ttl_seconds == 43200
+
+
+@pytest.mark.parametrize(
+    'module_name',
+    [
+        'langbot.pkg.plugin.handler',
+        'langbot.pkg.api.http.service.bot',
+        'langbot.pkg.api.http.service.pipeline',
+    ],
+)
+def test_get_dify_conversation_store_falls_back_when_store_config_is_not_dict(module_name):
+    import importlib
+
+    target_module = importlib.import_module(module_name)
+    ap = SimpleNamespace(
+        instance_config=SimpleNamespace(data={'dify_conversation_store': 'invalid-config'}),
+        redis_mgr=object(),
+    )
+
+    store = target_module._get_dify_conversation_store(ap)
+
+    assert store is not None
+    assert store.ttl_seconds == 43200
+    assert store.lock_ttl_seconds == 10
+    assert store.enabled is True
+
+
+@pytest.mark.parametrize(
+    ('module_name', 'enabled_value', 'expected_enabled'),
+    [
+        ('langbot.pkg.plugin.handler', 'false', False),
+        ('langbot.pkg.api.http.service.bot', '0', False),
+        ('langbot.pkg.api.http.service.pipeline', 'no', False),
+        ('langbot.pkg.plugin.handler', 'true', True),
+    ],
+)
+def test_get_dify_conversation_store_parses_enabled_string_values(module_name, enabled_value, expected_enabled):
+    import importlib
+
+    target_module = importlib.import_module(module_name)
+    ap = SimpleNamespace(
+        instance_config=SimpleNamespace(data={'dify_conversation_store': {'enabled': enabled_value}}),
+        redis_mgr=object(),
+    )
+
+    store = target_module._get_dify_conversation_store(ap)
+
+    assert store is not None
+    assert store.enabled is expected_enabled

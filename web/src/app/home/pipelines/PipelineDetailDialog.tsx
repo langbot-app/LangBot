@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRouter } from 'next/navigation';
 import {
@@ -27,7 +27,6 @@ interface PipelineDialogProps {
   onOpenChange: (open: boolean) => void;
   pipelineId?: string;
   isEditMode?: boolean;
-  isDefaultPipeline?: boolean;
   onFinish: () => void;
   onNewPipelineCreated?: (pipelineId: string) => void;
   onDeletePipeline: () => void;
@@ -141,7 +140,7 @@ export default function PipelineDialog({
     return t('pipelines.debugDialog.title');
   };
 
-  // 创建新流水线时的对话框
+  // Dialog layout for creating a new pipeline
   if (!isEditMode) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -156,7 +155,6 @@ export default function PipelineDialog({
                 onNewPipelineCreated={handleNewPipelineCreated}
                 isEditMode={isEditMode}
                 pipelineId={pipelineId}
-                disableForm={false}
                 showButtons={true}
                 onDeletePipeline={onDeletePipeline}
                 onCancel={() => {
@@ -170,7 +168,7 @@ export default function PipelineDialog({
     );
   }
 
-  // 编辑流水线时的对话框
+  // Dialog layout for editing an existing pipeline
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="overflow-hidden p-0 !max-w-[80vw] h-[75vh] flex">
@@ -190,10 +188,10 @@ export default function PipelineDialog({
                           isActive={currentMode === item.key}
                           onClick={() => setCurrentMode(item.key as DialogMode)}
                         >
-                          <a href="#">
+                          <button type="button">
                             {item.icon}
                             <span>{item.label}</span>
-                          </a>
+                          </button>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
                     ))}
@@ -238,7 +236,6 @@ export default function PipelineDialog({
                   onNewPipelineCreated={handleNewPipelineCreated}
                   isEditMode={isEditMode}
                   pipelineId={pipelineId}
-                  disableForm={false}
                   showButtons={true}
                   onDeletePipeline={onDeletePipeline}
                   onCancel={() => {

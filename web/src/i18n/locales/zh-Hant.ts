@@ -597,6 +597,9 @@ const zhHant = {
     copyConfirmation:
       '確定要複製這個流程線嗎？複製將創建一個包含完整配置的新流程線。',
     unsavedChanges: '有未儲存的變更',
+    difySessionSettings: {
+      scopeHint: '按流程線分別儲存，預設值由後端元資料提供。',
+    },
     extensions: {
       title: '擴展集成',
       loadError: '載入插件清單失敗',

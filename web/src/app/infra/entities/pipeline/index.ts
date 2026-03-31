@@ -21,3 +21,10 @@ export interface PipelineConfigStage {
   description?: I18nObject;
   config: IDynamicFormItemSchema[];
 }
+
+export interface DifySessionSettingsValues {
+  idle_timeout_seconds?: number;
+  lock_ttl_seconds?: number;
+  contention_wait_retry_count?: number;
+  contention_wait_interval_ms?: number;
+}

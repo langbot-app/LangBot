@@ -1,4 +1,4 @@
-﻿const jaJP = {
+const jaJP = {
   common: {
     login: 'ログイン',
     logout: 'ログアウト',
@@ -633,6 +633,10 @@
     copyConfirmation:
       'このパイプラインをコピーしますか？すべての設定を含む新しいパイプラインが作成されます。',
     unsavedChanges: '未保存の変更があります',
+    difySessionSettings: {
+      scopeHint:
+        'パイプラインごとに保存されます。既定値はバックエンドのメタデータから取得します。',
+    },
     extensions: {
       title: 'プラグイン統合',
       loadError: 'プラグインリストの読み込みに失敗しました',
