@@ -55,6 +55,8 @@ async def test_wecomcs_bot_config_overrides_global_scheduler_settings(base_confi
     logger = FakeLogger(
         {
             'enabled': True,
+            'pull_stream_shard_count': 8,
+            'process_stream_shard_count': 16,
             'history_message_drop_threshold_seconds': 180,
             'retry_max_attempts': 7,
             'retry_backoff_seconds': [9, 18, 27],
@@ -77,8 +79,10 @@ async def test_wecomcs_bot_config_overrides_global_scheduler_settings(base_confi
     adapter.set_bot_uuid('bot-1')
 
     assert adapter.scheduler_runtime is not None
-    assert adapter.scheduler_runtime.scheduler_config['pull_stream_shard_count'] == 1
-    assert adapter.scheduler_runtime.scheduler_config['process_stream_shard_count'] == 1
+    assert adapter.scheduler_runtime.scheduler_config['pull_stream_shard_count'] == 8
+    assert adapter.scheduler_runtime.scheduler_config['process_stream_shard_count'] == 16
+    assert adapter.bot.pull_trigger_publisher is not None
+    assert adapter.bot.pull_trigger_publisher.shard_count == 8
     assert adapter.scheduler_runtime.scheduler_config['history_message_drop_threshold_seconds'] == 45
     assert adapter.scheduler_runtime.scheduler_config['retry_max_attempts'] == 2
     assert adapter.scheduler_runtime.scheduler_config['retry_backoff_seconds'] == [3, 6, 9]
@@ -91,6 +95,8 @@ async def test_wecomcs_adapter_falls_back_to_global_scheduler_settings(base_conf
     logger = FakeLogger(
         {
             'enabled': True,
+            'pull_stream_shard_count': 6,
+            'process_stream_shard_count': 12,
             'history_message_drop_threshold_seconds': 150,
             'retry_max_attempts': 5,
             'retry_backoff_seconds': [10, 20],
@@ -103,8 +109,10 @@ async def test_wecomcs_adapter_falls_back_to_global_scheduler_settings(base_conf
     adapter.set_bot_uuid('bot-1')
 
     assert adapter.scheduler_runtime is not None
-    assert adapter.scheduler_runtime.scheduler_config['pull_stream_shard_count'] == 1
-    assert adapter.scheduler_runtime.scheduler_config['process_stream_shard_count'] == 1
+    assert adapter.scheduler_runtime.scheduler_config['pull_stream_shard_count'] == 6
+    assert adapter.scheduler_runtime.scheduler_config['process_stream_shard_count'] == 12
+    assert adapter.bot.pull_trigger_publisher is not None
+    assert adapter.bot.pull_trigger_publisher.shard_count == 6
     assert adapter.scheduler_runtime.scheduler_config['history_message_drop_threshold_seconds'] == 150
     assert adapter.scheduler_runtime.scheduler_config['retry_max_attempts'] == 5
     assert adapter.scheduler_runtime.scheduler_config['retry_backoff_seconds'] == [10, 20]
@@ -114,14 +122,16 @@ async def test_wecomcs_adapter_falls_back_to_global_scheduler_settings(base_conf
 
 @pytest.mark.asyncio
 async def test_wecomcs_adapter_falls_back_to_code_defaults_when_configs_missing(base_config):
-    logger = FakeLogger({'enabled': True})
+    logger = FakeLogger({'enabled': True, 'pull_stream_shard_count': 4, 'process_stream_shard_count': 5})
     adapter = WecomCSAdapter(base_config, logger)
 
     adapter.set_bot_uuid('bot-1')
 
     assert adapter.scheduler_runtime is not None
-    assert adapter.scheduler_runtime.scheduler_config['pull_stream_shard_count'] == 1
-    assert adapter.scheduler_runtime.scheduler_config['process_stream_shard_count'] == 1
+    assert adapter.scheduler_runtime.scheduler_config['pull_stream_shard_count'] == 4
+    assert adapter.scheduler_runtime.scheduler_config['process_stream_shard_count'] == 5
+    assert adapter.bot.pull_trigger_publisher is not None
+    assert adapter.bot.pull_trigger_publisher.shard_count == 4
     assert adapter.scheduler_runtime.scheduler_config['history_message_drop_threshold_seconds'] == 90
     assert adapter.scheduler_runtime.scheduler_config['retry_max_attempts'] == 3
     assert adapter.scheduler_runtime.scheduler_config['retry_backoff_seconds'] == [15, 30, 45]

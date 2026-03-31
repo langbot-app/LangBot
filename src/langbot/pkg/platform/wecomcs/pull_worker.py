@@ -155,7 +155,12 @@ class WecomCSPullWorker:
         try:
             current_cursor = await self.state_store.get_cursor(bot_uuid, open_kfid)
             is_bootstrapped = await self.state_store.is_bootstrapped(bot_uuid, open_kfid)
-            if not current_cursor and not is_bootstrapped and self.state_store.cursor_bootstrap_mode == 'latest':
+            if not current_cursor and self.state_store.cursor_bootstrap_mode == 'latest':
+                # English comment: Some sync_msg batches are single-page and never return a resumable cursor.
+                # In that case we must keep using latest-bootstrap mode, otherwise the next webhook would replay full history.
+                _logger.debug(
+                    f'[wecomcs][pull-worker] 使用latest bootstrap处理空cursor检查点: bot_uuid={bot_uuid}, open_kfid={open_kfid}, already_bootstrapped={is_bootstrapped}'
+                )
                 final_cursor, latest_messages = await self._bootstrap_latest_cursor(bot_uuid, open_kfid, callback_token, webhook_received_at)
                 processed_count = await self._dispatch_messages(bot_uuid, open_kfid, latest_messages)
                 await self.state_store.mark_bootstrapped(bot_uuid, open_kfid, final_cursor)

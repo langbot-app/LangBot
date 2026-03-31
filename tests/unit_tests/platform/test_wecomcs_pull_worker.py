@@ -180,6 +180,78 @@ async def test_pull_worker_bootstrap_latest_skips_history_and_updates_cursor():
 
 
 @pytest.mark.asyncio
+async def test_pull_worker_bootstrap_latest_reuses_latest_mode_when_checkpoint_cursor_is_empty():
+    class SinglePageBootstrapClient:
+        def __init__(self):
+            self.calls: list[str | None] = []
+            self.responses = [
+                {
+                    'msg_list': [
+                        {'msgid': 'bootstrap-msg', 'msgtype': 'text', 'send_time': 1000},
+                    ],
+                    'next_cursor': '',
+                    'has_more': False,
+                },
+                {
+                    'msg_list': [
+                        {'msgid': 'history-msg', 'msgtype': 'text', 'send_time': 1800},
+                        {'msgid': 'recent-msg', 'msgtype': 'text', 'send_time': 2000},
+                    ],
+                    'next_cursor': '',
+                    'has_more': False,
+                },
+            ]
+
+        async def fetch_sync_msg_page(self, callback_token: str, open_kfid: str, cursor: str | None = None):
+            self.calls.append(cursor)
+            return self.responses[min(len(self.calls) - 1, len(self.responses) - 1)]
+
+    redis_mgr = FakeRedisManager()
+    store = WecomCSStateStore(redis_mgr, cursor_bootstrap_mode='latest')
+    client = SinglePageBootstrapClient()
+    handled_messages: list[str] = []
+
+    async def on_message(message_data: dict):
+        handled_messages.append(message_data['msgid'])
+
+    worker = WecomCSPullWorker(
+        client,
+        store,
+        on_message,
+        message_state_ttl_seconds=600,
+        lock_ttl_seconds=60,
+        history_message_drop_threshold_seconds=60,
+    )
+
+    first_processed = await worker.handle_trigger(
+        {
+            'bot_uuid': 'bot-1',
+            'open_kfid': 'kf-1',
+            'callback_token': 'token-1',
+            'webhook_received_at': '1000',
+        }
+    )
+
+    assert first_processed == 1
+    assert handled_messages == ['bootstrap-msg']
+    assert await store.get_cursor('bot-1', 'kf-1') == ''
+    assert await store.is_bootstrapped('bot-1', 'kf-1') is True
+
+    second_processed = await worker.handle_trigger(
+        {
+            'bot_uuid': 'bot-1',
+            'open_kfid': 'kf-1',
+            'callback_token': 'token-2',
+            'webhook_received_at': '2000',
+        }
+    )
+
+    assert second_processed == 1
+    assert handled_messages == ['bootstrap-msg', 'recent-msg']
+    assert client.calls == [None, None]
+
+
+@pytest.mark.asyncio
 async def test_pull_worker_clears_stale_cursor_and_restarts_with_current_token():
     class InvalidCursorClient(FakeWecomClient):
         def __init__(self):

@@ -18,6 +18,7 @@ from langbot_plugin.api.entities.builtin.command import errors as command_errors
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
 from ..wecomcs.config_resolver import resolve_wecomcs_runtime_settings
 from ..wecomcs.runtime import WecomCSSchedulerRuntime
+from ..wecomcs.pull_trigger_publisher import WecomCSPullTriggerPublisher
 
 
 class WecomMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
@@ -258,18 +259,35 @@ class WecomCSAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         self.bot.bot_uuid = bot_uuid
 
         ap = getattr(self.logger, 'ap', None)
-        if ap is None or getattr(ap, 'redis_mgr', None) is None or not ap.redis_mgr.is_available():
+        if ap is None or getattr(ap, 'instance_config', None) is None:
             return
 
         scheduler_config = dict(ap.instance_config.data.get('wecomcs_scheduler', {}))
         scheduler_config.update(self.resolved_wecomcs_runtime_settings)
-        if not scheduler_config.get('enabled', False):
+
+        redis_mgr = getattr(ap, 'redis_mgr', None)
+        redis_available = redis_mgr is not None and redis_mgr.is_available()
+        self.bot.scheduler_enabled = bool(scheduler_config.get('enabled', False))
+        if self.bot.scheduler_enabled and redis_available:
+            self.bot.pull_trigger_publisher = WecomCSPullTriggerPublisher(
+                redis_mgr,
+                int(scheduler_config.get('pull_stream_shard_count', 8) or 8),
+            )
+        else:
+            self.bot.pull_trigger_publisher = None
+
+        if not redis_available:
+            return
+
+        if not self.bot.scheduler_enabled:
+            self.scheduler_runtime = None
+            self.bot.state_store = None
             return
 
         self.scheduler_runtime = WecomCSSchedulerRuntime(
             bot_uuid=bot_uuid,
             client=self.bot,
-            redis_mgr=ap.redis_mgr,
+            redis_mgr=redis_mgr,
             scheduler_config=scheduler_config,
             persistence_mgr=ap.persistence_mgr,
         )
