@@ -49,6 +49,25 @@ LangBot is an **open-source, production-grade platform** for building AI-powered
 
 ---
 
+
+---
+
+## Built With
+
+LangBot is built on a powerful stack of open-source and commercial AI infrastructure:
+
+| Layer | Technologies |
+|-------|-------------|
+| **LLM Providers** | OpenAI GPT, Claude, DeepSeek, Gemini, MiniMax, Moonshot, Ollama |
+| **AI Platforms** | [Dify](https://dify.ai), [Coze](https://coze.com), [n8n](https://n8n.io), [Langflow](https://langflow.org), [LangChain](https://langchain.com) |
+| **Messaging Platforms** | Discord, Telegram, Slack, LINE, QQ, WeChat, WeCom, Lark, DingTalk, KOOK, Satori |
+| **Protocols** | MCP (Model Context Protocol), Satori |
+| **Deployment** | Docker, Zeabur, Railway, Cloudflare Workers |
+
+> **For AI Bot Developers**: LangBot abstracts platform-specific complexity, letting you focus on the AI logic. Connect to any LLM or AI platform through a unified interface.
+
+---
+
 ## Quick Start
 
 ### ☁️ LangBot Cloud (Recommended)
