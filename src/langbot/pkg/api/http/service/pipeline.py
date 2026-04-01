@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 import json
+import copy
 import sqlalchemy
 import typing
 
@@ -30,6 +31,24 @@ def _parse_bool_config(value: typing.Any, default: bool) -> bool:
     if value is None:
         return default
     return bool(value)
+
+
+def _deep_merge_dict(base: typing.Any, override: typing.Any) -> typing.Any:
+    """Recursively merge user-provided config into the template defaults."""
+    if not isinstance(base, dict):
+        return copy.deepcopy(override)
+
+    merged = copy.deepcopy(base)
+    if not isinstance(override, dict):
+        return merged
+
+    for key, value in override.items():
+        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
+            merged[key] = _deep_merge_dict(merged[key], value)
+        else:
+            merged[key] = copy.deepcopy(value)
+
+    return merged
 
 
 
@@ -156,7 +175,14 @@ class PipelineService:
 
         template_path = path_utils.get_resource_path('templates/default-pipeline-config.json')
         with open(template_path, 'r', encoding='utf-8') as f:
-            pipeline_data['config'] = json.load(f)
+            default_config = json.load(f)
+
+        submitted_config = pipeline_data.get('config', {})
+        if not isinstance(submitted_config, dict):
+            submitted_config = {}
+
+        # Preserve user-submitted values while still filling omitted fields from the default template.
+        pipeline_data['config'] = _deep_merge_dict(default_config, submitted_config)
 
         # Ensure extensions_preferences is set with enable_all_plugins and enable_all_mcp_servers=True by default
         if 'extensions_preferences' not in pipeline_data:
