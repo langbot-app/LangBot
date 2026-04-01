@@ -1088,6 +1088,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                                             'size': 'medium',
                                             'icon': {'tag': 'standard_icon', 'token': 'thumbsup_outlined'},
                                             'hover_tips': {'tag': 'plain_text', 'content': '有帮助'},
+                                            'behaviors': [{'type': 'callback', 'value': '有帮助'}],
                                             'margin': '0px 0px 0px 0px',
                                         }
                                     ],
@@ -1111,6 +1112,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                                             'size': 'medium',
                                             'icon': {'tag': 'standard_icon', 'token': 'thumbdown_outlined'},
                                             'hover_tips': {'tag': 'plain_text', 'content': '无帮助'},
+                                            'behaviors': [{'type': 'callback', 'value': '无帮助'}],
                                             'margin': '0px 0px 0px 0px',
                                         }
                                     ],
@@ -1472,6 +1474,42 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
                 if event.__class__ in self.listeners:
                     await self.listeners[event.__class__](event, self)
+            elif 'card.action.trigger' == type:
+                try:
+                    event_data = data.get('event', {})
+                    operator = event_data.get('operator', {})
+                    action = event_data.get('action', {})
+                    context_data = event_data.get('context', {})
+
+                    action_value = action.get('value', '')
+                    feedback_type = 1 if action_value == '有帮助' else 2
+
+                    user_id = operator.get('open_id') or operator.get('user_id')
+                    open_chat_id = context_data.get('open_chat_id')
+                    open_message_id = context_data.get('open_message_id')
+
+                    if open_chat_id:
+                        session_id = f'group_{open_chat_id}'
+                    elif user_id:
+                        session_id = f'person_{user_id}'
+                    else:
+                        session_id = None
+
+                    feedback_event = platform_events.FeedbackEvent(
+                        feedback_id=data.get('header', {}).get('event_id', str(uuid.uuid4())),
+                        feedback_type=feedback_type,
+                        feedback_content=action_value,
+                        user_id=user_id,
+                        session_id=session_id,
+                        message_id=open_message_id,
+                        source_platform_object=data,
+                    )
+
+                    if platform_events.FeedbackEvent in self.listeners:
+                        await self.listeners[platform_events.FeedbackEvent](feedback_event, self)
+                except Exception:
+                    await self.logger.error(f'Error in lark card action callback: {traceback.format_exc()}')
+
             elif 'im.chat.member.bot.added_v1' == type:
                 try:
                     bot_added_welcome_msg = self.config.get('bot_added_welcome', '')
