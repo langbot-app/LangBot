@@ -1,5 +1,5 @@
 name: Bug report
-description: Report bugs or vulnerabilities using this template. For container network connection issues, refer to the documentation https://docs.langbot.app/en/workshop/network-details.html
+description: Report bugs or vulnerabilities using this template. For container network connection issues, refer to the documentation https://link.langbot.app/en/docs/network
 title: "[Bug]: "
 labels: ["bug?"]
 body:

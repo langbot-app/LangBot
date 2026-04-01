@@ -15,6 +15,10 @@ spec:
   categories:
     - popular
     - china
+  help_links:
+    zh: https://link.langbot.app/zh/platforms/openclaw_weixin
+    en: https://link.langbot.app/en/platforms/openclaw_weixin
+    ja: https://link.langbot.app/ja/platforms/openclaw_weixin
   config:
     - name: base_url
       label:

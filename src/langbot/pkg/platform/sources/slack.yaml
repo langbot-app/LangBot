@@ -23,6 +23,10 @@ spec:
   categories:
     - popular
     - global
+  help_links:
+    zh: https://link.langbot.app/zh/platforms/slack
+    en: https://link.langbot.app/en/platforms/slack
+    ja: https://link.langbot.app/ja/platforms/slack
   config:
     - name: webhook_url
       label:

@@ -14,6 +14,10 @@ metadata:
 spec:
   categories:
     - china
+  help_links:
+    zh: https://link.langbot.app/zh/platforms/dingtalk
+    en: https://link.langbot.app/en/platforms/dingtalk
+    ja: https://link.langbot.app/ja/platforms/dingtalk
   config:
     - name: client_id
       label:

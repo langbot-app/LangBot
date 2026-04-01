@@ -118,6 +118,7 @@ export interface Adapter {
   icon?: string;
   spec: {
     categories?: string[];
+    help_links?: Record<string, string>;
     config: IDynamicFormItemSchema[];
   };
 }

@@ -13,6 +13,7 @@ import {
   PartyPopper,
   Loader2,
   X,
+  ExternalLink,
 } from 'lucide-react';
 
 import { httpClient } from '@/app/infra/http/HttpClient';
@@ -45,6 +46,8 @@ import {
   groupByCategory,
   getCategoryLabel,
 } from '@/app/infra/entities/adapter-categories';
+import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
+import i18n from 'i18next';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -798,6 +801,24 @@ function StepPlatform({
                   <p className="text-sm text-muted-foreground line-clamp-2">
                     {extractI18nObject(adapter.description)}
                   </p>
+                  {(() => {
+                    const docUrl = getAdapterDocUrl(
+                      adapter.spec.help_links,
+                      i18n.language,
+                    );
+                    return docUrl ? (
+                      <a
+                        href={docUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 inline-flex items-center text-xs text-primary hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <ExternalLink className="mr-1 h-3 w-3" />
+                        {t('bots.viewAdapterDocs')}
+                      </a>
+                    ) : null;
+                  })()}
                 </CardContent>
               </Card>
             ))}
@@ -867,11 +888,34 @@ function StepBotConfig({
           {adapterConfigItems.length > 0 && (
             <Card>
               <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-                <CardTitle className="text-base">
-                  {t('wizard.config.platformConfig', {
-                    platform: adapterLabel,
-                  })}
-                </CardTitle>
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-base">
+                    {t('wizard.config.platformConfig', {
+                      platform: adapterLabel,
+                    })}
+                  </CardTitle>
+                  {selectedAdapterName &&
+                    (() => {
+                      const selectedAdapter = adapters.find(
+                        (a) => a.name === selectedAdapterName,
+                      );
+                      const docUrl = getAdapterDocUrl(
+                        selectedAdapter?.spec.help_links,
+                        i18n.language,
+                      );
+                      return docUrl ? (
+                        <a
+                          href={docUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center text-xs text-primary hover:underline"
+                        >
+                          <ExternalLink className="mr-1 h-3 w-3" />
+                          {t('bots.viewAdapterDocs')}
+                        </a>
+                      ) : null;
+                    })()}
+                </div>
                 <Button
                   size="sm"
                   onClick={onSaveBot}

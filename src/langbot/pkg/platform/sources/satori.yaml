@@ -20,6 +20,10 @@ metadata:
 spec:
   categories:
     - protocol
+  help_links:
+    zh: https://link.langbot.app/zh/platforms/satori
+    en: https://link.langbot.app/en/platforms/satori
+    ja: https://link.langbot.app/ja/platforms/satori
   config:
     - name: platform
       label:

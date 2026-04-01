@@ -9,6 +9,7 @@ from ..core import app, entities as core_entities, taskmgr
 from ..discover import engine
 
 from ..entity.persistence import bot as persistence_bot
+from ..entity.persistence import pipeline as persistence_pipeline
 
 from ..entity.errors import platform as platform_errors
 
@@ -140,6 +141,50 @@ class RuntimeBot:
 
         self.adapter.register_listener(platform_events.FriendMessage, on_friend_message)
         self.adapter.register_listener(platform_events.GroupMessage, on_group_message)
+
+        # Register feedback listener (only effective on adapters that support it)
+        async def on_feedback(
+            event: platform_events.FeedbackEvent,
+            adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+        ):
+            try:
+                # Resolve pipeline name
+                pipeline_name = ''
+                if self.bot_entity.use_pipeline_uuid:
+                    try:
+                        pipeline_result = await self.ap.persistence_mgr.execute_async(
+                            sqlalchemy.select(persistence_pipeline.LegacyPipeline.name).where(
+                                persistence_pipeline.LegacyPipeline.uuid == self.bot_entity.use_pipeline_uuid
+                            )
+                        )
+                        pipeline_row = pipeline_result.first()
+                        if pipeline_row:
+                            pipeline_name = pipeline_row[0]
+                    except Exception:
+                        pass
+
+                await self.ap.monitoring_service.record_feedback(
+                    feedback_id=event.feedback_id,
+                    feedback_type=event.feedback_type,
+                    feedback_content=event.feedback_content,
+                    inaccurate_reasons=event.inaccurate_reasons,
+                    bot_id=self.bot_entity.uuid,
+                    bot_name=self.bot_entity.name,
+                    pipeline_id=self.bot_entity.use_pipeline_uuid or '',
+                    pipeline_name=pipeline_name,
+                    session_id=event.session_id,
+                    message_id=event.message_id,
+                    stream_id=event.stream_id,
+                    user_id=event.user_id,
+                    platform=adapter.__class__.__name__,
+                )
+                await self.logger.info(
+                    f'Recorded feedback: feedback_id={event.feedback_id}, type={event.feedback_type}'
+                )
+            except Exception:
+                await self.logger.error(f'Failed to record feedback: {traceback.format_exc()}')
+
+        self.adapter.register_listener(platform_events.FeedbackEvent, on_feedback)
 
     async def run(self):
         async def exception_wrapper():

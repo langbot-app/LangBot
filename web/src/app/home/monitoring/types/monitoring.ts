@@ -162,6 +162,39 @@ export interface DateRange {
   to: Date;
 }
 
+export interface FeedbackRecord {
+  id: string;
+  timestamp: Date;
+  feedbackId: string;
+  feedbackType: 'like' | 'dislike';
+  feedbackContent?: string;
+  inaccurateReasons?: string[];
+  botId?: string;
+  botName?: string;
+  pipelineId?: string;
+  pipelineName?: string;
+  sessionId?: string;
+  messageId?: string;
+  streamId?: string;
+  userId?: string;
+  platform?: string;
+}
+
+export interface FeedbackStats {
+  totalFeedback: number;
+  totalLikes: number;
+  totalDislikes: number;
+  satisfactionRate: number;
+  byBot?: Array<{
+    botId: string;
+    botName: string;
+    totalFeedback: number;
+    totalLikes: number;
+    totalDislikes: number;
+    satisfactionRate: number;
+  }>;
+}
+
 export interface MonitoringData {
   overview: OverviewMetrics;
   messages: MonitoringMessage[];
@@ -170,11 +203,14 @@ export interface MonitoringData {
   modelCalls: ModelCall[];
   sessions: SessionInfo[];
   errors: ErrorLog[];
+  feedback?: FeedbackRecord[];
+  feedbackStats?: FeedbackStats;
   totalCount: {
     messages: number;
     llmCalls: number;
     embeddingCalls: number;
     sessions: number;
     errors: number;
+    feedback?: number;
   };
 }

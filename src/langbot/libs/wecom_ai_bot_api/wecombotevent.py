@@ -133,3 +133,17 @@ class WecomBotEvent(dict):
         AI Bot ID
         """
         return self.get('aibotid', '')
+
+    @property
+    def feedback_id(self) -> str:
+        """
+        反馈 ID，用于关联用户点赞/点踩反馈
+        """
+        return self.get('feedback_id', '')
+
+    @property
+    def stream_id(self) -> str:
+        """
+        流式消息 ID
+        """
+        return self.get('stream_id', '')

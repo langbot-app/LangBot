@@ -1,3 +1,3 @@
 # Debug LangBot Frontend
 
-Please refer to the [Development Guide](https://docs.langbot.app/en/develop/dev-config.html) for more information.
+Please refer to the [Development Guide](https://link.langbot.app/en/docs/dev-config) for more information.

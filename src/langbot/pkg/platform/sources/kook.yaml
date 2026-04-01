@@ -14,6 +14,10 @@ metadata:
 spec:
   categories:
     - china
+  help_links:
+    zh: https://link.langbot.app/zh/platforms/kook
+    en: https://link.langbot.app/en/platforms/kook
+    ja: https://link.langbot.app/ja/platforms/kook
   config:
     - name: token
       label:

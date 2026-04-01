@@ -19,9 +19,9 @@
 [![GitHub stars](https://img.shields.io/github/stars/langbot-app/LangBot?style=social)](https://github.com/langbot-app/LangBot/stargazers)
 
 <a href="https://langbot.app">Accueil</a> ｜
-<a href="https://docs.langbot.app/en/insight/features.html">Fonctionnalités</a> ｜
-<a href="https://docs.langbot.app/en/insight/guide.html">Documentation</a> ｜
-<a href="https://docs.langbot.app/en/tags/readme.html">API</a> ｜
+<a href="https://link.langbot.app/en/docs/features">Fonctionnalités</a> ｜
+<a href="https://link.langbot.app/en/docs/guide">Documentation</a> ｜
+<a href="https://link.langbot.app/en/docs/api">API</a> ｜
 <a href="https://space.langbot.app">Marché des Plugins</a> ｜
 <a href="https://langbot.featurebase.app/roadmap">Feuille de Route</a>
 
@@ -44,7 +44,7 @@ LangBot est une **plateforme open-source de niveau production** pour créer des 
 - **Panneau de Gestion Web** — Configurez, gérez et surveillez vos bots via une interface navigateur intuitive. Aucune édition de YAML requise.
 - **Architecture Multi-Pipeline** — Différents bots pour différents scénarios, avec surveillance complète et gestion des exceptions.
 
-[→ En savoir plus sur toutes les fonctionnalités](https://docs.langbot.app/en/insight/features.html)
+[→ En savoir plus sur toutes les fonctionnalités](https://link.langbot.app/en/docs/features)
 
 ---
 
@@ -75,7 +75,7 @@ docker compose up -d
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/en-US/templates/ZKTBDH)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
 
-**Plus d'options :** [Docker](https://docs.langbot.app/en/deploy/langbot/docker.html) · [Manuel](https://docs.langbot.app/en/deploy/langbot/manual.html) · [BTPanel](https://docs.langbot.app/en/deploy/langbot/one-click/bt.html) · [Kubernetes](./docker/README_K8S.md)
+**Plus d'options :** [Docker](https://link.langbot.app/en/docs/docker) · [Manuel](https://link.langbot.app/en/docs/manual-deploy) · [BTPanel](https://link.langbot.app/en/docs/bt-panel) · [Kubernetes](./docker/README_K8S.md)
 
 ---
 
@@ -123,7 +123,7 @@ docker compose up -d
 | [PPIO](https://ppinfra.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | Plateforme GPU | ✅ |
 | [ShengSuanYun](https://www.shengsuanyun.com/?from=CH_KYIPP758) | Plateforme GPU | ✅ |
 
-[→ Voir toutes les intégrations](https://docs.langbot.app/en/insight/features.html)
+[→ Voir toutes les intégrations](https://link.langbot.app/en/docs/features)
 
 ---
 

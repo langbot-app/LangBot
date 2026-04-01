@@ -311,12 +311,54 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 self.bot.on_message('single')(self.on_message)
             elif event_type == platform_events.GroupMessage:
                 self.bot.on_message('group')(self.on_message)
+            elif event_type == platform_events.FeedbackEvent:
+                if hasattr(self.bot, 'on_feedback'):
+                    self.bot.on_feedback()(self._on_feedback)
         except Exception:
             print(traceback.format_exc())
 
     def set_bot_uuid(self, bot_uuid: str):
         """设置 bot UUID（用于生成 webhook URL）"""
         self.bot_uuid = bot_uuid
+
+    async def _on_feedback(self, **kwargs):
+        """Handle feedback event from WeChat Work AI Bot SDK and dispatch as FeedbackEvent."""
+        try:
+            feedback_id = kwargs.get('feedback_id', '')
+            feedback_type = kwargs.get('feedback_type', 0)
+            feedback_content = kwargs.get('feedback_content', '') or None
+            inaccurate_reasons = kwargs.get('inaccurate_reasons', []) or None
+            session = kwargs.get('session')
+
+            session_id = None
+            user_id = None
+            message_id = None
+            stream_id = None
+            if session:
+                if session.chat_id:
+                    session_id = f'group_{session.chat_id}'
+                elif session.user_id:
+                    session_id = f'person_{session.user_id}'
+                user_id = session.user_id
+                message_id = session.msg_id
+                stream_id = session.stream_id
+
+            event = platform_events.FeedbackEvent(
+                feedback_id=feedback_id,
+                feedback_type=feedback_type,
+                feedback_content=feedback_content,
+                inaccurate_reasons=inaccurate_reasons,
+                user_id=user_id,
+                session_id=session_id,
+                message_id=message_id,
+                stream_id=stream_id,
+                source_platform_object=session,
+            )
+
+            if platform_events.FeedbackEvent in self.listeners:
+                await self.listeners[platform_events.FeedbackEvent](event, self)
+        except Exception:
+            await self.logger.error(f'Error in wecombot feedback callback: {traceback.format_exc()}')
 
     async def handle_unified_webhook(self, bot_uuid: str, path: str, request):
         _ws_mode = not self.config.get('enable-webhook', False)

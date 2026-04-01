@@ -312,7 +312,7 @@ spec:
 ### 参考资源
 
 - [LangBot 官方文档](https://docs.langbot.app)
-- [Docker 部署文档](https://docs.langbot.app/zh/deploy/langbot/docker.html)
+- [Docker 部署文档](https://link.langbot.app/zh/docs/docker)
 - [Kubernetes 官方文档](https://kubernetes.io/docs/)
 
 ---
@@ -625,5 +625,5 @@ spec:
 ### References
 
 - [LangBot Official Documentation](https://docs.langbot.app)
-- [Docker Deployment Guide](https://docs.langbot.app/zh/deploy/langbot/docker.html)
+- [Docker Deployment Guide](https://link.langbot.app/zh/docs/docker)
 - [Kubernetes Official Documentation](https://kubernetes.io/docs/)

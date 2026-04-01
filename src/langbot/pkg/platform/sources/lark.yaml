@@ -18,6 +18,10 @@ spec:
     - popular
     - china
     - global
+  help_links:
+    zh: https://link.langbot.app/zh/platforms/lark
+    en: https://link.langbot.app/en/platforms/lark
+    ja: https://link.langbot.app/ja/platforms/lark
   config:
     - name: app_id
       label:

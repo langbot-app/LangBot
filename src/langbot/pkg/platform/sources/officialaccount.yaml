@@ -14,6 +14,10 @@ metadata:
 spec:
   categories:
     - china
+  help_links:
+    zh: https://link.langbot.app/zh/platforms/officialaccount
+    en: https://link.langbot.app/en/platforms/officialaccount
+    ja: https://link.langbot.app/ja/platforms/officialaccount
   config:
     - name: webhook_url
       label:

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import i18n from 'i18next';
 import {
   IChooseAdapterEntity,
   IPipelineEntity,
@@ -13,6 +14,8 @@ import { UUID } from 'uuidjs';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { Bot } from '@/app/infra/entities/api';
+import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
+import { ExternalLink } from 'lucide-react';
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
@@ -101,6 +104,9 @@ export default function BotForm({
   >([]);
   const [adapterDescriptionList, setAdapterDescriptionList] = useState<
     Record<string, string>
+  >({});
+  const [adapterHelpLinks, setAdapterHelpLinks] = useState<
+    Record<string, Record<string, string>>
   >({});
 
   const [pipelineNameList, setPipelineNameList] = useState<IPipelineEntity[]>(
@@ -206,6 +212,18 @@ export default function BotForm({
           return acc;
         },
         {} as Record<string, string>,
+      ),
+    );
+
+    setAdapterHelpLinks(
+      adaptersRes.adapters.reduce(
+        (acc, item) => {
+          if (item.spec.help_links) {
+            acc[item.name] = item.spec.help_links;
+          }
+          return acc;
+        },
+        {} as Record<string, Record<string, string>>,
       ),
     );
 
@@ -469,59 +487,81 @@ export default function BotForm({
                     <span className="text-destructive">*</span>
                   </FormLabel>
                   <FormControl>
-                    <Select
-                      onValueChange={(value) => {
-                        field.onChange(value);
-                        handleAdapterSelect(value);
-                      }}
-                      value={field.value}
-                    >
-                      <SelectTrigger className="w-[240px]">
-                        {field.value ? (
-                          <div className="flex items-center gap-2">
-                            <img
-                              src={httpClient.getAdapterIconURL(field.value)}
-                              alt=""
-                              className="h-5 w-5 rounded"
+                    <div className="flex items-center gap-2">
+                      <Select
+                        onValueChange={(value) => {
+                          field.onChange(value);
+                          handleAdapterSelect(value);
+                        }}
+                        value={field.value}
+                      >
+                        <SelectTrigger className="w-[240px]">
+                          {field.value ? (
+                            <div className="flex items-center gap-2">
+                              <img
+                                src={httpClient.getAdapterIconURL(field.value)}
+                                alt=""
+                                className="h-5 w-5 rounded"
+                              />
+                              <span>
+                                {adapterNameList.find(
+                                  (a) => a.value === field.value,
+                                )?.label ?? field.value}
+                              </span>
+                            </div>
+                          ) : (
+                            <SelectValue
+                              placeholder={t('bots.selectAdapter')}
                             />
-                            <span>
-                              {adapterNameList.find(
-                                (a) => a.value === field.value,
-                              )?.label ?? field.value}
-                            </span>
-                          </div>
-                        ) : (
-                          <SelectValue placeholder={t('bots.selectAdapter')} />
-                        )}
-                      </SelectTrigger>
-                      <SelectContent>
-                        {groupedAdapters.map((group) => (
-                          <SelectGroup
-                            key={group.categoryId ?? 'uncategorized'}
-                          >
-                            {group.categoryId && (
-                              <SelectLabel>
-                                {getCategoryLabel(t, group.categoryId)}
-                              </SelectLabel>
-                            )}
-                            {group.items.map((item) => (
-                              <SelectItem key={item.value} value={item.value}>
-                                <div className="flex items-center gap-2">
-                                  <img
-                                    src={httpClient.getAdapterIconURL(
-                                      item.value,
-                                    )}
-                                    alt=""
-                                    className="h-5 w-5 rounded"
-                                  />
-                                  <span>{item.label}</span>
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                          )}
+                        </SelectTrigger>
+                        <SelectContent>
+                          {groupedAdapters.map((group) => (
+                            <SelectGroup
+                              key={group.categoryId ?? 'uncategorized'}
+                            >
+                              {group.categoryId && (
+                                <SelectLabel>
+                                  {getCategoryLabel(t, group.categoryId)}
+                                </SelectLabel>
+                              )}
+                              {group.items.map((item) => (
+                                <SelectItem key={item.value} value={item.value}>
+                                  <div className="flex items-center gap-2">
+                                    <img
+                                      src={httpClient.getAdapterIconURL(
+                                        item.value,
+                                      )}
+                                      alt=""
+                                      className="h-5 w-5 rounded"
+                                    />
+                                    <span>{item.label}</span>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {currentAdapter &&
+                        (() => {
+                          const docUrl = getAdapterDocUrl(
+                            adapterHelpLinks[currentAdapter],
+                            i18n.language,
+                          );
+                          return docUrl ? (
+                            <a
+                              href={docUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex shrink-0 items-center gap-1 text-xs text-primary hover:underline"
+                            >
+                              {t('bots.viewAdapterDocs')}
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          ) : null;
+                        })()}
+                    </div>
                   </FormControl>
                   {currentAdapter && adapterDescriptionList[currentAdapter] && (
                     <FormDescription>

@@ -21,6 +21,10 @@ metadata:
 spec:
   categories:
     - global
+  help_links:
+    zh: https://link.langbot.app/zh/platforms/line
+    en: https://link.langbot.app/en/platforms/line
+    ja: https://link.langbot.app/ja/platforms/line
   config:
     - name: webhook_url
       label:
