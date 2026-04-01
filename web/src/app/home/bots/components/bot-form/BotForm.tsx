@@ -13,7 +13,11 @@ import { IDynamicFormItemSchema } from '@/app/infra/entities/form/dynamic';
 import { UUID } from 'uuidjs';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import { Bot, PipelineRoutingRule, RoutingRuleOperator } from '@/app/infra/entities/api';
+import {
+  Bot,
+  PipelineRoutingRule,
+  RoutingRuleOperator,
+} from '@/app/infra/entities/api';
 import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
 import { ExternalLink, Plus, Trash2 } from 'lucide-react';
 
@@ -586,8 +590,7 @@ export default function BotForm({
                               ...(form.getValues('pipeline_routing_rules') ||
                                 []),
                             ];
-                            const newType =
-                              val as PipelineRoutingRule['type'];
+                            const newType = val as PipelineRoutingRule['type'];
                             // Reset operator to 'eq' when switching type
                             rules[index] = {
                               ...rules[index],
@@ -651,9 +654,8 @@ export default function BotForm({
                             value={rule.value}
                             onValueChange={(val) => {
                               const rules = [
-                                ...(form.getValues(
-                                  'pipeline_routing_rules',
-                                ) || []),
+                                ...(form.getValues('pipeline_routing_rules') ||
+                                  []),
                               ];
                               rules[index] = { ...rules[index], value: val };
                               form.setValue('pipeline_routing_rules', rules, {
@@ -688,9 +690,8 @@ export default function BotForm({
                             value={rule.value}
                             onChange={(e) => {
                               const rules = [
-                                ...(form.getValues(
-                                  'pipeline_routing_rules',
-                                ) || []),
+                                ...(form.getValues('pipeline_routing_rules') ||
+                                  []),
                               ];
                               rules[index] = {
                                 ...rules[index],
