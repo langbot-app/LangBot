@@ -343,6 +343,11 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 message_id = session.msg_id
                 stream_id = session.stream_id
 
+            await self.logger.info(
+                f'Feedback event: feedback_id={feedback_id}, type={feedback_type}, '
+                f'session_id={session_id}, user_id={user_id}, message_id={message_id}'
+            )
+
             event = platform_events.FeedbackEvent(
                 feedback_id=feedback_id,
                 feedback_type=feedback_type,
