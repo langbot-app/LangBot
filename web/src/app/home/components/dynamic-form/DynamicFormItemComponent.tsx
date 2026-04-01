@@ -3,6 +3,7 @@ import {
   IDynamicFormItemSchema,
   IFileConfig,
 } from '@/app/infra/entities/form/dynamic';
+import { getDynamicFieldFallbackValue } from '@/app/home/components/dynamic-form/dynamicFormValueUtils';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -195,16 +196,20 @@ export default function DynamicFormItemComponent({
     case DynamicFormItemType.BOOLEAN:
       return <Switch checked={field.value} onCheckedChange={field.onChange} />;
 
-    case DynamicFormItemType.STRING_ARRAY:
+    case DynamicFormItemType.STRING_ARRAY: {
+      const stringArrayValue = Array.isArray(field.value)
+        ? field.value.filter((item): item is string => typeof item === 'string')
+        : [];
+
       return (
         <div className="space-y-2">
-          {field.value.map((item: string, index: number) => (
+          {stringArrayValue.map((item: string, index: number) => (
             <div key={index} className="flex gap-2 items-center">
               <Input
                 className="w-[200px]"
                 value={item}
                 onChange={(e) => {
-                  const newValue = [...field.value];
+                  const newValue = [...stringArrayValue];
                   newValue[index] = e.target.value;
                   field.onChange(newValue);
                 }}
@@ -213,7 +218,7 @@ export default function DynamicFormItemComponent({
                 type="button"
                 className="p-2 hover:bg-gray-100 rounded"
                 onClick={() => {
-                  const newValue = field.value.filter(
+                  const newValue = stringArrayValue.filter(
                     (_: string, i: number) => i !== index,
                   );
                   field.onChange(newValue);
@@ -234,13 +239,14 @@ export default function DynamicFormItemComponent({
             type="button"
             variant="outline"
             onClick={() => {
-              field.onChange([...field.value, '']);
+              field.onChange([...stringArrayValue, '']);
             }}
           >
             {t('common.add')}
           </Button>
         </div>
       );
+    }
 
     case DynamicFormItemType.SELECT:
       return (
@@ -562,7 +568,11 @@ export default function DynamicFormItemComponent({
         </Select>
       );
 
-    case DynamicFormItemType.KNOWLEDGE_BASE_MULTI_SELECTOR:
+    case DynamicFormItemType.KNOWLEDGE_BASE_MULTI_SELECTOR: {
+      const selectedKnowledgeBaseIds = Array.isArray(field.value)
+        ? field.value.filter((id): id is string => typeof id === 'string')
+        : [];
+
       // Group KBs by Knowledge Engine name for multi-selector
       const multiKbsByEngine = knowledgeBases.reduce(
         (acc, kb) => {
@@ -581,9 +591,9 @@ export default function DynamicFormItemComponent({
       return (
         <>
           <div className="space-y-2">
-            {field.value && field.value.length > 0 ? (
+            {selectedKnowledgeBaseIds.length > 0 ? (
               <div className="space-y-2">
-                {field.value.map((kbId: string) => {
+                {selectedKnowledgeBaseIds.map((kbId: string) => {
                   const currentKb = knowledgeBases.find(
                     (base) => base.uuid === kbId,
                   );
@@ -618,7 +628,7 @@ export default function DynamicFormItemComponent({
                         variant="ghost"
                         size="icon"
                         onClick={() => {
-                          const newValue = field.value.filter(
+                          const newValue = selectedKnowledgeBaseIds.filter(
                             (id: string) => id !== kbId,
                           );
                           field.onChange(newValue);
@@ -642,7 +652,7 @@ export default function DynamicFormItemComponent({
           <Button
             type="button"
             onClick={() => {
-              setTempSelectedKBIds(field.value || []);
+              setTempSelectedKBIds(selectedKnowledgeBaseIds);
               setKbDialogOpen(true);
             }}
             variant="outline"
@@ -719,6 +729,7 @@ export default function DynamicFormItemComponent({
           </Dialog>
         </>
       );
+    }
 
     case DynamicFormItemType.BOT_SELECTOR:
       return (
@@ -738,10 +749,17 @@ export default function DynamicFormItemComponent({
         </Select>
       );
 
-    case DynamicFormItemType.PROMPT_EDITOR:
+    case DynamicFormItemType.PROMPT_EDITOR: {
+      const promptEditorValue = Array.isArray(field.value)
+        ? field.value
+        : ((getDynamicFieldFallbackValue(DynamicFormItemType.PROMPT_EDITOR) as {
+            role: string;
+            content: string;
+          }[]) ?? []);
+
       return (
         <div className="space-y-2">
-          {field.value.map(
+          {promptEditorValue.map(
             (item: { role: string; content: string }, index: number) => (
               <div key={index} className="flex gap-2 items-center">
                 {/* 角色选择 */}
@@ -753,7 +771,7 @@ export default function DynamicFormItemComponent({
                   <Select
                     value={item.role}
                     onValueChange={(value) => {
-                      const newValue = [...field.value];
+                      const newValue = [...promptEditorValue];
                       newValue[index] = { ...newValue[index], role: value };
                       field.onChange(newValue);
                     }}
@@ -774,7 +792,7 @@ export default function DynamicFormItemComponent({
                   className="w-[300px]"
                   value={item.content}
                   onChange={(e) => {
-                    const newValue = [...field.value];
+                    const newValue = [...promptEditorValue];
                     newValue[index] = {
                       ...newValue[index],
                       content: e.target.value,
@@ -788,7 +806,7 @@ export default function DynamicFormItemComponent({
                     type="button"
                     className="p-2 hover:bg-gray-100 rounded"
                     onClick={() => {
-                      const newValue = field.value.filter(
+                      const newValue = promptEditorValue.filter(
                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         (_: any, i: number) => i !== index,
                       );
@@ -812,13 +830,17 @@ export default function DynamicFormItemComponent({
             type="button"
             variant="outline"
             onClick={() => {
-              field.onChange([...field.value, { role: 'user', content: '' }]);
+              field.onChange([
+                ...promptEditorValue,
+                { role: 'user', content: '' },
+              ]);
             }}
           >
             {t('common.addRound')}
           </Button>
         </div>
       );
+    }
 
     case DynamicFormItemType.FILE:
       return (

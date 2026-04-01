@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -145,6 +146,9 @@ export default function PipelineDialog({
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="overflow-hidden p-0 !max-w-[40vw] max-h-[70vh] flex">
+          <DialogDescription className="sr-only">
+            {t('pipelines.createPipeline')}
+          </DialogDescription>
           <main className="flex flex-1 flex-col h-[70vh]">
             <DialogHeader className="px-6 pt-6 pb-4 shrink-0">
               <DialogTitle>{t('pipelines.createPipeline')}</DialogTitle>
@@ -172,6 +176,9 @@ export default function PipelineDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="overflow-hidden p-0 !max-w-[80vw] h-[75vh] flex">
+        <DialogDescription className="sr-only">
+          {getDialogTitle()}
+        </DialogDescription>
         <SidebarProvider className="items-start w-full flex h-full min-h-0">
           <Sidebar
             collapsible="none"

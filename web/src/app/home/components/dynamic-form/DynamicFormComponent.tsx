@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/form';
 import DynamicFormItemComponent from '@/app/home/components/dynamic-form/DynamicFormItemComponent';
 import { useEffect, useRef } from 'react';
+import { normalizeDynamicFieldValue } from '@/app/home/components/dynamic-form/dynamicFormValueUtils';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { useTranslation } from 'react-i18next';
 
@@ -33,35 +34,6 @@ export default function DynamicFormComponent({
   const isInitialMount = useRef(true);
   const previousInitialValues = useRef(initialValues);
   const { t } = useTranslation();
-
-  // Normalize a form value according to its field type.
-  // This ensures legacy/malformed data (e.g. a plain string for
-  // model-fallback-selector) is coerced to the expected shape
-  // so that downstream components never crash.
-  const normalizeFieldValue = (
-    item: IDynamicFormItemSchema,
-    value: unknown,
-  ): unknown => {
-    if (item.type === 'model-fallback-selector') {
-      if (value != null && typeof value === 'object' && !Array.isArray(value)) {
-        const obj = value as Record<string, unknown>;
-        return {
-          primary: typeof obj.primary === 'string' ? obj.primary : '',
-          fallbacks: Array.isArray(obj.fallbacks)
-            ? (obj.fallbacks as unknown[]).filter(
-                (v): v is string => typeof v === 'string',
-              )
-            : [],
-        };
-      }
-      // Legacy string format or any other unexpected type
-      return {
-        primary: typeof value === 'string' ? value : '',
-        fallbacks: [],
-      };
-    }
-    return value;
-  };
 
   // Build a zod schema dynamically from the form item configuration.
   const formSchema = z.object(
@@ -148,7 +120,7 @@ export default function DynamicFormComponent({
       const rawValue = initialValues?.[item.name] ?? item.default;
       return {
         ...acc,
-        [item.name]: normalizeFieldValue(item, rawValue),
+        [item.name]: normalizeDynamicFieldValue(item, rawValue),
       };
     }, {} as FormValues),
   });
@@ -174,7 +146,7 @@ export default function DynamicFormComponent({
       const mergedValues = itemConfigList.reduce(
         (acc, item) => {
           const rawValue = initialValues[item.name] ?? item.default;
-          acc[item.name] = normalizeFieldValue(item, rawValue);
+          acc[item.name] = normalizeDynamicFieldValue(item, rawValue);
           return acc;
         },
         {} as Record<string, unknown>,

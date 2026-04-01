@@ -27,6 +27,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -643,6 +644,9 @@ export default function PipelineFormComponent({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t('common.confirmDelete')}</DialogTitle>
+            <DialogDescription>
+              {t('pipelines.deleteConfirmation')}
+            </DialogDescription>
           </DialogHeader>
           <div className="py-4">{t('pipelines.deleteConfirmation')}</div>
           <DialogFooter>
@@ -664,6 +668,9 @@ export default function PipelineFormComponent({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t('pipelines.copyConfirmTitle')}</DialogTitle>
+            <DialogDescription>
+              {t('pipelines.copyConfirmation')}
+            </DialogDescription>
           </DialogHeader>
           <div className="py-4">{t('pipelines.copyConfirmation')}</div>
           <DialogFooter>
