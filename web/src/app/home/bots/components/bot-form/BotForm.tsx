@@ -13,9 +13,9 @@ import { IDynamicFormItemSchema } from '@/app/infra/entities/form/dynamic';
 import { UUID } from 'uuidjs';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import { Bot } from '@/app/infra/entities/api';
+import { Bot, PipelineRoutingRule, RoutingRuleOperator } from '@/app/infra/entities/api';
 import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Plus, Trash2 } from 'lucide-react';
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
@@ -33,6 +33,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
@@ -64,6 +65,23 @@ const getFormSchema = (t: (key: string) => string) =>
     adapter_config: z.record(z.string(), z.any()),
     enable: z.boolean().optional(),
     use_pipeline_uuid: z.string().optional(),
+    pipeline_routing_rules: z
+      .array(
+        z.object({
+          type: z.enum(['launcher_type', 'launcher_id', 'message_content']),
+          operator: z.enum([
+            'eq',
+            'neq',
+            'contains',
+            'not_contains',
+            'starts_with',
+            'regex',
+          ]),
+          value: z.string(),
+          pipeline_uuid: z.string(),
+        }),
+      )
+      .optional(),
   });
 
 export default function BotForm({
@@ -89,6 +107,7 @@ export default function BotForm({
       adapter_config: {},
       enable: true,
       use_pipeline_uuid: '',
+      pipeline_routing_rules: [],
     },
   });
 
@@ -155,6 +174,7 @@ export default function BotForm({
               adapter_config: val.adapter_config,
               enable: val.enable,
               use_pipeline_uuid: val.use_pipeline_uuid || '',
+              pipeline_routing_rules: val.pipeline_routing_rules || [],
             });
             handleAdapterSelect(val.adapter);
 
@@ -270,6 +290,7 @@ export default function BotForm({
             adapter_config: bot.adapter_config,
             enable: bot.enable ?? true,
             use_pipeline_uuid: bot.use_pipeline_uuid ?? '',
+            pipeline_routing_rules: bot.pipeline_routing_rules ?? [],
             webhook_full_url: runtimeValues?.webhook_full_url as
               | string
               | undefined,
@@ -314,6 +335,7 @@ export default function BotForm({
         adapter_config: form.getValues().adapter_config,
         enable: form.getValues().enable,
         use_pipeline_uuid: form.getValues().use_pipeline_uuid,
+        pipeline_routing_rules: form.getValues().pipeline_routing_rules ?? [],
       };
       httpClient
         .updateBot(initBotId, updateBot)
@@ -464,6 +486,308 @@ export default function BotForm({
                   </FormItem>
                 )}
               />
+
+              {/* Pipeline Routing Rules */}
+              <div className="mt-6">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <FormLabel>{t('bots.routingRules')}</FormLabel>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {t('bots.routingRulesDescription')}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const rules =
+                        form.getValues('pipeline_routing_rules') || [];
+                      form.setValue(
+                        'pipeline_routing_rules',
+                        [
+                          ...rules,
+                          {
+                            type: 'launcher_type' as const,
+                            operator: 'eq' as const,
+                            value: '',
+                            pipeline_uuid: '',
+                          },
+                        ],
+                        { shouldDirty: true },
+                      );
+                    }}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    {t('bots.addRoutingRule')}
+                  </Button>
+                </div>
+
+                {(form.watch('pipeline_routing_rules') || []).map(
+                  (rule, index) => {
+                    // Determine which operators are available for the current type
+                    const operatorsForType: {
+                      value: RoutingRuleOperator;
+                      labelKey: string;
+                    }[] =
+                      rule.type === 'launcher_type'
+                        ? [
+                            { value: 'eq', labelKey: 'bots.operatorEq' },
+                            { value: 'neq', labelKey: 'bots.operatorNeq' },
+                          ]
+                        : rule.type === 'launcher_id'
+                          ? [
+                              { value: 'eq', labelKey: 'bots.operatorEq' },
+                              { value: 'neq', labelKey: 'bots.operatorNeq' },
+                              {
+                                value: 'contains',
+                                labelKey: 'bots.operatorContains',
+                              },
+                              {
+                                value: 'not_contains',
+                                labelKey: 'bots.operatorNotContains',
+                              },
+                              {
+                                value: 'regex',
+                                labelKey: 'bots.operatorRegex',
+                              },
+                            ]
+                          : [
+                              { value: 'eq', labelKey: 'bots.operatorEq' },
+                              { value: 'neq', labelKey: 'bots.operatorNeq' },
+                              {
+                                value: 'contains',
+                                labelKey: 'bots.operatorContains',
+                              },
+                              {
+                                value: 'not_contains',
+                                labelKey: 'bots.operatorNotContains',
+                              },
+                              {
+                                value: 'starts_with',
+                                labelKey: 'bots.operatorStartsWith',
+                              },
+                              {
+                                value: 'regex',
+                                labelKey: 'bots.operatorRegex',
+                              },
+                            ];
+
+                    return (
+                      <div
+                        key={index}
+                        className="flex items-center gap-2 mt-2 p-3 border rounded-md bg-muted/30"
+                      >
+                        {/* Field selector */}
+                        <Select
+                          value={rule.type}
+                          onValueChange={(val) => {
+                            const rules = [
+                              ...(form.getValues('pipeline_routing_rules') ||
+                                []),
+                            ];
+                            const newType =
+                              val as PipelineRoutingRule['type'];
+                            // Reset operator to 'eq' when switching type
+                            rules[index] = {
+                              ...rules[index],
+                              type: newType,
+                              operator: 'eq',
+                              value: '',
+                            };
+                            form.setValue('pipeline_routing_rules', rules, {
+                              shouldDirty: true,
+                            });
+                          }}
+                        >
+                          <SelectTrigger className="w-[130px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="launcher_type">
+                              {t('bots.ruleTypeLauncherType')}
+                            </SelectItem>
+                            <SelectItem value="launcher_id">
+                              {t('bots.ruleTypeLauncherId')}
+                            </SelectItem>
+                            <SelectItem value="message_content">
+                              {t('bots.ruleTypeMessageContent')}
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+
+                        {/* Operator selector */}
+                        <Select
+                          value={rule.operator || 'eq'}
+                          onValueChange={(val) => {
+                            const rules = [
+                              ...(form.getValues('pipeline_routing_rules') ||
+                                []),
+                            ];
+                            rules[index] = {
+                              ...rules[index],
+                              operator: val as RoutingRuleOperator,
+                            };
+                            form.setValue('pipeline_routing_rules', rules, {
+                              shouldDirty: true,
+                            });
+                          }}
+                        >
+                          <SelectTrigger className="w-[120px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {operatorsForType.map((op) => (
+                              <SelectItem key={op.value} value={op.value}>
+                                {t(op.labelKey)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+
+                        {/* Value input */}
+                        {rule.type === 'launcher_type' ? (
+                          <Select
+                            value={rule.value}
+                            onValueChange={(val) => {
+                              const rules = [
+                                ...(form.getValues(
+                                  'pipeline_routing_rules',
+                                ) || []),
+                              ];
+                              rules[index] = { ...rules[index], value: val };
+                              form.setValue('pipeline_routing_rules', rules, {
+                                shouldDirty: true,
+                              });
+                            }}
+                          >
+                            <SelectTrigger className="w-[100px]">
+                              <SelectValue
+                                placeholder={t('bots.ruleValuePlaceholder')}
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="person">
+                                {t('bots.sessionTypePerson')}
+                              </SelectItem>
+                              <SelectItem value="group">
+                                {t('bots.sessionTypeGroup')}
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <Input
+                            className="flex-1"
+                            placeholder={
+                              rule.type === 'launcher_id'
+                                ? t('bots.ruleValueLauncherIdPlaceholder')
+                                : rule.operator === 'regex'
+                                  ? t('bots.ruleValueRegexpPlaceholder')
+                                  : t('bots.ruleValueMessagePlaceholder')
+                            }
+                            value={rule.value}
+                            onChange={(e) => {
+                              const rules = [
+                                ...(form.getValues(
+                                  'pipeline_routing_rules',
+                                ) || []),
+                              ];
+                              rules[index] = {
+                                ...rules[index],
+                                value: e.target.value,
+                              };
+                              form.setValue('pipeline_routing_rules', rules, {
+                                shouldDirty: true,
+                              });
+                            }}
+                          />
+                        )}
+
+                        <span className="text-sm text-muted-foreground shrink-0">
+                          →
+                        </span>
+
+                        {/* Pipeline selector */}
+                        <Select
+                          value={rule.pipeline_uuid}
+                          onValueChange={(val) => {
+                            const rules = [
+                              ...(form.getValues('pipeline_routing_rules') ||
+                                []),
+                            ];
+                            rules[index] = {
+                              ...rules[index],
+                              pipeline_uuid: val,
+                            };
+                            form.setValue('pipeline_routing_rules', rules, {
+                              shouldDirty: true,
+                            });
+                          }}
+                        >
+                          <SelectTrigger className="w-[200px]">
+                            {rule.pipeline_uuid ? (
+                              (() => {
+                                const p = pipelineNameList.find(
+                                  (p) => p.value === rule.pipeline_uuid,
+                                );
+                                return (
+                                  <div className="flex items-center gap-2">
+                                    {p?.emoji && (
+                                      <span className="text-sm shrink-0">
+                                        {p.emoji}
+                                      </span>
+                                    )}
+                                    <span>
+                                      {p?.label ?? rule.pipeline_uuid}
+                                    </span>
+                                  </div>
+                                );
+                              })()
+                            ) : (
+                              <SelectValue
+                                placeholder={t('bots.selectPipeline')}
+                              />
+                            )}
+                          </SelectTrigger>
+                          <SelectContent>
+                            {pipelineNameList.map((item) => (
+                              <SelectItem key={item.value} value={item.value}>
+                                <div className="flex items-center gap-2">
+                                  {item.emoji && (
+                                    <span className="text-sm shrink-0">
+                                      {item.emoji}
+                                    </span>
+                                  )}
+                                  <span>{item.label}</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="shrink-0"
+                          onClick={() => {
+                            const rules = [
+                              ...(form.getValues('pipeline_routing_rules') ||
+                                []),
+                            ];
+                            rules.splice(index, 1);
+                            form.setValue('pipeline_routing_rules', rules, {
+                              shouldDirty: true,
+                            });
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    );
+                  },
+                )}
+              </div>
             </CardContent>
           </Card>
         )}
