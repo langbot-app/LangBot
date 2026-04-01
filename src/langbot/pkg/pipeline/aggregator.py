@@ -37,6 +37,7 @@ class PendingMessage:
     message_chain: platform_message.MessageChain
     adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter
     pipeline_uuid: typing.Optional[str]
+    routed_by_rule: bool = False
     timestamp: float = field(default_factory=time.time)
 
 
@@ -125,6 +126,7 @@ class MessageAggregator:
         message_chain: platform_message.MessageChain,
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         pipeline_uuid: typing.Optional[str] = None,
+        routed_by_rule: bool = False,
     ) -> None:
         """Add a message to the aggregation buffer
 
@@ -145,6 +147,7 @@ class MessageAggregator:
                 message_chain=message_chain,
                 adapter=adapter,
                 pipeline_uuid=pipeline_uuid,
+                routed_by_rule=routed_by_rule,
             )
             return
 
@@ -159,6 +162,7 @@ class MessageAggregator:
             message_chain=message_chain,
             adapter=adapter,
             pipeline_uuid=pipeline_uuid,
+            routed_by_rule=routed_by_rule,
         )
 
         force_flush = False
@@ -217,6 +221,7 @@ class MessageAggregator:
                 message_chain=msg.message_chain,
                 adapter=msg.adapter,
                 pipeline_uuid=msg.pipeline_uuid,
+                routed_by_rule=msg.routed_by_rule,
             )
             return
 
@@ -231,6 +236,7 @@ class MessageAggregator:
             message_chain=merged_msg.message_chain,
             adapter=merged_msg.adapter,
             pipeline_uuid=merged_msg.pipeline_uuid,
+            routed_by_rule=merged_msg.routed_by_rule,
         )
 
     def _merge_messages(self, messages: list[PendingMessage]) -> PendingMessage:
