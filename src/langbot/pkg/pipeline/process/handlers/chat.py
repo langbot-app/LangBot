@@ -61,8 +61,8 @@ class ChatMessageHandler(handler.MessageHandler):
 
                 yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
             else:
-                self.ap.logger.warning(
-                    f'NormalMessageReceived event prevented default for query {query.query_id} without reply, message: {str(query.message_chain)[:100]}'
+                self.ap.logger.debug(
+                    f'NormalMessageReceived event prevented default for query {query.query_id} without reply'
                 )
                 yield entities.StageProcessResult(result_type=entities.ResultType.INTERRUPT, new_query=query)
         else:

@@ -247,8 +247,8 @@ class RuntimePipeline:
                 await self._check_output(query, result)
 
                 if result.result_type == pipeline_entities.ResultType.INTERRUPT:
-                    self.ap.logger.warning(
-                        f'Stage {stage_container.inst_name} interrupted query {query.query_id}, message: {str(query.message_chain)[:100]}'
+                    self.ap.logger.debug(
+                        f'Stage {stage_container.inst_name} interrupted query {query.query_id}'
                     )
                     break
                 elif result.result_type == pipeline_entities.ResultType.CONTINUE:
@@ -263,8 +263,8 @@ class RuntimePipeline:
                     await self._check_output(query, sub_result)
 
                     if sub_result.result_type == pipeline_entities.ResultType.INTERRUPT:
-                        self.ap.logger.warning(
-                            f'Stage {stage_container.inst_name} interrupted query {query.query_id}, message: {str(query.message_chain)[:100]}'
+                        self.ap.logger.debug(
+                            f'Stage {stage_container.inst_name} interrupted query {query.query_id}'
                         )
                         break
                     elif sub_result.result_type == pipeline_entities.ResultType.CONTINUE:
@@ -327,8 +327,8 @@ class RuntimePipeline:
             event_ctx = await self.ap.plugin_connector.emit_event(event_obj, bound_plugins)
 
             if event_ctx.is_prevented_default():
-                self.ap.logger.warning(
-                    f'MessageReceived event prevented default for query {query.query_id}, pipeline={pipeline_name}, message: {str(query.message_chain)[:100]}'
+                self.ap.logger.debug(
+                    f'MessageReceived event prevented default for query {query.query_id}, pipeline={pipeline_name}'
                 )
                 return
 
