@@ -103,12 +103,6 @@ class RuntimeBot:
                 component for component in event.message_chain if isinstance(component, platform_message.Image)
             ]
 
-            await self.logger.info(
-                f'{event.message_chain}',
-                images=image_components,
-                message_session_id=f'group_{event.group.id}',
-            )
-
             # Push to webhooks and check if pipeline should be skipped
             skip_pipeline = False
             if hasattr(self.ap, 'webhook_pusher') and self.ap.webhook_pusher:
@@ -124,6 +118,12 @@ class RuntimeBot:
                     custom_launcher_id = adapter.get_launcher_id(event)
                     if custom_launcher_id:
                         launcher_id = custom_launcher_id
+
+                await self.logger.info(
+                    f'{event.message_chain}',
+                    images=image_components,
+                    message_session_id=f'group_{launcher_id}',
+                )
 
                 await self.ap.msg_aggregator.add_message(
                     bot_uuid=self.bot_entity.uuid,

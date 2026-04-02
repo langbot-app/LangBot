@@ -58,3 +58,5 @@ src/langbot/web/
 docs/superpowers/
 openspec/
 plan/
+
+DEV_ENV_SETUP.md
