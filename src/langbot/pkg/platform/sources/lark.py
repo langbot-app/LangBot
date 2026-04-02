@@ -797,8 +797,65 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         def sync_on_message(event: lark_oapi.im.v1.P2ImMessageReceiveV1):
             asyncio.create_task(on_message(event))
 
+        def sync_on_card_action(event):
+            try:
+                action_value_obj = getattr(getattr(event.event, 'action', None), 'value', {})
+                action_value = action_value_obj.get('feedback', '') if isinstance(action_value_obj, dict) else ''
+
+                if action_value == '有帮助':
+                    feedback_type = 1
+                elif action_value == '无帮助':
+                    feedback_type = 2
+                else:
+                    from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
+
+                    return P2CardActionTriggerResponse({'toast': {'type': 'success', 'content': '操作成功'}})
+
+                operator = getattr(event.event, 'operator', None)
+                context = getattr(event.event, 'context', None)
+
+                user_id = getattr(operator, 'open_id', None) or getattr(operator, 'user_id', None)
+                open_chat_id = getattr(context, 'open_chat_id', None)
+                open_message_id = getattr(context, 'open_message_id', None)
+
+                if open_chat_id:
+                    session_id = f'group_{open_chat_id}'
+                elif user_id:
+                    session_id = f'person_{user_id}'
+                else:
+                    session_id = None
+
+                feedback_event = platform_events.FeedbackEvent(
+                    feedback_id=getattr(event.header, 'event_id', str(uuid.uuid4())),
+                    feedback_type=feedback_type,
+                    feedback_content=action_value,
+                    user_id=user_id,
+                    session_id=session_id,
+                    message_id=open_message_id,
+                    source_platform_object=event,
+                )
+
+                if platform_events.FeedbackEvent in self.listeners:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        asyncio.create_task(self.listeners[platform_events.FeedbackEvent](feedback_event, self))
+                    else:
+                        loop.run_until_complete(self.listeners[platform_events.FeedbackEvent](feedback_event, self))
+
+                from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
+
+                return P2CardActionTriggerResponse({'toast': {'type': 'success', 'content': '感谢您的反馈'}})
+            except Exception:
+                asyncio.create_task(self.logger.error(f'Error in lark card action callback: {traceback.format_exc()}'))
+                from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
+
+                return P2CardActionTriggerResponse({'toast': {'type': 'error', 'content': '反馈处理失败'}})
+
         event_handler = (
-            lark_oapi.EventDispatcherHandler.builder('', '').register_p2_im_message_receive_v1(sync_on_message).build()
+            lark_oapi.EventDispatcherHandler.builder('', '')
+            .register_p2_im_message_receive_v1(sync_on_message)
+            .register_p2_card_action_trigger(sync_on_card_action)
+            .build()
         )
 
         bot_account_id = config['bot_name']
@@ -1088,7 +1145,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                                             'size': 'medium',
                                             'icon': {'tag': 'standard_icon', 'token': 'thumbsup_outlined'},
                                             'hover_tips': {'tag': 'plain_text', 'content': '有帮助'},
-                                            'behaviors': [{'type': 'callback', 'value': '有帮助'}],
+                                            'behaviors': [{'type': 'callback', 'value': {'feedback': '有帮助'}}],
                                             'margin': '0px 0px 0px 0px',
                                         }
                                     ],
@@ -1112,7 +1169,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                                             'size': 'medium',
                                             'icon': {'tag': 'standard_icon', 'token': 'thumbdown_outlined'},
                                             'hover_tips': {'tag': 'plain_text', 'content': '无帮助'},
-                                            'behaviors': [{'type': 'callback', 'value': '无帮助'}],
+                                            'behaviors': [{'type': 'callback', 'value': {'feedback': '无帮助'}}],
                                             'margin': '0px 0px 0px 0px',
                                         }
                                     ],
@@ -1481,8 +1538,15 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     action = event_data.get('action', {})
                     context_data = event_data.get('context', {})
 
-                    action_value = action.get('value', '')
-                    feedback_type = 1 if action_value == '有帮助' else 2
+                    action_value_obj = action.get('value', {})
+                    action_value = action_value_obj.get('feedback', '') if isinstance(action_value_obj, dict) else ''
+
+                    if action_value == '有帮助':
+                        feedback_type = 1
+                    elif action_value == '无帮助':
+                        feedback_type = 2
+                    else:
+                        return {'toast': {'type': 'success', 'content': '操作成功'}}
 
                     user_id = operator.get('open_id') or operator.get('user_id')
                     open_chat_id = context_data.get('open_chat_id')
@@ -1507,8 +1571,11 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
                     if platform_events.FeedbackEvent in self.listeners:
                         await self.listeners[platform_events.FeedbackEvent](feedback_event, self)
+
+                    return {'toast': {'type': 'success', 'content': '感谢您的反馈'}}
                 except Exception:
                     await self.logger.error(f'Error in lark card action callback: {traceback.format_exc()}')
+                    return {'toast': {'type': 'error', 'content': '反馈处理失败'}}
 
             elif 'im.chat.member.bot.added_v1' == type:
                 try:
