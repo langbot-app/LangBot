@@ -409,3 +409,25 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
     async def is_muted(self, group_id: int) -> bool:
         pass
+
+    def get_launcher_id(self, event: platform_events.MessageEvent) -> str | None:
+        """获取启动器 ID，用于区分不同的会话场景
+
+        Args:
+            event: 消息事件对象
+
+        Returns:
+            str | None: 启动器 ID，群聊返回 'chatid_userid'，私聊使用默认的 sender.id
+        """
+        # 只在群聊场景下需要特殊处理，拼接 chatid 和 userid
+        if isinstance(event, platform_events.GroupMessage):
+            # 从 source_platform_object 中获取原始的企业微信事件数据
+            wecom_event = event.source_platform_object
+            if isinstance(wecom_event, WecomBotEvent):
+                chatid = wecom_event.chatid
+                userid = wecom_event.userid
+                if chatid and userid:
+                    return f'{chatid}_{userid}'
+
+        # 私聊场景返回 None，使用默认的 sender.id
+        return None
