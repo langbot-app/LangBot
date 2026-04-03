@@ -13,12 +13,14 @@ class ToolsRouterGroup(group.RouterGroup):
 
             tool_list = []
             for tool in tools:
-                tool_list.append({
-                    'name': tool.name,
-                    'description': tool.description,
-                    'human_desc': tool.human_desc,
-                    'parameters': tool.parameters,
-                })
+                tool_list.append(
+                    {
+                        'name': tool.name,
+                        'description': tool.description,
+                        'human_desc': tool.human_desc,
+                        'parameters': tool.parameters,
+                    }
+                )
 
             return self.success(data={'tools': tool_list})
 
@@ -29,13 +31,15 @@ class ToolsRouterGroup(group.RouterGroup):
 
             for tool in tools:
                 if tool.name == tool_name:
-                    return self.success(data={
-                        'tool': {
-                            'name': tool.name,
-                            'description': tool.description,
-                            'human_desc': tool.human_desc,
-                            'parameters': tool.parameters,
+                    return self.success(
+                        data={
+                            'tool': {
+                                'name': tool.name,
+                                'description': tool.description,
+                                'human_desc': tool.human_desc,
+                                'parameters': tool.parameters,
+                            }
                         }
-                    })
+                    )
 
             return self.http_status(404, -1, f'Tool not found: {tool_name}')
