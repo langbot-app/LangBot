@@ -1,7 +1,7 @@
-'use client';
+
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useNavigate } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -34,7 +34,7 @@ import { toast } from 'sonner';
 
 export default function BotDetailContent({ id }: { id: string }) {
   const isCreateMode = id === 'new';
-  const router = useRouter();
+  const navigate = useNavigate();
   const { t } = useTranslation();
   const { refreshBots, bots, setDetailEntityName } = useSidebarData();
 
@@ -105,12 +105,12 @@ export default function BotDetailContent({ id }: { id: string }) {
 
   function handleBotDeleted() {
     refreshBots();
-    router.push('/home/bots');
+    navigate('/home/bots');
   }
 
   function handleNewBotCreated(newBotId: string) {
     refreshBots();
-    router.push(`/home/bots?id=${encodeURIComponent(newBotId)}`);
+    navigate(`/home/bots?id=${encodeURIComponent(newBotId)}`);
   }
 
   function confirmDelete() {

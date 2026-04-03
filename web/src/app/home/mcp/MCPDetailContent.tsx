@@ -1,7 +1,7 @@
-'use client';
+
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -30,7 +30,7 @@ import { toast } from 'sonner';
 
 export default function MCPDetailContent({ id }: { id: string }) {
   const isCreateMode = id === 'new';
-  const router = useRouter();
+  const navigate = useNavigate();
   const { t } = useTranslation();
   const { refreshMCPServers, mcpServers, setDetailEntityName } =
     useSidebarData();
@@ -96,12 +96,12 @@ export default function MCPDetailContent({ id }: { id: string }) {
 
   function handleServerDeleted() {
     refreshMCPServers();
-    router.push('/home/mcp');
+    navigate('/home/mcp');
   }
 
   function handleNewServerCreated(serverName: string) {
     refreshMCPServers();
-    router.push(`/home/mcp?id=${encodeURIComponent(serverName)}`);
+    navigate(`/home/mcp?id=${encodeURIComponent(serverName)}`);
   }
 
   function confirmDelete() {

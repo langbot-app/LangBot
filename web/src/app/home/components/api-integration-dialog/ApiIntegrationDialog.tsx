@@ -1,11 +1,11 @@
-'use client';
+
 
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Copy, Check, Trash2, Plus } from 'lucide-react';
-import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { useNavigate } from 'react-router-dom';
 import {
   Dialog,
   DialogContent,
@@ -67,8 +67,9 @@ export default function ApiIntegrationDialog({
   onOpenChange,
 }: ApiIntegrationDialogProps) {
   const { t } = useTranslation();
-  const router = useRouter();
-  const pathname = usePathname();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const pathname = location.pathname;;
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState('apikeys');
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
@@ -94,7 +95,7 @@ export default function ApiIntegrationDialog({
     if (open) {
       const params = new URLSearchParams(searchParams.toString());
       params.set('action', 'showApiIntegrationSettings');
-      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+      navigate(`${pathname}?${params.toString()}`, { scroll: false });
     }
   }, [open]);
 
@@ -108,7 +109,7 @@ export default function ApiIntegrationDialog({
       const newUrl = params.toString()
         ? `${pathname}?${params.toString()}`
         : pathname;
-      router.replace(newUrl, { scroll: false });
+      navigate(newUrl, { scroll: false });
     }
     onOpenChange(newOpen);
   };

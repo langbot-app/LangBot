@@ -1,0 +1,174 @@
+/* [project]/coding/projects/LangBot/web/src/app/home/knowledge/components/kb-card/KBCard.module.css [app-client] (css) */
+.KBCard-module__3ly5mq__cardContainer {
+  cursor: pointer;
+  background-color: #fff;
+  border-radius: 10px;
+  flex-direction: row;
+  justify-content: space-between;
+  gap: .5rem;
+  width: 100%;
+  height: 10rem;
+  padding: 1rem;
+  transition: all .2s;
+  display: flex;
+  box-shadow: 0 2px 2px #0003;
+}
+
+.dark .KBCard-module__3ly5mq__cardContainer {
+  box-shadow: 0;
+  background-color: #1f1f22;
+}
+
+.KBCard-module__3ly5mq__cardContainer:hover {
+  box-shadow: 0 2px 8px #0000001a;
+}
+
+.dark .KBCard-module__3ly5mq__cardContainer:hover {
+  box-shadow: 0;
+}
+
+.KBCard-module__3ly5mq__basicInfoContainer {
+  flex-direction: column;
+  justify-content: space-between;
+  gap: .5rem;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+}
+
+.KBCard-module__3ly5mq__iconEmoji {
+  background-color: #f5f5f5;
+  border-radius: .5rem;
+  flex-shrink: 0;
+  justify-content: center;
+  align-items: center;
+  width: 3rem;
+  height: 3rem;
+  font-size: 1.75rem;
+  display: flex;
+}
+
+.dark .KBCard-module__3ly5mq__iconEmoji {
+  background-color: #2a2a2d;
+}
+
+.KBCard-module__3ly5mq__iconBasicInfoContainer {
+  flex-direction: row;
+  flex: 1;
+  align-items: flex-start;
+  gap: .75rem;
+  min-width: 0;
+  display: flex;
+}
+
+.KBCard-module__3ly5mq__basicInfoNameContainer {
+  flex-direction: column;
+  flex: 1;
+  gap: .2rem;
+  min-width: 0;
+  display: flex;
+}
+
+.KBCard-module__3ly5mq__basicInfoNameText {
+  color: #1a1a1a;
+  font-size: 1.4rem;
+  font-weight: 500;
+}
+
+.dark .KBCard-module__3ly5mq__basicInfoNameText {
+  color: #f0f0f0;
+}
+
+.KBCard-module__3ly5mq__basicInfoDescriptionText {
+  -webkit-line-clamp: 3;
+  text-overflow: ellipsis;
+  color: #b1b1b1;
+  -webkit-box-orient: vertical;
+  font-size: .9rem;
+  font-weight: 400;
+  display: -webkit-box;
+  overflow: hidden;
+}
+
+.dark .KBCard-module__3ly5mq__basicInfoDescriptionText {
+  color: #888;
+}
+
+.KBCard-module__3ly5mq__basicInfoLastUpdatedTimeContainer {
+  flex-direction: row;
+  align-items: center;
+  gap: .5rem;
+  display: flex;
+}
+
+.KBCard-module__3ly5mq__basicInfoUpdateTimeIcon {
+  color: #626262;
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.dark .KBCard-module__3ly5mq__basicInfoUpdateTimeIcon {
+  color: #a0a0a0;
+}
+
+.KBCard-module__3ly5mq__basicInfoUpdateTimeText {
+  color: #626262;
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+.dark .KBCard-module__3ly5mq__basicInfoUpdateTimeText {
+  color: #a0a0a0;
+}
+
+.KBCard-module__3ly5mq__operationContainer {
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: .5rem;
+  width: 8rem;
+  display: flex;
+}
+
+.KBCard-module__3ly5mq__operationDefaultBadge {
+  flex-direction: row;
+  gap: .5rem;
+  display: flex;
+}
+
+.KBCard-module__3ly5mq__operationDefaultBadgeIcon {
+  color: #ffcd27;
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.dark .KBCard-module__3ly5mq__operationDefaultBadgeIcon {
+  color: #fbbf24;
+}
+
+.KBCard-module__3ly5mq__operationDefaultBadgeText {
+  color: #ffcd27;
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+.dark .KBCard-module__3ly5mq__operationDefaultBadgeText {
+  color: #fbbf24;
+}
+
+.KBCard-module__3ly5mq__bigText {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  font-size: 1.4rem;
+  font-weight: bold;
+  overflow: hidden;
+}
+
+.KBCard-module__3ly5mq__debugButtonIcon {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+/*# sourceMappingURL=c50a8_web_src_app_home_knowledge_components_kb-card_KBCard_module_css_bad6b30c._.single.css.map*/

@@ -1,0 +1,47 @@
+/* [project]/coding/projects/LangBot/web/src/app/home/components/home-titlebar/HomeTittleBar.module.css [app-client] (css) */
+.HomeTittleBar-module__W7I6JG__titleBarContainer {
+  opacity: 1;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  width: 100%;
+  height: 4rem;
+  padding-top: 1rem;
+  font-size: 20px;
+  display: flex;
+}
+
+.HomeTittleBar-module__W7I6JG__titleText {
+  color: #585858;
+  margin-left: 3.2rem;
+  font-size: 1.4rem;
+  font-weight: 500;
+}
+
+.dark .HomeTittleBar-module__W7I6JG__titleText {
+  color: #e0e0e0;
+}
+
+.HomeTittleBar-module__W7I6JG__subtitleText {
+  color: gray;
+  align-items: center;
+  margin-left: 3.2rem;
+  font-size: .8rem;
+  display: flex;
+}
+
+.dark .HomeTittleBar-module__W7I6JG__subtitleText {
+  color: #b0b0b0;
+}
+
+.HomeTittleBar-module__W7I6JG__helpLink {
+  color: #8b8b8b;
+  margin-left: .2rem;
+  font-size: .8rem;
+}
+
+.dark .HomeTittleBar-module__W7I6JG__helpLink {
+  color: #a0a0a0;
+}
+
+/*# sourceMappingURL=c50a8_web_src_app_home_components_home-titlebar_HomeTittleBar_module_css_bad6b30c._.single.css.map*/

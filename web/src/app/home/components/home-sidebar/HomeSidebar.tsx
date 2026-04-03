@@ -1,8 +1,8 @@
-'use client';
+
 
 import { useEffect, useState } from 'react';
 import { SidebarChildVO } from '@/app/home/components/home-sidebar/HomeSidebarChild';
-import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { useNavigate } from 'react-router-dom';
 import { sidebarConfigList } from '@/app/home/components/home-sidebar/sidbarConfigList';
 import langbotIcon from '@/app/assets/langbot-logo.webp';
 import { systemInfo, httpClient } from '@/app/infra/http/HttpClient';
@@ -29,7 +29,7 @@ import {
   Github,
   Zap,
 } from 'lucide-react';
-import { useTheme } from 'next-themes';
+import { useTheme } from '@/components/providers/theme-provider';
 
 import {
   DropdownMenu,
@@ -244,8 +244,9 @@ function NavItems({
   sectionOpenState: Record<string, boolean>;
   onSectionToggle: (id: string, open: boolean) => void;
 }) {
-  const router = useRouter();
-  const pathname = usePathname();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const pathname = location.pathname;;
   const searchParams = useSearchParams();
   const sidebarData = useSidebarData();
   const { setPendingPluginInstallAction } = sidebarData;
@@ -413,7 +414,7 @@ function NavItems({
                           'bg-accent text-accent-foreground font-medium',
                       )}
                       onClick={() => {
-                        router.push(itemRoute);
+                        navigate(itemRoute);
                         setPopoverOpen((prev) => ({
                           ...prev,
                           [config.id]: false,
@@ -471,7 +472,7 @@ function NavItems({
                             )}
                             onClick={(e) => {
                               e.preventDefault();
-                              router.push(itemRoute);
+                              navigate(itemRoute);
                             }}
                           >
                             {item.emoji ? (
@@ -623,7 +624,7 @@ function NavItems({
                               <DropdownMenuItem
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  router.push('/home/market');
+                                  navigate('/home/market');
                                   setPopoverOpen((prev) => ({
                                     ...prev,
                                     [config.id]: false,
@@ -638,7 +639,7 @@ function NavItems({
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setPendingPluginInstallAction('local');
-                                router.push('/home/plugins');
+                                navigate('/home/plugins');
                                 setPopoverOpen((prev) => ({
                                   ...prev,
                                   [config.id]: false,
@@ -652,7 +653,7 @@ function NavItems({
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setPendingPluginInstallAction('github');
-                                router.push('/home/plugins');
+                                navigate('/home/plugins');
                                 setPopoverOpen((prev) => ({
                                   ...prev,
                                   [config.id]: false,
@@ -669,7 +670,7 @@ function NavItems({
                           type="button"
                           className="p-1 rounded-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
                           onClick={() => {
-                            router.push(`${routePrefix}?id=new`);
+                            navigate(`${routePrefix}?id=new`);
                             setPopoverOpen((prev) => ({
                               ...prev,
                               [config.id]: false,
@@ -731,7 +732,7 @@ function NavItems({
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation();
-                                router.push('/home/market');
+                                navigate('/home/market');
                               }}
                             >
                               <Store className="size-4" />
@@ -742,7 +743,7 @@ function NavItems({
                             onClick={(e) => {
                               e.stopPropagation();
                               setPendingPluginInstallAction('local');
-                              router.push('/home/plugins');
+                              navigate('/home/plugins');
                             }}
                           >
                             <Upload className="size-4" />
@@ -752,7 +753,7 @@ function NavItems({
                             onClick={(e) => {
                               e.stopPropagation();
                               setPendingPluginInstallAction('github');
-                              router.push('/home/plugins');
+                              navigate('/home/plugins');
                             }}
                           >
                             <Github className="size-4" />
@@ -766,7 +767,7 @@ function NavItems({
                         className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground opacity-0 group-hover/category-header:opacity-100 transition-all"
                         onClick={(e) => {
                           e.stopPropagation();
-                          router.push(`${routePrefix}?id=new`);
+                          navigate(`${routePrefix}?id=new`);
                         }}
                       >
                         <Plus className="size-3.5" />
@@ -1029,8 +1030,9 @@ export default function HomeSidebar({
 }: {
   onSelectedChangeAction: (sidebarChild: SidebarChildVO) => void;
 }) {
-  const router = useRouter();
-  const pathname = usePathname();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const pathname = location.pathname;;
   const searchParams = useSearchParams();
   const { isMobile } = useSidebar();
 
@@ -1071,14 +1073,14 @@ export default function HomeSidebar({
     if (open) {
       const params = new URLSearchParams(searchParams.toString());
       params.set('action', 'showModelSettings');
-      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+      navigate(`${pathname}?${params.toString()}`, { scroll: false });
     } else {
       const params = new URLSearchParams(searchParams.toString());
       params.delete('action');
       const newUrl = params.toString()
         ? `${pathname}?${params.toString()}`
         : pathname;
-      router.replace(newUrl, { scroll: false });
+      navigate(newUrl, { scroll: false });
     }
   }
 
@@ -1087,14 +1089,14 @@ export default function HomeSidebar({
     if (open) {
       const params = new URLSearchParams(searchParams.toString());
       params.set('action', 'showAccountSettings');
-      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+      navigate(`${pathname}?${params.toString()}`, { scroll: false });
     } else {
       const params = new URLSearchParams(searchParams.toString());
       params.delete('action');
       const newUrl = params.toString()
         ? `${pathname}?${params.toString()}`
         : pathname;
-      router.replace(newUrl, { scroll: false });
+      navigate(newUrl, { scroll: false });
     }
   }
 
@@ -1165,7 +1167,7 @@ export default function HomeSidebar({
   // User click: update state AND navigate
   function handleChildClick(child: SidebarChildVO) {
     selectChild(child);
-    router.push(child.route);
+    navigate(child.route);
   }
 
   function initSelect() {
@@ -1406,7 +1408,7 @@ export default function HomeSidebar({
                     <DropdownMenuItem
                       onClick={() => {
                         setUserMenuOpen(false);
-                        router.push('/wizard');
+                        navigate('/wizard');
                       }}
                     >
                       <Zap className="text-blue-500" />

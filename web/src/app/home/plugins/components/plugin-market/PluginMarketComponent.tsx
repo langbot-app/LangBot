@@ -1,7 +1,7 @@
-'use client';
+
 
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import {
   Select,

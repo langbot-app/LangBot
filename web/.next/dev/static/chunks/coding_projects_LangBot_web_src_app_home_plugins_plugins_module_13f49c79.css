@@ -1,0 +1,20 @@
+/* [project]/coding/projects/LangBot/web/src/app/home/plugins/plugins.module.css [app-client] (css) */
+.plugins-module__lGF0uq__pageContainer {
+  width: 100%;
+}
+
+.plugins-module__lGF0uq__marketComponentBody {
+  width: 100%;
+  height: calc(100% - 60px);
+}
+
+.plugins-module__lGF0uq__pluginListContainer {
+  grid-template-columns: repeat(auto-fill, minmax(30rem, 1fr));
+  place-items: start stretch;
+  gap: 2rem;
+  width: 100%;
+  padding: 2rem .8rem;
+  display: grid;
+}
+
+/*# sourceMappingURL=coding_projects_LangBot_web_src_app_home_plugins_plugins_module_13f49c79.css.map*/

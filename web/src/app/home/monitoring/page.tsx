@@ -1,4 +1,4 @@
-'use client';
+
 
 import React, { Suspense, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';

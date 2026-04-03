@@ -1,4 +1,4 @@
-'use client';
+
 
 import { useState, useEffect } from 'react';
 import { Trash2, Eye, Wrench, Check } from 'lucide-react';

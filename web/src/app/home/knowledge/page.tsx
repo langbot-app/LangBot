@@ -1,6 +1,6 @@
-'use client';
 
-import { useSearchParams } from 'next/navigation';
+
+import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useEffect, useState } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';

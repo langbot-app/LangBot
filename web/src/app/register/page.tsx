@@ -1,4 +1,4 @@
-'use client';
+
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/form';
 import { useEffect, useState } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import { useRouter } from 'next/navigation';
+import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, Loader2, Info } from 'lucide-react';
 import {
   Popover,
@@ -42,7 +42,7 @@ const formSchema = (t: (key: string) => string) =>
   });
 
 export default function Register() {
-  const router = useRouter();
+  const navigate = useNavigate();
   const { t } = useTranslation();
   const [spaceLoading, setSpaceLoading] = useState(false);
 
@@ -63,7 +63,7 @@ export default function Register() {
       .checkIfInited()
       .then((res) => {
         if (res.initialized) {
-          router.push('/login');
+          navigate('/login');
         }
       })
       .catch(() => {});
@@ -78,7 +78,7 @@ export default function Register() {
       .initUser(username, password)
       .then(() => {
         toast.success(t('register.initSuccess'));
-        router.push('/login');
+        navigate('/login');
       })
       .catch((err: Error) => {
         toast.error(t('register.initFailed') + (err as CustomApiError).msg);

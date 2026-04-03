@@ -1,4 +1,4 @@
-'use client';
+
 
 import MarketPage from '@/app/home/plugins/components/plugin-market/PluginMarketComponent';
 import {

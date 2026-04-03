@@ -1,7 +1,7 @@
-'use client';
+
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useNavigate } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import {
@@ -32,7 +32,7 @@ import { FileText, FolderOpen, Search, Trash2 } from 'lucide-react';
 
 export default function KBDetailContent({ id }: { id: string }) {
   const isCreateMode = id === 'new';
-  const router = useRouter();
+  const navigate = useNavigate();
   const { t } = useTranslation();
   const { refreshKnowledgeBases, knowledgeBases, setDetailEntityName } =
     useSidebarData();
@@ -84,12 +84,12 @@ export default function KBDetailContent({ id }: { id: string }) {
 
   function handleKbDeleted() {
     refreshKnowledgeBases();
-    router.push('/home/knowledge');
+    navigate('/home/knowledge');
   }
 
   function handleNewKbCreated(newKbId: string) {
     refreshKnowledgeBases();
-    router.push(`/home/knowledge?id=${encodeURIComponent(newKbId)}`);
+    navigate(`/home/knowledge?id=${encodeURIComponent(newKbId)}`);
   }
 
   function handleKbUpdated() {

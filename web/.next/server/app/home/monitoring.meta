@@ -1,0 +1,16 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/home/layout,_N_T_/home/monitoring/layout,_N_T_/home/monitoring/page,_N_T_/home/monitoring"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/home/monitoring/__PAGE__",
+    "/home/monitoring",
+    "/home",
+    "/_index",
+    "/_head"
+  ]
+}

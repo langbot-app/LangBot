@@ -3,12 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint src",
-    "lint:fix": "eslint src --fix",
-    "lint-staged": "lint-staged"
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "format": "prettier --write ."
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx}": [
@@ -46,6 +45,7 @@
     "@radix-ui/react-tooltip": "^1.2.7",
     "@tailwindcss/postcss": "^4.1.5",
     "@tanstack/react-table": "^8.21.3",
+    "@vitejs/plugin-react": "^6.0.1",
     "axios": "^1.13.5",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -55,8 +55,6 @@
     "input-otp": "^1.4.2",
     "lodash": "^4.17.23",
     "lucide-react": "^0.507.0",
-    "next": "~16.1.5",
-    "next-themes": "^0.4.6",
     "postcss": "^8.5.3",
     "qrcode": "^1.5.4",
     "react": "19.2.1",
@@ -65,6 +63,7 @@
     "react-i18next": "^15.5.1",
     "react-markdown": "^10.1.0",
     "react-photo-view": "^1.2.7",
+    "react-router-dom": "^7.14.0",
     "react-syntax-highlighter": "^16.1.0",
     "recharts": "2.15.4",
     "rehype-autolink-headings": "^7.1.0",
@@ -77,6 +76,7 @@
     "tailwind-merge": "^3.2.0",
     "tailwindcss": "^4.1.5",
     "uuidjs": "^5.1.0",
+    "vite": "^8.0.3",
     "zod": "^3.24.4"
   },
   "devDependencies": {
@@ -95,7 +95,6 @@
     "@types/react-syntax-highlighter": "^15.5.13",
     "@types/unist": "^3.0.3",
     "eslint": "^9",
-    "eslint-config-next": "15.2.4",
     "eslint-config-prettier": "^10.1.2",
     "eslint-plugin-prettier": "^5.2.6",
     "lint-staged": "^15.5.1",

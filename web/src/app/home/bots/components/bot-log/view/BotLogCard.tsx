@@ -1,4 +1,4 @@
-'use client';
+
 
 import { useState } from 'react';
 import { BotLog } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';

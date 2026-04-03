@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 1, "column": 0}, "map": {"version":3,"sources":["file:///root/.openclaw/workspace/coding/projects/LangBot/web/src/app/home/plugins/plugins.module.css"],"sourcesContent":[".pageContainer {\n  width: 100%;\n}\n\n.marketComponentBody {\n  width: 100%;\n  height: calc(100% - 60px);\n}\n\n.pluginListContainer {\n  width: 100%;\n  padding-left: 0.8rem;\n  padding-right: 0.8rem;\n  padding-top: 2rem;\n  padding-bottom: 2rem;\n  display: grid;\n  grid-template-columns: repeat(auto-fill, minmax(30rem, 1fr));\n  gap: 2rem;\n  justify-items: stretch;\n  align-items: start;\n}\n"],"names":[],"mappings":"AAAA;;;;AAIA;;;;;AAKA"}}]
+}

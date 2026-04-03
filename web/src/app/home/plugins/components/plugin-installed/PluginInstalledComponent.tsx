@@ -1,7 +1,7 @@
-'use client';
+
 
 import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
-import { useRouter } from 'next/navigation';
+import { useNavigate } from 'react-router-dom';
 import { PluginCardVO } from '@/app/home/plugins/components/plugin-installed/PluginCardVO';
 import PluginCardComponent from '@/app/home/plugins/components/plugin-installed/plugin-card/PluginCardComponent';
 import styles from '@/app/home/plugins/plugins.module.css';
@@ -37,7 +37,7 @@ enum PluginOperationType {
 const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
   (props, ref) => {
     const { t } = useTranslation();
-    const router = useRouter();
+    const navigate = useNavigate();
     const { refreshPlugins } = useSidebarData();
     const [pluginList, setPluginList] = useState<PluginCardVO[]>([]);
     const [showOperationModal, setShowOperationModal] = useState(false);
@@ -163,7 +163,7 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
 
     function handlePluginClick(plugin: PluginCardVO) {
       const pluginId = `${plugin.author}/${plugin.name}`;
-      router.push(`/home/plugins?id=${encodeURIComponent(pluginId)}`);
+      navigate(`/home/plugins?id=${encodeURIComponent(pluginId)}`);
     }
 
     function handlePluginDelete(plugin: PluginCardVO) {

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'react-router-dom';
 import { FilterState, TimeRangeOption, DateRange } from '../types/monitoring';
 import { getPresetDateRange } from '../utils/dateUtils';
 

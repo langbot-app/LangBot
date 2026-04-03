@@ -1,7 +1,7 @@
-'use client';
+
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { UUID } from 'uuidjs';
 import { toast } from 'sonner';
@@ -81,7 +81,7 @@ const TOTAL_STEPS = 4;
 
 export default function WizardPage() {
   const { t } = useTranslation();
-  const router = useRouter();
+  const navigate = useNavigate();
 
   // ---- Wizard state ----
   const [currentStep, setCurrentStep] = useState(0);
@@ -519,7 +519,7 @@ export default function WizardPage() {
     }
     setIsSkipping(false);
     setShowSkipConfirm(false);
-    router.push('/home');
+    navigate('/home');
   }, [router, t]);
 
   // ---- Render ----
@@ -1169,7 +1169,7 @@ function StepAIEngine({
 
 function StepDone() {
   const { t } = useTranslation();
-  const router = useRouter();
+  const navigate = useNavigate();
 
   const [particles] = useState(() =>
     Array.from({ length: 30 }, (_, i) => ({
@@ -1213,7 +1213,7 @@ function StepDone() {
       return;
     }
     setIsCompleting(false);
-    router.push('/home/bots');
+    navigate('/home/bots');
   }, [router, t]);
 
   return (

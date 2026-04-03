@@ -1,0 +1,52 @@
+/* [project]/coding/projects/LangBot/web/src/app/home/layout.module.css [app-client] (css) */
+.layout-module__8oqbmW__homeLayoutContainer {
+  background-color: #eee;
+  flex-direction: row;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+}
+
+.dark .layout-module__8oqbmW__homeLayoutContainer {
+  background-color: #0a0a0b;
+}
+
+.layout-module__8oqbmW__sidebar {
+  background-color: #eee;
+}
+
+.dark .layout-module__8oqbmW__sidebar {
+  background-color: #0a0a0b;
+}
+
+.layout-module__8oqbmW__main {
+  background-color: #fafafa;
+  border-radius: 1.5rem 0 0 1.5rem;
+  flex-direction: column;
+  flex: 1;
+  width: calc(100% - 1.2rem);
+  height: calc(100% - 1.2rem);
+  margin-top: .6rem;
+  margin-left: .6rem;
+  display: flex;
+  overflow: hidden;
+  box-shadow: 0 0 6px #0000000d;
+}
+
+.dark .layout-module__8oqbmW__main {
+  background-color: #151518;
+  box-shadow: 0 0 6px #ffffff0d;
+}
+
+.layout-module__8oqbmW__mainContent {
+  background-color: #fafafa;
+  flex: 1;
+  padding: 1.5rem 1.5rem 1.5rem 2rem;
+  overflow-y: auto;
+}
+
+.dark .layout-module__8oqbmW__mainContent {
+  background-color: #151518;
+}
+
+/*# sourceMappingURL=coding_projects_LangBot_web_src_app_home_layout_module_css_bad6b30c._.single.css.map*/

@@ -1,7 +1,7 @@
-'use client';
+
 
 import { useEffect, useState, useCallback, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useNavigate } from 'react-router-dom';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -23,7 +23,7 @@ import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import langbotIcon from '@/app/assets/langbot-logo.webp';
 
 function SpaceOAuthCallbackContent() {
-  const router = useRouter();
+  const navigate = useNavigate();
   const searchParams = useSearchParams();
   const { t } = useTranslation();
 
@@ -51,7 +51,7 @@ function SpaceOAuthCallbackContent() {
         const wizardState = localStorage.getItem('langbot_wizard_state');
         const redirectTo = wizardState ? '/wizard' : '/home';
         setTimeout(() => {
-          router.push(redirectTo);
+          navigate(redirectTo);
         }, 1000);
       } catch (err) {
         setStatus('error');
@@ -81,7 +81,7 @@ function SpaceOAuthCallbackContent() {
         setStatus('success');
         toast.success(t('account.bindSpaceSuccess'));
         setTimeout(() => {
-          router.push('/home');
+          navigate('/home');
         }, 1000);
       } catch (err) {
         setStatus('error');
@@ -146,7 +146,7 @@ function SpaceOAuthCallbackContent() {
   };
 
   const handleCancelBind = () => {
-    router.push('/home');
+    navigate('/home');
   };
 
   return (
@@ -217,7 +217,7 @@ function SpaceOAuthCallbackContent() {
             <>
               <AlertCircle className="h-12 w-12 text-red-500" />
               <Button
-                onClick={() => router.push(isBindMode ? '/home' : '/login')}
+                onClick={() => navigate(isBindMode ? '/home' : '/login')}
                 className="w-full mt-4"
               >
                 {isBindMode ? t('common.backToHome') : t('common.backToLogin')}

@@ -1,7 +1,7 @@
-'use client';
+
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useNavigate } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import PipelineFormComponent from '@/app/home/pipelines/components/pipeline-form/PipelineFormComponent';
@@ -13,7 +13,7 @@ import { Settings, Bug, BarChart3 } from 'lucide-react';
 
 export default function PipelineDetailContent({ id }: { id: string }) {
   const isCreateMode = id === 'new';
-  const router = useRouter();
+  const navigate = useNavigate();
   const { t } = useTranslation();
   const { refreshPipelines, pipelines, setDetailEntityName } = useSidebarData();
 
@@ -38,7 +38,7 @@ export default function PipelineDetailContent({ id }: { id: string }) {
 
   function handleNewPipelineCreated(newPipelineId: string) {
     refreshPipelines();
-    router.push(`/home/pipelines?id=${encodeURIComponent(newPipelineId)}`);
+    navigate(`/home/pipelines?id=${encodeURIComponent(newPipelineId)}`);
   }
 
   // ==================== Create Mode ====================
@@ -73,7 +73,7 @@ export default function PipelineDetailContent({ id }: { id: string }) {
 
   function handleDeletePipeline() {
     refreshPipelines();
-    router.push('/home/pipelines');
+    navigate('/home/pipelines');
   }
 
   // ==================== Edit Mode ====================
@@ -129,7 +129,7 @@ export default function PipelineDetailContent({ id }: { id: string }) {
             onFinish={handleFinish}
             onNewPipelineCreated={handleNewPipelineCreated}
             onDeletePipeline={handleDeletePipeline}
-            onCancel={() => router.push('/home/pipelines')}
+            onCancel={() => navigate('/home/pipelines')}
             onDirtyChange={setFormDirty}
           />
         </TabsContent>
@@ -152,7 +152,7 @@ export default function PipelineDetailContent({ id }: { id: string }) {
           <PipelineMonitoringTab
             pipelineId={id}
             onNavigateToMonitoring={() => {
-              router.push('/home/monitoring');
+              navigate('/home/monitoring');
             }}
           />
         </TabsContent>
