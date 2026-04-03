@@ -80,7 +80,6 @@
     "zod": "^3.24.4"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3",
     "@types/debug": "^4.1.12",
     "@types/estree": "^1.0.8",
     "@types/estree-jsx": "^1.0.5",
