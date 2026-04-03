@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 1, "column": 0}, "map": {"version":3,"sources":["turbopack:///[project]/coding/projects/LangBot/web/src/app/home/layout.module.css"],"sourcesContent":["/* 主布局容器 */\n.homeLayoutContainer {\n  width: 100vw;\n  height: 100vh;\n  display: flex;\n  flex-direction: row;\n  background-color: #eee;\n}\n\n:global(.dark) .homeLayoutContainer {\n  background-color: #0a0a0b;\n}\n\n/* 侧边栏区域 */\n.sidebar {\n  background-color: #eee;\n}\n\n:global(.dark) .sidebar {\n  background-color: #0a0a0b;\n}\n\n/* 主内容区域 */\n.main {\n  background-color: #fafafa;\n  flex: 1;\n  display: flex;\n  flex-direction: column;\n  /* height: 100vh; */\n  width: calc(100% - 1.2rem);\n  height: calc(100% - 1.2rem);\n  overflow: hidden;\n  border-radius: 1.5rem 0 0 1.5rem;\n  margin-left: 0.6rem;\n  margin-top: 0.6rem;\n  box-shadow: 0 0 6px 0 rgba(0, 0, 0, 0.05);\n}\n\n:global(.dark) .main {\n  background-color: #151518;\n  box-shadow: 0 0 6px 0 rgba(255, 255, 255, 0.05);\n}\n\n.mainContent {\n  padding: 1.5rem;\n  padding-left: 2rem;\n  flex: 1;\n  overflow-y: auto;\n  background-color: #fafafa;\n}\n\n:global(.dark) .mainContent {\n  background-color: #151518;\n}\n"],"names":[],"mappings":"AACA;;;;;;;;AAQA;;;;AAKA;;;;AAIA;;;;AAKA;;;;;;;;;;;;;;AAeA;;;;;AAKA;;;;;;;AAQA"}}]
-}

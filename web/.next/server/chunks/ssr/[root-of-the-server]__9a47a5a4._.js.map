@@ -1,1 +1,0 @@
-{"version":3,"sources":["../../../../../../../../coding/projects/LangBot/web/src/app/home/page.tsx"],"sourcesContent":["export default function Home() {\n  return <div className={``}></div>;\n}\n"],"names":[],"mappings":"4YAAe,SAAS,IACtB,MAAO,CAAA,EAAA,EAAA,GAAA,EAAC,MAAA,CAAI,UAAW,EAAE,EAC3B"}

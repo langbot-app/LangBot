@@ -52,3 +52,6 @@ src/langbot/web/
 /dist
 /build
 *.egg-info
+
+# Next.js build cache (legacy)
+web/.next/

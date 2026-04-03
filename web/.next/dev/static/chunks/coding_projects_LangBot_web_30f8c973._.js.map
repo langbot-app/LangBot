@@ -1,7 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 4, "column": 0}, "map": {"version":3,"sources":["file:///root/.openclaw/workspace/coding/projects/LangBot/web/src/app/page.tsx"],"sourcesContent":["'use client';\n\nimport { useRouter } from 'next/navigation';\nimport { useEffect } from 'react';\n\nexport default function Home() {\n  const router = useRouter();\n  useEffect(() => {\n    router.push('/login');\n  }, []);\n  return <div className={``}></div>;\n}\n"],"names":[],"mappings":";;;;;AAEA;AACA;;;AAHA;;;AAKe,SAAS;;IACtB,MAAM,SAAS,IAAA,0LAAS;IACxB,IAAA,kNAAS;0BAAC;YACR,OAAO,IAAI,CAAC;QACd;yBAAG,EAAE;IACL,qBAAO,qOAAC;QAAI,WAAW,EAAE;;;;;;AAC3B;GANwB;;QACP,0LAAS;;;KADF"}},
-    {"offset": {"line": 46, "column": 0}, "map": {"version":3,"sources":["file:///root/.openclaw/workspace/coding/projects/LangBot/web/node_modules/next/navigation.js"],"sourcesContent":["module.exports = require('./dist/client/components/navigation')\n"],"names":[],"mappings":"AAAA,OAAO,OAAO","ignoreList":[0]}}]
-}

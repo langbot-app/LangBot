@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 1, "column": 0}, "map": {"version":3,"sources":["turbopack:///[project]/coding/projects/LangBot/web/src/app/home/bots/botConfig.module.css"],"sourcesContent":[".botListContainer {\n  width: 100%;\n  padding-left: 0.8rem;\n  padding-right: 0.8rem;\n  display: grid;\n  grid-template-columns: repeat(auto-fill, minmax(24rem, 1fr));\n  gap: 2rem;\n  justify-items: stretch;\n  align-items: start;\n}\n"],"names":[],"mappings":"AAAA"}}]
-}

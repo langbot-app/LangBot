@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 1, "column": 0}, "map": {"version":3,"sources":["turbopack:///[project]/coding/projects/LangBot/web/src/app/home/components/home-titlebar/HomeTittleBar.module.css"],"sourcesContent":[".titleBarContainer {\n  width: 100%;\n  padding-top: 1rem;\n  height: 4rem;\n  opacity: 1;\n  font-size: 20px;\n  display: flex;\n  flex-direction: column;\n  align-items: flex-start;\n  justify-content: center;\n}\n\n.titleText {\n  margin-left: 3.2rem;\n  font-size: 1.4rem;\n  font-weight: 500;\n  color: #585858;\n}\n\n:global(.dark) .titleText {\n  color: #e0e0e0;\n}\n\n.subtitleText {\n  margin-left: 3.2rem;\n  font-size: 0.8rem;\n  color: #808080;\n  display: flex;\n  align-items: center;\n}\n\n:global(.dark) .subtitleText {\n  color: #b0b0b0;\n}\n\n.helpLink {\n  margin-left: 0.2rem;\n  font-size: 0.8rem;\n  color: #8b8b8b;\n}\n\n:global(.dark) .helpLink {\n  color: #a0a0a0;\n}\n"],"names":[],"mappings":"AAAA;;;;;;;;;;;;AAYA;;;;;;;AAOA;;;;AAIA;;;;;;;;AAQA;;;;AAIA;;;;;;AAMA"}}]
-}

@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 1, "column": 0}, "map": {"version":3,"sources":["turbopack:///[project]/coding/projects/LangBot/web/src/app/infra/basic-component/create-card-component/createCartComponent.module.css"],"sourcesContent":[".cardContainer {\n  background-color: #fff;\n  border-radius: 9px;\n  box-shadow: 0 0 5px 0 rgba(0, 0, 0, 0.1);\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  justify-content: space-evenly;\n  cursor: pointer;\n  transition: all 0.2s ease;\n}\n\n:global(.dark) .cardContainer {\n  background-color: #1f1f22;\n  box-shadow: 0;\n}\n\n.cardContainer:hover {\n  box-shadow: 0 0 15px 0 rgba(0, 0, 0, 0.05);\n}\n\n:global(.dark) .cardContainer:hover {\n  box-shadow: 0;\n}\n\n.createCardContainer {\n  font-size: 90px;\n  color: #acacac;\n}\n\n:global(.dark) .createCardContainer {\n  color: #666666;\n}\n"],"names":[],"mappings":"AAAA;;;;;;;;;;;;AAYA;;;;;AAKA;;;;AAIA;;;;AAIA;;;;;AAKA"}}]
-}
