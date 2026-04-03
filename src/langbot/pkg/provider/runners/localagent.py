@@ -10,6 +10,9 @@ import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.builtin.rag.context as rag_context
 
 
+MAX_TOOL_ITERATIONS = 16
+MAX_TOOL_RESULT_LENGTH = 8000
+
 rag_combined_prompt_template = """
 The following are relevant context entries retrieved from the knowledge base. 
 Please use them to answer the user's message. 
@@ -290,7 +293,9 @@ class LocalAgentRunner(runner.RequestRunner):
 
         # Once a model succeeds, commit to it for the tool call loop
         # (no fallback mid-conversation — different models may interpret tool results differently)
-        while pending_tool_calls:
+        iteration_count = 0
+        while pending_tool_calls and iteration_count < MAX_TOOL_ITERATIONS:
+            iteration_count += 1
             for tool_call in pending_tool_calls:
                 try:
                     func = tool_call.function
@@ -312,6 +317,8 @@ class LocalAgentRunner(runner.RequestRunner):
                         tool_content = func_ret
                     else:
                         tool_content = json.dumps(func_ret, ensure_ascii=False)
+                        if len(tool_content) > MAX_TOOL_RESULT_LENGTH:
+                            tool_content = tool_content[:MAX_TOOL_RESULT_LENGTH] + '\n...[truncated]'
 
                     if is_stream:
                         msg = provider_message.MessageChunk(
