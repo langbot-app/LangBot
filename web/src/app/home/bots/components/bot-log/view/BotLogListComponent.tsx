@@ -1,5 +1,3 @@
-
-
 import { BotLogManager } from '@/app/home/bots/components/bot-log/BotLogManager';
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { BotLog } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';

@@ -1,5 +1,3 @@
-
-
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';

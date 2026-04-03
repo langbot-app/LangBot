@@ -1,5 +1,3 @@
-
-
 import { useState, useEffect } from 'react';
 import { Trash2, Eye, Wrench, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';

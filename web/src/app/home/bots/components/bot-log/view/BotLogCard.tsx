@@ -1,5 +1,3 @@
-
-
 import { useState } from 'react';
 import { BotLog } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
 import { httpClient } from '@/app/infra/http/HttpClient';

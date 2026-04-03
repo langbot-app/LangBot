@@ -1,4 +1,3 @@
-
 import PluginInstalledComponent, {
   PluginInstalledComponentRef,
 } from '@/app/home/plugins/components/plugin-installed/PluginInstalledComponent';

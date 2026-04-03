@@ -1,5 +1,3 @@
-
-
 import { useEffect, useState, useRef } from 'react';
 import MCPCardComponent from '@/app/home/plugins/mcp-server/mcp-card/MCPCardComponent';
 import { MCPCardVO } from '@/app/home/plugins/mcp-server/MCPCardVO';

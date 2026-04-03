@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Resolver, useForm } from 'react-hook-form';

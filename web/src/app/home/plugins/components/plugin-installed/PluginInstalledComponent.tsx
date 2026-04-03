@@ -1,5 +1,3 @@
-
-
 import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PluginCardVO } from '@/app/home/plugins/components/plugin-installed/PluginCardVO';

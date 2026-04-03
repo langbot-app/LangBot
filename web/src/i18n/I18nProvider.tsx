@@ -1,5 +1,3 @@
-
-
 import { ReactNode } from 'react';
 import '@/i18n';
 import { I18nObject } from '@/app/infra/entities/common';

@@ -1,5 +1,3 @@
-
-
 import { useEffect, useState } from 'react';
 import { SidebarChildVO } from '@/app/home/components/home-sidebar/HomeSidebarChild';
 import { useNavigate } from 'react-router-dom';
@@ -246,7 +244,7 @@ function NavItems({
 }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const pathname = location.pathname;;
+  const pathname = location.pathname;
   const searchParams = useSearchParams();
   const sidebarData = useSidebarData();
   const { setPendingPluginInstallAction } = sidebarData;
@@ -1032,7 +1030,7 @@ export default function HomeSidebar({
 }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const pathname = location.pathname;;
+  const pathname = location.pathname;
   const searchParams = useSearchParams();
   const { isMobile } = useSidebar();
 

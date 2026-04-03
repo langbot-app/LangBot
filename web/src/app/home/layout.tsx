@@ -1,5 +1,3 @@
-
-
 import HomeSidebar from '@/app/home/components/home-sidebar/HomeSidebar';
 import SurveyWidget from '@/app/home/components/survey/SurveyWidget';
 import React, {
@@ -102,7 +100,7 @@ function HomeLayoutInner({ children }: { children: React.ReactNode }) {
   });
   const { detailEntityName } = useSidebarData();
   const location = useLocation();
-  const pathname = location.pathname;;
+  const pathname = location.pathname;
   const { t } = useTranslation();
 
   const onSelectedChangeAction = useCallback((child: SidebarChildVO) => {

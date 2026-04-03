@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import type {

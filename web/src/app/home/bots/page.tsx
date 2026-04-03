@@ -1,5 +1,3 @@
-
-
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import BotDetailContent from './BotDetailContent';

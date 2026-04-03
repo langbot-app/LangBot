@@ -1,5 +1,3 @@
-
-
 import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { httpClient } from '@/app/infra/http/HttpClient';

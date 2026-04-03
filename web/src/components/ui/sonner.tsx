@@ -1,5 +1,3 @@
-
-
 import { useTheme } from '@/components/providers/theme-provider';
 import { Toaster as Sonner, ToasterProps } from 'sonner';
 

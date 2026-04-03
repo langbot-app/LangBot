@@ -1,5 +1,3 @@
-
-
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -69,7 +67,7 @@ export default function ApiIntegrationDialog({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
-  const pathname = location.pathname;;
+  const pathname = location.pathname;
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState('apikeys');
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
