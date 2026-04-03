@@ -140,9 +140,25 @@ export interface Bot {
   adapter_config: object;
   use_pipeline_name?: string;
   use_pipeline_uuid?: string;
+  pipeline_routing_rules?: PipelineRoutingRule[];
   created_at?: string;
   updated_at?: string;
   adapter_runtime_values?: object;
+}
+
+export type RoutingRuleOperator =
+  | 'eq'
+  | 'neq'
+  | 'contains'
+  | 'not_contains'
+  | 'starts_with'
+  | 'regex';
+
+export interface PipelineRoutingRule {
+  type: 'launcher_type' | 'launcher_id' | 'message_content';
+  operator: RoutingRuleOperator;
+  value: string;
+  pipeline_uuid: string;
 }
 
 export interface ApiRespKnowledgeBases {

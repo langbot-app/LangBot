@@ -323,6 +323,9 @@ class RuntimePipeline:
             event_ctx = await self.ap.plugin_connector.emit_event(event_obj, bound_plugins)
 
             if event_ctx.is_prevented_default():
+                self.ap.logger.debug(
+                    f'MessageReceived event prevented default for query {query.query_id}, pipeline={pipeline_name}'
+                )
                 return
 
             self.ap.logger.debug(f'Processing query {query.query_id}')

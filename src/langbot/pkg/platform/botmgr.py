@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import traceback
 import sqlalchemy
 
@@ -52,6 +53,69 @@ class RuntimeBot:
         self.task_context = taskmgr.TaskContext()
         self.logger = logger
 
+    @staticmethod
+    def _match_operator(actual: str, operator: str, expected: str) -> bool:
+        """Evaluate a single operator condition."""
+        if operator == 'eq':
+            return actual == expected
+        elif operator == 'neq':
+            return actual != expected
+        elif operator == 'contains':
+            return expected in actual
+        elif operator == 'not_contains':
+            return expected not in actual
+        elif operator == 'starts_with':
+            return actual.startswith(expected)
+        elif operator == 'regex':
+            try:
+                return bool(re.search(expected, actual))
+            except re.error:
+                return False
+        return False
+
+    def resolve_pipeline_uuid(
+        self,
+        launcher_type: str,
+        launcher_id: str,
+        message_text: str,
+    ) -> tuple[str | None, bool]:
+        """Resolve pipeline UUID based on routing rules.
+
+        Rules are evaluated in order; first match wins.
+        Falls back to use_pipeline_uuid if no rule matches.
+
+        Rule types:
+          - launcher_type: session type ("person" / "group")
+          - launcher_id: session / group id
+          - message_content: message text content
+
+        Operators: eq, neq, contains, not_contains, starts_with, regex
+
+        Returns:
+            tuple: (pipeline_uuid, routed_by_rule) - routed_by_rule is True
+            when a routing rule matched, False when falling back to default.
+        """
+        rules = self.bot_entity.pipeline_routing_rules or []
+        for rule in rules:
+            rule_type = rule.get('type')
+            operator = rule.get('operator', 'eq')
+            rule_value = rule.get('value', '')
+            target_uuid = rule.get('pipeline_uuid')
+            if not rule_type or not target_uuid:
+                continue
+
+            if rule_type == 'launcher_type':
+                if self._match_operator(launcher_type, operator, rule_value):
+                    return target_uuid, True
+            elif rule_type == 'launcher_id':
+                if self._match_operator(str(launcher_id), operator, str(rule_value)):
+                    return target_uuid, True
+            elif rule_type == 'message_content':
+                if self._match_operator(message_text, operator, rule_value):
+                    return target_uuid, True
+
+        return self.bot_entity.use_pipeline_uuid, False
+
     async def initialize(self):
         async def on_friend_message(
             event: platform_events.FriendMessage,
@@ -83,6 +147,9 @@ class RuntimeBot:
                     if custom_launcher_id:
                         launcher_id = custom_launcher_id
 
+                message_text = str(event.message_chain)
+                pipeline_uuid, routed_by_rule = self.resolve_pipeline_uuid('person', launcher_id, message_text)
+
                 await self.ap.msg_aggregator.add_message(
                     bot_uuid=self.bot_entity.uuid,
                     launcher_type=provider_session.LauncherTypes.PERSON,
@@ -91,7 +158,8 @@ class RuntimeBot:
                     message_event=event,
                     message_chain=event.message_chain,
                     adapter=adapter,
-                    pipeline_uuid=self.bot_entity.use_pipeline_uuid,
+                    pipeline_uuid=pipeline_uuid,
+                    routed_by_rule=routed_by_rule,
                 )
             else:
                 await self.logger.info('Pipeline skipped for person message due to webhook response')
@@ -126,6 +194,9 @@ class RuntimeBot:
                     if custom_launcher_id:
                         launcher_id = custom_launcher_id
 
+                message_text = str(event.message_chain)
+                pipeline_uuid, routed_by_rule = self.resolve_pipeline_uuid('group', launcher_id, message_text)
+
                 await self.ap.msg_aggregator.add_message(
                     bot_uuid=self.bot_entity.uuid,
                     launcher_type=provider_session.LauncherTypes.GROUP,
@@ -134,7 +205,8 @@ class RuntimeBot:
                     message_event=event,
                     message_chain=event.message_chain,
                     adapter=adapter,
-                    pipeline_uuid=self.bot_entity.use_pipeline_uuid,
+                    pipeline_uuid=pipeline_uuid,
+                    routed_by_rule=routed_by_rule,
                 )
             else:
                 await self.logger.info('Pipeline skipped for group message due to webhook response')
