@@ -53,6 +53,10 @@ const OPERATORS_BY_TYPE: Record<
     { value: 'starts_with', labelKey: 'bots.operatorStartsWith' },
     { value: 'regex', labelKey: 'bots.operatorRegex' },
   ],
+  message_has_element: [
+    { value: 'eq', labelKey: 'bots.operatorHas' },
+    { value: 'neq', labelKey: 'bots.operatorNotHas' },
+  ],
 };
 
 function getValuePlaceholder(
@@ -61,6 +65,8 @@ function getValuePlaceholder(
 ): string {
   if (rule.type === 'launcher_id')
     return t('bots.ruleValueLauncherIdPlaceholder');
+  if (rule.type === 'message_has_element')
+    return t('bots.ruleValueElementPlaceholder');
   if (rule.operator === 'regex') return t('bots.ruleValueRegexpPlaceholder');
   return t('bots.ruleValueMessagePlaceholder');
 }
@@ -150,6 +156,9 @@ export default function RoutingRulesEditor({
                 <SelectItem value="message_content">
                   {t('bots.ruleTypeMessageContent')}
                 </SelectItem>
+                <SelectItem value="message_has_element">
+                  {t('bots.ruleTypeMessageHasElement')}
+                </SelectItem>
               </SelectContent>
             </Select>
 
@@ -187,6 +196,37 @@ export default function RoutingRulesEditor({
                   </SelectItem>
                   <SelectItem value="group">
                     {t('bots.sessionTypeGroup')}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            ) : rule.type === 'message_has_element' ? (
+              <Select
+                value={rule.value}
+                onValueChange={(val) => updateRule(index, { value: val })}
+              >
+                <SelectTrigger className="w-[120px]">
+                  <SelectValue
+                    placeholder={t('bots.ruleValueElementPlaceholder')}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Image">
+                    {t('bots.elementImage')}
+                  </SelectItem>
+                  <SelectItem value="Voice">
+                    {t('bots.elementVoice')}
+                  </SelectItem>
+                  <SelectItem value="File">{t('bots.elementFile')}</SelectItem>
+                  <SelectItem value="Forward">
+                    {t('bots.elementForward')}
+                  </SelectItem>
+                  <SelectItem value="Face">{t('bots.elementFace')}</SelectItem>
+                  <SelectItem value="At">{t('bots.elementAt')}</SelectItem>
+                  <SelectItem value="AtAll">
+                    {t('bots.elementAtAll')}
+                  </SelectItem>
+                  <SelectItem value="Quote">
+                    {t('bots.elementQuote')}
                   </SelectItem>
                 </SelectContent>
               </Select>

@@ -78,6 +78,7 @@ class RuntimeBot:
         launcher_type: str,
         launcher_id: str,
         message_text: str,
+        message_element_types: list[str] | None = None,
     ) -> tuple[str | None, bool]:
         """Resolve pipeline UUID based on routing rules.
 
@@ -88,6 +89,9 @@ class RuntimeBot:
           - launcher_type: session type ("person" / "group")
           - launcher_id: session / group id
           - message_content: message text content
+          - message_has_element: message contains element of given type
+            (Image, Voice, File, Forward, Face, At, AtAll, Quote)
+            Operators: eq (has), neq (doesn't have)
 
         Operators: eq, neq, contains, not_contains, starts_with, regex
 
@@ -96,6 +100,8 @@ class RuntimeBot:
             when a routing rule matched, False when falling back to default.
         """
         rules = self.bot_entity.pipeline_routing_rules or []
+        element_type_set = set(message_element_types or [])
+
         for rule in rules:
             rule_type = rule.get('type')
             operator = rule.get('operator', 'eq')
@@ -112,6 +118,13 @@ class RuntimeBot:
                     return target_uuid, True
             elif rule_type == 'message_content':
                 if self._match_operator(message_text, operator, rule_value):
+                    return target_uuid, True
+            elif rule_type == 'message_has_element':
+                has_element = rule_value in element_type_set
+                if operator == 'eq' and has_element:
+                    return target_uuid, True
+                elif operator == 'neq' and not has_element:
+                    return target_uuid, True
                     return target_uuid, True
 
         return self.bot_entity.use_pipeline_uuid, False
@@ -148,7 +161,10 @@ class RuntimeBot:
                         launcher_id = custom_launcher_id
 
                 message_text = str(event.message_chain)
-                pipeline_uuid, routed_by_rule = self.resolve_pipeline_uuid('person', launcher_id, message_text)
+                element_types = [comp.type for comp in event.message_chain]
+                pipeline_uuid, routed_by_rule = self.resolve_pipeline_uuid(
+                    'person', launcher_id, message_text, element_types
+                )
 
                 await self.ap.msg_aggregator.add_message(
                     bot_uuid=self.bot_entity.uuid,
@@ -195,7 +211,10 @@ class RuntimeBot:
                         launcher_id = custom_launcher_id
 
                 message_text = str(event.message_chain)
-                pipeline_uuid, routed_by_rule = self.resolve_pipeline_uuid('group', launcher_id, message_text)
+                element_types = [comp.type for comp in event.message_chain]
+                pipeline_uuid, routed_by_rule = self.resolve_pipeline_uuid(
+                    'group', launcher_id, message_text, element_types
+                )
 
                 await self.ap.msg_aggregator.add_message(
                     bot_uuid=self.bot_entity.uuid,
