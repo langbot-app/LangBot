@@ -8,6 +8,7 @@ import uuid
 import json
 
 import ollama
+import httpx
 
 from .. import errors, requester
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
@@ -30,6 +31,60 @@ class OllamaChatCompletions(requester.ProviderAPIRequester):
     async def initialize(self):
         os.environ['OLLAMA_HOST'] = self.requester_cfg['base_url']
         self.client = ollama.AsyncClient(timeout=self.requester_cfg['timeout'])
+
+    def _infer_model_type(self, model_id: str) -> str:
+        normalized_model_id = (model_id or '').lower()
+        embedding_keywords = ('embedding', 'embed', 'bge-', 'e5-', 'm3e', 'gte-', 'text-embedding')
+        return 'embedding' if any(keyword in normalized_model_id for keyword in embedding_keywords) else 'llm'
+
+    def _infer_model_abilities(self, item: dict[str, typing.Any], model_id: str) -> list[str]:
+        normalized_model_id = (model_id or '').lower()
+        abilities: set[str] = set()
+        details = item.get('details', {}) or {}
+        families = details.get('families', []) or []
+        tokens = [normalized_model_id, str(details.get('family', '')).lower()]
+        tokens.extend(str(family).lower() for family in families)
+
+        if any(keyword in token for token in tokens for keyword in ('vision', 'vl', 'omni', 'llava', 'ocr')):
+            abilities.add('vision')
+        if any(keyword in token for token in tokens for keyword in ('tool', 'function')):
+            abilities.add('func_call')
+        return sorted(abilities)
+
+    async def scan_models(self, api_key: str | None = None) -> dict[str, typing.Any]:
+        del api_key
+        models_url = f"{self.requester_cfg['base_url'].rstrip('/')}/api/tags"
+
+        async with httpx.AsyncClient(trust_env=True, timeout=self.requester_cfg['timeout']) as client:
+            response = await client.get(models_url)
+            response.raise_for_status()
+            payload = response.json()
+
+        models: list[dict[str, typing.Any]] = []
+        for item in payload.get('models', []):
+            model_id = item.get('model') or item.get('name')
+            if not model_id:
+                continue
+            models.append(
+                {
+                    'id': model_id,
+                    'name': item.get('name', model_id),
+                    'type': self._infer_model_type(model_id),
+                    'abilities': self._infer_model_abilities(item, model_id),
+                }
+            )
+
+        models.sort(key=lambda item: (item['type'] != 'llm', item['name'].lower()))
+        return {
+            'models': models,
+            'debug': {
+                'request': {
+                    'method': 'GET',
+                    'url': models_url,
+                },
+                'response': payload,
+            },
+        }
 
     async def _req(
         self,

@@ -43,3 +43,12 @@ class ModelProvidersRouterGroup(group.RouterGroup):
                     return self.success()
                 except ValueError as e:
                     return self.http_status(400, -1, str(e))
+
+        @self.route('/<provider_uuid>/scan-models', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
+        async def _(provider_uuid: str) -> str:
+            try:
+                model_type = quart.request.args.get('type')
+                result = await self.ap.provider_service.scan_provider_models(provider_uuid, model_type)
+                return self.success(data=result)
+            except ValueError as e:
+                return self.http_status(400, -1, str(e))

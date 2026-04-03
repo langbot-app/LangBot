@@ -303,6 +303,14 @@ class ProviderAPIRequester(metaclass=abc.ABCMeta):
     async def initialize(self):
         pass
 
+    async def scan_models(self, api_key: str | None = None) -> dict[str, typing.Any] | list[dict[str, typing.Any]]:
+        """Scan models supported by the provider.
+
+        The default implementation does not support scanning. Requesters that
+        can enumerate remote models should override this method.
+        """
+        raise NotImplementedError('This provider does not support model scanning')
+
     @abc.abstractmethod
     async def invoke_llm(
         self,
