@@ -20,12 +20,14 @@ import {
 } from '@/components/ui/select';
 import {
   DndContext,
+  DragOverlay,
   closestCenter,
   PointerSensor,
   KeyboardSensor,
   useSensor,
   useSensors,
   DragEndEvent,
+  DragStartEvent,
 } from '@dnd-kit/core';
 import {
   arrayMove,
@@ -35,7 +37,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useRef, useMemo } from 'react';
+import { useRef, useMemo, useState } from 'react';
 
 export const PIPELINE_DISCARD = '__discard__';
 
@@ -92,58 +94,43 @@ function getValuePlaceholder(
   return t('bots.ruleValueMessagePlaceholder');
 }
 
-/* ── Sortable rule row ─────────────────────────────────────────────── */
+/* ── Static rule row (used in DragOverlay) ─────────────────────────── */
 
-interface SortableRuleRowProps {
-  id: string;
+interface RuleRowContentProps {
   rule: PipelineRoutingRule;
   index: number;
   pipelineNameList: PipelineOption[];
   updateRule: (index: number, patch: Partial<PipelineRoutingRule>) => void;
   removeRule: (index: number) => void;
+  dragHandleProps?: Record<string, unknown>;
+  isOverlay?: boolean;
 }
 
-function SortableRuleRow({
-  id,
+function RuleRowContent({
   rule,
   index,
   pipelineNameList,
   updateRule,
   removeRule,
-}: SortableRuleRowProps) {
+  dragHandleProps,
+  isOverlay,
+}: RuleRowContentProps) {
   const { t } = useTranslation();
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : undefined,
-  };
-
   const operatorsForType =
     OPERATORS_BY_TYPE[rule.type] || OPERATORS_BY_TYPE.message_content;
-
   const isDiscard = rule.pipeline_uuid === PIPELINE_DISCARD;
 
   return (
     <div
-      ref={setNodeRef}
-      style={style}
-      className="flex items-center gap-2 mt-2 p-3 border rounded-md bg-muted/30"
+      className={`flex items-center gap-2 mt-2 p-3 border rounded-md bg-muted/30 ${
+        isOverlay ? 'shadow-lg ring-2 ring-primary/20 bg-background' : ''
+      }`}
     >
       {/* Drag handle */}
       <button
         type="button"
         className="cursor-grab active:cursor-grabbing shrink-0 text-muted-foreground hover:text-foreground touch-none"
-        {...attributes}
-        {...listeners}
+        {...dragHandleProps}
       >
         <GripVertical className="h-4 w-4" />
       </button>
@@ -308,6 +295,50 @@ function SortableRuleRow({
   );
 }
 
+/* ── Sortable rule row ─────────────────────────────────────────────── */
+
+interface SortableRuleRowProps {
+  id: string;
+  rule: PipelineRoutingRule;
+  index: number;
+  pipelineNameList: PipelineOption[];
+  updateRule: (index: number, patch: Partial<PipelineRoutingRule>) => void;
+  removeRule: (index: number) => void;
+}
+
+function SortableRuleRow({
+  id,
+  rule,
+  index,
+  pipelineNameList,
+  updateRule,
+  removeRule,
+}: SortableRuleRowProps) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } =
+    useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    // No transition — items reorder visually during drag via transform;
+    // on drop the data updates and transform resets, so animating would
+    // cause a redundant "swap" flicker.
+    opacity: isDragging ? 0.3 : undefined,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <RuleRowContent
+        rule={rule}
+        index={index}
+        pipelineNameList={pipelineNameList}
+        updateRule={updateRule}
+        removeRule={removeRule}
+        dragHandleProps={{ ...attributes, ...listeners }}
+      />
+    </div>
+  );
+}
+
 /* ── Main editor ───────────────────────────────────────────────────── */
 
 export default function RoutingRulesEditor({
@@ -315,6 +346,7 @@ export default function RoutingRulesEditor({
   pipelineNameList,
 }: RoutingRulesEditorProps) {
   const { t } = useTranslation();
+  const [activeId, setActiveId] = useState<string | null>(null);
 
   const rules: PipelineRoutingRule[] =
     form.watch('pipeline_routing_rules') || [];
@@ -373,7 +405,12 @@ export default function RoutingRulesEditor({
     }),
   );
 
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
+    setActiveId(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
@@ -384,6 +421,9 @@ export default function RoutingRulesEditor({
     idsRef.current = arrayMove(idsRef.current, oldIndex, newIndex);
     updateRules(arrayMove(rules, oldIndex, newIndex));
   };
+
+  const activeIndex = activeId ? sortableIds.indexOf(activeId) : -1;
+  const activeRule = activeIndex >= 0 ? rules[activeIndex] : null;
 
   return (
     <div className="mt-6">
@@ -403,6 +443,7 @@ export default function RoutingRulesEditor({
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
         <SortableContext
@@ -421,6 +462,18 @@ export default function RoutingRulesEditor({
             />
           ))}
         </SortableContext>
+        <DragOverlay dropAnimation={null}>
+          {activeRule ? (
+            <RuleRowContent
+              rule={activeRule}
+              index={activeIndex}
+              pipelineNameList={pipelineNameList}
+              updateRule={updateRule}
+              removeRule={removeRule}
+              isOverlay
+            />
+          ) : null}
+        </DragOverlay>
       </DndContext>
     </div>
   );

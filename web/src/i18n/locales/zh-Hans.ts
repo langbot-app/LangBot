@@ -373,6 +373,9 @@ const zhHans = {
       refresh: '刷新',
       active: '活跃',
       inactive: '不活跃',
+      discarded: '已丢弃',
+      userMessage: '用户',
+      botMessage: '助手',
     },
   },
   plugins: {

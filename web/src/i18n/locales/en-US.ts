@@ -388,6 +388,9 @@ const enUS = {
       refresh: 'Refresh',
       active: 'Active',
       inactive: 'Inactive',
+      discarded: 'Discarded',
+      userMessage: 'User',
+      botMessage: 'Assistant',
     },
   },
   plugins: {

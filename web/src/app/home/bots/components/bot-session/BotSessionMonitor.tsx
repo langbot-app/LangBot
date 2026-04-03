@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { Copy, Check } from 'lucide-react';
+import { Ban, Copy, Check, Workflow, Play } from 'lucide-react';
 import {
   MessageChainComponent,
   Plain,
@@ -19,6 +19,7 @@ import {
   Quote,
   Voice,
 } from '@/app/infra/entities/message';
+import { PIPELINE_DISCARD } from '@/app/home/bots/components/bot-form/RoutingRulesEditor';
 
 interface SessionInfo {
   session_id: string;
@@ -483,6 +484,9 @@ const BotSessionMonitor = forwardRef<
                 ) : (
                   messages.map((msg) => {
                     const isUser = isUserMessage(msg);
+                    const isDiscarded =
+                      msg.status === 'discarded' ||
+                      msg.pipeline_id === PIPELINE_DISCARD;
                     return (
                       <div
                         key={msg.id}
@@ -498,10 +502,11 @@ const BotSessionMonitor = forwardRef<
                               ? 'bg-primary/10 rounded-br-sm'
                               : 'bg-muted rounded-bl-sm',
                             msg.status === 'error' && 'ring-1 ring-red-400/50',
+                            isDiscarded && 'opacity-60',
                           )}
                         >
                           {renderMessageContent(msg)}
-                          {/* Role label + timestamp */}
+                          {/* Role label + pipeline + timestamp */}
                           <div
                             className={cn(
                               'text-[11px] mt-1.5 flex items-center gap-1.5 text-muted-foreground',
@@ -519,11 +524,25 @@ const BotSessionMonitor = forwardRef<
                             <span className="tabular-nums">
                               {formatTime(msg.timestamp)}
                             </span>
+                            {isDiscarded ? (
+                              <span className="inline-flex items-center gap-0.5 text-destructive">
+                                <Ban className="w-3 h-3" />
+                                {t('bots.sessionMonitor.discarded', {
+                                  defaultValue: 'Discarded',
+                                })}
+                              </span>
+                            ) : msg.pipeline_name ? (
+                              <span className="inline-flex items-center gap-0.5 opacity-70">
+                                <Workflow className="w-3 h-3" />
+                                {msg.pipeline_name}
+                              </span>
+                            ) : null}
                             {msg.status === 'error' && (
                               <span className="text-red-500">error</span>
                             )}
                             {msg.runner_name && (
-                              <span className="opacity-70">
+                              <span className="inline-flex items-center gap-0.5 opacity-70">
+                                <Play className="w-3 h-3" />
                                 {msg.runner_name}
                               </span>
                             )}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import traceback
 import sqlalchemy
@@ -133,6 +134,46 @@ class RuntimeBot:
 
         return self.bot_entity.use_pipeline_uuid, False
 
+    async def _record_discarded_message(
+        self,
+        launcher_type: str,
+        launcher_id: str | int,
+        sender_id: str | int,
+        message_event: platform_events.MessageEvent,
+        message_chain: platform_message.MessageChain,
+    ) -> None:
+        """Record a discarded message in the monitoring system."""
+        try:
+            if hasattr(message_chain, 'model_dump'):
+                message_content = json.dumps(message_chain.model_dump(), ensure_ascii=False)
+            else:
+                message_content = str(message_chain)
+
+            sender_name = None
+            if hasattr(message_event, 'sender'):
+                if hasattr(message_event.sender, 'nickname'):
+                    sender_name = message_event.sender.nickname
+                elif hasattr(message_event.sender, 'member_name'):
+                    sender_name = message_event.sender.member_name
+
+            session_id = f'{launcher_type}_{launcher_id}'
+
+            await self.ap.monitoring_service.record_message(
+                bot_id=self.bot_entity.uuid,
+                bot_name=self.bot_entity.name or self.bot_entity.uuid,
+                pipeline_id=self.PIPELINE_DISCARD,
+                pipeline_name=self.PIPELINE_DISCARD,
+                message_content=message_content,
+                session_id=session_id,
+                status='discarded',
+                level='info',
+                platform=launcher_type,
+                user_id=str(sender_id),
+                user_name=sender_name,
+            )
+        except Exception as e:
+            await self.logger.error(f'Failed to record discarded message: {e}')
+
     async def initialize(self):
         async def on_friend_message(
             event: platform_events.FriendMessage,
@@ -172,6 +213,13 @@ class RuntimeBot:
 
                 if pipeline_uuid == self.PIPELINE_DISCARD:
                     await self.logger.info('Person message discarded by routing rule')
+                    await self._record_discarded_message(
+                        'person',
+                        launcher_id,
+                        event.sender.id,
+                        event,
+                        event.message_chain,
+                    )
                     return
 
                 await self.ap.msg_aggregator.add_message(
@@ -226,6 +274,13 @@ class RuntimeBot:
 
                 if pipeline_uuid == self.PIPELINE_DISCARD:
                     await self.logger.info('Group message discarded by routing rule')
+                    await self._record_discarded_message(
+                        'group',
+                        launcher_id,
+                        event.sender.id,
+                        event,
+                        event.message_chain,
+                    )
                     return
 
                 await self.ap.msg_aggregator.add_message(
