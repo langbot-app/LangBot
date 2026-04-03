@@ -2,7 +2,6 @@
 RuntimeBot.resolve_pipeline_uuid and _match_operator unit tests
 """
 
-import pytest
 from unittest.mock import Mock
 
 
@@ -257,3 +256,25 @@ class TestResolvePipelineUuid:
         uuid, routed = bot.resolve_pipeline_uuid('person', '123', 'hi')
         assert uuid == 'person-pipeline'
         assert routed is True
+
+    def test_discard_pipeline(self):
+        """When pipeline_uuid is __discard__, the message should be discarded."""
+        from langbot.pkg.platform.botmgr import RuntimeBot
+
+        rules = [
+            {
+                'type': 'message_content',
+                'operator': 'contains',
+                'value': 'spam',
+                'pipeline_uuid': RuntimeBot.PIPELINE_DISCARD,
+            }
+        ]
+        bot = self._make_bot('default-uuid', rules)
+
+        uuid, routed = bot.resolve_pipeline_uuid('person', '123', 'this is spam')
+        assert uuid == RuntimeBot.PIPELINE_DISCARD
+        assert routed is True
+
+        uuid, routed = bot.resolve_pipeline_uuid('person', '123', 'normal message')
+        assert uuid == 'default-uuid'
+        assert routed is False

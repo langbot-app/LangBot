@@ -337,6 +337,7 @@ const enUS = {
     ruleValueMessagePlaceholder: 'Message text',
     ruleValuePrefixPlaceholder: 'e.g. !draw',
     ruleValueRegexpPlaceholder: 'e.g. ^/help',
+    pipelineDiscard: 'Discard Message',
     sessionTypePerson: 'Private Chat',
     sessionTypeGroup: 'Group Chat',
     adapterConfigDescription: 'Configure the selected platform adapter',

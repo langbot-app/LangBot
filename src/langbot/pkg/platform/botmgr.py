@@ -73,6 +73,8 @@ class RuntimeBot:
                 return False
         return False
 
+    PIPELINE_DISCARD = '__discard__'
+
     def resolve_pipeline_uuid(
         self,
         launcher_type: str,
@@ -94,6 +96,9 @@ class RuntimeBot:
             Operators: eq (has), neq (doesn't have)
 
         Operators: eq, neq, contains, not_contains, starts_with, regex
+
+        When pipeline_uuid is ``__discard__``, the message should be
+        silently dropped by the caller.
 
         Returns:
             tuple: (pipeline_uuid, routed_by_rule) - routed_by_rule is True
@@ -124,7 +129,6 @@ class RuntimeBot:
                 if operator == 'eq' and has_element:
                     return target_uuid, True
                 elif operator == 'neq' and not has_element:
-                    return target_uuid, True
                     return target_uuid, True
 
         return self.bot_entity.use_pipeline_uuid, False
@@ -165,6 +169,10 @@ class RuntimeBot:
                 pipeline_uuid, routed_by_rule = self.resolve_pipeline_uuid(
                     'person', launcher_id, message_text, element_types
                 )
+
+                if pipeline_uuid == self.PIPELINE_DISCARD:
+                    await self.logger.info('Person message discarded by routing rule')
+                    return
 
                 await self.ap.msg_aggregator.add_message(
                     bot_uuid=self.bot_entity.uuid,
@@ -215,6 +223,10 @@ class RuntimeBot:
                 pipeline_uuid, routed_by_rule = self.resolve_pipeline_uuid(
                     'group', launcher_id, message_text, element_types
                 )
+
+                if pipeline_uuid == self.PIPELINE_DISCARD:
+                    await self.logger.info('Group message discarded by routing rule')
+                    return
 
                 await self.ap.msg_aggregator.add_message(
                     bot_uuid=self.bot_entity.uuid,

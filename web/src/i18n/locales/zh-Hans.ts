@@ -324,6 +324,7 @@ const zhHans = {
     ruleValueMessagePlaceholder: '消息内容',
     ruleValuePrefixPlaceholder: '如: !draw',
     ruleValueRegexpPlaceholder: '如: ^/help',
+    pipelineDiscard: '丢弃消息',
     sessionTypePerson: '私聊',
     sessionTypeGroup: '群聊',
     adapterConfigDescription: '配置所选平台适配器',

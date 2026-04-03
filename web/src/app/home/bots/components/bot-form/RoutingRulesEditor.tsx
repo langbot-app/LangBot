@@ -6,7 +6,7 @@ import {
   PipelineRoutingRule,
   RoutingRuleOperator,
 } from '@/app/infra/entities/api';
-import { Plus, Trash2 } from 'lucide-react';
+import { Ban, GripVertical, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FormLabel } from '@/components/ui/form';
@@ -14,9 +14,30 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { useRef, useMemo } from 'react';
+
+export const PIPELINE_DISCARD = '__discard__';
 
 interface PipelineOption {
   value: string;
@@ -71,6 +92,224 @@ function getValuePlaceholder(
   return t('bots.ruleValueMessagePlaceholder');
 }
 
+/* ── Sortable rule row ─────────────────────────────────────────────── */
+
+interface SortableRuleRowProps {
+  id: string;
+  rule: PipelineRoutingRule;
+  index: number;
+  pipelineNameList: PipelineOption[];
+  updateRule: (index: number, patch: Partial<PipelineRoutingRule>) => void;
+  removeRule: (index: number) => void;
+}
+
+function SortableRuleRow({
+  id,
+  rule,
+  index,
+  pipelineNameList,
+  updateRule,
+  removeRule,
+}: SortableRuleRowProps) {
+  const { t } = useTranslation();
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : undefined,
+  };
+
+  const operatorsForType =
+    OPERATORS_BY_TYPE[rule.type] || OPERATORS_BY_TYPE.message_content;
+
+  const isDiscard = rule.pipeline_uuid === PIPELINE_DISCARD;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-2 mt-2 p-3 border rounded-md bg-muted/30"
+    >
+      {/* Drag handle */}
+      <button
+        type="button"
+        className="cursor-grab active:cursor-grabbing shrink-0 text-muted-foreground hover:text-foreground touch-none"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+
+      {/* Field selector */}
+      <Select
+        value={rule.type}
+        onValueChange={(val) => {
+          updateRule(index, {
+            type: val as PipelineRoutingRule['type'],
+            operator: 'eq',
+            value: '',
+          });
+        }}
+      >
+        <SelectTrigger className="w-[130px]">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="launcher_type">
+            {t('bots.ruleTypeLauncherType')}
+          </SelectItem>
+          <SelectItem value="launcher_id">
+            {t('bots.ruleTypeLauncherId')}
+          </SelectItem>
+          <SelectItem value="message_content">
+            {t('bots.ruleTypeMessageContent')}
+          </SelectItem>
+          <SelectItem value="message_has_element">
+            {t('bots.ruleTypeMessageHasElement')}
+          </SelectItem>
+        </SelectContent>
+      </Select>
+
+      {/* Operator selector */}
+      <Select
+        value={rule.operator || 'eq'}
+        onValueChange={(val) => {
+          updateRule(index, { operator: val as RoutingRuleOperator });
+        }}
+      >
+        <SelectTrigger className="w-[120px]">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {operatorsForType.map((op) => (
+            <SelectItem key={op.value} value={op.value}>
+              {t(op.labelKey)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {/* Value input */}
+      {rule.type === 'launcher_type' ? (
+        <Select
+          value={rule.value}
+          onValueChange={(val) => updateRule(index, { value: val })}
+        >
+          <SelectTrigger className="w-[100px]">
+            <SelectValue placeholder={t('bots.ruleValuePlaceholder')} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="person">
+              {t('bots.sessionTypePerson')}
+            </SelectItem>
+            <SelectItem value="group">{t('bots.sessionTypeGroup')}</SelectItem>
+          </SelectContent>
+        </Select>
+      ) : rule.type === 'message_has_element' ? (
+        <Select
+          value={rule.value}
+          onValueChange={(val) => updateRule(index, { value: val })}
+        >
+          <SelectTrigger className="w-[120px]">
+            <SelectValue placeholder={t('bots.ruleValueElementPlaceholder')} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="Image">{t('bots.elementImage')}</SelectItem>
+            <SelectItem value="Voice">{t('bots.elementVoice')}</SelectItem>
+            <SelectItem value="File">{t('bots.elementFile')}</SelectItem>
+            <SelectItem value="Forward">{t('bots.elementForward')}</SelectItem>
+            <SelectItem value="Face">{t('bots.elementFace')}</SelectItem>
+            <SelectItem value="At">{t('bots.elementAt')}</SelectItem>
+            <SelectItem value="AtAll">{t('bots.elementAtAll')}</SelectItem>
+            <SelectItem value="Quote">{t('bots.elementQuote')}</SelectItem>
+          </SelectContent>
+        </Select>
+      ) : (
+        <Input
+          className="flex-1"
+          placeholder={getValuePlaceholder(t, rule)}
+          value={rule.value}
+          onChange={(e) => updateRule(index, { value: e.target.value })}
+        />
+      )}
+
+      <span className="text-sm text-muted-foreground shrink-0">→</span>
+
+      {/* Pipeline selector */}
+      <Select
+        value={rule.pipeline_uuid}
+        onValueChange={(val) => updateRule(index, { pipeline_uuid: val })}
+      >
+        <SelectTrigger className="w-[200px]">
+          {rule.pipeline_uuid ? (
+            isDiscard ? (
+              <div className="flex items-center gap-2 text-destructive">
+                <Ban className="h-3.5 w-3.5 shrink-0" />
+                <span>{t('bots.pipelineDiscard')}</span>
+              </div>
+            ) : (
+              (() => {
+                const p = pipelineNameList.find(
+                  (p) => p.value === rule.pipeline_uuid,
+                );
+                return (
+                  <div className="flex items-center gap-2">
+                    {p?.emoji && (
+                      <span className="text-sm shrink-0">{p.emoji}</span>
+                    )}
+                    <span>{p?.label ?? rule.pipeline_uuid}</span>
+                  </div>
+                );
+              })()
+            )
+          ) : (
+            <SelectValue placeholder={t('bots.selectPipeline')} />
+          )}
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={PIPELINE_DISCARD}>
+            <div className="flex items-center gap-2 text-destructive">
+              <Ban className="h-3.5 w-3.5 shrink-0" />
+              <span>{t('bots.pipelineDiscard')}</span>
+            </div>
+          </SelectItem>
+          <SelectSeparator />
+          {pipelineNameList.map((item) => (
+            <SelectItem key={item.value} value={item.value}>
+              <div className="flex items-center gap-2">
+                {item.emoji && (
+                  <span className="text-sm shrink-0">{item.emoji}</span>
+                )}
+                <span>{item.label}</span>
+              </div>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="shrink-0"
+        onClick={() => removeRule(index)}
+      >
+        <Trash2 className="h-4 w-4 text-destructive" />
+      </Button>
+    </div>
+  );
+}
+
+/* ── Main editor ───────────────────────────────────────────────────── */
+
 export default function RoutingRulesEditor({
   form,
   pipelineNameList,
@@ -79,6 +318,23 @@ export default function RoutingRulesEditor({
 
   const rules: PipelineRoutingRule[] =
     form.watch('pipeline_routing_rules') || [];
+
+  // Stable unique ids for sortable items.
+  // We keep a running counter so newly added rules always get fresh ids.
+  const nextId = useRef(0);
+  const idsRef = useRef<string[]>([]);
+
+  const sortableIds = useMemo(() => {
+    // Grow the id list to match rules length (newly added items get new ids).
+    while (idsRef.current.length < rules.length) {
+      idsRef.current.push(`rule-${nextId.current++}`);
+    }
+    // Shrink if rules were removed from the end.
+    if (idsRef.current.length > rules.length) {
+      idsRef.current = idsRef.current.slice(0, rules.length);
+    }
+    return idsRef.current;
+  }, [rules.length]);
 
   const updateRules = (newRules: PipelineRoutingRule[]) => {
     form.setValue('pipeline_routing_rules', newRules, { shouldDirty: true });
@@ -105,7 +361,28 @@ export default function RoutingRulesEditor({
   const removeRule = (index: number) => {
     const updated = [...rules];
     updated.splice(index, 1);
+    // Also remove the corresponding sortable id so indices stay in sync.
+    idsRef.current.splice(index, 1);
     updateRules(updated);
+  };
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = sortableIds.indexOf(active.id as string);
+    const newIndex = sortableIds.indexOf(over.id as string);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    idsRef.current = arrayMove(idsRef.current, oldIndex, newIndex);
+    updateRules(arrayMove(rules, oldIndex, newIndex));
   };
 
   return (
@@ -123,174 +400,28 @@ export default function RoutingRulesEditor({
         </Button>
       </div>
 
-      {rules.map((rule, index) => {
-        const operatorsForType =
-          OPERATORS_BY_TYPE[rule.type] || OPERATORS_BY_TYPE.message_content;
-
-        return (
-          <div
-            key={index}
-            className="flex items-center gap-2 mt-2 p-3 border rounded-md bg-muted/30"
-          >
-            {/* Field selector */}
-            <Select
-              value={rule.type}
-              onValueChange={(val) => {
-                updateRule(index, {
-                  type: val as PipelineRoutingRule['type'],
-                  operator: 'eq',
-                  value: '',
-                });
-              }}
-            >
-              <SelectTrigger className="w-[130px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="launcher_type">
-                  {t('bots.ruleTypeLauncherType')}
-                </SelectItem>
-                <SelectItem value="launcher_id">
-                  {t('bots.ruleTypeLauncherId')}
-                </SelectItem>
-                <SelectItem value="message_content">
-                  {t('bots.ruleTypeMessageContent')}
-                </SelectItem>
-                <SelectItem value="message_has_element">
-                  {t('bots.ruleTypeMessageHasElement')}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-
-            {/* Operator selector */}
-            <Select
-              value={rule.operator || 'eq'}
-              onValueChange={(val) => {
-                updateRule(index, { operator: val as RoutingRuleOperator });
-              }}
-            >
-              <SelectTrigger className="w-[120px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {operatorsForType.map((op) => (
-                  <SelectItem key={op.value} value={op.value}>
-                    {t(op.labelKey)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* Value input */}
-            {rule.type === 'launcher_type' ? (
-              <Select
-                value={rule.value}
-                onValueChange={(val) => updateRule(index, { value: val })}
-              >
-                <SelectTrigger className="w-[100px]">
-                  <SelectValue placeholder={t('bots.ruleValuePlaceholder')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="person">
-                    {t('bots.sessionTypePerson')}
-                  </SelectItem>
-                  <SelectItem value="group">
-                    {t('bots.sessionTypeGroup')}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            ) : rule.type === 'message_has_element' ? (
-              <Select
-                value={rule.value}
-                onValueChange={(val) => updateRule(index, { value: val })}
-              >
-                <SelectTrigger className="w-[120px]">
-                  <SelectValue
-                    placeholder={t('bots.ruleValueElementPlaceholder')}
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Image">
-                    {t('bots.elementImage')}
-                  </SelectItem>
-                  <SelectItem value="Voice">
-                    {t('bots.elementVoice')}
-                  </SelectItem>
-                  <SelectItem value="File">{t('bots.elementFile')}</SelectItem>
-                  <SelectItem value="Forward">
-                    {t('bots.elementForward')}
-                  </SelectItem>
-                  <SelectItem value="Face">{t('bots.elementFace')}</SelectItem>
-                  <SelectItem value="At">{t('bots.elementAt')}</SelectItem>
-                  <SelectItem value="AtAll">
-                    {t('bots.elementAtAll')}
-                  </SelectItem>
-                  <SelectItem value="Quote">
-                    {t('bots.elementQuote')}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            ) : (
-              <Input
-                className="flex-1"
-                placeholder={getValuePlaceholder(t, rule)}
-                value={rule.value}
-                onChange={(e) => updateRule(index, { value: e.target.value })}
-              />
-            )}
-
-            <span className="text-sm text-muted-foreground shrink-0">→</span>
-
-            {/* Pipeline selector */}
-            <Select
-              value={rule.pipeline_uuid}
-              onValueChange={(val) => updateRule(index, { pipeline_uuid: val })}
-            >
-              <SelectTrigger className="w-[200px]">
-                {rule.pipeline_uuid ? (
-                  (() => {
-                    const p = pipelineNameList.find(
-                      (p) => p.value === rule.pipeline_uuid,
-                    );
-                    return (
-                      <div className="flex items-center gap-2">
-                        {p?.emoji && (
-                          <span className="text-sm shrink-0">{p.emoji}</span>
-                        )}
-                        <span>{p?.label ?? rule.pipeline_uuid}</span>
-                      </div>
-                    );
-                  })()
-                ) : (
-                  <SelectValue placeholder={t('bots.selectPipeline')} />
-                )}
-              </SelectTrigger>
-              <SelectContent>
-                {pipelineNameList.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    <div className="flex items-center gap-2">
-                      {item.emoji && (
-                        <span className="text-sm shrink-0">{item.emoji}</span>
-                      )}
-                      <span>{item.label}</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="shrink-0"
-              onClick={() => removeRule(index)}
-            >
-              <Trash2 className="h-4 w-4 text-destructive" />
-            </Button>
-          </div>
-        );
-      })}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext
+          items={sortableIds}
+          strategy={verticalListSortingStrategy}
+        >
+          {rules.map((rule, index) => (
+            <SortableRuleRow
+              key={sortableIds[index]}
+              id={sortableIds[index]}
+              rule={rule}
+              index={index}
+              pipelineNameList={pipelineNameList}
+              updateRule={updateRule}
+              removeRule={removeRule}
+            />
+          ))}
+        </SortableContext>
+      </DndContext>
     </div>
   );
 }
