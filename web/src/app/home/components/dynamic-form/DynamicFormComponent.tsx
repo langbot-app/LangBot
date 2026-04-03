@@ -249,9 +249,6 @@ export default function DynamicFormComponent({
           case 'bot-selector':
             fieldSchema = z.string();
             break;
-          case 'tools-selector':
-            fieldSchema = z.array(z.string());
-            break;
           case 'model-fallback-selector':
             fieldSchema = z.object({
               primary: z.string(),
