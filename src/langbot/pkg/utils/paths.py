@@ -38,28 +38,31 @@ def get_frontend_path() -> str:
     """
     Get the path to the frontend build files.
 
-    Returns the path to web/out directory, handling both:
+    Returns the path to web/dist directory (Vite build output), handling both:
     - Development mode: running from source directory
     - Package mode: installed via pip/uvx
+    - Legacy mode: web/out (Next.js, for backward compatibility)
     """
-    # First, check if we're running from source directory
-    if _check_if_source_install() and os.path.exists('web/out'):
-        return 'web/out'
+    # Check both dist (Vite) and out (legacy Next.js) paths
+    for dirname in ('dist', 'out'):
+        web_dir = f'web/{dirname}'
 
-    # Second, check current directory for web/out (in case user is in source dir)
-    if os.path.exists('web/out'):
-        return 'web/out'
+        # First, check if we're running from source directory
+        if _check_if_source_install() and os.path.exists(web_dir):
+            return web_dir
 
-    # Third, find it relative to the package installation
-    # Get the directory where this file is located
-    # paths.py is in pkg/utils/, so parent.parent goes up to pkg/, then parent again goes up to the package root
-    pkg_dir = Path(__file__).parent.parent.parent
-    frontend_path = pkg_dir / 'web' / 'out'
-    if frontend_path.exists():
-        return str(frontend_path)
+        # Second, check current directory
+        if os.path.exists(web_dir):
+            return web_dir
+
+        # Third, find it relative to the package installation
+        pkg_dir = Path(__file__).parent.parent.parent
+        frontend_path = pkg_dir / 'web' / dirname
+        if frontend_path.exists():
+            return str(frontend_path)
 
     # Return the default path (will be checked by caller)
-    return 'web/out'
+    return 'web/dist'
 
 
 def get_resource_path(resource: str) -> str:

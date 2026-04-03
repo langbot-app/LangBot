@@ -4,7 +4,7 @@ WORKDIR /app
 
 COPY web ./web
 
-RUN cd web && npm install && npm run build
+RUN cd web && npm install && npx vite build
 
 FROM python:3.12.7-slim
 
@@ -12,7 +12,7 @@ WORKDIR /app
 
 COPY . .
 
-COPY --from=node /app/web/out ./web/out
+COPY --from=node /app/web/dist ./web/dist
 
 RUN apt update \
     && apt install gcc -y \
