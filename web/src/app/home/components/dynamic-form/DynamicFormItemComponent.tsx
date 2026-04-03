@@ -223,7 +223,9 @@ export default function DynamicFormItemComponent({
           setTools(resp.tools);
         })
         .catch((err) => {
-          toast.error(t('tools.getToolListError', 'Failed to get tools: ') + err.msg);
+          toast.error(
+            t('tools.getToolListError', 'Failed to get tools: ') + err.msg,
+          );
         });
     }
   }, [config.type]);
