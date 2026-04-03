@@ -146,14 +146,18 @@ const BotSessionMonitor = forwardRef<
   }, [selectedSessionId, loadMessages]);
 
   useEffect(() => {
-    const container = messagesContainerRef.current;
-    if (container) {
-      const viewport = container.querySelector(
-        '[data-radix-scroll-area-viewport]',
-      );
-      const scrollTarget = viewport || container;
-      scrollTarget.scrollTop = scrollTarget.scrollHeight;
-    }
+    if (messages.length === 0) return;
+    // Wait for DOM to render the new messages before scrolling
+    requestAnimationFrame(() => {
+      const container = messagesContainerRef.current;
+      if (container) {
+        const viewport = container.querySelector(
+          '[data-radix-scroll-area-viewport]',
+        );
+        const scrollTarget = viewport || container;
+        scrollTarget.scrollTop = scrollTarget.scrollHeight;
+      }
+    });
   }, [messages]);
 
   const parseMessageChain = (content: string): MessageChainComponent[] => {
