@@ -97,7 +97,7 @@
     "eslint-config-prettier": "^10.1.2",
     "eslint-plugin-prettier": "^5.2.6",
     "eslint-plugin-react": "^7.37.5",
-    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-hooks": "^5.2.0",
     "lint-staged": "^15.5.1",
     "prettier": "^3.5.3",
     "tw-animate-css": "^1.2.9",

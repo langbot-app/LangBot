@@ -31,7 +31,6 @@ enum PluginOperationType {
   UPDATE = 'UPDATE',
 }
 
-// eslint-disable-next-line react/display-name
 const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
   (props, ref) => {
     const { t } = useTranslation();

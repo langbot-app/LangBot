@@ -1,5 +1,4 @@
 import eslintPluginPrettierRecommended from 'eslint-plugin-prettier/recommended';
-import react from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 
@@ -8,7 +7,6 @@ const eslintConfig = [
   {
     files: ['**/*.{js,jsx,ts,tsx}'],
     plugins: {
-      react,
       'react-hooks': reactHooks,
     },
     rules: {
@@ -18,11 +16,6 @@ const eslintConfig = [
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
       '@typescript-eslint/no-explicit-any': 'off',
-    },
-    settings: {
-      react: {
-        version: 'detect',
-      },
     },
   },
   eslintPluginPrettierRecommended,
