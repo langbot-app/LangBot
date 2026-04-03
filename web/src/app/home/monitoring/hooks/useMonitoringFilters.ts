@@ -7,7 +7,7 @@ import { getPresetDateRange } from '../utils/dateUtils';
  * Custom hook for managing monitoring filters
  */
 export function useMonitoringFilters() {
-  const searchParams = useSearchParams();
+  const [searchParams] = useSearchParams();
 
   // Initialize filters from URL params
   const [selectedBots, setSelectedBots] = useState<string[]>(() => {

@@ -45,7 +45,7 @@ function MarketPageContent({
   installPlugin: (plugin: PluginV4) => void;
 }) {
   const { t } = useTranslation();
-  const searchParams = useSearchParams();
+  const [searchParams] = useSearchParams();
 
   const validCategories = [
     'Tool',

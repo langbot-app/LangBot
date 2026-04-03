@@ -153,7 +153,7 @@ export default function Login() {
               <LanguageSelector />
             </div>
             <img
-              src={langbotIcon.src}
+              src={langbotIcon}
               alt="LangBot"
               className="w-16 h-16 mb-4 mx-auto"
             />
@@ -204,7 +204,7 @@ export default function Login() {
             <LanguageSelector />
           </div>
           <img
-            src={langbotIcon.src}
+            src={langbotIcon}
             alt="LangBot"
             className="w-16 h-16 mb-4 mx-auto"
           />
@@ -312,7 +312,7 @@ export default function Login() {
                       <div className="flex justify-between">
                         <FormLabel>{t('common.password')}</FormLabel>
                         <Link
-                          href="/reset-password"
+                          to="/reset-password"
                           className="text-sm text-blue-500"
                         >
                           {t('common.forgotPassword')}

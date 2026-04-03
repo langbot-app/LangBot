@@ -4,7 +4,7 @@ import PipelineDetailContent from './PipelineDetailContent';
 
 export default function PipelineConfigPage() {
   const { t } = useTranslation();
-  const searchParams = useSearchParams();
+  const [searchParams] = useSearchParams();
   const detailId = searchParams.get('id');
 
   if (detailId) {

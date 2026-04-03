@@ -113,7 +113,7 @@ export default function Register() {
             <LanguageSelector />
           </div>
           <img
-            src={langbotIcon.src}
+            src={langbotIcon}
             alt="LangBot"
             className="w-16 h-16 mb-4 mx-auto"
           />

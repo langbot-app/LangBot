@@ -133,7 +133,7 @@ export default function ProviderCard({
               {isLangBotModels ? (
                 <div className="w-9 h-9 rounded-lg overflow-hidden flex-shrink-0">
                   <img
-                    src={langbotIcon.src}
+                    src={langbotIcon}
                     alt="LangBot"
                     className="w-full h-full object-cover"
                   />

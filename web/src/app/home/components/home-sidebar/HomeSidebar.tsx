@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { SidebarChildVO } from '@/app/home/components/home-sidebar/HomeSidebarChild';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { sidebarConfigList } from '@/app/home/components/home-sidebar/sidbarConfigList';
 import langbotIcon from '@/app/assets/langbot-logo.webp';
 import { systemInfo, httpClient } from '@/app/infra/http/HttpClient';
@@ -245,7 +245,7 @@ function NavItems({
   const navigate = useNavigate();
   const location = useLocation();
   const pathname = location.pathname;
-  const searchParams = useSearchParams();
+  const [searchParams] = useSearchParams();
   const sidebarData = useSidebarData();
   const { setPendingPluginInstallAction } = sidebarData;
   const { state: sidebarState, isMobile } = useSidebar();
@@ -1031,7 +1031,7 @@ export default function HomeSidebar({
   const navigate = useNavigate();
   const location = useLocation();
   const pathname = location.pathname;
-  const searchParams = useSearchParams();
+  const [searchParams] = useSearchParams();
   const { isMobile } = useSidebar();
 
   useEffect(() => {
@@ -1071,14 +1071,16 @@ export default function HomeSidebar({
     if (open) {
       const params = new URLSearchParams(searchParams.toString());
       params.set('action', 'showModelSettings');
-      navigate(`${pathname}?${params.toString()}`, { scroll: false });
+      navigate(`${pathname}?${params.toString()}`, {
+        preventScrollReset: true,
+      });
     } else {
       const params = new URLSearchParams(searchParams.toString());
       params.delete('action');
       const newUrl = params.toString()
         ? `${pathname}?${params.toString()}`
         : pathname;
-      navigate(newUrl, { scroll: false });
+      navigate(newUrl, { preventScrollReset: true });
     }
   }
 
@@ -1087,14 +1089,16 @@ export default function HomeSidebar({
     if (open) {
       const params = new URLSearchParams(searchParams.toString());
       params.set('action', 'showAccountSettings');
-      navigate(`${pathname}?${params.toString()}`, { scroll: false });
+      navigate(`${pathname}?${params.toString()}`, {
+        preventScrollReset: true,
+      });
     } else {
       const params = new URLSearchParams(searchParams.toString());
       params.delete('action');
       const newUrl = params.toString()
         ? `${pathname}?${params.toString()}`
         : pathname;
-      navigate(newUrl, { scroll: false });
+      navigate(newUrl, { preventScrollReset: true });
     }
   }
 
@@ -1226,7 +1230,7 @@ export default function HomeSidebar({
                 tooltip="LangBot"
               >
                 <img
-                  src={langbotIcon.src}
+                  src={langbotIcon}
                   alt="LangBot"
                   className="size-8 rounded-lg"
                 />

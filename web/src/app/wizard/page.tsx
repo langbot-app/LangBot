@@ -518,7 +518,7 @@ export default function WizardPage() {
     setIsSkipping(false);
     setShowSkipConfirm(false);
     navigate('/home');
-  }, [router, t]);
+  }, [navigate, t]);
 
   // ---- Render ----
 
@@ -1212,7 +1212,7 @@ function StepDone() {
     }
     setIsCompleting(false);
     navigate('/home/bots');
-  }, [router, t]);
+  }, [navigate, t]);
 
   return (
     <div className="relative flex flex-col items-center justify-center h-full min-h-[400px]">
@@ -1242,7 +1242,7 @@ function StepDone() {
         {t('wizard.done.backToWorkbench')}
       </Button>
 
-      <style jsx>{`
+      <style>{`
         @keyframes wizardConfetti {
           0% {
             transform: translateY(100vh) rotate(0deg);

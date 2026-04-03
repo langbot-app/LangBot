@@ -4,7 +4,7 @@ import MCPDetailContent from './MCPDetailContent';
 
 export default function MCPPage() {
   const { t } = useTranslation();
-  const searchParams = useSearchParams();
+  const [searchParams] = useSearchParams();
   const detailId = searchParams.get('id');
 
   if (detailId) {

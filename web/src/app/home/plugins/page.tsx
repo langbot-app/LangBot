@@ -44,7 +44,7 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -83,7 +83,7 @@ interface GithubAsset {
 }
 
 export default function PluginConfigPage() {
-  const searchParams = useSearchParams();
+  const [searchParams] = useSearchParams();
   const detailId = searchParams.get('id');
 
   // Show plugin detail view when ?id= query param is present

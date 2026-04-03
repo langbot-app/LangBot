@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, Suspense } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -22,7 +22,7 @@ import langbotIcon from '@/app/assets/langbot-logo.webp';
 
 function SpaceOAuthCallbackContent() {
   const navigate = useNavigate();
-  const searchParams = useSearchParams();
+  const [searchParams] = useSearchParams();
   const { t } = useTranslation();
 
   const [status, setStatus] = useState<
@@ -62,7 +62,7 @@ function SpaceOAuthCallbackContent() {
         }
       }
     },
-    [router, t],
+    [navigate, t],
   );
 
   const [bindState, setBindState] = useState<string | null>(null);
@@ -94,7 +94,7 @@ function SpaceOAuthCallbackContent() {
         setIsProcessing(false);
       }
     },
-    [router, t],
+    [navigate, t],
   );
 
   useEffect(() => {
@@ -152,7 +152,7 @@ function SpaceOAuthCallbackContent() {
       <Card className="w-[400px] shadow-lg dark:shadow-white/10">
         <CardHeader className="text-center">
           <img
-            src={langbotIcon.src}
+            src={langbotIcon}
             alt="LangBot"
             className="w-16 h-16 mb-4 mx-auto"
           />

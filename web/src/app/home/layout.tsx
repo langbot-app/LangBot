@@ -19,7 +19,7 @@ import {
   initializeUserInfo,
   initializeSystemInfo,
 } from '@/app/infra/http';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Link } from 'react-router-dom';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { CircleHelp } from 'lucide-react';
@@ -80,7 +80,7 @@ export default function HomeLayout({
       }
     };
     checkWizard();
-  }, [router]);
+  }, [navigate]);
 
   return (
     <SidebarDataProvider>

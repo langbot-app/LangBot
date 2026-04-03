@@ -87,7 +87,7 @@ export default function ResetPassword() {
         <CardHeader>
           <div className="flex justify-between items-center mb-6">
             <Link
-              href="/login"
+              to="/login"
               className="flex items-center text-sm text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 transition-colors"
             >
               <ArrowLeft className="h-4 w-4 mr-1" />

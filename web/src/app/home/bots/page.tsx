@@ -4,7 +4,7 @@ import BotDetailContent from './BotDetailContent';
 
 export default function BotConfigPage() {
   const { t } = useTranslation();
-  const searchParams = useSearchParams();
+  const [searchParams] = useSearchParams();
   const detailId = searchParams.get('id');
 
   if (detailId) {

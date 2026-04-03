@@ -8,7 +8,7 @@ import KBDetailContent from './KBDetailContent';
 
 export default function KnowledgePage() {
   const { t } = useTranslation();
-  const searchParams = useSearchParams();
+  const [searchParams] = useSearchParams();
   const detailId = searchParams.get('id');
   const { refreshKnowledgeBases } = useSidebarData();
 

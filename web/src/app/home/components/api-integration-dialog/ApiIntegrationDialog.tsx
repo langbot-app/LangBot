@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Copy, Check, Trash2, Plus } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import {
   Dialog,
   DialogContent,
@@ -68,7 +68,7 @@ export default function ApiIntegrationDialog({
   const navigate = useNavigate();
   const location = useLocation();
   const pathname = location.pathname;
-  const searchParams = useSearchParams();
+  const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState('apikeys');
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [webhooks, setWebhooks] = useState<Webhook[]>([]);
@@ -93,7 +93,9 @@ export default function ApiIntegrationDialog({
     if (open) {
       const params = new URLSearchParams(searchParams.toString());
       params.set('action', 'showApiIntegrationSettings');
-      navigate(`${pathname}?${params.toString()}`, { scroll: false });
+      navigate(`${pathname}?${params.toString()}`, {
+        preventScrollReset: true,
+      });
     }
   }, [open]);
 
@@ -107,7 +109,7 @@ export default function ApiIntegrationDialog({
       const newUrl = params.toString()
         ? `${pathname}?${params.toString()}`
         : pathname;
-      navigate(newUrl, { scroll: false });
+      navigate(newUrl, { preventScrollReset: true });
     }
     onOpenChange(newOpen);
   };
