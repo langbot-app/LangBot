@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { Ban, Copy, Check, Workflow, Play } from 'lucide-react';
+import { Ban, Bot, Copy, Check, Workflow } from 'lucide-react';
 import {
   MessageChainComponent,
   Plain,
@@ -542,7 +542,7 @@ const BotSessionMonitor = forwardRef<
                             )}
                             {msg.runner_name && (
                               <span className="inline-flex items-center gap-0.5 opacity-70">
-                                <Play className="w-3 h-3" />
+                                <Bot className="w-3 h-3" />
                                 {msg.runner_name}
                               </span>
                             )}

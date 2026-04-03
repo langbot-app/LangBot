@@ -75,6 +75,7 @@ class RuntimeBot:
         return False
 
     PIPELINE_DISCARD = '__discard__'
+    PIPELINE_DISCARD_DISPLAY_NAME = 'Discarded'
 
     def resolve_pipeline_uuid(
         self,
@@ -162,7 +163,7 @@ class RuntimeBot:
                 bot_id=self.bot_entity.uuid,
                 bot_name=self.bot_entity.name or self.bot_entity.uuid,
                 pipeline_id=self.PIPELINE_DISCARD,
-                pipeline_name=self.PIPELINE_DISCARD,
+                pipeline_name=self.PIPELINE_DISCARD_DISPLAY_NAME,
                 message_content=message_content,
                 session_id=session_id,
                 status='discarded',
@@ -171,6 +172,24 @@ class RuntimeBot:
                 user_id=str(sender_id),
                 user_name=sender_name,
             )
+
+            # Ensure the session exists so the message appears in the session monitor
+            session_updated = await self.ap.monitoring_service.update_session_activity(
+                session_id,
+                pipeline_id=self.PIPELINE_DISCARD,
+                pipeline_name=self.PIPELINE_DISCARD_DISPLAY_NAME,
+            )
+            if not session_updated:
+                await self.ap.monitoring_service.record_session_start(
+                    session_id=session_id,
+                    bot_id=self.bot_entity.uuid,
+                    bot_name=self.bot_entity.name or self.bot_entity.uuid,
+                    pipeline_id=self.PIPELINE_DISCARD,
+                    pipeline_name=self.PIPELINE_DISCARD_DISPLAY_NAME,
+                    platform=launcher_type,
+                    user_id=str(sender_id),
+                    user_name=sender_name,
+                )
         except Exception as e:
             await self.logger.error(f'Failed to record discarded message: {e}')
 
