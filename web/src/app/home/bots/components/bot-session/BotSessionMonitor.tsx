@@ -392,7 +392,6 @@ const BotSessionMonitor = forwardRef<
                           <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
                         </span>
                       )}
-                      <span className="truncate">{session.pipeline_name}</span>
                     </div>
                   </button>
                 );
@@ -446,12 +445,6 @@ const BotSessionMonitor = forwardRef<
                           <Copy className="w-3 h-3" />
                         )}
                       </button>
-                    </>
-                  )}
-                  {selectedSession?.pipeline_name && (
-                    <>
-                      <span>·</span>
-                      <span>{selectedSession.pipeline_name}</span>
                     </>
                   )}
                   {selectedSession?.is_active && (

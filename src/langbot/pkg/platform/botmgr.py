@@ -137,7 +137,7 @@ class RuntimeBot:
 
     async def _record_discarded_message(
         self,
-        launcher_type: str,
+        launcher_type: provider_session.LauncherTypes,
         launcher_id: str | int,
         sender_id: str | int,
         message_event: platform_events.MessageEvent,
@@ -157,7 +157,9 @@ class RuntimeBot:
                 elif hasattr(message_event.sender, 'member_name'):
                     sender_name = message_event.sender.member_name
 
+            # Use the same session_id format as monitoring_helper.py
             session_id = f'{launcher_type}_{launcher_id}'
+            platform = launcher_type.value if hasattr(launcher_type, 'value') else str(launcher_type)
 
             await self.ap.monitoring_service.record_message(
                 bot_id=self.bot_entity.uuid,
@@ -168,25 +170,26 @@ class RuntimeBot:
                 session_id=session_id,
                 status='discarded',
                 level='info',
-                platform=launcher_type,
+                platform=platform,
                 user_id=str(sender_id),
                 user_name=sender_name,
             )
 
-            # Ensure the session exists so the message appears in the session monitor
+            # Ensure the session exists so the message appears in the session monitor.
+            # Don't overwrite pipeline info — a session may have messages from
+            # multiple pipelines; discarding shouldn't change the displayed pipeline.
             session_updated = await self.ap.monitoring_service.update_session_activity(
                 session_id,
-                pipeline_id=self.PIPELINE_DISCARD,
-                pipeline_name=self.PIPELINE_DISCARD_DISPLAY_NAME,
             )
             if not session_updated:
+                # No session yet (first message for this launcher was discarded).
                 await self.ap.monitoring_service.record_session_start(
                     session_id=session_id,
                     bot_id=self.bot_entity.uuid,
                     bot_name=self.bot_entity.name or self.bot_entity.uuid,
                     pipeline_id=self.PIPELINE_DISCARD,
                     pipeline_name=self.PIPELINE_DISCARD_DISPLAY_NAME,
-                    platform=launcher_type,
+                    platform=platform,
                     user_id=str(sender_id),
                     user_name=sender_name,
                 )
@@ -233,7 +236,7 @@ class RuntimeBot:
                 if pipeline_uuid == self.PIPELINE_DISCARD:
                     await self.logger.info('Person message discarded by routing rule')
                     await self._record_discarded_message(
-                        'person',
+                        provider_session.LauncherTypes.PERSON,
                         launcher_id,
                         event.sender.id,
                         event,
@@ -294,7 +297,7 @@ class RuntimeBot:
                 if pipeline_uuid == self.PIPELINE_DISCARD:
                     await self.logger.info('Group message discarded by routing rule')
                     await self._record_discarded_message(
-                        'group',
+                        provider_session.LauncherTypes.GROUP,
                         launcher_id,
                         event.sender.id,
                         event,
