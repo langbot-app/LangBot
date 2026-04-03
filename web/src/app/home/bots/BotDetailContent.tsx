@@ -174,9 +174,11 @@ export default function BotDetailContent({ id }: { id: string }) {
               </div>
             )}
           </div>
-          <Button type="submit" form="bot-form" disabled={!formDirty}>
-            {t('common.save')}
-          </Button>
+          {activeTab === 'config' && (
+            <Button type="submit" form="bot-form" disabled={!formDirty}>
+              {t('common.save')}
+            </Button>
+          )}
         </div>
 
         {/* Horizontal Tabs */}
