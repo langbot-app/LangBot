@@ -227,6 +227,19 @@ const esES = {
     providerCount: '{{count}} proveedores',
     // New keys for provider-based structure
     addModel: 'Añadir modelo',
+    manualAdd: 'Manual',
+    scanAdd: 'Escanear',
+    scanModels: 'Escanear modelos',
+    scanModelsHint:
+      'Lee los modelos disponibles del proveedor actual y luego elige cuáles agregar.',
+    scannedModels: 'Modelos detectados',
+    searchScannedModels: 'Buscar modelos detectados',
+    noScannedModels:
+      'Todavía no hay resultados. Pulsa el botón superior para escanear.',
+    noScannedModelsMatch: 'No hay modelos coincidentes',
+    addSelectedModels: 'Agregar seleccionados',
+    addSelectedModelsSuccess: 'Se agregaron {{count}} modelo(s)',
+    alreadyAdded: 'Ya agregado',
     addLLMModel: 'Añadir modelo LLM',
     addEmbeddingModel: 'Añadir modelo Embedding',
     provider: 'Proveedor',

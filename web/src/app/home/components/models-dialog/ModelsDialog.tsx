@@ -16,6 +16,8 @@ import { ProviderCard } from './components';
 import {
   ExtraArg,
   ModelType,
+  ScanModelsResult,
+  SelectedScannedModel,
   TestResult,
   ProviderModels,
   LANGBOT_MODELS_PROVIDER_REQUESTER,
@@ -262,6 +264,62 @@ export default function ModelsDialog({
     }
   }
 
+  async function handleScanModels(
+    providerUuid: string,
+    modelType: ModelType,
+  ): Promise<ScanModelsResult> {
+    try {
+      const resp = await httpClient.scanProviderModels(providerUuid, modelType);
+      return {
+        models: resp.models,
+        debug: resp.debug,
+      };
+    } catch (err) {
+      toast.error(
+        t('models.getModelListError') + (err as CustomApiError).msg,
+      );
+      return { models: [] };
+    }
+  }
+
+  async function handleAddScannedModels(
+    providerUuid: string,
+    modelType: ModelType,
+    models: SelectedScannedModel[],
+  ) {
+    if (models.length === 0) return;
+
+    setIsSubmitting(true);
+    try {
+      for (const item of models) {
+        if (modelType === 'llm') {
+          await httpClient.createProviderLLMModel({
+            name: item.model.name,
+            provider_uuid: providerUuid,
+            abilities: item.abilities,
+            extra_args: {},
+          } as never);
+        } else {
+          await httpClient.createProviderEmbeddingModel({
+            name: item.model.name,
+            provider_uuid: providerUuid,
+            extra_args: {},
+          } as never);
+        }
+      }
+      setAddModelPopoverOpen(null);
+      loadProviderModels(providerUuid, true);
+      loadProviders();
+      toast.success(
+        t('models.addSelectedModelsSuccess', { count: models.length }),
+      );
+    } catch (err) {
+      toast.error(t('models.createError') + (err as CustomApiError).msg);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   async function handleUpdateModel(
     providerUuid: string,
     modelId: string,
@@ -403,6 +461,12 @@ export default function ModelsDialog({
         onCloseAddModel={() => setAddModelPopoverOpen(null)}
         onAddModel={(modelType, name, abilities, extraArgs) =>
           handleAddModel(provider.uuid, modelType, name, abilities, extraArgs)
+        }
+        onScanModels={(modelType) =>
+          handleScanModels(provider.uuid, modelType)
+        }
+        onAddScannedModels={(modelType, models) =>
+          handleAddScannedModels(provider.uuid, modelType, models)
         }
         onOpenEditModel={(modelId) => setEditModelPopoverOpen(modelId)}
         onCloseEditModel={() => setEditModelPopoverOpen(null)}

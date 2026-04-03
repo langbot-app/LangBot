@@ -24,7 +24,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useTranslation } from 'react-i18next';
 import langbotIcon from '@/app/assets/langbot-logo.webp';
-import { ExtraArg, ModelType, TestResult, ProviderModels } from '../types';
+import {
+  ExtraArg,
+  ModelType,
+  ScanModelsResult,
+  SelectedScannedModel,
+  TestResult,
+  ProviderModels,
+} from '../types';
 import ModelItem from './ModelItem';
 import AddModelPopover from './AddModelPopover';
 
@@ -52,6 +59,11 @@ interface ProviderCardProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+  ) => Promise<void>;
+  onScanModels: (modelType: ModelType) => Promise<ScanModelsResult>;
+  onAddScannedModels: (
+    modelType: ModelType,
+    models: SelectedScannedModel[],
   ) => Promise<void>;
   onOpenEditModel: (modelId: string) => void;
   onCloseEditModel: () => void;
@@ -101,6 +113,8 @@ export default function ProviderCard({
   onOpenAddModel,
   onCloseAddModel,
   onAddModel,
+  onScanModels,
+  onAddScannedModels,
   onOpenEditModel,
   onCloseEditModel,
   onUpdateModel,
@@ -298,6 +312,8 @@ export default function ProviderCard({
                 onOpen={onOpenAddModel}
                 onClose={onCloseAddModel}
                 onAddModel={onAddModel}
+                onScanModels={onScanModels}
+                onAddScannedModels={onAddScannedModels}
                 onTestModel={onTestModel}
                 isSubmitting={isSubmitting}
                 isTesting={isTesting}

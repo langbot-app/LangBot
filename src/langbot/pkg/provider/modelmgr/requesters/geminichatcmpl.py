@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import typing
+import httpx
 
 from . import chatcmpl
 
@@ -19,6 +20,68 @@ class GeminiChatCompletions(chatcmpl.OpenAIChatCompletions):
         'base_url': 'https://generativelanguage.googleapis.com/v1beta/openai',
         'timeout': 120,
     }
+
+    async def scan_models(self, api_key: str | None = None) -> dict[str, typing.Any]:
+        models_url = 'https://generativelanguage.googleapis.com/v1beta/models'
+        params = {'key': api_key} if api_key else {}
+
+        all_models: list[dict[str, typing.Any]] = []
+        next_page_token = ''
+        last_payload: dict[str, typing.Any] = {}
+
+        async with httpx.AsyncClient(trust_env=True, timeout=self.requester_cfg['timeout']) as client:
+            while True:
+                request_params = dict(params)
+                if next_page_token:
+                    request_params['pageToken'] = next_page_token
+
+                response = await client.get(models_url, params=request_params)
+                response.raise_for_status()
+                payload = response.json()
+                last_payload = payload
+
+                for item in payload.get('models', []):
+                    model_name = item.get('name', '')
+                    model_id = model_name.replace('models/', '', 1)
+                    if not model_id:
+                        continue
+
+                    supported_methods = item.get('supportedGenerationMethods', []) or []
+                    if 'embedContent' in supported_methods and 'generateContent' not in supported_methods:
+                        model_type = 'embedding'
+                    else:
+                        model_type = 'llm'
+
+                    all_models.append(
+                        {
+                            'id': model_id,
+                            'name': model_id,
+                            'type': model_type,
+                            'abilities': self._infer_model_abilities(item, model_id),
+                            'display_name': item.get('displayName') or None,
+                            'description': item.get('description') or None,
+                            'context_length': item.get('inputTokenLimit'),
+                            'input_modalities': self._normalize_modalities(item.get('inputModalities')),
+                            'output_modalities': self._normalize_modalities(item.get('outputModalities')),
+                        }
+                    )
+
+                next_page_token = payload.get('nextPageToken', '')
+                if not next_page_token:
+                    break
+
+        all_models.sort(key=lambda item: (item['type'] != 'llm', item['name'].lower()))
+        return {
+            'models': all_models,
+            'debug': {
+                'request': {
+                    'method': 'GET',
+                    'url': models_url,
+                    'query': {'key': self._mask_api_key(api_key)} if api_key else {},
+                },
+                'response': last_payload,
+            },
+        }
 
     async def _closure_stream(
         self,

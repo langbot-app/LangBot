@@ -37,6 +37,7 @@ import {
   MCPServer,
   ApiRespModelProviders,
   ApiRespModelProvider,
+  ApiRespScannedProviderModels,
   ModelProvider,
   ApiRespKnowledgeEngines,
   ApiRespParsers,
@@ -104,6 +105,14 @@ export class BackendClient extends BaseHttpClient {
 
   public deleteModelProvider(uuid: string): Promise<object> {
     return this.delete(`/api/v1/provider/providers/${uuid}`);
+  }
+
+  public scanProviderModels(
+    uuid: string,
+    modelType?: 'llm' | 'embedding',
+  ): Promise<ApiRespScannedProviderModels> {
+    const params = modelType ? { type: modelType } : {};
+    return this.get(`/api/v1/provider/providers/${uuid}/scan-models`, params);
   }
 
   // ============ Provider Model LLM ============

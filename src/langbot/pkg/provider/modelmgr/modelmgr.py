@@ -227,7 +227,8 @@ class ModelManager:
             raise provider_errors.RequesterNotFoundError(provider_entity.requester)
 
         requester_inst = self.requester_dict[provider_entity.requester](
-            ap=self.ap, config={'base_url': provider_entity.base_url}
+            ap=self.ap,
+            config={'base_url': provider_entity.base_url},
         )
         await requester_inst.initialize()
 

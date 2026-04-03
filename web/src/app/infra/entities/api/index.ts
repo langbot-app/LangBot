@@ -61,6 +61,34 @@ export interface ApiRespModelProvider {
   provider: ModelProvider;
 }
 
+export interface ScannedProviderModel {
+  id: string;
+  name: string;
+  type: 'llm' | 'embedding';
+  abilities?: string[];
+  display_name?: string;
+  description?: string;
+  context_length?: number | null;
+  owned_by?: string;
+  input_modalities?: string[];
+  output_modalities?: string[];
+  already_added: boolean;
+}
+
+export interface ProviderScanDebugInfo {
+  request?: {
+    method?: string;
+    url?: string;
+    headers?: Record<string, string>;
+  };
+  response?: unknown;
+}
+
+export interface ApiRespScannedProviderModels {
+  models: ScannedProviderModel[];
+  debug?: ProviderScanDebugInfo;
+}
+
 export interface LLMModel {
   uuid: string;
   name: string;

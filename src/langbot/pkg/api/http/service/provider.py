@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+import traceback
 
 import sqlalchemy
 
@@ -164,3 +165,66 @@ class ModelProviderService:
             .values(api_keys=[api_key])
         )
         await self.ap.model_mgr.reload_provider('00000000-0000-0000-0000-000000000000')
+
+    async def scan_provider_models(self, provider_uuid: str, model_type: str | None = None) -> dict:
+        provider = await self.get_provider(provider_uuid)
+        if provider is None:
+            raise ValueError('provider not found')
+
+        runtime_provider = await self.ap.model_mgr.load_provider(provider)
+
+        try:
+            scan_result = await runtime_provider.requester.scan_models(
+                runtime_provider.token_mgr.get_token() if runtime_provider.token_mgr.tokens else None
+            )
+        except NotImplementedError:
+            raise ValueError('current provider does not support model scanning')
+        except Exception as exc:
+            self.ap.logger.warning(
+                f'Failed to scan models for provider {provider_uuid}: {exc}\n{traceback.format_exc()}'
+            )
+            raise ValueError(str(exc)) from exc
+
+        if isinstance(scan_result, dict):
+            scanned_models = scan_result.get('models', [])
+            debug_info = scan_result.get('debug')
+        else:
+            scanned_models = scan_result
+            debug_info = None
+
+        llm_models = await self.ap.llm_model_service.get_llm_models_by_provider(provider_uuid)
+        embedding_models = await self.ap.embedding_models_service.get_embedding_models_by_provider(provider_uuid)
+        existing_llm_names = {model['name'] for model in llm_models}
+        existing_embedding_names = {model['name'] for model in embedding_models}
+
+        filtered_models = []
+        for model in scanned_models:
+            scanned_type = model.get('type', 'llm')
+            if model_type and scanned_type != model_type:
+                continue
+
+            model_name = model.get('name') or model.get('id')
+            if not model_name:
+                continue
+
+            filtered_models.append(
+                {
+                    'id': model.get('id', model_name),
+                    'name': model_name,
+                    'type': scanned_type,
+                    'abilities': model.get('abilities', []),
+                    'display_name': model.get('display_name'),
+                    'description': model.get('description'),
+                    'context_length': model.get('context_length'),
+                    'owned_by': model.get('owned_by'),
+                    'input_modalities': model.get('input_modalities', []),
+                    'output_modalities': model.get('output_modalities', []),
+                    'already_added': (
+                        model_name in existing_embedding_names
+                        if scanned_type == 'embedding'
+                        else model_name in existing_llm_names
+                    ),
+                }
+            )
+
+        return {'models': filtered_models, 'debug': debug_info}
