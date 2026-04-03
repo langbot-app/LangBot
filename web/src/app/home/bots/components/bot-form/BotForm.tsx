@@ -68,7 +68,12 @@ const getFormSchema = (t: (key: string) => string) =>
     pipeline_routing_rules: z
       .array(
         z.object({
-          type: z.enum(['launcher_type', 'launcher_id', 'message_content']),
+          type: z.enum([
+            'launcher_type',
+            'launcher_id',
+            'message_content',
+            'message_has_element',
+          ]),
           operator: z.enum([
             'eq',
             'neq',

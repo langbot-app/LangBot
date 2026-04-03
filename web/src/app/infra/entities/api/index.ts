@@ -155,7 +155,11 @@ export type RoutingRuleOperator =
   | 'regex';
 
 export interface PipelineRoutingRule {
-  type: 'launcher_type' | 'launcher_id' | 'message_content';
+  type:
+    | 'launcher_type'
+    | 'launcher_id'
+    | 'message_content'
+    | 'message_has_element';
   operator: RoutingRuleOperator;
   value: string;
   pipeline_uuid: string;
