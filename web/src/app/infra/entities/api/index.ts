@@ -465,3 +465,18 @@ export interface MCPTool {
   description: string;
   parameters?: object;
 }
+
+export interface PluginTool {
+  name: string;
+  description: string;
+  human_desc: string;
+  parameters: object;
+}
+
+export interface ApiRespTools {
+  tools: PluginTool[];
+}
+
+export interface ApiRespToolDetail {
+  tool: PluginTool;
+}

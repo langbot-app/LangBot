@@ -41,6 +41,8 @@ import {
   ApiRespKnowledgeEngines,
   ApiRespParsers,
   RagMigrationStatusResp,
+  ApiRespTools,
+  ApiRespToolDetail,
 } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
@@ -647,6 +649,16 @@ export class BackendClient extends BaseHttpClient {
   // ============ MCP API ============
   public getMCPServers(): Promise<ApiRespMCPServers> {
     return this.get('/api/v1/mcp/servers');
+  }
+
+  // ========== Tools ==========
+
+  public getTools(): Promise<ApiRespTools> {
+    return this.get('/api/v1/tools');
+  }
+
+  public getToolDetail(toolName: string): Promise<ApiRespToolDetail> {
+    return this.get(`/api/v1/tools/${toolName}`);
   }
 
   public getMCPServer(serverName: string): Promise<ApiRespMCPServer> {
