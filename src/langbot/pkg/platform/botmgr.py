@@ -220,6 +220,47 @@ class RuntimeBot:
 
             # Only add to query pool if no webhook requested to skip pipeline
             if not skip_pipeline:
+                # Check if session is under human takeover
+                person_session_id = f'person_{event.sender.id}'
+                if (
+                    hasattr(self.ap, 'human_takeover_service')
+                    and self.ap.human_takeover_service
+                    and self.ap.human_takeover_service.is_taken_over(person_session_id)
+                ):
+                    # Session is taken over: record message to monitoring then stop
+                    await self.logger.info(
+                        f'Person message intercepted by human takeover for session {person_session_id}'
+                    )
+                    try:
+                        if hasattr(event.message_chain, 'model_dump'):
+                            msg_content = json.dumps(event.message_chain.model_dump(), ensure_ascii=False)
+                        else:
+                            msg_content = str(event.message_chain)
+
+                        sender_name = None
+                        if hasattr(event, 'sender') and hasattr(event.sender, 'nickname'):
+                            sender_name = event.sender.nickname
+
+                        await self.ap.monitoring_service.record_message(
+                            bot_id=self.bot_entity.uuid,
+                            bot_name=self.bot_entity.name or self.bot_entity.uuid,
+                            pipeline_id='__human_takeover__',
+                            pipeline_name='Human Takeover',
+                            message_content=msg_content,
+                            session_id=person_session_id,
+                            status='success',
+                            level='info',
+                            platform=adapter.__class__.__name__,
+                            user_id=str(event.sender.id),
+                            user_name=sender_name,
+                            role='user',
+                        )
+
+                        await self.ap.monitoring_service.update_session_activity(person_session_id)
+                    except Exception as e:
+                        await self.logger.error(f'Failed to record takeover message: {e}')
+                    return
+
                 launcher_id = event.sender.id
 
                 if hasattr(adapter, 'get_launcher_id'):
@@ -281,6 +322,50 @@ class RuntimeBot:
 
             # Only add to query pool if no webhook requested to skip pipeline
             if not skip_pipeline:
+                # Check if session is under human takeover
+                group_session_id = f'group_{event.group.id}'
+                if (
+                    hasattr(self.ap, 'human_takeover_service')
+                    and self.ap.human_takeover_service
+                    and self.ap.human_takeover_service.is_taken_over(group_session_id)
+                ):
+                    # Session is taken over: record message to monitoring then stop
+                    await self.logger.info(
+                        f'Group message intercepted by human takeover for session {group_session_id}'
+                    )
+                    try:
+                        if hasattr(event.message_chain, 'model_dump'):
+                            msg_content = json.dumps(event.message_chain.model_dump(), ensure_ascii=False)
+                        else:
+                            msg_content = str(event.message_chain)
+
+                        sender_name = None
+                        if hasattr(event, 'sender'):
+                            if hasattr(event.sender, 'member_name'):
+                                sender_name = event.sender.member_name
+                            elif hasattr(event.sender, 'nickname'):
+                                sender_name = event.sender.nickname
+
+                        await self.ap.monitoring_service.record_message(
+                            bot_id=self.bot_entity.uuid,
+                            bot_name=self.bot_entity.name or self.bot_entity.uuid,
+                            pipeline_id='__human_takeover__',
+                            pipeline_name='Human Takeover',
+                            message_content=msg_content,
+                            session_id=group_session_id,
+                            status='success',
+                            level='info',
+                            platform=adapter.__class__.__name__,
+                            user_id=str(event.sender.id),
+                            user_name=sender_name,
+                            role='user',
+                        )
+
+                        await self.ap.monitoring_service.update_session_activity(group_session_id)
+                    except Exception as e:
+                        await self.logger.error(f'Failed to record takeover message: {e}')
+                    return
+
                 launcher_id = event.group.id
 
                 if hasattr(adapter, 'get_launcher_id'):

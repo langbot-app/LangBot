@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { Ban, Bot, Copy, Check, Workflow } from 'lucide-react';
+import { Ban, Bot, Copy, Check, Workflow, UserCheck, Send } from 'lucide-react';
 import {
   MessageChainComponent,
   Plain,
@@ -77,6 +77,16 @@ const BotSessionMonitor = forwardRef<
   const [copiedUserId, setCopiedUserId] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
+  // Human takeover state
+  const [isTakenOver, setIsTakenOver] = useState(false);
+  const [takeoverLoading, setTakeoverLoading] = useState(false);
+  const [operatorMessage, setOperatorMessage] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
+  // Track which sessions are taken over for showing badges in the list
+  const [takenOverSessions, setTakenOverSessions] = useState<Set<string>>(
+    new Set(),
+  );
+
   const parseSessionType = (sessionId: string): string | null => {
     const idx = sessionId.indexOf('_');
     if (idx === -1) return null;
@@ -109,6 +119,24 @@ const BotSessionMonitor = forwardRef<
     }
   }, [botId]);
 
+  // Load active takeover sessions to know which ones show a badge
+  const loadTakeoverStatus = useCallback(async () => {
+    try {
+      const response = await httpClient.getHumanTakeoverSessions({
+        botUuid: botId,
+      });
+      const activeIds = new Set<string>();
+      for (const session of response.sessions ?? []) {
+        if (session.status === 'active') {
+          activeIds.add(session.session_id);
+        }
+      }
+      setTakenOverSessions(activeIds);
+    } catch {
+      // Silently ignore — takeover feature may not be available
+    }
+  }, [botId]);
+
   useImperativeHandle(
     ref,
     () => ({
@@ -133,17 +161,45 @@ const BotSessionMonitor = forwardRef<
     }
   }, []);
 
+  // Check takeover status for selected session
+  const checkTakeoverStatus = useCallback(
+    async (sessionId: string) => {
+      try {
+        const response =
+          await httpClient.getHumanTakeoverSessionDetail(sessionId);
+        const isActive =
+          response.found && response.session?.status === 'active';
+        setIsTakenOver(isActive);
+      } catch {
+        setIsTakenOver(false);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     loadSessions();
-  }, [loadSessions]);
+    loadTakeoverStatus();
+  }, [loadSessions, loadTakeoverStatus]);
 
   useEffect(() => {
     if (selectedSessionId) {
       loadMessages(selectedSessionId);
+      checkTakeoverStatus(selectedSessionId);
     } else {
       setMessages([]);
+      setIsTakenOver(false);
     }
-  }, [selectedSessionId, loadMessages]);
+  }, [selectedSessionId, loadMessages, checkTakeoverStatus]);
+
+  // Auto-refresh messages when session is taken over (polling)
+  useEffect(() => {
+    if (!selectedSessionId || !isTakenOver) return;
+    const interval = setInterval(() => {
+      loadMessages(selectedSessionId);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [selectedSessionId, isTakenOver, loadMessages]);
 
   useEffect(() => {
     if (messages.length === 0) return;
@@ -160,6 +216,76 @@ const BotSessionMonitor = forwardRef<
     });
   }, [messages]);
 
+  const handleTakeover = async () => {
+    if (!selectedSessionId || !selectedSession) return;
+    if (!confirm(t('bots.sessionMonitor.takeoverConfirm'))) return;
+
+    setTakeoverLoading(true);
+    try {
+      await httpClient.takeoverSession(selectedSessionId, {
+        bot_uuid: botId,
+        platform: selectedSession.platform ?? undefined,
+        user_id: selectedSession.user_id ?? undefined,
+        user_name: selectedSession.user_name ?? undefined,
+      });
+      setIsTakenOver(true);
+      setTakenOverSessions((prev) => new Set(prev).add(selectedSessionId));
+    } catch (error) {
+      console.error('Takeover failed:', error);
+      alert(t('bots.sessionMonitor.takeoverFailed'));
+    } finally {
+      setTakeoverLoading(false);
+    }
+  };
+
+  const handleRelease = async () => {
+    if (!selectedSessionId) return;
+    if (!confirm(t('bots.sessionMonitor.releaseConfirm'))) return;
+
+    setTakeoverLoading(true);
+    try {
+      await httpClient.releaseSession(selectedSessionId);
+      setIsTakenOver(false);
+      setTakenOverSessions((prev) => {
+        const next = new Set(prev);
+        next.delete(selectedSessionId);
+        return next;
+      });
+    } catch (error) {
+      console.error('Release failed:', error);
+      alert(t('bots.sessionMonitor.releaseFailed'));
+    } finally {
+      setTakeoverLoading(false);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!selectedSessionId || !operatorMessage.trim()) return;
+
+    setSendingMessage(true);
+    try {
+      await httpClient.sendTakeoverMessage(
+        selectedSessionId,
+        operatorMessage.trim(),
+      );
+      setOperatorMessage('');
+      // Reload messages to show the sent one
+      await loadMessages(selectedSessionId);
+    } catch (error) {
+      console.error('Send message failed:', error);
+      alert(t('bots.sessionMonitor.sendFailed'));
+    } finally {
+      setSendingMessage(false);
+    }
+  };
+
+  const handleMessageKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
   const parseMessageChain = (content: string): MessageChainComponent[] => {
     try {
       const parsed = JSON.parse(content);
@@ -173,9 +299,14 @@ const BotSessionMonitor = forwardRef<
   };
 
   const isUserMessage = (msg: SessionMessage): boolean => {
+    if (msg.role === 'operator') return false;
     if (msg.role === 'assistant') return false;
     if (msg.role === 'user') return true;
     return !msg.runner_name;
+  };
+
+  const isOperatorMessage = (msg: SessionMessage): boolean => {
+    return msg.role === 'operator';
   };
 
   const renderMessageComponent = (
@@ -243,7 +374,7 @@ const BotSessionMonitor = forwardRef<
               key={index}
               className="inline-flex items-center gap-1 text-muted-foreground text-xs"
             >
-              🎙 [Voice]
+              [Voice]
             </span>
           );
         }
@@ -277,7 +408,7 @@ const BotSessionMonitor = forwardRef<
         const file = component as MessageChainComponent & { name?: string };
         return (
           <span key={index} className="text-muted-foreground text-xs">
-            📎 {file.name || 'File'}
+            [{file.name || 'File'}]
           </span>
         );
       }
@@ -337,6 +468,22 @@ const BotSessionMonitor = forwardRef<
     (s) => s.session_id === selectedSessionId,
   );
 
+  const getMessageRoleLabel = (msg: SessionMessage): string => {
+    if (isOperatorMessage(msg)) {
+      return t('bots.sessionMonitor.operatorMessage', {
+        defaultValue: 'Operator',
+      });
+    }
+    if (isUserMessage(msg)) {
+      return t('bots.sessionMonitor.userMessage', {
+        defaultValue: 'User',
+      });
+    }
+    return t('bots.sessionMonitor.botMessage', {
+      defaultValue: 'Assistant',
+    });
+  };
+
   return (
     <div className="flex flex-col md:flex-row h-full min-h-0 rounded-lg border overflow-hidden">
       {/* Left Panel: Session List */}
@@ -355,6 +502,9 @@ const BotSessionMonitor = forwardRef<
             <div className="p-1.5">
               {sessions.map((session) => {
                 const isSelected = selectedSessionId === session.session_id;
+                const sessionTakenOver = takenOverSessions.has(
+                  session.session_id,
+                );
                 return (
                   <button
                     key={session.session_id}
@@ -391,7 +541,12 @@ const BotSessionMonitor = forwardRef<
                           {abbreviateId(session.user_id)}
                         </span>
                       )}
-                      {session.is_active && (
+                      {sessionTakenOver && (
+                        <span className="flex items-center gap-0.5 text-orange-600 dark:text-orange-400">
+                          <UserCheck className="w-3 h-3" />
+                        </span>
+                      )}
+                      {session.is_active && !sessionTakenOver && (
                         <span className="flex items-center gap-0.5 text-green-600 dark:text-green-400">
                           <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
                         </span>
@@ -415,50 +570,92 @@ const BotSessionMonitor = forwardRef<
           <>
             {/* Chat Header */}
             <div className="px-4 py-2.5 border-b shrink-0">
-              <div className="min-w-0">
-                <div className="text-sm font-medium truncate">
-                  {selectedSession?.user_name ||
-                    selectedSession?.user_id ||
-                    selectedSessionId.slice(0, 20)}
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium truncate">
+                    {selectedSession?.user_name ||
+                      selectedSession?.user_id ||
+                      selectedSessionId.slice(0, 20)}
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
+                    {parseSessionType(selectedSessionId) && (
+                      <span>{parseSessionType(selectedSessionId)}</span>
+                    )}
+                    {selectedSession?.platform && (
+                      <>
+                        {parseSessionType(selectedSessionId) && <span>·</span>}
+                        <span>{selectedSession.platform}</span>
+                      </>
+                    )}
+                    {selectedSession?.user_id && (
+                      <>
+                        <span>·</span>
+                        <span className="font-mono">
+                          {selectedSession.user_id}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => copyUserId(selectedSession.user_id!)}
+                          className="inline-flex items-center text-muted-foreground hover:text-foreground transition-colors"
+                          title={t('common.copy')}
+                        >
+                          {copiedUserId ? (
+                            <Check className="w-3 h-3 text-green-600" />
+                          ) : (
+                            <Copy className="w-3 h-3" />
+                          )}
+                        </button>
+                      </>
+                    )}
+                    {isTakenOver ? (
+                      <>
+                        <span>·</span>
+                        <span className="flex items-center gap-1 text-orange-600 dark:text-orange-400">
+                          <UserCheck className="w-3 h-3" />
+                          {t('bots.sessionMonitor.takenOver', {
+                            defaultValue: 'Taken Over',
+                          })}
+                        </span>
+                      </>
+                    ) : (
+                      selectedSession?.is_active && (
+                        <>
+                          <span>·</span>
+                          <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                            Active
+                          </span>
+                        </>
+                      )
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
-                  {parseSessionType(selectedSessionId) && (
-                    <span>{parseSessionType(selectedSessionId)}</span>
-                  )}
-                  {selectedSession?.platform && (
-                    <>
-                      {parseSessionType(selectedSessionId) && <span>·</span>}
-                      <span>{selectedSession.platform}</span>
-                    </>
-                  )}
-                  {selectedSession?.user_id && (
-                    <>
-                      <span>·</span>
-                      <span className="font-mono">
-                        {selectedSession.user_id}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => copyUserId(selectedSession.user_id!)}
-                        className="inline-flex items-center text-muted-foreground hover:text-foreground transition-colors"
-                        title={t('common.copy')}
-                      >
-                        {copiedUserId ? (
-                          <Check className="w-3 h-3 text-green-600" />
-                        ) : (
-                          <Copy className="w-3 h-3" />
-                        )}
-                      </button>
-                    </>
-                  )}
-                  {selectedSession?.is_active && (
-                    <>
-                      <span>·</span>
-                      <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
-                        Active
-                      </span>
-                    </>
+                {/* Takeover / Release button */}
+                <div className="flex-shrink-0">
+                  {isTakenOver ? (
+                    <button
+                      type="button"
+                      onClick={handleRelease}
+                      disabled={takeoverLoading}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:hover:bg-orange-900/50 transition-colors disabled:opacity-50"
+                    >
+                      <UserCheck className="w-3.5 h-3.5" />
+                      {t('bots.sessionMonitor.releaseBtn', {
+                        defaultValue: 'Release',
+                      })}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleTakeover}
+                      disabled={takeoverLoading}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors disabled:opacity-50"
+                    >
+                      <UserCheck className="w-3.5 h-3.5" />
+                      {t('bots.sessionMonitor.takeoverBtn', {
+                        defaultValue: 'Take Over',
+                      })}
+                    </button>
                   )}
                 </div>
               </div>
@@ -481,6 +678,7 @@ const BotSessionMonitor = forwardRef<
                 ) : (
                   messages.map((msg) => {
                     const isUser = isUserMessage(msg);
+                    const isOperator = isOperatorMessage(msg);
                     const isDiscarded =
                       msg.status === 'discarded' ||
                       msg.pipeline_id === PIPELINE_DISCARD;
@@ -497,7 +695,9 @@ const BotSessionMonitor = forwardRef<
                             'max-w-3xl px-4 py-2.5 rounded-2xl text-sm',
                             isUser
                               ? 'bg-primary/10 rounded-br-sm'
-                              : 'bg-muted rounded-bl-sm',
+                              : isOperator
+                                ? 'bg-orange-100/80 dark:bg-orange-900/30 rounded-bl-sm'
+                                : 'bg-muted rounded-bl-sm',
                             msg.status === 'error' && 'ring-1 ring-red-400/50',
                             isDiscarded && 'opacity-60',
                           )}
@@ -509,14 +709,13 @@ const BotSessionMonitor = forwardRef<
                               'text-[11px] mt-1.5 flex items-center gap-1.5 text-muted-foreground',
                             )}
                           >
-                            <span>
-                              {isUser
-                                ? t('bots.sessionMonitor.userMessage', {
-                                    defaultValue: 'User',
-                                  })
-                                : t('bots.sessionMonitor.botMessage', {
-                                    defaultValue: 'Assistant',
-                                  })}
+                            <span
+                              className={cn(
+                                isOperator &&
+                                  'text-orange-600 dark:text-orange-400 font-medium',
+                              )}
+                            >
+                              {getMessageRoleLabel(msg)}
                             </span>
                             <span className="tabular-nums">
                               {formatTime(msg.timestamp)}
@@ -528,12 +727,21 @@ const BotSessionMonitor = forwardRef<
                                   defaultValue: 'Discarded',
                                 })}
                               </span>
-                            ) : msg.pipeline_name ? (
+                            ) : msg.pipeline_name &&
+                              msg.pipeline_name !== 'Human Takeover' ? (
                               <span className="inline-flex items-center gap-0.5 opacity-70">
                                 <Workflow className="w-3 h-3" />
                                 {msg.pipeline_name}
                               </span>
                             ) : null}
+                            {isOperator && (
+                              <span className="inline-flex items-center gap-0.5 text-orange-600/70 dark:text-orange-400/70">
+                                <UserCheck className="w-3 h-3" />
+                                {t('bots.sessionMonitor.humanTakeover', {
+                                  defaultValue: 'Human Takeover',
+                                })}
+                              </span>
+                            )}
                             {msg.status === 'error' && (
                               <span className="text-red-500">error</span>
                             )}
@@ -551,6 +759,33 @@ const BotSessionMonitor = forwardRef<
                 )}
               </div>
             </ScrollArea>
+
+            {/* Operator Message Input (only shown when session is taken over) */}
+            {isTakenOver && (
+              <div className="px-4 py-3 border-t shrink-0">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={operatorMessage}
+                    onChange={(e) => setOperatorMessage(e.target.value)}
+                    onKeyDown={handleMessageKeyDown}
+                    placeholder={t('bots.sessionMonitor.sendMessage', {
+                      defaultValue: 'Send message as operator...',
+                    })}
+                    disabled={sendingMessage}
+                    className="flex-1 h-9 px-3 rounded-md border bg-background text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendMessage}
+                    disabled={sendingMessage || !operatorMessage.trim()}
+                    className="inline-flex items-center justify-center h-9 px-3 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                  >
+                    <Send className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

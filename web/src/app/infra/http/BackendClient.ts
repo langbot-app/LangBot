@@ -1036,6 +1036,92 @@ export class BackendClient extends BaseHttpClient {
     return this.get(`/api/v1/monitoring/overview?${queryParams.toString()}`);
   }
 
+  // ============ Human Takeover API ============
+
+  public getHumanTakeoverSessions(params: {
+    botUuid?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<{
+    sessions: Array<{
+      id: string;
+      session_id: string;
+      bot_uuid: string;
+      status: string;
+      taken_by: string | null;
+      taken_at: string;
+      released_at: string | null;
+      platform: string | null;
+      user_id: string | null;
+      user_name: string | null;
+    }>;
+    total: number;
+    limit: number;
+    offset: number;
+  }> {
+    const queryParams = new URLSearchParams();
+    if (params.botUuid) queryParams.append('botUuid', params.botUuid);
+    if (params.limit) queryParams.append('limit', params.limit.toString());
+    if (params.offset) queryParams.append('offset', params.offset.toString());
+    return this.get(
+      `/api/v1/human-takeover/sessions?${queryParams.toString()}`,
+    );
+  }
+
+  public getHumanTakeoverSessionDetail(sessionId: string): Promise<{
+    found: boolean;
+    session_id?: string;
+    session?: {
+      id: string;
+      session_id: string;
+      bot_uuid: string;
+      status: string;
+      taken_by: string | null;
+      taken_at: string;
+      released_at: string | null;
+      platform: string | null;
+      user_id: string | null;
+      user_name: string | null;
+    };
+  }> {
+    return this.get(`/api/v1/human-takeover/sessions/${sessionId}`);
+  }
+
+  public takeoverSession(
+    sessionId: string,
+    params: {
+      bot_uuid: string;
+      platform?: string;
+      user_id?: string;
+      user_name?: string;
+    },
+  ): Promise<object> {
+    return this.post(
+      `/api/v1/human-takeover/sessions/${sessionId}/takeover`,
+      params,
+    );
+  }
+
+  public releaseSession(sessionId: string): Promise<object> {
+    return this.post(
+      `/api/v1/human-takeover/sessions/${sessionId}/release`,
+      {},
+    );
+  }
+
+  public sendTakeoverMessage(
+    sessionId: string,
+    message: string,
+  ): Promise<{
+    session_id: string;
+    message_sent: boolean;
+  }> {
+    return this.post(
+      `/api/v1/human-takeover/sessions/${sessionId}/message`,
+      { message },
+    );
+  }
+
   // ============ Survey API ============
   public getSurveyPending(): Promise<{
     survey: {
