@@ -21,6 +21,7 @@ import PluginsPage from '@/app/home/plugins/page';
 import MarketPage from '@/app/home/market/page';
 import MCPPage from '@/app/home/mcp/page';
 import KnowledgePage from '@/app/home/knowledge/page';
+import PluginPagesPage from '@/app/home/plugin-pages/page';
 
 const Loading = () => <div>Loading...</div>;
 
@@ -137,6 +138,16 @@ export const router = createBrowserRouter([
       <Suspense fallback={<Loading />}>
         <HomeLayout>
           <KnowledgePage />
+        </HomeLayout>
+      </Suspense>
+    ),
+  },
+  {
+    path: '/home/plugin-pages',
+    element: (
+      <Suspense fallback={<Loading />}>
+        <HomeLayout>
+          <PluginPagesPage />
         </HomeLayout>
       </Suspense>
     ),

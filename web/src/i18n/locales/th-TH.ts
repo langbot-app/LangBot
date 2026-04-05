@@ -459,6 +459,7 @@ const thTH = {
       Command: 'คำสั่ง',
       KnowledgeEngine: 'เครื่องมือความรู้',
       Parser: 'ตัวแยกวิเคราะห์',
+      Page: 'หน้า',
     },
     uploadLocal: 'อัปโหลดจากเครื่อง',
     debugging: 'ดีบัก',

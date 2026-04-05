@@ -551,6 +551,27 @@ export class BackendClient extends BaseHttpClient {
     );
   }
 
+  public async pluginPageApi(
+    author: string,
+    name: string,
+    pageId: string,
+    endpoint: string,
+    method: string = 'POST',
+    body?: unknown,
+  ): Promise<unknown> {
+    const resp = await this.instance.request({
+      url: `/api/v1/plugins/${author}/${name}/page-api`,
+      method: method as 'GET' | 'POST' | 'PUT' | 'DELETE',
+      data: {
+        page_id: pageId,
+        endpoint,
+        method,
+        body,
+      },
+    });
+    return resp.data?.data;
+  }
+
   public getPluginIconURL(author: string, name: string): string {
     if (this.instance.defaults.baseURL === '/') {
       const url = window.location.href;

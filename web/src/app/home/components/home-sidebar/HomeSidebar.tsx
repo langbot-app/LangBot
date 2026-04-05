@@ -92,6 +92,7 @@ import {
 } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { useSidebarData, SidebarEntityItem } from './SidebarDataContext';
+import { LayoutDashboard } from 'lucide-react';
 
 // Compare two version strings, returns true if v1 > v2
 function compareVersions(v1: string, v2: string): boolean {
@@ -699,17 +700,32 @@ function NavItems({
           >
             <SidebarMenuItem>
               <SidebarMenuButton
+                asChild
                 isActive={false}
-                onClick={() => {
-                  if (isCollapseOnly) {
-                    onSectionToggle(config.id, !isOpen);
-                  } else {
-                    onChildClick(config);
-                  }
-                }}
                 tooltip={config.name}
                 className="group/category-header"
               >
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    if (isCollapseOnly) {
+                      onSectionToggle(config.id, !isOpen);
+                    } else {
+                      onChildClick(config);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      if (isCollapseOnly) {
+                        onSectionToggle(config.id, !isOpen);
+                      } else {
+                        onChildClick(config);
+                      }
+                    }
+                  }}
+                >
                 {config.icon}
                 <span>{config.name}</span>
                 <div className="ml-auto flex items-center gap-0.5 -mr-1">
@@ -781,6 +797,7 @@ function NavItems({
                     </button>
                   </CollapsibleTrigger>
                 </div>
+              </div>
               </SidebarMenuButton>
               <CollapsibleContent>
                 <SidebarMenuSub>{renderEntityList(false)}</SidebarMenuSub>
@@ -1020,6 +1037,46 @@ function PluginItemMenu({
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+// Plugin pages navigation section
+function PluginPagesNav() {
+  const { pluginPages } = useSidebarData();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const { t } = useTranslation();
+
+  if (pluginPages.length === 0) return null;
+
+  const pathname = location.pathname;
+  const currentId = pathname === '/home/plugin-pages' ? searchParams.get('id') : null;
+
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel>{t('sidebar.pluginPages')}</SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {pluginPages.map((page) => {
+            const isActive = currentId === page.id;
+            const route = `/home/plugin-pages?id=${encodeURIComponent(page.id)}`;
+            return (
+              <SidebarMenuItem key={page.id}>
+                <SidebarMenuButton
+                  isActive={isActive}
+                  tooltip={page.name}
+                  onClick={() => navigate(route)}
+                >
+                  <LayoutDashboard className="size-4 text-blue-500" />
+                  <span>{page.name}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            );
+          })}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
   );
 }
 
@@ -1285,6 +1342,7 @@ export default function HomeSidebar({
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+          <PluginPagesNav />
         </SidebarContent>
 
         {/* Footer */}

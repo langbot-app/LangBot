@@ -476,6 +476,7 @@ const esES = {
       Command: 'Comando',
       KnowledgeEngine: 'Motor de conocimiento',
       Parser: 'Analizador',
+      Page: 'Página',
     },
     uploadLocal: 'Subir local',
     debugging: 'Depuración',

@@ -469,6 +469,7 @@ const viVN = {
       Command: 'Lệnh',
       KnowledgeEngine: 'Công cụ tri thức',
       Parser: 'Trình phân tích',
+      Page: 'Trang',
     },
     uploadLocal: 'Tải lên cục bộ',
     debugging: 'Gỡ lỗi',

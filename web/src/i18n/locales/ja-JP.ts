@@ -466,6 +466,7 @@
       Command: 'コマンド',
       KnowledgeEngine: '知識エンジン',
       Parser: 'パーサー',
+      Page: 'ページ',
     },
     uploadLocal: 'ローカルアップロード',
     debugging: 'デバッグ中',

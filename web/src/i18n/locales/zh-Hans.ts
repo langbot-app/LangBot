@@ -5,6 +5,7 @@ const zhHans = {
     installedPlugins: '已安装插件',
     pluginMarket: '插件市场',
     mcpServers: 'MCP 服务器',
+    pluginPages: '扩展页',
     quickStart: '快速开始向导',
   },
   common: {
@@ -444,6 +445,7 @@ const zhHans = {
       Command: '命令',
       KnowledgeEngine: '知识引擎',
       Parser: '解析器',
+      Page: '扩展页',
     },
     uploadLocal: '本地上传',
     debugging: '调试中',
@@ -1208,6 +1210,10 @@ const zhHans = {
         '机器人已创建并连接到 AI 流水线。你现在可以在工作台中管理它。',
       backToWorkbench: '返回工作台',
     },
+  },
+  pluginPages: {
+    selectFromSidebar: '从侧边栏选择一个扩展页',
+    invalidPage: '无效的扩展页',
   },
 };
 

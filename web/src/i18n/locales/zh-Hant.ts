@@ -438,6 +438,7 @@ const zhHant = {
       Command: '命令',
       KnowledgeEngine: '知識引擎',
       Parser: '解析器',
+      Page: '擴展頁',
     },
     uploadLocal: '本地上傳',
     debugging: '調試中',
