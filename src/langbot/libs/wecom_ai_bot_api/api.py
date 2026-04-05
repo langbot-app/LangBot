@@ -912,9 +912,7 @@ class WecomBotClient:
                     f'反馈关联到会话: stream_id={session.stream_id}, msg_id={session.msg_id}, user_id={session.user_id}'
                 )
             else:
-                await self.logger.warning(
-                    f'未找到 feedback_id={feedback_id} 对应的会话，仍将记录反馈'
-                )
+                await self.logger.warning(f'未找到 feedback_id={feedback_id} 对应的会话，仍将记录反馈')
 
             # Dispatch feedback event regardless of session availability
             for handler in self._message_handlers.get('feedback', []):

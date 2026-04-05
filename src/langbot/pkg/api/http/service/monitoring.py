@@ -1232,17 +1232,13 @@ class MonitoringService:
         # Handle cancel feedback (type=3): delete existing record
         if feedback_type == 3:
             await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.delete(MonitoringFeedback).where(
-                    MonitoringFeedback.feedback_id == feedback_id
-                )
+                sqlalchemy.delete(MonitoringFeedback).where(MonitoringFeedback.feedback_id == feedback_id)
             )
             return None
 
         # Check if record with this feedback_id already exists
         existing_result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(MonitoringFeedback).where(
-                MonitoringFeedback.feedback_id == feedback_id
-            )
+            sqlalchemy.select(MonitoringFeedback).where(MonitoringFeedback.feedback_id == feedback_id)
         )
         existing_row = existing_result.first()
 
@@ -1290,9 +1286,7 @@ class MonitoringService:
                 'platform': platform,
             }
             try:
-                await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.insert(MonitoringFeedback).values(record_data)
-                )
+                await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(MonitoringFeedback).values(record_data))
                 return record_id
             except Exception:
                 # UNIQUE constraint conflict (concurrent feedback for same feedback_id)
