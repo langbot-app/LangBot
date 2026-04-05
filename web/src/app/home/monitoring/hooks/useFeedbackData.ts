@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { httpClient } from '@/app/infra/http';
 import { FeedbackRecord, FeedbackStats } from '../types/monitoring';
+import { parseUTCTimestamp } from '../utils/dateUtils';
 
 interface UseFeedbackDataParams {
   botIds?: string[];
@@ -142,7 +143,7 @@ export function useFeedbackData(params: UseFeedbackDataParams = {}) {
         const transformedFeedback: FeedbackRecord[] = result.feedback.map(
           (item) => ({
             id: item.id,
-            timestamp: new Date(item.timestamp),
+            timestamp: parseUTCTimestamp(item.timestamp),
             feedbackId: item.feedback_id,
             feedbackType: item.feedback_type === 1 ? 'like' : 'dislike',
             feedbackContent: item.feedback_content,

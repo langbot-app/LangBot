@@ -1224,30 +1224,89 @@ class MonitoringService:
         """
         import json
 
-        record_id = str(uuid.uuid4())
-        record_data = {
-            'id': record_id,
-            'timestamp': datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
-            'feedback_id': feedback_id,
-            'feedback_type': feedback_type,
-            'feedback_content': feedback_content,
-            'inaccurate_reasons': json.dumps(inaccurate_reasons, ensure_ascii=False) if inaccurate_reasons else None,
-            'bot_id': bot_id,
-            'bot_name': bot_name,
-            'pipeline_id': pipeline_id,
-            'pipeline_name': pipeline_name,
-            'session_id': session_id,
-            'message_id': message_id,
-            'stream_id': stream_id,
-            'user_id': user_id,
-            'platform': platform,
-        }
+        now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+        reasons_json = json.dumps(inaccurate_reasons, ensure_ascii=False) if inaccurate_reasons else None
 
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.insert(persistence_monitoring.MonitoringFeedback).values(record_data)
+        MonitoringFeedback = persistence_monitoring.MonitoringFeedback
+
+        # Handle cancel feedback (type=3): delete existing record
+        if feedback_type == 3:
+            await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.delete(MonitoringFeedback).where(
+                    MonitoringFeedback.feedback_id == feedback_id
+                )
+            )
+            return None
+
+        # Check if record with this feedback_id already exists
+        existing_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(MonitoringFeedback).where(
+                MonitoringFeedback.feedback_id == feedback_id
+            )
         )
+        existing_row = existing_result.first()
 
-        return record_id
+        if existing_row:
+            # UPDATE existing record
+            existing = existing_row[0] if isinstance(existing_row, tuple) else existing_row
+            await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.update(MonitoringFeedback)
+                .where(MonitoringFeedback.feedback_id == feedback_id)
+                .values(
+                    timestamp=now,
+                    feedback_type=feedback_type,
+                    feedback_content=feedback_content,
+                    inaccurate_reasons=reasons_json,
+                    bot_id=bot_id or existing.bot_id,
+                    bot_name=bot_name or existing.bot_name,
+                    pipeline_id=pipeline_id or existing.pipeline_id,
+                    pipeline_name=pipeline_name or existing.pipeline_name,
+                    session_id=session_id or existing.session_id,
+                    message_id=message_id or existing.message_id,
+                    stream_id=stream_id or existing.stream_id,
+                    user_id=user_id or existing.user_id,
+                    platform=platform or existing.platform,
+                )
+            )
+            return existing.id
+        else:
+            # INSERT new record with IntegrityError defense
+            record_id = str(uuid.uuid4())
+            record_data = {
+                'id': record_id,
+                'timestamp': now,
+                'feedback_id': feedback_id,
+                'feedback_type': feedback_type,
+                'feedback_content': feedback_content,
+                'inaccurate_reasons': reasons_json,
+                'bot_id': bot_id,
+                'bot_name': bot_name,
+                'pipeline_id': pipeline_id,
+                'pipeline_name': pipeline_name,
+                'session_id': session_id,
+                'message_id': message_id,
+                'stream_id': stream_id,
+                'user_id': user_id,
+                'platform': platform,
+            }
+            try:
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.insert(MonitoringFeedback).values(record_data)
+                )
+                return record_id
+            except Exception:
+                # UNIQUE constraint conflict (concurrent feedback for same feedback_id)
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.update(MonitoringFeedback)
+                    .where(MonitoringFeedback.feedback_id == feedback_id)
+                    .values(
+                        timestamp=now,
+                        feedback_type=feedback_type,
+                        feedback_content=feedback_content,
+                        inaccurate_reasons=reasons_json,
+                    )
+                )
+                return feedback_id
 
     async def get_feedback_stats(
         self,
