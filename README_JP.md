@@ -83,17 +83,40 @@ docker compose up -d
 
 | プラットフォーム | ステータス | 備考 |
 |----------|--------|-------|
-| Discord | ✅ |  |
-| Telegram | ✅ |  |
-| Slack | ✅ |  |
-| LINE | ✅ |  |
-| QQ | ✅ | 個人 & 公式API |
-| WeCom | ✅ | 企業WeChat、外部CS、AIボット |
-| WeChat | ✅ | 個人 & 公式アカウント |
-| Lark | ✅ |  |
-| DingTalk | ✅ |  |
-| KOOK | ✅ |  |
+| Discord | ✅ | 公式、Matrix・Satori にも対応 |
+| Telegram | ✅ | 公式、Matrix・Satori にも対応 |
+| Slack | ✅ | 公式、Matrix・Satori にも対応 |
+| LINE | ✅ | 公式、Matrix・Satori にも対応 |
+| QQ | ✅ | 個人・公式API（チャンネル・DM・グループ）、Matrix・Satori にも対応 |
+| WeCom | ✅ | 企業WeChat、外部CS、AIボット、Satori |
+| WeChat | ✅ | 個人・公式アカウント、Matrix、Satori |
+| Lark | ✅ | 公式、Satori にも対応 |
+| DingTalk | ✅ | 公式、Satori にも対応 |
+| KOOK | ✅ | 公式、Matrix・Satori にも対応 |
 | Satori | ✅ |  |
+| Signal | ✅ | Matrix のみ |
+| WhatsApp | ✅ | Matrix のみ |
+| Messenger | ✅ | Matrix のみ |
+| iMessage | ✅ | Matrix のみ |
+| Mattermost | ✅ | Matrix のみ |
+| Google Chat | ✅ | Matrix のみ |
+| Mumble | ✅ | Matrix のみ |
+| Instagram | ✅ | Matrix のみ |
+| LinkedIn | ✅ | Matrix のみ |
+| X | ✅ | Matrix のみ |
+| Skype | ✅ | Matrix のみ |
+| SMS | ✅ | Matrix のみ |
+| Email | ✅ | Matrix、Satori |
+| IRC | ✅ | Matrix のみ |
+| GroupMe | ✅ | Matrix のみ |
+| XMPP | ✅ | Matrix のみ |
+| Zulip | ✅ | Matrix のみ |
+| Stoat | ✅ | Matrix のみ |
+| Element | ✅ | Matrix のみ |
+| Nheko | ✅ | Matrix のみ |
+| FluffyChat | ✅ | Matrix のみ |
+| Cinny | ✅ | Matrix のみ |
+| Matrix | ✅ |  |
 
 ---
 

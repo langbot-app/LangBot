@@ -84,16 +84,40 @@ docker compose up -d
 
 | 平台 | 状态 | 备注 |
 |------|------|------|
-| QQ | ✅ | 个人号、官方机器人（频道、私聊、群聊） |
-| 微信 | ✅ | 个人微信、微信公众号 |
-| 企业微信 | ✅ | 应用消息、对外客服、智能机器人 |
-| 飞书 | ✅ |  |
-| 钉钉 | ✅ |  |
-| Discord | ✅ |  |
-| Telegram | ✅ |  |
-| Slack | ✅ |  |
-| LINE | ✅ |  |
-| KOOK | ✅ |  |
+| QQ | ✅ | 个人号、官方机器人（频道、私聊、群聊）、同时兼容 Matrix、Satori |
+| 微信 | ✅ | 个人微信、微信公众号、Matrix、Satori |
+| 企业微信 | ✅ | 应用消息、对外客服、智能机器人、Satori  |
+| 飞书 | ✅ | 官方、同时兼容 Satori  |
+| 钉钉 | ✅ | 官方、同时兼容 Satori |
+| Satori | ✅ |  |
+| Discord | ✅ | 官方、同时兼容 Matrix、Satori |
+| Telegram | ✅ | 官方、同时兼容 Matrix、Satori |
+| Slack | ✅ | 官方、同时兼容 Matrix、Satori |
+| LINE | ✅ | 官方、同时兼容 Matrix、Satori  |
+| KOOK | ✅ | 官方、同时兼容 Matrix、Satori |
+| Signal | ✅ | 只 Matrix |
+| WhatsApp | ✅ | 只 Matrix |
+| Messenger | ✅ | 只 Matrix |
+| iMessage | ✅ | 只 Matrix |
+| Mattermost | ✅ | 只 Matrix |
+| Google Chat | ✅ | 只 Matrix |
+| Mumble | ✅ | 只 Matrix |
+| Instagram | ✅ | 只 Matrix |
+| Linkdedln | ✅ | 只 Matrix |
+| X | ✅ | 只 Matrix |
+| Skype | ✅ | 只 Matrix |
+| SMS | ✅ | 只 Matrix |
+| Email | ✅ | 只 Matrix、Satori |
+| IRC | ✅ | 只 Matrix |
+| GroupMe | ✅ | 只 Matrix |
+| XMPP | ✅ | 只 Matrix |
+| Zulip | ✅ | 只 Matrix |
+| Stoat | ✅ | 只 Matrix |
+| Element | ✅ | 只 Matrix |
+| Nheko | ✅ | 只 Matrix |
+| FluffyChat | ✅ | 只 Matrix |
+| Cinny | ✅ | 只 Matrix |
+| Matrix | ✅ |  |
 
 ---
 

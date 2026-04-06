@@ -83,17 +83,40 @@ docker compose up -d
 
 | Платформа | Статус | Примечания |
 |-----------|--------|------------|
-| Discord | ✅ |  |
-| Telegram | ✅ |  |
-| Slack | ✅ |  |
-| LINE | ✅ |  |
-| QQ | ✅ | Личный и официальный API |
-| WeCom | ✅ | Корпоративный WeChat, внешний CS, AI-бот |
-| WeChat | ✅ | Личный и официальный аккаунт |
-| Lark | ✅ |  |
-| DingTalk | ✅ |  |
-| KOOK | ✅ |  |
+| Discord | ✅ | Официальный, совместим с Matrix, Satori |
+| Telegram | ✅ | Официальный, совместим с Matrix, Satori |
+| Slack | ✅ | Официальный, совместим с Matrix, Satori |
+| LINE | ✅ | Официальный, совместим с Matrix, Satori |
+| QQ | ✅ | Личный и официальный API (Канал, ЛС, Группа), совместим с Matrix, Satori |
+| WeCom | ✅ | Корпоративный WeChat, внешний CS, AI-бот, Satori |
+| WeChat | ✅ | Личный и официальный аккаунт, Matrix, Satori |
+| Lark | ✅ | Официальный, совместим с Satori |
+| DingTalk | ✅ | Официальный, совместим с Satori |
+| KOOK | ✅ | Официальный, совместим с Matrix, Satori |
 | Satori | ✅ |  |
+| Signal | ✅ | Только Matrix |
+| WhatsApp | ✅ | Только Matrix |
+| Messenger | ✅ | Только Matrix |
+| iMessage | ✅ | Только Matrix |
+| Mattermost | ✅ | Только Matrix |
+| Google Chat | ✅ | Только Matrix |
+| Mumble | ✅ | Только Matrix |
+| Instagram | ✅ | Только Matrix |
+| LinkedIn | ✅ | Только Matrix |
+| X | ✅ | Только Matrix |
+| Skype | ✅ | Только Matrix |
+| SMS | ✅ | Только Matrix |
+| Email | ✅ | Matrix, Satori |
+| IRC | ✅ | Только Matrix |
+| GroupMe | ✅ | Только Matrix |
+| XMPP | ✅ | Только Matrix |
+| Zulip | ✅ | Только Matrix |
+| Stoat | ✅ | Только Matrix |
+| Element | ✅ | Только Matrix |
+| Nheko | ✅ | Только Matrix |
+| FluffyChat | ✅ | Только Matrix |
+| Cinny | ✅ | Только Matrix |
+| Matrix | ✅ |  |
 
 ---
 
