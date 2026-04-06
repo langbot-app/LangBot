@@ -59,12 +59,14 @@ class MatrixMessageConverter(abstract_platform_adapter.AbstractMessageConverter)
                     file_name = getattr(component, 'name', None) or 'file'
                     resp = await client.upload(file_bytes, content_type='application/octet-stream', filename=file_name)
                     if isinstance(resp, nio.UploadResponse):
-                        components.append({
-                            'type': 'file',
-                            'mxc_url': resp.content_uri,
-                            'filename': file_name,
-                            'size': len(file_bytes),
-                        })
+                        components.append(
+                            {
+                                'type': 'file',
+                                'mxc_url': resp.content_uri,
+                                'filename': file_name,
+                                'size': len(file_bytes),
+                            }
+                        )
             elif isinstance(component, platform_message.Forward):
                 for node in component.node_list:
                     components.extend(await MatrixMessageConverter.yiri2target(node.message_chain, client))
@@ -88,9 +90,7 @@ class MatrixMessageConverter(abstract_platform_adapter.AbstractMessageConverter)
                 if isinstance(resp, nio.DownloadResponse):
                     b64 = base64.b64encode(resp.body).decode('utf-8')
                     content_type = resp.content_type or 'image/png'
-                    message_components.append(
-                        platform_message.Image(base64=f'data:{content_type};base64,{b64}')
-                    )
+                    message_components.append(platform_message.Image(base64=f'data:{content_type};base64,{b64}'))
             if event.body:
                 message_components.append(platform_message.Plain(text=event.body))
 
@@ -209,13 +209,15 @@ class MatrixAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 bridges_list = bridges_raw
             for b in bridges_list:
                 if isinstance(b, dict) and b.get('user_id', '').strip():
-                    self._bridges.append(BridgeState(
-                        user_id=b['user_id'].strip(),
-                        login_command=b.get('login_command', '').strip(),
-                        logout_command=b.get('logout_command', '').strip(),
-                        success_keyword=b.get('success_keyword', 'Successfully logged in').strip(),
-                        check_command=b.get('check_command', '').strip(),
-                    ))
+                    self._bridges.append(
+                        BridgeState(
+                            user_id=b['user_id'].strip(),
+                            login_command=b.get('login_command', '').strip(),
+                            logout_command=b.get('logout_command', '').strip(),
+                            success_keyword=b.get('success_keyword', 'Successfully logged in').strip(),
+                            check_command=b.get('check_command', '').strip(),
+                        )
+                    )
         # Backward compatibility: old single-bridge config
         if not self._bridges:
             old_user_id = config.get('bridge_user_id', '').strip()
@@ -224,13 +226,15 @@ class MatrixAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             old_check = config.get('bridge_check_command', '').strip()
             old_logout = config.get('bridge_logout_command', '').strip()
             if old_user_id:
-                self._bridges.append(BridgeState(
-                    user_id=old_user_id,
-                    login_command=old_command,
-                    logout_command=old_logout,
-                    success_keyword=old_keyword,
-                    check_command=old_check,
-                ))
+                self._bridges.append(
+                    BridgeState(
+                        user_id=old_user_id,
+                        login_command=old_command,
+                        logout_command=old_logout,
+                        success_keyword=old_keyword,
+                        check_command=old_check,
+                    )
+                )
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         components = await self.message_converter.yiri2target(message, self.client)
@@ -303,7 +307,9 @@ class MatrixAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         # Debug: log bridge parsing result
         bridges_raw = self.config.get('bridges', '')
         await self.logger.debug(f'bridges config raw: type={type(bridges_raw).__name__}, repr={repr(bridges_raw)}')
-        await self.logger.debug(f'parsed _bridges count: {len(self._bridges)}, ids: {[b.user_id for b in self._bridges]}')
+        await self.logger.debug(
+            f'parsed _bridges count: {len(self._bridges)}, ids: {[b.user_id for b in self._bridges]}'
+        )
 
         # Collect all bridge bot user IDs for filtering
         _bridge_user_ids = [b.user_id for b in self._bridges]
@@ -337,7 +343,9 @@ class MatrixAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             if event.sender in _bridge_user_id_set:
                 return
             try:
-                lb_event = await self.event_converter.target2yiri(event, room, self.client, self.bot_account_id, _bridge_user_ids)
+                lb_event = await self.event_converter.target2yiri(
+                    event, room, self.client, self.bot_account_id, _bridge_user_ids
+                )
                 if type(lb_event) in self.listeners:
                     result = self.listeners[type(lb_event)](lb_event, self)
                     if asyncio.iscoroutine(result):
@@ -356,7 +364,9 @@ class MatrixAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             if event.sender in _bridge_user_id_set:
                 return
             try:
-                lb_event = await self.event_converter.target2yiri(event, room, self.client, self.bot_account_id, _bridge_user_ids)
+                lb_event = await self.event_converter.target2yiri(
+                    event, room, self.client, self.bot_account_id, _bridge_user_ids
+                )
                 if type(lb_event) in self.listeners:
                     result = self.listeners[type(lb_event)](lb_event, self)
                     if asyncio.iscoroutine(result):
@@ -430,7 +440,9 @@ class MatrixAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                             images=[platform_message.Image(base64=f'data:{content_type};base64,{b64}')],
                         )
                 except Exception:
-                    await self.logger.error(f'[{_b.user_id}] Failed to download bridge QR image: {traceback.format_exc()}')
+                    await self.logger.error(
+                        f'[{_b.user_id}] Failed to download bridge QR image: {traceback.format_exc()}'
+                    )
 
             self.client.add_event_callback(on_bridge_image, nio.RoomMessageImage)
 
@@ -468,12 +480,8 @@ class MatrixAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     f'[{bridge.user_id}] Bridge login enabled (命令: "{bridge.login_command}", '
                     f'关键词: "{bridge.success_keyword}")'
                 )
-                bridge.login_task = asyncio.create_task(
-                    self._periodic_bridge_login(bridge)
-                )
-                bridge.check_task = asyncio.create_task(
-                    self._periodic_bridge_check(bridge)
-                )
+                bridge.login_task = asyncio.create_task(self._periodic_bridge_login(bridge))
+                bridge.check_task = asyncio.create_task(self._periodic_bridge_check(bridge))
             else:
                 await self.logger.debug(f'[{bridge.user_id}] Bridge login not configured (no login_command)')
 
@@ -542,9 +550,7 @@ class MatrixAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         """Cancel existing login task and start a new one."""
         if bridge.login_task and not bridge.login_task.done():
             bridge.login_task.cancel()
-        bridge.login_task = asyncio.create_task(
-            self._periodic_bridge_login(bridge)
-        )
+        bridge.login_task = asyncio.create_task(self._periodic_bridge_login(bridge))
 
     async def _periodic_bridge_check(self, bridge: BridgeState):
         """Periodically check a bridge's login status."""
@@ -582,7 +588,9 @@ class MatrixAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     if bridge.check_responded:
                         await self.logger.debug(f'[{bridge.user_id}] Bridge status check: OK')
                     else:
-                        await self.logger.info(f'[{bridge.user_id}] Bridge status check: 无响应, 可能已掉线, 尝试重新登录...')
+                        await self.logger.info(
+                            f'[{bridge.user_id}] Bridge status check: 无响应, 可能已掉线, 尝试重新登录...'
+                        )
                         bridge.logged_in = False
                         self._restart_bridge_login(bridge)
                 except Exception:
@@ -608,7 +616,7 @@ class MatrixAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 lines.append(f'[{bridge.user_id}] 跳过（未配置登录命令或无DM房间）')
                 continue
 
-            # Use configured logout command, fallback to deriving from login command
+                # Use configured logout command, fallback to deriving from login command
                 logout_cmd = bridge.logout_command or bridge.login_command.replace('login', 'logout')
             lines.append(f'[{bridge.user_id}] 发送 "{logout_cmd}"...')
 
