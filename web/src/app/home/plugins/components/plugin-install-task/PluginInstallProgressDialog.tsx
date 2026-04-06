@@ -405,7 +405,7 @@ export default function PluginInstallProgressDialog() {
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
-      <DialogContent className="w-[460px] max-h-[80vh] p-6 bg-white dark:bg-[#1a1a1e] overflow-y-auto">
+      <DialogContent className="w-[460px] max-h-[80vh] p-6 bg-white dark:bg-[#1a1a1e] overflow-y-auto" hideCloseButton>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3">
             <Download className="size-5" />
@@ -422,14 +422,16 @@ export default function PluginInstallProgressDialog() {
         {selectedTask && <TaskProgressContent task={selectedTask} />}
 
         <div className="flex justify-end gap-2 mt-2">
-          {selectedTask &&
-            (selectedTask.stage === InstallStage.DONE ||
-              selectedTask.stage === InstallStage.ERROR) && (
-              <Button variant="outline" size="sm" onClick={handleDismiss}>
-                {t('plugins.installProgress.dismiss')}
-              </Button>
-            )}
-          <Button variant="default" size="sm" onClick={handleClose}>
+          <Button
+            variant="default"
+            size="sm"
+            onClick={
+              selectedTask?.stage === InstallStage.DONE ||
+              selectedTask?.stage === InstallStage.ERROR
+                ? handleDismiss
+                : handleClose
+            }
+          >
             {selectedTask?.stage === InstallStage.DONE ||
             selectedTask?.stage === InstallStage.ERROR
               ? t('common.close')
