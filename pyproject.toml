@@ -67,6 +67,7 @@ dependencies = [
     "langbot-plugin==0.3.6",
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",
+    "matrix-nio>=0.25.2",
     "tboxsdk>=0.0.10",
     "boto3>=1.35.0",
     "pymilvus>=2.6.4",
