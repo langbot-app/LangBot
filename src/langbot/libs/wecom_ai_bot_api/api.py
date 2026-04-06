@@ -228,6 +228,9 @@ class StreamSessionManager:
             msg_id = session.msg_id
             if msg_id and self._msg_index.get(msg_id) == stream_id:
                 self._msg_index.pop(msg_id, None)
+            # Clean up feedback index for expired sessions
+            if session.feedback_id:
+                self._feedback_index.pop(session.feedback_id, None)
 
 
 def _decrypt_file(encrypted_data: bytes, aes_key_str: str) -> bytes:
@@ -903,35 +906,38 @@ class WecomBotClient:
             )
 
             session = self.stream_sessions.get_session_by_feedback_id(feedback_id)
+
             if session:
                 await self.logger.info(
                     f'反馈关联到会话: stream_id={session.stream_id}, msg_id={session.msg_id}, user_id={session.user_id}'
                 )
-                for handler in self._message_handlers.get('feedback', []):
-                    try:
-                        await handler(
-                            feedback_id=feedback_id,
-                            feedback_type=feedback_type,
-                            feedback_content=feedback_content,
-                            inaccurate_reasons=inaccurate_reasons,
-                            session=session,
-                        )
-                    except Exception:
-                        await self.logger.error(traceback.format_exc())
-
-                if self._feedback_callback:
-                    try:
-                        await self._feedback_callback(
-                            feedback_id=feedback_id,
-                            feedback_type=feedback_type,
-                            feedback_content=feedback_content,
-                            inaccurate_reasons=inaccurate_reasons,
-                            session=session,
-                        )
-                    except Exception:
-                        await self.logger.error(traceback.format_exc())
             else:
-                await self.logger.warning(f'未找到 feedback_id={feedback_id} 对应的会话')
+                await self.logger.warning(f'未找到 feedback_id={feedback_id} 对应的会话，仍将记录反馈')
+
+            # Dispatch feedback event regardless of session availability
+            for handler in self._message_handlers.get('feedback', []):
+                try:
+                    await handler(
+                        feedback_id=feedback_id,
+                        feedback_type=feedback_type,
+                        feedback_content=feedback_content,
+                        inaccurate_reasons=inaccurate_reasons,
+                        session=session,
+                    )
+                except Exception:
+                    await self.logger.error(traceback.format_exc())
+
+            if self._feedback_callback:
+                try:
+                    await self._feedback_callback(
+                        feedback_id=feedback_id,
+                        feedback_type=feedback_type,
+                        feedback_content=feedback_content,
+                        inaccurate_reasons=inaccurate_reasons,
+                        session=session,
+                    )
+                except Exception:
+                    await self.logger.error(traceback.format_exc())
 
         except Exception:
             await self.logger.error(traceback.format_exc())

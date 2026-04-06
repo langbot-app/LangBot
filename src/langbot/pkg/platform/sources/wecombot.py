@@ -328,6 +328,9 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             feedback_type = kwargs.get('feedback_type', 0)
             feedback_content = kwargs.get('feedback_content', '') or None
             inaccurate_reasons = kwargs.get('inaccurate_reasons', []) or None
+            # WeChat Work returns integer reason codes, but FeedbackEvent expects strings
+            if inaccurate_reasons:
+                inaccurate_reasons = [str(r) for r in inaccurate_reasons]
             session = kwargs.get('session')
 
             session_id = None
