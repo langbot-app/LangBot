@@ -114,7 +114,9 @@ class HTTPController:
                         for i in range(len(segments) - 1, 0, -1):
                             parent_path = '/'.join(segments[:i]) + '.html'
                             if os.path.exists(os.path.join(frontend_path, parent_path)):
-                                response = await quart.send_from_directory(frontend_path, parent_path, mimetype='text/html')
+                                response = await quart.send_from_directory(
+                                    frontend_path, parent_path, mimetype='text/html'
+                                )
                                 response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
                                 response.headers['Pragma'] = 'no-cache'
                                 response.headers['Expires'] = '0'
