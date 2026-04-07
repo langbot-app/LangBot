@@ -874,6 +874,7 @@ const enUS = {
       builtInParser: 'Provided by Knowledge engine',
       noParserAvailable:
         'No parser supports this file type. Please install a parser plugin that can handle this format.',
+      installParserHint: 'Browse parser plugins in Marketplace →',
       confirmUpload: 'Upload',
       cancelUpload: 'Cancel',
     },

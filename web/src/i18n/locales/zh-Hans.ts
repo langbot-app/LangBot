@@ -834,6 +834,7 @@ const zhHans = {
       builtInParser: '由知识引擎提供',
       noParserAvailable:
         '没有解析器支持此文件类型，请安装支持该格式的解析器插件。',
+      installParserHint: '前往插件市场安装解析器 →',
       confirmUpload: '上传',
       cancelUpload: '取消',
     },

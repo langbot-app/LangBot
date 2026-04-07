@@ -826,6 +826,7 @@ const zhHant = {
       builtInParser: '由知識引擎提供',
       noParserAvailable:
         '沒有解析器支援此檔案類型，請安裝支援該格式的解析器插件。',
+      installParserHint: '前往插件市場安裝解析器 →',
       confirmUpload: '上傳',
       cancelUpload: '取消',
     },
