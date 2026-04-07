@@ -131,8 +131,6 @@ class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverte
         # so that plugins like FileReader can process them the same way as direct messages
         quote_info = event.quote or {}
         if quote_info:
-            quote_type = quote_info.get('msgtype', '')
-
             # Process quote text content - add as Plain for context
             if quote_info.get('content'):
                 yiri_msg_list.append(platform_message.Plain(text=f'[引用消息] {quote_info.get("content")}'))
