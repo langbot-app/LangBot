@@ -1,5 +1,3 @@
-'use client';
-
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -37,6 +35,8 @@ interface PreviewSkill extends Skill {
 
 interface SkillGithubImportPanelProps {
   onImported: (skillNames: string[]) => void;
+  /** Which section to display. Defaults to 'all' (both GitHub and upload). */
+  mode?: 'all' | 'github' | 'upload';
 }
 
 function formatFileSize(bytes: number): string {
@@ -53,6 +53,7 @@ function previewPath(skill: PreviewSkill): string {
 
 export default function SkillGithubImportPanel({
   onImported,
+  mode = 'all',
 }: SkillGithubImportPanelProps) {
   const { t } = useTranslation();
 
@@ -411,227 +412,234 @@ export default function SkillGithubImportPanel({
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Github className="size-5" />
-            <span>{t('skills.importFromGithub')}</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {githubReleases.length === 0 && (
-            <div className="flex gap-2">
-              <Input
-                placeholder={t('skills.repoUrlPlaceholder')}
-                value={githubURL}
-                onChange={(e) => setGithubURL(e.target.value)}
-              />
+      {(mode === 'all' || mode === 'github') && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Github className="size-5" />
+              <span>{t('skills.importFromGithub')}</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {githubReleases.length === 0 && (
+              <div className="flex gap-2">
+                <Input
+                  placeholder={t('skills.repoUrlPlaceholder')}
+                  value={githubURL}
+                  onChange={(e) => setGithubURL(e.target.value)}
+                />
+                <Button
+                  type="button"
+                  onClick={fetchReleases}
+                  disabled={!githubURL.trim() || fetchingReleases}
+                >
+                  {fetchingReleases ? t('skills.loading') : t('common.confirm')}
+                </Button>
+              </div>
+            )}
+
+            {githubReleases.length > 0 && !selectedRelease && (
+              <div className="space-y-2">
+                {githubReleases.map((release) => (
+                  <button
+                    key={release.id}
+                    type="button"
+                    className="w-full rounded-lg border p-3 text-left hover:bg-accent/50 transition-colors"
+                    onClick={() => handleReleaseSelect(release)}
+                  >
+                    <div className="font-medium">
+                      {release.name || release.tag_name}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {t('skills.releaseTag', { tag: release.tag_name })}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {selectedRelease && previewSkills.length === 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium">
+                      {selectedRelease.name || selectedRelease.tag_name}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {t('skills.releaseTag', {
+                        tag: selectedRelease.tag_name,
+                      })}
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedRelease(null);
+                      setGithubAssets([]);
+                      setSelectedAsset(null);
+                      setPreviewSkills([]);
+                      setSelectedPreviewPaths([]);
+                      setActivePreviewPath('');
+                      setErrorMessage(null);
+                    }}
+                  >
+                    <ChevronLeft className="size-4 mr-1" />
+                    {t('skills.backToReleases')}
+                  </Button>
+                </div>
+
+                {fetchingAssets && (
+                  <div className="text-sm text-muted-foreground">
+                    {t('skills.loading')}
+                  </div>
+                )}
+
+                {!fetchingAssets && githubAssets.length > 0 && (
+                  <div className="space-y-2">
+                    {githubAssets.map((asset) => (
+                      <button
+                        key={asset.id}
+                        type="button"
+                        className="w-full rounded-lg border p-3 text-left hover:bg-accent/50 transition-colors"
+                        onClick={() => handleGithubPreview(asset)}
+                        disabled={previewingGithub}
+                      >
+                        <div className="font-medium">{asset.name}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {t('skills.assetSize', {
+                            size: formatFileSize(asset.size),
+                          })}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {previewSkills.length > 0 && selectedRelease && selectedAsset && (
+              <div className="space-y-4 rounded-lg border p-4">
+                <div className="flex items-center justify-between">
+                  <div className="font-medium">{t('skills.preview')}</div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setPreviewSkills([]);
+                      setSelectedPreviewPaths([]);
+                      setActivePreviewPath('');
+                      setSelectedAsset(null);
+                    }}
+                  >
+                    <ChevronLeft className="size-4 mr-1" />
+                    {t('skills.backToAssets')}
+                  </Button>
+                </div>
+
+                {renderCandidateSelector(
+                  previewSkills,
+                  selectedPreviewPaths,
+                  activePreviewPath,
+                  setSelectedPreviewPaths,
+                  setActivePreviewPath,
+                )}
+                {renderPreviewDetail(activePreviewSkill)}
+
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    onClick={handleGithubImport}
+                    disabled={
+                      installingGithub || selectedPreviewPaths.length === 0
+                    }
+                  >
+                    {installingGithub
+                      ? t('skills.installing')
+                      : t('skills.confirmInstall')}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {(mode === 'all' || mode === 'upload') && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Upload className="size-5" />
+              <span>{t('skills.uploadZip')}</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Input
+              type="file"
+              accept=".zip,application/zip"
+              onChange={(e) => {
+                const file = e.target.files?.[0] ?? null;
+                setUploadFile(file);
+                setUploadPreviewSkills([]);
+                setSelectedUploadPreviewPaths([]);
+                setActiveUploadPreviewPath('');
+                setErrorMessage(null);
+              }}
+            />
+            {uploadFile && (
+              <div className="text-sm text-muted-foreground">
+                {uploadFile.name}
+              </div>
+            )}
+
+            <div className="flex justify-end">
               <Button
                 type="button"
-                onClick={fetchReleases}
-                disabled={!githubURL.trim() || fetchingReleases}
+                onClick={handleUploadPreview}
+                disabled={!uploadFile || previewingUpload}
               >
-                {fetchingReleases ? t('skills.loading') : t('common.confirm')}
+                {previewingUpload ? t('skills.loading') : t('skills.preview')}
               </Button>
             </div>
-          )}
 
-          {githubReleases.length > 0 && !selectedRelease && (
-            <div className="space-y-2">
-              {githubReleases.map((release) => (
-                <button
-                  key={release.id}
-                  type="button"
-                  className="w-full rounded-lg border p-3 text-left hover:bg-accent/50 transition-colors"
-                  onClick={() => handleReleaseSelect(release)}
-                >
-                  <div className="font-medium">
-                    {release.name || release.tag_name}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    {t('skills.releaseTag', { tag: release.tag_name })}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {selectedRelease && previewSkills.length === 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-medium">
-                    {selectedRelease.name || selectedRelease.tag_name}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    {t('skills.releaseTag', { tag: selectedRelease.tag_name })}
-                  </div>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setSelectedRelease(null);
-                    setGithubAssets([]);
-                    setSelectedAsset(null);
-                    setPreviewSkills([]);
-                    setSelectedPreviewPaths([]);
-                    setActivePreviewPath('');
-                    setErrorMessage(null);
-                  }}
-                >
-                  <ChevronLeft className="size-4 mr-1" />
-                  {t('skills.backToReleases')}
-                </Button>
-              </div>
-
-              {fetchingAssets && (
-                <div className="text-sm text-muted-foreground">
-                  {t('skills.loading')}
-                </div>
-              )}
-
-              {!fetchingAssets && githubAssets.length > 0 && (
-                <div className="space-y-2">
-                  {githubAssets.map((asset) => (
-                    <button
-                      key={asset.id}
-                      type="button"
-                      className="w-full rounded-lg border p-3 text-left hover:bg-accent/50 transition-colors"
-                      onClick={() => handleGithubPreview(asset)}
-                      disabled={previewingGithub}
-                    >
-                      <div className="font-medium">{asset.name}</div>
-                      <div className="text-sm text-muted-foreground">
-                        {t('skills.assetSize', {
-                          size: formatFileSize(asset.size),
-                        })}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {previewSkills.length > 0 && selectedRelease && selectedAsset && (
-            <div className="space-y-4 rounded-lg border p-4">
-              <div className="flex items-center justify-between">
+            {uploadPreviewSkills.length > 0 && uploadFile && (
+              <div className="space-y-4 rounded-lg border p-4">
                 <div className="font-medium">{t('skills.preview')}</div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setPreviewSkills([]);
-                    setSelectedPreviewPaths([]);
-                    setActivePreviewPath('');
-                    setSelectedAsset(null);
-                  }}
-                >
-                  <ChevronLeft className="size-4 mr-1" />
-                  {t('skills.backToAssets')}
-                </Button>
+
+                {renderCandidateSelector(
+                  uploadPreviewSkills,
+                  selectedUploadPreviewPaths,
+                  activeUploadPreviewPath,
+                  setSelectedUploadPreviewPaths,
+                  setActiveUploadPreviewPath,
+                )}
+                {renderPreviewDetail(activeUploadPreviewSkill)}
+
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    onClick={handleUploadImport}
+                    disabled={
+                      installingUpload ||
+                      selectedUploadPreviewPaths.length === 0
+                    }
+                  >
+                    {installingUpload
+                      ? t('skills.installing')
+                      : t('skills.confirmInstall')}
+                  </Button>
+                </div>
               </div>
+            )}
 
-              {renderCandidateSelector(
-                previewSkills,
-                selectedPreviewPaths,
-                activePreviewPath,
-                setSelectedPreviewPaths,
-                setActivePreviewPath,
-              )}
-              {renderPreviewDetail(activePreviewSkill)}
-
-              <div className="flex justify-end">
-                <Button
-                  type="button"
-                  onClick={handleGithubImport}
-                  disabled={
-                    installingGithub || selectedPreviewPaths.length === 0
-                  }
-                >
-                  {installingGithub
-                    ? t('skills.installing')
-                    : t('skills.confirmInstall')}
-                </Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Upload className="size-5" />
-            <span>{t('skills.uploadZip')}</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Input
-            type="file"
-            accept=".zip,application/zip"
-            onChange={(e) => {
-              const file = e.target.files?.[0] ?? null;
-              setUploadFile(file);
-              setUploadPreviewSkills([]);
-              setSelectedUploadPreviewPaths([]);
-              setActiveUploadPreviewPath('');
-              setErrorMessage(null);
-            }}
-          />
-          {uploadFile && (
-            <div className="text-sm text-muted-foreground">
-              {uploadFile.name}
-            </div>
-          )}
-
-          <div className="flex justify-end">
-            <Button
-              type="button"
-              onClick={handleUploadPreview}
-              disabled={!uploadFile || previewingUpload}
-            >
-              {previewingUpload ? t('skills.loading') : t('skills.preview')}
-            </Button>
-          </div>
-
-          {uploadPreviewSkills.length > 0 && uploadFile && (
-            <div className="space-y-4 rounded-lg border p-4">
-              <div className="font-medium">{t('skills.preview')}</div>
-
-              {renderCandidateSelector(
-                uploadPreviewSkills,
-                selectedUploadPreviewPaths,
-                activeUploadPreviewPath,
-                setSelectedUploadPreviewPaths,
-                setActiveUploadPreviewPath,
-              )}
-              {renderPreviewDetail(activeUploadPreviewSkill)}
-
-              <div className="flex justify-end">
-                <Button
-                  type="button"
-                  onClick={handleUploadImport}
-                  disabled={
-                    installingUpload || selectedUploadPreviewPaths.length === 0
-                  }
-                >
-                  {installingUpload
-                    ? t('skills.installing')
-                    : t('skills.confirmInstall')}
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {errorMessage && (
-            <div className="text-sm text-destructive">{errorMessage}</div>
-          )}
-        </CardContent>
-      </Card>
+            {errorMessage && (
+              <div className="text-sm text-destructive">{errorMessage}</div>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

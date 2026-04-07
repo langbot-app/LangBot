@@ -1198,6 +1198,7 @@ const zhHans = {
     selectSkills: '选择技能',
     builtin: '内置',
     importFromGithub: '从 GitHub 导入',
+    createManually: '手动创建',
     uploadZip: '上传 ZIP 包',
     uploadZipOnly: '仅支持 .zip 技能包',
     installSuccess: '技能安装成功',
@@ -1286,6 +1287,14 @@ const zhHans = {
         '机器人已创建并连接到 AI 流水线。你现在可以在工作台中管理它。',
       backToWorkbench: '返回工作台',
     },
+  },
+  errorPage: {
+    unexpectedError: '出错了',
+    unexpectedErrorDescription: '发生了意外错误，请稍后重试。',
+    notFound: '页面未找到',
+    notFoundDescription: '你访问的页面不存在或已被移动。',
+    goBack: '返回上页',
+    backToHome: '返回首页',
   },
 };
 

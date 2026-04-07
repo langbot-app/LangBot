@@ -1255,6 +1255,7 @@ const enUS = {
     selectSkills: 'Select Skills',
     builtin: 'Built-in',
     importFromGithub: 'Import from GitHub',
+    createManually: 'Create Manually',
     uploadZip: 'Upload ZIP Package',
     uploadZipOnly: 'Only .zip skill packages are supported',
     installSuccess: 'Skill installed successfully',
@@ -1347,6 +1348,16 @@ const enUS = {
         'Your bot has been created and connected to the AI pipeline. You can now manage it from the workbench.',
       backToWorkbench: 'Back to Workbench',
     },
+  },
+  errorPage: {
+    unexpectedError: 'Something went wrong',
+    unexpectedErrorDescription:
+      'An unexpected error occurred. Please try again later.',
+    notFound: 'Page not found',
+    notFoundDescription:
+      'The page you are looking for does not exist or has been moved.',
+    goBack: 'Go Back',
+    backToHome: 'Back to Home',
   },
 };
 

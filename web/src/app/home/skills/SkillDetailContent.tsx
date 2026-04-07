@@ -1,7 +1,5 @@
-'use client';
-
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -22,11 +20,10 @@ import {
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import SkillForm from '@/app/home/skills/components/skill-form/SkillForm';
-import SkillGithubImportPanel from '@/app/home/skills/components/SkillGithubImportPanel';
 
 export default function SkillDetailContent({ id }: { id: string }) {
   const isCreateMode = id === 'new';
-  const router = useRouter();
+  const navigate = useNavigate();
   const { t } = useTranslation();
   const { refreshSkills, skills, setDetailEntityName } = useSidebarData();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -45,10 +42,10 @@ export default function SkillDetailContent({ id }: { id: string }) {
     void refreshSkills();
     const primarySkill = skillNames[0];
     if (primarySkill) {
-      router.push(`/home/skills?id=${encodeURIComponent(primarySkill)}`);
+      navigate(`/home/skills?id=${encodeURIComponent(primarySkill)}`);
       return;
     }
-    router.push('/home/skills');
+    navigate('/home/skills');
   }
 
   function handleSkillUpdated() {
@@ -61,7 +58,7 @@ export default function SkillDetailContent({ id }: { id: string }) {
       toast.success(t('skills.deleteSuccess'));
       setShowDeleteConfirm(false);
       void refreshSkills();
-      router.push('/home/skills');
+      navigate('/home/skills');
     } catch (error) {
       toast.error(t('skills.deleteError') + String(error));
     }
@@ -79,7 +76,6 @@ export default function SkillDetailContent({ id }: { id: string }) {
 
         <div className="flex-1 overflow-y-auto min-h-0">
           <div className="mx-auto max-w-3xl space-y-6 pb-8">
-            <SkillGithubImportPanel onImported={handleImportedSkills} />
             <SkillForm
               key="new-skill"
               initSkillName={undefined}

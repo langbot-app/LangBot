@@ -26,6 +26,7 @@ import {
   Store,
   Github,
   Zap,
+  FilePlus2,
 } from 'lucide-react';
 import { useTheme } from '@/components/providers/theme-provider';
 
@@ -253,7 +254,8 @@ function NavItems({
   const pathname = location.pathname;
   const [searchParams] = useSearchParams();
   const sidebarData = useSidebarData();
-  const { setPendingPluginInstallAction } = sidebarData;
+  const { setPendingPluginInstallAction, setPendingSkillInstallAction } =
+    sidebarData;
   const { state: sidebarState, isMobile } = useSidebar();
   const { t } = useTranslation();
   // Track which entity categories have their full list expanded
@@ -356,6 +358,7 @@ function NavItems({
         const canCreate = CREATABLE_CATEGORIES.includes(config.id);
         const isCollapseOnly = COLLAPSIBLE_ONLY_CATEGORIES.includes(config.id);
         const isPlugin = config.id === 'plugins';
+        const isSkill = config.id === 'skills';
         const isBot = config.id === 'bots';
         const isMCP = config.id === 'mcp';
         const isActive =
@@ -669,6 +672,61 @@ function NavItems({
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
+                      ) : isSkill ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="p-1 rounded-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+                            >
+                              <Plus className="size-3.5" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPendingSkillInstallAction('create');
+                                navigate('/home/skills');
+                                setPopoverOpen((prev) => ({
+                                  ...prev,
+                                  [config.id]: false,
+                                }));
+                              }}
+                            >
+                              <FilePlus2 className="size-4" />
+                              {t('skills.createManually')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPendingSkillInstallAction('upload');
+                                navigate('/home/skills');
+                                setPopoverOpen((prev) => ({
+                                  ...prev,
+                                  [config.id]: false,
+                                }));
+                              }}
+                            >
+                              <Upload className="size-4" />
+                              {t('skills.uploadZip')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPendingSkillInstallAction('github');
+                                navigate('/home/skills');
+                                setPopoverOpen((prev) => ({
+                                  ...prev,
+                                  [config.id]: false,
+                                }));
+                              }}
+                            >
+                              <Github className="size-4" />
+                              {t('skills.importFromGithub')}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       ) : (
                         <button
                           type="button"
@@ -762,6 +820,50 @@ function NavItems({
                           >
                             <Github className="size-4" />
                             {t('plugins.installFromGithub')}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    ) : isSkill ? (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground opacity-0 group-hover/category-header:opacity-100 transition-all"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Plus className="size-3.5" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPendingSkillInstallAction('create');
+                              navigate('/home/skills');
+                            }}
+                          >
+                            <FilePlus2 className="size-4" />
+                            {t('skills.createManually')}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPendingSkillInstallAction('upload');
+                              navigate('/home/skills');
+                            }}
+                          >
+                            <Upload className="size-4" />
+                            {t('skills.uploadZip')}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPendingSkillInstallAction('github');
+                              navigate('/home/skills');
+                            }}
+                          >
+                            <Github className="size-4" />
+                            {t('skills.importFromGithub')}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>

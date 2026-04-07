@@ -30,6 +30,7 @@ export interface SidebarEntityItem {
 
 // Install action types that can be triggered from sidebar
 export type PluginInstallAction = 'local' | 'github' | null;
+export type SkillInstallAction = 'create' | 'github' | 'upload' | null;
 
 // Entity lists and refresh functions exposed via context
 export interface SidebarDataContextValue {
@@ -52,6 +53,9 @@ export interface SidebarDataContextValue {
   // Pending plugin install action triggered from sidebar
   pendingPluginInstallAction: PluginInstallAction;
   setPendingPluginInstallAction: (action: PluginInstallAction) => void;
+  // Pending skill install action triggered from sidebar
+  pendingSkillInstallAction: SkillInstallAction;
+  setPendingSkillInstallAction: (action: SkillInstallAction) => void;
 }
 
 const SidebarDataContext = createContext<SidebarDataContextValue | null>(null);
@@ -70,6 +74,8 @@ export function SidebarDataProvider({
   const [detailEntityName, setDetailEntityName] = useState<string | null>(null);
   const [pendingPluginInstallAction, setPendingPluginInstallAction] =
     useState<PluginInstallAction>(null);
+  const [pendingSkillInstallAction, setPendingSkillInstallAction] =
+    useState<SkillInstallAction>(null);
 
   const refreshBots = useCallback(async () => {
     try {
@@ -247,6 +253,8 @@ export function SidebarDataProvider({
         setDetailEntityName,
         pendingPluginInstallAction,
         setPendingPluginInstallAction,
+        pendingSkillInstallAction,
+        setPendingSkillInstallAction,
       }}
     >
       {children}

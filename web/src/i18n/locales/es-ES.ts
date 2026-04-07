@@ -1302,6 +1302,15 @@ const esES = {
       backToWorkbench: 'Volver al panel de trabajo',
     },
   },
+  errorPage: {
+    unexpectedError: 'Algo salió mal',
+    unexpectedErrorDescription:
+      'Ocurrió un error inesperado. Por favor, inténtelo de nuevo más tarde.',
+    notFound: 'Página no encontrada',
+    notFoundDescription: 'La página que buscas no existe o ha sido movida.',
+    goBack: 'Volver',
+    backToHome: 'Ir al inicio',
+  },
 };
 
 export default esES;
