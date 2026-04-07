@@ -595,6 +595,120 @@ async def parse_wecom_bot_message(
     if msg_json.get('aibotid'):
         message_data['aibotid'] = msg_json.get('aibotid', '')
 
+    # Handle quote (referenced message) - important for group chat file references
+    quote_info = msg_json.get('quote')
+    if quote_info:
+        quote_data: dict[str, Any] = {}
+        quote_type = quote_info.get('msgtype', '')
+        quote_data['msgtype'] = quote_type
+
+        if quote_type == 'text':
+            quote_data['content'] = quote_info.get('text', {}).get('content', '')
+        elif quote_type == 'image':
+            img_info = quote_info.get('image', {})
+            img_url = img_info.get('url', '')
+            img_aeskey = img_info.get('aeskey', '')
+            base64_data = await _safe_download_as_data_uri(img_url, img_aeskey)
+            if base64_data:
+                quote_data['picurl'] = base64_data
+                quote_data['images'] = [base64_data]
+        elif quote_type == 'file':
+            file_info = quote_info.get('file', {}) or {}
+            download_url = file_info.get('url') or file_info.get('fileurl')
+            item_aeskey = file_info.get('aeskey', '')
+            file_data = {
+                'filename': file_info.get('filename') or file_info.get('name'),
+                'filesize': file_info.get('filesize') or file_info.get('size'),
+                'md5sum': file_info.get('md5sum') or file_info.get('md5'),
+                'sdkfileid': file_info.get('sdkfileid') or file_info.get('fileid'),
+                'download_url': download_url,
+                'extra': file_info,
+            }
+            # Same as private chat: append aeskey to download_url for plugin processing
+            if download_url and item_aeskey:
+                file_data['download_url'] = download_url + f'?aeskey={item_aeskey}'
+            quote_data['file'] = file_data
+        elif quote_type == 'voice':
+            voice_info = quote_info.get('voice', {}) or {}
+            download_url = voice_info.get('url')
+            item_aeskey = voice_info.get('aeskey', '')
+            voice_data = {
+                'url': download_url,
+                'md5sum': voice_info.get('md5sum') or voice_info.get('md5'),
+                'filesize': voice_info.get('filesize') or voice_info.get('size'),
+                'sdkfileid': voice_info.get('sdkfileid') or voice_info.get('fileid'),
+            }
+            if voice_info.get('content'):
+                quote_data['content'] = voice_info.get('content')
+            # Same as private chat: append aeskey to url for plugin processing
+            if download_url and item_aeskey:
+                voice_data['url'] = download_url + f'?aeskey={item_aeskey}'
+            quote_data['voice'] = voice_data
+        elif quote_type == 'video':
+            video_info = quote_info.get('video', {}) or {}
+            download_url = video_info.get('url')
+            item_aeskey = video_info.get('aeskey', '')
+            video_data = {
+                'url': download_url,
+                'filesize': video_info.get('filesize') or video_info.get('size'),
+                'sdkfileid': video_info.get('sdkfileid') or video_info.get('fileid'),
+                'md5sum': video_info.get('md5sum') or video_info.get('md5'),
+                'filename': video_info.get('filename') or video_info.get('name'),
+            }
+            # Same as private chat: append aeskey to download_url for plugin processing
+            if download_url and item_aeskey:
+                video_data['download_url'] = download_url + f'?aeskey={item_aeskey}'
+            quote_data['video'] = video_data
+        elif quote_type == 'link':
+            quote_data['link'] = quote_info.get('link', {})
+            link = quote_data['link']
+            title = link.get('title', '')
+            desc = link.get('description') or link.get('digest', '')
+            quote_data['content'] = '\n'.join(filter(None, [title, desc]))
+        elif quote_type == 'mixed':
+            # Handle mixed type in quote (text + images + files etc.)
+            items = quote_info.get('mixed', {}).get('msg_item', [])
+            texts = []
+            images = []
+            files = []
+            for item in items:
+                item_type = item.get('msgtype')
+                if item_type == 'text':
+                    texts.append(item.get('text', {}).get('content', ''))
+                elif item_type == 'image':
+                    img_info = item.get('image', {})
+                    img_url = img_info.get('url')
+                    img_aeskey = img_info.get('aeskey', '')
+                    base64_data = await _safe_download_as_data_uri(img_url, img_aeskey)
+                    if base64_data:
+                        images.append(base64_data)
+                elif item_type == 'file':
+                    file_info = item.get('file', {}) or {}
+                    download_url = file_info.get('url') or file_info.get('fileurl')
+                    item_aeskey = file_info.get('aeskey', '')
+                    file_data = {
+                        'filename': file_info.get('filename') or file_info.get('name'),
+                        'filesize': file_info.get('filesize') or file_info.get('size'),
+                        'md5sum': file_info.get('md5sum') or file_info.get('md5'),
+                        'sdkfileid': file_info.get('sdkfileid') or file_info.get('fileid'),
+                        'download_url': download_url,
+                        'extra': file_info,
+                    }
+                    # Same as private chat: append aeskey to download_url for plugin processing
+                    if download_url and item_aeskey:
+                        file_data['download_url'] = download_url + f'?aeskey={item_aeskey}'
+                    files.append(file_data)
+            if texts:
+                quote_data['content'] = ' '.join(texts)
+            if images:
+                quote_data['images'] = images
+                quote_data['picurl'] = images[0]
+            if files:
+                quote_data['files'] = files
+                quote_data['file'] = files[0]
+
+        message_data['quote'] = quote_data
+
     return message_data
 
 

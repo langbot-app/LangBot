@@ -126,6 +126,109 @@ class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverte
             if summary:
                 yiri_msg_list.append(platform_message.Plain(text=summary))
 
+        # Handle quoted message (引用消息) - important for group chat file references
+        # Extract files/images/voice from quote and add them as top-level components
+        # so that plugins like FileReader can process them the same way as direct messages
+        quote_info = event.quote or {}
+        if quote_info:
+            quote_type = quote_info.get('msgtype', '')
+
+            # Process quote text content - add as Plain for context
+            if quote_info.get('content'):
+                yiri_msg_list.append(platform_message.Plain(text=f'[引用消息] {quote_info.get("content")}'))
+
+            # Process quote images - add as top-level Image components
+            quote_images = quote_info.get('images', [])
+            if not quote_images and quote_info.get('picurl'):
+                quote_images = [quote_info.get('picurl')]
+            for img_data in quote_images:
+                if img_data:
+                    yiri_msg_list.append(platform_message.Image(base64=img_data))
+
+            # Process quote file - add as top-level File component (same as private chat)
+            quote_file = quote_info.get('file') or {}
+            if quote_file:
+                file_url = (
+                    quote_file.get('base64')
+                    or quote_file.get('download_url')
+                    or quote_file.get('url')
+                    or quote_file.get('fileurl')
+                )
+                file_name = quote_file.get('filename') or quote_file.get('name')
+                file_size = quote_file.get('filesize') or quote_file.get('size')
+                if file_url or file_name:
+                    file_kwargs = {}
+                    if file_url:
+                        file_kwargs['url'] = file_url
+                    if file_name:
+                        file_kwargs['name'] = file_name
+                    if file_size is not None:
+                        file_kwargs['size'] = file_size
+                    try:
+                        yiri_msg_list.append(platform_message.File(**file_kwargs))
+                    except Exception:
+                        yiri_msg_list.append(platform_message.Unknown(text='[quoted file unsupported]'))
+
+            # Process quote voice - add as top-level Voice/File component
+            quote_voice = quote_info.get('voice') or {}
+            if quote_voice:
+                voice_payload = quote_voice.get('base64') or quote_voice.get('url')
+                if voice_payload:
+                    if quote_voice.get('base64') and not voice_payload.startswith('data:'):
+                        voice_payload = f'data:audio/mpeg;base64,{quote_voice.get("base64")}'
+                    try:
+                        yiri_msg_list.append(platform_message.Voice(base64=voice_payload))
+                    except Exception:
+                        try:
+                            voice_kwargs = {'url': voice_payload}
+                            voice_name = quote_voice.get('filename') or quote_voice.get('name')
+                            voice_size = quote_voice.get('filesize') or quote_voice.get('size')
+                            if voice_name:
+                                voice_kwargs['name'] = voice_name
+                            if voice_size is not None:
+                                voice_kwargs['size'] = voice_size
+                            yiri_msg_list.append(platform_message.File(**voice_kwargs))
+                        except Exception:
+                            yiri_msg_list.append(platform_message.Unknown(text='[quoted voice unsupported]'))
+
+            # Process quote video - add as top-level File component
+            quote_video = quote_info.get('video') or {}
+            if quote_video:
+                video_payload = (
+                    quote_video.get('base64')
+                    or quote_video.get('url')
+                    or quote_video.get('download_url')
+                    or quote_video.get('fileurl')
+                )
+                if video_payload:
+                    video_kwargs = {'url': video_payload}
+                    video_name = quote_video.get('filename') or quote_video.get('name')
+                    video_size = quote_video.get('filesize') or quote_video.get('size')
+                    if video_name:
+                        video_kwargs['name'] = video_name
+                    if video_size is not None:
+                        video_kwargs['size'] = video_size
+                    try:
+                        yiri_msg_list.append(platform_message.File(**video_kwargs))
+                    except Exception:
+                        yiri_msg_list.append(platform_message.Unknown(text='[quoted video unsupported]'))
+
+            # Process quote link - add as Plain text
+            quote_link = quote_info.get('link') or {}
+            if quote_link:
+                link_summary = '\n'.join(
+                    filter(
+                        None,
+                        [
+                            quote_link.get('title', ''),
+                            quote_link.get('description') or quote_link.get('digest', ''),
+                            quote_link.get('url', ''),
+                        ],
+                    )
+                )
+                if link_summary:
+                    yiri_msg_list.append(platform_message.Plain(text=f'[引用链接] {link_summary}'))
+
         has_content_element = any(
             not isinstance(element, (platform_message.Source, platform_message.At)) for element in yiri_msg_list
         )
