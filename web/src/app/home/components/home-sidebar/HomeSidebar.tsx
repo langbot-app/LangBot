@@ -719,7 +719,7 @@ function NavItems({
                         <DropdownMenuTrigger asChild>
                           <button
                             type="button"
-                            className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground opacity-0 group-hover/category-header:opacity-100 transition-all"
+                            className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <Plus className="size-3.5" />
@@ -762,7 +762,7 @@ function NavItems({
                     ) : (
                       <button
                         type="button"
-                        className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground opacity-0 group-hover/category-header:opacity-100 transition-all"
+                        className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all"
                         onClick={(e) => {
                           e.stopPropagation();
                           navigate(`${routePrefix}?id=new`);
