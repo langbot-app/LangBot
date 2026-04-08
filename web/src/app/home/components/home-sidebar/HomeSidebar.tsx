@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { SidebarChildVO } from '@/app/home/components/home-sidebar/HomeSidebarChild';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { sidebarConfigList } from '@/app/home/components/home-sidebar/sidbarConfigList';
@@ -330,6 +330,22 @@ function NavItems({
   }
 
   const sectionItems = sidebarConfigList.filter((c) => c.section === section);
+
+  // Persist open state for sections that become active through navigation,
+  // so they remain expanded when the user switches to a different section.
+  const sectionOpenRef = useRef(sectionOpenState);
+  sectionOpenRef.current = sectionOpenState;
+  useEffect(() => {
+    sectionItems.forEach((config) => {
+      if (!isEntityCategory(config.id)) return;
+      const routePrefix = ENTITY_ROUTE_MAP[config.id];
+      const active =
+        pathname === routePrefix || pathname.startsWith(routePrefix + '/');
+      if (active && sectionOpenRef.current[config.id] === undefined) {
+        onSectionToggle(config.id, true);
+      }
+    });
+  }, [pathname, sectionItems, onSectionToggle]);
 
   return (
     <>
