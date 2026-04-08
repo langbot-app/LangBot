@@ -1,37 +1,70 @@
-"""Utility functions for finding package resources"""
+"""Utility functions for finding package resources and runtime data roots."""
 
 import os
 from pathlib import Path
 
 
 _is_source_install = None
+_source_root = None
+
+
+def _find_source_root() -> Path | None:
+    """Locate the LangBot repository root when running from source."""
+    global _source_root
+
+    if _source_root is not None:
+        return _source_root
+
+    current = Path(__file__).resolve()
+    for parent in current.parents:
+        if (parent / 'pyproject.toml').exists() and (parent / 'main.py').exists():
+            _source_root = parent
+            return parent
+
+    _source_root = None
+    return None
 
 
 def _check_if_source_install() -> bool:
     """
-    Check if we're running from source directory or an installed package.
-    Cached to avoid repeated file I/O.
+    Check if we're running from the LangBot source tree.
+    Cached to avoid repeated filesystem scans.
     """
     global _is_source_install
 
     if _is_source_install is not None:
         return _is_source_install
 
-    # Check if main.py exists in current directory with LangBot marker
-    if os.path.exists('main.py'):
-        try:
-            with open('main.py', 'r', encoding='utf-8') as f:
-                # Only read first 500 chars to check for marker
-                content = f.read(500)
-                if 'LangBot/main.py' in content:
-                    _is_source_install = True
-                    return True
-        except (IOError, OSError, UnicodeDecodeError):
-            # If we can't read the file, assume not a source install
-            pass
+    _is_source_install = _find_source_root() is not None
+    return _is_source_install
 
-    _is_source_install = False
-    return False
+
+def get_data_root() -> str:
+    """
+    Get the runtime data root.
+
+    Priority:
+    1. LANGBOT_DATA_ROOT environment override
+    2. Source checkout root /data when running from source
+    3. Current working directory /data for installed-package usage
+    """
+    env_root = os.environ.get('LANGBOT_DATA_ROOT', '').strip()
+    if env_root:
+        return str(Path(env_root).expanduser().resolve())
+
+    source_root = _find_source_root()
+    if source_root is not None:
+        return str((source_root / 'data').resolve())
+
+    return str((Path.cwd() / 'data').resolve())
+
+
+def get_data_path(*parts: str) -> str:
+    """Join path segments under the resolved data root."""
+    data_root = Path(get_data_root())
+    if not parts:
+        return str(data_root)
+    return str((data_root.joinpath(*parts)).resolve())
 
 
 def get_frontend_path() -> str:
@@ -76,8 +109,11 @@ def get_resource_path(resource: str) -> str:
         Absolute path to the resource
     """
     # First, check if resource exists in current directory (source install)
-    if _check_if_source_install() and os.path.exists(resource):
-        return resource
+    source_root = _find_source_root()
+    if source_root is not None:
+        source_resource = source_root / resource
+        if source_resource.exists():
+            return str(source_resource)
 
     # Second, check current directory anyway
     if os.path.exists(resource):

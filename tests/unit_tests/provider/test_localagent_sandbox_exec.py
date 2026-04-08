@@ -91,6 +91,101 @@ class RecordingStreamProvider:
         return _stream()
 
 
+class ActivationProvider:
+    def __init__(self):
+        self.requests: list[dict] = []
+
+    async def invoke_llm(self, query, model, messages, funcs, extra_args=None, remove_think=None):
+        self.requests.append(
+            {
+                'messages': list(messages),
+                'funcs': list(funcs),
+                'remove_think': remove_think,
+            }
+        )
+        if len(self.requests) == 1:
+            return provider_message.Message(
+                role='assistant',
+                content='[ACTIVATE_SKILL: demo]\nI will use the skill.',
+            )
+        return provider_message.Message(
+            role='assistant',
+            content='final answer after activation',
+        )
+
+
+class FailingActivationProvider:
+    def __init__(self):
+        self.requests: list[dict] = []
+
+    async def invoke_llm(self, query, model, messages, funcs, extra_args=None, remove_think=None):
+        self.requests.append(
+            {
+                'messages': list(messages),
+                'funcs': list(funcs),
+                'remove_think': remove_think,
+            }
+        )
+        if len(self.requests) == 1:
+            return provider_message.Message(
+                role='assistant',
+                content='[ACTIVATE_SKILL: demo]\nI will use the skill.',
+            )
+        raise RuntimeError('activation failed')
+
+
+class ActivationStreamProvider:
+    def __init__(self):
+        self.stream_requests: list[dict] = []
+
+    def invoke_llm_stream(self, query, model, messages, funcs, extra_args=None, remove_think=None):
+        self.stream_requests.append(
+            {
+                'messages': list(messages),
+                'funcs': list(funcs),
+                'remove_think': remove_think,
+            }
+        )
+
+        async def _stream():
+            if len(self.stream_requests) == 1:
+                yield provider_message.MessageChunk(
+                    role='assistant',
+                    content='[ACTIVATE_SKILL: demo]\nI will use the skill.',
+                    is_final=True,
+                )
+                return
+
+            yield provider_message.MessageChunk(
+                role='assistant',
+                content='final answer after activation',
+                is_final=True,
+            )
+
+        return _stream()
+
+
+def make_skill_manager():
+    skill_data = {
+        'uuid': 'skill-demo',
+        'name': 'demo',
+        'instructions': 'Do the demo task.',
+        'type': 'skill',
+        'package_root': '/tmp/demo-skill',
+        'sandbox_timeout_sec': 120,
+        'sandbox_network': False,
+    }
+    return SimpleNamespace(
+        SKILL_ACTIVATION_MARKER='[ACTIVATE_SKILL:',
+        detect_skill_activations=Mock(
+            side_effect=lambda content: ['demo'] if '[ACTIVATE_SKILL: demo]' in (content or '') else []
+        ),
+        build_activation_prompt_for_skills=Mock(return_value='skill prompt'),
+        get_skill_by_name=Mock(side_effect=lambda name: skill_data if name == 'demo' else None),
+        remove_activation_marker=Mock(side_effect=lambda content: (content or '').replace('[ACTIVATE_SKILL: demo]\n', '')),
+    )
+
+
 def make_query() -> pipeline_query.Query:
     adapter = AsyncMock()
     adapter.is_stream_output_supported = AsyncMock(return_value=False)
@@ -168,6 +263,11 @@ async def test_localagent_uses_exec_for_exact_calculation():
                 )
             ),
         ),
+        skill_mgr=SimpleNamespace(
+            get_skills_for_pipeline=AsyncMock(return_value=[]),
+            detect_skill_activation=AsyncMock(return_value=None),
+            build_activation_prompt=Mock(return_value=None),
+        ),
     )
 
     runner = LocalAgentRunner(app, pipeline_config={})
@@ -222,6 +322,11 @@ async def test_localagent_streaming_tool_error_yields_message_chunks():
         box_service=SimpleNamespace(
             get_system_guidance=Mock(return_value='sandbox guidance'),
         ),
+        skill_mgr=SimpleNamespace(
+            get_skills_for_pipeline=AsyncMock(return_value=[]),
+            detect_skill_activation=AsyncMock(return_value=None),
+            build_activation_prompt=Mock(return_value=None),
+        ),
     )
 
     runner = LocalAgentRunner(app, pipeline_config={})
@@ -230,3 +335,110 @@ async def test_localagent_streaming_tool_error_yields_message_chunks():
 
     assert all(isinstance(message, provider_message.MessageChunk) for message in results)
     assert any(message.role == 'tool' and message.content == 'err: boom' for message in results)
+
+
+@pytest.mark.asyncio
+async def test_localagent_hides_activation_marker_before_follow_up_request():
+    provider = ActivationProvider()
+    model = SimpleNamespace(
+        provider=provider,
+        model_entity=SimpleNamespace(
+            uuid='test-model-uuid',
+            name='test-model',
+            abilities=['func_call'],
+            extra_args={},
+        ),
+    )
+
+    app = SimpleNamespace(
+        logger=Mock(),
+        model_mgr=SimpleNamespace(get_model_by_uuid=AsyncMock(return_value=model)),
+        tool_mgr=SimpleNamespace(execute_func_call=AsyncMock()),
+        rag_mgr=SimpleNamespace(),
+        box_service=SimpleNamespace(get_system_guidance=Mock(return_value='sandbox guidance')),
+        skill_mgr=make_skill_manager(),
+    )
+
+    runner = LocalAgentRunner(app, pipeline_config={})
+    query = make_query()
+    query.use_funcs = []
+
+    results = [message async for message in runner.run(query)]
+
+    assert [(message.role, message.content) for message in results] == [
+        ('assistant', 'final answer after activation')
+    ]
+    assert len(provider.requests) == 2
+    assert provider.requests[1]['messages'][-2].content == 'I will use the skill.'
+    assert '[ACTIVATE_SKILL:' not in provider.requests[1]['messages'][-2].content
+
+
+@pytest.mark.asyncio
+async def test_localagent_activation_failure_rolls_back_query_state_and_sanitizes_response():
+    provider = FailingActivationProvider()
+    model = SimpleNamespace(
+        provider=provider,
+        model_entity=SimpleNamespace(
+            uuid='test-model-uuid',
+            name='test-model',
+            abilities=['func_call'],
+            extra_args={},
+        ),
+    )
+
+    app = SimpleNamespace(
+        logger=Mock(),
+        model_mgr=SimpleNamespace(get_model_by_uuid=AsyncMock(return_value=model)),
+        tool_mgr=SimpleNamespace(execute_func_call=AsyncMock()),
+        rag_mgr=SimpleNamespace(),
+        box_service=SimpleNamespace(get_system_guidance=Mock(return_value='sandbox guidance')),
+        skill_mgr=make_skill_manager(),
+    )
+
+    runner = LocalAgentRunner(app, pipeline_config={})
+    query = make_query()
+    query.use_funcs = []
+
+    results = [message async for message in runner.run(query)]
+
+    assert [(message.role, message.content) for message in results] == [
+        ('assistant', 'I will use the skill.')
+    ]
+    assert query.use_funcs == []
+    assert query.variables == {}
+
+
+@pytest.mark.asyncio
+async def test_localagent_streaming_activation_does_not_leak_marker():
+    provider = ActivationStreamProvider()
+    model = SimpleNamespace(
+        provider=provider,
+        model_entity=SimpleNamespace(
+            uuid='test-model-uuid',
+            name='test-model',
+            abilities=['func_call'],
+            extra_args={},
+        ),
+    )
+
+    adapter = AsyncMock()
+    adapter.is_stream_output_supported = AsyncMock(return_value=True)
+
+    app = SimpleNamespace(
+        logger=Mock(),
+        model_mgr=SimpleNamespace(get_model_by_uuid=AsyncMock(return_value=model)),
+        tool_mgr=SimpleNamespace(execute_func_call=AsyncMock()),
+        rag_mgr=SimpleNamespace(),
+        box_service=SimpleNamespace(get_system_guidance=Mock(return_value='sandbox guidance')),
+        skill_mgr=make_skill_manager(),
+    )
+
+    runner = LocalAgentRunner(app, pipeline_config={})
+    query = make_query()
+    query.adapter = adapter
+    query.use_funcs = []
+
+    results = [message async for message in runner.run(query)]
+
+    assert all(isinstance(message, provider_message.MessageChunk) for message in results)
+    assert [message.content for message in results] == ['final answer after activation']

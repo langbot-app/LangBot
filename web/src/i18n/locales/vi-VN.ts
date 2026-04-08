@@ -1286,6 +1286,16 @@ const viVN = {
       backToWorkbench: 'Quay lại bàn làm việc',
     },
   },
+  errorPage: {
+    unexpectedError: 'Đã xảy ra lỗi',
+    unexpectedErrorDescription:
+      'Đã xảy ra lỗi không mong muốn. Vui lòng thử lại sau.',
+    notFound: 'Không tìm thấy trang',
+    notFoundDescription:
+      'Trang bạn tìm kiếm không tồn tại hoặc đã được di chuyển.',
+    goBack: 'Quay lại',
+    backToHome: 'Về trang chủ',
+  },
 };
 
 export default viVN;

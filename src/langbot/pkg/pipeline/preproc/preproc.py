@@ -32,6 +32,9 @@ class PreProcessor(stage.PipelineStage):
     ) -> entities.StageProcessResult:
         """Process"""
         selected_runner = query.pipeline_config['ai']['runner']['runner']
+        include_skill_authoring = (
+            selected_runner == 'local-agent' and getattr(self.ap, 'skill_service', None) is not None
+        )
 
         session = await self.ap.sess_mgr.get_session(query)
 
@@ -89,7 +92,11 @@ class PreProcessor(stage.PipelineStage):
                     # Get bound plugins and MCP servers for filtering tools
                     bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
                     bound_mcp_servers = query.variables.get('_pipeline_bound_mcp_servers', None)
-                    query.use_funcs = await self.ap.tool_mgr.get_all_tools(bound_plugins, bound_mcp_servers)
+                    query.use_funcs = await self.ap.tool_mgr.get_all_tools(
+                        bound_plugins,
+                        bound_mcp_servers,
+                        include_skill_authoring=include_skill_authoring,
+                    )
 
                     self.ap.logger.debug(f'Bound plugins: {bound_plugins}')
                     self.ap.logger.debug(f'Bound MCP servers: {bound_mcp_servers}')
@@ -100,7 +107,11 @@ class PreProcessor(stage.PipelineStage):
             if not query.use_funcs and query.variables.get('_fallback_model_uuids'):
                 bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
                 bound_mcp_servers = query.variables.get('_pipeline_bound_mcp_servers', None)
-                query.use_funcs = await self.ap.tool_mgr.get_all_tools(bound_plugins, bound_mcp_servers)
+                query.use_funcs = await self.ap.tool_mgr.get_all_tools(
+                    bound_plugins,
+                    bound_mcp_servers,
+                    include_skill_authoring=include_skill_authoring,
+                )
 
         sender_name = ''
 
@@ -209,5 +220,59 @@ class PreProcessor(stage.PipelineStage):
 
         query.prompt.messages = event_ctx.event.default_prompt
         query.messages = event_ctx.event.prompt
+
+        # =========== Inject skill index into system prompt ===========
+        if selected_runner == 'local-agent' and self.ap.skill_mgr:
+            # Get bound skills from pipeline extensions_preferences
+            pipeline_data = await self.ap.pipeline_service.get_pipeline(query.pipeline_uuid)
+            extensions_prefs = (pipeline_data or {}).get('extensions_preferences', {})
+            enable_all_skills = extensions_prefs.get('enable_all_skills', True)
+
+            if enable_all_skills:
+                bound_skills = None  # None = all skills available
+            else:
+                # Get specific bound skill names
+                bound_skills = extensions_prefs.get('skills', [])
+
+            # Store bound skills in query variables for runtime path visibility checks
+            query.variables['_pipeline_bound_skills'] = bound_skills
+
+            # Build skill awareness addition
+            skill_addition = self.ap.skill_mgr.build_skill_aware_prompt_addition(
+                pipeline_uuid=query.pipeline_uuid,
+                bound_skills=bound_skills,
+            )
+
+            if skill_addition:
+                self.ap.logger.info(
+                    f'Skill index injected into system prompt: '
+                    f'pipeline={query.pipeline_uuid} '
+                    f'bound_skills={bound_skills or "all"} '
+                    f'available_skills=[{", ".join(s["name"] for s in self.ap.skill_mgr.skills.values() if s.get("auto_activate", True))}]'
+                )
+                # Append skill instruction to the first system message
+                if query.prompt.messages and query.prompt.messages[0].role == 'system':
+                    if isinstance(query.prompt.messages[0].content, str):
+                        query.prompt.messages[0].content += skill_addition
+                    elif isinstance(query.prompt.messages[0].content, list):
+                        # Handle content as list of ContentElements
+                        for ce in query.prompt.messages[0].content:
+                            if ce.type == 'text':
+                                ce.text += skill_addition
+                                break
+                else:
+                    # Insert a new system message with skill instructions
+                    query.prompt.messages.insert(
+                        0,
+                        provider_message.Message(role='system', content=skill_addition.strip()),
+                    )
+            else:
+                loaded_count = len(self.ap.skill_mgr.skills)
+                self.ap.logger.debug(
+                    f'No skills available for injection: '
+                    f'pipeline={query.pipeline_uuid} '
+                    f'loaded_skills={loaded_count} '
+                    f'bound_skills={bound_skills}'
+                )
 
         return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)

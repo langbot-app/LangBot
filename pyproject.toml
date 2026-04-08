@@ -127,6 +127,9 @@ dev = [
     "ruff>=0.11.9",
 ]
 
+[tool.uv.sources]
+langbot-plugin = { path = "../langbot-plugin-sdk", editable = true }
+
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
 exclude = [
@@ -220,4 +223,3 @@ skip-magic-trailing-comma = false
 
 # Like Black, automatically detect the appropriate line ending.
 line-ending = "auto"
-

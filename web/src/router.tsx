@@ -1,5 +1,5 @@
 import React, { Suspense } from 'react';
-import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
 
 // Layouts
 import LoginLayout from '@/app/login/layout';
@@ -21,124 +21,141 @@ import PluginsPage from '@/app/home/plugins/page';
 import MarketPage from '@/app/home/market/page';
 import MCPPage from '@/app/home/mcp/page';
 import KnowledgePage from '@/app/home/knowledge/page';
+import SkillsPage from '@/app/home/skills/page';
+import ErrorPage from '@/components/ErrorPage';
 
 const Loading = () => <div>Loading...</div>;
 
 export const router = createBrowserRouter([
   {
-    path: '/',
-    element: <Navigate to="/login" replace />,
-  },
-  {
-    path: '/login',
-    element: (
-      <LoginLayout>
-        <LoginPage />
-      </LoginLayout>
-    ),
-  },
-  {
-    path: '/register',
-    element: (
-      <RegisterLayout>
-        <RegisterPage />
-      </RegisterLayout>
-    ),
-  },
-  {
-    path: '/reset-password',
-    element: (
-      <ResetPasswordLayout>
-        <ResetPasswordPage />
-      </ResetPasswordLayout>
-    ),
-  },
-  {
-    path: '/wizard',
-    element: <WizardPage />,
-  },
-  {
-    path: '/auth/space/callback',
-    element: <SpaceCallbackPage />,
-  },
-  {
-    path: '/home',
-    element: (
-      <Suspense fallback={<Loading />}>
-        <HomeLayout>
-          <HomePage />
-        </HomeLayout>
-      </Suspense>
-    ),
-  },
-  {
-    path: '/home/monitoring',
-    element: (
-      <Suspense fallback={<Loading />}>
-        <HomeLayout>
-          <MonitoringPage />
-        </HomeLayout>
-      </Suspense>
-    ),
-  },
-  {
-    path: '/home/bots',
-    element: (
-      <Suspense fallback={<Loading />}>
-        <HomeLayout>
-          <BotsPage />
-        </HomeLayout>
-      </Suspense>
-    ),
-  },
-  {
-    path: '/home/pipelines',
-    element: (
-      <Suspense fallback={<Loading />}>
-        <HomeLayout>
-          <PipelinesPage />
-        </HomeLayout>
-      </Suspense>
-    ),
-  },
-  {
-    path: '/home/plugins',
-    element: (
-      <Suspense fallback={<Loading />}>
-        <HomeLayout>
-          <PluginsPage />
-        </HomeLayout>
-      </Suspense>
-    ),
-  },
-  {
-    path: '/home/market',
-    element: (
-      <Suspense fallback={<Loading />}>
-        <HomeLayout>
-          <MarketPage />
-        </HomeLayout>
-      </Suspense>
-    ),
-  },
-  {
-    path: '/home/mcp',
-    element: (
-      <Suspense fallback={<Loading />}>
-        <HomeLayout>
-          <MCPPage />
-        </HomeLayout>
-      </Suspense>
-    ),
-  },
-  {
-    path: '/home/knowledge',
-    element: (
-      <Suspense fallback={<Loading />}>
-        <HomeLayout>
-          <KnowledgePage />
-        </HomeLayout>
-      </Suspense>
-    ),
+    errorElement: <ErrorPage />,
+    children: [
+      {
+        path: '/',
+        element: <Navigate to="/login" replace />,
+      },
+      {
+        path: '/login',
+        element: (
+          <LoginLayout>
+            <LoginPage />
+          </LoginLayout>
+        ),
+      },
+      {
+        path: '/register',
+        element: (
+          <RegisterLayout>
+            <RegisterPage />
+          </RegisterLayout>
+        ),
+      },
+      {
+        path: '/reset-password',
+        element: (
+          <ResetPasswordLayout>
+            <ResetPasswordPage />
+          </ResetPasswordLayout>
+        ),
+      },
+      {
+        path: '/wizard',
+        element: <WizardPage />,
+      },
+      {
+        path: '/auth/space/callback',
+        element: <SpaceCallbackPage />,
+      },
+      {
+        path: '/home',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <HomeLayout>
+              <HomePage />
+            </HomeLayout>
+          </Suspense>
+        ),
+      },
+      {
+        path: '/home/monitoring',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <HomeLayout>
+              <MonitoringPage />
+            </HomeLayout>
+          </Suspense>
+        ),
+      },
+      {
+        path: '/home/bots',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <HomeLayout>
+              <BotsPage />
+            </HomeLayout>
+          </Suspense>
+        ),
+      },
+      {
+        path: '/home/pipelines',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <HomeLayout>
+              <PipelinesPage />
+            </HomeLayout>
+          </Suspense>
+        ),
+      },
+      {
+        path: '/home/plugins',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <HomeLayout>
+              <PluginsPage />
+            </HomeLayout>
+          </Suspense>
+        ),
+      },
+      {
+        path: '/home/market',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <HomeLayout>
+              <MarketPage />
+            </HomeLayout>
+          </Suspense>
+        ),
+      },
+      {
+        path: '/home/mcp',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <HomeLayout>
+              <MCPPage />
+            </HomeLayout>
+          </Suspense>
+        ),
+      },
+      {
+        path: '/home/knowledge',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <HomeLayout>
+              <KnowledgePage />
+            </HomeLayout>
+          </Suspense>
+        ),
+      },
+      {
+        path: '/home/skills',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <HomeLayout>
+              <SkillsPage />
+            </HomeLayout>
+          </Suspense>
+        ),
+      },
+    ],
   },
 ]);

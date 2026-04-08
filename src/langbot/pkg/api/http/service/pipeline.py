@@ -220,6 +220,8 @@ class PipelineService:
         bound_mcp_servers: list[str] = None,
         enable_all_plugins: bool = True,
         enable_all_mcp_servers: bool = True,
+        bound_skills: list[str] = None,
+        enable_all_skills: bool = True,
     ) -> None:
         """Update the bound plugins and MCP servers for a pipeline"""
         # Get current pipeline
@@ -237,9 +239,12 @@ class PipelineService:
         extensions_preferences = pipeline.extensions_preferences or {}
         extensions_preferences['enable_all_plugins'] = enable_all_plugins
         extensions_preferences['enable_all_mcp_servers'] = enable_all_mcp_servers
+        extensions_preferences['enable_all_skills'] = enable_all_skills
         extensions_preferences['plugins'] = bound_plugins
         if bound_mcp_servers is not None:
             extensions_preferences['mcp_servers'] = bound_mcp_servers
+        if bound_skills is not None:
+            extensions_preferences['skills'] = bound_skills
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_pipeline.LegacyPipeline)

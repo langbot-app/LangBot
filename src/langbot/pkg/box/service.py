@@ -32,6 +32,11 @@ def _is_path_under(path: str, root: str) -> bool:
     return path == root or path.startswith(f'{root}{os.sep}')
 
 
+
+def _is_path_under(path: str, root: str) -> bool:
+    """Check whether *path* equals *root* or is a child of *root*."""
+    return path == root or path.startswith(f'{root}{os.sep}')
+
 if TYPE_CHECKING:
     from ..core import app as core_app
     import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query

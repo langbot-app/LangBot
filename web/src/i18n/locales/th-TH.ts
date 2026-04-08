@@ -1265,6 +1265,15 @@ const thTH = {
       backToWorkbench: 'กลับไปหน้าทำงาน',
     },
   },
+  errorPage: {
+    unexpectedError: 'เกิดข้อผิดพลาด',
+    unexpectedErrorDescription:
+      'เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้งในภายหลัง',
+    notFound: 'ไม่พบหน้า',
+    notFoundDescription: 'หน้าที่คุณกำลังมองหาไม่มีอยู่หรือถูกย้ายแล้ว',
+    goBack: 'ย้อนกลับ',
+    backToHome: 'กลับหน้าหลัก',
+  },
 };
 
 export default thTH;

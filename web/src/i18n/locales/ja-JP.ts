@@ -1293,6 +1293,16 @@
       backToWorkbench: 'ワークベンチに戻る',
     },
   },
+  errorPage: {
+    unexpectedError: 'エラーが発生しました',
+    unexpectedErrorDescription:
+      '予期しないエラーが発生しました。しばらくしてからもう一度お試しください。',
+    notFound: 'ページが見つかりません',
+    notFoundDescription:
+      'お探しのページは存在しないか、移動された可能性があります。',
+    goBack: '戻る',
+    backToHome: 'ホームに戻る',
+  },
 };
 
 export default jaJP;
