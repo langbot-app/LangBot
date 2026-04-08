@@ -208,6 +208,7 @@ class ChatMessageHandler(handler.MessageHandler):
                         'model_name': model_name,
                         'version': constants.semantic_version,
                         'instance_id': constants.instance_id,
+                        'edition': constants.edition,
                         'pipeline_plugins': pipeline_plugins,
                         'error': locals().get('error_info', None),
                         'timestamp': datetime.utcnow().isoformat(),
