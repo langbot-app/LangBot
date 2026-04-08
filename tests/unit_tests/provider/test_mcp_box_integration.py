@@ -125,6 +125,7 @@ def mcp_module():
         'mcp.py',
     )
     mcp_path = os.path.normpath(mcp_path)
+    sys.modules['langbot.pkg.provider.tools.loaders'].__path__ = [os.path.dirname(mcp_path)]
     spec = importlib.util.spec_from_file_location(mod_fqn, mcp_path)
     mod = importlib.util.module_from_spec(spec)
     sys.modules[mod_fqn] = mod
@@ -134,6 +135,7 @@ def mcp_module():
 
     # Cleanup
     sys.modules.pop(mod_fqn, None)
+    sys.modules.pop('langbot.pkg.provider.tools.loaders.mcp_stdio', None)
     for name in reversed(list(saved)):
         if saved[name] is None:
             sys.modules.pop(name, None)
@@ -582,6 +584,8 @@ class TestBoxConfigParsing:
 
 @pytest.mark.asyncio
 async def test_init_box_stdio_server_keeps_host_mount_validation_enabled(mcp_module):
+    mcp_stdio_module = sys.modules['langbot.pkg.provider.tools.loaders.mcp_stdio']
+
     class FakeClientSession:
         def __init__(self, *_args):
             pass
@@ -599,8 +603,8 @@ async def test_init_box_stdio_server_keeps_host_mount_validation_enabled(mcp_mod
     async def fake_websocket_client(_url: str):
         yield ('read-stream', 'write-stream')
 
-    mcp_module.ClientSession = FakeClientSession
-    mcp_module.websocket_client = fake_websocket_client
+    mcp_stdio_module.ClientSession = FakeClientSession
+    mcp_stdio_module.websocket_client = fake_websocket_client
 
     ap = _make_ap()
     ap.box_service.available = True
