@@ -405,7 +405,10 @@ export default function PluginInstallProgressDialog() {
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
-      <DialogContent className="w-[460px] max-h-[80vh] p-6 bg-white dark:bg-[#1a1a1e] overflow-y-auto" hideCloseButton>
+      <DialogContent
+        className="w-[460px] max-h-[80vh] p-6 bg-white dark:bg-[#1a1a1e] overflow-y-auto"
+        hideCloseButton
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3">
             <Download className="size-5" />
