@@ -65,8 +65,8 @@ class UserService:
 
         user_obj = result_list[0]
 
-        # Check if this is a Space account
-        if user_obj.account_type == 'space':
+        # Check if this user has a local password set
+        if not user_obj.password:
             raise ValueError('请使用 Space 账户登录')
 
         ph = argon2.PasswordHasher()
@@ -108,9 +108,8 @@ class UserService:
         if user_obj is None:
             raise ValueError('User not found')
 
-        # Space accounts cannot change password locally
-        if user_obj.account_type == 'space':
-            raise ValueError('Space account cannot change password locally')
+        if not user_obj.password:
+            raise ValueError('No local password set, please set a password first')
 
         ph.verify(user_obj.password, current_password)
 
