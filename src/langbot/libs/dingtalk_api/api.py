@@ -268,7 +268,25 @@ class DingTalkClient:
 
                 message_data['Type'] = 'image'
             elif incoming_message.message_type == 'audio':
-                message_data['Audio'] = await self.get_audio_url(incoming_message.to_dict()['content']['downloadCode'])
+                raw_content = incoming_message.to_dict().get('content', {})
+                # 兼容处理：如果 content 仍为 JSON 字符串则进行解析
+                if isinstance(raw_content, str):
+                    try:
+                        raw_content = json.loads(raw_content)
+                    except (json.JSONDecodeError, TypeError):
+                        raw_content = {}
+
+                if self.logger:
+                    await self.logger.info(f'DingTalk audio raw content: {json.dumps(raw_content, ensure_ascii=False)}')
+
+                # 提取钉钉自带的语音转写文字（Powered by Qwen）
+                recognition = raw_content.get('recognition', '')
+                if recognition:
+                    message_data['Content'] = recognition
+
+                download_code = raw_content.get('downloadCode')
+                if download_code:
+                    message_data['Audio'] = await self.get_audio_url(download_code)
 
                 message_data['Type'] = 'audio'
             elif incoming_message.message_type == 'file':

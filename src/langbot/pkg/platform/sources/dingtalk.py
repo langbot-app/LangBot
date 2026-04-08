@@ -71,7 +71,8 @@ class DingTalkMessageConverter(abstract_platform_adapter.AbstractMessageConverte
                     yiri_msg_list.append(platform_message.Image(base64=element['Picture']))
         else:
             # 回退到原有简单逻辑
-            if event.content:
+            # 对于音频消息，content 来自 recognition 转写文字，在下方音频处理块中统一处理
+            if event.content and event.type != 'audio':
                 text_content = event.content.replace('@' + bot_name, '')
                 yiri_msg_list.append(platform_message.Plain(text=text_content))
             if event.picture:
@@ -81,7 +82,11 @@ class DingTalkMessageConverter(abstract_platform_adapter.AbstractMessageConverte
         if event.file:
             yiri_msg_list.append(platform_message.File(url=event.file, name=event.name))
         if event.audio:
-            yiri_msg_list.append(platform_message.Voice(base64=event.audio))
+            # 优先使用钉钉自带的语音转写文字（recognition字段）
+            if event.content and event.type == 'audio':
+                yiri_msg_list.append(platform_message.Plain(text=event.content))
+            else:
+                yiri_msg_list.append(platform_message.Voice(base64=event.audio))
 
         chain = platform_message.MessageChain(yiri_msg_list)
 
