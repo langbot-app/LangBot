@@ -5,6 +5,8 @@ import argparse
 import sys
 import os
 
+from langbot.pkg.utils import paths
+
 # ASCII art banner
 asciiart = r"""
  _                   ___      _   
@@ -87,7 +89,7 @@ def main():
     # Set up the working directory
     # When installed as a package, we need to handle the working directory differently
     # We'll create data directory in current working directory if not exists
-    os.makedirs('data', exist_ok=True)
+    os.makedirs(paths.get_data_root(), exist_ok=True)
 
     loop = asyncio.new_event_loop()
 

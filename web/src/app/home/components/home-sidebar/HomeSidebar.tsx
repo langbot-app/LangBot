@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { SidebarChildVO } from '@/app/home/components/home-sidebar/HomeSidebarChild';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { sidebarConfigList } from '@/app/home/components/home-sidebar/sidbarConfigList';
@@ -26,6 +26,7 @@ import {
   Store,
   Github,
   Zap,
+  FilePlus2,
 } from 'lucide-react';
 import { useTheme } from '@/components/providers/theme-provider';
 
@@ -119,6 +120,7 @@ const ENTITY_CATEGORY_IDS = [
   'knowledge',
   'plugins',
   'mcp',
+  'skills',
 ] as const;
 type EntityCategoryId = (typeof ENTITY_CATEGORY_IDS)[number];
 
@@ -129,6 +131,7 @@ const DETAIL_PAGE_CATEGORIES: EntityCategoryId[] = [
   'knowledge',
   'plugins',
   'mcp',
+  'skills',
 ];
 
 // Categories that support creating new entities from the sidebar
@@ -138,6 +141,7 @@ const CREATABLE_CATEGORIES: EntityCategoryId[] = [
   'knowledge',
   'mcp',
   'plugins',
+  'skills',
 ];
 
 // Categories where clicking the parent only toggles collapse (no list page)
@@ -146,6 +150,7 @@ const COLLAPSIBLE_ONLY_CATEGORIES: EntityCategoryId[] = [
   'pipelines',
   'knowledge',
   'mcp',
+  'skills',
 ];
 
 function isEntityCategory(id: string): id is EntityCategoryId {
@@ -155,13 +160,14 @@ function isEntityCategory(id: string): id is EntityCategoryId {
 // Map sidebar config IDs to SidebarDataContext keys
 const ENTITY_KEY_MAP: Record<
   EntityCategoryId,
-  'bots' | 'pipelines' | 'knowledgeBases' | 'plugins' | 'mcpServers'
+  'bots' | 'pipelines' | 'knowledgeBases' | 'plugins' | 'mcpServers' | 'skills'
 > = {
   bots: 'bots',
   pipelines: 'pipelines',
   knowledge: 'knowledgeBases',
   plugins: 'plugins',
   mcp: 'mcpServers',
+  skills: 'skills',
 };
 
 // Route prefix map for entity detail pages
@@ -171,6 +177,7 @@ const ENTITY_ROUTE_MAP: Record<EntityCategoryId, string> = {
   knowledge: '/home/knowledge',
   plugins: '/home/plugins',
   mcp: '/home/mcp',
+  skills: '/home/skills',
 };
 
 // localStorage key for collapsible section open/closed state
@@ -247,7 +254,8 @@ function NavItems({
   const pathname = location.pathname;
   const [searchParams] = useSearchParams();
   const sidebarData = useSidebarData();
-  const { setPendingPluginInstallAction } = sidebarData;
+  const { setPendingPluginInstallAction, setPendingSkillInstallAction } =
+    sidebarData;
   const { state: sidebarState, isMobile } = useSidebar();
   const { t } = useTranslation();
   // Track which entity categories have their full list expanded
@@ -323,6 +331,22 @@ function NavItems({
 
   const sectionItems = sidebarConfigList.filter((c) => c.section === section);
 
+  // Persist open state for sections that become active through navigation,
+  // so they remain expanded when the user switches to a different section.
+  const sectionOpenRef = useRef(sectionOpenState);
+  sectionOpenRef.current = sectionOpenState;
+  useEffect(() => {
+    sectionItems.forEach((config) => {
+      if (!isEntityCategory(config.id)) return;
+      const routePrefix = ENTITY_ROUTE_MAP[config.id];
+      const active =
+        pathname === routePrefix || pathname.startsWith(routePrefix + '/');
+      if (active && sectionOpenRef.current[config.id] === undefined) {
+        onSectionToggle(config.id, true);
+      }
+    });
+  }, [pathname, sectionItems, onSectionToggle]);
+
   return (
     <>
       {sectionItems.map((config) => {
@@ -350,6 +374,7 @@ function NavItems({
         const canCreate = CREATABLE_CATEGORIES.includes(config.id);
         const isCollapseOnly = COLLAPSIBLE_ONLY_CATEGORIES.includes(config.id);
         const isPlugin = config.id === 'plugins';
+        const isSkill = config.id === 'skills';
         const isBot = config.id === 'bots';
         const isMCP = config.id === 'mcp';
         const isActive =
@@ -663,6 +688,61 @@ function NavItems({
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
+                      ) : isSkill ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="p-1 rounded-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+                            >
+                              <Plus className="size-3.5" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPendingSkillInstallAction('create');
+                                navigate('/home/skills');
+                                setPopoverOpen((prev) => ({
+                                  ...prev,
+                                  [config.id]: false,
+                                }));
+                              }}
+                            >
+                              <FilePlus2 className="size-4" />
+                              {t('skills.createManually')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPendingSkillInstallAction('upload');
+                                navigate('/home/skills');
+                                setPopoverOpen((prev) => ({
+                                  ...prev,
+                                  [config.id]: false,
+                                }));
+                              }}
+                            >
+                              <Upload className="size-4" />
+                              {t('skills.uploadZip')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPendingSkillInstallAction('github');
+                                navigate('/home/skills');
+                                setPopoverOpen((prev) => ({
+                                  ...prev,
+                                  [config.id]: false,
+                                }));
+                              }}
+                            >
+                              <Github className="size-4" />
+                              {t('skills.importFromGithub')}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       ) : (
                         <button
                           type="button"
@@ -756,6 +836,50 @@ function NavItems({
                           >
                             <Github className="size-4" />
                             {t('plugins.installFromGithub')}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    ) : isSkill ? (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground opacity-0 group-hover/category-header:opacity-100 transition-all"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Plus className="size-3.5" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPendingSkillInstallAction('create');
+                              navigate('/home/skills');
+                            }}
+                          >
+                            <FilePlus2 className="size-4" />
+                            {t('skills.createManually')}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPendingSkillInstallAction('upload');
+                              navigate('/home/skills');
+                            }}
+                          >
+                            <Upload className="size-4" />
+                            {t('skills.uploadZip')}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPendingSkillInstallAction('github');
+                              navigate('/home/skills');
+                            }}
+                          >
+                            <Github className="size-4" />
+                            {t('skills.importFromGithub')}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>

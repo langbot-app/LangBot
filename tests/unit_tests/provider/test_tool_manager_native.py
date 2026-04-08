@@ -42,9 +42,10 @@ def make_tool(name: str) -> resource_tool.LLMTool:
 
 
 @pytest.mark.asyncio
-async def test_tool_manager_lists_native_tools_first():
+async def test_tool_manager_omits_skill_authoring_tools_by_default():
     manager = ToolManager(SimpleNamespace())
     manager.native_tool_loader = StubLoader([make_tool('exec')])
+    manager.skill_authoring_tool_loader = StubLoader([make_tool('reload_skills')])
     manager.plugin_tool_loader = StubLoader([make_tool('plugin_tool')])
     manager.mcp_tool_loader = StubLoader([make_tool('mcp_tool')])
 
@@ -54,10 +55,24 @@ async def test_tool_manager_lists_native_tools_first():
 
 
 @pytest.mark.asyncio
+async def test_tool_manager_includes_skill_authoring_tools_when_requested():
+    manager = ToolManager(SimpleNamespace())
+    manager.native_tool_loader = StubLoader([make_tool('exec')])
+    manager.skill_authoring_tool_loader = StubLoader([make_tool('reload_skills')])
+    manager.plugin_tool_loader = StubLoader([make_tool('plugin_tool')])
+    manager.mcp_tool_loader = StubLoader([make_tool('mcp_tool')])
+
+    tools = await manager.get_all_tools(include_skill_authoring=True)
+
+    assert [tool.name for tool in tools] == ['exec', 'reload_skills', 'plugin_tool', 'mcp_tool']
+
+
+@pytest.mark.asyncio
 async def test_tool_manager_routes_native_tool_calls():
     app = SimpleNamespace()
     manager = ToolManager(app)
     manager.native_tool_loader = StubLoader([make_tool('exec')], invoke_result={'backend': 'fake'})
+    manager.skill_authoring_tool_loader = StubLoader([make_tool('reload_skills')])
     manager.plugin_tool_loader = StubLoader([make_tool('plugin_tool')])
     manager.mcp_tool_loader = StubLoader([make_tool('mcp_tool')])
 

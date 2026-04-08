@@ -1247,6 +1247,14 @@ const zhHant = {
       backToWorkbench: '返回工作台',
     },
   },
+  errorPage: {
+    unexpectedError: '出錯了',
+    unexpectedErrorDescription: '發生了意外錯誤，請稍後重試。',
+    notFound: '頁面未找到',
+    notFoundDescription: '你訪問的頁面不存在或已被移動。',
+    goBack: '返回上頁',
+    backToHome: '返回首頁',
+  },
 };
 
 export default zhHant;

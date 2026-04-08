@@ -6,6 +6,7 @@ import re
 import httpx
 import uuid
 import os
+from urllib.parse import urlparse
 
 from .....core import taskmgr
 from .. import group
@@ -14,6 +15,43 @@ from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
 
 @group.group_class('plugins', '/api/v1/plugins')
 class PluginsRouterGroup(group.RouterGroup):
+    @staticmethod
+    def _parse_github_repo_url(repo_url: str) -> dict | None:
+        raw_url = str(repo_url or '').strip()
+        if not raw_url:
+            return None
+
+        if not re.match(r'^[a-zA-Z][a-zA-Z0-9+.-]*://', raw_url):
+            raw_url = f'https://{raw_url}'
+
+        parsed = urlparse(raw_url)
+        if parsed.netloc.lower() not in ('github.com', 'www.github.com'):
+            return None
+
+        parts = [part for part in parsed.path.strip('/').split('/') if part]
+        if len(parts) < 2:
+            return None
+
+        owner = parts[0]
+        repo = parts[1]
+        if repo.endswith('.git'):
+            repo = repo[:-4]
+        if not owner or not repo:
+            return None
+
+        ref = ''
+        subdir = ''
+        if len(parts) >= 4 and parts[2] in ('tree', 'blob'):
+            ref = parts[3]
+            subdir = '/'.join(parts[4:]).strip('/')
+
+        return {
+            'owner': owner,
+            'repo': repo,
+            'ref': ref,
+            'subdir': subdir,
+        }
+
     async def _check_extensions_limit(self) -> str | None:
         """Check if extensions limit is reached. Returns error response if limit exceeded, None otherwise."""
         limitation = self.ap.instance_config.data.get('system', {}).get('limitation', {})
@@ -151,17 +189,37 @@ class PluginsRouterGroup(group.RouterGroup):
             data = await quart.request.json
             repo_url = data.get('repo_url', '')
 
-            # Parse GitHub repository URL to extract owner and repo
-            # Supports: https://github.com/owner/repo or github.com/owner/repo
-            pattern = r'github\.com/([^/]+)/([^/]+?)(?:\.git)?(?:/.*)?$'
-            match = re.search(pattern, repo_url)
-
-            if not match:
+            parsed_repo = self._parse_github_repo_url(repo_url)
+            if not parsed_repo:
                 return self.http_status(400, -1, 'Invalid GitHub repository URL')
 
-            owner, repo = match.groups()
+            owner = parsed_repo['owner']
+            repo = parsed_repo['repo']
+            requested_ref = parsed_repo['ref']
+            requested_subdir = parsed_repo['subdir']
 
             try:
+                if requested_ref:
+                    return self.success(
+                        data={
+                            'releases': [
+                                {
+                                    'id': 0,
+                                    'tag_name': requested_ref,
+                                    'name': requested_ref,
+                                    'published_at': '',
+                                    'prerelease': False,
+                                    'draft': False,
+                                    'source_type': 'branch',
+                                    'archive_url': f'https://api.github.com/repos/{owner}/{repo}/zipball/{requested_ref}',
+                                }
+                            ],
+                            'owner': owner,
+                            'repo': repo,
+                            'source_subdir': requested_subdir,
+                        }
+                    )
+
                 # Fetch releases from GitHub API
                 url = f'https://api.github.com/repos/{owner}/{repo}/releases'
                 async with httpx.AsyncClient(
@@ -187,7 +245,14 @@ class PluginsRouterGroup(group.RouterGroup):
                         }
                     )
 
-                return self.success(data={'releases': formatted_releases, 'owner': owner, 'repo': repo})
+                return self.success(
+                    data={
+                        'releases': formatted_releases,
+                        'owner': owner,
+                        'repo': repo,
+                        'source_subdir': requested_subdir,
+                    }
+                )
             except httpx.RequestError as e:
                 return self.http_status(500, -1, f'Failed to fetch releases: {str(e)}')
 

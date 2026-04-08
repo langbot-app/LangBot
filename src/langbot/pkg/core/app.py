@@ -32,7 +32,7 @@ from ..api.http.service import mcp as mcp_service
 from ..api.http.service import apikey as apikey_service
 from ..api.http.service import webhook as webhook_service
 from ..api.http.service import monitoring as monitoring_service
-
+from ..api.http.service import skill as skill_service
 from ..discover import engine as discover_engine
 from ..storage import mgr as storagemgr
 from ..utils import logcache
@@ -43,6 +43,7 @@ from ..rag.service import RAGRuntimeService
 from ..vector import mgr as vectordb_mgr
 from ..telemetry import telemetry as telemetry_module
 from ..survey import manager as survey_module
+from ..skill import manager as skill_mgr
 
 
 class Application:
@@ -156,6 +157,10 @@ class Application:
     survey: survey_module.SurveyManager = None
 
     monitoring_service: monitoring_service.MonitoringService = None
+
+    skill_service: skill_service.SkillService = None
+
+    skill_mgr: skill_mgr.SkillManager = None
 
     def __init__(self):
         pass

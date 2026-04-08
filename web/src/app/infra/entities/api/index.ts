@@ -545,3 +545,24 @@ export interface ApiRespTools {
 export interface ApiRespToolDetail {
   tool: PluginTool;
 }
+
+// Skills
+export interface Skill {
+  name: string;
+  display_name?: string;
+  description: string;
+  instructions?: string;
+  package_root?: string;
+  auto_activate?: boolean;
+  is_builtin?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ApiRespSkills {
+  skills: Skill[];
+}
+
+export interface ApiRespSkill {
+  skill: Skill;
+}
