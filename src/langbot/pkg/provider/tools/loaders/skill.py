@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import os
 import re
-import textwrap
 import typing
+
+from ....box import workspace as box_workspace
 
 if typing.TYPE_CHECKING:
     from ....core import app
@@ -13,23 +14,6 @@ ACTIVATED_SKILLS_KEY = '_activated_skills'
 PIPELINE_BOUND_SKILLS_KEY = '_pipeline_bound_skills'
 SKILL_MOUNT_PREFIX = '/workspace/.skills'
 _SKILL_MOUNT_PATTERN = re.compile(r'/workspace/\.skills/([A-Za-z0-9_-]+)')
-_PYTHON_SKILL_MANIFESTS = (
-    'requirements.txt',
-    'pyproject.toml',
-    'setup.py',
-    'setup.cfg',
-)
-
-
-def _normalize_host_path(path: str | None) -> str:
-    if path is None:
-        return ''
-    stripped = str(path).strip()
-    if not stripped:
-        return ''
-    return os.path.realpath(os.path.abspath(stripped))
-
-
 def get_virtual_skill_mount_path(skill_name: str) -> str:
     return f'{SKILL_MOUNT_PREFIX}/{skill_name}'
 
@@ -165,121 +149,8 @@ def build_skill_session_id(skill_data: dict, query: pipeline_query.Query) -> str
 
 
 def should_prepare_skill_python_env(package_root: str | None) -> bool:
-    normalized_root = _normalize_host_path(package_root)
-    if not normalized_root:
-        return False
-    if os.path.isdir(os.path.join(normalized_root, '.venv')):
-        return True
-    return any(os.path.isfile(os.path.join(normalized_root, filename)) for filename in _PYTHON_SKILL_MANIFESTS)
+    return box_workspace.should_prepare_python_env(package_root)
 
 
 def wrap_skill_command_with_python_env(command: str) -> str:
-    bootstrap = textwrap.dedent(
-        """
-        set -e
-
-        _LB_VENV_DIR="/workspace/.venv"
-        _LB_META_DIR="/workspace/.langbot"
-        _LB_META_FILE="$_LB_META_DIR/python-env.json"
-        _LB_LOCK_DIR="$_LB_META_DIR/python-env.lock"
-        _LB_TMP_DIR="/workspace/.tmp"
-        _LB_PIP_CACHE_DIR="/workspace/.cache/pip"
-
-        mkdir -p "$_LB_META_DIR" "$_LB_TMP_DIR" "$_LB_PIP_CACHE_DIR"
-        export TMPDIR="$_LB_TMP_DIR"
-        export TEMP="$_LB_TMP_DIR"
-        export TMP="$_LB_TMP_DIR"
-        export PIP_CACHE_DIR="$_LB_PIP_CACHE_DIR"
-
-        _lb_python_meta() {
-          python - <<'PY'
-        import hashlib
-        import json
-        import os
-        import sys
-
-        root = "/workspace"
-        digest = hashlib.sha256()
-        manifest_files = []
-        for rel in ("requirements.txt", "pyproject.toml", "setup.py", "setup.cfg"):
-            path = os.path.join(root, rel)
-            if not os.path.isfile(path):
-                continue
-            manifest_files.append(rel)
-            with open(path, "rb") as handle:
-                digest.update(rel.encode("utf-8"))
-                digest.update(b"\0")
-                digest.update(handle.read())
-                digest.update(b"\0")
-
-        print(
-            json.dumps(
-                {
-                    "python_executable": sys.executable,
-                    "python_version": list(sys.version_info[:3]),
-                    "manifest_files": manifest_files,
-                    "manifest_sha256": digest.hexdigest(),
-                },
-                sort_keys=True,
-            )
-        )
-        PY
-        }
-
-        _LB_CURRENT_META="$(_lb_python_meta)"
-        _LB_NEEDS_BOOTSTRAP=0
-
-        if [ ! -x "$_LB_VENV_DIR/bin/python" ]; then
-          _LB_NEEDS_BOOTSTRAP=1
-        elif [ ! -f "$_LB_META_FILE" ]; then
-          _LB_NEEDS_BOOTSTRAP=1
-        elif [ "$(cat "$_LB_META_FILE")" != "$_LB_CURRENT_META" ]; then
-          _LB_NEEDS_BOOTSTRAP=1
-        fi
-
-        if [ "$_LB_NEEDS_BOOTSTRAP" -eq 1 ]; then
-          _LB_LOCK_WAIT=0
-          while ! mkdir "$_LB_LOCK_DIR" 2>/dev/null; do
-            if [ "$_LB_LOCK_WAIT" -ge 120 ]; then
-              echo "Timed out waiting for Python environment lock: $_LB_LOCK_DIR" >&2
-              exit 1
-            fi
-            sleep 1
-            _LB_LOCK_WAIT=$((_LB_LOCK_WAIT + 1))
-          done
-
-          _lb_cleanup_lock() {
-            rmdir "$_LB_LOCK_DIR" >/dev/null 2>&1 || true
-          }
-          trap _lb_cleanup_lock EXIT INT TERM
-
-          _LB_CURRENT_META="$(_lb_python_meta)"
-          _LB_NEEDS_BOOTSTRAP=0
-          if [ ! -x "$_LB_VENV_DIR/bin/python" ]; then
-            _LB_NEEDS_BOOTSTRAP=1
-          elif [ ! -f "$_LB_META_FILE" ]; then
-            _LB_NEEDS_BOOTSTRAP=1
-          elif [ "$(cat "$_LB_META_FILE")" != "$_LB_CURRENT_META" ]; then
-            _LB_NEEDS_BOOTSTRAP=1
-          fi
-
-          if [ "$_LB_NEEDS_BOOTSTRAP" -eq 1 ]; then
-            rm -rf "$_LB_VENV_DIR"
-            python -m venv "$_LB_VENV_DIR"
-
-            if [ -f /workspace/requirements.txt ]; then
-              "$_LB_VENV_DIR/bin/python" -m pip install -r /workspace/requirements.txt
-            elif [ -f /workspace/pyproject.toml ] || [ -f /workspace/setup.py ] || [ -f /workspace/setup.cfg ]; then
-              "$_LB_VENV_DIR/bin/python" -m pip install -e /workspace
-            fi
-
-            printf '%s' "$_LB_CURRENT_META" > "$_LB_META_FILE"
-          fi
-        fi
-
-        export VIRTUAL_ENV="$_LB_VENV_DIR"
-        export PATH="$_LB_VENV_DIR/bin:$PATH"
-        """
-    ).strip()
-
-    return f'{bootstrap}\n\n{command}'
+    return box_workspace.wrap_python_command_with_env(command).rstrip()

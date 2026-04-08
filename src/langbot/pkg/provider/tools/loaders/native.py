@@ -6,6 +6,7 @@ import os
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 from langbot_plugin.api.entities.events import pipeline_query
 
+from ....box.workspace import BoxWorkspaceSession
 from .. import loader
 from . import skill as skill_loader
 
@@ -94,18 +95,19 @@ class NativeToolLoader(loader.ToolLoader):
         if skill_loader.should_prepare_skill_python_env(package_root):
             rewritten_command = skill_loader.wrap_skill_command_with_python_env(rewritten_command)
 
-        spec_payload: dict = {
-            'cmd': rewritten_command,
-            'workdir': rewritten_workdir,
-            'host_path': package_root,
-            'host_path_mode': 'rw',
-            'session_id': skill_loader.build_skill_session_id(selected_skill, query),
-        }
-        for key in ('timeout_sec', 'env'):
-            if key in parameters:
-                spec_payload[key] = parameters[key]
-
-        result = await self.ap.box_service.execute_spec_payload(spec_payload, query)
+        workspace = BoxWorkspaceSession(
+            self.ap.box_service,
+            skill_loader.build_skill_session_id(selected_skill, query),
+            host_path=package_root,
+            host_path_mode='rw',
+        )
+        result = await workspace.execute_for_query(
+            query,
+            rewritten_command,
+            workdir=rewritten_workdir,
+            timeout_sec=parameters.get('timeout_sec'),
+            env=parameters.get('env'),
+        )
         self._refresh_skill_from_disk(selected_skill)
         return result
 
