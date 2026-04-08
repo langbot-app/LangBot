@@ -39,6 +39,7 @@ dependencies = [
     "quart-cors>=0.8.0",
     "requests>=2.32.3",
     "slack-sdk>=3.35.0",
+    "alembic>=1.15.0",
     "sqlalchemy[asyncio]>=2.0.40",
     "sqlmodel>=0.0.24",
     "telegramify-markdown>=0.5.1",
@@ -111,7 +112,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-package-data = { "langbot" = ["templates/**", "pkg/provider/modelmgr/requesters/*", "pkg/platform/sources/*", "web/dist/**"] }
+package-data = { "langbot" = ["templates/**", "pkg/provider/modelmgr/requesters/*", "pkg/platform/sources/*", "web/dist/**", "pkg/persistence/alembic/**"] }
 
 [dependency-groups]
 dev = [
