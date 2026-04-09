@@ -4,24 +4,6 @@ version: "3"
 
 services:
 
-  langbot_box_runtime:
-    image: rockchin/langbot:latest
-    container_name: langbot_box_runtime
-    command: ["uv", "run", "--no-sync", "-m", "langbot_plugin.box.server"]
-    volumes:
-      # Mount the container runtime socket from the host.
-      # Uncomment the one that matches your container runtime:
-      # - /var/run/podman/podman.sock:/var/run/podman/podman.sock   # Podman
-      - /var/run/docker.sock:/var/run/docker.sock                   # Docker
-      - ./data/box:/workspaces
-    ports:
-      - 5410:5410
-    restart: on-failure
-    environment:
-      - TZ=Asia/Shanghai
-    networks:
-      - langbot_network
-
   langbot_plugin_runtime:
     image: rockchin/langbot:latest
     container_name: langbot_plugin_runtime
@@ -42,6 +24,10 @@ services:
     volumes:
       - ./data:/app/data
       - ./data/box:/workspaces
+      # Mount container runtime socket for Box sandbox (Docker backend).
+      # Uncomment the one that matches your container runtime:
+      # - /var/run/podman/podman.sock:/var/run/podman/podman.sock   # Podman
+      - /var/run/docker.sock:/var/run/docker.sock                   # Docker
     restart: on-failure
     environment:
       - TZ=Asia/Shanghai
