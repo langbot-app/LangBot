@@ -12,7 +12,6 @@ from langbot_plugin.runtime.io.connection import Connection
 
 from langbot_plugin.box.client import ActionRPCBoxClient
 from langbot_plugin.box.errors import BoxRuntimeUnavailableError
-from ..utils import platform
 
 if TYPE_CHECKING:
     from ..core import app as core_app
@@ -31,8 +30,6 @@ def resolve_box_ws_relay_url(ap: core_app.Application) -> str:
     if runtime_url:
         return runtime_url
 
-    if platform.get_platform() == 'docker':
-        return 'http://langbot_box_runtime:5410'
     return 'http://127.0.0.1:5410'
 
 
@@ -160,4 +157,4 @@ class BoxRuntimeConnector:
         return str(_get_box_config(self.ap).get('runtime_url', '')).strip()
 
     def _should_manage_local_runtime(self) -> bool:
-        return not self.configured_runtime_url and platform.get_platform() != 'docker'
+        return not self.configured_runtime_url

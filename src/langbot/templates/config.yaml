@@ -89,7 +89,7 @@ monitoring:
         check_interval_hours: 1
 box:
     profile: 'default'
-    runtime_url: ''  # Leave empty to use defaults: http://127.0.0.1:5410 locally, http://langbot_box_runtime:5410 in Docker
+    runtime_url: ''  # Leave empty to auto-launch local Box Runtime subprocess. Set to a URL only for remote/external deployment.
     shared_host_root: './data/box'  # For Docker deployment, use '/workspaces'
     default_host_workspace: ''  # Defaults to '<shared_host_root>/default'
     allowed_host_mount_roots:  # Defaults to ['<shared_host_root>'] when left empty

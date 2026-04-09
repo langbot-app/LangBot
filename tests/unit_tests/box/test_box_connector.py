@@ -25,12 +25,7 @@ def make_app(logger: Mock, runtime_url: str = ''):
     )
 
 
-def patch_platform(monkeypatch: pytest.MonkeyPatch, value: str):
-    monkeypatch.setattr('langbot.pkg.box.connector.platform.get_platform', lambda: value)
-
-
-def test_box_runtime_connector_manages_local_when_no_url(monkeypatch: pytest.MonkeyPatch):
-    patch_platform(monkeypatch, 'linux')
+def test_box_runtime_connector_manages_local_when_no_url():
     connector = BoxRuntimeConnector(make_app(Mock()))
 
     assert connector.manages_local_runtime is True
@@ -45,16 +40,15 @@ def test_box_runtime_connector_remote_when_url_configured():
     assert isinstance(connector.client, ActionRPCBoxClient)
 
 
-def test_box_runtime_connector_remote_when_docker(monkeypatch: pytest.MonkeyPatch):
-    patch_platform(monkeypatch, 'docker')
+def test_box_runtime_connector_manages_local_in_docker(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr('langbot.pkg.utils.platform.get_platform', lambda: 'docker')
     connector = BoxRuntimeConnector(make_app(Mock()))
 
-    assert connector.manages_local_runtime is False
-    assert connector.ws_relay_base_url == 'http://langbot_box_runtime:5410'
+    assert connector.manages_local_runtime is True
+    assert connector.ws_relay_base_url == 'http://127.0.0.1:5410'
 
 
-def test_box_runtime_connector_ws_relay_url_default(monkeypatch: pytest.MonkeyPatch):
-    patch_platform(monkeypatch, 'linux')
+def test_box_runtime_connector_ws_relay_url_default():
     connector = BoxRuntimeConnector(make_app(Mock()))
 
     assert connector.ws_relay_base_url == 'http://127.0.0.1:5410'
