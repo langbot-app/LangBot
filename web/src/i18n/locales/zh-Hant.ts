@@ -1085,7 +1085,7 @@ const zhHant = {
       contextInfo: '上下文資訊',
       userId: '使用者ID',
       messageId: '訊息ID',
-      streamId: '串流ID',
+      streamId: '關聯提問ID',
       inaccurateReasons: '不準確原因',
       platform: '平台',
       exportFeedback: '匯出反饋',
@@ -1107,6 +1107,7 @@ const zhHant = {
       embeddingCalls: 'Embedding 呼叫',
       errors: '錯誤日誌',
       sessions: '會話記錄',
+      feedback: '使用者回饋',
     },
   },
   limitation: {

@@ -1,6 +1,7 @@
 from __future__ import annotations
 import typing
 import asyncio
+import time
 import traceback
 
 import datetime
@@ -293,6 +294,9 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     _ws_mode: bool = False
     bot_name: str = ''
     listeners: dict = {}
+    # Mapping from wecom stream_id to LangBot monitoring message ID, with TTL
+    _stream_to_monitoring_msg: dict[str, tuple[str, float]] = {}
+    _STREAM_MAPPING_TTL = 600  # 10 minutes
 
     def __init__(self, config: dict, logger: EventLogger):
         enable_webhook = config.get('enable-webhook', False)
@@ -422,6 +426,23 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         """设置 bot UUID（用于生成 webhook URL）"""
         self.bot_uuid = bot_uuid
 
+    async def on_monitoring_message_created(self, query, monitoring_message_id: str):
+        """Called by pipeline after monitoring message is created, to map stream_id to monitoring message ID."""
+        try:
+            stream_id = query.message_event.source_platform_object.stream_id
+            if stream_id:
+                self._stream_to_monitoring_msg[stream_id] = (monitoring_message_id, time.time())
+                self._cleanup_stream_mapping()
+        except Exception:
+            pass
+
+    def _cleanup_stream_mapping(self):
+        """Remove entries older than TTL from the stream_id to monitoring message mapping."""
+        now = time.time()
+        expired = [k for k, (_, ts) in self._stream_to_monitoring_msg.items() if now - ts > self._STREAM_MAPPING_TTL]
+        for k in expired:
+            del self._stream_to_monitoring_msg[k]
+
     async def _on_feedback(self, **kwargs):
         """Handle feedback event from WeChat Work AI Bot SDK and dispatch as FeedbackEvent."""
         try:
@@ -446,6 +467,10 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 user_id = session.user_id
                 message_id = session.msg_id
                 stream_id = session.stream_id
+
+            # Replace stream_id with LangBot monitoring message ID if available
+            if stream_id and stream_id in self._stream_to_monitoring_msg:
+                stream_id = self._stream_to_monitoring_msg[stream_id][0]
 
             await self.logger.info(
                 f'Feedback event: feedback_id={feedback_id}, type={feedback_type}, '

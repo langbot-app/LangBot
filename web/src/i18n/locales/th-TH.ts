@@ -1141,7 +1141,7 @@ const thTH = {
       contextInfo: 'ข้อมูลบริบท',
       userId: 'ID ผู้ใช้',
       messageId: 'ID ข้อความ',
-      streamId: 'ID สตรีม',
+      streamId: 'ID คำถามที่เกี่ยวข้อง',
       inaccurateReasons: 'เหตุผลที่ไม่ถูกต้อง',
       platform: 'แพลตฟอร์ม',
       exportFeedback: 'ส่งออกความคิดเห็น',
@@ -1172,6 +1172,7 @@ const thTH = {
       embeddingCalls: 'การเรียก Embedding',
       errors: 'บันทึกข้อผิดพลาด',
       sessions: 'เซสชัน',
+      feedback: 'ความคิดเห็นผู้ใช้',
     },
   },
   limitation: {

@@ -1163,7 +1163,7 @@ const enUS = {
       contextInfo: 'Context Info',
       userId: 'User ID',
       messageId: 'Message ID',
-      streamId: 'Stream ID',
+      streamId: 'Related Query ID',
       inaccurateReasons: 'Inaccurate Reasons',
       platform: 'Platform',
       exportFeedback: 'Export Feedback',
@@ -1194,6 +1194,7 @@ const enUS = {
       embeddingCalls: 'Embedding Calls',
       errors: 'Error Logs',
       sessions: 'Sessions',
+      feedback: 'User Feedback',
     },
   },
   limitation: {

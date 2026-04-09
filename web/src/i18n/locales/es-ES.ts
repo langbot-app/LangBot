@@ -1193,7 +1193,7 @@ const esES = {
       contextInfo: 'Información de contexto',
       userId: 'ID de usuario',
       messageId: 'ID de mensaje',
-      streamId: 'ID de flujo',
+      streamId: 'ID de consulta relacionada',
       inaccurateReasons: 'Razones de inexactitud',
       platform: 'Plataforma',
       exportFeedback: 'Exportar comentarios',
@@ -1224,6 +1224,7 @@ const esES = {
       embeddingCalls: 'Llamadas Embedding',
       errors: 'Registros de errores',
       sessions: 'Sesiones',
+      feedback: 'Comentarios de usuarios',
     },
   },
   limitation: {
