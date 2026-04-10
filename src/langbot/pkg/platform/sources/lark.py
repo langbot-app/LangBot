@@ -709,21 +709,29 @@ class LarkEventConverter(abstract_platform_adapter.AbstractEventConverter):
         message_chain = await LarkMessageConverter.target2yiri(event.event.message, api_client)
 
         # Check for quote/reply message
+        # Extract files/images/voice from quote and add them as top-level components
+        # so that plugins like FileReader can process them the same way as direct messages
         quote_message_id = LarkEventConverter._extract_quote_message_id(event.event.message)
         if quote_message_id:
             quote_chain = await LarkEventConverter._fetch_quoted_message(quote_message_id, api_client)
             if quote_chain:
                 # Filter out Source component from quoted chain, keep only content
-                quote_origin = platform_message.MessageChain(
-                    [comp for comp in quote_chain if not isinstance(comp, platform_message.Source)]
-                )
-                if quote_origin:
-                    message_chain.append(
-                        platform_message.Quote(
-                            message_id=quote_message_id,
-                            origin=quote_origin,
-                        )
-                    )
+                quote_components = [comp for comp in quote_chain if not isinstance(comp, platform_message.Source)]
+
+                # Add quoted content as top-level components instead of wrapping in Quote
+                for comp in quote_components:
+                    if isinstance(comp, platform_message.File):
+                        # Add file as top-level component (same as direct message)
+                        message_chain.append(comp)
+                    elif isinstance(comp, platform_message.Image):
+                        # Add image as top-level component
+                        message_chain.append(comp)
+                    elif isinstance(comp, platform_message.Voice):
+                        # Add voice as top-level component
+                        message_chain.append(comp)
+                    elif isinstance(comp, platform_message.Plain):
+                        # Add text with context prefix
+                        message_chain.append(platform_message.Plain(text=f'[引用消息] {comp.text}'))
 
         if event.event.message.chat_type == 'p2p':
             return platform_events.FriendMessage(
