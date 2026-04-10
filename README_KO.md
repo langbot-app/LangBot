@@ -83,17 +83,40 @@ docker compose up -d
 
 | 플랫폼 | 상태 | 비고 |
 |--------|------|------|
-| Discord | ✅ |  |
-| Telegram | ✅ |  |
-| Slack | ✅ |  |
-| LINE | ✅ |  |
-| QQ | ✅ | 개인 및 공식 API |
-| WeCom | ✅ | 기업 WeChat, 외부 CS, AI Bot |
-| WeChat | ✅ | 개인 및 공식 계정 |
-| Lark | ✅ |  |
-| DingTalk | ✅ |  |
-| KOOK | ✅ |  |
+| Discord | ✅ | 공식, Matrix・Satori 호환 |
+| Telegram | ✅ | 공식, Matrix・Satori 호환 |
+| Slack | ✅ | 공식, Matrix・Satori 호환 |
+| LINE | ✅ | 공식, Matrix・Satori 호환 |
+| QQ | ✅ | 개인 및 공식 API (채널, DM, 그룹), Matrix・Satori 호환 |
+| WeCom | ✅ | 기업 WeChat, 외부 CS, AI Bot, Satori |
+| WeChat | ✅ | 개인 및 공식 계정, Matrix, Satori |
+| Lark | ✅ | 공식, Satori 호환 |
+| DingTalk | ✅ | 공식, Satori 호환 |
+| KOOK | ✅ | 공식, Matrix・Satori 호환 |
 | Satori | ✅ |  |
+| Signal | ✅ | Matrix 전용 |
+| WhatsApp | ✅ | Matrix 전용 |
+| Messenger | ✅ | Matrix 전용 |
+| iMessage | ✅ | Matrix 전용 |
+| Mattermost | ✅ | Matrix 전용 |
+| Google Chat | ✅ | Matrix 전용 |
+| Mumble | ✅ | Matrix 전용 |
+| Instagram | ✅ | Matrix 전용 |
+| LinkedIn | ✅ | Matrix 전용 |
+| X | ✅ | Matrix 전용 |
+| Skype | ✅ | Matrix 전용 |
+| SMS | ✅ | Matrix 전용 |
+| Email | ✅ | Matrix, Satori |
+| IRC | ✅ | Matrix 전용 |
+| GroupMe | ✅ | Matrix 전용 |
+| XMPP | ✅ | Matrix 전용 |
+| Zulip | ✅ | Matrix 전용 |
+| Stoat | ✅ | Matrix 전용 |
+| Element | ✅ | Matrix 전용 |
+| Nheko | ✅ | Matrix 전용 |
+| FluffyChat | ✅ | Matrix 전용 |
+| Cinny | ✅ | Matrix 전용 |
+| Matrix | ✅ |  |
 
 ---
 

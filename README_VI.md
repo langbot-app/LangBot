@@ -83,17 +83,40 @@ docker compose up -d
 
 | Nền tảng | Trạng thái | Ghi chú |
 |----------|--------|-------|
-| Discord | ✅ |  |
-| Telegram | ✅ |  |
-| Slack | ✅ |  |
-| LINE | ✅ |  |
-| QQ | ✅ | Cá nhân & API chính thức |
-| WeCom | ✅ | WeChat doanh nghiệp, CS bên ngoài, AI Bot |
-| WeChat | ✅ | Cá nhân & Tài khoản công khai |
-| Lark | ✅ |  |
-| DingTalk | ✅ |  |
-| KOOK | ✅ |  |
+| Discord | ✅ | Chính thức, tương thích Matrix, Satori |
+| Telegram | ✅ | Chính thức, tương thích Matrix, Satori |
+| Slack | ✅ | Chính thức, tương thích Matrix, Satori |
+| LINE | ✅ | Chính thức, tương thích Matrix, Satori |
+| QQ | ✅ | Cá nhân & API chính thức (Kênh, DM, Nhóm), tương thích Matrix, Satori |
+| WeCom | ✅ | WeChat doanh nghiệp, CS bên ngoài, AI Bot, Satori |
+| WeChat | ✅ | Cá nhân & Tài khoản công khai, Matrix, Satori |
+| Lark | ✅ | Chính thức, tương thích Satori |
+| DingTalk | ✅ | Chính thức, tương thích Satori |
+| KOOK | ✅ | Chính thức, tương thích Matrix, Satori |
 | Satori | ✅ |  |
+| Signal | ✅ | Chỉ Matrix |
+| WhatsApp | ✅ | Chỉ Matrix |
+| Messenger | ✅ | Chỉ Matrix |
+| iMessage | ✅ | Chỉ Matrix |
+| Mattermost | ✅ | Chỉ Matrix |
+| Google Chat | ✅ | Chỉ Matrix |
+| Mumble | ✅ | Chỉ Matrix |
+| Instagram | ✅ | Chỉ Matrix |
+| LinkedIn | ✅ | Chỉ Matrix |
+| X | ✅ | Chỉ Matrix |
+| Skype | ✅ | Chỉ Matrix |
+| SMS | ✅ | Chỉ Matrix |
+| Email | ✅ | Matrix, Satori |
+| IRC | ✅ | Chỉ Matrix |
+| GroupMe | ✅ | Chỉ Matrix |
+| XMPP | ✅ | Chỉ Matrix |
+| Zulip | ✅ | Chỉ Matrix |
+| Stoat | ✅ | Chỉ Matrix |
+| Element | ✅ | Chỉ Matrix |
+| Nheko | ✅ | Chỉ Matrix |
+| FluffyChat | ✅ | Chỉ Matrix |
+| Cinny | ✅ | Chỉ Matrix |
+| Matrix | ✅ |  |
 
 ---
 
