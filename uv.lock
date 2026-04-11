@@ -187,6 +187,20 @@ wheels = [
 ]
 
 [[package]]
+name = "alembic"
+version = "1.18.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "mako" },
+    { name = "sqlalchemy" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/94/13/8b084e0f2efb0275a1d534838844926f798bd766566b1375174e2448cd31/alembic-1.18.4.tar.gz", hash = "sha256:cb6e1fd84b6174ab8dbb2329f86d631ba9559dd78df550b57804d607672cedbc", size = 2056725, upload-time = "2026-02-10T16:00:47.195Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d2/29/6533c317b74f707ea28f8d633734dbda2119bbadfc61b2f3640ba835d0f7/alembic-1.18.4-py3-none-any.whl", hash = "sha256:a5ed4adcf6d8a4cb575f3d759f071b03cd6e5c7618eb796cb52497be25bfe19a", size = 263893, upload-time = "2026-02-10T16:00:49.997Z" },
+]
+
+[[package]]
 name = "annotated-types"
 version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1840,6 +1854,7 @@ dependencies = [
     { name = "aiohttp" },
     { name = "aioshutil" },
     { name = "aiosqlite" },
+    { name = "alembic" },
     { name = "anthropic" },
     { name = "argon2-cffi" },
     { name = "async-lru" },
@@ -1919,6 +1934,7 @@ requires-dist = [
     { name = "aiohttp", specifier = ">=3.11.18" },
     { name = "aioshutil", specifier = ">=1.5" },
     { name = "aiosqlite", specifier = ">=0.21.0" },
+    { name = "alembic", specifier = ">=1.15.0" },
     { name = "anthropic", specifier = ">=0.51.0" },
     { name = "argon2-cffi", specifier = ">=23.1.0" },
     { name = "async-lru", specifier = ">=2.0.5" },
@@ -2407,6 +2423,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/7a/c1/27428a2ff348e994ab4f8777d3a0ad510b6b92d37718e5887d2da99952a2/lxml-6.0.2-pp311-pypy311_pp73-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:60fa43be34f78bebb27812ed90f1925ec99560b0fa1decdb7d12b84d857d31e9", size = 4272119, upload-time = "2025-09-22T04:04:51.801Z" },
     { url = "https://files.pythonhosted.org/packages/f0/d0/3020fa12bcec4ab62f97aab026d57c2f0cfd480a558758d9ca233bb6a79d/lxml-6.0.2-pp311-pypy311_pp73-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:21c73b476d3cfe836be731225ec3421fa2f048d84f6df6a8e70433dff1376d5a", size = 4417314, upload-time = "2025-09-22T04:04:55.024Z" },
     { url = "https://files.pythonhosted.org/packages/6c/77/d7f491cbc05303ac6801651aabeb262d43f319288c1ea96c66b1d2692ff3/lxml-6.0.2-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:27220da5be049e936c3aca06f174e8827ca6445a4353a1995584311487fc4e3e", size = 3518768, upload-time = "2025-09-22T04:04:57.097Z" },
+]
+
+[[package]]
+name = "mako"
+version = "1.3.10"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "markupsafe" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9e/38/bd5b78a920a64d708fe6bc8e0a2c075e1389d53bef8413725c63ba041535/mako-1.3.10.tar.gz", hash = "sha256:99579a6f39583fa7e5630a28c3c1f440e4e97a414b80372649c0ce338da2ea28", size = 392474, upload-time = "2025-04-10T12:44:31.16Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/87/fb/99f81ac72ae23375f22b7afdb7642aba97c00a713c217124420147681a2f/mako-1.3.10-py3-none-any.whl", hash = "sha256:baef24a52fc4fc514a0887ac600f9f1cff3d82c61d4d700a1fa84d597b88db59", size = 78509, upload-time = "2025-04-10T12:50:53.297Z" },
 ]
 
 [[package]]
