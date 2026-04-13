@@ -1937,7 +1937,7 @@ requires-dist = [
     { name = "ebooklib", specifier = ">=0.18" },
     { name = "gewechat-client", specifier = ">=0.1.5" },
     { name = "html2text", specifier = ">=2024.2.26" },
-    { name = "langbot-plugin", directory = "../langbot-plugin-sdk" },
+    { name = "langbot-plugin", specifier = "==0.3.7" },
     { name = "langchain", specifier = ">=0.2.0" },
     { name = "langchain-text-splitters", specifier = ">=0.0.1" },
     { name = "lark-oapi", specifier = ">=1.4.15" },
@@ -1994,7 +1994,7 @@ dev = [
 [[package]]
 name = "langbot-plugin"
 version = "0.3.7"
-source = { directory = "../langbot-plugin-sdk" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
     { name = "dotenv" },
@@ -2011,29 +2011,9 @@ dependencies = [
     { name = "watchdog" },
     { name = "websockets" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiofiles", specifier = ">=24.1.0" },
-    { name = "dotenv", specifier = ">=0.9.9" },
-    { name = "httpx", specifier = ">=0.28.1" },
-    { name = "jinja2", specifier = ">=3.1.6" },
-    { name = "pip", specifier = ">=25.2" },
-    { name = "pydantic", specifier = ">=2.11.5" },
-    { name = "pydantic-settings", specifier = ">=2.10.1" },
-    { name = "pytest", specifier = ">=8.4.0" },
-    { name = "pyyaml", specifier = ">=6.0.2" },
-    { name = "textual", specifier = ">=3.2.0" },
-    { name = "types-aiofiles", specifier = ">=24.1.0.20250516" },
-    { name = "types-pyyaml", specifier = ">=6.0.12.20250516" },
-    { name = "watchdog", specifier = ">=6.0.0" },
-    { name = "websockets", specifier = ">=15.0.1" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "mypy", specifier = ">=1.16.0" },
-    { name = "ruff", specifier = ">=0.11.12" },
+sdist = { url = "https://files.pythonhosted.org/packages/12/31/8dc7106cb65004a01e363308343c5a95e35f1722f26c87853e6e12c6fee1/langbot_plugin-0.3.7.tar.gz", hash = "sha256:bc0dea6b1c515d9fc8c3ab14af74bdf3e006d7e20c097b6cb5034f5af4a73cc9", size = 179764, upload-time = "2026-04-03T09:43:17.343Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a9/51/1982c199bd4efbfa3c327c95cca7e4ab502610251567000b348c72bca1b1/langbot_plugin-0.3.7-py3-none-any.whl", hash = "sha256:2e2b9e99163ceb14da28b8ce7c4cbc6990dea15684ec78976bc015e5378feea2", size = 157324, upload-time = "2026-04-03T09:43:15.782Z" },
 ]
 
 [[package]]

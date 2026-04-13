@@ -153,34 +153,34 @@ export function SidebarDataProvider({
       // Deduplicate plugins by composite key (prefer debug over installed)
       const pluginMap = new Map<string, SidebarEntityItem>();
       for (const plugin of pluginsResp.plugins) {
-          const meta = plugin.manifest.manifest.metadata;
-          const author = meta.author ?? '';
-          const name = meta.name;
-          const compositeKey = `${author}/${name}`;
-          const installedVersion = meta.version ?? '';
+        const meta = plugin.manifest.manifest.metadata;
+        const author = meta.author ?? '';
+        const name = meta.name;
+        const compositeKey = `${author}/${name}`;
+        const installedVersion = meta.version ?? '';
 
-          let hasUpdate = false;
-          if (plugin.install_source === 'marketplace') {
-            const latestVersion = marketplaceVersions.get(compositeKey);
-            if (latestVersion) {
-              hasUpdate = isNewerVersion(latestVersion, installedVersion);
-            }
+        let hasUpdate = false;
+        if (plugin.install_source === 'marketplace') {
+          const latestVersion = marketplaceVersions.get(compositeKey);
+          if (latestVersion) {
+            hasUpdate = isNewerVersion(latestVersion, installedVersion);
           }
+        }
 
-          const item: SidebarEntityItem = {
-            id: compositeKey,
-            name: extractI18nObject(meta.label),
-            iconURL: httpClient.getPluginIconURL(author, name),
-            installSource: plugin.install_source,
-            installInfo: plugin.install_info,
-            hasUpdate,
-            debug: plugin.debug,
-          };
+        const item: SidebarEntityItem = {
+          id: compositeKey,
+          name: extractI18nObject(meta.label),
+          iconURL: httpClient.getPluginIconURL(author, name),
+          installSource: plugin.install_source,
+          installInfo: plugin.install_info,
+          hasUpdate,
+          debug: plugin.debug,
+        };
 
-          // If duplicate, prefer debug version
-          if (!pluginMap.has(compositeKey) || plugin.debug) {
-            pluginMap.set(compositeKey, item);
-          }
+        // If duplicate, prefer debug version
+        if (!pluginMap.has(compositeKey) || plugin.debug) {
+          pluginMap.set(compositeKey, item);
+        }
       }
       setPlugins(Array.from(pluginMap.values()));
 
@@ -199,9 +199,7 @@ export function SidebarDataProvider({
               seenPageIds.add(pageId);
               pages.push({
                 id: pageId,
-                name: page.label
-                  ? extractI18nObject(page.label)
-                  : page.id,
+                name: page.label ? extractI18nObject(page.label) : page.id,
                 pluginAuthor: author,
                 pluginName: name,
                 pageId: page.id,

@@ -123,7 +123,8 @@ function PluginPageIframe({
       // Validate requestId format to prevent injection
       if (data.type === 'langbot:api') {
         const { requestId, endpoint, method, body } = data;
-        if (typeof requestId !== 'string' || typeof endpoint !== 'string') return;
+        if (typeof requestId !== 'string' || typeof endpoint !== 'string')
+          return;
         // Sanitize endpoint — must start with / and not contain ..
         if (!endpoint.startsWith('/') || endpoint.includes('..')) return;
         try {

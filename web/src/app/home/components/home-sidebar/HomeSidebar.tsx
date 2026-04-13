@@ -726,78 +726,78 @@ function NavItems({
                     }
                   }}
                 >
-                {config.icon}
-                <span>{config.name}</span>
-                <div className="ml-auto flex items-center gap-0.5 -mr-1">
-                  {canCreate &&
-                    (isPlugin ? (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            type="button"
-                            className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground opacity-0 group-hover/category-header:opacity-100 transition-all"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <Plus className="size-3.5" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {systemInfo.enable_marketplace && (
+                  {config.icon}
+                  <span>{config.name}</span>
+                  <div className="ml-auto flex items-center gap-0.5 -mr-1">
+                    {canCreate &&
+                      (isPlugin ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground opacity-0 group-hover/category-header:opacity-100 transition-all"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Plus className="size-3.5" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {systemInfo.enable_marketplace && (
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate('/home/market');
+                                }}
+                              >
+                                <Store className="size-4" />
+                                {t('plugins.goToMarketplace')}
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation();
-                                navigate('/home/market');
+                                setPendingPluginInstallAction('local');
+                                navigate('/home/plugins');
                               }}
                             >
-                              <Store className="size-4" />
-                              {t('plugins.goToMarketplace')}
+                              <Upload className="size-4" />
+                              {t('plugins.uploadLocal')}
                             </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setPendingPluginInstallAction('local');
-                              navigate('/home/plugins');
-                            }}
-                          >
-                            <Upload className="size-4" />
-                            {t('plugins.uploadLocal')}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setPendingPluginInstallAction('github');
-                              navigate('/home/plugins');
-                            }}
-                          >
-                            <Github className="size-4" />
-                            {t('plugins.installFromGithub')}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    ) : (
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPendingPluginInstallAction('github');
+                                navigate('/home/plugins');
+                              }}
+                            >
+                              <Github className="size-4" />
+                              {t('plugins.installFromGithub')}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : (
+                        <button
+                          type="button"
+                          className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground opacity-0 group-hover/category-header:opacity-100 transition-all"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`${routePrefix}?id=new`);
+                          }}
+                        >
+                          <Plus className="size-3.5" />
+                        </button>
+                      ))}
+                    <CollapsibleTrigger asChild>
                       <button
                         type="button"
-                        className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground opacity-0 group-hover/category-header:opacity-100 transition-all"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`${routePrefix}?id=new`);
-                        }}
+                        className="p-1 rounded-sm hover:bg-sidebar-accent"
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        <Plus className="size-3.5" />
+                        <ChevronRight className="size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                       </button>
-                    ))}
-                  <CollapsibleTrigger asChild>
-                    <button
-                      type="button"
-                      className="p-1 rounded-sm hover:bg-sidebar-accent"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <ChevronRight className="size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                    </button>
-                  </CollapsibleTrigger>
+                    </CollapsibleTrigger>
+                  </div>
                 </div>
-              </div>
               </SidebarMenuButton>
               <CollapsibleContent>
                 <SidebarMenuSub>{renderEntityList(false)}</SidebarMenuSub>
@@ -1051,7 +1051,8 @@ function PluginPagesNav() {
   if (pluginPages.length === 0) return null;
 
   const pathname = location.pathname;
-  const currentId = pathname === '/home/plugin-pages' ? searchParams.get('id') : null;
+  const currentId =
+    pathname === '/home/plugin-pages' ? searchParams.get('id') : null;
 
   return (
     <SidebarGroup>

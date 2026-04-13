@@ -44,7 +44,12 @@ import {
 } from '@/app/home/plugins/components/plugin-install-task';
 
 // Routes that belong to the "Extensions" section
-const EXTENSIONS_ROUTES = ['/home/plugins', '/home/market', '/home/mcp', '/home/plugin-pages'];
+const EXTENSIONS_ROUTES = [
+  '/home/plugins',
+  '/home/market',
+  '/home/mcp',
+  '/home/plugin-pages',
+];
 
 function isExtensionsRoute(pathname: string): boolean {
   return EXTENSIONS_ROUTES.some(
