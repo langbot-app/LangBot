@@ -571,7 +571,7 @@ function PluginListView() {
           <PopoverTrigger asChild>
             <Button
               variant="outline"
-              className="px-4 py-5 cursor-pointer"
+              className="px-4 py-4 cursor-pointer"
               onClick={handleShowDebugInfo}
             >
               <Code className="w-4 h-4 mr-2" />

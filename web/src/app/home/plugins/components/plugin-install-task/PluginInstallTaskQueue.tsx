@@ -139,7 +139,7 @@ export default function PluginInstallTaskQueue() {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="outline" className="relative px-4 py-5 cursor-pointer">
+        <Button variant="outline" className="relative px-4 py-4 cursor-pointer">
           <ListTodo className="w-4 h-4 mr-2" />
           {t('plugins.installProgress.taskQueue')}
           {runningCount > 0 && (
