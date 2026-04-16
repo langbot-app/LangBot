@@ -294,8 +294,7 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     _ws_mode: bool = False
     bot_name: str = ''
     listeners: dict = {}
-    # Mapping from wecom stream_id to LangBot monitoring message ID, with TTL
-    _stream_to_monitoring_msg: dict[str, tuple[str, float]] = {}
+    _stream_to_monitoring_msg: dict = {}  # Maps stream_id to (monitoring_message_id, timestamp)
     _STREAM_MAPPING_TTL = 600  # 10 minutes
 
     def __init__(self, config: dict, logger: EventLogger):
@@ -333,8 +332,9 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             bot_account_id=bot_account_id,
             bot_name=bot_name,
             event_converter=event_converter,
+            listeners={},
+            _stream_to_monitoring_msg={},
         )
-        self.listeners = {}
 
     async def reply_message(
         self,
@@ -433,8 +433,8 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             if stream_id:
                 self._stream_to_monitoring_msg[stream_id] = (monitoring_message_id, time.time())
                 self._cleanup_stream_mapping()
-        except Exception:
-            pass
+        except Exception as e:
+            await self.logger.debug(f'Failed to map stream_id to monitoring message: {e}')
 
     def _cleanup_stream_mapping(self):
         """Remove entries older than TTL from the stream_id to monitoring message mapping."""
@@ -468,9 +468,10 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 message_id = session.msg_id
                 stream_id = session.stream_id
 
-            # Replace stream_id with LangBot monitoring message ID if available
+            # Resolve stream_id to LangBot monitoring message ID if available
+            monitoring_msg_id = None
             if stream_id and stream_id in self._stream_to_monitoring_msg:
-                stream_id = self._stream_to_monitoring_msg[stream_id][0]
+                monitoring_msg_id = self._stream_to_monitoring_msg[stream_id][0]
 
             await self.logger.info(
                 f'Feedback event: feedback_id={feedback_id}, type={feedback_type}, '
@@ -485,7 +486,7 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 user_id=user_id,
                 session_id=session_id,
                 message_id=message_id,
-                stream_id=stream_id,
+                stream_id=monitoring_msg_id or stream_id,
                 source_platform_object=session,
             )
 
