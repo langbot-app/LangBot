@@ -76,7 +76,7 @@
     "tailwind-merge": "^3.2.0",
     "tailwindcss": "^4.1.5",
     "uuidjs": "^5.1.0",
-    "vite": "^8.0.3",
+    "vite": "^8.0.5",
     "zod": "^3.24.4"
   },
   "devDependencies": {
