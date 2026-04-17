@@ -6,6 +6,7 @@ import React, {
   useImperativeHandle,
 } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Loader2, XCircle, Trash2 } from 'lucide-react';
 import { Resolver, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -60,26 +61,7 @@ function StatusDisplay({
   if (testing) {
     return (
       <div className="flex items-center gap-2 text-blue-600">
-        <svg
-          className="w-5 h-5 animate-spin"
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-        >
-          <circle
-            className="opacity-25"
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="currentColor"
-            strokeWidth="4"
-          />
-          <path
-            className="opacity-75"
-            fill="currentColor"
-            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-          />
-        </svg>
+        <Loader2 className="w-5 h-5 animate-spin" />
         <span className="font-medium">{t('mcp.testing')}</span>
       </div>
     );
@@ -88,26 +70,7 @@ function StatusDisplay({
   if (runtimeInfo.status === MCPSessionStatus.CONNECTING) {
     return (
       <div className="flex items-center gap-2 text-blue-600">
-        <svg
-          className="w-5 h-5 animate-spin"
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-        >
-          <circle
-            className="opacity-25"
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="currentColor"
-            strokeWidth="4"
-          />
-          <path
-            className="opacity-75"
-            fill="currentColor"
-            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-          />
-        </svg>
+        <Loader2 className="w-5 h-5 animate-spin" />
         <span className="font-medium">{t('mcp.connecting')}</span>
       </div>
     );
@@ -116,20 +79,7 @@ function StatusDisplay({
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-2 text-red-600">
-        <svg
-          className="w-5 h-5"
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
-          />
-        </svg>
+        <XCircle className="w-5 h-5" />
         <span className="font-medium">{t('mcp.connectionFailed')}</span>
       </div>
       {runtimeInfo.error_message && (
@@ -839,14 +789,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
                           className="shrink-0 text-red-500 hover:text-red-600"
                           onClick={() => removeStdioArg(index)}
                         >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            fill="currentColor"
-                            className="w-5 h-5"
-                          >
-                            <path d="M7 4V2H17V4H22V6H20V21C20 21.5523 19.5523 22 19 22H5C4.44772 22 4 21.5523 4 21V6H2V4H7ZM6 6V20H18V6H6ZM9 9H11V17H9V9ZM13 9H15V17H13V9Z" />
-                          </svg>
+                          <Trash2 className="w-5 h-5" />
                         </Button>
                       </div>
                     ))}
@@ -892,14 +835,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
                       className="shrink-0 text-red-500 hover:text-red-600"
                       onClick={() => removeExtraArg(index)}
                     >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                        className="w-5 h-5"
-                      >
-                        <path d="M7 4V2H17V4H22V6H20V21C20 21.5523 19.5523 22 19 22H5C4.44772 22 4 21.5523 4 21V6H2V4H7ZM6 6V20H18V6H6ZM9 9H11V17H9V9ZM13 9H15V17H13V9Z" />
-                      </svg>
+                      <Trash2 className="w-5 h-5" />
                     </Button>
                   </div>
                 ))}

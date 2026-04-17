@@ -6,6 +6,7 @@ import {
   ChevronRight,
   ChevronDown,
   ExternalLink,
+  Heart,
 } from 'lucide-react';
 import { FeedbackRecord } from '../types/monitoring';
 import { Button } from '@/components/ui/button';
@@ -40,19 +41,7 @@ export function FeedbackList({
   if (!feedback || feedback.length === 0) {
     return (
       <div className="text-center text-gray-500 dark:text-gray-400 py-16">
-        <svg
-          className="w-16 h-16 mx-auto mb-4 text-gray-300 dark:text-gray-600"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-          />
-        </svg>
+        <Heart className="w-16 h-16 mx-auto mb-4 text-gray-300 dark:text-gray-600" />
         <p className="text-base font-medium mb-2">
           {t('monitoring.feedback.noFeedback')}
         </p>
