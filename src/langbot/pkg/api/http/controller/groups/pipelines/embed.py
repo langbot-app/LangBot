@@ -1,6 +1,7 @@
 """Embed widget routes - serve embeddable chat widget for external websites"""
 
 import logging
+import uuid
 
 import quart
 
@@ -89,4 +90,42 @@ class EmbedRouterGroup(group.RouterGroup):
 
             except Exception as e:
                 logger.error(f'Failed to get embed messages: {e}', exc_info=True)
+                return self.http_status(500, -1, f'Internal server error: {str(e)}')
+
+        @self.route('/<pipeline_uuid>/feedback', methods=['POST'], auth_type=group.AuthType.NONE)
+        async def submit_feedback(pipeline_uuid: str) -> str:
+            """Record user feedback (like/dislike) from embed widget."""
+            try:
+                data = await quart.request.get_json()
+                message_id = data.get('message_id', '')
+                feedback_type = data.get('feedback_type')  # 1=like, 2=dislike, 3=cancel
+
+                if feedback_type not in (1, 2, 3):
+                    return self.http_status(400, -1, 'feedback_type must be 1 (like), 2 (dislike), or 3 (cancel)')
+
+                # Find the owning bot for this pipeline
+                bot_id = 'websocket-proxy-bot'
+                bot_name = 'WebSocket'
+                for bot in self.ap.platform_mgr.bots:
+                    if bot.bot_entity.adapter == 'web_page_bot' and bot.bot_entity.use_pipeline_uuid == pipeline_uuid:
+                        bot_id = bot.bot_entity.uuid
+                        bot_name = bot.bot_entity.name or bot_id
+                        break
+
+                feedback_id = f'embed_{uuid.uuid4().hex[:12]}'
+
+                await self.ap.monitoring_service.record_feedback(
+                    feedback_id=feedback_id,
+                    feedback_type=feedback_type,
+                    bot_id=bot_id,
+                    bot_name=bot_name,
+                    pipeline_id=pipeline_uuid,
+                    message_id=str(message_id),
+                    platform='web_page_bot',
+                )
+
+                return self.success(data={'feedback_id': feedback_id})
+
+            except Exception as e:
+                logger.error(f'Failed to record feedback: {e}', exc_info=True)
                 return self.http_status(500, -1, f'Internal server error: {str(e)}')
