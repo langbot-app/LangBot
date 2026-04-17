@@ -89,7 +89,7 @@ monitoring:
         check_interval_hours: 1
 box:
     profile: 'default'
-    runtime_url: ''  # Leave empty to auto-launch local Box Runtime subprocess. Set to a URL only for remote/external deployment.
+    runtime_url: ''  # Action-RPC WebSocket URL of an external Box Runtime. Leave empty for auto-detection (stdio locally, Docker service in containers).
     shared_host_root: './data/box'  # For Docker deployment, use '/workspaces'
     default_host_workspace: ''  # Defaults to '<shared_host_root>/default'
     allowed_host_mount_roots:  # Defaults to ['<shared_host_root>'] when left empty
