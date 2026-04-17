@@ -472,7 +472,6 @@ const viVN = {
     boxUnavailable: 'Không khả dụng',
     boxBackend: 'Backend',
     boxProfile: 'Hồ sơ',
-    boxSessions: 'Phiên',
     boxErrors: 'Lỗi',
     boxStatusLoadFailed: 'Tải trạng thái Box thất bại',
     failedToGetDebugInfo: 'Lấy thông tin gỡ lỗi thất bại',

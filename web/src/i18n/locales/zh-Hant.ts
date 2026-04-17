@@ -447,7 +447,6 @@ const zhHant = {
     boxUnavailable: '不可用',
     boxBackend: '後端',
     boxProfile: '設定檔',
-    boxSessions: '工作階段',
     boxErrors: '錯誤數',
     boxStatusLoadFailed: '載入 Box 狀態失敗',
     failedToGetDebugInfo: '取得偵錯資訊失敗',

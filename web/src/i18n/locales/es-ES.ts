@@ -479,7 +479,6 @@ const esES = {
     boxUnavailable: 'No disponible',
     boxBackend: 'Backend',
     boxProfile: 'Perfil',
-    boxSessions: 'Sesiones',
     boxErrors: 'Errores',
     boxStatusLoadFailed: 'Error al cargar el estado de Box',
     failedToGetDebugInfo: 'Error al obtener la información de depuración',

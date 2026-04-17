@@ -475,7 +475,6 @@ const ruRU = {
     boxUnavailable: 'Недоступно',
     boxBackend: 'Бэкенд',
     boxProfile: 'Профиль',
-    boxSessions: 'Сессии',
     boxErrors: 'Ошибки',
     boxStatusLoadFailed: 'Не удалось загрузить статус Box',
     failedToGetDebugInfo: 'Не удалось получить отладочную информацию',

@@ -462,7 +462,6 @@ const thTH = {
     boxUnavailable: 'ไม่พร้อมใช้งาน',
     boxBackend: 'แบ็กเอนด์',
     boxProfile: 'โปรไฟล์',
-    boxSessions: 'เซสชัน',
     boxErrors: 'ข้อผิดพลาด',
     boxStatusLoadFailed: 'โหลดสถานะ Box ล้มเหลว',
     failedToGetDebugInfo: 'ไม่สามารถดึงข้อมูลดีบักได้',
