@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Paperclip, AudioLines } from 'lucide-react';
 import {
   MessageChainComponent,
   Image as ImageComponent,
@@ -104,13 +105,7 @@ export function MessageContentRenderer({
             key={index}
             className="inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded bg-muted text-muted-foreground text-sm"
           >
-            <svg
-              className="w-3.5 h-3.5 mr-1"
-              fill="currentColor"
-              viewBox="0 0 20 20"
-            >
-              <path d="M8 4a3 3 0 00-3 3v4a5 5 0 0010 0V7a1 1 0 112 0v4a7 7 0 11-14 0V7a5 5 0 0110 0v4a3 3 0 11-6 0V7a1 1 0 012 0v4a1 1 0 102 0V7a3 3 0 00-3-3z" />
-            </svg>
+            <Paperclip className="w-3.5 h-3.5 mr-1" />
             {file.name || 'File'}
           </span>
         );
@@ -123,13 +118,7 @@ export function MessageContentRenderer({
             key={index}
             className="inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded bg-muted text-muted-foreground text-sm"
           >
-            <svg
-              className="w-3.5 h-3.5 mr-1"
-              fill="currentColor"
-              viewBox="0 0 20 20"
-            >
-              <path d="M18 3a1 1 0 00-1.196-.98l-10 2A1 1 0 006 5v9.114A4.369 4.369 0 005 14c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V7.82l8-1.6v5.894A4.37 4.37 0 0015 12c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V3z" />
-            </svg>
+            <AudioLines className="w-3.5 h-3.5 mr-1" />
             Voice{voice.length ? ` ${voice.length}s` : ''}
           </span>
         );
