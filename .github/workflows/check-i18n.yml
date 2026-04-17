@@ -10,6 +10,8 @@ jobs:
   check-i18n:
     name: Check i18n Key Consistency
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

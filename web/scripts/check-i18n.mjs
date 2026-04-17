@@ -4,6 +4,9 @@
  * Reports missing keys (present in en-US but absent in the locale) and
  * extra keys (present in the locale but absent in en-US).
  * Exits with code 1 if any mismatch is found.
+ *
+ * Keys are extracted using a line-by-line parser that handles the known format
+ * of the locale files (no eval or dynamic code execution is used).
  */
 
 import { readFileSync, readdirSync } from 'fs';
@@ -15,27 +18,21 @@ const LOCALES_DIR = resolve(__dirname, '../src/i18n/locales');
 const REFERENCE = 'en-US.ts';
 
 /**
- * Extract all dot-notation keys from a nested object, e.g.:
- *   { a: { b: 1, c: 2 }, d: 3 }  =>  ['a.b', 'a.c', 'd']
+ * Extract all dot-notation leaf keys from a TypeScript locale file.
+ *
+ * The expected file format is:
+ *   const <varName> = {
+ *     key: 'value',
+ *     nested: {
+ *       subKey: 'value',
+ *     },
+ *   };
+ *   export default <varName>;
+ *
+ * The parser tracks indentation depth to build dot-separated key paths and
+ * never executes the file content.
  */
-function collectKeys(obj, prefix = '') {
-  const keys = [];
-  for (const [k, v] of Object.entries(obj)) {
-    const full = prefix ? `${prefix}.${k}` : k;
-    if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
-      keys.push(...collectKeys(v, full));
-    } else {
-      keys.push(full);
-    }
-  }
-  return keys;
-}
-
-/**
- * Load a TypeScript locale file by stripping the const declaration and
- * the export statement, then evaluating the object literal with Function().
- */
-function loadLocale(filePath) {
+function extractKeys(filePath) {
   let src = readFileSync(filePath, 'utf8');
 
   // Remove UTF-8 BOM if present
@@ -43,15 +40,51 @@ function loadLocale(filePath) {
     src = src.slice(1);
   }
 
-  // Remove: const <name> = { ... }; — keep only the object literal part
-  // Strip leading `const <identifier> = ` and trailing `export default <identifier>;`
-  src = src
-    .replace(/^const\s+\w+\s*=\s*/, '')   // remove `const varName = `
-    .replace(/;\s*\nexport default \w+;\s*$/, '') // remove trailing `; export default varName;`
-    .replace(/export default \w+;\s*$/, ''); // fallback without semicolon before export
+  const lines = src.split('\n');
+  const keys = [];
+  // Stack of { key, indent } pairs representing the current nesting path
+  const stack = [];
 
-  // eslint-disable-next-line no-new-func
-  return new Function(`return (${src})`)();
+  // Matches an object key at the start of a line (identifier or quoted string)
+  // Captures: [indent, keyName, hasOpenBrace]
+  const KEY_RE = /^(\s+)([\w]+)\s*:/;
+  const OPEN_BRACE_RE = /\{\s*$/;
+  const CLOSE_BRACE_RE = /^\s*\},?\s*$/;
+
+  for (const line of lines) {
+    if (CLOSE_BRACE_RE.test(line)) {
+      // Pop the stack when we encounter a closing brace line
+      const lineIndent = line.match(/^(\s*)/)[1].length;
+      while (stack.length > 0 && stack[stack.length - 1].indent >= lineIndent) {
+        stack.pop();
+      }
+      continue;
+    }
+
+    const m = line.match(KEY_RE);
+    if (!m) continue;
+
+    const indent = m[1].length;
+    const keyName = m[2];
+
+    // Pop stack entries that are at the same or deeper indent level
+    while (stack.length > 0 && stack[stack.length - 1].indent >= indent) {
+      stack.pop();
+    }
+
+    const prefix = stack.map((e) => e.key).join('.');
+    const fullKey = prefix ? `${prefix}.${keyName}` : keyName;
+
+    if (OPEN_BRACE_RE.test(line)) {
+      // This is a parent (nested object) key — push onto stack, don't record as leaf
+      stack.push({ key: keyName, indent });
+    } else {
+      // This is a leaf key
+      keys.push(fullKey);
+    }
+  }
+
+  return keys;
 }
 
 function main() {
@@ -62,23 +95,21 @@ function main() {
     process.exit(1);
   }
 
-  const refKeys = new Set(collectKeys(loadLocale(join(LOCALES_DIR, REFERENCE))));
+  const refKeys = new Set(extractKeys(join(LOCALES_DIR, REFERENCE)));
   let hasError = false;
 
   for (const file of files) {
     if (file === REFERENCE) continue;
 
     const locale = file.replace('.ts', '');
-    let localeObj;
+    let localeKeys;
     try {
-      localeObj = loadLocale(join(LOCALES_DIR, file));
+      localeKeys = new Set(extractKeys(join(LOCALES_DIR, file)));
     } catch (e) {
       console.error(`[${locale}] Failed to parse file: ${e.message}`);
       hasError = true;
       continue;
     }
-
-    const localeKeys = new Set(collectKeys(localeObj));
 
     const missing = [...refKeys].filter((k) => !localeKeys.has(k));
     const extra = [...localeKeys].filter((k) => !refKeys.has(k));
