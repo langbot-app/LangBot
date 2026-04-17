@@ -75,9 +75,18 @@ export default function Login() {
       // Also check if already logged in
       checkIfAlreadyLoggedIn();
     } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : t('common.loginLoadError');
-      setLoadError(errorMessage);
+      let detail = '';
+      if (err instanceof Error) {
+        detail = err.message;
+      } else if (
+        err &&
+        typeof err === 'object' &&
+        'msg' in err &&
+        typeof (err as Record<string, unknown>).msg === 'string'
+      ) {
+        detail = (err as Record<string, unknown>).msg as string;
+      }
+      setLoadError(detail || t('common.loginLoadError'));
       setLoading(false);
     }
   }
@@ -146,8 +155,8 @@ export default function Login() {
   if (loadError) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-neutral-900">
-        <Card className="w-[375px] shadow-lg dark:shadow-white/10">
-          <CardHeader>
+        <Card className="w-[400px] shadow-lg dark:shadow-white/10">
+          <CardHeader className="pb-2">
             <div className="flex justify-between items-center mb-6">
               <ThemeToggle />
               <LanguageSelector />
@@ -161,20 +170,25 @@ export default function Login() {
               {t('common.welcome')}
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-col items-center gap-3 py-4">
-              <AlertCircle className="h-10 w-10 text-destructive" />
-              <p className="text-sm text-center text-muted-foreground">
+          <CardContent>
+            <div className="flex flex-col items-center gap-4 rounded-lg border border-destructive/20 bg-destructive/5 p-5">
+              <div className="flex items-center gap-2 text-destructive">
+                <AlertCircle className="h-5 w-5 shrink-0" />
+                <span className="text-sm font-medium">
+                  {t('common.loginLoadError')}
+                </span>
+              </div>
+              <p className="text-sm text-center text-muted-foreground leading-relaxed">
                 {t('common.loginLoadErrorDesc')}
               </p>
-              <code className="text-xs bg-muted px-3 py-2 rounded max-w-full overflow-x-auto block text-center text-muted-foreground">
+              <code className="text-xs bg-muted/80 px-3 py-2 rounded-md max-w-full overflow-x-auto block text-center text-muted-foreground/80 break-all">
                 {loadError}
               </code>
               <Button
                 onClick={handleRetry}
                 disabled={retrying}
                 variant="outline"
-                className="mt-2 cursor-pointer"
+                className="w-full cursor-pointer"
               >
                 {retrying ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -348,6 +362,15 @@ export default function Login() {
 
           <p className="text-xs text-center text-muted-foreground">
             {t('common.agreementNotice')}{' '}
+            <a
+              href="https://langbot.app/terms"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-foreground transition-colors"
+            >
+              {t('common.termsOfService')}
+            </a>
+            {'、'}
             <a
               href="https://langbot.app/privacy"
               target="_blank"

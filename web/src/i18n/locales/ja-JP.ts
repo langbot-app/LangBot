@@ -64,6 +64,7 @@ const jaJP = {
     test: 'テスト',
     forgotPassword: 'パスワードを忘れた？',
     agreementNotice: '続行することで、以下に同意したものとみなされます：',
+    termsOfService: '利用規約',
     privacyPolicy: 'プライバシーポリシー',
     and: 'および',
     dataCollectionPolicy: 'データ収集ポリシー',

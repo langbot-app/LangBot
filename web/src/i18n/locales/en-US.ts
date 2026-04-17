@@ -63,6 +63,7 @@ const enUS = {
     test: 'Test',
     forgotPassword: 'Forgot Password?',
     agreementNotice: 'By continuing, you agree to our',
+    termsOfService: 'Terms of Service',
     privacyPolicy: 'Privacy Policy',
     and: 'and',
     dataCollectionPolicy: 'Data Collection Policy',

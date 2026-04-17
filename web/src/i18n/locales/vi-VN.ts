@@ -63,6 +63,7 @@ const viVN = {
     test: 'Kiểm tra',
     forgotPassword: 'Quên mật khẩu?',
     agreementNotice: 'Bằng việc tiếp tục, bạn đồng ý với',
+    termsOfService: 'Điều khoản dịch vụ',
     privacyPolicy: 'Chính sách bảo mật',
     and: 'và',
     dataCollectionPolicy: 'Chính sách thu thập dữ liệu',

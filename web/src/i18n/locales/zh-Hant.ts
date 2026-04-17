@@ -62,6 +62,7 @@ const zhHant = {
     test: '測試',
     forgotPassword: '忘記密碼？',
     agreementNotice: '繼續即表示您同意我們的',
+    termsOfService: '服務條款',
     privacyPolicy: '隱私政策',
     and: '和',
     dataCollectionPolicy: '數據收集政策',

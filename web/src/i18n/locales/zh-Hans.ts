@@ -62,6 +62,7 @@ const zhHans = {
     test: '测试',
     forgotPassword: '忘记密码？',
     agreementNotice: '继续即表示您同意我们的',
+    termsOfService: '服务条款',
     privacyPolicy: '隐私政策',
     and: '和',
     dataCollectionPolicy: '数据收集政策',
