@@ -197,8 +197,6 @@
     string: '文字列',
     number: '数値',
     boolean: 'ブール値',
-    extraParametersDescription:
-      'リクエストボディに追加されるパラメータ（max_tokens、temperature、top_p など）',
     selectModelProvider: 'モデルプロバイダーを選択',
     modelProviderDescription: 'プロバイダーが提供するモデル名をご入力ください',
     modelManufacturer: 'モデルメーカー',
@@ -384,6 +382,10 @@
     allLevels: 'すべてのレベル',
     selectLevel: 'レベルを選択',
     levelsSelected: 'レベル選択済み',
+    viewDetailedLogs: '詳細ログを表示',
+    viewDetails: '詳細',
+    collapse: '折りたたむ',
+    imagesAttached: '枚の画像が添付されています',
     noLogs: 'ログはまだありません',
     sessionMonitor: {
       title: 'セッション監視',
@@ -885,7 +887,8 @@
       selectParser: 'パーサーを選択',
       builtInParser: '知識エンジンが提供',
       noParserAvailable:
-        'このファイル形式に対応するパーサーがありません。対応するパーサープラグインをインストールしてください。',
+         'このファイル形式に対応するパーサーがありません。対応するパーサープラグインをインストールしてください。',
+      installParserHint: 'マーケットプレイスでパーサープラグインを探す →',
       confirmUpload: 'アップロード',
       cancelUpload: 'キャンセル',
     },
@@ -916,9 +919,18 @@
     installEngineHint:
       '先に「ナレッジエンジン」プラグインをインストールしてください',
     unknownEngine: '不明なエンジン',
+    knowledgeEngine: 'ナレッジエンジン',
+    knowledgeEngineRequired: 'ナレッジエンジンは必須です',
+    selectKnowledgeEngine: 'ナレッジエンジンを選択',
+    builtInEngine: '組み込みエンジン',
+    cannotChangeKnowledgeEngine:
+      '作成後にナレッジエンジンを変更することはできません',
+    createKnowledgeBaseFailed: 'ナレッジベースの作成に失敗しました：',
     loadKnowledgeBaseFailed: 'ナレッジベースの読み込みに失敗しました：',
     deleteKnowledgeBaseFailed: 'ナレッジベースの削除に失敗しました：',
     getKnowledgeBaseListError: 'ナレッジベース一覧の取得に失敗しました：',
+    embeddingModel: 'Embeddingモデル',
+    embeddingModelRequired: 'このエンジンにはEmbeddingモデルが必要です',
     addExternal: '外部ナレッジベースを追加',
     createExternalSuccess: '外部ナレッジベースが正常に作成されました',
     updateExternalSuccess: '外部ナレッジベースが正常に更新されました',
@@ -1099,6 +1111,7 @@
       viewConversation: '会話詳細を表示',
     },
     llmCalls: {
+      title: 'LLM呼び出し',
       model: 'モデル',
       tokens: 'トークン数',
       duration: '期間',
@@ -1107,6 +1120,8 @@
       inputTokens: '入力トークン',
       outputTokens: '出力トークン',
       totalTokens: '合計トークン数',
+      avgDuration: '平均期間',
+      calls: '呼び出し',
     },
     embeddingCalls: {
       title: 'Embedding呼び出し',
@@ -1135,6 +1150,12 @@
       lastActivity: '最終アクティビティ',
       noSessions: 'セッションが見つかりません',
       startTime: '開始時刻',
+      messageStats: 'メッセージ統計',
+      totalMessages: '総メッセージ数',
+      successMessages: '成功',
+      errorMessages: '失敗',
+      llmStats: 'LLM統計',
+      noData: 'セッションが見つかりません',
     },
     errors: {
       errorType: 'エラータイプ',
@@ -1167,8 +1188,17 @@
     messageDetails: {
       noData: 'このクエリにはLLM呼び出しやエラーがありません',
     },
+    queries: {
+      title: 'クエリ',
+    },
     queryVariables: {
       title: 'クエリ変数',
+    },
+    trafficChart: {
+      title: 'トラフィック概要',
+      messages: 'メッセージ',
+      llmCalls: 'LLM呼び出し',
+      noData: 'トラフィックデータがありません',
     },
     viewMonitoring: 'モニタリングを表示',
     refreshData: 'データを更新',

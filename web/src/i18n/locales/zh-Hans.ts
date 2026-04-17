@@ -574,6 +574,7 @@ const zhHans = {
     description: '描述',
     tagLabel: '标签',
     submissionTitle: '您有插件提交正在审核中： {{name}}',
+    submissionPending: '您的插件提交正在审核中： {{name}}',
     submissionApproved: '您的插件提交已通过审核： {{name}}',
     submissionRejected: '您的插件提交已被拒绝： {{name}}',
     clickToRevoke: '撤回',

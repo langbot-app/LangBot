@@ -904,7 +904,8 @@ const esES = {
       selectParser: 'Seleccionar analizador',
       builtInParser: 'Proporcionado por el motor de conocimiento',
       noParserAvailable:
-        'Ningún analizador admite este tipo de archivo. Por favor, instala un plugin de analizador que pueda manejar este formato.',
+         'Ningún analizador admite este tipo de archivo. Por favor, instala un plugin de analizador que pueda manejar este formato.',
+      installParserHint: 'Buscar plugins de analizador en el Marketplace →',
       confirmUpload: 'Subir',
       cancelUpload: 'Cancelar',
     },

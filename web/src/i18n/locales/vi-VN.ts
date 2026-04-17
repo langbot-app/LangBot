@@ -883,7 +883,8 @@ const viVN = {
       selectParser: 'Chọn trình phân tích',
       builtInParser: 'Được cung cấp bởi Công cụ tri thức',
       noParserAvailable:
-        'Không có trình phân tích hỗ trợ loại tệp này. Vui lòng cài đặt plugin trình phân tích có thể xử lý định dạng này.',
+         'Không có trình phân tích hỗ trợ loại tệp này. Vui lòng cài đặt plugin trình phân tích có thể xử lý định dạng này.',
+      installParserHint: 'Duyệt plugin trình phân tích trong Marketplace →',
       confirmUpload: 'Tải lên',
       cancelUpload: 'Hủy',
     },
