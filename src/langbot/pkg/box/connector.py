@@ -22,8 +22,7 @@ if TYPE_CHECKING:
 
 # Default Docker Compose service name for the standalone Box container.
 _DOCKER_BOX_HOST = 'langbot_box'
-_DEFAULT_RELAY_PORT = 5410
-_DEFAULT_RPC_PORT = 5411  # relay_port + 1
+_DEFAULT_PORT = 5410
 
 
 def _get_box_config(ap) -> dict:
@@ -48,9 +47,9 @@ def resolve_box_ws_relay_url(ap: core_app.Application) -> str:
 
     # In Docker, relay lives on the box runtime container.
     if platform.get_platform() == 'docker':
-        return f'http://{_DOCKER_BOX_HOST}:{_DEFAULT_RELAY_PORT}'
+        return f'http://{_DOCKER_BOX_HOST}:{_DEFAULT_PORT}'
 
-    return f'http://127.0.0.1:{_DEFAULT_RELAY_PORT}'
+    return f'http://127.0.0.1:{_DEFAULT_PORT}'
 
 
 class BoxRuntimeConnector(ManagedRuntimeConnector):
@@ -72,10 +71,10 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
         self._handler_task: asyncio.Task | None = None
         self._ctrl_task: asyncio.Task | None = None
 
-        # Parse the relay URL once for reuse (relay port, not RPC port).
+        # Parse the relay URL once for reuse.
         parsed = urlparse(self.ws_relay_base_url)
         self._relay_host = parsed.hostname or '127.0.0.1'
-        self._relay_port = parsed.port or _DEFAULT_RELAY_PORT
+        self._relay_port = parsed.port or _DEFAULT_PORT
 
     def _uses_websocket(self) -> bool:
         """Whether the connector should use WebSocket to reach the Box runtime.
@@ -142,18 +141,18 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
         """Launch box server as detached subprocess, then connect via WS (Windows)."""
         self.ap.logger.info('(windows) Use cmd to launch box runtime and communicate via ws')
 
-        # Launch the box server subprocess (no stdio pipe).
-        # The server will listen on _relay_port for the WS relay and
-        # _relay_port+1 for action-RPC WebSocket.
+        # Launch the box server subprocess in ws mode (no stdio pipe).
         await self._start_runtime_subprocess(
             '-m',
             'langbot_plugin.box.server',
+            '--mode',
+            'ws',
             '--port',
             str(self._relay_port),
         )
 
         # Wait for the WS endpoint to become reachable, then connect.
-        ws_url = f'ws://localhost:{self._relay_port + 1}'
+        ws_url = f'ws://localhost:{self._relay_port}/rpc/ws'
         await self._connect_ws(ws_url, '(windows) WebSocket')
 
     async def _connect_remote_ws(self) -> None:
@@ -167,18 +166,20 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
     def _resolve_rpc_ws_url(self) -> str:
         """Determine the action-RPC WebSocket URL.
 
+        All endpoints share a single port; action RPC is at ``/rpc/ws``.
+
         Priority:
           1. Explicit ``box.runtime_url`` from config  (user-supplied, used as-is)
-          2. Docker environment  ->  ``ws://langbot_box_runtime:5411``
-          3. --standalone-box / Windows fallback  ->  ``ws://localhost:5411``
+          2. Docker environment  ->  ``ws://langbot_box:5410/rpc/ws``
+          3. --standalone-box / Windows fallback  ->  ``ws://localhost:5410/rpc/ws``
         """
         if self.configured_runtime_url:
             return self.configured_runtime_url
 
         if platform.get_platform() == 'docker':
-            return f'ws://{_DOCKER_BOX_HOST}:{_DEFAULT_RPC_PORT}'
+            return f'ws://{_DOCKER_BOX_HOST}:{_DEFAULT_PORT}/rpc/ws'
 
-        return f'ws://localhost:{self._relay_port + 1}'
+        return f'ws://localhost:{self._relay_port}/rpc/ws'
 
     async def _connect_ws(self, ws_url: str, transport_name: str) -> None:
         """Shared WebSocket connection procedure."""
