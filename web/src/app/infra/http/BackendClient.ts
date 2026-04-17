@@ -35,6 +35,7 @@ import {
   ApiRespProviderRerankModel,
   RerankModel,
   ApiRespPluginSystemStatus,
+  ApiRespBoxStatus,
   ApiRespMCPServers,
   ApiRespMCPServer,
   MCPServer,
@@ -887,6 +888,10 @@ export class BackendClient extends BaseHttpClient {
     plugin_debug_key: string;
   }> {
     return this.get('/api/v1/plugins/debug-info');
+  }
+
+  public getBoxStatus(): Promise<ApiRespBoxStatus> {
+    return this.get('/api/v1/box/status');
   }
 
   // ============ User API ============
