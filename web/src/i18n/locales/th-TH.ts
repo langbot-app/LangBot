@@ -62,6 +62,7 @@ const thTH = {
     test: 'ทดสอบ',
     forgotPassword: 'ลืมรหัสผ่าน?',
     agreementNotice: 'การดำเนินการต่อแสดงว่าคุณยอมรับ',
+    termsOfService: 'ข้อกำหนดการให้บริการ',
     privacyPolicy: 'นโยบายความเป็นส่วนตัว',
     and: 'และ',
     dataCollectionPolicy: 'นโยบายการเก็บรวบรวมข้อมูล',
