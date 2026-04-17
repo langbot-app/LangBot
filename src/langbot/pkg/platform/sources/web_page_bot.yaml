@@ -1,0 +1,69 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: web_page_bot
+  label:
+    en_US: "Page Bot"
+    zh_Hans: "页面机器人"
+    zh_Hant: "頁面機器人"
+    ja_JP: "ページボット"
+    th_TH: "บอทหน้าเว็บ"
+    vi_VN: "Bot trang web"
+    es_ES: "Bot de página"
+  description:
+    en_US: "Embed a chat widget on any website with a simple script tag"
+    zh_Hans: "通过一行脚本标签将聊天组件嵌入到任何网站"
+    zh_Hant: "透過一行腳本標籤將聊天元件嵌入到任何網站"
+    ja_JP: "シンプルなスクリプトタグで任意のウェブサイトにチャットウィジェットを埋め込みます"
+    th_TH: "ฝังวิดเจ็ตแชทในเว็บไซต์ใดก็ได้ด้วยแท็กสคริปต์"
+    vi_VN: "Nhúng widget trò chuyện vào bất kỳ trang web nào bằng thẻ script"
+    es_ES: "Incrusta un widget de chat en cualquier sitio web con una etiqueta de script"
+  icon: "webpage.webp"
+spec:
+  categories:
+    - popular
+  config:
+    - name: title
+      label:
+        en_US: Widget Title
+        zh_Hans: 组件标题
+        zh_Hant: 元件標題
+        ja_JP: ウィジェットタイトル
+        th_TH: ชื่อวิดเจ็ต
+        vi_VN: Tiêu đề widget
+        es_ES: Título del widget
+      description:
+        en_US: The title displayed in the chat widget header
+        zh_Hans: 显示在聊天组件顶部的标题
+        zh_Hant: 顯示在聊天元件頂部的標題
+        ja_JP: チャットウィジェットのヘッダーに表示されるタイトル
+        th_TH: ชื่อที่แสดงในส่วนหัวของวิดเจ็ตแชท
+        vi_VN: Tiêu đề hiển thị trong đầu widget trò chuyện
+        es_ES: El título que se muestra en el encabezado del widget de chat
+      type: string
+      required: false
+      default: "LangBot"
+    - name: embed_code
+      label:
+        en_US: Embed Code
+        zh_Hans: 嵌入代码
+        zh_Hant: 嵌入代碼
+        ja_JP: 埋め込みコード
+        th_TH: โค้ดฝังตัว
+        vi_VN: Mã nhúng
+        es_ES: Código de incrustación
+      description:
+        en_US: "Copy this code and paste it into your website HTML. The code will be generated after saving."
+        zh_Hans: "复制此代码并粘贴到你的网站 HTML 中。保存后将自动生成。"
+        zh_Hant: "複製此代碼並貼到你的網站 HTML 中。儲存後將自動生成。"
+        ja_JP: "このコードをコピーしてウェブサイトのHTMLに貼り付けてください。保存後に自動生成されます。"
+        th_TH: "คัดลอกโค้ดนี้และวางในHTML ของเว็บไซต์ของคุณ จะสร้างอัตโนมัติหลังจากบันทึก"
+        vi_VN: "Sao chép mã này và dán vào HTML trang web của bạn. Mã sẽ được tạo tự động sau khi lưu."
+        es_ES: "Copia este código y pégalo en el HTML de tu sitio web. El código se generará después de guardar."
+      type: embed-code
+      required: false
+      default: ""
+execution:
+  python:
+    path: "web_page_bot_adapter.py"
+    attr: "WebPageBotAdapter"

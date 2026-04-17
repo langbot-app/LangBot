@@ -203,10 +203,13 @@ export default function DynamicFormComponent({
     return value;
   };
 
-  // Filter out display-only field types (e.g. webhook-url) that should not
+  // Filter out display-only field types (e.g. webhook-url, embed-code) that should not
   // participate in form state, validation, or value emission.
   const editableItems = useMemo(
-    () => itemConfigList.filter((item) => item.type !== 'webhook-url'),
+    () =>
+      itemConfigList.filter(
+        (item) => item.type !== 'webhook-url' && item.type !== 'embed-code',
+      ),
     [itemConfigList],
   );
 
@@ -441,6 +444,47 @@ export default function DynamicFormComponent({
                 url={webhookUrl}
                 extraUrl={extraWebhookUrl || undefined}
               />
+            );
+          }
+
+          if (config.type === 'embed-code') {
+            const pipelineUuid = (systemContext?.pipeline_uuid as string) || '';
+            if (!pipelineUuid) return null;
+
+            const baseUrl =
+              import.meta.env.VITE_API_BASE_URL || window.location.origin;
+            const widgetTitle =
+              ((systemContext?.adapter_config as Record<string, unknown>)
+                ?.title as string) || 'LangBot';
+            const embedSnippet = `<script data-title="${widgetTitle}" src="${baseUrl}/api/v1/embed/${pipelineUuid}/widget.js"><\/script>`;
+
+            return (
+              <div key={config.id} className="space-y-2">
+                <label className="text-sm font-medium leading-none">
+                  {extractI18nObject(config.label)}
+                </label>
+                {config.description && (
+                  <p className="text-sm text-muted-foreground">
+                    {extractI18nObject(config.description)}
+                  </p>
+                )}
+                <div className="flex items-center gap-2">
+                  <pre className="flex-1 overflow-x-auto rounded-md bg-muted p-3 text-sm font-mono select-all">
+                    <code>{embedSnippet}</code>
+                  </pre>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="shrink-0"
+                    onClick={() => {
+                      navigator.clipboard.writeText(embedSnippet);
+                    }}
+                  >
+                    <Copy className="size-4" />
+                  </Button>
+                </div>
+              </div>
             );
           }
 

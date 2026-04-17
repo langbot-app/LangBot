@@ -354,6 +354,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         self,
         connection: WebSocketConnection,
         message_data: dict,
+        owner_bot=None,
     ):
         """
         处理从WebSocket接收的消息
@@ -366,6 +367,8 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             message_data: 消息数据，包含:
                 - message: 消息链
                 - stream: 是否启用流式输出 (可选，默认True)
+            owner_bot: Optional RuntimeBot that owns this pipeline (e.g. a web_page_bot).
+                       When provided, its identity is used for logging and session tracking.
         """
         pipeline_uuid = connection.pipeline_uuid
         session_type = connection.session_type
@@ -435,12 +438,20 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                 sender=sender, message_chain=message_chain, time=datetime.now().timestamp()
             )
 
-        # 设置流水线UUID
+        # 设置流水线UUID (proxy bot always needs it for reply_message routing)
         self.ap.platform_mgr.websocket_proxy_bot.bot_entity.use_pipeline_uuid = pipeline_uuid
+        if owner_bot is not None:
+            owner_bot.bot_entity.use_pipeline_uuid = pipeline_uuid
 
-        # 异步触发事件处理（不等待结果）
-        if event.__class__ in self.listeners:
-            asyncio.create_task(self.listeners[event.__class__](event, self))
+        # 异步触发事件处理
+        # Use owner_bot's listeners if available, otherwise fall back to proxy bot
+        listeners = (
+            owner_bot.adapter.listeners
+            if (owner_bot and hasattr(owner_bot.adapter, 'listeners') and owner_bot.adapter.listeners)
+            else self.listeners
+        )
+        if event.__class__ in listeners:
+            asyncio.create_task(listeners[event.__class__](event, self))
 
     def get_websocket_messages(self, pipeline_uuid: str, session_type: str) -> list[dict]:
         """获取消息历史"""

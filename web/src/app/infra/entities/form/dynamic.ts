@@ -44,6 +44,7 @@ export enum DynamicFormItemType {
   BOT_SELECTOR = 'bot-selector',
   TOOLS_SELECTOR = 'tools-selector',
   WEBHOOK_URL = 'webhook-url',
+  EMBED_CODE = 'embed-code',
 }
 
 export interface IFileConfig {
