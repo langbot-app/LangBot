@@ -41,28 +41,6 @@ i18n
         translation: ruRU,
       },
     },
-      'zh-Hans': {
-        translation: zhHans,
-      },
-      'zh-Hant': {
-        translation: zhHant,
-      },
-      'ja-JP': {
-        translation: jaJP,
-      },
-      'th-TH': {
-        translation: thTH,
-      },
-      'vi-VN': {
-        translation: viVN,
-      },
-      'es-ES': {
-        translation: esES,
-      },
-      'ru-RU': {
-        translation: ruRU,
-      },
-    },
     fallbackLng: 'zh-Hans',
     debug: process.env.NODE_ENV === 'development',
     interpolation: {

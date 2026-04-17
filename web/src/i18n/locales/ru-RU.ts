@@ -207,14 +207,19 @@ const ruRU = {
     llmModels: 'LLM-модели',
     localProvider: 'Локальный',
     localProviderDescription: 'Модели, настроенные и управляемые локально',
-    spaceProviderDescription: 'Модели, синхронизированные из вашего аккаунта Space',
-    spaceDisabledForLocalAccount: 'Войдите через Space, чтобы использовать облачные модели',
+    spaceProviderDescription:
+      'Модели, синхронизированные из вашего аккаунта Space',
+    spaceDisabledForLocalAccount:
+      'Войдите через Space, чтобы использовать облачные модели',
     syncModels: 'Синхронизировать',
-    syncSuccess: 'Синхронизация завершена: {{created}} создано, {{updated}} обновлено',
+    syncSuccess:
+      'Синхронизация завершена: {{created}} создано, {{updated}} обновлено',
     syncError: 'Ошибка синхронизации: ',
     spaceModelReadOnly: 'Модели Space доступны только для чтения',
-    noSpaceModels: 'Нет моделей Space. Нажмите «Синхронизировать», чтобы загрузить модели из Space.',
-    noLocalModels: 'Нет локальных моделей. Нажмите «Создать», чтобы добавить модель.',
+    noSpaceModels:
+      'Нет моделей Space. Нажмите «Синхронизировать», чтобы загрузить модели из Space.',
+    noLocalModels:
+      'Нет локальных моделей. Нажмите «Создать», чтобы добавить модель.',
     providerCount: '{{count}} провайдеров',
     addModel: 'Добавить модель',
     addLLMModel: 'Добавить LLM-модель',
@@ -236,7 +241,8 @@ const ruRU = {
     unlockModels: 'Войдите для использования',
     editProvider: 'Редактировать провайдера',
     addProvider: 'Добавить провайдера',
-    addProviderHint: 'Добавьте провайдеров для использования моделей из других источников',
+    addProviderHint:
+      'Добавьте провайдеров для использования моделей из других источников',
     addProviderHintSimple: 'Добавьте провайдеров для использования моделей',
     noProviders: 'Провайдеров пока нет',
     providerName: 'Имя провайдера',
@@ -403,7 +409,8 @@ const ruRU = {
     arrange: 'Сортировка плагинов',
     install: 'Установить',
     installPlugin: 'Установить плагин',
-    onlySupportGithub: 'В настоящее время поддерживается установка только с GitHub',
+    onlySupportGithub:
+      'В настоящее время поддерживается установка только с GitHub',
     enterGithubLink: 'Введите ссылку на GitHub плагина',
     installing: 'Установка плагина...',
     installSuccess: 'Плагин успешно установлен',
@@ -476,7 +483,8 @@ const ruRU = {
     uploadSuccess: 'Загрузка успешна',
     uploadFailed: 'Ошибка загрузки',
     selectFileToUpload: 'Выберите файл плагина для загрузки',
-    askConfirm: 'Вы уверены, что хотите установить плагин "{{name}}" ({{version}})?',
+    askConfirm:
+      'Вы уверены, что хотите установить плагин "{{name}}" ({{version}})?',
     fromGithub: 'С GitHub',
     fromLocal: 'Из локального файла',
     fromMarketplace: 'Из маркетплейса',
@@ -742,8 +750,7 @@ const ruRU = {
     deletePipelineHint:
       'После удаления боты, привязанные к этому конвейеру, перестанут работать.',
     copyPipelineAction: 'Копировать этот конвейер',
-    copyPipelineHint:
-      'Создать новый конвейер с дублированием всех настроек.',
+    copyPipelineHint: 'Создать новый конвейер с дублированием всех настроек.',
     extensions: {
       title: 'Расширения',
       loadError: 'Не удалось загрузить плагины',
@@ -891,13 +898,11 @@ const ruRU = {
     knowledgeEngineRequired: 'Движок знаний обязателен',
     selectKnowledgeEngine: 'Выберите движок знаний',
     builtInEngine: 'Встроенный движок',
-    cannotChangeKnowledgeEngine:
-      'Движок знаний нельзя изменить после создания',
+    cannotChangeKnowledgeEngine: 'Движок знаний нельзя изменить после создания',
     basicInfo: 'Основная информация',
     basicInfoDescription: 'Задайте название, иконку и описание базы знаний',
     engineSettings: 'Настройки движка',
-    engineSettingsDescription:
-      'Конфигурация выбранного движка знаний',
+    engineSettingsDescription: 'Конфигурация выбранного движка знаний',
     engineSettingsReadonly: 'только чтение в режиме редактирования',
     retrievalSettings: 'Настройки извлечения',
     retrievalSettingsDescription:
@@ -977,8 +982,7 @@ const ruRU = {
     resetPassword: 'Сбросить пароль',
     resetting: 'Сброс...',
     resetSuccess: 'Пароль успешно сброшен, пожалуйста, войдите',
-    resetFailed:
-      'Ошибка сброса пароля, проверьте email и ключ восстановления',
+    resetFailed: 'Ошибка сброса пароля, проверьте email и ключ восстановления',
     backToLogin: 'Вернуться к входу',
   },
   embedding: {
@@ -1016,7 +1020,8 @@ const ruRU = {
     spaceBoundDescription:
       'Аккаунт Space привязан, доступны официальные API моделей и облачные сервисы',
     bindSpace: 'Привязать аккаунт Space',
-    bindSpaceDescription: 'Привяжите для использования официальных API моделей и облачных сервисов',
+    bindSpaceDescription:
+      'Привяжите для использования официальных API моделей и облачных сервисов',
     bindSpaceButton: 'Привязать',
     bindSpaceConfirmTitle: 'Подтверждение привязки',
     bindSpaceConfirmDescription:
@@ -1033,7 +1038,8 @@ const ruRU = {
   },
   monitoring: {
     title: 'Мониторинг',
-    description: 'Мониторинг активности ботов, вызовов LLM и производительности системы',
+    description:
+      'Мониторинг активности ботов, вызовов LLM и производительности системы',
     overview: 'Обзор',
     totalMessages: 'Всего сообщений',
     llmCallsCount: 'Вызовы LLM',
@@ -1221,7 +1227,8 @@ const ruRU = {
     createError: 'Не удалось создать ресурсы',
     spaceAuthError: 'Не удалось инициировать авторизацию через Space',
     skipSaveError: 'Не удалось сохранить статус пропуска. Повторите попытку.',
-    completeSaveError: 'Не удалось сохранить статус завершения. Повторите попытку.',
+    completeSaveError:
+      'Не удалось сохранить статус завершения. Повторите попытку.',
     step: {
       platform: 'Платформа',
       botConfig: 'Настройка бота',
