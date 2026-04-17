@@ -478,7 +478,6 @@ const jaJP = {
     boxUnavailable: '利用不可',
     boxBackend: 'バックエンド',
     boxProfile: 'プロファイル',
-    boxSessions: 'セッション',
     boxErrors: 'エラー',
     boxStatusLoadFailed: 'Box ステータスの読み込みに失敗しました',
     failedToGetDebugInfo: 'デバッグ情報の取得に失敗しました',

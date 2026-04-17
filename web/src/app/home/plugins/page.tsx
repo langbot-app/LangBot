@@ -20,7 +20,6 @@ import {
   Box,
   CircleCheck,
   CircleX,
-  Activity,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -703,28 +702,15 @@ function PluginListView() {
                       </span>
                       <span className="font-mono">{boxStatus.profile}</span>
                     </div>
-                    {boxStatus.available && (
-                      <>
-                        <div className="flex items-center gap-2">
-                          <span className="text-muted-foreground min-w-[80px]">
-                            {t('plugins.boxSessions')}:
-                          </span>
-                          <span className="flex items-center gap-1 font-mono">
-                            <Activity className="w-3 h-3" />
-                            {boxStatus.active_sessions ?? 0}
-                          </span>
-                        </div>
-                        {(boxStatus.recent_error_count ?? 0) > 0 && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-muted-foreground min-w-[80px]">
-                              {t('plugins.boxErrors')}:
-                            </span>
-                            <span className="text-amber-600 font-mono">
-                              {boxStatus.recent_error_count}
-                            </span>
-                          </div>
-                        )}
-                      </>
+                    {(boxStatus.recent_error_count ?? 0) > 0 && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground min-w-[80px]">
+                          {t('plugins.boxErrors')}:
+                        </span>
+                        <span className="text-amber-600 font-mono">
+                          {boxStatus.recent_error_count}
+                        </span>
+                      </div>
                     )}
                   </div>
                 ) : (

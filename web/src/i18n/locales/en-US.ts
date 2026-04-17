@@ -473,7 +473,6 @@ const enUS = {
     boxUnavailable: 'Unavailable',
     boxBackend: 'Backend',
     boxProfile: 'Profile',
-    boxSessions: 'Sessions',
     boxErrors: 'Errors',
     boxStatusLoadFailed: 'Failed to load Box status',
     failedToGetDebugInfo: 'Failed to get debug information',

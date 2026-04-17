@@ -452,7 +452,6 @@ const zhHans = {
     boxUnavailable: '不可用',
     boxBackend: '后端',
     boxProfile: '配置',
-    boxSessions: '会话数',
     boxErrors: '错误数',
     boxStatusLoadFailed: '加载 Box 状态失败',
     failedToGetDebugInfo: '获取调试信息失败',
