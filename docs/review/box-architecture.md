@@ -99,8 +99,9 @@ BoxService
 
 管理与 Box Runtime 的通信连接：
 
-- **本地 stdio**: 无 `runtime_url` 时，fork `python -m langbot_plugin.box.server --port {port}` 子进程
-- **远程 WebSocket**: 有 `runtime_url` 时，连接 `ws://{host}:{port+1}`（+1 偏移，5410 是 relay，5411 是 RPC）
+- **本地 stdio**: Unix/macOS 无特殊配置时，fork `python -m langbot_plugin.box.server --port {port}` 子进程
+- **远程 WebSocket**: Docker / `--standalone-box` / 显式 `runtime_url` 时，连接 `ws://{host}:{port}/rpc/ws`（同一端口，路径区分）
+- **Windows**: subprocess + WebSocket（Windows 不支持 async stdio pipe）
 - **同步等待**: 使用 `asyncio.Event` + `wait_for(timeout=30s)` 模式确认连接
 
 ### 2.3 BoxWorkspaceSession (`pkg/box/workspace.py`, 404 行)
@@ -200,14 +201,13 @@ start_managed_process(session, spec):
 
 ### 3.3 Server (`box/server.py`, 268 行)
 
-两个服务共存：
+单端口 aiohttp 服务（默认 5410），通过路径区分：
 
-1. **Action RPC**: `BoxServerHandler` 处理 11 种 action（HEALTH/STATUS/EXEC/CREATE_SESSION/...），通过 stdio 或 WS 传输
-2. **WS Relay** (aiohttp, port 5410): `GET /v1/sessions/{id}/managed-process/ws`，双向桥接 WebSocket ↔ managed process stdin/stdout
+1. **Action RPC** (`/rpc/ws`): `BoxServerHandler` 处理 11 种 action（HEALTH/STATUS/EXEC/CREATE_SESSION/...），通过 stdio 或 WS 传输。WS 模式使用 `AiohttpWSConnection` 适配层。
+2. **WS Relay** (`/v1/sessions/{id}/managed-process/ws`): 双向桥接 WebSocket ↔ managed process stdin/stdout
 
 端口分配:
-- Port N (默认 5410): WS relay（managed process I/O）
-- Port N+1 (5411): Action RPC WebSocket（仅远程模式使用）
+- Port N (默认 5410): 所有 WebSocket 端点（Action RPC + managed process relay）
 
 ### 3.4 Client (`box/client.py`, 177 行)
 

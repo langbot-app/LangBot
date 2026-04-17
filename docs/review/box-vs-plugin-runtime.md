@@ -35,26 +35,28 @@ else:
     # Unix/Mac → StdioClientController(python -m langbot_plugin.cli rt -s)
 ```
 
-### Box: 2-路决策
+### Box: 3-路决策
 
 ```python
-# pkg/box/connector.py:56-60
-if self.manages_local_runtime:   # = not configured_runtime_url
-    await self._start_local_stdio()    # StdioClientController
+# pkg/box/connector.py
+if self._uses_websocket():
+    if platform.get_platform() == 'win32' and not self.configured_runtime_url:
+        await self._start_subprocess_then_ws()  # subprocess + ws://localhost:5410/rpc/ws
+    else:
+        await self._connect_remote_ws()         # ws://{host}:5410/rpc/ws
 else:
-    await self._connect_remote_ws()    # ws://{host}:{port+1}
+    await self._start_local_stdio()             # StdioClientController
 ```
 
 ### 决策矩阵
 
 | 环境 | Plugin | Box |
 |------|--------|-----|
-| Docker | WS → `:5400` | WS → `:{port+1}` (5411) |
-| Windows 非 Docker | subprocess + WS (`:5400`) | **stdio (可能失败!)** |
+| Docker | WS → `:5400` | WS → `:5410/rpc/ws` |
+| `--standalone-box` | N/A | WS → `localhost:5410/rpc/ws` |
+| Windows 非 Docker | subprocess + WS (`:5400`) | subprocess + WS (`localhost:5410/rpc/ws`) |
 | Unix/Mac 非 Docker | stdio | stdio |
 | 手动配置 URL | 通过配置项 | WS → 用户配置的 URL |
-
-**Box 的 Windows 问题**: 无 Win32 分支，asyncio ProactorEventLoop 不支持 subprocess stdio pipe。Plugin 为此专门做了处理。
 
 ---
 
@@ -168,10 +170,10 @@ Controller ← ABC
 | 服务 | Plugin | Box |
 |------|--------|-----|
 | Action RPC (stdio) | stdin/stdout | stdin/stdout |
-| Action RPC (WS) | `:5400` | `:{port+1}` (默认 5411) |
-| 辅助服务 | debug WS `:5401` | managed process WS relay `:5410` |
+| Action RPC (WS) | `:5400` | `:5410/rpc/ws` |
+| 辅助服务 | debug WS `:5401` | managed process WS relay `:5410/v1/sessions/{id}/managed-process/ws` |
 
-**Box 特点**: 即使在 stdio 模式，也额外在 `:5410` 启动 aiohttp WS 服务用于 managed process attach。Plugin 在 stdio 模式不开额外端口。
+**Box 特点**: 单端口 aiohttp 服务（默认 5410），通过路径区分 Action RPC 和 managed process relay。即使在 stdio 模式，也在 `:5410` 启动 aiohttp 用于 managed process attach。Plugin 在 stdio 模式不开额外端口。
 
 ---
 
