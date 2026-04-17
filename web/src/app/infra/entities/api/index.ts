@@ -334,6 +334,19 @@ export interface ApiRespPluginSystemStatus {
   plugin_connector_error: string;
 }
 
+export interface ApiRespBoxStatus {
+  available: boolean;
+  profile: string;
+  recent_error_count: number;
+  backend?: {
+    name: string;
+    available: boolean;
+  };
+  active_sessions?: number;
+  managed_processes?: number;
+  session_ttl_sec?: number;
+}
+
 export interface ApiRespAsyncTasks {
   tasks: AsyncTask[];
 }
