@@ -46,6 +46,9 @@ export function LanguageSelector({
     } else if (i18n.language === 'es' || i18n.language === 'es-ES') {
       setCurrentLanguage('es-ES');
       localStorage.setItem('langbot_language', 'es-ES');
+    } else if (i18n.language === 'ru' || i18n.language === 'ru-RU') {
+      setCurrentLanguage('ru-RU');
+      localStorage.setItem('langbot_language', 'ru-RU');
     } else {
       setCurrentLanguage('en-US');
       localStorage.setItem('langbot_language', 'en-US');
@@ -74,6 +77,11 @@ export function LanguageSelector({
           browserLanguage.startsWith('es-')
         ) {
           detectedLanguage = 'es-ES';
+        } else if (
+          browserLanguage === 'ru' ||
+          browserLanguage.startsWith('ru-')
+        ) {
+          detectedLanguage = 'ru-RU';
         } else {
           detectedLanguage = 'en-US';
         }
@@ -111,6 +119,7 @@ export function LanguageSelector({
         <SelectItem value="th-TH">ภาษาไทย</SelectItem>
         <SelectItem value="vi-VN">Tiếng Việt</SelectItem>
         <SelectItem value="es-ES">Español</SelectItem>
+        <SelectItem value="ru-RU">Русский</SelectItem>
       </SelectContent>
     </Select>
   );
