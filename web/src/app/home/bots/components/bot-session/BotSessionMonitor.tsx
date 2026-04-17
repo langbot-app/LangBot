@@ -603,17 +603,22 @@ const BotSessionMonitor = forwardRef<
                             {!isUser &&
                               msgFeedback &&
                               (msgFeedback.feedback_type === 1 ? (
-                                <span className="inline-flex items-center gap-1 ml-auto text-green-600 dark:text-green-400">
+                                <span className="inline-flex items-center gap-1 ml-auto text-green-600 dark:text-green-400 cursor-default relative group">
                                   <ThumbsUp className="w-3 h-3 flex-shrink-0" />
                                   {t('monitoring.feedback.like')}
+                                  {msgFeedback.feedback_content && (
+                                    <span className="hidden group-hover:block absolute bottom-full right-0 mb-1 px-3 py-1.5 rounded-lg bg-popover border text-popover-foreground text-xs whitespace-nowrap shadow-md z-10">
+                                      {msgFeedback.feedback_content}
+                                    </span>
+                                  )}
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1 ml-auto text-red-500 dark:text-red-400 truncate max-w-[50%]">
+                                <span className="inline-flex items-center gap-1 ml-auto text-red-500 dark:text-red-400 cursor-default relative group">
                                   <ThumbsDown className="w-3 h-3 flex-shrink-0" />
                                   {t('monitoring.feedback.dislike')}
                                   {msgFeedback.feedback_content && (
-                                    <span className="text-muted-foreground truncate">
-                                      — {msgFeedback.feedback_content}
+                                    <span className="hidden group-hover:block absolute bottom-full right-0 mb-1 px-3 py-1.5 rounded-lg bg-popover border text-popover-foreground text-xs whitespace-nowrap shadow-md z-10">
+                                      {msgFeedback.feedback_content}
                                     </span>
                                   )}
                                 </span>
