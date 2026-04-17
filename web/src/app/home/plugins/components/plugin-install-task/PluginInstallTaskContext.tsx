@@ -401,14 +401,32 @@ export function PluginInstallTaskProvider({
     }
   }, [pollTask]);
 
-  // Initial sync on mount + periodic sync every 3s
+  // Initial sync on mount to recover any orphaned tasks
+  const syncOnMountRef = useRef(syncTasksFromBackend);
+  syncOnMountRef.current = syncTasksFromBackend;
   useEffect(() => {
-    syncTasksFromBackend();
-    syncIntervalRef.current = setInterval(syncTasksFromBackend, 3000);
+    syncOnMountRef.current();
+  }, []);
+
+  // Only poll periodically when there are active (non-terminal) tasks
+  useEffect(() => {
+    const hasActiveTasks = tasks.some(
+      (t) => t.stage !== InstallStage.DONE && t.stage !== InstallStage.ERROR,
+    );
+
+    if (hasActiveTasks) {
+      syncIntervalRef.current = setInterval(syncTasksFromBackend, 3000);
+    } else {
+      if (syncIntervalRef.current) {
+        clearInterval(syncIntervalRef.current);
+        syncIntervalRef.current = null;
+      }
+    }
+
     return () => {
       if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
     };
-  }, [syncTasksFromBackend]);
+  }, [tasks, syncTasksFromBackend]);
 
   const addTask = useCallback(
     (params: {
