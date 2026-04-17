@@ -10,7 +10,15 @@ import { useTranslation } from 'react-i18next';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { Ban, Bot, Copy, Check, Workflow } from 'lucide-react';
+import {
+  Ban,
+  Bot,
+  Copy,
+  Check,
+  Workflow,
+  ThumbsUp,
+  ThumbsDown,
+} from 'lucide-react';
 import {
   MessageChainComponent,
   Plain,
@@ -54,6 +62,12 @@ interface SessionMessage {
   role?: string | null;
 }
 
+interface SessionFeedback {
+  feedback_type: number; // 1=like, 2=dislike
+  feedback_content?: string | null;
+  stream_id?: string | null;
+}
+
 export interface BotSessionMonitorHandle {
   refreshSessions: () => Promise<void>;
 }
@@ -75,6 +89,9 @@ const BotSessionMonitor = forwardRef<
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [copiedUserId, setCopiedUserId] = useState(false);
+  const [feedbackMap, setFeedbackMap] = useState<
+    Record<string, SessionFeedback>
+  >({});
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   const parseSessionType = (sessionId: string): string | null => {
@@ -117,21 +134,50 @@ const BotSessionMonitor = forwardRef<
     [loadSessions],
   );
 
-  const loadMessages = useCallback(async (sessionId: string) => {
-    setLoadingMessages(true);
-    try {
-      const response = await httpClient.getSessionMessages(sessionId);
-      const sorted = (response.messages ?? []).sort(
-        (a, b) =>
-          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-      );
-      setMessages(sorted);
-    } catch (error) {
-      console.error('Failed to load session messages:', error);
-    } finally {
-      setLoadingMessages(false);
-    }
-  }, []);
+  const loadMessages = useCallback(
+    async (sessionId: string) => {
+      setLoadingMessages(true);
+      try {
+        const messagesRes = await httpClient.getSessionMessages(sessionId);
+        const sorted = (messagesRes.messages ?? []).sort(
+          (a, b) =>
+            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+        );
+        setMessages(sorted);
+
+        // Collect user message IDs for feedback matching
+        const userMsgIds = new Set(
+          sorted.filter((m) => !m.role || m.role === 'user').map((m) => m.id),
+        );
+
+        if (userMsgIds.size > 0) {
+          // Fetch feedback for this bot, then match by stream_id locally
+          const feedbackRes = await httpClient.get<{
+            feedback: SessionFeedback[];
+          }>(
+            `/api/v1/monitoring/feedback?botId=${encodeURIComponent(botId)}&limit=200`,
+          );
+
+          const map: Record<string, SessionFeedback> = {};
+          if (feedbackRes?.feedback) {
+            for (const fb of feedbackRes.feedback) {
+              if (fb.stream_id && userMsgIds.has(fb.stream_id)) {
+                map[fb.stream_id] = fb;
+              }
+            }
+          }
+          setFeedbackMap(map);
+        } else {
+          setFeedbackMap({});
+        }
+      } catch (error) {
+        console.error('Failed to load session messages:', error);
+      } finally {
+        setLoadingMessages(false);
+      }
+    },
+    [botId],
+  );
 
   useEffect(() => {
     loadSessions();
@@ -479,11 +525,21 @@ const BotSessionMonitor = forwardRef<
                     {t('bots.sessionMonitor.noMessages')}
                   </div>
                 ) : (
-                  messages.map((msg) => {
+                  messages.map((msg, msgIndex) => {
                     const isUser = isUserMessage(msg);
                     const isDiscarded =
                       msg.status === 'discarded' ||
                       msg.pipeline_id === PIPELINE_DISCARD;
+                    // For bot replies, find feedback linked to the preceding user message
+                    let msgFeedback: SessionFeedback | undefined;
+                    if (!isUser) {
+                      for (let i = msgIndex - 1; i >= 0; i--) {
+                        if (isUserMessage(messages[i])) {
+                          msgFeedback = feedbackMap[messages[i].id];
+                          break;
+                        }
+                      }
+                    }
                     return (
                       <div
                         key={msg.id}
@@ -543,6 +599,25 @@ const BotSessionMonitor = forwardRef<
                                 {msg.runner_name}
                               </span>
                             )}
+                            {/* Feedback indicator — same line, pushed right */}
+                            {!isUser &&
+                              msgFeedback &&
+                              (msgFeedback.feedback_type === 1 ? (
+                                <span className="inline-flex items-center gap-1 ml-auto text-green-600 dark:text-green-400">
+                                  <ThumbsUp className="w-3 h-3 flex-shrink-0" />
+                                  {t('monitoring.feedback.like')}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 ml-auto text-red-500 dark:text-red-400 truncate max-w-[50%]">
+                                  <ThumbsDown className="w-3 h-3 flex-shrink-0" />
+                                  {t('monitoring.feedback.dislike')}
+                                  {msgFeedback.feedback_content && (
+                                    <span className="text-muted-foreground truncate">
+                                      — {msgFeedback.feedback_content}
+                                    </span>
+                                  )}
+                                </span>
+                              ))}
                           </div>
                         </div>
                       </div>
