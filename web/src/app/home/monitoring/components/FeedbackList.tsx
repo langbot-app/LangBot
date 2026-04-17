@@ -127,6 +127,20 @@ export function FeedbackList({
                         {item.platform}
                       </span>
                     )}
+                    {item.streamId && onViewMessage && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 px-1.5 text-xs"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onViewMessage(item.streamId!);
+                        }}
+                      >
+                        <ExternalLink className="w-3 h-3 mr-1" />
+                        {t('monitoring.messageList.viewConversation')}
+                      </Button>
+                    )}
                   </div>
 
                   {item.feedbackContent && (

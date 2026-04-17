@@ -781,9 +781,9 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
     # Monitoring message ID mapping for feedback correlation
     # Temp: user Lark message ID → monitoring_message_id (populated by on_monitoring_message_created, consumed by create_message_card)
-    _pending_monitoring_msg: dict[str, str]
+    pending_monitoring_msg: dict[str, str]
     # Final: reply Lark message ID → (monitoring_message_id, timestamp) (used by feedback callbacks)
-    _reply_to_monitoring_msg: dict[str, tuple[str, float]]
+    reply_to_monitoring_msg: dict[str, tuple[str, float]]
     _MONITORING_MAPPING_TTL = 600  # 10 minutes
 
     seq: int  # 用于在发送卡片消息中识别消息顺序，直接以seq作为标识
@@ -834,8 +834,8 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
                 # Resolve monitoring message ID from reply message mapping
                 monitoring_msg_id = None
-                if open_message_id and open_message_id in self._reply_to_monitoring_msg:
-                    monitoring_msg_id = self._reply_to_monitoring_msg[open_message_id][0]
+                if open_message_id and open_message_id in self.reply_to_monitoring_msg:
+                    monitoring_msg_id = self.reply_to_monitoring_msg[open_message_id][0]
 
                 feedback_event = platform_events.FeedbackEvent(
                     feedback_id=getattr(event.header, 'event_id', str(uuid.uuid4())),
@@ -883,8 +883,8 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             logger=logger,
             lark_tenant_key=config.get('lark_tenant_key', ''),
             card_id_dict={},
-            _pending_monitoring_msg={},
-            _reply_to_monitoring_msg={},
+            pending_monitoring_msg={},
+            reply_to_monitoring_msg={},
             seq=1,
             listeners={},
             quart_app=quart_app,
@@ -1030,16 +1030,16 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         try:
             user_msg_id = query.message_event.message_chain.message_id
             if user_msg_id:
-                self._pending_monitoring_msg[user_msg_id] = monitoring_message_id
+                self.pending_monitoring_msg[user_msg_id] = monitoring_message_id
         except Exception as e:
             await self.logger.debug(f'Failed to map message to monitoring message: {e}')
 
     def _cleanup_monitoring_mapping(self):
         """Remove entries older than TTL from the reply-to-monitoring mapping."""
         now = time.time()
-        expired = [k for k, (_, ts) in self._reply_to_monitoring_msg.items() if now - ts > self._MONITORING_MAPPING_TTL]
+        expired = [k for k, (_, ts) in self.reply_to_monitoring_msg.items() if now - ts > self._MONITORING_MAPPING_TTL]
         for k in expired:
-            del self._reply_to_monitoring_msg[k]
+            del self.reply_to_monitoring_msg[k]
 
     async def create_card_id(self, message_id):
         try:
@@ -1285,12 +1285,12 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         try:
             user_msg_id = event.message_chain.message_id
             reply_msg_id = getattr(response.data, 'message_id', None)
-            monitoring_msg_id = self._pending_monitoring_msg.pop(user_msg_id, None)
+            monitoring_msg_id = self.pending_monitoring_msg.pop(user_msg_id, None)
             if reply_msg_id and monitoring_msg_id:
-                self._reply_to_monitoring_msg[reply_msg_id] = (monitoring_msg_id, time.time())
+                self.reply_to_monitoring_msg[reply_msg_id] = (monitoring_msg_id, time.time())
                 self._cleanup_monitoring_mapping()
-        except Exception:
-            pass
+        except Exception as e:
+            asyncio.create_task(self.logger.debug(f'Failed to transfer monitoring mapping in create_message_card: {e}'))
 
         return True
 
@@ -1604,8 +1604,8 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
                     # Resolve monitoring message ID from reply message mapping
                     monitoring_msg_id = None
-                    if open_message_id and open_message_id in self._reply_to_monitoring_msg:
-                        monitoring_msg_id = self._reply_to_monitoring_msg[open_message_id][0]
+                    if open_message_id and open_message_id in self.reply_to_monitoring_msg:
+                        monitoring_msg_id = self.reply_to_monitoring_msg[open_message_id][0]
 
                     feedback_event = platform_events.FeedbackEvent(
                         feedback_id=data.get('header', {}).get('event_id', str(uuid.uuid4())),
