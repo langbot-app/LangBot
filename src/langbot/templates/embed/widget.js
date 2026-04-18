@@ -14,6 +14,7 @@
     baseUrl: "__LANGBOT_BASE_URL__",
     sessionType: "person",
     title: scriptTitle || "LangBot",
+    title: scriptTitle || "LangBot",
     logoUrl: "__LANGBOT_BASE_URL__" + "/api/v1/embed/logo",
     maxReconnectAttempts: 5,
     reconnectDelay: 3000,
@@ -79,8 +80,8 @@
     .lb-msg-bubble hr { border: none; border-top: 1px solid #d1d5db; margin: 8px 0; }\
     .lb-msg-bubble del { text-decoration: line-through; opacity: 0.7; }\
     .lb-msg-bubble img { max-width: 100%; border-radius: 8px; margin: 4px 0; cursor: pointer; }\
-    .lb-msg-actions { display: none; align-items: center; gap: 4px; margin-top: 4px; }\
-    .lb-msg:hover .lb-msg-actions { display: flex; }\
+    .lb-msg-actions { display: flex; align-items: center; gap: 4px; margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(0,0,0,0.06); }\
+    .lb-msg-actions-hidden { display: none; }\
     .lb-act-btn { background: none; border: 1px solid #e5e7eb; color: #9ca3af; cursor: pointer; padding: 3px 6px; border-radius: 6px; display: flex; align-items: center; gap: 3px; font-size: 11px; transition: all 0.15s; }\
     .lb-act-btn:hover { background: #f3f4f6; color: #6b7280; border-color: #d1d5db; }\
     .lb-act-btn.lb-active { color: #2563eb; border-color: #93c5fd; background: #eff6ff; }\
@@ -97,7 +98,7 @@
     .lb-footer { text-align: right; padding: 2px 12px 0; font-size: 9px; color: #d1d5db; font-style: italic; flex-shrink: 0; }\
     .lb-footer a { color: #d1d5db; text-decoration: none; }\
     .lb-footer a:hover { color: #9ca3af; }\
-    .lb-input-area { display: inline-flex; gap: 4px; padding: 10px 14px; background: #f3f4f6; border-radius: 12px; border-bottom-left-radius: 4px; margin-left: 42px; }\
+    .lb-typing { display: inline-flex; gap: 4px; padding: 10px 14px; background: #f3f4f6; border-radius: 12px; border-bottom-left-radius: 4px; margin-left: 42px; }\
     .lb-typing span { width: 6px; height: 6px; background: #9ca3af; border-radius: 50%; animation: lb-bounce 1.4s infinite both; }\
     .lb-typing span:nth-child(2) { animation-delay: 0.16s; }\
     .lb-typing span:nth-child(3) { animation-delay: 0.32s; }\
@@ -137,7 +138,7 @@
   var ICON_CHECK =
     '<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
   var ICON_IMAGE =
-    '<svg viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>';
+    '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM6 20V4h7v5h5v11H6z"/><path d="M8 17l2.5-3.5L13 17l2-2.5L18 17H8z"/></svg>';
 
   // ========== State ==========
   var state = {
@@ -437,12 +438,10 @@
     if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
     if (!text.trim() && !imageBase64) return;
 
-    // Build message chain
     var chain = [];
     if (text.trim()) chain.push({ type: "Plain", text: text.trim() });
     if (imageBase64) chain.push({ type: "Image", base64: imageBase64 });
 
-    // Add user message to local chat immediately
     var localMsg = {
       id: "local_" + state.nextLocalId++,
       role: "user",
@@ -454,11 +453,7 @@
     addMessage(localMsg);
 
     state.ws.send(
-      JSON.stringify({
-        type: "message",
-        message: chain,
-        stream: true,
-      }),
+      JSON.stringify({ type: "message", message: chain, stream: true }),
     );
   }
 
@@ -524,9 +519,9 @@
   function resetSession() {
     var url =
       CONFIG.baseUrl +
-      "/api/v1/pipelines/" +
+      "/api/v1/embed/" +
       CONFIG.pipelineUuid +
-      "/ws/reset/" +
+      "/reset/" +
       CONFIG.sessionType;
     fetch(url, { method: "POST" })
       .then(function () {
@@ -601,10 +596,12 @@
     body.appendChild(bubble);
     body.appendChild(meta);
 
-    // Action buttons for assistant messages (copy, like, dislike)
-    if (!isUser && msg.is_final !== false) {
+    // Action buttons for assistant messages (copy, like, dislike) — inside bubble, hidden during streaming
+    if (!isUser) {
       var actions = document.createElement("div");
-      actions.className = "lb-msg-actions";
+      actions.className =
+        "lb-msg-actions" +
+        (msg.is_final === false ? " lb-msg-actions-hidden" : "");
 
       // Copy button
       var copyBtn = document.createElement("button");
@@ -612,63 +609,47 @@
       copyBtn.innerHTML = ICON_COPY;
       copyBtn.addEventListener(
         "click",
-        (function (t, btn) {
+        (function (t) {
           return function () {
-            navigator.clipboard.writeText(t).then(function () {
-              btn.innerHTML = ICON_CHECK;
+            var currentText = bubble.textContent || t;
+            navigator.clipboard.writeText(currentText).then(function () {
+              copyBtn.innerHTML = ICON_CHECK;
               setTimeout(function () {
-                btn.innerHTML = ICON_COPY;
+                copyBtn.innerHTML = ICON_COPY;
               }, 1500);
             });
           };
-        })(textContent, copyBtn),
+        })(textContent),
       );
       actions.appendChild(copyBtn);
 
-      // Like button
+      // Like & Dislike buttons
       var likeBtn = document.createElement("button");
+      var dislikeBtn = document.createElement("button");
+
       likeBtn.className =
         "lb-act-btn" + (state.feedbackState[msg.id] === 1 ? " lb-active" : "");
       likeBtn.innerHTML = ICON_THUMB_UP;
-      likeBtn.addEventListener(
-        "click",
-        (function (id, lBtn, dBtn) {
-          return function () {
-            submitFeedback(id, 1);
-            lBtn.classList.toggle("lb-active", state.feedbackState[id] === 1);
-            dBtn.classList.remove("lb-active");
-          };
-        })(msg.id, likeBtn, null),
-      );
-
-      // Dislike button
-      var dislikeBtn = document.createElement("button");
       dislikeBtn.className =
         "lb-act-btn" + (state.feedbackState[msg.id] === 2 ? " lb-active" : "");
       dislikeBtn.innerHTML = ICON_THUMB_DOWN;
-      dislikeBtn.addEventListener(
-        "click",
-        (function (id, lBtn, dBtn) {
-          return function () {
-            submitFeedback(id, 2);
-            dBtn.classList.toggle("lb-active", state.feedbackState[id] === 2);
-            lBtn.classList.remove("lb-active");
-          };
-        })(msg.id, likeBtn, dislikeBtn),
-      );
 
-      // Fix like button reference to dislike
-      likeBtn.onclick = (function (id, lBtn, dBtn) {
-        return function () {
+      (function (id, lBtn, dBtn) {
+        lBtn.addEventListener("click", function () {
           submitFeedback(id, 1);
           lBtn.classList.toggle("lb-active", state.feedbackState[id] === 1);
           dBtn.classList.remove("lb-active");
-        };
+        });
+        dBtn.addEventListener("click", function () {
+          submitFeedback(id, 2);
+          dBtn.classList.toggle("lb-active", state.feedbackState[id] === 2);
+          lBtn.classList.remove("lb-active");
+        });
       })(msg.id, likeBtn, dislikeBtn);
 
       actions.appendChild(likeBtn);
       actions.appendChild(dislikeBtn);
-      body.appendChild(actions);
+      bubble.appendChild(actions);
     }
 
     div.appendChild(avatar);
@@ -721,7 +702,14 @@
     if (allMsgs[idx]) {
       var bubble = allMsgs[idx].querySelector(".lb-msg-bubble");
       if (bubble) {
+        // Preserve action buttons if present
+        var actionsEl = bubble.querySelector(".lb-msg-actions");
         bubble.innerHTML = renderMarkdown(msg.content || extractText(msg));
+        // Re-append or show action buttons when streaming finishes
+        if (actionsEl) {
+          if (msg.is_final) actionsEl.classList.remove("lb-msg-actions-hidden");
+          bubble.appendChild(actionsEl);
+        }
       }
     }
   }
@@ -828,7 +816,7 @@
     sendMessage(text, img);
     els.input.value = "";
     els.input.style.height = "auto";
-    clearImagePreview();
+    clearPendingAttachment();
     els.input.focus();
   }
 
@@ -846,22 +834,34 @@
 
   function handleImageSelect(e) {
     var file = e.target.files && e.target.files[0];
+    console.log(
+      "[LangBot] File selected:",
+      file ? file.name + " (" + file.type + ", " + file.size + ")" : "none",
+    );
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
       showError("Image must be under 5MB");
       return;
     }
+    if (!/^image\//.test(file.type)) {
+      showError("Only image files are supported");
+      return;
+    }
     var reader = new FileReader();
     reader.onload = function (ev) {
-      state.pendingImage = ev.target.result;
       showImagePreview(ev.target.result);
+      state.pendingImage = ev.target.result;
+      console.log(
+        "[LangBot] Image loaded as base64, length:",
+        ev.target.result.length,
+      );
     };
     reader.readAsDataURL(file);
     e.target.value = "";
   }
 
   function showImagePreview(src) {
-    clearImagePreview();
+    removePreviewDom();
     var preview = document.createElement("div");
     preview.className = "lb-img-preview";
     preview.id = "lb-img-preview";
@@ -872,7 +872,7 @@
     var removeBtn = document.createElement("button");
     removeBtn.className = "lb-img-preview-remove";
     removeBtn.textContent = "\u00d7";
-    removeBtn.addEventListener("click", clearImagePreview);
+    removeBtn.addEventListener("click", clearPendingAttachment);
 
     preview.appendChild(img);
     preview.appendChild(removeBtn);
@@ -884,12 +884,17 @@
     }
   }
 
-  function clearImagePreview() {
-    state.pendingImage = null;
+  function removePreviewDom() {
     var existing = els.panel
       ? els.panel.querySelector("#lb-img-preview")
       : null;
     if (existing) existing.remove();
+  }
+
+  function clearPendingAttachment() {
+    state.pendingImage = null;
+    state.pendingFile = null;
+    removePreviewDom();
   }
 
   // ========== Build DOM ==========
@@ -995,13 +1000,14 @@
     var fileInput = document.createElement("input");
     fileInput.type = "file";
     fileInput.accept = "image/*";
-    fileInput.style.display = "none";
+    fileInput.style.cssText =
+      "position:absolute;width:0;height:0;overflow:hidden;opacity:0;";
     fileInput.addEventListener("change", handleImageSelect);
 
     // Image upload button
     var imgBtn = document.createElement("button");
     imgBtn.className = "lb-img-upload-btn";
-    imgBtn.setAttribute("aria-label", "Upload image");
+    imgBtn.setAttribute("aria-label", "Upload file");
     imgBtn.innerHTML = ICON_IMAGE;
     imgBtn.addEventListener("click", function () {
       fileInput.click();

@@ -312,7 +312,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
 
     async def _process_image_components(self, message_chain_obj: list):
         """
-        处理消息链中的图片组件，将path转换为base64
+        处理消息链中的图片和文件组件，将path转换为base64
 
         Args:
             message_chain_obj: 消息链对象列表
@@ -322,16 +322,18 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         storage_mgr = self.ap.storage_mgr
 
         for component in message_chain_obj:
-            if component.get('type') == 'Image' and component.get('path'):
-                try:
-                    # 从storage读取文件
-                    file_content = await storage_mgr.storage_provider.load(component['path'])
+            comp_type = component.get('type', '')
+            comp_path = component.get('path', '')
 
-                    # 转换为base64
+            if not comp_path:
+                continue
+
+            if comp_type == 'Image':
+                try:
+                    file_content = await storage_mgr.storage_provider.load(comp_path)
                     base64_str = base64.b64encode(file_content).decode('utf-8')
 
-                    # 添加data URI前缀（根据文件扩展名判断MIME类型）
-                    file_key = component['path']
+                    file_key = comp_path
                     if file_key.lower().endswith(('.jpg', '.jpeg')):
                         mime_type = 'image/jpeg'
                     elif file_key.lower().endswith('.png'):
@@ -341,14 +343,13 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                     elif file_key.lower().endswith('.webp'):
                         mime_type = 'image/webp'
                     else:
-                        mime_type = 'image/png'  # 默认
+                        mime_type = 'image/png'
 
                     component['base64'] = f'data:{mime_type};base64,{base64_str}'
-                    await storage_mgr.storage_provider.delete(component['path'])
+                    await storage_mgr.storage_provider.delete(comp_path)
                     component['path'] = ''
-                    # 保留path字段用于后端处理，前端使用base64显示
                 except Exception as e:
-                    await self.logger.error(f'加载图片文件失败 {component["path"]}: {e}')
+                    await self.logger.error(f'Failed to load image file {comp_path}: {e}')
 
     async def handle_websocket_message(
         self,

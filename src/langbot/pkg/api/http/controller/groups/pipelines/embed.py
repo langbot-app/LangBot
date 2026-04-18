@@ -92,6 +92,26 @@ class EmbedRouterGroup(group.RouterGroup):
                 logger.error(f'Failed to get embed messages: {e}', exc_info=True)
                 return self.http_status(500, -1, f'Internal server error: {str(e)}')
 
+        @self.route('/<pipeline_uuid>/reset/<session_type>', methods=['POST'], auth_type=group.AuthType.NONE)
+        async def reset_embed_session(pipeline_uuid: str, session_type: str) -> str:
+            """Reset session for embed widget (no auth required)."""
+            try:
+                if session_type not in ['person', 'group']:
+                    return self.http_status(400, -1, 'session_type must be person or group')
+
+                websocket_adapter = self.ap.platform_mgr.websocket_proxy_bot.adapter
+
+                if not websocket_adapter:
+                    return self.http_status(404, -1, 'WebSocket adapter not found')
+
+                websocket_adapter.reset_session(pipeline_uuid, session_type)
+
+                return self.success(data={'message': 'Session reset successfully'})
+
+            except Exception as e:
+                logger.error(f'Failed to reset embed session: {e}', exc_info=True)
+                return self.http_status(500, -1, f'Internal server error: {str(e)}')
+
         @self.route('/<pipeline_uuid>/feedback', methods=['POST'], auth_type=group.AuthType.NONE)
         async def submit_feedback(pipeline_uuid: str) -> str:
             """Record user feedback (like/dislike) from embed widget."""
