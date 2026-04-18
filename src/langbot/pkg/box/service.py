@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import collections
 import datetime as _dt
 import enum
@@ -52,7 +53,7 @@ class BoxService:
         self.ap = ap
         self._runtime_connector: BoxRuntimeConnector | None = None
         if client is None:
-            self._runtime_connector = BoxRuntimeConnector(ap)
+            self._runtime_connector = BoxRuntimeConnector(ap, runtime_disconnect_callback=self._on_runtime_disconnect)
             client = self._runtime_connector.client
         self.client = client
         self.output_limit_chars = output_limit_chars
@@ -81,6 +82,18 @@ class BoxService:
         except Exception as exc:
             self.ap.logger.warning(f'LangBot Box runtime unavailable, sandbox features disabled: {exc}')
             self._available = False
+
+    async def _on_runtime_disconnect(self, connector: BoxRuntimeConnector) -> None:
+        """Called by the connector when the Box runtime connection drops."""
+        self._available = False
+        self.ap.logger.warning('Box runtime disconnected, sandbox features temporarily disabled. Reconnecting in 3s...')
+        await asyncio.sleep(3)
+        try:
+            await connector.initialize()
+            self._available = True
+            self.ap.logger.info('Box runtime reconnected, sandbox features restored.')
+        except Exception as exc:
+            self.ap.logger.warning(f'Box runtime reconnection failed: {exc}. Will retry on next heartbeat disconnect.')
 
     @property
     def available(self) -> bool:
