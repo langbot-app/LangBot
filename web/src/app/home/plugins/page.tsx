@@ -20,6 +20,8 @@ import {
   Box,
   CircleCheck,
   CircleX,
+  Container,
+  Clock,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -49,6 +51,7 @@ import { systemInfo } from '@/app/infra/http/HttpClient';
 import {
   ApiRespPluginSystemStatus,
   ApiRespBoxStatus,
+  BoxSessionInfo,
 } from '@/app/infra/entities/api';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import {
@@ -140,6 +143,7 @@ function PluginListView() {
   const [copiedDebugUrl, setCopiedDebugUrl] = useState(false);
   const [copiedDebugKey, setCopiedDebugKey] = useState(false);
   const [boxStatus, setBoxStatus] = useState<ApiRespBoxStatus | null>(null);
+  const [boxSessions, setBoxSessions] = useState<BoxSessionInfo[]>([]);
 
   useEffect(() => {
     const fetchPluginSystemStatus = async () => {
@@ -461,12 +465,14 @@ function PluginListView() {
 
   const handleShowDebugInfo = async () => {
     try {
-      const [info, box] = await Promise.all([
+      const [info, box, sessions] = await Promise.all([
         httpClient.getPluginDebugInfo(),
         httpClient.getBoxStatus().catch(() => null),
+        httpClient.getBoxSessions().catch(() => [] as BoxSessionInfo[]),
       ]);
       setDebugInfo(info);
       setBoxStatus(box);
+      setBoxSessions(sessions);
       setDebugPopoverOpen(true);
     } catch (error) {
       console.error('Failed to fetch debug info:', error);
@@ -702,6 +708,14 @@ function PluginListView() {
                       </span>
                       <span className="font-mono">{boxStatus.profile}</span>
                     </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground min-w-[80px]">
+                        {t('plugins.boxSandboxes')}:
+                      </span>
+                      <span className="font-mono">
+                        {boxStatus.active_sessions ?? 0}
+                      </span>
+                    </div>
                     {(boxStatus.recent_error_count ?? 0) > 0 && (
                       <div className="flex items-center gap-2">
                         <span className="text-muted-foreground min-w-[80px]">
@@ -710,6 +724,58 @@ function PluginListView() {
                         <span className="text-amber-600 font-mono">
                           {boxStatus.recent_error_count}
                         </span>
+                      </div>
+                    )}
+                    {boxSessions.length > 0 && (
+                      <div className="pt-1.5 mt-1.5 border-t border-dashed space-y-2">
+                        {boxSessions.map((session) => (
+                          <div
+                            key={session.session_id}
+                            className="rounded border p-2 space-y-1"
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <Container className="w-3 h-3 text-muted-foreground" />
+                              <span className="font-mono font-medium truncate">
+                                {session.session_id}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-muted-foreground">
+                              <span>
+                                {t('plugins.boxSessionImage')}:{' '}
+                                <span className="text-foreground font-mono">
+                                  {session.image.split(':').pop() ||
+                                    session.image}
+                                </span>
+                              </span>
+                              <span>
+                                {t('plugins.boxSessionBackend')}:{' '}
+                                <span className="text-foreground font-mono">
+                                  {session.backend_name}
+                                </span>
+                              </span>
+                              <span>
+                                {t('plugins.boxSessionResources')}:{' '}
+                                <span className="text-foreground font-mono">
+                                  {session.cpus} CPU / {session.memory_mb}MB
+                                </span>
+                              </span>
+                              <span>
+                                {t('plugins.boxSessionNetwork')}:{' '}
+                                <span className="text-foreground font-mono">
+                                  {session.network}
+                                </span>
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                              <Clock className="w-3 h-3" />
+                              <span>
+                                {new Date(
+                                  session.last_used_at,
+                                ).toLocaleString()}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>

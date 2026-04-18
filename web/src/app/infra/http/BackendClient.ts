@@ -36,6 +36,7 @@ import {
   RerankModel,
   ApiRespPluginSystemStatus,
   ApiRespBoxStatus,
+  BoxSessionInfo,
   ApiRespMCPServers,
   ApiRespMCPServer,
   MCPServer,
@@ -892,6 +893,10 @@ export class BackendClient extends BaseHttpClient {
 
   public getBoxStatus(): Promise<ApiRespBoxStatus> {
     return this.get('/api/v1/box/status');
+  }
+
+  public getBoxSessions(): Promise<BoxSessionInfo[]> {
+    return this.get('/api/v1/box/sessions');
   }
 
   // ============ User API ============

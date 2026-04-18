@@ -364,6 +364,20 @@ export interface ApiRespBoxStatus {
   session_ttl_sec?: number;
 }
 
+export interface BoxSessionInfo {
+  session_id: string;
+  backend_name: string;
+  image: string;
+  network: string;
+  host_path: string | null;
+  host_path_mode: string;
+  mount_path: string;
+  cpus: number;
+  memory_mb: number;
+  created_at: string;
+  last_used_at: string;
+}
+
 export interface ApiRespAsyncTasks {
   tasks: AsyncTask[];
 }
