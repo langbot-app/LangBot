@@ -43,6 +43,17 @@ class ToolManager:
 
         self.native_tool_loader = native_loader.NativeToolLoader(self.ap)
         await self.native_tool_loader.initialize()
+
+        # Log native (sandbox) tool availability once at startup
+        box_service = getattr(self.ap, 'box_service', None)
+        if box_service and getattr(box_service, 'available', False):
+            self.ap.logger.info('Native sandbox tools (exec/read/write/edit) are available.')
+        else:
+            self.ap.logger.warning(
+                'Native sandbox tools (exec/read/write/edit) are NOT available. '
+                'Box runtime is not connected — the LLM will not have access to code execution tools.'
+            )
+
         self.plugin_tool_loader = plugin_loader.PluginToolLoader(self.ap)
         await self.plugin_tool_loader.initialize()
         self.mcp_tool_loader = mcp_loader.MCPLoader(self.ap)

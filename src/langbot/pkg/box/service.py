@@ -73,6 +73,10 @@ class BoxService:
             else:
                 await self.client.initialize()
             self._available = True
+            self.ap.logger.info(
+                f'LangBot Box runtime initialized: profile={self.profile.name} '
+                f'default_workspace={self.default_host_workspace or "(none)"}'
+            )
         except Exception as exc:
             self.ap.logger.warning(f'LangBot Box runtime unavailable, sandbox features disabled: {exc}')
             self._available = False
