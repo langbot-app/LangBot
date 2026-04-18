@@ -1127,7 +1127,7 @@ const zhHans = {
       contextInfo: '上下文信息',
       userId: '用户ID',
       messageId: '消息ID',
-      streamId: '流ID',
+      streamId: '关联提问ID',
       inaccurateReasons: '不准确原因',
       platform: '平台',
       exportFeedback: '导出反馈',
@@ -1158,6 +1158,7 @@ const zhHans = {
       embeddingCalls: 'Embedding 调用',
       errors: '错误日志',
       sessions: '会话记录',
+      feedback: '用户反馈',
     },
   },
   limitation: {

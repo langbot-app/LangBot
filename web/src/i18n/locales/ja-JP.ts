@@ -1180,7 +1180,7 @@
       contextInfo: 'コンテキスト情報',
       userId: 'ユーザーID',
       messageId: 'メッセージID',
-      streamId: 'ストリームID',
+      streamId: '関連質問ID',
       inaccurateReasons: '不正確な理由',
       platform: 'プラットフォーム',
       exportFeedback: 'フィードバックをエクスポート',
@@ -1211,6 +1211,7 @@
       embeddingCalls: 'Embedding コール',
       errors: 'エラーログ',
       sessions: 'セッション',
+      feedback: 'ユーザーフィードバック',
     },
   },
   limitation: {

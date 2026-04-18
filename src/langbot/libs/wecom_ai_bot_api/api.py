@@ -71,6 +71,11 @@ class StreamSession:
 class StreamSessionManager:
     """管理 stream 会话的生命周期，并负责队列的生产消费。"""
 
+    # Sessions with registered feedback_ids use a longer TTL to survive the
+    # full like → cancel → dislike feedback flow. Must align with the adapter's
+    # _stream_to_monitoring_msg TTL (wecombot.py).
+    _FEEDBACK_SESSION_TTL = 600  # 10 minutes
+
     def __init__(self, logger: EventLogger, ttl: int = 60) -> None:
         self.logger = logger
 
@@ -214,11 +219,17 @@ class StreamSessionManager:
             session.last_access = time.time()
 
     def cleanup(self) -> None:
-        """定期清理过期会话，防止队列与映射无上限累积。"""
+        """定期清理过期会话，防止队列与映射无上限累积。
+
+        已注册 feedback_id 的会话使用更长的 TTL，确保用户在点赞/取消/点踩流程中
+        不会因为 session 被提前清除而丢失上下文信息。
+        """
         now = time.time()
         expired: list[str] = []
         for stream_id, session in self._sessions.items():
-            if now - session.last_access > self.ttl:
+            # Sessions with registered feedback_ids use a longer TTL
+            effective_ttl = self._FEEDBACK_SESSION_TTL if session.feedback_id else self.ttl
+            if now - session.last_access > effective_ttl:
                 expired.append(stream_id)
 
         for stream_id in expired:

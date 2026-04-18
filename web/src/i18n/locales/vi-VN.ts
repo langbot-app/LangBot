@@ -1176,7 +1176,7 @@ const viVN = {
       contextInfo: 'Thông tin ngữ cảnh',
       userId: 'ID người dùng',
       messageId: 'ID tin nhắn',
-      streamId: 'ID luồng',
+      streamId: 'ID câu hỏi liên quan',
       inaccurateReasons: 'Lý do không chính xác',
       platform: 'Nền tảng',
       exportFeedback: 'Xuất phản hồi',
@@ -1207,6 +1207,7 @@ const viVN = {
       embeddingCalls: 'Cuộc gọi Embedding',
       errors: 'Nhật ký lỗi',
       sessions: 'Phiên',
+      feedback: 'Phản hồi người dùng',
     },
   },
   limitation: {

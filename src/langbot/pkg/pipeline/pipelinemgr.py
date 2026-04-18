@@ -297,6 +297,9 @@ class RuntimePipeline:
             )
             # Store message_id in query variables for LLM call monitoring
             query.variables['_monitoring_message_id'] = message_id
+            # Notify adapter so it can map platform-specific IDs to monitoring message ID
+            if hasattr(query.adapter, 'on_monitoring_message_created'):
+                await query.adapter.on_monitoring_message_created(query, message_id)
         except Exception as e:
             self.ap.logger.error(f'Failed to record query start: {e}')
 
