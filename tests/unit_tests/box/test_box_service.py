@@ -125,7 +125,18 @@ class FakeBackend(BaseSandboxBackend):
 
 
 def make_query(query_id: int = 42) -> pipeline_query.Query:
-    return pipeline_query.Query.model_construct(query_id=query_id)
+    return pipeline_query.Query.model_construct(
+        query_id=query_id,
+        launcher_type='person',
+        launcher_id='test_user',
+        sender_id='test_user',
+        variables={
+            'launcher_type': 'person',
+            'launcher_id': 'test_user',
+            'sender_id': 'test_user',
+            'query_id': str(query_id),
+        },
+    )
 
 
 def make_app(
@@ -146,9 +157,7 @@ def make_app(
 
     return SimpleNamespace(
         logger=logger,
-        instance_config=SimpleNamespace(
-            data={'box': box_config}
-        ),
+        instance_config=SimpleNamespace(data={'box': box_config}),
     )
 
 
@@ -241,9 +250,9 @@ async def test_box_service_defaults_session_id_from_query():
 
     result = await service.execute_tool({'command': 'pwd'}, make_query(7))
 
-    assert result['session_id'] == '7'
+    assert result['session_id'] == 'person_test_user'
     assert result['ok'] is True
-    assert backend.start_calls == ['7']
+    assert backend.start_calls == ['person_test_user']
 
 
 @pytest.mark.asyncio
@@ -297,8 +306,8 @@ async def test_box_service_uses_default_host_workspace_when_host_path_omitted(tm
     result = await service.execute_tool({'command': 'pwd'}, make_query(15))
 
     assert result['ok'] is True
-    assert backend.start_calls == ['15']
-    assert backend.exec_calls == [('15', 'pwd')]
+    assert backend.start_calls == ['person_test_user']
+    assert backend.exec_calls == [('person_test_user', 'pwd')]
     assert backend.start_specs[0].host_path == os.path.realpath(host_dir)
 
 
@@ -733,8 +742,8 @@ async def test_box_service_rejects_and_cleans_up_when_execution_exceeds_workspac
     with pytest.raises(BoxValidationError, match='workspace quota exceeded after execution'):
         await service.execute_tool({'command': 'generate-output'}, make_query(45))
 
-    assert backend.start_calls == ['45']
-    assert backend.stop_calls == ['45']
+    assert backend.start_calls == ['person_test_user']
+    assert backend.stop_calls == ['person_test_user']
 
 
 @pytest.mark.asyncio
@@ -748,7 +757,9 @@ async def test_profile_offline_readonly_locks_read_only_rootfs():
     )
     await service.initialize()
 
-    await service.execute_spec_payload({'cmd': 'echo hi', 'read_only_rootfs': False, 'session_id': '41'}, make_query(41))
+    await service.execute_spec_payload(
+        {'cmd': 'echo hi', 'read_only_rootfs': False, 'session_id': '41'}, make_query(41)
+    )
 
     spec = backend.start_specs[0]
     assert spec.read_only_rootfs is True

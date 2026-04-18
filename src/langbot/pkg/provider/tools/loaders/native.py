@@ -6,7 +6,6 @@ import os
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 from langbot_plugin.api.entities.events import pipeline_query
 
-from ....box.workspace import BoxWorkspaceSession
 from .. import loader
 from . import skill as skill_loader
 
@@ -61,7 +60,8 @@ class NativeToolLoader(loader.ToolLoader):
         command = str(parameters['command'])
         workdir = str(parameters.get('workdir', '/workspace') or '/workspace')
 
-        selected_skill, rewritten_workdir = skill_loader.resolve_virtual_skill_path(
+        # Validate that skill references target activated skills.
+        selected_skill, _ = skill_loader.resolve_virtual_skill_path(
             self.ap,
             query,
             workdir,
@@ -78,37 +78,30 @@ class NativeToolLoader(loader.ToolLoader):
                 raise ValueError(
                     f'Skill "{referenced_skill_names[0]}" must be activated before exec can run in its package.'
                 )
-            rewritten_workdir = '/workspace'
 
-        if selected_skill is None:
-            return await self.ap.box_service.execute_tool(parameters, query)
+        if selected_skill is not None:
+            selected_skill_name = str(selected_skill.get('name', '') or '')
+            if referenced_skill_names and any(name != selected_skill_name for name in referenced_skill_names):
+                raise ValueError('exec can reference files from only one activated skill package per call.')
 
-        selected_skill_name = str(selected_skill.get('name', '') or '')
-        if referenced_skill_names and any(name != selected_skill_name for name in referenced_skill_names):
-            raise ValueError('exec can reference files from only one activated skill package per call.')
+            package_root = str(selected_skill.get('package_root', '') or '').strip()
+            if not package_root:
+                raise ValueError(f'Activated skill "{selected_skill_name}" has no package_root.')
 
-        package_root = str(selected_skill.get('package_root', '') or '').strip()
-        if not package_root:
-            raise ValueError(f'Activated skill "{selected_skill_name}" has no package_root.')
+            # Wrap command with Python venv bootstrap if the skill has a Python project.
+            # The venv is created inside the skill's mount path.
+            skill_mount = f'/workspace/.skills/{selected_skill_name}'
+            if skill_loader.should_prepare_skill_python_env(package_root):
+                parameters = dict(parameters)
+                parameters['command'] = skill_loader.wrap_skill_command_with_python_env(command, mount_path=skill_mount)
 
-        rewritten_command = skill_loader.rewrite_command_for_skill_mount(command, selected_skill_name)
-        if skill_loader.should_prepare_skill_python_env(package_root):
-            rewritten_command = skill_loader.wrap_skill_command_with_python_env(rewritten_command)
+        # All exec calls (with or without skills) go through the same container
+        # via execute_tool. Skills are mounted at /workspace/.skills/{name}/
+        # via extra_mounts built by BoxService.
+        result = await self.ap.box_service.execute_tool(parameters, query)
 
-        workspace = BoxWorkspaceSession(
-            self.ap.box_service,
-            skill_loader.build_skill_session_id(selected_skill, query),
-            host_path=package_root,
-            host_path_mode='rw',
-        )
-        result = await workspace.execute_for_query(
-            query,
-            rewritten_command,
-            workdir=rewritten_workdir,
-            timeout_sec=parameters.get('timeout_sec'),
-            env=parameters.get('env'),
-        )
-        self._refresh_skill_from_disk(selected_skill)
+        if selected_skill is not None:
+            self._refresh_skill_from_disk(selected_skill)
         return result
 
     def _resolve_host_path(
