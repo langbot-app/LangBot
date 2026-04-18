@@ -427,8 +427,6 @@
 
     if (msg.is_final) {
       removeTypingIndicator();
-    } else {
-      showTypingIndicator();
     }
 
     scrollToBottom();
