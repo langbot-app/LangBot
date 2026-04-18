@@ -32,10 +32,10 @@ def _is_path_under(path: str, root: str) -> bool:
     return path == root or path.startswith(f'{root}{os.sep}')
 
 
-
 def _is_path_under(path: str, root: str) -> bool:
     """Check whether *path* equals *root* or is a child of *root*."""
     return path == root or path.startswith(f'{root}{os.sep}')
+
 
 if TYPE_CHECKING:
     from ..core import app as core_app
@@ -123,6 +123,45 @@ class BoxService:
         )
         return self._serialize_result(result)
 
+    def resolve_box_session_id(self, query: pipeline_query.Query) -> str:
+        """Resolve the Box session_id from the pipeline's template and query variables."""
+        template = (
+            (query.pipeline_config or {})
+            .get('ai', {})
+            .get('local-agent', {})
+            .get('box-session-id-template', '{launcher_type}_{launcher_id}')
+        )
+        variables = query.variables or {}
+        return template.format_map(collections.defaultdict(lambda: 'unknown', variables))
+
+    def build_skill_extra_mounts(self, query: pipeline_query.Query) -> list[dict]:
+        """Build extra_mounts entries for all pipeline-bound skills.
+
+        This ensures that when a container is first created it already has
+        all skill packages mounted, regardless of which skill is currently
+        activated.
+        """
+        skill_mgr = getattr(self.ap, 'skill_mgr', None)
+        if skill_mgr is None:
+            return []
+
+        from ..provider.tools.loaders import skill as skill_loader
+
+        visible_skills = skill_loader.get_visible_skills(self.ap, query)
+        mounts: list[dict] = []
+        for skill_name, skill_data in visible_skills.items():
+            package_root = str(skill_data.get('package_root', '') or '').strip()
+            if not package_root:
+                continue
+            mounts.append(
+                {
+                    'host_path': package_root,
+                    'mount_path': f'/workspace/.skills/{skill_name}',
+                    'mode': 'rw',
+                }
+            )
+        return mounts
+
     async def execute_tool(self, parameters: dict, query: pipeline_query.Query) -> dict:
         """Execute an agent-facing ``exec`` tool call.
 
@@ -137,7 +176,11 @@ class BoxService:
                 spec_payload[key] = parameters[key]
 
         # Inject context the agent must not control
-        spec_payload.setdefault('session_id', str(query.query_id))
+        spec_payload.setdefault('session_id', self.resolve_box_session_id(query))
+
+        # Mount all pipeline-bound skills so they are available in the container
+        if 'extra_mounts' not in spec_payload:
+            spec_payload['extra_mounts'] = self.build_skill_extra_mounts(query)
 
         return await self.execute_spec_payload(spec_payload, query)
 
