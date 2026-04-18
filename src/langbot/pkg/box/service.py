@@ -60,6 +60,7 @@ class BoxService:
         self.allowed_host_mount_roots = self._load_allowed_host_mount_roots()
         self.default_host_workspace = self._load_default_host_workspace()
         self.profile = self._load_profile()
+        self.custom_image = self._load_custom_image()
         self.workspace_quota_mb = self._load_workspace_quota_mb()
         self._recent_errors: collections.deque[dict] = collections.deque(maxlen=_MAX_RECENT_ERRORS)
         self._shutdown_task = None
@@ -208,6 +209,10 @@ class BoxService:
             spec_payload['host_path'] = self.default_host_workspace
         if spec_payload.get('workspace_quota_mb') in (None, '') and self.workspace_quota_mb is not None:
             spec_payload['workspace_quota_mb'] = self.workspace_quota_mb
+
+        # Global custom image overrides profile default (but not caller-specified image)
+        if self.custom_image and 'image' not in spec_payload:
+            spec_payload['image'] = self.custom_image
 
         self._apply_profile(spec_payload)
 
@@ -359,6 +364,10 @@ class BoxService:
                 return None
             default_host_workspace = os.path.join(self.shared_host_root, 'default')
         return os.path.realpath(os.path.abspath(default_host_workspace))
+
+    def _load_custom_image(self) -> str | None:
+        raw = str(_get_box_config(self.ap).get('image', '') or '').strip()
+        return raw or None
 
     def _load_workspace_quota_mb(self) -> int | None:
         raw_value = _get_box_config(self.ap).get('workspace_quota_mb')
