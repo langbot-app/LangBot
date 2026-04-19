@@ -261,7 +261,8 @@ const zhHans = {
     chat: '对话',
     embedding: '嵌入',
     rerank: '重排序',
-    rerankUrlTooltip: '重排序接口的完整 URL 覆盖（如 https://dashscope.aliyuncs.com/compatible-api/v1/reranks）',
+    rerankUrlTooltip:
+      '重排序接口的完整 URL 覆盖（如 https://dashscope.aliyuncs.com/compatible-api/v1/reranks）',
     rerankPathTooltip: '添加到基础 URL 后的重排序路径（默认：rerank）',
     modelsCount: '{{count}} 个模型',
     expandModels: '展开',

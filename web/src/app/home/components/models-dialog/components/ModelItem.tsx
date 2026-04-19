@@ -139,7 +139,11 @@ export default function ModelItem({
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-medium">{model.name}</span>
             <Badge variant="secondary" className="text-xs">
-              {modelType === 'llm' ? t('models.chat') : modelType === 'embedding' ? t('models.embedding') : t('models.rerank')}
+              {modelType === 'llm'
+                ? t('models.chat')
+                : modelType === 'embedding'
+                  ? t('models.embedding')
+                  : t('models.rerank')}
             </Badge>
             {modelType === 'llm' &&
               (model as LLMModel).abilities?.includes('vision') && (

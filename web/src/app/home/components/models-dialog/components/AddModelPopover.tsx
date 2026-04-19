@@ -335,7 +335,11 @@ export default function AddModelPopover({
                   </div>
                 )}
 
-                <ExtraArgsEditor args={extraArgs} onChange={setExtraArgs} modelType={tab} />
+                <ExtraArgsEditor
+                  args={extraArgs}
+                  onChange={setExtraArgs}
+                  modelType={tab}
+                />
                 <div className="flex gap-2">
                   <Button
                     className="flex-1"
@@ -548,7 +552,11 @@ export default function AddModelPopover({
                   onChange={(e) => setName(e.target.value)}
                 />
               </div>
-              <ExtraArgsEditor args={extraArgs} onChange={setExtraArgs} modelType="rerank" />
+              <ExtraArgsEditor
+                args={extraArgs}
+                onChange={setExtraArgs}
+                modelType="rerank"
+              />
               <div className="flex gap-2">
                 <Button
                   className="flex-1"

@@ -272,7 +272,8 @@ const enUS = {
     chat: 'Chat',
     embedding: 'Embedding',
     rerank: 'Rerank',
-    rerankUrlTooltip: 'Full URL override for rerank endpoint (e.g. https://dashscope.aliyuncs.com/compatible-api/v1/reranks)',
+    rerankUrlTooltip:
+      'Full URL override for rerank endpoint (e.g. https://dashscope.aliyuncs.com/compatible-api/v1/reranks)',
     rerankPathTooltip: 'Path appended to base URL (default: rerank)',
     modelsCount: '{{count}} model(s)',
     expandModels: 'Expand',

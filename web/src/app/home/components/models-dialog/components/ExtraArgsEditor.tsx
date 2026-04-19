@@ -62,8 +62,13 @@ export default function ExtraArgsEditor({
               </TooltipTrigger>
               <TooltipContent className="max-w-xs">
                 <div className="space-y-1 text-sm">
-                  <p><strong>rerank_url</strong>: {t('models.rerankUrlTooltip')}</p>
-                  <p><strong>rerank_path</strong>: {t('models.rerankPathTooltip')}</p>
+                  <p>
+                    <strong>rerank_url</strong>: {t('models.rerankUrlTooltip')}
+                  </p>
+                  <p>
+                    <strong>rerank_path</strong>:{' '}
+                    {t('models.rerankPathTooltip')}
+                  </p>
                 </div>
               </TooltipContent>
             </Tooltip>

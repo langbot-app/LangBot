@@ -257,7 +257,6 @@ class RuntimeProvider:
         """Bridge method for invoking rerank with monitoring"""
         start_time = time.time()
         status = 'success'
-        error_message = None
 
         try:
             result = await self.requester.invoke_rerank(
@@ -270,7 +269,6 @@ class RuntimeProvider:
 
         except Exception as e:
             status = 'error'
-            error_message = str(e)
             raise
         finally:
             duration_ms = int((time.time() - start_time) * 1000)
