@@ -104,6 +104,34 @@ stages:
           field: __system.is_wizard
           operator: neq
           value: true
+      - name: rerank-model
+        label:
+          en_US: Rerank Model
+          zh_Hans: 重排序模型
+        description:
+          en_US: Optional rerank model to improve retrieval quality by re-scoring retrieved chunks
+          zh_Hans: 可选的重排序模型，通过重新评分检索结果来提升检索质量
+        type: rerank-model-selector
+        required: false
+        default: ''
+        show_if:
+          field: knowledge-bases
+          operator: neq
+          value: []
+      - name: rerank-top-k
+        label:
+          en_US: Rerank Top K
+          zh_Hans: 重排序保留数量
+        description:
+          en_US: Number of top results to keep after reranking
+          zh_Hans: 重排序后保留的最相关结果数量
+        type: integer
+        required: false
+        default: 5
+        show_if:
+          field: rerank-model
+          operator: neq
+          value: ''
   - name: dify-service-api
     label:
       en_US: Dify Service API

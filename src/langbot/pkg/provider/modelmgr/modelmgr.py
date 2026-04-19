@@ -24,6 +24,8 @@ class ModelManager:
 
     embedding_models: list[requester.RuntimeEmbeddingModel]
 
+    rerank_models: list[requester.RuntimeRerankModel]
+
     requester_components: list[engine.Component]
 
     requester_dict: dict[str, type[requester.ProviderAPIRequester]]
@@ -32,6 +34,7 @@ class ModelManager:
         self.ap = ap
         self.llm_models = []
         self.embedding_models = []
+        self.rerank_models = []
         self.requester_components = []
         self.requester_dict = {}
 
@@ -64,8 +67,7 @@ class ModelManager:
 
         self.llm_models = []
         self.embedding_models = []
-
-        # Load all providers first
+        self.rerank_models = []
         self.provider_dict = {}
         providers_result = await self.ap.persistence_mgr.execute_async(
             sqlalchemy.select(persistence_model.ModelProvider)
@@ -109,6 +111,22 @@ class ModelManager:
                 self.embedding_models.append(runtime_embedding_model)
             except Exception as e:
                 self.ap.logger.error(f'Failed to load model {embedding_model.uuid}: {e}\n{traceback.format_exc()}')
+
+        # Load rerank models
+        result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_model.RerankModel))
+        rerank_models = result.all()
+        for rerank_model in rerank_models:
+            try:
+                provider = self.provider_dict.get(rerank_model.provider_uuid)
+                if provider is None:
+                    self.ap.logger.warning(
+                        f'Provider {rerank_model.provider_uuid} not found for model {rerank_model.uuid}'
+                    )
+                    continue
+                runtime_rerank_model = await self.load_rerank_model_with_provider(rerank_model, provider)
+                self.rerank_models.append(runtime_rerank_model)
+            except Exception as e:
+                self.ap.logger.error(f'Failed to load model {rerank_model.uuid}: {e}\n{traceback.format_exc()}')
 
     async def sync_new_models_from_space(self):
         """Sync models from Space"""
@@ -212,6 +230,26 @@ class ModelManager:
 
         return runtime_embedding_model
 
+    async def init_temporary_runtime_rerank_model(
+        self,
+        model_info: dict,
+    ) -> requester.RuntimeRerankModel:
+        """Initialize runtime rerank model from dict (for testing)"""
+        provider_info = model_info.get('provider', {})
+        runtime_provider = await self.load_provider(provider_info)
+
+        runtime_rerank_model = requester.RuntimeRerankModel(
+            model_entity=persistence_model.RerankModel(
+                uuid=model_info.get('uuid', ''),
+                name=model_info.get('name', ''),
+                provider_uuid='',
+                extra_args=model_info.get('extra_args', {}),
+            ),
+            provider=runtime_provider,
+        )
+
+        return runtime_rerank_model
+
     async def load_provider(
         self, provider_info: persistence_model.ModelProvider | sqlalchemy.Row | dict
     ) -> requester.RuntimeProvider:
@@ -269,6 +307,9 @@ class ModelManager:
         for model in self.embedding_models:
             if model.provider.provider_entity.uuid == provider_uuid:
                 model.provider = new_runtime_provider
+        for model in self.rerank_models:
+            if model.provider.provider_entity.uuid == provider_uuid:
+                model.provider = new_runtime_provider
 
         # update ref in provider dict
         self.provider_dict[provider_uuid] = new_runtime_provider
@@ -304,6 +345,22 @@ class ModelManager:
         )
 
         return runtime_embedding_model
+
+    async def load_rerank_model_with_provider(
+        self,
+        model_info: persistence_model.RerankModel | sqlalchemy.Row,
+        provider: requester.RuntimeProvider,
+    ) -> requester.RuntimeRerankModel:
+        """Load rerank model with provider info"""
+        if isinstance(model_info, sqlalchemy.Row):
+            model_info = persistence_model.RerankModel(**model_info._mapping)
+
+        runtime_rerank_model = requester.RuntimeRerankModel(
+            model_entity=model_info,
+            provider=provider,
+        )
+
+        return runtime_rerank_model
 
     async def load_llm_model(self, model_info: dict):
         """Load LLM model from dict (with provider info)"""
@@ -368,6 +425,14 @@ class ModelManager:
                 return model
         raise ValueError(f'Embedding model {uuid} not found')
 
+    @alru_cache(ttl=60 * 5)
+    async def get_rerank_model_by_uuid(self, uuid: str) -> requester.RuntimeRerankModel:
+        """Get rerank model by uuid"""
+        for model in self.rerank_models:
+            if model.model_entity.uuid == uuid:
+                return model
+        raise ValueError(f'Rerank model {uuid} not found')
+
     async def remove_llm_model(self, model_uuid: str):
         """Remove LLM model"""
         for model in self.llm_models:
@@ -380,6 +445,13 @@ class ModelManager:
         for model in self.embedding_models:
             if model.model_entity.uuid == model_uuid:
                 self.embedding_models.remove(model)
+                return
+
+    async def remove_rerank_model(self, model_uuid: str):
+        """Remove rerank model"""
+        for model in self.rerank_models:
+            if model.model_entity.uuid == model_uuid:
+                self.rerank_models.remove(model)
                 return
 
     def get_available_requesters_info(self, model_type: str) -> list[dict]:

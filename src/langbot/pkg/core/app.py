@@ -133,6 +133,8 @@ class Application:
 
     embedding_models_service: model_service.EmbeddingModelsService = None
 
+    rerank_models_service: model_service.RerankModelsService = None
+
     provider_service: provider_service.ModelProviderService = None
 
     pipeline_service: pipeline_service.PipelineService = None

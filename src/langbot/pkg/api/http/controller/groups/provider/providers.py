@@ -15,6 +15,7 @@ class ModelProvidersRouterGroup(group.RouterGroup):
                     counts = await self.ap.provider_service.get_provider_model_counts(provider['uuid'])
                     provider['llm_count'] = counts['llm_count']
                     provider['embedding_count'] = counts['embedding_count']
+                    provider['rerank_count'] = counts['rerank_count']
                 return self.success(data={'providers': providers})
             elif quart.request.method == 'POST':
                 json_data = await quart.request.json
@@ -32,6 +33,7 @@ class ModelProvidersRouterGroup(group.RouterGroup):
                 counts = await self.ap.provider_service.get_provider_model_counts(provider_uuid)
                 provider['llm_count'] = counts['llm_count']
                 provider['embedding_count'] = counts['embedding_count']
+                provider['rerank_count'] = counts['rerank_count']
                 return self.success(data={'provider': provider})
             elif quart.request.method == 'PUT':
                 json_data = await quart.request.json

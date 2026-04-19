@@ -172,6 +172,47 @@ class LocalAgentRunner(runner.RequestRunner):
                 if result:
                     all_results.extend(result)
 
+            # Rerank step: re-score results using a rerank model if configured
+            local_agent_config = query.pipeline_config.get('ai', {}).get('local-agent', {})
+            rerank_model_uuid = local_agent_config.get('rerank-model', '')
+            if rerank_model_uuid == '__none__':
+                rerank_model_uuid = ''
+            self.ap.logger.info(
+                f'Rerank config: model_uuid={rerank_model_uuid!r}, '
+                f'results={len(all_results)}, '
+                f'local_agent_keys={list(local_agent_config.keys())}'
+            )
+            if all_results and rerank_model_uuid:
+                try:
+                    rerank_model = await self.ap.model_mgr.get_rerank_model_by_uuid(rerank_model_uuid)
+                    rerank_top_k = int(local_agent_config.get('rerank-top-k', 5))
+
+                    doc_texts = []
+                    for entry in all_results:
+                        text = ' '.join(
+                            c.text for c in entry.content if c.type == 'text' and c.text
+                        )
+                        doc_texts.append(text)
+
+                    doc_texts_capped = doc_texts[:64]
+                    scores = await rerank_model.provider.invoke_rerank(
+                        model=rerank_model,
+                        query=user_message_text,
+                        documents=doc_texts_capped,
+                    )
+
+                    scored = sorted(scores, key=lambda x: x.get('relevance_score', 0), reverse=True)
+                    top_indices = [s['index'] for s in scored[:rerank_top_k] if s['index'] < len(all_results)]
+                    all_results = [all_results[i] for i in top_indices]
+
+                    self.ap.logger.info(
+                        f'Rerank complete: {len(doc_texts)} docs reranked -> top {len(all_results)} kept (top_k={rerank_top_k})'
+                    )
+                except ValueError:
+                    self.ap.logger.warning(f'Rerank model {rerank_model_uuid} not found, skipping rerank')
+                except Exception as e:
+                    self.ap.logger.warning(f'Rerank failed, using original order: {e}')
+
             final_user_message_text = ''
 
             if all_results:

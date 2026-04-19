@@ -98,6 +98,14 @@ class ModelProviderService:
         if embedding_result.first() is not None:
             raise ValueError('Cannot delete provider: Embedding models still reference it')
 
+        rerank_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_model.RerankModel).where(
+                persistence_model.RerankModel.provider_uuid == provider_uuid
+            )
+        )
+        if rerank_result.first() is not None:
+            raise ValueError('Cannot delete provider: Rerank models still reference it')
+
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.delete(persistence_model.ModelProvider).where(
                 persistence_model.ModelProvider.uuid == provider_uuid
@@ -122,7 +130,14 @@ class ModelProviderService:
         )
         embedding_count = embedding_result.scalar() or 0
 
-        return {'llm_count': llm_count, 'embedding_count': embedding_count}
+        rerank_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(sqlalchemy.func.count())
+            .select_from(persistence_model.RerankModel)
+            .where(persistence_model.RerankModel.provider_uuid == provider_uuid)
+        )
+        rerank_count = rerank_result.scalar() or 0
+
+        return {'llm_count': llm_count, 'embedding_count': embedding_count, 'rerank_count': rerank_count}
 
     async def find_or_create_provider(self, requester: str, base_url: str, api_keys: list) -> str:
         """Find existing provider or create new one"""

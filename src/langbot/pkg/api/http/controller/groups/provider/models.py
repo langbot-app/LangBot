@@ -97,3 +97,53 @@ class EmbeddingModelsRouterGroup(group.RouterGroup):
             await self.ap.embedding_models_service.test_embedding_model(model_uuid, json_data)
 
             return self.success()
+
+
+@group.group_class('models/rerank', '/api/v1/provider/models/rerank')
+class RerankModelsRouterGroup(group.RouterGroup):
+    async def initialize(self) -> None:
+        @self.route('', methods=['GET', 'POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
+        async def _() -> str:
+            if quart.request.method == 'GET':
+                provider_uuid = quart.request.args.get('provider_uuid')
+                if provider_uuid:
+                    return self.success(
+                        data={
+                            'models': await self.ap.rerank_models_service.get_rerank_models_by_provider(
+                                provider_uuid
+                            )
+                        }
+                    )
+                return self.success(data={'models': await self.ap.rerank_models_service.get_rerank_models()})
+            elif quart.request.method == 'POST':
+                json_data = await quart.request.json
+                model_uuid = await self.ap.rerank_models_service.create_rerank_model(json_data)
+                return self.success(data={'uuid': model_uuid})
+
+        @self.route('/<model_uuid>', methods=['GET', 'PUT', 'DELETE'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
+        async def _(model_uuid: str) -> str:
+            if quart.request.method == 'GET':
+                model = await self.ap.rerank_models_service.get_rerank_model(model_uuid)
+
+                if model is None:
+                    return self.http_status(404, -1, 'model not found')
+
+                return self.success(data={'model': model})
+            elif quart.request.method == 'PUT':
+                json_data = await quart.request.json
+
+                await self.ap.rerank_models_service.update_rerank_model(model_uuid, json_data)
+
+                return self.success()
+            elif quart.request.method == 'DELETE':
+                await self.ap.rerank_models_service.delete_rerank_model(model_uuid)
+
+                return self.success()
+
+        @self.route('/<model_uuid>/test', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
+        async def _(model_uuid: str) -> str:
+            json_data = await quart.request.json
+
+            await self.ap.rerank_models_service.test_rerank_model(model_uuid, json_data)
+
+            return self.success()

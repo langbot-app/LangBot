@@ -247,6 +247,42 @@ class RuntimeProvider:
             except Exception as monitor_err:
                 self.requester.ap.logger.error(f'[Monitoring] Failed to record embedding call: {monitor_err}')
 
+    async def invoke_rerank(
+        self,
+        model: RuntimeRerankModel,
+        query: str,
+        documents: typing.List[str],
+        extra_args: dict[str, typing.Any] = {},
+    ) -> typing.List[dict]:
+        """Bridge method for invoking rerank with monitoring"""
+        start_time = time.time()
+        status = 'success'
+        error_message = None
+
+        try:
+            result = await self.requester.invoke_rerank(
+                model=model,
+                query=query,
+                documents=documents,
+                extra_args=extra_args,
+            )
+            return result
+
+        except Exception as e:
+            status = 'error'
+            error_message = str(e)
+            raise
+        finally:
+            duration_ms = int((time.time() - start_time) * 1000)
+
+            try:
+                self.requester.ap.logger.debug(
+                    f'[Rerank] model={model.model_entity.name} docs={len(documents)} '
+                    f'duration={duration_ms}ms status={status}'
+                )
+            except Exception as monitor_err:
+                self.requester.ap.logger.error(f'[Monitoring] Failed to record rerank call: {monitor_err}')
+
 
 class RuntimeLLMModel:
     """运行时模型"""
@@ -278,6 +314,24 @@ class RuntimeEmbeddingModel:
     def __init__(
         self,
         model_entity: persistence_model.EmbeddingModel,
+        provider: RuntimeProvider,
+    ):
+        self.model_entity = model_entity
+        self.provider = provider
+
+
+class RuntimeRerankModel:
+    """运行时 Rerank 模型"""
+
+    model_entity: persistence_model.RerankModel
+    """模型数据"""
+
+    provider: RuntimeProvider
+    """提供商实例"""
+
+    def __init__(
+        self,
+        model_entity: persistence_model.RerankModel,
         provider: RuntimeProvider,
     ):
         self.model_entity = model_entity
@@ -376,3 +430,23 @@ class ProviderAPIRequester(metaclass=abc.ABCMeta):
             或者 tuple[typing.List[typing.List[float]], dict]: 返回 (embedding 向量, usage_info)
         """
         pass
+
+    async def invoke_rerank(
+        self,
+        model: RuntimeRerankModel,
+        query: str,
+        documents: typing.List[str],
+        extra_args: dict[str, typing.Any] = {},
+    ) -> typing.List[dict]:
+        """调用 Rerank API
+
+        Args:
+            model (RuntimeRerankModel): 使用的模型信息
+            query (str): 查询文本
+            documents (typing.List[str]): 待重排序的文档列表
+            extra_args (dict[str, typing.Any], optional): 额外的参数. Defaults to {}.
+
+        Returns:
+            typing.List[dict]: [{"index": int, "relevance_score": float}, ...]
+        """
+        raise NotImplementedError("This requester does not support rerank")

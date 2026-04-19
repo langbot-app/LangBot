@@ -61,6 +61,9 @@ class BuildAppStage(stage.BootingStage):
         embedding_models_service_inst = model_service.EmbeddingModelsService(ap)
         ap.embedding_models_service = embedding_models_service_inst
 
+        rerank_models_service_inst = model_service.RerankModelsService(ap)
+        ap.rerank_models_service = rerank_models_service_inst
+
         provider_service_inst = provider_service.ModelProviderService(ap)
         ap.provider_service = provider_service_inst
 
