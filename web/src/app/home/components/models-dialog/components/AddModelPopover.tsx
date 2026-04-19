@@ -387,7 +387,7 @@ export default function AddModelPopover({
                 </div>
               </TabsContent>
 
-              <TabsContent value="scan" className="space-y-2 mt-1">
+              <TabsContent value="scan" className="space-y-2 mt-0 pt-0">
                 {scanLoading ? (
                   <div className="flex items-center justify-center py-4">
                     <RefreshCw className="h-4 w-4 mr-2 animate-spin text-muted-foreground" />
