@@ -176,7 +176,8 @@ class BoxService:
             .get('local-agent', {})
             .get('box-session-id-template', '{launcher_type}_{launcher_id}')
         )
-        variables = query.variables or {}
+        variables = dict(query.variables or {})
+        variables.setdefault('global', 'global')
         return template.format_map(collections.defaultdict(lambda: 'unknown', variables))
 
     def build_skill_extra_mounts(self, query: pipeline_query.Query) -> list[dict]:
