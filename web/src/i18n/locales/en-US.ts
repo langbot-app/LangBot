@@ -1246,6 +1246,8 @@ const enUS = {
     boxBackend: 'Backend',
     boxProfile: 'Profile',
     boxSandboxes: 'Sandboxes',
+    boxSessionCreated: 'Created',
+    boxSessionLastUsed: 'Last used',
   },
   limitation: {
     maxBotsReached:

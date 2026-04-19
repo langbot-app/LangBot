@@ -1271,6 +1271,8 @@ const esES = {
     boxBackend: 'Backend',
     boxProfile: 'Perfil',
     boxSandboxes: 'Sandboxes',
+    boxSessionCreated: 'Creado',
+    boxSessionLastUsed: 'Último uso',
   },
   limitation: {
     maxBotsReached:

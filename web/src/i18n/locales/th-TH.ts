@@ -1218,6 +1218,8 @@ const thTH = {
     boxBackend: 'แบ็กเอนด์',
     boxProfile: 'โปรไฟล์',
     boxSandboxes: 'แซนด์บ็อกซ์',
+    boxSessionCreated: 'สร้างเมื่อ',
+    boxSessionLastUsed: 'ใช้ล่าสุด',
   },
   limitation: {
     maxBotsReached:

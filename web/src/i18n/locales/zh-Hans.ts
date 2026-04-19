@@ -1192,6 +1192,8 @@ const zhHans = {
     boxBackend: '后端',
     boxProfile: '配置',
     boxSandboxes: '沙箱数',
+    boxSessionCreated: '创建时间',
+    boxSessionLastUsed: '最后使用',
   },
   limitation: {
     maxBotsReached:

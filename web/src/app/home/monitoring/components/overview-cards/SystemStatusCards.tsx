@@ -6,16 +6,23 @@ import {
   CircleCheck,
   CircleX,
   Loader2,
-  ChevronDown,
+  Info,
   Container,
   Clock,
+  Cpu,
+  HardDrive,
+  Network,
+  Image,
+  FolderOpen,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   ApiRespPluginSystemStatus,
   ApiRespBoxStatus,
@@ -46,6 +53,7 @@ export default function SystemStatusCard({
   const [boxStatus, setBoxStatus] = useState<ApiRespBoxStatus | null>(null);
   const [boxSessions, setBoxSessions] = useState<BoxSessionInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -74,6 +82,12 @@ export default function SystemStatusCard({
     : null;
   const boxOk = boxStatus ? boxStatus.available : null;
 
+  const handleOpenDialog = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    fetchStatus();
+    setDialogOpen(true);
+  };
+
   if (loading) {
     return (
       <Card className="transition-all duration-300">
@@ -92,164 +106,232 @@ export default function SystemStatusCard({
   }
 
   return (
-    <Popover
-      onOpenChange={(open) => {
-        if (open) fetchStatus();
-      }}
-    >
-      <PopoverTrigger asChild>
-        <Card className="transition-all duration-300 group cursor-pointer hover:border-primary/30">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {t('monitoring.systemStatus')}
-            </CardTitle>
-            <ChevronDown className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="flex items-center gap-2">
-              <StatusDot ok={pluginOk} />
-              <Plug className="w-3.5 h-3.5 text-muted-foreground" />
-              <span className="text-sm">{t('monitoring.pluginRuntime')}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <StatusDot ok={boxOk} />
-              <Box className="w-3.5 h-3.5 text-muted-foreground" />
-              <span className="text-sm">{t('monitoring.boxRuntime')}</span>
-            </div>
-          </CardContent>
-        </Card>
-      </PopoverTrigger>
-      <PopoverContent className="w-72" align="start">
-        <div className="space-y-3">
-          {/* Plugin Runtime */}
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Plug className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm font-medium">
-                {t('monitoring.pluginRuntime')}
-              </span>
-            </div>
-            <div className="ml-6 text-xs space-y-0.5">
-              <div className="flex items-center gap-1.5">
-                {pluginOk ? (
-                  <CircleCheck className="w-3.5 h-3.5 text-green-600" />
-                ) : (
-                  <CircleX className="w-3.5 h-3.5 text-red-500" />
+    <>
+      <Card className="transition-all duration-300 group">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            {t('monitoring.systemStatus')}
+          </CardTitle>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            onClick={handleOpenDialog}
+          >
+            <Info className="w-4 h-4" />
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <div className="flex items-center gap-2">
+            <StatusDot ok={pluginOk} />
+            <Plug className="w-3.5 h-3.5 text-muted-foreground" />
+            <span className="text-sm">{t('monitoring.pluginRuntime')}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <StatusDot ok={boxOk} />
+            <Box className="w-3.5 h-3.5 text-muted-foreground" />
+            <span className="text-sm">{t('monitoring.boxRuntime')}</span>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t('monitoring.systemStatus')}</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-5">
+            {/* Plugin Runtime */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Plug className="w-4 h-4 text-muted-foreground" />
+                <span className="text-sm font-semibold">
+                  {t('monitoring.pluginRuntime')}
+                </span>
+              </div>
+              <div className="ml-6 text-sm space-y-1">
+                <div className="flex items-center gap-1.5">
+                  {pluginOk ? (
+                    <CircleCheck className="w-4 h-4 text-green-600" />
+                  ) : (
+                    <CircleX className="w-4 h-4 text-red-500" />
+                  )}
+                  <span
+                    className={
+                      pluginOk
+                        ? 'text-green-600 font-medium'
+                        : 'text-red-500 font-medium'
+                    }
+                  >
+                    {pluginOk
+                      ? t('monitoring.connected')
+                      : pluginStatus && !pluginStatus.is_enable
+                        ? t('monitoring.disabled')
+                        : t('monitoring.disconnected')}
+                  </span>
+                </div>
+                {pluginStatus && !pluginStatus.is_enable && (
+                  <p className="text-muted-foreground text-xs">
+                    {t('monitoring.pluginDisabled')}
+                  </p>
                 )}
-                <span className={pluginOk ? 'text-green-600' : 'text-red-500'}>
-                  {pluginOk
-                    ? t('monitoring.connected')
-                    : pluginStatus && !pluginStatus.is_enable
-                      ? t('monitoring.disabled')
+                {pluginStatus &&
+                  !pluginOk &&
+                  pluginStatus.is_enable &&
+                  pluginStatus.plugin_connector_error &&
+                  pluginStatus.plugin_connector_error !== 'ok' && (
+                    <p className="text-red-400 text-xs break-all">
+                      {pluginStatus.plugin_connector_error}
+                    </p>
+                  )}
+              </div>
+            </div>
+
+            <div className="border-t" />
+
+            {/* Box Runtime */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Box className="w-4 h-4 text-muted-foreground" />
+                <span className="text-sm font-semibold">
+                  {t('monitoring.boxRuntime')}
+                </span>
+              </div>
+              <div className="ml-6 text-sm space-y-1">
+                <div className="flex items-center gap-1.5">
+                  {boxOk ? (
+                    <CircleCheck className="w-4 h-4 text-green-600" />
+                  ) : (
+                    <CircleX className="w-4 h-4 text-red-500" />
+                  )}
+                  <span
+                    className={
+                      boxOk
+                        ? 'text-green-600 font-medium'
+                        : 'text-red-500 font-medium'
+                    }
+                  >
+                    {boxOk
+                      ? t('monitoring.connected')
                       : t('monitoring.disconnected')}
-                </span>
-              </div>
-              {pluginStatus && !pluginStatus.is_enable && (
-                <p className="text-muted-foreground">
-                  {t('monitoring.pluginDisabled')}
-                </p>
-              )}
-              {pluginStatus &&
-                !pluginOk &&
-                pluginStatus.is_enable &&
-                pluginStatus.plugin_connector_error &&
-                pluginStatus.plugin_connector_error !== 'ok' && (
-                  <p className="text-red-400 break-all">
-                    {pluginStatus.plugin_connector_error}
+                  </span>
+                </div>
+                {boxStatus && !boxOk && boxStatus.connector_error && (
+                  <p className="text-red-400 text-xs break-all">
+                    {boxStatus.connector_error}
                   </p>
                 )}
-            </div>
-          </div>
-
-          <div className="border-t" />
-
-          {/* Box Runtime */}
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Box className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm font-medium">
-                {t('monitoring.boxRuntime')}
-              </span>
-            </div>
-            <div className="ml-6 text-xs space-y-0.5">
-              <div className="flex items-center gap-1.5">
-                {boxOk ? (
-                  <CircleCheck className="w-3.5 h-3.5 text-green-600" />
-                ) : (
-                  <CircleX className="w-3.5 h-3.5 text-red-500" />
+                {boxStatus && (
+                  <div className="text-muted-foreground text-xs space-y-0.5">
+                    {boxStatus.backend && (
+                      <p>
+                        {t('monitoring.boxBackend')}:{' '}
+                        <span className="text-foreground font-mono">
+                          {boxStatus.backend.name}
+                        </span>
+                      </p>
+                    )}
+                    <p>
+                      {t('monitoring.boxProfile')}:{' '}
+                      <span className="text-foreground font-mono">
+                        {boxStatus.profile}
+                      </span>
+                    </p>
+                    {boxOk && boxStatus.active_sessions !== undefined && (
+                      <p>
+                        {t('monitoring.boxSandboxes')}:{' '}
+                        <span className="text-foreground font-mono">
+                          {boxStatus.active_sessions}
+                        </span>
+                      </p>
+                    )}
+                  </div>
                 )}
-                <span className={boxOk ? 'text-green-600' : 'text-red-500'}>
-                  {boxOk
-                    ? t('monitoring.connected')
-                    : t('monitoring.disconnected')}
-                </span>
+
+                {/* Active Sandboxes */}
+                {boxSessions.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {boxSessions.map((session) => (
+                      <div
+                        key={session.session_id}
+                        className="rounded-lg border p-3 space-y-2"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <Container className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                          <span className="font-mono font-semibold text-foreground truncate text-sm">
+                            {session.session_id}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                          <div className="flex items-center gap-1.5 text-muted-foreground">
+                            <Image className="w-3 h-3 flex-shrink-0" />
+                            <span className="text-foreground font-mono truncate">
+                              {session.image}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-muted-foreground">
+                            <HardDrive className="w-3 h-3 flex-shrink-0" />
+                            <span className="text-foreground">
+                              {session.backend_name}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-muted-foreground">
+                            <Cpu className="w-3 h-3 flex-shrink-0" />
+                            <span className="text-foreground">
+                              {session.cpus} CPU / {session.memory_mb} MB
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-muted-foreground">
+                            <Network className="w-3 h-3 flex-shrink-0" />
+                            <span className="text-foreground">
+                              {session.network}
+                            </span>
+                          </div>
+                          {session.host_path && (
+                            <div className="flex items-center gap-1.5 text-muted-foreground col-span-2">
+                              <FolderOpen className="w-3 h-3 flex-shrink-0" />
+                              <span
+                                className="text-foreground font-mono truncate"
+                                title={session.host_path}
+                              >
+                                {session.mount_path}{' '}
+                                <span className="text-muted-foreground">
+                                  ({session.host_path_mode})
+                                </span>
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-1.5 text-muted-foreground">
+                            <Clock className="w-3 h-3 flex-shrink-0" />
+                            <span>
+                              {t('monitoring.boxSessionCreated')}:{' '}
+                              <span className="text-foreground">
+                                {new Date(session.created_at).toLocaleString()}
+                              </span>
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-muted-foreground">
+                            <Clock className="w-3 h-3 flex-shrink-0" />
+                            <span>
+                              {t('monitoring.boxSessionLastUsed')}:{' '}
+                              <span className="text-foreground">
+                                {new Date(
+                                  session.last_used_at,
+                                ).toLocaleString()}
+                              </span>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-              {boxStatus && !boxOk && boxStatus.connector_error && (
-                <p className="text-red-400 break-all">
-                  {boxStatus.connector_error}
-                </p>
-              )}
-              {boxStatus && (
-                <div className="text-muted-foreground space-y-0.5">
-                  {boxStatus.backend && (
-                    <p>
-                      {t('monitoring.boxBackend')}:{' '}
-                      <span className="text-foreground font-mono">
-                        {boxStatus.backend.name}
-                      </span>
-                    </p>
-                  )}
-                  <p>
-                    {t('monitoring.boxProfile')}:{' '}
-                    <span className="text-foreground font-mono">
-                      {boxStatus.profile}
-                    </span>
-                  </p>
-                  {boxOk && boxStatus.active_sessions !== undefined && (
-                    <p>
-                      {t('monitoring.boxSandboxes')}:{' '}
-                      <span className="text-foreground font-mono">
-                        {boxStatus.active_sessions}
-                      </span>
-                    </p>
-                  )}
-                </div>
-              )}
-              {boxSessions.length > 0 && (
-                <div className="mt-2 space-y-1.5">
-                  {boxSessions.map((session) => (
-                    <div
-                      key={session.session_id}
-                      className="rounded border p-1.5 space-y-0.5"
-                    >
-                      <div className="flex items-center gap-1">
-                        <Container className="w-3 h-3 text-muted-foreground flex-shrink-0" />
-                        <span className="font-mono text-foreground truncate">
-                          {session.session_id}
-                        </span>
-                      </div>
-                      <div className="text-muted-foreground grid grid-cols-2 gap-x-2">
-                        <span>
-                          {session.image.split(':').pop() || session.image}
-                        </span>
-                        <span>
-                          {session.cpus} CPU / {session.memory_mb}MB
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1 text-muted-foreground">
-                        <Clock className="w-2.5 h-2.5" />
-                        <span>
-                          {new Date(session.last_used_at).toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           </div>
-        </div>
-      </PopoverContent>
-    </Popover>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

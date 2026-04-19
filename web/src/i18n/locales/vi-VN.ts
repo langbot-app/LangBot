@@ -1239,6 +1239,8 @@ const viVN = {
     boxBackend: 'Backend',
     boxProfile: 'Hồ sơ',
     boxSandboxes: 'Sandbox',
+    boxSessionCreated: 'Đã tạo',
+    boxSessionLastUsed: 'Lần cuối sử dụng',
   },
   limitation: {
     maxBotsReached:
