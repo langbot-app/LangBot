@@ -218,6 +218,7 @@ const zhHant = {
     noScannedModelsMatch: '沒有符合的模型',
     addSelectedModels: '添加所選模型',
     addSelectedModelsSuccess: '已添加 {{count}} 個模型',
+    selectAll: '全選模型',
     alreadyAdded: '已添加',
     addLLMModel: '新增對話模型',
     addEmbeddingModel: '新增嵌入模型',

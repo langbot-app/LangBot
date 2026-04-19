@@ -233,6 +233,7 @@ const viVN = {
     noScannedModelsMatch: 'Không có mô hình phù hợp',
     addSelectedModels: 'Thêm mục đã chọn',
     addSelectedModelsSuccess: 'Đã thêm {{count}} mô hình',
+    selectAll: 'Chọn tất cả',
     alreadyAdded: 'Đã thêm',
     addLLMModel: 'Thêm mô hình LLM',
     addEmbeddingModel: 'Thêm mô hình Embedding',

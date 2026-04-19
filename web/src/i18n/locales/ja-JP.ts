@@ -235,6 +235,7 @@
     noScannedModelsMatch: '一致するモデルがありません',
     addSelectedModels: '選択したモデルを追加',
     addSelectedModelsSuccess: '{{count}} 件のモデルを追加しました',
+    selectAll: 'すべて選択',
     alreadyAdded: '追加済み',
     addLLMModel: 'LLMモデルを追加',
     addEmbeddingModel: '埋め込みモデルを追加',

@@ -226,6 +226,7 @@ const thTH = {
     noScannedModelsMatch: 'ไม่พบโมเดลที่ตรงกัน',
     addSelectedModels: 'เพิ่มที่เลือก',
     addSelectedModelsSuccess: 'เพิ่มแล้ว {{count}} โมเดล',
+    selectAll: 'เลือกทั้งหมด',
     alreadyAdded: 'เพิ่มแล้ว',
     addLLMModel: 'เพิ่มโมเดล LLM',
     addEmbeddingModel: 'เพิ่มโมเดล Embedding',

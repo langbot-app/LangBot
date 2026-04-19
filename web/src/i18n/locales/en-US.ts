@@ -234,6 +234,7 @@ const enUS = {
     noScannedModelsMatch: 'No matching models',
     addSelectedModels: 'Add Selected',
     addSelectedModelsSuccess: '{{count}} model(s) added',
+    selectAll: 'Select All',
     alreadyAdded: 'Already added',
     addLLMModel: 'Add LLM Model',
     addEmbeddingModel: 'Add Embedding Model',

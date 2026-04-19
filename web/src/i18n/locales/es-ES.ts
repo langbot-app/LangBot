@@ -239,6 +239,7 @@ const esES = {
     noScannedModelsMatch: 'No hay modelos coincidentes',
     addSelectedModels: 'Agregar seleccionados',
     addSelectedModelsSuccess: 'Se agregaron {{count}} modelo(s)',
+    selectAll: 'Seleccionar todo',
     alreadyAdded: 'Ya agregado',
     addLLMModel: 'Añadir modelo LLM',
     addEmbeddingModel: 'Añadir modelo Embedding',

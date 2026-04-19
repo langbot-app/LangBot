@@ -71,7 +71,6 @@ export default function AddModelPopover({
   onResetTestResult,
 }: AddModelPopoverProps) {
   const { t } = useTranslation();
-  const scannedListRef = useRef<HTMLDivElement | null>(null);
   const prevIsOpenRef = useRef(false);
 
   const [tab, setTab] = useState<ModelType>('llm');
@@ -123,6 +122,33 @@ export default function AddModelPopover({
     setScanLoading(true);
     try {
       const result = await onScanModels(tab);
+
+      // Enrich abilities from debug.response.data (e.g. features.tools.function_calling)
+      const debugData = (
+        result.debug?.response as { data?: Record<string, unknown>[] }
+      )?.data;
+      if (Array.isArray(debugData)) {
+        const debugMap = new Map<string, Record<string, unknown>>();
+        for (const item of debugData) {
+          if (typeof item?.id === 'string') {
+            debugMap.set(item.id, item);
+          }
+        }
+        for (const model of result.models) {
+          const debugItem = debugMap.get(model.id);
+          if (!debugItem) continue;
+          const features = debugItem.features as
+            | Record<string, unknown>
+            | undefined;
+          const tools = features?.tools as Record<string, unknown> | undefined;
+          if (tools?.function_calling === true) {
+            const abilities = new Set(model.abilities || []);
+            abilities.add('func_call');
+            model.abilities = [...abilities];
+          }
+        }
+      }
+
       setScannedModels(result.models);
       setSelectedScannedModels({});
     } finally {
@@ -192,13 +218,26 @@ export default function AddModelPopover({
     model.name.toLowerCase().includes(scanQuery.trim().toLowerCase()),
   );
 
-  const handleScannedListWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    const container = scannedListRef.current;
-    if (!container) return;
+  const selectableModels = filteredScannedModels.filter(
+    (m) => !m.already_added,
+  );
+  const allSelected =
+    selectableModels.length > 0 &&
+    selectableModels.every((m) => Boolean(selectedScannedModels[m.id]));
 
-    container.scrollTop += e.deltaY;
-    e.preventDefault();
-    e.stopPropagation();
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedScannedModels({});
+    } else {
+      const next: Record<string, SelectedScannedModel> = {};
+      for (const model of selectableModels) {
+        next[model.id] = {
+          model,
+          abilities: model.type === 'llm' ? model.abilities || [] : [],
+        };
+      }
+      setSelectedScannedModels(next);
+    }
   };
 
   return (
@@ -367,12 +406,30 @@ export default function AddModelPopover({
                   onChange={(e) => setScanQuery(e.target.value)}
                   disabled={scannedModels.length === 0}
                 />
+                {selectableModels.length > 0 && (
+                  <div className="flex items-center gap-2 pt-1">
+                    <Checkbox
+                      id="scan-select-all"
+                      checked={allSelected}
+                      onCheckedChange={toggleSelectAll}
+                    />
+                    <Label
+                      htmlFor="scan-select-all"
+                      className="text-sm font-medium"
+                    >
+                      {t('models.selectAll')}
+                      <span className="text-muted-foreground ml-1">
+                        ({Object.keys(selectedScannedModels).length}/
+                        {selectableModels.length})
+                      </span>
+                    </Label>
+                  </div>
+                )}
               </div>
 
               <div
-                ref={scannedListRef}
                 className="h-64 overflow-y-auto overscroll-contain rounded-md border"
-                onWheel={handleScannedListWheel}
+                onWheel={(e) => e.stopPropagation()}
               >
                 <div className="p-3 space-y-2">
                   {filteredScannedModels.length === 0 ? (

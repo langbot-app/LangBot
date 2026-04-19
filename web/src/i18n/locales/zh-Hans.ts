@@ -224,6 +224,7 @@ const zhHans = {
     noScannedModelsMatch: '没有匹配的模型',
     addSelectedModels: '添加所选模型',
     addSelectedModelsSuccess: '已添加 {{count}} 个模型',
+    selectAll: '全选模型',
     alreadyAdded: '已添加',
     addLLMModel: '添加对话模型',
     addEmbeddingModel: '添加嵌入模型',
