@@ -28,6 +28,12 @@ import {
   ApiRespBoxStatus,
   BoxSessionInfo,
 } from '@/app/infra/entities/api';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { httpClient } from '@/app/infra/http/HttpClient';
 
 function StatusDot({ ok }: { ok: boolean | null }) {
@@ -141,195 +147,216 @@ export default function SystemStatusCard({
             <DialogTitle>{t('monitoring.systemStatus')}</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-5 overflow-y-auto flex-1 pr-1">
-            {/* Plugin Runtime */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Plug className="w-4 h-4 text-muted-foreground" />
-                <span className="text-sm font-semibold">
-                  {t('monitoring.pluginRuntime')}
-                </span>
-              </div>
-              <div className="ml-6 text-sm space-y-1">
-                <div className="flex items-center gap-1.5">
-                  {pluginOk ? (
-                    <CircleCheck className="w-4 h-4 text-green-600" />
-                  ) : (
-                    <CircleX className="w-4 h-4 text-red-500" />
-                  )}
-                  <span
-                    className={
-                      pluginOk
-                        ? 'text-green-600 font-medium'
-                        : 'text-red-500 font-medium'
-                    }
-                  >
-                    {pluginOk
-                      ? t('monitoring.connected')
-                      : pluginStatus && !pluginStatus.is_enable
-                        ? t('monitoring.disabled')
-                        : t('monitoring.disconnected')}
+          <TooltipProvider>
+            <div className="space-y-5 overflow-y-auto flex-1 pr-1">
+              {/* Plugin Runtime */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Plug className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm font-semibold">
+                    {t('monitoring.pluginRuntime')}
                   </span>
                 </div>
-                {pluginStatus && !pluginStatus.is_enable && (
-                  <p className="text-muted-foreground text-xs">
-                    {t('monitoring.pluginDisabled')}
-                  </p>
-                )}
-                {pluginStatus &&
-                  !pluginOk &&
-                  pluginStatus.is_enable &&
-                  pluginStatus.plugin_connector_error &&
-                  pluginStatus.plugin_connector_error !== 'ok' && (
-                    <p className="text-red-400 text-xs break-all">
-                      {pluginStatus.plugin_connector_error}
-                    </p>
-                  )}
-              </div>
-            </div>
-
-            <div className="border-t" />
-
-            {/* Box Runtime */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Box className="w-4 h-4 text-muted-foreground" />
-                <span className="text-sm font-semibold">
-                  {t('monitoring.boxRuntime')}
-                </span>
-              </div>
-              <div className="ml-6 text-sm space-y-1">
-                <div className="flex items-center gap-1.5">
-                  {boxOk ? (
-                    <CircleCheck className="w-4 h-4 text-green-600" />
-                  ) : (
-                    <CircleX className="w-4 h-4 text-red-500" />
-                  )}
-                  <span
-                    className={
-                      boxOk
-                        ? 'text-green-600 font-medium'
-                        : 'text-red-500 font-medium'
-                    }
-                  >
-                    {boxOk
-                      ? t('monitoring.connected')
-                      : t('monitoring.disconnected')}
-                  </span>
-                </div>
-                {boxStatus && !boxOk && boxStatus.connector_error && (
-                  <p className="text-red-400 text-xs break-all">
-                    {boxStatus.connector_error}
-                  </p>
-                )}
-                {boxStatus && (
-                  <div className="text-muted-foreground text-xs space-y-0.5">
-                    {boxStatus.backend && (
-                      <p>
-                        {t('monitoring.boxBackend')}:{' '}
-                        <span className="text-foreground font-mono">
-                          {boxStatus.backend.name}
-                        </span>
-                      </p>
+                <div className="ml-6 text-sm space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    {pluginOk ? (
+                      <CircleCheck className="w-4 h-4 text-green-600" />
+                    ) : (
+                      <CircleX className="w-4 h-4 text-red-500" />
                     )}
-                    <p>
-                      {t('monitoring.boxProfile')}:{' '}
-                      <span className="text-foreground font-mono">
-                        {boxStatus.profile}
-                      </span>
-                    </p>
-                    {boxOk && boxStatus.active_sessions !== undefined && (
-                      <p>
-                        {t('monitoring.boxSandboxes')}:{' '}
-                        <span className="text-foreground font-mono">
-                          {boxStatus.active_sessions}
-                        </span>
-                      </p>
-                    )}
+                    <span
+                      className={
+                        pluginOk
+                          ? 'text-green-600 font-medium'
+                          : 'text-red-500 font-medium'
+                      }
+                    >
+                      {pluginOk
+                        ? t('monitoring.connected')
+                        : pluginStatus && !pluginStatus.is_enable
+                          ? t('monitoring.disabled')
+                          : t('monitoring.disconnected')}
+                    </span>
                   </div>
-                )}
+                  {pluginStatus && !pluginStatus.is_enable && (
+                    <p className="text-muted-foreground text-xs">
+                      {t('monitoring.pluginDisabled')}
+                    </p>
+                  )}
+                  {pluginStatus &&
+                    !pluginOk &&
+                    pluginStatus.is_enable &&
+                    pluginStatus.plugin_connector_error &&
+                    pluginStatus.plugin_connector_error !== 'ok' && (
+                      <p className="text-red-400 text-xs break-all">
+                        {pluginStatus.plugin_connector_error}
+                      </p>
+                    )}
+                </div>
+              </div>
 
-                {/* Active Sandboxes */}
-                {boxSessions.length > 0 && (
-                  <div className="mt-3 space-y-2">
-                    {boxSessions.map((session) => (
-                      <div
-                        key={session.session_id}
-                        className="rounded-lg border p-3 space-y-2"
-                      >
-                        <div className="flex items-center gap-1.5">
-                          <Container className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                          <span className="font-mono font-semibold text-foreground truncate text-sm">
-                            {session.session_id}
+              <div className="border-t" />
+
+              {/* Box Runtime */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Box className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm font-semibold">
+                    {t('monitoring.boxRuntime')}
+                  </span>
+                </div>
+                <div className="ml-6 text-sm space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    {boxOk ? (
+                      <CircleCheck className="w-4 h-4 text-green-600" />
+                    ) : (
+                      <CircleX className="w-4 h-4 text-red-500" />
+                    )}
+                    <span
+                      className={
+                        boxOk
+                          ? 'text-green-600 font-medium'
+                          : 'text-red-500 font-medium'
+                      }
+                    >
+                      {boxOk
+                        ? t('monitoring.connected')
+                        : t('monitoring.disconnected')}
+                    </span>
+                  </div>
+                  {boxStatus && !boxOk && boxStatus.connector_error && (
+                    <p className="text-red-400 text-xs break-all">
+                      {boxStatus.connector_error}
+                    </p>
+                  )}
+                  {boxStatus && (
+                    <div className="text-muted-foreground text-xs space-y-0.5">
+                      {boxStatus.backend && (
+                        <p>
+                          {t('monitoring.boxBackend')}:{' '}
+                          <span className="text-foreground font-mono">
+                            {boxStatus.backend.name}
                           </span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                          <div className="flex items-center gap-1.5 text-muted-foreground">
-                            <Image className="w-3 h-3 flex-shrink-0" />
-                            <span className="text-foreground font-mono truncate">
-                              {session.image}
-                            </span>
+                        </p>
+                      )}
+                      <p>
+                        {t('monitoring.boxProfile')}:{' '}
+                        <span className="text-foreground font-mono">
+                          {boxStatus.profile}
+                        </span>
+                      </p>
+                      {boxOk && boxStatus.active_sessions !== undefined && (
+                        <p>
+                          {t('monitoring.boxSandboxes')}:{' '}
+                          <span className="text-foreground font-mono">
+                            {boxStatus.active_sessions}
+                          </span>
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Active Sandboxes */}
+                  {boxSessions.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      {boxSessions.map((session) => (
+                        <div
+                          key={session.session_id}
+                          className="rounded-lg border p-3 space-y-2"
+                        >
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Container className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="font-mono font-semibold text-foreground truncate text-sm">
+                                  {session.session_id}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {session.session_id}
+                              </TooltipContent>
+                            </Tooltip>
                           </div>
-                          <div className="flex items-center gap-1.5 text-muted-foreground">
-                            <HardDrive className="w-3 h-3 flex-shrink-0" />
-                            <span className="text-foreground">
-                              {session.backend_name}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1.5 text-muted-foreground">
-                            <Cpu className="w-3 h-3 flex-shrink-0" />
-                            <span className="text-foreground">
-                              {session.cpus} CPU / {session.memory_mb} MB
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1.5 text-muted-foreground">
-                            <Network className="w-3 h-3 flex-shrink-0" />
-                            <span className="text-foreground">
-                              {session.network}
-                            </span>
-                          </div>
-                          {session.host_path && (
-                            <div className="flex items-center gap-1.5 text-muted-foreground col-span-2">
-                              <FolderOpen className="w-3 h-3 flex-shrink-0" />
-                              <span
-                                className="text-foreground font-mono truncate"
-                                title={session.host_path}
-                              >
-                                {session.mount_path}{' '}
-                                <span className="text-muted-foreground">
-                                  ({session.host_path_mode})
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                            <div className="flex items-center gap-1.5 text-muted-foreground min-w-0">
+                              <Image className="w-3 h-3 flex-shrink-0" />
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="text-foreground font-mono truncate">
+                                    {session.image}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>{session.image}</TooltipContent>
+                              </Tooltip>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-muted-foreground">
+                              <HardDrive className="w-3 h-3 flex-shrink-0" />
+                              <span className="text-foreground">
+                                {session.backend_name}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-muted-foreground">
+                              <Cpu className="w-3 h-3 flex-shrink-0" />
+                              <span className="text-foreground">
+                                {session.cpus} CPU / {session.memory_mb} MB
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-muted-foreground">
+                              <Network className="w-3 h-3 flex-shrink-0" />
+                              <span className="text-foreground">
+                                {session.network}
+                              </span>
+                            </div>
+                            {session.host_path && (
+                              <div className="flex items-center gap-1.5 text-muted-foreground col-span-2 min-w-0">
+                                <FolderOpen className="w-3 h-3 flex-shrink-0" />
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="text-foreground font-mono truncate">
+                                      {session.host_path} : {session.mount_path}{' '}
+                                      <span className="text-muted-foreground">
+                                        ({session.host_path_mode})
+                                      </span>
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {session.host_path} : {session.mount_path} (
+                                    {session.host_path_mode})
+                                  </TooltipContent>
+                                </Tooltip>
+                              </div>
+                            )}
+                            <div className="flex items-center gap-1.5 text-muted-foreground">
+                              <Clock className="w-3 h-3 flex-shrink-0" />
+                              <span>
+                                {t('monitoring.boxSessionCreated')}:{' '}
+                                <span className="text-foreground">
+                                  {new Date(
+                                    session.created_at,
+                                  ).toLocaleString()}
                                 </span>
                               </span>
                             </div>
-                          )}
-                          <div className="flex items-center gap-1.5 text-muted-foreground">
-                            <Clock className="w-3 h-3 flex-shrink-0" />
-                            <span>
-                              {t('monitoring.boxSessionCreated')}:{' '}
-                              <span className="text-foreground">
-                                {new Date(session.created_at).toLocaleString()}
+                            <div className="flex items-center gap-1.5 text-muted-foreground">
+                              <Clock className="w-3 h-3 flex-shrink-0" />
+                              <span>
+                                {t('monitoring.boxSessionLastUsed')}:{' '}
+                                <span className="text-foreground">
+                                  {new Date(
+                                    session.last_used_at,
+                                  ).toLocaleString()}
+                                </span>
                               </span>
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1.5 text-muted-foreground">
-                            <Clock className="w-3 h-3 flex-shrink-0" />
-                            <span>
-                              {t('monitoring.boxSessionLastUsed')}:{' '}
-                              <span className="text-foreground">
-                                {new Date(
-                                  session.last_used_at,
-                                ).toLocaleString()}
-                              </span>
-                            </span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
+          </TooltipProvider>
         </DialogContent>
       </Dialog>
     </>
