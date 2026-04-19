@@ -1207,6 +1207,16 @@ const thTH = {
       sessions: 'เซสชัน',
       feedback: 'ความคิดเห็นผู้ใช้',
     },
+    pluginRuntime: 'Plugin Runtime',
+    boxRuntime: 'Box Runtime',
+    connected: 'เชื่อมต่อแล้ว',
+    disconnected: 'ไม่ได้เชื่อมต่อ',
+    disabled: 'ปิดใช้งาน',
+    statusDetail: 'สถานะ',
+    pluginDisabled: 'ระบบปลั๊กอินถูกปิดใช้งาน',
+    boxBackend: 'แบ็กเอนด์',
+    boxProfile: 'โปรไฟล์',
+    boxSandboxes: 'แซนด์บ็อกซ์',
   },
   limitation: {
     maxBotsReached:

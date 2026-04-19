@@ -12,6 +12,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import OverviewCards from './components/overview-cards/OverviewCards';
+import SystemStatusCards from './components/overview-cards/SystemStatusCards';
 import MonitoringFilters from './components/filters/MonitoringFilters';
 import { ExportDropdown } from './components/ExportDropdown';
 import { useMonitoringFilters } from './hooks/useMonitoringFilters';
@@ -296,6 +297,9 @@ function MonitoringPageContent() {
 
       {/* Content Area */}
       <div className="flex flex-col gap-6 px-[0.8rem] pb-4">
+        {/* System Status */}
+        <SystemStatusCards />
+
         {/* Overview Section */}
         <OverviewCards
           metrics={data?.overview || null}

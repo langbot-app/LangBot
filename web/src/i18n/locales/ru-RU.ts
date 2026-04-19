@@ -1234,6 +1234,16 @@ const ruRU = {
       sessions: 'Сессии',
       feedback: 'Отзывы пользователей',
     },
+    pluginRuntime: 'Среда плагинов',
+    boxRuntime: 'Среда Box',
+    connected: 'Подключено',
+    disconnected: 'Отключено',
+    disabled: 'Отключено',
+    statusDetail: 'Статус',
+    pluginDisabled: 'Система плагинов отключена',
+    boxBackend: 'Бэкенд',
+    boxProfile: 'Профиль',
+    boxSandboxes: 'Песочницы',
   },
   limitation: {
     maxBotsReached:

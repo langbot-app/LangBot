@@ -1232,6 +1232,16 @@
       sessions: 'セッション',
       feedback: 'ユーザーフィードバック',
     },
+    pluginRuntime: 'プラグインランタイム',
+    boxRuntime: 'Box ランタイム',
+    connected: '接続済み',
+    disconnected: '未接続',
+    disabled: '無効',
+    statusDetail: 'ステータス',
+    pluginDisabled: 'プラグインシステムが無効です',
+    boxBackend: 'バックエンド',
+    boxProfile: 'プロファイル',
+    boxSandboxes: 'サンドボックス',
   },
   limitation: {
     maxBotsReached:

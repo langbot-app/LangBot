@@ -1228,6 +1228,16 @@ const viVN = {
       sessions: 'Phiên',
       feedback: 'Phản hồi người dùng',
     },
+    pluginRuntime: 'Plugin Runtime',
+    boxRuntime: 'Box Runtime',
+    connected: 'Đã kết nối',
+    disconnected: 'Chưa kết nối',
+    disabled: 'Đã tắt',
+    statusDetail: 'Trạng thái',
+    pluginDisabled: 'Hệ thống plugin đã tắt',
+    boxBackend: 'Backend',
+    boxProfile: 'Hồ sơ',
+    boxSandboxes: 'Sandbox',
   },
   limitation: {
     maxBotsReached:
