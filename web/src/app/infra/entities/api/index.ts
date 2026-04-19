@@ -355,6 +355,7 @@ export interface ApiRespBoxStatus {
   available: boolean;
   profile: string;
   recent_error_count: number;
+  connector_error?: string;
   backend?: {
     name: string;
     available: boolean;

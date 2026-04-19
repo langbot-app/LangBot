@@ -66,6 +66,7 @@ class BoxService:
         self._recent_errors: collections.deque[dict] = collections.deque(maxlen=_MAX_RECENT_ERRORS)
         self._shutdown_task = None
         self._available = False
+        self._connector_error: str = ''
 
     async def initialize(self):
         self._ensure_default_host_workspace()
@@ -75,6 +76,7 @@ class BoxService:
             else:
                 await self.client.initialize()
             self._available = True
+            self._connector_error = ''
             self.ap.logger.info(
                 f'LangBot Box runtime initialized: profile={self.profile.name} '
                 f'default_workspace={self.default_host_workspace or "(none)"}'
@@ -82,17 +84,21 @@ class BoxService:
         except Exception as exc:
             self.ap.logger.warning(f'LangBot Box runtime unavailable, sandbox features disabled: {exc}')
             self._available = False
+            self._connector_error = str(exc)
 
     async def _on_runtime_disconnect(self, connector: BoxRuntimeConnector) -> None:
         """Called by the connector when the Box runtime connection drops."""
         self._available = False
+        self._connector_error = 'Disconnected from Box runtime'
         self.ap.logger.warning('Box runtime disconnected, sandbox features temporarily disabled. Reconnecting in 3s...')
         await asyncio.sleep(3)
         try:
             await connector.initialize()
             self._available = True
+            self._connector_error = ''
             self.ap.logger.info('Box runtime reconnected, sandbox features restored.')
         except Exception as exc:
+            self._connector_error = str(exc)
             self.ap.logger.warning(f'Box runtime reconnection failed: {exc}. Will retry on next heartbeat disconnect.')
 
     @property
@@ -573,6 +579,7 @@ class BoxService:
                 'available': False,
                 'profile': self.profile.name,
                 'recent_error_count': len(self._recent_errors),
+                'connector_error': self._connector_error,
             }
         runtime_status = await self.client.get_status()
         return {
