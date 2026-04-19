@@ -615,3 +615,88 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
             raise errors.RequesterError(f'请求过于频繁或余额不足: {e.message}')
         except openai.APIError as e:
             raise errors.RequesterError(f'请求错误: {e.message}')
+
+    async def invoke_rerank(
+        self,
+        model: requester.RuntimeRerankModel,
+        query: str,
+        documents: typing.List[str],
+        extra_args: dict[str, typing.Any] = {},
+    ) -> typing.List[dict]:
+        """Standard /rerank endpoint (Jina/Cohere/SiliconFlow/Voyage/DashScope compatible)
+
+        Supports extra_args from model.extra_args:
+        - rerank_url: full URL override (e.g. "https://dashscope.aliyuncs.com/compatible-api/v1/reranks")
+        - rerank_path: path override appended to base_url (e.g. "reranks" instead of default "rerank")
+        - Any other fields are merged into the request payload.
+        """
+        api_key = model.provider.token_mgr.get_token()
+        base_url = self.requester_cfg.get('base_url', '').rstrip('/')
+        timeout = self.requester_cfg.get('timeout', 120)
+
+        merged_args = {}
+        if model.model_entity.extra_args:
+            merged_args.update(model.model_entity.extra_args)
+        if extra_args:
+            merged_args.update(extra_args)
+
+        rerank_url = merged_args.pop('rerank_url', None)
+        rerank_path = merged_args.pop('rerank_path', 'rerank')
+        if not rerank_url:
+            rerank_url = f"{base_url}/{rerank_path}"
+
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {api_key}',
+        }
+
+        payload = {
+            'model': model.model_entity.name,
+            'query': query,
+            'documents': documents[:64],
+            'top_n': min(len(documents), 64),
+        }
+
+        if merged_args:
+            payload.update(merged_args)
+
+        try:
+            async with httpx.AsyncClient(trust_env=True, timeout=timeout) as client:
+                resp = await client.post(rerank_url, headers=headers, json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+
+            results = self._parse_rerank_response(data)
+
+            if results:
+                scores = [r.get('relevance_score', 0.0) for r in results]
+                min_score = min(scores)
+                max_score = max(scores)
+                if max_score - min_score > 1e-6:
+                    for r in results:
+                        r['relevance_score'] = (r['relevance_score'] - min_score) / (max_score - min_score)
+
+            return results
+        except httpx.HTTPStatusError as e:
+            raise errors.RequesterError(f'Rerank request failed: {e.response.status_code} - {e.response.text}')
+        except httpx.TimeoutException:
+            raise errors.RequesterError('Rerank request timed out')
+        except Exception as e:
+            raise errors.RequesterError(f'Rerank request error: {str(e)}')
+
+    @staticmethod
+    def _parse_rerank_response(data: dict) -> typing.List[dict]:
+        """Parse rerank response from various providers.
+
+        Handles:
+        - Jina/Cohere/SiliconFlow: {"results": [{"index", "relevance_score"}]}
+        - Voyage AI: {"data": [{"index", "relevance_score"}]}
+        - DashScope: {"output": {"results": [{"index", "relevance_score"}]}}
+        """
+        if 'results' in data:
+            return data['results']
+        if 'data' in data:
+            return data['data']
+        if 'output' in data and isinstance(data['output'], dict):
+            return data['output'].get('results', [])
+        return []
