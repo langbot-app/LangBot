@@ -127,6 +127,16 @@ stages:
         required: false
         default: "{launcher_type}_{launcher_id}"
         options:
+          - name: "{global}"
+            label:
+              en_US: Global (shared by all)
+              zh_Hans: 全局（所有人共享）
+              zh_Hant: 全域（所有人共用）
+              ja_JP: グローバル（全員共有）
+              vi_VN: Toàn cục (chia sẻ cho tất cả)
+              th_TH: ทั่วไป (แชร์ทั้งหมด)
+              es_ES: Global (compartido por todos)
+              ru_RU: Глобальный (общий для всех)
           - name: "{launcher_type}_{launcher_id}"
             label:
               en_US: Per chat (Recommended)
