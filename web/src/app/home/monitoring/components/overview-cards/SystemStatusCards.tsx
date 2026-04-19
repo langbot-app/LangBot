@@ -136,12 +136,12 @@ export default function SystemStatusCard({
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>{t('monitoring.systemStatus')}</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-5">
+          <div className="space-y-5 overflow-y-auto flex-1 pr-1">
             {/* Plugin Runtime */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
