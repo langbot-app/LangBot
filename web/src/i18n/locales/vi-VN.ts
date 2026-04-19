@@ -1241,6 +1241,8 @@ const viVN = {
     boxSandboxes: 'Sandbox',
     boxSessionCreated: 'Đã tạo',
     boxSessionLastUsed: 'Lần cuối sử dụng',
+    boxSessionTTL: 'Hết hạn sau',
+    boxSessionExpiring: 'Sắp hết hạn',
   },
   limitation: {
     maxBotsReached:

@@ -1220,6 +1220,8 @@ const thTH = {
     boxSandboxes: 'แซนด์บ็อกซ์',
     boxSessionCreated: 'สร้างเมื่อ',
     boxSessionLastUsed: 'ใช้ล่าสุด',
+    boxSessionTTL: 'หมดอายุใน',
+    boxSessionExpiring: 'ใกล้หมดอายุ',
   },
   limitation: {
     maxBotsReached:

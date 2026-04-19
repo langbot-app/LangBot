@@ -9,6 +9,7 @@ import {
   Info,
   Container,
   Clock,
+  Timer,
   Cpu,
   HardDrive,
   Network,
@@ -348,6 +349,39 @@ export default function SystemStatusCard({
                                 </span>
                               </span>
                             </div>
+                            {boxStatus?.session_ttl_sec != null &&
+                              boxStatus.session_ttl_sec > 0 &&
+                              (() => {
+                                const elapsed =
+                                  (Date.now() -
+                                    new Date(session.last_used_at).getTime()) /
+                                  1000;
+                                const remaining = Math.max(
+                                  0,
+                                  boxStatus.session_ttl_sec! - elapsed,
+                                );
+                                const mins = Math.floor(remaining / 60);
+                                const secs = Math.floor(remaining % 60);
+                                return (
+                                  <div className="flex items-center gap-1.5 text-muted-foreground col-span-2">
+                                    <Timer className="w-3 h-3 flex-shrink-0" />
+                                    <span>
+                                      {t('monitoring.boxSessionTTL')}:{' '}
+                                      <span
+                                        className={
+                                          remaining <= 60
+                                            ? 'text-amber-600 font-medium'
+                                            : 'text-foreground'
+                                        }
+                                      >
+                                        {remaining <= 0
+                                          ? t('monitoring.boxSessionExpiring')
+                                          : `${mins}m ${secs.toString().padStart(2, '0')}s`}
+                                      </span>
+                                    </span>
+                                  </div>
+                                );
+                              })()}
                           </div>
                         </div>
                       ))}

@@ -1273,6 +1273,8 @@ const esES = {
     boxSandboxes: 'Sandboxes',
     boxSessionCreated: 'Creado',
     boxSessionLastUsed: 'Último uso',
+    boxSessionTTL: 'Expira en',
+    boxSessionExpiring: 'Expirando pronto',
   },
   limitation: {
     maxBotsReached:

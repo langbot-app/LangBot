@@ -1248,6 +1248,8 @@ const enUS = {
     boxSandboxes: 'Sandboxes',
     boxSessionCreated: 'Created',
     boxSessionLastUsed: 'Last used',
+    boxSessionTTL: 'Expires in',
+    boxSessionExpiring: 'Expiring soon',
   },
   limitation: {
     maxBotsReached:

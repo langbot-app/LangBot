@@ -1194,6 +1194,8 @@ const zhHans = {
     boxSandboxes: '沙箱数',
     boxSessionCreated: '创建时间',
     boxSessionLastUsed: '最后使用',
+    boxSessionTTL: '剩余时间',
+    boxSessionExpiring: '即将过期',
   },
   limitation: {
     maxBotsReached:

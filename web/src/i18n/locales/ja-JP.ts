@@ -1245,6 +1245,8 @@
     boxSandboxes: 'サンドボックス',
     boxSessionCreated: '作成日時',
     boxSessionLastUsed: '最終使用',
+    boxSessionTTL: '残り時間',
+    boxSessionExpiring: 'まもなく期限切れ',
   },
   limitation: {
     maxBotsReached:

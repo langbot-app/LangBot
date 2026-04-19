@@ -1247,6 +1247,8 @@ const ruRU = {
     boxSandboxes: 'Песочницы',
     boxSessionCreated: 'Создано',
     boxSessionLastUsed: 'Последнее использование',
+    boxSessionTTL: 'Истекает через',
+    boxSessionExpiring: 'Скоро истекает',
   },
   limitation: {
     maxBotsReached:

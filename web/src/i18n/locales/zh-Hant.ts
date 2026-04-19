@@ -1186,6 +1186,8 @@ const zhHant = {
     boxSandboxes: '沙箱數',
     boxSessionCreated: '建立時間',
     boxSessionLastUsed: '最後使用',
+    boxSessionTTL: '剩餘時間',
+    boxSessionExpiring: '即將過期',
   },
   limitation: {
     maxBotsReached:
