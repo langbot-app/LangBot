@@ -1199,6 +1199,16 @@ const zhHans = {
       sessions: '会话记录',
       feedback: '用户反馈',
     },
+    pluginRuntime: '插件运行时',
+    boxRuntime: 'Box 运行时',
+    connected: '已连接',
+    disconnected: '未连接',
+    disabled: '已禁用',
+    statusDetail: '状态',
+    pluginDisabled: '插件系统已禁用',
+    boxBackend: '后端',
+    boxProfile: '配置',
+    boxSandboxes: '沙箱数',
   },
   limitation: {
     maxBotsReached:

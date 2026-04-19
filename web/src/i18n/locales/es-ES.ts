@@ -1279,6 +1279,16 @@ const esES = {
       sessions: 'Sesiones',
       feedback: 'Comentarios de usuarios',
     },
+    pluginRuntime: 'Plugin Runtime',
+    boxRuntime: 'Box Runtime',
+    connected: 'Conectado',
+    disconnected: 'Desconectado',
+    disabled: 'Desactivado',
+    statusDetail: 'Estado',
+    pluginDisabled: 'El sistema de plugins está desactivado',
+    boxBackend: 'Backend',
+    boxProfile: 'Perfil',
+    boxSandboxes: 'Sandboxes',
   },
   limitation: {
     maxBotsReached:

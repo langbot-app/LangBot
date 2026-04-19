@@ -17,11 +17,6 @@ import {
   Check,
   Bug,
   Unlink,
-  Box,
-  CircleCheck,
-  CircleX,
-  Container,
-  Clock,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -48,11 +43,7 @@ import { httpClient } from '@/app/infra/http/HttpClient';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { systemInfo } from '@/app/infra/http/HttpClient';
-import {
-  ApiRespPluginSystemStatus,
-  ApiRespBoxStatus,
-  BoxSessionInfo,
-} from '@/app/infra/entities/api';
+import { ApiRespPluginSystemStatus } from '@/app/infra/entities/api';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import {
   PluginInstallTaskQueue,
@@ -142,8 +133,6 @@ function PluginListView() {
   const [debugPopoverOpen, setDebugPopoverOpen] = useState(false);
   const [copiedDebugUrl, setCopiedDebugUrl] = useState(false);
   const [copiedDebugKey, setCopiedDebugKey] = useState(false);
-  const [boxStatus, setBoxStatus] = useState<ApiRespBoxStatus | null>(null);
-  const [boxSessions, setBoxSessions] = useState<BoxSessionInfo[]>([]);
 
   useEffect(() => {
     const fetchPluginSystemStatus = async () => {
@@ -465,14 +454,8 @@ function PluginListView() {
 
   const handleShowDebugInfo = async () => {
     try {
-      const [info, box, sessions] = await Promise.all([
-        httpClient.getPluginDebugInfo(),
-        httpClient.getBoxStatus().catch(() => null),
-        httpClient.getBoxSessions().catch(() => [] as BoxSessionInfo[]),
-      ]);
+      const info = await httpClient.getPluginDebugInfo();
       setDebugInfo(info);
-      setBoxStatus(box);
-      setBoxSessions(sessions);
       setDebugPopoverOpen(true);
     } catch (error) {
       console.error('Failed to fetch debug info:', error);
@@ -659,129 +642,6 @@ function PluginListView() {
                 {!debugInfo?.plugin_debug_key && (
                   <p className="text-xs text-muted-foreground ml-[58px]">
                     {t('plugins.debugKeyDisabled')}
-                  </p>
-                )}
-              </div>
-
-              {/* Box Runtime Status */}
-              <div className="pt-2 border-t">
-                <div className="flex items-center gap-2 pb-2">
-                  <Box className="w-4 h-4" />
-                  <h4 className="font-semibold text-sm">
-                    {t('plugins.boxStatusTitle')}
-                  </h4>
-                </div>
-                {boxStatus ? (
-                  <div className="space-y-1.5 text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground min-w-[80px]">
-                        {t('plugins.boxStatus')}:
-                      </span>
-                      {boxStatus.available ? (
-                        <span className="flex items-center gap-1 text-green-600">
-                          <CircleCheck className="w-3.5 h-3.5" />
-                          {t('plugins.boxConnected')}
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1 text-red-500">
-                          <CircleX className="w-3.5 h-3.5" />
-                          {t('plugins.boxUnavailable')}
-                        </span>
-                      )}
-                    </div>
-                    {boxStatus.backend && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground min-w-[80px]">
-                          {t('plugins.boxBackend')}:
-                        </span>
-                        <span className="font-mono">
-                          {boxStatus.backend.name}
-                          {boxStatus.backend.available
-                            ? ''
-                            : ` (${t('plugins.boxUnavailable')})`}
-                        </span>
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground min-w-[80px]">
-                        {t('plugins.boxProfile')}:
-                      </span>
-                      <span className="font-mono">{boxStatus.profile}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground min-w-[80px]">
-                        {t('plugins.boxSandboxes')}:
-                      </span>
-                      <span className="font-mono">
-                        {boxStatus.active_sessions ?? 0}
-                      </span>
-                    </div>
-                    {(boxStatus.recent_error_count ?? 0) > 0 && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground min-w-[80px]">
-                          {t('plugins.boxErrors')}:
-                        </span>
-                        <span className="text-amber-600 font-mono">
-                          {boxStatus.recent_error_count}
-                        </span>
-                      </div>
-                    )}
-                    {boxSessions.length > 0 && (
-                      <div className="pt-1.5 mt-1.5 border-t border-dashed space-y-2">
-                        {boxSessions.map((session) => (
-                          <div
-                            key={session.session_id}
-                            className="rounded border p-2 space-y-1"
-                          >
-                            <div className="flex items-center gap-1.5">
-                              <Container className="w-3 h-3 text-muted-foreground" />
-                              <span className="font-mono font-medium truncate">
-                                {session.session_id}
-                              </span>
-                            </div>
-                            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-muted-foreground">
-                              <span>
-                                {t('plugins.boxSessionImage')}:{' '}
-                                <span className="text-foreground font-mono">
-                                  {session.image.split(':').pop() ||
-                                    session.image}
-                                </span>
-                              </span>
-                              <span>
-                                {t('plugins.boxSessionBackend')}:{' '}
-                                <span className="text-foreground font-mono">
-                                  {session.backend_name}
-                                </span>
-                              </span>
-                              <span>
-                                {t('plugins.boxSessionResources')}:{' '}
-                                <span className="text-foreground font-mono">
-                                  {session.cpus} CPU / {session.memory_mb}MB
-                                </span>
-                              </span>
-                              <span>
-                                {t('plugins.boxSessionNetwork')}:{' '}
-                                <span className="text-foreground font-mono">
-                                  {session.network}
-                                </span>
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1 text-muted-foreground">
-                              <Clock className="w-3 h-3" />
-                              <span>
-                                {new Date(
-                                  session.last_used_at,
-                                ).toLocaleString()}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    {t('plugins.boxStatusLoadFailed')}
                   </p>
                 )}
               </div>

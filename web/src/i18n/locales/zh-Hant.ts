@@ -1192,6 +1192,16 @@ const zhHant = {
       sessions: '會話記錄',
       feedback: '使用者回饋',
     },
+    pluginRuntime: '外掛執行時',
+    boxRuntime: 'Box 執行時',
+    connected: '已連線',
+    disconnected: '未連線',
+    disabled: '已停用',
+    statusDetail: '狀態',
+    pluginDisabled: '外掛系統已停用',
+    boxBackend: '後端',
+    boxProfile: '設定檔',
+    boxSandboxes: '沙箱數',
   },
   limitation: {
     maxBotsReached:

@@ -1253,6 +1253,16 @@ const enUS = {
       sessions: 'Sessions',
       feedback: 'User Feedback',
     },
+    pluginRuntime: 'Plugin Runtime',
+    boxRuntime: 'Box Runtime',
+    connected: 'Connected',
+    disconnected: 'Disconnected',
+    disabled: 'Disabled',
+    statusDetail: 'Status',
+    pluginDisabled: 'Plugin system is disabled',
+    boxBackend: 'Backend',
+    boxProfile: 'Profile',
+    boxSandboxes: 'Sandboxes',
   },
   limitation: {
     maxBotsReached:
