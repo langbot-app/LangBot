@@ -275,9 +275,7 @@ export default function ModelsDialog({
         debug: resp.debug,
       };
     } catch (err) {
-      toast.error(
-        t('models.getModelListError') + (err as CustomApiError).msg,
-      );
+      toast.error(t('models.getModelListError') + (err as CustomApiError).msg);
       return { models: [] };
     }
   }
@@ -462,9 +460,7 @@ export default function ModelsDialog({
         onAddModel={(modelType, name, abilities, extraArgs) =>
           handleAddModel(provider.uuid, modelType, name, abilities, extraArgs)
         }
-        onScanModels={(modelType) =>
-          handleScanModels(provider.uuid, modelType)
-        }
+        onScanModels={(modelType) => handleScanModels(provider.uuid, modelType)}
         onAddScannedModels={(modelType, models) =>
           handleAddScannedModels(provider.uuid, modelType, models)
         }
