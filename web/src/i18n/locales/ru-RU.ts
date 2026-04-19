@@ -1264,6 +1264,8 @@ const ruRU = {
     boxBackend: 'Бэкенд',
     boxProfile: 'Профиль',
     boxSandboxes: 'Песочницы',
+    boxSessionCreated: 'Создано',
+    boxSessionLastUsed: 'Последнее использование',
   },
   limitation: {
     maxBotsReached:

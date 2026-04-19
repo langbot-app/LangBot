@@ -1262,6 +1262,8 @@ const jaJP = {
     boxBackend: 'バックエンド',
     boxProfile: 'プロファイル',
     boxSandboxes: 'サンドボックス',
+    boxSessionCreated: '作成日時',
+    boxSessionLastUsed: '最終使用',
   },
   limitation: {
     maxBotsReached:

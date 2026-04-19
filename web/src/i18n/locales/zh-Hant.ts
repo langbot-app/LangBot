@@ -1203,6 +1203,8 @@ const zhHant = {
     boxBackend: '後端',
     boxProfile: '設定檔',
     boxSandboxes: '沙箱數',
+    boxSessionCreated: '建立時間',
+    boxSessionLastUsed: '最後使用',
   },
   limitation: {
     maxBotsReached:
