@@ -67,6 +67,7 @@ class BoxService:
         self._shutdown_task = None
         self._available = False
         self._connector_error: str = ''
+        self._reconnecting = False
 
     async def initialize(self):
         self._ensure_default_host_workspace()
@@ -87,19 +88,39 @@ class BoxService:
             self._connector_error = str(exc)
 
     async def _on_runtime_disconnect(self, connector: BoxRuntimeConnector) -> None:
-        """Called by the connector when the Box runtime connection drops."""
+        """Called by the connector when the Box runtime connection drops.
+
+        Spawns a background reconnection loop so the caller is not blocked.
+        """
+        if self._reconnecting:
+            return  # Another reconnect loop is already running
+        self._reconnecting = True
         self._available = False
         self._connector_error = 'Disconnected from Box runtime'
-        self.ap.logger.warning('Box runtime disconnected, sandbox features temporarily disabled. Reconnecting in 3s...')
-        await asyncio.sleep(3)
+        self.ap.logger.warning('Box runtime disconnected, sandbox features temporarily disabled.')
+        asyncio.create_task(self._reconnect_loop(connector))
+
+    async def _reconnect_loop(self, connector: BoxRuntimeConnector) -> None:
+        """Retry reconnection with exponential backoff (3s → 60s max)."""
+        delay = 3
+        max_delay = 60
         try:
-            await connector.initialize()
-            self._available = True
-            self._connector_error = ''
-            self.ap.logger.info('Box runtime reconnected, sandbox features restored.')
-        except Exception as exc:
-            self._connector_error = str(exc)
-            self.ap.logger.warning(f'Box runtime reconnection failed: {exc}. Will retry on next heartbeat disconnect.')
+            while True:
+                self.ap.logger.info(f'Attempting to reconnect to Box runtime in {delay}s...')
+                await asyncio.sleep(delay)
+                try:
+                    connector.dispose()
+                    await connector.initialize()
+                    self._available = True
+                    self._connector_error = ''
+                    self.ap.logger.info('Box runtime reconnected, sandbox features restored.')
+                    return
+                except Exception as exc:
+                    self._connector_error = str(exc)
+                    self.ap.logger.warning(f'Box runtime reconnection failed: {exc}')
+                    delay = min(delay * 2, max_delay)
+        finally:
+            self._reconnecting = False
 
     @property
     def available(self) -> bool:
