@@ -267,7 +267,7 @@ class RuntimeProvider:
             )
             return result
 
-        except Exception as e:
+        except Exception:
             status = 'error'
             raise
         finally:

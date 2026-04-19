@@ -137,7 +137,9 @@ export default function ProviderCard({
     (provider.embedding_count || 0) === 0 &&
     (provider.rerank_count || 0) === 0;
   const totalModels =
-    (provider.llm_count || 0) + (provider.embedding_count || 0) + (provider.rerank_count || 0);
+    (provider.llm_count || 0) +
+    (provider.embedding_count || 0) +
+    (provider.rerank_count || 0);
 
   return (
     <Card className="mb-2">
@@ -425,11 +427,13 @@ export default function ProviderCard({
                     onResetTestResult={onResetTestResult}
                   />
                 ))}
-                {models.llm.length === 0 && models.embedding.length === 0 && models.rerank.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    {t('models.noModels')}
-                  </p>
-                )}
+                {models.llm.length === 0 &&
+                  models.embedding.length === 0 &&
+                  models.rerank.length === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      {t('models.noModels')}
+                    </p>
+                  )}
               </div>
             ) : (
               <p className="text-sm text-muted-foreground text-center py-4">
