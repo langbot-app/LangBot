@@ -528,7 +528,8 @@ class TestGetRuntimeInfoDict:
             ap=ap,
         )
         info = s.get_runtime_info_dict()
-        assert info['box_session_id'] == 'mcp-test-uuid'
+        assert info['box_session_id'] == 'mcp-shared'
+        assert info['box_process_id'] == 'test-uuid'
         assert info['box_enabled'] is True
 
     def test_stdio_session_without_box_runtime(self, mcp_module):

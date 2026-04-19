@@ -68,7 +68,7 @@
 |------|------|
 | **Session TTL 过期** | 测试配置了 `session_ttl_sec` 但从未推进时间验证过期清理 |
 | **并发 session 访问** | 无并发 exec / 并发创建 / race condition 测试 |
-| **Container backend (Podman/Docker)** | 仅通过集成测试覆盖（CI 不运行），单元测试全用 FakeBackend |
+| **Container backend (Docker)** | 仅通过集成测试覆盖（CI 不运行），单元测试全用 FakeBackend |
 | **BoxRuntime shutdown()** | 在 test cleanup 中调用但未验证行为 |
 | **BoxServerHandler 错误路径** | 畸形请求、未知 action 类型 |
 | **WS relay** | 仅在集成测试中覆盖（CI 不运行） |
@@ -83,7 +83,7 @@
 |------|------|
 | BoxSpec 校验 | 无效 session_id 格式、超长命令、env 特殊字符 |
 | BoxExecutionResult | 仅 COMPLETED 和 TIMED_OUT，无 ERROR 状态测试 |
-| 多后端 fallback | 仅单后端配置，无 Podman 不可用 → fallback Docker 测试 |
+| 多后端 fallback | 仅单后端配置，无 Docker 不可用 → fallback nsjail 测试 |
 | Profile YAML 加载 | 测试用硬编码字符串，未从真实 config.yaml 加载 |
 
 ---

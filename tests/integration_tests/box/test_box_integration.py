@@ -2,7 +2,7 @@
 
 These tests verify the end-to-end behavior of the Box sandbox execution
 system.  Tests decorated with ``requires_container`` need a real container
-runtime (Podman or Docker) and are skipped otherwise.
+runtime (Docker) and are skipped otherwise.
 
 CI only runs ``tests/unit_tests/``, so these tests never execute in the
 CI pipeline.  Run them locally with::
@@ -41,20 +41,17 @@ _TEST_IMAGE = 'alpine:latest'
 
 
 def _has_container_runtime() -> bool:
-    for cmd in ('podman', 'docker'):
-        if shutil.which(cmd) is None:
-            continue
-        try:
-            result = subprocess.run(
-                [cmd, 'info'],
-                capture_output=True,
-                timeout=10,
-            )
-            if result.returncode == 0:
-                return True
-        except Exception:
-            continue
-    return False
+    if shutil.which('docker') is None:
+        return False
+    try:
+        result = subprocess.run(
+            ['docker', 'info'],
+            capture_output=True,
+            timeout=10,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
 
 
 def _can_open_test_socket() -> bool:
@@ -68,7 +65,7 @@ def _can_open_test_socket() -> bool:
 
 requires_container = pytest.mark.skipif(
     not _has_container_runtime(),
-    reason='no container runtime (podman/docker) available',
+    reason='no container runtime (docker) available',
 )
 
 requires_socket = pytest.mark.skipif(

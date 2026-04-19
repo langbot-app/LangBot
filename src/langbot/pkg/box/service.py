@@ -134,7 +134,7 @@ class BoxService:
         skip_host_mount_validation: bool = False,
     ) -> dict:
         if not self._available:
-            raise BoxError('Box runtime is not available. Install and start Podman or Docker to use sandbox features.')
+            raise BoxError('Box runtime is not available. Install and start Docker to use sandbox features.')
         try:
             spec = self.build_spec(spec_payload, skip_host_mount_validation=skip_host_mount_validation)
         except BoxError as exc:
@@ -280,10 +280,10 @@ class BoxService:
         process_spec = BoxManagedProcessSpec.model_validate(process_payload)
         return await self.client.start_managed_process(session_id, process_spec)
 
-    async def get_managed_process(self, session_id: str) -> BoxManagedProcessInfo:
-        return await self.client.get_managed_process(session_id)
+    async def get_managed_process(self, session_id: str, process_id: str = 'default') -> BoxManagedProcessInfo:
+        return await self.client.get_managed_process(session_id, process_id)
 
-    def get_managed_process_websocket_url(self, session_id: str) -> str:
+    def get_managed_process_websocket_url(self, session_id: str, process_id: str = 'default') -> str:
         getter = getattr(self.client, 'get_managed_process_websocket_url', None)
         if getter is None:
             raise BoxValidationError('box runtime client does not support managed process websocket attach')
@@ -292,7 +292,7 @@ class BoxService:
             if self._runtime_connector is not None
             else 'http://127.0.0.1:5410'
         )
-        return getter(session_id, ws_relay_base_url)
+        return getter(session_id, ws_relay_base_url, process_id)
 
     def _serialize_result(self, result: BoxExecutionResult) -> dict:
         stdout, stdout_truncated = self._truncate(result.stdout)

@@ -37,16 +37,13 @@ _TEST_IMAGE = 'alpine:latest'
 
 
 def _has_container_runtime() -> bool:
-    for cmd in ('podman', 'docker'):
-        if shutil.which(cmd) is None:
-            continue
-        try:
-            result = subprocess.run([cmd, 'info'], capture_output=True, timeout=10)
-            if result.returncode == 0:
-                return True
-        except Exception:
-            continue
-    return False
+    if shutil.which('docker') is None:
+        return False
+    try:
+        result = subprocess.run(['docker', 'info'], capture_output=True, timeout=10)
+        return result.returncode == 0
+    except Exception:
+        return False
 
 
 def _can_open_test_socket() -> bool:
@@ -60,7 +57,7 @@ def _can_open_test_socket() -> bool:
 
 requires_container = pytest.mark.skipif(
     not _has_container_runtime(),
-    reason='no container runtime (podman/docker) available',
+    reason='no container runtime (docker) available',
 )
 
 requires_socket = pytest.mark.skipif(
@@ -273,7 +270,7 @@ async def test_get_session_returns_details(box_server):
     info = await client.get_session('mcp-int-get')
     assert info['session_id'] == 'mcp-int-get'
     assert info['image'] == _TEST_IMAGE
-    assert 'managed_process' not in info
+    assert 'managed_processes' not in info
 
     # Start a process and query again
     proc_spec = BoxManagedProcessSpec(
@@ -285,8 +282,8 @@ async def test_get_session_returns_details(box_server):
 
     info2 = await client.get_session('mcp-int-get')
     assert info2['session_id'] == 'mcp-int-get'
-    assert 'managed_process' in info2
-    assert info2['managed_process']['status'] == BoxManagedProcessStatus.RUNNING.value
+    assert 'managed_processes' in info2
+    assert info2['managed_processes']['default']['status'] == BoxManagedProcessStatus.RUNNING.value
 
     await client.delete_session('mcp-int-get')
 

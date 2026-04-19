@@ -10,7 +10,7 @@
 | 能力 | toB 价值 | 代码位置 |
 |------|---------|---------|
 | **沙箱隔离执行** | 企业安全运行不受信代码的基础能力 | SDK `box/backend.py` |
-| **多后端支持** | 适配不同企业容器基础设施 (Podman/Docker/nsjail) | SDK `box/runtime.py` `_select_backend()` |
+| **多后端支持** | 适配不同企业容器基础设施 (Docker/nsjail) | SDK `box/runtime.py` `_select_backend()` |
 | **Profile + locked 字段** | 运维锁定安全边界，LLM/用户无法绕过 | `pkg/box/service.py`, SDK `box/models.py` |
 | **资源限制** | CPU/内存/PID 数限制防止资源滥用 | SDK `backend.py` `--cpus/--memory/--pids-limit` |
 | **Workspace quota** | 磁盘用量控制 | `pkg/box/service.py` `_enforce_workspace_quota` |

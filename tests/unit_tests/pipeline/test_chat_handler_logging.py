@@ -43,7 +43,7 @@ def test_chat_handler_formats_tool_call_request_log():
 def test_chat_handler_formats_tool_result_log():
     result = provider_message.Message(
         role='tool',
-        content='{"status":"completed","exit_code":0,"backend":"podman","stdout":"42\\n"}',
+        content='{"status":"completed","exit_code":0,"backend":"docker","stdout":"42\\n"}',
         tool_call_id='call-1',
     )
 

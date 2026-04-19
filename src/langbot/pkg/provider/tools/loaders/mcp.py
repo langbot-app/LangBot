@@ -20,7 +20,7 @@ from ....core import app
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 from ....entity.persistence import mcp as persistence_mcp
-from .mcp_stdio import BoxStdioSessionRuntime, MCPServerBoxConfig, MCPSessionErrorPhase
+from .mcp_stdio import BoxStdioSessionRuntime, MCPSessionErrorPhase
 
 
 class MCPSessionStatus(enum.Enum):
@@ -320,6 +320,7 @@ class RuntimeMCPSession:
         }
         if self._uses_box_stdio():
             info['box_session_id'] = self._build_box_session_id()
+            info['box_process_id'] = self._box_stdio_runtime.process_id
             info['box_enabled'] = True
         return info
 
@@ -349,7 +350,7 @@ class RuntimeMCPSession:
         return self._box_stdio_runtime.uses_box_stdio()
 
     def _build_box_session_id(self) -> str:
-        return f'mcp-{self.server_uuid}'
+        return 'mcp-shared'
 
     def _rewrite_path(self, path: str, host_path: str | None) -> str:
         return self._box_stdio_runtime.rewrite_path(path, host_path)

@@ -67,8 +67,8 @@ class _InProcessBoxRuntimeClient(BoxRuntimeClient):
     async def start_managed_process(self, session_id: str, spec: BoxManagedProcessSpec):
         return await self._runtime.start_managed_process(session_id, spec)
 
-    async def get_managed_process(self, session_id: str):
-        return self._runtime.get_managed_process(session_id)
+    async def get_managed_process(self, session_id: str, process_id: str = 'default'):
+        return self._runtime.get_managed_process(session_id, process_id)
 
     async def get_session(self, session_id: str):
         return self._runtime.get_session(session_id)
@@ -558,7 +558,7 @@ async def test_profile_default_provides_defaults():
     assert result['ok'] is True
     spec = backend.start_specs[0]
     assert spec.network == BoxNetworkMode.OFF
-    assert spec.image == 'python:3.11-slim'
+    assert spec.image == 'rockchin/langbot-sandbox:latest'
     assert spec.timeout_sec == 30
 
 

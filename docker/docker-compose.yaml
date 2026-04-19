@@ -23,10 +23,7 @@ services:
     container_name: langbot_box
     volumes:
       - ./data/box:/workspaces
-      # Mount container runtime socket for Box sandbox backend.
-      # Uncomment the one that matches your container runtime:
-      # - /var/run/podman/podman.sock:/var/run/podman/podman.sock   # Podman
-      - /var/run/docker.sock:/var/run/docker.sock                   # Docker
+      - /var/run/docker.sock:/var/run/docker.sock
     restart: on-failure
     environment:
       - TZ=Asia/Shanghai

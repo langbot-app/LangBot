@@ -81,7 +81,13 @@ class BoxStdioSessionRuntime:
             cpus=self.config.cpus,
             memory_mb=self.config.memory_mb,
             pids_limit=self.config.pids_limit,
+            persistent=True,
         )
+
+    @property
+    def process_id(self) -> str:
+        """Each MCP server gets a unique process_id within the shared session."""
+        return self.owner.server_uuid
 
     def uses_box_stdio(self) -> bool:
         if self.server_config.get('mode') != 'stdio':
@@ -104,7 +110,9 @@ class BoxStdioSessionRuntime:
         if host_path:
             install_cmd = self.owner._detect_install_command(host_path)
             if install_cmd:
-                self.ap.logger.info(f'MCP server {self.server_name}: installing dependencies in Box with: {install_cmd}')
+                self.ap.logger.info(
+                    f'MCP server {self.server_name}: installing dependencies in Box with: {install_cmd}'
+                )
                 try:
                     result = await workspace.execute_raw(
                         install_cmd,
@@ -122,6 +130,7 @@ class BoxStdioSessionRuntime:
             await workspace.start_managed_process(
                 self.server_config['command'],
                 self.server_config.get('args', []),
+                process_id=self.process_id,
                 env=self.server_config.get('env', {}),
             )
         except Exception:
@@ -129,10 +138,12 @@ class BoxStdioSessionRuntime:
             raise
 
         try:
-            websocket_url = workspace.get_managed_process_websocket_url()
+            websocket_url = workspace.get_managed_process_websocket_url(self.process_id)
             transport = await self.owner.exit_stack.enter_async_context(websocket_client(websocket_url))
             read_stream, write_stream = transport
-            self.owner.session = await self.owner.exit_stack.enter_async_context(ClientSession(read_stream, write_stream))
+            self.owner.session = await self.owner.exit_stack.enter_async_context(
+                ClientSession(read_stream, write_stream)
+            )
         except Exception:
             self.owner.error_phase = MCPSessionErrorPhase.RELAY_CONNECT
             raise
@@ -150,7 +161,7 @@ class BoxStdioSessionRuntime:
         consecutive_errors = 0
         while not self.owner._shutdown_event.is_set():
             try:
-                info = await workspace.get_managed_process()
+                info = await workspace.get_managed_process(self.process_id)
                 if isinstance(info, dict):
                     status = info.get('status', '')
                 else:
@@ -173,10 +184,14 @@ class BoxStdioSessionRuntime:
         if not self.uses_box_stdio():
             return
 
-        try:
-            await self._build_workspace().cleanup()
-        except Exception as exc:
-            self.ap.logger.warning(f'Failed to cleanup Box session for MCP server {self.server_name}: {exc}')
+        # In the shared-session model, we do NOT delete the session itself.
+        # The managed process is cleaned up when it exits or when the Box
+        # runtime shuts down.  Deleting the session would kill all other
+        # MCP servers sharing the same container.
+        self.ap.logger.info(
+            f'MCP server {self.server_name}: process_id={self.process_id} cleanup complete '
+            f'(shared session {self.owner._build_box_session_id()} kept alive)'
+        )
 
     def rewrite_path(self, path: str, host_path: str | None) -> str:
         return rewrite_mounted_path(path, host_path)

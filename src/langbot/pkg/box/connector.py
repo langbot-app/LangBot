@@ -43,10 +43,21 @@ def resolve_box_ws_relay_url(ap: core_app.Application) -> str:
     """
     box_cfg = _get_box_config(ap)
 
-    # Explicit relay URL takes precedence.
+    # Explicit runtime URL takes precedence.  The config value should be
+    # a bare ``ws://host:port`` (no path) – the connector appends paths
+    # like ``/rpc/ws`` or ``/v1/sessions/…`` as needed.
     runtime_url = str(box_cfg.get('runtime_url', '')).strip()
     if runtime_url:
-        return runtime_url
+        parsed = urlparse(runtime_url)
+        scheme = parsed.scheme or 'ws'
+        # Normalise WebSocket schemes to HTTP for the relay base URL.
+        if scheme == 'ws':
+            scheme = 'http'
+        elif scheme == 'wss':
+            scheme = 'https'
+        host = parsed.hostname or '127.0.0.1'
+        port = parsed.port or _DEFAULT_PORT
+        return f'{scheme}://{host}:{port}'
 
     # In Docker, relay lives on the box runtime container.
     if platform.get_platform() == 'docker':
@@ -192,9 +203,18 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
         """Determine the action-RPC WebSocket URL.
 
         All endpoints share a single port; action RPC is at ``/rpc/ws``.
+        The configured ``runtime_url`` is a bare ``ws://host:port`` base;
+        the ``/rpc/ws`` path is always appended by this method.
         """
         if self.configured_runtime_url:
-            return self.configured_runtime_url
+            base = self.configured_runtime_url.rstrip('/')
+            parsed = urlparse(base)
+            scheme = parsed.scheme or 'ws'
+            if scheme in ('http', 'https'):
+                scheme = 'wss' if scheme == 'https' else 'ws'
+            host = parsed.hostname or '127.0.0.1'
+            port = parsed.port or _DEFAULT_PORT
+            return f'{scheme}://{host}:{port}/rpc/ws'
 
         if platform.get_platform() == 'docker':
             return f'ws://{_DOCKER_BOX_HOST}:{_DEFAULT_PORT}/rpc/ws'

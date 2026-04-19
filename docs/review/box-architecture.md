@@ -39,8 +39,7 @@
 │  BoxRuntime (session 管理/进程生命周期)                         │
 │       │                                                       │
 │  Backend (启动时选择一个):                                      │
-│    PodmanBackend ─┐                                           │
-│    DockerBackend ─┤── CLISandboxBackend                       │
+│    DockerBackend ─┬── CLISandboxBackend                       │
 │    NsjailBackend ─┘                                           │
 │                                                               │
 │  aiohttp WS Relay (:5410)                                     │
@@ -50,7 +49,7 @@
                │
                ▼
 ┌──────────────────────────────────────────────────────────────┐
-│  容器/沙箱 (Podman/Docker container 或 nsjail sandbox)        │
+│  容器/沙箱 (Docker container 或 nsjail sandbox)               │
 │  - 隔离文件系统、网络、PID 命名空间                              │
 │  - 资源限制 (CPU, 内存, PID 数)                                │
 │  - exec: 用户命令在此执行                                      │
@@ -158,14 +157,14 @@ Session 生命周期:
 
 ### 3.2 Backend 系统
 
-#### CLISandboxBackend (`box/backend.py`, 389 行)
+#### CLISandboxBackend (`box/backend.py`)
 
-Podman/Docker 的公共基类：
+Docker 的基类：
 
 ```
 start_session(spec):
   1. validate_sandbox_security(spec)     安全校验
-  2. docker/podman run -d --rm --name <name>
+  2. docker run -d --rm --name <name>
      --network none (可选)
      --cpus/--memory/--pids-limit        资源限制
      --read-only + --tmpfs /tmp          只读根文件系统
@@ -174,11 +173,11 @@ start_session(spec):
   3. 返回 BoxSessionInfo
 
 exec(session, spec):
-  docker/podman exec -e KEY=VAL <container>
+  docker exec -e KEY=VAL <container>
     sh -lc 'mkdir -p <workdir> && cd <workdir> && <cmd>'
 
 start_managed_process(session, spec):
-  docker/podman exec -i <container>
+  docker exec -i <container>
     sh -lc 'mkdir -p <cwd> && cd <cwd> && exec <command> <args>'
   返回 asyncio.subprocess.Process (stdin/stdout PIPE)
 ```
@@ -197,7 +196,7 @@ start_managed_process(session, spec):
 - 资源限制: cgroup v2 优先，fallback 到 rlimit
 - **无自定义镜像**: 使用宿主 OS，`image` 字段固定为 `'host'`
 
-**后端选择优先级**: Podman → Docker → nsjail（启动时逐个探测，首个可用的胜出，不做运行时 failover）
+**后端选择优先级**: Docker → nsjail（启动时逐个探测，首个可用的胜出，不做运行时 failover）
 
 ### 3.3 Server (`box/server.py`, 268 行)
 
@@ -237,7 +236,7 @@ start_managed_process(session, spec):
 
 ### 3.6 Security (`box/security.py`, 54 行)
 
-`validate_sandbox_security()`: 黑名单校验 host_path，阻止挂载 `/etc`/`/proc`/`/sys`/`/dev`/`/root`/`/boot` 及 Docker/Podman socket。
+`validate_sandbox_security()`: 黑名单校验 host_path，阻止挂载 `/etc`/`/proc`/`/sys`/`/dev`/`/root`/`/boot` 及 Docker socket。
 
 **已知缺陷**: 根路径 `/` 未拦截，用户 home 目录未拦截，是 denylist 而非 allowlist 策略。详见 [问题清单 #5](./box-issues.md)。
 

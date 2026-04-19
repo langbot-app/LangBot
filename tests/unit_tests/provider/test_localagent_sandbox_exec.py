@@ -182,7 +182,9 @@ def make_skill_manager():
         ),
         build_activation_prompt_for_skills=Mock(return_value='skill prompt'),
         get_skill_by_name=Mock(side_effect=lambda name: skill_data if name == 'demo' else None),
-        remove_activation_marker=Mock(side_effect=lambda content: (content or '').replace('[ACTIVATE_SKILL: demo]\n', '')),
+        remove_activation_marker=Mock(
+            side_effect=lambda content: (content or '').replace('[ACTIVATE_SKILL: demo]\n', '')
+        ),
     )
 
 
@@ -236,7 +238,7 @@ async def test_localagent_uses_exec_for_exact_calculation():
         execute_func_call=AsyncMock(
             return_value={
                 'session_id': 'avg-query',
-                'backend': 'podman',
+                'backend': 'docker',
                 'status': 'completed',
                 'ok': True,
                 'exit_code': 0,
@@ -365,9 +367,7 @@ async def test_localagent_hides_activation_marker_before_follow_up_request():
 
     results = [message async for message in runner.run(query)]
 
-    assert [(message.role, message.content) for message in results] == [
-        ('assistant', 'final answer after activation')
-    ]
+    assert [(message.role, message.content) for message in results] == [('assistant', 'final answer after activation')]
     assert len(provider.requests) == 2
     assert provider.requests[1]['messages'][-2].content == 'I will use the skill.'
     assert '[ACTIVATE_SKILL:' not in provider.requests[1]['messages'][-2].content
@@ -401,9 +401,7 @@ async def test_localagent_activation_failure_rolls_back_query_state_and_sanitize
 
     results = [message async for message in runner.run(query)]
 
-    assert [(message.role, message.content) for message in results] == [
-        ('assistant', 'I will use the skill.')
-    ]
+    assert [(message.role, message.content) for message in results] == [('assistant', 'I will use the skill.')]
     assert query.use_funcs == []
     assert query.variables == {}
 

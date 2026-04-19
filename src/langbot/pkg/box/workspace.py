@@ -1,4 +1,3 @@
-from __future__ import annotations
 """Reusable workspace/session helpers built on top of Box.
 
 This module is the middle layer between the raw Box runtime primitives and
@@ -13,6 +12,8 @@ Higher layers add their own semantics on top, for example:
 - skills choose a stable per-skill session id and use repeated exec
 - MCP stdio chooses how to prepare dependencies and attaches to a managed process
 """
+
+from __future__ import annotations
 
 import os
 import textwrap
@@ -99,9 +100,7 @@ def list_python_manifest_files(host_path: str | None) -> list[str]:
     normalized_root = normalize_host_path(host_path)
     if not normalized_root:
         return []
-    return [
-        filename for filename in PYTHON_MANIFEST_FILES if os.path.isfile(os.path.join(normalized_root, filename))
-    ]
+    return [filename for filename in PYTHON_MANIFEST_FILES if os.path.isfile(os.path.join(normalized_root, filename))]
 
 
 def classify_python_workspace(host_path: str | None) -> str | None:
@@ -269,6 +268,7 @@ class BoxWorkspaceSession:
         cpus: float | None = None,
         memory_mb: int | None = None,
         pids_limit: int | None = None,
+        persistent: bool = False,
     ):
         self.box_service = box_service
         self.session_id = session_id
@@ -283,6 +283,7 @@ class BoxWorkspaceSession:
         self.cpus = cpus
         self.memory_mb = memory_mb
         self.pids_limit = pids_limit
+        self.persistent = persistent
 
     def rewrite_path(self, path: str) -> str:
         return rewrite_mounted_path(path, self.host_path, mount_path=self.mount_path)
@@ -298,6 +299,8 @@ class BoxWorkspaceSession:
             'workdir': self.workdir,
             'env': self.env,
         }
+        if self.persistent:
+            payload['persistent'] = True
         if self.network is not None:
             payload['network'] = self.network
         if self.read_only_rootfs is not None:
@@ -388,17 +391,19 @@ class BoxWorkspaceSession:
         command: str,
         args: list[str] | None = None,
         *,
+        process_id: str = 'default',
         env: dict[str, str] | None = None,
         cwd: str = '/workspace',
     ):
         payload = self.build_process_payload(command, args, env=env, cwd=cwd)
+        payload['process_id'] = process_id
         return await self.box_service.start_managed_process(self.session_id, payload)
 
-    async def get_managed_process(self):
-        return await self.box_service.get_managed_process(self.session_id)
+    async def get_managed_process(self, process_id: str = 'default'):
+        return await self.box_service.get_managed_process(self.session_id, process_id)
 
-    def get_managed_process_websocket_url(self) -> str:
-        return self.box_service.get_managed_process_websocket_url(self.session_id)
+    def get_managed_process_websocket_url(self, process_id: str = 'default') -> str:
+        return self.box_service.get_managed_process_websocket_url(self.session_id, process_id)
 
     async def cleanup(self) -> None:
         await self.box_service.client.delete_session(self.session_id)

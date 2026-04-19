@@ -111,6 +111,7 @@ async def test_workspace_session_start_managed_process_rewrites_command_and_args
         'args': ['/workspace/server.py', '--config', '/workspace/config.json'],
         'env': {'TOKEN': '1'},
         'cwd': '/workspace',
+        'process_id': 'default',
     }
 
 
