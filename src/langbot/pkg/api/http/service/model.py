@@ -173,7 +173,7 @@ class LLMModelsService:
             raise Exception('provider not found')
 
         runtime_llm_model = await self.ap.model_mgr.load_llm_model_with_provider(
-            persistence_model.LLMModel(**model_data),
+            persistence_model.LLMModel(uuid=model_uuid, **model_data),
             runtime_provider,
         )
         self.ap.model_mgr.llm_models.append(runtime_llm_model)
@@ -334,7 +334,7 @@ class EmbeddingModelsService:
             raise Exception('provider not found')
 
         runtime_embedding_model = await self.ap.model_mgr.load_embedding_model_with_provider(
-            persistence_model.EmbeddingModel(**model_data),
+            persistence_model.EmbeddingModel(uuid=model_uuid, **model_data),
             runtime_provider,
         )
         self.ap.model_mgr.embedding_models.append(runtime_embedding_model)
