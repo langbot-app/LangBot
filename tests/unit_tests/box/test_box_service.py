@@ -182,6 +182,7 @@ async def test_box_service_get_sessions_delegates_to_client():
     client.get_sessions = AsyncMock(return_value=[{'session_id': 'test-session'}])
 
     service = BoxService(make_app(Mock()), client=client)
+    service._available = True
 
     sessions = await service.get_sessions()
 
