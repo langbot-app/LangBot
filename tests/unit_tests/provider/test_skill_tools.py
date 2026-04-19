@@ -92,12 +92,7 @@ class TestSkillManagerActivation:
             'beta': _make_skill_data(name='beta'),
         }
 
-        response = (
-            '[ACTIVATE_SKILL: alpha]\n'
-            '[ACTIVATE_SKILL: beta]\n'
-            '[ACTIVATE_SKILL: alpha]\n'
-            'Let me handle this.'
-        )
+        response = '[ACTIVATE_SKILL: alpha]\n[ACTIVATE_SKILL: beta]\n[ACTIVATE_SKILL: alpha]\nLet me handle this.'
 
         assert mgr.detect_skill_activations(response) == ['alpha', 'beta']
         assert mgr.detect_skill_activation(response) == 'alpha'
@@ -240,7 +235,9 @@ class TestSkillAuthoringToolLoader:
 
         ap = _make_ap()
         ap.skill_service = SimpleNamespace(
-            create_skill=AsyncMock(return_value=_make_skill_data(name='prompt-skill', package_root='/data/skills/prompt-skill')),
+            create_skill=AsyncMock(
+                return_value=_make_skill_data(name='prompt-skill', package_root='/data/skills/prompt-skill')
+            ),
             reload_skills=AsyncMock(),
             list_skills=AsyncMock(return_value=[]),
         )
@@ -329,7 +326,9 @@ class TestSkillAuthoringToolLoader:
         ap = _make_ap()
         ap.skill_service = SimpleNamespace(
             create_skill=AsyncMock(),
-            update_skill=AsyncMock(return_value=_make_skill_data(name='time-now', package_root='/data/skills/time-now')),
+            update_skill=AsyncMock(
+                return_value=_make_skill_data(name='time-now', package_root='/data/skills/time-now')
+            ),
             reload_skills=AsyncMock(),
             list_skills=AsyncMock(return_value=[]),
         )
@@ -523,12 +522,18 @@ class TestNativeToolLoaderSkillPaths:
             ap.box_service = SimpleNamespace(
                 available=True,
                 default_host_workspace=tmpdir,
-                execute_spec_payload=AsyncMock(return_value={'ok': True}),
+                execute_tool=AsyncMock(return_value={'ok': True}),
             )
             ap.skill_mgr = SimpleNamespace(refresh_skill_from_disk=Mock())
             loader = NativeToolLoader(ap)
 
-            query = SimpleNamespace(query_id='q1', launcher_type='person', launcher_id='123', variables={})
+            query = SimpleNamespace(
+                query_id='q1',
+                launcher_type='person',
+                launcher_id='123',
+                variables={},
+                pipeline_config=None,
+            )
             register_activated_skill(query, _make_skill_data(name='demo', package_root=tmpdir))
 
             result = await loader.invoke_tool(
@@ -541,11 +546,10 @@ class TestNativeToolLoaderSkillPaths:
             )
 
             assert result == {'ok': True}
-            spec_payload = ap.box_service.execute_spec_payload.await_args.args[0]
-            assert spec_payload['cmd'] == 'python /workspace/scripts/run.py'
-            assert spec_payload['workdir'] == '/workspace'
-            assert spec_payload['host_path'] == tmpdir
-            assert spec_payload['session_id'] == 'skill-person_123-demo'
+            call_params = ap.box_service.execute_tool.await_args.args[0]
+            # The command is passed through to execute_tool (no rewriting in the unified model)
+            assert 'python' in call_params['command']
+            assert '/workspace/.skills/demo' in call_params['command']
             ap.skill_mgr.refresh_skill_from_disk.assert_called_once_with('demo')
 
     @pytest.mark.asyncio

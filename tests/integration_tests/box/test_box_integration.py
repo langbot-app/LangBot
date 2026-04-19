@@ -308,7 +308,13 @@ async def test_full_service_to_remote_runtime(tmp_path):
         service = BoxService(mock_ap, client=client)
         await service.initialize()
 
-        query = pipeline_query.Query.model_construct(query_id=42)
+        query = pipeline_query.Query.model_construct(
+            query_id=42,
+            variables={
+                'launcher_type': 'person',
+                'launcher_id': 'test_user',
+            },
+        )
         result = await service.execute_tool(
             {'command': 'echo service-path'},
             query,
@@ -317,7 +323,7 @@ async def test_full_service_to_remote_runtime(tmp_path):
         assert result['ok'] is True
         assert result['status'] == 'completed'
         assert 'service-path' in result['stdout']
-        assert result['session_id'] == '42'
+        assert result['session_id'] == 'person_test_user'
     finally:
         server_task.cancel()
         client_task.cancel()

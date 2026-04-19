@@ -26,7 +26,7 @@ from langbot_plugin.box.client import ActionRPCBoxClient
 from langbot_plugin.box.errors import BoxSessionNotFoundError
 from langbot_plugin.box.models import BoxManagedProcessSpec, BoxManagedProcessStatus, BoxSpec
 from langbot_plugin.box.runtime import BoxRuntime
-from langbot_plugin.box.server import BoxServerHandler, create_ws_relay_app
+from langbot_plugin.box.server import BoxServerHandler, create_app
 
 _logger = logging.getLogger('test.box.mcp_integration')
 
@@ -121,7 +121,7 @@ async def box_server():
     await runtime.initialize()
 
     # Start ws relay for managed process attach
-    ws_app = create_ws_relay_app(runtime)
+    ws_app = create_app(runtime)
     ws_server = TestServer(ws_app)
     await ws_server.start_server()
 
