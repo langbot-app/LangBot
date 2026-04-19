@@ -15,6 +15,7 @@ interface OverviewCardsProps {
   messages?: MonitoringMessage[];
   llmCalls?: LLMCall[];
   loading?: boolean;
+  refreshKey?: number;
 }
 
 export default function OverviewCards({
@@ -22,6 +23,7 @@ export default function OverviewCards({
   messages = [],
   llmCalls = [],
   loading,
+  refreshKey,
 }: OverviewCardsProps) {
   const { t } = useTranslation();
 
@@ -94,7 +96,7 @@ export default function OverviewCards({
             loading={loading}
           />
         ))}
-        <SystemStatusCard />
+        <SystemStatusCard refreshKey={refreshKey} />
       </div>
 
       {/* Traffic Chart */}

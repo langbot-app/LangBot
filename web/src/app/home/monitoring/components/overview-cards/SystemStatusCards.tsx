@@ -30,7 +30,13 @@ function StatusDot({ ok }: { ok: boolean | null }) {
   );
 }
 
-export default function SystemStatusCard() {
+interface SystemStatusCardProps {
+  refreshKey?: number;
+}
+
+export default function SystemStatusCard({
+  refreshKey,
+}: SystemStatusCardProps) {
   const { t } = useTranslation();
   const [pluginStatus, setPluginStatus] =
     useState<ApiRespPluginSystemStatus | null>(null);
@@ -52,10 +58,12 @@ export default function SystemStatusCard() {
   }, []);
 
   useEffect(() => {
-    fetchStatus(true);
+    // refreshKey changes when the user clicks "Refresh Data"
+    fetchStatus(refreshKey === undefined);
     const interval = setInterval(() => fetchStatus(false), 30_000);
     return () => clearInterval(interval);
-  }, [fetchStatus]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchStatus, refreshKey]);
 
   const pluginOk = pluginStatus
     ? pluginStatus.is_enable && pluginStatus.is_connected
