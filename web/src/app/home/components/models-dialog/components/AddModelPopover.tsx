@@ -80,7 +80,9 @@ export default function AddModelPopover({
   const [abilities, setAbilities] = useState<string[]>([]);
   const [extraArgs, setExtraArgs] = useState<ExtraArg[]>([]);
   const [scanLoading, setScanLoading] = useState(false);
-  const [scannedModels, setScannedModels] = useState<ScannedProviderModel[]>([]);
+  const [scannedModels, setScannedModels] = useState<ScannedProviderModel[]>(
+    [],
+  );
   const [selectedScannedModels, setSelectedScannedModels] = useState<
     Record<string, SelectedScannedModel>
   >({});
@@ -142,7 +144,10 @@ export default function AddModelPopover({
     }
   };
 
-  const toggleScannedModel = (model: ScannedProviderModel, checked: boolean) => {
+  const toggleScannedModel = (
+    model: ScannedProviderModel,
+    checked: boolean,
+  ) => {
     setSelectedScannedModels((prev) => {
       const next = { ...prev };
       if (checked) {
@@ -232,7 +237,10 @@ export default function AddModelPopover({
             </TabsTrigger>
           </TabsList>
 
-          <Tabs value={mode} onValueChange={(v) => setMode(v as 'manual' | 'scan')}>
+          <Tabs
+            value={mode}
+            onValueChange={(v) => setMode(v as 'manual' | 'scan')}
+          >
             <TabsList className="grid w-full grid-cols-2 mt-3">
               <TabsTrigger value="manual">{t('models.manualAdd')}</TabsTrigger>
               <TabsTrigger value="scan">{t('models.scanAdd')}</TabsTrigger>
@@ -375,7 +383,9 @@ export default function AddModelPopover({
                     </p>
                   ) : (
                     filteredScannedModels.map((model) => {
-                      const isSelected = Boolean(selectedScannedModels[model.id]);
+                      const isSelected = Boolean(
+                        selectedScannedModels[model.id],
+                      );
                       const selectedAbilities =
                         selectedScannedModels[model.id]?.abilities || [];
                       return (
@@ -405,50 +415,56 @@ export default function AddModelPopover({
                             </div>
                           </div>
 
-                          {tab === 'llm' && isSelected && !model.already_added && (
-                            <div className="flex gap-4 pl-7">
-                              <div className="flex items-center gap-2">
-                                <Checkbox
-                                  id={`scan-vision-${model.id}`}
-                                  checked={selectedAbilities.includes('vision')}
-                                  onCheckedChange={(checked) =>
-                                    toggleScannedModelAbility(
-                                      model.id,
+                          {tab === 'llm' &&
+                            isSelected &&
+                            !model.already_added && (
+                              <div className="flex gap-4 pl-7">
+                                <div className="flex items-center gap-2">
+                                  <Checkbox
+                                    id={`scan-vision-${model.id}`}
+                                    checked={selectedAbilities.includes(
                                       'vision',
-                                      checked as boolean,
-                                    )
-                                  }
-                                />
-                                <Label
-                                  htmlFor={`scan-vision-${model.id}`}
-                                  className="text-sm"
-                                >
-                                  <Eye className="h-3 w-3 inline mr-1" />
-                                  {t('models.visionAbility')}
-                                </Label>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Checkbox
-                                  id={`scan-func-${model.id}`}
-                                  checked={selectedAbilities.includes('func_call')}
-                                  onCheckedChange={(checked) =>
-                                    toggleScannedModelAbility(
-                                      model.id,
+                                    )}
+                                    onCheckedChange={(checked) =>
+                                      toggleScannedModelAbility(
+                                        model.id,
+                                        'vision',
+                                        checked as boolean,
+                                      )
+                                    }
+                                  />
+                                  <Label
+                                    htmlFor={`scan-vision-${model.id}`}
+                                    className="text-sm"
+                                  >
+                                    <Eye className="h-3 w-3 inline mr-1" />
+                                    {t('models.visionAbility')}
+                                  </Label>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Checkbox
+                                    id={`scan-func-${model.id}`}
+                                    checked={selectedAbilities.includes(
                                       'func_call',
-                                      checked as boolean,
-                                    )
-                                  }
-                                />
-                                <Label
-                                  htmlFor={`scan-func-${model.id}`}
-                                  className="text-sm"
-                                >
-                                  <Wrench className="h-3 w-3 inline mr-1" />
-                                  {t('models.functionCallAbility')}
-                                </Label>
+                                    )}
+                                    onCheckedChange={(checked) =>
+                                      toggleScannedModelAbility(
+                                        model.id,
+                                        'func_call',
+                                        checked as boolean,
+                                      )
+                                    }
+                                  />
+                                  <Label
+                                    htmlFor={`scan-func-${model.id}`}
+                                    className="text-sm"
+                                  >
+                                    <Wrench className="h-3 w-3 inline mr-1" />
+                                    {t('models.functionCallAbility')}
+                                  </Label>
+                                </div>
                               </div>
-                            </div>
-                          )}
+                            )}
                         </div>
                       );
                     })
