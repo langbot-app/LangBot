@@ -387,7 +387,7 @@ export default function AddModelPopover({
                 </div>
               </TabsContent>
 
-              <TabsContent value="scan" className="space-y-3 mt-3">
+              <TabsContent value="scan" className="space-y-2 mt-2">
                 {scanLoading && (
                   <div className="flex items-center justify-center py-4">
                     <RefreshCw className="h-4 w-4 mr-2 animate-spin text-muted-foreground" />
@@ -398,7 +398,6 @@ export default function AddModelPopover({
                 )}
 
                 <div className="space-y-2">
-                  <Label>{t('models.scannedModels')}</Label>
                   <Input
                     placeholder={t('models.searchScannedModels')}
                     value={scanQuery}
@@ -528,19 +527,30 @@ export default function AddModelPopover({
                   </div>
                 </div>
 
-                {!scanLoading &&
-                  Object.keys(selectedScannedModels).length > 0 && (
+                {!scanLoading && (
+                  <div className="flex gap-2">
+                    {Object.keys(selectedScannedModels).length > 0 && (
+                      <Button
+                        className="flex-1"
+                        size="sm"
+                        onClick={handleAddScanned}
+                        disabled={isSubmitting}
+                      >
+                        {isSubmitting
+                          ? t('common.saving')
+                          : t('models.addSelectedModels')}
+                      </Button>
+                    )}
                     <Button
-                      className="w-full"
+                      variant="outline"
                       size="sm"
-                      onClick={handleAddScanned}
-                      disabled={isSubmitting}
+                      onClick={handleScan}
+                      disabled={scanLoading || isSubmitting}
                     >
-                      {isSubmitting
-                        ? t('common.saving')
-                        : t('models.addSelectedModels')}
+                      <RefreshCw className="h-3.5 w-3.5" />
                     </Button>
-                  )}
+                  </div>
+                )}
               </TabsContent>
             </Tabs>
           </div>
