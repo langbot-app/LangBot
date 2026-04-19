@@ -104,8 +104,12 @@ export default function AddModelPopover({
       setSelectedScannedModels({});
       setScanQuery('');
       onResetTestResult();
+      if (initialMode === 'scan') {
+        handleScan();
+      }
     }
     prevIsOpenRef.current = isOpen;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, onResetTestResult]);
 
   useEffect(() => {
@@ -384,40 +388,14 @@ export default function AddModelPopover({
               </TabsContent>
 
               <TabsContent value="scan" className="space-y-3 mt-3">
-                <div className="text-xs text-muted-foreground">
-                  {t('models.scanModelsHint')}
-                </div>
-
-                <div className="flex gap-2">
-                  <Button
-                    className="flex-1"
-                    size="sm"
-                    variant="outline"
-                    onClick={handleScan}
-                    disabled={scanLoading || isSubmitting}
-                  >
-                    {scanLoading ? (
-                      <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
-                    ) : (
-                      <Search className="h-4 w-4 mr-1" />
-                    )}
-                    {t('models.scanModels')}
-                  </Button>
-                  <Button
-                    className="flex-1"
-                    size="sm"
-                    onClick={handleAddScanned}
-                    disabled={
-                      isSubmitting ||
-                      scanLoading ||
-                      Object.keys(selectedScannedModels).length === 0
-                    }
-                  >
-                    {isSubmitting
-                      ? t('common.saving')
-                      : t('models.addSelectedModels')}
-                  </Button>
-                </div>
+                {scanLoading && (
+                  <div className="flex items-center justify-center py-4">
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">
+                      {t('models.scanModels')}...
+                    </span>
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label>{t('models.scannedModels')}</Label>
@@ -549,6 +527,20 @@ export default function AddModelPopover({
                     )}
                   </div>
                 </div>
+
+                {!scanLoading &&
+                  Object.keys(selectedScannedModels).length > 0 && (
+                    <Button
+                      className="w-full"
+                      size="sm"
+                      onClick={handleAddScanned}
+                      disabled={isSubmitting}
+                    >
+                      {isSubmitting
+                        ? t('common.saving')
+                        : t('models.addSelectedModels')}
+                    </Button>
+                  )}
               </TabsContent>
             </Tabs>
           </div>
