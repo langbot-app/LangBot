@@ -37,8 +37,8 @@ export default function SystemStatusCard() {
   const [boxStatus, setBoxStatus] = useState<ApiRespBoxStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchStatus = useCallback(async () => {
-    setLoading(true);
+  const fetchStatus = useCallback(async (showLoading = false) => {
+    if (showLoading) setLoading(true);
     try {
       const [plugin, box] = await Promise.all([
         httpClient.getPluginSystemStatus().catch(() => null),
@@ -47,12 +47,14 @@ export default function SystemStatusCard() {
       setPluginStatus(plugin);
       setBoxStatus(box);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchStatus();
+    fetchStatus(true);
+    const interval = setInterval(() => fetchStatus(false), 30_000);
+    return () => clearInterval(interval);
   }, [fetchStatus]);
 
   const pluginOk = pluginStatus
@@ -78,7 +80,11 @@ export default function SystemStatusCard() {
   }
 
   return (
-    <Popover>
+    <Popover
+      onOpenChange={(open) => {
+        if (open) fetchStatus(false);
+      }}
+    >
       <PopoverTrigger asChild>
         <Card className="transition-all duration-300 group cursor-pointer hover:border-primary/30">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
