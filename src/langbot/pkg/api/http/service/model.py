@@ -442,9 +442,7 @@ class RerankModelsService:
     async def get_rerank_model(self, model_uuid: str) -> dict | None:
         """Get a single rerank model with provider info"""
         result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_model.RerankModel).where(
-                persistence_model.RerankModel.uuid == model_uuid
-            )
+            sqlalchemy.select(persistence_model.RerankModel).where(persistence_model.RerankModel.uuid == model_uuid)
         )
         model = result.first()
         if model is None:
@@ -502,9 +500,7 @@ class RerankModelsService:
     async def delete_rerank_model(self, model_uuid: str) -> None:
         """Delete a rerank model"""
         await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.delete(persistence_model.RerankModel).where(
-                persistence_model.RerankModel.uuid == model_uuid
-            )
+            sqlalchemy.delete(persistence_model.RerankModel).where(persistence_model.RerankModel.uuid == model_uuid)
         )
         await self.ap.model_mgr.remove_rerank_model(model_uuid)
 

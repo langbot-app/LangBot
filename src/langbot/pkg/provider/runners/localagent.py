@@ -189,9 +189,7 @@ class LocalAgentRunner(runner.RequestRunner):
 
                     doc_texts = []
                     for entry in all_results:
-                        text = ' '.join(
-                            c.text for c in entry.content if c.type == 'text' and c.text
-                        )
+                        text = ' '.join(c.text for c in entry.content if c.type == 'text' and c.text)
                         doc_texts.append(text)
 
                     doc_texts_capped = doc_texts[:64]

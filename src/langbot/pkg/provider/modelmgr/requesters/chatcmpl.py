@@ -643,7 +643,7 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
         rerank_url = merged_args.pop('rerank_url', None)
         rerank_path = merged_args.pop('rerank_path', 'rerank')
         if not rerank_url:
-            rerank_url = f"{base_url}/{rerank_path}"
+            rerank_url = f'{base_url}/{rerank_path}'
 
         headers = {
             'Content-Type': 'application/json',

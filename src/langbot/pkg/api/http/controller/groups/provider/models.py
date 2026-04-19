@@ -109,9 +109,7 @@ class RerankModelsRouterGroup(group.RouterGroup):
                 if provider_uuid:
                     return self.success(
                         data={
-                            'models': await self.ap.rerank_models_service.get_rerank_models_by_provider(
-                                provider_uuid
-                            )
+                            'models': await self.ap.rerank_models_service.get_rerank_models_by_provider(provider_uuid)
                         }
                     )
                 return self.success(data={'models': await self.ap.rerank_models_service.get_rerank_models()})

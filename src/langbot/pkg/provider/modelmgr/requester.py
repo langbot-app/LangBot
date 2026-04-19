@@ -447,4 +447,4 @@ class ProviderAPIRequester(metaclass=abc.ABCMeta):
         Returns:
             typing.List[dict]: [{"index": int, "relevance_score": float}, ...]
         """
-        raise NotImplementedError("This requester does not support rerank")
+        raise NotImplementedError('This requester does not support rerank')
