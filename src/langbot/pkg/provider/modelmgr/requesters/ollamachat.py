@@ -53,7 +53,7 @@ class OllamaChatCompletions(requester.ProviderAPIRequester):
 
     async def scan_models(self, api_key: str | None = None) -> dict[str, typing.Any]:
         del api_key
-        models_url = f"{self.requester_cfg['base_url'].rstrip('/')}/api/tags"
+        models_url = f'{self.requester_cfg["base_url"].rstrip("/")}/api/tags'
 
         async with httpx.AsyncClient(trust_env=True, timeout=self.requester_cfg['timeout']) as client:
             response = await client.get(models_url)

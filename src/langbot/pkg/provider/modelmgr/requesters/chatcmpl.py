@@ -181,7 +181,7 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
         if api_key:
             headers['Authorization'] = f'Bearer {api_key}'
 
-        models_url = f"{self.requester_cfg['base_url'].rstrip('/')}/models"
+        models_url = f'{self.requester_cfg["base_url"].rstrip("/")}/models'
         async with httpx.AsyncClient(trust_env=True, timeout=self.requester_cfg['timeout']) as client:
             response = await client.get(models_url, headers=headers)
             response.raise_for_status()
@@ -210,7 +210,7 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
                     'method': 'GET',
                     'url': models_url,
                     'headers': {
-                        'Authorization': f"Bearer {self._mask_api_key(api_key)}" if api_key else '',
+                        'Authorization': f'Bearer {self._mask_api_key(api_key)}' if api_key else '',
                     },
                 },
                 'response': payload,
