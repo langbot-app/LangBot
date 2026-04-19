@@ -131,6 +131,15 @@ export default function SystemStatusCard() {
                   {t('monitoring.pluginDisabled')}
                 </p>
               )}
+              {pluginStatus &&
+                !pluginOk &&
+                pluginStatus.is_enable &&
+                pluginStatus.plugin_connector_error &&
+                pluginStatus.plugin_connector_error !== 'ok' && (
+                  <p className="text-red-400 break-all">
+                    {pluginStatus.plugin_connector_error}
+                  </p>
+                )}
             </div>
           </div>
 
@@ -157,6 +166,11 @@ export default function SystemStatusCard() {
                     : t('monitoring.disconnected')}
                 </span>
               </div>
+              {boxStatus && !boxOk && boxStatus.connector_error && (
+                <p className="text-red-400 break-all">
+                  {boxStatus.connector_error}
+                </p>
+              )}
               {boxStatus && (
                 <div className="text-muted-foreground space-y-0.5">
                   {boxStatus.backend && (
