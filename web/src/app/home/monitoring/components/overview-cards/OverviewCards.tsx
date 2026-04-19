@@ -2,6 +2,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { MessageSquare, Sparkles, Check, Users } from 'lucide-react';
 import MetricCard from './MetricCard';
+import SystemStatusCard from './SystemStatusCards';
 import TrafficChart from './TrafficChart';
 import {
   OverviewMetrics,
@@ -81,8 +82,8 @@ export default function OverviewCards({
 
   return (
     <div className="space-y-6">
-      {/* Metric Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+      {/* Metric Cards + System Status */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-6">
         {cards.map((card, index) => (
           <MetricCard
             key={index}
@@ -93,6 +94,7 @@ export default function OverviewCards({
             loading={loading}
           />
         ))}
+        <SystemStatusCard />
       </div>
 
       {/* Traffic Chart */}

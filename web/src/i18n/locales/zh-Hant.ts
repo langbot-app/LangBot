@@ -1192,6 +1192,7 @@ const zhHant = {
       sessions: '會話記錄',
       feedback: '使用者回饋',
     },
+    systemStatus: '系統狀態',
     pluginRuntime: '外掛執行時',
     boxRuntime: 'Box 執行時',
     connected: '已連線',

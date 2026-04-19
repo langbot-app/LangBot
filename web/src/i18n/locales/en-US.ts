@@ -1253,6 +1253,7 @@ const enUS = {
       sessions: 'Sessions',
       feedback: 'User Feedback',
     },
+    systemStatus: 'System Status',
     pluginRuntime: 'Plugin Runtime',
     boxRuntime: 'Box Runtime',
     connected: 'Connected',

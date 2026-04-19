@@ -1279,6 +1279,7 @@ const esES = {
       sessions: 'Sesiones',
       feedback: 'Comentarios de usuarios',
     },
+    systemStatus: 'Estado del sistema',
     pluginRuntime: 'Plugin Runtime',
     boxRuntime: 'Box Runtime',
     connected: 'Conectado',
