@@ -63,6 +63,26 @@ spec:
       type: embed-code
       required: false
       default: ""
+    - name: turnstile_site_key
+      label:
+        en_US: Turnstile Site Key
+        zh_Hans: Turnstile 站点密钥
+      description:
+        en_US: "Cloudflare Turnstile site key for bot protection (optional)"
+        zh_Hans: "Cloudflare Turnstile 站点密钥，用于防机器人保护（可选）"
+      type: string
+      required: false
+      default: ""
+    - name: turnstile_secret_key
+      label:
+        en_US: Turnstile Secret Key
+        zh_Hans: Turnstile 服务端密钥
+      description:
+        en_US: "Cloudflare Turnstile secret key for server-side verification (optional)"
+        zh_Hans: "Cloudflare Turnstile 服务端密钥，用于服务端验证（可选）"
+      type: string
+      required: false
+      default: ""
 execution:
   python:
     path: "web_page_bot_adapter.py"

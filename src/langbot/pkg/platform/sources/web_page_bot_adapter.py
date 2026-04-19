@@ -18,8 +18,6 @@ class WebPageBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
     a message arrives for this bot's pipeline.
     """
 
-    listeners: dict = {}
-
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger, **kwargs):
         super().__init__(config=config, logger=logger, **kwargs)
         self.listeners = {}

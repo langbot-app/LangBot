@@ -14,11 +14,11 @@
     baseUrl: "__LANGBOT_BASE_URL__",
     sessionType: "person",
     title: scriptTitle || "LangBot",
-    title: scriptTitle || "LangBot",
     logoUrl: "__LANGBOT_BASE_URL__" + "/api/v1/embed/logo",
     maxReconnectAttempts: 5,
     reconnectDelay: 3000,
     heartbeatInterval: 30000,
+    turnstileSiteKey: "__LANGBOT_TURNSTILE_SITE_KEY__",
   };
 
   // ========== Styles ==========
@@ -230,7 +230,12 @@
     // Links
     html = html.replace(
       /\[([^\]]+)\]\(([^)]+)\)/g,
-      '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>',
+      function (match, p1, p2) {
+        if (/^https?:\/\//i.test(p2)) {
+          return '<a href="' + p2 + '" target="_blank" rel="noopener noreferrer">' + p1 + '</a>';
+        }
+        return p1;
+      }
     );
     // Unordered lists
     html = html.replace(/((?:^[\-\*] .+(?:<br>)?)+)/gm, function (block) {
@@ -496,7 +501,9 @@
       CONFIG.pipelineUuid +
       "/messages/" +
       CONFIG.sessionType;
-    fetch(url)
+    var headers = {};
+    if (state.sessionToken) headers["Authorization"] = "Bearer " + state.sessionToken;
+    fetch(url, { headers: headers })
       .then(function (res) {
         return res.json();
       })
@@ -521,7 +528,9 @@
       CONFIG.pipelineUuid +
       "/reset/" +
       CONFIG.sessionType;
-    fetch(url, { method: "POST" })
+    var headers = {};
+    if (state.sessionToken) headers["Authorization"] = "Bearer " + state.sessionToken;
+    fetch(url, { method: "POST", headers: headers })
       .then(function () {
         state.messages = [];
         state.isStreaming = false;
@@ -673,7 +682,10 @@
       for (var i = 0; i < msg.message_chain.length; i++) {
         var c = msg.message_chain[i];
         if (c.type === "Image" && (c.base64 || c.url)) {
-          images.push(c.base64 || c.url);
+          var imgUrl = c.base64 || c.url;
+          if (/^(https?:\/\/|data:)/i.test(imgUrl)) {
+            images.push(imgUrl);
+          }
         }
       }
     }
@@ -685,11 +697,14 @@
     var actualType = prev === feedbackType ? 3 : feedbackType; // toggle = cancel
     state.feedbackState[msgId] = actualType === 3 ? 0 : actualType;
 
+    var headers = { "Content-Type": "application/json" };
+    if (state.sessionToken) headers["Authorization"] = "Bearer " + state.sessionToken;
+
     fetch(
       CONFIG.baseUrl + "/api/v1/embed/" + CONFIG.pipelineUuid + "/feedback",
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: headers,
         body: JSON.stringify({ message_id: msgId, feedback_type: actualType }),
       },
     ).catch(function () {});
@@ -795,14 +810,78 @@
     if (state.isOpen) {
       els.panel.classList.add("lb-visible");
       els.bubble.classList.add("lb-open");
-      loadHistory();
-      wsConnect();
+      ensureTurnstileVerified(function() {
+        loadHistory();
+        wsConnect();
+      });
       setTimeout(function () {
         if (els.input) els.input.focus();
       }, 300);
     } else {
       els.panel.classList.remove("lb-visible");
       els.bubble.classList.remove("lb-open");
+    }
+  }
+
+  function ensureTurnstileVerified(callback) {
+    if (state.sessionToken || !CONFIG.turnstileSiteKey || CONFIG.turnstileSiteKey.indexOf("__LANGBOT") === 0) {
+      return callback();
+    }
+    if (state.turnstileQueue) {
+      state.turnstileQueue.push(callback);
+      return;
+    }
+    state.turnstileQueue = [callback];
+
+    var flushQueue = function(success) {
+      var q = state.turnstileQueue;
+      state.turnstileQueue = null;
+      if (success && q) {
+        for (var i=0; i<q.length; i++) q[i]();
+      }
+    };
+
+    var doRender = function() {
+      var container = document.createElement("div");
+      document.body.appendChild(container);
+      turnstile.render(container, {
+        sitekey: CONFIG.turnstileSiteKey,
+        size: "invisible",
+        callback: function(token) {
+          fetch(CONFIG.baseUrl + "/api/v1/embed/" + CONFIG.pipelineUuid + "/turnstile/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token: token })
+          }).then(function(res) { return res.json(); })
+            .then(function(data) {
+              if (data && data.data && data.data.token) {
+                state.sessionToken = data.data.token;
+                flushQueue(true);
+              } else {
+                showError("Bot verification failed");
+                flushQueue(false);
+              }
+            }).catch(function() {
+              showError("Bot verification network error");
+              flushQueue(false);
+            });
+        },
+        "error-callback": function() {
+          showError("Bot verification error");
+          flushQueue(false);
+        }
+      });
+    };
+
+    if (window.turnstile) {
+      doRender();
+    } else {
+      window.onloadTurnstileCallback = doRender;
+      var script = document.createElement("script");
+      script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=onloadTurnstileCallback";
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
     }
   }
 
@@ -832,10 +911,6 @@
 
   function handleImageSelect(e) {
     var file = e.target.files && e.target.files[0];
-    console.log(
-      "[LangBot] File selected:",
-      file ? file.name + " (" + file.type + ", " + file.size + ")" : "none",
-    );
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
       showError("Image must be under 5MB");
@@ -849,10 +924,6 @@
     reader.onload = function (ev) {
       showImagePreview(ev.target.result);
       state.pendingImage = ev.target.result;
-      console.log(
-        "[LangBot] Image loaded as base64, length:",
-        ev.target.result.length,
-      );
     };
     reader.readAsDataURL(file);
     e.target.value = "";

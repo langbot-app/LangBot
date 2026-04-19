@@ -456,7 +456,8 @@ export default function DynamicFormComponent({
             const widgetTitle =
               ((systemContext?.adapter_config as Record<string, unknown>)
                 ?.title as string) || 'LangBot';
-            const embedSnippet = `<script data-title="${widgetTitle}" src="${baseUrl}/api/v1/embed/${pipelineUuid}/widget.js"><\/script>`;
+            const safeTitle = widgetTitle.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const embedSnippet = `<script data-title="${safeTitle}" src="${baseUrl}/api/v1/embed/${pipelineUuid}/widget.js"><\/script>`;
 
             return (
               <div key={config.id} className="space-y-2">
