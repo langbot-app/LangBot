@@ -7,6 +7,8 @@ import {
   CircleX,
   Loader2,
   ChevronDown,
+  Container,
+  Clock,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import {
@@ -17,6 +19,7 @@ import {
 import {
   ApiRespPluginSystemStatus,
   ApiRespBoxStatus,
+  BoxSessionInfo,
 } from '@/app/infra/entities/api';
 import { httpClient } from '@/app/infra/http/HttpClient';
 
@@ -41,16 +44,19 @@ export default function SystemStatusCard({
   const [pluginStatus, setPluginStatus] =
     useState<ApiRespPluginSystemStatus | null>(null);
   const [boxStatus, setBoxStatus] = useState<ApiRespBoxStatus | null>(null);
+  const [boxSessions, setBoxSessions] = useState<BoxSessionInfo[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchStatus = useCallback(async () => {
     try {
-      const [plugin, box] = await Promise.all([
+      const [plugin, box, sessions] = await Promise.all([
         httpClient.getPluginSystemStatus().catch(() => null),
         httpClient.getBoxStatus().catch(() => null),
+        httpClient.getBoxSessions().catch(() => [] as BoxSessionInfo[]),
       ]);
       setPluginStatus(plugin);
       setBoxStatus(box);
+      setBoxSessions(sessions);
     } finally {
       setLoading(false);
     }
@@ -207,6 +213,37 @@ export default function SystemStatusCard({
                       </span>
                     </p>
                   )}
+                </div>
+              )}
+              {boxSessions.length > 0 && (
+                <div className="mt-2 space-y-1.5">
+                  {boxSessions.map((session) => (
+                    <div
+                      key={session.session_id}
+                      className="rounded border p-1.5 space-y-0.5"
+                    >
+                      <div className="flex items-center gap-1">
+                        <Container className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                        <span className="font-mono text-foreground truncate">
+                          {session.session_id}
+                        </span>
+                      </div>
+                      <div className="text-muted-foreground grid grid-cols-2 gap-x-2">
+                        <span>
+                          {session.image.split(':').pop() || session.image}
+                        </span>
+                        <span>
+                          {session.cpus} CPU / {session.memory_mb}MB
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 text-muted-foreground">
+                        <Clock className="w-2.5 h-2.5" />
+                        <span>
+                          {new Date(session.last_used_at).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
