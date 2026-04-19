@@ -251,18 +251,21 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
                 if not connected.is_set():
                     connect_error.append(exc)
                     connected.set()
+                    return
+
+            # If we reach here, handler.run() returned normally (connection
+            # closed) or raised after the initial handshake succeeded.
+            # Either way, treat it as a disconnect.
+            if connected.is_set():
+                if self._uses_websocket():
+                    self.ap.logger.error('Disconnected from Box runtime, trying to reconnect...')
+                    if self.runtime_disconnect_callback is not None:
+                        await self.runtime_disconnect_callback(self)
                 else:
-                    # Connection was established but then dropped — this is a
-                    # disconnect after successful handshake.
-                    if self._uses_websocket():
-                        self.ap.logger.error('Disconnected from Box runtime, trying to reconnect...')
-                        if self.runtime_disconnect_callback is not None:
-                            await self.runtime_disconnect_callback(self)
-                    else:
-                        self.ap.logger.error(
-                            'Disconnected from Box runtime via stdio. '
-                            'Cannot automatically reconnect — please restart LangBot.'
-                        )
+                    self.ap.logger.error(
+                        'Disconnected from Box runtime via stdio. '
+                        'Cannot automatically reconnect — please restart LangBot.'
+                    )
 
         return new_connection_callback
 
