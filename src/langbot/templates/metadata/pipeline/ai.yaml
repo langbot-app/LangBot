@@ -127,7 +127,7 @@ stages:
         required: false
         default: "{launcher_type}_{launcher_id}"
         options:
-          - value: "{launcher_type}_{launcher_id}"
+          - name: "{launcher_type}_{launcher_id}"
             label:
               en_US: Per chat (Recommended)
               zh_Hans: 每个会话（推荐）
@@ -137,7 +137,7 @@ stages:
               th_TH: ต่อแชท (แนะนำ)
               es_ES: Por chat (Recomendado)
               ru_RU: По чату (Рекомендуется)
-          - value: "{launcher_type}_{launcher_id}_{sender_id}"
+          - name: "{launcher_type}_{launcher_id}_{sender_id}"
             label:
               en_US: Per user in chat
               zh_Hans: 会话中每个用户
@@ -147,7 +147,7 @@ stages:
               th_TH: ต่อผู้ใช้ในแชท
               es_ES: Por usuario en chat
               ru_RU: По пользователю в чате
-          - value: "{launcher_type}_{launcher_id}_{conversation_id}"
+          - name: "{launcher_type}_{launcher_id}_{conversation_id}"
             label:
               en_US: Per conversation context
               zh_Hans: 每个对话上下文
@@ -157,7 +157,7 @@ stages:
               th_TH: ต่อบริบทการสนทนา
               es_ES: Por contexto de conversación
               ru_RU: По контексту разговора
-          - value: "{query_id}"
+          - name: "{query_id}"
             label:
               en_US: Per message (isolated)
               zh_Hans: 每条消息（完全隔离）
