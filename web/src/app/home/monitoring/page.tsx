@@ -76,6 +76,7 @@ function MonitoringPageContent() {
   const { filterState, setSelectedBots, setSelectedPipelines, setTimeRange } =
     useMonitoringFilters();
   const { data, loading, refetch } = useMonitoringData(filterState);
+  const [statusRefreshKey, setStatusRefreshKey] = useState(0);
 
   // Counter to force feedbackTimeRange recomputation on manual refresh
   const [feedbackRefreshKey, setFeedbackRefreshKey] = useState(0);
@@ -143,6 +144,7 @@ function MonitoringPageContent() {
   const handleRefresh = useCallback(() => {
     refetch();
     setFeedbackRefreshKey((k) => k + 1);
+    setStatusRefreshKey((k) => k + 1);
   }, [refetch]);
 
   const [expandedMessageId, setExpandedMessageId] = useState<string | null>(
@@ -302,6 +304,7 @@ function MonitoringPageContent() {
           messages={data?.messages || []}
           llmCalls={data?.llmCalls || []}
           loading={loading}
+          refreshKey={statusRefreshKey}
         />
 
         {/* Tabs Section */}
