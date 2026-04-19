@@ -32,7 +32,6 @@ spec:
   support_type:
   - llm
   - text-embedding
-  - rerank
   provider_category: maas
 execution:
   python:

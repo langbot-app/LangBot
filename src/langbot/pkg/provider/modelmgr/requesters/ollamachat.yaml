@@ -25,7 +25,6 @@ spec:
   support_type:
   - llm
   - text-embedding
-  - rerank
   provider_category: self-hosted
 execution:
   python:
