@@ -23,6 +23,7 @@ import {
   Bot,
   KnowledgeBase,
   EmbeddingModel,
+  RerankModel,
   PluginTool,
 } from '@/app/infra/entities/api';
 import { toast } from 'sonner';
@@ -74,6 +75,7 @@ export default function DynamicFormItemComponent({
 }) {
   const [llmModels, setLlmModels] = useState<LLMModel[]>([]);
   const [embeddingModels, setEmbeddingModels] = useState<EmbeddingModel[]>([]);
+  const [rerankModels, setRerankModels] = useState<RerankModel[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [bots, setBots] = useState<Bot[]>([]);
   const [tools, setTools] = useState<PluginTool[]>([]);
@@ -176,6 +178,19 @@ export default function DynamicFormItemComponent({
         })
         .catch((err) => {
           toast.error(t('embedding.getModelListError') + err.msg);
+        });
+    }
+  }, [config.type]);
+
+  useEffect(() => {
+    if (config.type === DynamicFormItemType.RERANK_MODEL_SELECTOR) {
+      httpClient
+        .getProviderRerankModels()
+        .then((resp) => {
+          setRerankModels(resp.models);
+        })
+        .catch((err) => {
+          toast.error('Failed to load rerank models: ' + err.msg);
         });
     }
   }, [config.type]);
@@ -569,6 +584,45 @@ export default function DynamicFormItemComponent({
             </SelectTrigger>
             <SelectContent>
               {Object.entries(groupedEmbeddingModels).map(
+                ([providerName, models]) => (
+                  <SelectGroup key={providerName}>
+                    <SelectLabel>{providerName}</SelectLabel>
+                    {models.map((model) => (
+                      <SelectItem key={model.uuid} value={model.uuid}>
+                        {model.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                ),
+              )}
+            </SelectContent>
+          </Select>
+        </div>
+      );
+
+    case DynamicFormItemType.RERANK_MODEL_SELECTOR:
+      const groupedRerankModels = rerankModels.reduce(
+        (acc, model) => {
+          const providerName = model.provider?.name || 'Unknown';
+          if (!acc[providerName]) acc[providerName] = [];
+          acc[providerName].push(model);
+          return acc;
+        },
+        {} as Record<string, RerankModel[]>,
+      );
+
+      return (
+        <div className="max-w-md">
+          <Select
+            value={field.value || '__none__'}
+            onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}
+          >
+            <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
+              <SelectValue placeholder={t('models.rerank')} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">{t('common.none')}</SelectItem>
+              {Object.entries(groupedRerankModels).map(
                 ([providerName, models]) => (
                   <SelectGroup key={providerName}>
                     <SelectLabel>{providerName}</SelectLabel>

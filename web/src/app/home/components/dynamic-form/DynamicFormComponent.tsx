@@ -240,6 +240,9 @@ export default function DynamicFormComponent({
           case 'embedding-model-selector':
             fieldSchema = z.string();
             break;
+          case 'rerank-model-selector':
+            fieldSchema = z.string();
+            break;
           case 'knowledge-base-selector':
             fieldSchema = z.string();
             break;

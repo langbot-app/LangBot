@@ -1,6 +1,7 @@
 import {
   LLMModel,
   EmbeddingModel,
+  RerankModel,
   ModelProvider,
   ProviderScanDebugInfo,
   ScannedProviderModel,
@@ -12,11 +13,12 @@ export type ExtraArg = {
   value: string;
 };
 
-export type ModelType = 'llm' | 'embedding';
+export type ModelType = 'llm' | 'embedding' | 'rerank';
 
 export interface ProviderModels {
   llm: LLMModel[];
   embedding: EmbeddingModel[];
+  rerank: RerankModel[];
 }
 
 export interface TestResult {

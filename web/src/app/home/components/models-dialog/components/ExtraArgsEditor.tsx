@@ -1,4 +1,4 @@
-import { Plus, X } from 'lucide-react';
+import { Plus, X, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,19 +9,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { useTranslation } from 'react-i18next';
-import { ExtraArg } from '../types';
+import { ExtraArg, ModelType } from '../types';
 
 interface ExtraArgsEditorProps {
   args: ExtraArg[];
   onChange: (args: ExtraArg[]) => void;
   disabled?: boolean;
+  modelType?: ModelType;
 }
 
 export default function ExtraArgsEditor({
   args,
   onChange,
   disabled = false,
+  modelType,
 }: ExtraArgsEditorProps) {
   const { t } = useTranslation();
 
@@ -46,7 +53,22 @@ export default function ExtraArgsEditor({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <Label>{t('models.extraParameters')}</Label>
+        <div className="flex items-center gap-1">
+          <Label>{t('models.extraParameters')}</Label>
+          {modelType === 'rerank' && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                <div className="space-y-1 text-sm">
+                  <p><strong>rerank_url</strong>: {t('models.rerankUrlTooltip')}</p>
+                  <p><strong>rerank_path</strong>: {t('models.rerankPathTooltip')}</p>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </div>
         {!disabled && (
           <Button
             type="button"

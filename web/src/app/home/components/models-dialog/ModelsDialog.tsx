@@ -147,15 +147,17 @@ export default function ModelsDialog({
       setLoadingProviders((prev) => new Set(prev).add(providerUuid));
     }
     try {
-      const [llmResp, embeddingResp] = await Promise.all([
+      const [llmResp, embeddingResp, rerankResp] = await Promise.all([
         httpClient.getProviderLLMModels(providerUuid),
         httpClient.getProviderEmbeddingModels(providerUuid),
+        httpClient.getProviderRerankModels(providerUuid),
       ]);
       setProviderModels((prev) => ({
         ...prev,
         [providerUuid]: {
           llm: llmResp.models,
           embedding: embeddingResp.models,
+          rerank: rerankResp.models,
         },
       }));
     } catch (err) {
@@ -247,8 +249,14 @@ export default function ModelsDialog({
           abilities,
           extra_args: extraArgsObj,
         } as never);
-      } else {
+      } else if (modelType === 'embedding') {
         await httpClient.createProviderEmbeddingModel({
+          name,
+          provider_uuid: providerUuid,
+          extra_args: extraArgsObj,
+        } as never);
+      } else {
+        await httpClient.createProviderRerankModel({
           name,
           provider_uuid: providerUuid,
           extra_args: extraArgsObj,
@@ -341,8 +349,14 @@ export default function ModelsDialog({
           abilities,
           extra_args: extraArgsObj,
         } as never);
-      } else {
+      } else if (modelType === 'embedding') {
         await httpClient.updateProviderEmbeddingModel(modelId, {
+          name,
+          provider_uuid: providerUuid,
+          extra_args: extraArgsObj,
+        } as never);
+      } else {
+        await httpClient.updateProviderRerankModel(modelId, {
           name,
           provider_uuid: providerUuid,
           extra_args: extraArgsObj,
@@ -366,8 +380,10 @@ export default function ModelsDialog({
     try {
       if (modelType === 'llm') {
         await httpClient.deleteProviderLLMModel(modelId);
-      } else {
+      } else if (modelType === 'embedding') {
         await httpClient.deleteProviderEmbeddingModel(modelId);
+      } else {
+        await httpClient.deleteProviderRerankModel(modelId);
       }
       toast.success(t('models.deleteSuccess'));
       loadProviderModels(providerUuid, true);
@@ -407,8 +423,16 @@ export default function ModelsDialog({
           abilities,
           extra_args: extraArgsObj,
         } as never);
-      } else {
+      } else if (modelType === 'embedding') {
         await httpClient.testEmbeddingModel('_', {
+          uuid: '',
+          name,
+          provider_uuid: '',
+          provider: providerData,
+          extra_args: extraArgsObj,
+        } as never);
+      } else {
+        await httpClient.testRerankModel('_', {
           uuid: '',
           name,
           provider_uuid: '',

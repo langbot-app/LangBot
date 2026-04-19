@@ -3,6 +3,7 @@ import {
   Plus,
   MessageSquareText,
   Cpu,
+  ArrowUpDown,
   Eye,
   Wrench,
   Check,
@@ -265,7 +266,7 @@ export default function AddModelPopover({
         onClick={(e) => e.stopPropagation()}
       >
         <Tabs value={tab} onValueChange={(v) => setTab(v as ModelType)}>
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="llm">
               <MessageSquareText className="h-4 w-4 mr-1" />
               {t('models.chat')}
@@ -273,6 +274,10 @@ export default function AddModelPopover({
             <TabsTrigger value="embedding">
               <Cpu className="h-4 w-4 mr-1" />
               {t('models.embedding')}
+            </TabsTrigger>
+            <TabsTrigger value="rerank">
+              <ArrowUpDown className="h-4 w-4 mr-1" />
+              {t('models.rerank')}
             </TabsTrigger>
           </TabsList>
 
@@ -330,7 +335,7 @@ export default function AddModelPopover({
                   </div>
                 )}
 
-                <ExtraArgsEditor args={extraArgs} onChange={setExtraArgs} />
+                <ExtraArgsEditor args={extraArgs} onChange={setExtraArgs} modelType={tab} />
                 <div className="flex gap-2">
                   <Button
                     className="flex-1"
@@ -467,7 +472,9 @@ export default function AddModelPopover({
                                   ? t('models.alreadyAdded')
                                   : model.type === 'llm'
                                     ? t('models.chat')
-                                    : t('models.embedding')}
+                                    : model.type === 'embedding'
+                                      ? t('models.embedding')
+                                      : t('models.rerank')}
                               </div>
                             </div>
                           </div>
@@ -530,6 +537,48 @@ export default function AddModelPopover({
               </div>
             </TabsContent>
           </Tabs>
+
+          {tab === 'rerank' && (
+            <div className="space-y-3 mt-3">
+              <div className="space-y-2">
+                <Label>{t('models.modelName')}</Label>
+                <Input
+                  placeholder={t('models.modelName')}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+              </div>
+              <ExtraArgsEditor args={extraArgs} onChange={setExtraArgs} modelType="rerank" />
+              <div className="flex gap-2">
+                <Button
+                  className="flex-1"
+                  size="sm"
+                  onClick={handleAdd}
+                  disabled={isSubmitting || isTesting}
+                >
+                  {isSubmitting ? t('common.saving') : t('common.add')}
+                </Button>
+                <Button
+                  className="flex-1"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleTest}
+                  disabled={isSubmitting || isTesting}
+                >
+                  {isTesting ? (
+                    t('common.loading')
+                  ) : testResult?.success ? (
+                    <>
+                      <Check className="h-4 w-4 mr-1 text-green-500" />
+                      {(testResult.duration / 1000).toFixed(1)}s
+                    </>
+                  ) : (
+                    t('common.test')
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
         </Tabs>
       </PopoverContent>
     </Popover>

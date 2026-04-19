@@ -31,6 +31,9 @@ import {
   ApiRespProviderEmbeddingModels,
   ApiRespProviderEmbeddingModel,
   EmbeddingModel,
+  ApiRespProviderRerankModels,
+  ApiRespProviderRerankModel,
+  RerankModel,
   ApiRespPluginSystemStatus,
   ApiRespMCPServers,
   ApiRespMCPServer,
@@ -180,6 +183,39 @@ export class BackendClient extends BaseHttpClient {
     model: EmbeddingModel,
   ): Promise<object> {
     return this.post(`/api/v1/provider/models/embedding/${uuid}/test`, model);
+  }
+
+  // ============ Provider Model Rerank ============
+  public getProviderRerankModels(
+    providerUuid?: string,
+  ): Promise<ApiRespProviderRerankModels> {
+    const params = providerUuid ? { provider_uuid: providerUuid } : {};
+    return this.get('/api/v1/provider/models/rerank', params);
+  }
+
+  public getProviderRerankModel(
+    uuid: string,
+  ): Promise<ApiRespProviderRerankModel> {
+    return this.get(`/api/v1/provider/models/rerank/${uuid}`);
+  }
+
+  public createProviderRerankModel(model: RerankModel): Promise<object> {
+    return this.post('/api/v1/provider/models/rerank', model);
+  }
+
+  public deleteProviderRerankModel(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/provider/models/rerank/${uuid}`);
+  }
+
+  public updateProviderRerankModel(
+    uuid: string,
+    model: RerankModel,
+  ): Promise<object> {
+    return this.put(`/api/v1/provider/models/rerank/${uuid}`, model);
+  }
+
+  public testRerankModel(uuid: string, model: RerankModel): Promise<object> {
+    return this.post(`/api/v1/provider/models/rerank/${uuid}/test`, model);
   }
 
   // ============ Pipeline API ============

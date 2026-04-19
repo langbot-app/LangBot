@@ -49,6 +49,7 @@ export interface ModelProvider {
   api_keys: string[];
   llm_count?: number;
   embedding_count?: number;
+  rerank_count?: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -107,6 +108,22 @@ export interface ApiRespProviderEmbeddingModel {
 }
 
 export interface EmbeddingModel {
+  uuid: string;
+  name: string;
+  provider_uuid: string;
+  provider?: ModelProvider;
+  extra_args?: object;
+}
+
+export interface ApiRespProviderRerankModels {
+  models: RerankModel[];
+}
+
+export interface ApiRespProviderRerankModel {
+  model: RerankModel;
+}
+
+export interface RerankModel {
   uuid: string;
   name: string;
   provider_uuid: string;
