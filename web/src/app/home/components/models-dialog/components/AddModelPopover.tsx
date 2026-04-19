@@ -387,170 +387,177 @@ export default function AddModelPopover({
                 </div>
               </TabsContent>
 
-              <TabsContent value="scan" className="space-y-2 mt-2">
-                {scanLoading && (
+              <TabsContent value="scan" className="space-y-2 mt-1">
+                {scanLoading ? (
                   <div className="flex items-center justify-center py-4">
                     <RefreshCw className="h-4 w-4 mr-2 animate-spin text-muted-foreground" />
                     <span className="text-sm text-muted-foreground">
                       {t('models.scanModels')}...
                     </span>
                   </div>
-                )}
-
-                <div className="space-y-2">
-                  <Input
-                    placeholder={t('models.searchScannedModels')}
-                    value={scanQuery}
-                    onChange={(e) => setScanQuery(e.target.value)}
-                    disabled={scannedModels.length === 0}
-                  />
-                  {selectableModels.length > 0 && (
-                    <div className="flex items-center gap-2 pt-1">
-                      <Checkbox
-                        id="scan-select-all"
-                        checked={allSelected}
-                        onCheckedChange={toggleSelectAll}
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <Input
+                        placeholder={t('models.searchScannedModels')}
+                        value={scanQuery}
+                        onChange={(e) => setScanQuery(e.target.value)}
+                        disabled={scannedModels.length === 0}
                       />
-                      <Label
-                        htmlFor="scan-select-all"
-                        className="text-sm font-medium"
-                      >
-                        {t('models.selectAll')}
-                        <span className="text-muted-foreground ml-1">
-                          ({Object.keys(selectedScannedModels).length}/
-                          {selectableModels.length})
-                        </span>
-                      </Label>
-                    </div>
-                  )}
-                </div>
-
-                <div
-                  className="h-64 overflow-y-auto overscroll-contain rounded-md border"
-                  onWheel={(e) => e.stopPropagation()}
-                >
-                  <div className="p-3 space-y-2">
-                    {filteredScannedModels.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        {scannedModels.length === 0
-                          ? t('models.noScannedModels')
-                          : t('models.noScannedModelsMatch')}
-                      </p>
-                    ) : (
-                      filteredScannedModels.map((model) => {
-                        const isSelected = Boolean(
-                          selectedScannedModels[model.id],
-                        );
-                        const selectedAbilities =
-                          selectedScannedModels[model.id]?.abilities || [];
-                        return (
-                          <div
-                            key={model.id}
-                            className="rounded-md border p-3 space-y-2"
+                      {selectableModels.length > 0 && (
+                        <div className="flex items-center gap-2 pt-1">
+                          <Checkbox
+                            id="scan-select-all"
+                            checked={allSelected}
+                            onCheckedChange={toggleSelectAll}
+                          />
+                          <Label
+                            htmlFor="scan-select-all"
+                            className="text-sm font-medium"
                           >
-                            <div className="flex items-start gap-3">
-                              <Checkbox
-                                checked={isSelected || model.already_added}
-                                disabled={model.already_added}
-                                onCheckedChange={(checked) =>
-                                  toggleScannedModel(model, checked as boolean)
-                                }
-                              />
-                              <div className="min-w-0 flex-1">
-                                <div className="text-sm font-medium break-all">
-                                  {model.name}
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  {model.already_added
-                                    ? t('models.alreadyAdded')
-                                    : model.type === 'llm'
-                                      ? t('models.chat')
-                                      : t('models.embedding')}
-                                </div>
-                              </div>
-                            </div>
+                            {t('models.selectAll')}
+                            <span className="text-muted-foreground ml-1">
+                              ({Object.keys(selectedScannedModels).length}/
+                              {selectableModels.length})
+                            </span>
+                          </Label>
+                        </div>
+                      )}
+                    </div>
 
-                            {tab === 'llm' &&
-                              isSelected &&
-                              !model.already_added && (
-                                <div className="flex gap-4 pl-7">
-                                  <div className="flex items-center gap-2">
-                                    <Checkbox
-                                      id={`scan-vision-${model.id}`}
-                                      checked={selectedAbilities.includes(
-                                        'vision',
-                                      )}
-                                      onCheckedChange={(checked) =>
-                                        toggleScannedModelAbility(
-                                          model.id,
-                                          'vision',
-                                          checked as boolean,
-                                        )
-                                      }
-                                    />
-                                    <Label
-                                      htmlFor={`scan-vision-${model.id}`}
-                                      className="text-sm"
-                                    >
-                                      <Eye className="h-3 w-3 inline mr-1" />
-                                      {t('models.visionAbility')}
-                                    </Label>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <Checkbox
-                                      id={`scan-func-${model.id}`}
-                                      checked={selectedAbilities.includes(
-                                        'func_call',
-                                      )}
-                                      onCheckedChange={(checked) =>
-                                        toggleScannedModelAbility(
-                                          model.id,
-                                          'func_call',
-                                          checked as boolean,
-                                        )
-                                      }
-                                    />
-                                    <Label
-                                      htmlFor={`scan-func-${model.id}`}
-                                      className="text-sm"
-                                    >
-                                      <Wrench className="h-3 w-3 inline mr-1" />
-                                      {t('models.functionCallAbility')}
-                                    </Label>
-                                  </div>
-                                </div>
-                              )}
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-
-                {!scanLoading && (
-                  <div className="flex gap-2">
-                    {Object.keys(selectedScannedModels).length > 0 && (
-                      <Button
-                        className="flex-1"
-                        size="sm"
-                        onClick={handleAddScanned}
-                        disabled={isSubmitting}
-                      >
-                        {isSubmitting
-                          ? t('common.saving')
-                          : t('models.addSelectedModels')}
-                      </Button>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleScan}
-                      disabled={scanLoading || isSubmitting}
+                    <div
+                      className="h-64 overflow-y-auto overscroll-contain rounded-md border"
+                      onWheel={(e) => e.stopPropagation()}
                     >
-                      <RefreshCw className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
+                      <div className="p-3 space-y-2">
+                        {filteredScannedModels.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">
+                            {scannedModels.length === 0
+                              ? t('models.noScannedModels')
+                              : t('models.noScannedModelsMatch')}
+                          </p>
+                        ) : (
+                          filteredScannedModels.map((model) => {
+                            const isSelected = Boolean(
+                              selectedScannedModels[model.id],
+                            );
+                            const selectedAbilities =
+                              selectedScannedModels[model.id]?.abilities || [];
+                            return (
+                              <div
+                                key={model.id}
+                                className="rounded-md border p-3 space-y-2"
+                              >
+                                <div className="flex items-start gap-3">
+                                  <Checkbox
+                                    checked={isSelected || model.already_added}
+                                    disabled={model.already_added}
+                                    onCheckedChange={(checked) =>
+                                      toggleScannedModel(
+                                        model,
+                                        checked as boolean,
+                                      )
+                                    }
+                                  />
+                                  <div className="min-w-0 flex-1">
+                                    <div className="text-sm font-medium break-all">
+                                      {model.name}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {model.already_added
+                                        ? t('models.alreadyAdded')
+                                        : model.type === 'llm'
+                                          ? t('models.chat')
+                                          : t('models.embedding')}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {tab === 'llm' &&
+                                  isSelected &&
+                                  !model.already_added && (
+                                    <div className="flex gap-4 pl-7">
+                                      <div className="flex items-center gap-2">
+                                        <Checkbox
+                                          id={`scan-vision-${model.id}`}
+                                          checked={selectedAbilities.includes(
+                                            'vision',
+                                          )}
+                                          onCheckedChange={(checked) =>
+                                            toggleScannedModelAbility(
+                                              model.id,
+                                              'vision',
+                                              checked as boolean,
+                                            )
+                                          }
+                                        />
+                                        <Label
+                                          htmlFor={`scan-vision-${model.id}`}
+                                          className="text-sm"
+                                        >
+                                          <Eye className="h-3 w-3 inline mr-1" />
+                                          {t('models.visionAbility')}
+                                        </Label>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <Checkbox
+                                          id={`scan-func-${model.id}`}
+                                          checked={selectedAbilities.includes(
+                                            'func_call',
+                                          )}
+                                          onCheckedChange={(checked) =>
+                                            toggleScannedModelAbility(
+                                              model.id,
+                                              'func_call',
+                                              checked as boolean,
+                                            )
+                                          }
+                                        />
+                                        <Label
+                                          htmlFor={`scan-func-${model.id}`}
+                                          className="text-sm"
+                                        >
+                                          <Wrench className="h-3 w-3 inline mr-1" />
+                                          {t('models.functionCallAbility')}
+                                        </Label>
+                                      </div>
+                                    </div>
+                                  )}
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  </>
                 )}
+
+                <div className="flex gap-2">
+                  <Button
+                    className="flex-1"
+                    size="sm"
+                    onClick={handleAddScanned}
+                    disabled={
+                      isSubmitting ||
+                      scanLoading ||
+                      Object.keys(selectedScannedModels).length === 0
+                    }
+                  >
+                    {isSubmitting
+                      ? t('common.saving')
+                      : t('models.addSelectedModels')}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleScan}
+                    disabled={scanLoading || isSubmitting}
+                  >
+                    <RefreshCw
+                      className={`h-3.5 w-3.5 ${scanLoading ? 'animate-spin' : ''}`}
+                    />
+                  </Button>
+                </div>
               </TabsContent>
             </Tabs>
           </div>
