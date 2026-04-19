@@ -1228,6 +1228,7 @@ const viVN = {
       sessions: 'Phiên',
       feedback: 'Phản hồi người dùng',
     },
+    systemStatus: 'Trạng thái hệ thống',
     pluginRuntime: 'Plugin Runtime',
     boxRuntime: 'Box Runtime',
     connected: 'Đã kết nối',

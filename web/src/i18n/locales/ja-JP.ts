@@ -1232,6 +1232,7 @@
       sessions: 'セッション',
       feedback: 'ユーザーフィードバック',
     },
+    systemStatus: 'システム状態',
     pluginRuntime: 'プラグインランタイム',
     boxRuntime: 'Box ランタイム',
     connected: '接続済み',

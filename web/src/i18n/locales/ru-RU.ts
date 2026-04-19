@@ -1234,6 +1234,7 @@ const ruRU = {
       sessions: 'Сессии',
       feedback: 'Отзывы пользователей',
     },
+    systemStatus: 'Состояние системы',
     pluginRuntime: 'Среда плагинов',
     boxRuntime: 'Среда Box',
     connected: 'Подключено',

@@ -1207,6 +1207,7 @@ const thTH = {
       sessions: 'เซสชัน',
       feedback: 'ความคิดเห็นผู้ใช้',
     },
+    systemStatus: 'สถานะระบบ',
     pluginRuntime: 'Plugin Runtime',
     boxRuntime: 'Box Runtime',
     connected: 'เชื่อมต่อแล้ว',

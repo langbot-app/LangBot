@@ -1181,6 +1181,7 @@ const zhHans = {
       sessions: '会话记录',
       feedback: '用户反馈',
     },
+    systemStatus: '系统状态',
     pluginRuntime: '插件运行时',
     boxRuntime: 'Box 运行时',
     connected: '已连接',
