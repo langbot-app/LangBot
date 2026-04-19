@@ -43,8 +43,7 @@ export default function SystemStatusCard({
   const [boxStatus, setBoxStatus] = useState<ApiRespBoxStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchStatus = useCallback(async (showLoading = false) => {
-    if (showLoading) setLoading(true);
+  const fetchStatus = useCallback(async () => {
     try {
       const [plugin, box] = await Promise.all([
         httpClient.getPluginSystemStatus().catch(() => null),
@@ -53,14 +52,13 @@ export default function SystemStatusCard({
       setPluginStatus(plugin);
       setBoxStatus(box);
     } finally {
-      if (showLoading) setLoading(false);
+      setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    // refreshKey changes when the user clicks "Refresh Data"
-    fetchStatus(refreshKey === undefined);
-    const interval = setInterval(() => fetchStatus(false), 30_000);
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 30_000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchStatus, refreshKey]);
@@ -90,7 +88,7 @@ export default function SystemStatusCard({
   return (
     <Popover
       onOpenChange={(open) => {
-        if (open) fetchStatus(false);
+        if (open) fetchStatus();
       }}
     >
       <PopoverTrigger asChild>
