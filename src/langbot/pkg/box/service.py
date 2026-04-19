@@ -219,7 +219,12 @@ class BoxService:
             self._shutdown_task = loop.create_task(self.shutdown())
 
     async def get_sessions(self) -> list[dict]:
-        return await self.client.get_sessions()
+        if not self._available:
+            return []
+        try:
+            return await self.client.get_sessions()
+        except Exception:
+            return []
 
     def build_spec(self, spec_payload: dict, skip_host_mount_validation: bool = False) -> BoxSpec:
         spec_payload = dict(spec_payload)
@@ -581,7 +586,17 @@ class BoxService:
                 'recent_error_count': len(self._recent_errors),
                 'connector_error': self._connector_error,
             }
-        runtime_status = await self.client.get_status()
+        try:
+            runtime_status = await self.client.get_status()
+        except Exception as exc:
+            # RPC failed — the runtime likely just disconnected and the
+            # heartbeat hasn't flipped _available yet.
+            return {
+                'available': False,
+                'profile': self.profile.name,
+                'recent_error_count': len(self._recent_errors),
+                'connector_error': str(exc),
+            }
         return {
             **runtime_status,
             'available': True,
