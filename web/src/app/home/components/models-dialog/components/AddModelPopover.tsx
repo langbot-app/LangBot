@@ -541,52 +541,6 @@ export default function AddModelPopover({
               </div>
             </TabsContent>
           </Tabs>
-
-          {tab === 'rerank' && (
-            <div className="space-y-3 mt-3">
-              <div className="space-y-2">
-                <Label>{t('models.modelName')}</Label>
-                <Input
-                  placeholder={t('models.modelName')}
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </div>
-              <ExtraArgsEditor
-                args={extraArgs}
-                onChange={setExtraArgs}
-                modelType="rerank"
-              />
-              <div className="flex gap-2">
-                <Button
-                  className="flex-1"
-                  size="sm"
-                  onClick={handleAdd}
-                  disabled={isSubmitting || isTesting}
-                >
-                  {isSubmitting ? t('common.saving') : t('common.add')}
-                </Button>
-                <Button
-                  className="flex-1"
-                  size="sm"
-                  variant="outline"
-                  onClick={handleTest}
-                  disabled={isSubmitting || isTesting}
-                >
-                  {isTesting ? (
-                    t('common.loading')
-                  ) : testResult?.success ? (
-                    <>
-                      <Check className="h-4 w-4 mr-1 text-green-500" />
-                      {(testResult.duration / 1000).toFixed(1)}s
-                    </>
-                  ) : (
-                    t('common.test')
-                  )}
-                </Button>
-              </div>
-            </div>
-          )}
         </Tabs>
       </PopoverContent>
     </Popover>
