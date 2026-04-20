@@ -233,6 +233,21 @@ export function SidebarDataProvider({
     refreshAll();
   }, [refreshAll]);
 
+  // Poll MCP server status while any enabled server is still connecting
+  useEffect(() => {
+    const hasConnecting = mcpServers.some(
+      (s) => s.enabled !== false && s.runtimeStatus === 'connecting',
+    );
+
+    if (!hasConnecting) return;
+
+    const interval = setInterval(() => {
+      refreshMCPServers();
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [mcpServers, refreshMCPServers]);
+
   return (
     <SidebarDataContext.Provider
       value={{
