@@ -9,7 +9,6 @@ import {
   ChevronDownIcon,
   UploadIcon,
   StoreIcon,
-  Download,
   Power,
   Github,
   ChevronLeft,
@@ -17,6 +16,7 @@ import {
   Copy,
   Check,
   Bug,
+  Unlink,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -24,13 +24,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
 import {
   Popover,
   PopoverContent,
@@ -41,6 +34,7 @@ import {
   CardHeader,
   CardTitle,
   CardDescription,
+  CardContent,
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import React, { useState, useRef, useCallback, useEffect } from 'react';
@@ -72,6 +66,8 @@ interface GithubRelease {
   published_at: string;
   prerelease: boolean;
   draft: boolean;
+  source_type?: 'release' | 'tag' | 'branch';
+  archive_url?: string;
 }
 
 interface GithubAsset {
@@ -108,7 +104,7 @@ function PluginListView() {
     registerOnTaskComplete,
     unregisterOnTaskComplete,
   } = usePluginInstallTasks();
-  const [modalOpen, setModalOpen] = useState(false);
+  const [showGithubInstall, setShowGithubInstall] = useState(false);
   const [installSource, setInstallSource] = useState<string>('local');
   const [installInfo] = useState<Record<string, any>>({}); // eslint-disable-line @typescript-eslint/no-explicit-any
   const [pluginInstallStatus, setPluginInstallStatus] =
@@ -256,6 +252,9 @@ function PluginListView() {
         githubOwner,
         githubRepo,
         release.id,
+        release.tag_name,
+        release.source_type,
+        release.archive_url,
       );
       setGithubAssets(result.assets);
 
@@ -319,7 +318,7 @@ function PluginListView() {
           });
           setSelectedTaskId(taskKey);
           resetGithubState();
-          setModalOpen(false);
+          setShowGithubInstall(false);
         })
         .catch((err) => {
           setInstallError(err.msg);
@@ -340,11 +339,11 @@ function PluginListView() {
             fileSize: fileSize,
           });
           setSelectedTaskId(taskKey);
-          setModalOpen(false);
         })
         .catch((err) => {
           setInstallError(err.msg);
           setPluginInstallStatus(PluginInstallStatus.ERROR);
+          toast.error(t('plugins.installFailed') + (err.msg || ''));
         });
     }
   }
@@ -369,7 +368,6 @@ function PluginListView() {
 
       if (!(await checkExtensionsLimit())) return;
 
-      setModalOpen(true);
       setPluginInstallStatus(PluginInstallStatus.INSTALLING);
       setInstallError(null);
       installPlugin('local', { file });
@@ -449,7 +447,7 @@ function PluginListView() {
       setPluginInstallStatus(PluginInstallStatus.WAIT_INPUT);
       setInstallError(null);
       resetGithubState();
-      setModalOpen(true);
+      setShowGithubInstall(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingPluginInstallAction, statusLoading, isPluginSystemReady]);
@@ -510,15 +508,7 @@ function PluginListView() {
 
   const renderPluginConnectionErrorState = () => (
     <div className="flex flex-col items-center justify-center h-[60vh] text-center pt-[10vh]">
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        width="72"
-        height="72"
-        fill="#BDBDBD"
-      >
-        <path d="M17.657 14.8284L16.2428 13.4142L17.657 12C19.2191 10.4379 19.2191 7.90526 17.657 6.34316C16.0949 4.78106 13.5622 4.78106 12.0001 6.34316L10.5859 7.75737L9.17171 6.34316L10.5859 4.92895C12.9291 2.5858 16.7281 2.5858 19.0712 4.92895C21.4143 7.27209 21.4143 11.0711 19.0712 13.4142L17.657 14.8284ZM14.8286 17.6569L13.4143 19.0711C11.0712 21.4142 7.27221 21.4142 4.92907 19.0711C2.58592 16.7279 2.58592 12.9289 4.92907 10.5858L6.34328 9.17159L7.75749 10.5858L6.34328 12C4.78118 13.5621 4.78118 16.0948 6.34328 17.6569C7.90538 19.219 10.438 19.219 12.0001 17.6569L13.4143 16.2427L14.8286 17.6569ZM14.8286 7.75737L16.2428 9.17159L9.17171 16.2427L7.75749 14.8284L14.8286 7.75737ZM5.77539 2.29291L7.70724 1.77527L8.74252 5.63897L6.81067 6.15661L5.77539 2.29291ZM15.2578 18.3611L17.1896 17.8434L18.2249 21.7071L16.293 22.2248L15.2578 18.3611ZM2.29303 5.77527L6.15673 6.81054L5.63909 8.7424L1.77539 7.70712L2.29303 5.77527ZM18.3612 15.2576L22.2249 16.2929L21.7072 18.2248L17.8435 17.1895L18.3612 15.2576Z"></path>
-      </svg>
+      <Unlink className="w-[72px] h-[72px] text-[#BDBDBD]" />
 
       <h2 className="text-2xl font-semibold text-gray-700 dark:text-gray-300 mb-2">
         {t('plugins.connectionError')}
@@ -574,7 +564,7 @@ function PluginListView() {
           <PopoverTrigger asChild>
             <Button
               variant="outline"
-              className="px-4 py-5 cursor-pointer"
+              className="px-4 py-4 cursor-pointer"
               onClick={handleShowDebugInfo}
             >
               <Code className="w-4 h-4 mr-2" />
@@ -689,7 +679,7 @@ function PluginListView() {
                 setPluginInstallStatus(PluginInstallStatus.WAIT_INPUT);
                 setInstallError(null);
                 resetGithubState();
-                setModalOpen(true);
+                setShowGithubInstall(true);
               }}
             >
               <Github className="w-4 h-4" />
@@ -699,257 +689,251 @@ function PluginListView() {
         </DropdownMenu>
       </div>
 
+      {/* Inline GitHub install flow */}
+      {showGithubInstall && (
+        <div className="px-[0.8rem] pb-4 flex-shrink-0">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Github className="size-5" />
+                <span>{t('plugins.installPlugin')}</span>
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowGithubInstall(false);
+                  resetGithubState();
+                  setInstallError(null);
+                }}
+              >
+                {t('common.cancel')}
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Step 1: Enter repo URL */}
+              {pluginInstallStatus === PluginInstallStatus.WAIT_INPUT && (
+                <div>
+                  <p className="mb-2 text-sm">{t('plugins.enterRepoUrl')}</p>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder={t('plugins.repoUrlPlaceholder')}
+                      value={githubURL}
+                      onChange={(e) => setGithubURL(e.target.value)}
+                    />
+                    <Button
+                      onClick={fetchGithubReleases}
+                      disabled={!githubURL.trim() || fetchingReleases}
+                    >
+                      {fetchingReleases
+                        ? t('plugins.loading')
+                        : t('common.confirm')}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 2: Select release */}
+              {pluginInstallStatus === PluginInstallStatus.SELECT_RELEASE && (
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="font-medium text-sm">
+                      {t('plugins.selectRelease')}
+                    </p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setPluginInstallStatus(PluginInstallStatus.WAIT_INPUT);
+                        setGithubReleases([]);
+                      }}
+                    >
+                      <ChevronLeft className="w-4 h-4 mr-1" />
+                      {t('plugins.backToRepoUrl')}
+                    </Button>
+                  </div>
+                  <div className="max-h-[400px] overflow-y-auto space-y-2 pb-2">
+                    {githubReleases.map((release) => (
+                      <Card
+                        key={release.id}
+                        className="cursor-pointer hover:shadow-sm transition-shadow duration-200 shadow-none py-4"
+                        onClick={() => handleReleaseSelect(release)}
+                      >
+                        <CardHeader className="flex flex-row items-start justify-between px-3 space-y-0">
+                          <div className="flex-1">
+                            <CardTitle className="text-sm">
+                              {release.name || release.tag_name}
+                            </CardTitle>
+                            <CardDescription className="text-xs mt-1">
+                              {t('plugins.releaseTag', {
+                                tag: release.tag_name,
+                              })}{' '}
+                              &bull;{' '}
+                              {t('plugins.publishedAt', {
+                                date: new Date(
+                                  release.published_at,
+                                ).toLocaleDateString(),
+                              })}
+                            </CardDescription>
+                          </div>
+                          {release.prerelease && (
+                            <span className="text-xs bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 px-2 py-0.5 rounded ml-2 shrink-0">
+                              {t('plugins.prerelease')}
+                            </span>
+                          )}
+                        </CardHeader>
+                      </Card>
+                    ))}
+                  </div>
+                  {fetchingAssets && (
+                    <p className="text-sm text-muted-foreground mt-4">
+                      {t('plugins.loading')}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Step 3: Select asset */}
+              {pluginInstallStatus === PluginInstallStatus.SELECT_ASSET && (
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="font-medium text-sm">
+                      {t('plugins.selectAsset')}
+                    </p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setPluginInstallStatus(
+                          PluginInstallStatus.SELECT_RELEASE,
+                        );
+                        setGithubAssets([]);
+                        setSelectedAsset(null);
+                      }}
+                    >
+                      <ChevronLeft className="w-4 h-4 mr-1" />
+                      {t('plugins.backToReleases')}
+                    </Button>
+                  </div>
+                  {selectedRelease && (
+                    <div className="mb-3 p-2 bg-muted rounded">
+                      <div className="text-sm font-medium">
+                        {selectedRelease.name || selectedRelease.tag_name}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {selectedRelease.tag_name}
+                      </div>
+                    </div>
+                  )}
+                  <div className="max-h-[400px] overflow-y-auto space-y-2 pb-2">
+                    {githubAssets.map((asset) => (
+                      <Card
+                        key={asset.id}
+                        className="cursor-pointer hover:shadow-sm transition-shadow duration-200 shadow-none py-3"
+                        onClick={() => handleAssetSelect(asset)}
+                      >
+                        <CardHeader className="px-3">
+                          <CardTitle className="text-sm">
+                            {asset.name}
+                          </CardTitle>
+                          <CardDescription className="text-xs">
+                            {t('plugins.assetSize', {
+                              size: formatFileSize(asset.size),
+                            })}
+                          </CardDescription>
+                        </CardHeader>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Step 4: Confirm install */}
+              {pluginInstallStatus === PluginInstallStatus.ASK_CONFIRM && (
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="font-medium text-sm">
+                      {t('plugins.confirmInstall')}
+                    </p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setPluginInstallStatus(
+                          PluginInstallStatus.SELECT_ASSET,
+                        );
+                        setSelectedAsset(null);
+                      }}
+                    >
+                      <ChevronLeft className="w-4 h-4 mr-1" />
+                      {t('plugins.backToAssets')}
+                    </Button>
+                  </div>
+                  {selectedRelease && selectedAsset && (
+                    <div className="p-3 bg-muted rounded space-y-2">
+                      <div>
+                        <span className="text-sm font-medium">
+                          Repository:{' '}
+                        </span>
+                        <span className="text-sm">
+                          {githubOwner}/{githubRepo}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium">Release: </span>
+                        <span className="text-sm">
+                          {selectedRelease.tag_name}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium">File: </span>
+                        <span className="text-sm">{selectedAsset.name}</span>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex justify-end mt-4">
+                    <Button onClick={() => handleModalConfirm()}>
+                      {t('common.confirm')}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Installing state */}
+              {pluginInstallStatus === PluginInstallStatus.INSTALLING && (
+                <div>
+                  <p className="text-sm">{t('plugins.installing')}</p>
+                </div>
+              )}
+
+              {/* Error state */}
+              {pluginInstallStatus === PluginInstallStatus.ERROR && (
+                <div>
+                  <p className="text-sm mb-1">{t('plugins.installFailed')}</p>
+                  <p className="text-sm text-destructive">{installError}</p>
+                  <div className="flex justify-end mt-4">
+                    <Button
+                      variant="default"
+                      onClick={() => {
+                        setShowGithubInstall(false);
+                        resetGithubState();
+                        setInstallError(null);
+                      }}
+                    >
+                      {t('common.close')}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Installed plugins grid */}
       <div className="flex-1 overflow-y-auto">
         <PluginInstalledComponent ref={pluginInstalledRef} />
       </div>
-
-      {/* Install plugin dialog (GitHub flow) */}
-      <Dialog
-        open={modalOpen}
-        onOpenChange={(open) => {
-          setModalOpen(open);
-          if (!open) {
-            resetGithubState();
-            setInstallError(null);
-          }
-        }}
-      >
-        <DialogContent className="w-[500px] max-h-[80vh] p-6 bg-white dark:bg-[#1a1a1e] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-4">
-              {installSource === 'github' ? (
-                <Github className="size-6" />
-              ) : (
-                <Download className="size-6" />
-              )}
-              <span>{t('plugins.installPlugin')}</span>
-            </DialogTitle>
-          </DialogHeader>
-
-          {/* GitHub Install Flow */}
-          {installSource === 'github' &&
-            pluginInstallStatus === PluginInstallStatus.WAIT_INPUT && (
-              <div className="mt-4">
-                <p className="mb-2">{t('plugins.enterRepoUrl')}</p>
-                <Input
-                  placeholder={t('plugins.repoUrlPlaceholder')}
-                  value={githubURL}
-                  onChange={(e) => setGithubURL(e.target.value)}
-                  className="mb-4"
-                />
-                {fetchingReleases && (
-                  <p className="text-sm text-gray-500">
-                    {t('plugins.fetchingReleases')}
-                  </p>
-                )}
-              </div>
-            )}
-
-          {installSource === 'github' &&
-            pluginInstallStatus === PluginInstallStatus.SELECT_RELEASE && (
-              <div className="mt-4">
-                <div className="flex items-center justify-between mb-4">
-                  <p className="font-medium">{t('plugins.selectRelease')}</p>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setPluginInstallStatus(PluginInstallStatus.WAIT_INPUT);
-                      setGithubReleases([]);
-                    }}
-                  >
-                    <ChevronLeft className="w-4 h-4 mr-1" />
-                    {t('plugins.backToRepoUrl')}
-                  </Button>
-                </div>
-                <div className="max-h-[400px] overflow-y-auto space-y-2 pb-2">
-                  {githubReleases.map((release) => (
-                    <Card
-                      key={release.id}
-                      className="cursor-pointer hover:shadow-sm transition-shadow duration-200 shadow-none py-4"
-                      onClick={() => handleReleaseSelect(release)}
-                    >
-                      <CardHeader className="flex flex-row items-start justify-between px-3 space-y-0">
-                        <div className="flex-1">
-                          <CardTitle className="text-sm">
-                            {release.name || release.tag_name}
-                          </CardTitle>
-                          <CardDescription className="text-xs mt-1">
-                            {t('plugins.releaseTag', { tag: release.tag_name })}{' '}
-                            •{' '}
-                            {t('plugins.publishedAt', {
-                              date: new Date(
-                                release.published_at,
-                              ).toLocaleDateString(),
-                            })}
-                          </CardDescription>
-                        </div>
-                        {release.prerelease && (
-                          <span className="text-xs bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 px-2 py-0.5 rounded ml-2 shrink-0">
-                            {t('plugins.prerelease')}
-                          </span>
-                        )}
-                      </CardHeader>
-                    </Card>
-                  ))}
-                </div>
-                {fetchingAssets && (
-                  <p className="text-sm text-gray-500 mt-4">
-                    {t('plugins.loading')}
-                  </p>
-                )}
-              </div>
-            )}
-
-          {installSource === 'github' &&
-            pluginInstallStatus === PluginInstallStatus.SELECT_ASSET && (
-              <div className="mt-4">
-                <div className="flex items-center justify-between mb-4">
-                  <p className="font-medium">{t('plugins.selectAsset')}</p>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setPluginInstallStatus(
-                        PluginInstallStatus.SELECT_RELEASE,
-                      );
-                      setGithubAssets([]);
-                      setSelectedAsset(null);
-                    }}
-                  >
-                    <ChevronLeft className="w-4 h-4 mr-1" />
-                    {t('plugins.backToReleases')}
-                  </Button>
-                </div>
-                {selectedRelease && (
-                  <div className="mb-4 p-2 bg-gray-50 dark:bg-gray-900 rounded">
-                    <div className="text-sm font-medium">
-                      {selectedRelease.name || selectedRelease.tag_name}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {selectedRelease.tag_name}
-                    </div>
-                  </div>
-                )}
-                <div className="max-h-[400px] overflow-y-auto space-y-2 pb-2">
-                  {githubAssets.map((asset) => (
-                    <Card
-                      key={asset.id}
-                      className="cursor-pointer hover:shadow-sm transition-shadow duration-200 shadow-none py-3"
-                      onClick={() => handleAssetSelect(asset)}
-                    >
-                      <CardHeader className="px-3">
-                        <CardTitle className="text-sm">{asset.name}</CardTitle>
-                        <CardDescription className="text-xs">
-                          {t('plugins.assetSize', {
-                            size: formatFileSize(asset.size),
-                          })}
-                        </CardDescription>
-                      </CardHeader>
-                    </Card>
-                  ))}
-                </div>
-              </div>
-            )}
-
-          {/* GitHub Install Confirm */}
-          {installSource === 'github' &&
-            pluginInstallStatus === PluginInstallStatus.ASK_CONFIRM && (
-              <div className="mt-4">
-                <div className="flex items-center justify-between mb-4">
-                  <p className="font-medium">{t('plugins.confirmInstall')}</p>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setPluginInstallStatus(PluginInstallStatus.SELECT_ASSET);
-                      setSelectedAsset(null);
-                    }}
-                  >
-                    <ChevronLeft className="w-4 h-4 mr-1" />
-                    {t('plugins.backToAssets')}
-                  </Button>
-                </div>
-                {selectedRelease && selectedAsset && (
-                  <div className="p-3 bg-gray-50 dark:bg-gray-900 rounded space-y-2">
-                    <div>
-                      <span className="text-sm font-medium">Repository: </span>
-                      <span className="text-sm">
-                        {githubOwner}/{githubRepo}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-sm font-medium">Release: </span>
-                      <span className="text-sm">
-                        {selectedRelease.tag_name}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-sm font-medium">File: </span>
-                      <span className="text-sm">{selectedAsset.name}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-          {/* Installing State */}
-          {pluginInstallStatus === PluginInstallStatus.INSTALLING && (
-            <div className="mt-4">
-              <p className="mb-2">{t('plugins.installing')}</p>
-            </div>
-          )}
-
-          {/* Error State */}
-          {pluginInstallStatus === PluginInstallStatus.ERROR && (
-            <div className="mt-4">
-              <p className="mb-2">{t('plugins.installFailed')}</p>
-              <p className="mb-2 text-red-500">{installError}</p>
-            </div>
-          )}
-
-          <DialogFooter>
-            {pluginInstallStatus === PluginInstallStatus.WAIT_INPUT &&
-              installSource === 'github' && (
-                <>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setModalOpen(false);
-                      resetGithubState();
-                    }}
-                  >
-                    {t('common.cancel')}
-                  </Button>
-                  <Button
-                    onClick={fetchGithubReleases}
-                    disabled={!githubURL.trim() || fetchingReleases}
-                  >
-                    {fetchingReleases
-                      ? t('plugins.loading')
-                      : t('common.confirm')}
-                  </Button>
-                </>
-              )}
-            {pluginInstallStatus === PluginInstallStatus.ASK_CONFIRM && (
-              <>
-                <Button variant="outline" onClick={() => setModalOpen(false)}>
-                  {t('common.cancel')}
-                </Button>
-                <Button onClick={() => handleModalConfirm()}>
-                  {t('common.confirm')}
-                </Button>
-              </>
-            )}
-            {pluginInstallStatus === PluginInstallStatus.ERROR && (
-              <Button variant="default" onClick={() => setModalOpen(false)}>
-                {t('common.close')}
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {isDragOver && (
         <div className="fixed inset-0 bg-gray-500 bg-opacity-50 flex items-center justify-center z-50 pointer-events-none">

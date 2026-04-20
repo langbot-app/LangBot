@@ -87,6 +87,15 @@ monitoring:
         retention_days: 30
         # Cleanup check interval in hours
         check_interval_hours: 1
+box:
+    profile: 'default'
+    image: ''  # Custom sandbox container image. Leave empty to use the profile default (python:3.11-slim).
+    runtime_url: ''  # Base URL of an external Box Runtime (e.g. ws://localhost:5410). Leave empty for auto-detection (stdio locally, Docker service in containers).
+    shared_host_root: './data/box'  # For Docker deployment, use '/workspaces'
+    default_host_workspace: ''  # Defaults to '<shared_host_root>/default'
+    allowed_host_mount_roots:  # Defaults to ['<shared_host_root>'] when left empty
+        - './data/box'
+        - '/tmp'
 space:
     # Space service URL for OAuth and API
     url: 'https://space.langbot.app'

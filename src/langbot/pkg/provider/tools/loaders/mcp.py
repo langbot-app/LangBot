@@ -20,6 +20,7 @@ from ....core import app
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 from ....entity.persistence import mcp as persistence_mcp
+from .mcp_stdio import BoxStdioSessionRuntime, MCPSessionErrorPhase
 
 
 class MCPSessionStatus(enum.Enum):
@@ -58,6 +59,12 @@ class RuntimeMCPSession:
 
     error_message: str | None = None
 
+    error_phase: MCPSessionErrorPhase | None = None
+
+    retry_count: int = 0
+
+    _box_stdio_runtime: BoxStdioSessionRuntime
+
     def __init__(self, server_name: str, server_config: dict, enable: bool, ap: app.Application):
         self.server_name = server_name
         self.server_uuid = server_config.get('uuid', '')
@@ -75,7 +82,14 @@ class RuntimeMCPSession:
         self._shutdown_event = asyncio.Event()
         self._ready_event = asyncio.Event()
 
+        self._box_stdio_runtime = BoxStdioSessionRuntime(self)
+        self.box_config = self._box_stdio_runtime.config
+
     async def _init_stdio_python_server(self):
+        if self._uses_box_stdio():
+            await self._box_stdio_runtime.initialize()
+            return
+
         server_params = StdioServerParameters(
             command=self.server_config['command'],
             args=self.server_config['args'],
@@ -89,6 +103,9 @@ class RuntimeMCPSession:
         self.session = await self.exit_stack.enter_async_context(ClientSession(stdio, write))
 
         await self.session.initialize()
+
+    async def _init_box_stdio_server(self):
+        await self._box_stdio_runtime.initialize()
 
     async def _init_sse_server(self):
         sse_transport = await self.exit_stack.enter_async_context(
@@ -124,8 +141,11 @@ class RuntimeMCPSession:
 
         await self.session.initialize()
 
+    _MAX_RETRIES = 3
+    _RETRY_DELAYS = [2, 4, 8]
+
     async def _lifecycle_loop(self):
-        """在后台任务中管理整个MCP会话的生命周期"""
+        """Manage the full MCP session lifecycle in a background task."""
         try:
             if self.server_config['mode'] == 'stdio':
                 await self._init_stdio_python_server()
@@ -134,49 +154,101 @@ class RuntimeMCPSession:
             elif self.server_config['mode'] == 'http':
                 await self._init_streamable_http_server()
             else:
-                raise ValueError(f'无法识别 MCP 服务器类型: {self.server_name}: {self.server_config}')
+                raise ValueError(f'Unknown MCP server mode: {self.server_name}: {self.server_config}')
 
             await self.refresh()
 
             self.status = MCPSessionStatus.CONNECTED
 
-            # 通知start()方法连接已建立
+            # Notify start() that connection is established
             self._ready_event.set()
 
-            # 等待shutdown信号
-            await self._shutdown_event.wait()
+            # Wait for shutdown signal, with optional health monitoring for Box stdio
+            if self._uses_box_stdio():
+                monitor_task = asyncio.create_task(self._box_stdio_runtime.monitor_process_health())
+                shutdown_task = asyncio.create_task(self._shutdown_event.wait())
+                done, pending = await asyncio.wait(
+                    [shutdown_task, monitor_task],
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                for task in pending:
+                    task.cancel()
+                for task in done:
+                    if task is monitor_task and not self._shutdown_event.is_set():
+                        self.error_phase = MCPSessionErrorPhase.RUNTIME
+                        raise Exception('Box managed process exited unexpectedly')
+            else:
+                await self._shutdown_event.wait()
 
         except Exception as e:
             self.status = MCPSessionStatus.ERROR
             self.error_message = str(e)
             self.ap.logger.error(f'Error in MCP session lifecycle {self.server_name}: {e}\n{traceback.format_exc()}')
-            # 即使出错也要设置ready事件，让start()方法知道初始化已完成
-            self._ready_event.set()
+            # Do NOT set _ready_event here — let _lifecycle_loop_with_retry
+            # handle retries first. It will set the event when all retries
+            # are exhausted or on success.
+            raise  # Re-raise so _lifecycle_loop_with_retry can catch it
         finally:
-            # 在同一个任务中清理所有资源
+            # Clean up all resources in the same task
             try:
                 if self.exit_stack:
                     await self.exit_stack.aclose()
+                    self.exit_stack = AsyncExitStack()
                 self.functions.clear()
                 self.session = None
             except Exception as e:
                 self.ap.logger.error(f'Error cleaning up MCP session {self.server_name}: {e}\n{traceback.format_exc()}')
+            finally:
+                await self._cleanup_box_stdio_session()
+
+    async def _lifecycle_loop_with_retry(self):
+        """Wrap _lifecycle_loop with retry and exponential backoff."""
+        for attempt in range(self._MAX_RETRIES + 1):
+            try:
+                await self._lifecycle_loop()
+                return  # Normal shutdown, don't retry
+            except Exception as e:
+                self.retry_count = attempt + 1
+                if self._shutdown_event.is_set():
+                    return  # Shutdown requested, don't retry
+                if attempt >= self._MAX_RETRIES:
+                    self.status = MCPSessionStatus.ERROR
+                    self.error_message = f'Failed after {self._MAX_RETRIES + 1} attempts: {e}'
+                    self._ready_event.set()
+                    return
+                delay = self._RETRY_DELAYS[attempt]
+                self.ap.logger.warning(
+                    f'MCP session {self.server_name} failed (attempt {attempt + 1}), retrying in {delay}s: {e}'
+                )
+                await self._cleanup_box_stdio_session()
+                # Reset status for retry
+                self.status = MCPSessionStatus.CONNECTING
+                self.error_message = None
+                self.error_phase = None
+                await asyncio.sleep(delay)
+
+    _MONITOR_POLL_INTERVAL = 5
+    _MONITOR_MAX_CONSECUTIVE_ERRORS = 3
+
+    async def _monitor_box_process_health(self):
+        await self._box_stdio_runtime.monitor_process_health()
 
     async def start(self):
         if not self.enable:
             return
 
-        # 创建后台任务来管理生命周期
-        self._lifecycle_task = asyncio.create_task(self._lifecycle_loop())
+        # Create background task for lifecycle management with retry
+        self._lifecycle_task = asyncio.create_task(self._lifecycle_loop_with_retry())
 
-        # 等待连接建立或失败（带超时）
+        # Wait for connection or failure (with timeout)
+        startup_timeout = self.box_config.startup_timeout_sec if self._uses_box_stdio() else 30.0
         try:
-            await asyncio.wait_for(self._ready_event.wait(), timeout=30.0)
+            await asyncio.wait_for(self._ready_event.wait(), timeout=startup_timeout)
         except asyncio.TimeoutError:
             self.status = MCPSessionStatus.ERROR
-            raise Exception('Connection timeout after 30 seconds')
+            raise Exception(f'Connection timeout after {startup_timeout} seconds')
 
-        # 检查是否有错误
+        # Check for errors
         if self.status == MCPSessionStatus.ERROR:
             raise Exception('Connection failed, please check URL')
 
@@ -232,9 +304,11 @@ class RuntimeMCPSession:
         return self.functions
 
     def get_runtime_info_dict(self) -> dict:
-        return {
+        info = {
             'status': self.status.value,
             'error_message': self.error_message,
+            'error_phase': self.error_phase.value if self.error_phase else None,
+            'retry_count': self.retry_count,
             'tool_count': len(self.get_tools()),
             'tools': [
                 {
@@ -244,6 +318,11 @@ class RuntimeMCPSession:
                 for tool in self.get_tools()
             ],
         }
+        if self._uses_box_stdio():
+            info['box_session_id'] = self._build_box_session_id()
+            info['box_process_id'] = self._box_stdio_runtime.process_id
+            info['box_enabled'] = True
+        return info
 
     async def shutdown(self):
         """关闭会话并清理资源"""
@@ -266,6 +345,41 @@ class RuntimeMCPSession:
             self.ap.logger.info(f'MCP session {self.server_name} shutdown complete')
         except Exception as e:
             self.ap.logger.error(f'Error shutting down MCP session {self.server_name}: {e}\n{traceback.format_exc()}')
+
+    def _uses_box_stdio(self) -> bool:
+        return self._box_stdio_runtime.uses_box_stdio()
+
+    def _build_box_session_id(self) -> str:
+        return 'mcp-shared'
+
+    def _rewrite_path(self, path: str, host_path: str | None) -> str:
+        return self._box_stdio_runtime.rewrite_path(path, host_path)
+
+    def _infer_host_path(self) -> str | None:
+        return self._box_stdio_runtime.infer_host_path()
+
+    @staticmethod
+    def _unwrap_venv_path(directory: str) -> str:
+        return BoxStdioSessionRuntime.unwrap_venv_path(directory)
+
+    def _resolve_host_path(self) -> str | None:
+        return self._box_stdio_runtime.resolve_host_path()
+
+    @staticmethod
+    def _detect_install_command(host_path: str) -> str | None:
+        return BoxStdioSessionRuntime.detect_install_command(host_path)
+
+    def _build_box_session_payload(self, session_id: str, host_path: str | None = None) -> dict:
+        return self._box_stdio_runtime.build_box_session_payload(session_id, host_path)
+
+    def _build_box_process_payload(self, host_path: str | None = None) -> dict:
+        return self._box_stdio_runtime.build_box_process_payload(host_path)
+
+    def _rewrite_venv_command(self, command: str, host_path: str) -> str:
+        return self._box_stdio_runtime.rewrite_venv_command(command, host_path)
+
+    async def _cleanup_box_stdio_session(self) -> None:
+        await self._box_stdio_runtime.cleanup_session()
 
 
 # @loader.loader_class('mcp')
@@ -332,7 +446,7 @@ class MCPLoader(loader.ToolLoader):
         Args:
             server_config: 服务器配置字典，必须包含:
                 - name: 服务器名称
-                - mode: 连接模式 (stdio/sse)
+                - mode: 连接模式 (stdio/sse/http)
                 - enable: 是否启用
                 - extra_args: 额外的配置参数 (可选)
         """
@@ -431,12 +545,13 @@ class MCPLoader(loader.ToolLoader):
         """获取所有服务器的信息"""
         info = {}
         for server_name, session in self.sessions.items():
+            tools = session.get_tools()
             info[server_name] = {
                 'name': server_name,
                 'mode': session.server_config.get('mode'),
                 'enable': session.enable,
-                'tools_count': len(session.get_tools()),
-                'tool_names': [f.name for f in session.get_tools()],
+                'tools_count': len(tools),
+                'tool_names': [f.name for f in tools],
             }
         return info
 

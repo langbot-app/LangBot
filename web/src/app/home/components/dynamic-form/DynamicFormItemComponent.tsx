@@ -1380,14 +1380,7 @@ export default function DynamicFormItemComponent({
                       field.onChange(newValue);
                     }}
                   >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                      className="w-5 h-5 text-red-500"
-                    >
-                      <path d="M7 4V2H17V4H22V6H20V21C20 21.5523 19.5523 22 19 22H5C4.44772 22 4 21.5523 4 21V6H2V4H7ZM6 6V20H18V6H6ZM9 9H11V17H9V9ZM13 9H15V17H13V9Z"></path>
-                    </svg>
+                    <Trash2 className="w-5 h-5 text-red-500" />
                   </button>
                 )}
               </div>
@@ -1438,14 +1431,7 @@ export default function DynamicFormItemComponent({
                   }}
                   title={t('common.delete')}
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                    className="w-4 h-4 text-destructive"
-                  >
-                    <path d="M7 4V2H17V4H22V6H20V21C20 21.5523 19.5523 22 19 22H5C4.44772 22 4 21.5523 4 21V6H2V4H7ZM6 6V20H18V6H6ZM9 9H11V17H9V9ZM13 9H15V17H13V9Z"></path>
-                  </svg>
+                  <Trash2 className="w-4 h-4 text-destructive" />
                 </Button>
               </CardContent>
             </Card>
@@ -1477,14 +1463,7 @@ export default function DynamicFormItemComponent({
                   document.getElementById(`file-input-${config.name}`)?.click()
                 }
               >
-                <svg
-                  className="w-4 h-4 mr-2"
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                >
-                  <path d="M11 11V5H13V11H19V13H13V19H11V13H5V11H11Z"></path>
-                </svg>
+                <Plus className="w-4 h-4 mr-2" />
                 {uploading
                   ? t('plugins.fileUpload.uploading')
                   : t('plugins.fileUpload.chooseFile')}
@@ -1530,14 +1509,7 @@ export default function DynamicFormItemComponent({
                     }}
                     title={t('common.delete')}
                   >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                      className="w-4 h-4 text-destructive"
-                    >
-                      <path d="M7 4V2H17V4H22V6H20V21C20 21.5523 19.5523 22 19 22H5C4.44772 22 4 21.5523 4 21V6H2V4H7ZM6 6V20H18V6H6ZM9 9H11V17H9V9ZM13 9H15V17H13V9Z"></path>
-                    </svg>
+                    <Trash2 className="w-4 h-4 text-destructive" />
                   </Button>
                 </CardContent>
               </Card>
@@ -1572,14 +1544,7 @@ export default function DynamicFormItemComponent({
                   ?.click()
               }
             >
-              <svg
-                className="w-4 h-4 mr-2"
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
-                <path d="M11 11V5H13V11H19V13H13V19H11V13H5V11H11Z"></path>
-              </svg>
+              <Plus className="w-4 h-4 mr-2" />
               {uploading
                 ? t('plugins.fileUpload.uploading')
                 : t('plugins.fileUpload.addFile')}

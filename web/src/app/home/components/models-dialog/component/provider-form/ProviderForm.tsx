@@ -73,10 +73,13 @@ export default function ProviderForm({
   >([]);
 
   useEffect(() => {
-    loadRequesters();
-    if (providerId) {
-      loadProvider(providerId);
+    async function init() {
+      await loadRequesters();
+      if (providerId) {
+        await loadProvider(providerId);
+      }
     }
+    init();
   }, [providerId]);
 
   async function loadRequesters() {

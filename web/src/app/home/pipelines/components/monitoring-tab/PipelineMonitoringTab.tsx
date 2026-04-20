@@ -2,7 +2,15 @@ import React, { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { ChevronRight, ChevronDown, ExternalLink } from 'lucide-react';
+import {
+  ChevronRight,
+  ChevronDown,
+  ExternalLink,
+  RefreshCw,
+  MessageCircle,
+  CheckCircle2,
+  Monitor,
+} from 'lucide-react';
 import { useMonitoringData } from '@/app/home/monitoring/hooks/useMonitoringData';
 import { MessageContentRenderer } from '@/app/home/monitoring/components/MessageContentRenderer';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
@@ -205,14 +213,7 @@ export default function PipelineMonitoringTab({
               onClick={onNavigateToMonitoring}
               className="bg-white dark:bg-[#2a2a2e] hover:bg-gray-50 dark:hover:bg-gray-800 border-gray-300 dark:border-gray-600"
             >
-              <svg
-                className="w-4 h-4 mr-2"
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
-                <path d="M10 6V8H5V19H16V14H18V20C18 20.5523 17.5523 21 17 21H4C3.44772 21 3 20.5523 3 20V7C3 6.44772 3.44772 6 4 6H10ZM21 3V11H19V6.413L11.2071 14.2071L9.79289 12.7929L17.585 5H13V3H21Z"></path>
-              </svg>
+              <ExternalLink className="w-4 h-4 mr-2" />
               {t('pipelines.monitoring.detailedLogs')}
             </Button>
           )}
@@ -222,14 +223,7 @@ export default function PipelineMonitoringTab({
             onClick={refetch}
             className="bg-white dark:bg-[#2a2a2e] hover:bg-gray-50 dark:hover:bg-gray-800 border-gray-300 dark:border-gray-600"
           >
-            <svg
-              className="w-4 h-4 mr-2"
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-            >
-              <path d="M5.46257 4.43262C7.21556 2.91688 9.5007 2 12 2C17.5228 2 22 6.47715 22 12C22 14.1361 21.3302 16.1158 20.1892 17.7406L17 12H20C20 7.58172 16.4183 4 12 4C9.84982 4 7.89777 4.84827 6.46023 6.22842L5.46257 4.43262ZM18.5374 19.5674C16.7844 21.0831 14.4993 22 12 22C6.47715 22 2 17.5228 2 12C2 9.86386 2.66979 7.88416 3.8108 6.25944L7 12H4C4 16.4183 7.58172 20 12 20C14.1502 20 16.1022 19.1517 17.5398 17.7716L18.5374 19.5674Z"></path>
-            </svg>
+            <RefreshCw className="w-4 h-4 mr-2" />
             {t('monitoring.refreshData')}
           </Button>
         </div>
@@ -431,19 +425,7 @@ export default function PipelineMonitoringTab({
             {!loading &&
               (!data || !data.messages || data.messages.length === 0) && (
                 <div className="text-center text-gray-500 dark:text-gray-400 py-16">
-                  <svg
-                    className="w-16 h-16 mx-auto mb-4 text-gray-300 dark:text-gray-600"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.5}
-                      d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                    />
-                  </svg>
+                  <MessageCircle className="w-16 h-16 mx-auto mb-4 text-gray-300 dark:text-gray-600" />
                   <p className="text-base font-medium">
                     {t('monitoring.messageList.noMessages')}
                   </p>
@@ -543,19 +525,7 @@ export default function PipelineMonitoringTab({
             {!loading &&
               (!data || !data.errors || data.errors.length === 0) && (
                 <div className="text-center text-gray-500 dark:text-gray-400 py-16">
-                  <svg
-                    className="w-16 h-16 mx-auto mb-4 text-green-300 dark:text-green-600"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.5}
-                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
+                  <CheckCircle2 className="w-16 h-16 mx-auto mb-4 text-green-300 dark:text-green-600" />
                   <p className="text-base font-medium text-green-600 dark:text-green-400">
                     {t('monitoring.errors.noErrors')}
                   </p>
@@ -638,19 +608,7 @@ export default function PipelineMonitoringTab({
             {!loading &&
               (!data || !data.llmCalls || data.llmCalls.length === 0) && (
                 <div className="text-center text-gray-500 dark:text-gray-400 py-16">
-                  <svg
-                    className="w-16 h-16 mx-auto mb-4 text-gray-300 dark:text-gray-600"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.5}
-                      d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                    />
-                  </svg>
+                  <Monitor className="w-16 h-16 mx-auto mb-4 text-gray-300 dark:text-gray-600" />
                   <p className="text-base font-medium">
                     {t('monitoring.llmCalls.noData')}
                   </p>

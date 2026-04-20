@@ -9,6 +9,7 @@ from ..platform import botmgr as im_mgr
 from ..platform.webhook_pusher import WebhookPusher
 from ..provider.session import sessionmgr as llm_session_mgr
 from ..provider.modelmgr import modelmgr as llm_model_mgr
+from ..box import service as box_service_module
 
 from langbot.pkg.provider.tools import toolmgr as llm_tool_mgr
 from ..config import manager as config_mgr
@@ -31,7 +32,7 @@ from ..api.http.service import mcp as mcp_service
 from ..api.http.service import apikey as apikey_service
 from ..api.http.service import webhook as webhook_service
 from ..api.http.service import monitoring as monitoring_service
-
+from ..api.http.service import skill as skill_service
 from ..discover import engine as discover_engine
 from ..storage import mgr as storagemgr
 from ..utils import logcache
@@ -42,6 +43,7 @@ from ..rag.service import RAGRuntimeService
 from ..vector import mgr as vectordb_mgr
 from ..telemetry import telemetry as telemetry_module
 from ..survey import manager as survey_module
+from ..skill import manager as skill_mgr
 
 
 class Application:
@@ -69,6 +71,7 @@ class Application:
 
     # TODO move to pipeline
     tool_mgr: llm_tool_mgr.ToolManager = None
+    box_service: box_service_module.BoxService = None
 
     # ======= Config manager =======
 
@@ -153,6 +156,10 @@ class Application:
 
     monitoring_service: monitoring_service.MonitoringService = None
 
+    skill_service: skill_service.SkillService = None
+
+    skill_mgr: skill_mgr.SkillManager = None
+
     def __init__(self):
         pass
 
@@ -231,7 +238,10 @@ class Application:
             self.logger.debug(f'Traceback: {traceback.format_exc()}')
 
     def dispose(self):
-        self.plugin_connector.dispose()
+        if self.plugin_connector is not None:
+            self.plugin_connector.dispose()
+        if self.box_service is not None:
+            self.box_service.dispose()
 
     async def print_web_access_info(self):
         """Print access webui tips"""

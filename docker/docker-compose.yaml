@@ -18,11 +18,25 @@ services:
     networks:
       - langbot_network
 
+  langbot_box:
+    image: rockchin/langbot:latest
+    container_name: langbot_box
+    volumes:
+      - ./data/box:/workspaces
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: on-failure
+    environment:
+      - TZ=Asia/Shanghai
+    command: ["uv", "run", "--no-sync", "-m", "langbot_plugin.box", "--mode", "ws"]
+    networks:
+      - langbot_network
+
   langbot:
     image: rockchin/langbot:latest
     container_name: langbot
     volumes:
       - ./data:/app/data
+      - ./data/box:/workspaces
     restart: on-failure
     environment:
       - TZ=Asia/Shanghai

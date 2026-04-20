@@ -104,6 +104,83 @@ stages:
           field: __system.is_wizard
           operator: neq
           value: true
+      - name: box-session-id-template
+        label:
+          en_US: Sandbox Scope
+          zh_Hans: 沙箱作用域
+          zh_Hant: 沙箱作用域
+          ja_JP: サンドボックススコープ
+          vi_VN: Phạm vi Sandbox
+          th_TH: ขอบเขต Sandbox
+          es_ES: Alcance del Sandbox
+          ru_RU: Область песочницы
+        description:
+          en_US: Determines how sandbox environments are shared across messages.
+          zh_Hans: 决定沙箱环境在不同消息间的共享方式。
+          zh_Hant: 決定沙箱環境在不同訊息間的共享方式。
+          ja_JP: メッセージ間でサンドボックス環境を共有する方法を決定します。
+          vi_VN: Xác định cách chia sẻ môi trường sandbox giữa các tin nhắn.
+          th_TH: กำหนดวิธีแชร์สภาพแวดล้อม Sandbox ระหว่างข้อความ
+          es_ES: Determina cómo se comparten los entornos sandbox entre mensajes.
+          ru_RU: Определяет, как песочницы используются совместно между сообщениями.
+        type: select
+        required: false
+        default: "{launcher_type}_{launcher_id}"
+        options:
+          - name: "{global}"
+            label:
+              en_US: Global (shared by all)
+              zh_Hans: 全局（所有人共享）
+              zh_Hant: 全域（所有人共用）
+              ja_JP: グローバル（全員共有）
+              vi_VN: Toàn cục (chia sẻ cho tất cả)
+              th_TH: ทั่วไป (แชร์ทั้งหมด)
+              es_ES: Global (compartido por todos)
+              ru_RU: Глобальный (общий для всех)
+          - name: "{launcher_type}_{launcher_id}"
+            label:
+              en_US: Per chat (Recommended)
+              zh_Hans: 每个会话（推荐）
+              zh_Hant: 每個會話（推薦）
+              ja_JP: チャットごと（推奨）
+              vi_VN: Mỗi cuộc trò chuyện (Khuyến nghị)
+              th_TH: ต่อแชท (แนะนำ)
+              es_ES: Por chat (Recomendado)
+              ru_RU: По чату (Рекомендуется)
+          - name: "{launcher_type}_{launcher_id}_{sender_id}"
+            label:
+              en_US: Per user in chat
+              zh_Hans: 会话中每个用户
+              zh_Hant: 會話中每個用戶
+              ja_JP: チャット内のユーザーごと
+              vi_VN: Mỗi người dùng trong cuộc trò chuyện
+              th_TH: ต่อผู้ใช้ในแชท
+              es_ES: Por usuario en chat
+              ru_RU: По пользователю в чате
+          - name: "{launcher_type}_{launcher_id}_{conversation_id}"
+            label:
+              en_US: Per conversation context
+              zh_Hans: 每个对话上下文
+              zh_Hant: 每個對話上下文
+              ja_JP: 会話コンテキストごと
+              vi_VN: Mỗi ngữ cảnh hội thoại
+              th_TH: ต่อบริบทการสนทนา
+              es_ES: Por contexto de conversación
+              ru_RU: По контексту разговора
+          - name: "{query_id}"
+            label:
+              en_US: Per message (isolated)
+              zh_Hans: 每条消息（完全隔离）
+              zh_Hant: 每條訊息（完全隔離）
+              ja_JP: メッセージごと（隔離）
+              vi_VN: Mỗi tin nhắn (cách ly)
+              th_TH: ต่อข้อความ (แยกส่วน)
+              es_ES: Por mensaje (aislado)
+              ru_RU: По сообщению (изолированно)
+        show_if:
+          field: __system.is_wizard
+          operator: neq
+          value: true
   - name: dify-service-api
     label:
       en_US: Dify Service API

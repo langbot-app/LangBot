@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import abc
 import typing
+from typing import TYPE_CHECKING
 
 from langbot_plugin.api.entities.events import pipeline_query
-
-from ...core import app
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
+
+if TYPE_CHECKING:
+    from ...core import app
 
 
 preregistered_loaders: list[typing.Type[ToolLoader]] = []

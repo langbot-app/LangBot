@@ -2,7 +2,15 @@ import React, { Suspense, useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { ChevronRight, ChevronDown, ExternalLink } from 'lucide-react';
+import {
+  ChevronRight,
+  ChevronDown,
+  ExternalLink,
+  RefreshCw,
+  MessageSquare,
+  Sparkles,
+  CheckCircle2,
+} from 'lucide-react';
 import OverviewCards from './components/overview-cards/OverviewCards';
 import MonitoringFilters from './components/filters/MonitoringFilters';
 import { ExportDropdown } from './components/ExportDropdown';
@@ -68,6 +76,7 @@ function MonitoringPageContent() {
   const { filterState, setSelectedBots, setSelectedPipelines, setTimeRange } =
     useMonitoringFilters();
   const { data, loading, refetch } = useMonitoringData(filterState);
+  const [statusRefreshKey, setStatusRefreshKey] = useState(0);
 
   // Counter to force feedbackTimeRange recomputation on manual refresh
   const [feedbackRefreshKey, setFeedbackRefreshKey] = useState(0);
@@ -135,6 +144,7 @@ function MonitoringPageContent() {
   const handleRefresh = useCallback(() => {
     refetch();
     setFeedbackRefreshKey((k) => k + 1);
+    setStatusRefreshKey((k) => k + 1);
   }, [refetch]);
 
   const [expandedMessageId, setExpandedMessageId] = useState<string | null>(
@@ -278,14 +288,7 @@ function MonitoringPageContent() {
                 onClick={handleRefresh}
                 className="shadow-sm flex-shrink-0"
               >
-                <svg
-                  className="w-4 h-4 mr-2"
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                >
-                  <path d="M5.46257 4.43262C7.21556 2.91688 9.5007 2 12 2C17.5228 2 22 6.47715 22 12C22 14.1361 21.3302 16.1158 20.1892 17.7406L17 12H20C20 7.58172 16.4183 4 12 4C9.84982 4 7.89777 4.84827 6.46023 6.22842L5.46257 4.43262ZM18.5374 19.5674C16.7844 21.0831 14.4993 22 12 22C6.47715 22 2 17.5228 2 12C2 9.86386 2.66979 7.88416 3.8108 6.25944L7 12H4C4 16.4183 7.58172 20 12 20C14.1502 20 16.1022 19.1517 17.5398 17.7716L18.5374 19.5674Z"></path>
-                </svg>
+                <RefreshCw className="w-4 h-4 mr-2" />
                 {t('monitoring.refreshData')}
               </Button>
             </div>
@@ -301,6 +304,7 @@ function MonitoringPageContent() {
           messages={data?.messages || []}
           llmCalls={data?.llmCalls || []}
           loading={loading}
+          refreshKey={statusRefreshKey}
         />
 
         {/* Tabs Section */}
@@ -452,14 +456,7 @@ function MonitoringPageContent() {
                 {!loading &&
                   (!data || !data.messages || data.messages.length === 0) && (
                     <div className="flex flex-col items-center justify-center text-muted-foreground py-16 gap-2">
-                      <svg
-                        className="h-[3rem] w-[3rem]"
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                      >
-                        <path d="M6.45455 19L2 22.5V4C2 3.44772 2.44772 3 3 3H21C21.5523 3 22 3.44772 22 4V18C22 18.5523 21.5523 19 21 19H6.45455ZM4 18.3851L5.76282 17H20V5H4V18.3851Z"></path>
-                      </svg>
+                      <MessageSquare className="h-[3rem] w-[3rem]" />
                       <div className="text-sm">
                         {t('monitoring.messageList.noMessages')}
                       </div>
@@ -665,14 +662,7 @@ function MonitoringPageContent() {
                     !data.modelCalls ||
                     data.modelCalls.length === 0) && (
                     <div className="flex flex-col items-center justify-center text-muted-foreground py-16 gap-2">
-                      <svg
-                        className="h-[3rem] w-[3rem]"
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                      >
-                        <path d="M10.6144 17.7956C10.277 18.5682 9.20776 18.5682 8.8704 17.7956L7.99275 15.7854C7.21171 13.9966 5.80589 12.5726 4.0523 11.7942L1.63658 10.7219C.868536 10.381.868537 9.26368 1.63658 8.92276L3.97685 7.88394C5.77553 7.08552 7.20657 5.60881 7.97427 3.75892L8.8633 1.61673C9.19319.821767 10.2916.821765 10.6215 1.61673L11.5105 3.75894C12.2782 5.60881 13.7092 7.08552 15.5079 7.88394L17.8482 8.92276C18.6162 9.26368 18.6162 10.381 17.8482 10.7219L15.4325 11.7942C13.6789 12.5726 12.2731 13.9966 11.492 15.7854L10.6144 17.7956ZM19.4014 22.6899 19.6482 22.1242C20.0882 21.1156 20.8807 20.3125 21.8695 19.8732L22.6299 19.5353C23.0412 19.3526 23.0412 18.7549 22.6299 18.5722L21.9121 18.2532C20.8978 17.8026 20.0911 16.9698 19.6586 15.9269L19.4052 15.3156C19.2285 14.8896 18.6395 14.8896 18.4628 15.3156L18.2094 15.9269C17.777 16.9698 16.9703 17.8026 15.956 18.2532L15.2381 18.5722C14.8269 18.7549 14.8269 19.3526 15.2381 19.5353L15.9985 19.8732C16.9874 20.3125 17.7798 21.1156 18.2198 22.1242L18.4667 22.6899C18.6473 23.104 19.2207 23.104 19.4014 22.6899Z"></path>
-                      </svg>
+                      <Sparkles className="h-[3rem] w-[3rem]" />
                       <div className="text-sm">
                         {t('monitoring.modelCalls.noData')}
                       </div>
@@ -867,14 +857,7 @@ function MonitoringPageContent() {
                 {!loading &&
                   (!data || !data.errors || data.errors.length === 0) && (
                     <div className="flex flex-col items-center justify-center text-muted-foreground py-16 gap-2">
-                      <svg
-                        className="h-[3rem] w-[3rem] text-green-500 dark:text-green-600"
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                      >
-                        <path d="M12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22ZM12 20C16.4183 20 20 16.4183 20 12C20 7.58172 16.4183 4 12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20ZM11.0026 16L6.75999 11.7574L8.17421 10.3431L11.0026 13.1716L16.6595 7.51472L18.0737 8.92893L11.0026 16Z"></path>
-                      </svg>
+                      <CheckCircle2 className="h-[3rem] w-[3rem] text-green-500 dark:text-green-600" />
                       <div className="text-sm text-green-600 dark:text-green-400">
                         {t('monitoring.errors.noErrors')}
                       </div>

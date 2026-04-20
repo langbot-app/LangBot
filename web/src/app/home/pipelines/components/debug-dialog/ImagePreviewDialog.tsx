@@ -1,4 +1,5 @@
 import React from 'react';
+import { X } from 'lucide-react';
 
 interface ImagePreviewDialogProps {
   open: boolean;
@@ -28,19 +29,7 @@ export default function ImagePreviewDialog({
           onClick={onClose}
           className="self-end w-9 h-9 rounded-full bg-white hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-100 shadow-lg transition-all hover:scale-105 flex items-center justify-center"
         >
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
+          <X className="w-4 h-4" />
         </button>
 
         {/* 图片 */}

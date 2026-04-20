@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/item';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { systemInfo } from '@/app/infra/http';
-import { Loader2, ExternalLink, KeyRound } from 'lucide-react';
+import { Loader2, ExternalLink, KeyRound, Layers } from 'lucide-react';
 import PasswordChangeDialog from '../password-change-dialog/PasswordChangeDialog';
 
 interface AccountSettingsDialogProps {
@@ -136,34 +136,7 @@ export default function AccountSettingsDialog({
               {/* Space Account Item */}
               <Item size="sm" variant="muted" className="rounded-lg">
                 <ItemMedia variant="icon">
-                  <svg
-                    className="h-4 w-4"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      d="M12 2L2 7L12 12L22 7L12 2Z"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M2 17L12 22L22 17"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M2 12L12 17L22 12"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
+                  <Layers className="h-4 w-4" />
                 </ItemMedia>
                 <ItemContent>
                   <ItemTitle>{t('account.spaceStatus')}</ItemTitle>
