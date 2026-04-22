@@ -70,13 +70,6 @@ jobs:
           lbp build -o dist
           ls -lah dist
 
-      - name: Upload plugin package
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.plugin }}-package
-          path: plugins/${{ matrix.plugin }}/dist/*.lbpkg
-          if-no-files-found: error
-
       - name: Upload plugin package to GitHub Release
         if: ${{ github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.upload_to_release) }}
         env:
