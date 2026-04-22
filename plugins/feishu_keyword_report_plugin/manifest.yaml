@@ -71,6 +71,16 @@ spec:
       type: string
       required: false
       default: ""
+    - name: sheet_auto_discovery_patterns_json
+      label:
+        en_US: Sheet Auto Discovery Patterns
+        zh_Hans: 工作表自动发现规则
+      description:
+        en_US: JSON array of regex patterns for line sheet discovery, e.g. ["(S18|S006)-.+线"].
+        zh_Hans: 自动发现日报工作表的正则数组，例如 ["(S18|S006)-.+线"]。
+      type: string
+      required: false
+      default: ""
     - name: sheets_range
       label:
         en_US: Sheets Range
@@ -190,6 +200,26 @@ spec:
       type: string
       required: false
       default: ""
+    - name: spec_limits_json
+      label:
+        en_US: Extra Spec Limits JSON
+        zh_Hans: 额外规格上下限 JSON
+      description:
+        en_US: Optional extra rules merged with spec_registry_json; same format as spec_registry_json.
+        zh_Hans: 可选补充规格规则，会与 spec_registry_json 合并；格式相同。
+      type: string
+      required: false
+      default: ""
+    - name: report_metric_aliases_json
+      label:
+        en_US: Report Metric Aliases JSON
+        zh_Hans: 日报指标列别名 JSON
+      description:
+        en_US: Optional aliases by default/products/lines, e.g. {"products":{"S20":{"烧结压实":["熟化压实"]}}}.
+        zh_Hans: 可按 default/products/lines 配置指标列别名，例如 {"products":{"S20":{"烧结压实":["熟化压实"]}}}。
+      type: string
+      required: false
+      default: ""
 
     - name: bitable_app_token
       label:
@@ -219,6 +249,16 @@ spec:
       type: string
       required: false
       default: "摸料"
+    - name: touch_material_segments
+      label:
+        en_US: Touch Material Segments
+        zh_Hans: 摸料段位列表
+      description:
+        en_US: Comma separated segment codes accepted by touch-material query.
+        zh_Hans: 逗号分隔允许查询的摸料段位，例如 A1,A2,B1,B2,C1,C2。
+      type: string
+      required: false
+      default: "A1,A2,B1,B2"
 
     - name: sintering_table_ids
       label:

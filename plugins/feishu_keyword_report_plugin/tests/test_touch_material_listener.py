@@ -99,6 +99,25 @@ class TouchMaterialListenerTest(unittest.IsolatedAsyncioTestCase):
         listener._dispatch_report.assert_not_called()  # type: ignore[attr-defined]
         self.assertEqual(self._extract_reply_text(ctx.event), "touch-ok")
 
+    async def test_touch_command_accepts_configured_segment(self) -> None:
+        listener = self._build_listener()
+        listener.plugin = DummyPlugin(
+            {
+                "keyword_commands": "日报",
+                "touch_material_commands": "摸料",
+                "touch_material_segments": "A1,C1",
+                "reply_in_group": True,
+                "reply_in_person": True,
+            }
+        )
+        listener._run_touch_material_report = AsyncMock(return_value="touch-c1")  # type: ignore[method-assign]
+
+        ctx = DummyEventContext(DummyEvent("摸料 C1"))
+        await listener._handle_command(ctx)
+
+        listener._run_touch_material_report.assert_awaited_once_with(segment="C1")  # type: ignore[attr-defined]
+        self.assertEqual(self._extract_reply_text(ctx.event), "touch-c1")
+
     async def test_report_command_keeps_original_flow(self) -> None:
         listener = self._build_listener()
         listener._run_touch_material_report = AsyncMock(return_value="touch-ok")  # type: ignore[method-assign]
@@ -276,6 +295,21 @@ class TouchMaterialListenerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(kwargs["target_sheet_names"], ["S006-B线", "S006-A线"])
         self.assertEqual(kwargs["prefer_line"], "A")
 
+    async def test_sheet_auto_discovery_uses_configured_patterns(self) -> None:
+        listener = self._build_listener()
+        listener.plugin = DummyPlugin(
+            {
+                "sheet_auto_discovery_patterns_json": '["S20-.+产线"]',
+            }
+        )
+        listener._sheets_source.list_sheet_titles = AsyncMock(  # type: ignore[method-assign]
+            return_value=["S20-C产线", "S18-A线", "说明"]
+        )
+
+        out = await listener._resolve_target_sheets({"Authorization": "Bearer test"}, "sp_token", [])
+
+        self.assertEqual(out, ["S20-C产线"])
+
     async def test_sheet_snapshot_uses_configurable_row_settings(self) -> None:
         listener = self._build_listener()
         listener.plugin = DummyPlugin(
@@ -394,6 +428,43 @@ class TouchMaterialListenerTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("A2-1：2.345", text)
         self.assertIn("A2-2：2.337", text)
         self.assertNotIn("S18-SC-DA2603-005-A2-1-60min", text)
+
+    async def test_touch_material_report_explains_missing_steps(self) -> None:
+        listener = self._build_listener()
+        listener.plugin = DummyPlugin(
+            {
+                "bitable_app_token": "app_token",
+                "batch_field": "批次号",
+                "route_field": "路由",
+                "message_time_field": "消息时间",
+                "scan_limit": "1000",
+                "sheets_spreadsheet_token": "sp_token",
+            }
+        )
+        listener._build_auth_headers = AsyncMock(return_value={"Authorization": "Bearer test"})  # type: ignore[method-assign]
+        listener._bitable_source.query_latest_kiln_batch_by_segment = AsyncMock(  # type: ignore[method-assign]
+            return_value={"batch_raw": "DA2603-005", "batch_core": "DA2603-005", "slots": ["1"], "time_sort": 1.0}
+        )
+        listener._bitable_source.query_sintering_detail_by_batch_segment = AsyncMock(  # type: ignore[method-assign]
+            return_value={"details": [], "avg": None}
+        )
+        listener._sheets_source.list_sheet_titles = AsyncMock(return_value=["S18-A线"])  # type: ignore[method-assign]
+        listener._sheets_source.query_recipe_by_batch = AsyncMock(  # type: ignore[method-assign]
+            return_value={
+                "铁磷比": "--",
+                "锂量": "--",
+                "酸量": "--",
+                "钛量": "--",
+                "糖量": "--",
+                "peg量": "--",
+                "窑炉温度": "--",
+            }
+        )
+
+        text = await listener._run_touch_material_report("A2")
+
+        self.assertIn("缺少烧结压实数据", text)
+        self.assertIn("配方数据", text)
 
 
 if __name__ == "__main__":

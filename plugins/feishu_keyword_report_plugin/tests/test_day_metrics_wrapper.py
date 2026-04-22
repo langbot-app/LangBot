@@ -157,6 +157,46 @@ class DayMetricsWrapperTest(unittest.TestCase):
         self.assertNotIn("18.000", out["text"])
         self.assertNotIn("180000", out["text"])
 
+    def test_build_report_supports_metric_aliases_by_product(self) -> None:
+        matrix = self._sample_matrix()
+        matrix[0][3] = "熟化压实"
+
+        out = day_metrics.build_standard_report_from_matrices(
+            sheet_matrices={"S18-A线": matrix},
+            selected_sheets=["S18-A线"],
+            date_arg="2026-03-03",
+            date_mode="global",
+            lookback_days=7,
+            trend_days=3,
+            stale_threshold_process=2,
+            stale_threshold_product=3,
+            stale_threshold_electrochem=5,
+            report_show_placeholder_sections=False,
+            spec_registry_json="",
+            metric_aliases_json='{"products":{"S18":{"烧结压实":["熟化压实"]}}}',
+        )
+
+        process_metrics = out["line_reports"][0]["metrics"]["制程"]
+        self.assertAlmostEqual(process_metrics["烧结压实"]["min"], 2.31, places=3)
+
+    def test_build_report_uses_spec_limits_from_config(self) -> None:
+        out = day_metrics.build_standard_report_from_matrices(
+            sheet_matrices={"S18-A线": self._sample_matrix()},
+            selected_sheets=["S18-A线"],
+            date_arg="2026-03-03",
+            date_mode="global",
+            lookback_days=7,
+            trend_days=3,
+            stale_threshold_process=2,
+            stale_threshold_product=3,
+            stale_threshold_electrochem=5,
+            report_show_placeholder_sections=False,
+            spec_registry_json='{"rules":[{"model":"S18","metric":"成品压实","spec":">=2.50"}]}',
+        )
+
+        product_metrics = out["line_reports"][0]["metrics"]["成品"]
+        self.assertTrue(product_metrics["成品压实"]["判异"]["异常"])
+
     def test_build_report_should_skip_sheet_if_feed_date_stale_for_six_days(self) -> None:
         today = dt.date.today()
         recent_matrix = self._sample_matrix_for_date(today)

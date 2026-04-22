@@ -115,6 +115,7 @@
 - `data_source_mode`：`auto|sheets|bitable`
 - `sheets_spreadsheet_token`
 - `sheets_sheet_names`：可选补充工作表列表；未配置也会自动扫描并纳入 `S18-*线` / `S006-*线`
+- `sheet_auto_discovery_patterns_json`：日报工作表自动发现正则数组，例如 `["(S18|S006)-.+线","S20-.+产线"]`
 - `sheets_range`
 - `sheet_snapshot_header_rows`（截图固定保留前几行，默认 `3`）
 - `sheet_snapshot_tail_nonempty_rows`（截图保留尾部有效行数，默认 `20`）
@@ -125,16 +126,20 @@
 - `report_show_product_trend`
 - `stale_threshold_process` / `stale_threshold_product` / `stale_threshold_electrochem`
 - `spec_registry_json`
+- `spec_limits_json`：追加规格上下限规则，格式同 `spec_registry_json`
+- `report_metric_aliases_json`：日报指标列别名，可按 `default`、`products`、`lines` 配置
 
 ### 摸料配置（新增）
 
 - `touch_material_commands`（默认 `摸料`）
+- `touch_material_segments`（默认 `A1,A2,B1,B2`）
 - `kiln_batch_table_ids`
 - `kiln_batch_table_names`（默认 `窑炉批次进窑出窑表`）
 - 配方表检索默认复用日报的自动选表逻辑，会自动纳入新增的 `S18-*线` / `S006-*线`
 - `touch_recipe_field_aliases_json`
 - `touch_material_infer_rules_json`
 - `touch_material_no_data_text`（默认 `未查到当前出窑批次或烧结压实数据。`）
+- 找不到当前出窑批次、烧结压实或配方数据时，回复会追加缺失环节提示。
 
 ### Bitable 配置（日报回退与摸料共用）
 

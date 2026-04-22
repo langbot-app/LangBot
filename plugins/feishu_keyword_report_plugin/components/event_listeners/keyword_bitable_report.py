@@ -177,9 +177,39 @@ class KeywordBitableReportListener(EventListener):
             ordered.append(normalized)
         return ordered
 
-    @staticmethod
-    def _is_auto_target_sheet_name(sheet_name: str) -> bool:
-        return bool(re.fullmatch(r"(S18|S006)-.+线", str(sheet_name).strip(), flags=re.IGNORECASE))
+    def _resolve_sheet_auto_discovery_patterns(self) -> list[str]:
+        raw = self.plugin.get_config().get("sheet_auto_discovery_patterns_json", None)
+        patterns: list[str] = []
+        if isinstance(raw, list):
+            patterns = [str(item).strip() for item in raw if str(item).strip()]
+        elif isinstance(raw, str) and raw.strip():
+            text = raw.strip()
+            try:
+                loaded = json.loads(text)
+            except Exception:
+                loaded = None
+            if isinstance(loaded, list):
+                patterns = [str(item).strip() for item in loaded if str(item).strip()]
+            elif isinstance(loaded, dict):
+                values = loaded.get("patterns", [])
+                if isinstance(values, list):
+                    patterns = [str(item).strip() for item in values if str(item).strip()]
+            else:
+                patterns = [item for item in self._split_csv(text) if item]
+
+        return patterns or [r"(S18|S006)-.+线"]
+
+    def _is_auto_target_sheet_name(self, sheet_name: str) -> bool:
+        title = str(sheet_name).strip()
+        if not title:
+            return False
+        for pattern in self._resolve_sheet_auto_discovery_patterns():
+            try:
+                if re.fullmatch(pattern, title, flags=re.IGNORECASE):
+                    return True
+            except re.error:
+                continue
+        return False
 
     async def _resolve_target_sheets(
         self, headers: dict[str, str], spreadsheet_token: str, command_sheets: list[str]
@@ -203,6 +233,15 @@ class KeywordBitableReportListener(EventListener):
         match = re.search(r"[A-Z]", str(segment).strip().upper())
         return str(match.group(0)) if match else ""
 
+    def _resolve_touch_segments(self) -> set[str]:
+        configured = self.plugin.get_config().get("touch_material_segments", "")
+        if isinstance(configured, list):
+            raw_segments = [str(item).strip() for item in configured]
+        else:
+            raw_segments = self._split_csv(str(configured or ""))
+        segments = {item.upper() for item in raw_segments if item.strip()}
+        return segments or {"A1", "A2", "B1", "B2"}
+
     def _resolve_target_sheet_names_for_error(self, command_sheets: list[str]) -> list[str]:
         if command_sheets:
             return self._dedupe_sheet_names(command_sheets)
@@ -213,6 +252,28 @@ class KeywordBitableReportListener(EventListener):
 
     def _get_sheet_snapshot_tail_nonempty_rows(self) -> int:
         return self._get_int_config("sheet_snapshot_tail_nonempty_rows", 20, 0, 200)
+
+    def _resolve_report_metric_aliases_json(self) -> str:
+        return self._get_str_config("report_metric_aliases_json", "")
+
+    def _resolve_spec_registry_json(self) -> str:
+        base = self._get_str_config("spec_registry_json", "")
+        extra = self._get_str_config("spec_limits_json", "")
+        if not base:
+            return extra
+        if not extra:
+            return base
+
+        merged_rules: list[Any] = []
+        for raw in (base, extra):
+            try:
+                payload = json.loads(raw)
+            except Exception:
+                continue
+            rules = payload.get("rules") if isinstance(payload, dict) else payload
+            if isinstance(rules, list):
+                merged_rules.extend(rules)
+        return json.dumps({"rules": merged_rules}, ensure_ascii=False) if merged_rules else base
 
     def _resolve_touch_recipe_field_aliases(self) -> dict[str, list[str]]:
         defaults = _default_touch_recipe_field_aliases()
@@ -559,7 +620,8 @@ class KeywordBitableReportListener(EventListener):
             stale_threshold_electrochem=self._get_int_config("stale_threshold_electrochem", 5, 0, 30),
             report_show_placeholder_sections=self._get_bool_config("report_show_placeholder_sections", False),
             show_spec_attention=self._get_bool_config("report_show_spec_attention", True),
-            spec_registry_json=self._get_str_config("spec_registry_json", ""),
+            spec_registry_json=self._resolve_spec_registry_json(),
+            metric_aliases_json=self._resolve_report_metric_aliases_json(),
             auto_fix_quality=False,
         )
         text = str(report.get("text", "")).strip()
@@ -657,6 +719,18 @@ class KeywordBitableReportListener(EventListener):
         value = str(recipe.get(field, "")).strip()
         return value or "--"
 
+    @staticmethod
+    def _is_recipe_missing(recipe: dict[str, str]) -> bool:
+        recipe_fields = ("铁磷比", "锂量", "酸量", "钛量", "糖量", "peg量", "窑炉温度")
+        values = [str(recipe.get(field, "")).strip() for field in recipe_fields]
+        return not any(value and value != "--" for value in values)
+
+    @staticmethod
+    def _append_touch_missing_steps(text: str, missing_steps: list[str]) -> str:
+        if not missing_steps:
+            return text
+        return f"{text}\n提示：缺少{'、'.join(missing_steps)}。"
+
     def _infer_material_property(self, avg_compaction: float | None) -> str:
         if avg_compaction is None:
             return ""
@@ -715,13 +789,13 @@ class KeywordBitableReportListener(EventListener):
             scan_limit=scan_limit,
         )
         if kiln_info is None:
-            return self._resolve_touch_no_data_text()
+            return self._append_touch_missing_steps(self._resolve_touch_no_data_text(), ["当前出窑批次"])
 
         batch_raw = str(kiln_info.get("batch_raw", "")).strip()
         batch_core = str(kiln_info.get("batch_core", "")).strip()
         batch_display = batch_raw or batch_core
         if not batch_display:
-            return self._resolve_touch_no_data_text()
+            return self._append_touch_missing_steps(self._resolve_touch_no_data_text(), ["当前出窑批次"])
 
         slots_raw = kiln_info.get("slots", [])
         slots: list[str] = []
@@ -754,6 +828,9 @@ class KeywordBitableReportListener(EventListener):
         avg_raw = sintering.get("avg")
         if isinstance(avg_raw, (int, float)):
             avg_compaction = float(avg_raw)
+        missing_steps: list[str] = []
+        if not detail_lines:
+            missing_steps.append("烧结压实数据")
 
         recipe = {
             "铁磷比": "--",
@@ -765,9 +842,12 @@ class KeywordBitableReportListener(EventListener):
             "窑炉温度": "--",
         }
         spreadsheet_token = self._get_str_config("sheets_spreadsheet_token", "")
-        if spreadsheet_token:
+        if not spreadsheet_token:
+            missing_steps.append("配方表配置")
+        else:
             try:
                 recipe_target_sheets = await self._resolve_target_sheets(headers, spreadsheet_token, [])
+                recipe_target_empty = not recipe_target_sheets
                 recipe = await self._sheets_source.query_recipe_by_batch(
                     spreadsheet_token=spreadsheet_token,
                     headers=headers,
@@ -779,8 +859,10 @@ class KeywordBitableReportListener(EventListener):
                     field_aliases=self._resolve_touch_recipe_field_aliases(),
                     placeholder="--",
                 )
-            except Exception:
-                pass
+                if self._is_recipe_missing(recipe):
+                    missing_steps.append("配方工作表" if recipe_target_empty else "配方数据")
+            except Exception as exc:
+                missing_steps.append(f"配方数据（{exc}）")
 
         recipe_pack = "+".join(
             [
@@ -797,8 +879,8 @@ class KeywordBitableReportListener(EventListener):
         main_line = f"{batch_display}（{recipe_pack}）{segment}-{slot_list_text}-{kiln_temperature}{material_text}"
 
         if detail_lines:
-            return "\n".join([main_line, "烧结压实", *detail_lines])
-        return "\n".join([main_line, "烧结压实未出"])
+            return self._append_touch_missing_steps("\n".join([main_line, "烧结压实", *detail_lines]), missing_steps)
+        return self._append_touch_missing_steps("\n".join([main_line, "烧结压实未出"]), missing_steps)
 
     # ===== Entry =====
 
@@ -814,7 +896,11 @@ class KeywordBitableReportListener(EventListener):
         if (in_group and not allow_group) or (in_person and not allow_person):
             return
 
-        touch_parse = parse_touch_material_command(plain_text, self._resolve_touch_material_commands())
+        touch_parse = parse_touch_material_command(
+            plain_text,
+            self._resolve_touch_material_commands(),
+            self._resolve_touch_segments(),
+        )
         if touch_parse.triggered:
             event_ctx.prevent_default()
             event_ctx.prevent_postorder()

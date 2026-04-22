@@ -1184,6 +1184,104 @@ def _trend_for_cols(
     }
 
 
+DEFAULT_METRIC_ALIASES: dict[str, list[str]] = {
+    "烧结压实": ["烧结压实"],
+    "粉碎压实": ["粉碎压实"],
+    "成品压实": ["成品压实"],
+    "粉阻(粉末电阻)": ["粉末电阻"],
+    "残碱(Li+)": ["Li+含量"],
+    "碳含量": ["碳含量"],
+    "比表(麦克比表)": ["麦克比表"],
+    "0.1C充电": ["0.1C充"],
+    "0.1C放电": ["0.1C放"],
+    "首效": ["0.1C首效"],
+    "平台效率": ["3.2V容量占比", "3.2V平台效率", "2.95V容量占比"],
+}
+
+
+def _coerce_alias_list(raw: Any) -> list[str]:
+    if isinstance(raw, str):
+        return [item.strip() for item in re.split(r"[,，、;\n；]+", raw) if item.strip()]
+    if isinstance(raw, list):
+        return [str(item).strip() for item in raw if str(item).strip()]
+    return []
+
+
+def _merge_metric_aliases(base: dict[str, list[str]], raw_mapping: Any) -> dict[str, list[str]]:
+    if not isinstance(raw_mapping, dict):
+        return base
+    merged = {key: list(value) for key, value in base.items()}
+    for metric_key, raw_aliases in raw_mapping.items():
+        key = str(metric_key).strip()
+        if not key:
+            continue
+        alias_list = _coerce_alias_list(raw_aliases)
+        if not alias_list:
+            continue
+        current = merged.get(key, [])
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for alias in alias_list + current:
+            if alias in seen:
+                continue
+            seen.add(alias)
+            ordered.append(alias)
+        merged[key] = ordered
+    return merged
+
+
+def resolve_metric_aliases(
+    metric_aliases_json: str = "",
+    model: str = "",
+    line_label: str = "",
+) -> dict[str, list[str]]:
+    aliases = {key: list(value) for key, value in DEFAULT_METRIC_ALIASES.items()}
+    raw = (metric_aliases_json or "").strip()
+    if not raw:
+        return aliases
+    try:
+        payload = json.loads(raw)
+    except Exception:
+        return aliases
+    if not isinstance(payload, dict):
+        return aliases
+
+    aliases = _merge_metric_aliases(aliases, payload.get("default", {}))
+    aliases = _merge_metric_aliases(aliases, payload.get("metrics", {}))
+
+    direct_metric_keys = {key for key in DEFAULT_METRIC_ALIASES if key in payload}
+    if direct_metric_keys:
+        aliases = _merge_metric_aliases(aliases, {key: payload[key] for key in direct_metric_keys})
+
+    products = payload.get("products", payload.get("models", {}))
+    if isinstance(products, dict):
+        aliases = _merge_metric_aliases(aliases, products.get(model, {}))
+
+    lines = payload.get("lines", {})
+    if isinstance(lines, dict):
+        aliases = _merge_metric_aliases(aliases, lines.get(line_label, {}))
+
+    return aliases
+
+
+def _metric_cols(
+    df: pd.DataFrame,
+    aliases: dict[str, list[str]],
+    metric_key: str,
+    exclude_aliases: list[str] | None = None,
+) -> list[str]:
+    tokens = aliases.get(metric_key) or DEFAULT_METRIC_ALIASES.get(metric_key, [metric_key])
+    excludes = exclude_aliases or []
+    cols: list[str] = []
+    for col in df.columns:
+        if not any(_col_contains(col, token) for token in tokens):
+            continue
+        if any(_col_contains(col, token) for token in excludes):
+            continue
+        cols.append(col)
+    return cols
+
+
 def extract_metrics(
     df: pd.DataFrame,
     report_date: dt.date,
@@ -1195,6 +1293,7 @@ def extract_metrics(
     stale_thresholds: Optional[StaleThresholdConfig] = None,
     spec_registry: Optional[list[SpecRule]] = None,
     spec_health: Optional[SpecHealthConfig] = None,
+    metric_aliases: Optional[dict[str, list[str]]] = None,
 ) -> dict[str, Any]:
     if "投料日期" in df.columns:
         day = df[df["投料日期"] == report_date].copy()
@@ -1207,28 +1306,23 @@ def extract_metrics(
     stale_cfg = stale_thresholds or StaleThresholdConfig()
     health_cfg = spec_health or SpecHealthConfig()
     registry_rules = spec_registry or []
+    aliases = metric_aliases or DEFAULT_METRIC_ALIASES
 
     # 注意：很多表会出现“均值未填，但B1-1/B1-2/B1-3已填”的情况，因此这里不只取“均值”
-    sinter_cols = [c for c in df.columns if "烧结压实" in c]
-    crush_cols = [c for c in df.columns if "粉碎压实" in c]
+    sinter_cols = _metric_cols(df, aliases, "烧结压实")
+    crush_cols = _metric_cols(df, aliases, "粉碎压实")
 
-    prod_density_cols = [c for c in df.columns if "成品压实" in c]
-    powder_res_cols = [c for c in df.columns if _col_contains(c, "粉末电阻")]
-    li_cols = [c for c in df.columns if _col_contains(c, "Li+含量")]
-    carbon_cols = [c for c in df.columns if c.startswith("碳含量")]
-    if not carbon_cols:
-        carbon_cols = [c for c in df.columns if _col_contains(c, "碳含量") and not _col_contains(c, "粉碎碳含量")]
-    bet_cols = [c for c in df.columns if "麦克比表" in c]
+    prod_density_cols = _metric_cols(df, aliases, "成品压实")
+    powder_res_cols = _metric_cols(df, aliases, "粉阻(粉末电阻)")
+    li_cols = _metric_cols(df, aliases, "残碱(Li+)")
+    carbon_cols = _metric_cols(df, aliases, "碳含量", exclude_aliases=["粉碎碳含量"])
+    bet_cols = _metric_cols(df, aliases, "比表(麦克比表)")
 
-    charge_cols = [c for c in df.columns if _col_contains(c, "0.1C充")]
-    discharge_cols = [c for c in df.columns if _col_contains(c, "0.1C放")]
-    eff_cols = [c for c in df.columns if _col_contains(c, "0.1C首效")]
+    charge_cols = _metric_cols(df, aliases, "0.1C充电")
+    discharge_cols = _metric_cols(df, aliases, "0.1C放电")
+    eff_cols = _metric_cols(df, aliases, "首效")
 
-    plat_cols = [c for c in df.columns if _col_contains(c, "3.2V容量占比")]
-    if not plat_cols:
-        plat_cols = [c for c in df.columns if _col_contains(c, "3.2V平台效率")]
-    if not plat_cols:
-        plat_cols = [c for c in df.columns if _col_contains(c, "2.95V容量占比")]
+    plat_cols = _metric_cols(df, aliases, "平台效率")
 
     trend_lookback_days = max(lookback_days, trend_days * 5, 30)
     trend_lookback_days = min(trend_lookback_days, _TREND_MAX_LOOKBACK_DAYS)
@@ -2543,6 +2637,7 @@ def build_standard_report_from_matrices(
     report_show_placeholder_sections: bool,
     show_spec_attention: bool = True,
     spec_registry_json: str = "",
+    metric_aliases_json: str = "",
     auto_fix_quality: bool = False,
 ) -> dict[str, Any]:
     target_sheets = list(selected_sheets or sheet_matrices.keys())
@@ -2611,6 +2706,7 @@ def build_standard_report_from_matrices(
         quality = validate_sheet_data(df, auto_fix=auto_fix_quality)
         df_for_metrics = quality["df"]
         report_date = report_dates[sheet_name]
+        metric_aliases = resolve_metric_aliases(metric_aliases_json, model=model, line_label=sheet_name)
         metrics = extract_metrics(
             df_for_metrics,
             report_date,
@@ -2622,6 +2718,7 @@ def build_standard_report_from_matrices(
             stale_thresholds=stale_cfg,
             spec_registry=spec_registry_rules,
             spec_health=spec_health_cfg,
+            metric_aliases=metric_aliases,
         )
         line_reports.append(
             {

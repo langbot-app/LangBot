@@ -9,7 +9,7 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _CSV_SPLIT_RE = re.compile(r"[,，、;；]+")
 _STRIP_PUNCT = "，,。.!！？?；;：:"
 
-_TOUCH_SEGMENT_RE = re.compile(r"^[AB][12]$", re.IGNORECASE)
+_DEFAULT_TOUCH_SEGMENTS = ("A1", "A2", "B1", "B2")
 _TOUCH_USAGE = "摸料参数无效，请使用：摸料 A1|A2|B1|B2。"
 _TOUCH_TAIL_CLEAN_RE = re.compile(r"[，,。.!！？?；;：:\-/\\_|]+")
 
@@ -119,7 +119,29 @@ def parse_report_command(text: str, allowed_commands: set[str]) -> CommandParseR
     return CommandParseResult(triggered=True, value=value)
 
 
-def parse_touch_material_command(text: str, allowed_commands: set[str]) -> CommandParseResult:
+def _normalize_touch_segments(allowed_segments: set[str] | None) -> list[str]:
+    if not allowed_segments:
+        return list(_DEFAULT_TOUCH_SEGMENTS)
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in allowed_segments:
+        segment = _normalize_token(str(item)).upper()
+        if not segment or segment in seen:
+            continue
+        seen.add(segment)
+        normalized.append(segment)
+    return normalized or list(_DEFAULT_TOUCH_SEGMENTS)
+
+
+def _touch_usage(segments: list[str]) -> str:
+    return f"摸料参数无效，请使用：摸料 {'|'.join(segments)}。"
+
+
+def parse_touch_material_command(
+    text: str,
+    allowed_commands: set[str],
+    allowed_segments: set[str] | None = None,
+) -> CommandParseResult:
     raw_text = (text or "").strip()
     if not raw_text:
         return CommandParseResult(triggered=False)
@@ -142,14 +164,16 @@ def parse_touch_material_command(text: str, allowed_commands: set[str]) -> Comma
     if not matched_command:
         return CommandParseResult(triggered=False)
 
+    valid_segments = _normalize_touch_segments(allowed_segments)
+    usage = _touch_usage(valid_segments)
     tail = collapsed[len(matched_command) :]
     tail = _TOUCH_TAIL_CLEAN_RE.sub("", tail).upper()
     tail = _normalize_token(tail)
     if not tail:
-        return CommandParseResult(triggered=True, error=_TOUCH_USAGE)
+        return CommandParseResult(triggered=True, error=usage)
 
-    if not _TOUCH_SEGMENT_RE.fullmatch(tail):
-        return CommandParseResult(triggered=True, error=_TOUCH_USAGE)
+    if tail not in set(valid_segments):
+        return CommandParseResult(triggered=True, error=usage)
 
     return CommandParseResult(
         triggered=True,

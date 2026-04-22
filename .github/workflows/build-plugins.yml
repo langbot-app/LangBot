@@ -1,0 +1,63 @@
+name: Build Plugins
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'plugins/feishu_keyword_report_plugin/**'
+      - 'plugins/feishu_process_bitable_plugin/**'
+      - '.github/workflows/build-plugins.yml'
+  push:
+    branches:
+      - master
+      - develop
+    paths:
+      - 'plugins/feishu_keyword_report_plugin/**'
+      - 'plugins/feishu_process_bitable_plugin/**'
+      - '.github/workflows/build-plugins.yml'
+
+jobs:
+  build-plugin:
+    name: Build ${{ matrix.plugin }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin:
+          - feishu_keyword_report_plugin
+          - feishu_process_bitable_plugin
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install plugin builder
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "langbot-plugin>=0.2.7"
+
+      - name: Install plugin dependencies
+        working-directory: plugins/${{ matrix.plugin }}
+        run: |
+          if [ -f requirements.txt ]; then
+            python -m pip install -r requirements.txt
+          fi
+
+      - name: Build plugin package
+        working-directory: plugins/${{ matrix.plugin }}
+        run: |
+          rm -rf dist
+          lbp build -o dist
+          ls -lah dist
+
+      - name: Upload plugin package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.plugin }}-package
+          path: plugins/${{ matrix.plugin }}/dist/*.lbpkg
+          if-no-files-found: error
