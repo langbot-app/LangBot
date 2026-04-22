@@ -2,6 +2,18 @@ name: Build Plugins
 
 on:
   workflow_dispatch:
+    inputs:
+      upload_to_release:
+        description: 'Upload built plugin packages to GitHub Releases'
+        required: false
+        type: boolean
+        default: false
+      release_tag:
+        description: 'Release tag to upload to when upload_to_release is true'
+        required: false
+        type: string
+  release:
+    types: [published]
   pull_request:
     paths:
       - 'plugins/feishu_keyword_report_plugin/**'
@@ -15,6 +27,9 @@ on:
       - 'plugins/feishu_keyword_report_plugin/**'
       - 'plugins/feishu_process_bitable_plugin/**'
       - '.github/workflows/build-plugins.yml'
+
+permissions:
+  contents: write
 
 jobs:
   build-plugin:
@@ -61,3 +76,18 @@ jobs:
           name: ${{ matrix.plugin }}-package
           path: plugins/${{ matrix.plugin }}/dist/*.lbpkg
           if-no-files-found: error
+
+      - name: Upload plugin package to GitHub Release
+        if: ${{ github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.upload_to_release) }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
+        run: |
+          if [ -z "$RELEASE_TAG" ]; then
+            echo "release_tag is required when upload_to_release is true."
+            exit 1
+          fi
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --notes "Plugin packages for $RELEASE_TAG"
+          fi
+          gh release upload "$RELEASE_TAG" plugins/${{ matrix.plugin }}/dist/*.lbpkg --clobber
