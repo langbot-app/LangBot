@@ -1,6 +1,6 @@
 [project]
 name = "langbot"
-version = "4.9.6"
+version = "4.9.7"
 description = "Production-grade platform for building agentic IM bots"
 readme = "README.md"
 license-files = ["LICENSE"]
