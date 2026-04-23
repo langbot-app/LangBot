@@ -6,6 +6,9 @@ import {
 import { PluginV4 } from '@/app/infra/entities/plugin';
 import { I18nObject } from '@/app/infra/entities/common';
 
+const LANGBOT_RELEASES_URL =
+  'https://api.github.com/repos/a251231/LangBot/releases';
+
 /**
  * 云服务客户端
  * 负责与 cloud service 的所有交互
@@ -93,8 +96,18 @@ export class CloudServiceClient extends BaseHttpClient {
     return `${cloud_service_url}/market/${author}/${name}`;
   }
 
-  public getLangBotReleases(): Promise<GitHubRelease[]> {
-    return this.get<GitHubRelease[]>('/api/v1/dist/info/releases');
+  public async getLangBotReleases(): Promise<GitHubRelease[]> {
+    const response = await fetch(LANGBOT_RELEASES_URL, {
+      headers: {
+        Accept: 'application/vnd.github+json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch LangBot releases: ${response.status}`);
+    }
+
+    return response.json();
   }
 
   public getGitHubRepoInfo(): Promise<GitHubRepoInfo> {

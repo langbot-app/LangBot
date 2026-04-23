@@ -30,7 +30,7 @@ class VersionManager:
         """获取发行列表"""
         try:
             rls_list_resp = requests.get(
-                url='https://api.github.com/repos/langbot-app/LangBot/releases',
+                url='https://api.github.com/repos/a251231/LangBot/releases',
                 proxies=self.ap.proxy_mgr.get_forward_proxies(),
                 timeout=5,
             )

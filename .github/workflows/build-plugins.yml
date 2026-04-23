@@ -23,6 +23,8 @@ on:
     branches:
       - master
       - develop
+    tags:
+      - 'v*'
     paths:
       - 'plugins/feishu_keyword_report_plugin/**'
       - 'plugins/feishu_process_bitable_plugin/**'
@@ -70,17 +72,33 @@ jobs:
           lbp build -o dist
           ls -lah dist
 
-      - name: Upload plugin package to GitHub Release
-        if: ${{ github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.upload_to_release) }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
+      - name: Resolve release tag
+        id: release
+        if: ${{ github.event_name == 'release' || startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.upload_to_release) }}
+        shell: bash
         run: |
-          if [ -z "$RELEASE_TAG" ]; then
-            echo "release_tag is required when upload_to_release is true."
+          if [ "${{ github.event_name }}" = "release" ]; then
+            release_tag="${{ github.event.release.tag_name }}"
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            release_tag="${GITHUB_REF#refs/tags/}"
+          else
+            release_tag="${{ inputs.release_tag }}"
+          fi
+
+          if [ -z "$release_tag" ]; then
+            echo "release_tag is required when uploading plugin packages to a release."
             exit 1
           fi
+
+          echo "tag=$release_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Upload plugin package to GitHub Release
+        if: ${{ steps.release.outputs.tag != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --notes "Plugin packages for $RELEASE_TAG"
+            gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --title "$RELEASE_TAG" --notes "Automated release for $RELEASE_TAG"
           fi
           gh release upload "$RELEASE_TAG" plugins/${{ matrix.plugin }}/dist/*.lbpkg --clobber
