@@ -7,6 +7,8 @@ services:
   langbot_plugin_runtime:
     image: a251231/langbot:master
     container_name: langbot_plugin_runtime
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
     volumes:
       - ./data/plugins:/app/data/plugins
     ports:
@@ -21,6 +23,8 @@ services:
   langbot:
     image: a251231/langbot:master
     container_name: langbot
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
     volumes:
       - ./data:/app/data
     restart: on-failure
@@ -31,6 +35,18 @@ services:
       - 2280-2285:2280-2285  # For platform reverse connection
     networks:
       - langbot_network
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - TZ=Asia/Shanghai
+      - WATCHTOWER_LABEL_ENABLE=true
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_SCHEDULE=0 30 3 * * *
 
 networks:
   langbot_network:
