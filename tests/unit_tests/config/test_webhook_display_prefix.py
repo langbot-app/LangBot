@@ -91,14 +91,15 @@ class TestWebhookDisplayPrefix:
 
     def test_default_webhook_prefix(self):
         """Test that the default webhook display prefix is correctly set"""
-        cfg = {'api': {'port': 5300, 'webhook_prefix': 'http://127.0.0.1:5300'}}
+        cfg = {'api': {'port': 5300, 'webhook_prefix': 'http://127.0.0.1:5300', 'extra_webhook_prefix': ''}}
 
         # Should have the default value
         assert cfg['api']['webhook_prefix'] == 'http://127.0.0.1:5300'
+        assert cfg['api']['extra_webhook_prefix'] == ''
 
     def test_webhook_prefix_env_override(self):
         """Test overriding webhook_prefix via environment variable"""
-        cfg = {'api': {'port': 5300, 'webhook_prefix': 'http://127.0.0.1:5300'}}
+        cfg = {'api': {'port': 5300, 'webhook_prefix': 'http://127.0.0.1:5300', 'extra_webhook_prefix': ''}}
 
         # Set environment variable
         os.environ['API__WEBHOOK_PREFIX'] = 'https://example.com:8080'
@@ -112,7 +113,7 @@ class TestWebhookDisplayPrefix:
 
     def test_webhook_prefix_with_custom_domain(self):
         """Test webhook_prefix with custom domain"""
-        cfg = {'api': {'port': 5300, 'webhook_prefix': 'http://127.0.0.1:5300'}}
+        cfg = {'api': {'port': 5300, 'webhook_prefix': 'http://127.0.0.1:5300', 'extra_webhook_prefix': ''}}
 
         # Set to a custom domain
         os.environ['API__WEBHOOK_PREFIX'] = 'https://bot.mycompany.com'
@@ -126,7 +127,7 @@ class TestWebhookDisplayPrefix:
 
     def test_webhook_prefix_with_subdirectory(self):
         """Test webhook_prefix with subdirectory path"""
-        cfg = {'api': {'port': 5300, 'webhook_prefix': 'http://127.0.0.1:5300'}}
+        cfg = {'api': {'port': 5300, 'webhook_prefix': 'http://127.0.0.1:5300', 'extra_webhook_prefix': ''}}
 
         # Set to a URL with subdirectory
         os.environ['API__WEBHOOK_PREFIX'] = 'https://example.com/langbot'
@@ -137,6 +138,37 @@ class TestWebhookDisplayPrefix:
 
         # Cleanup
         del os.environ['API__WEBHOOK_PREFIX']
+
+    def test_extra_webhook_prefix_default_empty(self):
+        """Test that extra_webhook_prefix defaults to empty string"""
+        cfg = {'api': {'port': 5300, 'webhook_prefix': 'http://127.0.0.1:5300', 'extra_webhook_prefix': ''}}
+
+        bot_uuid = 'test-bot-uuid'
+        webhook_prefix = cfg['api'].get('webhook_prefix', 'http://127.0.0.1:5300')
+        extra_webhook_prefix = cfg['api'].get('extra_webhook_prefix', '')
+        webhook_url = f'/bots/{bot_uuid}'
+
+        assert f'{webhook_prefix}{webhook_url}' == 'http://127.0.0.1:5300/bots/test-bot-uuid'
+        # extra should be empty when not configured
+        assert extra_webhook_prefix == ''
+
+    def test_extra_webhook_prefix_env_override(self):
+        """Test overriding extra_webhook_prefix via environment variable"""
+        cfg = {'api': {'port': 5300, 'webhook_prefix': 'http://127.0.0.1:5300', 'extra_webhook_prefix': ''}}
+
+        os.environ['API__EXTRA_WEBHOOK_PREFIX'] = 'https://extra.example.com'
+
+        result = _apply_env_overrides_to_config(cfg)
+
+        assert result['api']['extra_webhook_prefix'] == 'https://extra.example.com'
+
+        bot_uuid = 'test-bot-uuid'
+        extra_prefix = result['api']['extra_webhook_prefix']
+        webhook_url = f'/bots/{bot_uuid}'
+        assert f'{extra_prefix}{webhook_url}' == 'https://extra.example.com/bots/test-bot-uuid'
+
+        # Cleanup
+        del os.environ['API__EXTRA_WEBHOOK_PREFIX']
 
 
 if __name__ == '__main__':

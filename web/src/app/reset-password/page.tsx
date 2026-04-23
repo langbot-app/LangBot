@@ -1,4 +1,3 @@
-'use client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -28,11 +27,11 @@ import {
 } from '@/components/ui/form';
 import { useState } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import { useRouter } from 'next/navigation';
+import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
-import Link from 'next/link';
+import { Link } from 'react-router-dom';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 
 const REGEXP_ONLY_DIGITS_AND_CHARS = /^[0-9a-zA-Z]+$/;
@@ -45,7 +44,7 @@ const formSchema = (t: (key: string) => string) =>
   });
 
 export default function ResetPassword() {
-  const router = useRouter();
+  const navigate = useNavigate();
   const { t } = useTranslation();
   const [isResetting, setIsResetting] = useState(false);
 
@@ -72,7 +71,7 @@ export default function ResetPassword() {
       .resetPassword(email, recoveryKey, newPassword)
       .then(() => {
         toast.success(t('resetPassword.resetSuccess'));
-        router.push('/login');
+        navigate('/login');
       })
       .catch(() => {
         toast.error(t('resetPassword.resetFailed'));
@@ -88,7 +87,7 @@ export default function ResetPassword() {
         <CardHeader>
           <div className="flex justify-between items-center mb-6">
             <Link
-              href="/login"
+              to="/login"
               className="flex items-center text-sm text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 transition-colors"
             >
               <ArrowLeft className="h-4 w-4 mr-1" />

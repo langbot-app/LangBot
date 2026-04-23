@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -14,154 +15,320 @@ import {
   FormMessage,
   FormDescription,
 } from '@/components/ui/form';
-import { httpClient, systemInfo, userInfo } from '@/app/infra/http';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { httpClient } from '@/app/infra/http/HttpClient';
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { KnowledgeBase, EmbeddingModel } from '@/app/infra/entities/api';
+import { KnowledgeBase, KnowledgeEngine } from '@/app/infra/entities/api';
+import { CustomApiError } from '@/app/infra/entities/common';
 import { toast } from 'sonner';
+import { extractI18nObject } from '@/i18n/I18nProvider';
+import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
+import { IDynamicFormItemSchema } from '@/app/infra/entities/form/dynamic';
+import {
+  DynamicFormItemConfig,
+  getDefaultValues,
+  parseDynamicFormItemType,
+} from '@/app/home/components/dynamic-form/DynamicFormItemConfig';
+import { UUID } from 'uuidjs';
 
 const getFormSchema = (t: (key: string) => string) =>
   z.object({
     name: z.string().min(1, { message: t('knowledge.kbNameRequired') }),
-    description: z
-      .string()
-      .min(1, { message: t('knowledge.kbDescriptionRequired') }),
+    description: z.string().optional(),
     emoji: z.string().optional(),
-    embeddingModelUUID: z
+    ragEngineId: z
       .string()
-      .min(1, { message: t('knowledge.embeddingModelUUIDRequired') }),
-    top_k: z
-      .number()
-      .min(1, { message: t('knowledge.topKRequired') })
-      .max(30, { message: t('knowledge.topKMax') }),
+      .min(1, { message: t('knowledge.knowledgeEngineRequired') }),
   });
+
+/**
+ * Parse creation schema from Knowledge Engine to IDynamicFormItemSchema[]
+ */
+function parseCreationSchema(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  schemaItems: any | any[] | undefined,
+): IDynamicFormItemSchema[] {
+  if (!schemaItems) return [];
+  const items = Array.isArray(schemaItems) ? schemaItems : schemaItems.schema;
+  if (!items || !Array.isArray(items)) return [];
+
+  return items.map(
+    (item) =>
+      new DynamicFormItemConfig({
+        default: item.default,
+        id: UUID.generate(),
+        label: item.label,
+        description: item.description,
+        name: item.name,
+        required: item.required,
+        type: parseDynamicFormItemType(item.type),
+        options: item.options,
+        show_if: item.show_if,
+      }),
+  );
+}
 
 export default function KBForm({
   initKbId,
   onNewKbCreated,
   onKbUpdated,
+  onDirtyChange,
 }: {
   initKbId?: string;
   onNewKbCreated: (kbId: string) => void;
   onKbUpdated: (kbId: string) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const { t } = useTranslation();
+  const [ragEngines, setRagEngines] = useState<KnowledgeEngine[]>([]);
+  const [selectedEngineId, setSelectedEngineId] = useState<string>('');
+  const [configSettings, setConfigSettings] = useState<Record<string, unknown>>(
+    {},
+  );
+  const [retrievalSettings, setRetrievalSettings] = useState<
+    Record<string, unknown>
+  >({});
+  const [isEditing, setIsEditing] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  // Dirty tracking: snapshot of saved state for comparison
+  const savedSnapshotRef = useRef<string>('');
+  const isInitializing = useRef(true);
+
   const formSchema = getFormSchema(t);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: '',
-      description: t('knowledge.defaultDescription'),
+      description: '',
       emoji: '📚',
-      embeddingModelUUID: '',
-      top_k: 5,
+      ragEngineId: '',
     },
   });
 
-  const [embeddingModels, setEmbeddingModels] = useState<EmbeddingModel[]>([]);
+  // Get selected engine details
+  const selectedEngine = ragEngines.find(
+    (e) => e.plugin_id === selectedEngineId,
+  );
+
+  // Dirty tracking: compare current form + dynamic settings against saved snapshot
+  const watchedFormValues = form.watch();
+  useEffect(() => {
+    if (!savedSnapshotRef.current || isInitializing.current) return;
+    const currentSnapshot = JSON.stringify({
+      form: watchedFormValues,
+      config: configSettings,
+      retrieval: retrievalSettings,
+    });
+    const dirty = currentSnapshot !== savedSnapshotRef.current;
+    onDirtyChange?.(dirty);
+  }, [watchedFormValues, configSettings, retrievalSettings, onDirtyChange]);
+
+  const captureSnapshot = () => {
+    savedSnapshotRef.current = JSON.stringify({
+      form: form.getValues(),
+      config: configSettings,
+      retrieval: retrievalSettings,
+    });
+  };
 
   useEffect(() => {
-    getEmbeddingModelNameList().then(() => {
+    loadRagEngines().then(() => {
       if (initKbId) {
-        getKbConfig(initKbId).then((val) => {
-          form.setValue('name', val.name);
-          form.setValue('description', val.description);
-          form.setValue('emoji', val.emoji);
-          form.setValue('embeddingModelUUID', val.embeddingModelUUID);
-          form.setValue('top_k', val.top_k || 5);
-        });
+        loadKbConfig(initKbId);
       }
     });
   }, []);
 
-  const getKbConfig = async (
-    kbId: string,
-  ): Promise<z.infer<typeof formSchema>> => {
-    return new Promise((resolve) => {
-      httpClient.getKnowledgeBase(kbId).then((res) => {
-        resolve({
-          name: res.base.name,
-          description: res.base.description,
-          emoji: res.base.emoji || '📚',
-          embeddingModelUUID: res.base.embedding_model_uuid,
-          top_k: res.base.top_k || 5,
-        });
-      });
-    });
+  // Auto-select first engine when engines are loaded and no selection
+  useEffect(() => {
+    if (ragEngines.length > 0 && !selectedEngineId && !isEditing) {
+      const firstEngine = ragEngines[0];
+      setSelectedEngineId(firstEngine.plugin_id);
+      form.setValue('ragEngineId', firstEngine.plugin_id);
+      const formItems = parseCreationSchema(firstEngine.creation_schema);
+      if (formItems.length > 0) {
+        setConfigSettings(getDefaultValues(formItems));
+      }
+      const retrievalItems = parseCreationSchema(firstEngine.retrieval_schema);
+      if (retrievalItems.length > 0) {
+        setRetrievalSettings(getDefaultValues(retrievalItems));
+      }
+    }
+  }, [ragEngines, selectedEngineId, isEditing]);
+
+  const loadRagEngines = async () => {
+    setLoading(true);
+    try {
+      const resp = await httpClient.getKnowledgeEngines();
+      setRagEngines(resp.engines);
+    } catch (err) {
+      console.error('Failed to load Knowledge Engines:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const getEmbeddingModelNameList = async () => {
-    const resp = await httpClient.getProviderEmbeddingModels();
-    let models = resp.models;
-    // Filter out space-chat-completions models when not logged in with space account or when models service is disabled
-    if (
-      systemInfo.disable_models_service ||
-      userInfo?.account_type !== 'space'
-    ) {
-      models = models.filter(
-        (m) => m.provider?.requester !== 'space-chat-completions',
-      );
+  const loadKbConfig = async (kbId: string) => {
+    try {
+      isInitializing.current = true;
+      setIsEditing(true);
+
+      const res = await httpClient.getKnowledgeBase(kbId);
+      const kb = res.base;
+
+      const engineId = kb.knowledge_engine_plugin_id || '';
+      setSelectedEngineId(engineId);
+
+      form.reset({
+        name: kb.name,
+        description: kb.description,
+        emoji: kb.emoji || '📚',
+        ragEngineId: engineId,
+      });
+
+      setConfigSettings(kb.creation_settings || {});
+      setRetrievalSettings(kb.retrieval_settings || {});
+
+      // Capture snapshot after a tick so dynamic forms have emitted initial values
+      setTimeout(() => {
+        captureSnapshot();
+        isInitializing.current = false;
+      }, 500);
+    } catch (err) {
+      console.error('Failed to load KB config:', err);
+      isInitializing.current = false;
     }
-    setEmbeddingModels(models);
+  };
+
+  const handleEngineChange = (engineId: string) => {
+    setSelectedEngineId(engineId);
+    form.setValue('ragEngineId', engineId);
+
+    const engine = ragEngines.find((e) => e.plugin_id === engineId);
+    if (engine) {
+      const formItems = parseCreationSchema(engine.creation_schema);
+      if (formItems.length > 0) {
+        setConfigSettings(getDefaultValues(formItems));
+      } else {
+        setConfigSettings({});
+      }
+      const retrievalItems = parseCreationSchema(engine.retrieval_schema);
+      if (retrievalItems.length > 0) {
+        setRetrievalSettings(getDefaultValues(retrievalItems));
+      } else {
+        setRetrievalSettings({});
+      }
+    }
   };
 
   const onSubmit = (data: z.infer<typeof formSchema>) => {
+    const kbData: KnowledgeBase = {
+      name: data.name,
+      description: data.description ?? '',
+      emoji: data.emoji,
+      knowledge_engine_plugin_id: selectedEngineId,
+      creation_settings: configSettings,
+      retrieval_settings: retrievalSettings,
+    };
+
     if (initKbId) {
-      // update knowledge base
-      const updateKb: KnowledgeBase = {
-        name: data.name,
-        description: data.description,
-        emoji: data.emoji,
-        embedding_model_uuid: data.embeddingModelUUID,
-        top_k: data.top_k,
-      };
       httpClient
-        .updateKnowledgeBase(initKbId, updateKb)
+        .updateKnowledgeBase(initKbId, kbData)
         .then((res) => {
+          captureSnapshot();
+          onDirtyChange?.(false);
           onKbUpdated(res.uuid);
           toast.success(t('knowledge.updateKnowledgeBaseSuccess'));
         })
         .catch((err) => {
           console.error('update knowledge base failed', err);
-          toast.error(t('knowledge.updateKnowledgeBaseFailed'));
+          toast.error(
+            t('knowledge.updateKnowledgeBaseFailed') +
+              (err as CustomApiError).msg,
+          );
         });
     } else {
-      // create knowledge base
-      const newKb: KnowledgeBase = {
-        name: data.name,
-        description: data.description,
-        emoji: data.emoji,
-        embedding_model_uuid: data.embeddingModelUUID,
-        top_k: data.top_k,
-      };
       httpClient
-        .createKnowledgeBase(newKb)
+        .createKnowledgeBase(kbData)
         .then((res) => {
           onNewKbCreated(res.uuid);
         })
         .catch((err) => {
           console.error('create knowledge base failed', err);
+          toast.error(
+            t('knowledge.createKnowledgeBaseFailed') +
+              (err as CustomApiError).msg,
+          );
         });
     }
   };
 
-  return (
-    <>
-      <Form {...form}>
-        <form
-          onSubmit={form.handleSubmit(onSubmit)}
-          id="kb-form"
-          className="space-y-8"
+  const configFormItems = useMemo(
+    () => parseCreationSchema(selectedEngine?.creation_schema),
+    [selectedEngine?.creation_schema],
+  );
+
+  const retrievalFormItems = useMemo(
+    () => parseCreationSchema(selectedEngine?.retrieval_schema),
+    [selectedEngine?.retrieval_schema],
+  );
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <p className="text-muted-foreground">{t('common.loading')}</p>
+      </div>
+    );
+  }
+
+  // Show message if no engines available
+  if (ragEngines.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-8 space-y-4">
+        <p className="text-muted-foreground">
+          {t('knowledge.noEnginesAvailable')}
+        </p>
+        <Link
+          to="/home/market?category=KnowledgeEngine"
+          className="text-sm text-primary hover:underline"
         >
-          <div className="space-y-4">
+          {t('knowledge.installEngineHint')}
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <Form {...form}>
+      <form
+        onSubmit={form.handleSubmit(onSubmit)}
+        id="kb-form"
+        className="space-y-6"
+      >
+        {/* Card 1: Basic Information */}
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('knowledge.basicInfo')}</CardTitle>
+            <CardDescription>
+              {t('knowledge.basicInfoDescription')}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
             {/* Name and Emoji in same row */}
             <div className="flex gap-4 items-start">
               <FormField
@@ -171,7 +338,7 @@ export default function KBForm({
                   <FormItem className="flex-1">
                     <FormLabel>
                       {t('knowledge.kbName')}
-                      <span className="text-red-500">*</span>
+                      <span className="text-destructive">*</span>
                     </FormLabel>
                     <FormControl>
                       <Input {...field} />
@@ -197,15 +364,14 @@ export default function KBForm({
                 )}
               />
             </div>
+
+            {/* Description */}
             <FormField
               control={form.control}
               name="description"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>
-                    {t('knowledge.kbDescription')}
-                    <span className="text-red-500">*</span>
-                  </FormLabel>
+                  <FormLabel>{t('knowledge.kbDescription')}</FormLabel>
                   <FormControl>
                     <Input {...field} />
                   </FormControl>
@@ -213,99 +379,144 @@ export default function KBForm({
                 </FormItem>
               )}
             />
+
+            {/* Knowledge Engine Selector */}
             <FormField
               control={form.control}
-              name="embeddingModelUUID"
+              name="ragEngineId"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    {t('knowledge.embeddingModelUUID')}
-                    <span className="text-red-500">*</span>
+                    {t('knowledge.knowledgeEngine')}
+                    <span className="text-destructive">*</span>
                   </FormLabel>
                   <FormControl>
-                    <div className="relative">
-                      <Select
-                        disabled={!!initKbId}
-                        onValueChange={(value) => {
-                          field.onChange(value);
-                        }}
-                        value={field.value}
-                      >
-                        <SelectTrigger className="w-[180px] bg-[#ffffff] dark:bg-[#2a2a2e]">
+                    <Select
+                      disabled={isEditing}
+                      onValueChange={(value) => {
+                        field.onChange(value);
+                        handleEngineChange(value);
+                      }}
+                      value={field.value}
+                    >
+                      <SelectTrigger className="w-full bg-[#ffffff] dark:bg-[#2a2a2e]">
+                        {field.value ? (
+                          (() => {
+                            const [author, name] = field.value.split('/');
+                            const engine = ragEngines.find(
+                              (e) => e.plugin_id === field.value,
+                            );
+                            return (
+                              <div className="flex items-center gap-2">
+                                <img
+                                  src={httpClient.getPluginIconURL(
+                                    author,
+                                    name,
+                                  )}
+                                  alt=""
+                                  className="h-5 w-5 rounded"
+                                />
+                                <span>
+                                  {engine
+                                    ? extractI18nObject(engine.name)
+                                    : field.value}
+                                </span>
+                              </div>
+                            );
+                          })()
+                        ) : (
                           <SelectValue
-                            placeholder={t('knowledge.selectEmbeddingModel')}
+                            placeholder={t('knowledge.selectKnowledgeEngine')}
                           />
-                        </SelectTrigger>
-                        <SelectContent className="fixed z-[1000]">
-                          {(() => {
-                            const grouped = embeddingModels.reduce(
-                              (acc, model) => {
-                                const providerName =
-                                  model.provider?.name ||
-                                  model.provider?.requester ||
-                                  'Unknown';
-                                if (!acc[providerName]) acc[providerName] = [];
-                                acc[providerName].push(model);
-                                return acc;
-                              },
-                              {} as Record<string, EmbeddingModel[]>,
-                            );
-                            return Object.entries(grouped).map(
-                              ([providerName, models]) => (
-                                <SelectGroup key={providerName}>
-                                  <SelectLabel>{providerName}</SelectLabel>
-                                  {models.map((model) => (
-                                    <SelectItem
-                                      key={model.uuid}
-                                      value={model.uuid}
-                                    >
-                                      {model.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectGroup>
-                              ),
-                            );
-                          })()}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                        )}
+                      </SelectTrigger>
+                      <SelectContent className="fixed z-[1000]">
+                        {ragEngines.map((engine) => {
+                          const [author, name] = engine.plugin_id.split('/');
+                          return (
+                            <SelectItem
+                              key={engine.plugin_id}
+                              value={engine.plugin_id}
+                            >
+                              <div className="flex items-center gap-2">
+                                <img
+                                  src={httpClient.getPluginIconURL(
+                                    author,
+                                    name,
+                                  )}
+                                  alt=""
+                                  className="h-5 w-5 rounded"
+                                />
+                                <span>{extractI18nObject(engine.name)}</span>
+                              </div>
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
                   </FormControl>
-                  <FormDescription>
-                    {initKbId
-                      ? t('knowledge.cannotChangeEmbeddingModel')
-                      : t('knowledge.embeddingModelDescription')}
-                  </FormDescription>
+                  {selectedEngine?.description && (
+                    <FormDescription>
+                      {extractI18nObject(selectedEngine.description)}
+                    </FormDescription>
+                  )}
+                  {isEditing && (
+                    <FormDescription>
+                      {t('knowledge.cannotChangeKnowledgeEngine')}
+                    </FormDescription>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}
             />
-            <FormField
-              control={form.control}
-              name="top_k"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    {t('knowledge.topK')}
-                    <span className="text-red-500">*</span>
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      {...field}
-                      onChange={(e) => field.onChange(Number(e.target.value))}
-                      className="w-[180px] h-10 text-base appearance-none"
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    {t('knowledge.topKdescription')}
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
-        </form>
-      </Form>
-    </>
+          </CardContent>
+        </Card>
+
+        {/* Card 2: Engine Settings (dynamic form from creation_schema) */}
+        {configFormItems.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('knowledge.engineSettings')}</CardTitle>
+              <CardDescription>
+                {t('knowledge.engineSettingsDescription')}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <DynamicFormComponent
+                itemConfigList={configFormItems}
+                initialValues={configSettings as Record<string, object>}
+                onSubmit={(val) =>
+                  setConfigSettings(val as Record<string, unknown>)
+                }
+                isEditing={isEditing}
+                externalDependentValues={retrievalSettings}
+              />
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Card 3: Retrieval Settings (dynamic form from retrieval_schema) */}
+        {retrievalFormItems.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('knowledge.retrievalSettings')}</CardTitle>
+              <CardDescription>
+                {t('knowledge.retrievalSettingsDescription')}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <DynamicFormComponent
+                itemConfigList={retrievalFormItems}
+                initialValues={retrievalSettings as Record<string, object>}
+                onSubmit={(val) =>
+                  setRetrievalSettings(val as Record<string, unknown>)
+                }
+                externalDependentValues={configSettings}
+              />
+            </CardContent>
+          </Card>
+        )}
+      </form>
+    </Form>
   );
 }

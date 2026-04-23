@@ -44,6 +44,13 @@ class StorageProvider(abc.ABC):
         pass
 
     @abc.abstractmethod
+    async def size(
+        self,
+        key: str,
+    ) -> int:
+        pass
+
+    @abc.abstractmethod
     async def delete_dir_recursive(
         self,
         dir_path: str,

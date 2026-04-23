@@ -15,3 +15,11 @@ class OpenRouterChatCompletions(modelscopechatcmpl.ModelScopeChatCompletions):
         'base_url': 'https://openrouter.ai/api/v1',
         'timeout': 120,
     }
+
+    async def scan_models(self, api_key: str | None = None) -> dict[str, typing.Any]:
+        original_base_url = self.requester_cfg.get('base_url', '')
+        self.requester_cfg['base_url'] = 'https://openrouter.ai/api/v1'
+        try:
+            return await super().scan_models(api_key)
+        finally:
+            self.requester_cfg['base_url'] = original_base_url

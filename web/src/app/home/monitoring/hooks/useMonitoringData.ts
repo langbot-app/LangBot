@@ -7,6 +7,7 @@ import {
   EmbeddingCall,
 } from '../types/monitoring';
 import { backendClient } from '@/app/infra/http';
+import { parseUTCTimestamp } from '../utils/dateUtils';
 
 /**
  * Custom hook for fetching and managing monitoring data
@@ -120,7 +121,7 @@ export function useMonitoringData(filterState: FilterState) {
             variables?: string;
           }) => ({
             id: msg.id,
-            timestamp: new Date(msg.timestamp),
+            timestamp: parseUTCTimestamp(msg.timestamp),
             botId: msg.bot_id,
             botName: msg.bot_name,
             pipelineId: msg.pipeline_id,
@@ -154,7 +155,7 @@ export function useMonitoringData(filterState: FilterState) {
             message_id?: string;
           }) => ({
             id: call.id,
-            timestamp: new Date(call.timestamp),
+            timestamp: parseUTCTimestamp(call.timestamp),
             modelName: call.model_name,
             tokens: {
               input: call.input_tokens,
@@ -190,7 +191,7 @@ export function useMonitoringData(filterState: FilterState) {
             call_type?: string;
           }) => ({
             id: call.id,
-            timestamp: new Date(call.timestamp),
+            timestamp: parseUTCTimestamp(call.timestamp),
             modelName: call.model_name,
             promptTokens: call.prompt_tokens,
             totalTokens: call.total_tokens,
@@ -227,10 +228,10 @@ export function useMonitoringData(filterState: FilterState) {
             pipelineName: session.pipeline_name,
             messageCount: session.message_count,
             duration:
-              new Date(session.last_activity).getTime() -
-              new Date(session.start_time).getTime(),
-            lastActivity: new Date(session.last_activity),
-            startTime: new Date(session.start_time),
+              parseUTCTimestamp(session.last_activity).getTime() -
+              parseUTCTimestamp(session.start_time).getTime(),
+            lastActivity: parseUTCTimestamp(session.last_activity),
+            startTime: parseUTCTimestamp(session.start_time),
             platform: session.platform,
             userId: session.user_id,
           }),
@@ -250,7 +251,7 @@ export function useMonitoringData(filterState: FilterState) {
             message_id?: string;
           }) => ({
             id: error.id,
-            timestamp: new Date(error.timestamp),
+            timestamp: parseUTCTimestamp(error.timestamp),
             errorType: error.error_type,
             errorMessage: error.error_message,
             botId: error.bot_id,

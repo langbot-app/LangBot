@@ -179,7 +179,7 @@ class SpaceService:
         space_url = space_config['url']
 
         session = httpclient.get_session()
-        async with session.get(f'{space_url}/api/v1/models') as response:
+        async with session.get(f'{space_url}/api/v1/models', params={'page_size': 100}) as response:
             if response.status != 200:
                 raise ValueError(f'Failed to get models: {await response.text()}')
             data = await response.json()

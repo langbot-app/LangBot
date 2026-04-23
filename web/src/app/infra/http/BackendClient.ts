@@ -31,17 +31,23 @@ import {
   ApiRespProviderEmbeddingModels,
   ApiRespProviderEmbeddingModel,
   EmbeddingModel,
+  ApiRespProviderRerankModels,
+  ApiRespProviderRerankModel,
+  RerankModel,
   ApiRespPluginSystemStatus,
   ApiRespMCPServers,
   ApiRespMCPServer,
   MCPServer,
-  ExternalKnowledgeBase,
-  ApiRespExternalKnowledgeBases,
-  ApiRespExternalKnowledgeBase,
   ApiRespModelProviders,
   ApiRespModelProvider,
+  ApiRespScannedProviderModels,
   ModelProvider,
   SystemAutoCleanupSettings,
+  ApiRespKnowledgeEngines,
+  ApiRespParsers,
+  RagMigrationStatusResp,
+  ApiRespTools,
+  ApiRespToolDetail,
 } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
@@ -103,6 +109,14 @@ export class BackendClient extends BaseHttpClient {
 
   public deleteModelProvider(uuid: string): Promise<object> {
     return this.delete(`/api/v1/provider/providers/${uuid}`);
+  }
+
+  public scanProviderModels(
+    uuid: string,
+    modelType?: 'llm' | 'embedding' | 'rerank',
+  ): Promise<ApiRespScannedProviderModels> {
+    const params = modelType ? { type: modelType } : {};
+    return this.get(`/api/v1/provider/providers/${uuid}/scan-models`, params);
   }
 
   // ============ Provider Model LLM ============
@@ -170,6 +184,39 @@ export class BackendClient extends BaseHttpClient {
     model: EmbeddingModel,
   ): Promise<object> {
     return this.post(`/api/v1/provider/models/embedding/${uuid}/test`, model);
+  }
+
+  // ============ Provider Model Rerank ============
+  public getProviderRerankModels(
+    providerUuid?: string,
+  ): Promise<ApiRespProviderRerankModels> {
+    const params = providerUuid ? { provider_uuid: providerUuid } : {};
+    return this.get('/api/v1/provider/models/rerank', params);
+  }
+
+  public getProviderRerankModel(
+    uuid: string,
+  ): Promise<ApiRespProviderRerankModel> {
+    return this.get(`/api/v1/provider/models/rerank/${uuid}`);
+  }
+
+  public createProviderRerankModel(model: RerankModel): Promise<object> {
+    return this.post('/api/v1/provider/models/rerank', model);
+  }
+
+  public deleteProviderRerankModel(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/provider/models/rerank/${uuid}`);
+  }
+
+  public updateProviderRerankModel(
+    uuid: string,
+    model: RerankModel,
+  ): Promise<object> {
+    return this.put(`/api/v1/provider/models/rerank/${uuid}`, model);
+  }
+
+  public testRerankModel(uuid: string, model: RerankModel): Promise<object> {
+    return this.post(`/api/v1/provider/models/rerank/${uuid}/test`, model);
   }
 
   // ============ Pipeline API ============
@@ -386,6 +433,7 @@ export class BackendClient extends BaseHttpClient {
       level: string;
       platform: string | null;
       user_id: string | null;
+      user_name: string | null;
       runner_name: string | null;
       variables: string | null;
       role: string | null;
@@ -437,9 +485,11 @@ export class BackendClient extends BaseHttpClient {
   public uploadKnowledgeBaseFile(
     uuid: string,
     file_id: string,
+    parserPluginId?: string,
   ): Promise<object> {
     return this.post(`/api/v1/knowledge/bases/${uuid}/files`, {
       file_id,
+      parser_plugin_id: parserPluginId,
     });
   }
 
@@ -463,49 +513,23 @@ export class BackendClient extends BaseHttpClient {
   public retrieveKnowledgeBase(
     uuid: string,
     query: string,
+    retrievalSettings?: Record<string, unknown>,
   ): Promise<ApiRespKnowledgeBaseRetrieve> {
-    return this.post(`/api/v1/knowledge/bases/${uuid}/retrieve`, { query });
-  }
-
-  // ============ External Knowledge Base API ============
-  public getExternalKnowledgeBases(): Promise<ApiRespExternalKnowledgeBases> {
-    return this.get('/api/v1/knowledge/external-bases');
-  }
-
-  public getExternalKnowledgeBase(
-    uuid: string,
-  ): Promise<ApiRespExternalKnowledgeBase> {
-    return this.get(`/api/v1/knowledge/external-bases/${uuid}`);
-  }
-
-  public createExternalKnowledgeBase(
-    base: ExternalKnowledgeBase,
-  ): Promise<{ uuid: string }> {
-    return this.post('/api/v1/knowledge/external-bases', base);
-  }
-
-  public updateExternalKnowledgeBase(
-    uuid: string,
-    base: ExternalKnowledgeBase,
-  ): Promise<{ uuid: string }> {
-    return this.put(`/api/v1/knowledge/external-bases/${uuid}`, base);
-  }
-
-  public deleteExternalKnowledgeBase(uuid: string): Promise<object> {
-    return this.delete(`/api/v1/knowledge/external-bases/${uuid}`);
-  }
-
-  public retrieveExternalKnowledgeBase(
-    uuid: string,
-    query: string,
-  ): Promise<ApiRespKnowledgeBaseRetrieve> {
-    return this.post(`/api/v1/knowledge/external-bases/${uuid}/retrieve`, {
+    return this.post(`/api/v1/knowledge/bases/${uuid}/retrieve`, {
       query,
+      retrieval_settings: retrievalSettings ?? {},
     });
   }
 
-  public listKnowledgeRetrievers(): Promise<{ retrievers: unknown[] }> {
-    return this.get('/api/v1/knowledge/external-bases/retrievers');
+  // ============ Knowledge Engines API ============
+  public getKnowledgeEngines(): Promise<ApiRespKnowledgeEngines> {
+    return this.get('/api/v1/knowledge/engines');
+  }
+
+  // ============ Parsers API ============
+  public listParsers(mimeType?: string): Promise<ApiRespParsers> {
+    const params = mimeType ? `?mime_type=${encodeURIComponent(mimeType)}` : '';
+    return this.get(`/api/v1/knowledge/parsers${params}`);
   }
 
   // ============ Plugins API ============
@@ -673,6 +697,16 @@ export class BackendClient extends BaseHttpClient {
     return this.get('/api/v1/mcp/servers');
   }
 
+  // ========== Tools ==========
+
+  public getTools(): Promise<ApiRespTools> {
+    return this.get('/api/v1/tools');
+  }
+
+  public getToolDetail(toolName: string): Promise<ApiRespToolDetail> {
+    return this.get(`/api/v1/tools/${toolName}`);
+  }
+
   public getMCPServer(serverName: string): Promise<ApiRespMCPServer> {
     return this.get(`/api/v1/mcp/servers/${serverName}`);
   }
@@ -731,8 +765,29 @@ export class BackendClient extends BaseHttpClient {
     return this.put('/api/v1/system/settings/auto-cleanup', settings);
   }
 
-  public getAsyncTasks(): Promise<ApiRespAsyncTasks> {
-    return this.get('/api/v1/system/tasks');
+  public updateWizardStatus(status: 'skipped' | 'completed'): Promise<void> {
+    return this.post('/api/v1/system/wizard/completed', { status });
+  }
+
+  public saveWizardProgress(progress: {
+    step: number;
+    selected_adapter: string | null;
+    created_bot_uuid: string | null;
+    bot_saved: boolean;
+    selected_runner: string | null;
+  }): Promise<void> {
+    return this.put('/api/v1/system/wizard/progress', progress);
+  }
+
+  public getAsyncTasks(params?: {
+    type?: string;
+    kind?: string;
+  }): Promise<ApiRespAsyncTasks> {
+    const query = new URLSearchParams();
+    if (params?.type) query.set('type', params.type);
+    if (params?.kind) query.set('kind', params.kind);
+    const qs = query.toString();
+    return this.get(`/api/v1/system/tasks${qs ? `?${qs}` : ''}`);
   }
 
   public getAsyncTask(id: number): Promise<AsyncTask> {
@@ -741,6 +796,23 @@ export class BackendClient extends BaseHttpClient {
 
   public getPluginSystemStatus(): Promise<ApiRespPluginSystemStatus> {
     return this.get('/api/v1/system/status/plugin-system');
+  }
+
+  // ============ RAG Migration API ============
+  public getRagMigrationStatus(): Promise<RagMigrationStatusResp> {
+    return this.get('/api/v1/knowledge/migration/status');
+  }
+
+  public executeRagMigration(
+    installPlugin: boolean = true,
+  ): Promise<AsyncTaskCreatedResp> {
+    return this.post('/api/v1/knowledge/migration/execute', {
+      install_plugin: installPlugin,
+    });
+  }
+
+  public dismissRagMigration(): Promise<object> {
+    return this.post('/api/v1/knowledge/migration/dismiss');
   }
 
   public getPluginDebugInfo(): Promise<{

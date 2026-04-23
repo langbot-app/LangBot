@@ -4,14 +4,21 @@ import styles from './KBCard.module.css';
 
 export default function KBCard({ kbCardVO }: { kbCardVO: KnowledgeBaseVO }) {
   const { t } = useTranslation();
+
   return (
     <div className={`${styles.cardContainer}`}>
       <div className={`${styles.basicInfoContainer}`}>
         <div className={`${styles.iconBasicInfoContainer}`}>
           <div className={`${styles.iconEmoji}`}>{kbCardVO.emoji || '📚'}</div>
           <div className={`${styles.basicInfoNameContainer}`}>
-            <div className={`${styles.basicInfoNameText}  ${styles.bigText}`}>
-              {kbCardVO.name}
+            <div className="flex items-center gap-2">
+              <div className={`${styles.basicInfoNameText} ${styles.bigText}`}>
+                {kbCardVO.name}
+              </div>
+              {/* Engine badge */}
+              <span className={styles.engineBadge}>
+                {kbCardVO.getEngineName()}
+              </span>
             </div>
             <div className={`${styles.basicInfoDescriptionText}`}>
               {kbCardVO.description}

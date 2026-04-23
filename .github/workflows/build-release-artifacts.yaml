@@ -43,10 +43,10 @@ jobs:
         run: |
           cd /tmp/langbot_build_web/web
           npm install
-          npm run build
+          npx vite build
       - name: Package Output
         run: |
-          cp -r /tmp/langbot_build_web/web/out ./web
+          cp -r /tmp/langbot_build_web/web/dist ./web
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:

@@ -12,7 +12,7 @@ from ... import entities
 from ....provider import runner as runner_module
 
 import langbot_plugin.api.entities.events as events
-from ....utils import importutil, constants
+from ....utils import importutil, constants, runner as runner_utils
 from ....provider import runners
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -61,6 +61,9 @@ class ChatMessageHandler(handler.MessageHandler):
 
                 yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
             else:
+                self.ap.logger.debug(
+                    f'NormalMessageReceived event prevented default for query {query.query_id} without reply'
+                )
                 yield entities.StageProcessResult(result_type=entities.ResultType.INTERRUPT, new_query=query)
         else:
             if event_ctx.event.user_message_alter is not None:
@@ -149,12 +152,19 @@ class ChatMessageHandler(handler.MessageHandler):
                 self.ap.logger.error(f'Conversation({query.query_id}) Request Failed: {error_info}')
                 traceback.print_exc()
 
-                hide_exception_info = query.pipeline_config['output']['misc']['hide-exception']
+                exception_handling = query.pipeline_config['output']['misc'].get('exception-handling', 'show-hint')
+
+                if exception_handling == 'show-error':
+                    user_notice = f'{e}'
+                elif exception_handling == 'show-hint':
+                    user_notice = query.pipeline_config['output']['misc'].get('failure-hint', 'Request failed.')
+                else:  # hide
+                    user_notice = None
 
                 yield entities.StageProcessResult(
                     result_type=entities.ResultType.INTERRUPT,
                     new_query=query,
-                    user_notice='请求失败' if hide_exception_info else f'{e}',
+                    user_notice=user_notice,
                     error_notice=f'{e}',
                     debug_notice=traceback.format_exc(),
                 )
@@ -185,14 +195,20 @@ class ChatMessageHandler(handler.MessageHandler):
 
                     pipeline_plugins = query.variables.get('_pipeline_bound_plugins', None)
 
+                    runner_category = runner_utils.get_runner_category_from_runner(
+                        runner_name, runner, query.pipeline_config
+                    )
+
                     payload = {
                         'query_id': query.query_id,
                         'adapter': adapter_name,
                         'runner': runner_name,
+                        'runner_category': runner_category,
                         'duration_ms': duration_ms,
                         'model_name': model_name,
                         'version': constants.semantic_version,
                         'instance_id': constants.instance_id,
+                        'edition': constants.edition,
                         'pipeline_plugins': pipeline_plugins,
                         'error': locals().get('error_info', None),
                         'timestamp': datetime.utcnow().isoformat(),

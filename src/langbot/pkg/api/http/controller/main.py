@@ -105,6 +105,29 @@ class HTTPController:
             ):
                 if os.path.exists(os.path.join(frontend_path, path + '.html')):
                     path += '.html'
+                elif not path.startswith('api/'):
+                    # SPA fallback: serve index.html for all non-API, non-static routes
+                    # so that React Router can handle client-side routing (Vite SPA).
+                    # For /home/* sub-routes, first try parent .html files (pre-rendered pages).
+                    if path.startswith('home/'):
+                        segments = path.rstrip('/').split('/')
+                        for i in range(len(segments) - 1, 0, -1):
+                            parent_path = '/'.join(segments[:i]) + '.html'
+                            if os.path.exists(os.path.join(frontend_path, parent_path)):
+                                response = await quart.send_from_directory(
+                                    frontend_path, parent_path, mimetype='text/html'
+                                )
+                                response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                                response.headers['Pragma'] = 'no-cache'
+                                response.headers['Expires'] = '0'
+                                return response
+
+                    # Fallback to index.html for SPA client-side routing
+                    response = await quart.send_from_directory(frontend_path, 'index.html', mimetype='text/html')
+                    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                    response.headers['Pragma'] = 'no-cache'
+                    response.headers['Expires'] = '0'
+                    return response
                 else:
                     return await quart.send_from_directory(frontend_path, '404.html')
 

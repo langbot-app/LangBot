@@ -148,51 +148,54 @@ class WecomEventConverter(abstract_platform_adapter.AbstractEventConverter):
             pass
 
         if type(event) is platform_events.FriendMessage:
-            payload = {
-                'MsgType': 'text',
-                'Content': '',
-                'FromUserName': event.sender.id,
-                'ToUserName': bot_account_id,
-                'CreateTime': int(datetime.datetime.now().timestamp()),
-                'AgentID': event.sender.nickname,
-            }
-            wecom_event = WecomEvent.from_payload(payload=payload)
-            if not wecom_event:
-                raise ValueError('无法从 message_data 构造 WecomEvent 对象')
-
-            return wecom_event
+            return event.source_platform_object
 
     @staticmethod
-    async def target2yiri(event: WecomEvent):
+    async def target2yiri(event: WecomEvent, bot: WecomClient = None):
         """
         将 WecomEvent 转换为平台的 FriendMessage 对象。
 
         Args:
             event (WecomEvent): 企业微信事件。
+            bot (WecomClient): 企业微信客户端，用于获取用户信息。
 
         Returns:
             platform_events.FriendMessage: 转换后的 FriendMessage 对象。
         """
+        # Try to get the user's real name from the WeCom API
+        nickname = str(event.user_id)
+        if bot and event.user_id:
+            try:
+                user_info = await bot.get_user_info(event.user_id)
+                if user_info and user_info.get('name'):
+                    nickname = user_info.get('name')
+            except Exception:
+                pass  # Fall back to user_id as nickname
+
         # 转换消息链
         if event.type == 'text':
             yiri_chain = await WecomMessageConverter.target2yiri(event.message, event.message_id)
             friend = platform_entities.Friend(
                 id=f'u{event.user_id}',
-                nickname=str(event.agent_id),
+                nickname=nickname,
                 remark='',
             )
 
-            return platform_events.FriendMessage(sender=friend, message_chain=yiri_chain, time=event.timestamp)
+            return platform_events.FriendMessage(
+                sender=friend, message_chain=yiri_chain, time=event.timestamp, source_platform_object=event
+            )
         elif event.type == 'image':
             friend = platform_entities.Friend(
                 id=f'u{event.user_id}',
-                nickname=str(event.agent_id),
+                nickname=nickname,
                 remark='',
             )
 
             yiri_chain = await WecomMessageConverter.target2yiri_image(picurl=event.picurl, message_id=event.message_id)
 
-            return platform_events.FriendMessage(sender=friend, message_chain=yiri_chain, time=event.timestamp)
+            return platform_events.FriendMessage(
+                sender=friend, message_chain=yiri_chain, time=event.timestamp, source_platform_object=event
+            )
 
 
 class WecomAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
@@ -210,7 +213,6 @@ class WecomAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             'secret',
             'token',
             'EncodingAESKey',
-            'contacts_secret',
         ]
 
         missing_keys = [key for key in required_keys if key not in config]
@@ -223,7 +225,7 @@ class WecomAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             secret=config['secret'],
             token=config['token'],
             EncodingAESKey=config['EncodingAESKey'],
-            contacts_secret=config['contacts_secret'],
+            contacts_secret=config.get('contacts_secret', ''),  # Optional, kept for backward compatibility
             logger=logger,
             unified_mode=True,
             api_base_url=config.get('api_base_url', 'https://qyapi.weixin.qq.com/cgi-bin'),
@@ -248,18 +250,17 @@ class WecomAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     ):
         Wecom_event = await WecomEventConverter.yiri2target(message_source, self.bot_account_id, self.bot)
         content_list = await WecomMessageConverter.yiri2target(message, self.bot)
-        fixed_user_id = Wecom_event.user_id
-        # 删掉开头的u
-        fixed_user_id = fixed_user_id[1:]
+        # user_id is the original FromUserName from WecomEvent
+        user_id = Wecom_event.user_id
         for content in content_list:
             if content['type'] == 'text':
-                await self.bot.send_private_msg(fixed_user_id, Wecom_event.agent_id, content['content'])
+                await self.bot.send_private_msg(user_id, Wecom_event.agent_id, content['content'])
             elif content['type'] == 'image':
-                await self.bot.send_image(fixed_user_id, Wecom_event.agent_id, content['media_id'])
+                await self.bot.send_image(user_id, Wecom_event.agent_id, content['media_id'])
             elif content['type'] == 'voice':
-                await self.bot.send_voice(fixed_user_id, Wecom_event.agent_id, content['media_id'])
+                await self.bot.send_voice(user_id, Wecom_event.agent_id, content['media_id'])
             elif content['type'] == 'file':
-                await self.bot.send_file(fixed_user_id, Wecom_event.agent_id, content['media_id'])
+                await self.bot.send_file(user_id, Wecom_event.agent_id, content['media_id'])
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         content_list = await WecomMessageConverter.yiri2target(message, self.bot)
@@ -287,7 +288,7 @@ class WecomAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         async def on_message(event: WecomEvent):
             self.bot_account_id = event.receiver_id
             try:
-                return await callback(await self.event_converter.target2yiri(event), self)
+                return await callback(await self.event_converter.target2yiri(event, self.bot), self)
             except Exception:
                 await self.logger.error(f'Error in wecom callback: {traceback.format_exc()}')
 

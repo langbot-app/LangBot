@@ -1,5 +1,6 @@
-import styles from './HomeSidebar.module.css';
 import { I18nObject } from '@/app/infra/entities/common';
+
+export type SidebarSection = 'home' | 'extensions' | 'standalone';
 
 export interface ISidebarChildVO {
   id: string;
@@ -8,6 +9,7 @@ export interface ISidebarChildVO {
   route: string;
   description: string;
   helpLink: I18nObject;
+  section?: SidebarSection;
 }
 
 export class SidebarChildVO {
@@ -17,6 +19,7 @@ export class SidebarChildVO {
   route: string;
   description: string;
   helpLink: I18nObject;
+  section: SidebarSection;
 
   constructor(props: ISidebarChildVO) {
     this.id = props.id;
@@ -25,29 +28,6 @@ export class SidebarChildVO {
     this.route = props.route;
     this.description = props.description;
     this.helpLink = props.helpLink;
+    this.section = props.section ?? 'home';
   }
-}
-
-export function SidebarChild({
-  icon,
-  name,
-  isSelected,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  name: string;
-  isSelected: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <div
-      className={`${styles.sidebarChildContainer} ${
-        isSelected ? styles.sidebarSelected : styles.sidebarUnselected
-      }`}
-      onClick={onClick}
-    >
-      <div className={`${styles.sidebarChildIcon}`}>{icon}</div>
-      <span className={`${styles.sidebarChildName}`}>{name}</span>
-    </div>
-  );
 }

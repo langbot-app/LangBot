@@ -1,4 +1,5 @@
 from __future__ import annotations
+import time
 
 
 import telegram
@@ -41,6 +42,25 @@ class TelegramMessageConverter(abstract_platform_adapter.AbstractMessageConverte
                         photo_bytes = f.read()
 
                 components.append({'type': 'photo', 'photo': photo_bytes})
+            elif isinstance(component, platform_message.File):
+                file_bytes = None
+
+                if component.base64:
+                    # Strip data URI prefix if present (e.g. "data:application/pdf;base64,...")
+                    b64_data = component.base64
+                    if ';base64,' in b64_data:
+                        b64_data = b64_data.split(';base64,', 1)[1]
+                    file_bytes = base64.b64decode(b64_data)
+                elif component.url:
+                    session = httpclient.get_session()
+                    async with session.get(component.url) as response:
+                        file_bytes = await response.read()
+                elif component.path:
+                    with open(component.path, 'rb') as f:
+                        file_bytes = f.read()
+
+                file_name = getattr(component, 'name', None) or 'file'
+                components.append({'type': 'document', 'document': file_bytes, 'filename': file_name})
             elif isinstance(component, platform_message.Forward):
                 for node in component.node_list:
                     components.extend(await TelegramMessageConverter.yiri2target(node.message_chain, bot))
@@ -100,6 +120,27 @@ class TelegramMessageConverter(abstract_platform_adapter.AbstractMessageConverte
                 platform_message.Voice(
                     base64=f'data:{file_format};base64,{base64.b64encode(file_bytes).decode("utf-8")}',
                     length=message.voice.duration,
+                )
+            )
+
+        if message.document:
+            if message.caption:
+                message_components.extend(parse_message_text(message.caption))
+
+            file = await message.document.get_file()
+            file_name = message.document.file_name or 'document'
+            file_size = message.document.file_size or 0
+            file_format = message.document.mime_type or 'application/octet-stream'
+
+            file_bytes = None
+            async with httpclient.get_session(trust_env=True).get(file.file_path) as response:
+                file_bytes = await response.read()
+
+            message_components.append(
+                platform_message.File(
+                    name=file_name,
+                    size=file_size,
+                    base64=f'data:{file_format};base64,{base64.b64encode(file_bytes).decode("utf-8")}',
                 )
             )
 
@@ -178,7 +219,10 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         application = ApplicationBuilder().token(config['token']).build()
         bot = application.bot
         application.add_handler(
-            MessageHandler(filters.TEXT | (filters.COMMAND) | filters.PHOTO | filters.VOICE, telegram_callback)
+            MessageHandler(
+                filters.TEXT | (filters.COMMAND) | filters.PHOTO | filters.VOICE | filters.Document.ALL,
+                telegram_callback,
+            )
         )
         super().__init__(
             config=config,
@@ -217,6 +261,13 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     continue
                 args['photo'] = telegram.InputFile(photo)
                 await self.bot.send_photo(**args)
+            elif component_type == 'document':
+                doc = component.get('document')
+                if doc is None:
+                    continue
+                filename = component.get('filename', 'file')
+                args['document'] = telegram.InputFile(doc, filename=filename)
+                await self.bot.send_document(**args)
 
     async def reply_message(
         self,
@@ -250,6 +301,39 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         await self.bot.send_message(**args)
 
+    def _process_markdown(self, text: str) -> str:
+        if self.config.get('markdown_card', False):
+            return telegramify_markdown.markdownify(content=text)
+        return text
+
+    def _build_message_args(self, chat_id: int, text: str, message_thread_id: int = None, **extra_args) -> dict:
+        args = {'chat_id': chat_id, 'text': self._process_markdown(text), **extra_args}
+        if message_thread_id:
+            args['message_thread_id'] = message_thread_id
+        if self.config.get('markdown_card', False):
+            args['parse_mode'] = 'MarkdownV2'
+        return args
+
+    async def create_message_card(self, message_id, event):
+        assert isinstance(event.source_platform_object, Update)
+        update = event.source_platform_object
+        chat_id = update.effective_chat.id
+        chat_type = update.effective_chat.type
+        message_thread_id = update.message.message_thread_id
+
+        if chat_type == 'private':
+            draft_id = int(time.time() * 1000)
+            self.msg_stream_id[message_id] = ('private', draft_id)
+
+            args = self._build_message_args(chat_id, 'Thinking...', message_thread_id, draft_id=draft_id)
+            await self.bot.send_message_draft(**args)
+        else:
+            args = self._build_message_args(chat_id, 'Thinking...', message_thread_id)
+            send_msg = await self.bot.send_message(**args)
+            self.msg_stream_id[message_id] = ('group', send_msg.message_id)
+
+        return True
+
     async def reply_message_chunk(
         self,
         message_source: platform_events.MessageEvent,
@@ -258,59 +342,47 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         quote_origin: bool = False,
         is_final: bool = False,
     ):
+        message_id = bot_message.resp_message_id
         msg_seq = bot_message.msg_sequence
-        if (msg_seq - 1) % 8 == 0 or is_final:
-            assert isinstance(message_source.source_platform_object, Update)
-            components = await TelegramMessageConverter.yiri2target(message, self.bot)
-            args = {}
-            message_id = message_source.source_platform_object.message.id
+        assert isinstance(message_source.source_platform_object, Update)
+        update = message_source.source_platform_object
+        chat_id = update.effective_chat.id
+        message_thread_id = update.message.message_thread_id
 
-            component = components[0]
-            if message_id not in self.msg_stream_id:  # 当消息回复第一次时，发送新消息
-                # time.sleep(0.6)
-                if component['type'] == 'text':
-                    if self.config['markdown_card'] is True:
-                        content = telegramify_markdown.markdownify(
-                            content=component['text'],
-                        )
-                    else:
-                        content = component['text']
-                    args = {
-                        'chat_id': message_source.source_platform_object.effective_chat.id,
-                        'text': content,
-                    }
-                    if message_source.source_platform_object.message.message_thread_id:
-                        args['message_thread_id'] = message_source.source_platform_object.message.message_thread_id
+        if message_id not in self.msg_stream_id:
+            return
 
-                    if quote_origin:
-                        args['reply_to_message_id'] = message_source.source_platform_object.message.id
+        chat_mode, draft_id = self.msg_stream_id[message_id]
+        components = await TelegramMessageConverter.yiri2target(message, self.bot)
 
-                    if self.config['markdown_card'] is True:
-                        args['parse_mode'] = 'MarkdownV2'
-
-                send_msg = await self.bot.send_message(**args)
-                send_msg_id = send_msg.message_id
-                self.msg_stream_id[message_id] = send_msg_id
-            else:  # 存在消息的时候直接编辑消息1
-                if component['type'] == 'text':
-                    if self.config['markdown_card'] is True:
-                        content = telegramify_markdown.markdownify(
-                            content=component['text'],
-                        )
-                    else:
-                        content = component['text']
-                    args = {
-                        'message_id': self.msg_stream_id[message_id],
-                        'chat_id': message_source.source_platform_object.effective_chat.id,
-                        'text': content,
-                    }
-                    if self.config['markdown_card'] is True:
-                        args['parse_mode'] = 'MarkdownV2'
-
-                await self.bot.edit_message_text(**args)
+        if not components or components[0]['type'] != 'text':
             if is_final and bot_message.tool_calls is None:
-                # self.seq = 1  # 消息回复结束之后重置seq
-                self.msg_stream_id.pop(message_id)  # 消息回复结束之后删除流式消息id
+                self.msg_stream_id.pop(message_id)
+            return
+
+        content = components[0]['text']
+
+        if chat_mode == 'private':
+            args = self._build_message_args(chat_id, content, message_thread_id, draft_id=draft_id)
+            await self.bot.send_message_draft(**args)
+            if is_final and bot_message.tool_calls is None:
+                del args['draft_id']
+                await self.bot.send_message(**args)
+                self.msg_stream_id.pop(message_id)
+        else:
+            stream_id = draft_id
+            if (msg_seq - 1) % 8 == 0 or is_final:
+                args = {
+                    'message_id': stream_id,
+                    'chat_id': chat_id,
+                    'text': self._process_markdown(content),
+                }
+                if self.config.get('markdown_card', False):
+                    args['parse_mode'] = 'MarkdownV2'
+                await self.bot.edit_message_text(**args)
+
+            if is_final and bot_message.tool_calls is None:
+                self.msg_stream_id.pop(message_id)
 
     def get_launcher_id(self, event: platform_events.MessageEvent) -> str | None:
         if not isinstance(event.source_platform_object, Update):

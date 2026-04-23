@@ -1,250 +1,70 @@
-'use client';
-
-import CreateCardComponent from '@/app/infra/basic-component/create-card-component/CreateCardComponent';
-import styles from './knowledgeBase.module.css';
+import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useEffect, useState } from 'react';
-import { KnowledgeBaseVO } from '@/app/home/knowledge/components/kb-card/KBCardVO';
-import { ExternalKBCardVO } from '@/app/home/knowledge/components/external-kb-card/ExternalKBCardVO';
-import KBCard from '@/app/home/knowledge/components/kb-card/KBCard';
-import ExternalKBCard from '@/app/home/knowledge/components/external-kb-card/ExternalKBCard';
-import KBDetailDialog from '@/app/home/knowledge/KBDetailDialog';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import {
-  KnowledgeBase,
-  ExternalKnowledgeBase,
-  ApiRespPluginSystemStatus,
-} from '@/app/infra/entities/api';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import KBMigrationDialog from '@/app/home/knowledge/components/kb-migration-dialog/KBMigrationDialog';
+import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
+import KBDetailContent from './KBDetailContent';
 
 export default function KnowledgePage() {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState('builtin');
-  const [knowledgeBaseList, setKnowledgeBaseList] = useState<KnowledgeBaseVO[]>(
-    [],
-  );
-  const [externalKBList, setExternalKBList] = useState<ExternalKBCardVO[]>([]);
-  const [selectedKbId, setSelectedKbId] = useState<string>('');
-  const [selectedKbType, setSelectedKbType] = useState<'builtin' | 'external'>(
-    'builtin',
-  );
-  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
-  const [pluginSystemStatus, setPluginSystemStatus] =
-    useState<ApiRespPluginSystemStatus | null>(null);
+  const [searchParams] = useSearchParams();
+  const detailId = searchParams.get('id');
+  const { refreshKnowledgeBases } = useSidebarData();
+
+  // Migration dialog state — checked on page load regardless of detail view
+  const [migrationDialogOpen, setMigrationDialogOpen] = useState(false);
+  const [migrationInternalCount, setMigrationInternalCount] = useState(0);
+  const [migrationExternalCount, setMigrationExternalCount] = useState(0);
 
   useEffect(() => {
-    getKnowledgeBaseList();
-    getExternalKBList();
-    fetchPluginSystemStatus();
+    checkMigrationStatus();
   }, []);
 
-  async function fetchPluginSystemStatus() {
+  async function checkMigrationStatus() {
     try {
-      const status = await httpClient.getPluginSystemStatus();
-      setPluginSystemStatus(status);
-    } catch (error) {
-      console.error('Failed to fetch plugin system status:', error);
+      const resp = await httpClient.getRagMigrationStatus();
+      if (resp.needed) {
+        setMigrationInternalCount(resp.internal_kb_count);
+        setMigrationExternalCount(resp.external_kb_count);
+        setMigrationDialogOpen(true);
+      }
+    } catch {
+      // Silently ignore - migration check is non-critical
     }
   }
 
-  async function getKnowledgeBaseList() {
-    const resp = await httpClient.getKnowledgeBases();
-    setKnowledgeBaseList(
-      resp.bases.map((kb: KnowledgeBase) => {
-        const currentTime = new Date();
-        const lastUpdatedTimeAgo = Math.floor(
-          (currentTime.getTime() -
-            new Date(kb.updated_at ?? currentTime.getTime()).getTime()) /
-            1000 /
-            60 /
-            60 /
-            24,
-        );
+  function handleMigrationComplete() {
+    refreshKnowledgeBases();
+  }
 
-        const lastUpdatedTimeAgoText =
-          lastUpdatedTimeAgo > 0
-            ? ` ${lastUpdatedTimeAgo} ${t('knowledge.daysAgo')}`
-            : t('knowledge.today');
-
-        return new KnowledgeBaseVO({
-          id: kb.uuid || '',
-          name: kb.name,
-          description: kb.description,
-          emoji: kb.emoji,
-          embeddingModelUUID: kb.embedding_model_uuid,
-          top_k: kb.top_k ?? 5,
-          lastUpdatedTimeAgo: lastUpdatedTimeAgoText,
-        });
-      }),
+  if (detailId) {
+    return (
+      <>
+        <KBMigrationDialog
+          open={migrationDialogOpen}
+          onOpenChange={setMigrationDialogOpen}
+          internalKbCount={migrationInternalCount}
+          externalKbCount={migrationExternalCount}
+          onMigrationComplete={handleMigrationComplete}
+        />
+        <KBDetailContent id={detailId} />
+      </>
     );
   }
 
-  async function getExternalKBList() {
-    try {
-      const resp = await httpClient.getExternalKnowledgeBases();
-      setExternalKBList(
-        resp.bases.map((kb: ExternalKnowledgeBase) => {
-          const currentTime = new Date();
-          const lastUpdatedTimeAgo = Math.floor(
-            (currentTime.getTime() -
-              new Date(kb.created_at ?? currentTime.getTime()).getTime()) /
-              1000 /
-              60 /
-              60 /
-              24,
-          );
-
-          const lastUpdatedTimeAgoText =
-            lastUpdatedTimeAgo > 0
-              ? ` ${lastUpdatedTimeAgo} ${t('knowledge.daysAgo')}`
-              : t('knowledge.today');
-
-          return new ExternalKBCardVO({
-            id: kb.uuid || '',
-            name: kb.name,
-            description: kb.description,
-            emoji: kb.emoji,
-            retrieverName: `${kb.plugin_author}/${kb.plugin_name}/${kb.retriever_name}`,
-            retrieverConfig: kb.retriever_config || {},
-            lastUpdatedTimeAgo: lastUpdatedTimeAgoText,
-            pluginAuthor: kb.plugin_author,
-            pluginName: kb.plugin_name,
-          });
-        }),
-      );
-    } catch (error) {
-      console.error('Failed to load external knowledge bases:', error);
-    }
-  }
-
-  const handleKBCardClick = (kbId: string) => {
-    setSelectedKbId(kbId);
-    setSelectedKbType('builtin');
-    setDetailDialogOpen(true);
-  };
-
-  const handleCreateKBClick = () => {
-    setSelectedKbId('');
-    setSelectedKbType('builtin');
-    setDetailDialogOpen(true);
-  };
-
-  const handleExternalKBCardClick = (kbId: string) => {
-    setSelectedKbId(kbId);
-    setSelectedKbType('external');
-    setDetailDialogOpen(true);
-  };
-
-  const handleCreateExternalKB = () => {
-    setSelectedKbId('');
-    setSelectedKbType('external');
-    setDetailDialogOpen(true);
-  };
-
-  const handleFormCancel = () => {
-    setDetailDialogOpen(false);
-  };
-
-  const handleKbDeleted = () => {
-    if (selectedKbType === 'builtin') {
-      getKnowledgeBaseList();
-    } else {
-      getExternalKBList();
-    }
-    setDetailDialogOpen(false);
-  };
-
-  const handleNewKbCreated = (newKbId: string) => {
-    if (selectedKbType === 'builtin') {
-      getKnowledgeBaseList();
-    } else {
-      getExternalKBList();
-    }
-    setSelectedKbId(newKbId);
-    setDetailDialogOpen(true);
-  };
-
-  const handleKbUpdated = () => {
-    if (selectedKbType === 'builtin') {
-      getKnowledgeBaseList();
-    } else {
-      getExternalKBList();
-    }
-  };
-
   return (
-    <div>
-      <KBDetailDialog
-        open={detailDialogOpen}
-        onOpenChange={setDetailDialogOpen}
-        kbId={selectedKbId || undefined}
-        kbType={selectedKbType}
-        onFormCancel={handleFormCancel}
-        onKbDeleted={handleKbDeleted}
-        onNewKbCreated={handleNewKbCreated}
-        onKbUpdated={handleKbUpdated}
+    <>
+      <KBMigrationDialog
+        open={migrationDialogOpen}
+        onOpenChange={setMigrationDialogOpen}
+        internalKbCount={migrationInternalCount}
+        externalKbCount={migrationExternalCount}
+        onMigrationComplete={handleMigrationComplete}
       />
-
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <div className="flex flex-row justify-between items-center px-[0.8rem]">
-          <TabsList className="shadow-md py-5 bg-[#f0f0f0] dark:bg-[#2a2a2e]">
-            <TabsTrigger value="builtin" className="px-6 py-4 cursor-pointer">
-              {t('knowledge.builtIn')}
-            </TabsTrigger>
-            {/* Only show external tab if plugin system is enabled and connected */}
-            {pluginSystemStatus?.is_enable &&
-              pluginSystemStatus?.is_connected && (
-                <TabsTrigger
-                  value="external"
-                  className="px-6 py-4 cursor-pointer"
-                >
-                  {t('knowledge.external')}
-                </TabsTrigger>
-              )}
-          </TabsList>
-        </div>
-
-        <TabsContent value="builtin">
-          <div className={styles.knowledgeListContainer}>
-            <CreateCardComponent
-              width={'100%'}
-              height={'10rem'}
-              plusSize={'90px'}
-              onClick={handleCreateKBClick}
-            />
-
-            {knowledgeBaseList.map((kb) => {
-              return (
-                <div key={kb.id} onClick={() => handleKBCardClick(kb.id)}>
-                  <KBCard kbCardVO={kb} />
-                </div>
-              );
-            })}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="external">
-          <div className={styles.knowledgeListContainer}>
-            <CreateCardComponent
-              width={'100%'}
-              height={'10rem'}
-              plusSize={'90px'}
-              onClick={handleCreateExternalKB}
-            />
-
-            {externalKBList.map((kb) => {
-              return (
-                <div
-                  key={kb.id}
-                  onClick={() => handleExternalKBCardClick(kb.id)}
-                >
-                  <ExternalKBCard kbCardVO={kb} />
-                </div>
-              );
-            })}
-          </div>
-        </TabsContent>
-      </Tabs>
-    </div>
+      <div className="flex h-full items-center justify-center text-muted-foreground">
+        <p>{t('knowledge.selectFromSidebar')}</p>
+      </div>
+    </>
   );
 }

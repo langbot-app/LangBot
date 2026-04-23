@@ -8,8 +8,9 @@ import {
   Download,
   ExternalLink,
   Book,
+  FileText,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 
 export default function PluginMarketCardComponent({
@@ -23,6 +24,43 @@ export default function PluginMarketCardComponent({
 }) {
   const { t } = useTranslation();
   const [isHovered, setIsHovered] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const [visibleTags, setVisibleTags] = useState(2);
+
+  // Measure how many tags fit in the bottom row
+  useEffect(() => {
+    const tags = cardVO.tags;
+    if (!bottomRef.current || !tags || tags.length === 0) return;
+
+    const measure = () => {
+      const container = bottomRef.current;
+      if (!container) return;
+      const width = container.offsetWidth;
+      const availableForTags = width - 140 - 80;
+      if (availableForTags <= 0) {
+        setVisibleTags(0);
+        return;
+      }
+      const tagWidth = 80;
+      const plusBadgeWidth = 40;
+      const maxTags = Math.max(
+        0,
+        Math.floor((availableForTags - plusBadgeWidth) / tagWidth),
+      );
+      if (maxTags >= tags.length) {
+        setVisibleTags(tags.length);
+      } else {
+        setVisibleTags(Math.max(1, maxTags));
+      }
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(bottomRef.current);
+    return () => observer.disconnect();
+  }, [cardVO.tags]);
+
+  const remainingTags = cardVO.tags ? cardVO.tags.length - visibleTags : 0;
 
   function handleInstallClick(e: React.MouseEvent) {
     e.stopPropagation();
@@ -41,12 +79,13 @@ export default function PluginMarketCardComponent({
     Tool: <Wrench className="w-4 h-4" />,
     EventListener: <AudioWaveform className="w-4 h-4" />,
     Command: <Hash className="w-4 h-4" />,
-    KnowledgeRetriever: <Book className="w-4 h-4" />,
+    KnowledgeEngine: <Book className="w-4 h-4" />,
+    Parser: <FileText className="w-4 h-4" />,
   };
 
   return (
     <div
-      className="w-[100%] h-auto min-h-[8rem] sm:min-h-[9rem] bg-white rounded-[10px] shadow-[0px_0px_4px_0_rgba(0,0,0,0.2)] p-3 sm:p-[1rem] hover:shadow-[0px_3px_6px_0_rgba(0,0,0,0.12)] transition-all duration-200 hover:scale-[1.005] dark:bg-[#1f1f22] relative"
+      className="w-[100%] h-auto min-h-[8rem] sm:min-h-[9rem] bg-white rounded-[10px] border border-[#e4e4e7] dark:border-[#27272a] p-3 sm:p-[1rem] hover:border-[#a1a1aa] dark:hover:border-[#3f3f46] transition-all duration-200 dark:bg-[#1f1f22] relative"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -64,8 +103,10 @@ export default function PluginMarketCardComponent({
               <div className="text-[0.65rem] sm:text-[0.7rem] text-[#666] dark:text-[#999] truncate w-full">
                 {cardVO.pluginId}
               </div>
-              <div className="text-base sm:text-[1.2rem] text-black dark:text-[#f0f0f0] truncate w-full">
-                {cardVO.label}
+              <div className="flex items-center gap-1.5 w-full min-w-0">
+                <div className="text-base sm:text-[1.2rem] text-black dark:text-[#f0f0f0] truncate">
+                  {cardVO.label}
+                </div>
               </div>
             </div>
 
@@ -93,10 +134,13 @@ export default function PluginMarketCardComponent({
         </div>
 
         {/* 下部分：下载量、标签和组件列表 */}
-        <div className="w-full flex flex-row items-center justify-between gap-2 px-0 sm:px-[0.4rem] flex-shrink-0">
-          <div className="flex flex-row items-center justify-start gap-2 flex-wrap">
+        <div
+          ref={bottomRef}
+          className="w-full flex flex-row items-center justify-between gap-2 px-0 sm:px-[0.4rem] flex-shrink-0 overflow-hidden"
+        >
+          <div className="flex flex-row items-center justify-start gap-2 min-w-0 overflow-hidden">
             {/* 下载数量 */}
-            <div className="flex flex-row items-center gap-[0.3rem] sm:gap-[0.4rem]">
+            <div className="flex flex-row items-center gap-[0.3rem] sm:gap-[0.4rem] flex-shrink-0">
               <svg
                 className="w-4 h-4 sm:w-[1.2rem] sm:h-[1.2rem] text-[#2563eb] dark:text-[#5b8def] flex-shrink-0"
                 xmlns="http://www.w3.org/2000/svg"
@@ -114,14 +158,14 @@ export default function PluginMarketCardComponent({
               </div>
             </div>
 
-            {/* Tags */}
-            {cardVO.tags && cardVO.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {cardVO.tags.slice(0, 2).map((tag) => (
+            {/* Tags - adaptive */}
+            {cardVO.tags && cardVO.tags.length > 0 && visibleTags > 0 && (
+              <div className="flex flex-row items-center gap-1.5 overflow-hidden flex-shrink min-w-0">
+                {cardVO.tags.slice(0, visibleTags).map((tag) => (
                   <Badge
                     key={tag}
                     variant="secondary"
-                    className="text-[0.65rem] sm:text-[0.7rem] px-2 py-0.5 h-5 flex items-center gap-1 flex-shrink-0"
+                    className="text-[0.65rem] sm:text-[0.7rem] px-2 py-0.5 h-5 flex items-center gap-1 flex-shrink-0 whitespace-nowrap"
                   >
                     <svg
                       className="w-2.5 h-2.5 flex-shrink-0"
@@ -136,15 +180,17 @@ export default function PluginMarketCardComponent({
                       <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
                       <line x1="7" y1="7" x2="7.01" y2="7" />
                     </svg>
-                    <span className="truncate">{tagNames[tag] || tag}</span>
+                    <span className="truncate max-w-[5rem]">
+                      {tagNames[tag] || tag}
+                    </span>
                   </Badge>
                 ))}
-                {cardVO.tags.length > 2 && (
+                {remainingTags > 0 && (
                   <Badge
                     variant="outline"
-                    className="text-[0.65rem] sm:text-[0.7rem] px-2 py-0.5 h-5 flex items-center flex-shrink-0"
+                    className="text-[0.65rem] sm:text-[0.7rem] px-1.5 py-0.5 h-5 flex items-center flex-shrink-0 whitespace-nowrap"
                   >
-                    +{cardVO.tags.length - 2}
+                    +{remainingTags}
                   </Badge>
                 )}
               </div>

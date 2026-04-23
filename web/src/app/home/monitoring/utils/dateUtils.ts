@@ -97,3 +97,22 @@ export function isDateInRange(date: Date, range: DateRange | null): boolean {
 export function parseDate(dateStr: string): Date {
   return new Date(dateStr);
 }
+
+/**
+ * Parse a UTC timestamp string from the backend into a Date object.
+ *
+ * The backend stores all monitoring timestamps in UTC but serializes them
+ * as naive ISO strings (e.g. "2026-03-25T14:30:00") without a timezone
+ * designator. JavaScript's `new Date()` would treat such strings as local
+ * time, causing the displayed time to be off by the user's UTC offset.
+ *
+ * This function appends 'Z' when the string has no timezone info, so that
+ * `new Date()` correctly interprets it as UTC.
+ */
+export function parseUTCTimestamp(timestamp: string): Date {
+  // If the string already contains timezone info ('Z', '+', or '-' offset), parse as-is
+  if (/Z|[+-]\d{2}:\d{2}$/.test(timestamp)) {
+    return new Date(timestamp);
+  }
+  return new Date(timestamp + 'Z');
+}

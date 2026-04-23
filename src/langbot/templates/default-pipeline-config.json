@@ -41,7 +41,10 @@
             "runner": "local-agent"
         },
         "local-agent": {
-            "model": "",
+            "model": {
+                "primary": "",
+                "fallbacks": []
+            },
             "max-round": 10,
             "prompt": [
                 {
@@ -49,7 +52,9 @@
                     "content": "You are a helpful assistant."
                 }
             ],
-            "knowledge-bases": []
+            "knowledge-bases": [],
+            "rerank-model": "",
+            "rerank-top-k": 5
         },
         "dify-service-api": {
             "base-url": "https://api.dify.ai/v1",
@@ -95,7 +100,8 @@
             "max": 0
         },
         "misc": {
-            "hide-exception": true,
+            "exception-handling": "show-hint",
+            "failure-hint": "Request failed.",
             "at-sender": true,
             "quote-origin": true,
             "track-function-calls": false,

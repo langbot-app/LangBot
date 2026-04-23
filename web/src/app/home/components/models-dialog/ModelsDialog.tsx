@@ -1,5 +1,3 @@
-'use client';
-
 import { useState, useEffect } from 'react';
 import { Plus, Boxes } from 'lucide-react';
 import { httpClient, systemInfo } from '@/app/infra/http/HttpClient';
@@ -18,6 +16,8 @@ import { ProviderCard } from './components';
 import {
   ExtraArg,
   ModelType,
+  ScanModelsResult,
+  SelectedScannedModel,
   TestResult,
   ProviderModels,
   LANGBOT_MODELS_PROVIDER_REQUESTER,
@@ -147,15 +147,17 @@ export default function ModelsDialog({
       setLoadingProviders((prev) => new Set(prev).add(providerUuid));
     }
     try {
-      const [llmResp, embeddingResp] = await Promise.all([
+      const [llmResp, embeddingResp, rerankResp] = await Promise.all([
         httpClient.getProviderLLMModels(providerUuid),
         httpClient.getProviderEmbeddingModels(providerUuid),
+        httpClient.getProviderRerankModels(providerUuid),
       ]);
       setProviderModels((prev) => ({
         ...prev,
         [providerUuid]: {
           llm: llmResp.models,
           embedding: embeddingResp.models,
+          rerank: rerankResp.models,
         },
       }));
     } catch (err) {
@@ -247,8 +249,14 @@ export default function ModelsDialog({
           abilities,
           extra_args: extraArgsObj,
         } as never);
-      } else {
+      } else if (modelType === 'embedding') {
         await httpClient.createProviderEmbeddingModel({
+          name,
+          provider_uuid: providerUuid,
+          extra_args: extraArgsObj,
+        } as never);
+      } else {
+        await httpClient.createProviderRerankModel({
           name,
           provider_uuid: providerUuid,
           extra_args: extraArgsObj,
@@ -259,6 +267,60 @@ export default function ModelsDialog({
       loadProviders();
     } catch (err) {
       toast.error(t('models.createError') + (err as Error).message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleScanModels(
+    providerUuid: string,
+    modelType: ModelType,
+  ): Promise<ScanModelsResult> {
+    try {
+      const resp = await httpClient.scanProviderModels(providerUuid, modelType);
+      return {
+        models: resp.models,
+        debug: resp.debug,
+      };
+    } catch (err) {
+      toast.error(t('models.getModelListError') + (err as CustomApiError).msg);
+      return { models: [] };
+    }
+  }
+
+  async function handleAddScannedModels(
+    providerUuid: string,
+    modelType: ModelType,
+    models: SelectedScannedModel[],
+  ) {
+    if (models.length === 0) return;
+
+    setIsSubmitting(true);
+    try {
+      for (const item of models) {
+        if (modelType === 'llm') {
+          await httpClient.createProviderLLMModel({
+            name: item.model.name,
+            provider_uuid: providerUuid,
+            abilities: item.abilities,
+            extra_args: {},
+          } as never);
+        } else {
+          await httpClient.createProviderEmbeddingModel({
+            name: item.model.name,
+            provider_uuid: providerUuid,
+            extra_args: {},
+          } as never);
+        }
+      }
+      setAddModelPopoverOpen(null);
+      loadProviderModels(providerUuid, true);
+      loadProviders();
+      toast.success(
+        t('models.addSelectedModelsSuccess', { count: models.length }),
+      );
+    } catch (err) {
+      toast.error(t('models.createError') + (err as CustomApiError).msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -287,8 +349,14 @@ export default function ModelsDialog({
           abilities,
           extra_args: extraArgsObj,
         } as never);
-      } else {
+      } else if (modelType === 'embedding') {
         await httpClient.updateProviderEmbeddingModel(modelId, {
+          name,
+          provider_uuid: providerUuid,
+          extra_args: extraArgsObj,
+        } as never);
+      } else {
+        await httpClient.updateProviderRerankModel(modelId, {
           name,
           provider_uuid: providerUuid,
           extra_args: extraArgsObj,
@@ -312,8 +380,10 @@ export default function ModelsDialog({
     try {
       if (modelType === 'llm') {
         await httpClient.deleteProviderLLMModel(modelId);
-      } else {
+      } else if (modelType === 'embedding') {
         await httpClient.deleteProviderEmbeddingModel(modelId);
+      } else {
+        await httpClient.deleteProviderRerankModel(modelId);
       }
       toast.success(t('models.deleteSuccess'));
       loadProviderModels(providerUuid, true);
@@ -353,8 +423,16 @@ export default function ModelsDialog({
           abilities,
           extra_args: extraArgsObj,
         } as never);
-      } else {
+      } else if (modelType === 'embedding') {
         await httpClient.testEmbeddingModel('_', {
+          uuid: '',
+          name,
+          provider_uuid: '',
+          provider: providerData,
+          extra_args: extraArgsObj,
+        } as never);
+      } else {
+        await httpClient.testRerankModel('_', {
           uuid: '',
           name,
           provider_uuid: '',
@@ -405,6 +483,10 @@ export default function ModelsDialog({
         onCloseAddModel={() => setAddModelPopoverOpen(null)}
         onAddModel={(modelType, name, abilities, extraArgs) =>
           handleAddModel(provider.uuid, modelType, name, abilities, extraArgs)
+        }
+        onScanModels={(modelType) => handleScanModels(provider.uuid, modelType)}
+        onAddScannedModels={(modelType, models) =>
+          handleAddScannedModels(provider.uuid, modelType, models)
         }
         onOpenEditModel={(modelId) => setEditModelPopoverOpen(modelId)}
         onCloseEditModel={() => setEditModelPopoverOpen(null)}
@@ -463,14 +545,16 @@ export default function ModelsDialog({
                     )
                   : t('models.providerCount', { count: otherProviders.length })}
               </span>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleCreateProvider}
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                {t('models.addProvider')}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleCreateProvider}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  {t('models.addProvider')}
+                </Button>
+              </div>
             </div>
 
             {/* Provider List */}

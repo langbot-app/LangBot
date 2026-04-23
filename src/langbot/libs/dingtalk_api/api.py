@@ -182,6 +182,88 @@ class DingTalkClient:
             for handler in self._message_handlers[msg_type]:
                 await handler(event)
 
+    async def _parse_quoted_message(self, replied_msg: dict) -> dict:
+        """Parse the quoted/replied message and extract its content.
+
+        Args:
+            replied_msg: The repliedMsg object from DingTalk message
+
+        Returns:
+            A dict containing the quoted message info with keys:
+            - message_id: The original message ID
+            - msg_type: The message type (text, file, picture, audio, etc.)
+            - content: The text content (if any)
+            - file_url: The file download URL (if file type)
+            - file_name: The file name (if file type)
+            - picture: The picture base64 (if picture type)
+            - audio: The audio base64 (if audio type)
+        """
+        quote_info = {
+            'message_id': replied_msg.get('msgId', ''),
+            'msg_type': replied_msg.get('msgType', ''),
+            'sender_id': replied_msg.get('senderId', ''),
+        }
+
+        msg_type = replied_msg.get('msgType', '')
+        content = replied_msg.get('content', {})
+
+        # Handle content as string (JSON) or dict
+        if isinstance(content, str):
+            try:
+                content = json.loads(content)
+            except (json.JSONDecodeError, TypeError):
+                content = {}
+
+        if msg_type == 'text':
+            # Text message
+            if isinstance(content, dict):
+                quote_info['content'] = content.get('content', '')
+            else:
+                quote_info['content'] = str(content)
+
+        elif msg_type == 'file':
+            # File message
+            download_code = content.get('downloadCode')
+            file_name = content.get('fileName')
+            if download_code and file_name:
+                try:
+                    quote_info['file_url'] = await self.get_file_url(download_code)
+                    quote_info['file_name'] = file_name
+                except Exception as e:
+                    if self.logger:
+                        await self.logger.error(f'Failed to get quoted file URL: {e}')
+
+        elif msg_type == 'picture':
+            # Picture message
+            download_code = content.get('downloadCode')
+            if download_code:
+                try:
+                    quote_info['picture'] = await self.download_image(download_code)
+                except Exception as e:
+                    if self.logger:
+                        await self.logger.error(f'Failed to download quoted image: {e}')
+
+        elif msg_type == 'audio':
+            # Audio message
+            download_code = content.get('downloadCode')
+            if download_code:
+                try:
+                    quote_info['audio'] = await self.get_audio_url(download_code)
+                except Exception as e:
+                    if self.logger:
+                        await self.logger.error(f'Failed to get quoted audio: {e}')
+
+        elif msg_type == 'richText':
+            # Rich text message - extract text content
+            rich_text = content.get('richText', [])
+            texts = []
+            for item in rich_text:
+                if 'text' in item and item['text'] != '\n':
+                    texts.append(item['text'])
+            quote_info['content'] = '\n'.join(texts)
+
+        return quote_info
+
     async def get_message(self, incoming_message: dingtalk_stream.chatbot.ChatbotMessage):
         try:
             # print(json.dumps(incoming_message.to_dict(), indent=4, ensure_ascii=False))
@@ -192,6 +274,15 @@ class DingTalkClient:
                 message_data['conversation_type'] = 'FriendMessage'
             elif str(incoming_message.conversation_type) == '2':
                 message_data['conversation_type'] = 'GroupMessage'
+
+            # Check for quoted/replied message
+            raw_data = incoming_message.to_dict()
+            text_data = raw_data.get('text', {})
+            if isinstance(text_data, dict) and text_data.get('isReplyMsg'):
+                replied_msg = text_data.get('repliedMsg', {})
+                if replied_msg:
+                    quote_info = await self._parse_quoted_message(replied_msg)
+                    message_data['QuotedMessage'] = quote_info
 
             if incoming_message.message_type == 'richText':
                 data = incoming_message.rich_text_content.to_dict()
@@ -268,19 +359,52 @@ class DingTalkClient:
 
                 message_data['Type'] = 'image'
             elif incoming_message.message_type == 'audio':
-                message_data['Audio'] = await self.get_audio_url(incoming_message.to_dict()['content']['downloadCode'])
+                raw_content = incoming_message.to_dict().get('content', {})
+                # 兼容处理：如果 content 仍为 JSON 字符串则进行解析
+                if isinstance(raw_content, str):
+                    try:
+                        raw_content = json.loads(raw_content)
+                    except (json.JSONDecodeError, TypeError):
+                        raw_content = {}
+
+                if self.logger:
+                    await self.logger.info(f'DingTalk audio raw content: {json.dumps(raw_content, ensure_ascii=False)}')
+
+                # 提取钉钉自带的语音转写文字（Powered by Qwen）
+                recognition = raw_content.get('recognition', '')
+                if recognition:
+                    message_data['Content'] = recognition
+
+                download_code = raw_content.get('downloadCode')
+                if download_code:
+                    message_data['Audio'] = await self.get_audio_url(download_code)
 
                 message_data['Type'] = 'audio'
             elif incoming_message.message_type == 'file':
-                down_list = incoming_message.get_down_list()
-                if len(down_list) >= 2:
-                    message_data['File'] = await self.get_file_url(down_list[0])
-                    message_data['Name'] = down_list[1]
+                # 获取原始数据字典并提取嵌套的文件信息
+                raw_data = incoming_message.to_dict()
+                file_info = raw_data.get('content', {})
+
+                # 兼容处理：如果 content 仍为 JSON 字符串则进行解析
+                if isinstance(file_info, str):
+                    try:
+                        file_info = json.loads(file_info)
+                    except (json.JSONDecodeError, TypeError):
+                        file_info = {}
+
+                download_code = file_info.get('downloadCode')
+                file_name = file_info.get('fileName')
+
+                if download_code and file_name:
+                    # 转换 downloadCode 为可下载的真实 URL
+                    message_data['File'] = await self.get_file_url(download_code)
+                    message_data['Name'] = file_name
                 else:
                     if self.logger:
-                        await self.logger.error(f'get_down_list() returned fewer than 2 elements: {down_list}')
+                        await self.logger.error(f'Failed to extract file info from message content: {file_info}')
                     message_data['File'] = None
                     message_data['Name'] = None
+
                 message_data['Type'] = 'file'
 
             copy_message_data = message_data.copy()

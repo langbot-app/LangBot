@@ -3,7 +3,7 @@
   height: 10rem;
   background-color: #fff;
   border-radius: 10px;
-  box-shadow: 0px 2px 2px 0 rgba(0, 0, 0, 0.2);
+  border: 1px solid #e4e4e7;
   padding: 1rem;
   cursor: pointer;
   display: flex;
@@ -15,15 +15,15 @@
 
 :global(.dark) .cardContainer {
   background-color: #1f1f22;
-  box-shadow: 0;
+  border-color: #27272a;
 }
 
 .cardContainer:hover {
-  box-shadow: 0px 2px 8px 0 rgba(0, 0, 0, 0.1);
+  border-color: #a1a1aa;
 }
 
 :global(.dark) .cardContainer:hover {
-  box-shadow: 0;
+  border-color: #3f3f46;
 }
 
 .basicInfoContainer {

@@ -1,11 +1,10 @@
-'use client';
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useTranslation } from 'react-i18next';
 import { RetrieveResult } from '@/app/infra/entities/api';
+import { CustomApiError } from '@/app/infra/entities/common';
 import { toast } from 'sonner';
 
 interface KBRetrieveGenericProps {
@@ -41,7 +40,7 @@ export default function KBRetrieveGeneric({
       setResults(response.results);
     } catch (error) {
       console.error('Retrieve failed:', error);
-      toast.error(t('knowledge.retrieveError'));
+      toast.error(t('knowledge.retrieveError') + (error as CustomApiError).msg);
     } finally {
       setLoading(false);
     }
@@ -51,10 +50,10 @@ export default function KBRetrieveGeneric({
     if (getResultTitle) {
       return getResultTitle(result);
     }
-    // Default: use file_id or document_name from metadata
+    // Default: use document_name from metadata, fallback to file_id or id
     return (
-      (result.metadata.file_id as string) ||
       (result.metadata.document_name as string) ||
+      (result.metadata.file_id as string) ||
       result.id
     );
   };
@@ -106,7 +105,8 @@ export default function KBRetrieveGeneric({
                 <CardTitle className="text-sm font-medium flex justify-between items-center">
                   <span>{getTitle(result)}</span>
                   <span className="text-xs text-muted-foreground">
-                    {t('knowledge.distance')}: {result.distance.toFixed(4)}
+                    {t('knowledge.distance')}:{' '}
+                    {(result.distance ?? 0).toFixed(4)}
                   </span>
                 </CardTitle>
               </CardHeader>

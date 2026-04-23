@@ -37,6 +37,10 @@ class GroupRespondRuleCheckStage(stage.PipelineStage):
         if query.launcher_type.value != 'group':  # 只处理群消息
             return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
+        # 通过路由规则明确指定的流水线，跳过群响应规则检查
+        if query.variables and query.variables.get('_routed_by_rule', False):
+            return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
+
         rules = query.pipeline_config['trigger']['group-respond-rules']
 
         use_rule = rules

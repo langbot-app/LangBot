@@ -13,9 +13,9 @@ from .. import group
 @group.group_class('files', '/api/v1/files')
 class FilesRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
-        @self.route('/image/<image_key>', methods=['GET'], auth_type=group.AuthType.NONE)
+        @self.route('/image/<path:image_key>', methods=['GET'], auth_type=group.AuthType.NONE)
         async def _(image_key: str) -> quart.Response:
-            if '/' in image_key or '\\' in image_key:
+            if '..' in image_key or '\\' in image_key:
                 return quart.Response(status=404)
 
             if not await self.ap.storage_mgr.storage_provider.exists(image_key):

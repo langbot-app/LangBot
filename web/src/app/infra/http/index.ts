@@ -3,7 +3,7 @@ import { CloudServiceClient } from './CloudServiceClient';
 import { ApiRespSystemInfo } from '@/app/infra/entities/api';
 
 // 系统信息
-export let systemInfo: ApiRespSystemInfo = {
+export const systemInfo: ApiRespSystemInfo = {
   debug: false,
   version: '',
   edition: 'community',
@@ -23,6 +23,8 @@ export let systemInfo: ApiRespSystemInfo = {
     monitoring_retention_days: 30,
     runtime_session_idle_hours: 24,
   },
+  wizard_status: 'none',
+  wizard_progress: null,
 };
 
 // 用户信息
@@ -36,8 +38,8 @@ export let userInfo: {
  * 获取基础 URL
  */
 const getBaseURL = (): string => {
-  if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_API_BASE_URL) {
-    return process.env.NEXT_PUBLIC_API_BASE_URL;
+  if (typeof window !== 'undefined' && import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
   }
   return '/';
 };
@@ -57,7 +59,7 @@ if (typeof window !== 'undefined' && systemInfo.cloud_service_url === '') {
   backendClient
     .getSystemInfo()
     .then((info) => {
-      systemInfo = info;
+      Object.assign(systemInfo, info);
       cloudServiceClient.updateBaseURL(info.cloud_service_url);
     })
     .catch((error) => {
@@ -72,7 +74,7 @@ if (typeof window !== 'undefined' && systemInfo.cloud_service_url === '') {
 export const getCloudServiceClient = async (): Promise<CloudServiceClient> => {
   if (systemInfo.cloud_service_url === '') {
     try {
-      systemInfo = await backendClient.getSystemInfo();
+      Object.assign(systemInfo, await backendClient.getSystemInfo());
       // 更新 cloud service client 的 baseURL
       cloudServiceClient.updateBaseURL(systemInfo.cloud_service_url);
     } catch (error) {
@@ -97,7 +99,7 @@ export const getCloudServiceClientSync = (): CloudServiceClient => {
  */
 export const initializeSystemInfo = async (): Promise<void> => {
   try {
-    systemInfo = await backendClient.getSystemInfo();
+    Object.assign(systemInfo, await backendClient.getSystemInfo());
     cloudServiceClient.updateBaseURL(systemInfo.cloud_service_url);
   } catch (error) {
     console.error('Failed to initialize system info:', error);

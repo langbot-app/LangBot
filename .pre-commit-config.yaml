@@ -9,16 +9,14 @@ repos:
       # Run the formatter of backend.
       - id: ruff-format
 
-  - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v3.1.0
-    hooks:
-      - id: prettier
-        types_or: [javascript, jsx, ts, tsx, css, scss]
-        additional_dependencies:
-          - prettier@3.1.0
-
   - repo: local
     hooks:
+      - id: prettier
+        name: prettier
+        entry: npx --prefix web prettier --write --ignore-unknown
+        language: system
+        types_or: [javascript, jsx, ts, tsx, css, scss]
+
       - id: lint-staged
         name: lint-staged
         entry: cd web && pnpm lint-staged

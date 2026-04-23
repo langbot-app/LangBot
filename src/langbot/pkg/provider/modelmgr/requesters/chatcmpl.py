@@ -31,6 +31,192 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
             http_client=httpx.AsyncClient(trust_env=True, timeout=self.requester_cfg['timeout']),
         )
 
+    def _mask_api_key(self, api_key: str | None) -> str:
+        if not api_key:
+            return ''
+        if len(api_key) <= 8:
+            return '****'
+        return f'{api_key[:4]}...{api_key[-4:]}'
+
+    def _infer_model_type(self, model_id: str) -> str:
+        normalized_model_id = (model_id or '').lower()
+        embedding_keywords = (
+            'embedding',
+            'embed',
+            'bge-',
+            'e5-',
+            'm3e',
+            'gte-',
+            'multilingual-e5',
+            'text-embedding',
+        )
+        return 'embedding' if any(keyword in normalized_model_id for keyword in embedding_keywords) else 'llm'
+
+    def _infer_model_abilities(self, item: dict[str, typing.Any], model_id: str) -> list[str]:
+        normalized_model_id = (model_id or '').lower()
+        abilities: set[str] = set()
+
+        def _flatten(value: typing.Any) -> list[str]:
+            if value is None:
+                return []
+            if isinstance(value, str):
+                return [value.lower()]
+            if isinstance(value, dict):
+                flattened: list[str] = []
+                for nested_value in value.values():
+                    flattened.extend(_flatten(nested_value))
+                return flattened
+            if isinstance(value, (list, tuple, set)):
+                flattened: list[str] = []
+                for nested_value in value:
+                    flattened.extend(_flatten(nested_value))
+                return flattened
+            return [str(value).lower()]
+
+        capability_tokens = _flatten(item.get('capabilities'))
+        capability_tokens.extend(_flatten(item.get('modalities')))
+        capability_tokens.extend(_flatten(item.get('input_modalities')))
+        capability_tokens.extend(_flatten(item.get('output_modalities')))
+        capability_tokens.extend(_flatten(item.get('supported_generation_methods')))
+        capability_tokens.extend(_flatten(item.get('supported_parameters')))
+        capability_tokens.extend(_flatten(item.get('architecture')))
+
+        combined_tokens = capability_tokens + [normalized_model_id]
+
+        vision_keywords = (
+            'vision',
+            'image',
+            'file',
+            'video',
+            'multimodal',
+            'vl',
+            'ocr',
+            'omni',
+        )
+        function_call_keywords = (
+            'function',
+            'tool',
+            'tools',
+            'tool_choice',
+            'tool_call',
+            'tool-use',
+            'tool_use',
+        )
+
+        if any(any(keyword in token for keyword in vision_keywords) for token in combined_tokens):
+            abilities.add('vision')
+
+        if any(any(keyword in token for keyword in function_call_keywords) for token in combined_tokens):
+            abilities.add('func_call')
+
+        return sorted(abilities)
+
+    def _normalize_modalities(self, value: typing.Any) -> list[str]:
+        normalized: list[str] = []
+
+        def _collect(item: typing.Any):
+            if item is None:
+                return
+            if isinstance(item, str):
+                for part in item.replace('->', ',').replace('+', ',').split(','):
+                    token = part.strip().lower()
+                    if token and token not in normalized:
+                        normalized.append(token)
+                return
+            if isinstance(item, dict):
+                for nested in item.values():
+                    _collect(nested)
+                return
+            if isinstance(item, (list, tuple, set)):
+                for nested in item:
+                    _collect(nested)
+                return
+
+        _collect(value)
+        return normalized
+
+    def _extract_scan_metadata(self, item: dict[str, typing.Any], model_id: str) -> dict[str, typing.Any]:
+        display_name = item.get('name')
+        if not isinstance(display_name, str) or not display_name.strip() or display_name == model_id:
+            display_name = ''
+
+        description = item.get('description')
+        if not isinstance(description, str) or not description.strip():
+            description = ''
+
+        context_length = item.get('context_length')
+        if context_length is None and isinstance(item.get('top_provider'), dict):
+            context_length = item['top_provider'].get('context_length')
+
+        if not isinstance(context_length, int):
+            try:
+                context_length = int(context_length) if context_length is not None else None
+            except (TypeError, ValueError):
+                context_length = None
+
+        input_modalities = self._normalize_modalities(item.get('input_modalities'))
+        output_modalities = self._normalize_modalities(item.get('output_modalities'))
+
+        if isinstance(item.get('architecture'), dict):
+            if not input_modalities:
+                input_modalities = self._normalize_modalities(item['architecture'].get('input_modalities'))
+            if not output_modalities:
+                output_modalities = self._normalize_modalities(item['architecture'].get('output_modalities'))
+
+        owned_by = item.get('owned_by')
+        if not isinstance(owned_by, str) or not owned_by.strip():
+            owned_by = ''
+
+        return {
+            'display_name': display_name or None,
+            'description': description or None,
+            'context_length': context_length,
+            'owned_by': owned_by or None,
+            'input_modalities': input_modalities,
+            'output_modalities': output_modalities,
+        }
+
+    async def scan_models(self, api_key: str | None = None) -> dict[str, typing.Any]:
+        headers = {}
+        if api_key:
+            headers['Authorization'] = f'Bearer {api_key}'
+
+        models_url = f'{self.requester_cfg["base_url"].rstrip("/")}/models'
+        async with httpx.AsyncClient(trust_env=True, timeout=self.requester_cfg['timeout']) as client:
+            response = await client.get(models_url, headers=headers)
+            response.raise_for_status()
+            payload = response.json()
+
+        models = []
+        for item in payload.get('data', []):
+            model_id = item.get('id')
+            if not model_id:
+                continue
+            models.append(
+                {
+                    'id': model_id,
+                    'name': model_id,
+                    'type': self._infer_model_type(model_id),
+                    'abilities': self._infer_model_abilities(item, model_id),
+                    **self._extract_scan_metadata(item, model_id),
+                }
+            )
+
+        models.sort(key=lambda item: (item['type'] != 'llm', item['name'].lower()))
+        return {
+            'models': models,
+            'debug': {
+                'request': {
+                    'method': 'GET',
+                    'url': models_url,
+                    'headers': {
+                        'Authorization': f'Bearer {self._mask_api_key(api_key)}' if api_key else '',
+                    },
+                },
+                'response': payload,
+            },
+        }
+
     async def _req(
         self,
         args: dict,
@@ -429,3 +615,88 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
             raise errors.RequesterError(f'请求过于频繁或余额不足: {e.message}')
         except openai.APIError as e:
             raise errors.RequesterError(f'请求错误: {e.message}')
+
+    async def invoke_rerank(
+        self,
+        model: requester.RuntimeRerankModel,
+        query: str,
+        documents: typing.List[str],
+        extra_args: dict[str, typing.Any] = {},
+    ) -> typing.List[dict]:
+        """Standard /rerank endpoint (Jina/Cohere/SiliconFlow/Voyage/DashScope compatible)
+
+        Supports extra_args from model.extra_args:
+        - rerank_url: full URL override (e.g. "https://dashscope.aliyuncs.com/compatible-api/v1/reranks")
+        - rerank_path: path override appended to base_url (e.g. "reranks" instead of default "rerank")
+        - Any other fields are merged into the request payload.
+        """
+        api_key = model.provider.token_mgr.get_token()
+        base_url = self.requester_cfg.get('base_url', '').rstrip('/')
+        timeout = self.requester_cfg.get('timeout', 120)
+
+        merged_args = {}
+        if model.model_entity.extra_args:
+            merged_args.update(model.model_entity.extra_args)
+        if extra_args:
+            merged_args.update(extra_args)
+
+        rerank_url = merged_args.pop('rerank_url', None)
+        rerank_path = merged_args.pop('rerank_path', 'rerank')
+        if not rerank_url:
+            rerank_url = f'{base_url}/{rerank_path}'
+
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {api_key}',
+        }
+
+        payload = {
+            'model': model.model_entity.name,
+            'query': query,
+            'documents': documents[:64],
+            'top_n': min(len(documents), 64),
+        }
+
+        if merged_args:
+            payload.update(merged_args)
+
+        try:
+            async with httpx.AsyncClient(trust_env=True, timeout=timeout) as client:
+                resp = await client.post(rerank_url, headers=headers, json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+
+            results = self._parse_rerank_response(data)
+
+            if results:
+                scores = [r.get('relevance_score', 0.0) for r in results]
+                min_score = min(scores)
+                max_score = max(scores)
+                if max_score - min_score > 1e-6:
+                    for r in results:
+                        r['relevance_score'] = (r['relevance_score'] - min_score) / (max_score - min_score)
+
+            return results
+        except httpx.HTTPStatusError as e:
+            raise errors.RequesterError(f'Rerank request failed: {e.response.status_code} - {e.response.text}')
+        except httpx.TimeoutException:
+            raise errors.RequesterError('Rerank request timed out')
+        except Exception as e:
+            raise errors.RequesterError(f'Rerank request error: {str(e)}')
+
+    @staticmethod
+    def _parse_rerank_response(data: dict) -> typing.List[dict]:
+        """Parse rerank response from various providers.
+
+        Handles:
+        - Jina/Cohere/SiliconFlow: {"results": [{"index", "relevance_score"}]}
+        - Voyage AI: {"data": [{"index", "relevance_score"}]}
+        - DashScope: {"output": {"results": [{"index", "relevance_score"}]}}
+        """
+        if 'results' in data:
+            return data['results']
+        if 'data' in data:
+            return data['data']
+        if 'output' in data and isinstance(data['output'], dict):
+            return data['output'].get('results', [])
+        return []

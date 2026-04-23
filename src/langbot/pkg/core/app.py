@@ -9,6 +9,7 @@ from ..platform import botmgr as im_mgr
 from ..platform.webhook_pusher import WebhookPusher
 from ..provider.session import sessionmgr as llm_session_mgr
 from ..provider.modelmgr import modelmgr as llm_model_mgr
+
 from langbot.pkg.provider.tools import toolmgr as llm_tool_mgr
 from ..config import manager as config_mgr
 from ..command import cmdmgr
@@ -29,7 +30,6 @@ from ..api.http.service import knowledge as knowledge_service
 from ..api.http.service import mcp as mcp_service
 from ..api.http.service import apikey as apikey_service
 from ..api.http.service import webhook as webhook_service
-from ..api.http.service import external_kb as external_kb_service
 from ..api.http.service import monitoring as monitoring_service
 from ..api.http.service import system as system_service
 from ..discover import engine as discover_engine
@@ -38,6 +38,7 @@ from ..utils import logcache
 from . import taskmgr
 from . import entities as core_entities
 from ..rag.knowledge import kbmgr as rag_mgr
+from ..rag.service import RAGRuntimeService
 from ..vector import mgr as vectordb_mgr
 from ..telemetry import telemetry as telemetry_module
 from ..survey import manager as survey_module
@@ -64,6 +65,7 @@ class Application:
     model_mgr: llm_model_mgr.ModelManager = None
 
     rag_mgr: rag_mgr.RAGManager = None
+    rag_runtime_service: RAGRuntimeService = None
 
     # TODO move to pipeline
     tool_mgr: llm_tool_mgr.ToolManager = None
@@ -131,6 +133,8 @@ class Application:
 
     embedding_models_service: model_service.EmbeddingModelsService = None
 
+    rerank_models_service: model_service.RerankModelsService = None
+
     provider_service: provider_service.ModelProviderService = None
 
     pipeline_service: pipeline_service.PipelineService = None
@@ -138,8 +142,6 @@ class Application:
     bot_service: bot_service.BotService = None
 
     knowledge_service: knowledge_service.KnowledgeService = None
-
-    external_kb_service: external_kb_service.ExternalKBService = None
 
     mcp_service: mcp_service.MCPService = None
 
@@ -194,6 +196,34 @@ class Application:
                 name='system-auto-cleanup',
                 scopes=[core_entities.LifecycleControlScope.APPLICATION],
             )
+
+            # Start monitoring data cleanup task if enabled
+            monitoring_cfg = self.instance_config.data.get('monitoring', {})
+            auto_cleanup_cfg = monitoring_cfg.get('auto_cleanup', {})
+            if auto_cleanup_cfg.get('enabled', True):
+                retention_days = auto_cleanup_cfg.get('retention_days', 30)
+                check_interval_hours = auto_cleanup_cfg.get('check_interval_hours', 1)
+
+                async def monitoring_cleanup_loop():
+                    check_interval_seconds = check_interval_hours * 3600
+                    while True:
+                        try:
+                            deleted = await self.monitoring_service.cleanup_expired_records(retention_days)
+                            total_deleted = sum(deleted.values())
+                            if total_deleted > 0:
+                                self.logger.info(
+                                    f'Monitoring auto-cleanup: deleted {total_deleted} expired records '
+                                    f'(retention={retention_days}d): {deleted}'
+                                )
+                        except Exception as e:
+                            self.logger.warning(f'Monitoring auto-cleanup error: {e}')
+                        await asyncio.sleep(check_interval_seconds)
+
+                self.task_mgr.create_task(
+                    monitoring_cleanup_loop(),
+                    name='monitoring-cleanup',
+                    scopes=[core_entities.LifecycleControlScope.APPLICATION],
+                )
 
             self.task_mgr.create_task(
                 never_ending(),

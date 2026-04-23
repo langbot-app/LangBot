@@ -13,6 +13,7 @@ import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.events as events
 from ..utils import importutil
+from .config_coercion import coerce_pipeline_config
 
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -296,6 +297,9 @@ class RuntimePipeline:
             )
             # Store message_id in query variables for LLM call monitoring
             query.variables['_monitoring_message_id'] = message_id
+            # Notify adapter so it can map platform-specific IDs to monitoring message ID
+            if hasattr(query.adapter, 'on_monitoring_message_created'):
+                await query.adapter.on_monitoring_message_created(query, message_id)
         except Exception as e:
             self.ap.logger.error(f'Failed to record query start: {e}')
 
@@ -322,6 +326,9 @@ class RuntimePipeline:
             event_ctx = await self.ap.plugin_connector.emit_event(event_obj, bound_plugins)
 
             if event_ctx.is_prevented_default():
+                self.ap.logger.debug(
+                    f'MessageReceived event prevented default for query {query.query_id}, pipeline={pipeline_name}'
+                )
                 return
 
             self.ap.logger.debug(f'Processing query {query.query_id}')
@@ -419,6 +426,14 @@ class PipelineManager:
             pipeline_entity = persistence_pipeline.LegacyPipeline(**pipeline_entity._mapping)
         elif isinstance(pipeline_entity, dict):
             pipeline_entity = persistence_pipeline.LegacyPipeline(**pipeline_entity)
+
+        coerce_pipeline_config(
+            pipeline_entity.config,
+            getattr(self.ap, 'pipeline_config_meta_trigger', {'name': 'trigger', 'stages': []}),
+            getattr(self.ap, 'pipeline_config_meta_safety', {'name': 'safety', 'stages': []}),
+            getattr(self.ap, 'pipeline_config_meta_ai', {'name': 'ai', 'stages': []}),
+            getattr(self.ap, 'pipeline_config_meta_output', {'name': 'output', 'stages': []}),
+        )
 
         # initialize stage containers according to pipeline_entity.stages
         stage_containers: list[StageInstContainer] = []

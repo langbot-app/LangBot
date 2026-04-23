@@ -1,5 +1,3 @@
-'use client';
-
 import { ReactNode } from 'react';
 import '@/i18n';
 import { I18nObject } from '@/app/infra/entities/common';
@@ -27,6 +25,10 @@ export const extractI18nObject = (i18nObject: I18nObject): string => {
   if (language === 'zh_Hans' && i18nObject.zh_Hans) return i18nObject.zh_Hans;
   if (language === 'zh_Hant' && i18nObject.zh_Hant) return i18nObject.zh_Hant;
   if (language === 'ja_JP' && i18nObject.ja_JP) return i18nObject.ja_JP;
+  if (language === 'th_TH' && i18nObject.th_TH) return i18nObject.th_TH;
+  if (language === 'vi_VN' && i18nObject.vi_VN) return i18nObject.vi_VN;
+  if (language === 'es_ES' && i18nObject.es_ES) return i18nObject.es_ES;
+  if (language === 'ru_RU' && i18nObject.ru_RU) return i18nObject.ru_RU;
   return (
     i18nObject.en_US ||
     i18nObject.zh_Hans ||
@@ -49,6 +51,14 @@ export const getAPILanguageCode = (): string => {
   if (language === 'en-US') return 'en';
   // ja-JP -> ja_JP
   if (language === 'ja-JP') return 'ja_JP';
+  // th-TH -> th_TH
+  if (language === 'th-TH') return 'th_TH';
+  // vi-VN -> vi_VN
+  if (language === 'vi-VN') return 'vi_VN';
+  // es-ES -> es_ES
+  if (language === 'es-ES') return 'es_ES';
+  // ru-RU -> ru_RU
+  if (language === 'ru-RU') return 'ru_RU';
   // 默认返回 en
   return 'en';
 };

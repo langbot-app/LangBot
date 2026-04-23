@@ -50,3 +50,11 @@ src/langbot/web/
 /dist
 /build
 *.egg-info
+
+# Plugin build artifacts and unused local plugins
+plugins/*/dist/
+*.lbpkg
+/plugins/feishu_ocr_plugin/
+
+# Next.js build cache (legacy)
+web/.next/

@@ -1,7 +1,10 @@
 import {
   LLMModel,
   EmbeddingModel,
+  RerankModel,
   ModelProvider,
+  ProviderScanDebugInfo,
+  ScannedProviderModel,
 } from '@/app/infra/entities/api';
 
 export type ExtraArg = {
@@ -10,17 +13,28 @@ export type ExtraArg = {
   value: string;
 };
 
-export type ModelType = 'llm' | 'embedding';
+export type ModelType = 'llm' | 'embedding' | 'rerank';
 
 export interface ProviderModels {
   llm: LLMModel[];
   embedding: EmbeddingModel[];
+  rerank: RerankModel[];
 }
 
 export interface TestResult {
   success: boolean;
   duration: number;
 }
+
+export type SelectedScannedModel = {
+  model: ScannedProviderModel;
+  abilities: string[];
+};
+
+export type ScanModelsResult = {
+  models: ScannedProviderModel[];
+  debug?: ProviderScanDebugInfo;
+};
 
 export interface ModelItemProps {
   model: LLMModel | EmbeddingModel;
@@ -74,6 +88,11 @@ export interface ProviderCardProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+  ) => Promise<void>;
+  onScanModels: (modelType: ModelType) => Promise<ScanModelsResult>;
+  onAddScannedModels: (
+    modelType: ModelType,
+    models: SelectedScannedModel[],
   ) => Promise<void>;
   onOpenEditModel: (modelId: string) => void;
   onCloseEditModel: () => void;

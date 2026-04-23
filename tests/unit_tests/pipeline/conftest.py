@@ -194,7 +194,7 @@ def sample_query(sample_message_chain, sample_message_event, mock_adapter):
         pipeline_config={
             'ai': {
                 'runner': {'runner': 'local-agent'},
-                'local-agent': {'model': 'test-model-uuid', 'prompt': 'test-prompt'},
+                'local-agent': {'model': {'primary': 'test-model-uuid', 'fallbacks': []}, 'prompt': 'test-prompt'},
             },
             'output': {'misc': {'at-sender': False, 'quote-origin': False}},
             'trigger': {'misc': {'combine-quote-message': False}},
@@ -219,7 +219,7 @@ def sample_pipeline_config():
     return {
         'ai': {
             'runner': {'runner': 'local-agent'},
-            'local-agent': {'model': 'test-model-uuid', 'prompt': 'test-prompt'},
+            'local-agent': {'model': {'primary': 'test-model-uuid', 'fallbacks': []}, 'prompt': 'test-prompt'},
         },
         'output': {'misc': {'at-sender': False, 'quote-origin': False}},
         'trigger': {'misc': {'combine-quote-message': False}},

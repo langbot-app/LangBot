@@ -70,7 +70,7 @@ Plugin Runtime automatically starts each installed plugin and interacts through 
     - type: must be a specific type, such as feat (new feature), fix (bug fix), docs (documentation), style (code style), refactor (refactoring), perf (performance optimization), etc.
     - scope: the scope of the commit, such as the package name, the file name, the function name, the class name, the module name, etc.
     - subject: the subject of the commit, such as the description of the commit, the reason for the commit, the impact of the commit, etc.
-- If you changed the definition of database entities, please update the migration file in `src/langbot/pkg/persistence/migrations/` and update the constants.py file in `src/langbot/pkg/utils/constants.py` with the new migration number.
+- LangBot uses [Alembic](https://alembic.sqlalchemy.org/) to manage database migrations, supporting both SQLite and PostgreSQL. Migration files are located in `src/langbot/pkg/persistence/alembic/versions/`. If you changed the definition of database entities (ORM models), generate a new migration script by running `uv run python -m langbot.pkg.persistence.alembic_runner autogenerate "description of your change"` in the project root (requires `data/config.yaml` to exist). Review and edit the generated script before committing. Migrations are executed automatically on LangBot startup. For data migrations (e.g. modifying JSON field content), you need to manually add the migration code in the generated script.
 
 ## Some Principles
 
