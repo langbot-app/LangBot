@@ -2,6 +2,8 @@
 
 import typing
 
+import pydantic
+
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
@@ -18,9 +20,10 @@ class WebPageBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
     a message arrives for this bot's pipeline.
     """
 
+    listeners: dict = pydantic.Field(default_factory=dict, exclude=True)
+
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger, **kwargs):
         super().__init__(config=config, logger=logger, **kwargs)
-        self.listeners = {}
 
     async def send_message(
         self,
