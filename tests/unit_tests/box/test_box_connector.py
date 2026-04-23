@@ -35,14 +35,18 @@ def test_box_runtime_connector_stdio_when_no_url(monkeypatch: pytest.MonkeyPatch
     assert isinstance(connector.client, ActionRPCBoxClient)
 
 
-def test_box_runtime_connector_ws_when_url_configured(monkeypatch: pytest.MonkeyPatch):
-    """With an explicit runtime_url, always use WebSocket."""
+def test_box_runtime_connector_stdio_when_url_configured_but_no_flag(monkeypatch: pytest.MonkeyPatch):
+    """With an explicit runtime_url but without Docker/standalone flag, still use stdio.
+
+    runtime_url only determines *which* URL to connect to once WS mode is
+    already selected — it does NOT by itself trigger WS mode.
+    """
     monkeypatch.setattr('langbot.pkg.utils.platform.get_platform', lambda: 'linux')
     monkeypatch.setattr('langbot.pkg.utils.platform.standalone_box', False)
     logger = Mock()
     connector = BoxRuntimeConnector(make_app(logger, runtime_url='http://box-runtime:5410'))
 
-    assert connector._uses_websocket() is True
+    assert connector._uses_websocket() is False
     assert isinstance(connector.client, ActionRPCBoxClient)
 
 

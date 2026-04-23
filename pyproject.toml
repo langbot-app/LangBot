@@ -127,6 +127,11 @@ dev = [
     "ruff>=0.11.9",
 ]
 
+[tool.uv]
+override-dependencies = [
+    "pylibseekdb==1.2.0; sys_platform == 'linux'",
+]
+
 [tool.uv.sources]
 langbot-plugin = { path = "../langbot-plugin-sdk", editable = true }
 

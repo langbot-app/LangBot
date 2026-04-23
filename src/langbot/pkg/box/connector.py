@@ -105,20 +105,18 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
         True when:
           - Running inside Docker (Box runtime is a separate container)
           - The ``--standalone-box`` CLI flag was passed
-          - An explicit ``runtime_url`` was configured
+
+        Note: an explicit ``runtime_url`` in config only determines *which* URL
+        to connect to once WS mode is already selected — it does NOT by itself
+        trigger WS mode.  This mirrors the Plugin Runtime connector behaviour.
         """
-        return bool(
-            self.configured_runtime_url
-            or platform.get_platform() == 'docker'
-            or platform.use_websocket_to_connect_box_runtime()
-        )
+        return bool(platform.get_platform() == 'docker' or platform.use_websocket_to_connect_box_runtime())
 
     async def initialize(self) -> None:
         if self._uses_websocket():
-            if platform.get_platform() == 'win32' and not self.configured_runtime_url:
-                await self._start_subprocess_then_ws()
-            else:
-                await self._connect_remote_ws()
+            await self._connect_remote_ws()
+        elif platform.get_platform() == 'win32':
+            await self._start_subprocess_then_ws()
         else:
             await self._start_local_stdio()
 
