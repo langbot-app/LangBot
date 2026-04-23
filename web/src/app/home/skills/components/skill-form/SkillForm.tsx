@@ -3,12 +3,17 @@ import { useTranslation } from 'react-i18next';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { FolderSearch, ChevronDown, ChevronRight } from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { Skill } from '@/app/infra/entities/api';
 import { toast } from 'sonner';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
+import rehypeSanitize from 'rehype-sanitize';
+import rehypeHighlight from 'rehype-highlight';
+import '@/styles/github-markdown.css';
 
 interface SkillFormProps {
   initSkillName?: string;
@@ -28,10 +33,10 @@ export default function SkillForm({
     description: '',
     instructions: '',
     package_root: '',
-    auto_activate: true,
   });
   const [scanning, setScanning] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
 
   useEffect(() => {
     if (initSkillName) {
@@ -44,9 +49,9 @@ export default function SkillForm({
       description: '',
       instructions: '',
       package_root: '',
-      auto_activate: true,
     });
     setShowAdvanced(false);
+    setPreviewMode(false);
   }, [initSkillName]);
 
   async function loadSkill(skillName: string) {
@@ -75,7 +80,6 @@ export default function SkillForm({
         description: prev.description || result.description,
         package_root: result.package_root,
         instructions: result.instructions,
-        auto_activate: result.auto_activate ?? true,
       }));
       toast.success(t('skills.scanSuccess'));
     } catch (error) {
@@ -103,7 +107,6 @@ export default function SkillForm({
       display_name: skill.display_name || '',
       description: skill.description || '',
       instructions: skill.instructions || '',
-      auto_activate: skill.auto_activate ?? true,
     };
 
     try {
@@ -172,26 +175,68 @@ export default function SkillForm({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="instructions">{t('skills.skillInstructions')}</Label>
-        <Textarea
-          id="instructions"
-          value={skill.instructions || ''}
-          onChange={(e) => setSkill({ ...skill, instructions: e.target.value })}
-          placeholder={t('skills.instructionsPlaceholder')}
-          rows={16}
-          className="font-mono text-sm"
-        />
-      </div>
-
-      <div className="flex items-center justify-between">
-        <Label htmlFor="auto_activate">{t('skills.autoActivate')}</Label>
-        <Switch
-          id="auto_activate"
-          checked={skill.auto_activate ?? true}
-          onCheckedChange={(checked) =>
-            setSkill({ ...skill, auto_activate: checked })
-          }
-        />
+        <div className="flex items-center justify-between">
+          <Label htmlFor="instructions">{t('skills.skillInstructions')}</Label>
+          <div className="flex gap-1 text-xs">
+            <button
+              type="button"
+              className={`px-2 py-0.5 rounded ${
+                !previewMode
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+              onClick={() => setPreviewMode(false)}
+            >
+              {t('skills.edit')}
+            </button>
+            <button
+              type="button"
+              className={`px-2 py-0.5 rounded ${
+                previewMode
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+              onClick={() => setPreviewMode(true)}
+            >
+              {t('skills.preview')}
+            </button>
+          </div>
+        </div>
+        {previewMode ? (
+          <div className="markdown-body h-[720px] min-h-60 max-h-[1000px] overflow-y-auto resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm">
+            {skill.instructions?.trim() ? (
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeRaw, rehypeSanitize, rehypeHighlight]}
+                components={{
+                  ul: ({ children }) => (
+                    <ul className="list-disc">{children}</ul>
+                  ),
+                  ol: ({ children }) => (
+                    <ol className="list-decimal">{children}</ol>
+                  ),
+                  li: ({ children }) => <li className="ml-4">{children}</li>,
+                }}
+              >
+                {skill.instructions}
+              </ReactMarkdown>
+            ) : (
+              <p className="text-muted-foreground italic">
+                {t('skills.instructionsPlaceholder')}
+              </p>
+            )}
+          </div>
+        ) : (
+          <Textarea
+            id="instructions"
+            value={skill.instructions || ''}
+            onChange={(e) =>
+              setSkill({ ...skill, instructions: e.target.value })
+            }
+            placeholder={t('skills.instructionsPlaceholder')}
+            className="font-mono text-sm h-[720px] min-h-60 max-h-[1000px] overflow-y-auto resize-y"
+          />
+        )}
       </div>
 
       <div className="border rounded-md">

@@ -22,7 +22,6 @@ def _make_skill_data(
     instructions='Do something',
     package_root='',
     entry_file='SKILL.md',
-    auto_activate=True,
     **kwargs,
 ):
     return {
@@ -32,7 +31,6 @@ def _make_skill_data(
         'instructions': instructions,
         'package_root': package_root,
         'entry_file': entry_file,
-        'auto_activate': auto_activate,
         **kwargs,
     }
 
@@ -252,7 +250,6 @@ class TestSkillAuthoringToolLoader:
                 'display_name': 'Prompt Skill',
                 'description': 'Prompt only skill',
                 'instructions': 'Follow these steps carefully.',
-                'auto_activate': False,
             },
             SimpleNamespace(),
         )
@@ -263,7 +260,6 @@ class TestSkillAuthoringToolLoader:
                 'display_name': 'Prompt Skill',
                 'description': 'Prompt only skill',
                 'instructions': 'Follow these steps carefully.',
-                'auto_activate': False,
             }
         )
         assert result == {
@@ -342,7 +338,6 @@ class TestSkillAuthoringToolLoader:
                 'name': 'time-now',
                 'description': 'Fixed to Beijing time',
                 'instructions': 'Always use Asia/Shanghai and never offer other timezones.',
-                'auto_activate': True,
             },
             SimpleNamespace(),
         )
@@ -353,7 +348,6 @@ class TestSkillAuthoringToolLoader:
                 'name': 'time-now',
                 'description': 'Fixed to Beijing time',
                 'instructions': 'Always use Asia/Shanghai and never offer other timezones.',
-                'auto_activate': True,
             },
         )
         assert result == {
@@ -400,7 +394,6 @@ class TestSkillAuthoringToolLoader:
                     'display_name': 'Cloned Skill',
                     'description': 'Imported from clone',
                     'instructions': 'Do work',
-                    'auto_activate': True,
                 }
             ),
             create_skill=AsyncMock(return_value=_make_skill_data(name='cloned-skill', package_root='/repo/root')),
@@ -430,7 +423,6 @@ class TestSkillAuthoringToolLoader:
                 'description': 'Imported from clone',
                 'instructions': 'Do work',
                 'package_root': os.path.realpath(repo_dir),
-                'auto_activate': True,
             }
         )
         assert result['imported'] is True

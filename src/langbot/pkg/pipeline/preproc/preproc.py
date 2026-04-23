@@ -248,7 +248,7 @@ class PreProcessor(stage.PipelineStage):
                     f'Skill index injected into system prompt: '
                     f'pipeline={query.pipeline_uuid} '
                     f'bound_skills={bound_skills or "all"} '
-                    f'available_skills=[{", ".join(s["name"] for s in self.ap.skill_mgr.skills.values() if s.get("auto_activate", True))}]'
+                    f'available_skills=[{", ".join(s["name"] for s in self.ap.skill_mgr.skills.values())}]'
                 )
                 # Append skill instruction to the first system message
                 if query.prompt.messages and query.prompt.messages[0].role == 'system':

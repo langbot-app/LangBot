@@ -21,7 +21,6 @@ _FRONTMATTER_FIELDS = (
     'name',
     'display_name',
     'description',
-    'auto_activate',
 )
 
 _PUBLIC_SKILL_FIELDS = (
@@ -30,7 +29,6 @@ _PUBLIC_SKILL_FIELDS = (
     'description',
     'instructions',
     'package_root',
-    'auto_activate',
     'created_at',
     'updated_at',
 )
@@ -50,8 +48,6 @@ def _build_skill_md(metadata: dict, instructions: str) -> str:
     for key in _FRONTMATTER_FIELDS:
         value = metadata.get(key)
         if value is None:
-            continue
-        if key == 'auto_activate' and value is True:
             continue
         if isinstance(value, str) and not value.strip():
             continue
@@ -118,7 +114,6 @@ class SkillService:
             'name': name,
             'display_name': self._resolve_create_field(data, 'display_name', imported_skill_data, default=''),
             'description': self._resolve_create_field(data, 'description', imported_skill_data, default=''),
-            'auto_activate': self._resolve_create_bool(data, 'auto_activate', imported_skill_data, default=True),
         }
         instructions = self._resolve_create_field(data, 'instructions', imported_skill_data, default='')
         self._write_skill_md(target_root, metadata, instructions)
@@ -147,7 +142,6 @@ class SkillService:
             'name': skill['name'],
             'display_name': data.get('display_name', skill.get('display_name', '')),
             'description': data.get('description', skill.get('description', '')),
-            'auto_activate': data.get('auto_activate', skill.get('auto_activate', True)),
         }
         instructions = str(data.get('instructions', skill.get('instructions', '')) or '')
         self._write_skill_md(skill['package_root'], metadata, instructions)
@@ -372,7 +366,6 @@ class SkillService:
             'display_name': str(metadata.get('display_name') or '').strip(),
             'description': str(metadata.get('description') or '').strip(),
             'instructions': instructions,
-            'auto_activate': bool(metadata.get('auto_activate', True)),
         }
 
     async def _reload_skills(self) -> None:
@@ -400,7 +393,6 @@ class SkillService:
             'display_name': str(metadata.get('display_name') or '').strip(),
             'description': str(metadata.get('description') or '').strip(),
             'instructions': instructions,
-            'auto_activate': bool(metadata.get('auto_activate', True)),
         }
 
     async def _download_github_skill_to_temp(self, asset_url: str, tmp_dir: str) -> str:
@@ -488,7 +480,6 @@ class SkillService:
                     'display_name': str(metadata.get('display_name') or '').strip(),
                     'description': str(metadata.get('description') or '').strip(),
                     'instructions': instructions,
-                    'auto_activate': bool(metadata.get('auto_activate', True)),
                     'package_root': self._build_preview_target_dir(base_target_name, relative_path, suffix),
                 }
             )

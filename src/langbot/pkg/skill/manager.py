@@ -135,7 +135,6 @@ class SkillManager:
                 'raw_content': content,
                 'package_root': package_root,
                 'entry_file': entry_file,
-                'auto_activate': bool(metadata.get('auto_activate', True)),
                 'created_at': dt.datetime.fromtimestamp(stat.st_ctime, tz=dt.timezone.utc).isoformat(),
                 'updated_at': dt.datetime.fromtimestamp(stat.st_mtime, tz=dt.timezone.utc).isoformat(),
             }
@@ -154,8 +153,6 @@ class SkillManager:
     def get_skill_index(self, pipeline_uuid: str | None = None, bound_skills: list[str] | None = None) -> str:
         skills_to_index = []
         for skill in self.skills.values():
-            if not skill.get('auto_activate', True):
-                continue
             if bound_skills is not None and skill['name'] not in bound_skills:
                 continue
             skills_to_index.append(skill)

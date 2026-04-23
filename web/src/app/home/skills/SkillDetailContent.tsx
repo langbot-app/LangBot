@@ -17,6 +17,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { Info } from 'lucide-react';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import SkillForm from '@/app/home/skills/components/skill-form/SkillForm';
@@ -94,7 +101,19 @@ export default function SkillDetailContent({ id }: { id: string }) {
     <>
       <div className="flex h-full flex-col">
         <div className="flex items-center justify-between pb-4 shrink-0">
-          <h1 className="text-xl font-semibold">{t('skills.editSkill')}</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-semibold">{t('skills.editSkill')}</h1>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{t('skills.editSkillTooltip')}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
           <Button type="submit" form="skill-form">
             {t('common.save')}
           </Button>

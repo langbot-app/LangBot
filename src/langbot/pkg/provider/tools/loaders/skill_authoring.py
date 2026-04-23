@@ -105,7 +105,6 @@ class SkillAuthoringToolLoader(loader.ToolLoader):
                 'display_name': str(parameters.get('display_name', '') or '').strip(),
                 'description': str(parameters.get('description', '') or '').strip(),
                 'instructions': instructions,
-                'auto_activate': parameters.get('auto_activate', True),
             }
         )
         return {
@@ -137,7 +136,7 @@ class SkillAuthoringToolLoader(loader.ToolLoader):
             raise ValueError('name is required')
 
         data = {'name': name}
-        for field in ('display_name', 'description', 'instructions', 'auto_activate'):
+        for field in ('display_name', 'description', 'instructions'):
             if field in parameters:
                 data[field] = parameters[field]
 
@@ -172,7 +171,6 @@ class SkillAuthoringToolLoader(loader.ToolLoader):
                 'description': str(parameters.get('description') or scanned.get('description', '')).strip(),
                 'instructions': str(parameters.get('instructions') or scanned.get('instructions', '')),
                 'package_root': host_path,
-                'auto_activate': parameters.get('auto_activate', scanned.get('auto_activate', True)),
             }
         )
         return {
@@ -227,10 +225,6 @@ class SkillAuthoringToolLoader(loader.ToolLoader):
                     'instructions': {
                         'type': 'string',
                         'description': 'The SKILL.md body instructions for the new skill.',
-                    },
-                    'auto_activate': {
-                        'type': 'boolean',
-                        'description': 'Whether the skill should be considered for automatic activation. Defaults to true.',
                     },
                 },
                 'required': ['name', 'instructions'],
@@ -299,10 +293,6 @@ class SkillAuthoringToolLoader(loader.ToolLoader):
                         'type': 'string',
                         'description': 'Optional replacement SKILL.md body instructions.',
                     },
-                    'auto_activate': {
-                        'type': 'boolean',
-                        'description': 'Optional new auto_activate value.',
-                    },
                 },
                 'required': ['name'],
                 'additionalProperties': False,
@@ -362,10 +352,6 @@ class SkillAuthoringToolLoader(loader.ToolLoader):
                     'instructions': {
                         'type': 'string',
                         'description': 'Optional instructions override.',
-                    },
-                    'auto_activate': {
-                        'type': 'boolean',
-                        'description': 'Optional auto_activate override.',
                     },
                 },
                 'required': ['path'],

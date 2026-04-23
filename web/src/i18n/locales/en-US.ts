@@ -1274,8 +1274,9 @@ const enUS = {
     skillSlugHelp:
       'Used as the skill directory name. Only letters, numbers, hyphens and underscores.',
     skillDescription: 'Skill Description',
-    skillInstructions: 'Instructions',
-    autoActivate: 'Auto Activate',
+    skillInstructions: 'Skill Instructions',
+    editSkillTooltip: 'Select skills to use in Pipeline settings.',
+    edit: 'Edit',
     saveSuccess: 'Saved successfully',
     saveError: 'Save failed: ',
     createSuccess: 'Created successfully',
