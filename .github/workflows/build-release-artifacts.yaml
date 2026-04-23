@@ -8,6 +8,8 @@ on:
         required: true
         type: string
   push:
+    branches:
+      - master
     tags:
       - 'v*'
   release:
@@ -33,6 +35,20 @@ jobs:
             release_tag="${{ github.event.release.tag_name }}"
           elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
             release_tag="${GITHUB_REF#refs/tags/}"
+          elif [[ "$GITHUB_REF" == refs/heads/master ]]; then
+            version="$(python - <<'PY'
+          import pathlib
+          import re
+
+          text = pathlib.Path('src/langbot/__init__.py').read_text(encoding='utf-8')
+          match = re.search(r"__version__\s*=\s*['\"]([^'\"]+)['\"]", text)
+          if not match:
+              raise SystemExit('Cannot find src/langbot/__init__.py __version__')
+
+          print(match.group(1))
+          PY
+          )"
+            release_tag="v${version#v}"
           else
             release_tag="${{ inputs.release_tag }}"
           fi
@@ -69,6 +85,12 @@ jobs:
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: |
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --title "$RELEASE_TAG" --notes "Automated release for $RELEASE_TAG"
+            gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --title "$RELEASE_TAG" --notes "Automated release for $RELEASE_TAG" || true
           fi
+          for attempt in 1 2 3 4 5; do
+            if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 3
+          done
           gh release upload "$RELEASE_TAG" "langbot-web-${RELEASE_TAG}.zip" --clobber
