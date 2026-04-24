@@ -166,13 +166,12 @@ jobs:
       - name: Commit and push plugin packages
         shell: bash
         run: |
-          if git diff --quiet -- plugins/feishu_keyword_report_plugin/dist plugins/feishu_process_bitable_plugin/dist; then
-            echo "No plugin package changes to commit."
-            exit 0
-          fi
-
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add plugins/feishu_keyword_report_plugin/dist plugins/feishu_process_bitable_plugin/dist
+          if git diff --cached --quiet; then
+            echo "No plugin package changes to commit."
+            exit 0
+          fi
           git commit -m "chore(plugins): update packaged lbpkg artifacts [skip ci]"
           git push origin "HEAD:${GITHUB_REF#refs/heads/}"
