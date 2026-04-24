@@ -175,6 +175,7 @@
     .lb-bubble { position: fixed; bottom: 20px; right: 20px; width: 56px; height: 56px; border-radius: 50%; background: #2563eb; color: #fff; border: none; cursor: pointer; box-shadow: 0 4px 12px rgba(37,99,235,0.4); display: flex; align-items: center; justify-content: center; z-index: 2147483646; transition: transform 0.2s ease, box-shadow 0.2s ease; overflow: hidden; }\
     .lb-bubble:hover { transform: scale(1.08); box-shadow: 0 6px 20px rgba(37,99,235,0.5); }\
     .lb-bubble svg { width: 28px; height: 28px; fill: currentColor; }\
+    .lb-chat-icon { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }\
     .lb-bubble .lb-close-icon { display: none; }\
     .lb-bubble.lb-open .lb-chat-icon { display: none; }\
     .lb-bubble.lb-open .lb-close-icon { display: block; }\
