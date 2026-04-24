@@ -4,6 +4,7 @@ import sqlalchemy
 import traceback
 
 from . import requester
+from .requesters import litellmchat
 from ...core import app
 from ...discover import engine
 from . import token
@@ -42,6 +43,13 @@ class ModelManager:
 
         requester_dict: dict[str, type[requester.ProviderAPIRequester]] = {}
         for component in self.requester_components:
+            # Skip components that use litellm_provider (they will use litellmchat.py instead)
+            if component.spec.get('litellm_provider'):
+                self.ap.logger.debug(
+                    f'Skipping Python class loading for {component.metadata.name} '
+                    f'(uses litellm_provider={component.spec.get("litellm_provider")})'
+                )
+                continue
             requester_dict[component.metadata.name] = component.get_python_component_class()
 
         self.requester_dict = requester_dict
@@ -260,13 +268,34 @@ class ModelManager:
         else:
             provider_entity = provider_info
 
-        if provider_entity.requester not in self.requester_dict:
-            raise provider_errors.RequesterNotFoundError(provider_entity.requester)
+        # Get requester manifest to check for litellm_provider
+        requester_manifest = self.get_available_requester_manifest_by_name(provider_entity.requester)
 
-        requester_inst = self.requester_dict[provider_entity.requester](
-            ap=self.ap,
-            config={'base_url': provider_entity.base_url},
-        )
+        # Build config from base_url
+        config = {'base_url': provider_entity.base_url}
+
+        # Check if requester manifest specifies litellm_provider
+        if requester_manifest and requester_manifest.spec.get('litellm_provider'):
+            # Use unified LiteLLMRequester with provider prefix
+            # Map litellm_provider (YAML spec) to custom_llm_provider (config)
+            config['custom_llm_provider'] = requester_manifest.spec['litellm_provider']
+            requester_inst = litellmchat.LiteLLMRequester(
+                ap=self.ap,
+                config=config,
+            )
+            self.ap.logger.debug(
+                f'Using LiteLLMRequester for {provider_entity.requester} '
+                f'with custom_llm_provider={config["custom_llm_provider"]}'
+            )
+        else:
+            # Use original requester class (for backward compatibility)
+            if provider_entity.requester not in self.requester_dict:
+                raise provider_errors.RequesterNotFoundError(provider_entity.requester)
+            requester_inst = self.requester_dict[provider_entity.requester](
+                ap=self.ap,
+                config=config,
+            )
+
         await requester_inst.initialize()
 
         token_mgr = token.TokenManager(name=provider_entity.uuid, tokens=provider_entity.api_keys or [])
