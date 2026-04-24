@@ -96,6 +96,11 @@ box:
     allowed_host_mount_roots:  # Defaults to ['<shared_host_root>'] when left empty
         - './data/box'
         - '/tmp'
+    # E2B cloud sandbox configuration (optional, requires e2b package)
+    e2b:
+        api_key: ''  # E2B API key (can also be set via E2B_API_KEY env var)
+        api_url: ''  # Custom API URL for self-hosted deployments
+        default_template: ''  # Default template ID (e.g. 'base', 'python-3.11')
 space:
     # Space service URL for OAuth and API
     url: 'https://space.langbot.app'

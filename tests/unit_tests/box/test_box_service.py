@@ -43,6 +43,9 @@ class _InProcessBoxRuntimeClient(BoxRuntimeClient):
     async def initialize(self):
         await self._runtime.initialize()
 
+    async def init(self, config: dict):
+        self._runtime.init(config)
+
     async def execute(self, spec):
         return await self._runtime.execute(spec)
 

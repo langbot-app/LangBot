@@ -76,6 +76,7 @@ class BoxService:
                 await self._runtime_connector.initialize()
             else:
                 await self.client.initialize()
+
             self._available = True
             self._connector_error = ''
             self.ap.logger.info(

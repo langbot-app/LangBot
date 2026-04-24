@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 import typing
@@ -13,6 +14,7 @@ from langbot_plugin.runtime.io.connection import Connection
 
 from langbot_plugin.box.client import ActionRPCBoxClient
 from langbot_plugin.box.errors import BoxRuntimeUnavailableError
+from langbot_plugin.box.actions import LangBotToBoxAction
 
 from ..utils import platform
 from ..utils.managed_runtime import ManagedRuntimeConnector
@@ -27,12 +29,20 @@ _DEFAULT_PORT = 5410
 
 _HEARTBEAT_INTERVAL_SEC = 20
 
+# Keys that are internal to LangBot and should not be passed to Box runtime
+_INTERNAL_BOX_CONFIG_KEYS = frozenset({'runtime_url'})
+
 
 def _get_box_config(ap) -> dict:
     """Return the 'box' section from instance config, with safe fallbacks."""
     instance_config = getattr(ap, 'instance_config', None)
     config_data = getattr(instance_config, 'data', {}) if instance_config is not None else {}
     return config_data.get('box', {})
+
+
+def _filter_config_for_runtime(box_cfg: dict) -> dict:
+    """Remove internal keys from config before passing to Box runtime."""
+    return {k: v for k, v in box_cfg.items() if k not in _INTERNAL_BOX_CONFIG_KEYS}
 
 
 def resolve_box_ws_relay_url(ap: core_app.Application) -> str:
@@ -99,6 +109,10 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
         self._relay_host = parsed.hostname or '127.0.0.1'
         self._relay_port = parsed.port or _DEFAULT_PORT
 
+        # Cache filtered box config for passing to runtime
+        box_cfg = _get_box_config(ap)
+        self._filtered_box_config = _filter_config_for_runtime(box_cfg)
+
     def _uses_websocket(self) -> bool:
         """Whether the connector should use WebSocket to reach the Box runtime.
 
@@ -151,6 +165,9 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
         python_path = sys.executable
         env = os.environ.copy()
 
+        if self._filtered_box_config:
+            env['LANGBOT_BOX_CONFIG'] = json.dumps(self._filtered_box_config)
+
         connected = asyncio.Event()
         connect_error: list[Exception] = []
 
@@ -177,14 +194,22 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
         """Launch box server as detached subprocess, then connect via WS (Windows)."""
         self.ap.logger.info('(windows) Use cmd to launch box runtime and communicate via ws')
 
-        await self._start_runtime_subprocess(
+        env = os.environ.copy()
+        if self._filtered_box_config:
+            env['LANGBOT_BOX_CONFIG'] = json.dumps(self._filtered_box_config)
+
+        python_path = sys.executable
+        self.runtime_subprocess = await asyncio.create_subprocess_exec(
+            python_path,
             '-m',
             'langbot_plugin.box.server',
             '--mode',
             'ws',
             '--port',
             str(self._relay_port),
+            env=env,
         )
+        self.runtime_subprocess_task = asyncio.create_task(self.runtime_subprocess.wait())
 
         ws_url = f'ws://localhost:{self._relay_port}/rpc/ws'
         await self._connect_ws(ws_url, '(windows) WebSocket')
@@ -262,6 +287,11 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
             self._handler_task = asyncio.create_task(handler.run())
             try:
                 await handler.call_action(CommonAction.PING, {})
+
+                if self._filtered_box_config:
+                    await handler.call_action(LangBotToBoxAction.INIT, self._filtered_box_config)
+                    self.ap.logger.debug('Sent box configuration to Box runtime via INIT.')
+
                 self.ap.logger.info(f'Connected to Box runtime via {transport_name}.')
                 connected.set()
                 await self._handler_task
