@@ -68,8 +68,8 @@ spec:
         en_US: Turnstile Site Key
         zh_Hans: Turnstile 站点密钥
       description:
-        en_US: "Cloudflare Turnstile site key for bot protection (optional)"
-        zh_Hans: "Cloudflare Turnstile 站点密钥，用于防机器人保护（可选）"
+        en_US: "Cloudflare Turnstile site key for bot protection. Get it from the Cloudflare dashboard (Turnstile > Add Site). Leave empty to disable."
+        zh_Hans: "Cloudflare Turnstile 站点密钥，用于防止机器人滥用。在 Cloudflare 控制台（Turnstile > 添加站点）中获取。留空则不启用。"
       type: string
       required: false
       default: ""
@@ -78,8 +78,8 @@ spec:
         en_US: Turnstile Secret Key
         zh_Hans: Turnstile 服务端密钥
       description:
-        en_US: "Cloudflare Turnstile secret key for server-side verification (optional)"
-        zh_Hans: "Cloudflare Turnstile 服务端密钥，用于服务端验证（可选）"
+        en_US: "Cloudflare Turnstile secret key for server-side token verification. Found alongside the site key in the Cloudflare dashboard. Required if site key is set."
+        zh_Hans: "Cloudflare Turnstile 服务端密钥，用于服务端验证令牌。与站点密钥一起在 Cloudflare 控制台中获取。设置了站点密钥时必填。"
       type: string
       required: false
       default: ""
