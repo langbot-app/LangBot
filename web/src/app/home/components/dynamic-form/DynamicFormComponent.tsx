@@ -448,8 +448,8 @@ export default function DynamicFormComponent({
           }
 
           if (config.type === 'embed-code') {
-            const pipelineUuid = (systemContext?.pipeline_uuid as string) || '';
-            if (!pipelineUuid) return null;
+            const botUuid = (systemContext?.bot_uuid as string) || '';
+            if (!botUuid) return null;
 
             const baseUrl =
               import.meta.env.VITE_API_BASE_URL || window.location.origin;
@@ -461,7 +461,7 @@ export default function DynamicFormComponent({
               .replace(/"/g, '&quot;')
               .replace(/</g, '&lt;')
               .replace(/>/g, '&gt;');
-            const embedSnippet = `<script data-title="${safeTitle}" src="${baseUrl}/api/v1/embed/${pipelineUuid}/widget.js"><\/script>`;
+            const embedSnippet = `<script data-title="${safeTitle}" src="${baseUrl}/api/v1/embed/${botUuid}/widget.js"><\/script>`;
 
             return (
               <div key={config.id} className="space-y-2">

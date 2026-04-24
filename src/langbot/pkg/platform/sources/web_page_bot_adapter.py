@@ -18,12 +18,26 @@ class WebPageBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
     This adapter stores event listeners so that RuntimeBot can register
     its handlers, which are then called by the websocket adapter when
     a message arrives for this bot's pipeline.
+
+    Message sending/replying is delegated to the websocket_proxy_bot's
+    adapter so that replies are actually delivered over the WebSocket
+    connection while the dashboard correctly shows this adapter's name.
     """
 
     listeners: dict = pydantic.Field(default_factory=dict, exclude=True)
+    _ws_adapter: typing.Any = None
+
+    class Config:
+        arbitrary_types_allowed = True
+        # Allow private attributes
+        underscore_attrs_are_private = True
 
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger, **kwargs):
         super().__init__(config=config, logger=logger, **kwargs)
+
+    def set_ws_adapter(self, ws_adapter) -> None:
+        """Set the underlying WebSocket adapter used for actual message delivery."""
+        object.__setattr__(self, '_ws_adapter', ws_adapter)
 
     async def send_message(
         self,
@@ -31,6 +45,8 @@ class WebPageBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
         target_id: str,
         message: platform_message.MessageChain,
     ) -> dict:
+        if self._ws_adapter is not None:
+            return await self._ws_adapter.send_message(target_type, target_id, message)
         return {}
 
     async def reply_message(
@@ -39,6 +55,8 @@ class WebPageBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
         message: platform_message.MessageChain,
         quote_origin: bool = False,
     ) -> dict:
+        if self._ws_adapter is not None:
+            return await self._ws_adapter.reply_message(message_source, message, quote_origin)
         return {}
 
     async def reply_message_chunk(
@@ -49,6 +67,10 @@ class WebPageBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
         quote_origin: bool = False,
         is_final: bool = False,
     ) -> dict:
+        if self._ws_adapter is not None:
+            return await self._ws_adapter.reply_message_chunk(
+                message_source, bot_message, message, quote_origin, is_final
+            )
         return {}
 
     def register_listener(

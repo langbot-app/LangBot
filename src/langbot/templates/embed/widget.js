@@ -10,7 +10,7 @@
 
   // ========== Configuration (injected by backend) ==========
   var CONFIG = {
-    pipelineUuid: "__LANGBOT_PIPELINE_UUID__",
+    botUuid: "__LANGBOT_BOT_UUID__",
     baseUrl: "__LANGBOT_BASE_URL__",
     sessionType: "person",
     title: scriptTitle || "LangBot",
@@ -228,15 +228,18 @@
     // Italic
     html = html.replace(/\*([^*]+)\*/g, "<em>$1</em>");
     // Links
-    html = html.replace(
-      /\[([^\]]+)\]\(([^)]+)\)/g,
-      function (match, p1, p2) {
-        if (/^https?:\/\//i.test(p2)) {
-          return '<a href="' + p2 + '" target="_blank" rel="noopener noreferrer">' + p1 + '</a>';
-        }
-        return p1;
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function (match, p1, p2) {
+      if (/^https?:\/\//i.test(p2)) {
+        return (
+          '<a href="' +
+          p2 +
+          '" target="_blank" rel="noopener noreferrer">' +
+          p1 +
+          "</a>"
+        );
       }
-    );
+      return p1;
+    });
     // Unordered lists
     html = html.replace(/((?:^[\-\*] .+(?:<br>)?)+)/gm, function (block) {
       var items = block.split(/<br>|\\n/).filter(function (l) {
@@ -305,8 +308,8 @@
       protocol +
       "//" +
       host +
-      "/api/v1/pipelines/" +
-      CONFIG.pipelineUuid +
+      "/api/v1/embed/" +
+      CONFIG.botUuid +
       "/ws/connect?session_type=" +
       CONFIG.sessionType;
 
@@ -498,11 +501,12 @@
     var url =
       CONFIG.baseUrl +
       "/api/v1/embed/" +
-      CONFIG.pipelineUuid +
+      CONFIG.botUuid +
       "/messages/" +
       CONFIG.sessionType;
     var headers = {};
-    if (state.sessionToken) headers["Authorization"] = "Bearer " + state.sessionToken;
+    if (state.sessionToken)
+      headers["Authorization"] = "Bearer " + state.sessionToken;
     fetch(url, { headers: headers })
       .then(function (res) {
         return res.json();
@@ -525,11 +529,12 @@
     var url =
       CONFIG.baseUrl +
       "/api/v1/embed/" +
-      CONFIG.pipelineUuid +
+      CONFIG.botUuid +
       "/reset/" +
       CONFIG.sessionType;
     var headers = {};
-    if (state.sessionToken) headers["Authorization"] = "Bearer " + state.sessionToken;
+    if (state.sessionToken)
+      headers["Authorization"] = "Bearer " + state.sessionToken;
     fetch(url, { method: "POST", headers: headers })
       .then(function () {
         state.messages = [];
@@ -698,16 +703,14 @@
     state.feedbackState[msgId] = actualType === 3 ? 0 : actualType;
 
     var headers = { "Content-Type": "application/json" };
-    if (state.sessionToken) headers["Authorization"] = "Bearer " + state.sessionToken;
+    if (state.sessionToken)
+      headers["Authorization"] = "Bearer " + state.sessionToken;
 
-    fetch(
-      CONFIG.baseUrl + "/api/v1/embed/" + CONFIG.pipelineUuid + "/feedback",
-      {
-        method: "POST",
-        headers: headers,
-        body: JSON.stringify({ message_id: msgId, feedback_type: actualType }),
-      },
-    ).catch(function () {});
+    fetch(CONFIG.baseUrl + "/api/v1/embed/" + CONFIG.botUuid + "/feedback", {
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify({ message_id: msgId, feedback_type: actualType }),
+    }).catch(function () {});
   }
 
   function updateMessageEl(idx, msg) {
@@ -810,7 +813,7 @@
     if (state.isOpen) {
       els.panel.classList.add("lb-visible");
       els.bubble.classList.add("lb-open");
-      ensureTurnstileVerified(function() {
+      ensureTurnstileVerified(function () {
         loadHistory();
         wsConnect();
       });
@@ -824,7 +827,11 @@
   }
 
   function ensureTurnstileVerified(callback) {
-    if (state.sessionToken || !CONFIG.turnstileSiteKey || CONFIG.turnstileSiteKey.indexOf("__LANGBOT") === 0) {
+    if (
+      state.sessionToken ||
+      !CONFIG.turnstileSiteKey ||
+      CONFIG.turnstileSiteKey.indexOf("__LANGBOT") === 0
+    ) {
       return callback();
     }
     if (state.turnstileQueue) {
@@ -833,27 +840,36 @@
     }
     state.turnstileQueue = [callback];
 
-    var flushQueue = function(success) {
+    var flushQueue = function (success) {
       var q = state.turnstileQueue;
       state.turnstileQueue = null;
       if (success && q) {
-        for (var i=0; i<q.length; i++) q[i]();
+        for (var i = 0; i < q.length; i++) q[i]();
       }
     };
 
-    var doRender = function() {
+    var doRender = function () {
       var container = document.createElement("div");
       document.body.appendChild(container);
       turnstile.render(container, {
         sitekey: CONFIG.turnstileSiteKey,
         size: "invisible",
-        callback: function(token) {
-          fetch(CONFIG.baseUrl + "/api/v1/embed/" + CONFIG.pipelineUuid + "/turnstile/verify", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ token: token })
-          }).then(function(res) { return res.json(); })
-            .then(function(data) {
+        callback: function (token) {
+          fetch(
+            CONFIG.baseUrl +
+              "/api/v1/embed/" +
+              CONFIG.botUuid +
+              "/turnstile/verify",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ token: token }),
+            },
+          )
+            .then(function (res) {
+              return res.json();
+            })
+            .then(function (data) {
               if (data && data.data && data.data.token) {
                 state.sessionToken = data.data.token;
                 flushQueue(true);
@@ -861,15 +877,16 @@
                 showError("Bot verification failed");
                 flushQueue(false);
               }
-            }).catch(function() {
+            })
+            .catch(function () {
               showError("Bot verification network error");
               flushQueue(false);
             });
         },
-        "error-callback": function() {
+        "error-callback": function () {
           showError("Bot verification error");
           flushQueue(false);
-        }
+        },
       });
     };
 
@@ -878,7 +895,8 @@
     } else {
       window.onloadTurnstileCallback = doRender;
       var script = document.createElement("script");
-      script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=onloadTurnstileCallback";
+      script.src =
+        "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=onloadTurnstileCallback";
       script.async = true;
       script.defer = true;
       document.head.appendChild(script);

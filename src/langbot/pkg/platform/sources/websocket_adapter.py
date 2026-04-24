@@ -451,8 +451,14 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             if (owner_bot and hasattr(owner_bot.adapter, 'listeners') and owner_bot.adapter.listeners)
             else self.listeners
         )
+        # Pass owner_bot's adapter so that downstream logging / dashboard
+        # attributes the message to the correct bot adapter name.
+        # Wire the ws adapter into the owner so replies are actually delivered.
+        if owner_bot and hasattr(owner_bot.adapter, 'set_ws_adapter'):
+            owner_bot.adapter.set_ws_adapter(self)
+        callback_adapter = owner_bot.adapter if (owner_bot and hasattr(owner_bot, 'adapter')) else self
         if event.__class__ in listeners:
-            asyncio.create_task(listeners[event.__class__](event, self))
+            asyncio.create_task(listeners[event.__class__](event, callback_adapter))
 
     def get_websocket_messages(self, pipeline_uuid: str, session_type: str) -> list[dict]:
         """获取消息历史"""
