@@ -215,3 +215,35 @@ class AutoProcessToBitableListenerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(listener._send_feedback.await_count, 1)  # type: ignore[attr-defined]
         self.assertTrue(listener._send_feedback.await_args.kwargs["is_error"])  # type: ignore[attr-defined]
         self.assertIn("history write failed", listener._send_feedback.await_args.args[1])  # type: ignore[attr-defined]
+
+    async def test_parse_particle_size_supports_c_line_batch_id(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_particle_size(
+            "S20-CM-DC2604-001 D10:1.1 D50:2.2 D90:3.3",
+            "2026-04-24 09:00:00",
+        )
+
+        self.assertEqual(len(records), 1)
+        record = records[0]
+        self.assertEqual(record.line, "C")
+        self.assertEqual(record.batch_id, "S20-DC2604-001")
+        self.assertEqual(record.route_key, "wet_process.C")
+        self.assertEqual(record.fields["最后更新工序"], "粗磨工序")
+        self.assertEqual(record.fields["粗磨D50"], 2.2)
+
+    async def test_parse_feeding_supports_c_line_batch_id(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_feeding(
+            "批次号：S20-DC2604-001\n磷酸铁需补：12.5kg\nBL总量：88.8kg",
+            "2026-04-24 10:00:00",
+        )
+
+        self.assertEqual(len(records), 1)
+        record = records[0]
+        self.assertEqual(record.line, "C")
+        self.assertEqual(record.batch_id, "S20-DC2604-001")
+        self.assertEqual(record.route_key, "feeding.C")
+        self.assertEqual(record.fields["磷酸铁需补(kg)"], 12.5)
+        self.assertEqual(record.fields["BL总量(kg)"], 88.8)

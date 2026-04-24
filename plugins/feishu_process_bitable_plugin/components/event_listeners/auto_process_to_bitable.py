@@ -151,6 +151,33 @@ class AutoProcessToBitableListener(EventListener):
                 return default
         return default
 
+    @staticmethod
+    def _supported_production_lines() -> tuple[str, ...]:
+        return ("A", "B", "C", "D", "E")
+
+    @classmethod
+    def _production_line_pattern(cls) -> str:
+        return "".join(cls._supported_production_lines())
+
+    @classmethod
+    def _is_supported_production_line(cls, line: str) -> bool:
+        return line.strip().upper() in cls._supported_production_lines()
+
+    @classmethod
+    def _extract_production_line_from_batch_id(cls, batch_id: str) -> str:
+        match = re.search(r"-D([A-Z])\d{4}-", batch_id.strip().upper())
+        if not match:
+            return "UNKNOWN"
+        line = str(match.group(1)).upper().strip()
+        return line if cls._is_supported_production_line(line) else "UNKNOWN"
+
+    @classmethod
+    def _resolve_line_route_key(cls, prefix: str, line: str) -> str:
+        line_code = line.strip().upper()
+        if cls._is_supported_production_line(line_code):
+            return f"{prefix}.{line_code}"
+        return prefix
+
     def _get_time_zone(self) -> datetime.tzinfo:
         raw_tz = self._get_str_config("time_zone", "Asia/Shanghai")
         if raw_tz:
@@ -296,32 +323,33 @@ class AutoProcessToBitableListener(EventListener):
                 self._history_table_id_cache = resolved
             return resolved
 
-    @staticmethod
-    def _default_table_names() -> dict[str, str]:
-        return {
-            "spray.A": "A线喷雾汇总",
-            "spray.B": "B线喷雾汇总",
-            "feeding.A": "A线投料汇总",
-            "feeding.B": "B线投料汇总",
-            "sintering.A": "A线烧结汇总",
-            "sintering.B": "B线烧结汇总",
-            "crushing.A": "A线粉碎压实汇总",
-            "crushing.B": "B线粉碎压实汇总",
-            "wet_process.A": "A线湿法汇总",
-            "wet_process.B": "B线湿法汇总",
+    @classmethod
+    def _default_table_names(cls) -> dict[str, str]:
+        names = {
             "particle_size.FS": "粉碎工序粒度汇总",
             "particle_size.CM": "粗磨工序粒度汇总",
             "particle_size.XM": "细磨工序粒度汇总",
             "particle_size.HP": "合批工序粒度汇总",
             "particle_size.QQT": "喷雾工序粒度汇总",
             "particle_size": "粒度数据汇总",
-            "pure_water.A": "A线纯水PH汇总",
-            "pure_water.B": "B线纯水PH汇总",
             "pure_water": "车间纯水PH汇总",
             "kiln_batch_io": "窑炉批次进窑出窑表",
             "custom": "自定义消息汇总",
             "raw": "原始消息汇总",
         }
+
+        stage_labels = {
+            "spray": "喷雾",
+            "feeding": "投料",
+            "sintering": "烧结",
+            "crushing": "粉碎压实",
+            "wet_process": "湿法",
+            "pure_water": "纯水PH",
+        }
+        for line in cls._supported_production_lines():
+            for prefix, label in stage_labels.items():
+                names[f"{prefix}.{line}"] = f"{line}线{label}汇总"
+        return names
 
     def _resolve_table_name(self, route_key: str) -> str:
         routing = self._get_json_config("table_name_routing_json", {})
@@ -340,8 +368,16 @@ class AutoProcessToBitableListener(EventListener):
 
         if "." in route_key:
             part_a, part_b = route_key.split(".", 1)
-            if part_b in {"A", "B"}:
-                return f"{part_b}线{part_a}汇总"
+            if self._is_supported_production_line(part_b):
+                route_labels = {
+                    "spray": "喷雾",
+                    "feeding": "投料",
+                    "sintering": "烧结",
+                    "crushing": "粉碎压实",
+                    "wet_process": "湿法",
+                    "pure_water": "纯水PH",
+                }
+                return f"{part_b}线{route_labels.get(part_a, part_a)}汇总"
         return f"{route_key}-汇总"
 
     async def _call_feishu_json_api(
@@ -1038,9 +1074,10 @@ class AutoProcessToBitableListener(EventListener):
             return []
 
         normalized_text = self._normalize_dash(text)
+        line_pattern = self._production_line_pattern()
         main_regex = re.compile(
-            r"([AB])\s*线\s*喷雾\s*批次(?:号)?\s*[:：]?\s*"
-            r"(S\d+(?:-[A-Z]{2,3})?-D[AB]\d{4}-\d+(?:-?[AB]\d)?)",
+            rf"([{line_pattern}])\s*线\s*喷雾\s*批次(?:号)?\s*[:：]?\s*"
+            rf"(S\d+(?:-[A-Z]{{2,3}})?-D[{line_pattern}]\d{{4}}-\d+(?:-?[A-Z]\d)?)",
             re.IGNORECASE,
         )
         params_regex = re.compile(r"([\u4e00-\u9fa5]+)\s*[:：]?\s*(\d+\.?\d*)")
@@ -1081,11 +1118,12 @@ class AutoProcessToBitableListener(EventListener):
             return []
 
         normalized_text = self._normalize_dash(text)
+        line_pattern = self._production_line_pattern()
         # Example:
         # 快速水分
         # S006-QQT-DB2602-130-B-60min：1.08％MC
         moisture_regex = re.compile(
-            r"(S\d+)\s*-\s*QQT\s*-\s*D([AB])(\d{4})\s*-\s*(\d+)"
+            rf"(S\d+)\s*-\s*QQT\s*-\s*D([{line_pattern}])(\d{{4}})\s*-\s*(\d+)"
             r"(?:\s*-\s*([A-Z0-9]+))?"
             r"(?:\s*-\s*(\d+)\s*MIN)?"
             r"\s*[：:]\s*(-?\d+(?:[.,]\d+)?)\s*[％%]\s*MC",
@@ -1137,9 +1175,10 @@ class AutoProcessToBitableListener(EventListener):
             return []
 
         normalized_text = self._normalize_dash(text)
+        line_pattern = self._production_line_pattern()
         batch_regex = re.compile(
             r"批次(?:号)?\s*[:：]?\s*"
-            r"(S\d+(?:-[A-Z]{2})?-D[AB]\d{4}-\d+(?:-?[AB]\d)?)",
+            rf"(S\d+(?:-[A-Z]{{2}})?-D[{line_pattern}]\d{{4}}-\d+(?:-?[A-Z]\d)?)",
             re.IGNORECASE,
         )
         value_regexes: list[tuple[str, re.Pattern[str]]] = [
@@ -1153,7 +1192,7 @@ class AutoProcessToBitableListener(EventListener):
         batch_matches = list(batch_regex.finditer(normalized_text))
         for idx, match in enumerate(batch_matches):
             batch_id = self._normalize_dash(str(match.group(1))).upper().strip()
-            line = "A" if "-DA" in batch_id else "B" if "-DB" in batch_id else "UNKNOWN"
+            line = self._extract_production_line_from_batch_id(batch_id)
 
             block_start = match.end()
             block_end = batch_matches[idx + 1].start() if idx + 1 < len(batch_matches) else len(normalized_text)
@@ -1173,7 +1212,7 @@ class AutoProcessToBitableListener(EventListener):
                 continue
 
             fields["消息时间"] = message_time
-            route_key = f"feeding.{line}" if line in {"A", "B"} else "feeding"
+            route_key = self._resolve_line_route_key("feeding", line)
             records.append(
                 ParsedRecord(
                     scenario="feeding",
@@ -1191,8 +1230,9 @@ class AutoProcessToBitableListener(EventListener):
             return []
 
         normalized_text = self._normalize_dash(text)
+        line_pattern = self._production_line_pattern()
         regex = re.compile(
-            r"(S\d+-SC-[A-Z]{2}\d{4}-\d+)-([AB]\d+-\d+)-\d+\s*min\s*[:：]\s*([\d\.]+)",
+            rf"(S\d+-SC-[A-Z]{{2}}\d{{4}}-\d+)-([{line_pattern}]\d+-\d+)-\d+\s*min\s*[:：]\s*([\d\.]+)",
             re.IGNORECASE,
         )
 
@@ -1201,8 +1241,8 @@ class AutoProcessToBitableListener(EventListener):
             base_id, sample_id, value = match.groups()
             base_id = base_id.upper().strip()
             sample_id = sample_id.upper().strip()
-            line = "A" if sample_id.startswith("A") else "B" if sample_id.startswith("B") else "UNKNOWN"
-            if line not in {"A", "B"}:
+            line = sample_id[:1]
+            if not self._is_supported_production_line(line):
                 continue
 
             key = (base_id, line)
@@ -1231,7 +1271,7 @@ class AutoProcessToBitableListener(EventListener):
                     scenario="sintering",
                     line=line,
                     batch_id=batch_id,
-                    route_key=f"sintering.{line}",
+                    route_key=self._resolve_line_route_key("sintering", line),
                     fields=fields,
                 )
             )
@@ -1259,7 +1299,7 @@ class AutoProcessToBitableListener(EventListener):
     @staticmethod
     def _resolve_fs_slot(sample_text: str) -> str:
         text = sample_text.strip().upper()
-        match = re.search(r"\b([AB][12])\b", text)
+        match = re.search(r"\b([A-E][12])\b", text)
         if not match:
             return ""
         return str(match.group(1))
@@ -1296,7 +1336,7 @@ class AutoProcessToBitableListener(EventListener):
     @staticmethod
     def _normalize_crushing_batch_id(batch_id: str) -> str:
         normalized = re.sub(r"\s*-\s*", "-", batch_id.strip()).upper()
-        if re.fullmatch(r"S\d+-D[AB]\d{4}-\d+", normalized, re.IGNORECASE):
+        if re.fullmatch(r"S\d+-D[A-E]\d{4}-\d+", normalized, re.IGNORECASE):
             return re.sub(r"^(S\d+)-", r"\1-FS-", normalized, flags=re.IGNORECASE)
         return normalized
 
@@ -1306,7 +1346,7 @@ class AutoProcessToBitableListener(EventListener):
 
         normalized_text = self._normalize_dash(text)
         regex = re.compile(
-            r"(S\d+\s*-\s*FS\s*-\s*[A-Z]{2}\d{4}\s*-\s*\d+)\s*-\s*([AB][12][^：:\n]*)[：:]\s*(-?\d+(?:\.\d+)?)",
+            r"(S\d+\s*-\s*FS\s*-\s*[A-Z]{2}\d{4}\s*-\s*\d+)\s*-\s*([A-E][12][^：:\n]*)[：:]\s*(-?\d+(?:\.\d+)?)",
             re.IGNORECASE,
         )
 
@@ -1317,18 +1357,12 @@ class AutoProcessToBitableListener(EventListener):
             sample_id = self._normalize_hyphen_token(sample_id).upper().strip()
             sample_key, freq = self._split_sample_id(sample_id)
 
-            if "-DA" in base_id:
-                line = "A"
-            elif "-DB" in base_id:
-                line = "B"
-            elif sample_key.startswith("A"):
-                line = "A"
-            elif sample_key.startswith("B"):
-                line = "B"
-            else:
-                line = "UNKNOWN"
+            line = self._extract_production_line_from_batch_id(base_id)
+            if line == "UNKNOWN":
+                sample_line = sample_key[:1]
+                line = sample_line if self._is_supported_production_line(sample_line) else "UNKNOWN"
 
-            if line not in {"A", "B"}:
+            if not self._is_supported_production_line(line):
                 continue
 
             key = (base_id, line)
@@ -1357,7 +1391,7 @@ class AutoProcessToBitableListener(EventListener):
                 grouped[key][f"{prefix}频率(HZ)"] = freq_value if freq_value is not None else freq
 
         operation_head_regex = re.compile(
-            r"([AB][12])\s*粉碎\s*[:：]\s*(S\d+\s*-\s*D[AB]\d{4}\s*-\s*\d+)",
+            r"([A-E][12])\s*粉碎\s*[:：]\s*(S\d+\s*-\s*D[A-E]\d{4}\s*-\s*\d+)",
             re.IGNORECASE,
         )
         operation_matches = list(operation_head_regex.finditer(normalized_text))
@@ -1376,15 +1410,11 @@ class AutoProcessToBitableListener(EventListener):
             batch_id_raw = str(match.group(2))
             batch_id = self._normalize_crushing_batch_id(batch_id_raw)
 
-            if "-DA" in batch_id:
-                line = "A"
-            elif "-DB" in batch_id:
-                line = "B"
-            elif fs_slot.startswith("A"):
-                line = "A"
-            elif fs_slot.startswith("B"):
-                line = "B"
-            else:
+            line = self._extract_production_line_from_batch_id(batch_id)
+            if line == "UNKNOWN":
+                slot_line = fs_slot[:1]
+                line = slot_line if self._is_supported_production_line(slot_line) else "UNKNOWN"
+            if not self._is_supported_production_line(line):
                 continue
 
             start_pos = match.end()
@@ -1417,7 +1447,7 @@ class AutoProcessToBitableListener(EventListener):
                     scenario="crushing",
                     line=line,
                     batch_id=batch_id,
-                    route_key=f"crushing.{line}",
+                    route_key=self._resolve_line_route_key("crushing", line),
                     fields=fields,
                 )
             )
@@ -1429,15 +1459,16 @@ class AutoProcessToBitableListener(EventListener):
             return []
 
         normalized_text = self._normalize_dash(text)
+        line_pattern = self._production_line_pattern()
         ph_match = re.search(
-            r"车间\s*(?:[AB](?:\s*[/／、&]\s*[AB])?|AB)?\s*线?\s*纯水\s*PH(?:值)?\s*[:：]\s*(\d+\.?\d*)",
+            rf"车间\s*(?:[{line_pattern}](?:\s*[/／、&]\s*[{line_pattern}])*|[{line_pattern}]+)?\s*线?\s*纯水\s*PH(?:值)?\s*[:：]\s*(\d+\.?\d*)",
             normalized_text,
             re.IGNORECASE,
         )
         if not ph_match:
             return []
 
-        batch_regex = re.compile(r"(S\d+-TL-D[AB]\d{4}-\d+)", re.IGNORECASE)
+        batch_regex = re.compile(r"(S\d+-TL-D[A-E]\d{4}-\d+)", re.IGNORECASE)
         batch_matches = [self._normalize_dash(m.group(1)).upper().strip() for m in batch_regex.finditer(normalized_text)]
         if not batch_matches:
             return []
@@ -1445,14 +1476,14 @@ class AutoProcessToBitableListener(EventListener):
         batch_id = "\n".join(batch_matches)
         ph_value = float(ph_match.group(1))
 
-        if all("-DA" in bid for bid in batch_matches):
-            line = "A"
-        elif all("-DB" in bid for bid in batch_matches):
-            line = "B"
+        batch_lines = {self._extract_production_line_from_batch_id(bid) for bid in batch_matches}
+        batch_lines.discard("UNKNOWN")
+        if len(batch_lines) == 1:
+            line = next(iter(batch_lines))
         else:
             line = "MIXED"
 
-        route_key = f"pure_water.{line}" if line in {"A", "B"} else "pure_water"
+        route_key = self._resolve_line_route_key("pure_water", line)
         fields = {
             "PH值": ph_value,
             "消息时间": message_time,
@@ -1682,19 +1713,18 @@ class AutoProcessToBitableListener(EventListener):
     def _resolve_particle_route_key(self, process_code: str, line: str) -> str:
         code = process_code.strip().upper()
         line_code = line.strip().upper()
-        normalized_line = line_code if line_code in {"A", "B"} else ""
 
         if not self._get_bool_config("merge_particle_size_to_stage_tables", True):
             return f"particle_size.{code}"
 
         if code == "FS":
-            return f"crushing.{normalized_line}" if normalized_line else "crushing"
+            return self._resolve_line_route_key("crushing", line_code)
         if code in {"CM", "XM", "HP"}:
-            return f"wet_process.{normalized_line}" if normalized_line else "wet_process"
+            return self._resolve_line_route_key("wet_process", line_code)
         if code == "SC":
-            return f"sintering.{normalized_line}" if normalized_line else "sintering"
+            return self._resolve_line_route_key("sintering", line_code)
         if code == "QQT":
-            return f"spray.{normalized_line}" if normalized_line else "spray"
+            return self._resolve_line_route_key("spray", line_code)
         return f"particle_size.{code}"
 
     @staticmethod
@@ -1737,8 +1767,9 @@ class AutoProcessToBitableListener(EventListener):
         # S18-XM-DA2603-002
         # S18-XM-DA2603-002-C
         # S18-XM-DA2603-002-C-120min
+        line_pattern = self._production_line_pattern()
         batch_regex = re.compile(
-            r"(S\d+)\s*-\s*([A-Z]{2,3})\s*-\s*D([AB])(\d{4})\s*-\s*(\d+)"
+            rf"(S\d+)\s*-\s*([A-Z]{{2,3}})\s*-\s*D([{line_pattern}])(\d{{4}})\s*-\s*(\d+)"
             r"(?:\s*-\s*([A-Z0-9]+))?"
             r"(?:\s*-\s*(\d+)\s*MIN)?",
             re.IGNORECASE,
@@ -1884,9 +1915,10 @@ class AutoProcessToBitableListener(EventListener):
         process_name_map = self._particle_process_name_map()
         wet_prefix_map = self._wet_process_field_prefix_map()
         prefix = wet_prefix_map.get("XM", "细磨")
+        line_pattern = self._production_line_pattern()
 
         solids_regex = re.compile(
-            r"(S\d+)\s*-\s*XM\s*-\s*D([AB])(\d{4})\s*-\s*(\d+)"
+            rf"(S\d+)\s*-\s*XM\s*-\s*D([{line_pattern}])(\d{{4}})\s*-\s*(\d+)"
             r"(?:\s*-\s*([A-Z0-9]+))?"
             r"(?:\s*-\s*(\d+)\s*MIN)?"
             r"\s*[：:]\s*(\d+(?:[.,]\d+)?)\s*[％%]\s*DC",
