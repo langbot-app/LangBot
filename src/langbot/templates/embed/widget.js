@@ -25,7 +25,7 @@
       botVerificationNetworkError: "Bot verification network error",
       botVerificationError: "Bot verification error",
       poweredBy:
-        'Powered by <a href="https://github.com/langbot-app/LangBot" target="_blank" rel="noopener noreferrer">LangBot</a>',
+        'Powered by <a href="https://langbot.app" target="_blank" rel="noopener noreferrer">LangBot</a>',
     },
     zh_Hans: {
       welcomeMessage: "发送消息开始对话",
@@ -42,7 +42,7 @@
       botVerificationNetworkError: "机器人验证网络错误",
       botVerificationError: "机器人验证错误",
       poweredBy:
-        '由 <a href="https://github.com/langbot-app/LangBot" target="_blank" rel="noopener noreferrer">LangBot</a> 提供支持',
+        '由 <a href="https://langbot.app" target="_blank" rel="noopener noreferrer">LangBot</a> 提供支持',
     },
     zh_Hant: {
       welcomeMessage: "傳送訊息開始對話",
@@ -59,7 +59,7 @@
       botVerificationNetworkError: "機器人驗證網路錯誤",
       botVerificationError: "機器人驗證錯誤",
       poweredBy:
-        '由 <a href="https://github.com/langbot-app/LangBot" target="_blank" rel="noopener noreferrer">LangBot</a> 提供支持',
+        '由 <a href="https://langbot.app" target="_blank" rel="noopener noreferrer">LangBot</a> 提供支持',
     },
     ja_JP: {
       welcomeMessage: "メッセージを送信して会話を始めましょう",
@@ -76,7 +76,7 @@
       botVerificationNetworkError: "ボット認証のネットワークエラー",
       botVerificationError: "ボット認証エラー",
       poweredBy:
-        '<a href="https://github.com/langbot-app/LangBot" target="_blank" rel="noopener noreferrer">LangBot</a> で動作',
+        '<a href="https://langbot.app" target="_blank" rel="noopener noreferrer">LangBot</a> で動作',
     },
     es_ES: {
       welcomeMessage: "Envía un mensaje para iniciar la conversación",
@@ -93,7 +93,7 @@
       botVerificationNetworkError: "Error de red en verificación del bot",
       botVerificationError: "Error de verificación del bot",
       poweredBy:
-        'Desarrollado con <a href="https://github.com/langbot-app/LangBot" target="_blank" rel="noopener noreferrer">LangBot</a>',
+        'Desarrollado con <a href="https://langbot.app" target="_blank" rel="noopener noreferrer">LangBot</a>',
     },
     ru_RU: {
       welcomeMessage: "Отправьте сообщение, чтобы начать разговор",
@@ -110,7 +110,7 @@
       botVerificationNetworkError: "Ошибка сети при проверке бота",
       botVerificationError: "Ошибка проверки бота",
       poweredBy:
-        'Работает на <a href="https://github.com/langbot-app/LangBot" target="_blank" rel="noopener noreferrer">LangBot</a>',
+        'Работает на <a href="https://langbot.app" target="_blank" rel="noopener noreferrer">LangBot</a>',
     },
     th_TH: {
       welcomeMessage: "ส่งข้อความเพื่อเริ่มการสนทนา",
@@ -127,7 +127,7 @@
       botVerificationNetworkError: "เกิดข้อผิดพลาดเครือข่ายในการยืนยันบอท",
       botVerificationError: "เกิดข้อผิดพลาดในการยืนยันบอท",
       poweredBy:
-        'ขับเคลื่อนโดย <a href="https://github.com/langbot-app/LangBot" target="_blank" rel="noopener noreferrer">LangBot</a>',
+        'ขับเคลื่อนโดย <a href="https://langbot.app" target="_blank" rel="noopener noreferrer">LangBot</a>',
     },
     vi_VN: {
       welcomeMessage: "Gửi tin nhắn để bắt đầu cuộc trò chuyện",
@@ -144,7 +144,7 @@
       botVerificationNetworkError: "Lỗi mạng khi xác minh bot",
       botVerificationError: "Lỗi xác minh bot",
       poweredBy:
-        'Được hỗ trợ bởi <a href="https://github.com/langbot-app/LangBot" target="_blank" rel="noopener noreferrer">LangBot</a>',
+        'Được hỗ trợ bởi <a href="https://langbot.app" target="_blank" rel="noopener noreferrer">LangBot</a>',
     },
   };
 
@@ -241,7 +241,7 @@
     .lb-img-preview-remove:hover { color: #ef4444; }\
     .lb-msg-meta { display: flex; align-items: center; gap: 8px; margin-top: 4px; padding: 0 2px; }\
     .lb-msg-time { font-size: 11px; color: #9ca3af; }\
-    .lb-footer { text-align: right; padding: 2px 12px 0; font-size: 9px; color: #d1d5db; font-style: italic; flex-shrink: 0; }\
+    .lb-footer { text-align: right; padding: 6px 12px; font-size: 9px; color: #d1d5db; font-style: italic; flex-shrink: 0; }\
     .lb-footer a { color: #d1d5db; text-decoration: none; }\
     .lb-footer a:hover { color: #9ca3af; }\
     .lb-typing { display: inline-flex; gap: 4px; padding: 10px 14px; background: #f3f4f6; border-radius: 12px; border-bottom-left-radius: 4px; margin-left: 42px; }\
