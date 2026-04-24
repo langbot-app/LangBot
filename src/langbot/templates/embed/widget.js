@@ -165,6 +165,7 @@
     reconnectDelay: 3000,
     heartbeatInterval: 30000,
     turnstileSiteKey: "__LANGBOT_TURNSTILE_SITE_KEY__",
+    bubbleIcon: "__LANGBOT_BUBBLE_ICON__",
   };
 
   // ========== Styles ==========
@@ -266,6 +267,20 @@
       .lb-bubble { bottom: 16px; right: 16px; }\
     }\
   ';
+
+  // ========== Bubble Icon Presets ==========
+  var BUBBLE_ICONS = {
+    logo: null,
+    chat: '<svg viewBox="0 0 24 24" fill="white" width="28" height="28"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>',
+    robot:
+      '<svg viewBox="0 0 24 24" fill="white" width="28" height="28"><path d="M20 9V7c0-1.1-.9-2-2-2h-3c0-1.66-1.34-3-3-3S9 3.34 9 5H6c-1.1 0-2 .9-2 2v2c-1.66 0-3 1.34-3 3s1.34 3 3 3v4c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-4c1.66 0 3-1.34 3-3s-1.34-3-3-3zM7.5 11.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5S9.83 13 9 13s-1.5-.67-1.5-1.5zM16 17H8v-2h8v2zm-1-4c-.83 0-1.5-.67-1.5-1.5S14.17 10 15 10s1.5.67 1.5 1.5S15.83 13 15 13z"/></svg>',
+    headset:
+      '<svg viewBox="0 0 24 24" fill="white" width="28" height="28"><path d="M12 1a9 9 0 00-9 9v7c0 1.66 1.34 3 3 3h3v-8H5v-2c0-3.87 3.13-7 7-7s7 3.13 7 7v2h-4v8h3c1.66 0 3-1.34 3-3v-7a9 9 0 00-9-9z"/></svg>',
+    sparkle:
+      '<svg viewBox="0 0 24 24" fill="white" width="28" height="28"><path d="M12 2L9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2z"/></svg>',
+    message:
+      '<svg viewBox="0 0 24 24" fill="white" width="28" height="28"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/></svg>',
+  };
 
   // ========== SVG Icons ==========
   var ICON_CLOSE =
@@ -1152,11 +1167,16 @@
 
     var chatIcon = document.createElement("span");
     chatIcon.className = "lb-chat-icon";
-    var bubbleLogo = document.createElement("img");
-    bubbleLogo.src = CONFIG.logoUrl;
-    bubbleLogo.alt = CONFIG.title;
-    bubbleLogo.style.cssText = "width:100%;height:100%;object-fit:cover;";
-    chatIcon.appendChild(bubbleLogo);
+    var selectedBubbleSvg = BUBBLE_ICONS[CONFIG.bubbleIcon];
+    if (selectedBubbleSvg) {
+      chatIcon.innerHTML = selectedBubbleSvg;
+    } else {
+      var bubbleLogo = document.createElement("img");
+      bubbleLogo.src = CONFIG.logoUrl;
+      bubbleLogo.alt = CONFIG.title;
+      bubbleLogo.style.cssText = "width:100%;height:100%;object-fit:cover;";
+      chatIcon.appendChild(bubbleLogo);
+    }
 
     var closeIcon = document.createElement("span");
     closeIcon.className = "lb-close-icon";

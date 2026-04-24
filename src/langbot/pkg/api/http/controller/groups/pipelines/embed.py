@@ -167,10 +167,12 @@ class EmbedRouterGroup(group.RouterGroup):
             config = self._get_bot_config(bot_uuid)
             site_key = config.get('turnstile_site_key', '')
             locale = config.get('language', 'en_US') or 'en_US'
+            bubble_icon = config.get('bubble_icon', 'logo') or 'logo'
             widget_js = template.replace('__LANGBOT_TURNSTILE_SITE_KEY__', site_key)
             widget_js = widget_js.replace('__LANGBOT_BOT_UUID__', bot_uuid)
             widget_js = widget_js.replace('__LANGBOT_BASE_URL__', base_url)
             widget_js = widget_js.replace('__LANGBOT_LOCALE__', locale)
+            widget_js = widget_js.replace('__LANGBOT_BUBBLE_ICON__', bubble_icon)
 
             response = quart.Response(widget_js, content_type='application/javascript; charset=utf-8')
             response.headers['Cache-Control'] = 'public, max-age=300'

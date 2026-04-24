@@ -43,6 +43,47 @@ spec:
       type: string
       required: false
       default: "LangBot"
+    - name: bubble_icon
+      label:
+        en_US: Bubble Icon
+        zh_Hans: 气泡图标
+        zh_Hant: 氣泡圖示
+        ja_JP: バブルアイコン
+        th_TH: ไอคอนบับเบิล
+        vi_VN: Biểu tượng bong bóng
+        es_ES: Icono de burbuja
+        ru_RU: Иконка пузырька
+      description:
+        en_US: "Icon displayed on the floating chat bubble"
+        zh_Hans: "浮动聊天气泡上显示的图标"
+      type: select
+      required: false
+      default: "logo"
+      options:
+        - name: "logo"
+          label:
+            en_US: "LangBot Logo"
+            zh_Hans: "LangBot 图标"
+        - name: "chat"
+          label:
+            en_US: "Chat Bubble"
+            zh_Hans: "聊天气泡"
+        - name: "robot"
+          label:
+            en_US: "Robot"
+            zh_Hans: "机器人"
+        - name: "headset"
+          label:
+            en_US: "Headset"
+            zh_Hans: "客服耳机"
+        - name: "sparkle"
+          label:
+            en_US: "Sparkle"
+            zh_Hans: "星光"
+        - name: "message"
+          label:
+            en_US: "Message"
+            zh_Hans: "消息"
     - name: language
       label:
         en_US: Widget Language
