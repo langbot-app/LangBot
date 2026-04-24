@@ -66,22 +66,30 @@ spec:
       required: false
       default: "en_US"
       options:
-        - value: "en_US"
-          label: "English"
-        - value: "zh_Hans"
-          label: "简体中文"
-        - value: "zh_Hant"
-          label: "繁體中文"
-        - value: "ja_JP"
-          label: "日本語"
-        - value: "es_ES"
-          label: "Español"
-        - value: "ru_RU"
-          label: "Русский"
-        - value: "th_TH"
-          label: "ไทย"
-        - value: "vi_VN"
-          label: "Tiếng Việt"
+        - name: "en_US"
+          label:
+            en_US: "English"
+        - name: "zh_Hans"
+          label:
+            en_US: "简体中文"
+        - name: "zh_Hant"
+          label:
+            en_US: "繁體中文"
+        - name: "ja_JP"
+          label:
+            en_US: "日本語"
+        - name: "es_ES"
+          label:
+            en_US: "Español"
+        - name: "ru_RU"
+          label:
+            en_US: "Русский"
+        - name: "th_TH"
+          label:
+            en_US: "ไทย"
+        - name: "vi_VN"
+          label:
+            en_US: "Tiếng Việt"
     - name: embed_code
       label:
         en_US: Embed Code
