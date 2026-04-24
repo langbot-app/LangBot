@@ -10,18 +10,18 @@
   - 批次编码示例：`S006-FS-DB2602-117`、`S18-FS-DB2602-117`
   - 工序代码：`FS`(粉碎) / `CM`(粗磨) / `XM`(细磨) / `HP`(合批) / `SC`(烧结) / `QQT`(喷雾)
   - 默认按工序归并路由：
-    - `FS` -> `crushing.A` / `crushing.B`
-    - `CM/XM/HP` -> `wet_process.A` / `wet_process.B`
-    - `SC` -> `sintering.A` / `sintering.B`
-    - `QQT` -> `spray.A` / `spray.B`
+    - `FS` -> `crushing.{产线}`，产线支持 `A/B/C/D/E`
+    - `CM/XM/HP` -> `wet_process.{产线}`，产线支持 `A/B/C/D/E`
+    - `SC` -> `sintering.{产线}`，产线支持 `A/B/C/D/E`
+    - `QQT` -> `spray.{产线}`，产线支持 `A/B/C/D/E`
   - 在 `wet_process` 汇总表内，`CM/XM/HP` 会写入工序前缀列，避免同批次互相覆盖：
     - 例如 `粗磨D10/粗磨D50/粗磨D90/粗磨D99`、`细磨D10...`、`合批D10...`
     - 细磨 `XM` 支持段位映射：`A/B -> 1线`、`C/D -> 2线`，并按 `细磨1线/细磨2线` 两套字段记录
     - 细磨 `XM` 额外支持固含量格式：`S006-XM-DB2602-130-B-160min：40.89%DC`，写入 `细磨1线固含量(%)` 或 `细磨2线固含量(%)`
     - 时间列为 `粗磨研磨时间(min)` / `细磨研磨时间(min)` / `合批研磨时间(min)`
-    - `CM/XM/HP` 的批次号会统一归一为 `Sxxx-DA/DBxxxx-xxx`，用于三工序同批次汇总到一行
-- `crushing` 扩展支持 `A1/A2/B1/B2`：
-  - 粉碎粒度中 `A1/B1 -> 粉碎1线*`，`A2/B2 -> 粉碎2线*`（如 `粉碎1线D10`、`粉碎2线D50`）
+    - `CM/XM/HP` 的批次号会统一归一为 `Sxxx-D{产线}xxxx-xxx`，用于三工序同批次汇总到一行
+- `crushing` 扩展支持 `A1/A2/B1/B2/C1/C2/D1/D2/E1/E2`：
+  - 粉碎粒度中 `*1 -> 粉碎1线*`，`*2 -> 粉碎2线*`（如 `A1/C1/E1 -> 粉碎1线D10`，`B2/D2 -> 粉碎2线D50`）
   - 压实格式 `S006-FS-DB2602-125-B1-120min-53HZ：2.491` 会写入 `粉碎1线压实值/粉碎时间（min）/频率(HZ)`
   - 参数块格式 `A2粉碎:S18-DA2603-005 ...` 支持提取分级电机、喂料频率、研磨压力、密封气压、收尘差压、过滤器压、露点
 - `spray`：喷雾（A/B/C/D/E线，批次 + 开度/进出口温度/雾化轮转速/水分）
@@ -69,14 +69,24 @@
 ```json
 {
   "spray.A": "tblAxxxx",
+  "spray.C": "tblCxxxx",
+  "spray.E": "tblExxxx",
   "spray.B": "tblByyyy",
   "feeding.A": "tblAxxxx",
+  "feeding.C": "tblCxxxx",
+  "feeding.E": "tblExxxx",
   "feeding.B": "tblByyyy",
   "sintering.A": "tblAxxxx",
+  "sintering.C": "tblCxxxx",
+  "sintering.E": "tblExxxx",
   "sintering.B": "tblByyyy",
   "crushing.A": "tblAxxxx",
+  "crushing.C": "tblCxxxx",
+  "crushing.E": "tblExxxx",
   "crushing.B": "tblByyyy",
   "wet_process.A": "tblWetAxxxx",
+  "wet_process.C": "tblWetCxxxx",
+  "wet_process.E": "tblWetExxxx",
   "wet_process.B": "tblWetByyyy",
   "pure_water": "tblWater",
   "kiln_batch_io": "tblKilnxxxx"
@@ -96,14 +106,29 @@
 - 默认表名（可被 `table_name_routing_json` 覆盖）：
   - `spray.A` -> `A线喷雾汇总`
   - `spray.B` -> `B线喷雾汇总`
+  - `spray.C` -> `C线喷雾汇总`
+  - `spray.D` -> `D线喷雾汇总`
+  - `spray.E` -> `E线喷雾汇总`
   - `feeding.A` -> `A线投料汇总`
   - `feeding.B` -> `B线投料汇总`
+  - `feeding.C` -> `C线投料汇总`
+  - `feeding.D` -> `D线投料汇总`
+  - `feeding.E` -> `E线投料汇总`
   - `sintering.A` -> `A线烧结汇总`
   - `sintering.B` -> `B线烧结汇总`
+  - `sintering.C` -> `C线烧结汇总`
+  - `sintering.D` -> `D线烧结汇总`
+  - `sintering.E` -> `E线烧结汇总`
   - `crushing.A` -> `A线粉碎压实汇总`
   - `crushing.B` -> `B线粉碎压实汇总`
+  - `crushing.C` -> `C线粉碎压实汇总`
+  - `crushing.D` -> `D线粉碎压实汇总`
+  - `crushing.E` -> `E线粉碎压实汇总`
   - `wet_process.A` -> `A线湿法汇总`
   - `wet_process.B` -> `B线湿法汇总`
+  - `wet_process.C` -> `C线湿法汇总`
+  - `wet_process.D` -> `D线湿法汇总`
+  - `wet_process.E` -> `E线湿法汇总`
   - `pure_water` -> `车间纯水PH汇总`
   - `kiln_batch_io` -> `窑炉批次进窑出窑表`
 - 若 `merge_particle_size_to_stage_tables=false`，仍可使用 `particle_size.FS/CM/XM/HP/SC/QQT` 独立路由
@@ -115,14 +140,29 @@
 {
   "spray.A": "A线喷雾汇总",
   "spray.B": "B线喷雾汇总",
+  "spray.C": "C线喷雾汇总",
+  "spray.D": "D线喷雾汇总",
+  "spray.E": "E线喷雾汇总",
   "feeding.A": "A线分散罐汇总",
   "feeding.B": "B线分散罐汇总",
+  "feeding.C": "C线分散罐汇总",
+  "feeding.D": "D线分散罐汇总",
+  "feeding.E": "E线分散罐汇总",
   "sintering.A": "A线烧结压实汇总",
   "sintering.B": "B线烧结压实汇总",
+  "sintering.C": "C线烧结压实汇总",
+  "sintering.D": "D线烧结压实汇总",
+  "sintering.E": "E线烧结压实汇总",
   "crushing.A": "A线粉碎压实汇总",
   "crushing.B": "B线粉碎压实汇总",
+  "crushing.C": "C线粉碎压实汇总",
+  "crushing.D": "D线粉碎压实汇总",
+  "crushing.E": "E线粉碎压实汇总",
   "wet_process.A": "A线湿法汇总",
   "wet_process.B": "B线湿法汇总",
+  "wet_process.C": "C线湿法汇总",
+  "wet_process.D": "D线湿法汇总",
+  "wet_process.E": "E线湿法汇总",
   "pure_water": "车间纯水PH汇总",
   "kiln_batch_io": "窑炉批次进窑出窑表"
 }

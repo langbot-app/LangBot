@@ -75,8 +75,8 @@ spec:
         en_US: Table Routing JSON
         zh_Hans: 路由表(JSON)
       description:
-        en_US: 'Map route keys to table_id, e.g. {"particle_size.FS":"tblxxx","spray.A":"tblyyy"}. This has highest priority.'
-        zh_Hans: '按路由键映射 table_id，例如 {"particle_size.FS":"tblxxx","spray.A":"tblyyy"}。该配置优先级最高。'
+        en_US: 'Map route keys to table_id, e.g. {"particle_size.FS":"tblxxx","spray.C":"tblyyy","crushing.E":"tblzzz"}. This has highest priority.'
+        zh_Hans: '按路由键映射 table_id，例如 {"particle_size.FS":"tblxxx","spray.C":"tblyyy","crushing.E":"tblzzz"}。该配置优先级最高。'
       type: json
       required: false
       default: '{}'
@@ -92,8 +92,8 @@ spec:
         en_US: Table Name Routing JSON
         zh_Hans: 路由表名(JSON)
       description:
-        en_US: 'Map route keys to table names when table_id is not configured, e.g. {"spray.A":"A线喷雾汇总"}'
-        zh_Hans: '未配置 table_id 时，按路由映射到表名并自动创建，例如 {"spray.A":"A线喷雾汇总"}'
+        en_US: 'Map route keys to table names when table_id is not configured, e.g. {"spray.C":"C line spray summary","wet_process.E":"E line wet-process summary"}'
+        zh_Hans: '未配置 table_id 时，按路由映射到表名并自动创建，例如 {"spray.C":"C线喷雾汇总","wet_process.E":"E线湿法汇总"}'
       type: json
       required: false
       default: '{}'
@@ -159,8 +159,8 @@ spec:
         en_US: Merge Particle Size To Stage Tables
         zh_Hans: 粒度数据归并到工序汇总表
       description:
-        en_US: 'When enabled, FS -> crushing.A/B, CM/XM/HP -> wet_process.A/B, SC -> sintering.A/B, QQT -> spray.A/B.'
-        zh_Hans: '开启后，FS 写入 crushing.A/B，CM/XM/HP 写入 wet_process.A/B，SC 写入 sintering.A/B，QQT 写入 spray.A/B。'
+        en_US: 'When enabled, FS -> crushing.{line}, CM/XM/HP -> wet_process.{line}, SC -> sintering.{line}, QQT -> spray.{line}. Supported lines: A/B/C/D/E.'
+        zh_Hans: '开启后，FS 写入 crushing.{产线}，CM/XM/HP 写入 wet_process.{产线}，SC 写入 sintering.{产线}，QQT 写入 spray.{产线}。当前支持 A/B/C/D/E。'
       type: boolean
       required: false
       default: true
