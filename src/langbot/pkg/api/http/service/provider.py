@@ -160,7 +160,9 @@ class ModelProviderService:
 
         return {'llm_count': llm_count, 'embedding_count': embedding_count, 'rerank_count': rerank_count}
 
-    async def find_or_create_provider(self, requester: str, base_url: str, api_keys: list) -> str:
+    async def find_or_create_provider(
+        self, requester: str, base_url: str, api_keys: list
+    ) -> str:
         """Find existing provider or create new one"""
         api_keys = self._normalize_api_keys(api_keys)
 

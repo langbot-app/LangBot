@@ -22,10 +22,7 @@ spec:
     type: integer
     required: true
     default: 120
+  litellm_provider: voyage
   support_type:
   - rerank
   provider_category: manufacturer
-execution:
-  python:
-    path: ./chatcmpl.py
-    attr: OpenAIChatCompletions
