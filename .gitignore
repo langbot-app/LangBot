@@ -55,6 +55,10 @@ src/langbot/web/
 plugins/*/dist/
 *.lbpkg
 /plugins/feishu_ocr_plugin/
+!plugins/feishu_keyword_report_plugin/dist/
+!plugins/feishu_keyword_report_plugin/dist/*.lbpkg
+!plugins/feishu_process_bitable_plugin/dist/
+!plugins/feishu_process_bitable_plugin/dist/*.lbpkg
 
 # Next.js build cache (legacy)
 web/.next/

@@ -73,6 +73,13 @@ jobs:
           lbp build -o dist
           ls -lah dist
 
+      - name: Upload plugin package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-package-${{ matrix.plugin }}
+          path: plugins/${{ matrix.plugin }}/dist/*.lbpkg
+          if-no-files-found: error
+
       - name: Resolve release tag
         id: release
         if: ${{ github.event_name == 'release' || startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/master' || (github.event_name == 'workflow_dispatch' && inputs.upload_to_release) }}
@@ -123,3 +130,49 @@ jobs:
             sleep 3
           done
           gh release upload "$RELEASE_TAG" plugins/${{ matrix.plugin }}/dist/*.lbpkg --clobber
+
+  publish-plugin-dist:
+    name: Publish plugin packages to repository
+    runs-on: ubuntu-latest
+    needs: build-plugin
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download plugin artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: plugin-artifacts
+
+      - name: Sync plugin dist directories
+        shell: bash
+        run: |
+          plugins=(
+            feishu_keyword_report_plugin
+            feishu_process_bitable_plugin
+          )
+
+          for plugin in "${plugins[@]}"; do
+            mkdir -p "plugins/${plugin}/dist"
+            rm -f "plugins/${plugin}/dist/"*.lbpkg
+            cp "plugin-artifacts/plugin-package-${plugin}/"*.lbpkg "plugins/${plugin}/dist/"
+            ls -lah "plugins/${plugin}/dist"
+          done
+
+      - name: Commit and push plugin packages
+        shell: bash
+        run: |
+          if git diff --quiet -- plugins/feishu_keyword_report_plugin/dist plugins/feishu_process_bitable_plugin/dist; then
+            echo "No plugin package changes to commit."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add plugins/feishu_keyword_report_plugin/dist plugins/feishu_process_bitable_plugin/dist
+          git commit -m "chore(plugins): update packaged lbpkg artifacts [skip ci]"
+          git push origin "HEAD:${GITHUB_REF#refs/heads/}"
