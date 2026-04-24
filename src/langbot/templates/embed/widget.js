@@ -8,6 +8,152 @@
   var scriptEl = document.currentScript;
   var scriptTitle = scriptEl ? scriptEl.getAttribute("data-title") : null;
 
+  // ========== i18n ==========
+  var I18N = {
+    en_US: {
+      welcomeMessage: "Send a message to start the conversation",
+      inputPlaceholder: "Type a message...",
+      openChat: "Open chat",
+      resetConversation: "Reset conversation",
+      minimize: "Minimize",
+      uploadFile: "Upload file",
+      send: "Send",
+      failedToConnect: "Failed to connect",
+      imageTooLarge: "Image must be under 5MB",
+      onlyImages: "Only image files are supported",
+      botVerificationFailed: "Bot verification failed",
+      botVerificationNetworkError: "Bot verification network error",
+      botVerificationError: "Bot verification error",
+      poweredBy:
+        'Powered by <a href="https://github.com/langbot-app/LangBot" target="_blank" rel="noopener noreferrer">LangBot</a>',
+    },
+    zh_Hans: {
+      welcomeMessage: "发送消息开始对话",
+      inputPlaceholder: "输入消息...",
+      openChat: "打开聊天",
+      resetConversation: "重置对话",
+      minimize: "最小化",
+      uploadFile: "上传文件",
+      send: "发送",
+      failedToConnect: "连接失败",
+      imageTooLarge: "图片大小不能超过 5MB",
+      onlyImages: "仅支持图片文件",
+      botVerificationFailed: "机器人验证失败",
+      botVerificationNetworkError: "机器人验证网络错误",
+      botVerificationError: "机器人验证错误",
+      poweredBy:
+        '由 <a href="https://github.com/langbot-app/LangBot" target="_blank" rel="noopener noreferrer">LangBot</a> 提供支持',
+    },
+    zh_Hant: {
+      welcomeMessage: "傳送訊息開始對話",
+      inputPlaceholder: "輸入訊息...",
+      openChat: "開啟聊天",
+      resetConversation: "重置對話",
+      minimize: "最小化",
+      uploadFile: "上傳檔案",
+      send: "傳送",
+      failedToConnect: "連線失敗",
+      imageTooLarge: "圖片大小不能超過 5MB",
+      onlyImages: "僅支援圖片檔案",
+      botVerificationFailed: "機器人驗證失敗",
+      botVerificationNetworkError: "機器人驗證網路錯誤",
+      botVerificationError: "機器人驗證錯誤",
+      poweredBy:
+        '由 <a href="https://github.com/langbot-app/LangBot" target="_blank" rel="noopener noreferrer">LangBot</a> 提供支持',
+    },
+    ja_JP: {
+      welcomeMessage: "メッセージを送信して会話を始めましょう",
+      inputPlaceholder: "メッセージを入力...",
+      openChat: "チャットを開く",
+      resetConversation: "会話をリセット",
+      minimize: "最小化",
+      uploadFile: "ファイルをアップロード",
+      send: "送信",
+      failedToConnect: "接続に失敗しました",
+      imageTooLarge: "画像は5MB以下にしてください",
+      onlyImages: "画像ファイルのみ対応しています",
+      botVerificationFailed: "ボット認証に失敗しました",
+      botVerificationNetworkError: "ボット認証のネットワークエラー",
+      botVerificationError: "ボット認証エラー",
+      poweredBy:
+        '<a href="https://github.com/langbot-app/LangBot" target="_blank" rel="noopener noreferrer">LangBot</a> で動作',
+    },
+    es_ES: {
+      welcomeMessage: "Envía un mensaje para iniciar la conversación",
+      inputPlaceholder: "Escribe un mensaje...",
+      openChat: "Abrir chat",
+      resetConversation: "Reiniciar conversación",
+      minimize: "Minimizar",
+      uploadFile: "Subir archivo",
+      send: "Enviar",
+      failedToConnect: "Error de conexión",
+      imageTooLarge: "La imagen debe ser menor a 5MB",
+      onlyImages: "Solo se admiten archivos de imagen",
+      botVerificationFailed: "Verificación del bot fallida",
+      botVerificationNetworkError: "Error de red en verificación del bot",
+      botVerificationError: "Error de verificación del bot",
+      poweredBy:
+        'Desarrollado con <a href="https://github.com/langbot-app/LangBot" target="_blank" rel="noopener noreferrer">LangBot</a>',
+    },
+    ru_RU: {
+      welcomeMessage: "Отправьте сообщение, чтобы начать разговор",
+      inputPlaceholder: "Введите сообщение...",
+      openChat: "Открыть чат",
+      resetConversation: "Сбросить разговор",
+      minimize: "Свернуть",
+      uploadFile: "Загрузить файл",
+      send: "Отправить",
+      failedToConnect: "Ошибка подключения",
+      imageTooLarge: "Изображение должно быть менее 5МБ",
+      onlyImages: "Поддерживаются только изображения",
+      botVerificationFailed: "Проверка бота не пройдена",
+      botVerificationNetworkError: "Ошибка сети при проверке бота",
+      botVerificationError: "Ошибка проверки бота",
+      poweredBy:
+        'Работает на <a href="https://github.com/langbot-app/LangBot" target="_blank" rel="noopener noreferrer">LangBot</a>',
+    },
+    th_TH: {
+      welcomeMessage: "ส่งข้อความเพื่อเริ่มการสนทนา",
+      inputPlaceholder: "พิมพ์ข้อความ...",
+      openChat: "เปิดแชท",
+      resetConversation: "รีเซ็ตการสนทนา",
+      minimize: "ย่อ",
+      uploadFile: "อัปโหลดไฟล์",
+      send: "ส่ง",
+      failedToConnect: "เชื่อมต่อไม่สำเร็จ",
+      imageTooLarge: "รูปภาพต้องมีขนาดไม่เกิน 5MB",
+      onlyImages: "รองรับเฉพาะไฟล์รูปภาพเท่านั้น",
+      botVerificationFailed: "การยืนยันบอทล้มเหลว",
+      botVerificationNetworkError: "เกิดข้อผิดพลาดเครือข่ายในการยืนยันบอท",
+      botVerificationError: "เกิดข้อผิดพลาดในการยืนยันบอท",
+      poweredBy:
+        'ขับเคลื่อนโดย <a href="https://github.com/langbot-app/LangBot" target="_blank" rel="noopener noreferrer">LangBot</a>',
+    },
+    vi_VN: {
+      welcomeMessage: "Gửi tin nhắn để bắt đầu cuộc trò chuyện",
+      inputPlaceholder: "Nhập tin nhắn...",
+      openChat: "Mở trò chuyện",
+      resetConversation: "Đặt lại cuộc trò chuyện",
+      minimize: "Thu nhỏ",
+      uploadFile: "Tải lên tệp",
+      send: "Gửi",
+      failedToConnect: "Kết nối thất bại",
+      imageTooLarge: "Hình ảnh phải nhỏ hơn 5MB",
+      onlyImages: "Chỉ hỗ trợ tệp hình ảnh",
+      botVerificationFailed: "Xác minh bot thất bại",
+      botVerificationNetworkError: "Lỗi mạng khi xác minh bot",
+      botVerificationError: "Lỗi xác minh bot",
+      poweredBy:
+        'Được hỗ trợ bởi <a href="https://github.com/langbot-app/LangBot" target="_blank" rel="noopener noreferrer">LangBot</a>',
+    },
+  };
+
+  var _locale = "__LANGBOT_LOCALE__";
+  var _strings = I18N[_locale] || I18N.en_US;
+  function t(key) {
+    return _strings[key] || I18N.en_US[key] || key;
+  }
+
   // ========== Configuration (injected by backend) ==========
   var CONFIG = {
     botUuid: "__LANGBOT_BOT_UUID__",
@@ -316,7 +462,7 @@
     try {
       state.ws = new WebSocket(url);
     } catch (e) {
-      showError("Failed to connect");
+      showError(t("failedToConnect"));
       return;
     }
 
@@ -759,7 +905,7 @@
     logo.alt = "LangBot";
 
     var text = document.createElement("div");
-    text.textContent = "Send a message to start the conversation";
+    text.textContent = t("welcomeMessage");
 
     div.appendChild(logo);
     div.appendChild(text);
@@ -874,17 +1020,17 @@
                 state.sessionToken = data.data.token;
                 flushQueue(true);
               } else {
-                showError("Bot verification failed");
+                showError(t("botVerificationFailed"));
                 flushQueue(false);
               }
             })
             .catch(function () {
-              showError("Bot verification network error");
+              showError(t("botVerificationNetworkError"));
               flushQueue(false);
             });
         },
         "error-callback": function () {
-          showError("Bot verification error");
+          showError(t("botVerificationError"));
           flushQueue(false);
         },
       });
@@ -931,11 +1077,11 @@
     var file = e.target.files && e.target.files[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
-      showError("Image must be under 5MB");
+      showError(t("imageTooLarge"));
       return;
     }
     if (!/^image\//.test(file.type)) {
-      showError("Only image files are supported");
+      showError(t("onlyImages"));
       return;
     }
     var reader = new FileReader();
@@ -1001,7 +1147,7 @@
     // Chat bubble button
     var bubble = document.createElement("button");
     bubble.className = "lb-bubble";
-    bubble.setAttribute("aria-label", "Open chat");
+    bubble.setAttribute("aria-label", t("openChat"));
 
     var chatIcon = document.createElement("span");
     chatIcon.className = "lb-chat-icon";
@@ -1055,13 +1201,13 @@
 
     var resetBtn = document.createElement("button");
     resetBtn.className = "lb-header-btn";
-    resetBtn.setAttribute("aria-label", "Reset conversation");
+    resetBtn.setAttribute("aria-label", t("resetConversation"));
     resetBtn.innerHTML = ICON_RESET;
     resetBtn.addEventListener("click", resetSession);
 
     var minimizeBtn = document.createElement("button");
     minimizeBtn.className = "lb-header-btn";
-    minimizeBtn.setAttribute("aria-label", "Minimize");
+    minimizeBtn.setAttribute("aria-label", t("minimize"));
     minimizeBtn.innerHTML = ICON_CLOSE;
     minimizeBtn.addEventListener("click", togglePanel);
 
@@ -1094,7 +1240,7 @@
     // Image upload button
     var imgBtn = document.createElement("button");
     imgBtn.className = "lb-img-upload-btn";
-    imgBtn.setAttribute("aria-label", "Upload file");
+    imgBtn.setAttribute("aria-label", t("uploadFile"));
     imgBtn.innerHTML = ICON_IMAGE;
     imgBtn.addEventListener("click", function () {
       fileInput.click();
@@ -1102,7 +1248,7 @@
 
     var input = document.createElement("textarea");
     input.className = "lb-input";
-    input.placeholder = "Type a message...";
+    input.placeholder = t("inputPlaceholder");
     input.rows = 1;
     input.addEventListener("keydown", handleInputKeydown);
     input.addEventListener("input", autoResizeInput);
@@ -1111,7 +1257,7 @@
     var sendBtn = document.createElement("button");
     sendBtn.className = "lb-send-btn";
     sendBtn.disabled = true;
-    sendBtn.setAttribute("aria-label", "Send");
+    sendBtn.setAttribute("aria-label", t("send"));
     sendBtn.innerHTML = ICON_SEND;
     sendBtn.addEventListener("click", handleSend);
     els.sendBtn = sendBtn;
@@ -1124,8 +1270,7 @@
     // Footer: Powered by LangBot (above input area)
     var footer = document.createElement("div");
     footer.className = "lb-footer";
-    footer.innerHTML =
-      'Powered by <a href="https://github.com/langbot-app/LangBot" target="_blank" rel="noopener noreferrer">LangBot</a>';
+    footer.innerHTML = t("poweredBy");
     panel.appendChild(footer);
 
     panel.appendChild(inputArea);

@@ -43,6 +43,45 @@ spec:
       type: string
       required: false
       default: "LangBot"
+    - name: language
+      label:
+        en_US: Widget Language
+        zh_Hans: 组件语言
+        zh_Hant: 元件語言
+        ja_JP: ウィジェット言語
+        th_TH: ภาษาวิดเจ็ต
+        vi_VN: Ngôn ngữ widget
+        es_ES: Idioma del widget
+        ru_RU: Язык виджета
+      description:
+        en_US: "Display language of the chat widget"
+        zh_Hans: "聊天组件的显示语言"
+        zh_Hant: "聊天元件的顯示語言"
+        ja_JP: "チャットウィジェットの表示言語"
+        th_TH: "ภาษาแสดงผลของวิดเจ็ตแชท"
+        vi_VN: "Ngôn ngữ hiển thị của widget trò chuyện"
+        es_ES: "Idioma de visualización del widget de chat"
+        ru_RU: "Язык отображения виджета чата"
+      type: select
+      required: false
+      default: "en_US"
+      options:
+        - value: "en_US"
+          label: "English"
+        - value: "zh_Hans"
+          label: "简体中文"
+        - value: "zh_Hant"
+          label: "繁體中文"
+        - value: "ja_JP"
+          label: "日本語"
+        - value: "es_ES"
+          label: "Español"
+        - value: "ru_RU"
+          label: "Русский"
+        - value: "th_TH"
+          label: "ไทย"
+        - value: "vi_VN"
+          label: "Tiếng Việt"
     - name: embed_code
       label:
         en_US: Embed Code
