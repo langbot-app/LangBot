@@ -46,6 +46,54 @@ function resolveShowIfValue(
 }
 
 /**
+ * Display-only component for embed code fields with copy animation.
+ */
+function EmbedCodeField({
+  label,
+  description,
+  snippet,
+}: {
+  label: string;
+  description?: string;
+  snippet: string;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    copyToClipboard(snippet).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="space-y-2">
+      <label className="text-sm font-medium leading-none">{label}</label>
+      {description && (
+        <p className="text-sm text-muted-foreground">{description}</p>
+      )}
+      <div className="flex items-center gap-2">
+        <pre className="flex-1 overflow-x-auto rounded-md bg-muted p-3 text-sm font-mono select-all">
+          <code>{snippet}</code>
+        </pre>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="shrink-0"
+          onClick={handleCopy}
+        >
+          {copied ? (
+            <Check className="h-4 w-4 text-green-600" />
+          ) : (
+            <Copy className="size-4" />
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Display-only component for webhook URL fields.
  * Rendered outside of react-hook-form binding since the value is
  * read-only and comes from systemContext, not user input.
@@ -462,32 +510,16 @@ export default function DynamicFormComponent({
             const embedSnippet = `<script data-title="${safeTitle}" src="${baseUrl}/api/v1/embed/${botUuid}/widget.js"><\/script>`;
 
             return (
-              <div key={config.id} className="space-y-2">
-                <label className="text-sm font-medium leading-none">
-                  {extractI18nObject(config.label)}
-                </label>
-                {config.description && (
-                  <p className="text-sm text-muted-foreground">
-                    {extractI18nObject(config.description)}
-                  </p>
-                )}
-                <div className="flex items-center gap-2">
-                  <pre className="flex-1 overflow-x-auto rounded-md bg-muted p-3 text-sm font-mono select-all">
-                    <code>{embedSnippet}</code>
-                  </pre>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="shrink-0"
-                    onClick={() => {
-                      navigator.clipboard.writeText(embedSnippet);
-                    }}
-                  >
-                    <Copy className="size-4" />
-                  </Button>
-                </div>
-              </div>
+              <EmbedCodeField
+                key={config.id}
+                label={extractI18nObject(config.label)}
+                description={
+                  config.description
+                    ? extractI18nObject(config.description)
+                    : undefined
+                }
+                snippet={embedSnippet}
+              />
             );
           }
 
