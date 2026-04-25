@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Copy, Check, Trash2, Plus } from 'lucide-react';
+import { copyToClipboard } from '@/app/utils/clipboard';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import {
   Dialog,
@@ -182,10 +183,12 @@ export default function ApiIntegrationDialog({
     }
   };
 
-  const handleCopyKey = (key: string) => {
-    navigator.clipboard.writeText(key);
-    setCopiedKey(key);
-    setTimeout(() => setCopiedKey(null), 2000);
+  const handleCopyKey = async (key: string) => {
+    const ok = await copyToClipboard(key);
+    if (ok) {
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 2000);
+    }
   };
 
   const maskApiKey = (key: string) => {
