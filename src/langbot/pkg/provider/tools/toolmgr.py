@@ -57,41 +57,6 @@ class ToolManager:
 
         return tools
 
-    async def generate_tools_for_anthropic(self, use_funcs: list[resource_tool.LLMTool]) -> list:
-        """为anthropic生成函数列表
-
-        e.g.
-
-        [
-          {
-            "name": "get_stock_price",
-            "description": "Get the current stock price for a given ticker symbol.",
-            "input_schema": {
-              "type": "object",
-              "properties": {
-                "ticker": {
-                  "type": "string",
-                  "description": "The stock ticker symbol, e.g. AAPL for Apple Inc."
-                }
-              },
-              "required": ["ticker"]
-            }
-          }
-        ]
-        """
-
-        tools = []
-
-        for function in use_funcs:
-            function_schema = {
-                'name': function.name,
-                'description': function.description,
-                'input_schema': function.parameters,
-            }
-            tools.append(function_schema)
-
-        return tools
-
     async def execute_func_call(self, name: str, parameters: dict, query: pipeline_query.Query) -> typing.Any:
         """执行函数调用"""
 
