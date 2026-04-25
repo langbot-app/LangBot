@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Copy, Check, Globe } from 'lucide-react';
+import { copyToClipboard } from '@/app/utils/clipboard';
 import { systemInfo } from '@/app/infra/http';
 
 /**
@@ -64,15 +65,11 @@ function WebhookUrlField({
   const [extraCopied, setExtraCopied] = useState(false);
   const { t } = useTranslation();
 
-  const handleCopy = (text: string, setter: (v: boolean) => void) => {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard
-        .writeText(text)
-        .then(() => {
-          setter(true);
-          setTimeout(() => setter(false), 2000);
-        })
-        .catch(() => {});
+  const handleCopy = async (text: string, setter: (v: boolean) => void) => {
+    const ok = await copyToClipboard(text);
+    if (ok) {
+      setter(true);
+      setTimeout(() => setter(false), 2000);
     }
   };
 
