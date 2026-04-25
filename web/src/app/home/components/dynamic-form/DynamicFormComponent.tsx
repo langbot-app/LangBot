@@ -65,12 +65,10 @@ function WebhookUrlField({
   const [extraCopied, setExtraCopied] = useState(false);
   const { t } = useTranslation();
 
-  const handleCopy = async (text: string, setter: (v: boolean) => void) => {
-    const ok = await copyToClipboard(text);
-    if (ok) {
-      setter(true);
-      setTimeout(() => setter(false), 2000);
-    }
+  const handleCopy = (text: string, setter: (v: boolean) => void) => {
+    copyToClipboard(text).catch(() => {});
+    setter(true);
+    setTimeout(() => setter(false), 2000);
   };
 
   return (

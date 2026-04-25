@@ -108,12 +108,10 @@ const BotSessionMonitor = forwardRef<
     return `${id.slice(0, 4)}..${id.slice(-4)}`;
   };
 
-  const copyUserId = async (userId: string) => {
-    const ok = await copyToClipboard(userId);
-    if (ok) {
-      setCopiedUserId(true);
-      setTimeout(() => setCopiedUserId(false), 2000);
-    }
+  const copyUserId = (userId: string) => {
+    copyToClipboard(userId).catch(() => {});
+    setCopiedUserId(true);
+    setTimeout(() => setCopiedUserId(false), 2000);
   };
 
   const loadSessions = useCallback(async () => {

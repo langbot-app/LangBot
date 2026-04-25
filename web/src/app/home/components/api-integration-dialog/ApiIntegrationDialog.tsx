@@ -1,9 +1,8 @@
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Copy, Check, Trash2, Plus } from 'lucide-react';
-import { copyToClipboard } from '@/app/utils/clipboard';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import {
   Dialog,
@@ -87,6 +86,7 @@ export default function ApiIntegrationDialog({
   const [newWebhookDescription, setNewWebhookDescription] = useState('');
   const [newWebhookEnabled, setNewWebhookEnabled] = useState(true);
   const [deleteWebhookId, setDeleteWebhookId] = useState<number | null>(null);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // Sync URL with dialog state
@@ -183,12 +183,26 @@ export default function ApiIntegrationDialog({
     }
   };
 
-  const handleCopyKey = async (key: string) => {
-    const ok = await copyToClipboard(key);
-    if (ok) {
-      setCopiedKey(key);
-      setTimeout(() => setCopiedKey(null), 2000);
-    }
+  const copyToClipboard = (text: string) => {
+    const el = document.createElement('span');
+    el.textContent = text;
+    el.style.cssText = 'position:fixed;opacity:0;pointer-events:none;white-space:pre;';
+    document.body.appendChild(el);
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    document.execCommand('copy');
+    sel?.removeAllRanges();
+    document.body.removeChild(el);
+  };
+
+  const handleCopyKey = (key: string) => {
+    try { copyToClipboard(key); } catch (_) {}
+    clearTimeout(copiedTimerRef.current);
+    setCopiedKey(key);
+    copiedTimerRef.current = setTimeout(() => setCopiedKey(null), 2000);
   };
 
   const maskApiKey = (key: string) => {
@@ -333,21 +347,21 @@ export default function ApiIntegrationDialog({
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {apiKeys.map((key) => (
-                        <TableRow key={key.id}>
+                      {apiKeys.map((item) => (
+                        <TableRow key={item.id}>
                           <TableCell>
                             <div>
-                              <div className="font-medium">{key.name}</div>
-                              {key.description && (
+                              <div className="font-medium">{item.name}</div>
+                              {item.description && (
                                 <div className="text-sm text-muted-foreground">
-                                  {key.description}
+                                  {item.description}
                                 </div>
                               )}
                             </div>
                           </TableCell>
                           <TableCell>
                             <code className="text-sm bg-muted px-2 py-1 rounded">
-                              {maskApiKey(key.key)}
+                              {maskApiKey(item.key)}
                             </code>
                           </TableCell>
                           <TableCell>
@@ -355,10 +369,11 @@ export default function ApiIntegrationDialog({
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => handleCopyKey(key.key)}
+                                type="button"
+                                onClick={() => handleCopyKey(item.key)}
                                 title={t('common.copyApiKey')}
                               >
-                                {copiedKey === key.key ? (
+                                {copiedKey === item.key ? (
                                   <Check className="h-4 w-4 text-green-600" />
                                 ) : (
                                   <Copy className="h-4 w-4" />
@@ -367,7 +382,7 @@ export default function ApiIntegrationDialog({
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => setDeleteKeyId(key.id)}
+                                onClick={() => setDeleteKeyId(item.id)}
                                 title={t('common.delete')}
                               >
                                 <Trash2 className="h-4 w-4" />
@@ -629,44 +644,6 @@ export default function ApiIntegrationDialog({
               {t('common.cancel')}
             </Button>
             <Button onClick={handleCreateWebhook}>{t('common.create')}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete API Key Confirmation Dialog */}
-      <Dialog open={!!createdKey} onOpenChange={() => setCreatedKey(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t('common.apiKeyCreated')}</DialogTitle>
-            <DialogDescription>
-              {t('common.apiKeyCreatedMessage')}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium">
-                {t('common.apiKeyValue')}
-              </label>
-              <div className="flex gap-2 mt-1">
-                <Input value={createdKey?.key || ''} readOnly />
-                <Button
-                  onClick={() => createdKey && handleCopyKey(createdKey.key)}
-                  variant="outline"
-                  size="icon"
-                >
-                  {copiedKey === createdKey?.key ? (
-                    <Check className="h-4 w-4 text-green-600" />
-                  ) : (
-                    <Copy className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button onClick={() => setCreatedKey(null)}>
-              {t('common.close')}
-            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
