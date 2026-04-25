@@ -83,19 +83,6 @@ class ToolManager:
 
         return tools
 
-    async def generate_tools_for_anthropic(self, use_funcs: list[resource_tool.LLMTool]) -> list:
-        tools = []
-
-        for function in use_funcs:
-            function_schema = {
-                'name': function.name,
-                'description': function.description,
-                'input_schema': function.parameters,
-            }
-            tools.append(function_schema)
-
-        return tools
-
     async def execute_func_call(self, name: str, parameters: dict, query: pipeline_query.Query) -> typing.Any:
         if await self.native_tool_loader.has_tool(name):
             return await self.native_tool_loader.invoke_tool(name, parameters, query)

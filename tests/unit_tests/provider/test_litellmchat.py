@@ -93,8 +93,6 @@ class TestExtractUsage:
         assert result['prompt_tokens'] == 100
         assert result['completion_tokens'] == 50
         assert result['total_tokens'] == 150
-        assert result['input_tokens'] == 100  # Compatibility alias
-        assert result['output_tokens'] == 50  # Compatibility alias
 
     def test_extract_usage_with_zero_values(self):
         """Test extraction when values are 0"""

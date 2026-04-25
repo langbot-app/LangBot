@@ -67,8 +67,8 @@ class RuntimeProvider:
             if isinstance(result, tuple):
                 msg, usage_info = result
                 if usage_info:
-                    input_tokens = usage_info.get('input_tokens', 0)
-                    output_tokens = usage_info.get('output_tokens', 0)
+                    input_tokens = usage_info.get('prompt_tokens', 0)
+                    output_tokens = usage_info.get('completion_tokens', 0)
                 return msg
             else:
                 return result
@@ -128,7 +128,6 @@ class RuntimeProvider:
         start_time = time.time()
         status = 'success'
         error_message = None
-        # Note: Stream doesn't easily provide token counts, set to 0
         input_tokens = 0
         output_tokens = 0
 
@@ -143,6 +142,15 @@ class RuntimeProvider:
                 remove_think=remove_think,
             ):
                 yield chunk
+            # Extract usage from stream if available (stored by LiteLLM requester)
+            if query:
+                if query.variables is None:
+                    query.variables = {}
+                if '_stream_usage' in query.variables:
+                    usage_info = query.variables['_stream_usage']
+                    input_tokens = usage_info.get('prompt_tokens', 0)
+                    output_tokens = usage_info.get('completion_tokens', 0)
+                    del query.variables['_stream_usage']
         except Exception as e:
             status = 'error'
             error_message = str(e)
