@@ -160,7 +160,10 @@ class PreProcessor(stage.PipelineStage):
                 elif me.url:
                     content_list.append(provider_message.ContentElement.from_file_url(me.url, 'voice'))
             elif isinstance(me, platform_message.File):
-                content_list.append(provider_message.ContentElement.from_file_url(me.url, me.name))
+                if me.base64:
+                    content_list.append(provider_message.ContentElement.from_file_base64(me.base64, me.name))
+                elif me.url:
+                    content_list.append(provider_message.ContentElement.from_file_url(me.url, me.name))
             elif isinstance(me, platform_message.Quote) and quote_msg:
                 for msg in me.origin:
                     if isinstance(msg, platform_message.Plain):
@@ -172,7 +175,10 @@ class PreProcessor(stage.PipelineStage):
                             if msg.base64 is not None:
                                 content_list.append(provider_message.ContentElement.from_image_base64(msg.base64))
                     elif isinstance(msg, platform_message.File):
-                        content_list.append(provider_message.ContentElement.from_file_url(msg.url, msg.name))
+                        if msg.base64:
+                            content_list.append(provider_message.ContentElement.from_file_base64(msg.base64, msg.name))
+                        elif msg.url:
+                            content_list.append(provider_message.ContentElement.from_file_url(msg.url, msg.name))
                     elif isinstance(msg, platform_message.Voice):
                         if msg.base64:
                             content_list.append(
