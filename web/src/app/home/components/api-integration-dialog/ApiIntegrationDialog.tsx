@@ -86,7 +86,9 @@ export default function ApiIntegrationDialog({
   const [newWebhookDescription, setNewWebhookDescription] = useState('');
   const [newWebhookEnabled, setNewWebhookEnabled] = useState(true);
   const [deleteWebhookId, setDeleteWebhookId] = useState<number | null>(null);
-  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // Sync URL with dialog state
@@ -186,7 +188,8 @@ export default function ApiIntegrationDialog({
   const copyToClipboard = (text: string) => {
     const el = document.createElement('span');
     el.textContent = text;
-    el.style.cssText = 'position:fixed;opacity:0;pointer-events:none;white-space:pre;';
+    el.style.cssText =
+      'position:fixed;opacity:0;pointer-events:none;white-space:pre;';
     document.body.appendChild(el);
     const range = document.createRange();
     range.selectNodeContents(el);
@@ -199,7 +202,9 @@ export default function ApiIntegrationDialog({
   };
 
   const handleCopyKey = (key: string) => {
-    try { copyToClipboard(key); } catch (_) {}
+    try {
+      copyToClipboard(key);
+    } catch {}
     clearTimeout(copiedTimerRef.current);
     setCopiedKey(key);
     copiedTimerRef.current = setTimeout(() => setCopiedKey(null), 2000);
