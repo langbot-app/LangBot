@@ -73,3 +73,18 @@ stages:
             label:
               en_US: Wait
               zh_Hans: 等待
+  - name: session-limit
+    label:
+      en_US: Session Limit
+      zh_Hans: 会话限制
+    config:
+      - name: expire-time
+        label:
+          en_US: Session validity duration (seconds)
+          zh_Hans: 单个会话有效期时长（秒）
+        description:
+          en_US: '0 means unlimited'
+          zh_Hans: '设置为0，则不限制'
+        type: integer
+        required: true
+        default: 0
