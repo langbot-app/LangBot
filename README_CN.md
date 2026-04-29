@@ -124,6 +124,7 @@ docker compose up -d
 | [302.AI](https://share.302.ai/SuTG99) | 聚合平台 | ✅ |
 | [小马算力](https://www.tokenpony.cn/453z1) | 聚合平台 | ✅ |
 | [百宝箱Tbox](https://www.tbox.cn/open) | 智能体平台 | ✅ |
+| [七牛云Qiniu](https://www.qiniu.com/ai/agent) | 聚合平台 | ✅ |
 
 [→ 查看完整集成列表](https://link.langbot.app/zh/docs/features)
 

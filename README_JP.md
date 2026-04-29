@@ -122,6 +122,7 @@ docker compose up -d
 | [ShengSuanYun](https://www.shengsuanyun.com/?from=CH_KYIPP758) | GPUプラットフォーム | ✅ |
 | [接口 AI](https://jiekou.ai/) | ゲートウェイ | ✅ |
 | [302.AI](https://share.302.ai/SuTG99) | ゲートウェイ | ✅ |
+| [Qiniu](https://www.qiniu.com/ai/agent) | ゲートウェイ | ✅ |
 
 [→ すべての統合を表示](https://link.langbot.app/en/docs/features)
 

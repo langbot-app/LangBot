@@ -122,6 +122,7 @@ docker compose up -d
 | [ShengSuanYun](https://www.shengsuanyun.com/?from=CH_KYIPP758) | Plataforma GPU | ✅ |
 | [接口 AI](https://jiekou.ai/) | Pasarela | ✅ |
 | [302.AI](https://share.302.ai/SuTG99) | Pasarela | ✅ |
+| [Qiniu](https://www.qiniu.com/ai/agent) | Pasarela | ✅ |
 
 [→ Ver todas las integraciones](https://link.langbot.app/en/docs/features)
 

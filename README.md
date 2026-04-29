@@ -82,47 +82,48 @@ docker compose up -d
 
 ## Supported Platforms
 
-| Platform | Status | Notes |
-|----------|--------|-------|
-| Discord | ✅ |  |
-| Telegram | ✅ |  |
-| Slack | ✅ |  |
-| LINE | ✅ |  |
-| QQ | ✅ | Personal & Official API |
-| WeCom | ✅ | Enterprise WeChat, External CS, AI Bot |
-| WeChat | ✅ | Personal & Official Account |
-| Lark | ✅ |  |
-| DingTalk | ✅ |  |
-| KOOK | ✅ |  |
-| Satori | ✅ |  |
+| Platform | Status | Notes                                  |
+| -------- | ------ | -------------------------------------- |
+| Discord  | ✅     |                                        |
+| Telegram | ✅     |                                        |
+| Slack    | ✅     |                                        |
+| LINE     | ✅     |                                        |
+| QQ       | ✅     | Personal & Official API                |
+| WeCom    | ✅     | Enterprise WeChat, External CS, AI Bot |
+| WeChat   | ✅     | Personal & Official Account            |
+| Lark     | ✅     |                                        |
+| DingTalk | ✅     |                                        |
+| KOOK     | ✅     |                                        |
+| Satori   | ✅     |                                        |
 
 ---
 
 ## Supported LLMs & Integrations
 
-| Provider | Type | Status |
-|----------|------|--------|
-| [OpenAI](https://platform.openai.com/) | LLM | ✅ |
-| [Anthropic](https://www.anthropic.com/) | LLM | ✅ |
-| [DeepSeek](https://www.deepseek.com/) | LLM | ✅ |
-| [Google Gemini](https://aistudio.google.com/prompts/new_chat) | LLM | ✅ |
-| [xAI](https://x.ai/) | LLM | ✅ |
-| [Moonshot](https://www.moonshot.cn/) | LLM | ✅ |
-| [Zhipu AI](https://open.bigmodel.cn/) | LLM | ✅ |
-| [Ollama](https://ollama.com/) | Local LLM | ✅ |
-| [LM Studio](https://lmstudio.ai/) | Local LLM | ✅ |
-| [Dify](https://dify.ai) | LLMOps | ✅ |
-| [MCP](https://modelcontextprotocol.io/) | Protocol | ✅ |
-| [SiliconFlow](https://siliconflow.cn/) | Gateway | ✅ |
-| [Aliyun Bailian](https://bailian.console.aliyun.com/) | Gateway | ✅ |
-| [Volc Engine Ark](https://console.volcengine.com/ark/region:ark+cn-beijing/model?vendor=Bytedance&view=LIST_VIEW) | Gateway | ✅ |
-| [ModelScope](https://modelscope.cn/docs/model-service/API-Inference/intro) | Gateway | ✅ |
-| [GiteeAI](https://ai.gitee.com/) | Gateway | ✅ |
-| [CompShare](https://www.compshare.cn/?ytag=GPU_YY-gh_langbot) | GPU Platform | ✅ |
-| [PPIO](https://ppinfra.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | GPU Platform | ✅ |
-| [ShengSuanYun](https://www.shengsuanyun.com/?from=CH_KYIPP758) | GPU Platform | ✅ |
-| [接口 AI](https://jiekou.ai/) | Gateway | ✅ |
-| [302.AI](https://share.302.ai/SuTG99) | Gateway | ✅ |
+| Provider                                                                                                          | Type         | Status |
+| ----------------------------------------------------------------------------------------------------------------- | ------------ | ------ |
+| [OpenAI](https://platform.openai.com/)                                                                            | LLM          | ✅     |
+| [Anthropic](https://www.anthropic.com/)                                                                           | LLM          | ✅     |
+| [DeepSeek](https://www.deepseek.com/)                                                                             | LLM          | ✅     |
+| [Google Gemini](https://aistudio.google.com/prompts/new_chat)                                                     | LLM          | ✅     |
+| [xAI](https://x.ai/)                                                                                              | LLM          | ✅     |
+| [Moonshot](https://www.moonshot.cn/)                                                                              | LLM          | ✅     |
+| [Zhipu AI](https://open.bigmodel.cn/)                                                                             | LLM          | ✅     |
+| [Ollama](https://ollama.com/)                                                                                     | Local LLM    | ✅     |
+| [LM Studio](https://lmstudio.ai/)                                                                                 | Local LLM    | ✅     |
+| [Dify](https://dify.ai)                                                                                           | LLMOps       | ✅     |
+| [MCP](https://modelcontextprotocol.io/)                                                                           | Protocol     | ✅     |
+| [SiliconFlow](https://siliconflow.cn/)                                                                            | Gateway      | ✅     |
+| [Aliyun Bailian](https://bailian.console.aliyun.com/)                                                             | Gateway      | ✅     |
+| [Volc Engine Ark](https://console.volcengine.com/ark/region:ark+cn-beijing/model?vendor=Bytedance&view=LIST_VIEW) | Gateway      | ✅     |
+| [ModelScope](https://modelscope.cn/docs/model-service/API-Inference/intro)                                        | Gateway      | ✅     |
+| [GiteeAI](https://ai.gitee.com/)                                                                                  | Gateway      | ✅     |
+| [CompShare](https://www.compshare.cn/?ytag=GPU_YY-gh_langbot)                                                     | GPU Platform | ✅     |
+| [PPIO](https://ppinfra.com/user/register?invited_by=QJKFYD&utm_source=github_langbot)                             | GPU Platform | ✅     |
+| [ShengSuanYun](https://www.shengsuanyun.com/?from=CH_KYIPP758)                                                    | GPU Platform | ✅     |
+| [接口 AI](https://jiekou.ai/)                                                                                     | Gateway      | ✅     |
+| [302.AI](https://share.302.ai/SuTG99)                                                                             | Gateway      | ✅     |
+| [Qiniu](https://www.qiniu.com/ai/agent)                                                                           | Gateway      | ✅     |
 
 [→ View all integrations](https://link.langbot.app/en/docs/features)
 
@@ -130,22 +131,23 @@ docker compose up -d
 
 ## Why LangBot?
 
-| Use Case | How LangBot Helps |
-|----------|-------------------|
-| **Customer Support** | Deploy AI agents to Slack/Discord/Telegram that answer questions using your knowledge base |
-| **Internal Tools** | Connect n8n/Dify workflows to WeCom/DingTalk for automated business processes |
-| **Community Management** | Moderate QQ/Discord groups with AI-powered content filtering and interaction |
-| **Multi-Platform Presence** | One bot, all platforms. Manage from a single dashboard |
+| Use Case                    | How LangBot Helps                                                                          |
+| --------------------------- | ------------------------------------------------------------------------------------------ |
+| **Customer Support**        | Deploy AI agents to Slack/Discord/Telegram that answer questions using your knowledge base |
+| **Internal Tools**          | Connect n8n/Dify workflows to WeCom/DingTalk for automated business processes              |
+| **Community Management**    | Moderate QQ/Discord groups with AI-powered content filtering and interaction               |
+| **Multi-Platform Presence** | One bot, all platforms. Manage from a single dashboard                                     |
 
 ---
 
 ## Live Demo
 
 **Try it now:** https://demo.langbot.dev/
+
 - Email: `demo@langbot.app`
 - Password: `langbot123456`
 
-*Note: Public demo environment. Do not enter sensitive information.*
+_Note: Public demo environment. Do not enter sensitive information._
 
 ---
 
