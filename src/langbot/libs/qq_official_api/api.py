@@ -1,6 +1,6 @@
+import re
 import time
 import asyncio
-import random
 from quart import request
 import httpx
 from quart import Quart
@@ -10,8 +10,6 @@ from .qqofficialevent import QQOfficialEvent
 import json
 import traceback
 from cryptography.hazmat.primitives.asymmetric import ed25519
-
-import websockets
 
 
 class QQOfficialClient:
@@ -36,6 +34,8 @@ class QQOfficialClient:
         self.access_token = ''
         self.access_token_expiry_time = None
         self.logger = logger
+        self._msg_seq_counter = 0
+        self._token_refresh_task: Optional[asyncio.Task] = None
 
     async def check_access_token(self):
         """检查access_token是否存在"""
@@ -56,16 +56,16 @@ class QQOfficialClient:
             }
             response = await client.post(url, json=params, headers=headers)
             if response.status_code != 200:
-                raise Exception(f'获取access_token失败: HTTP {response.status_code} {response.text}')
+                raise Exception(f'Failed to get access_token: HTTP {response.status_code} {response.text}')
             response_data = response.json()
             access_token = response_data.get('access_token')
             expires_in = int(response_data.get('expires_in', 7200))
             self.access_token_expiry_time = time.time() + expires_in - 60
             if access_token:
                 self.access_token = access_token
-                print(f'[QQ Official] access_token 获取成功, 有效期 {expires_in}s')
+                await self.logger.info(f'access_token obtained, expires_in={expires_in}s')
             else:
-                raise Exception('获取access_token失败: 返回数据中无access_token')
+                raise Exception('Failed to get access_token: no access_token in response')
 
     async def handle_callback_request(self):
         """处理回调请求（独立端口模式，使用全局 request）"""
@@ -91,10 +91,10 @@ class QQOfficialClient:
         try:
             body = await req.get_data()
 
-            print(f'[QQ Official] Received request, body length: {len(body)}')
+            await self.logger.info(f'Received request, body length: {len(body)}')
 
             if not body or len(body) == 0:
-                print('[QQ Official] Received empty body, might be health check or GET request')
+                await self.logger.info('Received empty body, might be health check or GET request')
                 return {'code': 0, 'message': 'ok'}, 200
 
             payload = json.loads(body)
@@ -115,7 +115,6 @@ class QQOfficialClient:
             return {'code': 0, 'message': 'success'}
 
         except Exception as e:
-            print(f'[QQ Official] ERROR: {traceback.format_exc()}')
             await self.logger.error(f'Error in handle_callback_request: {traceback.format_exc()}')
             return {'error': str(e)}, 400
 
@@ -199,7 +198,7 @@ class QQOfficialClient:
             if response.status_code == 200:
                 return
             else:
-                await self.logger.error(f'发送私聊消息失败: {response_data}')
+                await self.logger.error(f'Failed to send private message: {response_data}')
                 raise ValueError(response)
 
     async def send_group_text_msg(self, group_openid: str, content: str, msg_id: str):
@@ -222,7 +221,7 @@ class QQOfficialClient:
             if response.status_code == 200:
                 return
             else:
-                await self.logger.error(f'发送群聊消息失败:{response.json()}')
+                await self.logger.error(f'Failed to send group message: {response.json()}')
                 raise Exception(response.read().decode())
 
     async def send_channle_group_text_msg(self, channel_id: str, content: str, msg_id: str):
@@ -245,7 +244,7 @@ class QQOfficialClient:
             if response.status_code == 200:
                 return True
             else:
-                await self.logger.error(f'发送频道群聊消息失败: {response.json()}')
+                await self.logger.error(f'Failed to send channel group message: {response.json()}')
                 raise Exception(response)
 
     async def send_channle_private_text_msg(self, guild_id: str, content: str, msg_id: str):
@@ -268,7 +267,7 @@ class QQOfficialClient:
             if response.status_code == 200:
                 return True
             else:
-                await self.logger.error(f'发送频道私聊消息失败: {response.json()}')
+                await self.logger.error(f'Failed to send channel private message: {response.json()}')
                 raise Exception(response)
 
     # ---- 富媒体消息 ----
@@ -317,8 +316,6 @@ class QQOfficialClient:
         elif file_data:
             # 处理 data URL 格式: data:image/png;base64,xxxxx
             if file_data.startswith('data:'):
-                import re
-
                 match = re.match(r'^data:[^;]+;base64,(.+)$', file_data, re.DOTALL)
                 if match:
                     body['file_data'] = match.group(1)
@@ -341,14 +338,11 @@ class QQOfficialClient:
             if response.status_code == 200:
                 data = response.json()
                 file_info = data.get('file_info', '')
-                print(
-                    f'[QQ Official] 上传媒体成功, file_info={file_info[:80]}...'
-                    if len(file_info) > 80
-                    else f'[QQ Official] 上传媒体成功, file_info={file_info}'
-                )
+                preview = file_info[:80] + '...' if len(file_info) > 80 else file_info
+                await self.logger.info(f'Upload media success, file_info={preview}')
                 return file_info
             else:
-                raise Exception(f'上传媒体失败: HTTP {response.status_code} {response.text}')
+                raise Exception(f'Failed to upload media: HTTP {response.status_code} {response.text}')
 
     async def _send_media_msg(
         self,
@@ -369,7 +363,8 @@ class QQOfficialClient:
         else:
             raise ValueError(f'Unsupported target_type: {target_type}')
 
-        msg_seq = (int(time.time() * 1000) % 100000000 ^ random.randint(0, 65535)) % 65536
+        self._msg_seq_counter += 1
+        msg_seq = self._msg_seq_counter
         body = {
             'msg_type': 7,
             'media': {'file_info': file_info},
@@ -385,10 +380,10 @@ class QQOfficialClient:
                 'Authorization': f'QQBot {self.access_token}',
                 'Content-Type': 'application/json',
             }
-            print(f'[QQ Official] 发送富媒体消息: {json.dumps(body, ensure_ascii=False)[:200]}')
+            await self.logger.info(f'Sending rich media: {json.dumps(body, ensure_ascii=False)[:200]}')
             response = await client.post(url, headers=headers, json=body)
             if response.status_code != 200:
-                raise Exception(f'发送富媒体消息失败: HTTP {response.status_code} {response.text}')
+                raise Exception(f'Failed to send rich media message: HTTP {response.status_code} {response.text}')
 
     async def send_image_msg(
         self,
@@ -487,7 +482,7 @@ class QQOfficialClient:
             }
             response = await client.post(url, headers=headers, json=body)
             if response.status_code != 200:
-                raise Exception(f'发送流式消息失败: HTTP {response.status_code} {response.text}')
+                raise Exception(f'Failed to send stream message: HTTP {response.status_code} {response.text}')
             return response.json()
 
     async def is_token_expired(self):
@@ -520,23 +515,15 @@ class QQOfficialClient:
         return response
 
     # ---- WebSocket Gateway ----
-    # 参考文档: https://bot.q.qq.com/wiki/develop/api-v2/dev-prepare/interface-framework/event-emit.html
+    # Reference: https://bot.q.qq.com/wiki/develop/api-v2/dev-prepare/interface-framework/event-emit.html
 
-    # 基础事件（默认有权限）
     INTENT_GUILDS = 1 << 0
     INTENT_GUILD_MEMBERS = 1 << 1
-    # 公域消息事件（默认有权限）
     INTENT_PUBLIC_GUILD_MESSAGES = 1 << 30
-    # 私域消息事件（需要申请权限，公网机器人不应使用）
-    # INTENT_GUILD_MESSAGES = 1 << 9
-    # 私信事件
     INTENT_DIRECT_MESSAGE = 1 << 12
-    # 群聊和单聊事件
     INTENT_GROUP_AND_C2C = 1 << 25
-    # 互动事件
     INTENT_INTERACTION = 1 << 26
 
-    # 默认 intents：基础事件 + 公域消息 + 私信 + 群聊单聊 + 互动
     FULL_INTENTS = (
         INTENT_GUILDS
         | INTENT_GUILD_MEMBERS
@@ -564,7 +551,7 @@ class QQOfficialClient:
                     raise Exception('Gateway URL is empty')
                 return ws_url
             else:
-                raise Exception(f'获取 Gateway URL 失败: HTTP {response.status_code} {response.text}')
+                raise Exception(f'Failed to get Gateway URL: HTTP {response.status_code} {response.text}')
 
     async def _background_token_refresh(self):
         """在 token 到期前主动刷新"""
@@ -591,248 +578,254 @@ class QQOfficialClient:
         on_ready: Optional[Callable[[], Any]] = None,
         on_error: Optional[Callable[[Exception], Any]] = None,
     ):
-        """WebSocket 网关连接，含重连逻辑。单次调用处理一次连接生命周期。
+        """WebSocket 网关连接，含重连逻辑。持续重连直到达到最大次数或被取消。
 
         Args:
             on_event: 收到 op=0 Dispatch 事件时的回调，参数为 (event_type, event_data)
             on_ready: 连接就绪 (收到 READY) 时的回调
             on_error: 发生错误时的回调
         """
+        import websockets
+
         session_id = ''
         last_seq = 0
-        heartbeat_interval = 45000
         reconnect_attempts = 0
         max_reconnect_attempts = 100
         backoff_delays = [1, 2, 5, 10, 30, 60]
         rate_limit_delay = 60
-        should_refresh_token = False
-        ws = None
-        heartbeat_task = None
 
-        async def schedule_reconnect(custom_delay: Optional[int] = None):
-            nonlocal reconnect_attempts
-            reconnect_attempts += 1
-            if reconnect_attempts > max_reconnect_attempts:
-                err = Exception(f'重连次数超过 {max_reconnect_attempts}，停止重连')
-                print(f'[QQ Official WS] {err}')
-                if on_error:
-                    on_error(err)
-                return
-            delay = (
-                custom_delay
-                if custom_delay is not None
-                else backoff_delays[min(reconnect_attempts - 1, len(backoff_delays) - 1)]
-            )
-            print(f'[QQ Official WS] 将在 {delay}s 后重连 (第 {reconnect_attempts} 次)')
-            await asyncio.sleep(delay)
-            # 直接调用 connect_gateway 进行重连，避免并发问题
-            await self.connect_gateway(on_event, on_ready, on_error)
-
-        async def _heartbeat_loop(ws_conn, interval_ms):
-            interval_sec = interval_ms / 1000.0
+        # Cancel previous token refresh task if any
+        if self._token_refresh_task and not self._token_refresh_task.done():
+            self._token_refresh_task.cancel()
             try:
-                while True:
-                    await asyncio.sleep(interval_sec)
-                    try:
-                        payload = {'op': 1, 'd': last_seq}
-                        await ws_conn.send(json.dumps(payload))
-                    except Exception:
-                        break
+                await self._token_refresh_task
             except asyncio.CancelledError:
                 pass
+            self._token_refresh_task = None
 
-        # 清理旧连接
-        if heartbeat_task:
-            heartbeat_task.cancel()
-            try:
-                await heartbeat_task
-            except asyncio.CancelledError:
-                pass
+        while reconnect_attempts <= max_reconnect_attempts:
+            heartbeat_interval = 45000
+            should_refresh_token = False
+            ws = None
             heartbeat_task = None
 
-        if ws:
+            # Refresh token if needed
+            if should_refresh_token:
+                self.access_token = ''
+                self.access_token_expiry_time = None
+
             try:
-                await ws.close()
-            except Exception:
-                pass
-            ws = None
+                ws_url = await self.get_gateway_url()
+                await self.logger.info(f'Gateway URL obtained: {ws_url[:60]}...')
+            except Exception as e:
+                error_msg = str(e)
+                await self.logger.error(f'Failed to get gateway URL: {e}')
+                reconnect_attempts += 1
+                if '100017' in error_msg or '频率' in error_msg or 'Too many' in error_msg:
+                    delay = rate_limit_delay
+                else:
+                    delay = backoff_delays[min(reconnect_attempts - 1, len(backoff_delays) - 1)]
+                await self.logger.info(f'Reconnecting in {delay}s (attempt {reconnect_attempts})')
+                await asyncio.sleep(delay)
+                continue
 
-        # 刷新 token
-        if should_refresh_token:
-            self.access_token = ''
-            self.access_token_expiry_time = None
-            should_refresh_token = False
+            try:
+                await self.logger.info('Connecting to WebSocket gateway...')
+                ws = await websockets.connect(ws_url)
+                await self.logger.info('WebSocket connected')
+            except Exception as e:
+                await self.logger.error(f'WebSocket connection failed: {e}')
+                reconnect_attempts += 1
+                delay = backoff_delays[min(reconnect_attempts - 1, len(backoff_delays) - 1)]
+                await self.logger.info(f'Reconnecting in {delay}s (attempt {reconnect_attempts})')
+                await asyncio.sleep(delay)
+                continue
 
-        try:
-            ws_url = await self.get_gateway_url()
-            print(f'[QQ Official WS] 获取网关地址成功: {ws_url[:60]}...')
-        except Exception as e:
-            error_msg = str(e)
-            print(f'[QQ Official WS] 获取网关地址失败: {e}')
-            await self.logger.error(f'获取网关地址失败: {e}')
-            if '100017' in error_msg or '频率' in error_msg or 'Too many' in error_msg:
-                print(f'[QQ Official WS] 检测到频率限制，等待 {rate_limit_delay}s 后重连')
-                await schedule_reconnect(rate_limit_delay)
-            else:
-                await schedule_reconnect()
-            return
+            try:
+                async for raw_msg in ws:
+                    try:
+                        payload = json.loads(raw_msg)
+                    except json.JSONDecodeError:
+                        await self.logger.error(f'Failed to parse message: {raw_msg}')
+                        continue
 
-        try:
-            print('[QQ Official WS] 正在连接 WebSocket...')
-            ws = await websockets.connect(ws_url)
-            print('[QQ Official WS] WebSocket 连接成功')
-        except Exception as e:
-            print(f'[QQ Official WS] WebSocket 连接失败: {e}')
-            await self.logger.error(f'WebSocket 连接失败: {e}')
-            await schedule_reconnect()
-            return
+                    op = payload.get('op')
+                    d = payload.get('d', {})
+                    s = payload.get('s')
+                    t = payload.get('t')
 
-        try:
-            async for raw_msg in ws:
-                try:
-                    payload = json.loads(raw_msg)
-                except json.JSONDecodeError:
-                    await self.logger.error(f'解析消息失败: {raw_msg}')
-                    continue
+                    if not isinstance(d, dict):
+                        d = {}
 
-                op = payload.get('op')
-                d = payload.get('d', {})
-                s = payload.get('s')
-                t = payload.get('t')
+                    if op == 10:  # Hello
+                        heartbeat_interval = d.get('heartbeat_interval', 45000)
+                        await self.logger.info(f'Received Hello, heartbeat_interval={heartbeat_interval}ms')
 
-                if not isinstance(d, dict):
-                    d = {}
+                        # Send Identify or Resume
+                        if session_id and last_seq > 0:
+                            resume_payload = {
+                                'op': 6,
+                                'd': {
+                                    'token': f'QQBot {self.access_token}',
+                                    'session_id': session_id,
+                                    'seq': last_seq,
+                                },
+                            }
+                            await ws.send(json.dumps(resume_payload))
+                            await self.logger.info(f'Sent Resume, session_id={session_id}, seq={last_seq}')
+                        else:
+                            identify_payload = {
+                                'op': 2,
+                                'd': {
+                                    'token': f'QQBot {self.access_token}',
+                                    'intents': self.FULL_INTENTS,
+                                    'shard': [0, 1],
+                                },
+                            }
+                            await ws.send(json.dumps(identify_payload))
+                            await self.logger.info(f'Sent Identify, intents={self.FULL_INTENTS}')
 
-                if op == 10:  # Hello
-                    heartbeat_interval = d.get('heartbeat_interval', 45000)
-                    print(f'[QQ Official WS] 收到 Hello, heartbeat_interval={heartbeat_interval}ms')
-
-                    # 发送 Identify 或 Resume
-                    if session_id and last_seq > 0:
-                        resume_payload = {
-                            'op': 6,
-                            'd': {
-                                'token': f'QQBot {self.access_token}',
-                                'session_id': session_id,
-                                'seq': last_seq,
-                            },
-                        }
-                        await ws.send(json.dumps(resume_payload))
-                        print(f'[QQ Official WS] 发送 Resume, session_id={session_id}, seq={last_seq}')
-                    else:
-                        identify_payload = {
-                            'op': 2,
-                            'd': {
-                                'token': f'QQBot {self.access_token}',
-                                'intents': self.FULL_INTENTS,
-                                'shard': [0, 1],
-                            },
-                        }
-                        await ws.send(json.dumps(identify_payload))
-                        print(f'[QQ Official WS] 发送 Identify, intents={self.FULL_INTENTS}')
-
-                    # 启动心跳
-                    heartbeat_task = asyncio.create_task(_heartbeat_loop(ws, heartbeat_interval))
-
-                elif op == 0:  # Dispatch
-                    if s is not None:
-                        last_seq = s
-
-                    if t == 'READY':
-                        session_id = d.get('session_id', '')
-                        reconnect_attempts = 0
-                        print(f'[QQ Official WS] ✅ READY, session_id={session_id}')
-                        if on_ready:
+                        # Start heartbeat
+                        async def _heartbeat_loop(conn, interval_ms):
+                            interval_sec = interval_ms / 1000.0
                             try:
-                                result = on_ready()
-                                if asyncio.iscoroutine(result):
-                                    await result
-                            except Exception:
+                                while True:
+                                    await asyncio.sleep(interval_sec)
+                                    try:
+                                        hb_payload = {'op': 1, 'd': last_seq}
+                                        await conn.send(json.dumps(hb_payload))
+                                    except Exception:
+                                        break
+                            except asyncio.CancelledError:
                                 pass
-                        asyncio.create_task(self._background_token_refresh())
 
-                    elif t == 'RESUMED':
-                        reconnect_attempts = 0
-                        print('[QQ Official WS] ✅ RESUMED')
+                        heartbeat_task = asyncio.create_task(_heartbeat_loop(ws, heartbeat_interval))
 
-                    else:
-                        print(f'[QQ Official WS] 收到事件: {t}, seq={s}')
-                        if on_event:
-                            try:
-                                result = on_event(t, d)
-                                if asyncio.iscoroutine(result):
-                                    await result
-                            except Exception:
-                                await self.logger.error(f'处理事件 {t} 失败: {traceback.format_exc()}')
+                    elif op == 0:  # Dispatch
+                        if s is not None:
+                            last_seq = s
 
-                elif op == 11:  # Heartbeat ACK
-                    pass
+                        if t == 'READY':
+                            session_id = d.get('session_id', '')
+                            reconnect_attempts = 0
+                            await self.logger.info(f'READY, session_id={session_id}')
+                            if on_ready:
+                                try:
+                                    result = on_ready()
+                                    if asyncio.iscoroutine(result):
+                                        await result
+                                except Exception:
+                                    pass
+                            # Track token refresh task to avoid leaks
+                            if self._token_refresh_task and not self._token_refresh_task.done():
+                                self._token_refresh_task.cancel()
+                                try:
+                                    await self._token_refresh_task
+                                except asyncio.CancelledError:
+                                    pass
+                            self._token_refresh_task = asyncio.create_task(self._background_token_refresh())
 
-                elif op == 7:  # Reconnect
-                    print('[QQ Official WS] 收到 Reconnect 指令')
-                    try:
-                        await ws.close()
-                    except Exception:
+                        elif t == 'RESUMED':
+                            reconnect_attempts = 0
+                            await self.logger.info('RESUMED')
+
+                        else:
+                            await self.logger.debug(f'Received event: {t}, seq={s}')
+                            if on_event:
+                                try:
+                                    result = on_event(t, d)
+                                    if asyncio.iscoroutine(result):
+                                        await result
+                                except Exception:
+                                    await self.logger.error(f'Error handling event {t}: {traceback.format_exc()}')
+
+                    elif op == 11:  # Heartbeat ACK
                         pass
-                    await schedule_reconnect()
-                    return
 
-                elif op == 9:  # Invalid Session
-                    can_resume = d.get('can_resume', False)
-                    print(f'[QQ Official WS] Invalid Session, can_resume={can_resume}')
-                    if not can_resume:
-                        session_id = ''
-                        last_seq = 0
-                        should_refresh_token = True
-                    try:
-                        await ws.close()
-                    except Exception:
-                        pass
-                    await schedule_reconnect(3)
-                    return
+                    elif op == 7:  # Reconnect
+                        await self.logger.info('Received Reconnect directive')
+                        break
 
-            # 连接关闭
-            try:
-                close_code = ws.close_code
-                close_reason = ws.close_reason or ''
-            except Exception:
-                close_code = None
-                close_reason = ''
-            print(f'[QQ Official WS] 连接关闭, code={close_code}, reason={close_reason}')
+                    elif op == 9:  # Invalid Session
+                        can_resume = d.get('can_resume', False)
+                        await self.logger.warning(f'Invalid Session, can_resume={can_resume}')
+                        if not can_resume:
+                            session_id = ''
+                            last_seq = 0
+                            should_refresh_token = True
+                        break
 
-            if close_code == 4004:
-                should_refresh_token = True
-            elif close_code in (4006, 4007, 4009):
-                session_id = ''
-                last_seq = 0
-                should_refresh_token = True
-            elif close_code == 4008:
-                print(f'[QQ Official WS] 触发频率限制，等待 {rate_limit_delay}s 后重连')
-                await schedule_reconnect(rate_limit_delay)
-                return
-            elif close_code in (4914, 4915):
-                err = Exception(f'Bot 下线/封禁 (close_code={close_code})')
-                if on_error:
-                    on_error(err)
-                return
-            elif close_code in (4900, 4901, 4902, 4903, 4904, 4905, 4906, 4907, 4908, 4909, 4910, 4911, 4912, 4913):
-                session_id = ''
-                last_seq = 0
-
-            if close_code != 1000:
-                await schedule_reconnect()
-        finally:
-            if heartbeat_task:
-                heartbeat_task.cancel()
+                # Connection closed normally (end of async for)
                 try:
-                    await heartbeat_task
-                except asyncio.CancelledError:
-                    pass
-            if ws:
-                try:
-                    await ws.close()
+                    close_code = ws.close_code
+                    close_reason = ws.close_reason or ''
                 except Exception:
-                    pass
+                    close_code = None
+                    close_reason = ''
+                await self.logger.info(f'Connection closed, code={close_code}, reason={close_reason}')
+
+                if close_code == 4004:
+                    should_refresh_token = True
+                elif close_code in (4006, 4007, 4009):
+                    session_id = ''
+                    last_seq = 0
+                    should_refresh_token = True
+                elif close_code == 4008:
+                    reconnect_attempts += 1
+                    delay = rate_limit_delay
+                    await self.logger.info(
+                        f'Rate limited, waiting {delay}s before reconnect (attempt {reconnect_attempts})'
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                elif close_code in (4914, 4915):
+                    err = Exception(f'Bot disconnected/banned (close_code={close_code})')
+                    if on_error:
+                        await self._safe_callback(on_error, err)
+                    return
+                elif close_code in (4900, 4901, 4902, 4903, 4904, 4905, 4906, 4907, 4908, 4909, 4910, 4911, 4912, 4913):
+                    session_id = ''
+                    last_seq = 0
+
+                if close_code == 1000:
+                    return
+
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                await self.logger.error(f'Unexpected error in WebSocket loop: {traceback.format_exc()}')
+            finally:
+                if heartbeat_task:
+                    heartbeat_task.cancel()
+                    try:
+                        await heartbeat_task
+                    except asyncio.CancelledError:
+                        pass
+                if ws:
+                    try:
+                        await ws.close()
+                    except Exception:
+                        pass
+
+            # If we reach here, we need to reconnect
+            reconnect_attempts += 1
+            if reconnect_attempts > max_reconnect_attempts:
+                await self.logger.error(f'Max reconnect attempts ({max_reconnect_attempts}) reached, stopping')
+                if on_error:
+                    await self._safe_callback(on_error, Exception('Max reconnect attempts reached'))
+                return
+            delay = backoff_delays[min(reconnect_attempts - 1, len(backoff_delays) - 1)]
+            await self.logger.info(f'Reconnecting in {delay}s (attempt {reconnect_attempts})')
+            await asyncio.sleep(delay)
+
+    async def _safe_callback(self, callback, *args):
+        """Safely invoke a callback, handling both sync and async functions."""
+        try:
+            result = callback(*args)
+            if asyncio.iscoroutine(result):
+                await result
+        except Exception:
+            pass
 
     async def connect_gateway_loop(
         self,

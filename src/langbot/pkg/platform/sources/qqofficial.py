@@ -1,5 +1,6 @@
 from __future__ import annotations
 import typing
+import re
 import asyncio
 import traceback
 
@@ -23,10 +24,11 @@ def _is_base64_data(value: str) -> bool:
     # data: URI scheme (e.g. data:image/png;base64,xxx)
     if value.startswith('data:'):
         return True
-    # If it doesn't look like a URL, treat as raw base64
-    if not value.startswith(('http://', 'https://')):
-        return True
-    return False
+    # Only treat as base64 if it doesn't look like a URL/path and has valid base64 chars
+    if value.startswith(('http://', 'https://', '/', './', '../')):
+        return False
+    # Check if it looks like base64 (only valid chars, reasonable length)
+    return bool(re.fullmatch(r'[A-Za-z0-9+/=\s]{20,}', value))
 
 
 class QQOfficialMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
@@ -211,7 +213,9 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
         self.enable_webhook = enable_webhook
         self._ws_task: asyncio.Task = None
         self._stream_ctx: dict = {}
+        self._stream_ctx_ts: dict[str, float] = {}
         self._fallback_text: dict[str, str] = {}
+        self._fallback_text_ts: dict[str, float] = {}
 
     async def reply_message(
         self,
@@ -382,9 +386,9 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
             if event_type not in message_event_types:
                 return
             if not isinstance(event_data, dict):
-                print(f'[QQ Official WS] 事件 data 不是 dict，跳过: {event_type} -> {type(event_data)}')
+                await self.logger.warning(f'Event data is not dict, skipping: {event_type} -> {type(event_data)}')
                 return
-            print(f'[QQ Official WS] 处理消息事件: {event_type}')
+            await self.logger.info(f'Processing message event: {event_type}')
             # 构造与 webhook 模式相同的 payload 结构
             payload = {'t': event_type, 'd': event_data}
             message_data = await self.bot.get_message(payload)
@@ -393,7 +397,7 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
                 await self.bot._handle_message(event)
 
         async def on_error(error: Exception):
-            print(f'[QQ Official WS] ❌ 错误: {error}')
+            await self.logger.error(f'WebSocket error: {error}')
             await self.logger.error(f'QQ Official WebSocket error: {error}')
 
         self._ws_task = asyncio.create_task(self.bot.connect_gateway_loop(on_event, on_ready, on_error))
@@ -413,6 +417,22 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
         return True
 
     # --------------- 流式输出 ---------------
+
+    _STREAM_CTX_TTL = 300  # seconds
+
+    async def _cleanup_stale_streams(self):
+        """Remove stream contexts that have not been updated for more than _STREAM_CTX_TTL seconds."""
+        now = time.time()
+        stale_ids = [mid for mid, ts in self._stream_ctx_ts.items() if now - ts > self._STREAM_CTX_TTL]
+        for mid in stale_ids:
+            self._stream_ctx.pop(mid, None)
+            self._stream_ctx_ts.pop(mid, None)
+        stale_fb = [mid for mid, ts in self._fallback_text_ts.items() if now - ts > self._STREAM_CTX_TTL]
+        for mid in stale_fb:
+            self._fallback_text.pop(mid, None)
+            self._fallback_text_ts.pop(mid, None)
+        if stale_ids or stale_fb:
+            await self.logger.debug(f'Cleaned up {len(stale_ids)} stream contexts, {len(stale_fb)} fallback texts')
 
     async def is_stream_output_supported(self) -> bool:
         return self.config.get('enable-stream-reply', False)
@@ -436,6 +456,7 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
         }
 
         self._stream_ctx[message_id] = ctx
+        self._stream_ctx_ts[message_id] = time.time()
         return True
 
     async def reply_message_chunk(
@@ -446,6 +467,8 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
         quote_origin: bool = False,
         is_final: bool = False,
     ):
+        # Periodically clean up stale stream contexts
+        await self._cleanup_stale_streams()
         # 提取纯文本内容（当前 chunk 的文本）
         text_parts = []
         for msg in message:
@@ -462,6 +485,7 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
             # 非流式场景（如群聊不支持流式），累积文本后一次性回复
             if chunk_text:
                 self._fallback_text[message_id] = self._fallback_text.get(message_id, '') + chunk_text
+                self._fallback_text_ts[message_id] = time.time()
             if is_final:
                 full_text = self._fallback_text.pop(message_id, '')
                 if full_text:
@@ -520,7 +544,7 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
                 f'sent_len={ctx["sent_length"]}, is_final={is_final}'
             )
         except Exception as e:
-            await self.logger.error(f'[QQ Official] 流式消息发送失败: {e}')
+            await self.logger.error(f'Failed to send stream message: {e}')
 
         if is_final:
             self._stream_ctx.pop(message_id, None)
