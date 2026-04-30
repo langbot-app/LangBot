@@ -523,7 +523,7 @@ class PlatformManager:
         return None
 
     async def remove_bot(self, bot_uuid: str):
-        for bot in self.bots:
+        for bot in self.bots[:]:
             if bot.bot_entity.uuid == bot_uuid:
                 if bot.enable:
                     await bot.shutdown()
