@@ -47,18 +47,23 @@ stages:
             label:
               en_US: Langflow API
               zh_Hans: Langflow API
-  - name: session-limit
-    label:
-      en_US: Session Limit
-      zh_Hans: 会话限制
-    config:
       - name: expire-time
         label:
           en_US: Session validity duration (seconds)
           zh_Hans: 单个会话有效期时长（秒）
         description:
-          en_US: '0 means unlimited'
-          zh_Hans: '设置为0，则不限制'
+          en_US: >-
+            Maximum lifetime of a single conversation, measured from the moment
+            the conversation was created (not from the last message). When a new
+            message arrives and the current conversation's age exceeds this
+            value, the existing conversation is discarded and a new one is
+            started automatically — the user does not need to trigger a reset
+            manually. Set to 0 to disable expiry (conversations live until the
+            user or another mechanism resets them).
+          zh_Hans: >-
+            单个会话的最长存活时间，从会话创建时刻开始计算（不是最后一条消息的时间）。
+            当新消息到达且当前会话存活时长已超过该值时，旧会话会被自动丢弃并开启新会话，
+            用户无需手动重置。设置为 0 表示不限制有效期（会话会一直保留，直到用户或其他机制主动重置）。
         type: integer
         required: true
         default: 0

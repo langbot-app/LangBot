@@ -56,7 +56,7 @@ def _conversation(created_at: datetime):
 
 
 @pytest.mark.asyncio
-async def test_chat_handler_expires_conversation_from_ai_session_limit(monkeypatch, mock_app, sample_query):
+async def test_chat_handler_expires_conversation_from_ai_runner_expire_time(monkeypatch, mock_app, sample_query):
     monkeypatch.setattr(_runner_module(), 'preregistered_runners', [DummyRunner])
     mock_app.plugin_connector.emit_event = AsyncMock(return_value=_event_context())
 
@@ -65,8 +65,7 @@ async def test_chat_handler_expires_conversation_from_ai_session_limit(monkeypat
     sample_query.user_message = provider_message.Message(role='user', content='hello')
     sample_query.pipeline_config = {
         'ai': {
-            'runner': {'runner': 'local-agent'},
-            'session-limit': {'expire-time': 60},
+            'runner': {'runner': 'local-agent', 'expire-time': 60},
         },
         'output': {'misc': {'exception-handling': 'show-hint'}},
     }
@@ -99,11 +98,15 @@ async def test_chat_handler_ignores_safety_session_limit(monkeypatch, mock_app, 
     assert conversation.uuid == 'existing-conversation-uuid'
 
 
-def test_session_limit_metadata_lives_under_ai_not_safety():
+def test_expire_time_metadata_lives_under_ai_runner_not_safety():
     metadata_dir = Path('src/langbot/templates/metadata/pipeline')
 
     ai_meta = yaml.safe_load((metadata_dir / 'ai.yaml').read_text())
     safety_meta = yaml.safe_load((metadata_dir / 'safety.yaml').read_text())
 
-    assert 'session-limit' in [stage['name'] for stage in ai_meta['stages']]
+    ai_stage_names = [stage['name'] for stage in ai_meta['stages']]
+    assert 'session-limit' not in ai_stage_names
     assert 'session-limit' not in [stage['name'] for stage in safety_meta['stages']]
+
+    runner_stage = next(stage for stage in ai_meta['stages'] if stage['name'] == 'runner')
+    assert 'expire-time' in [item['name'] for item in runner_stage['config']]
