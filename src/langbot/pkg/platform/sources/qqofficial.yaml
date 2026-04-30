@@ -55,6 +55,18 @@ spec:
       type: boolean
       required: true
       default: false
+    - name: enable-stream-reply
+      label:
+        en_US: Enable Stream Reply Mode
+        zh_Hans: 启用流式回复模式
+        zh_Hant: 啟用串流回覆模式
+      description:
+        en_US: If enabled, the bot will use streaming mode to reply messages (C2C only)
+        zh_Hans: 如果启用，机器人将使用流式方式回复消息（仅私聊）
+        zh_Hant: 如果啟用，機器人將使用串流方式回覆訊息（僅私聊）
+      type: boolean
+      required: true
+      default: false
     - name: webhook_url
       label:
         en_US: Webhook Callback URL

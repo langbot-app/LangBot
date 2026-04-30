@@ -4,6 +4,7 @@ import asyncio
 import traceback
 
 import datetime
+import time
 
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
@@ -209,6 +210,8 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
 
         self.enable_webhook = enable_webhook
         self._ws_task: asyncio.Task = None
+        self._stream_ctx: dict = {}
+        self._fallback_text: dict[str, str] = {}
 
     async def reply_message(
         self,
@@ -408,6 +411,119 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
                 pass
             self._ws_task = None
         return True
+
+    # --------------- 流式输出 ---------------
+
+    async def is_stream_output_supported(self) -> bool:
+        return self.config.get('enable-stream-reply', False)
+
+    async def create_message_card(self, message_id: str, event: platform_events.MessageEvent) -> bool:
+        source = event.source_platform_object
+        # Streaming API only supports C2C private chat
+        if source.t != 'C2C_MESSAGE_CREATE':
+            return False
+
+        ctx = {
+            'user_openid': source.user_openid,
+            'msg_id': source.d_id,
+            'stream_msg_id': None,
+            'msg_seq': 1,
+            'index': 0,
+            'last_update_ts': 0,
+            'accumulated_text': '',
+            'sent_length': 0,
+            'session_started': False,
+        }
+
+        self._stream_ctx[message_id] = ctx
+        return True
+
+    async def reply_message_chunk(
+        self,
+        message_source: platform_events.MessageEvent,
+        bot_message: dict,
+        message: platform_message.MessageChain,
+        quote_origin: bool = False,
+        is_final: bool = False,
+    ):
+        # 提取纯文本内容（当前 chunk 的文本）
+        text_parts = []
+        for msg in message:
+            if type(msg) is platform_message.Plain:
+                text_parts.append(msg.text)
+        chunk_text = '\n\n'.join(text_parts)
+
+        message_id = (
+            bot_message.get('resp_message_id')
+            if isinstance(bot_message, dict)
+            else getattr(bot_message, 'resp_message_id', None)
+        )
+        if not message_id or message_id not in self._stream_ctx:
+            # 非流式场景（如群聊不支持流式），累积文本后一次性回复
+            if chunk_text:
+                self._fallback_text[message_id] = self._fallback_text.get(message_id, '') + chunk_text
+            if is_final:
+                full_text = self._fallback_text.pop(message_id, '')
+                if full_text:
+                    fallback_msg = platform_message.MessageChain([platform_message.Plain(text=full_text)])
+                    await self.reply_message(message_source, fallback_msg, quote_origin)
+            return
+
+        ctx = self._stream_ctx[message_id]
+
+        # 累积文本
+        if chunk_text:
+            ctx['accumulated_text'] += chunk_text
+
+        # 未启动会话时，等第一个有内容的 chunk 来建立会话
+        if not ctx['session_started']:
+            if not ctx['accumulated_text']:
+                return
+            # 用第一个 chunk 的文本建立会话（不发 "..." 避免污染前缀）
+            ctx['session_started'] = True
+
+        # 发送内容 = 全量累积文本
+        # QQ API 的 replace 模式不允许修改已下发前缀，所以：
+        # - 首次：发送全部文本，建立会话
+        # - 后续：只能发送新增部分（append 行为）
+        content_to_send = ctx['accumulated_text'][ctx['sent_length'] :]
+        if not content_to_send and not is_final:
+            return
+
+        input_state = 10 if is_final else 1
+
+        # Rate limiting: skip non-final updates if last update was <0.5s ago
+        now = time.time()
+        if not is_final and (now - ctx['last_update_ts']) < 0.5:
+            return
+        ctx['last_update_ts'] = now
+
+        try:
+            resp = await self.bot.send_stream_msg(
+                user_openid=ctx['user_openid'],
+                content=content_to_send,
+                event_id=ctx['msg_id'],
+                msg_id=ctx['msg_id'],
+                msg_seq=ctx['msg_seq'],
+                index=ctx['index'],
+                stream_msg_id=ctx['stream_msg_id'],
+                input_state=input_state,
+            )
+            if resp and isinstance(resp, dict):
+                new_stream_id = resp.get('id')
+                if new_stream_id:
+                    ctx['stream_msg_id'] = new_stream_id
+            ctx['sent_length'] = len(ctx['accumulated_text'])
+            ctx['index'] += 1
+            await self.logger.debug(
+                f'[QQ Official] 流式 chunk 已发送, index={ctx["index"]}, '
+                f'sent_len={ctx["sent_length"]}, is_final={is_final}'
+            )
+        except Exception as e:
+            await self.logger.error(f'[QQ Official] 流式消息发送失败: {e}')
+
+        if is_final:
+            self._stream_ctx.pop(message_id, None)
 
     def unregister_listener(
         self,
