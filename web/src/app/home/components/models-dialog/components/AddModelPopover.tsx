@@ -258,11 +258,16 @@ export default function AddModelPopover({
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-[min(24rem,calc(100vw-2rem))] max-h-[calc(100vh-8rem)] overflow-y-auto"
+        className="w-[min(24rem,calc(100vw-2rem))] max-h-[70vh] overflow-y-auto overscroll-none focus:outline-none focus-visible:outline-none focus-visible:ring-0"
+        style={{
+          maxHeight: 'min(70vh, var(--radix-popover-content-available-height))',
+        }}
         align="end"
         side="left"
         sideOffset={8}
         collisionPadding={16}
+        onWheel={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
       >
         <Tabs value={tab} onValueChange={(v) => setTab(v as ModelType)}>
@@ -437,7 +442,7 @@ export default function AddModelPopover({
               </div>
 
               <div
-                className="h-64 overflow-y-auto overscroll-contain rounded-md border"
+                className="h-64 overflow-y-auto overscroll-none rounded-md border"
                 onWheel={(e) => e.stopPropagation()}
               >
                 <div className="p-3 space-y-2">

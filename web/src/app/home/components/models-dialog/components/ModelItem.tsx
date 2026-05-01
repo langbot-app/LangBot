@@ -46,10 +46,25 @@ interface ModelItemProps {
 function convertExtraArgsToArray(extraArgs?: object): ExtraArg[] {
   if (!extraArgs) return [];
   return Object.entries(extraArgs).map(([key, value]) => {
-    let type: 'string' | 'number' | 'boolean' = 'string';
-    if (typeof value === 'number') type = 'number';
-    else if (typeof value === 'boolean') type = 'boolean';
-    return { key, type, value: String(value) };
+    let type: ExtraArg['type'] = 'string';
+    let stringValue: string;
+    if (typeof value === 'number') {
+      type = 'number';
+      stringValue = String(value);
+    } else if (typeof value === 'boolean') {
+      type = 'boolean';
+      stringValue = String(value);
+    } else if (
+      value !== null &&
+      typeof value === 'object' &&
+      !Array.isArray(value)
+    ) {
+      type = 'object';
+      stringValue = JSON.stringify(value, null, 2);
+    } else {
+      stringValue = String(value);
+    }
+    return { key, type, value: stringValue };
   });
 }
 
@@ -209,7 +224,16 @@ export default function ModelItem({
           )}
         </div>
       </PopoverTrigger>
-      <PopoverContent className="w-80" align="start">
+      <PopoverContent
+        className="w-80 max-h-[70vh] overflow-y-auto overscroll-none focus:outline-none focus-visible:outline-none focus-visible:ring-0"
+        align="start"
+        collisionPadding={16}
+        style={{
+          maxHeight: 'min(70vh, var(--radix-popover-content-available-height))',
+        }}
+        onWheel={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
+      >
         <div className="space-y-3">
           <div className="space-y-2">
             <Label>{t('models.modelName')}</Label>

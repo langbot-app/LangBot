@@ -200,6 +200,9 @@ const enUS = {
     string: 'String',
     number: 'Number',
     boolean: 'Boolean',
+    object: 'Object',
+    objectJsonPlaceholder: '{ "type": "disabled" }',
+    invalidJsonObject: 'Value must be a valid JSON object',
     selectModelProvider: 'Select Model Provider',
     modelProviderDescription:
       'Please fill in the model name provided by the provider',

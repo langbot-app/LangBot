@@ -202,6 +202,9 @@ const ruRU = {
     string: 'Строка',
     number: 'Число',
     boolean: 'Логический',
+    object: 'Объект',
+    objectJsonPlaceholder: '{ "type": "disabled" }',
+    invalidJsonObject: 'Значение должно быть допустимым объектом JSON',
     selectModelProvider: 'Выберите провайдера модели',
     modelProviderDescription:
       'Пожалуйста, введите название модели, предоставленное провайдером',

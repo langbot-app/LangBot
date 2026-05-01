@@ -205,6 +205,9 @@ const esES = {
     string: 'Cadena',
     number: 'Número',
     boolean: 'Booleano',
+    object: 'Objeto',
+    objectJsonPlaceholder: '{ "type": "disabled" }',
+    invalidJsonObject: 'El valor debe ser un objeto JSON válido',
     selectModelProvider: 'Seleccionar proveedor del modelo',
     modelProviderDescription:
       'Por favor, introduce el nombre del modelo proporcionado por el proveedor',

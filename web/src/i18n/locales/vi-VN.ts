@@ -202,6 +202,9 @@ const viVN = {
     string: 'Chuỗi',
     number: 'Số',
     boolean: 'Boolean',
+    object: 'Đối tượng',
+    objectJsonPlaceholder: '{ "type": "disabled" }',
+    invalidJsonObject: 'Giá trị phải là một đối tượng JSON hợp lệ',
     selectModelProvider: 'Chọn nhà cung cấp mô hình',
     modelProviderDescription:
       'Vui lòng điền tên mô hình do nhà cung cấp cung cấp',
