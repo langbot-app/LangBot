@@ -92,22 +92,6 @@ class ChatMessageHandler(handler.MessageHandler):
                 # Mark start time for telemetry
                 start_ts = time.time()
 
-                # Determine whether to reset the conversation uuid based on the conversation age
-                # and the AI session validity duration.
-                session_expire_time = query.pipeline_config.get('ai', {}).get('runner', {}).get('expire-time', None)
-                if (
-                    session_expire_time is not None
-                    and session_expire_time > 0
-                    and query.session.using_conversation.create_time is not None
-                ):
-                    current_ts = time.time()
-                    conversation_age = current_ts - query.session.using_conversation.create_time.timestamp()
-                    if conversation_age > session_expire_time:
-                        self.ap.logger.info(
-                            f'Conversation({query.query_id}) is expired (age: {conversation_age}s), create new conversation'
-                        )
-                        query.session.using_conversation.uuid = None
-
                 if is_stream:
                     resp_message_id = uuid.uuid4()
                     chunk_count = 0  # Track streaming chunks to reduce excessive logging
