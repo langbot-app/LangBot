@@ -1259,6 +1259,32 @@ const esES = {
       feedback: 'Comentarios de usuarios',
     },
   },
+  storageAnalysis: {
+    title: 'Análisis de almacenamiento',
+    description:
+      'Inspecciona el uso de almacenamiento y los candidatos de limpieza',
+    openDialog: 'Ver análisis',
+    dialogTitle: 'Análisis de almacenamiento',
+    generatedAt: 'Generado el {{time}}',
+    loading: 'Cargando...',
+    refresh: 'Actualizar',
+    totalSize: 'Tamaño total',
+    binaryStorage: 'Almacenamiento binario de plugins',
+    uploadCleanup: 'Subidas caducadas',
+    logCleanup: 'Registros caducados',
+    sections: 'Secciones de almacenamiento',
+    monitoringTables: 'Tablas de monitoreo',
+    runtimeTasks: 'Tareas en ejecución',
+    sectionNames: {
+      database: 'Base de datos',
+      logs: 'Registros',
+      storage: 'Archivos subidos',
+      vector_store: 'Almacén vectorial',
+      plugins: 'Plugins',
+      mcp: 'MCP',
+      temp: 'Archivos temporales',
+    },
+  },
   limitation: {
     maxBotsReached:
       'Se ha alcanzado el número máximo de Bots ({{max}}). Por favor, elimina un Bot existente antes de crear uno nuevo.',
