@@ -22,10 +22,7 @@ spec:
     type: integer
     required: true
     default: 120
+  litellm_provider: openai
   support_type:
   - llm
   provider_category: maas
-execution:
-  python:
-    path: ./compsharechatcmpl.py
-    attr: CompShareChatCompletions
