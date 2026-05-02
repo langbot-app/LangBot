@@ -167,6 +167,7 @@ async def test_updated_llm_model_is_immediately_usable_by_local_agent_pipeline()
 
     assert processed_query.use_llm_model_uuid == model_uuid
 
-    candidates = await LocalAgentRunner(ap, pipeline_config)._get_model_candidates(processed_query)
+    runner = SimpleNamespace(ap=ap, pipeline_config=pipeline_config)
+    candidates = await LocalAgentRunner._get_model_candidates(runner, processed_query)
 
     assert [model.model_entity.uuid for model in candidates] == [model_uuid]
