@@ -196,6 +196,7 @@ class AsyncTaskManager:
     ) -> TaskWrapper:
         wrapper = TaskWrapper(self.ap, coro, task_type, kind, name, label, context, scopes)
         self.tasks.append(wrapper)
+        wrapper.task.add_done_callback(lambda _: self._prune_completed_tasks())
         self._prune_completed_tasks()
         return wrapper
 
