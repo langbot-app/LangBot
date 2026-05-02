@@ -83,16 +83,16 @@ docker compose up -d
 
 | プラットフォーム | ステータス | 備考 |
 |----------|--------|-------|
-| Discord | ✅ | 公式、Matrix・Satori にも対応 |
-| Telegram | ✅ | 公式、Matrix・Satori にも対応 |
-| Slack | ✅ | 公式、Matrix・Satori にも対応 |
-| LINE | ✅ | 公式、Matrix・Satori にも対応 |
-| QQ | ✅ | 個人・公式API（チャンネル・DM・グループ）、Matrix・Satori にも対応 |
-| WeCom | ✅ | 企業WeChat、外部CS、AIボット、Satori |
-| WeChat | ✅ | 個人・公式アカウント、Matrix、Satori |
-| Lark | ✅ | 公式、Satori にも対応 |
-| DingTalk | ✅ | 公式、Satori にも対応 |
-| KOOK | ✅ | 公式、Matrix・Satori にも対応 |
+| Discord | ✅ | 公式 |
+| Telegram | ✅ | 公式 |
+| Slack | ✅ | 公式 |
+| LINE | ✅ | 公式 |
+| QQ | ✅ | 個人・公式API（チャンネル・DM・グループ） |
+| WeCom | ✅ | 企業WeChat、外部CS、AIボット |
+| WeChat | ✅ | 個人・公式アカウント |
+| Lark | ✅ | 公式 |
+| DingTalk | ✅ | 公式 |
+| KOOK | ✅ | 公式 |
 | Satori | ✅ |  |
 | Email | ✅ | Matrix、Satori |
 | Matrix | ✅ | Signal、WhatsApp、Messenger、iMessage、Mattermost、Google Chat、IRC、XMPP、Zulip など複数のブリッジ先プラットフォームに対応 |

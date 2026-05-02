@@ -83,16 +83,16 @@ docker compose up -d
 
 | Платформа | Статус | Примечания |
 |-----------|--------|------------|
-| Discord | ✅ | Официальный, совместим с Matrix, Satori |
-| Telegram | ✅ | Официальный, совместим с Matrix, Satori |
-| Slack | ✅ | Официальный, совместим с Matrix, Satori |
-| LINE | ✅ | Официальный, совместим с Matrix, Satori |
-| QQ | ✅ | Личный и официальный API (Канал, ЛС, Группа), совместим с Matrix, Satori |
-| WeCom | ✅ | Корпоративный WeChat, внешний CS, AI-бот, Satori |
-| WeChat | ✅ | Личный и официальный аккаунт, Matrix, Satori |
-| Lark | ✅ | Официальный, совместим с Satori |
-| DingTalk | ✅ | Официальный, совместим с Satori |
-| KOOK | ✅ | Официальный, совместим с Matrix, Satori |
+| Discord | ✅ | Официальный |
+| Telegram | ✅ | Официальный |
+| Slack | ✅ | Официальный |
+| LINE | ✅ | Официальный |
+| QQ | ✅ | Личный и официальный API (Канал, ЛС, Группа) |
+| WeCom | ✅ | Корпоративный WeChat, внешний CS, AI-бот |
+| WeChat | ✅ | Личный и официальный аккаунт |
+| Lark | ✅ | Официальный |
+| DingTalk | ✅ | Официальный |
+| KOOK | ✅ | Официальный |
 | Satori | ✅ |  |
 | Email | ✅ | Matrix, Satori |
 | Matrix | ✅ | Поддерживает несколько платформ через мосты, включая Signal, WhatsApp, Messenger, iMessage, Mattermost, Google Chat, IRC, XMPP, Zulip и другие |

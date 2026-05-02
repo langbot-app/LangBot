@@ -83,16 +83,16 @@ docker compose up -d
 
 | Plataforma | Estado | Notas |
 |----------|--------|-------|
-| Discord | ✅ | Oficial, también compatible con Matrix, Satori |
-| Telegram | ✅ | Oficial, también compatible con Matrix, Satori |
-| Slack | ✅ | Oficial, también compatible con Matrix, Satori |
-| LINE | ✅ | Oficial, también compatible con Matrix, Satori |
-| QQ | ✅ | Personal y API Oficial (Canal, DM, Grupo), también compatible con Matrix, Satori |
-| WeCom | ✅ | WeChat Empresarial, CS Externo, AI Bot, Satori |
-| WeChat | ✅ | Personal y Cuenta Oficial, Matrix, Satori |
-| Lark | ✅ | Oficial, también compatible con Satori |
-| DingTalk | ✅ | Oficial, también compatible con Satori |
-| KOOK | ✅ | Oficial, también compatible con Matrix, Satori |
+| Discord | ✅ | Oficial |
+| Telegram | ✅ | Oficial |
+| Slack | ✅ | Oficial |
+| LINE | ✅ | Oficial |
+| QQ | ✅ | Personal y API Oficial (Canal, DM, Grupo) |
+| WeCom | ✅ | WeChat Empresarial, CS Externo, AI Bot |
+| WeChat | ✅ | Personal y Cuenta Oficial |
+| Lark | ✅ | Oficial |
+| DingTalk | ✅ | Oficial |
+| KOOK | ✅ | Oficial |
 | Satori | ✅ |  |
 | Email | ✅ | Matrix, Satori |
 | Matrix | ✅ | Admite varias plataformas puenteadas como Signal, WhatsApp, Messenger, iMessage, Mattermost, Google Chat, IRC, XMPP, Zulip y más |

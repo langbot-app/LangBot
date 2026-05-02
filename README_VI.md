@@ -83,16 +83,16 @@ docker compose up -d
 
 | Nền tảng | Trạng thái | Ghi chú |
 |----------|--------|-------|
-| Discord | ✅ | Chính thức, tương thích Matrix, Satori |
-| Telegram | ✅ | Chính thức, tương thích Matrix, Satori |
-| Slack | ✅ | Chính thức, tương thích Matrix, Satori |
-| LINE | ✅ | Chính thức, tương thích Matrix, Satori |
-| QQ | ✅ | Cá nhân & API chính thức (Kênh, DM, Nhóm), tương thích Matrix, Satori |
-| WeCom | ✅ | WeChat doanh nghiệp, CS bên ngoài, AI Bot, Satori |
-| WeChat | ✅ | Cá nhân & Tài khoản công khai, Matrix, Satori |
-| Lark | ✅ | Chính thức, tương thích Satori |
-| DingTalk | ✅ | Chính thức, tương thích Satori |
-| KOOK | ✅ | Chính thức, tương thích Matrix, Satori |
+| Discord | ✅ | Chính thức |
+| Telegram | ✅ | Chính thức |
+| Slack | ✅ | Chính thức |
+| LINE | ✅ | Chính thức |
+| QQ | ✅ | Cá nhân & API chính thức (Kênh, DM, Nhóm) |
+| WeCom | ✅ | WeChat doanh nghiệp, CS bên ngoài, AI Bot |
+| WeChat | ✅ | Cá nhân & Tài khoản công khai |
+| Lark | ✅ | Chính thức |
+| DingTalk | ✅ | Chính thức |
+| KOOK | ✅ | Chính thức |
 | Satori | ✅ |  |
 | Email | ✅ | Matrix, Satori |
 | Matrix | ✅ | Hỗ trợ nhiều nền tảng qua bridge như Signal, WhatsApp, Messenger, iMessage, Mattermost, Google Chat, IRC, XMPP, Zulip và hơn thế nữa |

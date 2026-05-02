@@ -85,16 +85,16 @@ docker compose up -d
 
 | 平台 | 狀態 | 備註 |
 |------|------|------|
-| Discord | ✅ | 官方，同時相容 Matrix、Satori |
-| Telegram | ✅ | 官方，同時相容 Matrix、Satori |
-| Slack | ✅ | 官方，同時相容 Matrix、Satori |
-| LINE | ✅ | 官方，同時相容 Matrix、Satori |
-| QQ | ✅ | 個人號、官方機器人（頻道、私聊、群聊），同時相容 Matrix、Satori |
-| 企業微信 | ✅ | 應用訊息、對外客服、智能機器人、Satori |
-| 微信 | ✅ | 個人微信、微信公眾號、Matrix、Satori |
-| 飛書 | ✅ | 官方，同時相容 Satori |
-| 釘釘 | ✅ | 官方，同時相容 Satori |
-| KOOK | ✅ | 官方，同時相容 Matrix、Satori |
+| Discord | ✅ | 官方 |
+| Telegram | ✅ | 官方 |
+| Slack | ✅ | 官方 |
+| LINE | ✅ | 官方 |
+| QQ | ✅ | 個人號、官方機器人（頻道、私聊、群聊） |
+| 企業微信 | ✅ | 應用訊息、對外客服、智能機器人 |
+| 微信 | ✅ | 個人微信、微信公眾號 |
+| 飛書 | ✅ | 官方 |
+| 釘釘 | ✅ | 官方 |
+| KOOK | ✅ | 官方 |
 | Satori | ✅ |  |
 | Email | ✅ | 只 Matrix、Satori |
 | Matrix | ✅ | 支援多種橋接平台，如 Signal、WhatsApp、Messenger、iMessage、Mattermost、Google Chat、IRC、XMPP、Zulip 等 |

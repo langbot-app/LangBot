@@ -83,16 +83,16 @@ docker compose up -d
 
 | 플랫폼 | 상태 | 비고 |
 |--------|------|------|
-| Discord | ✅ | 공식, Matrix・Satori 호환 |
-| Telegram | ✅ | 공식, Matrix・Satori 호환 |
-| Slack | ✅ | 공식, Matrix・Satori 호환 |
-| LINE | ✅ | 공식, Matrix・Satori 호환 |
-| QQ | ✅ | 개인 및 공식 API (채널, DM, 그룹), Matrix・Satori 호환 |
-| WeCom | ✅ | 기업 WeChat, 외부 CS, AI Bot, Satori |
-| WeChat | ✅ | 개인 및 공식 계정, Matrix, Satori |
-| Lark | ✅ | 공식, Satori 호환 |
-| DingTalk | ✅ | 공식, Satori 호환 |
-| KOOK | ✅ | 공식, Matrix・Satori 호환 |
+| Discord | ✅ | 공식 |
+| Telegram | ✅ | 공식 |
+| Slack | ✅ | 공식 |
+| LINE | ✅ | 공식 |
+| QQ | ✅ | 개인 및 공식 API (채널, DM, 그룹) |
+| WeCom | ✅ | 기업 WeChat, 외부 CS, AI Bot |
+| WeChat | ✅ | 개인 및 공식 계정 |
+| Lark | ✅ | 공식 |
+| DingTalk | ✅ | 공식 |
+| KOOK | ✅ | 공식 |
 | Satori | ✅ |  |
 | Email | ✅ | Matrix, Satori |
 | Matrix | ✅ | Signal, WhatsApp, Messenger, iMessage, Mattermost, Google Chat, IRC, XMPP, Zulip 등 여러 브리지 플랫폼 지원 |

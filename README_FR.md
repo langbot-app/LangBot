@@ -83,16 +83,16 @@ docker compose up -d
 
 | Plateforme | Statut | Notes |
 |----------|--------|-------|
-| Discord | ✅ | Officiel, aussi compatible avec Matrix, Satori |
-| Telegram | ✅ | Officiel, aussi compatible avec Matrix, Satori |
-| Slack | ✅ | Officiel, aussi compatible avec Matrix, Satori |
-| LINE | ✅ | Officiel, aussi compatible avec Matrix, Satori |
-| QQ | ✅ | Personnel & API Officielle (Canal, DM, Groupe), aussi compatible avec Matrix, Satori |
-| WeCom | ✅ | WeChat Entreprise, CS Externe, AI Bot, Satori |
-| WeChat | ✅ | Personnel & Compte Officiel, Matrix, Satori |
-| Lark | ✅ | Officiel, aussi compatible avec Satori |
-| DingTalk | ✅ | Officiel, aussi compatible avec Satori |
-| KOOK | ✅ | Officiel, aussi compatible avec Matrix, Satori |
+| Discord | ✅ | Officiel |
+| Telegram | ✅ | Officiel |
+| Slack | ✅ | Officiel |
+| LINE | ✅ | Officiel |
+| QQ | ✅ | Personnel & API Officielle (Canal, DM, Groupe) |
+| WeCom | ✅ | WeChat Entreprise, CS Externe, AI Bot |
+| WeChat | ✅ | Personnel & Compte Officiel |
+| Lark | ✅ | Officiel |
+| DingTalk | ✅ | Officiel |
+| KOOK | ✅ | Officiel |
 | Satori | ✅ |  |
 | Email | ✅ | Matrix, Satori |
 | Matrix | ✅ | Prend en charge plusieurs plateformes via ponts, comme Signal, WhatsApp, Messenger, iMessage, Mattermost, Google Chat, IRC, XMPP, Zulip, etc. |
