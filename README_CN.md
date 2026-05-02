@@ -95,29 +95,8 @@ docker compose up -d
 | Slack | ✅ | 官方、同时兼容 Matrix、Satori |
 | LINE | ✅ | 官方、同时兼容 Matrix、Satori  |
 | KOOK | ✅ | 官方、同时兼容 Matrix、Satori |
-| Signal | ✅ | 只 Matrix |
-| WhatsApp | ✅ | 只 Matrix |
-| Messenger | ✅ | 只 Matrix |
-| iMessage | ✅ | 只 Matrix |
-| Mattermost | ✅ | 只 Matrix |
-| Google Chat | ✅ | 只 Matrix |
-| Mumble | ✅ | 只 Matrix |
-| Instagram | ✅ | 只 Matrix |
-| Linkdedln | ✅ | 只 Matrix |
-| X | ✅ | 只 Matrix |
-| Skype | ✅ | 只 Matrix |
-| SMS | ✅ | 只 Matrix |
 | Email | ✅ | 只 Matrix、Satori |
-| IRC | ✅ | 只 Matrix |
-| GroupMe | ✅ | 只 Matrix |
-| XMPP | ✅ | 只 Matrix |
-| Zulip | ✅ | 只 Matrix |
-| Stoat | ✅ | 只 Matrix |
-| Element | ✅ | 只 Matrix |
-| Nheko | ✅ | 只 Matrix |
-| FluffyChat | ✅ | 只 Matrix |
-| Cinny | ✅ | 只 Matrix |
-| Matrix | ✅ |  |
+| Matrix | ✅ | 支持多种桥接平台，如 Signal、WhatsApp、Messenger、iMessage、Mattermost、Google Chat、IRC、XMPP、Zulip 等 |
 
 ---
 

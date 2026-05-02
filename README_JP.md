@@ -94,29 +94,8 @@ docker compose up -d
 | DingTalk | ✅ | 公式、Satori にも対応 |
 | KOOK | ✅ | 公式、Matrix・Satori にも対応 |
 | Satori | ✅ |  |
-| Signal | ✅ | Matrix のみ |
-| WhatsApp | ✅ | Matrix のみ |
-| Messenger | ✅ | Matrix のみ |
-| iMessage | ✅ | Matrix のみ |
-| Mattermost | ✅ | Matrix のみ |
-| Google Chat | ✅ | Matrix のみ |
-| Mumble | ✅ | Matrix のみ |
-| Instagram | ✅ | Matrix のみ |
-| LinkedIn | ✅ | Matrix のみ |
-| X | ✅ | Matrix のみ |
-| Skype | ✅ | Matrix のみ |
-| SMS | ✅ | Matrix のみ |
 | Email | ✅ | Matrix、Satori |
-| IRC | ✅ | Matrix のみ |
-| GroupMe | ✅ | Matrix のみ |
-| XMPP | ✅ | Matrix のみ |
-| Zulip | ✅ | Matrix のみ |
-| Stoat | ✅ | Matrix のみ |
-| Element | ✅ | Matrix のみ |
-| Nheko | ✅ | Matrix のみ |
-| FluffyChat | ✅ | Matrix のみ |
-| Cinny | ✅ | Matrix のみ |
-| Matrix | ✅ |  |
+| Matrix | ✅ | Signal、WhatsApp、Messenger、iMessage、Mattermost、Google Chat、IRC、XMPP、Zulip など複数のブリッジ先プラットフォームに対応 |
 
 ---
 

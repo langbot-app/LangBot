@@ -94,29 +94,8 @@ docker compose up -d
 | DingTalk | ✅ | 공식, Satori 호환 |
 | KOOK | ✅ | 공식, Matrix・Satori 호환 |
 | Satori | ✅ |  |
-| Signal | ✅ | Matrix 전용 |
-| WhatsApp | ✅ | Matrix 전용 |
-| Messenger | ✅ | Matrix 전용 |
-| iMessage | ✅ | Matrix 전용 |
-| Mattermost | ✅ | Matrix 전용 |
-| Google Chat | ✅ | Matrix 전용 |
-| Mumble | ✅ | Matrix 전용 |
-| Instagram | ✅ | Matrix 전용 |
-| LinkedIn | ✅ | Matrix 전용 |
-| X | ✅ | Matrix 전용 |
-| Skype | ✅ | Matrix 전용 |
-| SMS | ✅ | Matrix 전용 |
 | Email | ✅ | Matrix, Satori |
-| IRC | ✅ | Matrix 전용 |
-| GroupMe | ✅ | Matrix 전용 |
-| XMPP | ✅ | Matrix 전용 |
-| Zulip | ✅ | Matrix 전용 |
-| Stoat | ✅ | Matrix 전용 |
-| Element | ✅ | Matrix 전용 |
-| Nheko | ✅ | Matrix 전용 |
-| FluffyChat | ✅ | Matrix 전용 |
-| Cinny | ✅ | Matrix 전용 |
-| Matrix | ✅ |  |
+| Matrix | ✅ | Signal, WhatsApp, Messenger, iMessage, Mattermost, Google Chat, IRC, XMPP, Zulip 등 여러 브리지 플랫폼 지원 |
 
 ---
 

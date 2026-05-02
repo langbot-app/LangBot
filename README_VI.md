@@ -94,29 +94,8 @@ docker compose up -d
 | DingTalk | ✅ | Chính thức, tương thích Satori |
 | KOOK | ✅ | Chính thức, tương thích Matrix, Satori |
 | Satori | ✅ |  |
-| Signal | ✅ | Chỉ Matrix |
-| WhatsApp | ✅ | Chỉ Matrix |
-| Messenger | ✅ | Chỉ Matrix |
-| iMessage | ✅ | Chỉ Matrix |
-| Mattermost | ✅ | Chỉ Matrix |
-| Google Chat | ✅ | Chỉ Matrix |
-| Mumble | ✅ | Chỉ Matrix |
-| Instagram | ✅ | Chỉ Matrix |
-| LinkedIn | ✅ | Chỉ Matrix |
-| X | ✅ | Chỉ Matrix |
-| Skype | ✅ | Chỉ Matrix |
-| SMS | ✅ | Chỉ Matrix |
 | Email | ✅ | Matrix, Satori |
-| IRC | ✅ | Chỉ Matrix |
-| GroupMe | ✅ | Chỉ Matrix |
-| XMPP | ✅ | Chỉ Matrix |
-| Zulip | ✅ | Chỉ Matrix |
-| Stoat | ✅ | Chỉ Matrix |
-| Element | ✅ | Chỉ Matrix |
-| Nheko | ✅ | Chỉ Matrix |
-| FluffyChat | ✅ | Chỉ Matrix |
-| Cinny | ✅ | Chỉ Matrix |
-| Matrix | ✅ |  |
+| Matrix | ✅ | Hỗ trợ nhiều nền tảng qua bridge như Signal, WhatsApp, Messenger, iMessage, Mattermost, Google Chat, IRC, XMPP, Zulip và hơn thế nữa |
 
 ---
 

@@ -95,29 +95,8 @@ docker compose up -d
 | DingTalk | ✅ | Official, also compatible with Satori |
 | KOOK | ✅ | Official, also compatible with Matrix, Satori |
 | Satori | ✅ |  |
-| Signal | ✅ | Matrix only |
-| WhatsApp | ✅ | Matrix only |
-| Messenger | ✅ | Matrix only |
-| iMessage | ✅ | Matrix only |
-| Mattermost | ✅ | Matrix only |
-| Google Chat | ✅ | Matrix only |
-| Mumble | ✅ | Matrix only |
-| Instagram | ✅ | Matrix only |
-| LinkedIn | ✅ | Matrix only |
-| X | ✅ | Matrix only |
-| Skype | ✅ | Matrix only |
-| SMS | ✅ | Matrix only |
 | Email | ✅ | Matrix, Satori |
-| IRC | ✅ | Matrix only |
-| GroupMe | ✅ | Matrix only |
-| XMPP | ✅ | Matrix only |
-| Zulip | ✅ | Matrix only |
-| Stoat | ✅ | Matrix only |
-| Element | ✅ | Matrix only |
-| Nheko | ✅ | Matrix only |
-| FluffyChat | ✅ | Matrix only |
-| Cinny | ✅ | Matrix only |
-| Matrix | ✅ |  |
+| Matrix | ✅ | Supports multiple bridged platforms such as Signal, WhatsApp, Messenger, iMessage, Mattermost, Google Chat, IRC, XMPP, Zulip, and more |
 
 ---
 
