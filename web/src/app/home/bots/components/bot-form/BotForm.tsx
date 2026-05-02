@@ -16,6 +16,7 @@ import { httpClient } from '@/app/infra/http/HttpClient';
 import { Bot } from '@/app/infra/entities/api';
 import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
 import { ExternalLink } from 'lucide-react';
+import RoutingRulesEditor from './RoutingRulesEditor';
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
@@ -64,6 +65,28 @@ const getFormSchema = (t: (key: string) => string) =>
     adapter_config: z.record(z.string(), z.any()),
     enable: z.boolean().optional(),
     use_pipeline_uuid: z.string().optional(),
+    pipeline_routing_rules: z
+      .array(
+        z.object({
+          type: z.enum([
+            'launcher_type',
+            'launcher_id',
+            'message_content',
+            'message_has_element',
+          ]),
+          operator: z.enum([
+            'eq',
+            'neq',
+            'contains',
+            'not_contains',
+            'starts_with',
+            'regex',
+          ]),
+          value: z.string(),
+          pipeline_uuid: z.string(),
+        }),
+      )
+      .optional(),
   });
 
 export default function BotForm({
@@ -89,6 +112,7 @@ export default function BotForm({
       adapter_config: {},
       enable: true,
       use_pipeline_uuid: '',
+      pipeline_routing_rules: [],
     },
   });
 
@@ -155,6 +179,7 @@ export default function BotForm({
               adapter_config: val.adapter_config,
               enable: val.enable,
               use_pipeline_uuid: val.use_pipeline_uuid || '',
+              pipeline_routing_rules: val.pipeline_routing_rules || [],
             });
             handleAdapterSelect(val.adapter);
 
@@ -270,6 +295,7 @@ export default function BotForm({
             adapter_config: bot.adapter_config,
             enable: bot.enable ?? true,
             use_pipeline_uuid: bot.use_pipeline_uuid ?? '',
+            pipeline_routing_rules: bot.pipeline_routing_rules ?? [],
             webhook_full_url: runtimeValues?.webhook_full_url as
               | string
               | undefined,
@@ -314,6 +340,7 @@ export default function BotForm({
         adapter_config: form.getValues().adapter_config,
         enable: form.getValues().enable,
         use_pipeline_uuid: form.getValues().use_pipeline_uuid,
+        pipeline_routing_rules: form.getValues().pipeline_routing_rules ?? [],
       };
       httpClient
         .updateBot(initBotId, updateBot)
@@ -464,6 +491,12 @@ export default function BotForm({
                   </FormItem>
                 )}
               />
+
+              {/* Pipeline Routing Rules */}
+              <RoutingRulesEditor
+                form={form}
+                pipelineNameList={pipelineNameList}
+              />
             </CardContent>
           </Card>
         )}
@@ -585,6 +618,8 @@ export default function BotForm({
                 systemContext={{
                   webhook_url: webhookUrl,
                   extra_webhook_url: extraWebhookUrl,
+                  bot_uuid: initBotId || '',
+                  adapter_config: form.getValues('adapter_config') || {},
                 }}
               />
             )}

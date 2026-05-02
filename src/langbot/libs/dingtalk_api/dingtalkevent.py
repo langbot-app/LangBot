@@ -47,6 +47,22 @@ class DingTalkEvent(dict):
     def conversation(self):
         return self.get('conversation_type', '')
 
+    @property
+    def quoted_message(self) -> Optional[Dict[str, Any]]:
+        """Get the quoted/replied message info if this is a reply message.
+
+        Returns:
+            A dict containing:
+            - message_id: The original message ID
+            - msg_type: The message type (text, file, picture, audio, etc.)
+            - content: The text content (if any)
+            - file_url: The file download URL (if file type)
+            - file_name: The file name (if file type)
+            - picture: The picture base64 (if picture type)
+            - audio: The audio base64 (if audio type)
+        """
+        return self.get('QuotedMessage')
+
     def __getattr__(self, key: str) -> Optional[Any]:
         """
         允许通过属性访问数据中的任意字段。

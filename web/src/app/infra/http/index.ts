@@ -31,8 +31,8 @@ export let userInfo: {
  * 获取基础 URL
  */
 const getBaseURL = (): string => {
-  if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_API_BASE_URL) {
-    return process.env.NEXT_PUBLIC_API_BASE_URL;
+  if (typeof window !== 'undefined' && import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
   }
   return '/';
 };

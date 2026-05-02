@@ -367,3 +367,162 @@ class EmbeddingModelsService:
             input_text=['Hello, world!'],
             extra_args={},
         )
+
+
+class RerankModelsService:
+    ap: app.Application
+
+    def __init__(self, ap: app.Application) -> None:
+        self.ap = ap
+
+    async def get_rerank_models(self) -> list[dict]:
+        """Get all rerank models with provider info"""
+        result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_model.RerankModel))
+        models = result.all()
+
+        providers_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_model.ModelProvider)
+        )
+        providers = {p.uuid: p for p in providers_result.all()}
+
+        models_list = []
+        for model in models:
+            model_dict = self.ap.persistence_mgr.serialize_model(persistence_model.RerankModel, model)
+            provider = providers.get(model.provider_uuid)
+            if provider:
+                provider_dict = self.ap.persistence_mgr.serialize_model(persistence_model.ModelProvider, provider)
+                model_dict['provider'] = _parse_provider_api_keys(provider_dict)
+            models_list.append(model_dict)
+
+        return models_list
+
+    async def get_rerank_models_by_provider(self, provider_uuid: str) -> list[dict]:
+        """Get rerank models by provider UUID"""
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_model.RerankModel).where(
+                persistence_model.RerankModel.provider_uuid == provider_uuid
+            )
+        )
+        models = result.all()
+        return [self.ap.persistence_mgr.serialize_model(persistence_model.RerankModel, m) for m in models]
+
+    async def create_rerank_model(self, model_data: dict, preserve_uuid: bool = False) -> str:
+        """Create a new rerank model"""
+        if not preserve_uuid:
+            model_data['uuid'] = str(uuid.uuid4())
+
+        if 'provider' in model_data:
+            provider_data = model_data.pop('provider')
+            if provider_data.get('uuid'):
+                model_data['provider_uuid'] = provider_data['uuid']
+            else:
+                provider_uuid = await self.ap.provider_service.find_or_create_provider(
+                    requester=provider_data.get('requester', ''),
+                    base_url=provider_data.get('base_url', ''),
+                    api_keys=provider_data.get('api_keys', []),
+                )
+                model_data['provider_uuid'] = provider_uuid
+
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.insert(persistence_model.RerankModel).values(**model_data)
+        )
+
+        runtime_provider = self.ap.model_mgr.provider_dict.get(model_data['provider_uuid'])
+        if runtime_provider is None:
+            raise Exception('provider not found')
+
+        runtime_rerank_model = await self.ap.model_mgr.load_rerank_model_with_provider(
+            persistence_model.RerankModel(**model_data),
+            runtime_provider,
+        )
+        self.ap.model_mgr.rerank_models.append(runtime_rerank_model)
+
+        return model_data['uuid']
+
+    async def get_rerank_model(self, model_uuid: str) -> dict | None:
+        """Get a single rerank model with provider info"""
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_model.RerankModel).where(persistence_model.RerankModel.uuid == model_uuid)
+        )
+        model = result.first()
+        if model is None:
+            return None
+
+        model_dict = self.ap.persistence_mgr.serialize_model(persistence_model.RerankModel, model)
+
+        provider_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_model.ModelProvider).where(
+                persistence_model.ModelProvider.uuid == model.provider_uuid
+            )
+        )
+        provider = provider_result.first()
+        if provider:
+            provider_dict = self.ap.persistence_mgr.serialize_model(persistence_model.ModelProvider, provider)
+            model_dict['provider'] = _parse_provider_api_keys(provider_dict)
+
+        return model_dict
+
+    async def update_rerank_model(self, model_uuid: str, model_data: dict) -> None:
+        """Update an existing rerank model"""
+        if 'uuid' in model_data:
+            del model_data['uuid']
+
+        if 'provider' in model_data:
+            provider_data = model_data.pop('provider')
+            if provider_data.get('uuid'):
+                model_data['provider_uuid'] = provider_data['uuid']
+            else:
+                provider_uuid = await self.ap.provider_service.find_or_create_provider(
+                    requester=provider_data.get('requester', ''),
+                    base_url=provider_data.get('base_url', ''),
+                    api_keys=provider_data.get('api_keys', []),
+                )
+                model_data['provider_uuid'] = provider_uuid
+
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.update(persistence_model.RerankModel)
+            .where(persistence_model.RerankModel.uuid == model_uuid)
+            .values(**model_data)
+        )
+
+        await self.ap.model_mgr.remove_rerank_model(model_uuid)
+
+        runtime_provider = self.ap.model_mgr.provider_dict.get(model_data['provider_uuid'])
+        if runtime_provider is None:
+            raise Exception('provider not found')
+
+        runtime_rerank_model = await self.ap.model_mgr.load_rerank_model_with_provider(
+            persistence_model.RerankModel(**model_data),
+            runtime_provider,
+        )
+        self.ap.model_mgr.rerank_models.append(runtime_rerank_model)
+
+    async def delete_rerank_model(self, model_uuid: str) -> None:
+        """Delete a rerank model"""
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.delete(persistence_model.RerankModel).where(persistence_model.RerankModel.uuid == model_uuid)
+        )
+        await self.ap.model_mgr.remove_rerank_model(model_uuid)
+
+    async def test_rerank_model(self, model_uuid: str, model_data: dict) -> None:
+        """Test a rerank model"""
+        runtime_rerank_model: model_requester.RuntimeRerankModel | None = None
+
+        if model_uuid != '_':
+            for model in self.ap.model_mgr.rerank_models:
+                if model.model_entity.uuid == model_uuid:
+                    runtime_rerank_model = model
+                    break
+            if runtime_rerank_model is None:
+                raise Exception('model not found')
+        else:
+            runtime_rerank_model = await self.ap.model_mgr.init_temporary_runtime_rerank_model(model_data)
+
+        await runtime_rerank_model.provider.invoke_rerank(
+            model=runtime_rerank_model,
+            query='What is artificial intelligence?',
+            documents=[
+                'Artificial intelligence is a branch of computer science.',
+                'The weather is nice today.',
+            ],
+        )

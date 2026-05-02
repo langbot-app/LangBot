@@ -709,21 +709,29 @@ class LarkEventConverter(abstract_platform_adapter.AbstractEventConverter):
         message_chain = await LarkMessageConverter.target2yiri(event.event.message, api_client)
 
         # Check for quote/reply message
+        # Extract files/images/voice from quote and add them as top-level components
+        # so that plugins like FileReader can process them the same way as direct messages
         quote_message_id = LarkEventConverter._extract_quote_message_id(event.event.message)
         if quote_message_id:
             quote_chain = await LarkEventConverter._fetch_quoted_message(quote_message_id, api_client)
             if quote_chain:
                 # Filter out Source component from quoted chain, keep only content
-                quote_origin = platform_message.MessageChain(
-                    [comp for comp in quote_chain if not isinstance(comp, platform_message.Source)]
-                )
-                if quote_origin:
-                    message_chain.append(
-                        platform_message.Quote(
-                            message_id=quote_message_id,
-                            origin=quote_origin,
-                        )
-                    )
+                quote_components = [comp for comp in quote_chain if not isinstance(comp, platform_message.Source)]
+
+                # Add quoted content as top-level components instead of wrapping in Quote
+                for comp in quote_components:
+                    if isinstance(comp, platform_message.File):
+                        # Add file as top-level component (same as direct message)
+                        message_chain.append(comp)
+                    elif isinstance(comp, platform_message.Image):
+                        # Add image as top-level component
+                        message_chain.append(comp)
+                    elif isinstance(comp, platform_message.Voice):
+                        # Add voice as top-level component
+                        message_chain.append(comp)
+                    elif isinstance(comp, platform_message.Plain):
+                        # Add text with context prefix
+                        message_chain.append(platform_message.Plain(text=f'[引用消息] {comp.text}'))
 
         if event.event.message.chat_type == 'p2p':
             return platform_events.FriendMessage(
@@ -779,6 +787,13 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
     card_id_dict: dict[str, str]  # 消息id到卡片id的映射，便于创建卡片后的发送消息到指定卡片
 
+    # Monitoring message ID mapping for feedback correlation
+    # Temp: user Lark message ID → monitoring_message_id (populated by on_monitoring_message_created, consumed by create_message_card)
+    pending_monitoring_msg: dict[str, str]
+    # Final: reply Lark message ID → (monitoring_message_id, timestamp) (used by feedback callbacks)
+    reply_to_monitoring_msg: dict[str, tuple[str, float]]
+    _MONITORING_MAPPING_TTL = 600  # 10 minutes
+
     seq: int  # 用于在发送卡片消息中识别消息顺序，直接以seq作为标识
     bot_uuid: str = None  # 机器人UUID
     app_ticket: str = None  # 商店应用用到
@@ -797,8 +812,71 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         def sync_on_message(event: lark_oapi.im.v1.P2ImMessageReceiveV1):
             asyncio.create_task(on_message(event))
 
+        def sync_on_card_action(event):
+            try:
+                action_value_obj = getattr(getattr(event.event, 'action', None), 'value', {})
+                action_value = action_value_obj.get('feedback', '') if isinstance(action_value_obj, dict) else ''
+
+                if action_value == '有帮助':
+                    feedback_type = 1
+                elif action_value == '无帮助':
+                    feedback_type = 2
+                else:
+                    from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
+
+                    return P2CardActionTriggerResponse({'toast': {'type': 'success', 'content': '操作成功'}})
+
+                operator = getattr(event.event, 'operator', None)
+                context = getattr(event.event, 'context', None)
+
+                user_id = getattr(operator, 'open_id', None) or getattr(operator, 'user_id', None)
+                open_chat_id = getattr(context, 'open_chat_id', None)
+                open_message_id = getattr(context, 'open_message_id', None)
+
+                if open_chat_id:
+                    session_id = f'group_{open_chat_id}'
+                elif user_id:
+                    session_id = f'person_{user_id}'
+                else:
+                    session_id = None
+
+                # Resolve monitoring message ID from reply message mapping
+                monitoring_msg_id = None
+                if open_message_id and open_message_id in self.reply_to_monitoring_msg:
+                    monitoring_msg_id = self.reply_to_monitoring_msg[open_message_id][0]
+
+                feedback_event = platform_events.FeedbackEvent(
+                    feedback_id=getattr(event.header, 'event_id', str(uuid.uuid4())),
+                    feedback_type=feedback_type,
+                    feedback_content=action_value,
+                    user_id=user_id,
+                    session_id=session_id,
+                    message_id=open_message_id,
+                    stream_id=monitoring_msg_id,
+                    source_platform_object=event,
+                )
+
+                if platform_events.FeedbackEvent in self.listeners:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        asyncio.create_task(self.listeners[platform_events.FeedbackEvent](feedback_event, self))
+                    else:
+                        loop.run_until_complete(self.listeners[platform_events.FeedbackEvent](feedback_event, self))
+
+                from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
+
+                return P2CardActionTriggerResponse({'toast': {'type': 'success', 'content': '感谢您的反馈'}})
+            except Exception:
+                asyncio.create_task(self.logger.error(f'Error in lark card action callback: {traceback.format_exc()}'))
+                from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
+
+                return P2CardActionTriggerResponse({'toast': {'type': 'error', 'content': '反馈处理失败'}})
+
         event_handler = (
-            lark_oapi.EventDispatcherHandler.builder('', '').register_p2_im_message_receive_v1(sync_on_message).build()
+            lark_oapi.EventDispatcherHandler.builder('', '')
+            .register_p2_im_message_receive_v1(sync_on_message)
+            .register_p2_card_action_trigger(sync_on_card_action)
+            .build()
         )
 
         bot_account_id = config['bot_name']
@@ -813,6 +891,8 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             logger=logger,
             lark_tenant_key=config.get('lark_tenant_key', ''),
             card_id_dict={},
+            pending_monitoring_msg={},
+            reply_to_monitoring_msg={},
             seq=1,
             listeners={},
             quart_app=quart_app,
@@ -953,6 +1033,22 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             is_stream = True
         return is_stream
 
+    async def on_monitoring_message_created(self, query, monitoring_message_id: str):
+        """Called by pipeline after monitoring message is created, to map user message ID to monitoring message ID."""
+        try:
+            user_msg_id = query.message_event.message_chain.message_id
+            if user_msg_id:
+                self.pending_monitoring_msg[user_msg_id] = monitoring_message_id
+        except Exception as e:
+            await self.logger.debug(f'Failed to map message to monitoring message: {e}')
+
+    def _cleanup_monitoring_mapping(self):
+        """Remove entries older than TTL from the reply-to-monitoring mapping."""
+        now = time.time()
+        expired = [k for k, (_, ts) in self.reply_to_monitoring_msg.items() if now - ts > self._MONITORING_MAPPING_TTL]
+        for k in expired:
+            del self.reply_to_monitoring_msg[k]
+
     async def create_card_id(self, message_id):
         try:
             # self.logger.debug('飞书支持stream输出,创建卡片......')
@@ -1088,6 +1184,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                                             'size': 'medium',
                                             'icon': {'tag': 'standard_icon', 'token': 'thumbsup_outlined'},
                                             'hover_tips': {'tag': 'plain_text', 'content': '有帮助'},
+                                            'behaviors': [{'type': 'callback', 'value': {'feedback': '有帮助'}}],
                                             'margin': '0px 0px 0px 0px',
                                         }
                                     ],
@@ -1111,6 +1208,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                                             'size': 'medium',
                                             'icon': {'tag': 'standard_icon', 'token': 'thumbdown_outlined'},
                                             'hover_tips': {'tag': 'plain_text', 'content': '无帮助'},
+                                            'behaviors': [{'type': 'callback', 'value': {'feedback': '无帮助'}}],
                                             'margin': '0px 0px 0px 0px',
                                         }
                                     ],
@@ -1190,6 +1288,18 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             raise Exception(
                 f'client.im.v1.message.reply failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
             )
+
+        # Transfer monitoring message mapping: user msg ID → reply msg ID
+        try:
+            user_msg_id = event.message_chain.message_id
+            reply_msg_id = getattr(response.data, 'message_id', None)
+            monitoring_msg_id = self.pending_monitoring_msg.pop(user_msg_id, None)
+            if reply_msg_id and monitoring_msg_id:
+                self.reply_to_monitoring_msg[reply_msg_id] = (monitoring_msg_id, time.time())
+                self._cleanup_monitoring_mapping()
+        except Exception as e:
+            asyncio.create_task(self.logger.debug(f'Failed to transfer monitoring mapping in create_message_card: {e}'))
+
         return True
 
     async def reply_message(
@@ -1472,6 +1582,58 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
                 if event.__class__ in self.listeners:
                     await self.listeners[event.__class__](event, self)
+            elif 'card.action.trigger' == type:
+                try:
+                    event_data = data.get('event', {})
+                    operator = event_data.get('operator', {})
+                    action = event_data.get('action', {})
+                    context_data = event_data.get('context', {})
+
+                    action_value_obj = action.get('value', {})
+                    action_value = action_value_obj.get('feedback', '') if isinstance(action_value_obj, dict) else ''
+
+                    if action_value == '有帮助':
+                        feedback_type = 1
+                    elif action_value == '无帮助':
+                        feedback_type = 2
+                    else:
+                        return {'toast': {'type': 'success', 'content': '操作成功'}}
+
+                    user_id = operator.get('open_id') or operator.get('user_id')
+                    open_chat_id = context_data.get('open_chat_id')
+                    open_message_id = context_data.get('open_message_id')
+
+                    if open_chat_id:
+                        session_id = f'group_{open_chat_id}'
+                    elif user_id:
+                        session_id = f'person_{user_id}'
+                    else:
+                        session_id = None
+
+                    # Resolve monitoring message ID from reply message mapping
+                    monitoring_msg_id = None
+                    if open_message_id and open_message_id in self.reply_to_monitoring_msg:
+                        monitoring_msg_id = self.reply_to_monitoring_msg[open_message_id][0]
+
+                    feedback_event = platform_events.FeedbackEvent(
+                        feedback_id=data.get('header', {}).get('event_id', str(uuid.uuid4())),
+                        feedback_type=feedback_type,
+                        feedback_content=action_value,
+                        user_id=user_id,
+                        session_id=session_id,
+                        message_id=open_message_id,
+                        stream_id=monitoring_msg_id,
+                        source_platform_object=data,
+                    )
+
+                    if platform_events.FeedbackEvent in self.listeners:
+                        await self.listeners[platform_events.FeedbackEvent](feedback_event, self)
+
+                    return {'toast': {'type': 'success', 'content': '感谢您的反馈'}}
+                except Exception:
+                    await self.logger.error(f'Error in lark card action callback: {traceback.format_exc()}')
+                    return {'toast': {'type': 'error', 'content': '反馈处理失败'}}
+
             elif 'im.chat.member.bot.added_v1' == type:
                 try:
                     bot_added_welcome_msg = self.config.get('bot_added_welcome', '')

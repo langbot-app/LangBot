@@ -147,3 +147,10 @@ class WecomBotEvent(dict):
         流式消息 ID
         """
         return self.get('stream_id', '')
+
+    @property
+    def quote(self):
+        """
+        引用消息信息（群聊中用户引用其他消息时返回）
+        """
+        return self.get('quote', {})

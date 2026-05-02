@@ -29,8 +29,8 @@ jobs:
           npm install -g pnpm
           pnpm install
           pnpm build
-          mkdir -p ../src/langbot/web/out
-          cp -r out ../src/langbot/web/
+          mkdir -p ../src/langbot/web/dist
+          cp -r dist ../src/langbot/web/
 
       - name: Install the latest version of uv
         uses: astral-sh/setup-uv@v6

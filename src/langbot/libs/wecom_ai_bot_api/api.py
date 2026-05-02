@@ -71,6 +71,11 @@ class StreamSession:
 class StreamSessionManager:
     """管理 stream 会话的生命周期，并负责队列的生产消费。"""
 
+    # Sessions with registered feedback_ids use a longer TTL to survive the
+    # full like → cancel → dislike feedback flow. Must align with the adapter's
+    # _stream_to_monitoring_msg TTL (wecombot.py).
+    _FEEDBACK_SESSION_TTL = 600  # 10 minutes
+
     def __init__(self, logger: EventLogger, ttl: int = 60) -> None:
         self.logger = logger
 
@@ -214,11 +219,17 @@ class StreamSessionManager:
             session.last_access = time.time()
 
     def cleanup(self) -> None:
-        """定期清理过期会话，防止队列与映射无上限累积。"""
+        """定期清理过期会话，防止队列与映射无上限累积。
+
+        已注册 feedback_id 的会话使用更长的 TTL，确保用户在点赞/取消/点踩流程中
+        不会因为 session 被提前清除而丢失上下文信息。
+        """
         now = time.time()
         expired: list[str] = []
         for stream_id, session in self._sessions.items():
-            if now - session.last_access > self.ttl:
+            # Sessions with registered feedback_ids use a longer TTL
+            effective_ttl = self._FEEDBACK_SESSION_TTL if session.feedback_id else self.ttl
+            if now - session.last_access > effective_ttl:
                 expired.append(stream_id)
 
         for stream_id in expired:
@@ -228,6 +239,9 @@ class StreamSessionManager:
             msg_id = session.msg_id
             if msg_id and self._msg_index.get(msg_id) == stream_id:
                 self._msg_index.pop(msg_id, None)
+            # Clean up feedback index for expired sessions
+            if session.feedback_id:
+                self._feedback_index.pop(session.feedback_id, None)
 
 
 def _decrypt_file(encrypted_data: bytes, aes_key_str: str) -> bytes:
@@ -434,10 +448,10 @@ async def parse_wecom_bot_message(
         }
         if voice_info.get('content'):
             message_data['content'] = voice_info.get('content')
-        if (message_data['voice'].get('filesize') or 0) <= max_inline_file_size:
-            voice_base64 = await _safe_download_as_data_uri(download_url, per_msg_aeskey)
-            if voice_base64:
-                message_data['voice']['base64'] = voice_base64
+        # if (message_data['voice'].get('filesize') or 0) <= max_inline_file_size:
+        #     voice_base64 = await _safe_download_as_data_uri(download_url, per_msg_aeskey)
+        #     if voice_base64:
+        #         message_data['voice']['base64'] = voice_base64
     elif msg_type == 'video':
         video_info = msg_json.get('video', {}) or {}
         download_url = video_info.get('url')
@@ -449,10 +463,12 @@ async def parse_wecom_bot_message(
             'md5sum': video_info.get('md5sum') or video_info.get('md5'),
             'filename': video_info.get('filename') or video_info.get('name'),
         }
-        if (video_data.get('filesize') or 0) <= max_inline_file_size:
-            video_base64 = await _safe_download_as_data_uri(download_url, per_msg_aeskey)
-            if video_base64:
-                video_data['base64'] = video_base64
+        # if (video_data.get('filesize') or 0) <= max_inline_file_size:
+        #     video_base64 = await _safe_download_as_data_uri(download_url, per_msg_aeskey)
+        #     if video_base64:
+        #         video_data['base64'] = video_base64
+        # 应为需要解密，但是目前暂时不能下载到内部进行解密，所以先将下载链接拼接aeskey返回给用户，由插件去处理该链接的下载和解密逻辑
+        video_data['download_url'] = download_url + f'?aeskey={per_msg_aeskey}'
         message_data['video'] = video_data
     elif msg_type == 'file':
         file_info = msg_json.get('file', {}) or {}
@@ -466,12 +482,15 @@ async def parse_wecom_bot_message(
             'download_url': download_url,
             'extra': file_info,
         }
-        if (file_data.get('filesize') or 0) <= max_inline_file_size:
-            file_bytes, dl_filename = await _safe_download(download_url, per_msg_aeskey)
-            if file_bytes:
-                file_data['base64'] = _bytes_to_data_uri(file_bytes)
-                if dl_filename and not file_data.get('filename'):
-                    file_data['filename'] = dl_filename
+        # if (file_data.get('filesize') or 0) <= max_inline_file_size:
+        #     file_bytes, dl_filename = await _safe_download(download_url, per_msg_aeskey)
+        #     if file_bytes:
+        #         file_data['base64'] = _bytes_to_data_uri(file_bytes)
+        #         if dl_filename and not file_data.get('filename'):
+        #             file_data['filename'] = dl_filename
+
+        # 应为需要解密，但是目前暂时不能下载到内部进行解密，所以先将下载链接拼接aeskey返回给用户，由插件去处理该链接的下载和解密逻辑
+        file_data['download_url'] = download_url + f'?aeskey={per_msg_aeskey}'
         message_data['file'] = file_data
     elif msg_type == 'link':
         message_data['link'] = msg_json.get('link', {})
@@ -586,6 +605,120 @@ async def parse_wecom_bot_message(
 
     if msg_json.get('aibotid'):
         message_data['aibotid'] = msg_json.get('aibotid', '')
+
+    # Handle quote (referenced message) - important for group chat file references
+    quote_info = msg_json.get('quote')
+    if quote_info:
+        quote_data: dict[str, Any] = {}
+        quote_type = quote_info.get('msgtype', '')
+        quote_data['msgtype'] = quote_type
+
+        if quote_type == 'text':
+            quote_data['content'] = quote_info.get('text', {}).get('content', '')
+        elif quote_type == 'image':
+            img_info = quote_info.get('image', {})
+            img_url = img_info.get('url', '')
+            img_aeskey = img_info.get('aeskey', '')
+            base64_data = await _safe_download_as_data_uri(img_url, img_aeskey)
+            if base64_data:
+                quote_data['picurl'] = base64_data
+                quote_data['images'] = [base64_data]
+        elif quote_type == 'file':
+            file_info = quote_info.get('file', {}) or {}
+            download_url = file_info.get('url') or file_info.get('fileurl')
+            item_aeskey = file_info.get('aeskey', '')
+            file_data = {
+                'filename': file_info.get('filename') or file_info.get('name'),
+                'filesize': file_info.get('filesize') or file_info.get('size'),
+                'md5sum': file_info.get('md5sum') or file_info.get('md5'),
+                'sdkfileid': file_info.get('sdkfileid') or file_info.get('fileid'),
+                'download_url': download_url,
+                'extra': file_info,
+            }
+            # Same as private chat: append aeskey to download_url for plugin processing
+            if download_url and item_aeskey:
+                file_data['download_url'] = download_url + f'?aeskey={item_aeskey}'
+            quote_data['file'] = file_data
+        elif quote_type == 'voice':
+            voice_info = quote_info.get('voice', {}) or {}
+            download_url = voice_info.get('url')
+            item_aeskey = voice_info.get('aeskey', '')
+            voice_data = {
+                'url': download_url,
+                'md5sum': voice_info.get('md5sum') or voice_info.get('md5'),
+                'filesize': voice_info.get('filesize') or voice_info.get('size'),
+                'sdkfileid': voice_info.get('sdkfileid') or voice_info.get('fileid'),
+            }
+            if voice_info.get('content'):
+                quote_data['content'] = voice_info.get('content')
+            # Same as private chat: append aeskey to url for plugin processing
+            if download_url and item_aeskey:
+                voice_data['url'] = download_url + f'?aeskey={item_aeskey}'
+            quote_data['voice'] = voice_data
+        elif quote_type == 'video':
+            video_info = quote_info.get('video', {}) or {}
+            download_url = video_info.get('url')
+            item_aeskey = video_info.get('aeskey', '')
+            video_data = {
+                'url': download_url,
+                'filesize': video_info.get('filesize') or video_info.get('size'),
+                'sdkfileid': video_info.get('sdkfileid') or video_info.get('fileid'),
+                'md5sum': video_info.get('md5sum') or video_info.get('md5'),
+                'filename': video_info.get('filename') or video_info.get('name'),
+            }
+            # Same as private chat: append aeskey to download_url for plugin processing
+            if download_url and item_aeskey:
+                video_data['download_url'] = download_url + f'?aeskey={item_aeskey}'
+            quote_data['video'] = video_data
+        elif quote_type == 'link':
+            quote_data['link'] = quote_info.get('link', {})
+            link = quote_data['link']
+            title = link.get('title', '')
+            desc = link.get('description') or link.get('digest', '')
+            quote_data['content'] = '\n'.join(filter(None, [title, desc]))
+        elif quote_type == 'mixed':
+            # Handle mixed type in quote (text + images + files etc.)
+            items = quote_info.get('mixed', {}).get('msg_item', [])
+            texts = []
+            images = []
+            files = []
+            for item in items:
+                item_type = item.get('msgtype')
+                if item_type == 'text':
+                    texts.append(item.get('text', {}).get('content', ''))
+                elif item_type == 'image':
+                    img_info = item.get('image', {})
+                    img_url = img_info.get('url')
+                    img_aeskey = img_info.get('aeskey', '')
+                    base64_data = await _safe_download_as_data_uri(img_url, img_aeskey)
+                    if base64_data:
+                        images.append(base64_data)
+                elif item_type == 'file':
+                    file_info = item.get('file', {}) or {}
+                    download_url = file_info.get('url') or file_info.get('fileurl')
+                    item_aeskey = file_info.get('aeskey', '')
+                    file_data = {
+                        'filename': file_info.get('filename') or file_info.get('name'),
+                        'filesize': file_info.get('filesize') or file_info.get('size'),
+                        'md5sum': file_info.get('md5sum') or file_info.get('md5'),
+                        'sdkfileid': file_info.get('sdkfileid') or file_info.get('fileid'),
+                        'download_url': download_url,
+                        'extra': file_info,
+                    }
+                    # Same as private chat: append aeskey to download_url for plugin processing
+                    if download_url and item_aeskey:
+                        file_data['download_url'] = download_url + f'?aeskey={item_aeskey}'
+                    files.append(file_data)
+            if texts:
+                quote_data['content'] = ' '.join(texts)
+            if images:
+                quote_data['images'] = images
+                quote_data['picurl'] = images[0]
+            if files:
+                quote_data['files'] = files
+                quote_data['file'] = files[0]
+
+        message_data['quote'] = quote_data
 
     return message_data
 
@@ -898,35 +1031,38 @@ class WecomBotClient:
             )
 
             session = self.stream_sessions.get_session_by_feedback_id(feedback_id)
+
             if session:
                 await self.logger.info(
                     f'反馈关联到会话: stream_id={session.stream_id}, msg_id={session.msg_id}, user_id={session.user_id}'
                 )
-                for handler in self._message_handlers.get('feedback', []):
-                    try:
-                        await handler(
-                            feedback_id=feedback_id,
-                            feedback_type=feedback_type,
-                            feedback_content=feedback_content,
-                            inaccurate_reasons=inaccurate_reasons,
-                            session=session,
-                        )
-                    except Exception:
-                        await self.logger.error(traceback.format_exc())
-
-                if self._feedback_callback:
-                    try:
-                        await self._feedback_callback(
-                            feedback_id=feedback_id,
-                            feedback_type=feedback_type,
-                            feedback_content=feedback_content,
-                            inaccurate_reasons=inaccurate_reasons,
-                            session=session,
-                        )
-                    except Exception:
-                        await self.logger.error(traceback.format_exc())
             else:
-                await self.logger.warning(f'未找到 feedback_id={feedback_id} 对应的会话')
+                await self.logger.warning(f'未找到 feedback_id={feedback_id} 对应的会话，仍将记录反馈')
+
+            # Dispatch feedback event regardless of session availability
+            for handler in self._message_handlers.get('feedback', []):
+                try:
+                    await handler(
+                        feedback_id=feedback_id,
+                        feedback_type=feedback_type,
+                        feedback_content=feedback_content,
+                        inaccurate_reasons=inaccurate_reasons,
+                        session=session,
+                    )
+                except Exception:
+                    await self.logger.error(traceback.format_exc())
+
+            if self._feedback_callback:
+                try:
+                    await self._feedback_callback(
+                        feedback_id=feedback_id,
+                        feedback_type=feedback_type,
+                        feedback_content=feedback_content,
+                        inaccurate_reasons=inaccurate_reasons,
+                        session=session,
+                    )
+                except Exception:
+                    await self.logger.error(traceback.format_exc())
 
         except Exception:
             await self.logger.error(traceback.format_exc())

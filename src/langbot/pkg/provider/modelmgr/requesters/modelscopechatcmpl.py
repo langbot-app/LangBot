@@ -31,6 +31,175 @@ class ModelScopeChatCompletions(requester.ProviderAPIRequester):
             http_client=httpx.AsyncClient(trust_env=True, timeout=self.requester_cfg['timeout']),
         )
 
+    def _mask_api_key(self, api_key: str | None) -> str:
+        if not api_key:
+            return ''
+        if len(api_key) <= 8:
+            return '****'
+        return f'{api_key[:4]}...{api_key[-4:]}'
+
+    def _infer_model_type(self, model_id: str) -> str:
+        normalized_model_id = (model_id or '').lower()
+        embedding_keywords = (
+            'embedding',
+            'embed',
+            'bge-',
+            'e5-',
+            'm3e',
+            'gte-',
+            'multilingual-e5',
+            'text-embedding',
+        )
+        return 'embedding' if any(keyword in normalized_model_id for keyword in embedding_keywords) else 'llm'
+
+    def _infer_model_abilities(self, item: dict[str, typing.Any], model_id: str) -> list[str]:
+        normalized_model_id = (model_id or '').lower()
+        abilities: set[str] = set()
+
+        def _flatten(value: typing.Any) -> list[str]:
+            if value is None:
+                return []
+            if isinstance(value, str):
+                return [value.lower()]
+            if isinstance(value, dict):
+                flattened: list[str] = []
+                for nested_value in value.values():
+                    flattened.extend(_flatten(nested_value))
+                return flattened
+            if isinstance(value, (list, tuple, set)):
+                flattened: list[str] = []
+                for nested_value in value:
+                    flattened.extend(_flatten(nested_value))
+                return flattened
+            return [str(value).lower()]
+
+        capability_tokens = _flatten(item.get('capabilities'))
+        capability_tokens.extend(_flatten(item.get('modalities')))
+        capability_tokens.extend(_flatten(item.get('input_modalities')))
+        capability_tokens.extend(_flatten(item.get('output_modalities')))
+        capability_tokens.extend(_flatten(item.get('supported_generation_methods')))
+        capability_tokens.extend(_flatten(item.get('supported_parameters')))
+        capability_tokens.extend(_flatten(item.get('architecture')))
+
+        combined_tokens = capability_tokens + [normalized_model_id]
+
+        vision_keywords = ('vision', 'image', 'file', 'video', 'multimodal', 'vl', 'ocr', 'omni')
+        function_call_keywords = ('function', 'tool', 'tools', 'tool_choice', 'tool_call', 'tool-use', 'tool_use')
+
+        if any(any(keyword in token for keyword in vision_keywords) for token in combined_tokens):
+            abilities.add('vision')
+
+        if any(any(keyword in token for keyword in function_call_keywords) for token in combined_tokens):
+            abilities.add('func_call')
+
+        return sorted(abilities)
+
+    def _normalize_modalities(self, value: typing.Any) -> list[str]:
+        normalized: list[str] = []
+
+        def _collect(item: typing.Any):
+            if item is None:
+                return
+            if isinstance(item, str):
+                for part in item.replace('->', ',').replace('+', ',').split(','):
+                    token = part.strip().lower()
+                    if token and token not in normalized:
+                        normalized.append(token)
+                return
+            if isinstance(item, dict):
+                for nested in item.values():
+                    _collect(nested)
+                return
+            if isinstance(item, (list, tuple, set)):
+                for nested in item:
+                    _collect(nested)
+                return
+
+        _collect(value)
+        return normalized
+
+    def _extract_scan_metadata(self, item: dict[str, typing.Any], model_id: str) -> dict[str, typing.Any]:
+        display_name = item.get('name')
+        if not isinstance(display_name, str) or not display_name.strip() or display_name == model_id:
+            display_name = ''
+
+        description = item.get('description')
+        if not isinstance(description, str) or not description.strip():
+            description = ''
+
+        context_length = item.get('context_length')
+        if context_length is None and isinstance(item.get('top_provider'), dict):
+            context_length = item['top_provider'].get('context_length')
+
+        if not isinstance(context_length, int):
+            try:
+                context_length = int(context_length) if context_length is not None else None
+            except (TypeError, ValueError):
+                context_length = None
+
+        input_modalities = self._normalize_modalities(item.get('input_modalities'))
+        output_modalities = self._normalize_modalities(item.get('output_modalities'))
+
+        if isinstance(item.get('architecture'), dict):
+            if not input_modalities:
+                input_modalities = self._normalize_modalities(item['architecture'].get('input_modalities'))
+            if not output_modalities:
+                output_modalities = self._normalize_modalities(item['architecture'].get('output_modalities'))
+
+        owned_by = item.get('owned_by')
+        if not isinstance(owned_by, str) or not owned_by.strip():
+            owned_by = ''
+
+        return {
+            'display_name': display_name or None,
+            'description': description or None,
+            'context_length': context_length,
+            'owned_by': owned_by or None,
+            'input_modalities': input_modalities,
+            'output_modalities': output_modalities,
+        }
+
+    async def scan_models(self, api_key: str | None = None) -> dict[str, typing.Any]:
+        headers = {}
+        if api_key:
+            headers['Authorization'] = f'Bearer {api_key}'
+
+        models_url = f'{self.requester_cfg["base_url"].rstrip("/")}/models'
+        async with httpx.AsyncClient(trust_env=True, timeout=self.requester_cfg['timeout']) as client:
+            response = await client.get(models_url, headers=headers)
+            response.raise_for_status()
+            payload = response.json()
+
+        models = []
+        for item in payload.get('data', []):
+            model_id = item.get('id')
+            if not model_id:
+                continue
+            models.append(
+                {
+                    'id': model_id,
+                    'name': model_id,
+                    'type': self._infer_model_type(model_id),
+                    'abilities': self._infer_model_abilities(item, model_id),
+                    **self._extract_scan_metadata(item, model_id),
+                }
+            )
+
+        models.sort(key=lambda item: (item['type'] != 'llm', item['name'].lower()))
+        return {
+            'models': models,
+            'debug': {
+                'request': {
+                    'method': 'GET',
+                    'url': models_url,
+                    'headers': {
+                        'Authorization': f'Bearer {self._mask_api_key(api_key)}' if api_key else '',
+                    },
+                },
+                'response': payload,
+            },
+        }
+
     async def _req(
         self,
         query: pipeline_query.Query,

@@ -169,8 +169,6 @@ export default function ProviderForm({
                   onValueChange={(v) => {
                     field.onChange(v);
                     const req = requesterList.find((r) => r.value === v);
-                    // Auto-fill default URL when creating new provider
-                    // or when base_url is empty in edit mode
                     if (req && (!providerId || !form.getValues('base_url'))) {
                       form.setValue('base_url', req.defaultUrl);
                     }

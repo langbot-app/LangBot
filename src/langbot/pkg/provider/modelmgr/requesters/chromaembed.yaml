@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: LLMAPIRequester
+metadata:
+  name: chroma-embedding
+  label:
+    en_US: Chroma Embedding
+    zh_Hans: Chroma 嵌入
+  description:
+    en_US: Chroma built-in embedding model (all-MiniLM-L6-v2), runs locally using ONNX Runtime. First-time use will download model files automatically.
+    zh_Hans: 使用 Chroma 内置嵌入模型 (all-MiniLM-L6-v2)，基于 ONNX Runtime 本地运行。首次使用时将自动下载模型文件。
+    ja_JP: Chroma 組み込み埋め込みモデル (all-MiniLM-L6-v2) を使用します。ONNX Runtime でローカル実行。初回使用時にモデルファイルが自動ダウンロードされます。
+  icon: chroma.svg
+spec:
+  config: []
+  support_type:
+  - text-embedding
+  provider_category: builtin
+execution:
+  python:
+    path: ./chromaembed.py
+    attr: ChromaEmbedding

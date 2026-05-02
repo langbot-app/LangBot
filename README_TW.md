@@ -147,6 +147,7 @@ docker compose up -d
 | [PPIO](https://ppinfra.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | GPU 平台 | ✅ |
 | [接口 AI](https://jiekou.ai/) | 聚合平台 | ✅ |
 | [302.AI](https://share.302.ai/SuTG99) | 聚合平台 | ✅ |
+| [Qiniu](https://www.qiniu.com/ai/agent) | 聚合平台 | ✅ |
 
 ### TTS（語音合成）
 

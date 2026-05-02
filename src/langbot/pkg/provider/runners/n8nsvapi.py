@@ -70,11 +70,12 @@ class N8nServiceAPIRunner(runner.RequestRunner):
 
         return plain_text
 
-    async def _process_stream_response(
+    async def _process_response(
         self, response: aiohttp.ClientResponse
     ) -> typing.AsyncGenerator[provider_message.Message, None]:
-        """处理流式响应——支持部分 JSON 和多个 JSON 对象在同一 chunk 的情况"""
+        """处理响应——支持流式格式和普通 JSON 格式"""
         full_content = ''
+        full_text = ''
         chunk_idx = 0
         is_final = False
         message_idx = 0
@@ -93,6 +94,7 @@ class N8nServiceAPIRunner(runner.RequestRunner):
                 else:
                     chunk_str = str(raw_chunk)
 
+                full_text += chunk_str
                 buffer += chunk_str
 
                 # 尝试从 buffer 中循环解析出 JSON 对象（处理多个对象或部分对象）
@@ -115,7 +117,7 @@ class N8nServiceAPIRunner(runner.RequestRunner):
                         elif obj.get('type') == 'end':
                             is_final = True
 
-                        if is_final or chunk_idx % 8 == 0:
+                        if is_final or (chunk_idx > 0 and chunk_idx % 8 == 0):
                             message_idx += 1
                             yield provider_message.MessageChunk(
                                 role='assistant',
@@ -142,6 +144,7 @@ class N8nServiceAPIRunner(runner.RequestRunner):
                     obj, _ = decoder.raw_decode(buffer)
                     if isinstance(obj, dict):
                         if obj.get('type') == 'item' and 'content' in obj:
+                            chunk_idx += 1
                             full_content += obj['content']
                         elif obj.get('type') == 'end':
                             is_final = True
@@ -156,11 +159,39 @@ class N8nServiceAPIRunner(runner.RequestRunner):
                 preview = buffer[:200]
                 self.ap.logger.warning(f'Failed to parse remaining buffer: {e}; buffer preview: {preview}')
 
+        # n8n 返回普通 JSON 格式（无任何流式 type:item 内容）
+        if chunk_idx == 0:
+            output_content = ''
+            try:
+                response_data = json.loads(full_text.strip())
+                if isinstance(response_data, dict):
+                    if self.output_key in response_data:
+                        output_content = response_data[self.output_key]
+                    else:
+                        output_content = json.dumps(response_data, ensure_ascii=False)
+                else:
+                    output_content = full_text
+            except json.JSONDecodeError:
+                output_content = full_text
+            self.ap.logger.debug(f'n8n webhook response (non-stream): {full_text[:200]}')
+            yield provider_message.MessageChunk(
+                role='assistant',
+                content=output_content,
+                is_final=True,
+                msg_sequence=message_idx + 1,
+            )
+
     async def _call_webhook(self, query: pipeline_query.Query) -> typing.AsyncGenerator[provider_message.Message, None]:
         """调用n8n webhook"""
         # 生成会话ID（如果不存在）
         if not query.session.using_conversation.uuid:
             query.session.using_conversation.uuid = str(uuid.uuid4())
+
+        # Keep query variables in sync with the generated/new conversation id.
+        # query.variables is later merged into payload and would otherwise
+        # overwrite the generated conversation_id with the stale preprocessor
+        # value (usually None for a new conversation).
+        query.variables['conversation_id'] = query.session.using_conversation.uuid
 
         # 预处理用户消息
         plain_text = await self._preprocess_user_message(query)
@@ -220,49 +251,22 @@ class N8nServiceAPIRunner(runner.RequestRunner):
 
             # 调用webhook
             session = httpclient.get_session()
-            if is_stream:
-                # 流式请求
-                async with session.post(
-                    self.webhook_url, json=payload, headers=headers, auth=auth, timeout=self.timeout
-                ) as response:
-                    if response.status != 200:
-                        error_text = await response.text()
-                        self.ap.logger.error(f'n8n webhook call failed: {response.status}, {error_text}')
-                        raise Exception(f'n8n webhook call failed: {response.status}, {error_text}')
+            async with session.post(
+                self.webhook_url, json=payload, headers=headers, auth=auth, timeout=self.timeout
+            ) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    self.ap.logger.error(f'n8n webhook call failed: {response.status}, {error_text}')
+                    raise Exception(f'n8n webhook call failed: {response.status}, {error_text}')
 
-                    # 处理流式响应
-                    async for chunk in self._process_stream_response(response):
+                async for chunk in self._process_response(response):
+                    if is_stream:
                         yield chunk
-            else:
-                async with session.post(
-                    self.webhook_url, json=payload, headers=headers, auth=auth, timeout=self.timeout
-                ) as response:
-                    try:
-                        async for chunk in self._process_stream_response(response):
-                            output_content = chunk.content if chunk.is_final else ''
-                    except:
-                        # 非流式请求（保持原有逻辑）
-                        if response.status != 200:
-                            error_text = await response.text()
-                            self.ap.logger.error(f'n8n webhook call failed: {response.status}, {error_text}')
-                            raise Exception(f'n8n webhook call failed: {response.status}, {error_text}')
-
-                        # 解析响应
-                        response_data = await response.json()
-                        self.ap.logger.debug(f'n8n webhook response: {response_data}')
-
-                        # 从响应中提取输出
-                        if self.output_key in response_data:
-                            output_content = response_data[self.output_key]
-                        else:
-                            # 如果没有指定的输出键，则使用整个响应
-                            output_content = json.dumps(response_data, ensure_ascii=False)
-
-                    # 返回消息
-                    yield provider_message.Message(
-                        role='assistant',
-                        content=output_content,
-                    )
+                    elif chunk.is_final:
+                        yield provider_message.Message(
+                            role='assistant',
+                            content=chunk.content,
+                        )
         except Exception as e:
             self.ap.logger.error(f'n8n webhook call exception: {str(e)}')
             raise N8nAPIError(f'n8n webhook call exception: {str(e)}')

@@ -1,4 +1,3 @@
-'use client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -22,12 +21,12 @@ import {
 } from '@/components/ui/form';
 import { useEffect, useState } from 'react';
 import { httpClient, initializeUserInfo } from '@/app/infra/http';
-import { useRouter } from 'next/navigation';
+import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import langbotIcon from '@/app/assets/langbot-logo.webp';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
-import Link from 'next/link';
+import { Link } from 'react-router-dom';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 
@@ -40,7 +39,7 @@ const formSchema = (t: (key: string) => string) =>
 type AccountType = 'local' | 'space';
 
 export default function Login() {
-  const router = useRouter();
+  const navigate = useNavigate();
   const { t } = useTranslation();
   const [spaceLoading, setSpaceLoading] = useState(false);
   const [accountType, setAccountType] = useState<AccountType | null>(null);
@@ -66,7 +65,7 @@ export default function Login() {
       setLoadError(null);
       const res = await httpClient.getAccountInfo();
       if (!res.initialized) {
-        router.push('/register');
+        navigate('/register');
         return;
       }
       setAccountType(res.account_type || 'local');
@@ -97,7 +96,7 @@ export default function Login() {
       .then((res) => {
         if (res.token) {
           localStorage.setItem('token', res.token);
-          router.push('/home');
+          navigate('/home');
         }
       })
       .catch(() => {});
@@ -114,7 +113,7 @@ export default function Login() {
         localStorage.setItem('token', res.token);
         localStorage.setItem('userEmail', username);
         await initializeUserInfo();
-        router.push('/home');
+        navigate('/home');
         toast.success(t('common.loginSuccess'));
       })
       .catch(() => {
@@ -154,7 +153,7 @@ export default function Login() {
               <LanguageSelector />
             </div>
             <img
-              src={langbotIcon.src}
+              src={langbotIcon}
               alt="LangBot"
               className="w-16 h-16 mb-4 mx-auto"
             />
@@ -205,7 +204,7 @@ export default function Login() {
             <LanguageSelector />
           </div>
           <img
-            src={langbotIcon.src}
+            src={langbotIcon}
             alt="LangBot"
             className="w-16 h-16 mb-4 mx-auto"
           />
@@ -313,7 +312,7 @@ export default function Login() {
                       <div className="flex justify-between">
                         <FormLabel>{t('common.password')}</FormLabel>
                         <Link
-                          href="/reset-password"
+                          to="/reset-password"
                           className="text-sm text-blue-500"
                         >
                           {t('common.forgotPassword')}

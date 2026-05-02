@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Copy, Check, Globe } from 'lucide-react';
+import { copyToClipboard } from '@/app/utils/clipboard';
 import { systemInfo } from '@/app/infra/http';
 
 /**
@@ -45,6 +46,54 @@ function resolveShowIfValue(
 }
 
 /**
+ * Display-only component for embed code fields with copy animation.
+ */
+function EmbedCodeField({
+  label,
+  description,
+  snippet,
+}: {
+  label: string;
+  description?: string;
+  snippet: string;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    copyToClipboard(snippet).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="space-y-2">
+      <label className="text-sm font-medium leading-none">{label}</label>
+      {description && (
+        <p className="text-sm text-muted-foreground">{description}</p>
+      )}
+      <div className="flex items-center gap-2">
+        <pre className="flex-1 overflow-x-auto rounded-md bg-muted p-3 text-sm font-mono select-all">
+          <code>{snippet}</code>
+        </pre>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="shrink-0"
+          onClick={handleCopy}
+        >
+          {copied ? (
+            <Check className="h-4 w-4 text-green-600" />
+          ) : (
+            <Copy className="size-4" />
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Display-only component for webhook URL fields.
  * Rendered outside of react-hook-form binding since the value is
  * read-only and comes from systemContext, not user input.
@@ -65,15 +114,9 @@ function WebhookUrlField({
   const { t } = useTranslation();
 
   const handleCopy = (text: string, setter: (v: boolean) => void) => {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard
-        .writeText(text)
-        .then(() => {
-          setter(true);
-          setTimeout(() => setter(false), 2000);
-        })
-        .catch(() => {});
-    }
+    copyToClipboard(text).catch(() => {});
+    setter(true);
+    setTimeout(() => setter(false), 2000);
   };
 
   return (
@@ -203,10 +246,13 @@ export default function DynamicFormComponent({
     return value;
   };
 
-  // Filter out display-only field types (e.g. webhook-url) that should not
+  // Filter out display-only field types (e.g. webhook-url, embed-code) that should not
   // participate in form state, validation, or value emission.
   const editableItems = useMemo(
-    () => itemConfigList.filter((item) => item.type !== 'webhook-url'),
+    () =>
+      itemConfigList.filter(
+        (item) => item.type !== 'webhook-url' && item.type !== 'embed-code',
+      ),
     [itemConfigList],
   );
 
@@ -240,6 +286,9 @@ export default function DynamicFormComponent({
           case 'embedding-model-selector':
             fieldSchema = z.string();
             break;
+          case 'rerank-model-selector':
+            fieldSchema = z.string();
+            break;
           case 'knowledge-base-selector':
             fieldSchema = z.string();
             break;
@@ -248,6 +297,9 @@ export default function DynamicFormComponent({
             break;
           case 'bot-selector':
             fieldSchema = z.string();
+            break;
+          case 'tools-selector':
+            fieldSchema = z.array(z.string());
             break;
           case 'model-fallback-selector':
             fieldSchema = z.object({
@@ -437,6 +489,36 @@ export default function DynamicFormComponent({
                 }
                 url={webhookUrl}
                 extraUrl={extraWebhookUrl || undefined}
+              />
+            );
+          }
+
+          if (config.type === 'embed-code') {
+            const botUuid = (systemContext?.bot_uuid as string) || '';
+            if (!botUuid) return null;
+
+            const baseUrl =
+              import.meta.env.VITE_API_BASE_URL || window.location.origin;
+            const widgetTitle =
+              ((systemContext?.adapter_config as Record<string, unknown>)
+                ?.title as string) || 'LangBot';
+            const safeTitle = widgetTitle
+              .replace(/&/g, '&amp;')
+              .replace(/"/g, '&quot;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;');
+            const embedSnippet = `<script data-title="${safeTitle}" src="${baseUrl}/api/v1/embed/${botUuid}/widget.js"><\/script>`;
+
+            return (
+              <EmbedCodeField
+                key={config.id}
+                label={extractI18nObject(config.label)}
+                description={
+                  config.description
+                    ? extractI18nObject(config.description)
+                    : undefined
+                }
+                snippet={embedSnippet}
               />
             );
           }

@@ -60,7 +60,16 @@ class TelemetryManager:
                     except Exception:
                         sanitized['query_id'] = str(sanitized.get('query_id', ''))
 
-                for sfield in ('adapter', 'runner', 'runner_category', 'model_name', 'version', 'error', 'timestamp'):
+                for sfield in (
+                    'adapter',
+                    'runner',
+                    'runner_category',
+                    'model_name',
+                    'version',
+                    'edition',
+                    'error',
+                    'timestamp',
+                ):
                     v = sanitized.get(sfield)
                     sanitized[sfield] = '' if v is None else str(v)
 

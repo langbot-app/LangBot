@@ -1,5 +1,3 @@
-'use client';
-
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
@@ -11,6 +9,7 @@ import jaJP from './locales/ja-JP';
 import thTH from './locales/th-TH';
 import viVN from './locales/vi-VN';
 import esES from './locales/es-ES';
+import ruRU from './locales/ru-RU';
 
 i18n
   .use(LanguageDetector)
@@ -37,6 +36,9 @@ i18n
       },
       'es-ES': {
         translation: esES,
+      },
+      'ru-RU': {
+        translation: ruRU,
       },
     },
     fallbackLng: 'zh-Hans',

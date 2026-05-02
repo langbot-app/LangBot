@@ -145,6 +145,7 @@ docker compose up -d
 | [ShengSuanYun](https://www.shengsuanyun.com/?from=CH_KYIPP758) | Nền tảng GPU | ✅ |
 | [接口 AI](https://jiekou.ai/) | Cổng | ✅ |
 | [302.AI](https://share.302.ai/SuTG99) | Cổng | ✅ |
+| [Qiniu](https://www.qiniu.com/ai/agent) | Cổng | ✅ |
 
 [→ Xem tất cả tích hợp](https://link.langbot.app/en/docs/features)
 

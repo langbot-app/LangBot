@@ -1,5 +1,3 @@
-'use client';
-
 import { useEffect } from 'react';
 import PluginForm from '@/app/home/plugins/components/plugin-installed/plugin-form/PluginForm';
 import PluginReadme from '@/app/home/plugins/components/plugin-installed/plugin-readme/PluginReadme';

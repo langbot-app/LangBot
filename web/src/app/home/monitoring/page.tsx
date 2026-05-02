@@ -1,6 +1,4 @@
-'use client';
-
-import React, { Suspense, useState, useMemo } from 'react';
+import React, { Suspense, useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -71,6 +69,9 @@ function MonitoringPageContent() {
     useMonitoringFilters();
   const { data, loading, refetch } = useMonitoringData(filterState);
 
+  // Counter to force feedbackTimeRange recomputation on manual refresh
+  const [feedbackRefreshKey, setFeedbackRefreshKey] = useState(0);
+
   // Get time range for feedback data
   const feedbackTimeRange = useMemo(() => {
     const now = new Date();
@@ -108,7 +109,8 @@ function MonitoringPageContent() {
       startTime: startTime?.toISOString(),
       endTime: endTime.toISOString(),
     };
-  }, [filterState.timeRange, filterState.customDateRange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterState.timeRange, filterState.customDateRange, feedbackRefreshKey]);
 
   // Feedback data hook
   const {
@@ -128,6 +130,12 @@ function MonitoringPageContent() {
     endTime: feedbackTimeRange.endTime,
     limit: 50,
   });
+
+  // Combined refresh handler for both monitoring and feedback data
+  const handleRefresh = useCallback(() => {
+    refetch();
+    setFeedbackRefreshKey((k) => k + 1);
+  }, [refetch]);
 
   const [expandedMessageId, setExpandedMessageId] = useState<string | null>(
     null,
@@ -267,7 +275,7 @@ function MonitoringPageContent() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={refetch}
+                onClick={handleRefresh}
                 className="shadow-sm flex-shrink-0"
               >
                 <svg

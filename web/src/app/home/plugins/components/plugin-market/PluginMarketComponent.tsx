@@ -1,7 +1,5 @@
-'use client';
-
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -18,6 +16,7 @@ import {
   Hash,
   Book,
   FileText,
+  PanelTop,
 } from 'lucide-react';
 import PluginMarketCardComponent from './plugin-market-card/PluginMarketCardComponent';
 import { PluginMarketCardVO } from './plugin-market-card/PluginMarketCardVO';
@@ -47,7 +46,7 @@ function MarketPageContent({
   installPlugin: (plugin: PluginV4) => void;
 }) {
   const { t } = useTranslation();
-  const searchParams = useSearchParams();
+  const [searchParams] = useSearchParams();
 
   const validCategories = [
     'Tool',
@@ -55,6 +54,7 @@ function MarketPageContent({
     'EventListener',
     'KnowledgeEngine',
     'Parser',
+    'Page',
   ];
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -531,6 +531,14 @@ function MarketPageContent({
                 >
                   <FileText className="h-4 w-4 mr-1" />
                   {t('plugins.componentName.Parser')}
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="Page"
+                  aria-label="Page"
+                  className="text-xs sm:text-sm cursor-pointer"
+                >
+                  <PanelTop className="h-4 w-4 mr-1" />
+                  {t('plugins.componentName.Page')}
                 </ToggleGroupItem>
               </ToggleGroup>
             </div>

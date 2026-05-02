@@ -1,6 +1,6 @@
 [project]
 name = "langbot"
-version = "4.9.5"
+version = "4.9.6"
 description = "Production-grade platform for building agentic IM bots"
 readme = "README.md"
 license-files = ["LICENSE"]
@@ -8,7 +8,7 @@ requires-python = ">=3.11,<4.0"
 dependencies = [
     "aiocqhttp>=1.4.4",
     "aiofiles>=24.1.0",
-    "aiohttp>=3.11.18",
+    "aiohttp>=3.13.4",
     "aioshutil>=1.5",
     "aiosqlite>=0.21.0",
     "anthropic>=0.51.0",
@@ -16,7 +16,7 @@ dependencies = [
     "async-lru>=2.0.5",
     "certifi>=2025.4.26",
     "colorlog~=6.6.0",
-    "cryptography>=44.0.3",
+    "cryptography>=46.0.7",
     "dashscope>=1.25.10",
     "dingtalk-stream>=0.24.0",
     "discord-py>=2.5.2",
@@ -27,7 +27,7 @@ dependencies = [
     "nakuru-project-idk>=0.0.2.1",
     "ollama>=0.4.8",
     "openai>1.0.0",
-    "pillow>=11.2.1",
+    "pillow>=12.2.0",
     "psutil>=7.0.0",
     "pycryptodome>=3.22.0",
     "pydantic>2.0",
@@ -39,6 +39,7 @@ dependencies = [
     "quart-cors>=0.8.0",
     "requests>=2.32.3",
     "slack-sdk>=3.35.0",
+    "alembic>=1.15.0",
     "sqlalchemy[asyncio]>=2.0.40",
     "sqlmodel>=0.0.24",
     "telegramify-markdown>=0.5.1",
@@ -49,7 +50,7 @@ dependencies = [
     "pip>=25.1.1",
     "ruff>=0.11.9",
     "pre-commit>=4.2.0",
-    "uv>=0.7.11",
+    "uv>=0.11.6",
     "mypy>=1.16.0",
     "PyPDF2>=3.0.1",
     "python-docx>=1.1.0",
@@ -60,11 +61,15 @@ dependencies = [
     "ebooklib>=0.18",
     "html2text>=2024.2.26",
     "langchain>=0.2.0",
-    "langchain-text-splitters>=0.0.1",
+    "langchain-core>=1.2.28",
+    "langsmith>=0.7.31",
+    "python-multipart>=0.0.26",
+    "Mako>=1.3.11",
+    "langchain-text-splitters>=1.1.2",
     "chromadb>=1.0.0,<2.0.0",
     "qdrant-client (>=1.15.1,<2.0.0)",
     "pyseekdb==1.1.0.post3",
-    "langbot-plugin==0.3.6",
+    "langbot-plugin==0.3.10",
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",
     "matrix-nio>=0.25.2",
@@ -112,12 +117,12 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-package-data = { "langbot" = ["templates/**", "pkg/provider/modelmgr/requesters/*", "pkg/platform/sources/*", "web/out/**"] }
+package-data = { "langbot" = ["templates/**", "pkg/provider/modelmgr/requesters/*", "pkg/platform/sources/*", "web/dist/**", "pkg/persistence/alembic/**"] }
 
 [dependency-groups]
 dev = [
     "pre-commit>=4.2.0",
-    "pytest>=8.4.1",
+    "pytest>=9.0.3",
     "pytest-asyncio>=1.0.0",
     "pytest-cov>=7.0.0",
     "ruff>=0.11.9",

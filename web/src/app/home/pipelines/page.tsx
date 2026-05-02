@@ -1,12 +1,10 @@
-'use client';
-
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import PipelineDetailContent from './PipelineDetailContent';
 
 export default function PipelineConfigPage() {
   const { t } = useTranslation();
-  const searchParams = useSearchParams();
+  const [searchParams] = useSearchParams();
   const detailId = searchParams.get('id');
 
   if (detailId) {

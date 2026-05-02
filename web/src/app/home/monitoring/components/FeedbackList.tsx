@@ -1,5 +1,3 @@
-'use client';
-
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -129,6 +127,20 @@ export function FeedbackList({
                         {item.platform}
                       </span>
                     )}
+                    {item.streamId && onViewMessage && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 px-1.5 text-xs"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onViewMessage(item.streamId!);
+                        }}
+                      >
+                        <ExternalLink className="w-3 h-3 mr-1" />
+                        {t('monitoring.messageList.viewConversation')}
+                      </Button>
+                    )}
                   </div>
 
                   {item.feedbackContent && (
@@ -223,21 +235,8 @@ export function FeedbackList({
                         <div className="text-gray-500 dark:text-gray-400">
                           {t('monitoring.feedback.messageId')}
                         </div>
-                        <div className="font-medium text-gray-900 dark:text-white truncate flex items-center gap-1">
-                          <span className="truncate">{item.messageId}</span>
-                          {onViewMessage && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-5 px-1.5 text-xs shrink-0"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onViewMessage(item.messageId!);
-                              }}
-                            >
-                              <ExternalLink className="w-3 h-3" />
-                            </Button>
-                          )}
+                        <div className="font-medium text-gray-900 dark:text-white truncate">
+                          {item.messageId}
                         </div>
                       </div>
                     )}

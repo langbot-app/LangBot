@@ -18,54 +18,118 @@ class MonitoringService:
 
     # ========== Cleanup Methods ==========
 
-    async def cleanup_expired_records(self, retention_days: int) -> dict[str, int]:
+    async def cleanup_expired_records(self, retention_days: int, batch_size: int = 1000) -> dict[str, int]:
         """Delete monitoring records older than the specified retention period.
 
         Args:
             retention_days: Number of days to retain records.
+            batch_size: Maximum rows to delete per table batch.
 
         Returns:
             A dict mapping table name to the number of deleted rows.
         """
+        if retention_days < 1:
+            raise ValueError('retention_days must be >= 1')
+        if batch_size < 1:
+            raise ValueError('batch_size must be >= 1')
+
         cutoff = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) - datetime.timedelta(
             days=retention_days
         )
 
-        tables_and_columns: list[tuple[str, type, sqlalchemy.Column]] = [
+        tables_and_columns: list[tuple[str, type, sqlalchemy.Column, sqlalchemy.Column]] = [
             (
                 'monitoring_messages',
                 persistence_monitoring.MonitoringMessage,
                 persistence_monitoring.MonitoringMessage.timestamp,
+                persistence_monitoring.MonitoringMessage.id,
             ),
             (
                 'monitoring_llm_calls',
                 persistence_monitoring.MonitoringLLMCall,
                 persistence_monitoring.MonitoringLLMCall.timestamp,
+                persistence_monitoring.MonitoringLLMCall.id,
             ),
             (
                 'monitoring_embedding_calls',
                 persistence_monitoring.MonitoringEmbeddingCall,
                 persistence_monitoring.MonitoringEmbeddingCall.timestamp,
+                persistence_monitoring.MonitoringEmbeddingCall.id,
             ),
             (
                 'monitoring_errors',
                 persistence_monitoring.MonitoringError,
                 persistence_monitoring.MonitoringError.timestamp,
+                persistence_monitoring.MonitoringError.id,
             ),
             (
                 'monitoring_sessions',
                 persistence_monitoring.MonitoringSession,
                 persistence_monitoring.MonitoringSession.last_activity,
+                persistence_monitoring.MonitoringSession.session_id,
+            ),
+            (
+                'monitoring_feedback',
+                persistence_monitoring.MonitoringFeedback,
+                persistence_monitoring.MonitoringFeedback.timestamp,
+                persistence_monitoring.MonitoringFeedback.id,
             ),
         ]
 
         deleted_counts: dict[str, int] = {}
 
-        for table_name, model_cls, ts_column in tables_and_columns:
-            result = await self.ap.persistence_mgr.execute_async(sqlalchemy.delete(model_cls).where(ts_column < cutoff))
-            deleted_counts[table_name] = result.rowcount
+        for table_name, model_cls, ts_column, pk_column in tables_and_columns:
+            deleted_counts[table_name] = await self._delete_expired_in_batches(
+                model_cls=model_cls,
+                ts_column=ts_column,
+                pk_column=pk_column,
+                cutoff=cutoff,
+                batch_size=batch_size,
+            )
+
+        if sum(deleted_counts.values()) > 0:
+            await self._release_sqlite_space()
 
         return deleted_counts
+
+    async def _delete_expired_in_batches(
+        self,
+        model_cls: type,
+        ts_column: sqlalchemy.Column,
+        pk_column: sqlalchemy.Column,
+        cutoff: datetime.datetime,
+        batch_size: int,
+    ) -> int:
+        deleted_total = 0
+
+        while True:
+            select_result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(pk_column).where(ts_column < cutoff).limit(batch_size)
+            )
+            pk_values = list(select_result.scalars().all())
+            if not pk_values:
+                break
+
+            delete_result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.delete(model_cls).where(pk_column.in_(pk_values))
+            )
+            deleted = delete_result.rowcount or 0
+            deleted_total += deleted
+
+            if len(pk_values) < batch_size:
+                break
+
+        return deleted_total
+
+    async def _release_sqlite_space(self) -> None:
+        database_type = self.ap.instance_config.data.get('database', {}).get('use', 'sqlite')
+        if database_type != 'sqlite':
+            return
+
+        async with self.ap.persistence_mgr.get_db_engine().connect() as conn:
+            autocommit_conn = await conn.execution_options(isolation_level='AUTOCOMMIT')
+            await autocommit_conn.execute(sqlalchemy.text('PRAGMA wal_checkpoint(TRUNCATE)'))
+            await autocommit_conn.execute(sqlalchemy.text('VACUUM'))
 
     # ========== Recording Methods ==========
 
@@ -1224,30 +1288,83 @@ class MonitoringService:
         """
         import json
 
-        record_id = str(uuid.uuid4())
-        record_data = {
-            'id': record_id,
-            'timestamp': datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
-            'feedback_id': feedback_id,
-            'feedback_type': feedback_type,
-            'feedback_content': feedback_content,
-            'inaccurate_reasons': json.dumps(inaccurate_reasons, ensure_ascii=False) if inaccurate_reasons else None,
-            'bot_id': bot_id,
-            'bot_name': bot_name,
-            'pipeline_id': pipeline_id,
-            'pipeline_name': pipeline_name,
-            'session_id': session_id,
-            'message_id': message_id,
-            'stream_id': stream_id,
-            'user_id': user_id,
-            'platform': platform,
-        }
+        now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+        reasons_json = json.dumps(inaccurate_reasons, ensure_ascii=False) if inaccurate_reasons else None
 
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.insert(persistence_monitoring.MonitoringFeedback).values(record_data)
+        MonitoringFeedback = persistence_monitoring.MonitoringFeedback
+
+        # Handle cancel feedback (type=3): delete existing record
+        if feedback_type == 3:
+            await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.delete(MonitoringFeedback).where(MonitoringFeedback.feedback_id == feedback_id)
+            )
+            return None
+
+        # Check if record with this feedback_id already exists
+        existing_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(MonitoringFeedback).where(MonitoringFeedback.feedback_id == feedback_id)
         )
+        existing_row = existing_result.first()
 
-        return record_id
+        if existing_row:
+            # UPDATE existing record
+            existing = existing_row[0] if isinstance(existing_row, tuple) else existing_row
+            await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.update(MonitoringFeedback)
+                .where(MonitoringFeedback.feedback_id == feedback_id)
+                .values(
+                    timestamp=now,
+                    feedback_type=feedback_type,
+                    feedback_content=feedback_content,
+                    inaccurate_reasons=reasons_json,
+                    bot_id=bot_id or existing.bot_id,
+                    bot_name=bot_name or existing.bot_name,
+                    pipeline_id=pipeline_id or existing.pipeline_id,
+                    pipeline_name=pipeline_name or existing.pipeline_name,
+                    session_id=session_id or existing.session_id,
+                    message_id=message_id or existing.message_id,
+                    stream_id=stream_id or existing.stream_id,
+                    user_id=user_id or existing.user_id,
+                    platform=platform or existing.platform,
+                )
+            )
+            return existing.id
+        else:
+            # INSERT new record with IntegrityError defense
+            record_id = str(uuid.uuid4())
+            record_data = {
+                'id': record_id,
+                'timestamp': now,
+                'feedback_id': feedback_id,
+                'feedback_type': feedback_type,
+                'feedback_content': feedback_content,
+                'inaccurate_reasons': reasons_json,
+                'bot_id': bot_id,
+                'bot_name': bot_name,
+                'pipeline_id': pipeline_id,
+                'pipeline_name': pipeline_name,
+                'session_id': session_id,
+                'message_id': message_id,
+                'stream_id': stream_id,
+                'user_id': user_id,
+                'platform': platform,
+            }
+            try:
+                await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(MonitoringFeedback).values(record_data))
+                return record_id
+            except Exception:
+                # UNIQUE constraint conflict (concurrent feedback for same feedback_id)
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.update(MonitoringFeedback)
+                    .where(MonitoringFeedback.feedback_id == feedback_id)
+                    .values(
+                        timestamp=now,
+                        feedback_type=feedback_type,
+                        feedback_content=feedback_content,
+                        inaccurate_reasons=reasons_json,
+                    )
+                )
+                return feedback_id
 
     async def get_feedback_stats(
         self,

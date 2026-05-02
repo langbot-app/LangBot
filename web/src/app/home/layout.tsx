@@ -1,5 +1,3 @@
-'use client';
-
 import HomeSidebar from '@/app/home/components/home-sidebar/HomeSidebar';
 import SurveyWidget from '@/app/home/components/survey/SurveyWidget';
 import React, {
@@ -21,8 +19,8 @@ import {
   initializeUserInfo,
   initializeSystemInfo,
 } from '@/app/infra/http';
-import { usePathname, useRouter } from 'next/navigation';
-import Link from 'next/link';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { CircleHelp } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -46,7 +44,12 @@ import {
 } from '@/app/home/plugins/components/plugin-install-task';
 
 // Routes that belong to the "Extensions" section
-const EXTENSIONS_ROUTES = ['/home/plugins', '/home/market', '/home/mcp'];
+const EXTENSIONS_ROUTES = [
+  '/home/plugins',
+  '/home/market',
+  '/home/mcp',
+  '/home/plugin-pages',
+];
 
 function isExtensionsRoute(pathname: string): boolean {
   return EXTENSIONS_ROUTES.some(
@@ -59,7 +62,7 @@ export default function HomeLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const router = useRouter();
+  const navigate = useNavigate();
 
   // Initialize user info if not already initialized
   useEffect(() => {
@@ -75,14 +78,14 @@ export default function HomeLayout({
         // Always re-fetch to ensure we have the latest wizard_status from backend
         await initializeSystemInfo();
         if (systemInfo.wizard_status === 'none') {
-          router.replace('/wizard');
+          navigate('/wizard');
         }
       } catch {
         // If fetching system info fails, don't redirect
       }
     };
     checkWizard();
-  }, [router]);
+  }, [navigate]);
 
   return (
     <SidebarDataProvider>
@@ -101,7 +104,8 @@ function HomeLayoutInner({ children }: { children: React.ReactNode }) {
     zh_Hans: '',
   });
   const { detailEntityName } = useSidebarData();
-  const pathname = usePathname();
+  const location = useLocation();
+  const pathname = location.pathname;
   const { t } = useTranslation();
 
   const onSelectedChangeAction = useCallback((child: SidebarChildVO) => {
@@ -139,7 +143,7 @@ function HomeLayoutInner({ children }: { children: React.ReactNode }) {
               <BreadcrumbList>
                 <BreadcrumbItem className="hidden md:block">
                   <BreadcrumbLink asChild>
-                    <Link href={sectionLink}>{sectionLabel}</Link>
+                    <Link to={sectionLink}>{sectionLabel}</Link>
                   </BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator className="hidden md:block" />

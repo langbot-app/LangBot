@@ -1,5 +1,3 @@
-'use client';
-
 import { useState } from 'react';
 import {
   Plus,
@@ -26,7 +24,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useTranslation } from 'react-i18next';
 import langbotIcon from '@/app/assets/langbot-logo.webp';
-import { ExtraArg, ModelType, TestResult, ProviderModels } from '../types';
+import {
+  ExtraArg,
+  ModelType,
+  ScanModelsResult,
+  SelectedScannedModel,
+  TestResult,
+  ProviderModels,
+} from '../types';
 import ModelItem from './ModelItem';
 import AddModelPopover from './AddModelPopover';
 
@@ -54,6 +59,11 @@ interface ProviderCardProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+  ) => Promise<void>;
+  onScanModels: (modelType: ModelType) => Promise<ScanModelsResult>;
+  onAddScannedModels: (
+    modelType: ModelType,
+    models: SelectedScannedModel[],
   ) => Promise<void>;
   onOpenEditModel: (modelId: string) => void;
   onCloseEditModel: () => void;
@@ -103,6 +113,8 @@ export default function ProviderCard({
   onOpenAddModel,
   onCloseAddModel,
   onAddModel,
+  onScanModels,
+  onAddScannedModels,
   onOpenEditModel,
   onCloseEditModel,
   onUpdateModel,
@@ -122,9 +134,12 @@ export default function ProviderCard({
   const canDelete =
     !isLangBotModels &&
     (provider.llm_count || 0) === 0 &&
-    (provider.embedding_count || 0) === 0;
+    (provider.embedding_count || 0) === 0 &&
+    (provider.rerank_count || 0) === 0;
   const totalModels =
-    (provider.llm_count || 0) + (provider.embedding_count || 0);
+    (provider.llm_count || 0) +
+    (provider.embedding_count || 0) +
+    (provider.rerank_count || 0);
 
   return (
     <Card className="mb-2">
@@ -135,7 +150,7 @@ export default function ProviderCard({
               {isLangBotModels ? (
                 <div className="w-9 h-9 rounded-lg overflow-hidden flex-shrink-0">
                   <img
-                    src={langbotIcon.src}
+                    src={langbotIcon}
                     alt="LangBot"
                     className="w-full h-full object-cover"
                   />
@@ -300,6 +315,8 @@ export default function ProviderCard({
                 onOpen={onOpenAddModel}
                 onClose={onCloseAddModel}
                 onAddModel={onAddModel}
+                onScanModels={onScanModels}
+                onAddScannedModels={onAddScannedModels}
                 onTestModel={onTestModel}
                 isSubmitting={isSubmitting}
                 isTesting={isTesting}
@@ -379,11 +396,44 @@ export default function ProviderCard({
                     onResetTestResult={onResetTestResult}
                   />
                 ))}
-                {models.llm.length === 0 && models.embedding.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    {t('models.noModels')}
-                  </p>
-                )}
+                {models.rerank.map((model) => (
+                  <ModelItem
+                    key={model.uuid}
+                    model={model}
+                    modelType="rerank"
+                    isLangBotModels={isLangBotModels}
+                    editModelPopoverOpen={editModelPopoverOpen}
+                    deleteConfirmOpen={deleteConfirmOpen}
+                    onOpenEditModel={onOpenEditModel}
+                    onCloseEditModel={onCloseEditModel}
+                    onOpenDeleteConfirm={onOpenDeleteConfirm}
+                    onCloseDeleteConfirm={onCloseDeleteConfirm}
+                    onDeleteModel={() => onDeleteModel(model.uuid, 'rerank')}
+                    onUpdateModel={(name, abilities, extraArgs) =>
+                      onUpdateModel(
+                        model.uuid,
+                        'rerank',
+                        name,
+                        abilities,
+                        extraArgs,
+                      )
+                    }
+                    onTestModel={(name, abilities, extraArgs) =>
+                      onTestModel(name, 'rerank', abilities, extraArgs)
+                    }
+                    isSubmitting={isSubmitting}
+                    isTesting={isTesting}
+                    testResult={testResult}
+                    onResetTestResult={onResetTestResult}
+                  />
+                ))}
+                {models.llm.length === 0 &&
+                  models.embedding.length === 0 &&
+                  models.rerank.length === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      {t('models.noModels')}
+                    </p>
+                  )}
               </div>
             ) : (
               <p className="text-sm text-muted-foreground text-center py-4">

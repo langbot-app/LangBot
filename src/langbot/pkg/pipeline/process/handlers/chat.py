@@ -61,6 +61,9 @@ class ChatMessageHandler(handler.MessageHandler):
 
                 yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
             else:
+                self.ap.logger.debug(
+                    f'NormalMessageReceived event prevented default for query {query.query_id} without reply'
+                )
                 yield entities.StageProcessResult(result_type=entities.ResultType.INTERRUPT, new_query=query)
         else:
             if event_ctx.event.user_message_alter is not None:
@@ -205,6 +208,7 @@ class ChatMessageHandler(handler.MessageHandler):
                         'model_name': model_name,
                         'version': constants.semantic_version,
                         'instance_id': constants.instance_id,
+                        'edition': constants.edition,
                         'pipeline_plugins': pipeline_plugins,
                         'error': locals().get('error_info', None),
                         'timestamp': datetime.utcnow().isoformat(),

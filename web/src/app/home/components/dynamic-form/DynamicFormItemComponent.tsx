@@ -23,6 +23,8 @@ import {
   Bot,
   KnowledgeBase,
   EmbeddingModel,
+  RerankModel,
+  PluginTool,
 } from '@/app/infra/entities/api';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -73,11 +75,17 @@ export default function DynamicFormItemComponent({
 }) {
   const [llmModels, setLlmModels] = useState<LLMModel[]>([]);
   const [embeddingModels, setEmbeddingModels] = useState<EmbeddingModel[]>([]);
+  const [rerankModels, setRerankModels] = useState<RerankModel[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [bots, setBots] = useState<Bot[]>([]);
+  const [tools, setTools] = useState<PluginTool[]>([]);
   const [uploading, setUploading] = useState<boolean>(false);
   const [kbDialogOpen, setKbDialogOpen] = useState(false);
   const [tempSelectedKBIds, setTempSelectedKBIds] = useState<string[]>([]);
+  const [toolsDialogOpen, setToolsDialogOpen] = useState(false);
+  const [tempSelectedToolNames, setTempSelectedToolNames] = useState<string[]>(
+    [],
+  );
   const { t } = useTranslation();
   const [modelsDialogOpen, setModelsDialogOpen] = useState(false);
 
@@ -175,6 +183,19 @@ export default function DynamicFormItemComponent({
   }, [config.type]);
 
   useEffect(() => {
+    if (config.type === DynamicFormItemType.RERANK_MODEL_SELECTOR) {
+      httpClient
+        .getProviderRerankModels()
+        .then((resp) => {
+          setRerankModels(resp.models);
+        })
+        .catch((err) => {
+          toast.error('Failed to load rerank models: ' + err.msg);
+        });
+    }
+  }, [config.type]);
+
+  useEffect(() => {
     if (config.type === DynamicFormItemType.MODEL_FALLBACK_SELECTOR) {
       fetchLlmModels();
     }
@@ -205,6 +226,21 @@ export default function DynamicFormItemComponent({
         })
         .catch((err) => {
           toast.error(t('bots.getBotListError') + err.msg);
+        });
+    }
+  }, [config.type]);
+
+  useEffect(() => {
+    if (config.type === DynamicFormItemType.TOOLS_SELECTOR) {
+      httpClient
+        .getTools()
+        .then((resp) => {
+          setTools(resp.tools);
+        })
+        .catch((err) => {
+          toast.error(
+            t('tools.getToolListError', 'Failed to get tools: ') + err.msg,
+          );
         });
     }
   }, [config.type]);
@@ -548,6 +584,45 @@ export default function DynamicFormItemComponent({
             </SelectTrigger>
             <SelectContent>
               {Object.entries(groupedEmbeddingModels).map(
+                ([providerName, models]) => (
+                  <SelectGroup key={providerName}>
+                    <SelectLabel>{providerName}</SelectLabel>
+                    {models.map((model) => (
+                      <SelectItem key={model.uuid} value={model.uuid}>
+                        {model.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                ),
+              )}
+            </SelectContent>
+          </Select>
+        </div>
+      );
+
+    case DynamicFormItemType.RERANK_MODEL_SELECTOR:
+      const groupedRerankModels = rerankModels.reduce(
+        (acc, model) => {
+          const providerName = model.provider?.name || 'Unknown';
+          if (!acc[providerName]) acc[providerName] = [];
+          acc[providerName].push(model);
+          return acc;
+        },
+        {} as Record<string, RerankModel[]>,
+      );
+
+      return (
+        <div className="max-w-md">
+          <Select
+            value={field.value || '__none__'}
+            onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}
+          >
+            <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
+              <SelectValue placeholder={t('models.rerank')} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">{t('common.none')}</SelectItem>
+              {Object.entries(groupedRerankModels).map(
                 ([providerName, models]) => (
                   <SelectGroup key={providerName}>
                     <SelectLabel>{providerName}</SelectLabel>
@@ -1159,6 +1234,139 @@ export default function DynamicFormItemComponent({
             </SelectGroup>
           </SelectContent>
         </Select>
+      );
+
+    case DynamicFormItemType.TOOLS_SELECTOR:
+      return (
+        <>
+          <div className="space-y-2">
+            {field.value && field.value.length > 0 ? (
+              <div className="space-y-2">
+                {field.value.map((toolName: string) => {
+                  const currentTool = tools.find(
+                    (tool) => tool.name === toolName,
+                  );
+
+                  return (
+                    <div
+                      key={toolName}
+                      className="flex items-center justify-between rounded-lg border p-3 hover:bg-accent"
+                    >
+                      <div className="flex items-center gap-2 flex-1">
+                        <Wrench className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium">{toolName}</div>
+                          {currentTool?.human_desc && (
+                            <div className="text-sm text-muted-foreground truncate">
+                              {currentTool.human_desc}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          const newValue = field.value.filter(
+                            (name: string) => name !== toolName,
+                          );
+                          field.onChange(newValue);
+                        }}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex h-32 items-center justify-center rounded-lg border-2 border-dashed border-border">
+                <p className="text-sm text-muted-foreground">
+                  {t('tools.noToolSelected', 'No tools selected')}
+                </p>
+              </div>
+            )}
+          </div>
+
+          <Button
+            type="button"
+            onClick={() => {
+              setTempSelectedToolNames(field.value || []);
+              setToolsDialogOpen(true);
+            }}
+            variant="outline"
+            className="w-full"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            {t('tools.addTool', 'Add Tool')}
+          </Button>
+
+          <Dialog open={toolsDialogOpen} onOpenChange={setToolsDialogOpen}>
+            <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+              <DialogHeader>
+                <DialogTitle>
+                  {t('tools.selectTools', 'Select Tools')}
+                </DialogTitle>
+              </DialogHeader>
+              <div className="flex-1 overflow-y-auto space-y-2 pr-2">
+                {tools.map((tool) => {
+                  const isSelected = tempSelectedToolNames.includes(tool.name);
+                  return (
+                    <div
+                      key={tool.name}
+                      className="flex items-center gap-3 rounded-lg border p-3 hover:bg-accent cursor-pointer"
+                      onClick={() => {
+                        setTempSelectedToolNames((prev) =>
+                          prev.includes(tool.name)
+                            ? prev.filter((name) => name !== tool.name)
+                            : [...prev, tool.name],
+                        );
+                      }}
+                    >
+                      <Checkbox
+                        checked={isSelected}
+                        aria-label={`Select ${tool.name}`}
+                      />
+                      <Wrench className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <div className="flex-1">
+                        <div className="font-medium">{tool.name}</div>
+                        {tool.human_desc && (
+                          <div className="text-sm text-muted-foreground">
+                            {tool.human_desc}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                {tools.length === 0 && (
+                  <div className="flex h-32 items-center justify-center">
+                    <p className="text-sm text-muted-foreground">
+                      {t('tools.noToolsAvailable', 'No tools available')}
+                    </p>
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setToolsDialogOpen(false)}
+                >
+                  {t('common.cancel')}
+                </Button>
+                <Button
+                  onClick={() => {
+                    field.onChange(tempSelectedToolNames);
+                    setToolsDialogOpen(false);
+                  }}
+                >
+                  {t('common.confirm')}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </>
       );
 
     case DynamicFormItemType.PROMPT_EDITOR: {

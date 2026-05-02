@@ -24,6 +24,7 @@ spec:
     default: 120
   support_type:
   - llm
+  - rerank
   provider_category: maas
 execution:
   python:

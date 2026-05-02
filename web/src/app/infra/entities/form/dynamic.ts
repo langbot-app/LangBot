@@ -35,6 +35,7 @@ export enum DynamicFormItemType {
   SELECT = 'select',
   LLM_MODEL_SELECTOR = 'llm-model-selector',
   EMBEDDING_MODEL_SELECTOR = 'embedding-model-selector',
+  RERANK_MODEL_SELECTOR = 'rerank-model-selector',
   MODEL_FALLBACK_SELECTOR = 'model-fallback-selector',
   PROMPT_EDITOR = 'prompt-editor',
   UNKNOWN = 'unknown',
@@ -42,7 +43,9 @@ export enum DynamicFormItemType {
   KNOWLEDGE_BASE_MULTI_SELECTOR = 'knowledge-base-multi-selector',
   PLUGIN_SELECTOR = 'plugin-selector',
   BOT_SELECTOR = 'bot-selector',
+  TOOLS_SELECTOR = 'tools-selector',
   WEBHOOK_URL = 'webhook-url',
+  EMBED_CODE = 'embed-code',
 }
 
 export interface IFileConfig {

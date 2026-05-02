@@ -6,6 +6,7 @@ export interface I18nObject {
   th_TH?: string;
   vi_VN?: string;
   es_ES?: string;
+  ru_RU?: string;
 }
 
 export interface ComponentManifest {

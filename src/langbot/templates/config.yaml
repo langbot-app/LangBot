@@ -20,10 +20,14 @@ system:
     edition: community
     recovery_key: ''
     allow_modify_login_info: true
+    disabled_adapters: []
     limitation:
         max_bots: -1
         max_pipelines: -1
         max_extensions: -1
+    task_retention:
+        # Keep at most this many completed async task records in memory
+        completed_limit: 200
     jwt:
         expire: 604800
         secret: ''
@@ -67,6 +71,15 @@ vdb:
         password: 'postgres'
 storage:
     use: local
+    cleanup:
+        # Enable periodic cleanup of local/S3 uploaded files and old log files
+        enabled: true
+        # Cleanup check interval in hours
+        check_interval_hours: 1
+        # Root-level uploaded files older than this will be deleted
+        uploaded_file_retention_days: 7
+        # LangBot log files older than this many days will be deleted
+        log_retention_days: 3
     s3:
         endpoint_url: ''
         access_key_id: ''
@@ -78,6 +91,9 @@ plugin:
     runtime_ws_url: 'ws://langbot_plugin_runtime:5400/control/ws'
     enable_marketplace: true
     display_plugin_debug_url: 'ws://localhost:5401/plugin/debug/ws'
+    binary_storage:
+        # Max bytes for a single plugin binary storage value
+        max_value_bytes: 10485760
 monitoring:
     auto_cleanup:
         # Enable automatic cleanup of expired monitoring records
@@ -86,6 +102,8 @@ monitoring:
         retention_days: 30
         # Cleanup check interval in hours
         check_interval_hours: 1
+        # Number of expired rows to delete per table batch
+        delete_batch_size: 1000
 space:
     # Space service URL for OAuth and API
     url: 'https://space.langbot.app'

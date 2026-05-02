@@ -145,6 +145,7 @@ docker compose up -d
 | [CompShare](https://www.compshare.cn/?ytag=GPU_YY-gh_langbot) | Платформа GPU | ✅ |
 | [PPIO](https://ppinfra.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | Платформа GPU | ✅ |
 | [ShengSuanYun](https://www.shengsuanyun.com/?from=CH_KYIPP758) | Платформа GPU | ✅ |
+| [Qiniu](https://www.qiniu.com/ai/agent) | Шлюз | ✅ |
 
 [→ Смотреть все интеграции](https://link.langbot.app/en/docs/features)
 
