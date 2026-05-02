@@ -1,4 +1,4 @@
-﻿const jaJP = {
+const jaJP = {
   sidebar: {
     home: 'ホーム',
     extensions: '拡張機能',
@@ -37,6 +37,7 @@
     delete: '削除',
     add: '追加',
     select: '選択してください',
+    skill: 'スキル',
     cancel: 'キャンセル',
     submit: '送信',
     error: 'エラー',
@@ -622,6 +623,11 @@
     markAsReadFailed: '既読に設定に失敗しました',
     filterByComponent: 'コンポーネント',
     allComponents: '全部コンポーネント',
+    filterByType: 'タイプ',
+    allTypes: '全部',
+    typePlugin: 'プラグイン',
+    typeMCP: 'MCP',
+    typeSkill: 'スキル',
     requestPlugin: 'プラグインをリクエスト',
     tags: {
       filterByTags: 'タグで絞り込み',

@@ -55,11 +55,20 @@ function MarketPageContent({
     'Parser',
   ];
 
+  const validTypes = ['plugin', 'mcp', 'skill'];
+
   const [searchQuery, setSearchQuery] = useState('');
   const [componentFilter, setComponentFilter] = useState<string>(() => {
     const category = searchParams.get('category');
     if (category && validCategories.includes(category)) {
       return category;
+    }
+    return 'all';
+  });
+  const [typeFilter, setTypeFilter] = useState<string>(() => {
+    const type = searchParams.get('type');
+    if (type && validTypes.includes(type)) {
+      return type;
     }
     return 'all';
   });
@@ -136,6 +145,7 @@ function MarketPageContent({
       version: plugin.latest_version,
       components: plugin.components,
       tags: plugin.tags || [],
+      type: plugin.type,
     });
   }, []);
 
@@ -152,6 +162,7 @@ function MarketPageContent({
         const { sortBy, sortOrder } = getCurrentSort();
         const filterValue =
           componentFilter === 'all' ? undefined : componentFilter;
+        const typeFilterValue = typeFilter === 'all' ? undefined : typeFilter;
 
         // Always use searchMarketplacePlugins to support component filtering and tags filtering
         const response =
@@ -163,6 +174,7 @@ function MarketPageContent({
             sortOrder,
             filterValue,
             selectedTags.length > 0 ? selectedTags : undefined,
+            typeFilterValue,
           );
 
         const data: ApiRespMarketplacePlugins = response;
@@ -313,10 +325,29 @@ function MarketPageContent({
     // fetchPlugins will be called by useEffect when componentFilter changes
   }, []);
 
+  // Handle type filter change
+  const handleTypeFilterChange = useCallback((value: string) => {
+    setTypeFilter(value);
+    setCurrentPage(1);
+    setPlugins([]);
+
+    // Update URL query param to keep it in sync
+    const params = new URLSearchParams(window.location.search);
+    if (value === 'all') {
+      params.delete('type');
+    } else {
+      params.set('type', value);
+    }
+    const newUrl = params.toString()
+      ? `${window.location.pathname}?${params.toString()}`
+      : window.location.pathname;
+    window.history.replaceState({}, '', newUrl);
+  }, []);
+
   // 当排序选项或组件筛选变化时重新加载数据
   useEffect(() => {
     fetchPlugins(1, !!searchQuery.trim(), true);
-  }, [sortOption, componentFilter]);
+  }, [sortOption, componentFilter, typeFilter]);
 
   // Tags 筛选变化时重新搜索
   useEffect(() => {
@@ -529,6 +560,54 @@ function MarketPageContent({
                 >
                   <FileText className="h-4 w-4 mr-1" />
                   {t('plugins.componentName.Parser')}
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+          </div>
+
+          {/* Type filter */}
+          <div className="flex flex-col sm:flex-row items-center gap-2 min-w-0 max-w-full">
+            <span className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">
+              {t('market.filterByType')}:
+            </span>
+            <div className="overflow-x-auto max-w-full [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              <ToggleGroup
+                type="single"
+                spacing={2}
+                size="sm"
+                value={typeFilter}
+                onValueChange={(value) => {
+                  if (value) handleTypeFilterChange(value);
+                }}
+                className="justify-start flex-nowrap"
+              >
+                <ToggleGroupItem
+                  value="all"
+                  aria-label="All types"
+                  className="text-xs sm:text-sm cursor-pointer"
+                >
+                  {t('market.allTypes')}
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="plugin"
+                  aria-label="Plugin"
+                  className="text-xs sm:text-sm cursor-pointer"
+                >
+                  {t('market.typePlugin')}
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="mcp"
+                  aria-label="MCP"
+                  className="text-xs sm:text-sm cursor-pointer"
+                >
+                  {t('market.typeMCP')}
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="skill"
+                  aria-label="Skill"
+                  className="text-xs sm:text-sm cursor-pointer"
+                >
+                  {t('market.typeSkill')}
                 </ToggleGroupItem>
               </ToggleGroup>
             </div>

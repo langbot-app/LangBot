@@ -38,6 +38,7 @@ export class CloudServiceClient extends BaseHttpClient {
     sort_order?: string,
     component_filter?: string,
     tags_filter?: string[],
+    type_filter?: string,
   ): Promise<ApiRespMarketplacePlugins> {
     return this.post<ApiRespMarketplacePlugins>(
       '/api/v1/marketplace/plugins/search',
@@ -49,6 +50,7 @@ export class CloudServiceClient extends BaseHttpClient {
         sort_order,
         component_filter,
         tags_filter,
+        type_filter,
       },
     );
   }

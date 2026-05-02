@@ -38,6 +38,7 @@ function pluginToVO(
     version: plugin.latest_version,
     components: plugin.components,
     tags: plugin.tags || [],
+    type: plugin.type,
   });
 }
 

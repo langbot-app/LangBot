@@ -88,6 +88,8 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
 
         // 转换并比较版本号
         const pluginCards = installedPlugins.map((plugin) => {
+          const marketplaceKey = `${plugin.manifest.manifest.metadata.author}/${plugin.manifest.manifest.metadata.name}`;
+          const marketplacePlugin = marketplacePluginMap.get(marketplaceKey);
           const cardVO = new PluginCardVO({
             author: plugin.manifest.manifest.metadata.author ?? '',
             label: extractI18nObject(plugin.manifest.manifest.metadata.label),
@@ -106,13 +108,12 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
             priority: plugin.priority,
             install_source: plugin.install_source,
             install_info: plugin.install_info,
+            type: marketplacePlugin?.type,
           });
 
           // 检查是否来自市场且有更新
-          if (cardVO.install_source === 'marketplace') {
-            const marketplaceKey = `${cardVO.author}/${cardVO.name}`;
-            const marketplacePlugin = marketplacePluginMap.get(marketplaceKey);
-            if (marketplacePlugin && marketplacePlugin.latest_version) {
+          if (cardVO.install_source === 'marketplace' && marketplacePlugin) {
+            if (marketplacePlugin.latest_version) {
               cardVO.hasUpdate = isNewerVersion(
                 marketplacePlugin.latest_version,
                 cardVO.version,

@@ -42,6 +42,7 @@ export interface PluginV4 {
   latest_version: string;
   components: Record<string, number>;
   status: PluginV4Status;
+  type?: 'plugin' | 'mcp' | 'skill';
   created_at: string;
   updated_at: string;
 }

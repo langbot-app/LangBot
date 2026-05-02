@@ -60,6 +60,24 @@ export default function PluginCardComponent({
                   >
                     v{cardVO.version}
                   </Badge>
+                  {cardVO.type && (
+                    <Badge
+                      variant="outline"
+                      className={`text-[0.7rem] flex-shrink-0 ${
+                        cardVO.type === 'mcp'
+                          ? 'border-sky-500 text-sky-600 dark:border-sky-400 dark:text-sky-300'
+                          : cardVO.type === 'skill'
+                          ? 'border-emerald-500 text-emerald-600 dark:border-emerald-400 dark:text-emerald-300'
+                          : 'border-violet-500 text-violet-600 dark:border-violet-400 dark:text-violet-300'
+                      }`}
+                    >
+                      {cardVO.type === 'mcp'
+                        ? 'MCP'
+                        : cardVO.type === 'skill'
+                        ? t('common.skill')
+                        : t('market.typePlugin')}
+                    </Badge>
+                  )}
                   {cardVO.debug && (
                     <Badge
                       variant="outline"
