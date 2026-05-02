@@ -1,5 +1,6 @@
 import { SidebarChildVO } from '@/app/home/components/home-sidebar/HomeSidebarChild';
 import i18n from '@/i18n';
+import { HardDrive } from 'lucide-react';
 
 const t = (key: string) => {
   return i18n.t(key);
@@ -45,6 +46,18 @@ export const sidebarConfigList = [
     ),
     route: '/home/monitoring',
     description: t('monitoring.description'),
+    helpLink: {
+      en_US: '',
+      zh_Hans: '',
+    },
+    section: 'home',
+  }),
+  new SidebarChildVO({
+    id: 'storage-analysis',
+    name: t('storageAnalysis.title'),
+    icon: <HardDrive className="text-blue-500" />,
+    route: '/home/storage-analysis',
+    description: t('storageAnalysis.description'),
     helpLink: {
       en_US: '',
       zh_Hans: '',

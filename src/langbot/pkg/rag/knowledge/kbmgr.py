@@ -148,52 +148,60 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         supported_extensions = {'txt', 'pdf', 'docx', 'md', 'html'}
         stored_file_tasks = []
 
-        # use utf-8 encoding
-        with zipfile.ZipFile(io.BytesIO(zip_bytes), 'r', metadata_encoding='utf-8') as zip_ref:
-            for file_info in zip_ref.filelist:
-                # skip directories and hidden files
-                if file_info.is_dir() or file_info.filename.startswith('.'):
-                    continue
-
-                _, file_ext = os.path.splitext(file_info.filename)
-                file_extension = file_ext.lstrip('.').lower()
-                if file_extension not in supported_extensions:
-                    self.ap.logger.debug(f'Skipping unsupported file in ZIP: {file_info.filename}')
-                    continue
-
-                try:
-                    file_content = zip_ref.read(file_info.filename)
-
-                    base_name = file_info.filename.replace('/', '_').replace('\\', '_')
-                    file_stem, file_ext = os.path.splitext(base_name)
-                    extension = file_ext.lstrip('.')
-
-                    if file_stem.startswith('__MACOSX'):
+        try:
+            # use utf-8 encoding
+            with zipfile.ZipFile(io.BytesIO(zip_bytes), 'r', metadata_encoding='utf-8') as zip_ref:
+                for file_info in zip_ref.filelist:
+                    # skip directories and hidden files
+                    if file_info.is_dir() or file_info.filename.startswith('.'):
                         continue
 
-                    extracted_file_id = file_stem + '_' + str(uuid.uuid4())[:8] + '.' + extension
-                    # save file to storage
+                    _, file_ext = os.path.splitext(file_info.filename)
+                    file_extension = file_ext.lstrip('.').lower()
+                    if file_extension not in supported_extensions:
+                        self.ap.logger.debug(f'Skipping unsupported file in ZIP: {file_info.filename}')
+                        continue
 
-                    await self.ap.storage_mgr.storage_provider.save(extracted_file_id, file_content)
+                    try:
+                        file_content = zip_ref.read(file_info.filename)
 
-                    task_id = await self.store_file(extracted_file_id, parser_plugin_id=parser_plugin_id)
-                    stored_file_tasks.append(task_id)
+                        base_name = file_info.filename.replace('/', '_').replace('\\', '_')
+                        file_stem, file_ext = os.path.splitext(base_name)
+                        extension = file_ext.lstrip('.')
 
-                    self.ap.logger.info(
-                        f'Extracted and stored file from ZIP: {file_info.filename} -> {extracted_file_id}'
-                    )
+                        if file_stem.startswith('__MACOSX'):
+                            continue
 
-                except Exception as e:
-                    self.ap.logger.warning(f'Failed to extract file {file_info.filename} from ZIP: {e}')
-                    continue
+                        extracted_file_id = file_stem + '_' + str(uuid.uuid4())[:8] + '.' + extension
+                        # save file to storage
 
-        if not stored_file_tasks:
-            raise Exception('No supported files found in ZIP archive')
+                        await self.ap.storage_mgr.storage_provider.save(extracted_file_id, file_content)
 
-        self.ap.logger.info(f'Successfully processed ZIP file {zip_file_id}, extracted {len(stored_file_tasks)} files')
-        await self.ap.storage_mgr.storage_provider.delete(zip_file_id)
+                        task_id = await self.store_file(extracted_file_id, parser_plugin_id=parser_plugin_id)
+                        stored_file_tasks.append(task_id)
 
-        return stored_file_tasks[0] if stored_file_tasks else ''
+                        self.ap.logger.info(
+                            f'Extracted and stored file from ZIP: {file_info.filename} -> {extracted_file_id}'
+                        )
+
+                    except Exception as e:
+                        self.ap.logger.warning(f'Failed to extract file {file_info.filename} from ZIP: {e}')
+                        continue
+
+            if not stored_file_tasks:
+                raise Exception('No supported files found in ZIP archive')
+
+            self.ap.logger.info(
+                f'Successfully processed ZIP file {zip_file_id}, extracted {len(stored_file_tasks)} files'
+            )
+            return stored_file_tasks[0] if stored_file_tasks else ''
+        finally:
+            try:
+                await self.ap.storage_mgr.storage_provider.delete(zip_file_id)
+            except FileNotFoundError:
+                pass
+            except Exception as e:
+                self.ap.logger.warning(f'Failed to cleanup ZIP file {zip_file_id}: {e}')
 
     async def retrieve(self, query: str, settings: dict | None = None) -> list[rag_context.RetrievalResultEntry]:
         # Merge stored retrieval_settings with per-request overrides

@@ -367,6 +367,22 @@ class RuntimeConnectionHandler(handler.Handler):
             owner_type = data['owner_type']
             owner = data['owner']
             value = base64.b64decode(data['value_base64'])
+            max_value_bytes = (
+                self.ap.instance_config.data.get('plugin', {})
+                .get('binary_storage', {})
+                .get(
+                    'max_value_bytes',
+                    10 * 1024 * 1024,
+                )
+            )
+            try:
+                max_value_bytes = int(max_value_bytes)
+            except (TypeError, ValueError):
+                max_value_bytes = 10 * 1024 * 1024
+            if max_value_bytes >= 0 and len(value) > max_value_bytes:
+                return handler.ActionResponse.error(
+                    message=f'Binary storage value exceeds limit ({len(value)} > {max_value_bytes} bytes)',
+                )
 
             result = await self.ap.persistence_mgr.execute_async(
                 sqlalchemy.select(persistence_bstorage.BinaryStorage)
