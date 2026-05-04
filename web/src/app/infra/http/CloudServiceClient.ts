@@ -53,12 +53,12 @@ export class CloudServiceClient extends BaseHttpClient {
           tags_filter,
         },
       ).then((resp) => ({
-        plugins: (resp.mcps || []).map((mcp) => ({
+        plugins: (resp?.mcps || []).map((mcp) => ({
           ...mcp,
           plugin_id: mcp.mcp_id || mcp.plugin_id,
           type: 'mcp' as const,
         })),
-        total: resp.total || 0,
+        total: resp?.total || 0,
       }));
     } else if (type_filter === 'skill') {
       return this.post<{ skills: PluginV4[]; total: number }>(
@@ -72,12 +72,12 @@ export class CloudServiceClient extends BaseHttpClient {
           tags_filter,
         },
       ).then((resp) => ({
-        plugins: (resp.skills || []).map((skill) => ({
+        plugins: (resp?.skills || []).map((skill) => ({
           ...skill,
           plugin_id: skill.skill_id || skill.plugin_id,
           type: 'skill' as const,
         })),
-        total: resp.total || 0,
+        total: resp?.total || 0,
       }));
     }
 

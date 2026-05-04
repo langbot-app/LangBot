@@ -8,14 +8,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Separator } from '@/components/ui/separator';
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from '@/components/ui/toggle-group';
 import {
   Search,
   Wrench,
   AudioWaveform,
-  Hash,
   Book,
-  FileText,
+  SlidersHorizontal,
+  X,
 } from 'lucide-react';
 import PluginMarketCardComponent from './plugin-market-card/PluginMarketCardComponent';
 import { PluginMarketCardVO } from './plugin-market-card/PluginMarketCardVO';
@@ -26,6 +35,7 @@ import { extractI18nObject } from '@/i18n/I18nProvider';
 import { toast } from 'sonner';
 import { ApiRespMarketplacePlugins } from '@/app/infra/entities/api';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { Button } from '@/components/ui/button';
 import { TagsFilter } from './TagsFilter';
 import { PluginTag } from '@/app/infra/http/CloudServiceClient';
 
@@ -57,6 +67,13 @@ function MarketPageContent({
 
   const validTypes = ['plugin', 'mcp', 'skill'];
 
+  const extensionTypeOptions = [
+    { value: 'all', label: t('market.filters.allFormats'), icon: null },
+    { value: 'plugin', label: t('market.typePlugin'), icon: Wrench },
+    { value: 'mcp', label: t('market.typeMCP'), icon: AudioWaveform },
+    { value: 'skill', label: t('market.typeSkill'), icon: Book },
+  ];
+
   const [searchQuery, setSearchQuery] = useState('');
   const [componentFilter, setComponentFilter] = useState<string>(() => {
     const category = searchParams.get('category');
@@ -72,6 +89,7 @@ function MarketPageContent({
     }
     return 'all';
   });
+  const activeAdvancedFilters = typeFilter === 'all' ? 0 : 1;
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [availableTags, setAvailableTags] = useState<PluginTag[]>([]);
   const [tagNames, setTagNames] = useState<Record<string, string>>({});
@@ -149,6 +167,40 @@ function MarketPageContent({
     });
   }, []);
 
+  const transformMCPToVO = useCallback((mcp: any): PluginMarketCardVO => {
+    return new PluginMarketCardVO({
+      pluginId: mcp.author + ' / ' + mcp.name,
+      author: mcp.author,
+      pluginName: mcp.name,
+      label: extractI18nObject(mcp.label),
+      description: extractI18nObject(mcp.description) || t('market.noDescription'),
+      installCount: mcp.install_count || 0,
+      iconURL: mcp.icon || getCloudServiceClientSync().getPluginIconURL(mcp.author, mcp.name),
+      githubURL: mcp.repository,
+      version: mcp.latest_version,
+      components: mcp.components || {},
+      tags: mcp.tags || [],
+      type: 'mcp',
+    });
+  }, [t]);
+
+  const transformSkillToVO = useCallback((skill: any): PluginMarketCardVO => {
+    return new PluginMarketCardVO({
+      pluginId: skill.author + ' / ' + skill.name,
+      author: skill.author,
+      pluginName: skill.name,
+      label: extractI18nObject(skill.label),
+      description: extractI18nObject(skill.description) || t('market.noDescription'),
+      installCount: skill.install_count || 0,
+      iconURL: skill.icon || getCloudServiceClientSync().getPluginIconURL(skill.author, skill.name),
+      githubURL: skill.repository,
+      version: skill.latest_version,
+      components: skill.components || {},
+      tags: skill.tags || [],
+      type: 'skill',
+    });
+  }, [t]);
+
   // 获取插件列表
   const fetchPlugins = useCallback(
     async (page: number, isSearch: boolean = false, reset: boolean = false) => {
@@ -162,32 +214,98 @@ function MarketPageContent({
         const { sortBy, sortOrder } = getCurrentSort();
         const filterValue =
           componentFilter === 'all' ? undefined : componentFilter;
-        const typeFilterValue = typeFilter === 'all' ? undefined : typeFilter;
+        const query = isSearch && searchQuery.trim() ? searchQuery.trim() : '';
 
-        // Always use searchMarketplacePlugins to support component filtering and tags filtering
-        const response =
-          await getCloudServiceClientSync().searchMarketplacePlugins(
-            isSearch && searchQuery.trim() ? searchQuery.trim() : '',
+        let newPlugins: PluginMarketCardVO[] = [];
+        let total = 0;
+
+        if (typeFilter === 'all') {
+          let pluginsResult: PluginMarketCardVO[] = [];
+          let mcpsResult: PluginMarketCardVO[] = [];
+          let skillsResult: PluginMarketCardVO[] = [];
+          let pluginsTotal = 0;
+          let mcpsTotal = 0;
+          let skillsTotal = 0;
+
+          try {
+            const pluginsResponse = await getCloudServiceClientSync().searchMarketplacePlugins(
+              query,
+              page,
+              pageSize,
+              sortBy,
+              sortOrder,
+              filterValue,
+              selectedTags.length > 0 ? selectedTags : undefined,
+              'plugin',
+            );
+            pluginsResult = pluginsResponse.plugins
+              .filter((plugin) => {
+                const keys = Object.keys(plugin.components || {});
+                return !(keys.length > 0 && keys.every((k) => k === 'KnowledgeRetriever'));
+              })
+              .map(transformToVO);
+            pluginsTotal = pluginsResponse.total || 0;
+          } catch (e) {
+            console.warn('Failed to fetch plugins:', e);
+          }
+
+          try {
+            const mcpsResponse = await getCloudServiceClientSync().searchMarketplacePlugins(
+              query,
+              page,
+              pageSize,
+              sortBy,
+              sortOrder,
+              filterValue,
+              selectedTags.length > 0 ? selectedTags : undefined,
+              'mcp',
+            );
+            mcpsResult = (mcpsResponse.plugins || []).map(transformMCPToVO);
+            mcpsTotal = mcpsResponse.total || 0;
+          } catch (e) {
+            console.warn('Failed to fetch mcps:', e);
+          }
+
+          try {
+            const skillsResponse = await getCloudServiceClientSync().searchMarketplacePlugins(
+              query,
+              page,
+              pageSize,
+              sortBy,
+              sortOrder,
+              filterValue,
+              selectedTags.length > 0 ? selectedTags : undefined,
+              'skill',
+            );
+            skillsResult = (skillsResponse.plugins || []).map(transformSkillToVO);
+            skillsTotal = skillsResponse.total || 0;
+          } catch (e) {
+            console.warn('Failed to fetch skills:', e);
+          }
+
+          newPlugins = [...pluginsResult, ...mcpsResult, ...skillsResult];
+          total = pluginsTotal + mcpsTotal + skillsTotal;
+        } else {
+          const response = await getCloudServiceClientSync().searchMarketplacePlugins(
+            query,
             page,
             pageSize,
             sortBy,
             sortOrder,
             filterValue,
             selectedTags.length > 0 ? selectedTags : undefined,
-            typeFilterValue,
+            typeFilter === 'all' ? undefined : typeFilter,
           );
 
-        const data: ApiRespMarketplacePlugins = response;
-        const newPlugins = data.plugins
-          .filter((plugin) => {
-            // Hide plugins that only contain deprecated KnowledgeRetriever components
-            const keys = Object.keys(plugin.components || {});
-            return !(
-              keys.length > 0 && keys.every((k) => k === 'KnowledgeRetriever')
-            );
-          })
-          .map(transformToVO);
-        const total = data.total;
+          const data: ApiRespMarketplacePlugins = response;
+          newPlugins = data.plugins
+            .filter((plugin) => {
+              const keys = Object.keys(plugin.components || {});
+              return !(keys.length > 0 && keys.every((k) => k === 'KnowledgeRetriever'));
+            })
+            .map(transformToVO);
+          total = data.total;
+        }
 
         if (reset || page === 1) {
           setPlugins(newPlugins);
@@ -197,8 +315,8 @@ function MarketPageContent({
 
         setTotal(total);
         setHasMore(
-          data.plugins.length === pageSize &&
-            plugins.length + newPlugins.length < total,
+          newPlugins.length > 0 &&
+            (reset || page === 1 ? newPlugins.length : plugins.length + newPlugins.length) < total,
         );
       } catch (error) {
         console.error('Failed to fetch plugins:', error);
@@ -214,8 +332,11 @@ function MarketPageContent({
       selectedTags,
       pageSize,
       transformToVO,
+      transformMCPToVO,
+      transformSkillToVO,
       plugins.length,
       getCurrentSort,
+      typeFilter,
     ],
   );
 
@@ -460,9 +581,9 @@ function MarketPageContent({
     <div className="h-full flex flex-col">
       {/* Fixed header with search and sort controls */}
       <div className="flex-shrink-0 space-y-4 px-3 sm:px-4 py-4 sm:py-6">
-        {/* Search box and Tags filter */}
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <div className="relative w-full max-w-2xl">
+        {/* Search box */}
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-center gap-3">
+          <div className="relative w-full lg:max-w-xl">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
             <Input
               placeholder={t('market.searchPlaceholder')}
@@ -477,7 +598,6 @@ function MarketPageContent({
               }}
               onKeyPress={(e) => {
                 if (e.key === 'Enter') {
-                  // Immediately search, clear debounce timer
                   if (searchTimeoutRef.current) {
                     clearTimeout(searchTimeoutRef.current);
                   }
@@ -488,138 +608,9 @@ function MarketPageContent({
             />
           </div>
 
-          {/* Tags filter */}
-          <TagsFilter
-            availableTags={availableTags}
-            selectedTags={selectedTags}
-            onTagsChange={handleTagsChange}
-          />
-        </div>
-
-        {/* Component filter and sort */}
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 px-3 sm:px-4">
-          {/* Component filter */}
-          <div className="flex flex-col sm:flex-row items-center gap-2 min-w-0 max-w-full">
-            <span className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">
-              {t('market.filterByComponent')}:
-            </span>
-            <div className="overflow-x-auto max-w-full [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-              <ToggleGroup
-                type="single"
-                spacing={2}
-                size="sm"
-                value={componentFilter}
-                onValueChange={(value) => {
-                  if (value) handleComponentFilterChange(value);
-                }}
-                className="justify-start flex-nowrap"
-              >
-                <ToggleGroupItem
-                  value="all"
-                  aria-label="All components"
-                  className="text-xs sm:text-sm cursor-pointer"
-                >
-                  {t('market.allComponents')}
-                </ToggleGroupItem>
-                <ToggleGroupItem
-                  value="Tool"
-                  aria-label="Tool"
-                  className="text-xs sm:text-sm cursor-pointer"
-                >
-                  <Wrench className="h-4 w-4 mr-1" />
-                  {t('plugins.componentName.Tool')}
-                </ToggleGroupItem>
-                <ToggleGroupItem
-                  value="Command"
-                  aria-label="Command"
-                  className="text-xs sm:text-sm cursor-pointer"
-                >
-                  <Hash className="h-4 w-4 mr-1" />
-                  {t('plugins.componentName.Command')}
-                </ToggleGroupItem>
-                <ToggleGroupItem
-                  value="EventListener"
-                  aria-label="EventListener"
-                  className="text-xs sm:text-sm cursor-pointer"
-                >
-                  <AudioWaveform className="h-4 w-4 mr-1" />
-                  {t('plugins.componentName.EventListener')}
-                </ToggleGroupItem>
-                <ToggleGroupItem
-                  value="KnowledgeEngine"
-                  aria-label="KnowledgeEngine"
-                  className="text-xs sm:text-sm cursor-pointer"
-                >
-                  <Book className="h-4 w-4 mr-1" />
-                  {t('plugins.componentName.KnowledgeEngine')}
-                </ToggleGroupItem>
-                <ToggleGroupItem
-                  value="Parser"
-                  aria-label="Parser"
-                  className="text-xs sm:text-sm cursor-pointer"
-                >
-                  <FileText className="h-4 w-4 mr-1" />
-                  {t('plugins.componentName.Parser')}
-                </ToggleGroupItem>
-              </ToggleGroup>
-            </div>
-          </div>
-
-          {/* Type filter */}
-          <div className="flex flex-col sm:flex-row items-center gap-2 min-w-0 max-w-full">
-            <span className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">
-              {t('market.filterByType')}:
-            </span>
-            <div className="overflow-x-auto max-w-full [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-              <ToggleGroup
-                type="single"
-                spacing={2}
-                size="sm"
-                value={typeFilter}
-                onValueChange={(value) => {
-                  if (value) handleTypeFilterChange(value);
-                }}
-                className="justify-start flex-nowrap"
-              >
-                <ToggleGroupItem
-                  value="all"
-                  aria-label="All types"
-                  className="text-xs sm:text-sm cursor-pointer"
-                >
-                  {t('market.allTypes')}
-                </ToggleGroupItem>
-                <ToggleGroupItem
-                  value="plugin"
-                  aria-label="Plugin"
-                  className="text-xs sm:text-sm cursor-pointer"
-                >
-                  {t('market.typePlugin')}
-                </ToggleGroupItem>
-                <ToggleGroupItem
-                  value="mcp"
-                  aria-label="MCP"
-                  className="text-xs sm:text-sm cursor-pointer"
-                >
-                  {t('market.typeMCP')}
-                </ToggleGroupItem>
-                <ToggleGroupItem
-                  value="skill"
-                  aria-label="Skill"
-                  className="text-xs sm:text-sm cursor-pointer"
-                >
-                  {t('market.typeSkill')}
-                </ToggleGroupItem>
-              </ToggleGroup>
-            </div>
-          </div>
-
-          {/* Sort dropdown */}
-          <div className="flex items-center gap-2 sm:gap-3">
-            <span className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">
-              {t('market.sortBy')}:
-            </span>
+          <div className="flex w-full items-center justify-end gap-2 lg:w-auto">
             <Select value={sortOption} onValueChange={handleSortChange}>
-              <SelectTrigger className="w-40 sm:w-48 text-xs sm:text-sm">
+              <SelectTrigger className="w-[128px] sm:w-40 text-xs sm:text-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -630,7 +621,94 @@ function MarketPageContent({
                 ))}
               </SelectContent>
             </Select>
+
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="relative">
+                  <SlidersHorizontal className="h-4 w-4" />
+                  <span className="hidden sm:inline">{t('market.filters.more')}</span>
+                  {activeAdvancedFilters > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] leading-none text-primary-foreground">
+                      {activeAdvancedFilters}
+                    </span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-[320px] space-y-4">
+                <div>
+                  <div className="text-sm font-medium">{t('market.filters.advancedTitle')}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {t('market.filters.advancedDescription')}
+                  </div>
+                </div>
+                <Separator />
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-muted-foreground">
+                    {t('market.filters.technicalType')}
+                  </div>
+                  <ToggleGroup
+                    type="single"
+                    spacing={2}
+                    size="sm"
+                    value={typeFilter}
+                    onValueChange={(value) => {
+                      if (value) handleTypeFilterChange(value);
+                    }}
+                    className="flex flex-wrap justify-start gap-2"
+                  >
+                    {extensionTypeOptions.map((option) => {
+                      const Icon = option.icon;
+                      return (
+                        <ToggleGroupItem
+                          key={option.value}
+                          value={option.value}
+                          aria-label={option.label}
+                          className="cursor-pointer text-xs"
+                        >
+                          {Icon && <Icon className="mr-1 h-3.5 w-3.5" />}
+                          {option.label}
+                        </ToggleGroupItem>
+                      );
+                    })}
+                  </ToggleGroup>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
+        </div>
+
+        {/* Quick tag filter buttons */}
+        <div className="mx-auto flex w-full max-w-4xl items-center gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:justify-center sm:overflow-visible">
+          <Button
+            type="button"
+            variant={selectedTags.length === 0 ? 'secondary' : 'ghost'}
+            size="sm"
+            className="h-8 shrink-0"
+            onClick={() => handleTagsChange([])}
+          >
+            {t('market.allExtensions')}
+          </Button>
+          {availableTags.map((tag) => {
+            const selected = selectedTags.includes(tag.tag);
+            return (
+              <Button
+                key={tag.tag}
+                type="button"
+                variant={selected ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-8 shrink-0"
+                onClick={() => {
+                  const newTags = selected
+                    ? selectedTags.filter((t) => t !== tag.tag)
+                    : [...selectedTags, tag.tag];
+                  handleTagsChange(newTags);
+                }}
+              >
+                {tagNames[tag.tag] || tag.tag}
+                {selected && <X className="h-3.5 w-3.5" />}
+              </Button>
+            );
+          })}
         </div>
 
         {/* Search results stats */}

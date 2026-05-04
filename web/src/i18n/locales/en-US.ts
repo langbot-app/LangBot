@@ -628,6 +628,14 @@ const enUS = {
     deprecated: 'Deprecated',
     deprecatedTooltip:
       'Please install the corresponding Knowledge Engine plugin.',
+    filters: {
+      allFormats: 'All Formats',
+      more: 'More',
+      advancedTitle: 'Advanced Filters',
+      advancedDescription: 'Filter by extension type',
+      technicalType: 'Technical Type',
+    },
+    allExtensions: 'All Extensions',
     tags: {
       filterByTags: 'Filter by Tags',
       selected: 'selected',

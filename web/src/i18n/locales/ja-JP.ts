@@ -636,6 +636,14 @@ const jaJP = {
       clearAll: 'クリア',
       noTags: 'タグがありません',
     },
+    filters: {
+      allFormats: 'すべての形式',
+      more: 'もっと',
+      advancedTitle: '高度なフィルター',
+      advancedDescription: '拡張子タイプでフィルター',
+      technicalType: '技術タイプ',
+    },
+    allExtensions: 'すべての拡張機能',
     viewDetails: '詳細を表示',
     deprecated: '非推奨',
     deprecatedTooltip:

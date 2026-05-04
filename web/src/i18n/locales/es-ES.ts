@@ -641,6 +641,14 @@ const esES = {
     deprecated: 'Obsoleto',
     deprecatedTooltip:
       'Por favor, instala el plugin de motor de conocimiento correspondiente.',
+    filters: {
+      allFormats: 'Todos los formatos',
+      more: 'Más',
+      advancedTitle: 'Filtros avanzados',
+      advancedDescription: 'Filtrar por tipo de extensión',
+      technicalType: 'Tipo técnico',
+    },
+    allExtensions: 'Todas las extensiones',
     tags: {
       filterByTags: 'Filtrar por etiquetas',
       selected: 'seleccionadas',

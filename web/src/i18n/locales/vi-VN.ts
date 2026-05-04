@@ -631,6 +631,14 @@ const viVN = {
     viewDetails: 'Xem chi tiết',
     deprecated: 'Không còn hỗ trợ',
     deprecatedTooltip: 'Vui lòng cài đặt plugin Công cụ tri thức tương ứng.',
+    filters: {
+      allFormats: 'Tất cả định dạng',
+      more: 'Thêm',
+      advancedTitle: 'Bộ lọc nâng cao',
+      advancedDescription: 'Lọc theo loại phần mở rộng',
+      technicalType: 'Loại kỹ thuật',
+    },
+    allExtensions: 'Tất cả phần mở rộng',
     tags: {
       filterByTags: 'Lọc theo thẻ',
       selected: 'đã chọn',

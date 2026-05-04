@@ -638,6 +638,14 @@ const ruRU = {
     deprecated: 'Устаревший',
     deprecatedTooltip:
       'Пожалуйста, установите соответствующий плагин движка знаний.',
+    filters: {
+      allFormats: 'Все форматы',
+      more: 'Ещё',
+      advancedTitle: 'Расширенные фильтры',
+      advancedDescription: 'Фильтр по типу расширения',
+      technicalType: 'Технический тип',
+    },
+    allExtensions: 'Все расширения',
     tags: {
       filterByTags: 'Фильтр по тегам',
       selected: 'выбрано',

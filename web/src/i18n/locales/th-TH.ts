@@ -619,6 +619,14 @@ const thTH = {
     viewDetails: 'ดูรายละเอียด',
     deprecated: 'เลิกใช้แล้ว',
     deprecatedTooltip: 'กรุณาติดตั้งปลั๊กอินเครื่องมือความรู้ที่เกี่ยวข้อง',
+    filters: {
+      allFormats: 'ทุกรูปแบบ',
+      more: 'เพิ่มเติม',
+      advancedTitle: 'ตัวกรองขั้นสูง',
+      advancedDescription: 'กรองตามประเภทส่วนขยาย',
+      technicalType: 'ประเภทเทคนิค',
+    },
+    allExtensions: 'ส่วนขยายทั้งหมด',
     tags: {
       filterByTags: 'กรองตามแท็ก',
       selected: 'เลือกแล้ว',
