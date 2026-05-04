@@ -22,8 +22,11 @@ spec:
     type: integer
     required: true
     default: 120
-  litellm_provider: openai
   support_type:
   - llm
   - rerank
   provider_category: maas
+execution:
+  python:
+    path: ./bailianchatcmpl.py
+    attr: BailianChatCompletions

@@ -22,7 +22,10 @@ spec:
     type: integer
     required: true
     default: 120
-  litellm_provider: moonshot
   support_type:
   - llm
   provider_category: manufacturer
+execution:
+  python:
+    path: ./moonshotchatcmpl.py
+    attr: MoonshotChatCompletions

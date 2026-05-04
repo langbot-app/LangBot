@@ -29,8 +29,11 @@ spec:
     type: int
     required: true
     default: 120
-  litellm_provider: openai
   support_type:
   - llm
   - text-embedding
   provider_category: maas
+execution:
+  python:
+    path: ./shengsuanyun.py
+    attr: ShengSuanYunChatCompletions

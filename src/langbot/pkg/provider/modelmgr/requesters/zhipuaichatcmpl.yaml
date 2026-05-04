@@ -22,7 +22,10 @@ spec:
     type: integer
     required: true
     default: 120
-  litellm_provider: zhipu
   support_type:
   - llm
   provider_category: manufacturer
+execution:
+  python:
+    path: ./zhipuaichatcmpl.py
+    attr: ZhipuAIChatCompletions

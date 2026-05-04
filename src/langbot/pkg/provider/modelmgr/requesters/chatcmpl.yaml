@@ -22,10 +22,12 @@ spec:
     type: integer
     required: true
     default: 120
-  # LiteLLM provider prefix - when set, uses unified LiteLLMRequester
-  litellm_provider: openai
   support_type:
   - llm
   - text-embedding
   - rerank
   provider_category: manufacturer
+execution:
+  python:
+    path: ./chatcmpl.py
+    attr: OpenAIChatCompletions
