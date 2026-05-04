@@ -22,8 +22,11 @@ spec:
     type: integer
     required: true
     default: 120
-  litellm_provider: openai
   support_type:
   - llm
   - text-embedding
   provider_category: maas
+execution:
+  python:
+    path: ./spacechatcmpl.py
+    attr: LangBotSpaceChatCompletions

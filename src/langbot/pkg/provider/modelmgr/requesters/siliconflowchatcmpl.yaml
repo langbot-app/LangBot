@@ -22,9 +22,12 @@ spec:
     type: integer
     required: true
     default: 120
-  litellm_provider: siliconflow
   support_type:
   - llm
   - text-embedding
   - rerank
   provider_category: maas
+execution:
+  python:
+    path: ./siliconflowchatcmpl.py
+    attr: SiliconFlowChatCompletions

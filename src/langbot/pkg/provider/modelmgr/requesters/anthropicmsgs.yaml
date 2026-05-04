@@ -22,7 +22,10 @@ spec:
     type: integer
     required: true
     default: 120
-  litellm_provider: anthropic
   support_type:
   - llm
   provider_category: manufacturer
+execution:
+  python:
+    path: ./anthropicmsgs.py
+    attr: AnthropicMessages
