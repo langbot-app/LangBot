@@ -3,13 +3,14 @@ import { useRef, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import PluginComponentList from '../PluginComponentList';
 import { Badge } from '@/components/ui/badge';
-import { Info, Package } from 'lucide-react';
+import { Info, Package, Download, ExternalLink } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { Button } from '@/components/ui/button';
 
 export default function PluginMarketCardComponent({
   cardVO,
@@ -21,6 +22,7 @@ export default function PluginMarketCardComponent({
   tagNames?: Record<string, string>;
 }) {
   const { t } = useTranslation();
+  const [isHovered, setIsHovered] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [visibleTags, setVisibleTags] = useState(2);
   const [iconFailed, setIconFailed] = useState(!cardVO.iconURL);
@@ -71,11 +73,10 @@ export default function PluginMarketCardComponent({
   const remainingTags = cardVO.tags ? cardVO.tags.length - visibleTags : 0;
 
   return (
-    <a
-      href={pluginDetailUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="w-[100%] h-[10rem] bg-white rounded-[10px] shadow-[0px_0px_4px_0_rgba(0,0,0,0.2)] p-3 sm:p-[1rem] cursor-pointer hover:shadow-[0px_2px_8px_0_rgba(0,0,0,0.15)] transition-shadow duration-200 dark:bg-[#1f1f22] dark:shadow-[0px_0px_4px_0_rgba(255,255,255,0.1)] dark:hover:shadow-[0px_2px_8px_0_rgba(255,255,255,0.15)] block"
+    <div
+      className="w-[100%] h-[10rem] bg-white rounded-[10px] shadow-[0px_0px_4px_0_rgba(0,0,0,0.2)] p-3 sm:p-[1rem] cursor-pointer hover:shadow-[0px_2px_8px_0_rgba(0,0,0,0.15)] transition-shadow duration-200 dark:bg-[#1f1f22] dark:shadow-[0px_0px_4px_0_rgba(255,255,255,0.1)] dark:hover:shadow-[0px_2px_8px_0_rgba(255,255,255,0.15)] relative"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
       <div className="w-full h-full flex flex-col justify-between">
         <div className="flex flex-row items-start justify-start gap-2 sm:gap-[1.2rem] min-h-0 flex-1 overflow-hidden">
@@ -233,6 +234,42 @@ export default function PluginMarketCardComponent({
           )}
         </div>
       </div>
-    </a>
+
+      <div
+        className={`absolute inset-0 bg-gray-100/55 dark:bg-black/35 rounded-[10px] flex items-center justify-center gap-3 transition-all duration-200 ${
+          isHovered ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+      >
+        <Button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (onInstall) {
+              onInstall(cardVO.author, cardVO.pluginName);
+            }
+          }}
+          className={`bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-sm flex items-center gap-2 transition-all duration-200 ${
+            isHovered ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0'
+          }`}
+          style={{ transitionDelay: isHovered ? '10ms' : '0ms' }}
+        >
+          <Download className="w-4 h-4" />
+          {t('market.install')}
+        </Button>
+        <Button
+          onClick={(e) => {
+            e.stopPropagation();
+            window.open(pluginDetailUrl, '_blank');
+          }}
+          variant="outline"
+          className={`bg-white hover:bg-gray-100 text-gray-900 dark:bg-white dark:hover:bg-gray-100 dark:text-gray-900 px-4 py-2 rounded-lg shadow-sm flex items-center gap-2 transition-all duration-200 ${
+            isHovered ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0'
+          }`}
+          style={{ transitionDelay: isHovered ? '20ms' : '0ms' }}
+        >
+          <ExternalLink className="w-4 h-4" />
+          {t('market.viewDetails')}
+        </Button>
+      </div>
+    </div>
   );
 }
