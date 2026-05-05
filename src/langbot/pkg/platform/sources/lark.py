@@ -434,6 +434,43 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                     'duration': message_content.get('duration', 0),
                 }
             ]
+        elif message.message_type == 'interactive':
+            # Card messages have a different structure:
+            # {"title": "...", "elements": [[{tag, ...}, ...], ...]}
+            # Each top-level array in "elements" is a group of elements on the same row.
+            card_text_parts = []
+
+            title = message_content.get('title', '')
+            if title:
+                card_text_parts.append(title)
+
+            for group in message_content.get('elements', []):
+                if not isinstance(group, list):
+                    group = [group]
+                for element in group:
+                    if not isinstance(element, dict):
+                        continue
+                    tag = element.get('tag', '')
+                    if tag == 'text':
+                        t = element.get('text', '')
+                        if t:
+                            card_text_parts.append(t)
+                    elif tag == 'a':
+                        t = element.get('text', '')
+                        href = element.get('href', '')
+                        if t:
+                            card_text_parts.append(f'[{t}]({href})' if href else t)
+                    elif tag == 'at':
+                        pass  # skip @mentions in card content
+                    elif tag == 'markdown':
+                        t = element.get('content', '')
+                        if t:
+                            card_text_parts.append(t)
+
+            if not card_text_parts:
+                card_text_parts.append('[Card Message]')
+
+            message_content['content'] = [{'tag': 'text', 'text': '\n'.join(card_text_parts), 'style': []}]
 
         for ele in message_content['content']:
             if ele['tag'] == 'text':
@@ -872,10 +909,17 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
                 return P2CardActionTriggerResponse({'toast': {'type': 'error', 'content': '反馈处理失败'}})
 
+        def sync_on_bot_p2p_chat_entered(event):
+            # No-op: this event fires when a user opens a P2P chat with the bot.
+            # LangBot does not need to process it; the handler is registered to
+            # suppress the "processor not found" error from the Lark SDK.
+            pass
+
         event_handler = (
             lark_oapi.EventDispatcherHandler.builder('', '')
             .register_p2_im_message_receive_v1(sync_on_message)
             .register_p2_card_action_trigger(sync_on_card_action)
+            .register_p2_im_chat_access_event_bot_p2p_chat_entered_v1(sync_on_bot_p2p_chat_entered)
             .build()
         )
 
@@ -1634,6 +1678,9 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     await self.logger.error(f'Error in lark card action callback: {traceback.format_exc()}')
                     return {'toast': {'type': 'error', 'content': '反馈处理失败'}}
 
+            elif 'im.chat.access_event.bot_p2p_chat_entered_v1' == type:
+                # No-op: this event fires when a user opens a P2P chat with the bot.
+                pass
             elif 'im.chat.member.bot.added_v1' == type:
                 try:
                     bot_added_welcome_msg = self.config.get('bot_added_welcome', '')
