@@ -1,0 +1,65 @@
+# Wait Node Configuration
+# This file defines the metadata for the Wait workflow node
+# The corresponding Python implementation is in: pkg/workflow/nodes/wait.py
+
+name: wait
+category: control
+icon: "⏳"
+color: '#8b5cf6'
+description: 'workflows.nodes.waitDescription'
+
+inputs:
+  - name: input
+    type: any
+    required: false
+    label:
+      en_US: Input
+      zh_Hans: 输入
+    description:
+      en_US: Input to pass through
+      zh_Hans: 传递的输入
+
+outputs:
+  - name: output
+    type: any
+    label:
+      en_US: Output
+      zh_Hans: 输出
+    description:
+      en_US: Passed through input
+      zh_Hans: 传递的输入
+
+config:
+  - name: wait_type
+    type: select
+    required: true
+    default: duration
+    options:
+      - duration
+      - until
+    label:
+      en_US: Wait Type
+      zh_Hans: 等待类型
+    description:
+      en_US: Type of wait operation
+      zh_Hans: 等待操作的类型
+
+  - name: duration
+    type: integer
+    default: 5
+    label:
+      en_US: Duration (seconds)
+      zh_Hans: 时长（秒）
+    description:
+      en_US: Number of seconds to wait
+      zh_Hans: 等待的秒数
+
+  - name: until_time
+    type: string
+    default: ""
+    label:
+      en_US: Until Time
+      zh_Hans: 直到时间
+    description:
+      en_US: Wait until this time
+      zh_Hans: 等待直到此时间

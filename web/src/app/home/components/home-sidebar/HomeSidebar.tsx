@@ -116,6 +116,7 @@ function compareVersions(v1: string, v2: string): boolean {
 const ENTITY_CATEGORY_IDS = [
   'bots',
   'pipelines',
+  'workflows',
   'knowledge',
   'plugins',
   'mcp',
@@ -126,6 +127,7 @@ type EntityCategoryId = (typeof ENTITY_CATEGORY_IDS)[number];
 const DETAIL_PAGE_CATEGORIES: EntityCategoryId[] = [
   'bots',
   'pipelines',
+  'workflows',
   'knowledge',
   'plugins',
   'mcp',
@@ -135,6 +137,7 @@ const DETAIL_PAGE_CATEGORIES: EntityCategoryId[] = [
 const CREATABLE_CATEGORIES: EntityCategoryId[] = [
   'bots',
   'pipelines',
+  'workflows',
   'knowledge',
   'mcp',
   'plugins',
@@ -144,6 +147,7 @@ const CREATABLE_CATEGORIES: EntityCategoryId[] = [
 const COLLAPSIBLE_ONLY_CATEGORIES: EntityCategoryId[] = [
   'bots',
   'pipelines',
+  'workflows',
   'knowledge',
   'mcp',
 ];
@@ -155,10 +159,11 @@ function isEntityCategory(id: string): id is EntityCategoryId {
 // Map sidebar config IDs to SidebarDataContext keys
 const ENTITY_KEY_MAP: Record<
   EntityCategoryId,
-  'bots' | 'pipelines' | 'knowledgeBases' | 'plugins' | 'mcpServers'
+  'bots' | 'pipelines' | 'workflows' | 'knowledgeBases' | 'plugins' | 'mcpServers'
 > = {
   bots: 'bots',
   pipelines: 'pipelines',
+  workflows: 'workflows',
   knowledge: 'knowledgeBases',
   plugins: 'plugins',
   mcp: 'mcpServers',
@@ -168,6 +173,7 @@ const ENTITY_KEY_MAP: Record<
 const ENTITY_ROUTE_MAP: Record<EntityCategoryId, string> = {
   bots: '/home/bots',
   pipelines: '/home/pipelines',
+  workflows: '/home/workflows',
   knowledge: '/home/knowledge',
   plugins: '/home/plugins',
   mcp: '/home/mcp',
@@ -717,13 +723,13 @@ function NavItems({
                     (isPlugin ? (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <button
-                            type="button"
-                            className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all"
+                          <div
+                            role="button"
+                            className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all cursor-pointer"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <Plus className="size-3.5" />
-                          </button>
+                          </div>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           {systemInfo.enable_marketplace && (
@@ -760,25 +766,25 @@ function NavItems({
                         </DropdownMenuContent>
                       </DropdownMenu>
                     ) : (
-                      <button
-                        type="button"
-                        className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all"
+                      <div
+                        role="button"
+                        className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all cursor-pointer"
                         onClick={(e) => {
                           e.stopPropagation();
                           navigate(`${routePrefix}?id=new`);
                         }}
                       >
                         <Plus className="size-3.5" />
-                      </button>
+                      </div>
                     ))}
                   <CollapsibleTrigger asChild>
-                    <button
-                      type="button"
-                      className="p-1 rounded-sm hover:bg-sidebar-accent"
+                    <div
+                      role="button"
+                      className="p-1 rounded-sm hover:bg-sidebar-accent cursor-pointer"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <ChevronRight className="size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                    </button>
+                    </div>
                   </CollapsibleTrigger>
                 </div>
               </SidebarMenuButton>

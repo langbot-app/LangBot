@@ -1,0 +1,78 @@
+# Switch Node Configuration
+# This file defines the metadata for the Switch workflow node
+# The corresponding Python implementation is in: pkg/workflow/nodes/switch.py
+
+name: switch
+category: control
+icon: "🔀"
+color: '#8b5cf6'
+description: 'workflows.nodes.switchDescription'
+
+inputs:
+  - name: input
+    type: any
+    label:
+      en_US: Input
+      zh_Hans: 输入
+    description:
+      en_US: Value to switch on
+      zh_Hans: 用于切换的值
+
+outputs:
+  - name: case_1
+    type: any
+    label:
+      en_US: Case 1
+      zh_Hans: 情况 1
+    description:
+      en_US: Case 1 output
+      zh_Hans: 情况 1 输出
+  - name: case_2
+    type: any
+    label:
+      en_US: Case 2
+      zh_Hans: 情况 2
+    description:
+      en_US: Case 2 output
+      zh_Hans: 情况 2 输出
+  - name: default
+    type: any
+    label:
+      en_US: Default
+      zh_Hans: 默认
+    description:
+      en_US: Default output
+      zh_Hans: 默认输出
+
+config:
+  - name: switch_expression
+    type: string
+    required: true
+    default: "{{input}}"
+    label:
+      en_US: Switch Expression
+      zh_Hans: 开关表达式
+    description:
+      en_US: Expression to evaluate for switching
+      zh_Hans: 用于切换的表达式
+
+  - name: cases
+    type: json
+    required: true
+    default: "[]"
+    label:
+      en_US: Cases
+      zh_Hans: 情况
+    description:
+      en_US: Define cases as JSON array
+      zh_Hans: 使用 JSON 数组定义情况
+
+  - name: case_sensitive
+    type: boolean
+    default: true
+    label:
+      en_US: Case Sensitive
+      zh_Hans: 区分大小写
+    description:
+      en_US: Whether string comparisons are case-sensitive
+      zh_Hans: 字符串比较是否区分大小写

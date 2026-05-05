@@ -1,0 +1,138 @@
+# Webhook Trigger Node Configuration
+# This file defines the metadata for the Webhook Trigger workflow node
+# The corresponding Python implementation is in: pkg/workflow/nodes/webhook_trigger.py
+
+name: webhook_trigger
+category: trigger
+icon: "🌐"
+color: '#22c55e'
+description: 'workflows.nodes.webhookTriggerDescription'
+
+inputs: []
+
+outputs:
+  - name: body
+    type: object
+    label:
+      en_US: Body
+      zh_Hans: 请求体
+    description:
+      en_US: Request body data
+      zh_Hans: 请求体数据
+  - name: headers
+    type: object
+    label:
+      en_US: Headers
+      zh_Hans: 请求头
+    description:
+      en_US: Request headers
+      zh_Hans: 请求头
+  - name: query
+    type: object
+    label:
+      en_US: Query
+      zh_Hans: 查询参数
+    description:
+      en_US: Query parameters
+      zh_Hans: 查询参数
+  - name: method
+    type: string
+    label:
+      en_US: Method
+      zh_Hans: HTTP 方法
+    description:
+      en_US: HTTP method
+      zh_Hans: HTTP 请求方法
+
+config:
+  - name: webhook_path
+    type: string
+    required: true
+    default: ""
+    label:
+      en_US: Webhook Path
+      zh_Hans: Webhook 路径
+    description:
+      en_US: Unique path for this webhook
+      zh_Hans: 此 Webhook 的唯一路径
+
+  - name: auth_type
+    type: select
+    required: true
+    default: none
+    options:
+      - none
+      - token
+      - signature
+      - basic
+    label:
+      en_US: Authentication
+      zh_Hans: 认证方式
+    description:
+      en_US: How to authenticate incoming webhook requests
+      zh_Hans: 如何验证传入的 Webhook 请求
+
+  - name: auth_token
+    type: string
+    default: ""
+    label:
+      en_US: Auth Token
+      zh_Hans: 认证令牌
+    description:
+      en_US: Token or secret for authentication
+      zh_Hans: 用于认证的令牌或密钥
+
+  - name: allowed_ips
+    type: json
+    default: []
+    label:
+      en_US: Allowed IPs
+      zh_Hans: 允许的 IP
+    description:
+      en_US: List of allowed IP addresses
+      zh_Hans: 允许的 IP 地址列表
+
+  - name: allowed_methods
+    type: json
+    default: ["POST"]
+    label:
+      en_US: Allowed Methods
+      zh_Hans: 允许的方法
+    description:
+      en_US: Allowed HTTP methods
+      zh_Hans: 允许的 HTTP 方法
+
+  - name: content_type
+    type: select
+    default: "application/json"
+    options:
+      - "application/json"
+      - "application/x-www-form-urlencoded"
+      - "multipart/form-data"
+      - "text/plain"
+    label:
+      en_US: Content Type
+      zh_Hans: 内容类型
+    description:
+      en_US: Expected Content-Type
+      zh_Hans: 期望的内容类型
+
+  - name: validation
+    type: json
+    default: "{}"
+    label:
+      en_US: Validation Rules
+      zh_Hans: 验证规则
+    description:
+      en_US: Request validation rules
+      zh_Hans: 请求验证规则
+
+  - name: timeout
+    type: integer
+    default: 30
+    label:
+      en_US: Timeout (seconds)
+      zh_Hans: 超时时间（秒）
+    description:
+      en_US: Request timeout in seconds
+      zh_Hans: 请求超时时间（秒）

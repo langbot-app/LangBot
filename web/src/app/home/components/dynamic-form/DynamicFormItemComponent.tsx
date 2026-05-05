@@ -3,6 +3,7 @@ import {
   IDynamicFormItemSchema,
   IFileConfig,
 } from '@/app/infra/entities/form/dynamic';
+import type { I18nObject } from '@/app/infra/entities/common';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -28,7 +29,7 @@ import {
 } from '@/app/infra/entities/api';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
-import { extractI18nObject } from '@/i18n/I18nProvider';
+import { resolveI18nLabel, maybeTranslateKey } from '@/app/home/workflows/components/workflow-editor/workflow-i18n';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -43,6 +44,7 @@ import {
   Plus,
   X,
   Eye,
+  EyeOff,
   Wrench,
   Trash2,
   Sparkles,
@@ -62,6 +64,31 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import ModelsDialog from '@/app/home/components/models-dialog/ModelsDialog';
+
+const resolveOptionLabel = (
+  label: unknown,
+  fallback: string,
+): string => {
+  if (!label || typeof label !== 'object') return fallback;
+  return resolveI18nLabel(label as Record<string, string> | I18nObject) || fallback;
+};
+
+const getSelectedOptionLabel = (
+  options: IDynamicFormItemSchema['options'],
+  value: unknown,
+): string | null => {
+  if (typeof value !== 'string' || !options?.length) return null;
+  const matched = options.find((option) => option.name === value);
+  if (!matched) return null;
+  return resolveOptionLabel(matched.label, matched.name);
+};
+
+const resolveModelLabel = (model: {
+  name: string;
+  display_name?: string;
+}): string => {
+  return maybeTranslateKey(model.display_name || model.name) || model.display_name || model.name;
+};
 
 export default function DynamicFormItemComponent({
   config,
@@ -88,6 +115,7 @@ export default function DynamicFormItemComponent({
   );
   const { t } = useTranslation();
   const [modelsDialogOpen, setModelsDialogOpen] = useState(false);
+  const [secretVisible, setSecretVisible] = useState(false);
 
   const fetchLlmModels = () => {
     httpClient
@@ -280,7 +308,7 @@ export default function DynamicFormItemComponent({
                     onClick={() => field.onChange(option.name)}
                   >
                     <div className="flex flex-col gap-0.5">
-                      <span>{extractI18nObject(option.label)}</span>
+                      <span>{resolveOptionLabel(option.label, option.name)}</span>
                       <span className="text-xs text-muted-foreground">
                         {option.name}
                       </span>
@@ -292,24 +320,65 @@ export default function DynamicFormItemComponent({
           </div>
         );
       }
-      return <Input className="max-w-md" {...field} />;
+      return <Input className="max-w-md" {...field} value={field.value ?? ''} />;
+
+    case DynamicFormItemType.SECRET:
+      const secretValue = typeof field.value === 'string' ? field.value : '';
+      const secretPlaceholder = resolveI18nLabel(config.label) || config.name;
+      return (
+        <div className="max-w-md flex items-center gap-1.5">
+          <Input
+            className="flex-1 transition-colors hover:bg-muted/60"
+            type={secretVisible ? 'text' : 'password'}
+            autoComplete="off"
+            placeholder={secretPlaceholder}
+            value={secretValue}
+            onChange={(e) => field.onChange(e.target.value)}
+            onBlur={field.onBlur}
+            name={field.name}
+            ref={field.ref}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-9 w-9 shrink-0 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setSecretVisible((prev) => !prev)}
+          >
+            {secretVisible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+          </Button>
+        </div>
+      );
 
     case DynamicFormItemType.TEXT:
-      return <Textarea {...field} className="min-h-[120px] max-w-2xl" />;
+      // Ensure value is always a string to avoid [object Object] display
+      const textValue = typeof field.value === 'string'
+        ? field.value
+        : (field.value != null ? JSON.stringify(field.value, null, 2) : '');
+      return (
+        <Textarea
+          {...field}
+          value={textValue}
+          onChange={(e) => field.onChange(e.target.value)}
+          className="min-h-[120px] max-w-2xl"
+        />
+      );
 
     case DynamicFormItemType.BOOLEAN:
-      return <Switch checked={field.value} onCheckedChange={field.onChange} />;
+      return <Switch checked={!!field.value} onCheckedChange={field.onChange} />;
 
     case DynamicFormItemType.STRING_ARRAY:
+      const arrayValue = Array.isArray(field.value) ? field.value : [];
       return (
         <div className="space-y-2 max-w-md">
-          {field.value.map((item: string, index: number) => (
+          {arrayValue.map((item: string, index: number) => (
             <div key={index} className="flex gap-1.5 items-center">
               <Input
                 className="flex-1"
-                value={item}
+                value={item ?? ''}
                 onChange={(e) => {
-                  const newValue = [...field.value];
+                  const newValue = [...(Array.isArray(field.value) ? field.value : [])];
                   newValue[index] = e.target.value;
                   field.onChange(newValue);
                 }}
@@ -320,7 +389,7 @@ export default function DynamicFormItemComponent({
                 size="icon"
                 className="shrink-0 text-muted-foreground hover:text-destructive"
                 onClick={() => {
-                  const newValue = field.value.filter(
+                  const newValue = (Array.isArray(field.value) ? field.value : []).filter(
                     (_: string, i: number) => i !== index,
                   );
                   field.onChange(newValue);
@@ -335,7 +404,7 @@ export default function DynamicFormItemComponent({
             variant="outline"
             className="w-full border-dashed text-muted-foreground hover:text-foreground"
             onClick={() => {
-              field.onChange([...field.value, '']);
+              field.onChange([...(Array.isArray(field.value) ? field.value : []), '']);
             }}
           >
             <Plus className="size-4 mr-1.5" />
@@ -345,20 +414,24 @@ export default function DynamicFormItemComponent({
       );
 
     case DynamicFormItemType.SELECT:
+      const selectedOptionLabel = getSelectedOptionLabel(config.options, field.value);
       return (
-        <Select value={field.value} onValueChange={field.onChange}>
-          <SelectTrigger className="max-w-md bg-[#ffffff] dark:bg-[#2a2a2e]">
-            <SelectValue placeholder={t('common.select')} />
+        <Select
+          value={typeof field.value === 'string' ? field.value : ''}
+          onValueChange={field.onChange}
+        >
+          <SelectTrigger className="max-w-md bg-[#ffffff] dark:bg-[#2a2a2e] hover:bg-muted/60 transition-colors">
+            {selectedOptionLabel ? (
+              <span className="truncate">{selectedOptionLabel}</span>
+            ) : (
+              <SelectValue placeholder={t('common.select')} />
+            )}
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
               {config.options?.map((option) => (
-                <SelectItem
-                  key={option.name}
-                  value={option.name}
-                  description={option.name}
-                >
-                  {extractI18nObject(option.label)}
+                <SelectItem key={option.name} value={option.name}>
+                  {resolveOptionLabel(option.label, option.name)}
                 </SelectItem>
               ))}
             </SelectGroup>
@@ -411,18 +484,18 @@ export default function DynamicFormItemComponent({
       return (
         <div className="max-w-md flex items-center gap-1.5">
           <div className="flex-1">
-            <Select value={field.value} onValueChange={field.onChange}>
+            <Select value={field.value ?? ''} onValueChange={field.onChange}>
               <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
                 <SelectValue placeholder={t('models.selectModel')} />
               </SelectTrigger>
               <SelectContent>
                 {Object.entries(groupedModels).map(([providerName, models]) => (
-                  <SelectGroup key={providerName}>
+                  <SelectGroup key={`llm-regular-${providerName}`}>
                     <SelectLabel>{providerName}</SelectLabel>
                     {models.map((model) => (
                       <SelectItem key={model.uuid} value={model.uuid}>
                         <span className="inline-flex items-center gap-1">
-                          {model.name}
+                          {resolveModelLabel(model)}
                           {model.abilities?.includes('vision') && (
                             <Eye className="h-3 w-3 text-muted-foreground" />
                           )}
@@ -464,12 +537,12 @@ export default function DynamicFormItemComponent({
                         : previewModelNames
                       )
                         .slice(0, 3)
-                        .map((name) => (
+                        .map((name, index) => (
                           <div
-                            key={name}
+                            key={`llm-preview-${name}-${index}`}
                             className="relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm text-muted-foreground/60"
                           >
-                            {name}
+                            {maybeTranslateKey(name) || name}
                           </div>
                         ))}
                       {/* Blurred remaining models with login overlay */}
@@ -483,12 +556,12 @@ export default function DynamicFormItemComponent({
                             : previewModelNames
                           )
                             .slice(3)
-                            .map((name) => (
+                            .map((name, index) => (
                               <div
-                                key={name}
+                                key={`llm-preview-blur-${name}-${index}`}
                                 className="flex w-full items-center py-1.5 pl-8 pr-2 text-sm text-muted-foreground/40 blur-[2px]"
                               >
-                                {name}
+                                {maybeTranslateKey(name) || name}
                               </div>
                             ))}
                         </div>
@@ -516,7 +589,7 @@ export default function DynamicFormItemComponent({
                   // User is logged into Space — show space models normally
                   Object.entries(groupedSpaceModels).map(
                     ([providerName, models]) => (
-                      <SelectGroup key={providerName}>
+                      <SelectGroup key={`llm-space-${providerName}`}>
                         <SelectLabel>
                           <span className="inline-flex items-center gap-1.5">
                             <Sparkles className="h-3.5 w-3.5 text-purple-500" />
@@ -526,7 +599,7 @@ export default function DynamicFormItemComponent({
                         {models.map((model) => (
                           <SelectItem key={model.uuid} value={model.uuid}>
                             <span className="inline-flex items-center gap-1">
-                              {model.name}
+                              {resolveModelLabel(model)}
                               {model.abilities?.includes('vision') && (
                                 <Eye className="h-3 w-3 text-muted-foreground" />
                               )}
@@ -578,18 +651,18 @@ export default function DynamicFormItemComponent({
 
       return (
         <div className="max-w-md">
-          <Select value={field.value} onValueChange={field.onChange}>
+          <Select value={field.value ?? ''} onValueChange={field.onChange}>
             <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
               <SelectValue placeholder={t('knowledge.selectEmbeddingModel')} />
             </SelectTrigger>
             <SelectContent>
               {Object.entries(groupedEmbeddingModels).map(
                 ([providerName, models]) => (
-                  <SelectGroup key={providerName}>
+                  <SelectGroup key={`embedding-${providerName}`}>
                     <SelectLabel>{providerName}</SelectLabel>
                     {models.map((model) => (
                       <SelectItem key={model.uuid} value={model.uuid}>
-                        {model.name}
+                        {resolveModelLabel(model)}
                       </SelectItem>
                     ))}
                   </SelectGroup>
@@ -624,11 +697,11 @@ export default function DynamicFormItemComponent({
               <SelectItem value="__none__">{t('common.none')}</SelectItem>
               {Object.entries(groupedRerankModels).map(
                 ([providerName, models]) => (
-                  <SelectGroup key={providerName}>
+                  <SelectGroup key={`rerank-${providerName}`}>
                     <SelectLabel>{providerName}</SelectLabel>
                     {models.map((model) => (
                       <SelectItem key={model.uuid} value={model.uuid}>
-                        {model.name}
+                        {resolveModelLabel(model)}
                       </SelectItem>
                     ))}
                   </SelectGroup>
@@ -712,19 +785,19 @@ export default function DynamicFormItemComponent({
         onChange: (val: string) => void,
         placeholder: string,
       ) => (
-        <Select value={value} onValueChange={onChange}>
+        <Select value={value ?? ''} onValueChange={onChange}>
           <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
             <SelectValue placeholder={placeholder} />
           </SelectTrigger>
           <SelectContent>
             {Object.entries(groupedModelsForFallback).map(
               ([providerName, models]) => (
-                <SelectGroup key={providerName}>
+                <SelectGroup key={`fallback-regular-${providerName}`}>
                   <SelectLabel>{providerName}</SelectLabel>
                   {models.map((model) => (
                     <SelectItem key={model.uuid} value={model.uuid}>
                       <span className="inline-flex items-center gap-1">
-                        {model.name}
+                        {resolveModelLabel(model)}
                         {model.abilities?.includes('vision') && (
                           <Eye className="h-3 w-3 text-muted-foreground" />
                         )}
@@ -767,12 +840,12 @@ export default function DynamicFormItemComponent({
                     : fbPreviewModelNames
                   )
                     .slice(0, 3)
-                    .map((name) => (
+                    .map((name, index) => (
                       <div
-                        key={name}
+                        key={`fallback-preview-${name}-${index}`}
                         className="relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm text-muted-foreground/60"
                       >
-                        {name}
+                        {maybeTranslateKey(name) || name}
                       </div>
                     ))}
                   {/* Blurred remaining models with login overlay */}
@@ -786,12 +859,12 @@ export default function DynamicFormItemComponent({
                         : fbPreviewModelNames
                       )
                         .slice(3)
-                        .map((name) => (
+                        .map((name, index) => (
                           <div
-                            key={name}
+                            key={`fallback-preview-blur-${name}-${index}`}
                             className="flex w-full items-center py-1.5 pl-8 pr-2 text-sm text-muted-foreground/40 blur-[2px]"
                           >
-                            {name}
+                            {maybeTranslateKey(name) || name}
                           </div>
                         ))}
                     </div>
@@ -819,7 +892,7 @@ export default function DynamicFormItemComponent({
               // User is logged into Space — show space models normally
               Object.entries(fbGroupedSpaceModels).map(
                 ([providerName, models]) => (
-                  <SelectGroup key={providerName}>
+                  <SelectGroup key={`fallback-space-${providerName}`}>
                     <SelectLabel>
                       <span className="inline-flex items-center gap-1.5">
                         <Sparkles className="h-3.5 w-3.5 text-purple-500" />
@@ -829,7 +902,7 @@ export default function DynamicFormItemComponent({
                     {models.map((model) => (
                       <SelectItem key={model.uuid} value={model.uuid}>
                         <span className="inline-flex items-center gap-1">
-                          {model.name}
+                          {resolveModelLabel(model)}
                           {model.abilities?.includes('vision') && (
                             <Eye className="h-3 w-3 text-muted-foreground" />
                           )}
@@ -990,7 +1063,7 @@ export default function DynamicFormItemComponent({
       const kbsByEngine = knowledgeBases.reduce(
         (acc, kb) => {
           const engineName = kb.knowledge_engine?.name
-            ? extractI18nObject(kb.knowledge_engine.name)
+            ? resolveI18nLabel(kb.knowledge_engine.name) || t('knowledge.unknownEngine')
             : t('knowledge.unknownEngine');
           if (!acc[engineName]) {
             acc[engineName] = [];
@@ -1002,7 +1075,7 @@ export default function DynamicFormItemComponent({
       );
 
       return (
-        <Select value={field.value} onValueChange={field.onChange}>
+        <Select value={field.value ?? '__none__'} onValueChange={field.onChange}>
           <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
             {field.value && field.value !== '__none__' ? (
               (() => {
@@ -1053,7 +1126,7 @@ export default function DynamicFormItemComponent({
       const multiKbsByEngine = knowledgeBases.reduce(
         (acc, kb) => {
           const engineName = kb.knowledge_engine?.name
-            ? extractI18nObject(kb.knowledge_engine.name)
+            ? resolveI18nLabel(kb.knowledge_engine.name) || t('knowledge.unknownEngine')
             : t('knowledge.unknownEngine');
           if (!acc[engineName]) {
             acc[engineName] = [];
@@ -1064,12 +1137,15 @@ export default function DynamicFormItemComponent({
         {} as Record<string, typeof knowledgeBases>,
       );
 
+      // Ensure field.value is always an array
+      const safeValue = Array.isArray(field.value) ? field.value : [];
+
       return (
         <>
           <div className="space-y-2">
-            {field.value && field.value.length > 0 ? (
+            {safeValue.length > 0 ? (
               <div className="space-y-2">
-                {field.value.map((kbId: string) => {
+                {safeValue.map((kbId: string) => {
                   const currentKb = knowledgeBases.find(
                     (base) => base.uuid === kbId,
                   );
@@ -1091,9 +1167,9 @@ export default function DynamicFormItemComponent({
                             {currentKb.name}
                             {currentKb.knowledge_engine?.name && (
                               <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300">
-                                {extractI18nObject(
+                                {resolveI18nLabel(
                                   currentKb.knowledge_engine.name,
-                                )}
+                                ) || t('knowledge.unknownEngine')}
                               </span>
                             )}
                           </div>
@@ -1109,7 +1185,7 @@ export default function DynamicFormItemComponent({
                         variant="ghost"
                         size="icon"
                         onClick={() => {
-                          const newValue = field.value.filter(
+                          const newValue = safeValue.filter(
                             (id: string) => id !== kbId,
                           );
                           field.onChange(newValue);
@@ -1133,7 +1209,7 @@ export default function DynamicFormItemComponent({
           <Button
             type="button"
             onClick={() => {
-              setTempSelectedKBIds(field.value || []);
+              setTempSelectedKBIds(safeValue);
               setKbDialogOpen(true);
             }}
             variant="outline"
@@ -1220,7 +1296,7 @@ export default function DynamicFormItemComponent({
 
     case DynamicFormItemType.BOT_SELECTOR:
       return (
-        <Select value={field.value} onValueChange={field.onChange}>
+        <Select value={field.value ?? ''} onValueChange={field.onChange}>
           <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
             <SelectValue placeholder={t('bots.selectBot')} />
           </SelectTrigger>
@@ -1643,6 +1719,6 @@ export default function DynamicFormItemComponent({
       );
 
     default:
-      return <Input {...field} />;
+      return <Input {...field} value={field.value ?? ''} />;
   }
 }

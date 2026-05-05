@@ -1,0 +1,111 @@
+# Knowledge Retrieval Node Configuration
+# This file defines the metadata for the Knowledge Retrieval workflow node
+# The corresponding Python implementation is in: pkg/workflow/nodes/knowledge_retrieval.py
+
+name: knowledge_retrieval
+category: process
+icon: "📚"
+color: '#8b5cf6'
+description: 'workflows.nodes.knowledgeRetrievalDescription'
+
+inputs:
+  - name: query
+    type: string
+    label:
+      en_US: Query
+      zh_Hans: 查询
+    description:
+      en_US: Query text to search for
+      zh_Hans: 要搜索的查询文本
+
+outputs:
+  - name: results
+    type: array
+    label:
+      en_US: Results
+      zh_Hans: 结果
+    description:
+      en_US: Retrieved documents/chunks
+      zh_Hans: 检索到的文档/块
+  - name: context
+    type: string
+    label:
+      en_US: Context
+      zh_Hans: 上下文
+    description:
+      en_US: Concatenated text from all results
+      zh_Hans: 所有结果的连接文本
+  - name: scores
+    type: array
+    label:
+      en_US: Scores
+      zh_Hans: 分数
+    description:
+      en_US: Similarity scores for each result
+      zh_Hans: 每个结果的相似度分数
+
+config:
+  - name: knowledge_bases
+    type: json
+    required: true
+    default: []
+    label:
+      en_US: Knowledge Bases
+      zh_Hans: 知识库
+    description:
+      en_US: Select knowledge bases to search
+      zh_Hans: 选择要搜索的知识库
+
+  - name: top_k
+    type: integer
+    default: 5
+    label:
+      en_US: Top K Results
+      zh_Hans: 返回数量 (Top K)
+    description:
+      en_US: Number of top results to retrieve
+      zh_Hans: 返回的最相关结果数量
+
+  - name: similarity_threshold
+    type: number
+    default: 0.5
+    label:
+      en_US: Similarity Threshold
+      zh_Hans: 相似度阈值
+    description:
+      en_US: Minimum similarity score for results
+      zh_Hans: 结果的最小相似度分数
+
+  - name: retrieval_mode
+    type: select
+    default: vector
+    options:
+      - vector
+      - hybrid
+      - keyword
+    label:
+      en_US: Retrieval Mode
+      zh_Hans: 检索模式
+    description:
+      en_US: Method used for retrieving documents
+      zh_Hans: 用于检索文档的方法
+
+  - name: rerank_enabled
+    type: boolean
+    default: false
+    label:
+      en_US: Enable Reranking
+      zh_Hans: 启用重排序
+    description:
+      en_US: Use a reranking model to improve result relevance
+      zh_Hans: 使用重排序模型提高结果相关性
+
+  - name: rerank_model
+    type: string
+    default: ""
+    label:
+      en_US: Rerank Model
+      zh_Hans: 重排序模型
+    description:
+      en_US: Model to use for reranking results
+      zh_Hans: 用于结果重排序的模型

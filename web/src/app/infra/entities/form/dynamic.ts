@@ -14,7 +14,7 @@ export interface IDynamicFormItemSchema {
   name: string;
   required: boolean;
   type: DynamicFormItemType;
-  description?: I18nObject;
+  description?: I18nObject | string;
   options?: IDynamicFormItemOption[];
   show_if?: IShowIfCondition;
 
@@ -28,6 +28,7 @@ export enum DynamicFormItemType {
   FLOAT = 'float',
   BOOLEAN = 'boolean',
   STRING = 'string',
+  SECRET = 'secret',
   TEXT = 'text',
   STRING_ARRAY = 'array[string]',
   FILE = 'file',

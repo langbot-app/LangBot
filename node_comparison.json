@@ -1,0 +1,1468 @@
+{
+  "yaml_nodes": {
+    "call_pipeline": {
+      "category": "action",
+      "inputs": [
+        "query",
+        "context"
+      ],
+      "outputs": [
+        "response",
+        "result"
+      ],
+      "config": [
+        "pipeline_uuid",
+        "inherit_context",
+        "timeout"
+      ]
+    },
+    "code_executor": {
+      "category": "process",
+      "inputs": [
+        "input"
+      ],
+      "outputs": [
+        "output",
+        "logs"
+      ],
+      "config": [
+        "language",
+        "code",
+        "timeout"
+      ]
+    },
+    "condition": {
+      "category": "control",
+      "inputs": [
+        "input"
+      ],
+      "outputs": [
+        "true",
+        "false"
+      ],
+      "config": [
+        "condition_type",
+        "expression",
+        "left_value",
+        "operator",
+        "right_value",
+        "expected_type"
+      ]
+    },
+    "coze_bot": {
+      "category": "integration",
+      "inputs": [
+        "query",
+        "conversation_id"
+      ],
+      "outputs": [
+        "answer",
+        "conversation_id",
+        "success"
+      ],
+      "config": [
+        "api-key",
+        "bot-id",
+        "api-base",
+        "auto-save-history",
+        "timeout"
+      ]
+    },
+    "cron_trigger": {
+      "category": "trigger",
+      "inputs": [],
+      "outputs": [
+        "trigger_time",
+        "context"
+      ],
+      "config": [
+        "cron_expression",
+        "timezone",
+        "description",
+        "enabled"
+      ]
+    },
+    "data_transform": {
+      "category": "process",
+      "inputs": [
+        "data"
+      ],
+      "outputs": [
+        "result"
+      ],
+      "config": [
+        "transform_type",
+        "template",
+        "expression"
+      ]
+    },
+    "database_query": {
+      "category": "integration",
+      "inputs": [
+        "parameters"
+      ],
+      "outputs": [
+        "results",
+        "row_count",
+        "success"
+      ],
+      "config": [
+        "connection_type",
+        "connection_string",
+        "query",
+        "query_type",
+        "timeout"
+      ]
+    },
+    "dify_knowledge_query": {
+      "category": "integration",
+      "inputs": [
+        "query"
+      ],
+      "outputs": [
+        "results",
+        "success"
+      ],
+      "config": [
+        "base-url",
+        "api-key",
+        "dataset_id"
+      ]
+    },
+    "dify_workflow": {
+      "category": "integration",
+      "inputs": [
+        "query",
+        "conversation_id"
+      ],
+      "outputs": [
+        "answer",
+        "conversation_id",
+        "success"
+      ],
+      "config": [
+        "base-url",
+        "base-prompt",
+        "app-type",
+        "api-key"
+      ]
+    },
+    "end": {
+      "category": "control",
+      "inputs": [
+        "input"
+      ],
+      "outputs": [],
+      "config": [
+        "status",
+        "message"
+      ]
+    },
+    "event_trigger": {
+      "category": "trigger",
+      "inputs": [],
+      "outputs": [
+        "event",
+        "event_type",
+        "context"
+      ],
+      "config": [
+        "event_type",
+        "source_filter",
+        "platforms"
+      ]
+    },
+    "http_request": {
+      "category": "action",
+      "inputs": [
+        "body",
+        "variables"
+      ],
+      "outputs": [
+        "response",
+        "status_code",
+        "headers",
+        "success"
+      ],
+      "config": [
+        "method",
+        "url",
+        "headers",
+        "body_type",
+        "body_template",
+        "timeout",
+        "retry_count",
+        "ignore_ssl"
+      ]
+    },
+    "iterator": {
+      "category": "control",
+      "inputs": [
+        "array"
+      ],
+      "outputs": [
+        "item",
+        "index",
+        "is_first",
+        "is_last"
+      ],
+      "config": [
+        "parallel",
+        "max_concurrency"
+      ]
+    },
+    "knowledge_retrieval": {
+      "category": "process",
+      "inputs": [
+        "query"
+      ],
+      "outputs": [
+        "results",
+        "context",
+        "scores"
+      ],
+      "config": [
+        "knowledge_bases",
+        "top_k",
+        "similarity_threshold",
+        "retrieval_mode",
+        "rerank_enabled",
+        "rerank_model"
+      ]
+    },
+    "langflow_flow": {
+      "category": "integration",
+      "inputs": [
+        "input_value"
+      ],
+      "outputs": [
+        "result",
+        "success"
+      ],
+      "config": [
+        "base-url",
+        "api-key",
+        "flow-id",
+        "input-type",
+        "output-type",
+        "tweaks"
+      ]
+    },
+    "llm_call": {
+      "category": "process",
+      "inputs": [
+        "input",
+        "context"
+      ],
+      "outputs": [
+        "response",
+        "usage",
+        "parsed"
+      ],
+      "config": [
+        "model",
+        "system_prompt",
+        "user_prompt_template",
+        "temperature",
+        "max_tokens",
+        "output_format",
+        "json_schema",
+        "enable_tools",
+        "tools"
+      ]
+    },
+    "loop": {
+      "category": "control",
+      "inputs": [
+        "items"
+      ],
+      "outputs": [
+        "item",
+        "index",
+        "completed"
+      ],
+      "config": [
+        "loop_type",
+        "max_iterations",
+        "count",
+        "while_condition",
+        "parallel",
+        "parallel_limit"
+      ]
+    },
+    "mcp_tool": {
+      "category": "integration",
+      "inputs": [
+        "arguments"
+      ],
+      "outputs": [
+        "result",
+        "success",
+        "error"
+      ],
+      "config": [
+        "server_name",
+        "tool_name",
+        "arguments_template",
+        "timeout"
+      ]
+    },
+    "memory_store": {
+      "category": "integration",
+      "inputs": [
+        "value"
+      ],
+      "outputs": [
+        "result",
+        "success"
+      ],
+      "config": [
+        "operation",
+        "key",
+        "scope",
+        "ttl"
+      ]
+    },
+    "merge": {
+      "category": "control",
+      "inputs": [
+        "input_1",
+        "input_2",
+        "input_3",
+        "input_4"
+      ],
+      "outputs": [
+        "merged",
+        "array"
+      ],
+      "config": [
+        "merge_strategy"
+      ]
+    },
+    "message_trigger": {
+      "category": "trigger",
+      "inputs": [],
+      "outputs": [
+        "message",
+        "sender",
+        "context"
+      ],
+      "config": [
+        "match_type",
+        "match_pattern",
+        "message_source",
+        "platforms",
+        "ignore_bot_messages"
+      ]
+    },
+    "n8n_workflow": {
+      "category": "integration",
+      "inputs": [
+        "payload"
+      ],
+      "outputs": [
+        "result",
+        "success"
+      ],
+      "config": [
+        "webhook-url",
+        "auth-type",
+        "basic-username",
+        "basic-password",
+        "jwt-secret",
+        "jwt-algorithm",
+        "header-name",
+        "header-value",
+        "timeout",
+        "output-key"
+      ]
+    },
+    "opening_statement": {
+      "category": "action",
+      "inputs": [],
+      "outputs": [
+        "statement",
+        "suggested_questions"
+      ],
+      "config": [
+        "statement",
+        "suggested_questions",
+        "show_suggestions"
+      ]
+    },
+    "parallel": {
+      "category": "control",
+      "inputs": [
+        "input"
+      ],
+      "outputs": [
+        "branch_1",
+        "branch_2",
+        "results"
+      ],
+      "config": [
+        "branches",
+        "wait_for_all",
+        "fail_fast"
+      ]
+    },
+    "parameter_extractor": {
+      "category": "process",
+      "inputs": [
+        "text"
+      ],
+      "outputs": [
+        "parameters",
+        "missing",
+        "success"
+      ],
+      "config": [
+        "model",
+        "parameters",
+        "extraction_prompt",
+        "strict_mode"
+      ]
+    },
+    "question_classifier": {
+      "category": "process",
+      "inputs": [
+        "question"
+      ],
+      "outputs": [
+        "category",
+        "confidence",
+        "all_scores"
+      ],
+      "config": [
+        "model",
+        "categories",
+        "confidence_threshold",
+        "fallback_category"
+      ]
+    },
+    "redis_operation": {
+      "category": "integration",
+      "inputs": [
+        "key",
+        "value"
+      ],
+      "outputs": [
+        "result",
+        "success"
+      ],
+      "config": [
+        "connection_url",
+        "operation",
+        "key_template",
+        "hash_field",
+        "ttl"
+      ]
+    },
+    "reply_message": {
+      "category": "action",
+      "inputs": [
+        "message"
+      ],
+      "outputs": [
+        "status",
+        "message_id"
+      ],
+      "config": [
+        "reply_mode",
+        "message_template",
+        "long_text_processing",
+        "force_delay"
+      ]
+    },
+    "send_message": {
+      "category": "action",
+      "inputs": [
+        "content",
+        "context"
+      ],
+      "outputs": [
+        "message_id",
+        "success"
+      ],
+      "config": [
+        "message_type",
+        "content_template",
+        "reply_to_original",
+        "at_sender"
+      ]
+    },
+    "set_variable": {
+      "category": "action",
+      "inputs": [
+        "value"
+      ],
+      "outputs": [
+        "value"
+      ],
+      "config": [
+        "variable_name",
+        "variable_scope",
+        "operation"
+      ]
+    },
+    "store_data": {
+      "category": "action",
+      "inputs": [
+        "key",
+        "value"
+      ],
+      "outputs": [
+        "status"
+      ],
+      "config": [
+        "storage_type",
+        "ttl",
+        "key_prefix"
+      ]
+    },
+    "switch": {
+      "category": "control",
+      "inputs": [
+        "input"
+      ],
+      "outputs": [
+        "case_1",
+        "case_2",
+        "default"
+      ],
+      "config": [
+        "switch_expression",
+        "cases",
+        "case_sensitive"
+      ]
+    },
+    "variable_aggregator": {
+      "category": "control",
+      "inputs": [
+        "variables"
+      ],
+      "outputs": [
+        "aggregated"
+      ],
+      "config": [
+        "variable_mappings",
+        "aggregation_mode"
+      ]
+    },
+    "wait": {
+      "category": "control",
+      "inputs": [
+        "input"
+      ],
+      "outputs": [
+        "output"
+      ],
+      "config": [
+        "wait_type",
+        "duration",
+        "until_time"
+      ]
+    },
+    "webhook_trigger": {
+      "category": "trigger",
+      "inputs": [],
+      "outputs": [
+        "body",
+        "headers",
+        "query",
+        "method"
+      ],
+      "config": [
+        "webhook_path",
+        "auth_type",
+        "auth_token",
+        "allowed_ips",
+        "allowed_methods",
+        "content_type",
+        "validation",
+        "timeout"
+      ]
+    }
+  },
+  "frontend_nodes": {
+    "condition": {
+      "inputs": [
+        "input"
+      ],
+      "outputs": [
+        "true",
+        "false"
+      ],
+      "config": [
+        "condition_type",
+        "expression",
+        "comparison",
+        "exists",
+        "type_check",
+        "left_value",
+        "operator",
+        "eq",
+        "neq",
+        "gt",
+        "gte",
+        "lt",
+        "lte",
+        "contains",
+        "starts_with",
+        "ends_with",
+        "matches",
+        "right_value",
+        "expected_type",
+        "string",
+        "number",
+        "boolean",
+        "object",
+        "array",
+        "null"
+      ]
+    },
+    "switch_case": {
+      "inputs": [
+        "input"
+      ],
+      "outputs": [
+        "case_1",
+        "case_2",
+        "default"
+      ],
+      "config": [
+        "switch_expression",
+        "cases",
+        "case_sensitive"
+      ]
+    },
+    "loop": {
+      "inputs": [
+        "items"
+      ],
+      "outputs": [
+        "item",
+        "index",
+        "completed"
+      ],
+      "config": [
+        "loop_type",
+        "foreach",
+        "while",
+        "count",
+        "max_iterations",
+        "while_condition",
+        "parallel",
+        "parallel_limit"
+      ]
+    },
+    "parallel": {
+      "inputs": [
+        "input"
+      ],
+      "outputs": [
+        "branch_1",
+        "branch_2",
+        "results"
+      ],
+      "config": [
+        "branches",
+        "wait_for_all",
+        "fail_fast"
+      ]
+    },
+    "wait": {
+      "inputs": [
+        "input"
+      ],
+      "outputs": [
+        "output"
+      ],
+      "config": [
+        "wait_type",
+        "duration",
+        "until",
+        "until_time"
+      ]
+    },
+    "end": {
+      "inputs": [
+        "input"
+      ],
+      "outputs": [],
+      "config": [
+        "status",
+        "success",
+        "failed",
+        "cancelled",
+        "message"
+      ]
+    },
+    "text_template": {
+      "inputs": [
+        "variables"
+      ],
+      "outputs": [
+        "text"
+      ],
+      "config": [
+        "template",
+        "escape_html",
+        "trim_whitespace"
+      ]
+    },
+    "json_transform": {
+      "inputs": [
+        "input"
+      ],
+      "outputs": [
+        "output"
+      ],
+      "config": [
+        "transform_type",
+        "jmespath",
+        "jsonpath",
+        "mapping",
+        "expression"
+      ]
+    },
+    "code_executor": {
+      "inputs": [
+        "input"
+      ],
+      "outputs": [
+        "output",
+        "logs"
+      ],
+      "config": [
+        "language",
+        "javascript",
+        "python",
+        "code",
+        "timeout"
+      ]
+    },
+    "data_aggregator": {
+      "inputs": [
+        "items"
+      ],
+      "outputs": [
+        "result",
+        "count"
+      ],
+      "config": [
+        "aggregation_type",
+        "array",
+        "concat",
+        "sum",
+        "average",
+        "min",
+        "max",
+        "merge",
+        "first",
+        "last",
+        "separator",
+        "field_path"
+      ]
+    },
+    "text_splitter": {
+      "inputs": [
+        "text"
+      ],
+      "outputs": [
+        "chunks",
+        "count"
+      ],
+      "config": [
+        "split_type",
+        "separator",
+        "length",
+        "sentences",
+        "paragraphs",
+        "regex",
+        "chunk_size",
+        "chunk_overlap",
+        "regex_pattern",
+        "remove_empty"
+      ]
+    },
+    "variable_assignment": {
+      "inputs": [
+        "value"
+      ],
+      "outputs": [
+        "output"
+      ],
+      "config": [
+        "variable_name",
+        "value_type",
+        "input",
+        "static",
+        "expression",
+        "static_value"
+      ]
+    },
+    "data_transform": {
+      "inputs": [
+        "data"
+      ],
+      "outputs": [
+        "result"
+      ],
+      "config": [
+        "transform_type",
+        "template",
+        "jsonpath",
+        "jmespath",
+        "expression"
+      ]
+    },
+    "llm_call": {
+      "inputs": [
+        "input",
+        "context"
+      ],
+      "outputs": [
+        "response",
+        "usage",
+        "parsed"
+      ],
+      "config": [
+        "model",
+        "system_prompt",
+        "user_prompt_template",
+        "temperature",
+        "max_tokens",
+        "output_format",
+        "text",
+        "json",
+        "markdown",
+        "json_schema",
+        "enable_tools",
+        "tools"
+      ]
+    },
+    "question_classifier": {
+      "inputs": [
+        "question"
+      ],
+      "outputs": [
+        "category",
+        "confidence",
+        "all_scores"
+      ],
+      "config": [
+        "model",
+        "categories",
+        "confidence_threshold",
+        "fallback_category"
+      ]
+    },
+    "parameter_extractor": {
+      "inputs": [
+        "text"
+      ],
+      "outputs": [
+        "parameters",
+        "missing",
+        "success"
+      ],
+      "config": [
+        "model",
+        "parameters",
+        "extraction_prompt",
+        "strict_mode"
+      ]
+    },
+    "knowledge_retrieval": {
+      "inputs": [
+        "query"
+      ],
+      "outputs": [
+        "results",
+        "context",
+        "scores"
+      ],
+      "config": [
+        "knowledge_bases",
+        "top_k",
+        "similarity_threshold",
+        "retrieval_mode",
+        "vector",
+        "hybrid",
+        "keyword",
+        "rerank_enabled",
+        "rerank_model"
+      ]
+    },
+    "text_embedding": {
+      "inputs": [
+        "text"
+      ],
+      "outputs": [
+        "embedding",
+        "dimensions"
+      ],
+      "config": [
+        "model"
+      ]
+    },
+    "intent_recognition": {
+      "inputs": [
+        "text"
+      ],
+      "outputs": [
+        "intent",
+        "confidence",
+        "entities"
+      ],
+      "config": [
+        "model",
+        "intents_definition",
+        "extract_entities"
+      ]
+    },
+    "send_message": {
+      "inputs": [
+        "content",
+        "context"
+      ],
+      "outputs": [
+        "message_id",
+        "success"
+      ],
+      "config": [
+        "message_type",
+        "text",
+        "markdown",
+        "image",
+        "file",
+        "card",
+        "content_template",
+        "reply_to_original",
+        "at_sender"
+      ]
+    },
+    "http_request": {
+      "inputs": [
+        "body",
+        "variables"
+      ],
+      "outputs": [
+        "response",
+        "status_code",
+        "headers",
+        "success"
+      ],
+      "config": [
+        "method",
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+        "url",
+        "headers",
+        "body_type",
+        "none",
+        "json",
+        "form",
+        "raw",
+        "body_template",
+        "timeout",
+        "retry_count",
+        "ignore_ssl"
+      ]
+    },
+    "bot_invoke": {
+      "inputs": [
+        "message",
+        "context"
+      ],
+      "outputs": [
+        "response",
+        "success"
+      ],
+      "config": [
+        "bot",
+        "wait_for_response",
+        "timeout"
+      ]
+    },
+    "workflow_invoke": {
+      "inputs": [
+        "input"
+      ],
+      "outputs": [
+        "output",
+        "status",
+        "execution_id"
+      ],
+      "config": [
+        "workflow_id",
+        "wait_for_completion",
+        "timeout",
+        "pass_context"
+      ]
+    },
+    "notification": {
+      "inputs": [
+        "content"
+      ],
+      "outputs": [
+        "success",
+        "notification_id"
+      ],
+      "config": [
+        "channel",
+        "webhook",
+        "email",
+        "dingtalk",
+        "feishu",
+        "wechat_work",
+        "title",
+        "content_template",
+        "webhook_url",
+        "recipients"
+      ]
+    },
+    "database_query": {
+      "inputs": [
+        "parameters"
+      ],
+      "outputs": [
+        "results",
+        "row_count",
+        "success"
+      ],
+      "config": [
+        "connection_type",
+        "postgresql",
+        "mysql",
+        "sqlite",
+        "connection_string",
+        "query",
+        "query_type",
+        "select",
+        "insert",
+        "update",
+        "delete",
+        "timeout"
+      ]
+    },
+    "redis_operation": {
+      "inputs": [
+        "key",
+        "value"
+      ],
+      "outputs": [
+        "result",
+        "success"
+      ],
+      "config": [
+        "connection_url",
+        "operation",
+        "get",
+        "set",
+        "delete",
+        "exists",
+        "incr",
+        "decr",
+        "hget",
+        "hset",
+        "lpush",
+        "rpush",
+        "lpop",
+        "rpop",
+        "key_template",
+        "hash_field",
+        "ttl"
+      ]
+    },
+    "mcp_tool": {
+      "inputs": [
+        "arguments"
+      ],
+      "outputs": [
+        "result",
+        "success",
+        "error"
+      ],
+      "config": [
+        "server_name",
+        "tool_name",
+        "arguments_template",
+        "timeout"
+      ]
+    },
+    "memory_store": {
+      "inputs": [
+        "value"
+      ],
+      "outputs": [
+        "result",
+        "success"
+      ],
+      "config": [
+        "operation",
+        "get",
+        "set",
+        "delete",
+        "append",
+        "list",
+        "key",
+        "scope",
+        "execution",
+        "workflow",
+        "session",
+        "user",
+        "global",
+        "ttl"
+      ]
+    },
+    "message_trigger": {
+      "inputs": [],
+      "outputs": [
+        "message",
+        "sender",
+        "context"
+      ],
+      "config": [
+        "match_type",
+        "all",
+        "prefix",
+        "regex",
+        "contains",
+        "exact",
+        "match_pattern",
+        "message_source",
+        "group",
+        "private",
+        "platforms",
+        "ignore_bot_messages"
+      ]
+    },
+    "cron_trigger": {
+      "inputs": [],
+      "outputs": [
+        "trigger_time",
+        "context"
+      ],
+      "config": [
+        "cron_expression",
+        "timezone",
+        "UTC",
+        "Asia/Shanghai",
+        "Asia/Tokyo",
+        "America/New_York",
+        "America/Los_Angeles",
+        "Europe/London",
+        "Europe/Berlin",
+        "description",
+        "enabled"
+      ]
+    },
+    "webhook_trigger": {
+      "inputs": [],
+      "outputs": [
+        "body",
+        "headers",
+        "query",
+        "method"
+      ],
+      "config": [
+        "webhook_path",
+        "auth_type",
+        "none",
+        "token",
+        "signature",
+        "basic",
+        "auth_token",
+        "allowed_ips",
+        "allowed_methods",
+        "content_type",
+        "application/json",
+        "application/x-www-form-urlencoded",
+        "multipart/form-data",
+        "text/plain",
+        "validation",
+        "timeout"
+      ]
+    },
+    "event_trigger": {
+      "inputs": [],
+      "outputs": [
+        "event",
+        "event_type",
+        "context"
+      ],
+      "config": [
+        "event_type",
+        "member_join",
+        "member_leave",
+        "message_recall",
+        "group_created",
+        "group_disbanded",
+        "bot_added",
+        "bot_removed",
+        "friend_request",
+        "group_request",
+        "source_filter",
+        "all",
+        "group",
+        "private",
+        "platforms"
+      ]
+    }
+  },
+  "discrepancies": {
+    "code_executor": [
+      {
+        "type": "config",
+        "only_yaml": [],
+        "only_frontend": [
+          "javascript",
+          "python"
+        ]
+      }
+    ],
+    "condition": [
+      {
+        "type": "config",
+        "only_yaml": [],
+        "only_frontend": [
+          "contains",
+          "starts_with",
+          "gt",
+          "matches",
+          "ends_with",
+          "lte",
+          "type_check",
+          "boolean",
+          "eq",
+          "number",
+          "comparison",
+          "array",
+          "exists",
+          "lt",
+          "string",
+          "object",
+          "neq",
+          "null",
+          "gte"
+        ]
+      }
+    ],
+    "cron_trigger": [
+      {
+        "type": "config",
+        "only_yaml": [],
+        "only_frontend": [
+          "America/New_York",
+          "America/Los_Angeles",
+          "Asia/Shanghai",
+          "UTC",
+          "Asia/Tokyo",
+          "Europe/Berlin",
+          "Europe/London"
+        ]
+      }
+    ],
+    "data_transform": [
+      {
+        "type": "config",
+        "only_yaml": [],
+        "only_frontend": [
+          "jsonpath",
+          "jmespath"
+        ]
+      }
+    ],
+    "database_query": [
+      {
+        "type": "config",
+        "only_yaml": [],
+        "only_frontend": [
+          "mysql",
+          "sqlite",
+          "update",
+          "insert",
+          "postgresql",
+          "delete",
+          "select"
+        ]
+      }
+    ],
+    "end": [
+      {
+        "type": "config",
+        "only_yaml": [],
+        "only_frontend": [
+          "cancelled",
+          "failed",
+          "success"
+        ]
+      }
+    ],
+    "event_trigger": [
+      {
+        "type": "config",
+        "only_yaml": [],
+        "only_frontend": [
+          "group_created",
+          "private",
+          "friend_request",
+          "all",
+          "bot_added",
+          "message_recall",
+          "member_leave",
+          "group_disbanded",
+          "group",
+          "group_request",
+          "bot_removed",
+          "member_join"
+        ]
+      }
+    ],
+    "http_request": [
+      {
+        "type": "config",
+        "only_yaml": [],
+        "only_frontend": [
+          "none",
+          "json",
+          "DELETE",
+          "PATCH",
+          "POST",
+          "PUT",
+          "raw",
+          "GET",
+          "form"
+        ]
+      }
+    ],
+    "knowledge_retrieval": [
+      {
+        "type": "config",
+        "only_yaml": [],
+        "only_frontend": [
+          "keyword",
+          "vector",
+          "hybrid"
+        ]
+      }
+    ],
+    "llm_call": [
+      {
+        "type": "config",
+        "only_yaml": [],
+        "only_frontend": [
+          "text",
+          "json",
+          "markdown"
+        ]
+      }
+    ],
+    "loop": [
+      {
+        "type": "config",
+        "only_yaml": [],
+        "only_frontend": [
+          "while",
+          "foreach"
+        ]
+      }
+    ],
+    "memory_store": [
+      {
+        "type": "config",
+        "only_yaml": [],
+        "only_frontend": [
+          "user",
+          "workflow",
+          "get",
+          "set",
+          "execution",
+          "delete",
+          "list",
+          "global",
+          "session",
+          "append"
+        ]
+      }
+    ],
+    "message_trigger": [
+      {
+        "type": "config",
+        "only_yaml": [],
+        "only_frontend": [
+          "private",
+          "prefix",
+          "all",
+          "group",
+          "regex",
+          "exact",
+          "contains"
+        ]
+      }
+    ],
+    "redis_operation": [
+      {
+        "type": "config",
+        "only_yaml": [],
+        "only_frontend": [
+          "incr",
+          "hset",
+          "decr",
+          "get",
+          "set",
+          "exists",
+          "hget",
+          "delete",
+          "lpush",
+          "lpop",
+          "rpop",
+          "rpush"
+        ]
+      }
+    ],
+    "send_message": [
+      {
+        "type": "config",
+        "only_yaml": [],
+        "only_frontend": [
+          "file",
+          "card",
+          "markdown",
+          "text",
+          "image"
+        ]
+      }
+    ],
+    "wait": [
+      {
+        "type": "config",
+        "only_yaml": [],
+        "only_frontend": [
+          "until"
+        ]
+      }
+    ],
+    "webhook_trigger": [
+      {
+        "type": "config",
+        "only_yaml": [],
+        "only_frontend": [
+          "token",
+          "none",
+          "application/x-www-form-urlencoded",
+          "signature",
+          "multipart/form-data",
+          "text/plain",
+          "application/json",
+          "basic"
+        ]
+      }
+    ]
+  }
+}

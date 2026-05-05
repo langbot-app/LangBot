@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 import traceback
 import sqlalchemy
 
@@ -54,28 +53,23 @@ class RuntimeBot:
         self.task_context = taskmgr.TaskContext()
         self.logger = logger
 
-    @staticmethod
-    def _match_operator(actual: str, operator: str, expected: str) -> bool:
-        """Evaluate a single operator condition."""
-        if operator == 'eq':
-            return actual == expected
-        elif operator == 'neq':
-            return actual != expected
-        elif operator == 'contains':
-            return expected in actual
-        elif operator == 'not_contains':
-            return expected not in actual
-        elif operator == 'starts_with':
-            return actual.startswith(expected)
-        elif operator == 'regex':
-            try:
-                return bool(re.search(expected, actual))
-            except re.error:
-                return False
-        return False
-
     PIPELINE_DISCARD = '__discard__'
     PIPELINE_DISCARD_DISPLAY_NAME = 'Discarded'
+
+    def get_binding_info(self) -> tuple[str, str | None]:
+        """Get the binding type and UUID for this bot.
+        
+        Returns:
+            tuple: (binding_type, binding_uuid) where binding_type is 'pipeline' or 'workflow'
+        """
+        binding_type = getattr(self.bot_entity, 'binding_type', 'pipeline') or 'pipeline'
+        binding_uuid = getattr(self.bot_entity, 'binding_uuid', None)
+        
+        # Fallback to use_pipeline_uuid for backward compatibility
+        if not binding_uuid and binding_type == 'pipeline':
+            binding_uuid = self.bot_entity.use_pipeline_uuid
+            
+        return binding_type, binding_uuid
 
     def resolve_pipeline_uuid(
         self,
@@ -84,56 +78,26 @@ class RuntimeBot:
         message_text: str,
         message_element_types: list[str] | None = None,
     ) -> tuple[str | None, bool]:
-        """Resolve pipeline UUID based on routing rules.
+        """Resolve pipeline UUID for message processing.
 
-        Rules are evaluated in order; first match wins.
-        Falls back to use_pipeline_uuid if no rule matches.
-
-        Rule types:
-          - launcher_type: session type ("person" / "group")
-          - launcher_id: session / group id
-          - message_content: message text content
-          - message_has_element: message contains element of given type
-            (Image, Voice, File, Forward, Face, At, AtAll, Quote)
-            Operators: eq (has), neq (doesn't have)
-
-        Operators: eq, neq, contains, not_contains, starts_with, regex
-
-        When pipeline_uuid is ``__discard__``, the message should be
-        silently dropped by the caller.
+        NOTE: Routing rules have been removed. Bot now directly binds to a
+        Pipeline or Workflow. This method is kept for backward compatibility
+        but only returns the direct binding.
 
         Returns:
-            tuple: (pipeline_uuid, routed_by_rule) - routed_by_rule is True
-            when a routing rule matched, False when falling back to default.
+            tuple: (pipeline_uuid, routed_by_rule) - routed_by_rule is always False
+            as routing rules are no longer used.
         """
-        rules = self.bot_entity.pipeline_routing_rules or []
-        element_type_set = set(message_element_types or [])
-
-        for rule in rules:
-            rule_type = rule.get('type')
-            operator = rule.get('operator', 'eq')
-            rule_value = rule.get('value', '')
-            target_uuid = rule.get('pipeline_uuid')
-            if not rule_type or not target_uuid:
-                continue
-
-            if rule_type == 'launcher_type':
-                if self._match_operator(launcher_type, operator, rule_value):
-                    return target_uuid, True
-            elif rule_type == 'launcher_id':
-                if self._match_operator(str(launcher_id), operator, str(rule_value)):
-                    return target_uuid, True
-            elif rule_type == 'message_content':
-                if self._match_operator(message_text, operator, rule_value):
-                    return target_uuid, True
-            elif rule_type == 'message_has_element':
-                has_element = rule_value in element_type_set
-                if operator == 'eq' and has_element:
-                    return target_uuid, True
-                elif operator == 'neq' and not has_element:
-                    return target_uuid, True
-
-        return self.bot_entity.use_pipeline_uuid, False
+        binding_type, binding_uuid = self.get_binding_info()
+        
+        # If bound to workflow, return None for pipeline_uuid
+        # The caller should check binding_type and handle accordingly
+        if binding_type == 'workflow':
+            # For workflow binding, we still need to return something
+            # The actual workflow handling should be done by the caller
+            return None, False
+            
+        return binding_uuid, False
 
     async def _record_discarded_message(
         self,

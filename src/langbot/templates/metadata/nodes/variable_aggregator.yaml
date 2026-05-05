@@ -1,0 +1,48 @@
+# Variable Aggregator Node Configuration
+name: variable_aggregator
+category: control
+icon: "📊"
+color: '#f59e0b'
+description: 'workflows.nodes.variableAggregatorDescription'
+
+inputs:
+  - name: variables
+    type: object
+    label:
+      en_US: Variables
+      zh_Hans: 变量
+    description:
+      en_US: Variables to aggregate
+      zh_Hans: 要聚合的变量
+
+outputs:
+  - name: aggregated
+    type: object
+    label:
+      en_US: Aggregated
+      zh_Hans: 聚合结果
+    description:
+      en_US: Aggregated variables
+      zh_Hans: 聚合后的变量
+
+config:
+  - name: variable_mappings
+    type: json
+    default: []
+    label:
+      en_US: Variable Mappings
+      zh_Hans: 变量映射
+    description:
+      en_US: Variable mapping configurations
+      zh_Hans: 变量映射配置
+
+  - name: aggregation_mode
+    type: select
+    options: ["merge", "override", "append"]
+    default: "merge"
+    label:
+      en_US: Aggregation Mode
+      zh_Hans: 聚合模式
+    description:
+      en_US: Mode for aggregating variables
+      zh_Hans: 变量聚合模式

@@ -31,6 +31,7 @@ from ..api.http.service import mcp as mcp_service
 from ..api.http.service import apikey as apikey_service
 from ..api.http.service import webhook as webhook_service
 from ..api.http.service import monitoring as monitoring_service
+from ..api.http.service import workflow as workflow_service
 
 from ..discover import engine as discover_engine
 from ..storage import mgr as storagemgr
@@ -149,6 +150,8 @@ class Application:
 
     webhook_service: webhook_service.WebhookService = None
 
+    workflow_service: workflow_service.WorkflowService = None
+
     telemetry: telemetry_module.TelemetryManager = None
 
     survey: survey_module.SurveyManager = None
@@ -217,6 +220,25 @@ class Application:
                     name='monitoring-cleanup',
                     scopes=[core_entities.LifecycleControlScope.APPLICATION],
                 )
+
+            async def workflow_execution_cleanup_loop():
+                check_interval_seconds = 60
+                while True:
+                    try:
+                        cancelled = await self.workflow_service.cleanup_stale_executions()
+                        if cancelled > 0:
+                            self.logger.info(
+                                f'Workflow execution auto-cleanup: cancelled {cancelled} stale executions'
+                            )
+                    except Exception as e:
+                        self.logger.warning(f'Workflow execution auto-cleanup error: {e}')
+                    await asyncio.sleep(check_interval_seconds)
+
+            self.task_mgr.create_task(
+                workflow_execution_cleanup_loop(),
+                name='workflow-execution-cleanup',
+                scopes=[core_entities.LifecycleControlScope.APPLICATION],
+            )
 
             self.task_mgr.create_task(
                 never_ending(),

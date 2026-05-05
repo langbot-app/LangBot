@@ -1,0 +1,100 @@
+# Message Trigger Node Configuration
+# This file defines the metadata for the Message Trigger workflow node
+# The corresponding Python implementation is in: pkg/workflow/nodes/message_trigger.py
+
+name: message_trigger
+category: trigger
+icon: "💬"
+color: '#22c55e'
+description: 'workflows.nodes.messageTriggerDescription'
+
+inputs: []
+
+outputs:
+  - name: message
+    type: object
+    label:
+      en_US: Message
+      zh_Hans: 消息
+    description:
+      en_US: The received message object
+      zh_Hans: 接收到的消息对象
+  - name: sender
+    type: object
+    label:
+      en_US: Sender
+      zh_Hans: 发送者
+    description:
+      en_US: Message sender information
+      zh_Hans: 消息发送者信息
+  - name: context
+    type: object
+    label:
+      en_US: Context
+      zh_Hans: 上下文
+    description:
+      en_US: Message context information
+      zh_Hans: 消息上下文信息
+
+config:
+  - name: match_type
+    type: select
+    required: true
+    default: all
+    options:
+      - all
+      - prefix
+      - regex
+      - contains
+      - exact
+    label:
+      en_US: Match Type
+      zh_Hans: 匹配类型
+    description:
+      en_US: How to match the incoming message
+      zh_Hans: 如何匹配收到的消息
+
+  - name: match_pattern
+    type: string
+    default: ""
+    label:
+      en_US: Match Pattern
+      zh_Hans: 匹配模式
+    description:
+      en_US: The pattern to match against the message
+      zh_Hans: 用于匹配消息的模式
+
+  - name: message_source
+    type: select
+    required: true
+    default: all
+    options:
+      - all
+      - group
+      - private
+    label:
+      en_US: Message Source
+      zh_Hans: 消息来源
+    description:
+      en_US: Filter messages by source type
+      zh_Hans: 按来源类型筛选消息
+
+  - name: platforms
+    type: json
+    default: []
+    label:
+      en_US: Platform Filter
+      zh_Hans: 平台筛选
+    description:
+      en_US: Only trigger for messages from these platforms
+      zh_Hans: 仅对来自这些平台的消息触发
+
+  - name: ignore_bot_messages
+    type: boolean
+    default: true
+    label:
+      en_US: Ignore Bot Messages
+      zh_Hans: 忽略机器人消息
+    description:
+      en_US: Do not trigger for messages sent by bots
+      zh_Hans: 不对机器人发送的消息触发

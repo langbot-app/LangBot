@@ -1,0 +1,77 @@
+# Parallel Node Configuration
+# This file defines the metadata for the Parallel workflow node
+# The corresponding Python implementation is in: pkg/workflow/nodes/parallel.py
+
+name: parallel
+category: control
+icon: "⚡"
+color: '#8b5cf6'
+description: 'workflows.nodes.parallelDescription'
+
+inputs:
+  - name: input
+    type: any
+    label:
+      en_US: Input
+      zh_Hans: 输入
+    description:
+      en_US: Input data for all branches
+      zh_Hans: 所有分支的输入数据
+
+outputs:
+  - name: branch_1
+    type: any
+    label:
+      en_US: Branch 1
+      zh_Hans: 分支 1
+    description:
+      en_US: Branch 1 output
+      zh_Hans: 分支 1 输出
+  - name: branch_2
+    type: any
+    label:
+      en_US: Branch 2
+      zh_Hans: 分支 2
+    description:
+      en_US: Branch 2 output
+      zh_Hans: 分支 2 输出
+  - name: results
+    type: object
+    label:
+      en_US: Results
+      zh_Hans: 结果
+    description:
+      en_US: Combined results from all branches
+      zh_Hans: 所有分支的合并结果
+
+config:
+  - name: branches
+    type: json
+    required: true
+    default: "[]"
+    label:
+      en_US: Branches
+      zh_Hans: 分支
+    description:
+      en_US: Define branches as JSON array
+      zh_Hans: 使用 JSON 数组定义分支
+
+  - name: wait_for_all
+    type: boolean
+    default: true
+    label:
+      en_US: Wait for All
+      zh_Hans: 等待全部完成
+    description:
+      en_US: Wait for all branches to complete
+      zh_Hans: 等待所有分支完成
+
+  - name: fail_fast
+    type: boolean
+    default: false
+    label:
+      en_US: Fail Fast
+      zh_Hans: 快速失败
+    description:
+      en_US: Stop all branches if any one fails
+      zh_Hans: 如果任何一个分支失败则停止所有分支

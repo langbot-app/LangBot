@@ -1,0 +1,48 @@
+# End Node Configuration
+# This file defines the metadata for the End workflow node
+# The corresponding Python implementation is in: pkg/workflow/nodes/end.py
+
+name: end
+category: control
+icon: "🛑"
+color: '#8b5cf6'
+description: 'workflows.nodes.endDescription'
+
+inputs:
+  - name: input
+    type: any
+    required: false
+    label:
+      en_US: Input
+      zh_Hans: 输入
+    description:
+      en_US: Final output data
+      zh_Hans: 最终输出数据
+
+outputs: []
+
+config:
+  - name: status
+    type: select
+    required: true
+    default: success
+    options:
+      - success
+      - failed
+      - cancelled
+    label:
+      en_US: End Status
+      zh_Hans: 结束状态
+    description:
+      en_US: Status to report when workflow ends
+      zh_Hans: 工作流结束时报告的状态
+
+  - name: message
+    type: string
+    default: ""
+    label:
+      en_US: Message
+      zh_Hans: 消息
+    description:
+      en_US: Optional message to include with the end status
+      zh_Hans: 与结束状态一起包含的可选消息

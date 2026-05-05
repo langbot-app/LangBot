@@ -1,0 +1,72 @@
+# Merge Node Configuration
+name: merge
+category: control
+icon: "🔗"
+color: '#f59e0b'
+description: 'workflows.nodes.mergeDescription'
+
+inputs:
+  - name: input_1
+    type: any
+    label:
+      en_US: Input 1
+      zh_Hans: 输入 1
+    description:
+      en_US: First input
+      zh_Hans: 第一个输入
+  - name: input_2
+    type: any
+    label:
+      en_US: Input 2
+      zh_Hans: 输入 2
+    description:
+      en_US: Second input
+      zh_Hans: 第二个输入
+  - name: input_3
+    type: any
+    label:
+      en_US: Input 3
+      zh_Hans: 输入 3
+    description:
+      en_US: Third input
+      zh_Hans: 第三个输入
+    required: false
+  - name: input_4
+    type: any
+    label:
+      en_US: Input 4
+      zh_Hans: 输入 4
+    description:
+      en_US: Fourth input
+      zh_Hans: 第四个输入
+    required: false
+
+outputs:
+  - name: merged
+    type: object
+    label:
+      en_US: Merged
+      zh_Hans: 合并结果
+    description:
+      en_US: Merged result
+      zh_Hans: 合并后的结果
+  - name: array
+    type: array
+    label:
+      en_US: Array
+      zh_Hans: 数组
+    description:
+      en_US: All inputs as array
+      zh_Hans: 所有输入作为数组
+
+config:
+  - name: merge_strategy
+    type: select
+    options: ["object", "array", "first_non_null", "concat"]
+    default: "object"
+    label:
+      en_US: Merge Strategy
+      zh_Hans: 合并策略
+    description:
+      en_US: Strategy for merging inputs
+      zh_Hans: 合并输入的策略

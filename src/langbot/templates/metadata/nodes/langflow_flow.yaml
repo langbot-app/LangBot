@@ -1,0 +1,107 @@
+# Langflow Flow Node Configuration
+name: langflow_flow
+label:
+  en_US: Langflow Flow
+  zh_Hans: Langflow 流程
+description:
+  en_US: Call Langflow API
+  zh_Hans: 调用 Langflow API
+category: integration
+icon: GitBranch
+color: '#3b82f6'
+
+inputs:
+  - name: input_value
+    type: string
+    label:
+      en_US: Input Value
+      zh_Hans: 输入内容
+    description:
+      en_US: Input content
+      zh_Hans: 输入内容
+    required: true
+
+outputs:
+  - name: result
+    type: any
+    label:
+      en_US: Result
+      zh_Hans: 结果
+    description:
+      en_US: Flow execution result
+      zh_Hans: 流程执行结果
+  - name: success
+    type: boolean
+    label:
+      en_US: Success
+      zh_Hans: 成功
+    description:
+      en_US: Whether the call was successful
+      zh_Hans: 调用是否成功
+
+config:
+  - name: base-url
+    label:
+      en_US: Base URL
+      zh_Hans: 基础 URL
+    description:
+      en_US: Langflow server base URL
+      zh_Hans: Langflow 服务器基础 URL
+    type: string
+    required: true
+    default: 'http://localhost:7860'
+
+  - name: api-key
+    label:
+      en_US: API Key
+      zh_Hans: API 密钥
+    description:
+      en_US: Langflow API key
+      zh_Hans: Langflow API 密钥
+    type: string
+    required: true
+    default: ''
+
+  - name: flow-id
+    label:
+      en_US: Flow ID
+      zh_Hans: 流程 ID
+    description:
+      en_US: Flow ID to run
+      zh_Hans: 要运行的流程 ID
+    type: string
+    required: true
+    default: ''
+
+  - name: input-type
+    label:
+      en_US: Input Type
+      zh_Hans: 输入类型
+    description:
+      en_US: Input type for the flow
+      zh_Hans: 流程的输入类型
+    type: string
+    required: false
+    default: chat
+
+  - name: output-type
+    label:
+      en_US: Output Type
+      zh_Hans: 输出类型
+    description:
+      en_US: Output type for the flow
+      zh_Hans: 流程的输出类型
+    type: string
+    required: false
+    default: chat
+
+  - name: tweaks
+    label:
+      en_US: Tweaks
+      zh_Hans: 调整参数
+    description:
+      en_US: Optional tweaks to apply to the flow
+      zh_Hans: 可选的流程调整参数
+    type: json
+    required: false
+    default: '{}'

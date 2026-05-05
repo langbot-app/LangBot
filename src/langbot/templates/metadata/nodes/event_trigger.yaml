@@ -1,0 +1,84 @@
+# Event Trigger Node Configuration
+# This file defines the metadata for the Event Trigger workflow node
+# The corresponding Python implementation is in: pkg/workflow/nodes/event_trigger.py
+
+name: event_trigger
+category: trigger
+icon: "📡"
+color: '#22c55e'
+description: 'workflows.nodes.eventTriggerDescription'
+
+inputs: []
+
+outputs:
+  - name: event
+    type: object
+    label:
+      en_US: Event
+      zh_Hans: 事件
+    description:
+      en_US: The event data
+      zh_Hans: 事件数据
+  - name: event_type
+    type: string
+    label:
+      en_US: Event Type
+      zh_Hans: 事件类型
+    description:
+      en_US: Type of the event
+      zh_Hans: 事件类型
+  - name: context
+    type: object
+    label:
+      en_US: Context
+      zh_Hans: 上下文
+    description:
+      en_US: Event context information
+      zh_Hans: 事件上下文信息
+
+config:
+  - name: event_type
+    type: select
+    required: true
+    default: member_join
+    options:
+      - member_join
+      - member_leave
+      - message_recall
+      - group_created
+      - group_disbanded
+      - bot_added
+      - bot_removed
+      - friend_request
+      - group_request
+    label:
+      en_US: Event Type
+      zh_Hans: 事件类型
+    description:
+      en_US: The type of system event to listen for
+      zh_Hans: 要监听的系统事件类型
+
+  - name: source_filter
+    type: select
+    required: true
+    default: all
+    options:
+      - all
+      - group
+      - private
+    label:
+      en_US: Source Filter
+      zh_Hans: 来源筛选
+    description:
+      en_US: Filter events by source
+      zh_Hans: 按来源筛选事件
+
+  - name: platforms
+    type: json
+    default: []
+    label:
+      en_US: Platform Filter
+      zh_Hans: 平台筛选
+    description:
+      en_US: Only trigger for events from these platforms
+      zh_Hans: 仅对来自这些平台的事件触发

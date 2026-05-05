@@ -369,6 +369,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         """
         pipeline_uuid = connection.pipeline_uuid
         session_type = connection.session_type
+        is_workflow = bool(connection.metadata.get('is_workflow'))
 
         # 获取stream参数，默认为True
         self.stream_enabled = message_data.get('stream', True)
@@ -409,6 +410,61 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             },
             session_type=session_type,
         )
+
+        if is_workflow:
+            # 设置 pipeline_uuid，以便工作流节点发送消息时能正确广播
+            self.ap.platform_mgr.websocket_proxy_bot.bot_entity.use_pipeline_uuid = pipeline_uuid
+
+            message_content = str(message_chain)
+            message_context = {
+                'message_id': str(message_id),
+                'message_content': message_content,
+                'sender_id': f'websocket_{connection.connection_id}',
+                'sender_name': 'User',
+                'platform': 'websocket',
+                'conversation_id': connection.connection_id,
+                'is_group': session_type == 'group',
+                'group_id': 'websocketgroup' if session_type == 'group' else None,
+                'mentions': [],
+                'reply_to': None,
+                'raw_message': {
+                    'message': message_chain_obj,
+                    'connection_id': connection.connection_id,
+                    'session_type': session_type,
+                },
+            }
+
+            trigger_data = {
+                'message': message_content,
+                'message_chain': message_chain_obj,
+                'session_type': session_type,
+                'connection_id': connection.connection_id,
+                'message_context': message_context,
+            }
+
+            try:
+                from ...api.http.service.workflow import WorkflowExecutionFailedError
+
+                execution_id = await self.ap.workflow_service.execute_workflow(
+                    pipeline_uuid,
+                    trigger_type='message',
+                    trigger_data=trigger_data,
+                    session_id=f'{session_type}_{connection.connection_id}',
+                    user_id=message_context['sender_id'],
+                    bot_id=self.ap.platform_mgr.websocket_proxy_bot.bot_entity.uuid,
+                )
+                await connection.send_queue.put(
+                    {
+                        'type': 'broadcast',
+                        'message': f'Workflow execution started: {execution_id}',
+                    }
+                )
+            except WorkflowExecutionFailedError as e:
+                await connection.send_queue.put({'type': 'error', 'message': e.message})
+            except Exception as e:
+                logger.error(f'Workflow websocket execution error: {e}', exc_info=True)
+                await connection.send_queue.put({'type': 'error', 'message': str(e)})
+            return
 
         # 添加消息源
         message_chain.insert(0, platform_message.Source(id=message_id, time=datetime.now().timestamp()))

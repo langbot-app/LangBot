@@ -1,0 +1,113 @@
+# Redis Operation Node Configuration
+# This file defines the metadata for the Redis Operation workflow node
+# The corresponding Python implementation is in: pkg/workflow/nodes/redis_operation.py
+
+name: redis_operation
+category: integration
+icon: "🔴"
+color: '#ec4899'
+description: 'workflows.nodes.redisOperationDescription'
+
+inputs:
+  - name: key
+    type: string
+    required: false
+    label:
+      en_US: Key
+      zh_Hans: 键
+    description:
+      en_US: Redis key
+      zh_Hans: Redis 键
+  - name: value
+    type: any
+    required: false
+    label:
+      en_US: Value
+      zh_Hans: 值
+    description:
+      en_US: Value to store
+      zh_Hans: 要存储的值
+
+outputs:
+  - name: result
+    type: any
+    label:
+      en_US: Result
+      zh_Hans: 结果
+    description:
+      en_US: Operation result
+      zh_Hans: 操作结果
+  - name: success
+    type: boolean
+    label:
+      en_US: Success
+      zh_Hans: 成功
+    description:
+      en_US: Whether operation was successful
+      zh_Hans: 操作是否成功
+
+config:
+  - name: connection_url
+    type: string
+    required: true
+    default: "redis://localhost:6379"
+    label:
+      en_US: Redis URL
+      zh_Hans: Redis URL
+    description:
+      en_US: Redis connection URL
+      zh_Hans: Redis 连接 URL
+
+  - name: operation
+    type: select
+    required: true
+    default: get
+    options:
+      - get
+      - set
+      - delete
+      - exists
+      - incr
+      - decr
+      - hget
+      - hset
+      - lpush
+      - rpush
+      - lpop
+      - rpop
+    label:
+      en_US: Operation
+      zh_Hans: 操作
+    description:
+      en_US: Redis operation to perform
+      zh_Hans: 要执行的 Redis 操作
+
+  - name: key_template
+    type: string
+    default: ""
+    label:
+      en_US: Key Template
+      zh_Hans: 键模板
+    description:
+      en_US: Redis key template
+      zh_Hans: Redis 键模板
+
+  - name: hash_field
+    type: string
+    default: ""
+    label:
+      en_US: Hash Field
+      zh_Hans: 哈希字段
+    description:
+      en_US: Field name for hash operations
+      zh_Hans: 哈希操作的字段名
+
+  - name: ttl
+    type: integer
+    default: 0
+    label:
+      en_US: TTL (seconds)
+      zh_Hans: TTL（秒）
+    description:
+      en_US: Time to live for SET operations
+      zh_Hans: SET 操作的过期时间

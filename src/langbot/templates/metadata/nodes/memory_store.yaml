@@ -1,0 +1,94 @@
+# Memory Store Node Configuration
+# This file defines the metadata for the Memory Store workflow node
+# The corresponding Python implementation is in: pkg/workflow/nodes/memory_store.py
+
+name: memory_store
+category: integration
+icon: "💾"
+color: '#ec4899'
+description: 'workflows.nodes.memoryStoreDescription'
+
+inputs:
+  - name: value
+    type: any
+    required: false
+    label:
+      en_US: Value
+      zh_Hans: 值
+    description:
+      en_US: Value to store
+      zh_Hans: 要存储的值
+
+outputs:
+  - name: result
+    type: any
+    label:
+      en_US: Result
+      zh_Hans: 结果
+    description:
+      en_US: Retrieved or stored value
+      zh_Hans: 检索到的或存储的值
+  - name: success
+    type: boolean
+    label:
+      en_US: Success
+      zh_Hans: 成功
+    description:
+      en_US: Whether operation was successful
+      zh_Hans: 操作是否成功
+
+config:
+  - name: operation
+    type: select
+    required: true
+    default: get
+    options:
+      - get
+      - set
+      - delete
+      - append
+      - list
+    label:
+      en_US: Operation
+      zh_Hans: 操作
+    description:
+      en_US: Memory operation to perform
+      zh_Hans: 要执行的记忆操作
+
+  - name: key
+    type: string
+    required: true
+    default: ""
+    label:
+      en_US: Key
+      zh_Hans: 键
+    description:
+      en_US: Memory key
+      zh_Hans: 记忆键
+
+  - name: scope
+    type: select
+    required: true
+    default: execution
+    options:
+      - execution
+      - workflow
+      - session
+      - user
+      - global
+    label:
+      en_US: Scope
+      zh_Hans: 作用域
+    description:
+      en_US: Scope of the memory storage
+      zh_Hans: 记忆存储的作用域
+
+  - name: ttl
+    type: integer
+    default: 0
+    label:
+      en_US: TTL (seconds)
+      zh_Hans: TTL（秒）
+    description:
+      en_US: Time to live (0 = no expiry)
+      zh_Hans: 过期时间（0 = 不过期）

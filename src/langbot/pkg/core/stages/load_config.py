@@ -221,3 +221,52 @@ class LoadConfigStage(stage.BootingStage):
         ap.pipeline_config_meta_safety = await load_resource_yaml_template_data('metadata/pipeline/safety.yaml')
         ap.pipeline_config_meta_ai = await load_resource_yaml_template_data('metadata/pipeline/ai.yaml')
         ap.pipeline_config_meta_output = await load_resource_yaml_template_data('metadata/pipeline/output.yaml')
+
+        # Load workflow node configurations from YAML files
+        ap.workflow_node_configs = {}
+        node_config_files = [
+            # Trigger nodes
+            'metadata/nodes/message_trigger.yaml',
+            'metadata/nodes/cron_trigger.yaml',
+            'metadata/nodes/webhook_trigger.yaml',
+            'metadata/nodes/event_trigger.yaml',
+            # AI/Process nodes
+            'metadata/nodes/llm_call.yaml',
+            'metadata/nodes/question_classifier.yaml',
+            'metadata/nodes/parameter_extractor.yaml',
+            'metadata/nodes/knowledge_retrieval.yaml',
+            'metadata/nodes/code_executor.yaml',
+            'metadata/nodes/data_transform.yaml',
+            # Control nodes
+            'metadata/nodes/condition.yaml',
+            'metadata/nodes/switch.yaml',
+            'metadata/nodes/loop.yaml',
+            'metadata/nodes/parallel.yaml',
+            'metadata/nodes/wait.yaml',
+            'metadata/nodes/end.yaml',
+            # Action nodes
+            'metadata/nodes/send_message.yaml',
+            'metadata/nodes/http_request.yaml',
+            # Integration nodes - Data & Tools
+            'metadata/nodes/database_query.yaml',
+            'metadata/nodes/redis_operation.yaml',
+            'metadata/nodes/mcp_tool.yaml',
+            'metadata/nodes/memory_store.yaml',
+            # Integration nodes - External services
+            'metadata/nodes/dify_workflow.yaml',
+            'metadata/nodes/dify_knowledge_query.yaml',
+            'metadata/nodes/n8n_workflow.yaml',
+            'metadata/nodes/langflow_flow.yaml',
+            'metadata/nodes/coze_bot.yaml',
+        ]
+        for config_file in node_config_files:
+            try:
+                node_config = await load_resource_yaml_template_data(config_file)
+                node_name = node_config.get('name')
+                node_category = node_config.get('category', 'misc')
+                if node_name:
+                    # Use category.name format to match node type format (e.g., integration.coze_bot)
+                    full_type = f'{node_category}.{node_name}'
+                    ap.workflow_node_configs[full_type] = node_config
+            except Exception as e:
+                print(f'Failed to load node config {config_file}: {e}')

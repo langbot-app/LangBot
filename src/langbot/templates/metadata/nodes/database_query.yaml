@@ -1,0 +1,110 @@
+# Database Query Node Configuration
+# This file defines the metadata for the Database Query workflow node
+# The corresponding Python implementation is in: pkg/workflow/nodes/database_query.py
+
+name: database_query
+category: integration
+icon: "🗄️"
+color: '#ec4899'
+description: 'workflows.nodes.databaseQueryDescription'
+
+inputs:
+  - name: parameters
+    type: object
+    required: false
+    label:
+      en_US: Parameters
+      zh_Hans: 参数
+    description:
+      en_US: Query parameters
+      zh_Hans: 查询参数
+
+outputs:
+  - name: results
+    type: array
+    label:
+      en_US: Results
+      zh_Hans: 结果
+    description:
+      en_US: Query results
+      zh_Hans: 查询结果
+  - name: row_count
+    type: number
+    label:
+      en_US: Row Count
+      zh_Hans: 行数
+    description:
+      en_US: Number of rows affected/returned
+      zh_Hans: 影响/返回的行数
+  - name: success
+    type: boolean
+    label:
+      en_US: Success
+      zh_Hans: 成功
+    description:
+      en_US: Whether query was successful
+      zh_Hans: 查询是否成功
+
+config:
+  - name: connection_type
+    type: select
+    required: true
+    default: postgresql
+    options:
+      - postgresql
+      - mysql
+      - sqlite
+    label:
+      en_US: Database Type
+      zh_Hans: 数据库类型
+    description:
+      en_US: Type of database to connect to
+      zh_Hans: 要连接的数据库类型
+
+  - name: connection_string
+    type: string
+    required: true
+    default: ""
+    label:
+      en_US: Connection String
+      zh_Hans: 连接字符串
+    description:
+      en_US: Database connection string
+      zh_Hans: 数据库连接字符串
+
+  - name: query
+    type: textarea
+    required: true
+    default: ""
+    label:
+      en_US: SQL Query
+      zh_Hans: SQL 查询
+    description:
+      en_US: SQL query to execute
+      zh_Hans: 要执行的 SQL 查询
+
+  - name: query_type
+    type: select
+    required: true
+    default: select
+    options:
+      - select
+      - insert
+      - update
+      - delete
+    label:
+      en_US: Query Type
+      zh_Hans: 查询类型
+    description:
+      en_US: Type of query operation
+      zh_Hans: 查询操作的类型
+
+  - name: timeout
+    type: integer
+    default: 30
+    label:
+      en_US: Timeout (seconds)
+      zh_Hans: 超时时间（秒）
+    description:
+      en_US: Query timeout
+      zh_Hans: 查询超时时间

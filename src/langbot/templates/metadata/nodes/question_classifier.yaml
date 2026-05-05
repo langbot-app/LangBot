@@ -1,0 +1,87 @@
+# Question Classifier Node Configuration
+# This file defines the metadata for the Question Classifier workflow node
+# The corresponding Python implementation is in: pkg/workflow/nodes/question_classifier.py
+
+name: question_classifier
+category: process
+icon: "🏷️"
+color: '#8b5cf6'
+description: 'workflows.nodes.questionClassifierDescription'
+
+inputs:
+  - name: question
+    type: string
+    label:
+      en_US: Question
+      zh_Hans: 问题
+    description:
+      en_US: The question to classify
+      zh_Hans: 要分类的问题
+
+outputs:
+  - name: category
+    type: string
+    label:
+      en_US: Category
+      zh_Hans: 分类
+    description:
+      en_US: The classified category
+      zh_Hans: 分类结果
+  - name: confidence
+    type: number
+    label:
+      en_US: Confidence
+      zh_Hans: 置信度
+    description:
+      en_US: Classification confidence score
+      zh_Hans: 分类置信度分数
+  - name: all_scores
+    type: object
+    label:
+      en_US: All Scores
+      zh_Hans: 所有分数
+    description:
+      en_US: Scores for all categories
+      zh_Hans: 所有分类的分数
+
+config:
+  - name: model
+    type: llm-model-selector
+    required: true
+    label:
+      en_US: Classification Model
+      zh_Hans: 分类模型
+    description:
+      en_US: Select the model to use for classification
+      zh_Hans: 选择用于分类的模型
+
+  - name: categories
+    type: textarea
+    required: true
+    default: "[]"
+    label:
+      en_US: Categories Definition
+      zh_Hans: 分类定义
+    description:
+      en_US: Define categories in JSON format
+      zh_Hans: 使用 JSON 格式定义分类
+
+  - name: confidence_threshold
+    type: number
+    default: 0.7
+    label:
+      en_US: Confidence Threshold
+      zh_Hans: 置信度阈值
+    description:
+      en_US: Minimum confidence score required
+      zh_Hans: 所需的最小置信度分数
+
+  - name: fallback_category
+    type: string
+    default: other
+    label:
+      en_US: Fallback Category
+      zh_Hans: 默认分类
+    description:
+      en_US: Category to use when confidence is below threshold
+      zh_Hans: 当置信度低于阈值时使用的分类
