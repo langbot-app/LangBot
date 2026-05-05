@@ -69,6 +69,18 @@ class NodeTypeRegistry:
         for registered_type, node_class in self._nodes.items():
             if node_class.type_name == node_type:
                 return node_class
+
+        # Lazy-process pending registrations so execution paths that didn't
+        # explicitly warm the registry can still resolve newly imported nodes.
+        if get_pending_registrations():
+            self.process_pending_registrations()
+
+            if node_type in self._nodes:
+                return self._nodes[node_type]
+
+            for registered_type, node_class in self._nodes.items():
+                if node_class.type_name == node_type:
+                    return node_class
         
         return None
     
