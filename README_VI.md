@@ -83,17 +83,19 @@ docker compose up -d
 
 | Nền tảng | Trạng thái | Ghi chú |
 |----------|--------|-------|
-| Discord | ✅ |  |
-| Telegram | ✅ |  |
-| Slack | ✅ |  |
-| LINE | ✅ |  |
-| QQ | ✅ | Cá nhân & API chính thức |
+| Discord | ✅ | Chính thức |
+| Telegram | ✅ | Chính thức |
+| Slack | ✅ | Chính thức |
+| LINE | ✅ | Chính thức |
+| QQ | ✅ | Cá nhân & API chính thức (Kênh, DM, Nhóm) |
 | WeCom | ✅ | WeChat doanh nghiệp, CS bên ngoài, AI Bot |
 | WeChat | ✅ | Cá nhân & Tài khoản công khai |
-| Lark | ✅ |  |
-| DingTalk | ✅ |  |
-| KOOK | ✅ |  |
+| Lark | ✅ | Chính thức |
+| DingTalk | ✅ | Chính thức |
+| KOOK | ✅ | Chính thức |
 | Satori | ✅ |  |
+| Email | ✅ | Matrix, Satori |
+| Matrix | ✅ | Hỗ trợ nhiều nền tảng qua bridge như Signal, WhatsApp, Messenger, iMessage, Mattermost, Google Chat, IRC, XMPP, Zulip và hơn thế nữa |
 
 ---
 
@@ -122,6 +124,7 @@ docker compose up -d
 | [ShengSuanYun](https://www.shengsuanyun.com/?from=CH_KYIPP758) | Nền tảng GPU | ✅ |
 | [接口 AI](https://jiekou.ai/) | Cổng | ✅ |
 | [302.AI](https://share.302.ai/SuTG99) | Cổng | ✅ |
+| [Qiniu](https://www.qiniu.com/ai/agent) | Cổng | ✅ |
 
 [→ Xem tất cả tích hợp](https://link.langbot.app/en/docs/features)
 

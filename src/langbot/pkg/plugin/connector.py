@@ -414,6 +414,17 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
     async def get_plugin_assets(self, plugin_author: str, plugin_name: str, filepath: str) -> dict[str, Any]:
         return await self.handler.get_plugin_assets(plugin_author, plugin_name, filepath)
 
+    async def handle_page_api(
+        self,
+        plugin_author: str,
+        plugin_name: str,
+        page_id: str,
+        endpoint: str,
+        method: str,
+        body: Any = None,
+    ) -> dict[str, Any]:
+        return await self.handler.handle_page_api(plugin_author, plugin_name, page_id, endpoint, method, body)
+
     async def get_debug_info(self) -> dict[str, Any]:
         """Get debug information including debug key and WS URL"""
         if not self.is_enable_plugin:

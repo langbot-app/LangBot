@@ -85,17 +85,19 @@ docker compose up -d
 
 | 平台 | 狀態 | 備註 |
 |------|------|------|
+| Discord | ✅ | 官方 |
+| Telegram | ✅ | 官方 |
+| Slack | ✅ | 官方 |
+| LINE | ✅ | 官方 |
 | QQ | ✅ | 個人號、官方機器人（頻道、私聊、群聊） |
-| 微信 | ✅ | 個人微信、微信公眾號 |
 | 企業微信 | ✅ | 應用訊息、對外客服、智能機器人 |
-| 飛書 | ✅ |  |
-| 釘釘 | ✅ |  |
-| Discord | ✅ |  |
-| Telegram | ✅ |  |
-| Slack | ✅ |  |
-| LINE | ✅ |  |
-| KOOK | ✅ |  |
+| 微信 | ✅ | 個人微信、微信公眾號 |
+| 飛書 | ✅ | 官方 |
+| 釘釘 | ✅ | 官方 |
+| KOOK | ✅ | 官方 |
 | Satori | ✅ |  |
+| Email | ✅ | 只 Matrix、Satori |
+| Matrix | ✅ | 支援多種橋接平台，如 Signal、WhatsApp、Messenger、iMessage、Mattermost、Google Chat、IRC、XMPP、Zulip 等 |
 
 ---
 
@@ -124,6 +126,7 @@ docker compose up -d
 | [PPIO](https://ppinfra.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | GPU 平台 | ✅ |
 | [接口 AI](https://jiekou.ai/) | 聚合平台 | ✅ |
 | [302.AI](https://share.302.ai/SuTG99) | 聚合平台 | ✅ |
+| [Qiniu](https://www.qiniu.com/ai/agent) | 聚合平台 | ✅ |
 
 ### TTS（語音合成）
 

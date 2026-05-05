@@ -618,6 +618,8 @@ export default function BotForm({
                 systemContext={{
                   webhook_url: webhookUrl,
                   extra_webhook_url: extraWebhookUrl,
+                  bot_uuid: initBotId || '',
+                  adapter_config: form.getValues('adapter_config') || {},
                 }}
               />
             )}

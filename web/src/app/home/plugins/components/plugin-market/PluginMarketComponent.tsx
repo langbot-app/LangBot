@@ -22,9 +22,12 @@ import {
   Search,
   Wrench,
   AudioWaveform,
+  Hash,
   Book,
   SlidersHorizontal,
   X,
+  FileText,
+  PanelTop,
 } from 'lucide-react';
 import PluginMarketCardComponent from './plugin-market-card/PluginMarketCardComponent';
 import { PluginMarketCardVO } from './plugin-market-card/PluginMarketCardVO';
@@ -36,7 +39,6 @@ import { toast } from 'sonner';
 import { ApiRespMarketplacePlugins } from '@/app/infra/entities/api';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Button } from '@/components/ui/button';
-import { TagsFilter } from './TagsFilter';
 import { PluginTag } from '@/app/infra/http/CloudServiceClient';
 
 import { RecommendationLists, RecommendationList } from './RecommendationLists';
@@ -63,6 +65,7 @@ function MarketPageContent({
     'EventListener',
     'KnowledgeEngine',
     'Parser',
+    'Page',
   ];
 
   const validTypes = ['plugin', 'mcp', 'skill'];
@@ -608,7 +611,90 @@ function MarketPageContent({
             />
           </div>
 
-          <div className="flex w-full items-center justify-end gap-2 lg:w-auto">
+        </div>
+
+        {/* Component filter and sort */}
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 px-3 sm:px-4">
+          {/* Component filter */}
+          <div className="flex flex-col sm:flex-row items-center gap-2 min-w-0 max-w-full">
+            <span className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">
+              {t('market.filterByComponent')}:
+            </span>
+            <div className="overflow-x-auto max-w-full [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              <ToggleGroup
+                type="single"
+                spacing={2}
+                size="sm"
+                value={componentFilter}
+                onValueChange={(value) => {
+                  if (value) handleComponentFilterChange(value);
+                }}
+                className="justify-start flex-nowrap"
+              >
+                <ToggleGroupItem
+                  value="all"
+                  aria-label="All components"
+                  className="text-xs sm:text-sm cursor-pointer"
+                >
+                  {t('market.allComponents')}
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="Tool"
+                  aria-label="Tool"
+                  className="text-xs sm:text-sm cursor-pointer"
+                >
+                  <Wrench className="h-4 w-4 mr-1" />
+                  {t('plugins.componentName.Tool')}
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="Command"
+                  aria-label="Command"
+                  className="text-xs sm:text-sm cursor-pointer"
+                >
+                  <Hash className="h-4 w-4 mr-1" />
+                  {t('plugins.componentName.Command')}
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="EventListener"
+                  aria-label="EventListener"
+                  className="text-xs sm:text-sm cursor-pointer"
+                >
+                  <AudioWaveform className="h-4 w-4 mr-1" />
+                  {t('plugins.componentName.EventListener')}
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="KnowledgeEngine"
+                  aria-label="KnowledgeEngine"
+                  className="text-xs sm:text-sm cursor-pointer"
+                >
+                  <Book className="h-4 w-4 mr-1" />
+                  {t('plugins.componentName.KnowledgeEngine')}
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="Parser"
+                  aria-label="Parser"
+                  className="text-xs sm:text-sm cursor-pointer"
+                >
+                  <FileText className="h-4 w-4 mr-1" />
+                  {t('plugins.componentName.Parser')}
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="Page"
+                  aria-label="Page"
+                  className="text-xs sm:text-sm cursor-pointer"
+                >
+                  <PanelTop className="h-4 w-4 mr-1" />
+                  {t('plugins.componentName.Page')}
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+          </div>
+
+          {/* Sort dropdown */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            <span className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">
+              {t('market.sortBy')}:
+            </span>
             <Select value={sortOption} onValueChange={handleSortChange}>
               <SelectTrigger className="w-[128px] sm:w-40 text-xs sm:text-sm">
                 <SelectValue />

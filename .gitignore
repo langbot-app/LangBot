@@ -47,6 +47,7 @@ plugins.bak
 coverage.xml
 .coverage
 src/langbot/web/
+testsdk/
 
 # Build artifacts
 /dist

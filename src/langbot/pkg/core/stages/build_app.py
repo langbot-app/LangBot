@@ -31,6 +31,7 @@ from ...api.http.service import webhook as webhook_service
 from ...api.http.service import monitoring as monitoring_service
 from ...api.http.service import skill as skill_service
 from ...skill import manager as skill_mgr
+from ...api.http.service import maintenance as maintenance_service
 from ...discover import engine as discover_engine
 from ...storage import mgr as storagemgr
 from ...utils import logcache
@@ -181,6 +182,9 @@ class BuildAppStage(stage.BootingStage):
 
         monitoring_service_inst = monitoring_service.MonitoringService(ap)
         ap.monitoring_service = monitoring_service_inst
+
+        maintenance_service_inst = maintenance_service.MaintenanceService(ap)
+        ap.maintenance_service = maintenance_service_inst
 
         async def runtime_disconnect_callback(connector: plugin_connector.PluginRuntimeConnector) -> None:
             await asyncio.sleep(3)

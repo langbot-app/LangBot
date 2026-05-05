@@ -23,6 +23,17 @@ def _parse_provider_api_keys(provider_dict: dict) -> dict:
     return provider_dict
 
 
+def _runtime_model_data(model_uuid: str, model_data: dict) -> dict:
+    """Return model data for rebuilding runtime models after an update.
+
+    Update payloads intentionally omit uuid before writing to the database.
+    Runtime model entities still need the stable uuid so pipeline configs can
+    resolve the in-memory model immediately after an edit, without requiring a
+    process restart.
+    """
+    return {**model_data, 'uuid': model_uuid}
+
+
 class LLMModelsService:
     ap: app.Application
 
@@ -173,7 +184,7 @@ class LLMModelsService:
             raise Exception('provider not found')
 
         runtime_llm_model = await self.ap.model_mgr.load_llm_model_with_provider(
-            persistence_model.LLMModel(**model_data),
+            persistence_model.LLMModel(**_runtime_model_data(model_uuid, model_data)),
             runtime_provider,
         )
         self.ap.model_mgr.llm_models.append(runtime_llm_model)
@@ -334,7 +345,7 @@ class EmbeddingModelsService:
             raise Exception('provider not found')
 
         runtime_embedding_model = await self.ap.model_mgr.load_embedding_model_with_provider(
-            persistence_model.EmbeddingModel(**model_data),
+            persistence_model.EmbeddingModel(**_runtime_model_data(model_uuid, model_data)),
             runtime_provider,
         )
         self.ap.model_mgr.embedding_models.append(runtime_embedding_model)
@@ -492,7 +503,7 @@ class RerankModelsService:
             raise Exception('provider not found')
 
         runtime_rerank_model = await self.ap.model_mgr.load_rerank_model_with_provider(
-            persistence_model.RerankModel(**model_data),
+            persistence_model.RerankModel(**_runtime_model_data(model_uuid, model_data)),
             runtime_provider,
         )
         self.ap.model_mgr.rerank_models.append(runtime_rerank_model)

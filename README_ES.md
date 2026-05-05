@@ -83,17 +83,19 @@ docker compose up -d
 
 | Plataforma | Estado | Notas |
 |----------|--------|-------|
-| Discord | ✅ |  |
-| Telegram | ✅ |  |
-| Slack | ✅ |  |
-| LINE | ✅ |  |
-| QQ | ✅ | Personal y API Oficial |
+| Discord | ✅ | Oficial |
+| Telegram | ✅ | Oficial |
+| Slack | ✅ | Oficial |
+| LINE | ✅ | Oficial |
+| QQ | ✅ | Personal y API Oficial (Canal, DM, Grupo) |
 | WeCom | ✅ | WeChat Empresarial, CS Externo, AI Bot |
 | WeChat | ✅ | Personal y Cuenta Oficial |
-| Lark | ✅ |  |
-| DingTalk | ✅ |  |
-| KOOK | ✅ |  |
+| Lark | ✅ | Oficial |
+| DingTalk | ✅ | Oficial |
+| KOOK | ✅ | Oficial |
 | Satori | ✅ |  |
+| Email | ✅ | Matrix, Satori |
+| Matrix | ✅ | Admite varias plataformas puenteadas como Signal, WhatsApp, Messenger, iMessage, Mattermost, Google Chat, IRC, XMPP, Zulip y más |
 
 ---
 
@@ -122,6 +124,7 @@ docker compose up -d
 | [ShengSuanYun](https://www.shengsuanyun.com/?from=CH_KYIPP758) | Plataforma GPU | ✅ |
 | [接口 AI](https://jiekou.ai/) | Pasarela | ✅ |
 | [302.AI](https://share.302.ai/SuTG99) | Pasarela | ✅ |
+| [Qiniu](https://www.qiniu.com/ai/agent) | Pasarela | ✅ |
 
 [→ Ver todas las integraciones](https://link.langbot.app/en/docs/features)
 

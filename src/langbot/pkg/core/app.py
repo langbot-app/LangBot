@@ -33,6 +33,7 @@ from ..api.http.service import apikey as apikey_service
 from ..api.http.service import webhook as webhook_service
 from ..api.http.service import monitoring as monitoring_service
 from ..api.http.service import skill as skill_service
+from ..api.http.service import maintenance as maintenance_service
 from ..discover import engine as discover_engine
 from ..storage import mgr as storagemgr
 from ..utils import logcache
@@ -162,6 +163,8 @@ class Application:
 
     skill_mgr: skill_mgr.SkillManager = None
 
+    maintenance_service: maintenance_service.MaintenanceService = None
+
     def __init__(self):
         pass
 
@@ -201,14 +204,30 @@ class Application:
             monitoring_cfg = self.instance_config.data.get('monitoring', {})
             auto_cleanup_cfg = monitoring_cfg.get('auto_cleanup', {})
             if auto_cleanup_cfg.get('enabled', True):
-                retention_days = auto_cleanup_cfg.get('retention_days', 30)
-                check_interval_hours = auto_cleanup_cfg.get('check_interval_hours', 1)
+                retention_days = self._get_positive_int_config(
+                    auto_cleanup_cfg.get('retention_days', 30),
+                    default=30,
+                    name='monitoring.auto_cleanup.retention_days',
+                )
+                delete_batch_size = self._get_positive_int_config(
+                    auto_cleanup_cfg.get('delete_batch_size', 1000),
+                    default=1000,
+                    name='monitoring.auto_cleanup.delete_batch_size',
+                )
+                check_interval_hours = self._get_positive_float_config(
+                    auto_cleanup_cfg.get('check_interval_hours', 1),
+                    default=1,
+                    name='monitoring.auto_cleanup.check_interval_hours',
+                )
 
                 async def monitoring_cleanup_loop():
                     check_interval_seconds = check_interval_hours * 3600
                     while True:
                         try:
-                            deleted = await self.monitoring_service.cleanup_expired_records(retention_days)
+                            deleted = await self.monitoring_service.cleanup_expired_records(
+                                retention_days,
+                                batch_size=delete_batch_size,
+                            )
                             total_deleted = sum(deleted.values())
                             if total_deleted > 0:
                                 self.logger.info(
@@ -225,6 +244,33 @@ class Application:
                     scopes=[core_entities.LifecycleControlScope.APPLICATION],
                 )
 
+            # Start storage/log maintenance task if enabled
+            storage_cleanup_cfg = self.instance_config.data.get('storage', {}).get('cleanup', {})
+            if storage_cleanup_cfg.get('enabled', True) and self.maintenance_service is not None:
+                check_interval_hours = self._get_positive_float_config(
+                    storage_cleanup_cfg.get('check_interval_hours', 1),
+                    default=1,
+                    name='storage.cleanup.check_interval_hours',
+                )
+
+                async def storage_cleanup_loop():
+                    check_interval_seconds = check_interval_hours * 3600
+                    while True:
+                        try:
+                            deleted = await self.maintenance_service.cleanup_expired_files()
+                            total_deleted = sum(deleted.values())
+                            if total_deleted > 0:
+                                self.logger.info(f'Storage maintenance: deleted expired files: {deleted}')
+                        except Exception as e:
+                            self.logger.warning(f'Storage maintenance error: {e}')
+                        await asyncio.sleep(check_interval_seconds)
+
+                self.task_mgr.create_task(
+                    storage_cleanup_loop(),
+                    name='storage-maintenance',
+                    scopes=[core_entities.LifecycleControlScope.APPLICATION],
+                )
+
             self.task_mgr.create_task(
                 never_ending(),
                 name='never-ending-task',
@@ -238,6 +284,28 @@ class Application:
         except Exception as e:
             self.logger.error(f'Application runtime fatal exception: {e}')
             self.logger.debug(f'Traceback: {traceback.format_exc()}')
+
+    def _get_positive_int_config(self, value, default: int, name: str) -> int:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            self.logger.warning(f'Invalid {name}: {value!r}, using {default}')
+            return default
+        if parsed < 1:
+            self.logger.warning(f'Invalid {name}: {value!r}, using {default}')
+            return default
+        return parsed
+
+    def _get_positive_float_config(self, value, default: float, name: str) -> float:
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            self.logger.warning(f'Invalid {name}: {value!r}, using {default}')
+            return default
+        if parsed <= 0:
+            self.logger.warning(f'Invalid {name}: {value!r}, using {default}')
+            return default
+        return parsed
 
     def dispose(self):
         if self.plugin_connector is not None:

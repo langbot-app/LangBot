@@ -83,17 +83,19 @@ docker compose up -d
 
 | プラットフォーム | ステータス | 備考 |
 |----------|--------|-------|
-| Discord | ✅ |  |
-| Telegram | ✅ |  |
-| Slack | ✅ |  |
-| LINE | ✅ |  |
-| QQ | ✅ | 個人 & 公式API |
+| Discord | ✅ | 公式 |
+| Telegram | ✅ | 公式 |
+| Slack | ✅ | 公式 |
+| LINE | ✅ | 公式 |
+| QQ | ✅ | 個人・公式API（チャンネル・DM・グループ） |
 | WeCom | ✅ | 企業WeChat、外部CS、AIボット |
-| WeChat | ✅ | 個人 & 公式アカウント |
-| Lark | ✅ |  |
-| DingTalk | ✅ |  |
-| KOOK | ✅ |  |
+| WeChat | ✅ | 個人・公式アカウント |
+| Lark | ✅ | 公式 |
+| DingTalk | ✅ | 公式 |
+| KOOK | ✅ | 公式 |
 | Satori | ✅ |  |
+| Email | ✅ | Matrix、Satori |
+| Matrix | ✅ | Signal、WhatsApp、Messenger、iMessage、Mattermost、Google Chat、IRC、XMPP、Zulip など複数のブリッジ先プラットフォームに対応 |
 
 ---
 
@@ -122,6 +124,7 @@ docker compose up -d
 | [ShengSuanYun](https://www.shengsuanyun.com/?from=CH_KYIPP758) | GPUプラットフォーム | ✅ |
 | [接口 AI](https://jiekou.ai/) | ゲートウェイ | ✅ |
 | [302.AI](https://share.302.ai/SuTG99) | ゲートウェイ | ✅ |
+| [Qiniu](https://www.qiniu.com/ai/agent) | ゲートウェイ | ✅ |
 
 [→ すべての統合を表示](https://link.langbot.app/en/docs/features)
 

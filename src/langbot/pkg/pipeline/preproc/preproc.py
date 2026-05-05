@@ -78,6 +78,27 @@ class PreProcessor(stage.PipelineStage):
             query.bot_uuid,
         )
 
+        # Expire externally managed conversation ids after the conversation has
+        # been idle for longer than the configured conversation expire time.
+        # The idle window is measured from the last preprocess/update time, not
+        # from the conversation creation time.
+        conversation_expire_time = query.pipeline_config.get('ai', {}).get('runner', {}).get('expire-time', None)
+        now = datetime.datetime.now()
+        if conversation_expire_time is not None and conversation_expire_time > 0:
+            last_update_time = getattr(conversation, 'update_time', None) or getattr(conversation, 'create_time', None)
+            if last_update_time is not None:
+                conversation_idle_time = now.timestamp() - last_update_time.timestamp()
+                if conversation_idle_time > conversation_expire_time:
+                    self.ap.logger.info(
+                        f'Conversation({query.query_id}) is expired (idle: {conversation_idle_time}s), create new conversation'
+                    )
+                    conversation.uuid = None
+
+        # Treat every preprocess pass as a conversation activity update. This
+        # makes future expiry checks use the latest incoming message/preprocess
+        # time instead of the first message/creation time.
+        conversation.update_time = now
+
         # 设置query
         query.session = session
         query.prompt = conversation.prompt.copy()
@@ -171,7 +192,10 @@ class PreProcessor(stage.PipelineStage):
                 elif me.url:
                     content_list.append(provider_message.ContentElement.from_file_url(me.url, 'voice'))
             elif isinstance(me, platform_message.File):
-                content_list.append(provider_message.ContentElement.from_file_url(me.url, me.name))
+                if me.base64:
+                    content_list.append(provider_message.ContentElement.from_file_base64(me.base64, me.name))
+                elif me.url:
+                    content_list.append(provider_message.ContentElement.from_file_url(me.url, me.name))
             elif isinstance(me, platform_message.Quote) and quote_msg:
                 for msg in me.origin:
                     if isinstance(msg, platform_message.Plain):
@@ -183,7 +207,10 @@ class PreProcessor(stage.PipelineStage):
                             if msg.base64 is not None:
                                 content_list.append(provider_message.ContentElement.from_image_base64(msg.base64))
                     elif isinstance(msg, platform_message.File):
-                        content_list.append(provider_message.ContentElement.from_file_url(msg.url, msg.name))
+                        if msg.base64:
+                            content_list.append(provider_message.ContentElement.from_file_base64(msg.base64, msg.name))
+                        elif msg.url:
+                            content_list.append(provider_message.ContentElement.from_file_url(msg.url, msg.name))
                     elif isinstance(msg, platform_message.Voice):
                         if msg.base64:
                             content_list.append(

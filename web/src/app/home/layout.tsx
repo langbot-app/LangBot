@@ -49,6 +49,7 @@ const EXTENSIONS_ROUTES = [
   '/home/market',
   '/home/mcp',
   '/home/skills',
+  '/home/plugin-pages',
 ];
 
 function isExtensionsRoute(pathname: string): boolean {

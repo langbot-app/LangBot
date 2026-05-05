@@ -136,6 +136,10 @@ class SystemRouterGroup(group.RouterGroup):
 
             return self.success(data=task.to_dict())
 
+        @self.route('/storage-analysis', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
+        async def _() -> str:
+            return self.success(data=await self.ap.maintenance_service.get_storage_analysis())
+
         @self.route('/debug/exec', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:
             if not constants.debug_mode:

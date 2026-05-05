@@ -9,7 +9,8 @@ import {
 
 export type ExtraArg = {
   key: string;
-  type: 'string' | 'number' | 'boolean';
+  type: 'string' | 'number' | 'boolean' | 'object';
+  // For 'object' type, value holds a JSON string that will be parsed on save.
   value: string;
 };
 

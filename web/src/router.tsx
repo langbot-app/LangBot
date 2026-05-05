@@ -23,6 +23,7 @@ import MCPPage from '@/app/home/mcp/page';
 import KnowledgePage from '@/app/home/knowledge/page';
 import SkillsPage from '@/app/home/skills/page';
 import ErrorPage from '@/components/ErrorPage';
+import PluginPagesPage from '@/app/home/plugin-pages/page';
 
 const Loading = () => <div>Loading...</div>;
 
@@ -152,6 +153,16 @@ export const router = createBrowserRouter([
           <Suspense fallback={<Loading />}>
             <HomeLayout>
               <SkillsPage />
+            </HomeLayout>
+          </Suspense>
+        ),
+      },
+      {
+        path: '/home/plugin-pages',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <HomeLayout>
+              <PluginPagesPage />
             </HomeLayout>
           </Suspense>
         ),

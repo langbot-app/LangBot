@@ -38,7 +38,8 @@
     },
     "ai": {
         "runner": {
-            "runner": "local-agent"
+            "runner": "local-agent",
+            "expire-time": 0
         },
         "local-agent": {
             "model": {

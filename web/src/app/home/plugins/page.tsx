@@ -18,6 +18,7 @@ import {
   Bug,
   Unlink,
 } from 'lucide-react';
+import { copyToClipboard } from '@/app/utils/clipboard';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -464,33 +465,13 @@ function PluginListView() {
   };
 
   const handleCopyDebugInfo = (text: string, type: 'url' | 'key') => {
-    try {
-      navigator.clipboard.writeText(text);
-      if (type === 'url') {
-        setCopiedDebugUrl(true);
-        setTimeout(() => setCopiedDebugUrl(false), 2000);
-      } else {
-        setCopiedDebugKey(true);
-        setTimeout(() => setCopiedDebugKey(false), 2000);
-      }
-    } catch {
-      const textArea = document.createElement('textarea');
-      textArea.value = text;
-      textArea.style.position = 'fixed';
-      textArea.style.left = '-999999px';
-      textArea.style.top = '-999999px';
-      document.body.appendChild(textArea);
-      textArea.select();
-      textArea.setSelectionRange(0, 99999);
-      const success = document.execCommand('copy');
-      document.body.removeChild(textArea);
-      if (success) {
-        setCopiedDebugUrl(true);
-        setTimeout(() => setCopiedDebugUrl(false), 2000);
-      } else {
-        setCopiedDebugKey(true);
-        setTimeout(() => setCopiedDebugKey(false), 2000);
-      }
+    copyToClipboard(text).catch(() => {});
+    if (type === 'url') {
+      setCopiedDebugUrl(true);
+      setTimeout(() => setCopiedDebugUrl(false), 2000);
+    } else {
+      setCopiedDebugKey(true);
+      setTimeout(() => setCopiedDebugKey(false), 2000);
     }
   };
 

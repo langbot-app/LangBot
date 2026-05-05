@@ -19,6 +19,7 @@ import {
   ThumbsUp,
   ThumbsDown,
 } from 'lucide-react';
+import { copyToClipboard } from '@/app/utils/clipboard';
 import {
   MessageChainComponent,
   Plain,
@@ -108,10 +109,9 @@ const BotSessionMonitor = forwardRef<
   };
 
   const copyUserId = (userId: string) => {
-    navigator.clipboard.writeText(userId).then(() => {
-      setCopiedUserId(true);
-      setTimeout(() => setCopiedUserId(false), 2000);
-    });
+    copyToClipboard(userId).catch(() => {});
+    setCopiedUserId(true);
+    setTimeout(() => setCopiedUserId(false), 2000);
   };
 
   const loadSessions = useCallback(async () => {

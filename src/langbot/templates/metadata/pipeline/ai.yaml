@@ -47,6 +47,26 @@ stages:
             label:
               en_US: Langflow API
               zh_Hans: Langflow API
+      - name: expire-time
+        label:
+          en_US: Conversation expire time (seconds)
+          zh_Hans: 单个对话过期时间（秒）
+        description:
+          en_US: >-
+            Maximum idle time of a single conversation, measured from the last
+            message/preprocess update time. When a new message arrives and the
+            current conversation has been idle for longer than this value, the
+            existing external conversation id is discarded and a new one is
+            started automatically — the user does not need to trigger a reset
+            manually. Set to 0 to disable expiry (conversations live until the
+            user or another mechanism resets them).
+          zh_Hans: >-
+            单个对话的最长空闲时间，从最后一条消息/preprocess 更新时间开始计算。
+            当新消息到达且当前对话空闲时间已超过该值时，旧的外部对话 ID 会被自动丢弃并开启新对话，
+            用户无需手动重置。设置为 0 表示不限制过期时间（对话会一直保留，直到用户或其他机制主动重置）。
+        type: integer
+        required: true
+        default: 0
   - name: local-agent
     label:
       en_US: Local Agent
