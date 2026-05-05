@@ -652,6 +652,8 @@ export interface WorkflowExecutionNodeInfo {
   status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
   started_at?: string;
   completed_at?: string;
+  start_time?: string;
+  end_time?: string;
   inputs?: Record<string, unknown>;
   outputs?: Record<string, unknown>;
   error?: string;
@@ -662,9 +664,17 @@ export interface WorkflowExecution {
   uuid: string;
   workflow_uuid: string;
   workflow_version: number;
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  status:
+    | 'pending'
+    | 'waiting'
+    | 'running'
+    | 'completed'
+    | 'failed'
+    | 'cancelled';
   started_at?: string;
   completed_at?: string;
+  start_time?: string;
+  end_time?: string;
   trigger_type?: string;
   trigger_data?: Record<string, unknown>;
   variables?: Record<string, unknown>;

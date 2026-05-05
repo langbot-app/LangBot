@@ -14,7 +14,10 @@ import DynamicFormItemComponent from '@/app/home/components/dynamic-form/Dynamic
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import i18n from 'i18next';
-import { resolveI18nLabel, maybeTranslateKey } from '@/app/home/workflows/components/workflow-editor/workflow-i18n';
+import {
+  resolveI18nLabel,
+  maybeTranslateKey,
+} from '@/app/home/workflows/components/workflow-editor/workflow-i18n';
 
 // Helper function to translate i18n key if the value is an i18n key string
 const translateIfKey = (value: string | undefined): string | undefined => {
@@ -228,6 +231,7 @@ export default function DynamicFormComponent({
       item.type === 'llm-model-selector' ||
       item.type === 'embedding-model-selector' ||
       item.type === 'rerank-model-selector' ||
+      item.type === 'pipeline-selector' ||
       item.type === 'knowledge-base-selector' ||
       item.type === 'bot-selector'
     ) {
@@ -284,6 +288,9 @@ export default function DynamicFormComponent({
             fieldSchema = z.array(z.string());
             break;
           case 'select':
+            fieldSchema = z.string();
+            break;
+          case 'pipeline-selector':
             fieldSchema = z.string();
             break;
           case 'llm-model-selector':
@@ -490,9 +497,11 @@ export default function DynamicFormComponent({
                 label={extractAndTranslateI18n(config.label)}
                 description={
                   config.description
-                    ? (typeof config.description === 'string'
-                        ? (config.description.startsWith('workflows.') ? String(t(config.description)) : config.description)
-                        : extractAndTranslateI18n(config.description))
+                    ? typeof config.description === 'string'
+                      ? config.description.startsWith('workflows.')
+                        ? String(t(config.description))
+                        : config.description
+                      : extractAndTranslateI18n(config.description)
                     : undefined
                 }
                 url={webhookUrl}
@@ -523,7 +532,9 @@ export default function DynamicFormComponent({
                         {config.description && (
                           <p className="text-sm text-muted-foreground">
                             {typeof config.description === 'string'
-                              ? (config.description.startsWith('workflows.') ? String(t(config.description)) : translateIfKey(config.description))
+                              ? config.description.startsWith('workflows.')
+                                ? String(t(config.description))
+                                : translateIfKey(config.description)
                               : extractAndTranslateI18n(config.description)}
                           </p>
                         )}
@@ -554,37 +565,54 @@ export default function DynamicFormComponent({
                   ? extractAndTranslateI18n(config.label)
                   : config.name;
                 return (
-                <FormItem>
-                  <FormLabel>
-                    {i18nLabel}{' '}
-                    {config.required && <span className="text-red-500">*</span>}
-                  </FormLabel>
-                  <FormControl>
-                    <div
-                      className={
-                        isFieldDisabled ? 'pointer-events-none opacity-60' : ''
-                      }
-                    >
-                      <DynamicFormItemComponent
-                        config={config}
-                        field={field}
-                        onFileUploaded={onFileUploaded}
-                      />
-                    </div>
-                  </FormControl>
-                  {config.description && (() => {
-                    const desc = config.description;
-                    if (typeof desc === 'string') {
-                      if (desc.startsWith('workflows.')) {
-                        return <p className="text-sm text-muted-foreground">{String(t(desc))}</p>;
-                      }
-                      return <p className="text-sm text-muted-foreground">{translateIfKey(desc) || desc}</p>;
-                    }
-                    return <p className="text-sm text-muted-foreground">{extractAndTranslateI18n(desc)}</p>;
-                  })()}
-                  <FormMessage />
-                </FormItem>
-              );
+                  <FormItem>
+                    <FormLabel>
+                      {i18nLabel}{' '}
+                      {config.required && (
+                        <span className="text-red-500">*</span>
+                      )}
+                    </FormLabel>
+                    <FormControl>
+                      <div
+                        className={
+                          isFieldDisabled
+                            ? 'pointer-events-none opacity-60'
+                            : ''
+                        }
+                      >
+                        <DynamicFormItemComponent
+                          config={config}
+                          field={field}
+                          onFileUploaded={onFileUploaded}
+                        />
+                      </div>
+                    </FormControl>
+                    {config.description &&
+                      (() => {
+                        const desc = config.description;
+                        if (typeof desc === 'string') {
+                          if (desc.startsWith('workflows.')) {
+                            return (
+                              <p className="text-sm text-muted-foreground">
+                                {String(t(desc))}
+                              </p>
+                            );
+                          }
+                          return (
+                            <p className="text-sm text-muted-foreground">
+                              {translateIfKey(desc) || desc}
+                            </p>
+                          );
+                        }
+                        return (
+                          <p className="text-sm text-muted-foreground">
+                            {extractAndTranslateI18n(desc)}
+                          </p>
+                        );
+                      })()}
+                    <FormMessage />
+                  </FormItem>
+                );
               }}
             />
           );

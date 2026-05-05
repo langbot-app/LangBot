@@ -125,6 +125,19 @@ class WorkflowsRouterGroup(group.RouterGroup):
             )
             return self.success(data=executions)
 
+        @self.route(
+            '/<workflow_uuid>/executions/<execution_uuid>',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+        )
+        async def _(workflow_uuid: str, execution_uuid: str) -> str:
+            execution = await self.ap.workflow_service.get_execution(execution_uuid)
+            if execution is None:
+                return self.http_status(404, -1, 'execution not found')
+            if execution.get('workflow_uuid') != workflow_uuid:
+                return self.http_status(404, -1, 'execution not found in workflow')
+            return self.success(data={'execution': execution})
+
         # Get workflow versions
         @self.route('/<workflow_uuid>/versions', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
         async def _(workflow_uuid: str) -> str:

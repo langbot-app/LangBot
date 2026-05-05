@@ -57,6 +57,7 @@ export default function WorkflowDebugDialog({
   const [selectedWorkflowId, setSelectedWorkflowId] = useState(workflowId);
   const [sessionType, setSessionType] = useState<'person' | 'group'>('person');
   const [messages, setMessages] = useState<Message[]>([]);
+  const activeConnectionKeyRef = useRef<string | null>(null);
   const [inputValue, setInputValue] = useState('');
   const [showAtPopover, setShowAtPopover] = useState(false);
   const [hasAt, setHasAt] = useState(false);
@@ -82,7 +83,9 @@ export default function WorkflowDebugDialog({
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => {
-      const scrollArea = document.querySelector('.workflow-scroll-area') as HTMLElement;
+      const scrollArea = document.querySelector(
+        '.workflow-scroll-area',
+      ) as HTMLElement;
       if (scrollArea) {
         scrollArea.scrollTo({
           top: scrollArea.scrollHeight,
@@ -96,10 +99,11 @@ export default function WorkflowDebugDialog({
   const loadMessages = useCallback(
     async (workflowId: string) => {
       try {
-        const response = await backendClient.getWorkflowWebSocketHistoryMessages(
-          workflowId,
-          sessionType,
-        );
+        const response =
+          await backendClient.getWorkflowWebSocketHistoryMessages(
+            workflowId,
+            sessionType,
+          );
         setMessages(response.messages);
       } catch (error) {
         console.error('Failed to load messages:', error);
@@ -109,23 +113,45 @@ export default function WorkflowDebugDialog({
   );
 
   const initWebSocket = useCallback(
-    async (workflowId: string) => {
-      if (isInitializingRef.current) {
+    async (workflowId: string, nextSessionType: 'person' | 'group') => {
+      const connectionKey = `${workflowId}:${nextSessionType}`;
+
+      if (
+        isInitializingRef.current &&
+        activeConnectionKeyRef.current === connectionKey
+      ) {
+        return;
+      }
+
+      if (
+        wsClientRef.current?.isConnected() &&
+        activeConnectionKeyRef.current === connectionKey
+      ) {
         return;
       }
 
       try {
         isInitializingRef.current = true;
+        activeConnectionKeyRef.current = connectionKey;
 
         if (wsClientRef.current) {
           wsClientRef.current.disconnect();
           wsClientRef.current = null;
         }
 
-        const wsClient = new WorkflowWebSocketClient(workflowId, sessionType);
+        setIsConnected(false);
+
+        const wsClient = new WorkflowWebSocketClient(
+          workflowId,
+          nextSessionType,
+        );
 
         wsClient
           .onConnected(() => {
+            if (activeConnectionKeyRef.current !== connectionKey) {
+              wsClient.disconnect();
+              return;
+            }
             setIsConnected(true);
             isInitializingRef.current = false;
           })
@@ -151,8 +177,10 @@ export default function WorkflowDebugDialog({
           })
           .onError((error) => {
             console.error('WebSocket error:', error);
-            setIsConnected(false);
-            isInitializingRef.current = false;
+            if (activeConnectionKeyRef.current === connectionKey) {
+              setIsConnected(false);
+              isInitializingRef.current = false;
+            }
             const errorMessage =
               error instanceof Error && error.message
                 ? error.message
@@ -160,23 +188,33 @@ export default function WorkflowDebugDialog({
             toast.error(errorMessage);
           })
           .onClose(() => {
-            setIsConnected(false);
-            isInitializingRef.current = false;
+            if (activeConnectionKeyRef.current === connectionKey) {
+              setIsConnected(false);
+              isInitializingRef.current = false;
+            }
           })
           .onBroadcast((message) => {
             toast.info(message);
           });
 
         await wsClient.connect();
+
+        if (activeConnectionKeyRef.current !== connectionKey) {
+          wsClient.disconnect();
+          return;
+        }
+
         wsClientRef.current = wsClient;
       } catch (error) {
         console.error('WebSocket connection failed:', error);
-        setIsConnected(false);
-        isInitializingRef.current = false;
-        toast.error(t('workflows.debugDialog.connectionFailed'));
+        if (activeConnectionKeyRef.current === connectionKey) {
+          setIsConnected(false);
+          isInitializingRef.current = false;
+          toast.error(t('workflows.debugDialog.connectionFailed'));
+        }
       }
     },
-    [sessionType, t],
+    [t],
   );
 
   useEffect(() => {
@@ -186,30 +224,36 @@ export default function WorkflowDebugDialog({
   useEffect(() => {
     if (open) {
       setSelectedWorkflowId(workflowId);
-    } else {
-      if (wsClientRef.current) {
-        wsClientRef.current.disconnect();
-        wsClientRef.current = null;
-        setIsConnected(false);
-        isInitializingRef.current = false;
-      }
+      return;
     }
 
+    activeConnectionKeyRef.current = null;
+    if (wsClientRef.current) {
+      wsClientRef.current.disconnect();
+      wsClientRef.current = null;
+    }
+    setIsConnected(false);
+    isInitializingRef.current = false;
+
     return () => {
+      activeConnectionKeyRef.current = null;
       if (wsClientRef.current) {
         wsClientRef.current.disconnect();
         wsClientRef.current = null;
-        isInitializingRef.current = false;
       }
+      setIsConnected(false);
+      isInitializingRef.current = false;
     };
   }, [open, workflowId]);
 
   useEffect(() => {
-    if (open) {
-      setMessages([]);
-      loadMessages(selectedWorkflowId);
-      initWebSocket(selectedWorkflowId);
+    if (!open) {
+      return;
     }
+
+    setMessages([]);
+    loadMessages(selectedWorkflowId);
+    initWebSocket(selectedWorkflowId, sessionType);
   }, [sessionType, selectedWorkflowId, open, loadMessages, initWebSocket]);
 
   useEffect(() => {

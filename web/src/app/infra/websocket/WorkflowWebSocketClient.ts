@@ -39,6 +39,8 @@ export class WorkflowWebSocketClient {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private isConnecting = false;
   private shouldReconnect = true;
+  private manualDisconnect = false;
+  private activeConnectPromise: Promise<string> | null = null;
 
   private onConnectedCallback?: (data: WorkflowWebSocketResponse) => void;
   private onMessageCallback?: (data: WorkflowWebSocketMessage) => void;
@@ -53,7 +55,12 @@ export class WorkflowWebSocketClient {
   ) {}
 
   public connect(): Promise<string> {
-    return new Promise((resolve, reject) => {
+    if (this.activeConnectPromise) {
+      console.warn('WebSocket连接请求进行中，复用当前连接请求');
+      return this.activeConnectPromise;
+    }
+
+    const connectPromise = new Promise<string>((resolve, reject) => {
       try {
         if (
           this.isConnecting ||
@@ -72,8 +79,9 @@ export class WorkflowWebSocketClient {
 
         this.isConnecting = true;
         this.shouldReconnect = true;
+        this.manualDisconnect = false;
         this.clearReconnectTimer();
- 
+
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host =
           import.meta.env.VITE_API_BASE_URL?.split('://')[1] ||
@@ -90,9 +98,9 @@ export class WorkflowWebSocketClient {
           locationHost: window.location.host,
           envBaseUrl: import.meta.env.VITE_API_BASE_URL,
         });
- 
+
         this.ws = new WebSocket(url);
- 
+
         this.ws.onopen = () => {
           console.debug('[WorkflowWebSocket] connect:open', {
             workflowId: this.workflowId,
@@ -123,6 +131,9 @@ export class WorkflowWebSocketClient {
         };
 
         this.ws.onclose = (event) => {
+          const wasManualClose =
+            this.manualDisconnect || event.reason === 'client-disconnect';
+
           console.warn('[WorkflowWebSocket] connect:close', {
             workflowId: this.workflowId,
             sessionType: this.sessionType,
@@ -132,11 +143,19 @@ export class WorkflowWebSocketClient {
             wasClean: event.wasClean,
             reconnectAttempts: this.reconnectAttempts,
             maxReconnectAttempts: this.maxReconnectAttempts,
+            wasManualClose,
           });
           this.isConnecting = false;
           this.stopHeartbeat();
+          this.ws = null;
+          this.connectionId = null;
           this.onCloseCallback?.();
- 
+
+          if (wasManualClose) {
+            this.manualDisconnect = false;
+            return;
+          }
+
           if (
             this.shouldReconnect &&
             this.reconnectAttempts < this.maxReconnectAttempts
@@ -154,7 +173,7 @@ export class WorkflowWebSocketClient {
             }, this.reconnectDelay * this.reconnectAttempts);
           }
         };
- 
+
         this.ws.onerror = (event) => {
           console.error('[WorkflowWebSocket] connect:error', {
             workflowId: this.workflowId,
@@ -174,6 +193,15 @@ export class WorkflowWebSocketClient {
         reject(error);
       }
     });
+
+    this.activeConnectPromise = connectPromise;
+    connectPromise.finally(() => {
+      if (this.activeConnectPromise === connectPromise) {
+        this.activeConnectPromise = null;
+      }
+    });
+
+    return connectPromise;
   }
 
   private handleMessage(data: WorkflowWebSocketResponse) {
@@ -275,21 +303,27 @@ export class WorkflowWebSocketClient {
   }
 
   public disconnect() {
+    this.manualDisconnect = true;
     this.shouldReconnect = false;
     this.clearReconnectTimer();
+    this.stopHeartbeat();
+    this.reconnectAttempts = this.maxReconnectAttempts;
+    this.isConnecting = false;
+    this.connectionId = null;
 
     if (this.ws) {
-      this.stopHeartbeat();
-      this.reconnectAttempts = this.maxReconnectAttempts;
-
       if (this.ws.readyState === WebSocket.OPEN) {
         this.ws.send(JSON.stringify({ type: 'disconnect' }));
       }
 
-      this.ws.close(1000, 'client-disconnect');
+      if (
+        this.ws.readyState === WebSocket.OPEN ||
+        this.ws.readyState === WebSocket.CONNECTING
+      ) {
+        this.ws.close(1000, 'client-disconnect');
+      }
+
       this.ws = null;
-      this.connectionId = null;
-      this.isConnecting = false;
     }
   }
 

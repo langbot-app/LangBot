@@ -148,6 +148,7 @@ class WorkflowNode(abc.ABC):
         'llm-model-selector': 'llm-model-selector',
         'embedding-model-selector': 'embedding-model-selector',
         'rerank-model-selector': 'rerank-model-selector',
+        'pipeline-selector': 'pipeline-selector',
         'knowledge-base-selector': 'knowledge-base-selector',
         'knowledge-base-multi-selector': 'knowledge-base-multi-selector',
         'bot-selector': 'bot-selector',

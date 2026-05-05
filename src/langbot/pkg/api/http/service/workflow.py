@@ -284,7 +284,7 @@ class WorkflowService:
             'uuid': execution_uuid,
             'workflow_uuid': workflow_uuid,
             'workflow_version': workflow_dict.get('version', 1),
-            'status': ExecutionStatus.PENDING.value,
+            'status': ExecutionStatus.RUNNING.value,
             'trigger_type': trigger_type,
             'trigger_data': trigger_data or {},
             'variables': {},
@@ -496,13 +496,7 @@ class WorkflowService:
         executions = result.all()
         
         return {
-            'executions': [
-                self.ap.persistence_mgr.serialize_model(
-                    persistence_workflow.WorkflowExecution, 
-                    execution
-                )
-                for execution in executions
-            ],
+            'executions': [self._serialize_execution(execution) for execution in executions],
             'total': total,
         }
     
@@ -519,10 +513,17 @@ class WorkflowService:
         if execution is None:
             return None
         
-        return self.ap.persistence_mgr.serialize_model(
-            persistence_workflow.WorkflowExecution, 
-            execution
-        )
+        data = self._serialize_execution(execution)
+
+        node_exec_query = sqlalchemy.select(persistence_workflow.WorkflowNodeExecution).where(
+            persistence_workflow.WorkflowNodeExecution.execution_uuid == execution_uuid
+        ).order_by(persistence_workflow.WorkflowNodeExecution.id.asc())
+        node_exec_result = await self.ap.persistence_mgr.execute_async(node_exec_query)
+        node_executions = node_exec_result.all()
+        data['node_executions'] = [
+            self._serialize_node_execution(node_exec) for node_exec in node_executions
+        ]
+        return data
     
     async def get_node_types(self) -> list[dict]:
         """Get all available node types"""
@@ -837,6 +838,24 @@ class WorkflowService:
             result['variables'] = {}
         
         return result
+
+    def _serialize_execution(self, execution) -> dict:
+        data = self.ap.persistence_mgr.serialize_model(
+            persistence_workflow.WorkflowExecution,
+            execution,
+        )
+        data['started_at'] = data.get('start_time')
+        data['completed_at'] = data.get('end_time')
+        return data
+
+    def _serialize_node_execution(self, node_execution) -> dict:
+        data = self.ap.persistence_mgr.serialize_model(
+            persistence_workflow.WorkflowNodeExecution,
+            node_execution,
+        )
+        data['started_at'] = data.get('start_time')
+        data['completed_at'] = data.get('end_time')
+        return data
     
     async def update_workflow_extensions(
         self,
@@ -1111,22 +1130,41 @@ class WorkflowService:
         execution = await self.get_execution(execution_uuid)
         if execution is None:
             raise ValueError(f'Execution {execution_uuid} not found')
-        
+        if execution.get('workflow_uuid') != workflow_uuid:
+            raise ValueError(f'Execution {execution_uuid} not found in workflow {workflow_uuid}')
+
         query = sqlalchemy.select(persistence_workflow.WorkflowNodeExecution).where(
             persistence_workflow.WorkflowNodeExecution.execution_uuid == execution_uuid
         ).order_by(
             persistence_workflow.WorkflowNodeExecution.id.asc()
         ).limit(limit).offset(offset)
-        
+
         result = await self.ap.persistence_mgr.execute_async(query)
         node_executions = result.all()
-        
-        logs = [
-            self.ap.persistence_mgr.serialize_model(
-                persistence_workflow.WorkflowNodeExecution,
-                node_exec
+
+        logs = []
+        for node_exec in node_executions:
+            serialized = self._serialize_node_execution(node_exec)
+            timestamp = serialized.get('completed_at') or serialized.get('started_at') or execution.get('started_at')
+            level = 'error' if serialized.get('status') == 'failed' else 'info'
+            message = (
+                f"{serialized.get('node_type')}::{serialized.get('node_id')} - {serialized.get('status')}"
             )
-            for node_exec in node_executions
-        ]
-        
+            if serialized.get('error'):
+                message = f"{message} - {serialized.get('error')}"
+            logs.append(
+                {
+                    'id': str(serialized.get('id', serialized.get('node_id'))),
+                    'timestamp': timestamp,
+                    'level': level,
+                    'node_id': serialized.get('node_id'),
+                    'message': message,
+                    'data': {
+                        'inputs': serialized.get('inputs'),
+                        'outputs': serialized.get('outputs'),
+                        'retry_count': serialized.get('retry_count'),
+                    },
+                }
+            )
+
         return {'logs': logs, 'total': len(logs)}

@@ -1,6 +1,6 @@
 /**
  * Action Node Configurations
- * 
+ *
  * Defines configurations for action node types:
  * - send_message: Send a message
  * - http_request: Make HTTP requests
@@ -68,7 +68,10 @@ export const sendMessageConfig: NodeConfigMeta = {
       default: 'text',
       options: [
         { name: 'text', label: { en_US: 'Text', zh_Hans: '文本' } },
-        { name: 'markdown', label: { en_US: 'Markdown', zh_Hans: 'Markdown 文本' } },
+        {
+          name: 'markdown',
+          label: { en_US: 'Markdown', zh_Hans: 'Markdown 文本' },
+        },
         { name: 'image', label: { en_US: 'Image', zh_Hans: '图片' } },
         { name: 'file', label: { en_US: 'File', zh_Hans: '文件' } },
         { name: 'card', label: { en_US: 'Card', zh_Hans: '卡片' } },
@@ -83,7 +86,8 @@ export const sendMessageConfig: NodeConfigMeta = {
         zh_Hans: '内容模板',
       },
       description: {
-        en_US: 'Message content template (supports variables). Leave empty to use input.',
+        en_US:
+          'Message content template (supports variables). Leave empty to use input.',
         zh_Hans: '消息内容模板（支持变量）。留空则使用输入。',
       },
       required: false,
@@ -263,7 +267,8 @@ export const httpRequestConfig: NodeConfigMeta = {
         zh_Hans: '请求体模板',
       },
       description: {
-        en_US: 'Request body template (supports variables). Leave empty to use input.',
+        en_US:
+          'Request body template (supports variables). Leave empty to use input.',
         zh_Hans: '请求体模板（支持变量）。留空则使用输入。',
       },
       required: false,
@@ -596,7 +601,10 @@ export const notificationConfig: NodeConfigMeta = {
         { name: 'email', label: { en_US: 'Email', zh_Hans: '邮件' } },
         { name: 'dingtalk', label: { en_US: 'DingTalk', zh_Hans: '钉钉' } },
         { name: 'feishu', label: { en_US: 'Feishu', zh_Hans: '飞书' } },
-        { name: 'wechat_work', label: { en_US: 'WeChat Work', zh_Hans: '企业微信' } },
+        {
+          name: 'wechat_work',
+          label: { en_US: 'WeChat Work', zh_Hans: '企业微信' },
+        },
       ],
     },
     {
@@ -724,12 +732,18 @@ export const replyMessageConfig: NodeConfigMeta = {
       name: 'reply_mode',
       type: DynamicFormItemType.SELECT,
       label: { en_US: 'Reply Mode', zh_Hans: '回复模式' },
-      description: { en_US: 'How to reply to the original message', zh_Hans: '如何回复原始消息' },
+      description: {
+        en_US: 'How to reply to the original message',
+        zh_Hans: '如何回复原始消息',
+      },
       required: true,
       default: 'reply',
       options: [
         { name: 'reply', label: { en_US: 'Quote Reply', zh_Hans: '引用回复' } },
-        { name: 'direct', label: { en_US: 'Direct Message', zh_Hans: '直接消息' } },
+        {
+          name: 'direct',
+          label: { en_US: 'Direct Message', zh_Hans: '直接消息' },
+        },
       ],
     },
     {
@@ -737,7 +751,11 @@ export const replyMessageConfig: NodeConfigMeta = {
       name: 'message_template',
       type: DynamicFormItemType.TEXT,
       label: { en_US: 'Message Template', zh_Hans: '消息模板' },
-      description: { en_US: 'Reply content template (supports {{variable}} interpolation). Leave empty to use input.', zh_Hans: '回复内容模板（支持 {{variable}} 插值）。留空则使用输入。' },
+      description: {
+        en_US:
+          'Reply content template (supports {{variable}} interpolation). Leave empty to use input.',
+        zh_Hans: '回复内容模板（支持 {{variable}} 插值）。留空则使用输入。',
+      },
       required: false,
       default: '',
     },
@@ -746,13 +764,25 @@ export const replyMessageConfig: NodeConfigMeta = {
       name: 'long_text_processing',
       type: DynamicFormItemType.SELECT,
       label: { en_US: 'Long Text Processing', zh_Hans: '长文本处理' },
-      description: { en_US: 'How to handle long text that exceeds platform limits', zh_Hans: '如何处理超出平台限制的长文本' },
+      description: {
+        en_US: 'How to handle long text that exceeds platform limits',
+        zh_Hans: '如何处理超出平台限制的长文本',
+      },
       required: false,
       default: 'truncate',
       options: [
         { name: 'truncate', label: { en_US: 'Truncate', zh_Hans: '截断' } },
-        { name: 'split', label: { en_US: 'Split into multiple messages', zh_Hans: '拆分为多条消息' } },
-        { name: 'forward', label: { en_US: 'Forward as file', zh_Hans: '转发为文件' } },
+        {
+          name: 'split',
+          label: {
+            en_US: 'Split into multiple messages',
+            zh_Hans: '拆分为多条消息',
+          },
+        },
+        {
+          name: 'forward',
+          label: { en_US: 'Forward as file', zh_Hans: '转发为文件' },
+        },
       ],
     },
   ],
@@ -799,13 +829,25 @@ export const storeDataConfig: NodeConfigMeta = {
       name: 'storage_type',
       type: DynamicFormItemType.SELECT,
       label: { en_US: 'Storage Type', zh_Hans: '存储类型' },
-      description: { en_US: 'Type of storage to use', zh_Hans: '要使用的存储类型' },
+      description: {
+        en_US: 'Type of storage to use',
+        zh_Hans: '要使用的存储类型',
+      },
       required: true,
       default: 'variable',
       options: [
-        { name: 'variable', label: { en_US: 'Workflow Variable', zh_Hans: '工作流变量' } },
-        { name: 'session', label: { en_US: 'Session Storage', zh_Hans: '会话存储' } },
-        { name: 'persistent', label: { en_US: 'Persistent Storage', zh_Hans: '持久化存储' } },
+        {
+          name: 'variable',
+          label: { en_US: 'Workflow Variable', zh_Hans: '工作流变量' },
+        },
+        {
+          name: 'session',
+          label: { en_US: 'Session Storage', zh_Hans: '会话存储' },
+        },
+        {
+          name: 'persistent',
+          label: { en_US: 'Persistent Storage', zh_Hans: '持久化存储' },
+        },
       ],
     },
     {
@@ -813,7 +855,10 @@ export const storeDataConfig: NodeConfigMeta = {
       name: 'key',
       type: DynamicFormItemType.STRING,
       label: { en_US: 'Key', zh_Hans: '键' },
-      description: { en_US: 'Storage key (supports variable interpolation)', zh_Hans: '存储键（支持变量插值）' },
+      description: {
+        en_US: 'Storage key (supports variable interpolation)',
+        zh_Hans: '存储键（支持变量插值）',
+      },
       required: true,
       default: '',
     },
@@ -822,7 +867,10 @@ export const storeDataConfig: NodeConfigMeta = {
       name: 'ttl',
       type: DynamicFormItemType.INT,
       label: { en_US: 'TTL (seconds)', zh_Hans: 'TTL（秒）' },
-      description: { en_US: 'Time to live (0 = no expiry)', zh_Hans: '过期时间（0 = 不过期）' },
+      description: {
+        en_US: 'Time to live (0 = no expiry)',
+        zh_Hans: '过期时间（0 = 不过期）',
+      },
       required: false,
       default: 0,
     },
@@ -855,22 +903,25 @@ export const callPipelineConfig: NodeConfigMeta = {
     }),
   ],
   outputs: [
-    createOutput('output', 'any', {
-      description: 'Pipeline output',
-      label: { en_US: 'Output', zh_Hans: '输出' },
+    createOutput('response', 'string', {
+      description: 'Pipeline response',
+      label: { en_US: 'Response', zh_Hans: '响应' },
     }),
-    createOutput('success', 'boolean', {
-      description: 'Whether pipeline execution was successful',
-      label: { en_US: 'Success', zh_Hans: '成功' },
+    createOutput('result', 'object', {
+      description: 'Pipeline execution result',
+      label: { en_US: 'Result', zh_Hans: '结果' },
     }),
   ],
   configSchema: [
     {
       id: 'pipeline_uuid',
       name: 'pipeline_uuid',
-      type: DynamicFormItemType.STRING,
-      label: { en_US: 'Pipeline', zh_Hans: 'Pipeline' },
-      description: { en_US: 'UUID of the pipeline to invoke', zh_Hans: '要调用的 Pipeline UUID' },
+      type: DynamicFormItemType.PIPELINE_SELECTOR,
+      label: { en_US: 'Pipeline', zh_Hans: '流水线' },
+      description: {
+        en_US: 'Select the pipeline to invoke',
+        zh_Hans: '选择要调用的流水线',
+      },
       required: true,
       default: '',
     },
@@ -879,7 +930,10 @@ export const callPipelineConfig: NodeConfigMeta = {
       name: 'inherit_context',
       type: DynamicFormItemType.BOOLEAN,
       label: { en_US: 'Inherit Context', zh_Hans: '继承上下文' },
-      description: { en_US: 'Pass the current workflow context to the pipeline', zh_Hans: '将当前工作流上下文传递给 Pipeline' },
+      description: {
+        en_US: 'Pass the current workflow context to the pipeline',
+        zh_Hans: '将当前工作流上下文传递给 Pipeline',
+      },
       required: false,
       default: true,
     },
@@ -932,7 +986,10 @@ export const setVariableConfig: NodeConfigMeta = {
       name: 'variable_name',
       type: DynamicFormItemType.STRING,
       label: { en_US: 'Variable Name', zh_Hans: '变量名' },
-      description: { en_US: 'Name of the variable to set', zh_Hans: '要设置的变量名' },
+      description: {
+        en_US: 'Name of the variable to set',
+        zh_Hans: '要设置的变量名',
+      },
       required: true,
       default: '',
     },
@@ -955,12 +1012,20 @@ export const setVariableConfig: NodeConfigMeta = {
       name: 'value_template',
       type: DynamicFormItemType.TEXT,
       label: { en_US: 'Value Template', zh_Hans: '值模板' },
-      description: { en_US: 'Value template (supports {{variable}} interpolation). Leave empty to use input.', zh_Hans: '值模板（支持 {{variable}} 插值）。留空则使用输入。' },
+      description: {
+        en_US:
+          'Value template (supports {{variable}} interpolation). Leave empty to use input.',
+        zh_Hans: '值模板（支持 {{variable}} 插值）。留空则使用输入。',
+      },
       required: false,
       default: '',
     },
   ],
-  defaultConfig: { variable_name: '', variable_scope: 'workflow', value_template: '' },
+  defaultConfig: {
+    variable_name: '',
+    variable_scope: 'workflow',
+    value_template: '',
+  },
 };
 
 /**
@@ -997,7 +1062,10 @@ export const openingStatementConfig: NodeConfigMeta = {
       name: 'statement',
       type: DynamicFormItemType.TEXT,
       label: { en_US: 'Opening Statement', zh_Hans: '开场白' },
-      description: { en_US: 'The opening statement to display', zh_Hans: '要显示的开场白' },
+      description: {
+        en_US: 'The opening statement to display',
+        zh_Hans: '要显示的开场白',
+      },
       required: true,
       default: '',
     },
@@ -1006,7 +1074,10 @@ export const openingStatementConfig: NodeConfigMeta = {
       name: 'suggested_questions',
       type: DynamicFormItemType.STRING_ARRAY,
       label: { en_US: 'Suggested Questions', zh_Hans: '建议问题' },
-      description: { en_US: 'List of suggested questions for the user', zh_Hans: '给用户的建议问题列表' },
+      description: {
+        en_US: 'List of suggested questions for the user',
+        zh_Hans: '给用户的建议问题列表',
+      },
       required: false,
       default: [],
     },
@@ -1015,12 +1086,19 @@ export const openingStatementConfig: NodeConfigMeta = {
       name: 'show_suggestions',
       type: DynamicFormItemType.BOOLEAN,
       label: { en_US: 'Show Suggestions', zh_Hans: '显示建议' },
-      description: { en_US: 'Whether to show suggested questions', zh_Hans: '是否显示建议问题' },
+      description: {
+        en_US: 'Whether to show suggested questions',
+        zh_Hans: '是否显示建议问题',
+      },
       required: false,
       default: true,
     },
   ],
-  defaultConfig: { statement: '', suggested_questions: [], show_suggestions: true },
+  defaultConfig: {
+    statement: '',
+    suggested_questions: [],
+    show_suggestions: true,
+  },
 };
 
 /**

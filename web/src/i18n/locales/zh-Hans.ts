@@ -368,8 +368,10 @@ const zhHans = {
     selectWorkflow: '选择工作流',
     noPipelinesFound: '暂无可用的流水线',
     noWorkflowsFound: '暂无可用的工作流',
-    pipelineBindingHelp: '流水线是传统的消息处理方式，通过预定义的阶段处理消息。',
-    workflowBindingHelp: '工作流提供可视化的节点编排，支持更灵活的消息处理逻辑。',
+    pipelineBindingHelp:
+      '流水线是传统的消息处理方式，通过预定义的阶段处理消息。',
+    workflowBindingHelp:
+      '工作流提供可视化的节点编排，支持更灵活的消息处理逻辑。',
     adapterConfigDescription: '配置所选平台适配器',
     dangerZone: '危险区域',
     dangerZoneDescription: '不可逆的操作',
@@ -1336,6 +1338,7 @@ const zhHans = {
     nodeExecutions: '节点执行记录',
     result: '执行结果',
     'status.pending': '等待中',
+    'status.waiting': '等待中',
     'status.running': '执行中',
     'status.completed': '已完成',
     'status.failed': '失败',
@@ -1369,7 +1372,8 @@ const zhHans = {
     condition: '条件',
     hasCondition: '已设置',
     conditionPlaceholder: '输入条件表达式，如: output.success == true',
-    conditionHelp: '条件为空时，该连线将始终被执行。支持使用 {{变量名}} 引用上下文变量。',
+    conditionHelp:
+      '条件为空时，该连线将始终被执行。支持使用 {{变量名}} 引用上下文变量。',
     deleteEdge: '删除连线',
     deleteEdgeConfirm: '确认删除连线',
     deleteEdgeConfirmDesc: '删除后，该连线将被永久移除。',

@@ -25,11 +25,15 @@ import {
   KnowledgeBase,
   EmbeddingModel,
   RerankModel,
+  Pipeline,
   PluginTool,
 } from '@/app/infra/entities/api';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
-import { resolveI18nLabel, maybeTranslateKey } from '@/app/home/workflows/components/workflow-editor/workflow-i18n';
+import {
+  resolveI18nLabel,
+  maybeTranslateKey,
+} from '@/app/home/workflows/components/workflow-editor/workflow-i18n';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -65,12 +69,11 @@ import {
 } from '@/components/ui/dropdown-menu';
 import ModelsDialog from '@/app/home/components/models-dialog/ModelsDialog';
 
-const resolveOptionLabel = (
-  label: unknown,
-  fallback: string,
-): string => {
+const resolveOptionLabel = (label: unknown, fallback: string): string => {
   if (!label || typeof label !== 'object') return fallback;
-  return resolveI18nLabel(label as Record<string, string> | I18nObject) || fallback;
+  return (
+    resolveI18nLabel(label as Record<string, string> | I18nObject) || fallback
+  );
 };
 
 const getSelectedOptionLabel = (
@@ -87,7 +90,11 @@ const resolveModelLabel = (model: {
   name: string;
   display_name?: string;
 }): string => {
-  return maybeTranslateKey(model.display_name || model.name) || model.display_name || model.name;
+  return (
+    maybeTranslateKey(model.display_name || model.name) ||
+    model.display_name ||
+    model.name
+  );
 };
 
 export default function DynamicFormItemComponent({
@@ -105,6 +112,7 @@ export default function DynamicFormItemComponent({
   const [rerankModels, setRerankModels] = useState<RerankModel[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [bots, setBots] = useState<Bot[]>([]);
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [tools, setTools] = useState<PluginTool[]>([]);
   const [uploading, setUploading] = useState<boolean>(false);
   const [kbDialogOpen, setKbDialogOpen] = useState(false);
@@ -259,6 +267,19 @@ export default function DynamicFormItemComponent({
   }, [config.type]);
 
   useEffect(() => {
+    if (config.type === DynamicFormItemType.PIPELINE_SELECTOR) {
+      httpClient
+        .getPipelines()
+        .then((resp) => {
+          setPipelines(resp.pipelines);
+        })
+        .catch((err) => {
+          toast.error(t('pipelines.loadPipelinesFailed') + err.msg);
+        });
+    }
+  }, [config.type, t]);
+
+  useEffect(() => {
     if (config.type === DynamicFormItemType.TOOLS_SELECTOR) {
       httpClient
         .getTools()
@@ -308,7 +329,9 @@ export default function DynamicFormItemComponent({
                     onClick={() => field.onChange(option.name)}
                   >
                     <div className="flex flex-col gap-0.5">
-                      <span>{resolveOptionLabel(option.label, option.name)}</span>
+                      <span>
+                        {resolveOptionLabel(option.label, option.name)}
+                      </span>
                       <span className="text-xs text-muted-foreground">
                         {option.name}
                       </span>
@@ -320,7 +343,9 @@ export default function DynamicFormItemComponent({
           </div>
         );
       }
-      return <Input className="max-w-md" {...field} value={field.value ?? ''} />;
+      return (
+        <Input className="max-w-md" {...field} value={field.value ?? ''} />
+      );
 
     case DynamicFormItemType.SECRET:
       const secretValue = typeof field.value === 'string' ? field.value : '';
@@ -346,16 +371,23 @@ export default function DynamicFormItemComponent({
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => setSecretVisible((prev) => !prev)}
           >
-            {secretVisible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            {secretVisible ? (
+              <EyeOff className="size-4" />
+            ) : (
+              <Eye className="size-4" />
+            )}
           </Button>
         </div>
       );
 
     case DynamicFormItemType.TEXT:
       // Ensure value is always a string to avoid [object Object] display
-      const textValue = typeof field.value === 'string'
-        ? field.value
-        : (field.value != null ? JSON.stringify(field.value, null, 2) : '');
+      const textValue =
+        typeof field.value === 'string'
+          ? field.value
+          : field.value != null
+            ? JSON.stringify(field.value, null, 2)
+            : '';
       return (
         <Textarea
           {...field}
@@ -366,7 +398,9 @@ export default function DynamicFormItemComponent({
       );
 
     case DynamicFormItemType.BOOLEAN:
-      return <Switch checked={!!field.value} onCheckedChange={field.onChange} />;
+      return (
+        <Switch checked={!!field.value} onCheckedChange={field.onChange} />
+      );
 
     case DynamicFormItemType.STRING_ARRAY:
       const arrayValue = Array.isArray(field.value) ? field.value : [];
@@ -378,7 +412,9 @@ export default function DynamicFormItemComponent({
                 className="flex-1"
                 value={item ?? ''}
                 onChange={(e) => {
-                  const newValue = [...(Array.isArray(field.value) ? field.value : [])];
+                  const newValue = [
+                    ...(Array.isArray(field.value) ? field.value : []),
+                  ];
                   newValue[index] = e.target.value;
                   field.onChange(newValue);
                 }}
@@ -389,9 +425,9 @@ export default function DynamicFormItemComponent({
                 size="icon"
                 className="shrink-0 text-muted-foreground hover:text-destructive"
                 onClick={() => {
-                  const newValue = (Array.isArray(field.value) ? field.value : []).filter(
-                    (_: string, i: number) => i !== index,
-                  );
+                  const newValue = (
+                    Array.isArray(field.value) ? field.value : []
+                  ).filter((_: string, i: number) => i !== index);
                   field.onChange(newValue);
                 }}
               >
@@ -404,7 +440,10 @@ export default function DynamicFormItemComponent({
             variant="outline"
             className="w-full border-dashed text-muted-foreground hover:text-foreground"
             onClick={() => {
-              field.onChange([...(Array.isArray(field.value) ? field.value : []), '']);
+              field.onChange([
+                ...(Array.isArray(field.value) ? field.value : []),
+                '',
+              ]);
             }}
           >
             <Plus className="size-4 mr-1.5" />
@@ -414,7 +453,10 @@ export default function DynamicFormItemComponent({
       );
 
     case DynamicFormItemType.SELECT:
-      const selectedOptionLabel = getSelectedOptionLabel(config.options, field.value);
+      const selectedOptionLabel = getSelectedOptionLabel(
+        config.options,
+        field.value,
+      );
       return (
         <Select
           value={typeof field.value === 'string' ? field.value : ''}
@@ -1063,7 +1105,8 @@ export default function DynamicFormItemComponent({
       const kbsByEngine = knowledgeBases.reduce(
         (acc, kb) => {
           const engineName = kb.knowledge_engine?.name
-            ? resolveI18nLabel(kb.knowledge_engine.name) || t('knowledge.unknownEngine')
+            ? resolveI18nLabel(kb.knowledge_engine.name) ||
+              t('knowledge.unknownEngine')
             : t('knowledge.unknownEngine');
           if (!acc[engineName]) {
             acc[engineName] = [];
@@ -1075,7 +1118,10 @@ export default function DynamicFormItemComponent({
       );
 
       return (
-        <Select value={field.value ?? '__none__'} onValueChange={field.onChange}>
+        <Select
+          value={field.value ?? '__none__'}
+          onValueChange={field.onChange}
+        >
           <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
             {field.value && field.value !== '__none__' ? (
               (() => {
@@ -1126,7 +1172,8 @@ export default function DynamicFormItemComponent({
       const multiKbsByEngine = knowledgeBases.reduce(
         (acc, kb) => {
           const engineName = kb.knowledge_engine?.name
-            ? resolveI18nLabel(kb.knowledge_engine.name) || t('knowledge.unknownEngine')
+            ? resolveI18nLabel(kb.knowledge_engine.name) ||
+              t('knowledge.unknownEngine')
             : t('knowledge.unknownEngine');
           if (!acc[engineName]) {
             acc[engineName] = [];
@@ -1307,6 +1354,43 @@ export default function DynamicFormItemComponent({
                   {bot.name}
                 </SelectItem>
               ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      );
+
+    case DynamicFormItemType.PIPELINE_SELECTOR:
+      return (
+        <Select value={field.value ?? ''} onValueChange={field.onChange}>
+          <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
+            {field.value ? (
+              (() => {
+                const selectedPipeline = pipelines.find(
+                  (pipeline) => pipeline.uuid === field.value,
+                );
+                return (
+                  <span className="truncate">
+                    {selectedPipeline?.name ?? field.value}
+                  </span>
+                );
+              })()
+            ) : (
+              <SelectValue placeholder={t('bots.selectPipeline')} />
+            )}
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {pipelines.length === 0 ? (
+                <div className="px-2 py-3 text-sm text-muted-foreground">
+                  {t('bots.noPipelinesFound')}
+                </div>
+              ) : (
+                pipelines.map((pipeline) => (
+                  <SelectItem key={pipeline.uuid} value={pipeline.uuid ?? ''}>
+                    {pipeline.name}
+                  </SelectItem>
+                ))
+              )}
             </SelectGroup>
           </SelectContent>
         </Select>

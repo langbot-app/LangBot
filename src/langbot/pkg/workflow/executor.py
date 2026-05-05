@@ -10,6 +10,8 @@ import uuid
 from datetime import datetime
 from typing import Any, Optional, TYPE_CHECKING
 
+import sqlalchemy
+
 from .entities import (
     WorkflowDefinition,
     NodeDefinition,
@@ -20,6 +22,7 @@ from .entities import (
     NodeStatus,
     ExecutionStep,
 )
+from ..entity.persistence import workflow as persistence_workflow
 from .registry import NodeTypeRegistry
 
 if TYPE_CHECKING:
@@ -346,6 +349,8 @@ class WorkflowExecutor:
             logger.warning(f"Circular dependency detected at node: {node.id}")
             context.node_states[node.id].status = NodeStatus.SKIPPED
             context.node_states[node.id].error = "Circular dependency detected"
+            context.node_states[node.id].end_time = datetime.now()
+            await self._persist_node_execution(node, context.node_states[node.id], context)
             return
         
         # Add node to current path
@@ -353,7 +358,10 @@ class WorkflowExecutor:
         
         # Check if node should be skipped
         if await self._should_skip_node(node, context):
-            context.node_states[node.id].status = NodeStatus.SKIPPED
+            existing_state = context.node_states[node.id]
+            if existing_state.status == NodeStatus.SKIPPED:
+                existing_state.end_time = existing_state.end_time or datetime.now()
+                await self._persist_node_execution(node, existing_state, context)
             path.discard(node.id)
             return
         
@@ -469,6 +477,7 @@ class WorkflowExecutor:
             node_state.error = f"Unknown node type: {node.type}"
             node_state.end_time = datetime.now()
             self._record_execution_step(node, node_state, context)
+            await self._persist_node_execution(node, node_state, context)
             return
         
         # Resolve inputs
@@ -482,6 +491,7 @@ class WorkflowExecutor:
             node_state.error = "; ".join(validation_errors)
             node_state.end_time = datetime.now()
             self._record_execution_step(node, node_state, context)
+            await self._persist_node_execution(node, node_state, context)
             return
         
         # Execute with retries
@@ -523,6 +533,7 @@ class WorkflowExecutor:
                     )
         
         self._record_execution_step(node, node_state, context)
+        await self._persist_node_execution(node, node_state, context)
     
     async def _resolve_inputs(
         self, 
@@ -737,6 +748,47 @@ class WorkflowExecutor:
             error=node_state.error
         )
         context.history.append(step)
+
+    async def _persist_node_execution(
+        self,
+        node: NodeDefinition,
+        node_state: NodeState,
+        context: ExecutionContext,
+    ):
+        """Persist node execution state for execution detail and logs."""
+        if not self.ap:
+            return
+
+        values = {
+            'execution_uuid': context.execution_id,
+            'node_id': node.id,
+            'node_type': node.type,
+            'status': node_state.status.value,
+            'inputs': node_state.inputs,
+            'outputs': node_state.outputs,
+            'start_time': node_state.start_time,
+            'end_time': node_state.end_time,
+            'error': node_state.error,
+            'retry_count': node_state.retry_count,
+        }
+
+        existing_query = sqlalchemy.select(persistence_workflow.WorkflowNodeExecution).where(
+            persistence_workflow.WorkflowNodeExecution.execution_uuid == context.execution_id,
+            persistence_workflow.WorkflowNodeExecution.node_id == node.id,
+        )
+        existing_result = await self.ap.persistence_mgr.execute_async(existing_query)
+        existing = existing_result.first()
+
+        if existing is None:
+            await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.insert(persistence_workflow.WorkflowNodeExecution).values(**values)
+            )
+        else:
+            await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.update(persistence_workflow.WorkflowNodeExecution)
+                .where(persistence_workflow.WorkflowNodeExecution.id == existing.id)
+                .values(**values)
+            )
 
 
 class ParallelExecutor:
@@ -997,8 +1049,8 @@ class DebugWorkflowExecutor(WorkflowExecutor):
         
         # Check if should skip
         if await self._should_skip_node(node, context):
-            context.node_states[node.id].status = NodeStatus.SKIPPED
-            debug_state.add_log('info', f'Skipping node: {node.id}', node_id=node.id)
+            if context.node_states[node.id].status == NodeStatus.SKIPPED:
+                debug_state.add_log('info', f'Skipping node: {node.id}', node_id=node.id)
             return
         
         # Check breakpoint
@@ -1076,6 +1128,7 @@ class DebugWorkflowExecutor(WorkflowExecutor):
             node_state.end_time = datetime.now()
             debug_state.add_log('error', f'Unknown node type: {node.type}', node_id=node.id)
             self._record_execution_step(node, node_state, context)
+            await self._persist_node_execution(node, node_state, context)
             return
         
         # Resolve inputs
@@ -1100,6 +1153,7 @@ class DebugWorkflowExecutor(WorkflowExecutor):
                 node_id=node.id
             )
             self._record_execution_step(node, node_state, context)
+            await self._persist_node_execution(node, node_state, context)
             return
         
         # Execute with retries
@@ -1147,6 +1201,7 @@ class DebugWorkflowExecutor(WorkflowExecutor):
                     )
         
         self._record_execution_step(node, node_state, context)
+        await self._persist_node_execution(node, node_state, context)
     
     async def step_execute(
         self,

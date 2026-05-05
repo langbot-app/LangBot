@@ -38,6 +38,8 @@ class ReplyMessageNode(WorkflowNode):
             message = inputs.get("input")
         if message in (None, ""):
             message = inputs.get("response")
+        if message in (None, ""):
+            message = inputs.get("content")
         if message in (None, "") and context.message_context:
             message = context.message_context.message_content
         if message is None:
