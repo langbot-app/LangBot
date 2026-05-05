@@ -670,7 +670,7 @@ function WorkflowEditorInner() {
 
         {/* Right: Property Panel (conditionally rendered) */}
         {showPropertyPanel && (
-          <div className="w-80 border-l bg-muted/30 overflow-hidden flex-shrink-0 h-full">
+          <div className="w-[28rem] xl:w-[32rem] min-w-[24rem] border-l bg-muted/30 overflow-hidden flex-shrink-0 h-full">
             <PropertyPanel
               selectedNodeId={selectedNodeId}
               selectedEdgeId={selectedEdgeId}

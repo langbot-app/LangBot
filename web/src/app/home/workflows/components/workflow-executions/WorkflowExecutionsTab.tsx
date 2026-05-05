@@ -627,28 +627,37 @@ export default function WorkflowExecutionsTab({
                                 : 'border-border'
                             }`}
                           >
-                            <div className="flex items-center justify-between gap-3">
-                              <span className={isFailedNode ? 'font-medium text-red-700 dark:text-red-300' : 'font-medium'}>
-                                {nodeExec.node_id}
-                              </span>
-                              <Badge className={statusColors[nodeExec.status]}>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                                  <span className={isFailedNode ? 'font-medium text-red-700 dark:text-red-300 break-all' : 'font-medium break-all'}>
+                                    {nodeExec.node_id}
+                                  </span>
+                                  {typeof nodeExec.retry_count === 'number' && nodeExec.retry_count > 0 && (
+                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5">
+                                      retry {nodeExec.retry_count}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div
+                                  className={`text-xs mt-1 break-all ${
+                                    isFailedNode
+                                      ? 'text-red-600/80 dark:text-red-400/80'
+                                      : 'text-muted-foreground'
+                                  }`}
+                                >
+                                  {nodeExec.node_type}
+                                </div>
+                              </div>
+                              <Badge className={`${statusColors[nodeExec.status]} shrink-0`}>
                                 <NodeStatusIcon className="size-3 mr-1" />
                                 {nodeExec.status}
                               </Badge>
                             </div>
-                            <div
-                              className={`text-xs mt-1 ${
-                                isFailedNode
-                                  ? 'text-red-600/80 dark:text-red-400/80'
-                                  : 'text-muted-foreground'
-                              }`}
-                            >
-                              {nodeExec.node_type}
-                            </div>
                             {nodeExec.inputs && Object.keys(nodeExec.inputs).length > 0 && (
                               <div className="mt-2">
                                 <div className="text-xs text-muted-foreground mb-1">{t('workflows.inputs')}:</div>
-                                <pre className="bg-muted p-2 rounded text-xs overflow-x-auto max-h-[100px]">
+                                <pre className="bg-muted p-2 rounded text-xs overflow-x-auto max-h-[100px] whitespace-pre-wrap break-all">
                                   {JSON.stringify(nodeExec.inputs, null, 2)}
                                 </pre>
                               </div>
@@ -656,14 +665,19 @@ export default function WorkflowExecutionsTab({
                             {nodeExec.outputs && Object.keys(nodeExec.outputs).length > 0 && (
                               <div className="mt-2">
                                 <div className="text-xs text-muted-foreground mb-1">{t('workflows.outputs')}:</div>
-                                <pre className="bg-muted p-2 rounded text-xs overflow-x-auto max-h-[100px]">
+                                <pre className="bg-muted p-2 rounded text-xs overflow-x-auto max-h-[100px] whitespace-pre-wrap break-all">
                                   {JSON.stringify(nodeExec.outputs, null, 2)}
                                 </pre>
                               </div>
                             )}
                             {nodeExec.error && (
-                              <div className="text-destructive text-xs mt-2 bg-destructive/10 p-2 rounded">
-                                {nodeExec.error}
+                              <div className="mt-2 rounded border border-destructive/20 bg-destructive/10 p-2">
+                                <div className="text-[11px] font-medium text-destructive mb-1">
+                                  {t('workflows.error')}
+                                </div>
+                                <div className="text-destructive text-xs whitespace-pre-wrap break-all font-mono">
+                                  {nodeExec.error}
+                                </div>
                               </div>
                             )}
                           </div>
