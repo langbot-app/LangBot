@@ -5,6 +5,9 @@ const esES = {
     installedPlugins: 'Plugins instalados',
     pluginMarket: 'Tienda',
     mcpServers: 'Servidores MCP',
+    pluginPages: 'Páginas de plugins',
+    pluginPagesTooltip:
+      'Páginas visuales proporcionadas por los plugins instalados',
     quickStart: 'Inicio rápido',
   },
   common: {
@@ -202,6 +205,9 @@ const esES = {
     string: 'Cadena',
     number: 'Número',
     boolean: 'Booleano',
+    object: 'Objeto',
+    objectJsonPlaceholder: '{ "type": "disabled" }',
+    invalidJsonObject: 'El valor debe ser un objeto JSON válido',
     selectModelProvider: 'Seleccionar proveedor del modelo',
     modelProviderDescription:
       'Por favor, introduce el nombre del modelo proporcionado por el proveedor',
@@ -500,6 +506,7 @@ const esES = {
       Command: 'Comando',
       KnowledgeEngine: 'Motor de conocimiento',
       Parser: 'Analizador',
+      Page: 'Página',
     },
     uploadLocal: 'Subir local',
     debugging: 'Depuración',
@@ -1250,6 +1257,42 @@ const esES = {
       errors: 'Registros de errores',
       sessions: 'Sesiones',
       feedback: 'Comentarios de usuarios',
+    },
+  },
+  storageAnalysis: {
+    title: 'Análisis de almacenamiento',
+    description:
+      'Inspecciona el uso de almacenamiento y los candidatos de limpieza',
+    openDialog: 'Ver análisis',
+    dialogTitle: 'Análisis de almacenamiento',
+    generatedAt: 'Generado el {{time}}',
+    loading: 'Cargando...',
+    refresh: 'Actualizar',
+    totalSize: 'Tamaño total',
+    binaryStorage: 'Almacenamiento binario de plugins',
+    uploadCleanup: 'Subidas caducadas',
+    logCleanup: 'Registros caducados',
+    sections: 'Secciones de almacenamiento',
+    monitoringTables: 'Tablas de monitoreo',
+    runtimeTasks: 'Tareas en ejecución',
+    cleanupPolicy: 'Política de limpieza',
+    uploadRetention: 'Retención de subidas',
+    logRetention: 'Retención de registros',
+    databaseType: 'Tipo de base de datos',
+    days: 'días',
+    missing: 'Falta',
+    expiredUploads: 'Subidas caducadas',
+    expiredLogs: 'Registros caducados',
+    noExpiredUploads: 'No hay archivos subidos caducados',
+    noExpiredLogs: 'No hay registros caducados',
+    sectionNames: {
+      database: 'Base de datos',
+      logs: 'Registros',
+      storage: 'Archivos subidos',
+      vector_store: 'Almacén vectorial',
+      plugins: 'Plugins',
+      mcp: 'MCP',
+      temp: 'Archivos temporales',
     },
   },
   limitation: {
@@ -2048,6 +2091,10 @@ const esES = {
     },
   },
 
+  pluginPages: {
+    selectFromSidebar: 'Selecciona una página de plugin en la barra lateral',
+    invalidPage: 'Página de plugin no válida',
+  },
 };
 
 export default esES;

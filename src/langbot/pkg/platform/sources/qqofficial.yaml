@@ -7,9 +7,9 @@ metadata:
     zh_Hans: QQ 官方 API
     zh_Hant: QQ 官方 API
   description:
-    en_US: QQ Official API (Webhook)
-    zh_Hans: QQ 官方 API (Webhook)，需要公网地址以接收消息推送，请查看文档了解使用方式
-    zh_Hant: QQ 官方 API (Webhook)，需要公網地址以接收訊息推送，請查看文件了解使用方式
+    en_US: QQ Official API (Webhook / WebSocket)
+    zh_Hans: QQ 官方 API，支持 Webhook 和 WebSocket 两种连接模式
+    zh_Hant: QQ 官方 API，支援 Webhook 和 WebSocket 兩種連線模式
   icon: qqofficial.svg
 spec:
   categories:
@@ -19,18 +19,6 @@ spec:
     en: https://link.langbot.app/en/platforms/qqofficial
     ja: https://link.langbot.app/ja/platforms/qqofficial
   config:
-    - name: webhook_url
-      label:
-        en_US: Webhook Callback URL
-        zh_Hans: Webhook 回调地址
-        zh_Hant: Webhook 回調地址
-      description:
-        en_US: Copy this URL and paste it into your QQ Official API webhook configuration
-        zh_Hans: 复制此地址并粘贴到 QQ 官方 API 的 Webhook 配置中
-        zh_Hant: 複製此地址並貼到 QQ 官方 API 的 Webhook 設定中
-      type: webhook-url
-      required: false
-      default: ""
     - name: appid
       label:
         en_US: App ID
@@ -55,6 +43,46 @@ spec:
       type: string
       required: true
       default: ""
+    - name: enable-webhook
+      label:
+        en_US: Enable Webhook Mode
+        zh_Hans: 启用Webhook模式
+        zh_Hant: 啟用 Webhook 模式
+      description:
+        en_US: If enabled, the bot will use webhook mode to receive messages. Otherwise, it will use WebSocket mode
+        zh_Hans: 如果启用，机器人将使用 Webhook 模式接收消息。否则，将使用 WebSocket 模式
+        zh_Hant: 如果啟用，機器人將使用 Webhook 模式接收訊息。否則，將使用 WebSocket 模式
+      type: boolean
+      required: true
+      default: false
+    - name: enable-stream-reply
+      label:
+        en_US: Enable Stream Reply Mode
+        zh_Hans: 启用流式回复模式
+        zh_Hant: 啟用串流回覆模式
+      description:
+        en_US: If enabled, the bot will use streaming mode to reply messages (C2C only)
+        zh_Hans: 如果启用，机器人将使用流式方式回复消息（仅私聊）
+        zh_Hant: 如果啟用，機器人將使用串流方式回覆訊息（僅私聊）
+      type: boolean
+      required: true
+      default: false
+    - name: webhook_url
+      label:
+        en_US: Webhook Callback URL
+        zh_Hans: Webhook 回调地址
+        zh_Hant: Webhook 回調地址
+      description:
+        en_US: Copy this URL and paste it into your QQ Official API webhook configuration
+        zh_Hans: 复制此地址并粘贴到 QQ 官方 API 的 Webhook 配置中
+        zh_Hant: 複製此地址並貼到 QQ 官方 API 的 Webhook 設定中
+      type: webhook-url
+      required: false
+      default: ""
+      show_if:
+        field: enable-webhook
+        operator: eq
+        value: true
 execution:
   python:
     path: ./qqofficial.py

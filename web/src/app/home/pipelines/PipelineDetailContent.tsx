@@ -80,7 +80,12 @@ export default function PipelineDetailContent({ id }: { id: string }) {
       {/* Sticky Header: title + save button */}
       <div className="flex items-center justify-between pb-4 shrink-0">
         <h1 className="text-xl font-semibold">{t('pipelines.editPipeline')}</h1>
-        <Button type="submit" form="pipeline-form" disabled={!formDirty}>
+        <Button
+          type="submit"
+          form="pipeline-form"
+          disabled={!formDirty}
+          className={activeTab !== 'config' ? 'invisible' : ''}
+        >
           {t('common.save')}
         </Button>
       </div>

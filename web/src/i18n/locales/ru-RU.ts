@@ -5,6 +5,9 @@ const ruRU = {
     installedPlugins: 'Установленные плагины',
     pluginMarket: 'Маркетплейс',
     mcpServers: 'MCP-серверы',
+    pluginPages: 'Страницы плагинов',
+    pluginPagesTooltip:
+      'Визуальные страницы, предоставляемые установленными плагинами',
     quickStart: 'Быстрый старт',
   },
   common: {
@@ -199,6 +202,9 @@ const ruRU = {
     string: 'Строка',
     number: 'Число',
     boolean: 'Логический',
+    object: 'Объект',
+    objectJsonPlaceholder: '{ "type": "disabled" }',
+    invalidJsonObject: 'Значение должно быть допустимым объектом JSON',
     selectModelProvider: 'Выберите провайдера модели',
     modelProviderDescription:
       'Пожалуйста, введите название модели, предоставленное провайдером',
@@ -497,6 +503,7 @@ const ruRU = {
       Command: 'Команда',
       KnowledgeEngine: 'Движок знаний',
       Parser: 'Парсер',
+      Page: 'Страница',
     },
     uploadLocal: 'Загрузить локально',
     debugging: 'Отладка',
@@ -1225,6 +1232,41 @@ const ruRU = {
       errors: 'Журнал ошибок',
       sessions: 'Сессии',
       feedback: 'Отзывы пользователей',
+    },
+  },
+  storageAnalysis: {
+    title: 'Анализ хранилища',
+    description: 'Проверьте использование хранилища и кандидатов на очистку',
+    openDialog: 'Открыть анализ',
+    dialogTitle: 'Анализ хранилища',
+    generatedAt: 'Создано {{time}}',
+    loading: 'Загрузка...',
+    refresh: 'Обновить',
+    totalSize: 'Общий размер',
+    binaryStorage: 'Бинарное хранилище плагинов',
+    uploadCleanup: 'Просроченные загрузки',
+    logCleanup: 'Просроченные журналы',
+    sections: 'Разделы хранилища',
+    monitoringTables: 'Таблицы мониторинга',
+    runtimeTasks: 'Задачи runtime',
+    cleanupPolicy: 'Политика очистки',
+    uploadRetention: 'Хранение загрузок',
+    logRetention: 'Хранение журналов',
+    databaseType: 'Тип базы данных',
+    days: 'дн.',
+    missing: 'Нет',
+    expiredUploads: 'Просроченные загрузки',
+    expiredLogs: 'Просроченные журналы',
+    noExpiredUploads: 'Нет просроченных загруженных файлов',
+    noExpiredLogs: 'Нет просроченных журналов',
+    sectionNames: {
+      database: 'База данных',
+      logs: 'Журналы',
+      storage: 'Загруженные файлы',
+      vector_store: 'Векторное хранилище',
+      plugins: 'Плагины',
+      mcp: 'MCP',
+      temp: 'Временные файлы',
     },
   },
   limitation: {
@@ -2020,6 +2062,10 @@ const ruRU = {
     },
   },
 
+  pluginPages: {
+    selectFromSidebar: 'Выберите страницу плагина на боковой панели',
+    invalidPage: 'Недопустимая страница плагина',
+  },
 };
 
 export default ruRU;

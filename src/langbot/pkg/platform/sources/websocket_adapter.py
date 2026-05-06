@@ -312,7 +312,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
 
     async def _process_image_components(self, message_chain_obj: list):
         """
-        处理消息链中的图片组件，将path转换为base64
+        处理消息链中的图片和文件组件，将path转换为base64
 
         Args:
             message_chain_obj: 消息链对象列表
@@ -322,16 +322,18 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         storage_mgr = self.ap.storage_mgr
 
         for component in message_chain_obj:
-            if component.get('type') == 'Image' and component.get('path'):
-                try:
-                    # 从storage读取文件
-                    file_content = await storage_mgr.storage_provider.load(component['path'])
+            comp_type = component.get('type', '')
+            comp_path = component.get('path', '')
 
-                    # 转换为base64
+            if not comp_path:
+                continue
+
+            if comp_type == 'Image':
+                try:
+                    file_content = await storage_mgr.storage_provider.load(comp_path)
                     base64_str = base64.b64encode(file_content).decode('utf-8')
 
-                    # 添加data URI前缀（根据文件扩展名判断MIME类型）
-                    file_key = component['path']
+                    file_key = comp_path
                     if file_key.lower().endswith(('.jpg', '.jpeg')):
                         mime_type = 'image/jpeg'
                     elif file_key.lower().endswith('.png'):
@@ -341,19 +343,19 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                     elif file_key.lower().endswith('.webp'):
                         mime_type = 'image/webp'
                     else:
-                        mime_type = 'image/png'  # 默认
+                        mime_type = 'image/png'
 
                     component['base64'] = f'data:{mime_type};base64,{base64_str}'
-                    await storage_mgr.storage_provider.delete(component['path'])
+                    await storage_mgr.storage_provider.delete(comp_path)
                     component['path'] = ''
-                    # 保留path字段用于后端处理，前端使用base64显示
                 except Exception as e:
-                    await self.logger.error(f'加载图片文件失败 {component["path"]}: {e}')
+                    await self.logger.error(f'Failed to load image file {comp_path}: {e}')
 
     async def handle_websocket_message(
         self,
         connection: WebSocketConnection,
         message_data: dict,
+        owner_bot=None,
     ):
         """
         处理从WebSocket接收的消息
@@ -366,6 +368,8 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             message_data: 消息数据，包含:
                 - message: 消息链
                 - stream: 是否启用流式输出 (可选，默认True)
+            owner_bot: Optional RuntimeBot that owns this pipeline (e.g. a web_page_bot).
+                       When provided, its identity is used for logging and session tracking.
         """
         pipeline_uuid = connection.pipeline_uuid
         session_type = connection.session_type
@@ -491,12 +495,26 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                 sender=sender, message_chain=message_chain, time=datetime.now().timestamp()
             )
 
-        # 设置流水线UUID
+        # 设置流水线UUID (proxy bot always needs it for reply_message routing)
         self.ap.platform_mgr.websocket_proxy_bot.bot_entity.use_pipeline_uuid = pipeline_uuid
+        if owner_bot is not None:
+            owner_bot.bot_entity.use_pipeline_uuid = pipeline_uuid
 
-        # 异步触发事件处理（不等待结果）
-        if event.__class__ in self.listeners:
-            asyncio.create_task(self.listeners[event.__class__](event, self))
+        # 异步触发事件处理
+        # Use owner_bot's listeners if available, otherwise fall back to proxy bot
+        listeners = (
+            owner_bot.adapter.listeners
+            if (owner_bot and hasattr(owner_bot.adapter, 'listeners') and owner_bot.adapter.listeners)
+            else self.listeners
+        )
+        # Pass owner_bot's adapter so that downstream logging / dashboard
+        # attributes the message to the correct bot adapter name.
+        # Wire the ws adapter into the owner so replies are actually delivered.
+        if owner_bot and hasattr(owner_bot.adapter, 'set_ws_adapter'):
+            owner_bot.adapter.set_ws_adapter(self)
+        callback_adapter = owner_bot.adapter if (owner_bot and hasattr(owner_bot, 'adapter')) else self
+        if event.__class__ in listeners:
+            asyncio.create_task(listeners[event.__class__](event, callback_adapter))
 
     def get_websocket_messages(self, pipeline_uuid: str, session_type: str) -> list[dict]:
         """获取消息历史"""

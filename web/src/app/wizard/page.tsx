@@ -572,9 +572,9 @@ export default function WizardPage() {
                   className={cn(
                     'w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-xs font-medium transition-colors',
                     idx < currentStep
-                      ? 'bg-primary text-primary-foreground'
+                      ? 'bg-blue-600 text-white'
                       : idx === currentStep
-                        ? 'bg-primary text-primary-foreground'
+                        ? 'bg-blue-600 text-white'
                         : 'bg-muted text-muted-foreground',
                   )}
                 >
@@ -588,7 +588,7 @@ export default function WizardPage() {
                   className={cn(
                     'text-sm hidden sm:inline',
                     idx === currentStep
-                      ? 'font-medium text-foreground'
+                      ? 'font-medium text-blue-600'
                       : 'text-muted-foreground',
                   )}
                 >
@@ -599,7 +599,7 @@ export default function WizardPage() {
                 <div
                   className={cn(
                     'w-4 sm:w-8 h-px',
-                    idx < currentStep ? 'bg-primary' : 'bg-border',
+                    idx < currentStep ? 'bg-blue-600' : 'bg-border',
                   )}
                 />
               )}

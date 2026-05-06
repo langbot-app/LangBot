@@ -26,6 +26,7 @@ import {
   Store,
   Github,
   Zap,
+  HardDrive,
 } from 'lucide-react';
 import { useTheme } from '@/components/providers/theme-provider';
 
@@ -55,6 +56,7 @@ import AccountSettingsDialog from '@/app/home/components/account-settings-dialog
 import ApiIntegrationDialog from '@/app/home/components/api-integration-dialog/ApiIntegrationDialog';
 import NewVersionDialog from '@/app/home/components/new-version-dialog/NewVersionDialog';
 import ModelsDialog from '@/app/home/components/models-dialog/ModelsDialog';
+import StorageAnalysisDialog from '@/app/home/components/storage-analysis-dialog/StorageAnalysisDialog';
 import { GitHubRelease } from '@/app/infra/http/CloudServiceClient';
 import { useAsyncTask, AsyncTaskStatus } from '@/hooks/useAsyncTask';
 import { toast } from 'sonner';
@@ -705,87 +707,103 @@ function NavItems({
           >
             <SidebarMenuItem>
               <SidebarMenuButton
+                asChild
                 isActive={false}
-                onClick={() => {
-                  if (isCollapseOnly) {
-                    onSectionToggle(config.id, !isOpen);
-                  } else {
-                    onChildClick(config);
-                  }
-                }}
                 tooltip={config.name}
                 className="group/category-header"
               >
-                {config.icon}
-                <span>{config.name}</span>
-                <div className="ml-auto flex items-center gap-0.5 -mr-1">
-                  {canCreate &&
-                    (isPlugin ? (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <div
-                            role="button"
-                            className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all cursor-pointer"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <Plus className="size-3.5" />
-                          </div>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {systemInfo.enable_marketplace && (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    if (isCollapseOnly) {
+                      onSectionToggle(config.id, !isOpen);
+                    } else {
+                      onChildClick(config);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      if (isCollapseOnly) {
+                        onSectionToggle(config.id, !isOpen);
+                      } else {
+                        onChildClick(config);
+                      }
+                    }
+                  }}
+                >
+                  {config.icon}
+                  <span>{config.name}</span>
+                  <div className="ml-auto flex items-center gap-0.5 -mr-1">
+                    {canCreate &&
+                      (isPlugin ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Plus className="size-3.5" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {systemInfo.enable_marketplace && (
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate('/home/market');
+                                }}
+                              >
+                                <Store className="size-4" />
+                                {t('plugins.goToMarketplace')}
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation();
-                                navigate('/home/market');
+                                setPendingPluginInstallAction('local');
+                                navigate('/home/plugins');
                               }}
                             >
-                              <Store className="size-4" />
-                              {t('plugins.goToMarketplace')}
+                              <Upload className="size-4" />
+                              {t('plugins.uploadLocal')}
                             </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setPendingPluginInstallAction('local');
-                              navigate('/home/plugins');
-                            }}
-                          >
-                            <Upload className="size-4" />
-                            {t('plugins.uploadLocal')}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setPendingPluginInstallAction('github');
-                              navigate('/home/plugins');
-                            }}
-                          >
-                            <Github className="size-4" />
-                            {t('plugins.installFromGithub')}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    ) : (
-                      <div
-                        role="button"
-                        className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all cursor-pointer"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`${routePrefix}?id=new`);
-                        }}
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPendingPluginInstallAction('github');
+                                navigate('/home/plugins');
+                              }}
+                            >
+                              <Github className="size-4" />
+                              {t('plugins.installFromGithub')}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : (
+                        <button
+                          type="button"
+                          className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`${routePrefix}?id=new`);
+                          }}
+                        >
+                          <Plus className="size-3.5" />
+                        </button>
+                      ))}
+                    <CollapsibleTrigger asChild>
+                      <button
+                        type="button"
+                        className="p-1 rounded-sm hover:bg-sidebar-accent"
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        <Plus className="size-3.5" />
-                      </div>
-                    ))}
-                  <CollapsibleTrigger asChild>
-                    <div
-                      role="button"
-                      className="p-1 rounded-sm hover:bg-sidebar-accent cursor-pointer"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <ChevronRight className="size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                    </div>
-                  </CollapsibleTrigger>
+                        <ChevronRight className="size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                      </button>
+                    </CollapsibleTrigger>
+                  </div>
                 </div>
               </SidebarMenuButton>
               <CollapsibleContent>
@@ -1029,6 +1047,127 @@ function PluginItemMenu({
   );
 }
 
+// Plugin pages navigation section — grouped by plugin
+function PluginPagesNav() {
+  const { pluginPages } = useSidebarData();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const { t } = useTranslation();
+
+  if (pluginPages.length === 0) return null;
+
+  const pathname = location.pathname;
+  const currentId =
+    pathname === '/home/plugin-pages' ? searchParams.get('id') : null;
+
+  // Group pages by plugin (author/name)
+  const grouped = new Map<
+    string,
+    { label: string; iconURL: string; pages: typeof pluginPages }
+  >();
+  for (const page of pluginPages) {
+    const key = `${page.pluginAuthor}/${page.pluginName}`;
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        label: page.pluginLabel,
+        iconURL: page.pluginIconURL,
+        pages: [],
+      });
+    }
+    grouped.get(key)!.pages.push(page);
+  }
+
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel title={t('sidebar.pluginPagesTooltip')}>
+        {t('sidebar.pluginPages')}
+      </SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {Array.from(grouped.entries()).map(
+            ([pluginKey, { label, iconURL, pages }]) => {
+              const hasActivePage = pages.some((p) => p.id === currentId);
+
+              const pluginIcon = (
+                <img
+                  src={iconURL}
+                  alt=""
+                  className="size-4 rounded-sm object-cover shrink-0"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
+                />
+              );
+
+              // Single page — render directly without nesting
+              if (pages.length === 1) {
+                const page = pages[0];
+                const isActive = currentId === page.id;
+                const route = `/home/plugin-pages?id=${encodeURIComponent(page.id)}`;
+                return (
+                  <SidebarMenuItem key={page.id}>
+                    <SidebarMenuButton
+                      isActive={isActive}
+                      tooltip={page.name}
+                      onClick={() => navigate(route)}
+                      className="select-none"
+                    >
+                      {pluginIcon}
+                      <span>{page.name}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              }
+
+              // Multiple pages — collapsible group
+              return (
+                <Collapsible
+                  key={pluginKey}
+                  defaultOpen={hasActivePage}
+                  className="group/collapsible"
+                >
+                  <SidebarMenuItem>
+                    <CollapsibleTrigger asChild>
+                      <SidebarMenuButton
+                        tooltip={label}
+                        className="select-none"
+                      >
+                        {pluginIcon}
+                        <span>{label}</span>
+                        <ChevronRight className="ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                      </SidebarMenuButton>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <SidebarMenuSub>
+                        {pages.map((page) => {
+                          const isActive = currentId === page.id;
+                          const route = `/home/plugin-pages?id=${encodeURIComponent(page.id)}`;
+                          return (
+                            <SidebarMenuSubItem key={page.id}>
+                              <SidebarMenuSubButton
+                                isActive={isActive}
+                                onClick={() => navigate(route)}
+                                className="select-none"
+                              >
+                                <span>{page.name}</span>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          );
+                        })}
+                      </SidebarMenuSub>
+                    </CollapsibleContent>
+                  </SidebarMenuItem>
+                </Collapsible>
+              );
+            },
+          )}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+}
+
 export default function HomeSidebar({
   onSelectedChangeAction,
 }: {
@@ -1054,6 +1193,9 @@ export default function HomeSidebar({
     if (searchParams.get('action') === 'showApiIntegrationSettings') {
       setApiKeyDialogOpen(true);
     }
+    if (searchParams.get('action') === 'showStorageAnalysis') {
+      setStorageAnalysisOpen(true);
+    }
   }, [searchParams]);
 
   const [selectedChild, setSelectedChild] = useState<SidebarChildVO>();
@@ -1069,6 +1211,7 @@ export default function HomeSidebar({
   const [hasNewVersion, setHasNewVersion] = useState(false);
   const [versionDialogOpen, setVersionDialogOpen] = useState(false);
   const [modelsDialogOpen, setModelsDialogOpen] = useState(false);
+  const [storageAnalysisOpen, setStorageAnalysisOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string>('');
   const [starCount, setStarCount] = useState<number | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -1095,6 +1238,24 @@ export default function HomeSidebar({
     if (open) {
       const params = new URLSearchParams(searchParams.toString());
       params.set('action', 'showAccountSettings');
+      navigate(`${pathname}?${params.toString()}`, {
+        preventScrollReset: true,
+      });
+    } else {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete('action');
+      const newUrl = params.toString()
+        ? `${pathname}?${params.toString()}`
+        : pathname;
+      navigate(newUrl, { preventScrollReset: true });
+    }
+  }
+
+  function handleStorageAnalysisChange(open: boolean) {
+    setStorageAnalysisOpen(open);
+    if (open) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('action', 'showStorageAnalysis');
       navigate(`${pathname}?${params.toString()}`, {
         preventScrollReset: true,
       });
@@ -1291,6 +1452,7 @@ export default function HomeSidebar({
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+          <PluginPagesNav />
         </SidebarContent>
 
         {/* Footer */}
@@ -1416,6 +1578,15 @@ export default function HomeSidebar({
                     <DropdownMenuItem
                       onClick={() => {
                         setUserMenuOpen(false);
+                        handleStorageAnalysisChange(true);
+                      }}
+                    >
+                      <HardDrive />
+                      {t('storageAnalysis.title')}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setUserMenuOpen(false);
                         navigate('/wizard');
                       }}
                     >
@@ -1512,6 +1683,10 @@ export default function HomeSidebar({
       <ModelsDialog
         open={modelsDialogOpen}
         onOpenChange={handleModelsDialogChange}
+      />
+      <StorageAnalysisDialog
+        open={storageAnalysisOpen}
+        onOpenChange={handleStorageAnalysisChange}
       />
     </>
   );

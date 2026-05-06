@@ -5,6 +5,9 @@ const viVN = {
     installedPlugins: 'Plugin đã cài đặt',
     pluginMarket: 'Chợ ứng dụng',
     mcpServers: 'Máy chủ MCP',
+    pluginPages: 'Trang plugin',
+    pluginPagesTooltip:
+      'Các trang trực quan được cung cấp bởi plugin đã cài đặt',
     quickStart: 'Bắt đầu nhanh',
   },
   common: {
@@ -199,6 +202,9 @@ const viVN = {
     string: 'Chuỗi',
     number: 'Số',
     boolean: 'Boolean',
+    object: 'Đối tượng',
+    objectJsonPlaceholder: '{ "type": "disabled" }',
+    invalidJsonObject: 'Giá trị phải là một đối tượng JSON hợp lệ',
     selectModelProvider: 'Chọn nhà cung cấp mô hình',
     modelProviderDescription:
       'Vui lòng điền tên mô hình do nhà cung cấp cung cấp',
@@ -492,6 +498,7 @@ const viVN = {
       Command: 'Lệnh',
       KnowledgeEngine: 'Công cụ tri thức',
       Parser: 'Trình phân tích',
+      Page: 'Trang',
     },
     uploadLocal: 'Tải lên cục bộ',
     debugging: 'Gỡ lỗi',
@@ -1218,6 +1225,41 @@ const viVN = {
       errors: 'Nhật ký lỗi',
       sessions: 'Phiên',
       feedback: 'Phản hồi người dùng',
+    },
+  },
+  storageAnalysis: {
+    title: 'Phân tích lưu trữ',
+    description: 'Kiểm tra dung lượng lưu trữ và các mục có thể dọn dẹp',
+    openDialog: 'Xem phân tích',
+    dialogTitle: 'Phân tích lưu trữ',
+    generatedAt: 'Tạo lúc {{time}}',
+    loading: 'Đang tải...',
+    refresh: 'Làm mới',
+    totalSize: 'Tổng dung lượng',
+    binaryStorage: 'Lưu trữ nhị phân plugin',
+    uploadCleanup: 'Tệp tải lên hết hạn',
+    logCleanup: 'Nhật ký hết hạn',
+    sections: 'Khu vực lưu trữ',
+    monitoringTables: 'Bảng giám sát',
+    runtimeTasks: 'Tác vụ runtime',
+    cleanupPolicy: 'Chính sách dọn dẹp',
+    uploadRetention: 'Thời gian giữ tệp tải lên',
+    logRetention: 'Thời gian giữ nhật ký',
+    databaseType: 'Loại cơ sở dữ liệu',
+    days: 'ngày',
+    missing: 'Thiếu',
+    expiredUploads: 'Tệp tải lên hết hạn',
+    expiredLogs: 'Nhật ký hết hạn',
+    noExpiredUploads: 'Không có tệp tải lên hết hạn',
+    noExpiredLogs: 'Không có nhật ký hết hạn',
+    sectionNames: {
+      database: 'Cơ sở dữ liệu',
+      logs: 'Nhật ký',
+      storage: 'Tệp tải lên',
+      vector_store: 'Kho vector',
+      plugins: 'Plugin',
+      mcp: 'MCP',
+      temp: 'Tệp tạm',
     },
   },
   limitation: {
@@ -2011,6 +2053,10 @@ const viVN = {
     },
   },
 
+  pluginPages: {
+    selectFromSidebar: 'Chọn một trang plugin từ thanh bên',
+    invalidPage: 'Trang plugin không hợp lệ',
+  },
 };
 
 export default viVN;

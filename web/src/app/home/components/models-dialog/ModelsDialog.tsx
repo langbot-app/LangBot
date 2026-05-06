@@ -29,15 +29,36 @@ interface ModelsDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+type ExtraArgValue = string | number | boolean | Record<string, unknown>;
+
 function convertExtraArgsToObject(
   args: ExtraArg[],
-): Record<string, string | number | boolean> {
-  const obj: Record<string, string | number | boolean> = {};
+): Record<string, ExtraArgValue> {
+  const obj: Record<string, ExtraArgValue> = {};
   args.forEach((arg) => {
-    if (arg.key.trim()) {
-      if (arg.type === 'number') obj[arg.key] = Number(arg.value);
-      else if (arg.type === 'boolean') obj[arg.key] = arg.value === 'true';
-      else obj[arg.key] = arg.value;
+    if (!arg.key.trim()) return;
+    if (arg.type === 'number') {
+      obj[arg.key] = Number(arg.value);
+    } else if (arg.type === 'boolean') {
+      obj[arg.key] = arg.value === 'true';
+    } else if (arg.type === 'object') {
+      const raw = arg.value.trim() || '{}';
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        throw new Error(`Invalid JSON for extra parameter "${arg.key}"`);
+      }
+      if (
+        parsed === null ||
+        typeof parsed !== 'object' ||
+        Array.isArray(parsed)
+      ) {
+        throw new Error(`Extra parameter "${arg.key}" must be a JSON object`);
+      }
+      obj[arg.key] = parsed as Record<string, unknown>;
+    } else {
+      obj[arg.key] = arg.value;
     }
   });
   return obj;

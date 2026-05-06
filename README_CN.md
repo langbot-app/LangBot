@@ -87,13 +87,16 @@ docker compose up -d
 | QQ | ✅ | 个人号、官方机器人（频道、私聊、群聊） |
 | 微信 | ✅ | 个人微信、微信公众号 |
 | 企业微信 | ✅ | 应用消息、对外客服、智能机器人 |
-| 飞书 | ✅ |  |
-| 钉钉 | ✅ |  |
-| Discord | ✅ |  |
-| Telegram | ✅ |  |
-| Slack | ✅ |  |
-| LINE | ✅ |  |
-| KOOK | ✅ |  |
+| 飞书 | ✅ | 官方 |
+| 钉钉 | ✅ | 官方 |
+| Satori | ✅ |  |
+| Discord | ✅ | 官方 |
+| Telegram | ✅ | 官方 |
+| Slack | ✅ | 官方 |
+| LINE | ✅ | 官方 |
+| KOOK | ✅ | 官方 |
+| Email | ✅ | 只 Matrix、Satori |
+| Matrix | ✅ | 支持多种桥接平台，如 Signal、WhatsApp、Messenger、iMessage、Mattermost、Google Chat、IRC、XMPP、Zulip 等 |
 
 ---
 
@@ -124,6 +127,7 @@ docker compose up -d
 | [302.AI](https://share.302.ai/SuTG99) | 聚合平台 | ✅ |
 | [小马算力](https://www.tokenpony.cn/453z1) | 聚合平台 | ✅ |
 | [百宝箱Tbox](https://www.tbox.cn/open) | 智能体平台 | ✅ |
+| [七牛云Qiniu](https://www.qiniu.com/ai/agent) | 聚合平台 | ✅ |
 
 [→ 查看完整集成列表](https://link.langbot.app/zh/docs/features)
 

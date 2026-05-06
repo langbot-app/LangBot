@@ -83,17 +83,19 @@ docker compose up -d
 
 | Plateforme | Statut | Notes |
 |----------|--------|-------|
-| Discord | ✅ |  |
-| Telegram | ✅ |  |
-| Slack | ✅ |  |
-| LINE | ✅ |  |
-| QQ | ✅ | Personnel & API Officielle |
+| Discord | ✅ | Officiel |
+| Telegram | ✅ | Officiel |
+| Slack | ✅ | Officiel |
+| LINE | ✅ | Officiel |
+| QQ | ✅ | Personnel & API Officielle (Canal, DM, Groupe) |
 | WeCom | ✅ | WeChat Entreprise, CS Externe, AI Bot |
 | WeChat | ✅ | Personnel & Compte Officiel |
-| Lark | ✅ |  |
-| DingTalk | ✅ |  |
-| KOOK | ✅ |  |
+| Lark | ✅ | Officiel |
+| DingTalk | ✅ | Officiel |
+| KOOK | ✅ | Officiel |
 | Satori | ✅ |  |
+| Email | ✅ | Matrix, Satori |
+| Matrix | ✅ | Prend en charge plusieurs plateformes via ponts, comme Signal, WhatsApp, Messenger, iMessage, Mattermost, Google Chat, IRC, XMPP, Zulip, etc. |
 
 ---
 
@@ -122,6 +124,7 @@ docker compose up -d
 | [CompShare](https://www.compshare.cn/?ytag=GPU_YY-gh_langbot) | Plateforme GPU | ✅ |
 | [PPIO](https://ppinfra.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | Plateforme GPU | ✅ |
 | [ShengSuanYun](https://www.shengsuanyun.com/?from=CH_KYIPP758) | Plateforme GPU | ✅ |
+| [Qiniu](https://www.qiniu.com/ai/agent) | Passerelle | ✅ |
 
 [→ Voir toutes les intégrations](https://link.langbot.app/en/docs/features)
 

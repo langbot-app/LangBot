@@ -1,0 +1,177 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: web_page_bot
+  label:
+    en_US: "Page Bot"
+    zh_Hans: "页面机器人"
+    zh_Hant: "頁面機器人"
+    ja_JP: "ページボット"
+    th_TH: "บอทหน้าเว็บ"
+    vi_VN: "Bot trang web"
+    es_ES: "Bot de página"
+  description:
+    en_US: "Embed a chat widget on any website with a simple script tag"
+    zh_Hans: "通过一行脚本标签将聊天组件嵌入到任何网站"
+    zh_Hant: "透過一行腳本標籤將聊天元件嵌入到任何網站"
+    ja_JP: "シンプルなスクリプトタグで任意のウェブサイトにチャットウィジェットを埋め込みます"
+    th_TH: "ฝังวิดเจ็ตแชทในเว็บไซต์ใดก็ได้ด้วยแท็กสคริปต์"
+    vi_VN: "Nhúng widget trò chuyện vào bất kỳ trang web nào bằng thẻ script"
+    es_ES: "Incrusta un widget de chat en cualquier sitio web con una etiqueta de script"
+  icon: "webpage.webp"
+spec:
+  categories:
+    - popular
+  config:
+    - name: title
+      label:
+        en_US: Widget Title
+        zh_Hans: 组件标题
+        zh_Hant: 元件標題
+        ja_JP: ウィジェットタイトル
+        th_TH: ชื่อวิดเจ็ต
+        vi_VN: Tiêu đề widget
+        es_ES: Título del widget
+      description:
+        en_US: The title displayed in the chat widget header
+        zh_Hans: 显示在聊天组件顶部的标题
+        zh_Hant: 顯示在聊天元件頂部的標題
+        ja_JP: チャットウィジェットのヘッダーに表示されるタイトル
+        th_TH: ชื่อที่แสดงในส่วนหัวของวิดเจ็ตแชท
+        vi_VN: Tiêu đề hiển thị trong đầu widget trò chuyện
+        es_ES: El título que se muestra en el encabezado del widget de chat
+      type: string
+      required: false
+      default: "LangBot"
+    - name: bubble_icon
+      label:
+        en_US: Bubble Icon
+        zh_Hans: 气泡图标
+        zh_Hant: 氣泡圖示
+        ja_JP: バブルアイコン
+        th_TH: ไอคอนบับเบิล
+        vi_VN: Biểu tượng bong bóng
+        es_ES: Icono de burbuja
+        ru_RU: Иконка пузырька
+      description:
+        en_US: "Icon displayed on the floating chat bubble"
+        zh_Hans: "浮动聊天气泡上显示的图标"
+      type: select
+      required: false
+      default: "logo"
+      options:
+        - name: "logo"
+          label:
+            en_US: "LangBot Logo"
+            zh_Hans: "LangBot 图标"
+        - name: "chat"
+          label:
+            en_US: "Chat Bubble"
+            zh_Hans: "聊天气泡"
+        - name: "robot"
+          label:
+            en_US: "Robot"
+            zh_Hans: "机器人"
+        - name: "headset"
+          label:
+            en_US: "Headset"
+            zh_Hans: "客服耳机"
+        - name: "sparkle"
+          label:
+            en_US: "Sparkle"
+            zh_Hans: "星光"
+        - name: "message"
+          label:
+            en_US: "Message"
+            zh_Hans: "消息"
+    - name: language
+      label:
+        en_US: Widget Language
+        zh_Hans: 组件语言
+        zh_Hant: 元件語言
+        ja_JP: ウィジェット言語
+        th_TH: ภาษาวิดเจ็ต
+        vi_VN: Ngôn ngữ widget
+        es_ES: Idioma del widget
+        ru_RU: Язык виджета
+      description:
+        en_US: "Display language of the chat widget"
+        zh_Hans: "聊天组件的显示语言"
+        zh_Hant: "聊天元件的顯示語言"
+        ja_JP: "チャットウィジェットの表示言語"
+        th_TH: "ภาษาแสดงผลของวิดเจ็ตแชท"
+        vi_VN: "Ngôn ngữ hiển thị của widget trò chuyện"
+        es_ES: "Idioma de visualización del widget de chat"
+        ru_RU: "Язык отображения виджета чата"
+      type: select
+      required: false
+      default: "en_US"
+      options:
+        - name: "en_US"
+          label:
+            en_US: "English"
+        - name: "zh_Hans"
+          label:
+            en_US: "简体中文"
+        - name: "zh_Hant"
+          label:
+            en_US: "繁體中文"
+        - name: "ja_JP"
+          label:
+            en_US: "日本語"
+        - name: "es_ES"
+          label:
+            en_US: "Español"
+        - name: "ru_RU"
+          label:
+            en_US: "Русский"
+        - name: "th_TH"
+          label:
+            en_US: "ไทย"
+        - name: "vi_VN"
+          label:
+            en_US: "Tiếng Việt"
+    - name: embed_code
+      label:
+        en_US: Embed Code
+        zh_Hans: 嵌入代码
+        zh_Hant: 嵌入代碼
+        ja_JP: 埋め込みコード
+        th_TH: โค้ดฝังตัว
+        vi_VN: Mã nhúng
+        es_ES: Código de incrustación
+      description:
+        en_US: "Copy this code and paste it into your website HTML. The code will be generated after saving."
+        zh_Hans: "复制此代码并粘贴到你的网站 HTML 中。保存后将自动生成。"
+        zh_Hant: "複製此代碼並貼到你的網站 HTML 中。儲存後將自動生成。"
+        ja_JP: "このコードをコピーしてウェブサイトのHTMLに貼り付けてください。保存後に自動生成されます。"
+        th_TH: "คัดลอกโค้ดนี้และวางในHTML ของเว็บไซต์ของคุณ จะสร้างอัตโนมัติหลังจากบันทึก"
+        vi_VN: "Sao chép mã này và dán vào HTML trang web của bạn. Mã sẽ được tạo tự động sau khi lưu."
+        es_ES: "Copia este código y pégalo en el HTML de tu sitio web. El código se generará después de guardar."
+      type: embed-code
+      required: false
+      default: ""
+    - name: turnstile_site_key
+      label:
+        en_US: Turnstile Site Key
+        zh_Hans: Turnstile 站点密钥
+      description:
+        en_US: "Cloudflare Turnstile site key for bot protection. Get it from the Cloudflare dashboard (Turnstile > Add Site). Leave empty to disable."
+        zh_Hans: "Cloudflare Turnstile 站点密钥，用于防止机器人滥用。在 Cloudflare 控制台（Turnstile > 添加站点）中获取。留空则不启用。"
+      type: string
+      required: false
+      default: ""
+    - name: turnstile_secret_key
+      label:
+        en_US: Turnstile Secret Key
+        zh_Hans: Turnstile 服务端密钥
+      description:
+        en_US: "Cloudflare Turnstile secret key for server-side token verification. Found alongside the site key in the Cloudflare dashboard. Required if site key is set."
+        zh_Hans: "Cloudflare Turnstile 服务端密钥，用于服务端验证令牌。与站点密钥一起在 Cloudflare 控制台中获取。设置了站点密钥时必填。"
+      type: string
+      required: false
+      default: ""
+execution:
+  python:
+    path: "web_page_bot_adapter.py"
+    attr: "WebPageBotAdapter"

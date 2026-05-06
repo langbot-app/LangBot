@@ -122,7 +122,7 @@ export class BackendClient extends BaseHttpClient {
 
   public scanProviderModels(
     uuid: string,
-    modelType?: 'llm' | 'embedding',
+    modelType?: 'llm' | 'embedding' | 'rerank',
   ): Promise<ApiRespScannedProviderModels> {
     const params = modelType ? { type: modelType } : {};
     return this.get(`/api/v1/provider/providers/${uuid}/scan-models`, params);
@@ -604,6 +604,27 @@ export class BackendClient extends BaseHttpClient {
       this.instance.defaults.baseURL +
       `/api/v1/plugins/${author}/${name}/assets/${filepath}`
     );
+  }
+
+  public async pluginPageApi(
+    author: string,
+    name: string,
+    pageId: string,
+    endpoint: string,
+    method: string = 'POST',
+    body?: unknown,
+  ): Promise<unknown> {
+    const resp = await this.instance.request({
+      url: `/api/v1/plugins/${author}/${name}/page-api`,
+      method: 'POST',
+      data: {
+        page_id: pageId,
+        endpoint,
+        method,
+        body,
+      },
+    });
+    return resp.data?.data;
   }
 
   public getPluginIconURL(author: string, name: string): string {
