@@ -154,6 +154,9 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
             'group.member_banned',
             'bot.invited_to_group',
             'bot.removed_from_group',
+            'bot.muted',
+            'bot.unmuted',
+            'platform.specific',
         ]
 
     def get_supported_apis(self) -> list[str]:
@@ -221,27 +224,41 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
         components = await TelegramMessageConverter.yiri2target(message, self.bot)
 
         for component in components:
-            if component['type'] == 'text':
+            component_type = component.get('type')
+            args = {
+                'chat_id': message_source.source_platform_object.effective_chat.id,
+            }
+
+            if message_source.source_platform_object.message.message_thread_id:
+                args['message_thread_id'] = message_source.source_platform_object.message.message_thread_id
+
+            if quote_origin:
+                args['reply_to_message_id'] = message_source.source_platform_object.message.id
+
+            if component_type == 'text':
                 if self.config['markdown_card'] is True:
                     content = telegramify_markdown.markdownify(
                         content=component['text'],
                     )
                 else:
                     content = component['text']
-                args = {
-                    'chat_id': message_source.source_platform_object.effective_chat.id,
-                    'text': content,
-                }
                 if self.config['markdown_card'] is True:
                     args['parse_mode'] = 'MarkdownV2'
-
-        if message_source.source_platform_object.message.message_thread_id:
-            args['message_thread_id'] = message_source.source_platform_object.message.message_thread_id
-
-        if quote_origin:
-            args['reply_to_message_id'] = message_source.source_platform_object.message.id
-
-        await self.bot.send_message(**args)
+                args['text'] = content
+                await self.bot.send_message(**args)
+            elif component_type == 'photo':
+                photo = component.get('photo')
+                if photo is None:
+                    continue
+                args['photo'] = telegram.InputFile(photo)
+                await self.bot.send_photo(**args)
+            elif component_type == 'document':
+                doc = component.get('document')
+                if doc is None:
+                    continue
+                filename = component.get('filename', 'file')
+                args['document'] = telegram.InputFile(doc, filename=filename)
+                await self.bot.send_document(**args)
 
     # ---- Streaming Output (preserving original logic) ----
 

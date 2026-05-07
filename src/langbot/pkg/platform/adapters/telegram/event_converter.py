@@ -310,6 +310,16 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
                     source_platform_object=update,
                 )
 
+        if old_status == 'restricted' and new_status in ('member', 'administrator') and mcm.new_chat_member:
+            return platform_events.BotUnmutedEvent(
+                type='bot.unmuted',
+                timestamp=mcm.date.timestamp() if mcm.date else time.time(),
+                adapter_name='telegram',
+                group=group,
+                operator=inviter,
+                source_platform_object=update,
+            )
+
         return platform_events.PlatformSpecificEvent(
             type='platform.specific',
             timestamp=mcm.date.timestamp() if mcm.date else time.time(),
