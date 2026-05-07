@@ -6,7 +6,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', 'src'))
 
-from langbot.pkg.workflow.node import WorkflowNode, NodePort
+from langbot.pkg.workflow.node import WorkflowNode
 from langbot.pkg.workflow.registry import NodeTypeRegistry
 
 

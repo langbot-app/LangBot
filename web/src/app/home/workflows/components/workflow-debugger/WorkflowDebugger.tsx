@@ -2,7 +2,6 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   useWorkflowStore,
-  DebugLog,
   NodeExecutionResult,
 } from '../../store/useWorkflowStore';
 import { backendClient } from '@/app/infra/http';
@@ -37,7 +36,6 @@ import {
   Circle,
   RefreshCw,
   Trash2,
-  ChevronDown,
   ChevronRight,
   AlertCircle,
   CheckCircle2,
@@ -85,11 +83,10 @@ export default function WorkflowDebugger({
   const [activeTab, setActiveTab] = useState<string>('context');
   const [autoScroll, setAutoScroll] = useState(true);
   const [newVariable, setNewVariable] = useState({ key: '', value: '' });
-  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+  const [, setExpandedNodes] = useState<Set<string>>(new Set());
   const pollCancelledRef = useRef(false);
 
   const {
-    debugMode,
     debugState,
     debugExecutionId,
     currentNodeId,
@@ -99,7 +96,6 @@ export default function WorkflowDebugger({
     debugContext,
     watchedVariables,
     nodes,
-    setDebugMode,
     setDebugState,
     setDebugExecutionId,
     setCurrentNodeId,

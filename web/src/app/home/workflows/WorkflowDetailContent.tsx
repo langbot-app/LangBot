@@ -40,7 +40,6 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
   const { refreshWorkflows, workflows, setDetailEntityName } = useSidebarData();
 
   const {
-    currentWorkflow,
     setCurrentWorkflow,
     fromWorkflowDefinition,
     toWorkflowDefinition,

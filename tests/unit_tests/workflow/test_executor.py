@@ -15,8 +15,8 @@ from langbot.pkg.workflow.entities import (
     NodeStatus,
     MessageContext,
 )
-from langbot.pkg.workflow.executor import WorkflowExecutor, LoopExecutor
-from langbot.pkg.workflow.node import WorkflowNode, NodePort
+from langbot.pkg.workflow.executor import WorkflowExecutor
+from langbot.pkg.workflow.node import WorkflowNode
 from langbot.pkg.workflow.registry import NodeTypeRegistry
 
 

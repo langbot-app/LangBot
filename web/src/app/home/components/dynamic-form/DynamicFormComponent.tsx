@@ -13,7 +13,6 @@ import {
 import DynamicFormItemComponent from '@/app/home/components/dynamic-form/DynamicFormItemComponent';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import i18n from 'i18next';
 import {
   resolveI18nLabel,
   maybeTranslateKey,

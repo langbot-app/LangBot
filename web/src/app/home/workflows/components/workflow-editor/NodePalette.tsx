@@ -28,9 +28,6 @@ import { resolveI18nLabel } from './workflow-i18n';
 // Use shared icon mapping
 const nodeIcons = NODE_ICONS;
 
-// Use shared i18n key mapping
-const nodeTypeI18nKeys = NODE_TYPE_I18N_KEYS;
-
 // Use shared category i18n keys
 const categoryI18nKeys = CATEGORY_I18N_KEYS;
 
