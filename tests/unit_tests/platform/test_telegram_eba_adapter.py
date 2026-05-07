@@ -402,6 +402,20 @@ async def test_telegram_platform_apis_call_underlying_bot_methods():
     assert await PLATFORM_API_MAP['answer_callback_query'](bot, {'callback_query_id': 'cb'}) == {'ok': True}
 
 
+@pytest.mark.asyncio
+async def test_telegram_unmute_member_uses_current_chat_permissions_fields():
+    adapter = make_adapter()
+    bot = SimpleNamespace(restrict_chat_member=AsyncMock())
+    object.__setattr__(adapter, 'bot', bot)
+
+    await adapter.unmute_member(group_id=-1001, user_id=123)
+
+    permissions = bot.restrict_chat_member.await_args.kwargs['permissions']
+    assert permissions.can_send_messages is True
+    assert permissions.can_send_photos is True
+    assert permissions.can_send_documents is True
+
+
 def test_runtime_bot_maps_telegram_eba_events_to_plugin_events():
     group = platform_entities.UserGroup(id='group-1', name='Group')
     user = platform_entities.User(id='user-1', nickname='User')
