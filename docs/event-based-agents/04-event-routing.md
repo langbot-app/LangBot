@@ -721,6 +721,9 @@ interface BotConfig {
 - friend.added
 - bot.invited_to_group
 - bot.removed_from_group
+- bot.muted
+- bot.unmuted
+- platform.specific
 ─────────────────
 - message.*          (所有消息事件)
 - feedback.*         (所有反馈事件)

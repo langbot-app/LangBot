@@ -469,7 +469,9 @@ class PlatformSpecificEvent(Event):
 | `friend.added` | N | Y | Y | N | N | N | Y | Y | N |
 | `bot.invited_to_group` | Y | Y | Y | Y | Y | Y | Y | N | Y |
 | `bot.removed_from_group` | Y | Y | Y | Y | N | N | Y | N | Y |
-| `bot.muted` | N | N | Y | N | N | N | N | N | N |
+| `bot.muted` | Y | N | Y | N | N | N | N | N | N |
+| `bot.unmuted` | Y | N | Y | N | N | N | N | N | N |
+| `platform.specific` | Y | Y | Y | Y | Y | Y | Y | Y | Y |
 
 > 注：此表为初步评估，具体以各平台 SDK/API 文档为准，实施时逐个确认。
 
@@ -545,6 +547,9 @@ spec:
     - group.info_updated
     - bot.invited_to_group
     - bot.removed_from_group
+    - bot.muted
+    - bot.unmuted
+    - platform.specific
   platform_specific_events:
     - chat_member_updated
     - chat_join_request

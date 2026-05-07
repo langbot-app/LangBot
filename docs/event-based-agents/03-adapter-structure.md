@@ -323,6 +323,9 @@ spec:
     - group.info_updated
     - bot.invited_to_group
     - bot.removed_from_group
+    - bot.muted
+    - bot.unmuted
+    - platform.specific
 
   supported_apis:
     required:
