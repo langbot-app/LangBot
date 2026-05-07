@@ -15,15 +15,15 @@ from ..node import WorkflowNode, workflow_node, NodePort, NodeConfig
 class WaitNode(WorkflowNode):
     """Wait node - pause execution for a duration"""
 
-    type_name = "wait"
-    category = "control"
-    icon = "⏳"
-    name = "wait"
-    description = "wait"
-    name_zh = "等待"
-    name_en = "Wait"
-    description_zh = "暂停工作流执行指定时间"
-    description_en = "Pause workflow execution for a specified duration"
+    type_name = 'wait'
+    category = 'control'
+    icon = '⏳'
+    name = 'wait'
+    description = 'wait'
+    name_zh = '等待'
+    name_en = 'Wait'
+    description_zh = '暂停工作流执行指定时间'
+    description_en = 'Pause workflow execution for a specified duration'
 
     inputs: ClassVar[list[NodePort]] = []
     outputs: ClassVar[list[NodePort]] = []
@@ -32,14 +32,14 @@ class WaitNode(WorkflowNode):
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         import asyncio
 
-        duration = self.get_config("duration", 1)
-        duration_type = self.get_config("duration_type", "seconds")
+        duration = self.get_config('duration', 1)
+        duration_type = self.get_config('duration_type', 'seconds')
 
-        if duration_type == "minutes":
+        if duration_type == 'minutes':
             duration *= 60
-        elif duration_type == "hours":
+        elif duration_type == 'hours':
             duration *= 3600
 
         await asyncio.sleep(duration)
 
-        return {"output": inputs.get("input")}
+        return {'output': inputs.get('input')}

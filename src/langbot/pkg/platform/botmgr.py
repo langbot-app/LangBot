@@ -58,17 +58,17 @@ class RuntimeBot:
 
     def get_binding_info(self) -> tuple[str, str | None]:
         """Get the binding type and UUID for this bot.
-        
+
         Returns:
             tuple: (binding_type, binding_uuid) where binding_type is 'pipeline' or 'workflow'
         """
         binding_type = getattr(self.bot_entity, 'binding_type', 'pipeline') or 'pipeline'
         binding_uuid = getattr(self.bot_entity, 'binding_uuid', None)
-        
+
         # Fallback to use_pipeline_uuid for backward compatibility
         if not binding_uuid and binding_type == 'pipeline':
             binding_uuid = self.bot_entity.use_pipeline_uuid
-            
+
         return binding_type, binding_uuid
 
     def resolve_pipeline_uuid(
@@ -89,14 +89,14 @@ class RuntimeBot:
             as routing rules are no longer used.
         """
         binding_type, binding_uuid = self.get_binding_info()
-        
+
         # If bound to workflow, return None for pipeline_uuid
         # The caller should check binding_type and handle accordingly
         if binding_type == 'workflow':
             # For workflow binding, we still need to return something
             # The actual workflow handling should be done by the caller
             return None, False
-            
+
         return binding_uuid, False
 
     async def _record_discarded_message(

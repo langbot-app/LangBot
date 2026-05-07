@@ -8,6 +8,7 @@ The public API is :func:`safe_eval_with_vars` which accepts a mapping of
 allowed variable names so that expressions like ``input == "hello"`` or
 ``data.x > 3`` work without resorting to :func:`eval`.
 """
+
 from __future__ import annotations
 
 import ast
@@ -74,7 +75,7 @@ def _eval_node(node: ast.AST, variables: dict[str, Any]) -> Any:
             return {'None': None, 'True': True, 'False': False}[node.id]
         if node.id in variables:
             return variables[node.id]
-        raise ValueError(f"Unsupported variable reference: {node.id}")
+        raise ValueError(f'Unsupported variable reference: {node.id}')
 
     # Attribute access: obj.attr  (only on allowed variables)
     if isinstance(node, ast.Attribute):
@@ -99,14 +100,14 @@ def _eval_node(node: ast.AST, variables: dict[str, Any]) -> Any:
     if isinstance(node, ast.UnaryOp):
         op_fn = _SAFE_OPS.get(type(node.op))
         if op_fn is None:
-            raise ValueError(f"Unsupported unary op: {type(node.op).__name__}")
+            raise ValueError(f'Unsupported unary op: {type(node.op).__name__}')
         return op_fn(_eval_node(node.operand, variables))
 
     # Binary operators
     if isinstance(node, ast.BinOp):
         op_fn = _SAFE_OPS.get(type(node.op))
         if op_fn is None:
-            raise ValueError(f"Unsupported binary op: {type(node.op).__name__}")
+            raise ValueError(f'Unsupported binary op: {type(node.op).__name__}')
         return op_fn(_eval_node(node.left, variables), _eval_node(node.right, variables))
 
     # Comparisons (chained)
@@ -115,7 +116,7 @@ def _eval_node(node: ast.AST, variables: dict[str, Any]) -> Any:
         for op, comparator in zip(node.ops, node.comparators):
             op_fn = _SAFE_OPS.get(type(op))
             if op_fn is None:
-                raise ValueError(f"Unsupported comparison: {type(op).__name__}")
+                raise ValueError(f'Unsupported comparison: {type(op).__name__}')
             right = _eval_node(comparator, variables)
             if not op_fn(left, right):
                 return False
@@ -132,9 +133,7 @@ def _eval_node(node: ast.AST, variables: dict[str, Any]) -> Any:
     # Ternary
     if isinstance(node, ast.IfExp):
         return (
-            _eval_node(node.body, variables)
-            if _eval_node(node.test, variables)
-            else _eval_node(node.orelse, variables)
+            _eval_node(node.body, variables) if _eval_node(node.test, variables) else _eval_node(node.orelse, variables)
         )
 
     # Tuples / Lists (e.g. ``x in [1, 2, 3]``)
@@ -143,9 +142,6 @@ def _eval_node(node: ast.AST, variables: dict[str, Any]) -> Any:
 
     # Dict literals (e.g. ``{"a": 1}``)
     if isinstance(node, ast.Dict):
-        return {
-            _eval_node(k, variables): _eval_node(v, variables)
-            for k, v in zip(node.keys, node.values)
-        }
+        return {_eval_node(k, variables): _eval_node(v, variables) for k, v in zip(node.keys, node.values)}
 
-    raise ValueError(f"Unsupported expression node: {type(node).__name__}")
+    raise ValueError(f'Unsupported expression node: {type(node).__name__}')

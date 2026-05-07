@@ -246,9 +246,7 @@ class Application:
                     try:
                         cancelled = await self.workflow_service.cleanup_stale_executions()
                         if cancelled > 0:
-                            self.logger.info(
-                                f'Workflow execution auto-cleanup: cancelled {cancelled} stale executions'
-                            )
+                            self.logger.info(f'Workflow execution auto-cleanup: cancelled {cancelled} stale executions')
                     except Exception as e:
                         self.logger.warning(f'Workflow execution auto-cleanup error: {e}')
                     await asyncio.sleep(check_interval_seconds)

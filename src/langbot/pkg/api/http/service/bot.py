@@ -133,7 +133,7 @@ class BotService:
         # Handle binding_type and binding_uuid for the new unified binding model
         # If binding_type is explicitly set to 'workflow', skip pipeline validation
         binding_type = bot_data.get('binding_type')
-        
+
         # set use_pipeline_name (for backward compatibility with 'pipeline' binding_type)
         if 'use_pipeline_uuid' in bot_data:
             result = await self.ap.persistence_mgr.execute_async(
@@ -150,7 +150,7 @@ class BotService:
                     bot_data['binding_type'] = 'pipeline'
             else:
                 raise Exception('Pipeline not found')
-        
+
         # If binding_uuid is set directly (for workflow), sync use_pipeline_uuid for backward compatibility
         if 'binding_uuid' in bot_data and binding_type == 'workflow':
             # For workflow binding, we don't sync to use_pipeline_uuid

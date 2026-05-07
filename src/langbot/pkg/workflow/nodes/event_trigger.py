@@ -15,15 +15,15 @@ from ..node import WorkflowNode, workflow_node, NodePort, NodeConfig
 class EventTriggerNode(WorkflowNode):
     """Event trigger node - triggers workflow on system events"""
 
-    type_name = "event_trigger"
-    category = "trigger"
-    icon = "📡"
-    name = "event_trigger"
-    description = "event_trigger"
-    name_zh = "事件触发"
-    name_en = "Event Trigger"
-    description_zh = "当系统事件发生时触发工作流"
-    description_en = "Trigger workflow when a system event occurs"
+    type_name = 'event_trigger'
+    category = 'trigger'
+    icon = '📡'
+    name = 'event_trigger'
+    description = 'event_trigger'
+    name_zh = '事件触发'
+    name_en = 'Event Trigger'
+    description_zh = '当系统事件发生时触发工作流'
+    description_en = 'Trigger workflow when a system event occurs'
 
     inputs: ClassVar[list[NodePort]] = []
     outputs: ClassVar[list[NodePort]] = []
@@ -35,7 +35,7 @@ class EventTriggerNode(WorkflowNode):
         trigger_data = context.trigger_data
 
         return {
-            "event_type": trigger_data.get("event_type", ""),
-            "event_data": trigger_data.get("event_data", {}),
-            "timestamp": trigger_data.get("timestamp", datetime.now().isoformat()),
+            'event_type': trigger_data.get('event_type', ''),
+            'event_data': trigger_data.get('event_data', {}),
+            'timestamp': trigger_data.get('timestamp', datetime.now().isoformat()),
         }

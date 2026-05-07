@@ -9,7 +9,7 @@ from ....service.workflow import WorkflowExecutionFailedError
 @group.group_class('workflows', '/api/v1/workflows')
 class WorkflowsRouterGroup(group.RouterGroup):
     """Workflow API router group"""
-    
+
     async def initialize(self) -> None:
         # Workflow CRUD
         @self.route('', methods=['GET', 'POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
@@ -19,9 +19,7 @@ class WorkflowsRouterGroup(group.RouterGroup):
                 sort_order = quart.request.args.get('sort_order', 'DESC')
                 enabled_only = quart.request.args.get('enabled_only', 'false').lower() == 'true'
                 return self.success(
-                    data={'workflows': await self.ap.workflow_service.get_workflows(
-                        sort_by, sort_order, enabled_only
-                    )}
+                    data={'workflows': await self.ap.workflow_service.get_workflows(sort_by, sort_order, enabled_only)}
                 )
             elif quart.request.method == 'POST':
                 json_data = await quart.request.json
@@ -31,10 +29,12 @@ class WorkflowsRouterGroup(group.RouterGroup):
         # Get node types (available nodes for the editor)
         @self.route('/_/node-types', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
         async def _() -> str:
-            return self.success(data={
-                'node_types': await self.ap.workflow_service.get_node_types(),
-                'categories': await self.ap.workflow_service.get_node_types_by_category_meta(),
-            })
+            return self.success(
+                data={
+                    'node_types': await self.ap.workflow_service.get_node_types(),
+                    'categories': await self.ap.workflow_service.get_node_types_by_category_meta(),
+                }
+            )
 
         # Get node types by category
         @self.route('/_/node-types/categories', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
@@ -97,7 +97,7 @@ class WorkflowsRouterGroup(group.RouterGroup):
             session_id = json_data.get('session_id')
             user_id = json_data.get('user_id')
             bot_id = json_data.get('bot_id')
-            
+
             try:
                 execution_id = await self.ap.workflow_service.execute_workflow(
                     workflow_uuid,
@@ -105,7 +105,7 @@ class WorkflowsRouterGroup(group.RouterGroup):
                     trigger_data=trigger_data,
                     session_id=session_id,
                     user_id=user_id,
-                    bot_id=bot_id
+                    bot_id=bot_id,
                 )
                 return self.success(data={'execution_id': execution_id})
             except ValueError as e:
@@ -119,9 +119,7 @@ class WorkflowsRouterGroup(group.RouterGroup):
             limit = int(quart.request.args.get('limit', 50))
             offset = int(quart.request.args.get('offset', 0))
             executions = await self.ap.workflow_service.get_executions(
-                workflow_uuid=workflow_uuid,
-                limit=limit,
-                offset=offset
+                workflow_uuid=workflow_uuid, limit=limit, offset=offset
             )
             return self.success(data=executions)
 
@@ -146,9 +144,7 @@ class WorkflowsRouterGroup(group.RouterGroup):
 
         # Rollback to a specific version
         @self.route(
-            '/<workflow_uuid>/rollback/<int:version>', 
-            methods=['POST'], 
-            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY
+            '/<workflow_uuid>/rollback/<int:version>', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY
         )
         async def _(workflow_uuid: str, version: int) -> str:
             try:
@@ -192,13 +188,11 @@ class WorkflowsRouterGroup(group.RouterGroup):
 
                 try:
                     await self.ap.workflow_service.update_workflow_extensions(
-                        workflow_uuid, bound_plugins, bound_mcp_servers, 
-                        enable_all_plugins, enable_all_mcp_servers
+                        workflow_uuid, bound_plugins, bound_mcp_servers, enable_all_plugins, enable_all_mcp_servers
                     )
                     return self.success()
                 except ValueError as e:
                     return self.http_status(404, -1, str(e))
-
 
         # Debug API - Start debug execution
         @self.route('/<workflow_uuid>/debug/start', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
@@ -207,13 +201,10 @@ class WorkflowsRouterGroup(group.RouterGroup):
             context = json_data.get('context', {})
             variables = json_data.get('variables', {})
             breakpoints = json_data.get('breakpoints', [])
-            
+
             try:
                 execution_id = await self.ap.workflow_service.start_debug_execution(
-                    workflow_uuid,
-                    context=context,
-                    variables=variables,
-                    breakpoints=breakpoints
+                    workflow_uuid, context=context, variables=variables, breakpoints=breakpoints
                 )
                 return self.success(data={'execution_id': execution_id})
             except ValueError as e:
@@ -223,7 +214,7 @@ class WorkflowsRouterGroup(group.RouterGroup):
         @self.route(
             '/<workflow_uuid>/debug/<execution_uuid>/pause',
             methods=['POST'],
-            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
         )
         async def _(workflow_uuid: str, execution_uuid: str) -> str:
             try:
@@ -236,7 +227,7 @@ class WorkflowsRouterGroup(group.RouterGroup):
         @self.route(
             '/<workflow_uuid>/debug/<execution_uuid>/resume',
             methods=['POST'],
-            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
         )
         async def _(workflow_uuid: str, execution_uuid: str) -> str:
             try:
@@ -249,7 +240,7 @@ class WorkflowsRouterGroup(group.RouterGroup):
         @self.route(
             '/<workflow_uuid>/debug/<execution_uuid>/step',
             methods=['POST'],
-            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
         )
         async def _(workflow_uuid: str, execution_uuid: str) -> str:
             try:
@@ -262,7 +253,7 @@ class WorkflowsRouterGroup(group.RouterGroup):
         @self.route(
             '/<workflow_uuid>/debug/<execution_uuid>/stop',
             methods=['POST'],
-            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
         )
         async def _(workflow_uuid: str, execution_uuid: str) -> str:
             try:
@@ -275,7 +266,7 @@ class WorkflowsRouterGroup(group.RouterGroup):
         @self.route(
             '/<workflow_uuid>/debug/<execution_uuid>/state',
             methods=['GET'],
-            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
         )
         async def _(workflow_uuid: str, execution_uuid: str) -> str:
             try:
@@ -288,15 +279,13 @@ class WorkflowsRouterGroup(group.RouterGroup):
         @self.route(
             '/<workflow_uuid>/executions/<execution_uuid>/logs',
             methods=['GET'],
-            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
         )
         async def _(workflow_uuid: str, execution_uuid: str) -> str:
             limit = int(quart.request.args.get('limit', 100))
             offset = int(quart.request.args.get('offset', 0))
             try:
-                result = await self.ap.workflow_service.get_execution_logs(
-                    workflow_uuid, execution_uuid, limit, offset
-                )
+                result = await self.ap.workflow_service.get_execution_logs(workflow_uuid, execution_uuid, limit, offset)
                 return self.success(data=result)
             except ValueError as e:
                 return self.http_status(404, -1, str(e))
@@ -305,13 +294,11 @@ class WorkflowsRouterGroup(group.RouterGroup):
         @self.route(
             '/<workflow_uuid>/executions/<execution_uuid>/rerun',
             methods=['POST'],
-            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
         )
         async def _(workflow_uuid: str, execution_uuid: str) -> str:
             try:
-                new_execution_id = await self.ap.workflow_service.rerun_execution(
-                    workflow_uuid, execution_uuid
-                )
+                new_execution_id = await self.ap.workflow_service.rerun_execution(workflow_uuid, execution_uuid)
                 return self.success(data={'execution_uuid': new_execution_id})
             except ValueError as e:
                 return self.http_status(404, -1, str(e))
@@ -329,7 +316,7 @@ class WorkflowsRouterGroup(group.RouterGroup):
 @group.group_class('executions', '/api/v1/executions')
 class ExecutionsRouterGroup(group.RouterGroup):
     """Workflow execution API router group"""
-    
+
     async def initialize(self) -> None:
         # Get all executions (across all workflows)
         @self.route('', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
@@ -337,11 +324,7 @@ class ExecutionsRouterGroup(group.RouterGroup):
             limit = int(quart.request.args.get('limit', 50))
             offset = int(quart.request.args.get('offset', 0))
             status = quart.request.args.get('status')
-            executions = await self.ap.workflow_service.get_executions(
-                limit=limit,
-                offset=offset,
-                status=status
-            )
+            executions = await self.ap.workflow_service.get_executions(limit=limit, offset=offset, status=status)
             return self.success(data=executions)
 
         # Get single execution

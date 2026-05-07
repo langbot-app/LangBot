@@ -22,15 +22,15 @@ from ..node import WorkflowNode, workflow_node, NodePort, NodeConfig
 class CallPipelineNode(WorkflowNode):
     """Call pipeline node - invoke an existing pipeline"""
 
-    type_name = "call_pipeline"
-    category = "action"
-    icon = "⚙️"
-    name = "call_pipeline"
-    description = "call_pipeline"
-    name_zh = "调用 Pipeline"
-    name_en = "Call Pipeline"
-    description_zh = "调用现有的 Pipeline 进行处理"
-    description_en = "Invoke an existing Pipeline for processing"
+    type_name = 'call_pipeline'
+    category = 'action'
+    icon = '⚙️'
+    name = 'call_pipeline'
+    description = 'call_pipeline'
+    name_zh = '调用 Pipeline'
+    name_en = 'Call Pipeline'
+    description_zh = '调用现有的 Pipeline 进行处理'
+    description_en = 'Invoke an existing Pipeline for processing'
 
     inputs: ClassVar[list[NodePort]] = []
     outputs: ClassVar[list[NodePort]] = []
@@ -66,7 +66,11 @@ class CallPipelineNode(WorkflowNode):
 
         message_event = self._build_message_event(query_text, context)
         message_chain = message_event.message_chain
-        launcher_type = provider_session.LauncherTypes.GROUP if context.message_context and context.message_context.is_group else provider_session.LauncherTypes.PERSON
+        launcher_type = (
+            provider_session.LauncherTypes.GROUP
+            if context.message_context and context.message_context.is_group
+            else provider_session.LauncherTypes.PERSON
+        )
         launcher_id = context.session_id or context.execution_id
         sender_id = (
             context.message_context.sender_id
@@ -143,7 +147,9 @@ class CallPipelineNode(WorkflowNode):
         return platform_events.FriendMessage(
             sender=sender,
             message_chain=message_chain,
-            time=context.message_context.raw_message.get('time') if context.message_context and context.message_context.raw_message else None,
+            time=context.message_context.raw_message.get('time')
+            if context.message_context and context.message_context.raw_message
+            else None,
         )
 
 

@@ -15,15 +15,15 @@ from ..node import WorkflowNode, workflow_node, NodePort, NodeConfig
 class WebhookTriggerNode(WorkflowNode):
     """Webhook trigger node - triggers workflow via HTTP request"""
 
-    type_name = "webhook_trigger"
-    category = "trigger"
-    icon = "🌐"
-    name = "webhook_trigger"
-    description = "webhook_trigger"
-    name_zh = "Webhook 触发"
-    name_en = "Webhook Trigger"
-    description_zh = "通过 HTTP 请求触发工作流"
-    description_en = "Trigger workflow via HTTP webhook"
+    type_name = 'webhook_trigger'
+    category = 'trigger'
+    icon = '🌐'
+    name = 'webhook_trigger'
+    description = 'webhook_trigger'
+    name_zh = 'Webhook 触发'
+    name_en = 'Webhook Trigger'
+    description_zh = '通过 HTTP 请求触发工作流'
+    description_en = 'Trigger workflow via HTTP webhook'
 
     inputs: ClassVar[list[NodePort]] = []
     outputs: ClassVar[list[NodePort]] = []
@@ -33,8 +33,8 @@ class WebhookTriggerNode(WorkflowNode):
         trigger_data = context.trigger_data
 
         return {
-            "body": trigger_data.get("body", {}),
-            "headers": trigger_data.get("headers", {}),
-            "query": trigger_data.get("query", {}),
-            "method": trigger_data.get("method", "POST"),
+            'body': trigger_data.get('body', {}),
+            'headers': trigger_data.get('headers', {}),
+            'query': trigger_data.get('query', {}),
+            'method': trigger_data.get('method', 'POST'),
         }

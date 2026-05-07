@@ -15,15 +15,15 @@ from ..node import WorkflowNode, workflow_node, NodePort, NodeConfig
 class CronTriggerNode(WorkflowNode):
     """Cron trigger node - triggers workflow on schedule"""
 
-    type_name = "cron_trigger"
-    category = "trigger"
-    icon = "⏰"
-    name = "cron_trigger"
-    description = "cron_trigger"
-    name_zh = "定时触发"
-    name_en = "Scheduled Trigger"
-    description_zh = "按定时计划触发工作流"
-    description_en = "Trigger workflow on a scheduled time"
+    type_name = 'cron_trigger'
+    category = 'trigger'
+    icon = '⏰'
+    name = 'cron_trigger'
+    description = 'cron_trigger'
+    name_zh = '定时触发'
+    name_en = 'Scheduled Trigger'
+    description_zh = '按定时计划触发工作流'
+    description_en = 'Trigger workflow on a scheduled time'
 
     inputs: ClassVar[list[NodePort]] = []
     outputs: ClassVar[list[NodePort]] = []
@@ -33,7 +33,7 @@ class CronTriggerNode(WorkflowNode):
         from datetime import datetime
 
         return {
-            "timestamp": datetime.now().isoformat(),
-            "schedule": self.get_config("cron", ""),
-            "context": context.trigger_data,
+            'timestamp': datetime.now().isoformat(),
+            'schedule': self.get_config('cron', ''),
+            'context': context.trigger_data,
         }

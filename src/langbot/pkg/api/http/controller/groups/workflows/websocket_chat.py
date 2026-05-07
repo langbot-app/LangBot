@@ -40,7 +40,7 @@ class WorkflowWebSocketChatRouterGroup(group.RouterGroup):
                         'origin': quart.websocket.headers.get('Origin', ''),
                     },
                 )
- 
+
                 if session_type not in ['person', 'group']:
                     await quart.websocket.send(
                         json.dumps({'type': 'error', 'message': 'session_type must be person or group'})
@@ -48,7 +48,7 @@ class WorkflowWebSocketChatRouterGroup(group.RouterGroup):
                     return
 
                 websocket_adapter = self.ap.platform_mgr.websocket_proxy_bot.adapter
- 
+
                 if not websocket_adapter:
                     logger.warning(
                         'Workflow WebSocket adapter missing',

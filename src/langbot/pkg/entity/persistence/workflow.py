@@ -1,4 +1,5 @@
 """Workflow persistence entities"""
+
 import sqlalchemy
 
 from .base import Base
@@ -15,22 +16,22 @@ class Workflow(Base):
     emoji = sqlalchemy.Column(sqlalchemy.String(10), nullable=True, default='🔄')
     version = sqlalchemy.Column(sqlalchemy.Integer, nullable=False, default=1)
     is_enabled = sqlalchemy.Column(sqlalchemy.Boolean, nullable=False, default=True)
-    
+
     # Workflow definition stored as JSON
     # Contains: nodes, edges, variables, settings
     definition = sqlalchemy.Column(sqlalchemy.JSON, nullable=False, default={})
-    
+
     # Global config (inherited from Pipeline capabilities)
     # Contains: safety, output configs
     global_config = sqlalchemy.Column(sqlalchemy.JSON, nullable=False, default={})
-    
+
     # Extensions preferences (same as Pipeline)
     extensions_preferences = sqlalchemy.Column(
         sqlalchemy.JSON,
         nullable=False,
         default={'enable_all_plugins': True, 'enable_all_mcp_servers': True, 'plugins': [], 'mcp_servers': []},
     )
-    
+
     created_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, server_default=sqlalchemy.func.now())
     updated_at = sqlalchemy.Column(
         sqlalchemy.DateTime,
@@ -53,9 +54,7 @@ class WorkflowVersion(Base):
     created_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, server_default=sqlalchemy.func.now())
     created_by = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
 
-    __table_args__ = (
-        sqlalchemy.UniqueConstraint('workflow_uuid', 'version', name='uq_workflow_version'),
-    )
+    __table_args__ = (sqlalchemy.UniqueConstraint('workflow_uuid', 'version', name='uq_workflow_version'),)
 
 
 class WorkflowTrigger(Base):
