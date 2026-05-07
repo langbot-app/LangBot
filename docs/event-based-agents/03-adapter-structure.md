@@ -316,6 +316,7 @@ spec:
     - message.edited
     - message.deleted
     - message.reaction
+    - feedback.received
     - group.member_joined
     - group.member_left
     - group.member_banned

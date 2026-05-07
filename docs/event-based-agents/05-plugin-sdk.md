@@ -46,6 +46,19 @@ class MessageReactionReceived(BaseEventModel):
     reaction: str
     is_add: bool
 
+# ---- 用户反馈事件 ----
+
+class FeedbackReceived(BaseEventModel):
+    """用户对 Bot 回复提交反馈"""
+    feedback_id: str
+    feedback_type: int  # 1=like, 2=dislike, 3=cancel/remove feedback
+    feedback_content: typing.Optional[str] = None
+    inaccurate_reasons: typing.Optional[list[str]] = None
+    user_id: typing.Optional[str] = None
+    session_id: typing.Optional[str] = None
+    message_id: typing.Optional[str] = None
+    stream_id: typing.Optional[str] = None
+
 # ---- 群组事件 ----
 
 class GroupMemberJoined(BaseEventModel):
@@ -169,6 +182,13 @@ class MyEventListener(EventListener):
             await ctx.approve_friend_request(
                 ctx.event.request_id, approve=True
             )
+
+        @self.handler(FeedbackReceived)
+        async def on_feedback(ctx: EventContext):
+            if ctx.event.feedback_type == 2:
+                await self.log_warning(
+                    f"用户点踩了回复: {ctx.event.feedback_content or ''}"
+                )
 
         @self.handler(PlatformSpecificEventReceived)
         async def on_platform_event(ctx: EventContext):
