@@ -712,6 +712,7 @@ interface BotConfig {
 - message.edited
 - message.deleted
 - message.reaction
+- feedback.received
 - group.member_joined
 - group.member_left
 - group.member_banned
@@ -722,6 +723,7 @@ interface BotConfig {
 - bot.removed_from_group
 ─────────────────
 - message.*          (所有消息事件)
+- feedback.*         (所有反馈事件)
 - group.*            (所有群组事件)
 - friend.*           (所有好友事件)
 - bot.*              (所有 Bot 事件)

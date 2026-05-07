@@ -16,6 +16,8 @@ Event (事件基类)
 │   ├── MessageEditedEvent         # message.edited
 │   ├── MessageDeletedEvent        # message.deleted
 │   └── MessageReactionEvent       # message.reaction
+├── FeedbackEvent (用户反馈事件)
+│   └── FeedbackReceivedEvent      # feedback.received
 ├── GroupEvent (群组相关事件)
 │   ├── MemberJoinedEvent          # group.member_joined
 │   ├── MemberLeftEvent            # group.member_left
@@ -173,7 +175,51 @@ class MessageReactionEvent(Event):
     group: typing.Optional[Group] = None
 ```
 
-### 3.3 群组事件
+### 3.3 用户反馈事件
+
+#### FeedbackReceivedEvent (`feedback.received`)
+
+用户对 Bot 回复提交反馈。该事件用于承载平台提供的点赞、点踩、取消反馈以及点踩原因等评价信息；典型来源包括企业微信 AI Bot 的 `feedback_event`、飞书卡片按钮回调、Web Embed 的反馈入口等。
+
+```python
+class FeedbackReceivedEvent(Event):
+    """收到用户反馈"""
+
+    type: str = "feedback.received"
+
+    feedback_id: str
+    """平台侧反馈 ID，用于幂等记录或取消反馈"""
+
+    feedback_type: int
+    """1 = like, 2 = dislike, 3 = cancel/remove feedback"""
+
+    feedback_content: typing.Optional[str] = None
+    """用户填写的自由文本反馈"""
+
+    inaccurate_reasons: typing.Optional[list[str]] = None
+    """点踩时平台提供的预设不准确原因"""
+
+    user_id: typing.Optional[str] = None
+    """提交反馈的用户 ID"""
+
+    session_id: typing.Optional[str] = None
+    """会话 ID，例如 person_xxx 或 group_xxx"""
+
+    message_id: typing.Optional[str] = None
+    """被评价的 Bot 回复消息 ID"""
+
+    stream_id: typing.Optional[str] = None
+    """流式回复 ID，用于关联 streaming response"""
+```
+
+设计约定：
+
+- `feedback_id` 是幂等键；同一个 `feedback_id` 的后续事件应更新已有记录。
+- `feedback_type == 3` 表示用户取消/移除反馈，处理器可删除对应记录或标记为取消。
+- 如果平台只能给出原始回调 payload，差异字段保留在 `source_platform_object` 或 `PlatformSpecificEvent.data` 中；通用字段仍优先映射到 `FeedbackReceivedEvent`。
+- 该事件保留向后兼容映射：EBA 事件可转换为旧的 `FeedbackEvent`，字段语义保持一致。
+
+### 3.4 群组事件
 
 #### MemberJoinedEvent (`group.member_joined`)
 
@@ -270,7 +316,7 @@ class GroupInfoUpdatedEvent(Event):
     """发生变更的字段名列表，如 ['name', 'description']"""
 ```
 
-### 3.4 好友事件
+### 3.5 好友事件
 
 #### FriendRequestReceivedEvent (`friend.request_received`)
 
@@ -320,7 +366,7 @@ class FriendRemovedEvent(Event):
     """被移除的好友"""
 ```
 
-### 3.5 Bot 状态事件
+### 3.6 Bot 状态事件
 
 #### BotInvitedToGroupEvent (`bot.invited_to_group`)
 
@@ -377,7 +423,7 @@ class BotUnmutedEvent(Event):
     operator: typing.Optional[User] = None
 ```
 
-### 3.6 平台特有事件
+### 3.7 平台特有事件
 
 对于无法抽象为通用事件的平台特有事件，使用统一的 `PlatformSpecificEvent` 承载：
 
@@ -414,6 +460,7 @@ class PlatformSpecificEvent(Event):
 | `message.edited` | Y | Y | N | Y | N | Y | N | N | Y |
 | `message.deleted` | Y | Y | Y | Y | N | Y | Y | N | Y |
 | `message.reaction` | Y | Y | Y | Y | Y | Y | N | N | Y |
+| `feedback.received` | N | N | N | Y | N | N | Y | N | N |
 | `group.member_joined` | Y | Y | Y | Y | Y | Y | Y | Y | Y |
 | `group.member_left` | Y | Y | Y | Y | Y | Y | Y | Y | Y |
 | `group.member_banned` | Y | Y | Y | N | N | N | N | N | N |
@@ -491,6 +538,7 @@ spec:
     - message.edited
     - message.deleted
     - message.reaction
+    - feedback.received
     - group.member_joined
     - group.member_left
     - group.member_banned

@@ -93,6 +93,7 @@ EventRouter (事件路由引擎, 读取 Bot 的 event_handlers 配置)
 | 命名空间 | 事件 | 说明 |
 |----------|------|------|
 | `message.*` | `message.received`, `message.edited`, `message.deleted`, `message.reaction` | 消息相关 |
+| `feedback.*` | `feedback.received` | 用户对 Bot 回复的点赞、点踩、取消反馈等评价事件 |
 | `group.*` | `group.member_joined`, `group.member_left`, `group.member_banned`, `group.info_updated` | 群组相关 |
 | `friend.*` | `friend.request_received`, `friend.added`, `friend.removed` | 好友相关 |
 | `bot.*` | `bot.invited_to_group`, `bot.removed_from_group`, `bot.muted`, `bot.unmuted` | Bot 状态 |
