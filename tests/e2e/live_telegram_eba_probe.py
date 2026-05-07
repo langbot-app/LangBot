@@ -102,6 +102,18 @@ async def run_api(results: list[dict[str, Any]], name: str, func):
         return None
 
 
+async def run_expected_error(results: list[dict[str, Any]], name: str, func, error_type_name: str):
+    try:
+        await func()
+    except Exception as exc:
+        if type(exc).__name__ == error_type_name:
+            record_api(results, name, True, {'expected_error': error_type_name})
+            return
+        record_api(results, name, False, error=exc)
+        return
+    record_api(results, name, False, error=RuntimeError(f'expected {error_type_name}'))
+
+
 async def run_probe(
     token: str,
     log_path: Path,
@@ -265,6 +277,12 @@ async def run_probe(
             api_results,
             'get_user_info',
             lambda: adapter.get_user_info(actor_user_id),
+        )
+        await run_expected_error(
+            api_results,
+            'upload_file:not_supported',
+            lambda: adapter.upload_file(b'eba-upload-live', 'eba-upload-live.txt'),
+            'NotSupportedError',
         )
         await run_api(
             api_results,
