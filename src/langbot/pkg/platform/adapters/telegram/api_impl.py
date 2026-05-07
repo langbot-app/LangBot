@@ -40,6 +40,7 @@ class TelegramAPIMixin:
                 text = component['text']
                 if self.config.get('markdown_card', False):
                     import telegramify_markdown
+
                     text = telegramify_markdown.markdownify(content=text)
                 args = {
                     'chat_id': chat_id,
@@ -76,7 +77,7 @@ class TelegramAPIMixin:
         )
         return platform_events.MessageResult(
             message_id=result.message_id,
-            raw={"message_id": result.message_id},
+            raw={'message_id': result.message_id},
         )
 
     async def get_group_info(
@@ -87,7 +88,7 @@ class TelegramAPIMixin:
         chat = await self.bot.get_chat(chat_id=group_id)
         return platform_entities.UserGroup(
             id=chat.id,
-            name=chat.title or "",
+            name=chat.title or '',
             description=chat.description or None,
             member_count=await self._get_member_count(group_id),
         )
@@ -118,17 +119,19 @@ class TelegramAPIMixin:
             elif admin.status == 'administrator':
                 role = platform_entities.MemberRole.ADMIN
 
-            members.append(platform_entities.UserGroupMember(
-                user=platform_entities.User(
-                    id=admin.user.id,
-                    nickname=admin.user.first_name or "",
-                    username=admin.user.username,
-                    is_bot=admin.user.is_bot,
-                ),
-                group_id=group_id,
-                role=role,
-                display_name=admin.custom_title if hasattr(admin, 'custom_title') else None,
-            ))
+            members.append(
+                platform_entities.UserGroupMember(
+                    user=platform_entities.User(
+                        id=admin.user.id,
+                        nickname=admin.user.first_name or '',
+                        username=admin.user.username,
+                        is_bot=admin.user.is_bot,
+                    ),
+                    group_id=group_id,
+                    role=role,
+                    display_name=admin.custom_title if hasattr(admin, 'custom_title') else None,
+                )
+            )
         return members
 
     async def get_group_member_info(
@@ -148,7 +151,7 @@ class TelegramAPIMixin:
         return platform_entities.UserGroupMember(
             user=platform_entities.User(
                 id=member.user.id,
-                nickname=member.user.first_name or "",
+                nickname=member.user.first_name or '',
                 username=member.user.username,
                 is_bot=member.user.is_bot,
             ),
@@ -165,7 +168,7 @@ class TelegramAPIMixin:
         chat = await self.bot.get_chat(chat_id=user_id)
         return platform_entities.User(
             id=chat.id,
-            nickname=chat.first_name or "",
+            nickname=chat.first_name or '',
             username=chat.username,
         )
 
@@ -180,7 +183,8 @@ class TelegramAPIMixin:
         part of messages. This method raises NotSupportedError.
         """
         from langbot_plugin.api.entities.builtin.platform.errors import NotSupportedError
-        raise NotSupportedError("upload_file")
+
+        raise NotSupportedError('upload_file')
 
     async def get_file_url(
         self,
@@ -198,6 +202,7 @@ class TelegramAPIMixin:
     ) -> None:
         """Mute a group member."""
         import datetime
+
         permissions = telegram.ChatPermissions(can_send_messages=False)
         kwargs = {
             'chat_id': group_id,
@@ -216,9 +221,14 @@ class TelegramAPIMixin:
         """Unmute a group member."""
         permissions = telegram.ChatPermissions(
             can_send_messages=True,
-            can_send_media_messages=True,
             can_send_other_messages=True,
             can_add_web_page_previews=True,
+            can_send_audios=True,
+            can_send_documents=True,
+            can_send_photos=True,
+            can_send_videos=True,
+            can_send_video_notes=True,
+            can_send_voice_notes=True,
         )
         await self.bot.restrict_chat_member(
             chat_id=group_id,
