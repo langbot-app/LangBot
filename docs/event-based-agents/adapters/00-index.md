@@ -12,7 +12,7 @@ This directory records adapter-level migration details for the Event-Based Agent
 | Adapter | Status | Document |
 |---------|--------|----------|
 | Telegram | Migrated and live-tested | [Telegram](./telegram.md) |
-| Discord | In progress | [Discord](./discord.md) |
+| Discord | Migrated and live-tested | [Discord](./discord.md) |
 
 ## Documentation Checklist
 
