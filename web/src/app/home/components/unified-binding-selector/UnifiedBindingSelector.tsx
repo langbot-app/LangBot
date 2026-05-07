@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSidebarData, SidebarEntityItem } from '../home-sidebar/SidebarDataContext';
+import {
+  useSidebarData,
+  SidebarEntityItem,
+} from '../home-sidebar/SidebarDataContext';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import {
@@ -43,7 +46,8 @@ export default function UnifiedBindingSelector({
   className,
 }: UnifiedBindingSelectorProps) {
   const { t } = useTranslation();
-  const { pipelines, workflows, refreshPipelines, refreshWorkflows } = useSidebarData();
+  const { pipelines, workflows, refreshPipelines, refreshWorkflows } =
+    useSidebarData();
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -137,7 +141,9 @@ export default function UnifiedBindingSelector({
       {/* Entity selection */}
       <div className="space-y-2">
         <Label>
-          {value.type === 'pipeline' ? t('bots.selectPipeline') : t('bots.selectWorkflow')}
+          {value.type === 'pipeline'
+            ? t('bots.selectPipeline')
+            : t('bots.selectWorkflow')}
         </Label>
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
@@ -171,7 +177,9 @@ export default function UnifiedBindingSelector({
                         <Check
                           className={cn(
                             'mr-2 h-4 w-4',
-                            value.id === pipeline.id ? 'opacity-100' : 'opacity-0'
+                            value.id === pipeline.id
+                              ? 'opacity-100'
+                              : 'opacity-0',
                           )}
                         />
                         <div className="flex items-center gap-2 flex-1 text-left">
@@ -186,37 +194,37 @@ export default function UnifiedBindingSelector({
                       </Button>
                     ))
                   )
+                ) : workflows.length === 0 ? (
+                  <div className="py-6 text-center text-sm text-muted-foreground">
+                    {t('bots.noWorkflowsFound')}
+                  </div>
                 ) : (
-                  workflows.length === 0 ? (
-                    <div className="py-6 text-center text-sm text-muted-foreground">
-                      {t('bots.noWorkflowsFound')}
-                    </div>
-                  ) : (
-                    workflows.map((workflow) => (
-                      <Button
-                        key={workflow.id}
-                        variant="ghost"
-                        className="w-full justify-start"
-                        onClick={() => handleSelect(workflow.id, 'workflow')}
-                      >
-                        <Check
-                          className={cn(
-                            'mr-2 h-4 w-4',
-                            value.id === workflow.id ? 'opacity-100' : 'opacity-0'
-                          )}
-                        />
-                        <div className="flex items-center gap-2 flex-1 text-left">
-                          {workflow.emoji && <span>{workflow.emoji}</span>}
-                          <span className="truncate">{workflow.name}</span>
-                        </div>
-                        {workflow.description && (
-                          <span className="text-xs text-muted-foreground truncate max-w-[120px]">
-                            {workflow.description}
-                          </span>
+                  workflows.map((workflow) => (
+                    <Button
+                      key={workflow.id}
+                      variant="ghost"
+                      className="w-full justify-start"
+                      onClick={() => handleSelect(workflow.id, 'workflow')}
+                    >
+                      <Check
+                        className={cn(
+                          'mr-2 h-4 w-4',
+                          value.id === workflow.id
+                            ? 'opacity-100'
+                            : 'opacity-0',
                         )}
-                      </Button>
-                    ))
-                  )
+                      />
+                      <div className="flex items-center gap-2 flex-1 text-left">
+                        {workflow.emoji && <span>{workflow.emoji}</span>}
+                        <span className="truncate">{workflow.name}</span>
+                      </div>
+                      {workflow.description && (
+                        <span className="text-xs text-muted-foreground truncate max-w-[120px]">
+                          {workflow.description}
+                        </span>
+                      )}
+                    </Button>
+                  ))
                 )}
               </div>
             </ScrollArea>

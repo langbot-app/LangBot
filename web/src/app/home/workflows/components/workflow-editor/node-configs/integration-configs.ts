@@ -1,6 +1,6 @@
 /**
  * Integration Node Configurations
- * 
+ *
  * Defines configurations for integration node types:
  * - database_query: Query databases
  * - redis_operation: Redis operations
@@ -64,7 +64,10 @@ export const databaseQueryConfig: NodeConfigMeta = {
       required: true,
       default: 'postgresql',
       options: [
-        { name: 'postgresql', label: { en_US: 'PostgreSQL', zh_Hans: 'PostgreSQL' } },
+        {
+          name: 'postgresql',
+          label: { en_US: 'PostgreSQL', zh_Hans: 'PostgreSQL' },
+        },
         { name: 'mysql', label: { en_US: 'MySQL', zh_Hans: 'MySQL' } },
         { name: 'sqlite', label: { en_US: 'SQLite', zh_Hans: 'SQLite' } },
       ],
@@ -372,7 +375,8 @@ export const mcpToolConfig: NodeConfigMeta = {
         zh_Hans: '参数模板',
       },
       description: {
-        en_US: 'Tool arguments as JSON (supports variable interpolation). Leave empty to use input.',
+        en_US:
+          'Tool arguments as JSON (supports variable interpolation). Leave empty to use input.',
         zh_Hans: '工具参数（JSON 格式，支持变量插值）。留空则使用输入。',
       },
       required: false,
@@ -537,27 +541,78 @@ export const memoryStoreConfig: NodeConfigMeta = {
 export const difyWorkflowConfig: NodeConfigMeta = {
   nodeType: 'dify_workflow',
   label: { en_US: 'Dify Workflow', zh_Hans: 'Dify 工作流' },
-  description: { en_US: 'Call a Dify platform workflow', zh_Hans: '调用 Dify 平台工作流' },
+  description: {
+    en_US: 'Call a Dify platform workflow',
+    zh_Hans: '调用 Dify 平台工作流',
+  },
   icon: 'Bot',
   category: 'integration',
   color: '#ec4899',
   inputs: [
-    createInput('input', 'any', { description: 'Input data', label: { en_US: 'Input', zh_Hans: '输入' }, required: false }),
+    createInput('input', 'any', {
+      description: 'Input data',
+      label: { en_US: 'Input', zh_Hans: '输入' },
+      required: false,
+    }),
   ],
   outputs: [
-    createOutput('result', 'any', { description: 'Workflow result', label: { en_US: 'Result', zh_Hans: '结果' } }),
-    createOutput('success', 'boolean', { description: 'Whether call was successful', label: { en_US: 'Success', zh_Hans: '成功' } }),
+    createOutput('result', 'any', {
+      description: 'Workflow result',
+      label: { en_US: 'Result', zh_Hans: '结果' },
+    }),
+    createOutput('success', 'boolean', {
+      description: 'Whether call was successful',
+      label: { en_US: 'Success', zh_Hans: '成功' },
+    }),
   ],
   configSchema: [
-    { id: 'base-url', name: 'base-url', type: DynamicFormItemType.STRING, label: { en_US: 'Base URL', zh_Hans: 'Base URL' }, description: { en_US: 'Dify API base URL', zh_Hans: 'Dify API 基础 URL' }, required: true, default: '' },
-    { id: 'api-key', name: 'api-key', type: DynamicFormItemType.STRING, label: { en_US: 'API Key', zh_Hans: 'API Key' }, description: { en_US: 'Dify API key', zh_Hans: 'Dify API 密钥' }, required: true, default: '' },
-    { id: 'app-type', name: 'app-type', type: DynamicFormItemType.SELECT, label: { en_US: 'App Type', zh_Hans: '应用类型' }, description: { en_US: 'Dify application type', zh_Hans: 'Dify 应用类型' }, required: true, default: 'workflow', options: [
-      { name: 'workflow', label: { en_US: 'Workflow', zh_Hans: '工作流' } },
-      { name: 'chatbot', label: { en_US: 'Chatbot', zh_Hans: '聊天机器人' } },
-    ] },
-    { id: 'timeout', name: 'timeout', type: DynamicFormItemType.INT, label: { en_US: 'Timeout (seconds)', zh_Hans: '超时时间（秒）' }, description: { en_US: 'Request timeout', zh_Hans: '请求超时时间' }, required: false, default: 60 },
+    {
+      id: 'base-url',
+      name: 'base-url',
+      type: DynamicFormItemType.STRING,
+      label: { en_US: 'Base URL', zh_Hans: 'Base URL' },
+      description: { en_US: 'Dify API base URL', zh_Hans: 'Dify API 基础 URL' },
+      required: true,
+      default: '',
+    },
+    {
+      id: 'api-key',
+      name: 'api-key',
+      type: DynamicFormItemType.STRING,
+      label: { en_US: 'API Key', zh_Hans: 'API Key' },
+      description: { en_US: 'Dify API key', zh_Hans: 'Dify API 密钥' },
+      required: true,
+      default: '',
+    },
+    {
+      id: 'app-type',
+      name: 'app-type',
+      type: DynamicFormItemType.SELECT,
+      label: { en_US: 'App Type', zh_Hans: '应用类型' },
+      description: { en_US: 'Dify application type', zh_Hans: 'Dify 应用类型' },
+      required: true,
+      default: 'workflow',
+      options: [
+        { name: 'workflow', label: { en_US: 'Workflow', zh_Hans: '工作流' } },
+        { name: 'chatbot', label: { en_US: 'Chatbot', zh_Hans: '聊天机器人' } },
+      ],
+    },
+    {
+      id: 'timeout',
+      name: 'timeout',
+      type: DynamicFormItemType.INT,
+      label: { en_US: 'Timeout (seconds)', zh_Hans: '超时时间（秒）' },
+      description: { en_US: 'Request timeout', zh_Hans: '请求超时时间' },
+      required: false,
+      default: 60,
+    },
   ],
-  defaultConfig: { 'base-url': '', 'api-key': '', 'app-type': 'workflow', timeout: 60 },
+  defaultConfig: {
+    'base-url': '',
+    'api-key': '',
+    'app-type': 'workflow',
+    timeout: 60,
+  },
 };
 
 /**
@@ -566,22 +621,69 @@ export const difyWorkflowConfig: NodeConfigMeta = {
 export const difyKnowledgeQueryConfig: NodeConfigMeta = {
   nodeType: 'dify_knowledge_query',
   label: { en_US: 'Dify Knowledge Query', zh_Hans: 'Dify 知识库查询' },
-  description: { en_US: 'Query Dify knowledge base', zh_Hans: '查询 Dify 知识库' },
+  description: {
+    en_US: 'Query Dify knowledge base',
+    zh_Hans: '查询 Dify 知识库',
+  },
   icon: 'Search',
   category: 'integration',
   color: '#ec4899',
   inputs: [
-    createInput('query', 'string', { description: 'Search query', label: { en_US: 'Query', zh_Hans: '查询' } }),
+    createInput('query', 'string', {
+      description: 'Search query',
+      label: { en_US: 'Query', zh_Hans: '查询' },
+    }),
   ],
   outputs: [
-    createOutput('results', 'array', { description: 'Search results', label: { en_US: 'Results', zh_Hans: '结果' } }),
-    createOutput('success', 'boolean', { description: 'Whether query was successful', label: { en_US: 'Success', zh_Hans: '成功' } }),
+    createOutput('results', 'array', {
+      description: 'Search results',
+      label: { en_US: 'Results', zh_Hans: '结果' },
+    }),
+    createOutput('success', 'boolean', {
+      description: 'Whether query was successful',
+      label: { en_US: 'Success', zh_Hans: '成功' },
+    }),
   ],
   configSchema: [
-    { id: 'base-url', name: 'base-url', type: DynamicFormItemType.STRING, label: { en_US: 'Base URL', zh_Hans: 'Base URL' }, description: { en_US: 'Dify API base URL', zh_Hans: 'Dify API 基础 URL' }, required: true, default: '' },
-    { id: 'api-key', name: 'api-key', type: DynamicFormItemType.STRING, label: { en_US: 'API Key', zh_Hans: 'API Key' }, description: { en_US: 'Dify API key', zh_Hans: 'Dify API 密钥' }, required: true, default: '' },
-    { id: 'dataset_id', name: 'dataset_id', type: DynamicFormItemType.STRING, label: { en_US: 'Dataset ID', zh_Hans: '数据集 ID' }, description: { en_US: 'Dify dataset ID', zh_Hans: 'Dify 数据集 ID' }, required: true, default: '' },
-    { id: 'top_k', name: 'top_k', type: DynamicFormItemType.INT, label: { en_US: 'Top K', zh_Hans: 'Top K' }, description: { en_US: 'Number of results to return', zh_Hans: '返回结果数量' }, required: false, default: 5 },
+    {
+      id: 'base-url',
+      name: 'base-url',
+      type: DynamicFormItemType.STRING,
+      label: { en_US: 'Base URL', zh_Hans: 'Base URL' },
+      description: { en_US: 'Dify API base URL', zh_Hans: 'Dify API 基础 URL' },
+      required: true,
+      default: '',
+    },
+    {
+      id: 'api-key',
+      name: 'api-key',
+      type: DynamicFormItemType.STRING,
+      label: { en_US: 'API Key', zh_Hans: 'API Key' },
+      description: { en_US: 'Dify API key', zh_Hans: 'Dify API 密钥' },
+      required: true,
+      default: '',
+    },
+    {
+      id: 'dataset_id',
+      name: 'dataset_id',
+      type: DynamicFormItemType.STRING,
+      label: { en_US: 'Dataset ID', zh_Hans: '数据集 ID' },
+      description: { en_US: 'Dify dataset ID', zh_Hans: 'Dify 数据集 ID' },
+      required: true,
+      default: '',
+    },
+    {
+      id: 'top_k',
+      name: 'top_k',
+      type: DynamicFormItemType.INT,
+      label: { en_US: 'Top K', zh_Hans: 'Top K' },
+      description: {
+        en_US: 'Number of results to return',
+        zh_Hans: '返回结果数量',
+      },
+      required: false,
+      default: 5,
+    },
   ],
   defaultConfig: { 'base-url': '', 'api-key': '', dataset_id: '', top_k: 5 },
 };
@@ -592,20 +694,49 @@ export const difyKnowledgeQueryConfig: NodeConfigMeta = {
 export const n8nWorkflowConfig: NodeConfigMeta = {
   nodeType: 'n8n_workflow',
   label: { en_US: 'N8n Workflow', zh_Hans: 'n8n 工作流' },
-  description: { en_US: 'Call an n8n workflow via webhook', zh_Hans: '通过 webhook 调用 n8n 工作流' },
+  description: {
+    en_US: 'Call an n8n workflow via webhook',
+    zh_Hans: '通过 webhook 调用 n8n 工作流',
+  },
   icon: 'Settings',
   category: 'integration',
   color: '#ec4899',
   inputs: [
-    createInput('input', 'any', { description: 'Input data', label: { en_US: 'Input', zh_Hans: '输入' }, required: false }),
+    createInput('input', 'any', {
+      description: 'Input data',
+      label: { en_US: 'Input', zh_Hans: '输入' },
+      required: false,
+    }),
   ],
   outputs: [
-    createOutput('result', 'any', { description: 'Workflow result', label: { en_US: 'Result', zh_Hans: '结果' } }),
-    createOutput('success', 'boolean', { description: 'Whether call was successful', label: { en_US: 'Success', zh_Hans: '成功' } }),
+    createOutput('result', 'any', {
+      description: 'Workflow result',
+      label: { en_US: 'Result', zh_Hans: '结果' },
+    }),
+    createOutput('success', 'boolean', {
+      description: 'Whether call was successful',
+      label: { en_US: 'Success', zh_Hans: '成功' },
+    }),
   ],
   configSchema: [
-    { id: 'webhook-url', name: 'webhook-url', type: DynamicFormItemType.STRING, label: { en_US: 'Webhook URL', zh_Hans: 'Webhook URL' }, description: { en_US: 'N8n webhook URL', zh_Hans: 'n8n Webhook URL' }, required: true, default: '' },
-    { id: 'timeout', name: 'timeout', type: DynamicFormItemType.INT, label: { en_US: 'Timeout (seconds)', zh_Hans: '超时时间（秒）' }, description: { en_US: 'Request timeout', zh_Hans: '请求超时时间' }, required: false, default: 60 },
+    {
+      id: 'webhook-url',
+      name: 'webhook-url',
+      type: DynamicFormItemType.STRING,
+      label: { en_US: 'Webhook URL', zh_Hans: 'Webhook URL' },
+      description: { en_US: 'N8n webhook URL', zh_Hans: 'n8n Webhook URL' },
+      required: true,
+      default: '',
+    },
+    {
+      id: 'timeout',
+      name: 'timeout',
+      type: DynamicFormItemType.INT,
+      label: { en_US: 'Timeout (seconds)', zh_Hans: '超时时间（秒）' },
+      description: { en_US: 'Request timeout', zh_Hans: '请求超时时间' },
+      required: false,
+      default: 60,
+    },
   ],
   defaultConfig: { 'webhook-url': '', timeout: 60 },
 };
@@ -621,17 +752,65 @@ export const langflowFlowConfig: NodeConfigMeta = {
   category: 'integration',
   color: '#ec4899',
   inputs: [
-    createInput('input', 'any', { description: 'Input data', label: { en_US: 'Input', zh_Hans: '输入' }, required: false }),
+    createInput('input', 'any', {
+      description: 'Input data',
+      label: { en_US: 'Input', zh_Hans: '输入' },
+      required: false,
+    }),
   ],
   outputs: [
-    createOutput('result', 'any', { description: 'Flow result', label: { en_US: 'Result', zh_Hans: '结果' } }),
-    createOutput('success', 'boolean', { description: 'Whether call was successful', label: { en_US: 'Success', zh_Hans: '成功' } }),
+    createOutput('result', 'any', {
+      description: 'Flow result',
+      label: { en_US: 'Result', zh_Hans: '结果' },
+    }),
+    createOutput('success', 'boolean', {
+      description: 'Whether call was successful',
+      label: { en_US: 'Success', zh_Hans: '成功' },
+    }),
   ],
   configSchema: [
-    { id: 'base-url', name: 'base-url', type: DynamicFormItemType.STRING, label: { en_US: 'Base URL', zh_Hans: 'Base URL' }, description: { en_US: 'Langflow API base URL', zh_Hans: 'Langflow API 基础 URL' }, required: true, default: '' },
-    { id: 'flow-id', name: 'flow-id', type: DynamicFormItemType.STRING, label: { en_US: 'Flow ID', zh_Hans: '流程 ID' }, description: { en_US: 'Langflow flow ID', zh_Hans: 'Langflow 流程 ID' }, required: true, default: '' },
-    { id: 'api-key', name: 'api-key', type: DynamicFormItemType.STRING, label: { en_US: 'API Key', zh_Hans: 'API Key' }, description: { en_US: 'Langflow API key (optional)', zh_Hans: 'Langflow API 密钥（可选）' }, required: false, default: '' },
-    { id: 'timeout', name: 'timeout', type: DynamicFormItemType.INT, label: { en_US: 'Timeout (seconds)', zh_Hans: '超时时间（秒）' }, description: { en_US: 'Request timeout', zh_Hans: '请求超时时间' }, required: false, default: 60 },
+    {
+      id: 'base-url',
+      name: 'base-url',
+      type: DynamicFormItemType.STRING,
+      label: { en_US: 'Base URL', zh_Hans: 'Base URL' },
+      description: {
+        en_US: 'Langflow API base URL',
+        zh_Hans: 'Langflow API 基础 URL',
+      },
+      required: true,
+      default: '',
+    },
+    {
+      id: 'flow-id',
+      name: 'flow-id',
+      type: DynamicFormItemType.STRING,
+      label: { en_US: 'Flow ID', zh_Hans: '流程 ID' },
+      description: { en_US: 'Langflow flow ID', zh_Hans: 'Langflow 流程 ID' },
+      required: true,
+      default: '',
+    },
+    {
+      id: 'api-key',
+      name: 'api-key',
+      type: DynamicFormItemType.STRING,
+      label: { en_US: 'API Key', zh_Hans: 'API Key' },
+      description: {
+        en_US: 'Langflow API key (optional)',
+        zh_Hans: 'Langflow API 密钥（可选）',
+      },
+      required: false,
+      default: '',
+    },
+    {
+      id: 'timeout',
+      name: 'timeout',
+      type: DynamicFormItemType.INT,
+      label: { en_US: 'Timeout (seconds)', zh_Hans: '超时时间（秒）' },
+      description: { en_US: 'Request timeout', zh_Hans: '请求超时时间' },
+      required: false,
+      default: 60,
+    },
   ],
   defaultConfig: { 'base-url': '', 'flow-id': '', 'api-key': '', timeout: 60 },
 };
@@ -647,19 +826,65 @@ export const cozeBotConfig: NodeConfigMeta = {
   category: 'integration',
   color: '#ec4899',
   inputs: [
-    createInput('message', 'string', { description: 'Message to send', label: { en_US: 'Message', zh_Hans: '消息' } }),
+    createInput('message', 'string', {
+      description: 'Message to send',
+      label: { en_US: 'Message', zh_Hans: '消息' },
+    }),
   ],
   outputs: [
-    createOutput('result', 'any', { description: 'Bot response', label: { en_US: 'Result', zh_Hans: '结果' } }),
-    createOutput('success', 'boolean', { description: 'Whether call was successful', label: { en_US: 'Success', zh_Hans: '成功' } }),
+    createOutput('result', 'any', {
+      description: 'Bot response',
+      label: { en_US: 'Result', zh_Hans: '结果' },
+    }),
+    createOutput('success', 'boolean', {
+      description: 'Whether call was successful',
+      label: { en_US: 'Success', zh_Hans: '成功' },
+    }),
   ],
   configSchema: [
-    { id: 'api-base', name: 'api-base', type: DynamicFormItemType.STRING, label: { en_US: 'API Base URL', zh_Hans: 'API 基础 URL' }, description: { en_US: 'Coze API base URL', zh_Hans: 'Coze API 基础 URL' }, required: true, default: 'https://api.coze.com' },
-    { id: 'bot-id', name: 'bot-id', type: DynamicFormItemType.STRING, label: { en_US: 'Bot ID', zh_Hans: 'Bot ID' }, description: { en_US: 'Coze Bot ID', zh_Hans: 'Coze Bot ID' }, required: true, default: '' },
-    { id: 'api-key', name: 'api-key', type: DynamicFormItemType.STRING, label: { en_US: 'API Key', zh_Hans: 'API Key' }, description: { en_US: 'Coze API key', zh_Hans: 'Coze API 密钥' }, required: true, default: '' },
-    { id: 'timeout', name: 'timeout', type: DynamicFormItemType.INT, label: { en_US: 'Timeout (seconds)', zh_Hans: '超时时间（秒）' }, description: { en_US: 'Request timeout', zh_Hans: '请求超时时间' }, required: false, default: 60 },
+    {
+      id: 'api-base',
+      name: 'api-base',
+      type: DynamicFormItemType.STRING,
+      label: { en_US: 'API Base URL', zh_Hans: 'API 基础 URL' },
+      description: { en_US: 'Coze API base URL', zh_Hans: 'Coze API 基础 URL' },
+      required: true,
+      default: 'https://api.coze.com',
+    },
+    {
+      id: 'bot-id',
+      name: 'bot-id',
+      type: DynamicFormItemType.STRING,
+      label: { en_US: 'Bot ID', zh_Hans: 'Bot ID' },
+      description: { en_US: 'Coze Bot ID', zh_Hans: 'Coze Bot ID' },
+      required: true,
+      default: '',
+    },
+    {
+      id: 'api-key',
+      name: 'api-key',
+      type: DynamicFormItemType.STRING,
+      label: { en_US: 'API Key', zh_Hans: 'API Key' },
+      description: { en_US: 'Coze API key', zh_Hans: 'Coze API 密钥' },
+      required: true,
+      default: '',
+    },
+    {
+      id: 'timeout',
+      name: 'timeout',
+      type: DynamicFormItemType.INT,
+      label: { en_US: 'Timeout (seconds)', zh_Hans: '超时时间（秒）' },
+      description: { en_US: 'Request timeout', zh_Hans: '请求超时时间' },
+      required: false,
+      default: 60,
+    },
   ],
-  defaultConfig: { 'api-base': 'https://api.coze.com', 'bot-id': '', 'api-key': '', timeout: 60 },
+  defaultConfig: {
+    'api-base': 'https://api.coze.com',
+    'bot-id': '',
+    'api-key': '',
+    timeout: 60,
+  },
 };
 
 /**
@@ -680,6 +905,8 @@ export const integrationConfigs: NodeConfigMeta[] = [
 /**
  * Get integration config by type
  */
-export function getIntegrationConfig(nodeType: string): NodeConfigMeta | undefined {
+export function getIntegrationConfig(
+  nodeType: string,
+): NodeConfigMeta | undefined {
   return integrationConfigs.find((config) => config.nodeType === nodeType);
 }

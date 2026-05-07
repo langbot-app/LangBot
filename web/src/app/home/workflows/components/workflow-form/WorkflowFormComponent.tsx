@@ -6,7 +6,13 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Workflow } from '@/app/infra/entities/api';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Trash2, AlertTriangle } from 'lucide-react';
 import {
   AlertDialog,
@@ -101,7 +107,9 @@ export default function WorkflowFormComponent({
 
           {/* Description */}
           <div className="space-y-2">
-            <Label htmlFor="workflow-description">{t('workflows.description')}</Label>
+            <Label htmlFor="workflow-description">
+              {t('workflows.description')}
+            </Label>
             <Textarea
               id="workflow-description"
               value={description}
@@ -119,10 +127,7 @@ export default function WorkflowFormComponent({
                 {t('workflows.enabledDesc')}
               </p>
             </div>
-            <Switch
-              checked={isEnabled}
-              onCheckedChange={setIsEnabled}
-            />
+            <Switch checked={isEnabled} onCheckedChange={setIsEnabled} />
           </div>
         </CardContent>
       </Card>
@@ -135,15 +140,21 @@ export default function WorkflowFormComponent({
         <CardContent>
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
-              <span className="text-muted-foreground">{t('workflows.uuid')}:</span>
+              <span className="text-muted-foreground">
+                {t('workflows.uuid')}:
+              </span>
               <span className="ml-2 font-mono">{workflow.uuid}</span>
             </div>
             <div>
-              <span className="text-muted-foreground">{t('workflows.version')}:</span>
+              <span className="text-muted-foreground">
+                {t('workflows.version')}:
+              </span>
               <span className="ml-2">{workflow.version || 1}</span>
             </div>
             <div>
-              <span className="text-muted-foreground">{t('workflows.createdAt')}:</span>
+              <span className="text-muted-foreground">
+                {t('workflows.createdAt')}:
+              </span>
               <span className="ml-2">
                 {workflow.created_at
                   ? new Date(workflow.created_at).toLocaleString()
@@ -151,7 +162,9 @@ export default function WorkflowFormComponent({
               </span>
             </div>
             <div>
-              <span className="text-muted-foreground">{t('workflows.updatedAt')}:</span>
+              <span className="text-muted-foreground">
+                {t('workflows.updatedAt')}:
+              </span>
               <span className="ml-2">
                 {workflow.updated_at
                   ? new Date(workflow.updated_at).toLocaleString()
@@ -181,7 +194,9 @@ export default function WorkflowFormComponent({
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>{t('workflows.deleteConfirm')}</AlertDialogTitle>
+                <AlertDialogTitle>
+                  {t('workflows.deleteConfirm')}
+                </AlertDialogTitle>
                 <AlertDialogDescription>
                   {t('workflows.deleteConfirmDesc', { name: workflow.name })}
                 </AlertDialogDescription>

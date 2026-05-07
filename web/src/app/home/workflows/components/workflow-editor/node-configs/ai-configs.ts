@@ -1,6 +1,6 @@
 /**
  * AI Node Configurations
- * 
+ *
  * Defines configurations for all AI-related node types:
  * - llm_call: Call a large language model
  * - question_classifier: Classify user questions into categories
@@ -80,8 +80,10 @@ export const llmCallConfig: NodeConfigMeta = {
         zh_Hans: '系统提示词',
       },
       description: {
-        en_US: 'System prompt to set the model behavior (supports variable interpolation with {{variable}})',
-        zh_Hans: '设置模型行为的系统提示词（支持使用 {{variable}} 进行变量插值）',
+        en_US:
+          'System prompt to set the model behavior (supports variable interpolation with {{variable}})',
+        zh_Hans:
+          '设置模型行为的系统提示词（支持使用 {{variable}} 进行变量插值）',
       },
       required: false,
       default: '',
@@ -95,8 +97,10 @@ export const llmCallConfig: NodeConfigMeta = {
         zh_Hans: '用户提示词模板',
       },
       description: {
-        en_US: 'User prompt template with variable placeholders (e.g., {{input}}, {{context.key}})',
-        zh_Hans: '带有变量占位符的用户提示词模板（例如 {{input}}、{{context.key}}）',
+        en_US:
+          'User prompt template with variable placeholders (e.g., {{input}}, {{context.key}})',
+        zh_Hans:
+          '带有变量占位符的用户提示词模板（例如 {{input}}、{{context.key}}）',
       },
       required: true,
       default: '{{input}}',
@@ -110,7 +114,8 @@ export const llmCallConfig: NodeConfigMeta = {
         zh_Hans: '温度',
       },
       description: {
-        en_US: 'Controls randomness in responses (0.0 = deterministic, 2.0 = very random)',
+        en_US:
+          'Controls randomness in responses (0.0 = deterministic, 2.0 = very random)',
         zh_Hans: '控制响应的随机性（0.0 = 确定性，2.0 = 非常随机）',
       },
       required: false,
@@ -125,7 +130,8 @@ export const llmCallConfig: NodeConfigMeta = {
         zh_Hans: '最大令牌数',
       },
       description: {
-        en_US: 'Maximum number of tokens to generate (leave 0 for model default)',
+        en_US:
+          'Maximum number of tokens to generate (leave 0 for model default)',
         zh_Hans: '生成的最大令牌数（设为 0 使用模型默认值）',
       },
       required: false,
@@ -148,7 +154,10 @@ export const llmCallConfig: NodeConfigMeta = {
       options: [
         { name: 'text', label: { en_US: 'Plain Text', zh_Hans: '纯文本' } },
         { name: 'json', label: { en_US: 'JSON', zh_Hans: 'JSON' } },
-        { name: 'markdown', label: { en_US: 'Markdown', zh_Hans: 'Markdown 文本' } },
+        {
+          name: 'markdown',
+          label: { en_US: 'Markdown', zh_Hans: 'Markdown 文本' },
+        },
       ],
     },
     {
@@ -282,8 +291,10 @@ export const questionClassifierConfig: NodeConfigMeta = {
         zh_Hans: '分类定义',
       },
       description: {
-        en_US: 'Define categories in JSON format: [{"name": "category1", "description": "...", "examples": ["..."]}]',
-        zh_Hans: '使用 JSON 格式定义分类: [{"name": "分类1", "description": "...", "examples": ["..."]}]',
+        en_US:
+          'Define categories in JSON format: [{"name": "category1", "description": "...", "examples": ["..."]}]',
+        zh_Hans:
+          '使用 JSON 格式定义分类: [{"name": "分类1", "description": "...", "examples": ["..."]}]',
       },
       required: true,
       default: '[]',
@@ -389,8 +400,10 @@ export const parameterExtractorConfig: NodeConfigMeta = {
         zh_Hans: '参数架构',
       },
       description: {
-        en_US: 'JSON array defining expected parameters: [{"name": "date", "type": "string", "description": "Meeting date", "required": true}]',
-        zh_Hans: '定义期望参数的 JSON 数组: [{"name": "日期", "type": "string", "description": "会议日期", "required": true}]',
+        en_US:
+          'JSON array defining expected parameters: [{"name": "date", "type": "string", "description": "Meeting date", "required": true}]',
+        zh_Hans:
+          '定义期望参数的 JSON 数组: [{"name": "日期", "type": "string", "description": "会议日期", "required": true}]',
       },
       required: true,
       default: '[]',
@@ -445,7 +458,8 @@ export const knowledgeRetrievalConfig: NodeConfigMeta = {
     zh_Hans: '知识检索',
   },
   description: {
-    en_US: 'Retrieve relevant information from knowledge bases using semantic search',
+    en_US:
+      'Retrieve relevant information from knowledge bases using semantic search',
     zh_Hans: '使用语义搜索从知识库中检索相关信息',
   },
   icon: 'BookOpen',
@@ -532,9 +546,18 @@ export const knowledgeRetrievalConfig: NodeConfigMeta = {
       required: false,
       default: 'vector',
       options: [
-        { name: 'vector', label: { en_US: 'Vector Search', zh_Hans: '向量检索' } },
-        { name: 'hybrid', label: { en_US: 'Hybrid Search', zh_Hans: '混合检索' } },
-        { name: 'keyword', label: { en_US: 'Keyword Search', zh_Hans: '关键词检索' } },
+        {
+          name: 'vector',
+          label: { en_US: 'Vector Search', zh_Hans: '向量检索' },
+        },
+        {
+          name: 'hybrid',
+          label: { en_US: 'Hybrid Search', zh_Hans: '混合检索' },
+        },
+        {
+          name: 'keyword',
+          label: { en_US: 'Keyword Search', zh_Hans: '关键词检索' },
+        },
       ],
     },
     {
@@ -700,8 +723,10 @@ export const intentRecognitionConfig: NodeConfigMeta = {
         zh_Hans: '意图定义',
       },
       description: {
-        en_US: 'Define intents in JSON format: [{"name": "intent1", "description": "...", "examples": ["..."]}]',
-        zh_Hans: '使用 JSON 格式定义意图: [{"name": "意图1", "description": "...", "examples": ["..."]}]',
+        en_US:
+          'Define intents in JSON format: [{"name": "intent1", "description": "...", "examples": ["..."]}]',
+        zh_Hans:
+          '使用 JSON 格式定义意图: [{"name": "意图1", "description": "...", "examples": ["..."]}]',
       },
       required: true,
       default: '[]',

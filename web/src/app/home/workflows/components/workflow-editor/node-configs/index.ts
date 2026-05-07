@@ -1,6 +1,6 @@
 /**
  * Node Configurations Index
- * 
+ *
  * This module exports all node configuration metadata and provides
  * utility functions for accessing node configurations.
  */
@@ -9,7 +9,7 @@
 export * from './types';
 
 // Trigger Nodes
-export { 
+export {
   triggerConfigs,
   getTriggerConfig,
   messageTriggerConfig,
@@ -147,7 +147,9 @@ export function getNodeConfig(nodeType: string): NodeConfigMeta | undefined {
 /**
  * Get all node configurations for a category
  */
-export function getNodeConfigsByCategory(category: NodeCategory): NodeConfigMeta[] {
+export function getNodeConfigsByCategory(
+  category: NodeCategory,
+): NodeConfigMeta[] {
   return allNodeConfigs.filter((config) => config.category === category);
 }
 
@@ -171,18 +173,18 @@ export function isValidNodeType(nodeType: string): boolean {
 export function getDefaultConfig(nodeType: string): Record<string, unknown> {
   const config = getNodeConfig(nodeType);
   if (!config) return {};
-  
+
   // Build default config from schema defaults
   const defaults: Record<string, unknown> = {};
   for (const field of config.configSchema) {
     defaults[field.name] = field.default;
   }
-  
+
   // Override with explicit defaultConfig if provided
   if (config.defaultConfig) {
     Object.assign(defaults, config.defaultConfig);
   }
-  
+
   return defaults;
 }
 
@@ -191,32 +193,35 @@ export function getDefaultConfig(nodeType: string): Record<string, unknown> {
  */
 export function validateNodeConfig(
   nodeType: string,
-  config: Record<string, unknown>
+  config: Record<string, unknown>,
 ): { valid: boolean; errors: string[] } {
   const nodeConfig = getNodeConfig(nodeType);
   if (!nodeConfig) {
     return { valid: false, errors: [`Unknown node type: ${nodeType}`] };
   }
-  
+
   const errors: string[] = [];
-  
+
   for (const field of nodeConfig.configSchema) {
     const value = config[field.name];
-    
+
     // Check required fields
-    if (field.required && (value === undefined || value === null || value === '')) {
+    if (
+      field.required &&
+      (value === undefined || value === null || value === '')
+    ) {
       errors.push(`Field "${field.name}" is required`);
       continue;
     }
-    
+
     // Skip validation for optional empty fields
     if (!field.required && (value === undefined || value === null)) {
       continue;
     }
-    
+
     // Type-specific validation could be added here
   }
-  
+
   return { valid: errors.length === 0, errors };
 }
 

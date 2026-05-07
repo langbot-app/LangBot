@@ -1,6 +1,6 @@
 /**
  * Workflow Node Configuration Types
- * 
+ *
  * This module defines the types used for node configuration metadata.
  * It extends the existing dynamic form system to support workflow-specific features.
  */
@@ -23,40 +23,40 @@ export interface ExtendedPortDefinition extends PortDefinition {
 export interface NodeConfigMeta {
   /** Unique node type identifier */
   nodeType: string;
-  
+
   /** Display name for the node */
   label: I18nObject;
-  
+
   /** Description of what the node does */
   description: I18nObject;
-  
+
   /** Icon name (from lucide-react) */
   icon: string;
-  
+
   /** Node category for organization */
   category: NodeCategory;
-  
+
   /** Color for the node header */
   color?: string;
-  
+
   /** Input port definitions */
   inputs: ExtendedPortDefinition[];
-  
+
   /** Output port definitions */
   outputs: ExtendedPortDefinition[];
-  
+
   /** Configuration schema using the dynamic form system */
   configSchema: IDynamicFormItemSchema[];
-  
+
   /** Default configuration values */
   defaultConfig?: Record<string, unknown>;
-  
+
   /** Whether this node can be the starting point of a workflow */
   isEntryPoint?: boolean;
-  
+
   /** Maximum number of this node type allowed in a workflow (undefined = unlimited) */
   maxInstances?: number;
-  
+
   /** Documentation URL */
   docsUrl?: string;
 }
@@ -76,7 +76,7 @@ export function createPort(
     description?: string;
     required?: boolean;
     label?: I18nObject;
-  }
+  },
 ): ExtendedPortDefinition {
   return {
     name,
@@ -97,9 +97,12 @@ export function createInput(
     description?: string;
     required?: boolean;
     label?: I18nObject;
-  }
+  },
 ): ExtendedPortDefinition {
-  return createPort(name, type, { ...options, required: options?.required ?? true });
+  return createPort(name, type, {
+    ...options,
+    required: options?.required ?? true,
+  });
 }
 
 /**
@@ -111,7 +114,7 @@ export function createOutput(
   options?: {
     description?: string;
     label?: I18nObject;
-  }
+  },
 ): ExtendedPortDefinition {
   return createPort(name, type, { ...options, required: false });
 }

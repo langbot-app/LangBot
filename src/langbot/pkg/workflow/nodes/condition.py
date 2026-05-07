@@ -74,15 +74,24 @@ class ConditionNode(WorkflowNode):
             left_num = float(left)
             right_num = float(right)
 
-            if operator == "==": return left_num == right_num
-            elif operator == "!=": return left_num != right_num
-            elif operator == ">": return left_num > right_num
-            elif operator == "<": return left_num < right_num
-            elif operator == ">=": return left_num >= right_num
-            elif operator == "<=": return left_num <= right_num
+            if operator == "==":
+                return left_num == right_num
+            elif operator == "!=":
+                return left_num != right_num
+            elif operator == ">":
+                return left_num > right_num
+            elif operator == "<":
+                return left_num < right_num
+            elif operator == ">=":
+                return left_num >= right_num
+            elif operator == "<=":
+                return left_num <= right_num
         except ValueError:
-            if operator == "==": return left == right
-            elif operator == "!=": return left != right
-            elif operator in (">", "<", ">=", "<="): return False
+            if operator == "==":
+                return left == right
+            elif operator == "!=":
+                return left != right
+            elif operator in (">", "<", ">=", "<="):
+                return False
 
         return False

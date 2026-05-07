@@ -1341,7 +1341,8 @@
   },
   workflows: {
     title: 'Workflows',
-    description: 'Create and manage visual workflows for complex message processing logic',
+    description:
+      'Create and manage visual workflows for complex message processing logic',
     createWorkflow: 'Create Workflow',
     selectFromSidebar: 'Select a workflow from the sidebar',
     editWorkflow: 'Edit Workflow',
@@ -1381,10 +1382,12 @@
     dangerZoneDesc: 'Irreversible operations',
     dangerZoneDescription: 'Irreversible operations',
     deleteWorkflowAction: 'Delete this workflow',
-    deleteWorkflowHint: 'Once deleted, all associated configurations will be permanently removed and cannot be recovered.',
+    deleteWorkflowHint:
+      'Once deleted, all associated configurations will be permanently removed and cannot be recovered.',
     deleteWorkflow: 'Delete Workflow',
     deleteConfirm: 'Confirm Delete',
-    deleteConfirmDesc: 'Are you sure you want to delete workflow "{{name}}"? This action cannot be undone.',
+    deleteConfirmDesc:
+      'Are you sure you want to delete workflow "{{name}}"? This action cannot be undone.',
     // Form component
     name: 'Name',
     namePlaceholder: 'Enter workflow name',
@@ -1447,13 +1450,16 @@
     dragToAdd: 'Drag nodes to add to canvas',
     // Property panel
     selectNodeOrEdge: 'Select a node or edge',
-    selectNodeOrEdgeHint: 'Click on a node or edge in the canvas to view and edit its properties',
+    selectNodeOrEdgeHint:
+      'Click on a node or edge in the canvas to view and edit its properties',
     edgeProperties: 'Edge Properties',
     nodeProperties: 'Node Properties',
     condition: 'Condition',
     hasCondition: 'Set',
-    conditionPlaceholder: 'Enter condition expression, e.g. output.success == true',
-    conditionHelp: 'When condition is empty, this edge will always be executed. Use {{variable}} to reference context variables.',
+    conditionPlaceholder:
+      'Enter condition expression, e.g. output.success == true',
+    conditionHelp:
+      'When condition is empty, this edge will always be executed. Use {{variable}} to reference context variables.',
     deleteEdge: 'Delete Edge',
     deleteEdgeConfirm: 'Confirm Delete Edge',
     deleteEdgeConfirmDesc: 'This edge will be permanently removed.',
@@ -1474,7 +1480,8 @@
     noConfigOptions: 'No configuration options for this node type',
     deleteNode: 'Delete Node',
     deleteNodeConfirm: 'Confirm Delete Node',
-    deleteNodeConfirmDesc: 'This node and all its connections will be permanently removed.',
+    deleteNodeConfirmDesc:
+      'This node and all its connections will be permanently removed.',
     // Node inputs/outputs i18n (for port labels)
     nodeInputs: {
       // Common inputs
@@ -1537,7 +1544,8 @@
       aiProcess: 'AI Processing',
       aiProcessDescription: 'Process messages using AI models',
       llmCall: 'LLM Call',
-      llmCallDescription: 'Invoke large language model for conversation or generation',
+      llmCallDescription:
+        'Invoke large language model for conversation or generation',
       codeProcess: 'Code Processing',
       codeProcessDescription: 'Execute custom code',
       codeExecutor: 'Code Executor',
@@ -1549,13 +1557,17 @@
       dataTransform: 'Data Transform',
       dataTransformDescription: 'Transform data format',
       questionClassifier: 'Question Classifier',
-      questionClassifierDescription: 'Classify user questions into predefined categories using LLM',
+      questionClassifierDescription:
+        'Classify user questions into predefined categories using LLM',
       parameterExtractor: 'Parameter Extractor',
-      parameterExtractorDescription: 'Extract structured parameters from text using LLM',
+      parameterExtractorDescription:
+        'Extract structured parameters from text using LLM',
       knowledgeRetrieval: 'Knowledge Retrieval',
-      knowledgeRetrievalDescription: 'Retrieve relevant content from knowledge base',
+      knowledgeRetrievalDescription:
+        'Retrieve relevant content from knowledge base',
       textTemplate: 'Text Template',
-      textTemplateDescription: 'Generate text using templates with variable interpolation',
+      textTemplateDescription:
+        'Generate text using templates with variable interpolation',
       jsonTransform: 'JSON Transform',
       jsonTransformDescription: 'Transform JSON data using expressions',
       dataAggregator: 'Data Aggregator',
@@ -1583,13 +1595,15 @@
       merge: 'Merge',
       mergeDescription: 'Merge multiple branches',
       variableAggregator: 'Variable Aggregator',
-      variableAggregatorDescription: 'Aggregate variable outputs from multiple branches',
+      variableAggregatorDescription:
+        'Aggregate variable outputs from multiple branches',
       action: 'Actions',
       actionDescription: 'Action execution nodes',
       sendMessage: 'Send Message',
       sendMessageDescription: 'Send message to platform',
       replyMessage: 'Reply Message',
-      replyMessageDescription: 'Reply to the message that triggered the workflow',
+      replyMessageDescription:
+        'Reply to the message that triggered the workflow',
       storeData: 'Store Data',
       storeDataDescription: 'Store data to database',
       callPipeline: 'Call Pipeline',
@@ -1597,7 +1611,8 @@
       setVariable: 'Set Variable',
       setVariableDescription: 'Set context variable',
       openingStatement: 'Opening Statement',
-      openingStatementDescription: 'Provide conversation opener and suggested questions',
+      openingStatementDescription:
+        'Provide conversation opener and suggested questions',
       end: 'End',
       endDescription: 'Mark the end of workflow execution',
       log: 'Log',
@@ -1643,7 +1658,8 @@
       title: 'Version History',
       current: 'Current Version',
       rollback: 'Rollback to this version',
-      rollbackConfirm: 'Are you sure you want to rollback to this version? Current changes will be lost.',
+      rollbackConfirm:
+        'Are you sure you want to rollback to this version? Current changes will be lost.',
       rollbackSuccess: 'Rollback successful',
       rollbackError: 'Failed to rollback: ',
     },
@@ -1719,7 +1735,8 @@
       disconnected: 'WebSocket未接続',
       connectionError: 'WebSocket接続エラー',
       connectionFailed: 'WebSocket接続失敗',
-      notConnected: 'WebSocket未接続です。しばらくしてからもう一度お試しください',
+      notConnected:
+        'WebSocket未接続です。しばらくしてからもう一度お試しください',
       imageUploadFailed: '画像アップロード失敗',
       reply: '返信',
       replyTo: '返信先',

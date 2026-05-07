@@ -3,10 +3,7 @@ import type {
   WorkflowPortDefinition,
 } from '@/app/infra/entities/api';
 import type { I18nObject } from '@/app/infra/entities/common';
-import {
-  getNodeConfig,
-  type NodeConfigMeta,
-} from './node-configs';
+import { getNodeConfig, type NodeConfigMeta } from './node-configs';
 
 export const WORKFLOW_NODE_CATEGORIES = [
   'trigger',
@@ -59,7 +56,9 @@ function normalizePort(
   };
 }
 
-function toBackendI18nObject(value?: I18nObject): Record<string, string> | undefined {
+function toBackendI18nObject(
+  value?: I18nObject,
+): Record<string, string> | undefined {
   if (!value) return undefined;
 
   return {
@@ -103,7 +102,9 @@ function getLocalConfigVariants(type: string): string[] {
   return [...variants];
 }
 
-export function getLocalNodeTypeMeta(type: string): WorkflowNodeTypeMetadata | null {
+export function getLocalNodeTypeMeta(
+  type: string,
+): WorkflowNodeTypeMetadata | null {
   let localConfig: NodeConfigMeta | undefined;
 
   for (const variant of getLocalConfigVariants(type)) {
@@ -138,30 +139,27 @@ export function normalizeWorkflowNodeTypeMeta(
   const category =
     nodeType?.category || localMeta?.category || resolveNodeTypeCategory(type);
 
-  const inputs =
-    nodeType?.inputs?.length
-      ? nodeType.inputs.map((input) =>
-          normalizePort('workflows.nodeInputs', input),
-        )
-      : localMeta?.inputs?.length
-        ? localMeta.inputs
-        : [DEFAULT_INPUT_PORT];
+  const inputs = nodeType?.inputs?.length
+    ? nodeType.inputs.map((input) =>
+        normalizePort('workflows.nodeInputs', input),
+      )
+    : localMeta?.inputs?.length
+      ? localMeta.inputs
+      : [DEFAULT_INPUT_PORT];
 
-  const outputs =
-    nodeType?.outputs?.length
-      ? nodeType.outputs.map((output) =>
-          normalizePort('workflows.nodeOutputs', output),
-        )
-      : localMeta?.outputs?.length
-        ? localMeta.outputs
-        : [DEFAULT_OUTPUT_PORT];
+  const outputs = nodeType?.outputs?.length
+    ? nodeType.outputs.map((output) =>
+        normalizePort('workflows.nodeOutputs', output),
+      )
+    : localMeta?.outputs?.length
+      ? localMeta.outputs
+      : [DEFAULT_OUTPUT_PORT];
 
-  const configSchema =
-    nodeType?.config_schema?.length
-      ? nodeType.config_schema
-      : localMeta?.config_schema?.length
-        ? localMeta.config_schema
-        : [];
+  const configSchema = nodeType?.config_schema?.length
+    ? nodeType.config_schema
+    : localMeta?.config_schema?.length
+      ? localMeta.config_schema
+      : [];
 
   return {
     type,

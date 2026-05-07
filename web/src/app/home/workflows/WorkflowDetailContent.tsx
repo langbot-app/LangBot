@@ -2,7 +2,13 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -12,7 +18,15 @@ import WorkflowExecutionsTab from './components/workflow-executions/WorkflowExec
 import WorkflowDebugDialog from './components/workflow-debug-dialog/WorkflowDebugDialog';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { useTranslation } from 'react-i18next';
-import { Settings, Play, BarChart3, GitBranch, Download, Upload, Bug } from 'lucide-react';
+import {
+  Settings,
+  Play,
+  BarChart3,
+  GitBranch,
+  Download,
+  Upload,
+  Bug,
+} from 'lucide-react';
 import { backendClient } from '@/app/infra/http';
 import { Workflow } from '@/app/infra/entities/api';
 import { useWorkflowStore } from './store/useWorkflowStore';
@@ -24,7 +38,7 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const { refreshWorkflows, workflows, setDetailEntityName } = useSidebarData();
-  
+
   const {
     currentWorkflow,
     setCurrentWorkflow,
@@ -43,7 +57,11 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
   const [activeTab, setActiveTab] = useState('editor');
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
   const [createStep, setCreateStep] = useState<'basic' | 'editor'>('basic');
-  const [basicInfo, setBasicInfo] = useState<{ name: string; description: string; emoji: string }>({
+  const [basicInfo, setBasicInfo] = useState<{
+    name: string;
+    description: string;
+    emoji: string;
+  }>({
     name: '',
     description: '',
     emoji: '🔄',
@@ -65,11 +83,14 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
   // Load node types
   useEffect(() => {
     if (nodeTypes.length === 0) {
-      backendClient.getWorkflowNodeTypes().then((resp) => {
-        setNodeTypes(resp.node_types, resp.categories);
-      }).catch((err) => {
-        console.error('Failed to load node types:', err);
-      });
+      backendClient
+        .getWorkflowNodeTypes()
+        .then((resp) => {
+          setNodeTypes(resp.node_types, resp.categories);
+        })
+        .catch((err) => {
+          console.error('Failed to load node types:', err);
+        });
     }
   }, [nodeTypes.length, setNodeTypes]);
 
@@ -82,16 +103,23 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
     }
 
     setLoading(true);
-    backendClient.getWorkflow(id).then((resp) => {
-      setWorkflow(resp.workflow);
-      setCurrentWorkflow(resp.workflow);
-      fromWorkflowDefinition(resp.workflow.nodes || [], resp.workflow.edges || []);
-    }).catch((err) => {
-      console.error('Failed to load workflow:', err);
-      toast.error(t('workflows.loadError'));
-    }).finally(() => {
-      setLoading(false);
-    });
+    backendClient
+      .getWorkflow(id)
+      .then((resp) => {
+        setWorkflow(resp.workflow);
+        setCurrentWorkflow(resp.workflow);
+        fromWorkflowDefinition(
+          resp.workflow.nodes || [],
+          resp.workflow.edges || [],
+        );
+      })
+      .catch((err) => {
+        console.error('Failed to load workflow:', err);
+        toast.error(t('workflows.loadError'));
+      })
+      .finally(() => {
+        setLoading(false);
+      });
 
     return () => {
       reset();
@@ -105,7 +133,7 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
     setSaving(true);
     try {
       const { nodes, edges } = toWorkflowDefinition();
-      
+
       if (isCreateMode) {
         const resp = await backendClient.createWorkflow({
           name: basicInfo.name || t('workflows.newWorkflow'),
@@ -138,12 +166,22 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
     } finally {
       setSaving(false);
     }
-  }, [id, isCreateMode, workflow, isSaving, toWorkflowDefinition, refreshWorkflows, navigate, t, basicInfo]);
+  }, [
+    id,
+    isCreateMode,
+    workflow,
+    isSaving,
+    toWorkflowDefinition,
+    refreshWorkflows,
+    navigate,
+    t,
+    basicInfo,
+  ]);
 
   // Export workflow handler
   const handleExport = useCallback(() => {
     const { nodes, edges } = toWorkflowDefinition();
-    
+
     const exportData = {
       name: workflow?.name || t('workflows.newWorkflow'),
       description: workflow?.description || '',
@@ -155,8 +193,10 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
       version: '1.0',
       exportedAt: new Date().toISOString(),
     };
-    
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+      type: 'application/json',
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -165,84 +205,103 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    
+
     toast.success(t('workflows.exportSuccess'));
   }, [workflow, toWorkflowDefinition, t]);
 
   // Import workflow handler
-  const handleImport = useCallback((file: File) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const importData = JSON.parse(e.target?.result as string);
-        
-        // Validate imported data structure
-        if (!importData.nodes || !Array.isArray(importData.nodes)) {
-          throw new Error('Invalid workflow file: missing nodes');
-        }
-        if (!importData.edges || !Array.isArray(importData.edges)) {
-          throw new Error('Invalid workflow file: missing edges');
-        }
-        
-        // Validate each node has required fields
-        const nodeIds = new Set<string>();
-        for (const node of importData.nodes) {
-          if (!node.id || !node.type) {
-            throw new Error(`Invalid node: missing id or type`);
+  const handleImport = useCallback(
+    (file: File) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const importData = JSON.parse(e.target?.result as string);
+
+          // Validate imported data structure
+          if (!importData.nodes || !Array.isArray(importData.nodes)) {
+            throw new Error('Invalid workflow file: missing nodes');
           }
-          if (!node.position || typeof node.position.x !== 'number' || typeof node.position.y !== 'number') {
-            throw new Error(`Invalid node "${node.id}": missing or invalid position`);
+          if (!importData.edges || !Array.isArray(importData.edges)) {
+            throw new Error('Invalid workflow file: missing edges');
           }
-          nodeIds.add(node.id);
+
+          // Validate each node has required fields
+          const nodeIds = new Set<string>();
+          for (const node of importData.nodes) {
+            if (!node.id || !node.type) {
+              throw new Error(`Invalid node: missing id or type`);
+            }
+            if (
+              !node.position ||
+              typeof node.position.x !== 'number' ||
+              typeof node.position.y !== 'number'
+            ) {
+              throw new Error(
+                `Invalid node "${node.id}": missing or invalid position`,
+              );
+            }
+            nodeIds.add(node.id);
+          }
+
+          // Validate each edge has required fields and references existing nodes
+          for (const edge of importData.edges) {
+            if (!edge.id || !edge.source || !edge.target) {
+              throw new Error(`Invalid edge: missing id, source, or target`);
+            }
+            if (!nodeIds.has(edge.source)) {
+              throw new Error(
+                `Edge "${edge.id}" references unknown source node "${edge.source}"`,
+              );
+            }
+            if (!nodeIds.has(edge.target)) {
+              throw new Error(
+                `Edge "${edge.id}" references unknown target node "${edge.target}"`,
+              );
+            }
+          }
+
+          // Load nodes and edges into the store
+          fromWorkflowDefinition(importData.nodes, importData.edges);
+
+          // Update workflow metadata if available
+          if (
+            workflow &&
+            (importData.name || importData.description || importData.emoji)
+          ) {
+            setWorkflow({
+              ...workflow,
+              name: importData.name || workflow.name,
+              description: importData.description || workflow.description,
+              emoji: importData.emoji || workflow.emoji,
+              variables: importData.variables || workflow.variables,
+              settings: importData.settings || workflow.settings,
+            });
+          }
+
+          setDirty(true);
+          toast.success(t('workflows.importSuccess'));
+        } catch (error) {
+          console.error('Failed to import workflow:', error);
+          toast.error(t('workflows.importError'));
         }
-        
-        // Validate each edge has required fields and references existing nodes
-        for (const edge of importData.edges) {
-          if (!edge.id || !edge.source || !edge.target) {
-            throw new Error(`Invalid edge: missing id, source, or target`);
-          }
-          if (!nodeIds.has(edge.source)) {
-            throw new Error(`Edge "${edge.id}" references unknown source node "${edge.source}"`);
-          }
-          if (!nodeIds.has(edge.target)) {
-            throw new Error(`Edge "${edge.id}" references unknown target node "${edge.target}"`);
-          }
-        }
-        
-        // Load nodes and edges into the store
-        fromWorkflowDefinition(importData.nodes, importData.edges);
-        
-        // Update workflow metadata if available
-        if (workflow && (importData.name || importData.description || importData.emoji)) {
-          setWorkflow({
-            ...workflow,
-            name: importData.name || workflow.name,
-            description: importData.description || workflow.description,
-            emoji: importData.emoji || workflow.emoji,
-            variables: importData.variables || workflow.variables,
-            settings: importData.settings || workflow.settings,
-          });
-        }
-        
-        setDirty(true);
-        toast.success(t('workflows.importSuccess'));
-      } catch (error) {
-        console.error('Failed to import workflow:', error);
-        toast.error(t('workflows.importError'));
-      }
-    };
-    reader.readAsText(file);
-  }, [workflow, fromWorkflowDefinition, setDirty, t]);
+      };
+      reader.readAsText(file);
+    },
+    [workflow, fromWorkflowDefinition, setDirty, t],
+  );
 
   // Handle file input change
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      handleImport(file);
-      // Reset file input
-      e.target.value = '';
-    }
-  }, [handleImport]);
+  const handleFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        handleImport(file);
+        // Reset file input
+        e.target.value = '';
+      }
+    },
+    [handleImport],
+  );
 
   // Publish handler
   const handlePublish = useCallback(async () => {
@@ -289,7 +348,10 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
               style={{ display: 'none' }}
               ref={fileInputRef}
             />
-            <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+            <Button
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+            >
               <Upload className="size-4 mr-1" />
               {t('workflows.import')}
             </Button>
@@ -307,17 +369,26 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
             <Card>
               <CardHeader>
                 <CardTitle>{t('workflows.basicInfo')}</CardTitle>
-                <CardDescription>{t('workflows.basicInfoDesc')}</CardDescription>
+                <CardDescription>
+                  {t('workflows.basicInfoDesc')}
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="workflow-name">{t('workflows.name')}</Label>
                   <div className="flex gap-2">
-                    <EmojiPicker value={basicInfo.emoji} onChange={(emoji: string) => setBasicInfo({ ...basicInfo, emoji })} />
+                    <EmojiPicker
+                      value={basicInfo.emoji}
+                      onChange={(emoji: string) =>
+                        setBasicInfo({ ...basicInfo, emoji })
+                      }
+                    />
                     <Input
                       id="workflow-name"
                       value={basicInfo.name}
-                      onChange={(e) => setBasicInfo({ ...basicInfo, name: e.target.value })}
+                      onChange={(e) =>
+                        setBasicInfo({ ...basicInfo, name: e.target.value })
+                      }
                       placeholder={t('workflows.namePlaceholder')}
                       className="flex-1"
                     />
@@ -325,11 +396,18 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="workflow-description">{t('workflows.description')}</Label>
+                  <Label htmlFor="workflow-description">
+                    {t('workflows.description')}
+                  </Label>
                   <Textarea
                     id="workflow-description"
                     value={basicInfo.description}
-                    onChange={(e) => setBasicInfo({ ...basicInfo, description: e.target.value })}
+                    onChange={(e) =>
+                      setBasicInfo({
+                        ...basicInfo,
+                        description: e.target.value,
+                      })
+                    }
                     placeholder={t('workflows.descriptionPlaceholder')}
                     rows={3}
                   />
@@ -377,12 +455,15 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
         style={{ display: 'none' }}
         ref={fileInputRef}
       />
-      
+
       {/* Sticky Header: title + save button */}
       <div className="flex items-center justify-between pb-4 shrink-0">
         <h1 className="text-xl font-semibold">{t('workflows.editWorkflow')}</h1>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+          <Button
+            variant="outline"
+            onClick={() => fileInputRef.current?.click()}
+          >
             <Upload className="size-4 mr-1" />
             {t('workflows.import')}
           </Button>
@@ -434,10 +515,7 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
         </TabsList>
 
         {/* Tab: Editor */}
-        <TabsContent
-          value="editor"
-          className="flex-1 min-h-0 mt-4"
-        >
+        <TabsContent value="editor" className="flex-1 min-h-0 mt-4">
           <WorkflowEditorComponent />
         </TabsContent>
 

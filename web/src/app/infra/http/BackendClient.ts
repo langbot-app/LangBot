@@ -1290,11 +1290,17 @@ export class BackendClient extends BaseHttpClient {
     return this.post(`/api/v1/workflows/${uuid}/debug/start`, options);
   }
 
-  public pauseWorkflowDebug(uuid: string, executionId: string): Promise<object> {
+  public pauseWorkflowDebug(
+    uuid: string,
+    executionId: string,
+  ): Promise<object> {
     return this.post(`/api/v1/workflows/${uuid}/debug/${executionId}/pause`);
   }
 
-  public resumeWorkflowDebug(uuid: string, executionId: string): Promise<object> {
+  public resumeWorkflowDebug(
+    uuid: string,
+    executionId: string,
+  ): Promise<object> {
     return this.post(`/api/v1/workflows/${uuid}/debug/${executionId}/resume`);
   }
 

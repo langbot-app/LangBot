@@ -30,7 +30,6 @@ class QuestionClassifierNode(WorkflowNode):
     config_schema: ClassVar[list[NodeConfig]] = []
 
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
-        question = inputs.get("question", "")
         categories = self.get_config("categories", [])
 
         if categories:

@@ -82,7 +82,12 @@ export interface NodeTypeMetadata {
 }
 
 // 节点类别
-export type NodeCategory = 'trigger' | 'process' | 'control' | 'action' | 'integration';
+export type NodeCategory =
+  | 'trigger'
+  | 'process'
+  | 'control'
+  | 'action'
+  | 'integration';
 
 // 节点类别信息
 export interface NodeCategoryInfo {
@@ -93,7 +98,12 @@ export interface NodeCategoryInfo {
 }
 
 // 工作流执行状态
-export type ExecutionStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type ExecutionStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
 
 // 工作流执行记录
 export interface WorkflowExecution {

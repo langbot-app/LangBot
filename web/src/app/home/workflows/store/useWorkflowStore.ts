@@ -1,5 +1,14 @@
 import { create } from 'zustand';
-import { Node, Edge, Connection, addEdge, applyNodeChanges, applyEdgeChanges, NodeChange, EdgeChange } from '@xyflow/react';
+import {
+  Node,
+  Edge,
+  Connection,
+  addEdge,
+  applyNodeChanges,
+  applyEdgeChanges,
+  NodeChange,
+  EdgeChange,
+} from '@xyflow/react';
 import {
   Workflow,
   WorkflowNodeDefinition,
@@ -64,28 +73,28 @@ export interface DebugContext {
 interface WorkflowState {
   // Current workflow being edited
   currentWorkflow: Workflow | null;
-  
+
   // React Flow nodes and edges
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
-  
+
   // Node type metadata from backend
   nodeTypes: WorkflowNodeTypeMetadata[];
   nodeCategories: WorkflowNodeCategory[];
-  
+
   // Selection state
   selectedNodeId: string | null;
   selectedEdgeId: string | null;
-  
+
   // UI state
   isDirty: boolean;
   isSaving: boolean;
   isLoading: boolean;
-  
+
   // Undo/Redo history
   history: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }[];
   historyIndex: number;
-  
+
   // Debug state
   debugMode: boolean;
   debugState: DebugState;
@@ -96,55 +105,67 @@ interface WorkflowState {
   debugLogs: DebugLog[];
   debugContext: DebugContext;
   watchedVariables: string[];
-  
+
   // Actions
   setCurrentWorkflow: (workflow: Workflow | null) => void;
   setNodes: (nodes: WorkflowNode[]) => void;
   setEdges: (edges: WorkflowEdge[]) => void;
-  setNodeTypes: (types: WorkflowNodeTypeMetadata[], categories: WorkflowNodeCategory[]) => void;
-  
+  setNodeTypes: (
+    types: WorkflowNodeTypeMetadata[],
+    categories: WorkflowNodeCategory[],
+  ) => void;
+
   // Node operations
   onNodesChange: (changes: NodeChange<WorkflowNode>[]) => void;
   onEdgesChange: (changes: EdgeChange<WorkflowEdge>[]) => void;
   onConnect: (connection: Connection) => void;
-  
+
   addNode: (type: string, position: { x: number; y: number }) => void;
   updateNodeConfig: (nodeId: string, config: Record<string, unknown>) => void;
   updateNodeLabel: (nodeId: string, label: string) => void;
   deleteNode: (nodeId: string) => void;
-  
+
   // Edge operations
   deleteEdge: (edgeId: string) => void;
   updateEdgeCondition: (edgeId: string, condition: string) => void;
-  
+
   // Selection
   selectNode: (nodeId: string | null) => void;
   selectEdge: (edgeId: string | null) => void;
   clearSelection: () => void;
-  
+
   // State management
   setDirty: (dirty: boolean) => void;
   setSaving: (saving: boolean) => void;
   setLoading: (loading: boolean) => void;
-  
+
   // Undo/Redo
   undo: () => void;
   redo: () => void;
   pushHistory: () => void;
-  
+
   // Convert to/from API format
-  toWorkflowDefinition: () => { nodes: WorkflowNodeDefinition[]; edges: WorkflowEdgeDefinition[] };
-  fromWorkflowDefinition: (nodes: WorkflowNodeDefinition[], edges: WorkflowEdgeDefinition[]) => void;
-  
+  toWorkflowDefinition: () => {
+    nodes: WorkflowNodeDefinition[];
+    edges: WorkflowEdgeDefinition[];
+  };
+  fromWorkflowDefinition: (
+    nodes: WorkflowNodeDefinition[],
+    edges: WorkflowEdgeDefinition[],
+  ) => void;
+
   // Reset
   reset: () => void;
-  
+
   // Debug actions
   setDebugMode: (enabled: boolean) => void;
   setDebugState: (state: DebugState) => void;
   setDebugExecutionId: (executionId: string | null) => void;
   setCurrentNodeId: (nodeId: string | null) => void;
-  updateNodeExecutionResult: (nodeId: string, result: Partial<NodeExecutionResult>) => void;
+  updateNodeExecutionResult: (
+    nodeId: string,
+    result: Partial<NodeExecutionResult>,
+  ) => void;
   clearNodeExecutionResults: () => void;
   toggleBreakpoint: (nodeId: string) => void;
   clearBreakpoints: () => void;
@@ -159,7 +180,10 @@ interface WorkflowState {
 }
 
 const generateUuidLikeId = () => {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+  if (
+    typeof crypto !== 'undefined' &&
+    typeof crypto.randomUUID === 'function'
+  ) {
     return crypto.randomUUID();
   }
 
@@ -195,7 +219,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   isLoading: false,
   history: [],
   historyIndex: -1,
-  
+
   // Debug initial state
   debugMode: false,
   debugState: 'idle',
@@ -206,13 +230,14 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   debugLogs: [],
   debugContext: { ...defaultDebugContext },
   watchedVariables: [],
-  
+
   // Setters
   setCurrentWorkflow: (workflow) => set({ currentWorkflow: workflow }),
   setNodes: (nodes) => set({ nodes, isDirty: true }),
   setEdges: (edges) => set({ edges, isDirty: true }),
-  setNodeTypes: (types, categories) => set({ nodeTypes: types, nodeCategories: categories }),
-  
+  setNodeTypes: (types, categories) =>
+    set({ nodeTypes: types, nodeCategories: categories }),
+
   // Node change handlers
   onNodesChange: (changes) => {
     set((state) => ({
@@ -220,28 +245,28 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       isDirty: true,
     }));
   },
-  
+
   onEdgesChange: (changes) => {
     set((state) => ({
       edges: applyEdgeChanges(changes, state.edges) as WorkflowEdge[],
       isDirty: true,
     }));
   },
-  
+
   onConnect: (connection) => {
     const newEdge: WorkflowEdge = {
       ...connection,
       id: generateEdgeId(),
       type: 'smoothstep',
     } as WorkflowEdge;
-    
+
     set((state) => ({
       edges: addEdge(newEdge, state.edges) as WorkflowEdge[],
       isDirty: true,
     }));
     get().pushHistory();
   },
-  
+
   // Add new node
   addNode: (type, position) => {
     const { nodeTypes } = get();
@@ -277,83 +302,81 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         })),
       },
     };
-    
+
     set((state) => ({
       nodes: [...state.nodes, newNode],
       isDirty: true,
     }));
     get().pushHistory();
   },
-  
+
   // Update node config
   updateNodeConfig: (nodeId, config) => {
     set((state) => ({
       nodes: state.nodes.map((node) =>
-        node.id === nodeId
-          ? { ...node, data: { ...node.data, config } }
-          : node
+        node.id === nodeId ? { ...node, data: { ...node.data, config } } : node,
       ),
       isDirty: true,
     }));
   },
-  
+
   // Update node label
   updateNodeLabel: (nodeId, label) => {
     set((state) => ({
       nodes: state.nodes.map((node) =>
-        node.id === nodeId
-          ? { ...node, data: { ...node.data, label } }
-          : node
+        node.id === nodeId ? { ...node, data: { ...node.data, label } } : node,
       ),
       isDirty: true,
     }));
   },
-  
+
   // Delete node
   deleteNode: (nodeId) => {
     set((state) => ({
       nodes: state.nodes.filter((node) => node.id !== nodeId),
       edges: state.edges.filter(
-        (edge) => edge.source !== nodeId && edge.target !== nodeId
+        (edge) => edge.source !== nodeId && edge.target !== nodeId,
       ),
-      selectedNodeId: state.selectedNodeId === nodeId ? null : state.selectedNodeId,
+      selectedNodeId:
+        state.selectedNodeId === nodeId ? null : state.selectedNodeId,
       isDirty: true,
     }));
     get().pushHistory();
   },
-  
+
   // Delete edge
   deleteEdge: (edgeId) => {
     set((state) => ({
       edges: state.edges.filter((edge) => edge.id !== edgeId),
-      selectedEdgeId: state.selectedEdgeId === edgeId ? null : state.selectedEdgeId,
+      selectedEdgeId:
+        state.selectedEdgeId === edgeId ? null : state.selectedEdgeId,
       isDirty: true,
     }));
     get().pushHistory();
   },
-  
+
   // Update edge condition
   updateEdgeCondition: (edgeId, condition) => {
     set((state) => ({
       edges: state.edges.map((edge) =>
         edge.id === edgeId
           ? { ...edge, data: { ...edge.data, condition } }
-          : edge
+          : edge,
       ),
       isDirty: true,
     }));
   },
-  
+
   // Selection
   selectNode: (nodeId) => set({ selectedNodeId: nodeId, selectedEdgeId: null }),
   selectEdge: (edgeId) => set({ selectedEdgeId: edgeId, selectedNodeId: null }),
   clearSelection: () => set({ selectedNodeId: null, selectedEdgeId: null }),
-  
+
   // State management
   setDirty: (dirty) => set({ isDirty: dirty }),
   setSaving: (saving) => set({ isSaving: saving }),
   setLoading: (loading) => set({ isLoading: loading }),
-  
+
   // Undo
   undo: () => {
     const { history, historyIndex } = get();
@@ -363,7 +386,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       set({ nodes, edges, historyIndex: newIndex, isDirty: true });
     }
   },
-  
+
   // Redo
   redo: () => {
     const { history, historyIndex } = get();
@@ -373,25 +396,25 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       set({ nodes, edges, historyIndex: newIndex, isDirty: true });
     }
   },
-  
+
   // Push current state to history
   pushHistory: () => {
     const { nodes, edges, history, historyIndex } = get();
     const newHistory = history.slice(0, historyIndex + 1);
     newHistory.push({ nodes: [...nodes], edges: [...edges] });
-    
+
     // Keep history limited to 50 entries
     if (newHistory.length > 50) {
       newHistory.shift();
     }
-    
+
     set({ history: newHistory, historyIndex: newHistory.length - 1 });
   },
-  
+
   // Convert to API format
   toWorkflowDefinition: () => {
     const { nodes, edges } = get();
-    
+
     const workflowNodes: WorkflowNodeDefinition[] = nodes.map((node) => ({
       id: node.id,
       type: node.data.type,
@@ -401,7 +424,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       inputs: node.data.inputs,
       outputs: node.data.outputs,
     }));
-    
+
     const workflowEdges: WorkflowEdgeDefinition[] = edges.map((edge) => ({
       id: edge.id,
       source: edge.source,
@@ -411,10 +434,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       label: edge.data?.label,
       condition: edge.data?.condition,
     }));
-    
+
     return { nodes: workflowNodes, edges: workflowEdges };
   },
-  
+
   // Load from API format
   fromWorkflowDefinition: (apiNodes, apiEdges) => {
     const nodes: WorkflowNode[] = apiNodes.map((node) => ({
@@ -429,7 +452,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         outputs: node.outputs,
       },
     }));
-    
+
     const edges: WorkflowEdge[] = apiEdges.map((edge) => ({
       id: edge.id,
       source: edge.source,
@@ -442,58 +465,62 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         condition: edge.condition,
       },
     }));
-    
+
     set({ nodes, edges, isDirty: false });
     get().pushHistory();
   },
-  
+
   // Reset store
-  reset: () => set({
-    currentWorkflow: null,
-    nodes: [],
-    edges: [],
-    selectedNodeId: null,
-    selectedEdgeId: null,
-    isDirty: false,
-    isSaving: false,
-    isLoading: false,
-    history: [],
-    historyIndex: -1,
-    // Reset debug state
-    debugMode: false,
-    debugState: 'idle',
-    debugExecutionId: null,
-    currentNodeId: null,
-    nodeExecutionResults: {},
-    breakpoints: {} as Record<string, boolean>,
-    debugLogs: [],
-    debugContext: { ...defaultDebugContext },
-    watchedVariables: [],
-  }),
-  
+  reset: () =>
+    set({
+      currentWorkflow: null,
+      nodes: [],
+      edges: [],
+      selectedNodeId: null,
+      selectedEdgeId: null,
+      isDirty: false,
+      isSaving: false,
+      isLoading: false,
+      history: [],
+      historyIndex: -1,
+      // Reset debug state
+      debugMode: false,
+      debugState: 'idle',
+      debugExecutionId: null,
+      currentNodeId: null,
+      nodeExecutionResults: {},
+      breakpoints: {} as Record<string, boolean>,
+      debugLogs: [],
+      debugContext: { ...defaultDebugContext },
+      watchedVariables: [],
+    }),
+
   // Debug actions
   setDebugMode: (enabled) => set({ debugMode: enabled }),
-  
+
   setDebugState: (state) => set({ debugState: state }),
-  
+
   setDebugExecutionId: (executionId) => set({ debugExecutionId: executionId }),
-  
+
   setCurrentNodeId: (nodeId) => set({ currentNodeId: nodeId }),
-  
+
   updateNodeExecutionResult: (nodeId, result) => {
     set((state) => ({
       nodeExecutionResults: {
         ...state.nodeExecutionResults,
         [nodeId]: {
-          ...(state.nodeExecutionResults[nodeId] || { nodeId, status: 'pending' }),
+          ...(state.nodeExecutionResults[nodeId] || {
+            nodeId,
+            status: 'pending',
+          }),
           ...result,
         },
       },
     }));
   },
-  
+
   clearNodeExecutionResults: () => set({ nodeExecutionResults: {} }),
-  
+
   toggleBreakpoint: (nodeId) => {
     set((state) => {
       const newBreakpoints = { ...state.breakpoints };
@@ -505,9 +532,9 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       return { breakpoints: newBreakpoints };
     });
   },
-  
+
   clearBreakpoints: () => set({ breakpoints: {} as Record<string, boolean> }),
-  
+
   addDebugLog: (log) => {
     set((state) => ({
       debugLogs: [
@@ -520,27 +547,28 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       ].slice(-500), // Keep only last 500 logs
     }));
   },
-  
+
   clearDebugLogs: () => set({ debugLogs: [] }),
-  
+
   setDebugContext: (context) => {
     set((state) => ({
       debugContext: { ...state.debugContext, ...context },
     }));
   },
-  
-  resetDebugContext: () => set({
-    debugContext: {
-      messageContent: '',
-      senderId: `user_${Date.now().toString(36)}`,
-      senderName: '',
-      platform: '',
-      conversationId: `session_${Date.now().toString(36)}`,
-      isGroup: false,
-      customVariables: {},
-    },
-  }),
-  
+
+  resetDebugContext: () =>
+    set({
+      debugContext: {
+        messageContent: '',
+        senderId: `user_${Date.now().toString(36)}`,
+        senderName: '',
+        platform: '',
+        conversationId: `session_${Date.now().toString(36)}`,
+        isGroup: false,
+        customVariables: {},
+      },
+    }),
+
   addWatchedVariable: (variable) => {
     set((state) => ({
       watchedVariables: state.watchedVariables.includes(variable)
@@ -548,20 +576,21 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         : [...state.watchedVariables, variable],
     }));
   },
-  
+
   removeWatchedVariable: (variable) => {
     set((state) => ({
       watchedVariables: state.watchedVariables.filter((v) => v !== variable),
     }));
   },
-  
+
   clearWatchedVariables: () => set({ watchedVariables: [] }),
-  
-  resetDebugState: () => set({
-    debugState: 'idle',
-    debugExecutionId: null,
-    currentNodeId: null,
-    nodeExecutionResults: {},
-    debugLogs: [],
-  }),
+
+  resetDebugState: () =>
+    set({
+      debugState: 'idle',
+      debugExecutionId: null,
+      currentNodeId: null,
+      nodeExecutionResults: {},
+      debugLogs: [],
+    }),
 }));

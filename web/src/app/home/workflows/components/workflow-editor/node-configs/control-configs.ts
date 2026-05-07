@@ -1,6 +1,6 @@
 /**
  * Control Node Configurations
- * 
+ *
  * Defines configurations for flow control node types:
  * - condition: Conditional branching
  * - switch_case: Multi-way branching
@@ -62,10 +62,16 @@ export const conditionConfig: NodeConfigMeta = {
       required: true,
       default: 'expression',
       options: [
-        { name: 'expression', label: { en_US: 'Expression', zh_Hans: '表达式' } },
+        {
+          name: 'expression',
+          label: { en_US: 'Expression', zh_Hans: '表达式' },
+        },
         { name: 'comparison', label: { en_US: 'Comparison', zh_Hans: '比较' } },
         { name: 'exists', label: { en_US: 'Value Exists', zh_Hans: '值存在' } },
-        { name: 'type_check', label: { en_US: 'Type Check', zh_Hans: '类型检查' } },
+        {
+          name: 'type_check',
+          label: { en_US: 'Type Check', zh_Hans: '类型检查' },
+        },
       ],
     },
     {
@@ -124,15 +130,36 @@ export const conditionConfig: NodeConfigMeta = {
       default: 'eq',
       options: [
         { name: 'eq', label: { en_US: 'Equals (==)', zh_Hans: '等于 (==)' } },
-        { name: 'neq', label: { en_US: 'Not Equals (!=)', zh_Hans: '不等于 (!=)' } },
-        { name: 'gt', label: { en_US: 'Greater Than (>)', zh_Hans: '大于 (>)' } },
-        { name: 'gte', label: { en_US: 'Greater or Equal (>=)', zh_Hans: '大于等于 (>=)' } },
+        {
+          name: 'neq',
+          label: { en_US: 'Not Equals (!=)', zh_Hans: '不等于 (!=)' },
+        },
+        {
+          name: 'gt',
+          label: { en_US: 'Greater Than (>)', zh_Hans: '大于 (>)' },
+        },
+        {
+          name: 'gte',
+          label: { en_US: 'Greater or Equal (>=)', zh_Hans: '大于等于 (>=)' },
+        },
         { name: 'lt', label: { en_US: 'Less Than (<)', zh_Hans: '小于 (<)' } },
-        { name: 'lte', label: { en_US: 'Less or Equal (<=)', zh_Hans: '小于等于 (<=)' } },
+        {
+          name: 'lte',
+          label: { en_US: 'Less or Equal (<=)', zh_Hans: '小于等于 (<=)' },
+        },
         { name: 'contains', label: { en_US: 'Contains', zh_Hans: '包含' } },
-        { name: 'starts_with', label: { en_US: 'Starts With', zh_Hans: '以...开头' } },
-        { name: 'ends_with', label: { en_US: 'Ends With', zh_Hans: '以...结尾' } },
-        { name: 'matches', label: { en_US: 'Matches Regex', zh_Hans: '匹配正则' } },
+        {
+          name: 'starts_with',
+          label: { en_US: 'Starts With', zh_Hans: '以...开头' },
+        },
+        {
+          name: 'ends_with',
+          label: { en_US: 'Ends With', zh_Hans: '以...结尾' },
+        },
+        {
+          name: 'matches',
+          label: { en_US: 'Matches Regex', zh_Hans: '匹配正则' },
+        },
       ],
       show_if: {
         field: 'condition_type',
@@ -261,11 +288,14 @@ export const switchCaseConfig: NodeConfigMeta = {
         zh_Hans: '情况',
       },
       description: {
-        en_US: 'Define cases as JSON array: [{"name": "case_1", "value": "value1"}, {"name": "case_2", "values": ["v1", "v2"]}]',
-        zh_Hans: '使用 JSON 数组定义情况: [{"name": "case_1", "value": "value1"}, {"name": "case_2", "values": ["v1", "v2"]}]',
+        en_US:
+          'Define cases as JSON array: [{"name": "case_1", "value": "value1"}, {"name": "case_2", "values": ["v1", "v2"]}]',
+        zh_Hans:
+          '使用 JSON 数组定义情况: [{"name": "case_1", "value": "value1"}, {"name": "case_2", "values": ["v1", "v2"]}]',
       },
       required: true,
-      default: '[{"name": "case_1", "value": ""}, {"name": "case_2", "value": ""}]',
+      default:
+        '[{"name": "case_1", "value": ""}, {"name": "case_2", "value": ""}]',
     },
     {
       id: 'case_sensitive',
@@ -502,8 +532,10 @@ export const parallelConfig: NodeConfigMeta = {
         zh_Hans: '分支',
       },
       description: {
-        en_US: 'Define branches as JSON array: [{"name": "branch_1"}, {"name": "branch_2"}]',
-        zh_Hans: '使用 JSON 数组定义分支: [{"name": "branch_1"}, {"name": "branch_2"}]',
+        en_US:
+          'Define branches as JSON array: [{"name": "branch_1"}, {"name": "branch_2"}]',
+        zh_Hans:
+          '使用 JSON 数组定义分支: [{"name": "branch_1"}, {"name": "branch_2"}]',
       },
       required: true,
       default: '[{"name": "branch_1"}, {"name": "branch_2"}]',
@@ -763,7 +795,10 @@ export const iteratorConfig: NodeConfigMeta = {
       name: 'parallel',
       type: DynamicFormItemType.BOOLEAN,
       label: { en_US: 'Parallel Processing', zh_Hans: '并行处理' },
-      description: { en_US: 'Process items in parallel', zh_Hans: '并行处理项目' },
+      description: {
+        en_US: 'Process items in parallel',
+        zh_Hans: '并行处理项目',
+      },
       required: false,
       default: false,
     },
@@ -772,7 +807,10 @@ export const iteratorConfig: NodeConfigMeta = {
       name: 'max_concurrency',
       type: DynamicFormItemType.INT,
       label: { en_US: 'Max Concurrency', zh_Hans: '最大并发数' },
-      description: { en_US: 'Maximum number of concurrent iterations', zh_Hans: '最大并发迭代数' },
+      description: {
+        en_US: 'Maximum number of concurrent iterations',
+        zh_Hans: '最大并发迭代数',
+      },
       required: false,
       default: 5,
       show_if: { field: 'parallel', operator: 'eq', value: true },
@@ -782,7 +820,10 @@ export const iteratorConfig: NodeConfigMeta = {
       name: 'max_iterations',
       type: DynamicFormItemType.INT,
       label: { en_US: 'Max Iterations', zh_Hans: '最大迭代次数' },
-      description: { en_US: 'Safety limit on iterations', zh_Hans: '迭代次数安全限制' },
+      description: {
+        en_US: 'Safety limit on iterations',
+        zh_Hans: '迭代次数安全限制',
+      },
       required: false,
       default: 1000,
     },
@@ -831,14 +872,29 @@ export const mergeConfig: NodeConfigMeta = {
       name: 'merge_strategy',
       type: DynamicFormItemType.SELECT,
       label: { en_US: 'Merge Strategy', zh_Hans: '合并策略' },
-      description: { en_US: 'How to merge inputs from branches', zh_Hans: '如何合并分支输入' },
+      description: {
+        en_US: 'How to merge inputs from branches',
+        zh_Hans: '如何合并分支输入',
+      },
       required: true,
       default: 'wait_all',
       options: [
-        { name: 'wait_all', label: { en_US: 'Wait for All', zh_Hans: '等待全部' } },
-        { name: 'first_completed', label: { en_US: 'First Completed', zh_Hans: '第一个完成' } },
-        { name: 'combine', label: { en_US: 'Combine to Object', zh_Hans: '合并为对象' } },
-        { name: 'array', label: { en_US: 'Collect to Array', zh_Hans: '收集为数组' } },
+        {
+          name: 'wait_all',
+          label: { en_US: 'Wait for All', zh_Hans: '等待全部' },
+        },
+        {
+          name: 'first_completed',
+          label: { en_US: 'First Completed', zh_Hans: '第一个完成' },
+        },
+        {
+          name: 'combine',
+          label: { en_US: 'Combine to Object', zh_Hans: '合并为对象' },
+        },
+        {
+          name: 'array',
+          label: { en_US: 'Collect to Array', zh_Hans: '收集为数组' },
+        },
       ],
     },
   ],
@@ -881,7 +937,11 @@ export const variableAggregatorConfig: NodeConfigMeta = {
       name: 'variable_mappings',
       type: DynamicFormItemType.TEXT,
       label: { en_US: 'Variable Mappings', zh_Hans: '变量映射' },
-      description: { en_US: 'JSON mapping of output variables: {"out_key": "{{nodes.xxx.value}}"}', zh_Hans: 'JSON 格式的输出变量映射: {"out_key": "{{nodes.xxx.value}}"}' },
+      description: {
+        en_US:
+          'JSON mapping of output variables: {"out_key": "{{nodes.xxx.value}}"}',
+        zh_Hans: 'JSON 格式的输出变量映射: {"out_key": "{{nodes.xxx.value}}"}',
+      },
       required: true,
       default: '{}',
     },
@@ -890,13 +950,25 @@ export const variableAggregatorConfig: NodeConfigMeta = {
       name: 'aggregation_mode',
       type: DynamicFormItemType.SELECT,
       label: { en_US: 'Aggregation Mode', zh_Hans: '聚合模式' },
-      description: { en_US: 'How to aggregate the variables', zh_Hans: '如何聚合变量' },
+      description: {
+        en_US: 'How to aggregate the variables',
+        zh_Hans: '如何聚合变量',
+      },
       required: true,
       default: 'merge',
       options: [
-        { name: 'merge', label: { en_US: 'Merge Objects', zh_Hans: '合并对象' } },
-        { name: 'array', label: { en_US: 'Collect to Array', zh_Hans: '收集为数组' } },
-        { name: 'first', label: { en_US: 'First Non-null', zh_Hans: '第一个非空' } },
+        {
+          name: 'merge',
+          label: { en_US: 'Merge Objects', zh_Hans: '合并对象' },
+        },
+        {
+          name: 'array',
+          label: { en_US: 'Collect to Array', zh_Hans: '收集为数组' },
+        },
+        {
+          name: 'first',
+          label: { en_US: 'First Non-null', zh_Hans: '第一个非空' },
+        },
       ],
     },
   ],

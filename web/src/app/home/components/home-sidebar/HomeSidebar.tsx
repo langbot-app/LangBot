@@ -161,7 +161,12 @@ function isEntityCategory(id: string): id is EntityCategoryId {
 // Map sidebar config IDs to SidebarDataContext keys
 const ENTITY_KEY_MAP: Record<
   EntityCategoryId,
-  'bots' | 'pipelines' | 'workflows' | 'knowledgeBases' | 'plugins' | 'mcpServers'
+  | 'bots'
+  | 'pipelines'
+  | 'workflows'
+  | 'knowledgeBases'
+  | 'plugins'
+  | 'mcpServers'
 > = {
   bots: 'bots',
   pipelines: 'pipelines',

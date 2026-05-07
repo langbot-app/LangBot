@@ -31,7 +31,6 @@ class DatabaseQueryNode(WorkflowNode):
 
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         connection_type = self.get_config("connection_type", "postgresql")
-        connection_string = self.get_config("connection_string", "")
         query = self.get_config("query", "")
         query_type = self.get_config("query_type", "select")
         timeout = self.get_config("timeout", 30)

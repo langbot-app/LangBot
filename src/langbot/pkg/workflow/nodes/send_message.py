@@ -30,7 +30,4 @@ class SendMessageNode(WorkflowNode):
     config_schema: ClassVar[list[NodeConfig]] = []
 
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
-        message = inputs.get("message", "")
-        target = inputs.get("target") or self.get_config("target_id", "")
-
         return {"status": "sent", "message_id": f"msg_{context.execution_id}"}

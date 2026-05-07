@@ -30,7 +30,6 @@ class ParameterExtractorNode(WorkflowNode):
     config_schema: ClassVar[list[NodeConfig]] = []
 
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
-        text = inputs.get("text", "")
         param_defs = self.get_config("parameters", [])
 
         extracted = {}

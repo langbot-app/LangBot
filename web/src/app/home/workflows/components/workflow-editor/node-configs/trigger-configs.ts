@@ -1,6 +1,6 @@
 /**
  * Trigger Node Configurations
- * 
+ *
  * Defines configurations for all trigger node types:
  * - message_trigger: Triggered by incoming messages
  * - cron_trigger: Triggered by scheduled time
@@ -62,9 +62,15 @@ export const messageTriggerConfig: NodeConfigMeta = {
       default: 'all',
       options: [
         { name: 'all', label: { en_US: 'All Messages', zh_Hans: '所有消息' } },
-        { name: 'prefix', label: { en_US: 'Prefix Match', zh_Hans: '前缀匹配' } },
+        {
+          name: 'prefix',
+          label: { en_US: 'Prefix Match', zh_Hans: '前缀匹配' },
+        },
         { name: 'regex', label: { en_US: 'Regex Match', zh_Hans: '正则匹配' } },
-        { name: 'contains', label: { en_US: 'Contains Keyword', zh_Hans: '包含关键词' } },
+        {
+          name: 'contains',
+          label: { en_US: 'Contains Keyword', zh_Hans: '包含关键词' },
+        },
         { name: 'exact', label: { en_US: 'Exact Match', zh_Hans: '精确匹配' } },
       ],
     },
@@ -77,7 +83,8 @@ export const messageTriggerConfig: NodeConfigMeta = {
         zh_Hans: '匹配模式',
       },
       description: {
-        en_US: 'The pattern to match against the message (prefix, regex, keyword, or exact text)',
+        en_US:
+          'The pattern to match against the message (prefix, regex, keyword, or exact text)',
         zh_Hans: '用于匹配消息的模式（前缀、正则表达式、关键词或精确文本）',
       },
       required: false,
@@ -172,12 +179,39 @@ export const cronTriggerConfig: NodeConfigMeta = {
       default: 'Asia/Shanghai',
       options: [
         { name: 'UTC', label: { en_US: 'UTC', zh_Hans: 'UTC' } },
-        { name: 'Asia/Shanghai', label: { en_US: 'Asia/Shanghai (UTC+8)', zh_Hans: '亚洲/上海 (UTC+8)' } },
-        { name: 'Asia/Tokyo', label: { en_US: 'Asia/Tokyo (UTC+9)', zh_Hans: '亚洲/东京 (UTC+9)' } },
-        { name: 'America/New_York', label: { en_US: 'America/New_York (EST)', zh_Hans: '美国/纽约 (EST)' } },
-        { name: 'America/Los_Angeles', label: { en_US: 'America/Los_Angeles (PST)', zh_Hans: '美国/洛杉矶 (PST)' } },
-        { name: 'Europe/London', label: { en_US: 'Europe/London (GMT)', zh_Hans: '欧洲/伦敦 (GMT)' } },
-        { name: 'Europe/Berlin', label: { en_US: 'Europe/Berlin (CET)', zh_Hans: '欧洲/柏林 (CET)' } },
+        {
+          name: 'Asia/Shanghai',
+          label: {
+            en_US: 'Asia/Shanghai (UTC+8)',
+            zh_Hans: '亚洲/上海 (UTC+8)',
+          },
+        },
+        {
+          name: 'Asia/Tokyo',
+          label: { en_US: 'Asia/Tokyo (UTC+9)', zh_Hans: '亚洲/东京 (UTC+9)' },
+        },
+        {
+          name: 'America/New_York',
+          label: {
+            en_US: 'America/New_York (EST)',
+            zh_Hans: '美国/纽约 (EST)',
+          },
+        },
+        {
+          name: 'America/Los_Angeles',
+          label: {
+            en_US: 'America/Los_Angeles (PST)',
+            zh_Hans: '美国/洛杉矶 (PST)',
+          },
+        },
+        {
+          name: 'Europe/London',
+          label: { en_US: 'Europe/London (GMT)', zh_Hans: '欧洲/伦敦 (GMT)' },
+        },
+        {
+          name: 'Europe/Berlin',
+          label: { en_US: 'Europe/Berlin (CET)', zh_Hans: '欧洲/柏林 (CET)' },
+        },
       ],
     },
     {
@@ -230,7 +264,8 @@ export const webhookTriggerConfig: NodeConfigMeta = {
     zh_Hans: 'Webhook 触发',
   },
   description: {
-    en_US: 'Trigger workflow when an HTTP request is received at the webhook URL',
+    en_US:
+      'Trigger workflow when an HTTP request is received at the webhook URL',
     zh_Hans: '当在 Webhook URL 收到 HTTP 请求时触发工作流',
   },
   icon: 'Webhook',
@@ -288,8 +323,14 @@ export const webhookTriggerConfig: NodeConfigMeta = {
       default: 'none',
       options: [
         { name: 'none', label: { en_US: 'None', zh_Hans: '无' } },
-        { name: 'token', label: { en_US: 'Bearer Token', zh_Hans: 'Bearer 令牌' } },
-        { name: 'signature', label: { en_US: 'Signature', zh_Hans: '签名验证' } },
+        {
+          name: 'token',
+          label: { en_US: 'Bearer Token', zh_Hans: 'Bearer 令牌' },
+        },
+        {
+          name: 'signature',
+          label: { en_US: 'Signature', zh_Hans: '签名验证' },
+        },
         { name: 'basic', label: { en_US: 'Basic Auth', zh_Hans: '基本认证' } },
       ],
     },
@@ -328,10 +369,25 @@ export const webhookTriggerConfig: NodeConfigMeta = {
       required: false,
       default: 'application/json',
       options: [
-        { name: 'application/json', label: { en_US: 'application/json', zh_Hans: 'JSON' } },
-        { name: 'application/x-www-form-urlencoded', label: { en_US: 'application/x-www-form-urlencoded', zh_Hans: '表单编码' } },
-        { name: 'multipart/form-data', label: { en_US: 'multipart/form-data', zh_Hans: '表单数据' } },
-        { name: 'text/plain', label: { en_US: 'text/plain', zh_Hans: '纯文本' } },
+        {
+          name: 'application/json',
+          label: { en_US: 'application/json', zh_Hans: 'JSON' },
+        },
+        {
+          name: 'application/x-www-form-urlencoded',
+          label: {
+            en_US: 'application/x-www-form-urlencoded',
+            zh_Hans: '表单编码',
+          },
+        },
+        {
+          name: 'multipart/form-data',
+          label: { en_US: 'multipart/form-data', zh_Hans: '表单数据' },
+        },
+        {
+          name: 'text/plain',
+          label: { en_US: 'text/plain', zh_Hans: '纯文本' },
+        },
       ],
     },
     {
@@ -424,15 +480,42 @@ export const eventTriggerConfig: NodeConfigMeta = {
       required: true,
       default: 'member_join',
       options: [
-        { name: 'member_join', label: { en_US: 'Member Join', zh_Hans: '成员加入' } },
-        { name: 'member_leave', label: { en_US: 'Member Leave', zh_Hans: '成员离开' } },
-        { name: 'message_recall', label: { en_US: 'Message Recall', zh_Hans: '消息撤回' } },
-        { name: 'group_created', label: { en_US: 'Group Created', zh_Hans: '群组创建' } },
-        { name: 'group_disbanded', label: { en_US: 'Group Disbanded', zh_Hans: '群组解散' } },
-        { name: 'bot_added', label: { en_US: 'Bot Added to Group', zh_Hans: '机器人被添加到群' } },
-        { name: 'bot_removed', label: { en_US: 'Bot Removed from Group', zh_Hans: '机器人被移出群' } },
-        { name: 'friend_request', label: { en_US: 'Friend Request', zh_Hans: '好友请求' } },
-        { name: 'group_request', label: { en_US: 'Group Join Request', zh_Hans: '入群请求' } },
+        {
+          name: 'member_join',
+          label: { en_US: 'Member Join', zh_Hans: '成员加入' },
+        },
+        {
+          name: 'member_leave',
+          label: { en_US: 'Member Leave', zh_Hans: '成员离开' },
+        },
+        {
+          name: 'message_recall',
+          label: { en_US: 'Message Recall', zh_Hans: '消息撤回' },
+        },
+        {
+          name: 'group_created',
+          label: { en_US: 'Group Created', zh_Hans: '群组创建' },
+        },
+        {
+          name: 'group_disbanded',
+          label: { en_US: 'Group Disbanded', zh_Hans: '群组解散' },
+        },
+        {
+          name: 'bot_added',
+          label: { en_US: 'Bot Added to Group', zh_Hans: '机器人被添加到群' },
+        },
+        {
+          name: 'bot_removed',
+          label: { en_US: 'Bot Removed from Group', zh_Hans: '机器人被移出群' },
+        },
+        {
+          name: 'friend_request',
+          label: { en_US: 'Friend Request', zh_Hans: '好友请求' },
+        },
+        {
+          name: 'group_request',
+          label: { en_US: 'Group Join Request', zh_Hans: '入群请求' },
+        },
       ],
     },
   ],

@@ -60,7 +60,9 @@ const translateIfKey = (value: string | undefined): string | undefined => {
 };
 
 // Delegate to shared utility
-const extractI18nLabel = (obj: Record<string, string> | I18nObject | undefined): string | undefined => {
+const extractI18nLabel = (
+  obj: Record<string, string> | I18nObject | undefined,
+): string | undefined => {
   if (!obj) return undefined;
   const result = resolveI18nLabel(obj as Record<string, string>);
   return result || undefined;
@@ -112,23 +114,28 @@ const resolvePortDisplayLabel = (
 
 function VariableReference({
   variable,
-  onCopy
+  onCopy,
 }: {
   variable: { name: string; label?: string; type?: string };
   onCopy: (ref: string) => void;
 }) {
   const ref = `{{${variable.name}}}`;
   const displayName = variable.label || formatVariableName(variable.name);
-  
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <div className="flex items-center justify-between py-1 px-2 rounded bg-muted/50 text-sm group overflow-hidden w-full cursor-default">
           <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
             <Variable className="size-3.5 text-muted-foreground flex-shrink-0" />
-            <span className="truncate font-mono text-xs min-w-0">{displayName}</span>
+            <span className="truncate font-mono text-xs min-w-0">
+              {displayName}
+            </span>
             {variable.type && (
-              <Badge variant="outline" className="text-[10px] px-1 py-0 flex-shrink-0">
+              <Badge
+                variant="outline"
+                className="text-[10px] px-1 py-0 flex-shrink-0"
+              >
                 {getTypeLabel(variable.type)}
               </Badge>
             )}
@@ -165,9 +172,13 @@ function CollapsibleSection({
   badge?: React.ReactNode;
 }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
-  
+
   return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="w-full overflow-hidden">
+    <Collapsible
+      open={isOpen}
+      onOpenChange={setIsOpen}
+      className="w-full overflow-hidden"
+    >
       <CollapsibleTrigger asChild>
         <button className="w-full flex items-center gap-2 py-2 px-1 hover:bg-muted/50 rounded transition-colors min-w-0 overflow-hidden">
           {isOpen ? (
@@ -176,14 +187,14 @@ function CollapsibleSection({
             <ChevronRight className="size-4 text-muted-foreground flex-shrink-0" />
           )}
           <Icon className="size-4 text-muted-foreground flex-shrink-0" />
-          <span className="font-medium text-sm flex-1 text-left truncate min-w-0">{title}</span>
+          <span className="font-medium text-sm flex-1 text-left truncate min-w-0">
+            {title}
+          </span>
           {badge}
         </button>
       </CollapsibleTrigger>
       <CollapsibleContent className="pl-6 pr-1 pb-2 w-full overflow-hidden">
-        <div className="w-full overflow-hidden">
-          {children}
-        </div>
+        <div className="w-full overflow-hidden">{children}</div>
       </CollapsibleContent>
     </Collapsible>
   );
@@ -243,9 +254,12 @@ export default function PropertyPanel({
   // form item definitions, i18n labels/descriptions and option labels consistently.
   // Fall back to backend metadata for nodes that do not exist in the local registry.
   const configSchema = useMemo(() => {
-    const localConfigSchema = (localNodeConfig?.configSchema as IDynamicFormItemSchema[]) || [];
-    const backendConfigSchema = (nodeTypeMeta?.config_schema as IDynamicFormItemSchema[]) || [];
-    const rawConfigSchema = localConfigSchema.length > 0 ? localConfigSchema : backendConfigSchema;
+    const localConfigSchema =
+      (localNodeConfig?.configSchema as IDynamicFormItemSchema[]) || [];
+    const backendConfigSchema =
+      (nodeTypeMeta?.config_schema as IDynamicFormItemSchema[]) || [];
+    const rawConfigSchema =
+      localConfigSchema.length > 0 ? localConfigSchema : backendConfigSchema;
 
     return rawConfigSchema.map((item) => {
       const backendItem = backendConfigSchema.find(
@@ -255,14 +269,16 @@ export default function PropertyPanel({
       return {
         ...(backendItem || {}),
         ...item,
-        label: item.label || backendItem?.label || {
-          en_US: item.name,
-          zh_Hans: item.name,
-        },
-        description: item.description || backendItem?.description || {
-          en_US: '',
-          zh_Hans: '',
-        },
+        label: item.label ||
+          backendItem?.label || {
+            en_US: item.name,
+            zh_Hans: item.name,
+          },
+        description: item.description ||
+          backendItem?.description || {
+            en_US: '',
+            zh_Hans: '',
+          },
         options: item.options || backendItem?.options,
         show_if: item.show_if || backendItem?.show_if,
       };
@@ -272,13 +288,17 @@ export default function PropertyPanel({
   // Get available input variables from connected upstream nodes
   const availableInputVariables = useMemo(() => {
     if (!selectedNode) return [];
-    
-    const variables: { nodeId: string; nodeLabel: string; outputs: { name: string; label?: string; type?: string }[] }[] = [];
-    
+
+    const variables: {
+      nodeId: string;
+      nodeLabel: string;
+      outputs: { name: string; label?: string; type?: string }[];
+    }[] = [];
+
     // Find all upstream nodes
     const incomingEdges = edges.filter((e) => e.target === selectedNode.id);
     const upstreamNodeIds = incomingEdges.map((e) => e.source);
-    
+
     for (const nodeId of upstreamNodeIds) {
       const node = nodes.find((n) => n.id === nodeId);
       if (node) {
@@ -294,20 +314,40 @@ export default function PropertyPanel({
         });
       }
     }
-    
+
     // Add global variables
     variables.push({
       nodeId: '__global__',
       nodeLabel: t('workflows.globalVariables'),
       outputs: [
-        { name: 'message.content', label: t('workflows.messageContent'), type: 'string' },
-        { name: 'message.sender', label: t('workflows.messageSender'), type: 'string' },
-        { name: 'context.platform', label: t('workflows.platform'), type: 'string' },
-        { name: 'context.session_id', label: t('workflows.sessionId'), type: 'string' },
-        { name: 'context.timestamp', label: t('workflows.timestamp'), type: 'datetime' },
+        {
+          name: 'message.content',
+          label: t('workflows.messageContent'),
+          type: 'string',
+        },
+        {
+          name: 'message.sender',
+          label: t('workflows.messageSender'),
+          type: 'string',
+        },
+        {
+          name: 'context.platform',
+          label: t('workflows.platform'),
+          type: 'string',
+        },
+        {
+          name: 'context.session_id',
+          label: t('workflows.sessionId'),
+          type: 'string',
+        },
+        {
+          name: 'context.timestamp',
+          label: t('workflows.timestamp'),
+          type: 'datetime',
+        },
       ],
     });
-    
+
     return variables;
   }, [selectedNode, edges, nodes, t]);
 
@@ -318,7 +358,7 @@ export default function PropertyPanel({
         updateNodeLabel(selectedNodeId, e.target.value);
       }
     },
-    [selectedNodeId, updateNodeLabel]
+    [selectedNodeId, updateNodeLabel],
   );
 
   // Handle config change from dynamic form
@@ -330,7 +370,7 @@ export default function PropertyPanel({
       }
       return undefined;
     },
-    [selectedNodeId, updateNodeConfig, pushHistory]
+    [selectedNodeId, updateNodeConfig, pushHistory],
   );
 
   // Handle node delete
@@ -354,14 +394,17 @@ export default function PropertyPanel({
         updateEdgeCondition(selectedEdgeId, e.target.value);
       }
     },
-    [selectedEdgeId, updateEdgeCondition]
+    [selectedEdgeId, updateEdgeCondition],
   );
 
   // Copy variable reference
-  const handleCopyVariable = useCallback((ref: string) => {
-    navigator.clipboard.writeText(ref);
-    toast.success(t('common.copySuccess'));
-  }, [t]);
+  const handleCopyVariable = useCallback(
+    (ref: string) => {
+      navigator.clipboard.writeText(ref);
+      toast.success(t('common.copySuccess'));
+    },
+    [t],
+  );
 
   // No selection
   if (!selectedNodeId && !selectedEdgeId) {
@@ -408,11 +451,17 @@ export default function PropertyPanel({
               {/* Connection info */}
               <div className="bg-muted/50 p-3 rounded-lg w-full overflow-hidden">
                 <div className="flex items-center gap-2 text-sm min-w-0 w-full overflow-hidden">
-                  <Badge variant="outline" className="font-mono text-xs truncate max-w-[35%] flex-shrink min-w-0">
+                  <Badge
+                    variant="outline"
+                    className="font-mono text-xs truncate max-w-[35%] flex-shrink min-w-0"
+                  >
                     {sourceNode?.data.label || selectedEdge.source}
                   </Badge>
                   <ArrowRight className="size-4 text-muted-foreground flex-shrink-0" />
-                  <Badge variant="outline" className="font-mono text-xs truncate max-w-[35%] flex-shrink min-w-0">
+                  <Badge
+                    variant="outline"
+                    className="font-mono text-xs truncate max-w-[35%] flex-shrink min-w-0"
+                  >
                     {targetNode?.data.label || selectedEdge.target}
                   </Badge>
                 </div>
@@ -422,11 +471,16 @@ export default function PropertyPanel({
               <CollapsibleSection
                 title={t('workflows.condition')}
                 icon={Code}
-                badge={selectedEdge.data?.condition ? (
-                  <Badge variant="secondary" className="text-xs flex-shrink-0">
-                    {t('workflows.hasCondition')}
-                  </Badge>
-                ) : null}
+                badge={
+                  selectedEdge.data?.condition ? (
+                    <Badge
+                      variant="secondary"
+                      className="text-xs flex-shrink-0"
+                    >
+                      {t('workflows.hasCondition')}
+                    </Badge>
+                  ) : null
+                }
               >
                 <div className="space-y-2 w-full overflow-hidden">
                   <Textarea
@@ -451,19 +505,28 @@ export default function PropertyPanel({
                   <AlertDialogTrigger asChild>
                     <Button variant="destructive" size="sm" className="w-full">
                       <Trash2 className="size-4 mr-2 flex-shrink-0" />
-                      <span className="truncate">{t('workflows.deleteEdge')}</span>
+                      <span className="truncate">
+                        {t('workflows.deleteEdge')}
+                      </span>
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>{t('workflows.deleteEdgeConfirm')}</AlertDialogTitle>
+                      <AlertDialogTitle>
+                        {t('workflows.deleteEdgeConfirm')}
+                      </AlertDialogTitle>
                       <AlertDialogDescription>
                         {t('workflows.deleteEdgeConfirmDesc')}
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter className="flex-wrap gap-2">
-                      <AlertDialogCancel className="flex-1 min-w-[80px]">{t('common.cancel')}</AlertDialogCancel>
-                      <AlertDialogAction onClick={handleDeleteEdge} className="flex-1 min-w-[80px]">
+                      <AlertDialogCancel className="flex-1 min-w-[80px]">
+                        {t('common.cancel')}
+                      </AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={handleDeleteEdge}
+                        className="flex-1 min-w-[80px]"
+                      >
                         {t('common.delete')}
                       </AlertDialogAction>
                     </AlertDialogFooter>
@@ -479,9 +542,11 @@ export default function PropertyPanel({
 
   // Node selected
   if (selectedNode) {
-    const nodeInputs = selectedNode.data.inputs || nodeTypeMeta?.inputs || [{ name: 'input', type: 'any' }];
-    const nodeOutputs = selectedNode.data.outputs || nodeTypeMeta?.outputs || [{ name: 'output', type: 'any' }];
-    
+    const nodeInputs = selectedNode.data.inputs ||
+      nodeTypeMeta?.inputs || [{ name: 'input', type: 'any' }];
+    const nodeOutputs = selectedNode.data.outputs ||
+      nodeTypeMeta?.outputs || [{ name: 'output', type: 'any' }];
+
     // Extract i18n labels using extractI18nLabel
     const nodeLabel = nodeTypeMeta?.label
       ? extractI18nLabel(nodeTypeMeta.label)
@@ -489,7 +554,7 @@ export default function PropertyPanel({
     const nodeDescription = nodeTypeMeta?.description
       ? extractI18nLabel(nodeTypeMeta.description)
       : undefined;
-    
+
     // Get node category color from local config
     const nodeColor = localNodeConfig?.color || nodeTypeMeta?.color;
 
@@ -514,7 +579,9 @@ export default function PropertyPanel({
                   </Badge>
                 </div>
                 {nodeDescription && (
-                  <p className="text-xs text-muted-foreground">{nodeDescription}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {nodeDescription}
+                  </p>
                 )}
               </div>
 
@@ -536,7 +603,7 @@ export default function PropertyPanel({
                       className="h-8 w-full"
                     />
                   </div>
-                  
+
                   <div className="space-y-1.5 w-full overflow-hidden">
                     <Label className="text-xs text-muted-foreground">
                       {t('workflows.nodeId')}
@@ -583,10 +650,16 @@ export default function PropertyPanel({
                         >
                           <Variable className="size-3.5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
                           <span className="font-mono text-xs truncate min-w-0 flex-1">
-                            {resolvePortDisplayLabel(input, 'workflows.nodeInputs')}
+                            {resolvePortDisplayLabel(
+                              input,
+                              'workflows.nodeInputs',
+                            )}
                           </span>
                           {input.type && (
-                            <Badge variant="outline" className="text-[10px] px-1 py-0 flex-shrink-0">
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] px-1 py-0 flex-shrink-0"
+                            >
                               {getTypeLabel(input.type)}
                             </Badge>
                           )}
@@ -607,7 +680,10 @@ export default function PropertyPanel({
                           key={output.name}
                           variable={{
                             name: `nodes.${selectedNode.id}.${output.name}`,
-                            label: resolvePortDisplayLabel(output, 'workflows.nodeOutputs'),
+                            label: resolvePortDisplayLabel(
+                              output,
+                              'workflows.nodeOutputs',
+                            ),
                             type: output.type,
                           }}
                           onCopy={handleCopyVariable}
@@ -627,7 +703,10 @@ export default function PropertyPanel({
                 >
                   <div className="space-y-3 w-full overflow-hidden">
                     {availableInputVariables.map((group) => (
-                      <div key={group.nodeId} className="space-y-1.5 w-full overflow-hidden">
+                      <div
+                        key={group.nodeId}
+                        className="space-y-1.5 w-full overflow-hidden"
+                      >
                         <div className="text-xs font-medium text-muted-foreground">
                           {group.nodeLabel}
                         </div>
@@ -652,7 +731,10 @@ export default function PropertyPanel({
                   title={t('workflows.nodeConfig')}
                   icon={Settings}
                   badge={
-                    <Badge variant="secondary" className="text-xs flex-shrink-0">
+                    <Badge
+                      variant="secondary"
+                      className="text-xs flex-shrink-0"
+                    >
                       {configSchema.length}
                     </Badge>
                   }
@@ -660,7 +742,9 @@ export default function PropertyPanel({
                   <div className="space-y-2 w-full overflow-hidden box-border">
                     <DynamicFormComponent
                       itemConfigList={configSchema}
-                      initialValues={selectedNode.data.config as Record<string, object>}
+                      initialValues={
+                        selectedNode.data.config as Record<string, object>
+                      }
                       onSubmit={handleConfigChange}
                     />
                   </div>
@@ -683,19 +767,28 @@ export default function PropertyPanel({
                   <AlertDialogTrigger asChild>
                     <Button variant="destructive" size="sm" className="w-full">
                       <Trash2 className="size-4 mr-2 flex-shrink-0" />
-                      <span className="truncate">{t('workflows.deleteNode')}</span>
+                      <span className="truncate">
+                        {t('workflows.deleteNode')}
+                      </span>
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>{t('workflows.deleteNodeConfirm')}</AlertDialogTitle>
+                      <AlertDialogTitle>
+                        {t('workflows.deleteNodeConfirm')}
+                      </AlertDialogTitle>
                       <AlertDialogDescription>
                         {t('workflows.deleteNodeConfirmDesc')}
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter className="flex-wrap gap-2">
-                      <AlertDialogCancel className="flex-1 min-w-[80px]">{t('common.cancel')}</AlertDialogCancel>
-                      <AlertDialogAction onClick={handleDeleteNode} className="flex-1 min-w-[80px]">
+                      <AlertDialogCancel className="flex-1 min-w-[80px]">
+                        {t('common.cancel')}
+                      </AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={handleDeleteNode}
+                        className="flex-1 min-w-[80px]"
+                      >
                         {t('common.delete')}
                       </AlertDialogAction>
                     </AlertDialogFooter>

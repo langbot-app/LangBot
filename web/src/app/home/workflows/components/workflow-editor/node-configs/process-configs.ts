@@ -1,6 +1,6 @@
 /**
  * Process Node Configurations
- * 
+ *
  * Defines configurations for general processing node types:
  * - text_template: Generate text using templates
  * - json_transform: Transform JSON data
@@ -52,7 +52,8 @@ export const textTemplateConfig: NodeConfigMeta = {
         zh_Hans: '模板',
       },
       description: {
-        en_US: 'Text template with variable placeholders (e.g., {{variable_name}})',
+        en_US:
+          'Text template with variable placeholders (e.g., {{variable_name}})',
         zh_Hans: '带有变量占位符的文本模板（例如 {{variable_name}}）',
       },
       required: true,
@@ -141,9 +142,18 @@ export const jsonTransformConfig: NodeConfigMeta = {
       required: true,
       default: 'jmespath',
       options: [
-        { name: 'jmespath', label: { en_US: 'JMESPath Expression', zh_Hans: 'JMESPath 表达式' } },
-        { name: 'jsonpath', label: { en_US: 'JSONPath Expression', zh_Hans: 'JSONPath 表达式' } },
-        { name: 'mapping', label: { en_US: 'Field Mapping', zh_Hans: '字段映射' } },
+        {
+          name: 'jmespath',
+          label: { en_US: 'JMESPath Expression', zh_Hans: 'JMESPath 表达式' },
+        },
+        {
+          name: 'jsonpath',
+          label: { en_US: 'JSONPath Expression', zh_Hans: 'JSONPath 表达式' },
+        },
+        {
+          name: 'mapping',
+          label: { en_US: 'Field Mapping', zh_Hans: '字段映射' },
+        },
       ],
     },
     {
@@ -175,8 +185,10 @@ export const jsonTransformConfig: NodeConfigMeta = {
         zh_Hans: '字段映射',
       },
       description: {
-        en_US: 'JSON object defining field mappings: {"output_field": "input.path.to.field"}',
-        zh_Hans: '定义字段映射的 JSON 对象: {"output_field": "input.path.to.field"}',
+        en_US:
+          'JSON object defining field mappings: {"output_field": "input.path.to.field"}',
+        zh_Hans:
+          '定义字段映射的 JSON 对象: {"output_field": "input.path.to.field"}',
       },
       required: true,
       default: '{}',
@@ -243,7 +255,10 @@ export const codeExecutorConfig: NodeConfigMeta = {
       required: true,
       default: 'javascript',
       options: [
-        { name: 'javascript', label: { en_US: 'JavaScript', zh_Hans: 'JavaScript' } },
+        {
+          name: 'javascript',
+          label: { en_US: 'JavaScript', zh_Hans: 'JavaScript' },
+        },
         { name: 'python', label: { en_US: 'Python', zh_Hans: 'Python' } },
       ],
     },
@@ -256,11 +271,13 @@ export const codeExecutorConfig: NodeConfigMeta = {
         zh_Hans: '代码',
       },
       description: {
-        en_US: 'Code to execute. Use `input` to access input data and return the result.',
+        en_US:
+          'Code to execute. Use `input` to access input data and return the result.',
         zh_Hans: '要执行的代码。使用 `input` 访问输入数据，并返回结果。',
       },
       required: true,
-      default: '// Access input with: input\n// Return result with: return result;\n\nreturn input;',
+      default:
+        '// Access input with: input\n// Return result with: return result;\n\nreturn input;',
     },
     {
       id: 'timeout',
@@ -334,13 +351,25 @@ export const dataAggregatorConfig: NodeConfigMeta = {
       required: true,
       default: 'array',
       options: [
-        { name: 'array', label: { en_US: 'Collect to Array', zh_Hans: '收集为数组' } },
-        { name: 'concat', label: { en_US: 'Concatenate Strings', zh_Hans: '连接字符串' } },
+        {
+          name: 'array',
+          label: { en_US: 'Collect to Array', zh_Hans: '收集为数组' },
+        },
+        {
+          name: 'concat',
+          label: { en_US: 'Concatenate Strings', zh_Hans: '连接字符串' },
+        },
         { name: 'sum', label: { en_US: 'Sum Numbers', zh_Hans: '求和' } },
-        { name: 'average', label: { en_US: 'Average Numbers', zh_Hans: '求平均' } },
+        {
+          name: 'average',
+          label: { en_US: 'Average Numbers', zh_Hans: '求平均' },
+        },
         { name: 'min', label: { en_US: 'Minimum', zh_Hans: '最小值' } },
         { name: 'max', label: { en_US: 'Maximum', zh_Hans: '最大值' } },
-        { name: 'merge', label: { en_US: 'Merge Objects', zh_Hans: '合并对象' } },
+        {
+          name: 'merge',
+          label: { en_US: 'Merge Objects', zh_Hans: '合并对象' },
+        },
         { name: 'first', label: { en_US: 'First Item', zh_Hans: '第一项' } },
         { name: 'last', label: { en_US: 'Last Item', zh_Hans: '最后一项' } },
       ],
@@ -437,11 +466,23 @@ export const textSplitterConfig: NodeConfigMeta = {
       required: true,
       default: 'separator',
       options: [
-        { name: 'separator', label: { en_US: 'By Separator', zh_Hans: '按分隔符' } },
+        {
+          name: 'separator',
+          label: { en_US: 'By Separator', zh_Hans: '按分隔符' },
+        },
         { name: 'length', label: { en_US: 'By Length', zh_Hans: '按长度' } },
-        { name: 'sentences', label: { en_US: 'By Sentences', zh_Hans: '按句子' } },
-        { name: 'paragraphs', label: { en_US: 'By Paragraphs', zh_Hans: '按段落' } },
-        { name: 'regex', label: { en_US: 'By Regex', zh_Hans: '按正则表达式' } },
+        {
+          name: 'sentences',
+          label: { en_US: 'By Sentences', zh_Hans: '按句子' },
+        },
+        {
+          name: 'paragraphs',
+          label: { en_US: 'By Paragraphs', zh_Hans: '按段落' },
+        },
+        {
+          name: 'regex',
+          label: { en_US: 'By Regex', zh_Hans: '按正则表达式' },
+        },
       ],
     },
     {
@@ -613,7 +654,10 @@ export const variableAssignmentConfig: NodeConfigMeta = {
       options: [
         { name: 'input', label: { en_US: 'From Input', zh_Hans: '来自输入' } },
         { name: 'static', label: { en_US: 'Static Value', zh_Hans: '静态值' } },
-        { name: 'expression', label: { en_US: 'Expression', zh_Hans: '表达式' } },
+        {
+          name: 'expression',
+          label: { en_US: 'Expression', zh_Hans: '表达式' },
+        },
       ],
     },
     {
@@ -714,7 +758,10 @@ export const dataTransformConfig: NodeConfigMeta = {
         { name: 'template', label: { en_US: 'Template', zh_Hans: '模板' } },
         { name: 'jsonpath', label: { en_US: 'JSONPath', zh_Hans: 'JSONPath' } },
         { name: 'jmespath', label: { en_US: 'JMESPath', zh_Hans: 'JMESPath' } },
-        { name: 'expression', label: { en_US: 'Expression', zh_Hans: '表达式' } },
+        {
+          name: 'expression',
+          label: { en_US: 'Expression', zh_Hans: '表达式' },
+        },
       ],
     },
     {

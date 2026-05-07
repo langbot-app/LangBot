@@ -18,7 +18,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { NODE_ICONS, NODE_TYPE_I18N_KEYS, getNodeTypeLabel } from './workflow-constants';
+import {
+  NODE_ICONS,
+  NODE_TYPE_I18N_KEYS,
+  getNodeTypeLabel,
+} from './workflow-constants';
 import { resolveI18nLabel, maybeTranslateKey } from './workflow-i18n';
 import type { I18nObject } from '@/app/infra/entities/common';
 
@@ -31,14 +35,17 @@ const nodeTypeI18nKeys: Record<string, string> = Object.fromEntries(
 );
 
 // Category colors with improved design
-const categoryColors: Record<string, { 
-  bg: string; 
-  border: string; 
-  text: string; 
-  icon: string;
-  gradient: string;
-  handleBg: string;
-}> = {
+const categoryColors: Record<
+  string,
+  {
+    bg: string;
+    border: string;
+    text: string;
+    icon: string;
+    gradient: string;
+    handleBg: string;
+  }
+> = {
   trigger: {
     bg: 'bg-amber-50 dark:bg-amber-950/40',
     border: 'border-amber-400 dark:border-amber-600',
@@ -82,15 +89,24 @@ const categoryColors: Record<string, {
 };
 
 // Node execution status
-export type NodeExecutionStatus = 'idle' | 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
+export type NodeExecutionStatus =
+  | 'idle'
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'skipped';
 
 // Status colors and icons
-const statusConfig: Record<NodeExecutionStatus, {
-  icon: React.ElementType;
-  color: string;
-  bgColor: string;
-  animate?: boolean;
-}> = {
+const statusConfig: Record<
+  NodeExecutionStatus,
+  {
+    icon: React.ElementType;
+    color: string;
+    bgColor: string;
+    animate?: boolean;
+  }
+> = {
   idle: {
     icon: Play,
     color: 'text-muted-foreground',
@@ -128,8 +144,16 @@ export interface WorkflowNodeData extends Record<string, unknown> {
   label: string;
   type: string;
   config: Record<string, unknown>;
-  inputs?: { name: string; label?: string | Record<string, string> | I18nObject; type?: string }[];
-  outputs?: { name: string; label?: string | Record<string, string> | I18nObject; type?: string }[];
+  inputs?: {
+    name: string;
+    label?: string | Record<string, string> | I18nObject;
+    type?: string;
+  }[];
+  outputs?: {
+    name: string;
+    label?: string | Record<string, string> | I18nObject;
+    type?: string;
+  }[];
   // Execution state
   executionStatus?: NodeExecutionStatus;
   executionError?: string;
@@ -152,7 +176,10 @@ function getPortLabel(
   }
 
   if (typeof label === 'string' && label) {
-    if (label.startsWith('workflows.nodeOutputs.') || label.startsWith('workflows.nodeInputs.')) {
+    if (
+      label.startsWith('workflows.nodeOutputs.') ||
+      label.startsWith('workflows.nodeInputs.')
+    ) {
       return t(label, { defaultValue: fallbackName });
     }
     return label;
@@ -164,17 +191,22 @@ function getPortLabel(
 }
 
 // Helper function to extract i18n value from I18nObject (delegates to shared utility)
-function extractI18nValue(i18nObj: Record<string, string> | undefined, _t: (key: string) => string): string {
+function extractI18nValue(
+  i18nObj: Record<string, string> | undefined,
+  _t: (key: string) => string,
+): string {
   return resolveI18nLabel(i18nObj);
 }
 
 // Helper function to get node type description: show the raw type name after the dot
 function getNodeTypeDescription(
-  nodeType: string, 
+  nodeType: string,
   t: (key: string, options?: { defaultValue: string }) => string,
-  nodeTypeLabel?: Record<string, string>
+  nodeTypeLabel?: Record<string, string>,
 ): string {
-  return nodeType.includes('.') ? nodeType.split('.').slice(1).join('.') : nodeType;
+  return nodeType.includes('.')
+    ? nodeType.split('.').slice(1).join('.')
+    : nodeType;
 }
 
 function WorkflowNodeComponent({ data, selected }: NodeProps) {
@@ -191,11 +223,19 @@ function WorkflowNodeComponent({ data, selected }: NodeProps) {
 
   // Get inputs and outputs with defaults (use i18n keys for default labels)
   const inputs = useMemo(() => {
-    return nodeData.inputs || [{ name: 'input', label: 'workflows.nodeInputs.input', type: 'any' }];
+    return (
+      nodeData.inputs || [
+        { name: 'input', label: 'workflows.nodeInputs.input', type: 'any' },
+      ]
+    );
   }, [nodeData.inputs]);
 
   const outputs = useMemo(() => {
-    return nodeData.outputs || [{ name: 'output', label: 'workflows.nodeOutputs.output', type: 'any' }];
+    return (
+      nodeData.outputs || [
+        { name: 'output', label: 'workflows.nodeOutputs.output', type: 'any' },
+      ]
+    );
   }, [nodeData.outputs]);
 
   // Determine if this is a trigger node (no inputs)
@@ -217,73 +257,95 @@ function WorkflowNodeComponent({ data, selected }: NodeProps) {
           'min-w-[200px] max-w-[280px] rounded-xl border-2 shadow-lg transition-all duration-200',
           colors.bg,
           colors.border,
-          selected && 'ring-2 ring-primary ring-offset-2 ring-offset-background shadow-xl scale-[1.02]',
+          selected &&
+            'ring-2 ring-primary ring-offset-2 ring-offset-background shadow-xl scale-[1.02]',
           status === 'running' && 'shadow-blue-200 dark:shadow-blue-900/50',
-          status === 'failed' && 'shadow-red-200 dark:shadow-red-900/50 border-red-500',
+          status === 'failed' &&
+            'shadow-red-200 dark:shadow-red-900/50 border-red-500',
         )}
       >
         {/* Input handles - only show if not trigger */}
-        {!isTrigger && inputs.map((input, index) => (
-          <Tooltip key={`input-${input.name}`}>
-            <TooltipTrigger asChild>
-              <Handle
-                type="target"
-                position={Position.Left}
-                id={input.name}
-                style={{
-                  top: inputs.length === 1 ? '50%' : `${((index + 1) / (inputs.length + 1)) * 100}%`,
-                  background: colors.handleBg,
-                  width: 12,
-                  height: 12,
-                  border: '2px solid white',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                }}
-                className="!transition-transform hover:!scale-125"
-              />
-            </TooltipTrigger>
-            <TooltipContent side="left">
-              <p className="font-medium">{getPortLabel(input.label, input.name, 'workflows.nodeInputs', t)}</p>
-              {input.type && <p className="text-xs text-muted-foreground">{input.type}</p>}
-            </TooltipContent>
-          </Tooltip>
-        ))}
+        {!isTrigger &&
+          inputs.map((input, index) => (
+            <Tooltip key={`input-${input.name}`}>
+              <TooltipTrigger asChild>
+                <Handle
+                  type="target"
+                  position={Position.Left}
+                  id={input.name}
+                  style={{
+                    top:
+                      inputs.length === 1
+                        ? '50%'
+                        : `${((index + 1) / (inputs.length + 1)) * 100}%`,
+                    background: colors.handleBg,
+                    width: 12,
+                    height: 12,
+                    border: '2px solid white',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                  }}
+                  className="!transition-transform hover:!scale-125"
+                />
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                <p className="font-medium">
+                  {getPortLabel(
+                    input.label,
+                    input.name,
+                    'workflows.nodeInputs',
+                    t,
+                  )}
+                </p>
+                {input.type && (
+                  <p className="text-xs text-muted-foreground">{input.type}</p>
+                )}
+              </TooltipContent>
+            </Tooltip>
+          ))}
 
         {/* Node content */}
         <div className={cn('p-3 bg-gradient-to-b', colors.gradient)}>
           {/* Header row with icon and status */}
           <div className="flex items-start gap-2.5">
             {/* Node icon */}
-            <div className={cn(
-              'p-2 rounded-lg shrink-0',
-              colors.icon,
-              'bg-white/60 dark:bg-black/20',
-              'shadow-sm'
-            )}>
+            <div
+              className={cn(
+                'p-2 rounded-lg shrink-0',
+                colors.icon,
+                'bg-white/60 dark:bg-black/20',
+                'shadow-sm',
+              )}
+            >
               <Icon className="size-5" />
             </div>
-            
+
             {/* Title and type */}
             <div className="flex-1 min-w-0 pt-0.5">
-              <div className={cn('font-semibold text-sm truncate', colors.text)}>
+              <div
+                className={cn('font-semibold text-sm truncate', colors.text)}
+              >
                 {nodeData.label}
               </div>
               <div className="text-xs text-muted-foreground truncate mt-0.5">
-                {getNodeTypeDescription(nodeData.type, t, nodeData.nodeTypeLabel)}
+                {getNodeTypeDescription(
+                  nodeData.type,
+                  t,
+                  nodeData.nodeTypeLabel,
+                )}
               </div>
             </div>
 
             {/* Status indicator */}
             {status !== 'idle' && (
-              <div className={cn(
-                'p-1 rounded-full shrink-0',
-                statusInfo.bgColor
-              )}>
-                <StatusIcon 
+              <div
+                className={cn('p-1 rounded-full shrink-0', statusInfo.bgColor)}
+              >
+                <StatusIcon
                   className={cn(
                     'size-4',
                     statusInfo.color,
-                    statusInfo.animate && 'animate-spin'
-                  )} 
+                    statusInfo.animate && 'animate-spin',
+                  )}
                 />
               </div>
             )}
@@ -291,16 +353,20 @@ function WorkflowNodeComponent({ data, selected }: NodeProps) {
 
           {/* Execution info */}
           {(status === 'completed' || status === 'failed') && (
-            <div className={cn(
-              'mt-2 pt-2 border-t flex items-center justify-between text-xs',
-              'border-black/5 dark:border-white/5'
-            )}>
+            <div
+              className={cn(
+                'mt-2 pt-2 border-t flex items-center justify-between text-xs',
+                'border-black/5 dark:border-white/5',
+              )}
+            >
               <div className={cn('flex items-center gap-1', statusInfo.color)}>
                 <StatusIcon className="size-3" />
                 <span className="capitalize">{status}</span>
               </div>
               {formattedDuration && (
-                <span className="text-muted-foreground">{formattedDuration}</span>
+                <span className="text-muted-foreground">
+                  {formattedDuration}
+                </span>
               )}
             </div>
           )}
@@ -329,7 +395,10 @@ function WorkflowNodeComponent({ data, selected }: NodeProps) {
                 position={Position.Right}
                 id={output.name}
                 style={{
-                  top: outputs.length === 1 ? '50%' : `${((index + 1) / (outputs.length + 1)) * 100}%`,
+                  top:
+                    outputs.length === 1
+                      ? '50%'
+                      : `${((index + 1) / (outputs.length + 1)) * 100}%`,
                   background: colors.handleBg,
                   width: 12,
                   height: 12,
@@ -340,12 +409,20 @@ function WorkflowNodeComponent({ data, selected }: NodeProps) {
               />
             </TooltipTrigger>
             <TooltipContent side="right">
-              <p className="font-medium">{getPortLabel(output.label, output.name, 'workflows.nodeOutputs', t)}</p>
-              {output.type && <p className="text-xs text-muted-foreground">{output.type}</p>}
+              <p className="font-medium">
+                {getPortLabel(
+                  output.label,
+                  output.name,
+                  'workflows.nodeOutputs',
+                  t,
+                )}
+              </p>
+              {output.type && (
+                <p className="text-xs text-muted-foreground">{output.type}</p>
+              )}
             </TooltipContent>
           </Tooltip>
         ))}
-
       </div>
     </TooltipProvider>
   );
