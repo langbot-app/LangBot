@@ -22,12 +22,9 @@ import {
   Search,
   Wrench,
   AudioWaveform,
-  Hash,
   Book,
   SlidersHorizontal,
   X,
-  FileText,
-  PanelTop,
 } from 'lucide-react';
 import PluginMarketCardComponent from './plugin-market-card/PluginMarketCardComponent';
 import { PluginMarketCardVO } from './plugin-market-card/PluginMarketCardVO';
@@ -59,15 +56,6 @@ function MarketPageContent({
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
 
-  const validCategories = [
-    'Tool',
-    'Command',
-    'EventListener',
-    'KnowledgeEngine',
-    'Parser',
-    'Page',
-  ];
-
   const validTypes = ['plugin', 'mcp', 'skill'];
 
   const extensionTypeOptions = [
@@ -78,13 +66,6 @@ function MarketPageContent({
   ];
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [componentFilter, setComponentFilter] = useState<string>(() => {
-    const category = searchParams.get('category');
-    if (category && validCategories.includes(category)) {
-      return category;
-    }
-    return 'all';
-  });
   const [typeFilter, setTypeFilter] = useState<string>(() => {
     const type = searchParams.get('type');
     if (type && validTypes.includes(type)) {
@@ -92,7 +73,7 @@ function MarketPageContent({
     }
     return 'all';
   });
-  const activeAdvancedFilters = typeFilter === 'all' ? 0 : 1;
+  const activeAdvancedFilters = 0;
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [availableTags, setAvailableTags] = useState<PluginTag[]>([]);
   const [tagNames, setTagNames] = useState<Record<string, string>>({});
@@ -215,8 +196,6 @@ function MarketPageContent({
 
       try {
         const { sortBy, sortOrder } = getCurrentSort();
-        const filterValue =
-          componentFilter === 'all' ? undefined : componentFilter;
         const query = isSearch && searchQuery.trim() ? searchQuery.trim() : '';
 
         let newPlugins: PluginMarketCardVO[] = [];
@@ -237,7 +216,7 @@ function MarketPageContent({
               pageSize,
               sortBy,
               sortOrder,
-              filterValue,
+              undefined,
               selectedTags.length > 0 ? selectedTags : undefined,
               'plugin',
             );
@@ -259,7 +238,7 @@ function MarketPageContent({
               pageSize,
               sortBy,
               sortOrder,
-              filterValue,
+              undefined,
               selectedTags.length > 0 ? selectedTags : undefined,
               'mcp',
             );
@@ -276,7 +255,7 @@ function MarketPageContent({
               pageSize,
               sortBy,
               sortOrder,
-              filterValue,
+              undefined,
               selectedTags.length > 0 ? selectedTags : undefined,
               'skill',
             );
@@ -295,7 +274,7 @@ function MarketPageContent({
             pageSize,
             sortBy,
             sortOrder,
-            filterValue,
+            undefined,
             selectedTags.length > 0 ? selectedTags : undefined,
             typeFilter === 'all' ? undefined : typeFilter,
           );
@@ -331,7 +310,6 @@ function MarketPageContent({
     },
     [
       searchQuery,
-      componentFilter,
       selectedTags,
       pageSize,
       transformToVO,
@@ -426,27 +404,6 @@ function MarketPageContent({
     setSortOption(value);
     setCurrentPage(1);
     setPlugins([]);
-    // fetchPlugins will be called by useEffect when sortOption changes
-  }, []);
-
-  // 组件筛选变化处理
-  const handleComponentFilterChange = useCallback((value: string) => {
-    setComponentFilter(value);
-    setCurrentPage(1);
-    setPlugins([]);
-
-    // Update URL query param to keep it in sync
-    const params = new URLSearchParams(window.location.search);
-    if (value === 'all') {
-      params.delete('category');
-    } else {
-      params.set('category', value);
-    }
-    const newUrl = params.toString()
-      ? `${window.location.pathname}?${params.toString()}`
-      : window.location.pathname;
-    window.history.replaceState({}, '', newUrl);
-    // fetchPlugins will be called by useEffect when componentFilter changes
   }, []);
 
   // Handle type filter change
@@ -468,10 +425,10 @@ function MarketPageContent({
     window.history.replaceState({}, '', newUrl);
   }, []);
 
-  // 当排序选项或组件筛选变化时重新加载数据
+  // 当排序选项或类型筛选变化时重新加载数据
   useEffect(() => {
     fetchPlugins(1, !!searchQuery.trim(), true);
-  }, [sortOption, componentFilter, typeFilter]);
+  }, [sortOption, typeFilter]);
 
   // Tags 筛选变化时重新搜索
   useEffect(() => {
@@ -644,83 +601,8 @@ function MarketPageContent({
 
         </div>
 
-        {/* Component filter and sort */}
+        {/* Sort and more filters */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 px-3 sm:px-4">
-          {/* Component filter */}
-          <div className="flex flex-col sm:flex-row items-center gap-2 min-w-0 max-w-full">
-            <span className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">
-              {t('market.filterByComponent')}:
-            </span>
-            <div className="overflow-x-auto max-w-full [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-              <ToggleGroup
-                type="single"
-                spacing={2}
-                size="sm"
-                value={componentFilter}
-                onValueChange={(value) => {
-                  if (value) handleComponentFilterChange(value);
-                }}
-                className="justify-start flex-nowrap"
-              >
-                <ToggleGroupItem
-                  value="all"
-                  aria-label="All components"
-                  className="text-xs sm:text-sm cursor-pointer"
-                >
-                  {t('market.allComponents')}
-                </ToggleGroupItem>
-                <ToggleGroupItem
-                  value="Tool"
-                  aria-label="Tool"
-                  className="text-xs sm:text-sm cursor-pointer"
-                >
-                  <Wrench className="h-4 w-4 mr-1" />
-                  {t('plugins.componentName.Tool')}
-                </ToggleGroupItem>
-                <ToggleGroupItem
-                  value="Command"
-                  aria-label="Command"
-                  className="text-xs sm:text-sm cursor-pointer"
-                >
-                  <Hash className="h-4 w-4 mr-1" />
-                  {t('plugins.componentName.Command')}
-                </ToggleGroupItem>
-                <ToggleGroupItem
-                  value="EventListener"
-                  aria-label="EventListener"
-                  className="text-xs sm:text-sm cursor-pointer"
-                >
-                  <AudioWaveform className="h-4 w-4 mr-1" />
-                  {t('plugins.componentName.EventListener')}
-                </ToggleGroupItem>
-                <ToggleGroupItem
-                  value="KnowledgeEngine"
-                  aria-label="KnowledgeEngine"
-                  className="text-xs sm:text-sm cursor-pointer"
-                >
-                  <Book className="h-4 w-4 mr-1" />
-                  {t('plugins.componentName.KnowledgeEngine')}
-                </ToggleGroupItem>
-                <ToggleGroupItem
-                  value="Parser"
-                  aria-label="Parser"
-                  className="text-xs sm:text-sm cursor-pointer"
-                >
-                  <FileText className="h-4 w-4 mr-1" />
-                  {t('plugins.componentName.Parser')}
-                </ToggleGroupItem>
-                <ToggleGroupItem
-                  value="Page"
-                  aria-label="Page"
-                  className="text-xs sm:text-sm cursor-pointer"
-                >
-                  <PanelTop className="h-4 w-4 mr-1" />
-                  {t('plugins.componentName.Page')}
-                </ToggleGroupItem>
-              </ToggleGroup>
-            </div>
-          </div>
-
           {/* Sort dropdown */}
           <div className="flex items-center gap-2 sm:gap-3">
             <span className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">
@@ -845,7 +727,6 @@ function MarketPageContent({
       >
         {/* Recommendation Lists */}
         {!searchQuery &&
-          componentFilter === 'all' &&
           selectedTags.length === 0 && (
             <div className="pt-4">
               <RecommendationLists
