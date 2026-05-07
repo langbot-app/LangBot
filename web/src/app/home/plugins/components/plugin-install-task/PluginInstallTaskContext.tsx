@@ -28,6 +28,7 @@ export interface PluginInstallTask {
   source: 'github' | 'marketplace' | 'local';
   stage: InstallStage;
   overallProgress: number; // 0-100
+  extensionType: 'plugin' | 'mcp' | 'skill'; // type of extension being installed
   fileSize?: number; // bytes, if known
   // Download progress
   downloadCurrent?: number; // bytes downloaded so far
@@ -53,6 +54,7 @@ interface PluginInstallTaskContextValue {
     taskId: number;
     pluginName: string;
     source: 'github' | 'marketplace' | 'local';
+    extensionType: 'plugin' | 'mcp' | 'skill';
     fileSize?: number;
   }) => void;
   removeTask: (id: string) => void;
@@ -131,7 +133,7 @@ function extractSourceFromName(
  * Check if a backend task name is a plugin install task.
  */
 function isPluginInstallTask(name: string): boolean {
-  return name.startsWith('plugin-install-');
+  return name.startsWith('plugin-install-') || name.startsWith('mcp-install-') || name.startsWith('skill-install-');
 }
 
 /**
@@ -165,13 +167,21 @@ function asyncTaskToPluginInstallTask(task: AsyncTask): PluginInstallTask {
     overallProgress = Math.min(95, stageToProgress(stage));
   }
 
-  const pluginName = str(md.plugin_name) || task.label || `${source} plugin`;
+  const pluginName = str(md.plugin_name) || task.label || `${source} extension`;
+
+  let extensionType: 'plugin' | 'mcp' | 'skill' = 'plugin';
+  if (task.name.startsWith('mcp-install-')) {
+    extensionType = 'mcp';
+  } else if (task.name.startsWith('skill-install-')) {
+    extensionType = 'skill';
+  }
 
   return {
     id: `${source}-${task.id}`,
     taskId: task.id,
     pluginName,
     source,
+    extensionType,
     stage,
     overallProgress,
     downloadCurrent: num(md.download_current),
@@ -388,6 +398,7 @@ export function PluginInstallTaskProvider({
                 converted.startedAt = existing.startedAt;
                 converted.pluginName = existing.pluginName;
                 converted.fileSize = existing.fileSize;
+                converted.extensionType = existing.extensionType;
                 updatedTasks[idx] = converted;
               }
             }
@@ -401,20 +412,39 @@ export function PluginInstallTaskProvider({
     }
   }, [pollTask]);
 
-  // Initial sync on mount + periodic sync every 3s
+  // Initial sync on mount to recover any orphaned tasks
+  const syncOnMountRef = useRef(syncTasksFromBackend);
+  syncOnMountRef.current = syncTasksFromBackend;
   useEffect(() => {
-    syncTasksFromBackend();
-    syncIntervalRef.current = setInterval(syncTasksFromBackend, 3000);
+    syncOnMountRef.current();
+  }, []);
+
+  // Only poll periodically when there are active (non-terminal) tasks
+  useEffect(() => {
+    const hasActiveTasks = tasks.some(
+      (t) => t.stage !== InstallStage.DONE && t.stage !== InstallStage.ERROR,
+    );
+
+    if (hasActiveTasks) {
+      syncIntervalRef.current = setInterval(syncTasksFromBackend, 3000);
+    } else {
+      if (syncIntervalRef.current) {
+        clearInterval(syncIntervalRef.current);
+        syncIntervalRef.current = null;
+      }
+    }
+
     return () => {
       if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
     };
-  }, [syncTasksFromBackend]);
+  }, [tasks, syncTasksFromBackend]);
 
   const addTask = useCallback(
     (params: {
       taskId: number;
       pluginName: string;
       source: 'github' | 'marketplace' | 'local';
+      extensionType: 'plugin' | 'mcp' | 'skill';
       fileSize?: number;
     }) => {
       const taskKey = `${params.source}-${params.taskId}`;
@@ -427,6 +457,7 @@ export function PluginInstallTaskProvider({
         taskId: params.taskId,
         pluginName: params.pluginName,
         source: params.source,
+        extensionType: params.extensionType,
         stage: InstallStage.DOWNLOADING,
         overallProgress: 5,
         fileSize: params.fileSize,

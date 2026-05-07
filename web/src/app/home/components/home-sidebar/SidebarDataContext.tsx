@@ -30,6 +30,7 @@ export interface SidebarEntityItem {
 
 // Install action types that can be triggered from sidebar
 export type PluginInstallAction = 'local' | 'github' | null;
+export type SkillInstallAction = 'create' | 'github' | 'upload' | null;
 
 // Plugin page registered by a plugin
 export interface PluginPageItem {
@@ -50,12 +51,14 @@ export interface SidebarDataContextValue {
   knowledgeBases: SidebarEntityItem[];
   plugins: SidebarEntityItem[];
   mcpServers: SidebarEntityItem[];
+  skills: SidebarEntityItem[];
   pluginPages: PluginPageItem[];
   refreshBots: () => Promise<void>;
   refreshPipelines: () => Promise<void>;
   refreshKnowledgeBases: () => Promise<void>;
   refreshPlugins: () => Promise<void>;
   refreshMCPServers: () => Promise<void>;
+  refreshSkills: () => Promise<void>;
   refreshAll: () => Promise<void>;
   // Breadcrumb: entity name shown when viewing a detail page
   detailEntityName: string | null;
@@ -63,6 +66,9 @@ export interface SidebarDataContextValue {
   // Pending plugin install action triggered from sidebar
   pendingPluginInstallAction: PluginInstallAction;
   setPendingPluginInstallAction: (action: PluginInstallAction) => void;
+  // Pending skill install action triggered from sidebar
+  pendingSkillInstallAction: SkillInstallAction;
+  setPendingSkillInstallAction: (action: SkillInstallAction) => void;
 }
 
 const SidebarDataContext = createContext<SidebarDataContextValue | null>(null);
@@ -77,10 +83,13 @@ export function SidebarDataProvider({
   const [knowledgeBases, setKnowledgeBases] = useState<SidebarEntityItem[]>([]);
   const [plugins, setPlugins] = useState<SidebarEntityItem[]>([]);
   const [mcpServers, setMCPServers] = useState<SidebarEntityItem[]>([]);
+  const [skills, setSkills] = useState<SidebarEntityItem[]>([]);
   const [pluginPages, setPluginPages] = useState<PluginPageItem[]>([]);
   const [detailEntityName, setDetailEntityName] = useState<string | null>(null);
   const [pendingPluginInstallAction, setPendingPluginInstallAction] =
     useState<PluginInstallAction>(null);
+  const [pendingSkillInstallAction, setPendingSkillInstallAction] =
+    useState<SkillInstallAction>(null);
 
   const refreshBots = useCallback(async () => {
     try {
@@ -224,14 +233,30 @@ export function SidebarDataProvider({
       const resp = await httpClient.getMCPServers();
       setMCPServers(
         resp.servers.map((server) => ({
-          id: server.name,
-          name: server.name,
+          id: server.name, // Keep __ for API calls
+          name: server.name.replace(/__/g, '/'), // Display with / for readability
           enabled: server.enable,
           runtimeStatus: server.runtime_info?.status,
         })),
       );
     } catch (error) {
       console.error('Failed to fetch MCP servers for sidebar:', error);
+    }
+  }, []);
+
+  const refreshSkills = useCallback(async () => {
+    try {
+      const resp = await httpClient.getSkills();
+      setSkills(
+        resp.skills.map((skill) => ({
+          id: skill.name,
+          name: skill.display_name || skill.name,
+          description: skill.description,
+          updatedAt: skill.updated_at,
+        })),
+      );
+    } catch (error) {
+      console.error('Failed to fetch skills for sidebar:', error);
     }
   }, []);
 
@@ -242,6 +267,7 @@ export function SidebarDataProvider({
       refreshKnowledgeBases(),
       refreshPlugins(),
       refreshMCPServers(),
+      refreshSkills(),
     ]);
   }, [
     refreshBots,
@@ -249,6 +275,7 @@ export function SidebarDataProvider({
     refreshKnowledgeBases,
     refreshPlugins,
     refreshMCPServers,
+    refreshSkills,
   ]);
 
   // Fetch all entity lists on mount
@@ -264,17 +291,21 @@ export function SidebarDataProvider({
         knowledgeBases,
         plugins,
         mcpServers,
+        skills,
         pluginPages,
         refreshBots,
         refreshPipelines,
         refreshKnowledgeBases,
         refreshPlugins,
         refreshMCPServers,
+        refreshSkills,
         refreshAll,
         detailEntityName,
         setDetailEntityName,
         pendingPluginInstallAction,
         setPendingPluginInstallAction,
+        pendingSkillInstallAction,
+        setPendingSkillInstallAction,
       }}
     >
       {children}

@@ -31,6 +31,8 @@ export enum PluginV4Status {
 export interface PluginV4 {
   id: number;
   plugin_id: string;
+  mcp_id?: string;
+  skill_id?: string;
   author: string;
   name: string;
   label: I18nObject;
@@ -42,6 +44,7 @@ export interface PluginV4 {
   latest_version: string;
   components: Record<string, number>;
   status: PluginV4Status;
+  type?: 'plugin' | 'mcp' | 'skill';
   created_at: string;
   updated_at: string;
 }

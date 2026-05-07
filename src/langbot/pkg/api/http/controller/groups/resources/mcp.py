@@ -31,6 +31,8 @@ class MCPRouterGroup(group.RouterGroup):
         @self.route('/servers/<server_name>', methods=['GET', 'PUT', 'DELETE'], auth_type=group.AuthType.USER_TOKEN)
         async def _(server_name: str) -> str:
             """获取、更新或删除MCP服务器配置"""
+            from urllib.parse import unquote
+            server_name = unquote(server_name)
 
             server_data = await self.ap.mcp_service.get_mcp_server_by_name(server_name)
             if server_data is None:
@@ -57,6 +59,8 @@ class MCPRouterGroup(group.RouterGroup):
         @self.route('/servers/<server_name>/test', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
         async def _(server_name: str) -> str:
             """测试MCP服务器连接"""
+            from urllib.parse import unquote
+            server_name = unquote(server_name)
             server_data = await quart.request.json
             task_id = await self.ap.mcp_service.test_mcp_server(server_name=server_name, server_data=server_data)
             return self.success(data={'task_id': task_id})

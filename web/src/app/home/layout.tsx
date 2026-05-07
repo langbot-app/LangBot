@@ -48,6 +48,7 @@ const EXTENSIONS_ROUTES = [
   '/home/plugins',
   '/home/market',
   '/home/mcp',
+  '/home/skills',
   '/home/plugin-pages',
 ];
 

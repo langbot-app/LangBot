@@ -48,6 +48,7 @@ function MarketplaceContent() {
   } = usePluginInstallTasks();
   const [modalOpen, setModalOpen] = useState(false);
   const [installInfo, setInstallInfo] = useState<Record<string, string>>({});
+  const [installExtensionType, setInstallExtensionType] = useState<'plugin' | 'mcp' | 'skill'>('plugin');
   const [pluginInstallStatus, setPluginInstallStatus] =
     useState<PluginInstallStatus>(PluginInstallStatus.ASK_CONFIRM);
   const [installError, setInstallError] = useState<string | null>(null);
@@ -96,6 +97,7 @@ function MarketplaceContent() {
         plugin_name: plugin.name,
         plugin_version: plugin.latest_version,
       });
+      setInstallExtensionType(plugin.type || 'plugin');
       setPluginInstallStatus(PluginInstallStatus.ASK_CONFIRM);
       setInstallError(null);
       setModalOpen(true);
@@ -119,6 +121,7 @@ function MarketplaceContent() {
           taskId,
           pluginName: pluginDisplayName,
           source: 'marketplace',
+          extensionType: installExtensionType,
         });
         setSelectedTaskId(taskKey);
         setModalOpen(false);

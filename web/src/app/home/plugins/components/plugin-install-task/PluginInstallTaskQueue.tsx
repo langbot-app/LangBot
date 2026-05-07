@@ -11,6 +11,9 @@ import {
   Loader2,
   X,
   ListTodo,
+  Wrench,
+  AudioWaveform,
+  Book,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -35,6 +38,12 @@ const STAGE_ICONS: Record<string, React.ElementType> = {
   [InstallStage.ERROR]: XCircle,
 };
 
+const EXTENSION_TYPE_ICONS: Record<string, React.ElementType> = {
+  plugin: Wrench,
+  mcp: AudioWaveform,
+  skill: Book,
+};
+
 function TaskQueueItem({
   task,
   onClick,
@@ -49,6 +58,40 @@ function TaskQueueItem({
   const isError = task.stage === InstallStage.ERROR;
   const isRunning = !isDone && !isError;
   const StageIcon = STAGE_ICONS[task.stage] || Download;
+  const TypeIcon = EXTENSION_TYPE_ICONS[task.extensionType] || Wrench;
+
+  const getTypeBadgeClass = () => {
+    switch (task.extensionType) {
+      case 'mcp':
+        return 'border-sky-500 text-sky-600 dark:border-sky-400 dark:text-sky-300';
+      case 'skill':
+        return 'border-emerald-500 text-emerald-600 dark:border-emerald-400 dark:text-emerald-300';
+      default:
+        return 'border-violet-500 text-violet-600 dark:border-violet-400 dark:text-violet-300';
+    }
+  };
+
+  const getTypeLabel = () => {
+    switch (task.extensionType) {
+      case 'mcp':
+        return 'MCP';
+      case 'skill':
+        return t('common.skill');
+      default:
+        return t('market.typePlugin');
+    }
+  };
+
+  const getInstallCompleteMessage = () => {
+    switch (task.extensionType) {
+      case 'mcp':
+        return t('plugins.installProgress.installCompleteMCP');
+      case 'skill':
+        return t('plugins.installProgress.installCompleteSkill');
+      default:
+        return t('plugins.installProgress.installCompletePlugin');
+    }
+  };
 
   const stageLabel = (() => {
     switch (task.stage) {
@@ -61,7 +104,7 @@ function TaskQueueItem({
       case InstallStage.LAUNCHING:
         return t('plugins.installProgress.launching');
       case InstallStage.DONE:
-        return t('plugins.installProgress.completed');
+        return isDone ? getInstallCompleteMessage() : t('plugins.installProgress.completed');
       case InstallStage.ERROR:
         return t('plugins.installProgress.failed');
       default:
@@ -93,7 +136,16 @@ function TaskQueueItem({
       </div>
 
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium truncate">{task.pluginName}</div>
+        <div className="flex items-center gap-2">
+          <div className="text-sm font-medium truncate">{task.pluginName}</div>
+          <Badge
+            variant="outline"
+            className={cn('text-[0.6rem] px-1 py-0 flex-shrink-0', getTypeBadgeClass())}
+          >
+            <TypeIcon className="w-3 h-3 mr-0.5" />
+            {getTypeLabel()}
+          </Badge>
+        </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">{stageLabel}</span>
           {isRunning && (
@@ -139,7 +191,7 @@ export default function PluginInstallTaskQueue() {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="outline" className="relative px-4 py-5 cursor-pointer">
+        <Button variant="outline" className="relative px-4 py-4 cursor-pointer">
           <ListTodo className="w-4 h-4 mr-2" />
           {t('plugins.installProgress.taskQueue')}
           {runningCount > 0 && (

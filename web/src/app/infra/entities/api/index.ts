@@ -351,6 +351,34 @@ export interface ApiRespPluginSystemStatus {
   plugin_connector_error: string;
 }
 
+export interface ApiRespBoxStatus {
+  available: boolean;
+  profile: string;
+  recent_error_count: number;
+  connector_error?: string;
+  backend?: {
+    name: string;
+    available: boolean;
+  };
+  active_sessions?: number;
+  managed_processes?: number;
+  session_ttl_sec?: number;
+}
+
+export interface BoxSessionInfo {
+  session_id: string;
+  backend_name: string;
+  image: string;
+  network: string;
+  host_path: string | null;
+  host_path_mode: string;
+  mount_path: string;
+  cpus: number;
+  memory_mb: number;
+  created_at: string;
+  last_used_at: string;
+}
+
 export interface ApiRespAsyncTasks {
   tasks: AsyncTask[];
 }
@@ -544,4 +572,25 @@ export interface ApiRespTools {
 
 export interface ApiRespToolDetail {
   tool: PluginTool;
+}
+
+// Skills
+export interface Skill {
+  name: string;
+  display_name?: string;
+  description: string;
+  instructions?: string;
+  package_root?: string;
+  auto_activate?: boolean;
+  is_builtin?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ApiRespSkills {
+  skills: Skill[];
+}
+
+export interface ApiRespSkill {
+  skill: Skill;
 }

@@ -104,6 +104,15 @@ monitoring:
         check_interval_hours: 1
         # Number of expired rows to delete per table batch
         delete_batch_size: 1000
+box:
+    profile: 'default'
+    image: ''  # Custom sandbox container image. Leave empty to use the profile default (python:3.11-slim).
+    runtime_url: ''  # Action-RPC WebSocket URL of an external Box Runtime. Leave empty for auto-detection (stdio locally, Docker service in containers).
+    shared_host_root: './data/box'  # For Docker deployment, use '/workspaces'
+    default_host_workspace: ''  # Defaults to '<shared_host_root>/default'
+    allowed_host_mount_roots:  # Defaults to ['<shared_host_root>'] when left empty
+        - './data/box'
+        - '/tmp'
 space:
     # Space service URL for OAuth and API
     url: 'https://space.langbot.app'

@@ -22,7 +22,7 @@ import {
 import { useEffect, useState } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { useNavigate } from 'react-router-dom';
-import { Mail, Lock, Loader2, Info } from 'lucide-react';
+import { Mail, Lock, Loader2, Info, Layers } from 'lucide-react';
 import {
   Popover,
   PopoverContent,
@@ -138,34 +138,7 @@ export default function Register() {
               {spaceLoading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
-                <svg
-                  className="mr-2 h-4 w-4"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    d="M12 2L2 7L12 12L22 7L12 2Z"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="M2 17L12 22L22 17"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="M2 12L12 17L22 12"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+                <Layers className="mr-2 h-4 w-4" />
               )}
               {t('register.initWithSpace')}
             </Button>

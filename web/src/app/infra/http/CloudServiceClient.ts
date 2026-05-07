@@ -38,7 +38,49 @@ export class CloudServiceClient extends BaseHttpClient {
     sort_order?: string,
     component_filter?: string,
     tags_filter?: string[],
+    type_filter?: string,
   ): Promise<ApiRespMarketplacePlugins> {
+    // Use different endpoints based on type_filter
+    if (type_filter === 'mcp') {
+      return this.post<{ mcps: PluginV4[]; total: number }>(
+        '/api/v1/marketplace/mcps/search',
+        {
+          query,
+          page,
+          page_size,
+          sort_by,
+          sort_order,
+          tags_filter,
+        },
+      ).then((resp) => ({
+        plugins: (resp?.mcps || []).map((mcp) => ({
+          ...mcp,
+          plugin_id: mcp.mcp_id || mcp.plugin_id,
+          type: 'mcp' as const,
+        })),
+        total: resp?.total || 0,
+      }));
+    } else if (type_filter === 'skill') {
+      return this.post<{ skills: PluginV4[]; total: number }>(
+        '/api/v1/marketplace/skills/search',
+        {
+          query,
+          page,
+          page_size,
+          sort_by,
+          sort_order,
+          tags_filter,
+        },
+      ).then((resp) => ({
+        plugins: (resp?.skills || []).map((skill) => ({
+          ...skill,
+          plugin_id: skill.skill_id || skill.plugin_id,
+          type: 'skill' as const,
+        })),
+        total: resp?.total || 0,
+      }));
+    }
+
     return this.post<ApiRespMarketplacePlugins>(
       '/api/v1/marketplace/plugins/search',
       {
@@ -49,6 +91,7 @@ export class CloudServiceClient extends BaseHttpClient {
         sort_order,
         component_filter,
         tags_filter,
+        type_filter,
       },
     );
   }

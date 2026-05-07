@@ -16,7 +16,14 @@ def get_platform() -> str:
 
 standalone_runtime = False
 
+standalone_box = False
+
 
 def use_websocket_to_connect_plugin_runtime() -> bool:
     """是否使用 websocket 连接插件运行时"""
     return standalone_runtime
+
+
+def use_websocket_to_connect_box_runtime() -> bool:
+    """Whether to use WebSocket to connect to an external box runtime."""
+    return standalone_box

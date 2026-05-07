@@ -39,7 +39,9 @@ export default function MCPDetailContent({ id }: { id: string }) {
       setDetailEntityName(t('mcp.createServer'));
     } else {
       const server = mcpServers.find((s) => s.id === id);
-      setDetailEntityName(server?.name ?? id);
+      // Convert __ back to / for display (since / is used as separator in stored names)
+      const displayName = (server?.name ?? id).replace(/__/g, '/');
+      setDetailEntityName(displayName);
     }
     return () => setDetailEntityName(null);
   }, [id, isCreateMode, mcpServers, setDetailEntityName, t]);
