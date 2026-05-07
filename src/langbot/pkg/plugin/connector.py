@@ -202,12 +202,150 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         except Exception:
             pass
 
+    async def _install_mcp_from_marketplace(
+        self,
+        mcp_data: dict[str, Any],
+        task_context: taskmgr.TaskContext | None = None,
+    ):
+        """Install an MCP server from marketplace data."""
+        from ..entity.persistence import mcp as persistence_mcp
+        import uuid
+
+        config = mcp_data.get('config', {})
+        url = config.get('url', '')
+        # Use __ instead of / to avoid URL routing issues with slashes
+        name = f"{mcp_data.get('author', '')}__{mcp_data.get('name', '')}"
+
+        # Determine mode from URL
+        if 'sse' in url.lower():
+            mode = 'sse'
+        elif url.startswith('http'):
+            mode = 'http'
+        else:
+            mode = 'stdio'
+
+        # Build extra_args from config
+        extra_args = {
+            'url': url,
+            'timeout': config.get('timeout', 30),
+            'sse_read_timeout': config.get('sse_read_timeout', 300),
+        }
+
+        # Check if MCP server already exists
+        existing = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_mcp.MCPServer).where(persistence_mcp.MCPServer.name == name)
+        )
+        if existing.scalar_one_or_none():
+            self.ap.logger.info(f'MCP server {name} already exists, skipping installation')
+            return
+
+        # Create MCP server record
+        server_uuid = str(uuid.uuid4())
+        server_data = {
+            'uuid': server_uuid,
+            'name': name,
+            'enable': True,
+            'mode': mode,
+            'extra_args': extra_args,
+        }
+
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.insert(persistence_mcp.MCPServer).values(server_data)
+        )
+
+        # Start the MCP server
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_mcp.MCPServer).where(persistence_mcp.MCPServer.uuid == server_uuid)
+        )
+        server_entity = result.first()
+        if server_entity:
+            server_config = self.ap.persistence_mgr.serialize_model(persistence_mcp.MCPServer, server_entity)
+            if self.ap.tool_mgr.mcp_tool_loader:
+                mcp_task = asyncio.create_task(
+                    self.ap.tool_mgr.mcp_tool_loader.host_mcp_server(server_config)
+                )
+                self.ap.tool_mgr.mcp_tool_loader._hosted_mcp_tasks.append(mcp_task)
+
+        self.ap.logger.info(f'Installed MCP server {name} from marketplace')
+
+    async def _install_skill_from_zip(
+        self,
+        file_bytes: bytes,
+        filename: str,
+        task_context: taskmgr.TaskContext | None = None,
+    ):
+        """Install a skill from marketplace ZIP data."""
+        from ..api.http.service.skill import SkillService
+
+        skill_service = SkillService(self.ap)
+
+        self.ap.logger.info(f'Installing skill from marketplace ZIP ({len(file_bytes)} bytes)')
+
+        # Install from ZIP using skill service
+        result = await skill_service.install_from_zip_upload(
+            file_bytes=file_bytes,
+            filename=filename + '.zip',
+        )
+        self.ap.logger.info(f'Skill installed successfully: {result}')
+
     async def install_plugin(
         self,
         install_source: PluginInstallSource,
         install_info: dict[str, Any],
         task_context: taskmgr.TaskContext | None = None,
     ):
+        if install_source == PluginInstallSource.MARKETPLACE:
+            # Handle marketplace plugin/mcp/skill installation
+            plugin_author = install_info.get('plugin_author', '')
+            plugin_name = install_info.get('plugin_name', '')
+            space_url = self.ap.instance_config.data.get('space', {}).get('url', 'https://space.langbot.app').rstrip('/')
+
+            # Try MCP endpoint first
+            async with httpx.AsyncClient(trust_env=True, timeout=15) as client:
+                mcp_resp = await client.get(f'{space_url}/api/v1/marketplace/mcps/{plugin_author}/{plugin_name}')
+                if mcp_resp.status_code == 200:
+                    mcp_data = mcp_resp.json().get('data', {}).get('mcp', {})
+                    if mcp_data.get('config'):
+                        # It's an MCP - create server locally
+                        self.ap.logger.info(f'Installing MCP from marketplace: {plugin_author}/{plugin_name}')
+                        if task_context:
+                            task_context.set_current_action('installing mcp server')
+                        await self._install_mcp_from_marketplace(mcp_data, task_context)
+                        return
+                    else:
+                        raise Exception(f'MCP {plugin_author}/{plugin_name} has no config')
+                elif mcp_resp.status_code == 404:
+                    # Try skill endpoint - download ZIP and install
+                    self.ap.logger.info(f'Installing skill from marketplace: {plugin_author}/{plugin_name}')
+                    if task_context:
+                        task_context.set_current_action('installing skill from marketplace')
+
+                    # Get skill detail to find version
+                    skill_resp = await client.get(f'{space_url}/api/v1/marketplace/skills/{plugin_author}/{plugin_name}')
+                    if skill_resp.status_code == 200:
+                        # Download the skill ZIP (no version needed - uses latest)
+                        if task_context:
+                            task_context.set_current_action('downloading skill package')
+
+                        download_resp = await client.get(
+                            f'{space_url}/api/v1/marketplace/skills/download/{plugin_author}/{plugin_name}'
+                        )
+                        if download_resp.status_code != 200:
+                            raise Exception(f'Failed to download skill {plugin_author}/{plugin_name}: {download_resp.status_code}')
+
+                        file_bytes = download_resp.content
+                        file_size = len(file_bytes)
+                        self.ap.logger.info(f'Downloaded skill ZIP ({file_size} bytes)')
+
+                        # Install skill from ZIP using skill service
+                        await self._install_skill_from_zip(file_bytes, f'{plugin_author}-{plugin_name}', task_context)
+                        return
+                    else:
+                        raise Exception(f'Skill {plugin_author}/{plugin_name} not found in marketplace')
+                else:
+                    mcp_resp.raise_for_status()
+                    raise Exception(f'Failed to get MCP {plugin_author}/{plugin_name}')
+
         if install_source == PluginInstallSource.LOCAL:
             # transfer file before install
             file_bytes = install_info['plugin_file']

@@ -18,7 +18,7 @@ export default function PluginMarketCardComponent({
   tagNames = {},
 }: {
   cardVO: PluginMarketCardVO;
-  onInstall?: (author: string, pluginName: string) => void;
+  onInstall?: (cardVO: PluginMarketCardVO) => void;
   tagNames?: Record<string, string>;
 }) {
   const { t } = useTranslation();
@@ -244,7 +244,7 @@ export default function PluginMarketCardComponent({
           onClick={(e) => {
             e.stopPropagation();
             if (onInstall) {
-              onInstall(cardVO.author, cardVO.pluginName);
+              onInstall(cardVO);
             }
           }}
           className={`bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-sm flex items-center gap-2 transition-all duration-200 ${

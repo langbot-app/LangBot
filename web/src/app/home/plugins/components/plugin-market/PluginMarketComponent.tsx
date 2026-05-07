@@ -33,7 +33,7 @@ import PluginMarketCardComponent from './plugin-market-card/PluginMarketCardComp
 import { PluginMarketCardVO } from './plugin-market-card/PluginMarketCardVO';
 import { getCloudServiceClientSync } from '@/app/infra/http';
 import { useTranslation } from 'react-i18next';
-import { PluginV4 } from '@/app/infra/entities/plugin';
+import { PluginV4, PluginV4Status } from '@/app/infra/entities/plugin';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { toast } from 'sonner';
 import { ApiRespMarketplacePlugins } from '@/app/infra/entities/api';
@@ -489,13 +489,44 @@ function MarketPageContent({
 
   // 处理安装插件
   const handleInstallPlugin = useCallback(
-    async (author: string, pluginName: string) => {
+    async (cardVO: PluginMarketCardVO) => {
       try {
-        // Fetch full plugin details to get PluginV4 object
+        if (cardVO.type === 'mcp' || cardVO.type === 'skill') {
+          // For MCP and Skill, directly pass the data - backend will fetch from Space
+          const pluginV4: PluginV4 = {
+            id: 0,
+            plugin_id: `${cardVO.author}/${cardVO.pluginName}`,
+            mcp_id: cardVO.type === 'mcp' ? `${cardVO.author}/${cardVO.pluginName}` : undefined,
+            skill_id: cardVO.type === 'skill' ? `${cardVO.author}/${cardVO.pluginName}` : undefined,
+            author: cardVO.author,
+            name: cardVO.pluginName,
+            label: { en_US: cardVO.label, zh_Hans: cardVO.label },
+            description: { en_US: cardVO.description, zh_Hans: cardVO.description },
+            icon: cardVO.iconURL,
+            repository: cardVO.githubURL,
+            tags: cardVO.tags || [],
+            install_count: cardVO.installCount,
+            latest_version: cardVO.version,
+            components: cardVO.components || {},
+            status: PluginV4Status.Live,
+            type: cardVO.type,
+            created_at: '',
+            updated_at: '',
+          };
+          installPlugin(pluginV4);
+          return;
+        }
+
+        // For plugin type, fetch full details via API
         const response = await getCloudServiceClientSync().getPluginDetail(
-          author,
-          pluginName,
+          cardVO.author,
+          cardVO.pluginName,
         );
+        if (!response?.plugin) {
+          console.error('Failed to install plugin: plugin not found', { author: cardVO.author, pluginName: cardVO.pluginName });
+          toast.error(t('market.installFailed'));
+          return;
+        }
         const pluginV4: PluginV4 = response.plugin;
 
         // Call the install function passed from parent
@@ -505,7 +536,7 @@ function MarketPageContent({
         toast.error(t('market.installFailed'));
       }
     },
-    [plugins, installPlugin, t],
+    [installPlugin, t],
   );
 
   // 清理定时器

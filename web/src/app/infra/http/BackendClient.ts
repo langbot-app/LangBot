@@ -804,7 +804,7 @@ export class BackendClient extends BaseHttpClient {
   }
 
   public getMCPServer(serverName: string): Promise<ApiRespMCPServer> {
-    return this.get(`/api/v1/mcp/servers/${serverName}`);
+    return this.get(`/api/v1/mcp/servers/${encodeURIComponent(serverName)}`);
   }
 
   public createMCPServer(server: MCPServer): Promise<AsyncTaskCreatedResp> {
@@ -815,18 +815,18 @@ export class BackendClient extends BaseHttpClient {
     serverName: string,
     server: Partial<MCPServer>,
   ): Promise<AsyncTaskCreatedResp> {
-    return this.put(`/api/v1/mcp/servers/${serverName}`, server);
+    return this.put(`/api/v1/mcp/servers/${encodeURIComponent(serverName)}`, server);
   }
 
   public deleteMCPServer(serverName: string): Promise<AsyncTaskCreatedResp> {
-    return this.delete(`/api/v1/mcp/servers/${serverName}`);
+    return this.delete(`/api/v1/mcp/servers/${encodeURIComponent(serverName)}`);
   }
 
   public toggleMCPServer(
     serverName: string,
     target_enabled: boolean,
   ): Promise<AsyncTaskCreatedResp> {
-    return this.put(`/api/v1/mcp/servers/${serverName}`, {
+    return this.put(`/api/v1/mcp/servers/${encodeURIComponent(serverName)}`, {
       enable: target_enabled,
     });
   }
@@ -835,7 +835,7 @@ export class BackendClient extends BaseHttpClient {
     serverName: string,
     serverData: object,
   ): Promise<AsyncTaskCreatedResp> {
-    return this.post(`/api/v1/mcp/servers/${serverName}/test`, serverData);
+    return this.post(`/api/v1/mcp/servers/${encodeURIComponent(serverName)}/test`, serverData);
   }
 
   public installMCPServerFromGithub(

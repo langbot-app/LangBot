@@ -309,7 +309,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
       const server = resp.server ?? resp;
 
       const formValues: FormValues = {
-        name: server.name,
+        name: server.name.replace(/__/g, '/'), // Convert __ back to / for display
         mode: server.mode,
         url: '',
         command: '',

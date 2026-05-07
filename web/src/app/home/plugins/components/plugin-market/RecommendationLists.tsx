@@ -50,7 +50,7 @@ function RecommendationListRow({
 }: {
   list: RecommendationList;
   tagNames: Record<string, string>;
-  onInstall: (author: string, pluginName: string) => void;
+  onInstall: (cardVO: PluginMarketCardVO) => void;
   isLast: boolean;
 }) {
   const { t } = useTranslation();
@@ -162,7 +162,7 @@ export function RecommendationLists({
 }: {
   lists: RecommendationList[];
   tagNames: Record<string, string>;
-  onInstall: (author: string, pluginName: string) => void;
+  onInstall: (cardVO: PluginMarketCardVO) => void;
 }) {
   if (!lists || lists.length === 0) return null;
 

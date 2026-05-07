@@ -233,8 +233,8 @@ export function SidebarDataProvider({
       const resp = await httpClient.getMCPServers();
       setMCPServers(
         resp.servers.map((server) => ({
-          id: server.name,
-          name: server.name,
+          id: server.name, // Keep __ for API calls
+          name: server.name.replace(/__/g, '/'), // Display with / for readability
           enabled: server.enable,
           runtimeStatus: server.runtime_info?.status,
         })),
