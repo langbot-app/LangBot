@@ -119,7 +119,7 @@ class DBMigrateWorkflowTables(migration.DBMigration):
         # Update bots table: add binding_type column (default to 'pipeline' for backward compatibility)
         # Check if column exists first (SQLite doesn't support IF NOT EXISTS for columns)
         try:
-            result = await self.ap.persistence_mgr.execute_async(
+            await self.ap.persistence_mgr.execute_async(
                 sqlalchemy.text("SELECT binding_type FROM bots LIMIT 1")
             )
         except Exception:

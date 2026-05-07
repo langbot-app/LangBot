@@ -1136,7 +1136,7 @@ class DebugWorkflowExecutor(WorkflowExecutor):
         node_state.inputs = inputs
         debug_state.add_log(
             'debug',
-            f'Node inputs resolved',
+            'Node inputs resolved',
             node_id=node.id,
             data={'inputs': self._safe_serialize(inputs)}
         )
@@ -1223,9 +1223,6 @@ class DebugWorkflowExecutor(WorkflowExecutor):
             return {'completed': True}
         
         # Execute single node
-        node_map = {node.id: node for node in workflow.nodes}
-        edge_map = self._build_edge_map(workflow.edges)
-        
         debug_state.current_node_id = next_node.id
         await self._execute_debug_node(next_node, context, debug_state, workflow.settings.max_retries)
         
