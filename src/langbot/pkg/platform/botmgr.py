@@ -18,6 +18,7 @@ from ..entity.errors import platform as platform_errors
 from .logger import EventLogger
 
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
+import langbot_plugin.api.entities.events as plugin_events
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
@@ -76,6 +77,31 @@ class RuntimeBot:
 
     PIPELINE_DISCARD = '__discard__'
     PIPELINE_DISCARD_DISPLAY_NAME = 'Discarded'
+
+    @staticmethod
+    def _eba_event_to_plugin_event(event: platform_events.EBAEvent) -> plugin_events.BaseEventModel | None:
+        """Map a platform EBA event to a plugin EventListener event model."""
+        event_mapping: list[tuple[type[platform_events.EBAEvent], type[plugin_events.BaseEventModel]]] = [
+            (platform_events.MessageReceivedEvent, plugin_events.MessageReceived),
+            (platform_events.MessageEditedEvent, plugin_events.MessageEdited),
+            (platform_events.MessageDeletedEvent, plugin_events.MessageDeleted),
+            (platform_events.MessageReactionEvent, plugin_events.MessageReactionReceived),
+            (platform_events.FeedbackReceivedEvent, plugin_events.FeedbackReceived),
+            (platform_events.MemberJoinedEvent, plugin_events.GroupMemberJoined),
+            (platform_events.MemberLeftEvent, plugin_events.GroupMemberLeft),
+            (platform_events.MemberBannedEvent, plugin_events.GroupMemberBanned),
+            (platform_events.BotInvitedToGroupEvent, plugin_events.BotInvitedToGroup),
+            (platform_events.BotRemovedFromGroupEvent, plugin_events.BotRemovedFromGroup),
+            (platform_events.BotMutedEvent, plugin_events.BotMuted),
+            (platform_events.BotUnmutedEvent, plugin_events.BotUnmuted),
+            (platform_events.PlatformSpecificEvent, plugin_events.PlatformSpecificEventReceived),
+        ]
+
+        for platform_event_type, plugin_event_type in event_mapping:
+            if isinstance(event, platform_event_type):
+                return plugin_event_type.from_platform_event(event)
+
+        return None
 
     def resolve_pipeline_uuid(
         self,
@@ -365,6 +391,21 @@ class RuntimeBot:
                 await self.logger.error(f'Failed to record feedback: {traceback.format_exc()}')
 
         self.adapter.register_listener(platform_events.FeedbackEvent, on_feedback)
+
+        async def on_eba_event(
+            event: platform_events.EBAEvent,
+            adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+        ):
+            plugin_event = self._eba_event_to_plugin_event(event)
+            if plugin_event is None:
+                return
+
+            try:
+                await self.ap.plugin_connector.emit_event(plugin_event)
+            except Exception:
+                await self.logger.error(f'Failed to dispatch EBA event to plugins: {traceback.format_exc()}')
+
+        self.adapter.register_listener(platform_events.EBAEvent, on_eba_event)
 
     async def run(self):
         async def exception_wrapper():
