@@ -18,8 +18,13 @@ export default function I18nProvider({ children }: I18nProviderProps) {
 //   return i18nLabel.en_US;
 // }
 
-export const extractI18nObject = (i18nObject: I18nObject): string => {
+export const extractI18nObject = (
+  i18nObject: I18nObject | undefined | null,
+): string => {
   // 根据当前语言返回对应的值, fallback优先级：en_US、zh_Hans、zh_Hant、ja_JP
+  if (!i18nObject || typeof i18nObject !== 'object') {
+    return '';
+  }
   const language = i18n.language.replace('-', '_');
   if (language === 'en_US' && i18nObject.en_US) return i18nObject.en_US;
   if (language === 'zh_Hans' && i18nObject.zh_Hans) return i18nObject.zh_Hans;

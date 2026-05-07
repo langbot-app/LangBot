@@ -47,12 +47,14 @@ export interface PluginPageItem {
 export interface SidebarDataContextValue {
   bots: SidebarEntityItem[];
   pipelines: SidebarEntityItem[];
+  workflows: SidebarEntityItem[];
   knowledgeBases: SidebarEntityItem[];
   plugins: SidebarEntityItem[];
   mcpServers: SidebarEntityItem[];
   pluginPages: PluginPageItem[];
   refreshBots: () => Promise<void>;
   refreshPipelines: () => Promise<void>;
+  refreshWorkflows: () => Promise<void>;
   refreshKnowledgeBases: () => Promise<void>;
   refreshPlugins: () => Promise<void>;
   refreshMCPServers: () => Promise<void>;
@@ -74,6 +76,7 @@ export function SidebarDataProvider({
 }) {
   const [bots, setBots] = useState<SidebarEntityItem[]>([]);
   const [pipelines, setPipelines] = useState<SidebarEntityItem[]>([]);
+  const [workflows, setWorkflows] = useState<SidebarEntityItem[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<SidebarEntityItem[]>([]);
   const [plugins, setPlugins] = useState<SidebarEntityItem[]>([]);
   const [mcpServers, setMCPServers] = useState<SidebarEntityItem[]>([]);
@@ -114,6 +117,24 @@ export function SidebarDataProvider({
       );
     } catch (error) {
       console.error('Failed to fetch pipelines for sidebar:', error);
+    }
+  }, []);
+
+  const refreshWorkflows = useCallback(async () => {
+    try {
+      const resp = await httpClient.getWorkflows();
+      setWorkflows(
+        resp.workflows.map((w) => ({
+          id: w.uuid || '',
+          name: w.name,
+          description: w.description,
+          emoji: w.emoji,
+          updatedAt: w.updated_at,
+          enabled: w.is_enabled ?? true,
+        })),
+      );
+    } catch (error) {
+      console.error('Failed to fetch workflows for sidebar:', error);
     }
   }, []);
 
@@ -239,6 +260,7 @@ export function SidebarDataProvider({
     await Promise.all([
       refreshBots(),
       refreshPipelines(),
+      refreshWorkflows(),
       refreshKnowledgeBases(),
       refreshPlugins(),
       refreshMCPServers(),
@@ -246,6 +268,7 @@ export function SidebarDataProvider({
   }, [
     refreshBots,
     refreshPipelines,
+    refreshWorkflows,
     refreshKnowledgeBases,
     refreshPlugins,
     refreshMCPServers,
@@ -261,12 +284,14 @@ export function SidebarDataProvider({
       value={{
         bots,
         pipelines,
+        workflows,
         knowledgeBases,
         plugins,
         mcpServers,
         pluginPages,
         refreshBots,
         refreshPipelines,
+        refreshWorkflows,
         refreshKnowledgeBases,
         refreshPlugins,
         refreshMCPServers,

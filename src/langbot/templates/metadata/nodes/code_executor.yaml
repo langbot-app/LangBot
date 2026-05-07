@@ -1,0 +1,73 @@
+# Code Executor Node Configuration
+# This file defines the metadata for the Code Executor workflow node
+# The corresponding Python implementation is in: pkg/workflow/nodes/code_executor.py
+
+name: code_executor
+category: process
+icon: "💻"
+color: '#3b82f6'
+description: 'workflows.nodes.codeExecutorDescription'
+
+inputs:
+  - name: input
+    type: any
+    label:
+      en_US: Input
+      zh_Hans: 输入
+    description:
+      en_US: Input data for the code
+      zh_Hans: 代码的输入数据
+
+outputs:
+  - name: output
+    type: any
+    label:
+      en_US: Output
+      zh_Hans: 输出
+    description:
+      en_US: Code execution result
+      zh_Hans: 代码执行结果
+  - name: logs
+    type: array
+    label:
+      en_US: Logs
+      zh_Hans: 日志
+    description:
+      en_US: Console logs from code execution
+      zh_Hans: 代码执行的控制台日志
+
+config:
+  - name: language
+    type: select
+    required: true
+    default: javascript
+    options:
+      - javascript
+      - python
+    label:
+      en_US: Language
+      zh_Hans: 语言
+    description:
+      en_US: Programming language to use
+      zh_Hans: 要使用的编程语言
+
+  - name: code
+    type: textarea
+    required: true
+    default: "return input;"
+    label:
+      en_US: Code
+      zh_Hans: 代码
+    description:
+      en_US: Code to execute
+      zh_Hans: 要执行的代码
+
+  - name: timeout
+    type: integer
+    default: 5000
+    label:
+      en_US: Timeout (ms)
+      zh_Hans: 超时时间 (毫秒)
+    description:
+      en_US: Maximum execution time in milliseconds
+      zh_Hans: 最大执行时间（毫秒）

@@ -1,0 +1,95 @@
+# Send Message Node Configuration
+# This file defines the metadata for the Send Message workflow node
+# The corresponding Python implementation is in: pkg/workflow/nodes/send_message.py
+
+name: send_message
+category: action
+icon: "📤"
+color: '#10b981'
+description: 'workflows.nodes.sendMessageDescription'
+
+inputs:
+  - name: content
+    type: string
+    required: false
+    label:
+      en_US: Content
+      zh_Hans: 内容
+    description:
+      en_US: Message content to send
+      zh_Hans: 要发送的消息内容
+  - name: context
+    type: object
+    required: false
+    label:
+      en_US: Context
+      zh_Hans: 上下文
+    description:
+      en_US: Message context (for reply)
+      zh_Hans: 消息上下文（用于回复）
+
+outputs:
+  - name: message_id
+    type: string
+    label:
+      en_US: Message ID
+      zh_Hans: 消息 ID
+    description:
+      en_US: ID of the sent message
+      zh_Hans: 已发送消息的 ID
+  - name: success
+    type: boolean
+    label:
+      en_US: Success
+      zh_Hans: 成功
+    description:
+      en_US: Whether the message was sent successfully
+      zh_Hans: 消息是否发送成功
+
+config:
+  - name: message_type
+    type: select
+    required: true
+    default: text
+    options:
+      - text
+      - markdown
+      - image
+      - file
+      - card
+    label:
+      en_US: Message Type
+      zh_Hans: 消息类型
+    description:
+      en_US: Type of message to send
+      zh_Hans: 要发送的消息类型
+
+  - name: content_template
+    type: textarea
+    default: ""
+    label:
+      en_US: Content Template
+      zh_Hans: 内容模板
+    description:
+      en_US: Message content template
+      zh_Hans: 消息内容模板
+
+  - name: reply_to_original
+    type: boolean
+    default: true
+    label:
+      en_US: Reply to Original
+      zh_Hans: 回复原消息
+    description:
+      en_US: Reply to the original message
+      zh_Hans: 回复原始消息
+
+  - name: at_sender
+    type: boolean
+    default: false
+    label:
+      en_US: '@ Sender'
+      zh_Hans: '@ 发送者'
+    description:
+      en_US: Mention the original sender
+      zh_Hans: 提及原始发送者

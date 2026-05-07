@@ -186,6 +186,9 @@ export interface Bot {
   use_pipeline_name?: string;
   use_pipeline_uuid?: string;
   pipeline_routing_rules?: PipelineRoutingRule[];
+  // New unified binding fields
+  binding_type?: 'pipeline' | 'workflow';
+  binding_uuid?: string;
   created_at?: string;
   updated_at?: string;
   adapter_runtime_values?: object;
@@ -544,4 +547,187 @@ export interface ApiRespTools {
 
 export interface ApiRespToolDetail {
   tool: PluginTool;
+}
+
+// ============ Workflow Types ============
+export interface WorkflowPosition {
+  x: number;
+  y: number;
+}
+
+export interface WorkflowPortDefinition {
+  name: string;
+  label?: string;
+  type?: string;
+}
+
+export interface WorkflowNodeDefinition {
+  id: string;
+  type: string;
+  position: WorkflowPosition;
+  config: Record<string, unknown>;
+  label?: string;
+  inputs?: WorkflowPortDefinition[];
+  outputs?: WorkflowPortDefinition[];
+}
+
+export interface WorkflowEdgeDefinition {
+  id: string;
+  source: string;
+  target: string;
+  source_port?: string;
+  target_port?: string;
+  label?: string;
+  condition?: string;
+}
+
+export interface WorkflowTriggerDefinition {
+  type: string;
+  config: Record<string, unknown>;
+  enabled: boolean;
+  name?: string;
+}
+
+export interface WorkflowSettings {
+  max_execution_time?: number;
+  retry_policy?: Record<string, unknown>;
+  error_handling?: Record<string, unknown>;
+  logging_level?: string;
+}
+
+export interface Workflow {
+  uuid?: string;
+  name: string;
+  emoji?: string;
+  description?: string;
+  version?: number;
+  nodes: WorkflowNodeDefinition[];
+  edges: WorkflowEdgeDefinition[];
+  variables?: Record<string, unknown>;
+  settings?: WorkflowSettings;
+  triggers?: WorkflowTriggerDefinition[];
+  is_enabled?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ApiRespWorkflows {
+  workflows: Workflow[];
+}
+
+export interface ApiRespWorkflow {
+  workflow: Workflow;
+}
+
+export interface WorkflowNodeTypeMetadata {
+  type: string;
+  category: string;
+  label: Record<string, string>;
+  description?: Record<string, string>;
+  icon?: string;
+  color?: string;
+  config_schema: unknown[];
+  // Pipeline metadata reuse
+  config_schema_source?: string; // e.g. 'pipeline:ai', 'pipeline:trigger'
+  config_stages?: string[]; // specific stages to include from pipeline config
+  inputs?: WorkflowPortDefinition[];
+  outputs?: WorkflowPortDefinition[];
+}
+
+export interface WorkflowNodeCategory {
+  name: string;
+  label: Record<string, string>;
+  icon?: string;
+  order?: number;
+}
+
+export interface ApiRespWorkflowNodeTypes {
+  node_types: WorkflowNodeTypeMetadata[];
+  categories: WorkflowNodeCategory[];
+}
+
+export interface WorkflowExecutionNodeInfo {
+  node_id: string;
+  node_type: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
+  started_at?: string;
+  completed_at?: string;
+  start_time?: string;
+  end_time?: string;
+  inputs?: Record<string, unknown>;
+  outputs?: Record<string, unknown>;
+  error?: string;
+  retry_count?: number;
+}
+
+export interface WorkflowExecution {
+  uuid: string;
+  workflow_uuid: string;
+  workflow_version: number;
+  status:
+    | 'pending'
+    | 'waiting'
+    | 'running'
+    | 'completed'
+    | 'failed'
+    | 'cancelled';
+  started_at?: string;
+  completed_at?: string;
+  start_time?: string;
+  end_time?: string;
+  trigger_type?: string;
+  trigger_data?: Record<string, unknown>;
+  variables?: Record<string, unknown>;
+  result?: Record<string, unknown>;
+  error?: string;
+  node_executions?: WorkflowExecutionNodeInfo[];
+}
+
+export interface ApiRespWorkflowExecutions {
+  executions: WorkflowExecution[];
+  total: number;
+}
+
+export interface ApiRespWorkflowExecution {
+  execution: WorkflowExecution;
+}
+
+export interface WorkflowVersion {
+  version: number;
+  name: string;
+  created_at: string;
+  definition_snapshot: Workflow;
+}
+
+export interface ApiRespWorkflowVersions {
+  versions: WorkflowVersion[];
+}
+
+export interface CreateWorkflowRequest {
+  name: string;
+  emoji?: string;
+  description?: string;
+  nodes?: WorkflowNodeDefinition[];
+  edges?: WorkflowEdgeDefinition[];
+  variables?: Record<string, unknown>;
+  settings?: WorkflowSettings;
+  triggers?: WorkflowTriggerDefinition[];
+}
+
+export interface UpdateWorkflowRequest {
+  name?: string;
+  emoji?: string;
+  description?: string;
+  nodes?: WorkflowNodeDefinition[];
+  edges?: WorkflowEdgeDefinition[];
+  variables?: Record<string, unknown>;
+  settings?: WorkflowSettings;
+  triggers?: WorkflowTriggerDefinition[];
+  is_enabled?: boolean;
+}
+
+export interface ExecuteWorkflowRequest {
+  trigger_type?: string;
+  trigger_data?: Record<string, unknown>;
+  variables?: Record<string, unknown>;
 }

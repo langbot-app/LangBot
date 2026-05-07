@@ -1,0 +1,150 @@
+# LLM Call Node Configuration
+# This file defines the metadata for the LLM Call workflow node
+# The corresponding Python implementation is in: pkg/workflow/nodes/llm_call.py
+
+name: llm_call
+category: process
+icon: "🤖"
+color: '#8b5cf6'
+description: 'workflows.nodes.llmCallDescription'
+
+inputs:
+  - name: input
+    type: string
+    required: false
+    label:
+      en_US: Input
+      zh_Hans: 输入
+    description:
+      en_US: Input text to send to the model
+      zh_Hans: 发送到模型的输入文本
+  - name: context
+    type: object
+    required: false
+    label:
+      en_US: Context
+      zh_Hans: 上下文
+    description:
+      en_US: Additional context data
+      zh_Hans: 额外的上下文数据
+
+outputs:
+  - name: response
+    type: string
+    label:
+      en_US: Response
+      zh_Hans: 响应
+    description:
+      en_US: Model response text
+      zh_Hans: 模型响应文本
+  - name: usage
+    type: object
+    label:
+      en_US: Usage
+      zh_Hans: 使用量
+    description:
+      en_US: Token usage information
+      zh_Hans: Token 使用量信息
+  - name: parsed
+    type: object
+    label:
+      en_US: Parsed
+      zh_Hans: 解析结果
+    description:
+      en_US: Parsed output (if output format is JSON)
+      zh_Hans: 解析后的输出（如果输出格式为 JSON）
+
+config:
+  - name: model
+    type: llm-model-selector
+    required: true
+    label:
+      en_US: Model
+      zh_Hans: 模型
+    description:
+      en_US: Select the LLM model to use
+      zh_Hans: 选择要使用的 LLM 模型
+
+  - name: system_prompt
+    type: textarea
+    label:
+      en_US: System Prompt
+      zh_Hans: 系统提示词
+    description:
+      en_US: System prompt to set the model behavior
+      zh_Hans: 设置模型行为的系统提示词
+
+  - name: user_prompt_template
+    type: textarea
+    required: true
+    default: "{{input}}"
+    label:
+      en_US: User Prompt Template
+      zh_Hans: 用户提示词模板
+    description:
+      en_US: User prompt template with variable placeholders
+      zh_Hans: 带有变量占位符的用户提示词模板
+
+  - name: temperature
+    type: number
+    default: 0.7
+    label:
+      en_US: Temperature
+      zh_Hans: 温度
+    description:
+      en_US: Controls randomness in responses
+      zh_Hans: 控制响应的随机性
+
+  - name: max_tokens
+    type: integer
+    default: 0
+    label:
+      en_US: Max Tokens
+      zh_Hans: 最大令牌数
+    description:
+      en_US: Maximum number of tokens to generate
+      zh_Hans: 生成的最大令牌数
+
+  - name: output_format
+    type: select
+    default: text
+    options:
+      - text
+      - json
+      - markdown
+    label:
+      en_US: Output Format
+      zh_Hans: 输出格式
+    description:
+      en_US: Expected format of the model output
+      zh_Hans: 模型输出的预期格式
+
+  - name: json_schema
+    type: textarea
+    default: ""
+    label:
+      en_US: JSON Schema
+      zh_Hans: JSON Schema
+    description:
+      en_US: JSON schema for structured output validation
+      zh_Hans: 用于结构化输出验证的 JSON Schema
+
+  - name: enable_tools
+    type: boolean
+    default: false
+    label:
+      en_US: Enable Tools
+      zh_Hans: 启用工具
+    description:
+      en_US: Allow the model to use function calling tools
+      zh_Hans: 允许模型使用函数调用工具
+
+  - name: tools
+    type: json
+    default: []
+    label:
+      en_US: Tools
+      zh_Hans: 工具
+    description:
+      en_US: Select tools that the model can use
+      zh_Hans: 选择模型可以使用的工具

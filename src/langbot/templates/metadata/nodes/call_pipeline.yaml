@@ -1,0 +1,74 @@
+# Call Pipeline Node Configuration
+name: call_pipeline
+category: action
+icon: "⚙️"
+color: '#ef4444'
+description: 'workflows.nodes.callPipelineDescription'
+
+inputs:
+  - name: query
+    type: string
+    label:
+      en_US: Query
+      zh_Hans: 查询
+    description:
+      en_US: Query to send
+      zh_Hans: 要发送的查询
+  - name: context
+    type: object
+    label:
+      en_US: Context
+      zh_Hans: 上下文
+    description:
+      en_US: Context data
+      zh_Hans: 上下文数据
+    required: false
+
+outputs:
+  - name: response
+    type: string
+    label:
+      en_US: Response
+      zh_Hans: 响应
+    description:
+      en_US: Pipeline response
+      zh_Hans: 流水线响应
+  - name: result
+    type: object
+    label:
+      en_US: Result
+      zh_Hans: 结果
+    description:
+      en_US: Pipeline result
+      zh_Hans: 流水线结果
+
+config:
+  - name: pipeline_uuid
+    type: pipeline-selector
+    required: true
+    label:
+      en_US: Pipeline
+      zh_Hans: 流水线
+    description:
+      en_US: Pipeline to call
+      zh_Hans: 要调用的流水线
+
+  - name: inherit_context
+    type: boolean
+    default: true
+    label:
+      en_US: Inherit Context
+      zh_Hans: 继承上下文
+    description:
+      en_US: Whether to inherit context
+      zh_Hans: 是否继承上下文
+
+  - name: timeout
+    type: integer
+    default: 120
+    label:
+      en_US: Timeout (seconds)
+      zh_Hans: 超时时间（秒）
+    description:
+      en_US: Timeout in seconds
+      zh_Hans: 超时时间（秒）

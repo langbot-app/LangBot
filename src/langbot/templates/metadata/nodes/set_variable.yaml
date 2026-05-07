@@ -1,0 +1,59 @@
+# Set Variable Node Configuration
+name: set_variable
+category: action
+icon: "📝"
+color: '#ef4444'
+description: 'workflows.nodes.setVariableDescription'
+
+inputs:
+  - name: value
+    type: any
+    label:
+      en_US: Value
+      zh_Hans: 值
+    description:
+      en_US: Value to set
+      zh_Hans: 要设置的值
+
+outputs:
+  - name: value
+    type: any
+    label:
+      en_US: Value
+      zh_Hans: 值
+    description:
+      en_US: Set value
+      zh_Hans: 设置的值
+
+config:
+  - name: variable_name
+    type: string
+    required: true
+    label:
+      en_US: Variable Name
+      zh_Hans: 变量名
+    description:
+      en_US: Name of the variable
+      zh_Hans: 变量名称
+
+  - name: variable_scope
+    type: select
+    options: ["workflow", "conversation"]
+    default: "workflow"
+    label:
+      en_US: Variable Scope
+      zh_Hans: 变量作用域
+    description:
+      en_US: Scope of the variable
+      zh_Hans: 变量作用域
+
+  - name: operation
+    type: select
+    options: ["set", "append", "increment", "decrement"]
+    default: "set"
+    label:
+      en_US: Operation
+      zh_Hans: 操作
+    description:
+      en_US: Operation to perform
+      zh_Hans: 要执行的操作

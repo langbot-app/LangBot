@@ -1,0 +1,83 @@
+# Mcp Tool Node Configuration
+# This file defines the metadata for the Mcp Tool workflow node
+# The corresponding Python implementation is in: pkg/workflow/nodes/mcp_tool.py
+
+name: mcp_tool
+category: integration
+icon: 🔧
+color: '#ec4899'
+description: workflows.nodes.mcpToolDescription
+inputs:
+- name: arguments
+  type: object
+  required: false
+  label:
+    en_US: Arguments
+    zh_Hans: 参数
+  description:
+    en_US: Tool arguments
+    zh_Hans: 工具参数
+outputs:
+- name: result
+  type: any
+  label:
+    en_US: Result
+    zh_Hans: 结果
+  description:
+    en_US: Tool execution result
+    zh_Hans: 工具执行结果
+- name: success
+  type: boolean
+  label:
+    en_US: Success
+    zh_Hans: 成功
+  description:
+    en_US: Whether tool call was successful
+    zh_Hans: 工具调用是否成功
+- name: error
+  type: string
+  label:
+    en_US: Error
+    zh_Hans: 错误
+  description:
+    en_US: Error message if failed
+    zh_Hans: 失败时的错误信息
+config:
+- name: server_name
+  type: string
+  required: true
+  default: ''
+  label:
+    en_US: MCP Server
+    zh_Hans: MCP 服务器
+  description:
+    en_US: Name of the MCP server
+    zh_Hans: MCP 服务器名称
+- name: tool_name
+  type: string
+  required: true
+  default: ''
+  label:
+    en_US: Tool Name
+    zh_Hans: 工具名称
+  description:
+    en_US: Name of the MCP tool to invoke
+    zh_Hans: 要调用的 MCP 工具名称
+- name: arguments_template
+  type: textarea
+  default: ''
+  label:
+    en_US: Arguments Template
+    zh_Hans: 参数模板
+  description:
+    en_US: Tool arguments as JSON
+    zh_Hans: 工具参数（JSON 格式）
+- name: timeout
+  type: integer
+  default: 30
+  label:
+    en_US: Timeout (seconds)
+    zh_Hans: 超时时间（秒）
+  description:
+    en_US: Maximum execution time
+    zh_Hans: 最大执行时间

@@ -47,6 +47,16 @@ import {
   RagMigrationStatusResp,
   ApiRespTools,
   ApiRespToolDetail,
+  ApiRespWorkflows,
+  ApiRespWorkflow,
+  ApiRespWorkflowNodeTypes,
+  ApiRespWorkflowExecutions,
+  ApiRespWorkflowExecution,
+  ApiRespWorkflowVersions,
+  Workflow,
+  CreateWorkflowRequest,
+  UpdateWorkflowRequest,
+  ExecuteWorkflowRequest,
 } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
@@ -1129,6 +1139,264 @@ export class BackendClient extends BaseHttpClient {
 
   public dismissSurvey(surveyId: string): Promise<object> {
     return this.post('/api/v1/survey/dismiss', { survey_id: surveyId });
+  }
+
+  // ============ Workflow API ============
+  public getWorkflows(
+    sortBy?: string,
+    sortOrder?: string,
+  ): Promise<ApiRespWorkflows> {
+    const params = new URLSearchParams();
+    if (sortBy) params.append('sort_by', sortBy);
+    if (sortOrder) params.append('sort_order', sortOrder);
+    const queryString = params.toString();
+    return this.get(`/api/v1/workflows${queryString ? `?${queryString}` : ''}`);
+  }
+
+  public getWorkflow(uuid: string): Promise<ApiRespWorkflow> {
+    return this.get(`/api/v1/workflows/${uuid}`);
+  }
+
+  public createWorkflow(
+    workflow: CreateWorkflowRequest,
+  ): Promise<{ uuid: string }> {
+    return this.post('/api/v1/workflows', workflow);
+  }
+
+  public updateWorkflow(
+    uuid: string,
+    workflow: UpdateWorkflowRequest,
+  ): Promise<object> {
+    return this.put(`/api/v1/workflows/${uuid}`, workflow);
+  }
+
+  public deleteWorkflow(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/workflows/${uuid}`);
+  }
+
+  public copyWorkflow(uuid: string): Promise<{ uuid: string }> {
+    return this.post(`/api/v1/workflows/${uuid}/copy`);
+  }
+
+  public publishWorkflow(uuid: string): Promise<{ version: number }> {
+    return this.post(`/api/v1/workflows/${uuid}/publish`);
+  }
+
+  public getWorkflowVersions(uuid: string): Promise<ApiRespWorkflowVersions> {
+    return this.get(`/api/v1/workflows/${uuid}/versions`);
+  }
+
+  public rollbackWorkflow(
+    uuid: string,
+    version: number,
+  ): Promise<{ version: number }> {
+    return this.post(`/api/v1/workflows/${uuid}/rollback`, { version });
+  }
+
+  public executeWorkflow(
+    uuid: string,
+    request: ExecuteWorkflowRequest,
+  ): Promise<{ execution_id: string }> {
+    return this.post(`/api/v1/workflows/${uuid}/execute`, request);
+  }
+
+  public getWorkflowExecutions(
+    uuid: string,
+    limit?: number,
+    offset?: number,
+  ): Promise<ApiRespWorkflowExecutions> {
+    const params = new URLSearchParams();
+    if (limit) params.append('limit', limit.toString());
+    if (offset) params.append('offset', offset.toString());
+    const queryString = params.toString();
+    return this.get(
+      `/api/v1/workflows/${uuid}/executions${queryString ? `?${queryString}` : ''}`,
+    );
+  }
+
+  public getWorkflowExecution(
+    workflowUuid: string,
+    executionUuid: string,
+  ): Promise<ApiRespWorkflowExecution> {
+    const url = `/api/v1/workflows/${workflowUuid}/executions/${executionUuid}`;
+    console.debug('[WorkflowExecution] requesting execution detail', {
+      url,
+      workflowUuid,
+      executionUuid,
+      baseURL: this.baseURL,
+      stack: new Error().stack,
+    });
+    return this.get(url);
+  }
+
+  public cancelWorkflowExecution(
+    workflowUuid: string,
+    executionUuid: string,
+  ): Promise<object> {
+    return this.post(`/api/v1/executions/${executionUuid}/cancel`);
+  }
+
+  public getWorkflowNodeTypes(): Promise<ApiRespWorkflowNodeTypes> {
+    return this.get('/api/v1/workflows/_/node-types');
+  }
+
+  public toggleWorkflow(uuid: string, enabled: boolean): Promise<object> {
+    return this.put(`/api/v1/workflows/${uuid}`, { is_enabled: enabled });
+  }
+
+  // ============ Workflow WebSocket Chat API ============
+  public getWorkflowWebSocketHistoryMessages(
+    workflowId: string,
+    sessionType: string,
+  ): Promise<ApiRespWebChatMessages> {
+    return this.get(
+      `/api/v1/workflows/${workflowId}/ws/messages/${sessionType}`,
+    );
+  }
+
+  public async uploadWorkflowWebSocketImage(
+    workflowId: string,
+    imageFile: File,
+  ): Promise<{ file_key: string }> {
+    const formData = new FormData();
+    formData.append('file', imageFile);
+
+    return this.postFile(`/api/v1/files/images`, formData);
+  }
+
+  public resetWorkflowWebSocketSession(
+    workflowId: string,
+    sessionType: string,
+  ): Promise<{ message: string }> {
+    return this.post(`/api/v1/workflows/${workflowId}/ws/reset/${sessionType}`);
+  }
+
+  // ============ Workflow Debug API ============
+  public startWorkflowDebug(
+    uuid: string,
+    options: {
+      context?: {
+        message_content?: string;
+        sender_id?: string;
+        sender_name?: string;
+        platform?: string;
+        conversation_id?: string;
+        is_group?: boolean;
+      };
+      variables?: Record<string, unknown>;
+      breakpoints?: string[];
+    },
+  ): Promise<{ execution_id: string }> {
+    return this.post(`/api/v1/workflows/${uuid}/debug/start`, options);
+  }
+
+  public pauseWorkflowDebug(
+    uuid: string,
+    executionId: string,
+  ): Promise<object> {
+    return this.post(`/api/v1/workflows/${uuid}/debug/${executionId}/pause`);
+  }
+
+  public resumeWorkflowDebug(
+    uuid: string,
+    executionId: string,
+  ): Promise<object> {
+    return this.post(`/api/v1/workflows/${uuid}/debug/${executionId}/resume`);
+  }
+
+  public stepWorkflowDebug(
+    uuid: string,
+    executionId: string,
+  ): Promise<{
+    node_id?: string;
+    node_state?: {
+      status: string;
+      inputs?: Record<string, unknown>;
+      outputs?: Record<string, unknown>;
+      error?: string;
+    };
+    completed: boolean;
+  }> {
+    return this.post(`/api/v1/workflows/${uuid}/debug/${executionId}/step`);
+  }
+
+  public stopWorkflowDebug(uuid: string, executionId: string): Promise<object> {
+    return this.post(`/api/v1/workflows/${uuid}/debug/${executionId}/stop`);
+  }
+
+  public getWorkflowDebugState(
+    uuid: string,
+    executionId: string,
+  ): Promise<{
+    status: string;
+    current_node_id?: string;
+    node_states?: Record<
+      string,
+      {
+        status: string;
+        inputs?: Record<string, unknown>;
+        outputs?: Record<string, unknown>;
+        error?: string;
+        startTime?: string;
+        endTime?: string;
+        duration?: number;
+      }
+    >;
+    new_logs?: Array<{
+      level: 'info' | 'warning' | 'error' | 'debug';
+      nodeId?: string;
+      message: string;
+      data?: Record<string, unknown>;
+    }>;
+    error?: string;
+  }> {
+    return this.get(`/api/v1/workflows/${uuid}/debug/${executionId}/state`);
+  }
+
+  // ============ Workflow Execution Logs API ============
+  public getWorkflowExecutionLogs(
+    workflowUuid: string,
+    executionUuid: string,
+    limit?: number,
+    offset?: number,
+  ): Promise<{
+    logs: Array<{
+      id: string;
+      timestamp: string;
+      level: string;
+      node_id?: string;
+      message: string;
+      data?: Record<string, unknown>;
+    }>;
+    total: number;
+  }> {
+    const params = new URLSearchParams();
+    if (limit) params.append('limit', limit.toString());
+    if (offset) params.append('offset', offset.toString());
+    const queryString = params.toString();
+    return this.get(
+      `/api/v1/workflows/${workflowUuid}/executions/${executionUuid}/logs${queryString ? `?${queryString}` : ''}`,
+    );
+  }
+
+  public getWorkflowStats(uuid: string): Promise<{
+    total_executions: number;
+    successful_executions: number;
+    failed_executions: number;
+    success_rate: number;
+    average_duration_ms: number;
+    last_execution_time?: string;
+  }> {
+    return this.get(`/api/v1/workflows/${uuid}/stats`);
+  }
+
+  public rerunWorkflowExecution(
+    workflowUuid: string,
+    executionUuid: string,
+  ): Promise<{ execution_uuid: string }> {
+    return this.post(
+      `/api/v1/workflows/${workflowUuid}/executions/${executionUuid}/rerun`,
+    );
   }
 }
 

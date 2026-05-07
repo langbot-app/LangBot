@@ -1,0 +1,67 @@
+# Data Transform Node Configuration
+# This file defines the metadata for the Data Transform workflow node
+# The corresponding Python implementation is in: pkg/workflow/nodes/data_transform.py
+
+name: data_transform
+category: process
+icon: "🔄"
+color: '#3b82f6'
+description: 'workflows.nodes.dataTransformDescription'
+
+inputs:
+  - name: data
+    type: any
+    required: true
+    label:
+      en_US: Data
+      zh_Hans: 数据
+    description:
+      en_US: Input data
+      zh_Hans: 输入数据
+
+outputs:
+  - name: result
+    type: any
+    label:
+      en_US: Result
+      zh_Hans: 结果
+    description:
+      en_US: Transform result
+      zh_Hans: 转换结果
+
+config:
+  - name: transform_type
+    type: select
+    required: true
+    default: template
+    options:
+      - template
+      - jsonpath
+      - jmespath
+      - expression
+    label:
+      en_US: Transform Type
+      zh_Hans: 转换类型
+    description:
+      en_US: Type of transformation to perform
+      zh_Hans: 要执行的转换类型
+
+  - name: template
+    type: textarea
+    default: ""
+    label:
+      en_US: Template
+      zh_Hans: 模板
+    description:
+      en_US: Template with {{variable}} syntax
+      zh_Hans: 支持 {{variable}} 语法的模板
+
+  - name: expression
+    type: string
+    default: ""
+    label:
+      en_US: Expression
+      zh_Hans: 表达式
+    description:
+      en_US: JSONPath/JMESPath expression
+      zh_Hans: JSONPath/JMESPath 表达式

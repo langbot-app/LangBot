@@ -1,0 +1,80 @@
+# Cron Trigger Node Configuration
+# This file defines the metadata for the Cron Trigger workflow node
+# The corresponding Python implementation is in: pkg/workflow/nodes/cron_trigger.py
+
+name: cron_trigger
+category: trigger
+icon: "⏰"
+color: '#22c55e'
+description: 'workflows.nodes.cronTriggerDescription'
+
+inputs: []
+
+outputs:
+  - name: trigger_time
+    type: datetime
+    label:
+      en_US: Trigger Time
+      zh_Hans: 触发时间
+    description:
+      en_US: The time when the trigger fired
+      zh_Hans: 触发器触发的时间
+  - name: context
+    type: object
+    label:
+      en_US: Context
+      zh_Hans: 上下文
+    description:
+      en_US: Trigger context information
+      zh_Hans: 触发上下文信息
+
+config:
+  - name: cron_expression
+    type: string
+    required: true
+    default: "0 9 * * *"
+    label:
+      en_US: Cron Expression
+      zh_Hans: Cron 表达式
+    description:
+      en_US: Standard cron expression
+      zh_Hans: 标准 Cron 表达式
+
+  - name: timezone
+    type: select
+    required: true
+    default: "Asia/Shanghai"
+    options:
+      - UTC
+      - Asia/Shanghai
+      - Asia/Tokyo
+      - America/New_York
+      - America/Los_Angeles
+      - Europe/London
+      - Europe/Berlin
+    label:
+      en_US: Timezone
+      zh_Hans: 时区
+    description:
+      en_US: Timezone for the cron schedule
+      zh_Hans: Cron 计划的时区
+
+  - name: description
+    type: string
+    default: ""
+    label:
+      en_US: Description
+      zh_Hans: 描述
+    description:
+      en_US: Description of this scheduled trigger
+      zh_Hans: 此定时触发器的描述
+
+  - name: enabled
+    type: boolean
+    default: true
+    label:
+      en_US: Enabled
+      zh_Hans: 启用
+    description:
+      en_US: Whether this scheduled trigger is active
+      zh_Hans: 此定时触发器是否激活

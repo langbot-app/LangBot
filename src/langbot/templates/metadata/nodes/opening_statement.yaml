@@ -1,0 +1,57 @@
+# Opening Statement Node Configuration
+name: opening_statement
+category: action
+icon: "👋"
+color: '#ef4444'
+description: 'workflows.nodes.openingStatementDescription'
+
+inputs: []
+
+outputs:
+  - name: statement
+    type: string
+    label:
+      en_US: Statement
+      zh_Hans: 声明
+    description:
+      en_US: Opening statement
+      zh_Hans: 开场声明
+  - name: suggested_questions
+    type: array
+    label:
+      en_US: Suggested Questions
+      zh_Hans: 建议问题
+    description:
+      en_US: Suggested questions
+      zh_Hans: 建议问题
+
+config:
+  - name: statement
+    type: textarea
+    required: true
+    label:
+      en_US: Statement
+      zh_Hans: 声明
+    description:
+      en_US: Opening statement text
+      zh_Hans: 开场声明文本
+
+  - name: suggested_questions
+    type: json
+    default: ["问题1？", "问题2？", "问题3？"]
+    label:
+      en_US: Suggested Questions
+      zh_Hans: 建议问题
+    description:
+      en_US: List of suggested questions
+      zh_Hans: 建议问题列表
+
+  - name: show_suggestions
+    type: boolean
+    default: true
+    label:
+      en_US: Show Suggestions
+      zh_Hans: 显示建议
+    description:
+      en_US: Whether to show suggestions
+      zh_Hans: 是否显示建议

@@ -1,0 +1,122 @@
+# Condition Node Configuration
+# This file defines the metadata for the Condition workflow node
+# The corresponding Python implementation is in: pkg/workflow/nodes/condition.py
+
+name: condition
+category: control
+icon: "🔀"
+color: '#8b5cf6'
+description: 'workflows.nodes.conditionDescription'
+
+inputs:
+  - name: input
+    type: any
+    label:
+      en_US: Input
+      zh_Hans: 输入
+    description:
+      en_US: Input data for condition evaluation
+      zh_Hans: 用于条件评估的输入数据
+
+outputs:
+  - name: "true"
+    type: any
+    label:
+      en_US: True
+      zh_Hans: 真
+    description:
+      en_US: Output when condition is true
+      zh_Hans: 条件为真时的输出
+  - name: "false"
+    type: any
+    label:
+      en_US: False
+      zh_Hans: 假
+    description:
+      en_US: Output when condition is false
+      zh_Hans: 条件为假时的输出
+
+config:
+  - name: condition_type
+    type: select
+    required: true
+    default: expression
+    options:
+      - expression
+      - comparison
+      - exists
+      - type_check
+    label:
+      en_US: Condition Type
+      zh_Hans: 条件类型
+    description:
+      en_US: Type of condition to evaluate
+      zh_Hans: 要评估的条件类型
+
+  - name: expression
+    type: string
+    default: ""
+    label:
+      en_US: Expression
+      zh_Hans: 表达式
+    description:
+      en_US: JavaScript expression that evaluates to true/false
+      zh_Hans: 评估为 true/false 的表达式
+
+  - name: left_value
+    type: string
+    default: "{{input}}"
+    label:
+      en_US: Left Value
+      zh_Hans: 左值
+    description:
+      en_US: Left side of comparison
+      zh_Hans: 比较的左侧
+
+  - name: operator
+    type: select
+    default: eq
+    options:
+      - eq
+      - neq
+      - gt
+      - gte
+      - lt
+      - lte
+      - contains
+      - starts_with
+      - ends_with
+      - matches
+    label:
+      en_US: Operator
+      zh_Hans: 运算符
+    description:
+      en_US: Comparison operator
+      zh_Hans: 比较运算符
+
+  - name: right_value
+    type: string
+    default: ""
+    label:
+      en_US: Right Value
+      zh_Hans: 右值
+    description:
+      en_US: Right side of comparison
+      zh_Hans: 比较的右侧
+
+  - name: expected_type
+    type: select
+    default: string
+    options:
+      - string
+      - number
+      - boolean
+      - object
+      - array
+      - "null"
+    label:
+      en_US: Expected Type
+      zh_Hans: 期望类型
+    description:
+      en_US: The type to check for
+      zh_Hans: 要检查的类型

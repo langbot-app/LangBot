@@ -1,0 +1,157 @@
+# HTTP Request Node Configuration
+# This file defines the metadata for the HTTP Request workflow node
+# The corresponding Python implementation is in: pkg/workflow/nodes/http_request.py
+
+name: http_request
+category: action
+icon: "🌍"
+color: '#10b981'
+description: 'workflows.nodes.httpRequestDescription'
+
+inputs:
+  - name: body
+    type: any
+    required: false
+    label:
+      en_US: Body
+      zh_Hans: 请求体
+    description:
+      en_US: Request body data
+      zh_Hans: 请求体数据
+  - name: variables
+    type: object
+    required: false
+    label:
+      en_US: Variables
+      zh_Hans: 变量
+    description:
+      en_US: Variables for URL/header templates
+      zh_Hans: URL/请求头模板的变量
+
+outputs:
+  - name: response
+    type: any
+    label:
+      en_US: Response
+      zh_Hans: 响应
+    description:
+      en_US: Response body
+      zh_Hans: 响应体
+  - name: status_code
+    type: number
+    label:
+      en_US: Status Code
+      zh_Hans: 状态码
+    description:
+      en_US: HTTP status code
+      zh_Hans: HTTP 状态码
+  - name: headers
+    type: object
+    label:
+      en_US: Headers
+      zh_Hans: 响应头
+    description:
+      en_US: Response headers
+      zh_Hans: 响应头
+  - name: success
+    type: boolean
+    label:
+      en_US: Success
+      zh_Hans: 成功
+    description:
+      en_US: Whether request was successful
+      zh_Hans: 请求是否成功
+
+config:
+  - name: method
+    type: select
+    required: true
+    default: GET
+    options:
+      - GET
+      - POST
+      - PUT
+      - PATCH
+      - DELETE
+    label:
+      en_US: Method
+      zh_Hans: 方法
+    description:
+      en_US: HTTP method
+      zh_Hans: HTTP 方法
+
+  - name: url
+    type: string
+    required: true
+    default: ""
+    label:
+      en_US: URL
+      zh_Hans: URL
+    description:
+      en_US: Request URL
+      zh_Hans: 请求 URL
+
+  - name: headers
+    type: json
+    default: "{}"
+    label:
+      en_US: Headers
+      zh_Hans: 请求头
+    description:
+      en_US: Request headers as JSON
+      zh_Hans: 请求头（JSON 格式）
+
+  - name: body_type
+    type: select
+    default: json
+    options:
+      - none
+      - json
+      - form
+      - raw
+    label:
+      en_US: Body Type
+      zh_Hans: 请求体类型
+    description:
+      en_US: Type of request body
+      zh_Hans: 请求体的类型
+
+  - name: body_template
+    type: textarea
+    default: ""
+    label:
+      en_US: Body Template
+      zh_Hans: 请求体模板
+    description:
+      en_US: Request body template
+      zh_Hans: 请求体模板
+
+  - name: timeout
+    type: integer
+    default: 30
+    label:
+      en_US: Timeout (seconds)
+      zh_Hans: 超时时间（秒）
+    description:
+      en_US: Request timeout in seconds
+      zh_Hans: 请求超时时间（秒）
+
+  - name: retry_count
+    type: integer
+    default: 0
+    label:
+      en_US: Retry Count
+      zh_Hans: 重试次数
+    description:
+      en_US: Number of retries on failure
+      zh_Hans: 失败时的重试次数
+
+  - name: ignore_ssl
+    type: boolean
+    default: false
+    label:
+      en_US: Ignore SSL Errors
+      zh_Hans: 忽略 SSL 错误
+    description:
+      en_US: Ignore SSL certificate verification errors
+      zh_Hans: 忽略 SSL 证书验证错误

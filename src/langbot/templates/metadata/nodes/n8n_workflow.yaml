@@ -1,0 +1,192 @@
+# n8n Workflow Node Configuration
+name: n8n_workflow
+label:
+  en_US: n8n Workflow
+  zh_Hans: n8n 工作流
+description:
+  en_US: Call n8n workflow API
+  zh_Hans: 调用 n8n 工作流 API
+category: integration
+icon: Workflow
+color: '#3b82f6'
+
+inputs:
+  - name: payload
+    type: object
+    label:
+      en_US: Payload
+      zh_Hans: 输入数据
+    description:
+      en_US: Workflow input data
+      zh_Hans: 工作流输入数据
+    required: false
+
+outputs:
+  - name: result
+    type: any
+    label:
+      en_US: Result
+      zh_Hans: 结果
+    description:
+      en_US: Workflow execution result
+      zh_Hans: 工作流执行结果
+  - name: success
+    type: boolean
+    label:
+      en_US: Success
+      zh_Hans: 成功
+    description:
+      en_US: Whether the call was successful
+      zh_Hans: 调用是否成功
+
+config:
+  - name: webhook-url
+    label:
+      en_US: Webhook URL
+      zh_Hans: Webhook URL
+    description:
+      en_US: n8n workflow webhook URL
+      zh_Hans: n8n 工作流 Webhook URL
+    type: string
+    required: true
+    default: ''
+
+  - name: auth-type
+    label:
+      en_US: Authentication Type
+      zh_Hans: 认证类型
+    description:
+      en_US: Authentication type for webhook call
+      zh_Hans: Webhook 调用的认证类型
+    type: select
+    required: true
+    default: none
+    options:
+      - name: none
+        label:
+          en_US: None
+          zh_Hans: 无认证
+      - name: basic
+        label:
+          en_US: Basic Auth
+          zh_Hans: 基本认证
+      - name: jwt
+        label:
+          en_US: JWT
+          zh_Hans: JWT认证
+      - name: header
+        label:
+          en_US: Header Auth
+          zh_Hans: 请求头认证
+
+  - name: basic-username
+    label:
+      en_US: Username
+      zh_Hans: 用户名
+    description:
+      en_US: Username for Basic Auth
+      zh_Hans: 基本认证的用户名
+    type: string
+    required: false
+    default: ''
+    show_if:
+      field: auth-type
+      operator: eq
+      value: basic
+
+  - name: basic-password
+    label:
+      en_US: Password
+      zh_Hans: 密码
+    description:
+      en_US: Password for Basic Auth
+      zh_Hans: 基本认证的密码
+    type: string
+    required: false
+    default: ''
+    show_if:
+      field: auth-type
+      operator: eq
+      value: basic
+
+  - name: jwt-secret
+    label:
+      en_US: Secret
+      zh_Hans: 密钥
+    description:
+      en_US: Secret for JWT authentication
+      zh_Hans: JWT认证的密钥
+    type: string
+    required: false
+    default: ''
+    show_if:
+      field: auth-type
+      operator: eq
+      value: jwt
+
+  - name: jwt-algorithm
+    label:
+      en_US: Algorithm
+      zh_Hans: 算法
+    description:
+      en_US: Algorithm for JWT authentication
+      zh_Hans: JWT认证的算法
+    type: string
+    required: false
+    default: HS256
+    show_if:
+      field: auth-type
+      operator: eq
+      value: jwt
+
+  - name: header-name
+    label:
+      en_US: Header Name
+      zh_Hans: 请求头名称
+    description:
+      en_US: Header name for Header Auth
+      zh_Hans: 请求头认证的名称
+    type: string
+    required: false
+    default: ''
+    show_if:
+      field: auth-type
+      operator: eq
+      value: header
+
+  - name: header-value
+    label:
+      en_US: Header Value
+      zh_Hans: 请求头值
+    description:
+      en_US: Header value for Header Auth
+      zh_Hans: 请求头认证的值
+    type: string
+    required: false
+    default: ''
+    show_if:
+      field: auth-type
+      operator: eq
+      value: header
+
+  - name: timeout
+    label:
+      en_US: Timeout (seconds)
+      zh_Hans: 超时时间（秒）
+    description:
+      en_US: Request timeout in seconds
+      zh_Hans: 请求超时时间（秒）
+    type: integer
+    required: false
+    default: 120
+
+  - name: output-key
+    label:
+      en_US: Output Key
+      zh_Hans: 输出键名
+    description:
+      en_US: Key name of output in webhook response
+      zh_Hans: Webhook 响应中输出内容的键名
+    type: string
+    required: false
+    default: response

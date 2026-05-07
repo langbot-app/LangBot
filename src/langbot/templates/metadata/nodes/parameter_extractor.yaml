@@ -1,0 +1,87 @@
+# Parameter Extractor Node Configuration
+# This file defines the metadata for the Parameter Extractor workflow node
+# The corresponding Python implementation is in: pkg/workflow/nodes/parameter_extractor.py
+
+name: parameter_extractor
+category: process
+icon: "🔍"
+color: '#8b5cf6'
+description: 'workflows.nodes.parameterExtractorDescription'
+
+inputs:
+  - name: text
+    type: string
+    label:
+      en_US: Text
+      zh_Hans: 文本
+    description:
+      en_US: Text to extract parameters from
+      zh_Hans: 要提取参数的文本
+
+outputs:
+  - name: parameters
+    type: object
+    label:
+      en_US: Parameters
+      zh_Hans: 参数
+    description:
+      en_US: Extracted parameters as key-value pairs
+      zh_Hans: 提取的参数键值对
+  - name: missing
+    type: array
+    label:
+      en_US: Missing
+      zh_Hans: 缺失项
+    description:
+      en_US: List of required parameters that could not be extracted
+      zh_Hans: 无法提取的必需参数列表
+  - name: success
+    type: boolean
+    label:
+      en_US: Success
+      zh_Hans: 成功
+    description:
+      en_US: Whether all required parameters were extracted
+      zh_Hans: 是否所有必需参数都已提取
+
+config:
+  - name: model
+    type: llm-model-selector
+    required: true
+    label:
+      en_US: Extraction Model
+      zh_Hans: 提取模型
+    description:
+      en_US: Select the model for parameter extraction
+      zh_Hans: 选择用于参数提取的模型
+
+  - name: parameters
+    type: textarea
+    required: true
+    default: "[]"
+    label:
+      en_US: Parameters Schema
+      zh_Hans: 参数架构
+    description:
+      en_US: JSON array defining expected parameters
+      zh_Hans: 定义期望参数的 JSON 数组
+
+  - name: extraction_prompt
+    type: textarea
+    default: ""
+    label:
+      en_US: Extraction Prompt
+      zh_Hans: 提取提示
+    description:
+      en_US: Additional instructions for the extraction model
+      zh_Hans: 提取模型的额外指令
+
+  - name: strict_mode
+    type: boolean
+    default: true
+    label:
+      en_US: Strict Mode
+      zh_Hans: 严格模式
+    description:
+      en_US: Fail if any required parameter cannot be extracted
+      zh_Hans: 如果任何必需参数无法提取则失败
