@@ -13,15 +13,21 @@ import traceback
 import telegram
 import telegram.ext
 from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
+from telegram.ext import (
+    ApplicationBuilder,
+    CallbackQueryHandler,
+    ChatMemberHandler,
+    ContextTypes,
+    MessageHandler,
+    MessageReactionHandler,
+    filters,
+)
 import telegramify_markdown
 import pydantic
 
-from langbot.pkg.utils import httpclient
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
-import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
 
 from langbot.pkg.platform.adapters.telegram.message_converter import TelegramMessageConverter
@@ -58,8 +64,14 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
 
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger):
         async def telegram_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            if not update.message and not update.edited_message and not update.chat_member \
-                    and not update.my_chat_member and not update.callback_query and not update.message_reaction:
+            if (
+                not update.message
+                and not update.edited_message
+                and not update.chat_member
+                and not update.my_chat_member
+                and not update.callback_query
+                and not update.message_reaction
+            ):
                 return
 
             # Skip messages from the bot itself
@@ -68,23 +80,16 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
 
             try:
                 # Legacy event type callbacks (compat with existing botmgr FriendMessage / GroupMessage listeners)
-                if update.message and (platform_events.FriendMessage in self.listeners
-                                       or platform_events.GroupMessage in self.listeners):
+                if update.message and (
+                    platform_events.FriendMessage in self.listeners or platform_events.GroupMessage in self.listeners
+                ):
                     legacy_event = await self.legacy_event_converter.target2yiri(update, self.bot, self.bot_account_id)
                     if legacy_event and type(legacy_event) in self.listeners:
                         await self.listeners[type(legacy_event)](legacy_event, self)
 
-                # EBA wildcard event callback (Event base class registered as wildcard)
-                if platform_events.Event in self.listeners:
-                    eba_event = await self.event_converter.target2yiri(update, self.bot, self.bot_account_id)
-                    if eba_event:
-                        await self.listeners[platform_events.Event](eba_event, self)
-
-                # EBA specific event type callback
-                if platform_events.EBAEvent in self.listeners:
-                    eba_event = await self.event_converter.target2yiri(update, self.bot, self.bot_account_id)
-                    if eba_event:
-                        await self.listeners[platform_events.EBAEvent](eba_event, self)
+                eba_event = await self.event_converter.target2yiri(update, self.bot, self.bot_account_id)
+                if eba_event:
+                    await self._dispatch_eba_event(eba_event)
 
             except Exception:
                 await self.logger.error(f'Error in telegram callback: {traceback.format_exc()}')
@@ -106,6 +111,25 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
                 telegram_callback,
             )
         )
+        application.add_handler(
+            ChatMemberHandler(
+                telegram_callback,
+                ChatMemberHandler.CHAT_MEMBER,
+            )
+        )
+        application.add_handler(
+            ChatMemberHandler(
+                telegram_callback,
+                ChatMemberHandler.MY_CHAT_MEMBER,
+            )
+        )
+        application.add_handler(CallbackQueryHandler(telegram_callback))
+        application.add_handler(
+            MessageReactionHandler(
+                telegram_callback,
+                MessageReactionHandler.MESSAGE_REACTION,
+            )
+        )
 
         super().__init__(
             config=config,
@@ -122,35 +146,33 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
 
     def get_supported_events(self) -> list[str]:
         return [
-            "message.received",
-            "message.edited",
-            "message.deleted",
-            "message.reaction",
-            "group.member_joined",
-            "group.member_left",
-            "group.member_banned",
-            "group.info_updated",
-            "bot.invited_to_group",
-            "bot.removed_from_group",
+            'message.received',
+            'message.edited',
+            'message.reaction',
+            'group.member_joined',
+            'group.member_left',
+            'group.member_banned',
+            'bot.invited_to_group',
+            'bot.removed_from_group',
         ]
 
     def get_supported_apis(self) -> list[str]:
         return [
-            "send_message",
-            "reply_message",
-            "edit_message",
-            "delete_message",
-            "forward_message",
-            "get_group_info",
-            "get_group_member_list",
-            "get_group_member_info",
-            "get_user_info",
-            "get_file_url",
-            "mute_member",
-            "unmute_member",
-            "kick_member",
-            "leave_group",
-            "call_platform_api",
+            'send_message',
+            'reply_message',
+            'edit_message',
+            'delete_message',
+            'forward_message',
+            'get_group_info',
+            'get_group_member_list',
+            'get_group_member_info',
+            'get_user_info',
+            'get_file_url',
+            'mute_member',
+            'unmute_member',
+            'kick_member',
+            'leave_group',
+            'call_platform_api',
         ]
 
     # ---- Message Send / Reply (preserving original logic) ----
@@ -337,6 +359,14 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
 
     # ---- Event Listeners ----
 
+    async def _dispatch_eba_event(self, event: platform_events.EBAEvent):
+        """Dispatch once, preferring the most specific registered listener."""
+        for event_type in (type(event), platform_events.EBAEvent, platform_events.Event):
+            callback = self.listeners.get(event_type)
+            if callback:
+                await callback(event, self)
+                return
+
     def register_listener(
         self,
         event_type: typing.Type[platform_events.Event],
@@ -366,7 +396,8 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
         handler = PLATFORM_API_MAP.get(action)
         if handler is None:
             from langbot_plugin.api.entities.builtin.platform.errors import NotSupportedError
-            raise NotSupportedError(f"call_platform_api:{action}")
+
+            raise NotSupportedError(f'call_platform_api:{action}')
         return await handler(self.bot, params)
 
     # ---- Lifecycle ----

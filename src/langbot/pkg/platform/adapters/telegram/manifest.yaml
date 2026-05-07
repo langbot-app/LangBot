@@ -41,12 +41,10 @@ spec:
   supported_events:
     - message.received
     - message.edited
-    - message.deleted
     - message.reaction
     - group.member_joined
     - group.member_left
     - group.member_banned
-    - group.info_updated
     - bot.invited_to_group
     - bot.removed_from_group
 

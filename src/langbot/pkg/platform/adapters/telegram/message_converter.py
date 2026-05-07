@@ -6,7 +6,6 @@ Migrated from the original sources/telegram.py TelegramMessageConverter. Logic u
 from __future__ import annotations
 
 import base64
-import typing
 
 import telegram
 

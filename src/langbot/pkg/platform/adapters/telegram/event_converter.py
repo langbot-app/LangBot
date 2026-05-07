@@ -12,7 +12,6 @@ from telegram import Update
 
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
-import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 
 from langbot.pkg.platform.adapters.telegram.message_converter import TelegramMessageConverter
@@ -22,7 +21,7 @@ def _make_user(tg_user: telegram.User) -> platform_entities.User:
     """Convert a Telegram User to a unified User entity."""
     return platform_entities.User(
         id=tg_user.id,
-        nickname=tg_user.first_name or "",
+        nickname=tg_user.first_name or '',
         username=tg_user.username,
         is_bot=tg_user.is_bot,
     )
@@ -32,7 +31,7 @@ def _make_user_group(tg_chat: telegram.Chat) -> platform_entities.UserGroup:
     """Convert a Telegram Chat to a unified UserGroup entity."""
     return platform_entities.UserGroup(
         id=tg_chat.id,
-        name=tg_chat.title or tg_chat.first_name or "",
+        name=tg_chat.title or tg_chat.first_name or '',
         description=tg_chat.description if hasattr(tg_chat, 'description') else None,
     )
 
@@ -69,8 +68,10 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
         import time
 
         # ---- Message event ----
-        if update.message and update.message.text is not None or (
-            update.message and (update.message.photo or update.message.voice or update.message.document)
+        if (
+            update.message
+            and update.message.text is not None
+            or (update.message and (update.message.photo or update.message.voice or update.message.document))
         ):
             return await TelegramEventConverter._convert_message(update, bot, bot_account_id)
 
@@ -89,15 +90,15 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
         # ---- Callback query (button clicks, etc.) ----
         if update.callback_query:
             return platform_events.PlatformSpecificEvent(
-                type="platform.specific",
+                type='platform.specific',
                 timestamp=time.time(),
-                adapter_name="telegram",
-                action="callback_query",
+                adapter_name='telegram',
+                action='callback_query',
                 data={
-                    "callback_query_id": update.callback_query.id,
-                    "data": update.callback_query.data,
-                    "from_user_id": update.callback_query.from_user.id if update.callback_query.from_user else None,
-                    "message_id": update.callback_query.message.message_id if update.callback_query.message else None,
+                    'callback_query_id': update.callback_query.id,
+                    'data': update.callback_query.data,
+                    'from_user_id': update.callback_query.from_user.id if update.callback_query.from_user else None,
+                    'message_id': update.callback_query.message.message_id if update.callback_query.message else None,
                 },
                 source_platform_object=update,
             )
@@ -108,23 +109,25 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
 
         # ---- Fallback: wrap as PlatformSpecificEvent ----
         return platform_events.PlatformSpecificEvent(
-            type="platform.specific",
+            type='platform.specific',
             timestamp=time.time(),
-            adapter_name="telegram",
-            action="unknown_update",
-            data={"update_id": update.update_id},
+            adapter_name='telegram',
+            action='unknown_update',
+            data={'update_id': update.update_id},
             source_platform_object=update,
         )
 
     @staticmethod
     async def _convert_message(
-        update: Update, bot: telegram.Bot, bot_account_id: str,
+        update: Update,
+        bot: telegram.Bot,
+        bot_account_id: str,
     ) -> platform_events.MessageReceivedEvent:
         """Convert a Telegram message to MessageReceivedEvent."""
         message = update.message
         lb_message = await TelegramMessageConverter.target2yiri(message, bot, bot_account_id)
 
-        sender = _make_user(message.from_user) if message.from_user else platform_entities.User(id="")
+        sender = _make_user(message.from_user) if message.from_user else platform_entities.User(id='')
         chat = message.chat
         ct = _chat_type(chat)
 
@@ -133,9 +136,9 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
             group = _make_user_group(chat)
 
         return platform_events.MessageReceivedEvent(
-            type="message.received",
+            type='message.received',
             timestamp=message.date.timestamp() if message.date else 0.0,
-            adapter_name="telegram",
+            adapter_name='telegram',
             message_id=message.message_id,
             message_chain=lb_message,
             sender=sender,
@@ -147,13 +150,15 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
 
     @staticmethod
     async def _convert_edited_message(
-        update: Update, bot: telegram.Bot, bot_account_id: str,
+        update: Update,
+        bot: telegram.Bot,
+        bot_account_id: str,
     ) -> platform_events.MessageEditedEvent:
         """Convert a Telegram edited message to MessageEditedEvent."""
         message = update.edited_message
         lb_message = await TelegramMessageConverter.target2yiri(message, bot, bot_account_id)
 
-        editor = _make_user(message.from_user) if message.from_user else platform_entities.User(id="")
+        editor = _make_user(message.from_user) if message.from_user else platform_entities.User(id='')
         chat = message.chat
         ct = _chat_type(chat)
 
@@ -162,9 +167,9 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
             group = _make_user_group(chat)
 
         return platform_events.MessageEditedEvent(
-            type="message.edited",
+            type='message.edited',
             timestamp=message.edit_date.timestamp() if message.edit_date else 0.0,
-            adapter_name="telegram",
+            adapter_name='telegram',
             message_id=message.message_id,
             new_content=lb_message,
             editor=editor,
@@ -182,22 +187,27 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
         cm = update.chat_member
         chat = cm.chat
         group = _make_user_group(chat)
-        member = _make_user(cm.new_chat_member.user) if cm.new_chat_member else platform_entities.User(id="")
+        member = _make_user(cm.new_chat_member.user) if cm.new_chat_member else platform_entities.User(id='')
         inviter = _make_user(cm.from_user) if cm.from_user else None
 
         old_status = cm.old_chat_member.status if cm.old_chat_member else None
         new_status = cm.new_chat_member.status if cm.new_chat_member else None
 
         # Member joined
-        if old_status in (None, 'left', 'kicked') and new_status in ('member', 'administrator', 'creator', 'restricted'):
+        if old_status in (None, 'left', 'kicked') and new_status in (
+            'member',
+            'administrator',
+            'creator',
+            'restricted',
+        ):
             return platform_events.MemberJoinedEvent(
-                type="group.member_joined",
+                type='group.member_joined',
                 timestamp=cm.date.timestamp() if cm.date else time.time(),
-                adapter_name="telegram",
+                adapter_name='telegram',
                 group=group,
                 member=member,
                 inviter=inviter,
-                join_type="invite" if inviter and inviter.id != member.id else "direct",
+                join_type='invite' if inviter and inviter.id != member.id else 'direct',
                 source_platform_object=update,
             )
 
@@ -205,9 +215,9 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
         if old_status in ('member', 'administrator', 'creator', 'restricted') and new_status in ('left', 'kicked'):
             is_kicked = new_status == 'kicked'
             return platform_events.MemberLeftEvent(
-                type="group.member_left",
+                type='group.member_left',
                 timestamp=cm.date.timestamp() if cm.date else time.time(),
-                adapter_name="telegram",
+                adapter_name='telegram',
                 group=group,
                 member=member,
                 is_kicked=is_kicked,
@@ -223,9 +233,9 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
                 if hasattr(restricted, 'until_date') and restricted.until_date:
                     duration = int(restricted.until_date.timestamp() - time.time())
                 return platform_events.MemberBannedEvent(
-                    type="group.member_banned",
+                    type='group.member_banned',
                     timestamp=cm.date.timestamp() if cm.date else time.time(),
-                    adapter_name="telegram",
+                    adapter_name='telegram',
                     group=group,
                     member=member,
                     operator=inviter,
@@ -235,15 +245,15 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
 
         # Other chat_member changes -> PlatformSpecificEvent
         return platform_events.PlatformSpecificEvent(
-            type="platform.specific",
+            type='platform.specific',
             timestamp=cm.date.timestamp() if cm.date else time.time(),
-            adapter_name="telegram",
-            action="chat_member_updated",
+            adapter_name='telegram',
+            action='chat_member_updated',
             data={
-                "old_status": old_status,
-                "new_status": new_status,
-                "chat_id": chat.id,
-                "user_id": member.id,
+                'old_status': old_status,
+                'new_status': new_status,
+                'chat_id': chat.id,
+                'user_id': member.id,
             },
             source_platform_object=update,
         )
@@ -264,9 +274,9 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
         # Bot invited to group
         if old_status in (None, 'left', 'kicked') and new_status in ('member', 'administrator'):
             return platform_events.BotInvitedToGroupEvent(
-                type="bot.invited_to_group",
+                type='bot.invited_to_group',
                 timestamp=mcm.date.timestamp() if mcm.date else time.time(),
-                adapter_name="telegram",
+                adapter_name='telegram',
                 group=group,
                 inviter=inviter,
                 source_platform_object=update,
@@ -275,9 +285,9 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
         # Bot removed from group
         if old_status in ('member', 'administrator', 'creator') and new_status in ('left', 'kicked'):
             return platform_events.BotRemovedFromGroupEvent(
-                type="bot.removed_from_group",
+                type='bot.removed_from_group',
                 timestamp=mcm.date.timestamp() if mcm.date else time.time(),
-                adapter_name="telegram",
+                adapter_name='telegram',
                 group=group,
                 operator=inviter,
                 source_platform_object=update,
@@ -291,9 +301,9 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
                 if hasattr(restricted, 'until_date') and restricted.until_date:
                     duration = int(restricted.until_date.timestamp() - time.time())
                 return platform_events.BotMutedEvent(
-                    type="bot.muted",
+                    type='bot.muted',
                     timestamp=mcm.date.timestamp() if mcm.date else time.time(),
-                    adapter_name="telegram",
+                    adapter_name='telegram',
                     group=group,
                     operator=inviter,
                     duration=duration,
@@ -301,14 +311,14 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
                 )
 
         return platform_events.PlatformSpecificEvent(
-            type="platform.specific",
+            type='platform.specific',
             timestamp=mcm.date.timestamp() if mcm.date else time.time(),
-            adapter_name="telegram",
-            action="my_chat_member_updated",
+            adapter_name='telegram',
+            action='my_chat_member_updated',
             data={
-                "old_status": old_status,
-                "new_status": new_status,
-                "chat_id": chat.id,
+                'old_status': old_status,
+                'new_status': new_status,
+                'chat_id': chat.id,
             },
             source_platform_object=update,
         )
@@ -330,7 +340,7 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
                 elif hasattr(r, 'custom_emoji_id'):
                     new_emojis.append(str(r.custom_emoji_id))
 
-        user = platform_entities.User(id="")
+        user = platform_entities.User(id='')
         if reaction.user:
             user = _make_user(reaction.user)
 
@@ -338,12 +348,12 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
         group = _make_user_group(chat) if ct == platform_entities.ChatType.GROUP else None
 
         return platform_events.MessageReactionEvent(
-            type="message.reaction",
+            type='message.reaction',
             timestamp=reaction.date.timestamp() if reaction.date else time.time(),
-            adapter_name="telegram",
+            adapter_name='telegram',
             message_id=reaction.message_id,
             user=user,
-            reaction=new_emojis[0] if new_emojis else "",
+            reaction=new_emojis[0] if new_emojis else '',
             is_add=len(new_emojis) > 0,
             chat_type=ct,
             chat_id=chat.id,
