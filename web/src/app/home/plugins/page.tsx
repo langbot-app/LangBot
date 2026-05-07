@@ -315,6 +315,7 @@ function PluginListView() {
             taskId,
             pluginName: pluginDisplayName,
             source: 'github',
+            extensionType: 'plugin',
             fileSize: assetSize,
           });
           setSelectedTaskId(taskKey);
@@ -337,6 +338,7 @@ function PluginListView() {
             taskId,
             pluginName: fileName,
             source: 'local',
+            extensionType: 'plugin',
             fileSize: fileSize,
           });
           setSelectedTaskId(taskKey);

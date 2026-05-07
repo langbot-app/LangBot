@@ -25,7 +25,7 @@
 <a href="https://link.langbot.app/zh/docs/guide">文档</a> ｜
 <a href="https://link.langbot.app/zh/docs/api">API</a> ｜
 <a href="https://space.langbot.app/cloud">Cloud</a> ｜
-<a href="https://space.langbot.app">插件市场</a> ｜
+<a href="https://space.langbot.app">拓展市场</a> ｜
 <a href="https://langbot.featurebase.app/roadmap">路线图</a>
 
 </div>
