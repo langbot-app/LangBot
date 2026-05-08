@@ -11,17 +11,56 @@ Due to circular import dependencies in the pipeline module structure, the test f
 ```
 tests/
 ├── __init__.py
-├── unit_tests/                    # Unit tests
-│   ├── box/                       # Box module tests
-│   ├── config/                    # Configuration tests
-│   ├── pipeline/                  # Pipeline stage tests
-│   │   └── conftest.py           # Shared fixtures and test infrastructure
-│   ├── platform/                  # Platform adapter tests
-│   ├── plugin/                    # Plugin system tests
-│   ├── provider/                  # Provider tests
-│   └── storage/                   # Storage tests
-└── README.md                      # This file
+├── factories/                    # Shared test factories
+│   ├── __init__.py              # Factory exports
+│   ├── app.py                   # FakeApp factory
+│   ├── message.py               # Message/query factories
+│   ├── provider.py              # FakeProvider factory
+│   └── platform.py              # FakePlatform factory
+├── smoke/                        # Smoke tests (quick validation)
+│   └── test_fake_message_flow.py
+├── unit_tests/                   # Unit tests
+│   ├── box/                      # Box module tests
+│   ├── config/                   # Configuration tests
+│   ├── pipeline/                 # Pipeline stage tests
+│   │   └── conftest.py          # Shared fixtures and test infrastructure
+│   ├── platform/                 # Platform adapter tests
+│   ├── plugin/                   # Plugin system tests
+│   ├── provider/                 # Provider tests
+│   └── storage/                  # Storage tests
+└── README.md                     # This file
 ```
+
+## Test Factories
+
+The `tests/factories/` package provides reusable test factories:
+
+```python
+from tests.factories import (
+    FakeApp,          # Mock application
+    FakeProvider,     # Fake LLM provider
+    FakePlatform,     # Fake platform adapter
+    text_query,       # Create text query
+    group_text_query, # Create group query
+    command_query,    # Create command query
+)
+
+# Create fake app
+app = FakeApp()
+
+# Create query with text
+query = text_query("hello world")
+
+# Create fake provider that returns specific response
+provider = FakeProvider().returns("test response")
+
+# Create fake platform for outbound capture
+platform = FakePlatform()
+await platform.reply_message(query.message_event, reply_chain)
+outbound = platform.get_outbound_messages()
+```
+
+See `tests/factories/__init__.py` for all available factories.
 
 ## Test Architecture
 
@@ -43,7 +82,28 @@ The test suite uses a centralized fixture system that provides:
 
 ## Running Tests
 
-### Using the test runner script (recommended)
+### Quick self-test for developers
+
+For local branch validation without real provider keys:
+
+```bash
+make test-quick
+```
+
+or
+
+```bash
+bash scripts/test-quick.sh
+```
+
+This runs:
+1. Ruff lint check
+2. Unit tests
+3. Smoke tests
+
+Suitable for quick validation before committing.
+
+### Using the test runner script (recommended for full coverage)
 ```bash
 bash run_tests.sh
 ```
