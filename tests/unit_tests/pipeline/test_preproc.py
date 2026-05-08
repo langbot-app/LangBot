@@ -20,7 +20,6 @@ from tests.factories import (
     text_query,
     empty_query,
     image_query,
-    unsupported_query,
     group_text_query,
 )
 
@@ -198,7 +197,6 @@ class TestPreProcessorImageSegment:
         # Image query with base64
         query = image_query(text="look at this", url=None)
         # Set base64 on the image component
-        from tests.factories.message import image_chain
         import langbot_plugin.api.entities.builtin.platform.message as platform_message
         chain = platform_message.MessageChain([
             platform_message.Plain(text="look at this"),

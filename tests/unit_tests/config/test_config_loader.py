@@ -12,7 +12,6 @@ Tests cover:
 from __future__ import annotations
 
 import pytest
-import os
 import json
 
 from langbot.pkg.config.impls.yaml import YAMLConfigFile
