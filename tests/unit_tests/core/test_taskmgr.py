@@ -16,7 +16,7 @@ from __future__ import annotations
 import pytest
 import asyncio
 import sys
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock
 from importlib import import_module
 
 
