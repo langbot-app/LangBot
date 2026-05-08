@@ -18,11 +18,11 @@
 - SDK 提供稳定的 `AgentRunner` 组件接口、上下文实体、返回实体、配置 schema 和运行期 API。
 - LangBot 负责 runner 发现、配置装配、权限校验、运行调度、流式结果转换、错误隔离和兼容层。
 - 为未来 EBA 的非消息事件接入预留 `event`、`actor`、`subject`、`platform_capabilities` 等上下文字段。
+- 现有内置 `RequestRunner` 最终强制迁移为插件形态，由 LangBot 通过同一套插件化 runner 协议调用。
 
 非目标：
 
 - 不在本阶段实现 EBA EventBus、EventRouter、平台多事件监听或统一平台 API。
-- 不要求所有内置 `RequestRunner` 立即改写成插件。
 - 不改变现有 Pipeline 的阶段链和私聊/群聊入口。
 - 不引入插件内自定义长驻调度器；Agent Runner 仍由 LangBot 显式调用。
 
@@ -115,6 +115,8 @@ class AgentRunner(BaseComponent):
         ...
 ```
 
+一个插件可以声明多个 `AgentRunner` 组件。每个 runner 使用独立的 component manifest、配置 schema、能力声明和权限声明；LangBot 侧以 `plugin:author/name/runner` 作为稳定 ID 区分。插件包可以因此同时提供多个执行策略，例如通用聊天 runner、客服 runner、工单 runner，而不需要拆成多个插件。
+
 `get_capabilities()` 用来告诉 LangBot 这个 runner 是否支持：
 
 - `streaming`
@@ -178,7 +180,6 @@ class AgentRunResult(BaseModel):
         "tool.call.started",
         "tool.call.completed",
         "state.updated",
-        "action.requested",
         "run.completed",
         "run.failed",
     ]
@@ -192,7 +193,7 @@ class AgentRunResult(BaseModel):
 - `run.completed` 且带 `message` -> `Message`
 - `run.failed` -> 记录错误并按当前 runner 错误策略返回
 
-未来 EBA 可使用 `action.requested` 表达平台动作，例如编辑消息、通过好友请求、踢人等。本阶段只保留类型，不执行平台动作。
+`action.requested` 不进入本阶段的必选协议。它表示“Agent 希望 LangBot 执行一个非文本平台动作”，例如未来 EBA 里编辑消息、通过好友请求、踢人等。当前 Agent Runner 仍作为 Pipeline 的一个 stage 执行，输出只需要覆盖消息流、工具调用状态和运行完成/失败；如果实验性 runner 返回 `action.requested`，LangBot 只记录 telemetry 并忽略执行。
 
 ### 5.4 LangBotAPIProxy
 
@@ -219,7 +220,11 @@ SDK 应把这些能力按 capability 分组。LangBot 在调用 runner 前根据
 
 当前 `PipelineService.get_pipeline_metadata()` 可以继续作为 UI 入口，但应改为读取 registry，而不是直接拼插件列表。
 
-### 6.2 配置模型
+### 6.2 配置模型与绑定位置
+
+当前阶段 runner 配置仍跟 Pipeline 绑定，并且仍然作为 Pipeline 的一个 stage 执行。也就是说，Bot 收到私聊/群聊消息后仍按现有 Pipeline 流转，只是在 AI runner stage 中选择插件化 Agent Runner。
+
+后续 EBA EventRouter 落地后，同一套 `AgentRunnerDescriptor` 和 `AgentRunOrchestrator` 需要支持直接与 Bot 的事件触发器绑定。届时 Bot event handler 可以绕过完整 Pipeline，直接选择某个 Agent Runner 处理 `message.received`、`group.member_joined`、`friend.request_received` 等事件。
 
 Pipeline AI 配置建议从：
 
@@ -352,17 +357,18 @@ LangBot 执行前做三层裁剪：
 - proxy action 做二次校验。
 - 增加超时、取消、错误隔离和 telemetry。
 
-### Phase 3：兼容和迁移
+### Phase 3：内置 runner 插件化迁移
 
 - 兼容当前 `plugin:author/name/runner` 字符串 ID。
 - 兼容 `runner.runner` 配置键。
 - 提供从旧 runner 配置到 `runner.id` / `runner_config` 的迁移。
-- 将内置 `RequestRunner` 包装成 registry descriptor。
+- 将所有内置 `RequestRunner` 强制迁移为内置插件或官方插件包。
+- LangBot 只保留插件 runtime、registry、orchestrator 和兼容迁移逻辑，不再维护独立的内置 runner 执行分支。
 
 ### Phase 4：为 EBA 接入做预留
 
 - `AgentRunContext.event` 支持 EBA 文档定义的事件 envelope 子集。
-- `AgentRunResult.action.requested` 只记录，不执行。
+- `AgentRunResult.action.requested` 仍只记录，不执行；真正执行平台动作需要等统一平台 API 和事件触发器权限模型完成。
 - 等 EBA EventRouter 落地后，由 EventRouter 直接调用 orchestrator。
 
 ## 9. 需要修改的代码范围
@@ -385,16 +391,16 @@ SDK：
 
 ## 10. 验收标准
 
-- 在不修改现有内置 runner 的前提下，Pipeline 可以选择一个插件提供的 Agent Runner。
+- Pipeline 可以选择一个插件提供的 Agent Runner。
 - 插件 runner 能收到结构化上下文，并能流式返回消息。
 - 插件 runner 只能看到 LangBot 注入的工具、知识库、模型资源。
 - 插件 runner 异常不会中断插件 runtime 或 Pipeline 主流程。
 - 旧 Pipeline 配置和旧内置 runner 正常工作。
 - 文档明确区分“Agent Runner 插件化”和“未来 EBA 架构”。
 
-## 11. 待确认问题
+## 11. 已确认决策
 
-- 插件 Agent Runner 是否允许一个插件声明多个 runner。当前分支注释写“一个插件只能提供一个”，但 manifest 和 UI 其实可以支持多个；建议允许多个。
-- `AgentRunResult.action.requested` 在 EBA 前是否只做 telemetry，还是允许有限的 `reply_message` 动作。
-- runner 配置是否跟 Pipeline 绑定，还是未来跟 Bot/Event handler 绑定。当前阶段建议仍跟 Pipeline 绑定。
-- 内置 runner 是否最终迁移到 SDK 插件形式。建议短期只包装，长期再拆。
+- 插件可以声明多个 `AgentRunner` 组件，每个组件独立暴露 manifest、配置 schema、能力和权限。
+- 本阶段不把 `action.requested` 作为必须实现的运行结果。它只是为未来 EBA 平台动作预留的返回类型；当前 Pipeline stage 中如收到该类型，只记录 telemetry，不执行动作。
+- 当前 runner 配置先跟 Pipeline 绑定，仍然在 Pipeline 的 AI runner stage 中执行；后续需要支持直接与 Bot 的事件触发器绑定。
+- 内置 `RequestRunner` 最终强制迁移为插件形态，避免长期保留“内置 runner 分支”和“插件 runner 分支”两套执行体系。
