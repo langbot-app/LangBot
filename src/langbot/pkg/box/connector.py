@@ -147,7 +147,7 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
 
         ctrl = StdioClientController(
             command=python_path,
-            args=['-m', 'langbot_plugin.box.server', '--port', str(self._relay_port)],
+            args=['-m', 'langbot_plugin.box.server', '--stdio-control', '--ws-control-port', str(self._relay_port)],
             env=env,
         )
         self._ctrl_task = asyncio.create_task(
@@ -171,9 +171,7 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
         await self._start_runtime_subprocess(
             '-m',
             'langbot_plugin.box.server',
-            '--mode',
-            'ws',
-            '--port',
+            '--ws-control-port',
             str(self._relay_port),
         )
 
