@@ -39,6 +39,13 @@ from tests.factories.provider import (
     fake_provider_malformed,
     fake_model,
 )
+from tests.factories.platform import (
+    FakePlatform,
+    fake_platform,
+    fake_platform_with_streaming,
+    fake_platform_with_failure,
+    mock_platform_adapter,
+)
 
 __all__ = [
     # App
@@ -66,4 +73,10 @@ __all__ = [
     "fake_provider_rate_limit",
     "fake_provider_malformed",
     "fake_model",
+    # Platform
+    "FakePlatform",
+    "fake_platform",
+    "fake_platform_with_streaming",
+    "fake_platform_with_failure",
+    "mock_platform_adapter",
 ]
