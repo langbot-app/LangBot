@@ -28,6 +28,12 @@ from tests.factories.message import (
     mention_query,
     empty_query,
     image_query,
+    file_query,
+    unsupported_query,
+    voice_query,
+    at_all_query,
+    query_with_session,
+    query_with_config,
 )
 from tests.factories.provider import (
     FakeProvider,
@@ -64,6 +70,12 @@ __all__ = [
     "mention_query",
     "empty_query",
     "image_query",
+    "file_query",
+    "unsupported_query",
+    "voice_query",
+    "at_all_query",
+    "query_with_session",
+    "query_with_config",
     # Provider
     "FakeProvider",
     "fake_provider",
