@@ -2,7 +2,7 @@ const zhHans = {
   sidebar: {
     home: '首页',
     extensions: '扩展',
-    installedPlugins: '已安装扩展',
+    installedPlugins: '已安装拓展',
     pluginMarket: '拓展市场',
     mcpServers: 'MCP 服务器',
     pluginPages: '插件页面',
