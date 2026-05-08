@@ -18,6 +18,8 @@ class FakeApp:
         command_prefix: list[str] = ["/", "!"],
         command_enable: bool = True,
         pipeline_concurrency: int = 10,
+        admins: list[str] | None = None,
+        **extra_attrs,
     ):
         self.logger = self._create_mock_logger()
         self.sess_mgr = self._create_mock_session_manager()
@@ -30,8 +32,18 @@ class FakeApp:
             command_prefix=command_prefix,
             command_enable=command_enable,
             pipeline_concurrency=pipeline_concurrency,
+            admins=admins or [],
         )
         self.task_mgr = self._create_mock_task_manager()
+
+        # Handler-specific optional attributes
+        self.telemetry = self._create_mock_telemetry()
+        self.survey = None
+        self.cmd_mgr = self._create_mock_cmd_mgr()
+
+        # Apply any extra attributes for specific test scenarios
+        for name, value in extra_attrs.items():
+            setattr(self, name, value)
 
         # Captured outbound messages (for assertions)
         self._outbound_messages: list = []
@@ -82,11 +94,13 @@ class FakeApp:
         command_prefix: list[str],
         command_enable: bool,
         pipeline_concurrency: int,
+        admins: list[str],
     ):
         instance_config = Mock()
         instance_config.data = {
             "command": {"prefix": command_prefix, "enable": command_enable},
             "concurrency": {"pipeline": pipeline_concurrency},
+            "admins": admins,
         }
         return instance_config
 
@@ -94,6 +108,16 @@ class FakeApp:
         task_mgr = Mock()
         task_mgr.create_task = Mock()
         return task_mgr
+
+    def _create_mock_telemetry(self):
+        telemetry = AsyncMock()
+        telemetry.start_send_task = AsyncMock()
+        return telemetry
+
+    def _create_mock_cmd_mgr(self):
+        cmd_mgr = AsyncMock()
+        cmd_mgr.execute = AsyncMock()
+        return cmd_mgr
 
     def capture_message(self, message):
         """Capture an outbound message for test assertions."""
