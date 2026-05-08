@@ -17,6 +17,14 @@ tests/
 │   ├── message.py               # Message/query factories
 │   ├── provider.py              # FakeProvider factory
 │   └── platform.py              # FakePlatform factory
+├── integration/                  # Integration tests (real resources)
+│   ├── __init__.py
+│   ├── api/                     # HTTP API tests
+│   │   ├── __init__.py
+│   │   └── test_smoke.py        # API smoke tests
+│   └── persistence/             # Database/persistence tests
+│       ├── __init__.py
+│       └── test_migrations.py   # Alembic migration tests
 ├── smoke/                        # Smoke tests (quick validation)
 │   └── test_fake_message_flow.py
 ├── unit_tests/                   # Unit tests
@@ -28,6 +36,9 @@ tests/
 │   ├── plugin/                   # Plugin system tests
 │   ├── provider/                 # Provider tests
 │   └── storage/                  # Storage tests
+├── utils/                        # Test utilities
+│   ├── __init__.py
+│   └── import_isolation.py      # sys.modules isolation for circular imports
 └── README.md                     # This file
 ```
 
@@ -147,12 +158,50 @@ uv run pytest tests/unit_tests/pipeline/test_bansess.py::test_bansess_whitelist_
 # Run only unit tests
 uv run pytest tests/unit_tests/ -m unit
 
-# Run only integration tests (when available)
-uv run pytest tests/ -m integration
+# Run only integration tests
+uv run pytest tests/integration/ -m integration
+
+# Run integration tests excluding slow ones
+uv run pytest tests/integration/ -m "not slow" -q
 
 # Skip slow tests
 uv run pytest tests/unit_tests/ -m "not slow"
 ```
+
+### Running integration tests
+
+Integration tests validate real system behavior with actual database/network resources.
+
+```bash
+# Run all integration tests (excluding slow ones)
+uv run pytest tests/integration/ -m "not slow" -q
+
+# Run SQLite migration integration tests
+uv run pytest tests/integration/persistence/test_migrations.py -q --tb=short
+
+# Run API smoke integration tests
+uv run pytest tests/integration/api/test_smoke.py -q
+
+# Run with verbose output
+uv run pytest tests/integration/ -v
+```
+
+Note: Integration tests use:
+- Temporary databases (tmp_path) for persistence tests
+- Fake app/services for API tests (no real provider/platform)
+- Do not require external services
+
+### Running migration tests locally
+
+SQLite migration tests can be run locally without any external dependencies:
+
+```bash
+# SQLite migration tests (uses tmp_path, no external DB needed)
+uv run pytest tests/integration/persistence/test_migrations.py -q --tb=short
+```
+
+CI workflow `.github/workflows/test-migrations.yml` runs SQLite tests using pytest.
+PostgreSQL migration tests still use inline Python script (will be migrated to pytest in G-003).
 
 ### Known Issues
 
@@ -250,7 +299,10 @@ Check that you're mocking at the right level and using `AsyncMock` for async fun
 
 ## Future Enhancements
 
+- [x] Add integration tests for database migrations (SQLite)
+- [ ] Add PostgreSQL migration integration tests (G-003)
 - [ ] Add integration tests for full pipeline execution
+- [x] Add API smoke integration tests
 - [ ] Add E2E tests
 - [ ] Add performance benchmarks
 - [ ] Add mutation testing for better coverage quality
