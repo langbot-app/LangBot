@@ -6,7 +6,7 @@ Provides a deterministic fake provider that simulates LLM responses without real
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import Mock
 import typing
 
 import langbot_plugin.api.entities.builtin.provider.message as provider_message

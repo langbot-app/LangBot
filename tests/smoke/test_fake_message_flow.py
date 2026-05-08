@@ -1,8 +1,10 @@
 """
-Smoke tests for LangBot core message flow.
+Minimal fake flow smoke tests for LangBot.
 
-These tests verify the basic message processing flow works correctly
-using fake providers and platforms.
+These tests verify basic component interactions using fake providers and platforms.
+Not a full pipeline integration test - tests individual factory components.
+
+For full pipeline tests, see tests/integration/ (planned).
 """
 
 from __future__ import annotations
@@ -272,21 +274,25 @@ class TestFakeMessageFlow:
 
 
 class TestMessageFlowIntegration:
-    """Integration smoke tests for full message flow."""
+    """Minimal fake flow integration tests.
+
+    These tests verify component interactions but do NOT run full LangBot pipeline.
+    For real pipeline tests, integration tests are needed (planned).
+    """
 
     @pytest.mark.asyncio
     async def test_minimal_message_flow(self):
-        """Smoke test: message enters, fake provider responds, platform captures outbound.
+        """Minimal fake flow test: fake query -> fake provider -> fake platform.
 
         This test verifies:
-        1. Fake app is created
-        2. Fake text message enters
-        3. Fake provider returns LANGBOT_FAKE_PONG
-        4. Fake platform captures outbound response
-        5. No unexpected exception
+        1. Fake text query is created
+        2. Fake provider returns LANGBOT_FAKE_PONG
+        3. Fake platform captures outbound response
+        4. No unexpected exception
+
+        Note: This does NOT run actual LangBot pipeline stages.
         """
         # Setup
-        app = FakeApp()
         platform = FakePlatform(bot_account_id="test-bot")
         provider = fake_provider_pong()
         model = fake_model(provider=provider)
