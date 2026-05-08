@@ -86,6 +86,138 @@ SDK 当前只认识 bot/pipeline/query/session，不认识租户：
 
 这意味着多租户落地时，不能只在 Web API 层过滤；插件可以通过 Host API 访问全局资源，所以 SDK/Runtime 通信也必须传递 workspace context。
 
+## 开源版与商业版产品边界
+
+LangBot 是开源软件，但多 workspace 能力本质上是 SaaS 控制面能力。如果把完整多 workspace、成员协作、订阅权益和配额代码都放进开源仓库，只靠本地 feature flag 或本地 license check，无法有效避免第三方 fork 后自建 SaaS。因此建议采用 open-core 架构：开源版保留单 workspace 执行能力，账户、订阅、权益和多 workspace 协作能力放到 LangBot Space/Cloud Control Plane 和商业模块中。
+
+### 版本边界
+
+推荐拆成三层：
+
+- `LangBot Core OSS`：开源，自托管，默认只有一个隐式 `default workspace`。它可以在数据结构上兼容 workspace，但产品能力上不提供创建多个 workspace、切换 workspace、成员邀请、成员权限管理、审计和多租户配额。
+- `LangBot Space / Cloud Control Plane`：托管控制面，负责 account、workspace、membership、subscription、billing、entitlement、license token、workspace quota、marketplace 权益等能力。
+- `LangBot Commercial Module`：商业闭源或私有包，承载多 workspace、团队协作、RBAC、自定义角色、审计日志、SAML/SSO、企业私有化授权等能力。
+
+企业私有化版本可以采用 `LangBot Core + Commercial Module + License Token` 的形式交付。开源 Core 仍然可独立运行，但只能作为单 workspace 自托管产品，不提供 SaaS 多租户控制面。
+
+### OSS 中如何保留兼容但不开放多 workspace
+
+为了让后续商业版复用同一套资源隔离模型，OSS 代码里可以保留 `workspace_uuid` 相关字段和默认 workspace 迁移，但应限制为单 workspace：
+
+- 首次初始化时创建一个 `Default Workspace`。
+- 所有资源自动归属这个 default workspace。
+- 不暴露 `POST /api/v1/workspaces`。
+- 不暴露 workspace switcher。
+- 不暴露成员邀请和成员角色管理。
+- 不支持一个 account 加入多个 workspace。
+- 不支持 workspace 数量大于 1。
+- 前端不展示 workspace selector。
+- API 层如果收到非 default workspace 的 `X-Workspace-Id`，直接拒绝。
+
+也就是说，OSS 可以是 workspace-aware，但不是 multi-workspace-enabled。这样做的价值是：代码结构提前适配租户隔离，未来商业版不用重写所有资源模型；同时开源版用户无法直接通过 UI/API 获得 SaaS 型多租户能力。
+
+### 账户、订阅和权益抽到 Space
+
+账户和订阅体系建议从 LangBot Core 中抽出，交给 Space 控制面：
+
+```text
+LangBot Space
+  -> Account
+  -> Workspace
+  -> Membership
+  -> Subscription
+  -> Entitlement
+  -> License Token
+
+LangBot Core
+  -> Validate entitlement / license
+  -> Run bots, pipelines, plugins, MCP, RAG
+  -> Enforce local resource scope
+  -> Report usage
+```
+
+这样做有几个原因：
+
+- 账号体系如果完全在本地，第三方容易直接改库创建 workspace/membership。
+- 订阅、配额和商业权益如果完全在本地，容易绕过。
+- Space 可以统一处理 OAuth、组织、邀请、付款、发票、套餐、权益、Marketplace 分发权限。
+- LangBot Core 只作为执行面消费 Space 下发的 entitlement，减少商业规则暴露。
+
+### Entitlement 设计
+
+Space 向 LangBot Core 下发签名权益，可以是在线校验，也可以为企业版提供短期/长期离线 license token。
+
+示例：
+
+```json
+{
+  "edition": "oss",
+  "workspace_limit": 1,
+  "member_limit": 1,
+  "multi_workspace": false,
+  "rbac": false,
+  "audit_log": false,
+  "custom_roles": false,
+  "sso": false,
+  "commercial_use": false,
+  "expires_at": 1893456000
+}
+```
+
+OSS 默认权益：
+
+- `workspace_limit = 1`
+- `member_limit = 1`
+- `multi_workspace = false`
+- `rbac = false`
+- `audit_log = false`
+- `sso = false`
+
+Cloud/Pro/Enterprise 权益：
+
+- `workspace_limit > 1`
+- `member_limit > 1`
+- `multi_workspace = true`
+- `rbac = true`
+- 可按套餐打开 audit、custom roles、SSO、usage reporting、enterprise support 等能力。
+
+Core 执行面需要在关键入口强制校验 entitlement：
+
+- 创建 workspace。
+- 邀请成员。
+- 修改成员角色。
+- 切换 workspace。
+- 创建超过 quota 的资源。
+- 开启商业模块功能。
+
+### 商业模块边界
+
+以下能力不建议进入 OSS 仓库的完整实现：
+
+- 多 workspace 创建和切换。
+- Workspace 成员邀请。
+- Workspace RBAC 和自定义角色。
+- Workspace 审计日志。
+- Workspace 级用量和配额管理。
+- 订阅、账单、发票。
+- 企业 SSO/SAML/OIDC。
+- 在线/离线 license 管理。
+- 多租户 SaaS 运营控制台。
+
+OSS 仓库可以保留接口占位、默认 workspace 兼容和必要的数据隔离字段，但完整交互、管理 UI、权益校验器和多 workspace policy engine 应由 Space 或商业模块提供。
+
+### 防自建 SaaS 的现实边界
+
+技术上无法 100% 阻止别人 fork 开源代码后自行改造。更可靠的策略是组合：
+
+- 不把完整商业多 workspace 实现放进 OSS。
+- Space 控制面提供账号、订阅、权益、Marketplace 和官方托管能力。
+- 商业模块闭源或私有分发。
+- 使用商标、云服务条款和商业 license 限制“自称官方 LangBot SaaS”或未经授权商用托管。
+- 如果当前开源 license 对托管商用限制不足，需要单独评估 license 策略，必要时引入 open-core license 或新增商业附加条款。具体 license 调整需要法律评审。
+
+结论：多 workspace 的底层 schema 可以在 OSS 中以 default workspace 兼容方式铺路，但多 workspace 产品能力、账户订阅权益、协作管理和 SaaS 控制面应放到 Space/商业模块，不作为开源版可直接使用的能力。
+
 ## 推荐总体架构
 
 采用“单实例多 workspace，资源行级隔离，运行时上下文隔离”的架构：
