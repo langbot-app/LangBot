@@ -27,6 +27,17 @@ from tests.factories.message import (
     command_query,
     mention_query,
     empty_query,
+    image_query,
+)
+from tests.factories.provider import (
+    FakeProvider,
+    fake_provider,
+    fake_provider_pong,
+    fake_provider_timeout,
+    fake_provider_auth_error,
+    fake_provider_rate_limit,
+    fake_provider_malformed,
+    fake_model,
 )
 
 __all__ = [
@@ -45,4 +56,14 @@ __all__ = [
     "command_query",
     "mention_query",
     "empty_query",
+    "image_query",
+    # Provider
+    "FakeProvider",
+    "fake_provider",
+    "fake_provider_pong",
+    "fake_provider_timeout",
+    "fake_provider_auth_error",
+    "fake_provider_rate_limit",
+    "fake_provider_malformed",
+    "fake_model",
 ]
