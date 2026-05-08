@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, Mock
 
-import langbot_plugin.api.entities.builtin.provider.session as provider_session
-
 
 class FakeApp:
     """Mock Application object providing all basic dependencies needed by stages."""

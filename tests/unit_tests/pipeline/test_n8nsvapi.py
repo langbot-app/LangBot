@@ -23,9 +23,9 @@ sys.modules.setdefault('langbot.pkg.provider.runner', _mock_runner)
 sys.modules.setdefault('langbot.pkg.core.app', MagicMock())
 sys.modules.setdefault('langbot.pkg.utils.httpclient', MagicMock())
 
-import pytest
-import langbot_plugin.api.entities.builtin.provider.message as provider_message
-from langbot.pkg.provider.runners.n8nsvapi import N8nServiceAPIRunner
+import pytest  # noqa: E402
+import langbot_plugin.api.entities.builtin.provider.message as provider_message  # noqa: E402
+from langbot.pkg.provider.runners.n8nsvapi import N8nServiceAPIRunner  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
