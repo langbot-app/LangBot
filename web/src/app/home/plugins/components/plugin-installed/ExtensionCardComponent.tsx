@@ -2,7 +2,16 @@ import { ExtensionCardVO, ExtensionType } from './ExtensionCardVO';
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { useTranslation } from 'react-i18next';
-import { BugIcon, ExternalLink, Ellipsis, Trash, ArrowUp } from 'lucide-react';
+import {
+  BugIcon,
+  ExternalLink,
+  Ellipsis,
+  Trash,
+  ArrowUp,
+  Server,
+  Sparkles,
+  Puzzle,
+} from 'lucide-react';
 import { getCloudServiceClientSync, systemInfo } from '@/app/infra/http';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { Button } from '@/components/ui/button';
@@ -30,6 +39,17 @@ export default function ExtensionCardComponent({
 }: ExtensionCardComponentProps) {
   const { t } = useTranslation();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [iconFailed, setIconFailed] = useState(false);
+
+  const FallbackIcon =
+    cardVO.type === 'mcp'
+      ? Server
+      : cardVO.type === 'skill'
+        ? Sparkles
+        : Puzzle;
+  const iconSrc =
+    cardVO.iconURL || httpClient.getPluginIconURL(cardVO.author, cardVO.name);
+  const showFallback = iconFailed || !iconSrc;
 
   const getTypeBadgeColor = (type: ExtensionType) => {
     switch (type) {
@@ -202,14 +222,18 @@ export default function ExtensionCardComponent({
         onClick={() => onCardClick()}
       >
         <div className="w-full h-full flex flex-row items-start justify-start gap-[1.2rem]">
-          <img
-            src={
-              cardVO.iconURL ||
-              httpClient.getPluginIconURL(cardVO.author, cardVO.name)
-            }
-            alt="extension icon"
-            className="w-16 h-16 rounded-[8%] flex-shrink-0"
-          />
+          {showFallback ? (
+            <div className="w-16 h-16 flex-shrink-0 flex items-center justify-center">
+              <FallbackIcon className="w-12 h-12 text-blue-500" />
+            </div>
+          ) : (
+            <img
+              src={iconSrc}
+              alt="extension icon"
+              className="w-16 h-16 rounded-[8%] flex-shrink-0"
+              onError={() => setIconFailed(true)}
+            />
+          )}
 
           <div className="flex-1 min-w-0 h-full flex flex-col items-start justify-between gap-[0.6rem]">
             <div className="flex flex-col items-start justify-start w-full min-w-0 flex-1 overflow-hidden">
