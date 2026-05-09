@@ -1,11 +1,11 @@
 const zhHans = {
   sidebar: {
     home: '首页',
-    extensions: '拓展',
-    installedPlugins: '已安装拓展',
-    pluginMarket: '拓展市场',
+    extensions: '扩展',
+    installedPlugins: '已安装扩展',
+    pluginMarket: '扩展市场',
     mcpServers: 'MCP 服务器',
-    addExtension: '添加拓展',
+    addExtension: '添加扩展',
     pluginPages: '插件页面',
     pluginPagesTooltip: '由已安装的插件提供的可视化页面',
     quickStart: '快速开始向导',
@@ -413,7 +413,7 @@ const zhHans = {
     createPlugin: '创建插件',
     editPlugin: '编辑插件',
     installed: '已安装',
-    marketplace: '拓展市场',
+    marketplace: '扩展市场',
     arrange: '编排',
     install: '安装',
     installPlugin: '安装插件',
@@ -549,7 +549,7 @@ const zhHans = {
     assetSize: '大小: {{size}}',
     confirmInstall: '确认安装',
     installFromGithubDesc: '从 GitHub Release 安装插件',
-    goToMarketplace: '前往拓展市场',
+    goToMarketplace: '前往扩展市场',
     installProgress: {
       title: '正在安装 {{name}}',
       titleGeneric: '扩展安装',
@@ -905,7 +905,7 @@ const zhHans = {
       builtInParser: '由知识引擎提供',
       noParserAvailable:
         '没有解析器支持此文件类型，请安装支持该格式的解析器插件。',
-      installParserHint: '前往拓展市场安装解析器 →',
+      installParserHint: '前往扩展市场安装解析器 →',
       confirmUpload: '上传',
       cancelUpload: '取消',
     },
