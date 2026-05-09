@@ -29,6 +29,8 @@ import {
   FilePlus2,
   Sparkles,
   HardDrive,
+  Server,
+  Puzzle,
 } from 'lucide-react';
 import { useTheme } from '@/components/providers/theme-provider';
 
@@ -370,7 +372,23 @@ function NavItems({
 
         // Entity categories: collapsible with sub-items
         const entityKey = ENTITY_KEY_MAP[config.id];
-        const items: SidebarEntityItem[] = sidebarData[entityKey];
+        const isExtensionsCategory = config.id === 'plugins';
+        const items: SidebarEntityItem[] = isExtensionsCategory
+          ? [
+              ...sidebarData.plugins.map((p) => ({
+                ...p,
+                extensionType: 'plugin' as const,
+              })),
+              ...sidebarData.mcpServers.map((m) => ({
+                ...m,
+                extensionType: 'mcp' as const,
+              })),
+              ...sidebarData.skills.map((s) => ({
+                ...s,
+                extensionType: 'skill' as const,
+              })),
+            ]
+          : sidebarData[entityKey];
         const routePrefix = ENTITY_ROUTE_MAP[config.id];
         const hasDetailPages = DETAIL_PAGE_CATEGORIES.includes(config.id);
         const canCreate = CREATABLE_CATEGORIES.includes(config.id);
@@ -379,6 +397,18 @@ function NavItems({
         const isSkill = config.id === 'skills';
         const isBot = config.id === 'bots';
         const isMCP = config.id === 'mcp';
+
+        const resolveItemRoute = (item: SidebarEntityItem): string => {
+          if (item.extensionType === 'mcp') {
+            return `/home/mcp?id=${encodeURIComponent(item.id)}`;
+          }
+          if (item.extensionType === 'skill') {
+            return `/home/skills?id=${encodeURIComponent(item.id)}`;
+          }
+          return hasDetailPages
+            ? `${routePrefix}?id=${encodeURIComponent(item.id)}`
+            : routePrefix;
+        };
         const isActive =
           selectedChild?.id === config.id ||
           pathname === routePrefix ||
@@ -394,7 +424,13 @@ function NavItems({
 
         // Shared entity list renderer used by both popover and collapsible
         const renderEntityList = (inPopover: boolean) => {
-          const sortedItems = sortByRecent(items);
+          const sortedItems = isExtensionsCategory
+            ? [...items].sort((a, b) =>
+                a.name.localeCompare(b.name, undefined, {
+                  sensitivity: 'base',
+                }),
+              )
+            : sortByRecent(items);
           const isExpanded = expandedLists[config.id] ?? false;
           const maxItems = inPopover ? 10 : MAX_VISIBLE_ITEMS;
           const visibleItems =
@@ -416,152 +452,212 @@ function NavItems({
             );
           }
 
-          return (
-            <>
-              {visibleItems.map((item) => {
-                const itemRoute = hasDetailPages
-                  ? `${routePrefix}?id=${encodeURIComponent(item.id)}`
-                  : routePrefix;
-                const isItemActive =
-                  hasDetailPages &&
-                  pathname === routePrefix &&
-                  searchParams.get('id') === item.id;
+          const itemActiveCheck = (item: SidebarEntityItem): boolean => {
+            if (item.extensionType === 'mcp') {
+              return (
+                pathname === '/home/mcp' && searchParams.get('id') === item.id
+              );
+            }
+            if (item.extensionType === 'skill') {
+              return (
+                pathname === '/home/skills' &&
+                searchParams.get('id') === item.id
+              );
+            }
+            return (
+              hasDetailPages &&
+              pathname === routePrefix &&
+              searchParams.get('id') === item.id
+            );
+          };
 
-                if (inPopover) {
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className={cn(
-                        'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-left',
-                        'hover:bg-accent hover:text-accent-foreground transition-colors',
-                        isItemActive &&
-                          'bg-accent text-accent-foreground font-medium',
-                      )}
-                      onClick={() => {
-                        navigate(itemRoute);
-                        setPopoverOpen((prev) => ({
-                          ...prev,
-                          [config.id]: false,
-                        }));
-                      }}
-                    >
-                      {item.emoji ? (
-                        <span className="text-sm shrink-0">{item.emoji}</span>
-                      ) : item.iconURL ? (
-                        <span className="relative shrink-0">
-                          <img
-                            src={item.iconURL}
-                            alt=""
-                            className="size-4 rounded"
-                          />
-                          {(isBot || isMCP) && (
-                            <span
-                              className={cn(
-                                'absolute -bottom-0.5 -right-0.5 size-2 rounded-full border-2 border-popover',
-                                isMCP
-                                  ? mcpStatusColor(item)
-                                  : item.enabled === false
-                                    ? 'bg-muted-foreground/40'
-                                    : 'bg-green-500',
-                              )}
-                            />
-                          )}
-                        </span>
-                      ) : isMCP ? (
+          const itemIsPlugin = (item: SidebarEntityItem): boolean =>
+            isExtensionsCategory ? item.extensionType === 'plugin' : isPlugin;
+
+          const showGroupHeaders =
+            isExtensionsCategory &&
+            !inPopover &&
+            sidebarData.extensionsGroupByType;
+
+          const groupOrder: Array<'plugin' | 'mcp' | 'skill'> = [
+            'plugin',
+            'mcp',
+            'skill',
+          ];
+          const groupLabelKey: Record<'plugin' | 'mcp' | 'skill', string> = {
+            plugin: 'market.typePlugin',
+            mcp: 'market.typeMCP',
+            skill: 'market.typeSkill',
+          };
+
+          const renderItem = (item: SidebarEntityItem) => {
+            const itemRoute = resolveItemRoute(item);
+            const isItemActive = itemActiveCheck(item);
+            const itemIsPluginType = itemIsPlugin(item);
+            if (inPopover) {
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={cn(
+                    'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-left',
+                    'hover:bg-accent hover:text-accent-foreground transition-colors',
+                    isItemActive &&
+                      'bg-accent text-accent-foreground font-medium',
+                  )}
+                  onClick={() => {
+                    navigate(itemRoute);
+                    setPopoverOpen((prev) => ({
+                      ...prev,
+                      [config.id]: false,
+                    }));
+                  }}
+                >
+                  {item.extensionType === 'mcp' ? (
+                    <Server className="size-4 shrink-0 !text-blue-500" />
+                  ) : item.extensionType === 'skill' ? (
+                    <Sparkles className="size-4 shrink-0 !text-blue-500" />
+                  ) : item.emoji ? (
+                    <span className="text-sm shrink-0">{item.emoji}</span>
+                  ) : item.iconURL ? (
+                    <span className="relative shrink-0">
+                      <img
+                        src={item.iconURL}
+                        alt=""
+                        className="size-4 rounded"
+                      />
+                      {(isBot || isMCP) && (
                         <span
                           className={cn(
-                            'size-2 shrink-0 rounded-full',
-                            mcpStatusColor(item),
+                            'absolute -bottom-0.5 -right-0.5 size-2 rounded-full border-2 border-popover',
+                            isMCP
+                              ? mcpStatusColor(item)
+                              : item.enabled === false
+                                ? 'bg-muted-foreground/40'
+                                : 'bg-green-500',
                           )}
                         />
-                      ) : null}
-                      <span className="truncate">{item.name}</span>
-                    </button>
-                  );
-                }
+                      )}
+                    </span>
+                  ) : item.extensionType === 'plugin' ? (
+                    <Puzzle className="size-4 shrink-0 !text-blue-500" />
+                  ) : isMCP ? (
+                    <span
+                      className={cn(
+                        'size-2 shrink-0 rounded-full',
+                        mcpStatusColor(item),
+                      )}
+                    />
+                  ) : null}
+                  <span className="truncate">{item.name}</span>
+                </button>
+              );
+            }
 
-                // Normal sidebar sub-item rendering
-                return (
-                  <SidebarMenuSubItem
-                    key={item.id}
-                    className={isPlugin ? 'group/plugin-item relative' : ''}
-                  >
-                    <Tooltip delayDuration={500}>
-                      <TooltipTrigger asChild>
-                        <SidebarMenuSubButton asChild isActive={isItemActive}>
-                          <a
-                            href={itemRoute}
-                            className={cn(
-                              isPlugin && !item.debug ? 'pr-6' : '',
-                            )}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              navigate(itemRoute);
-                            }}
-                          >
-                            {item.emoji ? (
-                              <span className="text-sm shrink-0">
-                                {item.emoji}
-                              </span>
-                            ) : item.iconURL ? (
-                              <span className="relative shrink-0">
-                                <img
-                                  src={item.iconURL}
-                                  alt=""
-                                  className="size-4 rounded"
-                                />
-                                {(isBot || isMCP) && (
-                                  <span
-                                    className={cn(
-                                      'absolute -bottom-0.5 -right-0.5 size-2 rounded-full border-2 border-sidebar',
-                                      isMCP
-                                        ? mcpStatusColor(item)
-                                        : item.enabled === false
-                                          ? 'bg-muted-foreground/40'
-                                          : 'bg-green-500',
-                                    )}
-                                  />
-                                )}
-                              </span>
-                            ) : isMCP ? (
+            // Normal sidebar sub-item rendering
+            return (
+              <SidebarMenuSubItem
+                key={item.id}
+                className={itemIsPluginType ? 'group/plugin-item relative' : ''}
+              >
+                <Tooltip delayDuration={500}>
+                  <TooltipTrigger asChild>
+                    <SidebarMenuSubButton asChild isActive={isItemActive}>
+                      <a
+                        href={itemRoute}
+                        className={cn(
+                          itemIsPluginType && !item.debug ? 'pr-6' : '',
+                        )}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          navigate(itemRoute);
+                        }}
+                      >
+                        {item.extensionType === 'mcp' ? (
+                          <Server className="size-4 shrink-0 !text-blue-500" />
+                        ) : item.extensionType === 'skill' ? (
+                          <Sparkles className="size-4 shrink-0 !text-blue-500" />
+                        ) : item.emoji ? (
+                          <span className="text-sm shrink-0">{item.emoji}</span>
+                        ) : item.iconURL ? (
+                          <span className="relative shrink-0">
+                            <img
+                              src={item.iconURL}
+                              alt=""
+                              className="size-4 rounded"
+                            />
+                            {(isBot || isMCP) && (
                               <span
                                 className={cn(
-                                  'size-2 shrink-0 rounded-full',
-                                  mcpStatusColor(item),
+                                  'absolute -bottom-0.5 -right-0.5 size-2 rounded-full border-2 border-sidebar',
+                                  isMCP
+                                    ? mcpStatusColor(item)
+                                    : item.enabled === false
+                                      ? 'bg-muted-foreground/40'
+                                      : 'bg-green-500',
                                 )}
                               />
-                            ) : null}
-                            <span className="truncate">{item.name}</span>
-                            {item.debug && (
-                              <Bug className="size-3.5 shrink-0 text-orange-400" />
                             )}
-                          </a>
-                        </SidebarMenuSubButton>
-                      </TooltipTrigger>
-                      {item.description && (
-                        <TooltipContent
-                          side="right"
-                          align="center"
-                          className="max-w-64"
-                        >
-                          {item.description.length > 80
-                            ? item.description.slice(0, 80) + '…'
-                            : item.description}
-                        </TooltipContent>
-                      )}
-                    </Tooltip>
-                    {/* Plugin context menu - shown on hover (not for debug plugins) */}
-                    {isPlugin && !item.debug && (
-                      <PluginItemMenu
-                        item={item}
-                        onUpdate={() => handlePluginUpdate(item)}
-                        onDelete={() => handlePluginDelete(item)}
-                      />
-                    )}
-                  </SidebarMenuSubItem>
-                );
-              })}
+                          </span>
+                        ) : item.extensionType === 'plugin' ? (
+                          <Puzzle className="size-4 shrink-0 !text-blue-500" />
+                        ) : isMCP ? (
+                          <span
+                            className={cn(
+                              'size-2 shrink-0 rounded-full',
+                              mcpStatusColor(item),
+                            )}
+                          />
+                        ) : null}
+                        <span className="truncate">{item.name}</span>
+                        {item.debug && (
+                          <Bug className="size-3.5 shrink-0 text-orange-400" />
+                        )}
+                      </a>
+                    </SidebarMenuSubButton>
+                  </TooltipTrigger>
+                  {item.description && (
+                    <TooltipContent
+                      side="right"
+                      align="center"
+                      className="max-w-64"
+                    >
+                      {item.description.length > 80
+                        ? item.description.slice(0, 80) + '…'
+                        : item.description}
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+                {/* Plugin context menu - shown on hover (not for debug plugins) */}
+                {itemIsPluginType && !item.debug && (
+                  <PluginItemMenu
+                    item={item}
+                    onUpdate={() => handlePluginUpdate(item)}
+                    onDelete={() => handlePluginDelete(item)}
+                  />
+                )}
+              </SidebarMenuSubItem>
+            );
+          };
+
+          return (
+            <>
+              {showGroupHeaders
+                ? groupOrder.map((type) => {
+                    const groupItems = visibleItems.filter(
+                      (it) => it.extensionType === type,
+                    );
+                    if (groupItems.length === 0) return null;
+                    return (
+                      <div key={type} className="flex flex-col gap-0.5 mt-0.5">
+                        <div className="px-2 pt-1 pb-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                          {t(groupLabelKey[type])}
+                        </div>
+                        {groupItems.map((item) => renderItem(item))}
+                      </div>
+                    );
+                  })
+                : visibleItems.map((item) => renderItem(item))}
               {/* Show more / less toggle when items exceed limit */}
               {sortedItems.length > maxItems && !inPopover && (
                 <SidebarMenuSubItem>

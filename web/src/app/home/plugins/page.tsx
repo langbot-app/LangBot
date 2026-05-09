@@ -134,14 +134,8 @@ function PluginListView() {
   const [copiedDebugUrl, setCopiedDebugUrl] = useState(false);
   const [copiedDebugKey, setCopiedDebugKey] = useState(false);
   const [filterType, setFilterType] = useState<FilterType>('all');
-  const [groupByType, setGroupByType] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return localStorage.getItem('extensions_group_by_type') === 'true';
-  });
-
-  useEffect(() => {
-    localStorage.setItem('extensions_group_by_type', String(groupByType));
-  }, [groupByType]);
+  const groupByType = useSidebarData().extensionsGroupByType;
+  const setGroupByType = useSidebarData().setExtensionsGroupByType;
 
   useEffect(() => {
     const fetchPluginSystemStatus = async () => {
