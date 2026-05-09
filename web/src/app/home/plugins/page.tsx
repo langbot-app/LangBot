@@ -537,22 +537,24 @@ function PluginListView() {
       />
 
       {/* Header bar with filter tabs, debug info, and task queue */}
-      <div className="flex flex-row justify-between items-center px-[0.8rem] pb-4 flex-shrink-0 gap-2">
-        <Tabs
-          value={filterType}
-          onValueChange={(value) => setFilterType(value as FilterType)}
-        >
-          <TabsList>
-            {FilterOptions.map((option) => (
-              <TabsTrigger key={option.value} value={option.value}>
-                {option.icon && <option.icon className="size-4" />}
-                {t(option.labelKey)}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-        <div className="flex flex-row items-center gap-2">
-          <div className="flex items-center gap-2 px-2">
+      <div className="flex flex-col md:flex-row md:justify-between md:items-center px-[0.8rem] pb-4 flex-shrink-0 gap-2">
+        <div className="overflow-x-auto -mx-1 px-1">
+          <Tabs
+            value={filterType}
+            onValueChange={(value) => setFilterType(value as FilterType)}
+          >
+            <TabsList>
+              {FilterOptions.map((option) => (
+                <TabsTrigger key={option.value} value={option.value}>
+                  {option.icon && <option.icon className="size-4" />}
+                  {t(option.labelKey)}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        </div>
+        <div className="flex flex-row items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 px-1 sm:px-2">
             <Switch
               id="group-by-type"
               checked={groupByType}
@@ -572,14 +574,19 @@ function PluginListView() {
             <PopoverTrigger asChild>
               <Button
                 variant="outline"
-                className="px-4 py-4 cursor-pointer"
+                className="px-3 sm:px-4 py-4 cursor-pointer"
                 onClick={handleShowDebugInfo}
               >
-                <Code className="w-4 h-4 mr-2" />
-                {t('plugins.debugInfo')}
+                <Code className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">
+                  {t('plugins.debugInfo')}
+                </span>
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[380px]" align="end">
+            <PopoverContent
+              className="w-[calc(100vw-2rem)] max-w-[380px]"
+              align="end"
+            >
               <div className="space-y-3">
                 {/* Header with icon and title */}
                 <div className="flex items-center gap-2 pb-2 border-b">
@@ -597,7 +604,7 @@ function PluginListView() {
                   <Input
                     value={debugInfo?.debug_url || ''}
                     readOnly
-                    className="w-[220px] font-mono text-xs h-8"
+                    className="flex-1 min-w-0 font-mono text-xs h-8"
                   />
                   <Button
                     variant="ghost"

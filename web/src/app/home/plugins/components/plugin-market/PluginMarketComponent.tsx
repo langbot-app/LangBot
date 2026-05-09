@@ -14,10 +14,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
-import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from '@/components/ui/toggle-group';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
   Search,
   Wrench,
@@ -153,39 +150,54 @@ function MarketPageContent({
     });
   }, []);
 
-  const transformMCPToVO = useCallback((mcp: any): PluginMarketCardVO => {
-    return new PluginMarketCardVO({
-      pluginId: mcp.author + ' / ' + mcp.name,
-      author: mcp.author,
-      pluginName: mcp.name,
-      label: extractI18nObject(mcp.label),
-      description: extractI18nObject(mcp.description) || t('market.noDescription'),
-      installCount: mcp.install_count || 0,
-      iconURL: mcp.icon || getCloudServiceClientSync().getPluginIconURL(mcp.author, mcp.name),
-      githubURL: mcp.repository,
-      version: mcp.latest_version,
-      components: mcp.components || {},
-      tags: mcp.tags || [],
-      type: 'mcp',
-    });
-  }, [t]);
+  const transformMCPToVO = useCallback(
+    (mcp: any): PluginMarketCardVO => {
+      return new PluginMarketCardVO({
+        pluginId: mcp.author + ' / ' + mcp.name,
+        author: mcp.author,
+        pluginName: mcp.name,
+        label: extractI18nObject(mcp.label),
+        description:
+          extractI18nObject(mcp.description) || t('market.noDescription'),
+        installCount: mcp.install_count || 0,
+        iconURL:
+          mcp.icon ||
+          getCloudServiceClientSync().getPluginIconURL(mcp.author, mcp.name),
+        githubURL: mcp.repository,
+        version: mcp.latest_version,
+        components: mcp.components || {},
+        tags: mcp.tags || [],
+        type: 'mcp',
+      });
+    },
+    [t],
+  );
 
-  const transformSkillToVO = useCallback((skill: any): PluginMarketCardVO => {
-    return new PluginMarketCardVO({
-      pluginId: skill.author + ' / ' + skill.name,
-      author: skill.author,
-      pluginName: skill.name,
-      label: extractI18nObject(skill.label),
-      description: extractI18nObject(skill.description) || t('market.noDescription'),
-      installCount: skill.install_count || 0,
-      iconURL: skill.icon || getCloudServiceClientSync().getPluginIconURL(skill.author, skill.name),
-      githubURL: skill.repository,
-      version: skill.latest_version,
-      components: skill.components || {},
-      tags: skill.tags || [],
-      type: 'skill',
-    });
-  }, [t]);
+  const transformSkillToVO = useCallback(
+    (skill: any): PluginMarketCardVO => {
+      return new PluginMarketCardVO({
+        pluginId: skill.author + ' / ' + skill.name,
+        author: skill.author,
+        pluginName: skill.name,
+        label: extractI18nObject(skill.label),
+        description:
+          extractI18nObject(skill.description) || t('market.noDescription'),
+        installCount: skill.install_count || 0,
+        iconURL:
+          skill.icon ||
+          getCloudServiceClientSync().getPluginIconURL(
+            skill.author,
+            skill.name,
+          ),
+        githubURL: skill.repository,
+        version: skill.latest_version,
+        components: skill.components || {},
+        tags: skill.tags || [],
+        type: 'skill',
+      });
+    },
+    [t],
+  );
 
   // 获取插件列表
   const fetchPlugins = useCallback(
@@ -212,20 +224,24 @@ function MarketPageContent({
           let skillsTotal = 0;
 
           try {
-            const pluginsResponse = await getCloudServiceClientSync().searchMarketplacePlugins(
-              query,
-              page,
-              pageSize,
-              sortBy,
-              sortOrder,
-              undefined,
-              selectedTags.length > 0 ? selectedTags : undefined,
-              'plugin',
-            );
+            const pluginsResponse =
+              await getCloudServiceClientSync().searchMarketplacePlugins(
+                query,
+                page,
+                pageSize,
+                sortBy,
+                sortOrder,
+                undefined,
+                selectedTags.length > 0 ? selectedTags : undefined,
+                'plugin',
+              );
             pluginsResult = pluginsResponse.plugins
               .filter((plugin) => {
                 const keys = Object.keys(plugin.components || {});
-                return !(keys.length > 0 && keys.every((k) => k === 'KnowledgeRetriever'));
+                return !(
+                  keys.length > 0 &&
+                  keys.every((k) => k === 'KnowledgeRetriever')
+                );
               })
               .map(transformToVO);
             pluginsTotal = pluginsResponse.total || 0;
@@ -234,16 +250,17 @@ function MarketPageContent({
           }
 
           try {
-            const mcpsResponse = await getCloudServiceClientSync().searchMarketplacePlugins(
-              query,
-              page,
-              pageSize,
-              sortBy,
-              sortOrder,
-              undefined,
-              selectedTags.length > 0 ? selectedTags : undefined,
-              'mcp',
-            );
+            const mcpsResponse =
+              await getCloudServiceClientSync().searchMarketplacePlugins(
+                query,
+                page,
+                pageSize,
+                sortBy,
+                sortOrder,
+                undefined,
+                selectedTags.length > 0 ? selectedTags : undefined,
+                'mcp',
+              );
             mcpsResult = (mcpsResponse.plugins || []).map(transformMCPToVO);
             mcpsTotal = mcpsResponse.total || 0;
           } catch (e) {
@@ -251,17 +268,20 @@ function MarketPageContent({
           }
 
           try {
-            const skillsResponse = await getCloudServiceClientSync().searchMarketplacePlugins(
-              query,
-              page,
-              pageSize,
-              sortBy,
-              sortOrder,
-              undefined,
-              selectedTags.length > 0 ? selectedTags : undefined,
-              'skill',
+            const skillsResponse =
+              await getCloudServiceClientSync().searchMarketplacePlugins(
+                query,
+                page,
+                pageSize,
+                sortBy,
+                sortOrder,
+                undefined,
+                selectedTags.length > 0 ? selectedTags : undefined,
+                'skill',
+              );
+            skillsResult = (skillsResponse.plugins || []).map(
+              transformSkillToVO,
             );
-            skillsResult = (skillsResponse.plugins || []).map(transformSkillToVO);
             skillsTotal = skillsResponse.total || 0;
           } catch (e) {
             console.warn('Failed to fetch skills:', e);
@@ -270,22 +290,25 @@ function MarketPageContent({
           newPlugins = [...pluginsResult, ...mcpsResult, ...skillsResult];
           total = pluginsTotal + mcpsTotal + skillsTotal;
         } else {
-          const response = await getCloudServiceClientSync().searchMarketplacePlugins(
-            query,
-            page,
-            pageSize,
-            sortBy,
-            sortOrder,
-            undefined,
-            selectedTags.length > 0 ? selectedTags : undefined,
-            typeFilter === 'all' ? undefined : typeFilter,
-          );
+          const response =
+            await getCloudServiceClientSync().searchMarketplacePlugins(
+              query,
+              page,
+              pageSize,
+              sortBy,
+              sortOrder,
+              undefined,
+              selectedTags.length > 0 ? selectedTags : undefined,
+              typeFilter === 'all' ? undefined : typeFilter,
+            );
 
           const data: ApiRespMarketplacePlugins = response;
           newPlugins = data.plugins
             .filter((plugin) => {
               const keys = Object.keys(plugin.components || {});
-              return !(keys.length > 0 && keys.every((k) => k === 'KnowledgeRetriever'));
+              return !(
+                keys.length > 0 && keys.every((k) => k === 'KnowledgeRetriever')
+              );
             })
             .map(transformToVO);
           total = data.total;
@@ -300,7 +323,9 @@ function MarketPageContent({
         setTotal(total);
         setHasMore(
           newPlugins.length > 0 &&
-            (reset || page === 1 ? newPlugins.length : plugins.length + newPlugins.length) < total,
+            (reset || page === 1
+              ? newPlugins.length
+              : plugins.length + newPlugins.length) < total,
         );
       } catch (error) {
         console.error('Failed to fetch plugins:', error);
@@ -455,12 +480,21 @@ function MarketPageContent({
           const pluginV4: PluginV4 = {
             id: 0,
             plugin_id: `${cardVO.author}/${cardVO.pluginName}`,
-            mcp_id: cardVO.type === 'mcp' ? `${cardVO.author}/${cardVO.pluginName}` : undefined,
-            skill_id: cardVO.type === 'skill' ? `${cardVO.author}/${cardVO.pluginName}` : undefined,
+            mcp_id:
+              cardVO.type === 'mcp'
+                ? `${cardVO.author}/${cardVO.pluginName}`
+                : undefined,
+            skill_id:
+              cardVO.type === 'skill'
+                ? `${cardVO.author}/${cardVO.pluginName}`
+                : undefined,
             author: cardVO.author,
             name: cardVO.pluginName,
             label: { en_US: cardVO.label, zh_Hans: cardVO.label },
-            description: { en_US: cardVO.description, zh_Hans: cardVO.description },
+            description: {
+              en_US: cardVO.description,
+              zh_Hans: cardVO.description,
+            },
             icon: cardVO.iconURL,
             repository: cardVO.githubURL,
             tags: cardVO.tags || [],
@@ -482,7 +516,10 @@ function MarketPageContent({
           cardVO.pluginName,
         );
         if (!response?.plugin) {
-          console.error('Failed to install plugin: plugin not found', { author: cardVO.author, pluginName: cardVO.pluginName });
+          console.error('Failed to install plugin: plugin not found', {
+            author: cardVO.author,
+            pluginName: cardVO.pluginName,
+          });
           toast.error(t('market.installFailed'));
           return;
         }
@@ -601,7 +638,7 @@ function MarketPageContent({
             />
           </div>
           {headerActions && (
-            <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-2 flex-wrap lg:flex-nowrap lg:flex-shrink-0">
               {headerActions}
             </div>
           )}
@@ -631,7 +668,9 @@ function MarketPageContent({
               <PopoverTrigger asChild>
                 <Button variant="outline" className="relative flex-shrink-0">
                   <SlidersHorizontal className="h-4 w-4" />
-                  <span className="hidden sm:inline">{t('market.filters.more')}</span>
+                  <span className="hidden sm:inline">
+                    {t('market.filters.more')}
+                  </span>
                   {activeAdvancedFilters > 0 && (
                     <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] leading-none text-primary-foreground">
                       {activeAdvancedFilters}
@@ -641,7 +680,9 @@ function MarketPageContent({
               </PopoverTrigger>
               <PopoverContent align="end" className="w-[320px] space-y-4">
                 <div>
-                  <div className="text-sm font-medium">{t('market.filters.advancedTitle')}</div>
+                  <div className="text-sm font-medium">
+                    {t('market.filters.advancedTitle')}
+                  </div>
                   <div className="mt-1 text-xs text-muted-foreground">
                     {t('market.filters.advancedDescription')}
                   </div>
@@ -735,16 +776,15 @@ function MarketPageContent({
         className="flex-1 overflow-y-auto px-3 sm:px-4"
       >
         {/* Recommendation Lists */}
-        {!searchQuery &&
-          selectedTags.length === 0 && (
-            <div className="pt-4">
-              <RecommendationLists
-                lists={recommendationLists}
-                tagNames={tagNames}
-                onInstall={handleInstallPlugin}
-              />
-            </div>
-          )}
+        {!searchQuery && selectedTags.length === 0 && (
+          <div className="pt-4">
+            <RecommendationLists
+              lists={recommendationLists}
+              tagNames={tagNames}
+              onInstall={handleInstallPlugin}
+            />
+          </div>
+        )}
 
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
@@ -823,7 +863,10 @@ export default function MarketPage({
         </div>
       }
     >
-      <MarketPageContent installPlugin={installPlugin} headerActions={headerActions} />
+      <MarketPageContent
+        installPlugin={installPlugin}
+        headerActions={headerActions}
+      />
     </Suspense>
   );
 }

@@ -56,7 +56,9 @@ function AddExtensionContent() {
   } = usePluginInstallTasks();
   const [modalOpen, setModalOpen] = useState(false);
   const [installInfo, setInstallInfo] = useState<Record<string, string>>({});
-  const [installExtensionType, setInstallExtensionType] = useState<'plugin' | 'mcp' | 'skill'>('plugin');
+  const [installExtensionType, setInstallExtensionType] = useState<
+    'plugin' | 'mcp' | 'skill'
+  >('plugin');
   const [pluginInstallStatus, setPluginInstallStatus] =
     useState<PluginInstallStatus>(PluginInstallStatus.ASK_CONFIRM);
   const [installError, setInstallError] = useState<string | null>(null);
@@ -120,29 +122,38 @@ function AddExtensionContent() {
     <>
       <Button
         variant="default"
-        className="px-4 py-2 cursor-pointer"
+        className="px-3 sm:px-4 py-2 cursor-pointer flex-shrink-0"
         onClick={() => navigate('/home/mcp?id=new')}
       >
         <PlusIcon className="w-4 h-4" />
-        {t('mcp.addMCPServer')}
+        <span className="whitespace-nowrap">{t('mcp.addMCPServer')}</span>
       </Button>
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="default" className="px-4 py-2 cursor-pointer">
+          <Button
+            variant="default"
+            className="px-3 sm:px-4 py-2 cursor-pointer flex-shrink-0"
+          >
             <PlusIcon className="w-4 h-4" />
-            {t('skills.addSkill')}
-            <ChevronDownIcon className="ml-2 w-4 h-4" />
+            <span className="whitespace-nowrap">{t('skills.addSkill')}</span>
+            <ChevronDownIcon className="ml-1 sm:ml-2 w-4 h-4" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => navigate('/home/skills?action=create')}>
+          <DropdownMenuItem
+            onClick={() => navigate('/home/skills?action=create')}
+          >
             {t('skills.createManually')}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => navigate('/home/skills?action=upload')}>
+          <DropdownMenuItem
+            onClick={() => navigate('/home/skills?action=upload')}
+          >
             {t('skills.uploadZip')}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => navigate('/home/skills?action=github')}>
+          <DropdownMenuItem
+            onClick={() => navigate('/home/skills?action=github')}
+          >
             {t('skills.importFromGithub')}
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -150,17 +161,24 @@ function AddExtensionContent() {
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="default" className="px-4 py-2 cursor-pointer">
+          <Button
+            variant="default"
+            className="px-3 sm:px-4 py-2 cursor-pointer flex-shrink-0"
+          >
             <PlusIcon className="w-4 h-4" />
-            {t('plugins.newPlugin')}
-            <ChevronDownIcon className="ml-2 w-4 h-4" />
+            <span className="whitespace-nowrap">{t('plugins.newPlugin')}</span>
+            <ChevronDownIcon className="ml-1 sm:ml-2 w-4 h-4" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => navigate('/home/add-plugin?action=github')}>
+          <DropdownMenuItem
+            onClick={() => navigate('/home/add-plugin?action=github')}
+          >
             {t('plugins.installFromGithub')}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => navigate('/home/add-plugin?action=upload')}>
+          <DropdownMenuItem
+            onClick={() => navigate('/home/add-plugin?action=upload')}
+          >
             {t('plugins.uploadLocal')}
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -172,7 +190,10 @@ function AddExtensionContent() {
     <>
       <div className="h-full flex flex-col">
         <div className="flex-1 overflow-y-auto">
-          <MarketPage installPlugin={handleInstallPlugin} headerActions={extensionActions} />
+          <MarketPage
+            installPlugin={handleInstallPlugin}
+            headerActions={extensionActions}
+          />
         </div>
       </div>
 
@@ -185,7 +206,7 @@ function AddExtensionContent() {
           }
         }}
       >
-        <DialogContent className="w-[500px] max-h-[80vh] p-6 bg-white dark:bg-[#1a1a1e] overflow-y-auto">
+        <DialogContent className="w-[calc(100vw-2rem)] sm:w-[500px] sm:max-w-[500px] max-h-[80vh] p-4 sm:p-6 overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-4">
               <Download className="size-6" />

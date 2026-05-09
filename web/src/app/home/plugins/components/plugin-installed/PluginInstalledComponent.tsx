@@ -462,7 +462,7 @@ const PluginInstalledComponent = forwardRef<
                   ({group.items.length})
                 </span>
               </div>
-              <div className="px-[0.8rem] grid gap-8 [grid-template-columns:repeat(auto-fill,minmax(30rem,1fr))] items-start">
+              <div className="px-[0.8rem] grid gap-5 sm:gap-8 [grid-template-columns:repeat(auto-fill,minmax(min(100%,22rem),1fr))] sm:[grid-template-columns:repeat(auto-fill,minmax(min(100%,28rem),1fr))] items-start">
                 {group.items.map((vo, index) => (
                   <div key={vo.id || index}>
                     <ExtensionCardComponent
