@@ -34,6 +34,9 @@ from tests.factories.message import (
     at_all_query,
     query_with_session,
     query_with_config,
+    friend_message_event,
+    group_message_event,
+    mock_adapter,
 )
 from tests.factories.provider import (
     FakeProvider,
@@ -62,6 +65,11 @@ __all__ = [
     "group_text_chain",
     "mention_chain",
     "image_chain",
+    # Message events
+    "friend_message_event",
+    "group_message_event",
+    # Mock adapters
+    "mock_adapter",
     # Queries
     "text_query",
     "group_text_query",

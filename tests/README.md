@@ -10,7 +10,7 @@ LangBot uses a layered quality gate system for developers and CI:
 |-------|---------|--------------|-------------|
 | **Quick** | `make test-quick` or `bash scripts/test-quick.sh` | Ruff lint + Unit tests + Smoke tests | Before every commit |
 | **Fast Integration** | `make test-integration-fast` or `bash scripts/test-integration-fast.sh` | SQLite/API/Pipeline integration (no external services) | Before PR, weekly |
-| **Coverage Gate** | `make test-coverage` or `bash scripts/test-coverage.sh` | All tests with coverage, threshold: 12% | Before merge, CI |
+| **Coverage Gate** | `make test-coverage` or `bash scripts/test-coverage.sh` | All tests with coverage, threshold: 18% | Before merge, CI |
 | **Full Local** | `make test-all-local` | Quick + Integration + Coverage | Before major changes |
 
 **Note**: PostgreSQL migration tests and slow tests are NOT in local default gates. They run in separate CI workflows.
@@ -32,7 +32,8 @@ bash scripts/test-coverage.sh         # ~8 min
 
 ### Coverage Baseline
 
-Current coverage threshold: **12%**
+Current coverage threshold: **18%**
+Actual coverage: **~22.14%**
 
 This is a conservative baseline to prevent coverage regression. It does NOT represent the final quality target. Key modules have higher coverage:
 - `pipeline.preproc.preproc`: 53%
