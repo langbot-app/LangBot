@@ -454,6 +454,9 @@ const jaJP = {
     loading: '読み込み中...',
     getPluginListError: 'プラグインリストの取得に失敗しました：',
     noPluginInstalled: 'プラグインがインストールされていません',
+    noExtensionInstalled: '拡張機能がインストールされていません',
+    loadingExtensions: '拡張機能を読み込み中...',
+    groupByType: '種類でグループ化',
     pluginConfig: 'プラグイン設定',
     pluginSort: 'プラグインの並び替え',
     pluginSortDescription:
@@ -659,7 +662,7 @@ const jaJP = {
       noTags: 'タグがありません',
     },
     filters: {
-      allFormats: 'すべての形式',
+      allFormats: 'すべての種類',
       more: 'もっと',
       advancedTitle: '高度なフィルター',
       advancedDescription: '拡張子タイプでフィルター',

@@ -433,6 +433,9 @@ const zhHans = {
     getPluginListError: '获取插件列表失败:',
     pluginConfig: '插件配置',
     noPluginInstalled: '暂未安装任何插件',
+    noExtensionInstalled: '暂未安装任何扩展',
+    loadingExtensions: '正在加载扩展...',
+    groupByType: '按类型分组',
     pluginSort: '插件排序',
     pluginSortDescription:
       '插件顺序会影响同一事件内的处理顺序，请拖动插件卡片排序',
@@ -634,7 +637,7 @@ const zhHans = {
       noTags: '暂无标签',
     },
     filters: {
-      allFormats: '全部格式',
+      allFormats: '全部类型',
       more: '更多',
       advancedTitle: '高级筛选',
       advancedDescription: '按扩展类型筛选',

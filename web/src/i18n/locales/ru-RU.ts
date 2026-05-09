@@ -458,6 +458,9 @@ const ruRU = {
     loading: 'Загрузка...',
     getPluginListError: 'Не удалось получить список плагинов:',
     noPluginInstalled: 'Плагины не установлены',
+    noExtensionInstalled: 'Расширения не установлены',
+    loadingExtensions: 'Загрузка расширений...',
+    groupByType: 'Группировать по типу',
     pluginConfig: 'Настройка плагина',
     pluginSort: 'Порядок плагинов',
     pluginSortDescription:
@@ -661,7 +664,7 @@ const ruRU = {
     deprecatedTooltip:
       'Пожалуйста, установите соответствующий плагин движка знаний.',
     filters: {
-      allFormats: 'Все форматы',
+      allFormats: 'Все типы',
       more: 'Ещё',
       advancedTitle: 'Расширенные фильтры',
       advancedDescription: 'Фильтр по типу расширения',

@@ -445,6 +445,9 @@ const thTH = {
     loading: 'กำลังโหลด...',
     getPluginListError: 'ไม่สามารถดึงรายการปลั๊กอินได้:',
     noPluginInstalled: 'ยังไม่มีปลั๊กอินที่ติดตั้ง',
+    noExtensionInstalled: 'ยังไม่มีส่วนขยายที่ติดตั้ง',
+    loadingExtensions: 'กำลังโหลดส่วนขยาย...',
+    groupByType: 'จัดกลุ่มตามประเภท',
     pluginConfig: 'การกำหนดค่าปลั๊กอิน',
     pluginSort: 'เรียงลำดับปลั๊กอิน',
     pluginSortDescription:
@@ -642,7 +645,7 @@ const thTH = {
     deprecated: 'เลิกใช้แล้ว',
     deprecatedTooltip: 'กรุณาติดตั้งปลั๊กอินเครื่องมือความรู้ที่เกี่ยวข้อง',
     filters: {
-      allFormats: 'ทุกรูปแบบ',
+      allFormats: 'ทุกประเภท',
       more: 'เพิ่มเติม',
       advancedTitle: 'ตัวกรองขั้นสูง',
       advancedDescription: 'กรองตามประเภทส่วนขยาย',

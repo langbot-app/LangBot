@@ -45,7 +45,7 @@ import {
 
 // Routes that belong to the "Extensions" section
 const EXTENSIONS_ROUTES = [
-  '/home/plugins',
+  '/home/extensions',
   '/home/market',
   '/home/mcp',
   '/home/skills',
@@ -124,7 +124,7 @@ function HomeLayoutInner({ children }: { children: React.ReactNode }) {
   const sectionLabel = isExtensions
     ? t('sidebar.extensions')
     : t('sidebar.home');
-  const sectionLink = isExtensions ? '/home/plugins' : '/home/monitoring';
+  const sectionLink = isExtensions ? '/home/extensions' : '/home/monitoring';
 
   return (
     <SidebarProvider>

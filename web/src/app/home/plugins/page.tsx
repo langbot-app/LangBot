@@ -1,6 +1,11 @@
 import PluginInstalledComponent, {
   PluginInstalledComponentRef,
+  FilterOptions,
+  FilterType,
 } from '@/app/home/plugins/components/plugin-installed/PluginInstalledComponent';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import PluginDetailContent from './PluginDetailContent';
 import styles from './plugins.module.css';
 import { Button } from '@/components/ui/button';
@@ -28,6 +33,9 @@ import {
   CardDescription,
   CardContent,
 } from '@/components/ui/card';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -98,7 +106,7 @@ function PluginListView() {
   } = usePluginInstallTasks();
   const [showGithubInstall, setShowGithubInstall] = useState(false);
   const [installSource, setInstallSource] = useState<string>('local');
-  const [installInfo] = useState<Record<string, any>>({}); // eslint-disable-line @typescript-eslint/no-explicit-any
+  const [installInfo] = useState<Record<string, any>>({});
   const [pluginInstallStatus, setPluginInstallStatus] =
     useState<PluginInstallStatus>(PluginInstallStatus.WAIT_INPUT);
   const [installError, setInstallError] = useState<string | null>(null);
@@ -125,6 +133,15 @@ function PluginListView() {
   const [debugPopoverOpen, setDebugPopoverOpen] = useState(false);
   const [copiedDebugUrl, setCopiedDebugUrl] = useState(false);
   const [copiedDebugKey, setCopiedDebugKey] = useState(false);
+  const [filterType, setFilterType] = useState<FilterType>('all');
+  const [groupByType, setGroupByType] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('extensions_group_by_type') === 'true';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('extensions_group_by_type', String(groupByType));
+  }, [groupByType]);
 
   useEffect(() => {
     const fetchPluginSystemStatus = async () => {
@@ -280,13 +297,13 @@ function PluginListView() {
         release_tag: selectedRelease.tag_name,
       });
     } else {
-      installPlugin(installSource, installInfo as Record<string, any>); // eslint-disable-line @typescript-eslint/no-explicit-any
+      installPlugin(installSource, installInfo as Record<string, any>);
     }
   }
 
   function installPlugin(
     installSource: string,
-    installInfo: Record<string, any>, // eslint-disable-line @typescript-eslint/no-explicit-any
+    installInfo: Record<string, any>,
   ) {
     setPluginInstallStatus(PluginInstallStatus.INSTALLING);
     if (installSource === 'github') {
@@ -469,35 +486,30 @@ function PluginListView() {
   };
 
   const renderPluginDisabledState = () => (
-    <div className="flex flex-col items-center justify-center h-[60vh] text-center pt-[10vh]">
-      <Power className="w-16 h-16 text-gray-400 mb-4" />
-      <h2 className="text-2xl font-semibold text-gray-700 dark:text-gray-300 mb-2">
-        {t('plugins.systemDisabled')}
-      </h2>
-      <p className="text-gray-500 dark:text-gray-400 max-w-md">
-        {t('plugins.systemDisabledDesc')}
-      </p>
+    <div className="flex justify-center pt-[10vh] px-4">
+      <Alert className="max-w-md">
+        <Power />
+        <AlertTitle>{t('plugins.systemDisabled')}</AlertTitle>
+        <AlertDescription>{t('plugins.systemDisabledDesc')}</AlertDescription>
+      </Alert>
     </div>
   );
 
   const renderPluginConnectionErrorState = () => (
-    <div className="flex flex-col items-center justify-center h-[60vh] text-center pt-[10vh]">
-      <Unlink className="w-[72px] h-[72px] text-[#BDBDBD]" />
-
-      <h2 className="text-2xl font-semibold text-gray-700 dark:text-gray-300 mb-2">
-        {t('plugins.connectionError')}
-      </h2>
-      <p className="text-gray-500 dark:text-gray-400 max-w-md mb-4">
-        {t('plugins.connectionErrorDesc')}
-      </p>
+    <div className="flex justify-center pt-[10vh] px-4">
+      <Alert variant="destructive" className="max-w-md">
+        <Unlink />
+        <AlertTitle>{t('plugins.connectionError')}</AlertTitle>
+        <AlertDescription>{t('plugins.connectionErrorDesc')}</AlertDescription>
+      </Alert>
     </div>
   );
 
   const renderLoadingState = () => (
-    <div className="flex flex-col items-center justify-center h-[60vh] pt-[10vh]">
-      <p className="text-gray-500 dark:text-gray-400">
-        {t('plugins.loadingStatus')}
-      </p>
+    <div className="flex flex-col gap-3 pt-[10vh] px-4 max-w-md mx-auto">
+      <Skeleton className="h-6 w-1/2" />
+      <Skeleton className="h-4 w-full" />
+      <Skeleton className="h-4 w-5/6" />
     </div>
   );
 
@@ -530,67 +542,66 @@ function PluginListView() {
         style={{ display: 'none' }}
       />
 
-      {/* Header bar with debug info, task queue, and install button */}
-      <div className="flex flex-row justify-end items-center px-[0.8rem] pb-4 flex-shrink-0 gap-2">
-        <PluginInstallTaskQueue />
-
-        <Popover open={debugPopoverOpen} onOpenChange={setDebugPopoverOpen}>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              className="px-4 py-4 cursor-pointer"
-              onClick={handleShowDebugInfo}
+      {/* Header bar with filter tabs, debug info, and task queue */}
+      <div className="flex flex-row justify-between items-center px-[0.8rem] pb-4 flex-shrink-0 gap-2">
+        <Tabs
+          value={filterType}
+          onValueChange={(value) => setFilterType(value as FilterType)}
+        >
+          <TabsList>
+            {FilterOptions.map((option) => (
+              <TabsTrigger key={option.value} value={option.value}>
+                {option.icon && <option.icon className="size-4" />}
+                {t(option.labelKey)}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+        <div className="flex flex-row items-center gap-2">
+          <div className="flex items-center gap-2 px-2">
+            <Switch
+              id="group-by-type"
+              checked={groupByType}
+              onCheckedChange={setGroupByType}
+              disabled={filterType !== 'all'}
+            />
+            <Label
+              htmlFor="group-by-type"
+              className="text-sm cursor-pointer whitespace-nowrap"
             >
-              <Code className="w-4 h-4 mr-2" />
-              {t('plugins.debugInfo')}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-[380px]" align="end">
-            <div className="space-y-3">
-              {/* Header with icon and title */}
-              <div className="flex items-center gap-2 pb-2 border-b">
-                <Bug className="w-4 h-4" />
-                <h4 className="font-semibold text-sm">
-                  {t('plugins.debugInfoTitle')}
-                </h4>
-              </div>
+              {t('plugins.groupByType')}
+            </Label>
+          </div>
+          <PluginInstallTaskQueue />
 
-              {/* Debug URL row */}
-              <div className="flex items-center gap-2">
-                <label className="text-sm font-medium whitespace-nowrap min-w-[50px]">
-                  {t('plugins.debugUrl')}:
-                </label>
-                <Input
-                  value={debugInfo?.debug_url || ''}
-                  readOnly
-                  className="w-[220px] font-mono text-xs h-8"
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 shrink-0"
-                  onClick={() =>
-                    handleCopyDebugInfo(debugInfo?.debug_url || '', 'url')
-                  }
-                >
-                  {copiedDebugUrl ? (
-                    <Check className="w-3.5 h-3.5 text-green-600" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5" />
-                  )}
-                </Button>
-              </div>
+          <Popover open={debugPopoverOpen} onOpenChange={setDebugPopoverOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className="px-4 py-4 cursor-pointer"
+                onClick={handleShowDebugInfo}
+              >
+                <Code className="w-4 h-4 mr-2" />
+                {t('plugins.debugInfo')}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[380px]" align="end">
+              <div className="space-y-3">
+                {/* Header with icon and title */}
+                <div className="flex items-center gap-2 pb-2 border-b">
+                  <Bug className="w-4 h-4" />
+                  <h4 className="font-semibold text-sm">
+                    {t('plugins.debugInfoTitle')}
+                  </h4>
+                </div>
 
-              {/* Debug Key row */}
-              <div className="space-y-1">
+                {/* Debug URL row */}
                 <div className="flex items-center gap-2">
                   <label className="text-sm font-medium whitespace-nowrap min-w-[50px]">
-                    {t('plugins.debugKey')}:
+                    {t('plugins.debugUrl')}:
                   </label>
                   <Input
-                    value={
-                      debugInfo?.plugin_debug_key || t('plugins.noDebugKey')
-                    }
+                    value={debugInfo?.debug_url || ''}
                     readOnly
                     className="w-[220px] font-mono text-xs h-8"
                   />
@@ -599,29 +610,59 @@ function PluginListView() {
                     size="icon"
                     className="h-8 w-8 shrink-0"
                     onClick={() =>
-                      handleCopyDebugInfo(
-                        debugInfo?.plugin_debug_key || '',
-                        'key',
-                      )
+                      handleCopyDebugInfo(debugInfo?.debug_url || '', 'url')
                     }
-                    disabled={!debugInfo?.plugin_debug_key}
                   >
-                    {copiedDebugKey ? (
+                    {copiedDebugUrl ? (
                       <Check className="w-3.5 h-3.5 text-green-600" />
                     ) : (
                       <Copy className="w-3.5 h-3.5" />
                     )}
                   </Button>
                 </div>
-                {!debugInfo?.plugin_debug_key && (
-                  <p className="text-xs text-muted-foreground ml-[58px]">
-                    {t('plugins.debugKeyDisabled')}
-                  </p>
-                )}
+
+                {/* Debug Key row */}
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium whitespace-nowrap min-w-[50px]">
+                      {t('plugins.debugKey')}:
+                    </label>
+                    <Input
+                      value={
+                        debugInfo?.plugin_debug_key || t('plugins.noDebugKey')
+                      }
+                      readOnly
+                      className="w-[220px] font-mono text-xs h-8"
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0"
+                      onClick={() =>
+                        handleCopyDebugInfo(
+                          debugInfo?.plugin_debug_key || '',
+                          'key',
+                        )
+                      }
+                      disabled={!debugInfo?.plugin_debug_key}
+                    >
+                      {copiedDebugKey ? (
+                        <Check className="w-3.5 h-3.5 text-green-600" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                    </Button>
+                  </div>
+                  {!debugInfo?.plugin_debug_key && (
+                    <p className="text-xs text-muted-foreground ml-[58px]">
+                      {t('plugins.debugKeyDisabled')}
+                    </p>
+                  )}
+                </div>
               </div>
-            </div>
-          </PopoverContent>
-        </Popover>
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
 
       {/* Inline GitHub install flow */}
@@ -712,9 +753,12 @@ function PluginListView() {
                             </CardDescription>
                           </div>
                           {release.prerelease && (
-                            <span className="text-xs bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 px-2 py-0.5 rounded ml-2 shrink-0">
+                            <Badge
+                              variant="secondary"
+                              className="ml-2 shrink-0"
+                            >
                               {t('plugins.prerelease')}
-                            </span>
+                            </Badge>
                           )}
                         </CardHeader>
                       </Card>
@@ -867,19 +911,21 @@ function PluginListView() {
 
       {/* Installed plugins grid */}
       <div className="flex-1 overflow-y-auto">
-        <PluginInstalledComponent ref={pluginInstalledRef} />
+        <PluginInstalledComponent
+          ref={pluginInstalledRef}
+          filterType={filterType}
+          groupByType={groupByType}
+        />
       </div>
 
       {isDragOver && (
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-50 flex items-center justify-center z-50 pointer-events-none">
-          <div className="bg-white rounded-lg p-8 shadow-lg border-2 border-dashed border-gray-500">
-            <div className="text-center">
-              <UploadIcon className="mx-auto h-12 w-12 text-gray-500 mb-4" />
-              <p className="text-lg font-medium text-gray-700">
-                {t('plugins.dragToUpload')}
-              </p>
-            </div>
-          </div>
+        <div className="fixed inset-0 bg-foreground/40 flex items-center justify-center z-50 pointer-events-none">
+          <Card className="border-2 border-dashed">
+            <CardContent className="flex flex-col items-center justify-center px-8 py-6">
+              <UploadIcon className="h-12 w-12 text-muted-foreground mb-4" />
+              <p className="text-lg font-medium">{t('plugins.dragToUpload')}</p>
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>

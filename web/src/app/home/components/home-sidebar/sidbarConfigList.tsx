@@ -86,7 +86,7 @@ export const sidebarConfigList = [
     id: 'plugins',
     name: t('sidebar.installedPlugins'),
     icon: <Puzzle className="text-blue-500" />,
-    route: '/home/plugins',
+    route: '/home/extensions',
     description: t('plugins.description'),
     helpLink: {
       en_US: 'https://link.langbot.app/en/docs/plugins',

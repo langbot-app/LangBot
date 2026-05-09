@@ -15,6 +15,7 @@ import {
   ApiRespPlugins,
   ApiRespPlugin,
   ApiRespPluginConfig,
+  ApiRespExtensions,
   AsyncTaskCreatedResp,
   ApiRespSystemInfo,
   ApiRespAsyncTasks,
@@ -543,6 +544,11 @@ export class BackendClient extends BaseHttpClient {
     return this.get(`/api/v1/knowledge/parsers${params}`);
   }
 
+  // ============ Extensions API ============
+  public getExtensions(): Promise<ApiRespExtensions> {
+    return this.get('/api/v1/extensions');
+  }
+
   // ============ Plugins API ============
   public getPlugins(): Promise<ApiRespPlugins> {
     return this.get('/api/v1/plugins');
@@ -815,7 +821,10 @@ export class BackendClient extends BaseHttpClient {
     serverName: string,
     server: Partial<MCPServer>,
   ): Promise<AsyncTaskCreatedResp> {
-    return this.put(`/api/v1/mcp/servers/${encodeURIComponent(serverName)}`, server);
+    return this.put(
+      `/api/v1/mcp/servers/${encodeURIComponent(serverName)}`,
+      server,
+    );
   }
 
   public deleteMCPServer(serverName: string): Promise<AsyncTaskCreatedResp> {
@@ -835,7 +844,10 @@ export class BackendClient extends BaseHttpClient {
     serverName: string,
     serverData: object,
   ): Promise<AsyncTaskCreatedResp> {
-    return this.post(`/api/v1/mcp/servers/${encodeURIComponent(serverName)}/test`, serverData);
+    return this.post(
+      `/api/v1/mcp/servers/${encodeURIComponent(serverName)}/test`,
+      serverData,
+    );
   }
 
   public installMCPServerFromGithub(

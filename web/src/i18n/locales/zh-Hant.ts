@@ -434,6 +434,9 @@ const zhHant = {
     getPluginListError: '取得外掛清單失敗:',
     pluginConfig: '外掛設定',
     noPluginInstalled: '暫未安裝任何外掛',
+    noExtensionInstalled: '暫未安裝任何擴充功能',
+    loadingExtensions: '正在載入擴充功能...',
+    groupByType: '依類型分組',
     pluginSort: '外掛排序',
     pluginSortDescription:
       '外掛順序會影響同一事件內的處理順序，請拖曳外掛卡片排序',
@@ -627,7 +630,7 @@ const zhHant = {
       noTags: '暫無標籤',
     },
     filters: {
-      allFormats: '全部格式',
+      allFormats: '全部類型',
       more: '更多',
       advancedTitle: '高級篩選',
       advancedDescription: '按擴展類型篩選',

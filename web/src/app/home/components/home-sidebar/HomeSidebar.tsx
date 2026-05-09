@@ -177,7 +177,7 @@ const ENTITY_ROUTE_MAP: Record<EntityCategoryId, string> = {
   bots: '/home/bots',
   pipelines: '/home/pipelines',
   knowledge: '/home/knowledge',
-  plugins: '/home/plugins',
+  plugins: '/home/extensions',
   mcp: '/home/mcp',
   skills: '/home/skills',
 };
@@ -664,7 +664,7 @@ function NavItems({
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setPendingPluginInstallAction('local');
-                                navigate('/home/plugins');
+                                navigate('/home/extensions');
                                 setPopoverOpen((prev) => ({
                                   ...prev,
                                   [config.id]: false,
@@ -678,7 +678,7 @@ function NavItems({
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setPendingPluginInstallAction('github');
-                                navigate('/home/plugins');
+                                navigate('/home/extensions');
                                 setPopoverOpen((prev) => ({
                                   ...prev,
                                   [config.id]: false,
@@ -838,7 +838,7 @@ function NavItems({
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setPendingPluginInstallAction('local');
-                                navigate('/home/plugins');
+                                navigate('/home/extensions');
                               }}
                             >
                               <Upload className="size-4" />
@@ -848,7 +848,7 @@ function NavItems({
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setPendingPluginInstallAction('github');
-                                navigate('/home/plugins');
+                                navigate('/home/extensions');
                               }}
                             >
                               <Github className="size-4" />

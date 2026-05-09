@@ -449,6 +449,9 @@ const enUS = {
     loading: 'Loading...',
     getPluginListError: 'Failed to get plugin list:',
     noPluginInstalled: 'No plugins installed',
+    noExtensionInstalled: 'No extensions installed',
+    loadingExtensions: 'Loading extensions...',
+    groupByType: 'Group by type',
     pluginConfig: 'Plugin Configuration',
     pluginSort: 'Plugin Sort',
     pluginSortDescription:
@@ -658,7 +661,7 @@ const enUS = {
     deprecatedTooltip:
       'Please install the corresponding Knowledge Engine plugin.',
     filters: {
-      allFormats: 'All Formats',
+      allFormats: 'All Types',
       more: 'More',
       advancedTitle: 'Advanced Filters',
       advancedDescription: 'Filter by extension type',

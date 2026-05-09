@@ -6,15 +6,14 @@ import { BugIcon, ExternalLink, Ellipsis, Trash, ArrowUp } from 'lucide-react';
 import { getCloudServiceClientSync, systemInfo } from '@/app/infra/http';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  MCPSessionStatus,
-} from '@/app/infra/entities/api';
+import { MCPSessionStatus } from '@/app/infra/entities/api';
 
 type ExtensionCardComponentProps = {
   cardVO: ExtensionCardVO;
@@ -69,17 +68,14 @@ export default function ExtensionCardComponent({
 
   const renderPluginContent = () => (
     <>
-      <div className="text-[0.7rem] text-[#666] dark:text-[#999] truncate w-full">
+      <div className="text-[0.7rem] text-muted-foreground truncate w-full">
         {cardVO.author} / {cardVO.name}
       </div>
       <div className="flex flex-row items-center justify-start gap-[0.4rem] flex-wrap max-w-full">
-        <div className="text-[1.2rem] text-black dark:text-[#f0f0f0] truncate max-w-[10rem]">
+        <div className="text-[1.2rem] text-foreground truncate max-w-[10rem]">
           {cardVO.label}
         </div>
-        <Badge
-          variant="outline"
-          className="text-[0.7rem] flex-shrink-0"
-        >
+        <Badge variant="outline" className="text-[0.7rem] flex-shrink-0">
           v{cardVO.version}
         </Badge>
         <Badge
@@ -126,7 +122,7 @@ export default function ExtensionCardComponent({
           </>
         )}
       </div>
-      <div className="text-[0.8rem] text-[#666] line-clamp-2 dark:text-[#999] w-full">
+      <div className="text-[0.8rem] text-muted-foreground line-clamp-2 w-full">
         {cardVO.description}
       </div>
     </>
@@ -134,11 +130,11 @@ export default function ExtensionCardComponent({
 
   const renderMCPContent = () => (
     <>
-      <div className="text-[0.7rem] text-[#666] dark:text-[#999] truncate w-full">
+      <div className="text-[0.7rem] text-muted-foreground truncate w-full">
         MCP Server
       </div>
       <div className="flex flex-row items-center justify-start gap-[0.4rem] flex-wrap max-w-full">
-        <div className="text-[1.2rem] text-black dark:text-[#f0f0f0] truncate max-w-[10rem]">
+        <div className="text-[1.2rem] text-foreground truncate max-w-[10rem]">
           {cardVO.label}
         </div>
         <Badge
@@ -166,10 +162,12 @@ export default function ExtensionCardComponent({
           {cardVO.enabled ? t('mcp.statusConnected') : t('mcp.statusDisabled')}
         </Badge>
       </div>
-      <div className="text-[0.8rem] text-[#666] line-clamp-2 dark:text-[#999] w-full">
+      <div className="text-[0.8rem] text-muted-foreground line-clamp-2 w-full">
         {cardVO.description || t('mcp.noToolsFound')}
         {cardVO.tools !== undefined && cardVO.tools > 0 && (
-          <span className="ml-1">{t('mcp.toolCount', { count: cardVO.tools })}</span>
+          <span className="ml-1">
+            {t('mcp.toolCount', { count: cardVO.tools })}
+          </span>
         )}
       </div>
     </>
@@ -177,11 +175,11 @@ export default function ExtensionCardComponent({
 
   const renderSkillContent = () => (
     <>
-      <div className="text-[0.7rem] text-[#666] dark:text-[#999] truncate w-full">
+      <div className="text-[0.7rem] text-muted-foreground truncate w-full">
         Skill
       </div>
       <div className="flex flex-row items-center justify-start gap-[0.4rem] flex-wrap max-w-full">
-        <div className="text-[1.2rem] text-black dark:text-[#f0f0f0] truncate max-w-[10rem]">
+        <div className="text-[1.2rem] text-foreground truncate max-w-[10rem]">
           {cardVO.label}
         </div>
         <Badge
@@ -191,7 +189,7 @@ export default function ExtensionCardComponent({
           {t('common.skill')}
         </Badge>
       </div>
-      <div className="text-[0.8rem] text-[#666] line-clamp-2 dark:text-[#999] w-full">
+      <div className="text-[0.8rem] text-muted-foreground line-clamp-2 w-full">
         {cardVO.description}
       </div>
     </>
@@ -199,13 +197,16 @@ export default function ExtensionCardComponent({
 
   return (
     <>
-      <div
-        className="w-[100%] h-[10rem] bg-white rounded-[10px] border border-[#e4e4e7] dark:border-[#27272a] p-[1.2rem] cursor-pointer dark:bg-[#1f1f22] relative transition-all duration-200 hover:border-[#a1a1aa] dark:hover:border-[#3f3f46]"
+      <Card
+        className="w-full h-[10rem] py-5 px-5 cursor-pointer relative gap-0 shadow-xs transition-shadow duration-200 hover:shadow-md"
         onClick={() => onCardClick()}
       >
         <div className="w-full h-full flex flex-row items-start justify-start gap-[1.2rem]">
           <img
-            src={cardVO.iconURL || httpClient.getPluginIconURL(cardVO.author, cardVO.name)}
+            src={
+              cardVO.iconURL ||
+              httpClient.getPluginIconURL(cardVO.author, cardVO.name)
+            }
             alt="extension icon"
             className="w-16 h-16 rounded-[8%] flex-shrink-0"
           />
@@ -233,62 +234,65 @@ export default function ExtensionCardComponent({
               >
                 <DropdownMenuTrigger asChild>
                   <div className="relative">
-                    <Button
-                      variant="ghost"
-                      className="bg-white dark:bg-[#1f1f22] hover:bg-gray-100 dark:hover:bg-[#2a2a2d]"
-                    >
+                    <Button variant="ghost" size="icon">
                       <Ellipsis className="w-4 h-4" />
                     </Button>
                     {cardVO.hasUpdate && (
-                      <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-[#1f1f22]"></div>
+                      <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-destructive rounded-full border-2 border-card"></div>
                     )}
                   </div>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
-                  {cardVO.type === 'plugin' && cardVO.install_source === 'marketplace' && (
-                    <DropdownMenuItem
-                      className="flex flex-row items-center justify-start gap-[0.4rem] cursor-pointer"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (onUpgradeClick) {
-                          onUpgradeClick(cardVO);
-                        }
-                        setDropdownOpen(false);
-                      }}
-                    >
-                      <ArrowUp className="w-4 h-4" />
-                      <span>{t('plugins.update')}</span>
-                      {cardVO.hasUpdate && (
-                        <Badge className="ml-auto bg-red-500 hover:bg-red-500 text-white text-[0.6rem] px-1.5 py-0 h-4">
-                          {t('plugins.new')}
-                        </Badge>
-                      )}
-                    </DropdownMenuItem>
-                  )}
-                  {cardVO.type === 'plugin' && (cardVO.install_source === 'github' || cardVO.install_source === 'marketplace') && (
-                    <DropdownMenuItem
-                      className="flex flex-row items-center justify-start gap-[0.4rem] cursor-pointer"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (cardVO.install_source === 'github') {
-                          window.open(cardVO.install_info?.github_url as string, '_blank');
-                        } else if (cardVO.install_source === 'marketplace') {
-                          window.open(
-                            getCloudServiceClientSync().getPluginMarketplaceURL(
-                              systemInfo.cloud_service_url,
-                              cardVO.author,
-                              cardVO.name,
-                            ),
-                            '_blank',
-                          );
-                        }
-                        setDropdownOpen(false);
-                      }}
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                      <span>{t('plugins.viewSource')}</span>
-                    </DropdownMenuItem>
-                  )}
+                  {cardVO.type === 'plugin' &&
+                    cardVO.install_source === 'marketplace' && (
+                      <DropdownMenuItem
+                        className="flex flex-row items-center justify-start gap-[0.4rem] cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onUpgradeClick) {
+                            onUpgradeClick(cardVO);
+                          }
+                          setDropdownOpen(false);
+                        }}
+                      >
+                        <ArrowUp className="w-4 h-4" />
+                        <span>{t('plugins.update')}</span>
+                        {cardVO.hasUpdate && (
+                          <Badge className="ml-auto bg-red-500 hover:bg-red-500 text-white text-[0.6rem] px-1.5 py-0 h-4">
+                            {t('plugins.new')}
+                          </Badge>
+                        )}
+                      </DropdownMenuItem>
+                    )}
+                  {cardVO.type === 'plugin' &&
+                    (cardVO.install_source === 'github' ||
+                      cardVO.install_source === 'marketplace') && (
+                      <DropdownMenuItem
+                        className="flex flex-row items-center justify-start gap-[0.4rem] cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (cardVO.install_source === 'github') {
+                            window.open(
+                              cardVO.install_info?.github_url as string,
+                              '_blank',
+                            );
+                          } else if (cardVO.install_source === 'marketplace') {
+                            window.open(
+                              getCloudServiceClientSync().getPluginMarketplaceURL(
+                                systemInfo.cloud_service_url,
+                                cardVO.author,
+                                cardVO.name,
+                              ),
+                              '_blank',
+                            );
+                          }
+                          setDropdownOpen(false);
+                        }}
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                        <span>{t('plugins.viewSource')}</span>
+                      </DropdownMenuItem>
+                    )}
                   <DropdownMenuItem
                     className="flex flex-row items-center justify-start gap-[0.4rem] cursor-pointer text-red-600 focus:text-red-600"
                     onClick={(e) => {
@@ -302,8 +306,8 @@ export default function ExtensionCardComponent({
                       {cardVO.type === 'mcp'
                         ? t('mcp.deleteServer')
                         : cardVO.type === 'skill'
-                        ? t('skills.delete')
-                        : t('plugins.delete')}
+                          ? t('skills.delete')
+                          : t('plugins.delete')}
                     </span>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -311,7 +315,7 @@ export default function ExtensionCardComponent({
             </div>
           </div>
         </div>
-      </div>
+      </Card>
     </>
   );
 }

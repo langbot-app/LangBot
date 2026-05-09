@@ -462,6 +462,9 @@ const esES = {
     loading: 'Cargando...',
     getPluginListError: 'Error al obtener la lista de plugins:',
     noPluginInstalled: 'No hay plugins instalados',
+    noExtensionInstalled: 'No hay extensiones instaladas',
+    loadingExtensions: 'Cargando extensiones...',
+    groupByType: 'Agrupar por tipo',
     pluginConfig: 'Configuración del plugin',
     pluginSort: 'Orden de plugins',
     pluginSortDescription:
@@ -665,7 +668,7 @@ const esES = {
     deprecatedTooltip:
       'Por favor, instala el plugin de motor de conocimiento correspondiente.',
     filters: {
-      allFormats: 'Todos los formatos',
+      allFormats: 'Todos los tipos',
       more: 'Más',
       advancedTitle: 'Filtros avanzados',
       advancedDescription: 'Filtrar por tipo de extensión',

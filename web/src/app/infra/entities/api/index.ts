@@ -280,6 +280,15 @@ export interface ApiRespPlugins {
   plugins: Plugin[];
 }
 
+export type ExtensionItem =
+  | { type: 'plugin'; plugin: Plugin }
+  | { type: 'mcp'; server: MCPServer }
+  | { type: 'skill'; skill: Skill };
+
+export interface ApiRespExtensions {
+  extensions: ExtensionItem[];
+}
+
 export interface ApiRespPlugin {
   plugin: Plugin;
 }

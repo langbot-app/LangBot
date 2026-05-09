@@ -455,6 +455,9 @@ const viVN = {
     loading: 'Đang tải...',
     getPluginListError: 'Lấy danh sách plugin thất bại:',
     noPluginInstalled: 'Chưa cài đặt plugin nào',
+    noExtensionInstalled: 'Chưa cài đặt tiện ích mở rộng nào',
+    loadingExtensions: 'Đang tải tiện ích mở rộng...',
+    groupByType: 'Nhóm theo loại',
     pluginConfig: 'Cấu hình Plugin',
     pluginSort: 'Sắp xếp Plugin',
     pluginSortDescription:
@@ -655,7 +658,7 @@ const viVN = {
     deprecated: 'Không còn hỗ trợ',
     deprecatedTooltip: 'Vui lòng cài đặt plugin Công cụ tri thức tương ứng.',
     filters: {
-      allFormats: 'Tất cả định dạng',
+      allFormats: 'Tất cả loại',
       more: 'Thêm',
       advancedTitle: 'Bộ lọc nâng cao',
       advancedDescription: 'Lọc theo loại phần mở rộng',
