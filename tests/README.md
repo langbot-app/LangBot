@@ -2,6 +2,43 @@
 
 This directory contains the test suite for LangBot, with a focus on comprehensive unit testing of pipeline stages.
 
+## Quality Gate Layers
+
+LangBot uses a layered quality gate system for developers and CI:
+
+| Layer | Command | What it runs | When to use |
+|-------|---------|--------------|-------------|
+| **Quick** | `make test-quick` or `bash scripts/test-quick.sh` | Ruff lint + Unit tests + Smoke tests | Before every commit |
+| **Fast Integration** | `make test-integration-fast` or `bash scripts/test-integration-fast.sh` | SQLite/API/Pipeline integration (no external services) | Before PR, weekly |
+| **Coverage Gate** | `make test-coverage` or `bash scripts/test-coverage.sh` | All tests with coverage, threshold: 12% | Before merge, CI |
+| **Full Local** | `make test-all-local` | Quick + Integration + Coverage | Before major changes |
+
+**Note**: PostgreSQL migration tests and slow tests are NOT in local default gates. They run in separate CI workflows.
+
+### Developer Workflow
+
+```bash
+# Daily: Quick self-test
+bash scripts/test-quick.sh
+
+# Before PR: Full local gate
+make test-all-local
+
+# Or run each layer separately:
+bash scripts/test-quick.sh           # ~2 min
+bash scripts/test-integration-fast.sh # ~3 min
+bash scripts/test-coverage.sh         # ~8 min
+```
+
+### Coverage Baseline
+
+Current coverage threshold: **12%**
+
+This is a conservative baseline to prevent coverage regression. It does NOT represent the final quality target. Key modules have higher coverage:
+- `pipeline.preproc.preproc`: 53%
+- `pipeline.process.process`: 96%
+- `pipeline.respback.respback`: 88%
+
 ## Important Note
 
 Due to circular import dependencies in the pipeline module structure, the test files use **lazy imports** via `importlib.import_module()` instead of direct imports. This ensures tests can run without triggering circular import errors.
@@ -22,6 +59,9 @@ tests/
 │   ├── api/                     # HTTP API tests
 │   │   ├── __init__.py
 │   │   └── test_smoke.py        # API smoke tests
+│   ├── pipeline/                # Pipeline stage-chain tests
+│   │   ├── __init__.py
+│   │   └── test_full_flow.py    # Full flow integration
 │   └── persistence/             # Database/persistence tests
 │       ├── __init__.py
 │       └── test_migrations.py   # Alembic migration tests
@@ -182,6 +222,9 @@ uv run pytest tests/integration/persistence/test_migrations.py -q --tb=short
 # Run API smoke integration tests
 uv run pytest tests/integration/api/test_smoke.py -q
 
+# Run pipeline full-flow integration tests
+uv run pytest tests/integration/pipeline/test_full_flow.py -q
+
 # Run with verbose output
 uv run pytest tests/integration/ -v
 ```
@@ -189,6 +232,7 @@ uv run pytest tests/integration/ -v
 Note: Integration tests use:
 - Temporary databases (tmp_path) for persistence tests
 - Fake app/services for API tests (no real provider/platform)
+- Fake runner/provider for pipeline tests (no real LLM API)
 - Do not require external services
 
 ### Running migration tests locally
@@ -202,6 +246,29 @@ uv run pytest tests/integration/persistence/test_migrations.py -q --tb=short
 
 CI workflow `.github/workflows/test-migrations.yml` runs SQLite tests using pytest.
 PostgreSQL migration tests still use inline Python script (will be migrated to pytest in G-003).
+
+### Running pipeline integration tests locally
+
+Pipeline full-flow integration tests validate real stage interactions:
+
+```bash
+# Run pipeline integration tests (uses fake runner, no real LLM API)
+uv run pytest tests/integration/pipeline/test_full_flow.py -q --tb=short
+
+# Run with coverage for pipeline modules
+uv run pytest tests/integration/pipeline \
+    --cov=langbot.pkg.pipeline.preproc.preproc \
+    --cov=langbot.pkg.pipeline.process.process \
+    --cov=langbot.pkg.pipeline.respback.respback \
+    --cov-report=term -q
+```
+
+These tests:
+- Use `FakeRunner` class to simulate LLM responses without real API calls
+- Import real `PreProcessor`, `MessageProcessor`, `SendResponseBackStage` stages
+- Validate stage chain: PreProcessor → Processor → SendResponseBackStage
+- Test prevent_default, exception handling, and full message flow
+- Do not require real LLM provider keys
 
 ### Known Issues
 
