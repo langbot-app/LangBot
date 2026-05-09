@@ -1346,6 +1346,13 @@ const enUS = {
     reconnecting: 'Reconnecting...',
     retry: 'Retry',
   },
+  weixin: {
+    scanLogin: 'Scan QR Login',
+    scanQRCode:
+      'Scan the QR code below with WeChat to authorize and automatically fill in the token',
+    loginSuccess: 'Login successful! Token has been filled in',
+    loginFailed: 'Login failed',
+  },
   pluginPages: {
     selectFromSidebar: 'Select a plugin page from the sidebar',
     invalidPage: 'Invalid plugin page',

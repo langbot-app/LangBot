@@ -11,31 +11,77 @@ import { useTranslation } from 'react-i18next';
 import { Loader2, RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
 import QRCode from 'qrcode';
 
-interface FeishuAppCreatorDialogProps {
+export type QrLoginPlatform = 'feishu' | 'weixin';
+
+interface PlatformConfig {
+  titleKey: string;
+  connectingKey: string;
+  scanQRCodeKey: string;
+  waitingKey: string;
+  successKey: string;
+  failedKey: string;
+  retryKey: string;
+  apiBase: string;
+  extractSuccess: (data: Record<string, string>) => Record<string, string>;
+}
+
+const PLATFORM_CONFIGS: Record<QrLoginPlatform, PlatformConfig> = {
+  feishu: {
+    titleKey: 'feishu.createApp',
+    connectingKey: 'feishu.connecting',
+    scanQRCodeKey: 'feishu.scanQRCode',
+    waitingKey: 'feishu.waitingForScan',
+    successKey: 'feishu.createSuccess',
+    failedKey: 'feishu.createFailed',
+    retryKey: 'feishu.retry',
+    apiBase: '/api/v1/platform/adapters/lark/create-app',
+    extractSuccess: (data) => ({
+      app_id: data.app_id,
+      app_secret: data.app_secret,
+      ...(data.app_name ? { app_name: data.app_name } : {}),
+    }),
+  },
+  weixin: {
+    titleKey: 'weixin.scanLogin',
+    connectingKey: 'feishu.connecting',
+    scanQRCodeKey: 'weixin.scanQRCode',
+    waitingKey: 'feishu.waitingForScan',
+    successKey: 'weixin.loginSuccess',
+    failedKey: 'weixin.loginFailed',
+    retryKey: 'feishu.retry',
+    apiBase: '/api/v1/platform/adapters/weixin/login',
+    extractSuccess: (data) => ({
+      token: data.token,
+      base_url: data.base_url,
+      ...(data.account_id ? { account_id: data.account_id } : {}),
+    }),
+  },
+};
+
+interface QrCodeLoginDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess: (credentials: {
-    app_id: string;
-    app_secret: string;
-    app_name?: string;
-  }) => void;
+  platform: QrLoginPlatform;
+  onSuccess: (credentials: Record<string, string>) => void;
 }
 
 type DialogState = 'connecting' | 'waiting' | 'success' | 'error';
 
 const POLL_INTERVAL_MS = 3000;
 
-export default function FeishuAppCreatorDialog({
+export default function QrCodeLoginDialog({
   open,
   onOpenChange,
+  platform,
   onSuccess,
-}: FeishuAppCreatorDialogProps) {
+}: QrCodeLoginDialogProps) {
   const { t } = useTranslation();
+  const platformConfig = PLATFORM_CONFIGS[platform];
+
   const [state, setState] = useState<DialogState>('connecting');
-  const [qrUrl, setQrUrl] = useState('');
+  const [qrDataUrl, setQrDataUrl] = useState('');
   const [expireIn, setExpireIn] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
-  const [qrDataUrl, setQrDataUrl] = useState('');
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -47,6 +93,8 @@ export default function FeishuAppCreatorDialog({
   onOpenChangeRef.current = onOpenChange;
   const tRef = useRef(t);
   tRef.current = t;
+  const platformConfigRef = useRef(platformConfig);
+  platformConfigRef.current = platformConfig;
 
   const cleanup = useCallback(() => {
     if (pollTimerRef.current) {
@@ -67,7 +115,7 @@ export default function FeishuAppCreatorDialog({
       const baseUrl =
         import.meta.env.VITE_API_BASE_URL || window.location.origin;
       fetch(
-        `${baseUrl}/api/v1/platform/adapters/lark/create-app/${sessionIdRef.current}`,
+        `${baseUrl}${platformConfigRef.current.apiBase}/${sessionIdRef.current}`,
         {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
@@ -77,37 +125,46 @@ export default function FeishuAppCreatorDialog({
     }
   }, []);
 
-  const startRegistration = useCallback(async () => {
+  const startLogin = useCallback(async () => {
     cleanup();
     setState('connecting');
-    setQrUrl('');
+    setQrDataUrl('');
     setExpireIn(0);
     setErrorMessage('');
 
     const token = localStorage.getItem('token');
     const baseUrl = import.meta.env.VITE_API_BASE_URL || window.location.origin;
+    const cfg = platformConfigRef.current;
 
     try {
       const controller = new AbortController();
       abortRef.current = controller;
 
-      const res = await fetch(
-        `${baseUrl}/api/v1/platform/adapters/lark/create-app`,
-        {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-          signal: controller.signal,
-        },
-      );
+      const res = await fetch(`${baseUrl}${cfg.apiBase}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      });
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const json = await res.json();
       if (json.code !== 0) throw new Error(json.msg || 'Request failed');
 
-      const { session_id, qr_url, expire_at } = json.data;
+      const { session_id, qr_data_url, qr_url, expire_at } = json.data;
       sessionIdRef.current = session_id;
-      setQrUrl(qr_url);
+
+      // qr_data_url is a pre-rendered data URL (WeChat);
+      // qr_url is a plain URL string (Feishu) that needs local QR generation.
+      if (qr_data_url) {
+        setQrDataUrl(qr_data_url);
+      } else if (qr_url) {
+        const dataUrl = await QRCode.toDataURL(qr_url, {
+          width: 224,
+          margin: 2,
+        });
+        setQrDataUrl(dataUrl);
+      }
       setState('waiting');
 
       // Calculate remaining seconds
@@ -132,7 +189,7 @@ export default function FeishuAppCreatorDialog({
       pollTimerRef.current = setInterval(async () => {
         try {
           const pollRes = await fetch(
-            `${baseUrl}/api/v1/platform/adapters/lark/create-app/status/${session_id}`,
+            `${baseUrl}${cfg.apiBase}/status/${session_id}`,
             { headers: { Authorization: `Bearer ${token}` } },
           );
           if (!pollRes.ok) return;
@@ -140,21 +197,21 @@ export default function FeishuAppCreatorDialog({
           const pollJson = await pollRes.json();
           if (pollJson.code !== 0) return;
 
-          const { status, app_id, app_secret, error } = pollJson.data;
+          const { status, error, ...rest } = pollJson.data;
 
-          if (status === 'success' && app_id && app_secret) {
+          if (status === 'success') {
             sessionIdRef.current = null; // backend already cleaned up
             cleanup();
             setState('success');
             setTimeout(() => {
-              onSuccessRef.current({ app_id, app_secret });
+              onSuccessRef.current(cfg.extractSuccess(rest));
               onOpenChangeRef.current(false);
             }, 1500);
           } else if (status === 'error') {
-            sessionIdRef.current = null; // backend already cleaned up
+            sessionIdRef.current = null;
             cleanup();
             setState('error');
-            setErrorMessage(error || tRef.current('feishu.createFailed'));
+            setErrorMessage(error || tRef.current(cfg.failedKey));
           }
         } catch {
           // ignore poll errors, will retry next interval
@@ -164,36 +221,19 @@ export default function FeishuAppCreatorDialog({
       if (err instanceof Error && err.name === 'AbortError') return;
       setState('error');
       setErrorMessage(
-        err instanceof Error
-          ? err.message
-          : tRef.current('feishu.createFailed'),
+        err instanceof Error ? err.message : tRef.current(cfg.failedKey),
       );
     }
   }, [cleanup]);
 
   useEffect(() => {
     if (open) {
-      startRegistration();
+      startLogin();
     }
     return () => {
       cleanup();
     };
-  }, [open, startRegistration, cleanup]);
-
-  // Generate QR code locally when qrUrl changes
-  useEffect(() => {
-    if (!qrUrl) {
-      setQrDataUrl('');
-      return;
-    }
-    let cancelled = false;
-    QRCode.toDataURL(qrUrl, { width: 224, margin: 2 }).then((url) => {
-      if (!cancelled) setQrDataUrl(url);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [qrUrl]);
+  }, [open, startLogin, cleanup]);
 
   const handleOpenChange = (newOpen: boolean) => {
     if (!newOpen) {
@@ -215,7 +255,7 @@ export default function FeishuAppCreatorDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{t('feishu.createApp')}</DialogTitle>
+          <DialogTitle>{t(platformConfig.titleKey)}</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col items-center justify-center py-4 space-y-4">
@@ -224,33 +264,23 @@ export default function FeishuAppCreatorDialog({
             <div className="flex flex-col items-center space-y-3 py-8">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               <p className="text-sm text-muted-foreground">
-                {t('feishu.connecting')}
+                {t(platformConfig.connectingKey)}
               </p>
             </div>
           )}
 
           {/* QR code area */}
-          {state === 'waiting' && qrUrl && (
+          {state === 'waiting' && qrDataUrl && (
             <div className="flex flex-col items-center space-y-3">
               <p className="text-sm text-muted-foreground text-center">
-                {t('feishu.scanQRCode')}
+                {t(platformConfig.scanQRCodeKey)}
               </p>
               <div className="border rounded-lg p-2 bg-white">
-                {qrDataUrl ? (
-                  <img
-                    src={qrDataUrl}
-                    alt="Feishu QR Code"
-                    className="w-56 h-56"
-                  />
-                ) : (
-                  <div className="w-56 h-56 flex items-center justify-center">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                  </div>
-                )}
+                <img src={qrDataUrl} alt="QR Code" className="w-56 h-56" />
               </div>
               {expireIn > 0 && (
                 <p className="text-xs text-muted-foreground">
-                  {t('feishu.waitingForScan')} ({formatTime(expireIn)})
+                  {t(platformConfig.waitingKey)} ({formatTime(expireIn)})
                 </p>
               )}
             </div>
@@ -261,7 +291,7 @@ export default function FeishuAppCreatorDialog({
             <div className="flex flex-col items-center space-y-3 py-8">
               <CheckCircle2 className="h-12 w-12 text-green-500" />
               <p className="text-sm text-green-600 font-medium">
-                {t('feishu.createSuccess')}
+                {t(platformConfig.successKey)}
               </p>
             </div>
           )}
@@ -271,7 +301,7 @@ export default function FeishuAppCreatorDialog({
             <div className="flex flex-col items-center space-y-3 py-8">
               <XCircle className="h-12 w-12 text-red-500" />
               <p className="text-sm text-red-600 text-center">
-                {errorMessage || t('feishu.createFailed')}
+                {errorMessage || t(platformConfig.failedKey)}
               </p>
             </div>
           )}
@@ -282,9 +312,9 @@ export default function FeishuAppCreatorDialog({
             <Button variant="outline" onClick={() => handleOpenChange(false)}>
               {t('common.cancel')}
             </Button>
-            <Button onClick={() => startRegistration()}>
+            <Button onClick={() => startLogin()}>
               <RefreshCw className="h-4 w-4 mr-1.5" />
-              {t('feishu.retry')}
+              {t(platformConfig.retryKey)}
             </Button>
           </DialogFooter>
         )}

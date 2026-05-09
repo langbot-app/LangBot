@@ -35,6 +35,7 @@ dependencies = [
     "python-telegram-bot>=22.0",
     "pyyaml>=6.0.2",
     "qq-botpy-rc>=1.2.1.6",
+    "qrcode>=7.4",
     "quart>=0.20.0",
     "quart-cors>=0.8.0",
     "requests>=2.32.3",

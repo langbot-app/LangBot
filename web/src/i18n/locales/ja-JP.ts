@@ -1352,6 +1352,12 @@
     reconnecting: '再接続中...',
     retry: '再試行',
   },
+  weixin: {
+    scanLogin: 'QRコードでWeChatログイン',
+    scanQRCode: '以下のQRコードをWeChatでスキャンし、トークンを自動入力',
+    loginSuccess: 'ログイン成功！トークンが自動入力されました',
+    loginFailed: 'ログイン失敗',
+  },
   pluginPages: {
     selectFromSidebar: 'サイドバーからプラグインページを選択してください',
     invalidPage: '無効なプラグインページ',
