@@ -10,8 +10,8 @@ echo "=== LangBot Coverage Gate ==="
 echo ""
 
 # Coverage threshold (baseline from current coverage, conservative buffer)
-# Current: ~14%, threshold: 12%
-COVERAGE_THRESHOLD=12
+# Current: ~22.14%, threshold: 18%
+COVERAGE_THRESHOLD=18
 
 # Create temporary directory for coverage files
 COV_DIR=$(mktemp -d)
