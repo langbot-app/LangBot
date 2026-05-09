@@ -244,8 +244,27 @@ SQLite migration tests can be run locally without any external dependencies:
 uv run pytest tests/integration/persistence/test_migrations.py -q --tb=short
 ```
 
-CI workflow `.github/workflows/test-migrations.yml` runs SQLite tests using pytest.
-PostgreSQL migration tests still use inline Python script (will be migrated to pytest in G-003).
+PostgreSQL migration tests require an external PostgreSQL database:
+
+```bash
+# PostgreSQL migration tests (requires PostgreSQL service)
+# Tests are marked as slow and skipped if TEST_POSTGRES_URL is not set
+TEST_POSTGRES_URL=postgresql+asyncpg://user:pass@localhost:5432/test_db \
+    uv run pytest tests/integration/persistence/test_migrations_postgres.py -q --tb=short
+
+# Or skip by default (no PostgreSQL available)
+uv run pytest tests/integration/persistence/test_migrations_postgres.py -q --tb=short
+# Output: SKIPPED (TEST_POSTGRES_URL not set)
+```
+
+Note: PostgreSQL tests are **not** included in fast integration gate because they:
+- Require external PostgreSQL service
+- Are marked with `@pytest.mark.slow`
+- Need `TEST_POSTGRES_URL` environment variable
+
+CI workflow `.github/workflows/test-migrations.yml` runs:
+- SQLite tests in `test-migrations-sqlite` job (fast, no external services)
+- PostgreSQL tests in `test-migrations-postgres` job (uses PostgreSQL service container)
 
 ### Running pipeline integration tests locally
 
@@ -367,8 +386,8 @@ Check that you're mocking at the right level and using `AsyncMock` for async fun
 ## Future Enhancements
 
 - [x] Add integration tests for database migrations (SQLite)
-- [ ] Add PostgreSQL migration integration tests (G-003)
-- [ ] Add integration tests for full pipeline execution
+- [x] Add PostgreSQL migration integration tests (G-003)
+- [x] Add integration tests for full pipeline execution
 - [x] Add API smoke integration tests
 - [ ] Add E2E tests
 - [ ] Add performance benchmarks
