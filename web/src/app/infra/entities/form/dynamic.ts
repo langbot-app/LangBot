@@ -46,6 +46,7 @@ export enum DynamicFormItemType {
   TOOLS_SELECTOR = 'tools-selector',
   WEBHOOK_URL = 'webhook-url',
   EMBED_CODE = 'embed-code',
+  FEISHU_APP_CREATOR = 'feishu-app-creator',
 }
 
 export interface IFileConfig {

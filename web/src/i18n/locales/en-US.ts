@@ -1332,6 +1332,20 @@ const enUS = {
       backToWorkbench: 'Back to Workbench',
     },
   },
+  feishu: {
+    createApp: 'One-Click Create Feishu App',
+    scanQRCode:
+      'Scan the QR code below with Feishu to authorize and automatically create the app',
+    waitingForScan: 'Waiting for scan',
+    createSuccess: 'App created successfully! Credentials have been filled in',
+    createFailed: 'Creation failed',
+    connecting: 'Connecting to Feishu service...',
+    expired: 'QR code expired, please try again',
+    denied: 'Authorization denied by user',
+    connectionLost: 'Connection lost, please try again',
+    reconnecting: 'Reconnecting...',
+    retry: 'Retry',
+  },
   pluginPages: {
     selectFromSidebar: 'Select a plugin page from the sidebar',
     invalidPage: 'Invalid plugin page',

@@ -11,13 +11,14 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import DynamicFormItemComponent from '@/app/home/components/dynamic-form/DynamicFormItemComponent';
+import FeishuAppCreatorDialog from '@/app/home/components/feishu-app-creator/FeishuAppCreatorDialog';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Copy, Check, Globe } from 'lucide-react';
+import { Copy, Check, Globe, QrCode } from 'lucide-react';
 import { copyToClipboard } from '@/app/utils/clipboard';
 import { systemInfo } from '@/app/infra/http';
 
@@ -251,7 +252,10 @@ export default function DynamicFormComponent({
   const editableItems = useMemo(
     () =>
       itemConfigList.filter(
-        (item) => item.type !== 'webhook-url' && item.type !== 'embed-code',
+        (item) =>
+          item.type !== 'webhook-url' &&
+          item.type !== 'embed-code' &&
+          item.type !== 'feishu-app-creator',
       ),
     [itemConfigList],
   );
@@ -434,9 +438,34 @@ export default function DynamicFormComponent({
     return () => subscription.unsubscribe();
   }, [form, editableItems]);
 
+  // State for Feishu one-click app creation dialog
+  const [feishuDialogOpen, setFeishuDialogOpen] = useState(false);
+
   return (
     <Form {...form}>
       <div className="space-y-4">
+        {/* Feishu one-click app creation dialog */}
+        <FeishuAppCreatorDialog
+          open={feishuDialogOpen}
+          onOpenChange={setFeishuDialogOpen}
+          onSuccess={(credentials) => {
+            form.setValue(
+              'app_id' as keyof FormValues,
+              credentials.app_id as never,
+            );
+            form.setValue(
+              'app_secret' as keyof FormValues,
+              credentials.app_secret as never,
+            );
+            if (credentials.app_name) {
+              form.setValue(
+                'bot_name' as keyof FormValues,
+                credentials.app_name as never,
+              );
+            }
+          }}
+        />
+
         {itemConfigList.map((config) => {
           if (config.show_if) {
             const dependValue = resolveShowIfValue(
@@ -520,6 +549,30 @@ export default function DynamicFormComponent({
                 }
                 snippet={embedSnippet}
               />
+            );
+          }
+
+          // Feishu one-click app creation button
+          if (config.type === 'feishu-app-creator') {
+            return (
+              <FormItem key={config.id}>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setFeishuDialogOpen(true)}
+                    disabled={!!isEditing}
+                  >
+                    <QrCode className="h-4 w-4 mr-1.5" />
+                    {extractI18nObject(config.label)}
+                  </Button>
+                </div>
+                {config.description && (
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {extractI18nObject(config.description)}
+                  </p>
+                )}
+              </FormItem>
             );
           }
 

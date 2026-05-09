@@ -1,5 +1,6 @@
 import quart
 import mimetypes
+import asyncio
 from ... import group
 from langbot.pkg.utils import importutil
 
@@ -35,3 +36,121 @@ class AdaptersRouterGroup(group.RouterGroup):
             return quart.Response(
                 importutil.read_resource_file_bytes(icon_path), mimetype=mimetypes.guess_type(icon_path)[0]
             )
+
+        # In-memory session store for active registrations
+        _create_app_sessions: dict = {}
+        _SESSION_TTL = 900  # 15 minutes
+
+        def _cleanup_expired_sessions():
+            """Remove sessions that have exceeded their TTL."""
+            import time
+
+            now = time.time()
+            expired = [sid for sid, s in _create_app_sessions.items() if now - s.get('created_at', 0) > _SESSION_TTL]
+            for sid in expired:
+                session = _create_app_sessions.pop(sid, None)
+                if session and session.get('task') and not session['task'].done():
+                    session['task'].cancel()
+
+        @self.route('/lark/create-app', methods=['POST'])
+        async def _() -> str:
+            """Start Feishu one-click app registration. Returns session_id + QR code URL."""
+            import uuid
+            import time
+            import lark_oapi as lark
+            from lark_oapi.scene.registration.errors import AppAccessDeniedError, AppExpiredError
+
+            _cleanup_expired_sessions()
+
+            session_id = str(uuid.uuid4())
+            loop = asyncio.get_running_loop()
+
+            session = {
+                'status': 'pending',
+                'qr_url': None,
+                'expire_at': None,
+                'app_id': None,
+                'app_secret': None,
+                'error': None,
+                'created_at': time.time(),
+            }
+            _create_app_sessions[session_id] = session
+
+            def on_qr_code(info):
+                # May be called from a background thread by the SDK;
+                # use call_soon_threadsafe to safely update session state.
+                def _update():
+                    session['qr_url'] = info['url']
+                    session['expire_at'] = time.time() + 600  # 10 minutes
+                    session['status'] = 'waiting'
+
+                loop.call_soon_threadsafe(_update)
+
+            async def run_registration():
+                try:
+                    result = await lark.aregister_app(
+                        on_qr_code=on_qr_code,
+                        source='langbot',
+                    )
+                    session['status'] = 'success'
+                    session['app_id'] = result['client_id']
+                    session['app_secret'] = result['client_secret']
+                except AppAccessDeniedError:
+                    session['status'] = 'error'
+                    session['error'] = 'User denied authorization'
+                except AppExpiredError:
+                    session['status'] = 'error'
+                    session['error'] = 'QR code expired'
+                except Exception as e:
+                    session['status'] = 'error'
+                    session['error'] = str(e)
+
+            task = asyncio.create_task(run_registration())
+            session['task'] = task
+
+            # Wait for QR code to be ready (max 10 seconds)
+            for _ in range(20):
+                if session['qr_url']:
+                    break
+                await asyncio.sleep(0.5)
+
+            if not session['qr_url']:
+                task.cancel()
+                session['status'] = 'error'
+                session['error'] = 'Timeout waiting for QR code'
+                return self.http_status(504, -1, 'Timeout waiting for QR code')
+
+            return self.success(
+                data={
+                    'session_id': session_id,
+                    'qr_url': session['qr_url'],
+                    'expire_at': session['expire_at'],
+                }
+            )
+
+        @self.route('/lark/create-app/status/<session_id>', methods=['GET'])
+        async def _(session_id: str) -> str:
+            """Poll registration status."""
+            session = _create_app_sessions.get(session_id)
+            if not session:
+                return self.http_status(404, -1, 'Session not found')
+
+            data = {'status': session['status']}
+
+            if session['status'] == 'success':
+                data['app_id'] = session['app_id']
+                data['app_secret'] = session['app_secret']
+                _create_app_sessions.pop(session_id, None)
+            elif session['status'] == 'error':
+                data['error'] = session['error']
+                _create_app_sessions.pop(session_id, None)
+
+            return self.success(data=data)
+
+        @self.route('/lark/create-app/<session_id>', methods=['DELETE'])
+        async def _(session_id: str) -> str:
+            """Cancel and clean up a registration session."""
+            session = _create_app_sessions.pop(session_id, None)
+            if session and session.get('task') and not session['task'].done():
+                session['task'].cancel()
+            return self.success(data={})
