@@ -50,8 +50,10 @@ interface SortOption {
 // 内部组件，用于处理搜索参数
 function MarketPageContent({
   installPlugin,
+  headerActions,
 }: {
   installPlugin: (plugin: PluginV4) => void;
+  headerActions?: React.ReactNode;
 }) {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
@@ -572,9 +574,9 @@ function MarketPageContent({
     <div className="h-full flex flex-col">
       {/* Fixed header with search and sort controls */}
       <div className="flex-shrink-0 space-y-4 px-3 sm:px-4 py-4 sm:py-6">
-        {/* Search box */}
+        {/* Search box and actions */}
         <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-center gap-3">
-          <div className="relative w-full lg:max-w-xl">
+          <div className="relative flex-1 lg:max-w-xl">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
             <Input
               placeholder={t('market.searchPlaceholder')}
@@ -598,13 +600,17 @@ function MarketPageContent({
               className="pl-10 pr-4 text-sm sm:text-base"
             />
           </div>
-
+          {headerActions && (
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {headerActions}
+            </div>
+          )}
         </div>
 
-        {/* Sort and more filters */}
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 px-3 sm:px-4">
+        {/* Sort, filters and tags in one row */}
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 px-0">
           {/* Sort dropdown */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
             <span className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">
               {t('market.sortBy')}:
             </span>
@@ -623,7 +629,7 @@ function MarketPageContent({
 
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" className="relative">
+                <Button variant="outline" className="relative flex-shrink-0">
                   <SlidersHorizontal className="h-4 w-4" />
                   <span className="hidden sm:inline">{t('market.filters.more')}</span>
                   {activeAdvancedFilters > 0 && (
@@ -674,40 +680,43 @@ function MarketPageContent({
               </PopoverContent>
             </Popover>
           </div>
-        </div>
 
-        {/* Quick tag filter buttons */}
-        <div className="mx-auto flex w-full max-w-4xl items-center gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:justify-center sm:overflow-visible">
-          <Button
-            type="button"
-            variant={selectedTags.length === 0 ? 'secondary' : 'ghost'}
-            size="sm"
-            className="h-8 shrink-0"
-            onClick={() => handleTagsChange([])}
-          >
-            {t('market.allExtensions')}
-          </Button>
-          {availableTags.map((tag) => {
-            const selected = selectedTags.includes(tag.tag);
-            return (
-              <Button
-                key={tag.tag}
-                type="button"
-                variant={selected ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-8 shrink-0"
-                onClick={() => {
-                  const newTags = selected
-                    ? selectedTags.filter((t) => t !== tag.tag)
-                    : [...selectedTags, tag.tag];
-                  handleTagsChange(newTags);
-                }}
-              >
-                {tagNames[tag.tag] || tag.tag}
-                {selected && <X className="h-3.5 w-3.5" />}
-              </Button>
-            );
-          })}
+          {/* Separator */}
+          <div className="hidden sm:block w-px h-6 bg-border flex-shrink-0"></div>
+
+          {/* Quick tag filter buttons */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible flex-shrink-0">
+            <Button
+              type="button"
+              variant={selectedTags.length === 0 ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-8 shrink-0"
+              onClick={() => handleTagsChange([])}
+            >
+              {t('market.allExtensions')}
+            </Button>
+            {availableTags.map((tag) => {
+              const selected = selectedTags.includes(tag.tag);
+              return (
+                <Button
+                  key={tag.tag}
+                  type="button"
+                  variant={selected ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-8 shrink-0"
+                  onClick={() => {
+                    const newTags = selected
+                      ? selectedTags.filter((t) => t !== tag.tag)
+                      : [...selectedTags, tag.tag];
+                    handleTagsChange(newTags);
+                  }}
+                >
+                  {tagNames[tag.tag] || tag.tag}
+                  {selected && <X className="h-3.5 w-3.5" />}
+                </Button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Search results stats */}
@@ -799,8 +808,10 @@ function MarketPageContent({
 // 主组件，包装在 Suspense 中
 export default function MarketPage({
   installPlugin,
+  headerActions,
 }: {
   installPlugin: (plugin: PluginV4) => void;
+  headerActions?: React.ReactNode;
 }) {
   return (
     <Suspense
@@ -812,7 +823,7 @@ export default function MarketPage({
         </div>
       }
     >
-      <MarketPageContent installPlugin={installPlugin} />
+      <MarketPageContent installPlugin={installPlugin} headerActions={headerActions} />
     </Suspense>
   );
 }

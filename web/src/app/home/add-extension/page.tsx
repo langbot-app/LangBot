@@ -116,61 +116,63 @@ function AddExtensionContent() {
       });
   }
 
+  const extensionActions = (
+    <>
+      <Button
+        variant="default"
+        className="px-4 py-2 cursor-pointer"
+        onClick={() => navigate('/home/mcp?id=new')}
+      >
+        <PlusIcon className="w-4 h-4" />
+        {t('mcp.addMCPServer')}
+      </Button>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="default" className="px-4 py-2 cursor-pointer">
+            <PlusIcon className="w-4 h-4" />
+            {t('skills.addSkill')}
+            <ChevronDownIcon className="ml-2 w-4 h-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => navigate('/home/skills?action=create')}>
+            {t('skills.createManually')}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => navigate('/home/skills?action=upload')}>
+            {t('skills.uploadZip')}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => navigate('/home/skills?action=github')}>
+            {t('skills.importFromGithub')}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="default" className="px-4 py-2 cursor-pointer">
+            <PlusIcon className="w-4 h-4" />
+            {t('plugins.newPlugin')}
+            <ChevronDownIcon className="ml-2 w-4 h-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => navigate('/home/add-plugin?action=github')}>
+            {t('plugins.installFromGithub')}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => navigate('/home/add-plugin?action=upload')}>
+            {t('plugins.uploadLocal')}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
+  );
+
   return (
     <>
       <div className="h-full flex flex-col">
-        <div className="flex flex-row justify-end items-center px-[0.8rem] pb-4 flex-shrink-0 gap-2">
-          <Button
-            variant="default"
-            className="px-6 py-4 cursor-pointer"
-            onClick={() => navigate('/home/mcp?id=new')}
-          >
-            <PlusIcon className="w-4 h-4" />
-            {t('mcp.addMCPServer')}
-          </Button>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="default" className="px-6 py-4 cursor-pointer">
-                <PlusIcon className="w-4 h-4" />
-                {t('skills.addSkill')}
-                <ChevronDownIcon className="ml-2 w-4 h-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => navigate('/home/skills?action=create')}>
-                {t('skills.createManually')}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate('/home/skills?action=upload')}>
-                {t('skills.uploadZip')}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate('/home/skills?action=github')}>
-                {t('skills.importFromGithub')}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="default" className="px-6 py-4 cursor-pointer">
-                <PlusIcon className="w-4 h-4" />
-                {t('plugins.newPlugin')}
-                <ChevronDownIcon className="ml-2 w-4 h-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => navigate('/home/add-plugin?action=github')}>
-                {t('plugins.installFromGithub')}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate('/home/add-plugin?action=upload')}>
-                {t('plugins.uploadLocal')}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
         <div className="flex-1 overflow-y-auto">
-          <MarketPage installPlugin={handleInstallPlugin} />
+          <MarketPage installPlugin={handleInstallPlugin} headerActions={extensionActions} />
         </div>
       </div>
 
