@@ -11,7 +11,9 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import DynamicFormItemComponent from '@/app/home/components/dynamic-form/DynamicFormItemComponent';
-import FeishuAppCreatorDialog from '@/app/home/components/feishu-app-creator/FeishuAppCreatorDialog';
+import QrCodeLoginDialog, {
+  QrLoginPlatform,
+} from '@/app/home/components/qrcode-login/QrCodeLoginDialog';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { useTranslation } from 'react-i18next';
@@ -255,7 +257,7 @@ export default function DynamicFormComponent({
         (item) =>
           item.type !== 'webhook-url' &&
           item.type !== 'embed-code' &&
-          item.type !== 'feishu-app-creator',
+          item.type !== 'qr-code-login',
       ),
     [itemConfigList],
   );
@@ -438,30 +440,24 @@ export default function DynamicFormComponent({
     return () => subscription.unsubscribe();
   }, [form, editableItems]);
 
-  // State for Feishu one-click app creation dialog
-  const [feishuDialogOpen, setFeishuDialogOpen] = useState(false);
+  // State for QR code login dialog
+  const [qrDialogOpen, setQrDialogOpen] = useState(false);
+  const [qrDialogPlatform, setQrDialogPlatform] =
+    useState<QrLoginPlatform>('feishu');
 
   return (
     <Form {...form}>
       <div className="space-y-4">
-        {/* Feishu one-click app creation dialog */}
-        <FeishuAppCreatorDialog
-          open={feishuDialogOpen}
-          onOpenChange={setFeishuDialogOpen}
+        {/* QR code login dialog */}
+        <QrCodeLoginDialog
+          open={qrDialogOpen}
+          onOpenChange={setQrDialogOpen}
+          platform={qrDialogPlatform}
           onSuccess={(credentials) => {
-            form.setValue(
-              'app_id' as keyof FormValues,
-              credentials.app_id as never,
-            );
-            form.setValue(
-              'app_secret' as keyof FormValues,
-              credentials.app_secret as never,
-            );
-            if (credentials.app_name) {
-              form.setValue(
-                'bot_name' as keyof FormValues,
-                credentials.app_name as never,
-              );
+            for (const [key, value] of Object.entries(credentials)) {
+              if (value) {
+                form.setValue(key as keyof FormValues, value as never);
+              }
             }
           }}
         />
@@ -552,15 +548,20 @@ export default function DynamicFormComponent({
             );
           }
 
-          // Feishu one-click app creation button
-          if (config.type === 'feishu-app-creator') {
+          // QR code login button (e.g. Feishu one-click create, WeChat scan login)
+          if (config.type === 'qr-code-login') {
             return (
               <FormItem key={config.id}>
                 <div className="flex items-center gap-2">
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => setFeishuDialogOpen(true)}
+                    onClick={() => {
+                      setQrDialogPlatform(
+                        (config.login_platform as QrLoginPlatform) || 'feishu',
+                      );
+                      setQrDialogOpen(true);
+                    }}
                     disabled={!!isEditing}
                   >
                     <QrCode className="h-4 w-4 mr-1.5" />

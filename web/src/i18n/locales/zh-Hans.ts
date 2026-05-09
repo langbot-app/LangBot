@@ -1287,6 +1287,12 @@ const zhHans = {
     reconnecting: '正在重新连接...',
     retry: '重试',
   },
+  weixin: {
+    scanLogin: '扫码登录微信',
+    scanQRCode: '请使用微信扫描以下二维码，授权后将自动登录并填写令牌',
+    loginSuccess: '登录成功！令牌已自动填入',
+    loginFailed: '登录失败',
+  },
   pluginPages: {
     selectFromSidebar: '从侧边栏选择一个插件页面',
     invalidPage: '无效的插件页面',

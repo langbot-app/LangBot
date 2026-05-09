@@ -267,6 +267,7 @@ export default function BotForm({
               type: parseDynamicFormItemType(item.type),
               options: item.options,
               show_if: item.show_if,
+              login_platform: item.login_platform,
             }),
         ),
       );

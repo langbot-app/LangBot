@@ -1287,6 +1287,12 @@ const zhHant = {
     reconnecting: '正在重新連線...',
     retry: '重試',
   },
+  weixin: {
+    scanLogin: '掃碼登入微信',
+    scanQRCode: '請使用微信掃描以下 QR Code，授權後將自動登入並填寫令牌',
+    loginSuccess: '登入成功！令牌已自動填入',
+    loginFailed: '登入失敗',
+  },
   pluginPages: {
     selectFromSidebar: '從側邊欄選擇一個插件頁面',
     invalidPage: '無效的插件頁面',
