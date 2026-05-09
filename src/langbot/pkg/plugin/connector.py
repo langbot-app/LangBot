@@ -316,13 +316,17 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                         raise Exception(f'MCP {plugin_author}/{plugin_name} has no config')
                 elif mcp_resp.status_code == 404:
                     # Try skill endpoint - download ZIP and install
-                    self.ap.logger.info(f'Installing skill from marketplace: {plugin_author}/{plugin_name}')
+                    self.ap.logger.info(f'Trying skill endpoint for: {plugin_author}/{plugin_name}')
                     if task_context:
-                        task_context.set_current_action('installing skill from marketplace')
+                        task_context.set_current_action('checking skill marketplace')
 
                     # Get skill detail to find version
                     skill_resp = await client.get(f'{space_url}/api/v1/marketplace/skills/{plugin_author}/{plugin_name}')
                     if skill_resp.status_code == 200:
+                        self.ap.logger.info(f'Installing skill from marketplace: {plugin_author}/{plugin_name}')
+                        if task_context:
+                            task_context.set_current_action('installing skill from marketplace')
+
                         # Download the skill ZIP (no version needed - uses latest)
                         if task_context:
                             task_context.set_current_action('downloading skill package')
@@ -340,8 +344,46 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                         # Install skill from ZIP using skill service
                         await self._install_skill_from_zip(file_bytes, f'{plugin_author}-{plugin_name}', task_context)
                         return
+                    elif skill_resp.status_code == 404:
+                        # Try plugin endpoint - get versions and download
+                        self.ap.logger.info(f'Trying plugin endpoint for: {plugin_author}/{plugin_name}')
+                        if task_context:
+                            task_context.set_current_action('checking plugin marketplace')
+
+                        # Get plugin versions to find latest
+                        versions_resp = await client.get(
+                            f'{space_url}/api/v1/marketplace/plugins/{plugin_author}/{plugin_name}/versions'
+                        )
+                        if versions_resp.status_code == 200:
+                            versions_data = versions_resp.json().get('data', {}).get('versions', [])
+                            if versions_data:
+                                latest_version = versions_data[0].get('version', '')
+                                if latest_version:
+                                    self.ap.logger.info(f'Installing plugin from marketplace: {plugin_author}/{plugin_name} v{latest_version}')
+                                    if task_context:
+                                        task_context.set_current_action('downloading plugin package')
+
+                                    download_resp = await client.get(
+                                        f'{space_url}/api/v1/marketplace/plugins/download/{plugin_author}/{plugin_name}/{latest_version}'
+                                    )
+                                    if download_resp.status_code != 200:
+                                        raise Exception(f'Failed to download plugin {plugin_author}/{plugin_name}: {download_resp.status_code}')
+
+                                    file_bytes = download_resp.content
+                                    self._extract_deps_metadata(file_bytes, task_context)
+                                    file_key = await self.handler.send_file(file_bytes, 'lbpkg')
+                                    install_info['plugin_file_key'] = file_key
+                                    self.ap.logger.info(f'Transfered file {file_key} to plugin runtime')
+                                    # Continue to install via runtime
+                                else:
+                                    raise Exception(f'No version found for plugin {plugin_author}/{plugin_name}')
+                            else:
+                                raise Exception(f'Plugin {plugin_author}/{plugin_name} has no versions')
+                        else:
+                            raise Exception(f'Plugin {plugin_author}/{plugin_name} not found in marketplace')
                     else:
-                        raise Exception(f'Skill {plugin_author}/{plugin_name} not found in marketplace')
+                        skill_resp.raise_for_status()
+                        raise Exception(f'Failed to get skill {plugin_author}/{plugin_name}')
                 else:
                     mcp_resp.raise_for_status()
                     raise Exception(f'Failed to get MCP {plugin_author}/{plugin_name}')

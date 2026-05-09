@@ -5,10 +5,7 @@ import PluginDetailContent from './PluginDetailContent';
 import styles from './plugins.module.css';
 import { Button } from '@/components/ui/button';
 import {
-  PlusIcon,
-  ChevronDownIcon,
   UploadIcon,
-  StoreIcon,
   Power,
   Github,
   ChevronLeft,
@@ -19,12 +16,6 @@ import {
   Unlink,
 } from 'lucide-react';
 import { copyToClipboard } from '@/app/utils/clipboard';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import {
   Popover,
   PopoverContent,
@@ -631,45 +622,6 @@ function PluginListView() {
             </div>
           </PopoverContent>
         </Popover>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="default" className="px-6 py-4 cursor-pointer">
-              <PlusIcon className="w-4 h-4" />
-              {t('plugins.install')}
-              <ChevronDownIcon className="ml-2 w-4 h-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {systemInfo.enable_marketplace && (
-              <DropdownMenuItem
-                onClick={() => {
-                  navigate('/home/market');
-                }}
-              >
-                <StoreIcon className="w-4 h-4" />
-                {t('plugins.goToMarketplace')}
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuItem onClick={handleFileSelect}>
-              <UploadIcon className="w-4 h-4" />
-              {t('plugins.uploadLocal')}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={async () => {
-                if (!(await checkExtensionsLimit())) return;
-                setInstallSource('github');
-                setPluginInstallStatus(PluginInstallStatus.WAIT_INPUT);
-                setInstallError(null);
-                resetGithubState();
-                setShowGithubInstall(true);
-              }}
-            >
-              <Github className="w-4 h-4" />
-              {t('plugins.installFromGithub')}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
       </div>
 
       {/* Inline GitHub install flow */}

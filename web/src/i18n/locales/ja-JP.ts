@@ -5,6 +5,7 @@ const jaJP = {
     installedPlugins: 'インストール済みプラグイン',
     pluginMarket: 'プラグインマーケット',
     mcpServers: 'MCPサーバー',
+    addExtension: '拡張機能を追加',
     pluginPages: 'プラグインページ',
     pluginPagesTooltip: 'インストール済みプラグインが提供するビジュアルページ',
     quickStart: 'クイックスタート',
@@ -438,6 +439,7 @@ const jaJP = {
     arrange: '並び替え',
     install: 'インストール',
     installPlugin: 'プラグインをインストール',
+    newPlugin: '新規プラグイン',
     onlySupportGithub: '現在はGitHubからのインストールのみサポートしています',
     enterGithubLink: 'プラグインのGitHubリンクを入力してください',
     installing: 'プラグインをインストール中...',
@@ -672,6 +674,7 @@ const jaJP = {
   mcp: {
     title: 'MCP',
     createServer: 'MCPサーバーを追加',
+    addMCPServer: 'MCPサーバーを追加',
     editServer: 'MCPサーバーを編集',
     deleteServer: 'MCPサーバーを削除',
     confirmDeleteServer: 'このMCPサーバーを削除してもよろしいですか？',

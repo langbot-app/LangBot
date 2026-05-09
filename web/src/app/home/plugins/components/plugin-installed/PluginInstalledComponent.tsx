@@ -142,7 +142,7 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
 
         for (const server of mcpResp.servers) {
           extensions.push(new ExtensionCardVO({
-            id: `mcp-${server.name}`,
+            id: server.name,
             author: '',
             label: server.name.replace(/__/g, '/'),
             name: server.name,
@@ -160,7 +160,7 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
 
         for (const skill of skillsResp.skills) {
           extensions.push(new ExtensionCardVO({
-            id: `skill-${skill.name}`,
+            id: skill.name,
             author: '',
             label: skill.display_name || skill.name,
             name: skill.name,
@@ -185,9 +185,9 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
 
     function handleExtensionClick(extension: ExtensionCardVO) {
       if (extension.type === 'mcp') {
-        navigate(`/home/mcp`);
+        navigate(`/home/mcp?id=${encodeURIComponent(extension.id)}`);
       } else if (extension.type === 'skill') {
-        navigate(`/home/skills`);
+        navigate(`/home/skills?id=${encodeURIComponent(extension.id)}`);
       } else {
         const extensionId = `${extension.author}/${extension.name}`;
         navigate(`/home/plugins?id=${encodeURIComponent(extensionId)}`);

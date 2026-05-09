@@ -5,6 +5,7 @@ const ruRU = {
     installedPlugins: 'Установленные плагины',
     pluginMarket: 'Маркетплейс',
     mcpServers: 'MCP-серверы',
+    addExtension: 'Добавить расширение',
     pluginPages: 'Страницы плагинов',
     pluginPagesTooltip:
       'Визуальные страницы, предоставляемые установленными плагинами',
@@ -441,6 +442,7 @@ const ruRU = {
     arrange: 'Сортировка плагинов',
     install: 'Установить',
     installPlugin: 'Установить плагин',
+    newPlugin: 'Новый плагин',
     onlySupportGithub:
       'В настоящее время поддерживается установка только с GitHub',
     enterGithubLink: 'Введите ссылку на GitHub плагина',
@@ -677,6 +679,7 @@ const ruRU = {
   mcp: {
     title: 'MCP',
     createServer: 'Добавить MCP-сервер',
+    addMCPServer: 'Добавить MCP-сервер',
     editServer: 'Редактировать MCP-сервер',
     deleteServer: 'Удалить MCP-сервер',
     confirmDeleteServer: 'Вы уверены, что хотите удалить этот MCP-сервер?',

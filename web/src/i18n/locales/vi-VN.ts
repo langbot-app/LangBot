@@ -5,6 +5,7 @@ const viVN = {
     installedPlugins: 'Plugin đã cài đặt',
     pluginMarket: 'Chợ ứng dụng',
     mcpServers: 'Máy chủ MCP',
+    addExtension: 'Thêm tiện ích mở rộng',
     pluginPages: 'Trang plugin',
     pluginPagesTooltip:
       'Các trang trực quan được cung cấp bởi plugin đã cài đặt',
@@ -439,6 +440,7 @@ const viVN = {
     arrange: 'Sắp xếp Plugin',
     install: 'Cài đặt',
     installPlugin: 'Cài đặt Plugin',
+    newPlugin: 'Plugin mới',
     onlySupportGithub: 'Hiện chỉ hỗ trợ cài đặt từ GitHub',
     enterGithubLink: 'Nhập liên kết GitHub của plugin',
     installing: 'Đang cài đặt plugin...',
@@ -671,6 +673,7 @@ const viVN = {
   mcp: {
     title: 'MCP',
     createServer: 'Thêm máy chủ MCP',
+    addMCPServer: 'Thêm máy chủ MCP',
     editServer: 'Chỉnh sửa máy chủ MCP',
     deleteServer: 'Xóa máy chủ MCP',
     confirmDeleteServer: 'Bạn có chắc chắn muốn xóa máy chủ MCP này không?',

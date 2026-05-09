@@ -5,6 +5,7 @@ const esES = {
     installedPlugins: 'Plugins instalados',
     pluginMarket: 'Tienda',
     mcpServers: 'Servidores MCP',
+    addExtension: 'Añadir extensión',
     pluginPages: 'Páginas de plugins',
     pluginPagesTooltip:
       'Páginas visuales proporcionadas por los plugins instalados',
@@ -446,6 +447,7 @@ const esES = {
     arrange: 'Ordenar plugins',
     install: 'Instalar',
     installPlugin: 'Instalar plugin',
+    newPlugin: 'Nuevo Plugin',
     onlySupportGithub: 'Actualmente solo se admite la instalación desde GitHub',
     enterGithubLink: 'Introduce el enlace de GitHub del plugin',
     installing: 'Instalando plugin...',
@@ -681,6 +683,7 @@ const esES = {
   mcp: {
     title: 'MCP',
     createServer: 'Añadir servidor MCP',
+    addMCPServer: 'Añadir servidor MCP',
     editServer: 'Editar servidor MCP',
     deleteServer: 'Eliminar servidor MCP',
     confirmDeleteServer:

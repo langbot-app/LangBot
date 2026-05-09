@@ -5,6 +5,7 @@ const thTH = {
     installedPlugins: 'ปลั๊กอินที่ติดตั้ง',
     pluginMarket: 'ตลาดปลั๊กอิน',
     mcpServers: 'เซิร์ฟเวอร์ MCP',
+    addExtension: 'เพิ่มส่วนขยาย',
     pluginPages: 'หน้าปลั๊กอิน',
     pluginPagesTooltip: 'หน้าเว็บที่จัดทำโดยปลั๊กอินที่ติดตั้ง',
     quickStart: 'เริ่มต้นอย่างรวดเร็ว',
@@ -429,6 +430,7 @@ const thTH = {
     arrange: 'เรียงลำดับปลั๊กอิน',
     install: 'ติดตั้ง',
     installPlugin: 'ติดตั้งปลั๊กอิน',
+    newPlugin: 'สร้างปลั๊กอินใหม่',
     onlySupportGithub: 'ปัจจุบันรองรับเฉพาะการติดตั้งจาก GitHub',
     enterGithubLink: 'กรอกลิงก์ GitHub ของปลั๊กอิน',
     installing: 'กำลังติดตั้งปลั๊กอิน...',
@@ -658,6 +660,7 @@ const thTH = {
   mcp: {
     title: 'MCP',
     createServer: 'เพิ่มเซิร์ฟเวอร์ MCP',
+    addMCPServer: 'เพิ่มเซิร์ฟเวอร์ MCP',
     editServer: 'แก้ไขเซิร์ฟเวอร์ MCP',
     deleteServer: 'ลบเซิร์ฟเวอร์ MCP',
     confirmDeleteServer: 'คุณแน่ใจหรือไม่ว่าต้องการลบเซิร์ฟเวอร์ MCP นี้?',

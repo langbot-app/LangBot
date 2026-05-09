@@ -151,6 +151,13 @@ export default function MCPDetailContent({ id }: { id: string }) {
             <Button
               type="button"
               variant="outline"
+              onClick={() => navigate('/home/add-extension')}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
               onClick={() => formRef.current?.testMcp()}
               disabled={mcpTesting}
             >

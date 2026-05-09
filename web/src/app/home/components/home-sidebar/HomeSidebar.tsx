@@ -143,7 +143,6 @@ const CREATABLE_CATEGORIES: EntityCategoryId[] = [
   'pipelines',
   'knowledge',
   'mcp',
-  'plugins',
   'skills',
 ];
 

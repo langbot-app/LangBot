@@ -7,9 +7,7 @@ import {
   Workflow,
   BookMarked,
   Puzzle,
-  Store,
-  Hexagon,
-  Mountain,
+  PlusCircle,
 } from 'lucide-react';
 
 const t = (key: string) => {
@@ -98,40 +96,15 @@ export const sidebarConfigList = [
     section: 'extensions',
   }),
   new SidebarChildVO({
-    id: 'market',
-    name: t('sidebar.pluginMarket'),
-    icon: <Store className="text-blue-500" />,
-    route: '/home/market',
+    id: 'add-extension',
+    name: t('sidebar.addExtension'),
+    icon: <PlusCircle className="text-blue-500" />,
+    route: '/home/add-extension',
     description: t('plugins.description'),
     helpLink: {
       en_US: 'https://link.langbot.app/en/docs/plugins',
       zh_Hans: 'https://link.langbot.app/zh/docs/plugins',
       ja_JP: 'https://link.langbot.app/ja/docs/plugins',
-    },
-    section: 'extensions',
-  }),
-  new SidebarChildVO({
-    id: 'mcp',
-    name: t('sidebar.mcpServers'),
-    icon: <Hexagon className="text-blue-500" />,
-    route: '/home/mcp',
-    description: t('mcp.title'),
-    helpLink: {
-      en_US: '',
-      zh_Hans: '',
-    },
-    section: 'extensions',
-  }),
-  new SidebarChildVO({
-    id: 'skills',
-    name: t('skills.title'),
-    icon: <Mountain className="text-blue-500" />,
-    route: '/home/skills',
-    description: t('skills.description'),
-    helpLink: {
-      en_US: '',
-      zh_Hans: '',
-      ja_JP: '',
     },
     section: 'extensions',
   }),
