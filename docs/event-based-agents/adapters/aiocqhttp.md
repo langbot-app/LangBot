@@ -135,3 +135,26 @@ Skipped or residual live-test items:
 - `group.info_updated`, message reactions, and message edits are not declared because OneBot v11 does not provide standard equivalents for them.
 - Matcha returned `ActionFailed` for outgoing `File` segment rendering and did not support merged-forward actions in this run. The adapter keeps the conversion/API implementations because they are valid OneBot/NapCat-style capabilities, but the Matcha live probe records them as skipped.
 - Matcha returned an empty `get_group_member_list` for the test group, so `get_group_member_info`, mute/unmute, kick, and leave were covered by unit/API-shape tests only in this run.
+
+## Standalone Runtime Plugin E2E Record
+
+Verified on May 10, 2026 with `EBAEventProbe`, SDK standalone runtime, LangBot `--standalone-runtime`, local Matcha, and group `测试群`.
+
+Evidence:
+
+- Plugin JSONL: `data/temp/aiocqhttp-plugin-e2e-rerun.jsonl`
+
+Observed and verified:
+
+- A real Matcha group message reached the plugin as `MessageReceived` with `bot_uuid=eba-aiocqhttp-matcha`, `adapter_name=aiocqhttp`, common `Source`/`Plain` message components, common sender, and common group identifiers.
+- SDK API calls succeeded: `get_langbot_version`, `get_bots`, `get_bot_info`, `send_message`, plugin storage, workspace storage, `list_plugins_manifest`, `list_commands`, `list_tools`, and `list_knowledge_bases`.
+- Outbound component sweep succeeded for plain text plus `At`/`Face`, `AtAll`, base64 `Image`, and quoted reply.
+- Common APIs succeeded through the plugin path: `get_message`, `get_user_info`, `get_friend_list`, `get_group_info`, `get_group_list`, `get_group_member_list`, and `get_group_member_info`.
+- Safe OneBot platform APIs succeeded through `call_platform_api`: `get_login_info`, `get_status`, `get_version_info`, `can_send_image`, and `can_send_record`.
+
+Documented Matcha limits in this E2E run:
+
+- Outbound `File` failed in Matcha even after the adapter emitted an official `file` segment shape.
+- Outbound `Forward` failed because Matcha returned unsupported action for merged-forward.
+- `get_group_honor_info` failed because Matcha returned unsupported action.
+- Destructive/admin APIs such as mute, unmute, kick, leave, group rename, card/title/admin/whole-ban changes, and request approvals were not run without disposable fixtures.

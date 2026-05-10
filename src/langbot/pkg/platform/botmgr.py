@@ -396,6 +396,7 @@ class RuntimeBot:
             event: platform_events.EBAEvent,
             adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         ):
+            event.bot_uuid = self.bot_entity.uuid
             plugin_event = self._eba_event_to_plugin_event(event)
             if plugin_event is None:
                 return

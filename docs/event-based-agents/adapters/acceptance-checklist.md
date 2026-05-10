@@ -37,6 +37,7 @@ Real platform / simulator UI
 The test plugin must record JSONL evidence containing:
 
 - event class and `event.type`
+- `bot_uuid` and `adapter_name` as received by the plugin
 - adapter name
 - chat type and chat ID
 - sender/user/group IDs with secrets redacted
@@ -140,6 +141,14 @@ The plugin must call every common API declared in `manifest.yaml -> spec.support
 | `call_platform_api` | Plugin calls every declared platform-specific action with safe parameters. |
 
 Destructive APIs must be opt-in and documented with the exact target used.
+
+The SDK must expose a plugin-side platform API escape hatch for adapter-specific actions. The acceptance plugin should call it from the same EBA event handler that received the real platform event, so the evidence proves both directions of the path:
+
+```text
+plugin -> SDK call_platform_api -> LangBot core -> adapter call_platform_api -> platform SDK/API
+```
+
+The result must be serialized into JSON-safe values before it is returned to the plugin runtime.
 
 ## Platform-Specific API Tests
 

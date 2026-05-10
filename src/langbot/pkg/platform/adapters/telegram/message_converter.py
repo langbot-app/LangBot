@@ -27,7 +27,10 @@ class TelegramMessageConverter(abstract_platform_adapter.AbstractMessageConverte
                 photo_bytes = None
 
                 if component.base64:
-                    photo_bytes = base64.b64decode(component.base64)
+                    b64_data = component.base64
+                    if ';base64,' in b64_data:
+                        b64_data = b64_data.split(';base64,', 1)[1]
+                    photo_bytes = base64.b64decode(b64_data)
                 elif component.url:
                     session = httpclient.get_session()
                     async with session.get(component.url) as response:

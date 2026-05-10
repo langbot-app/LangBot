@@ -101,7 +101,15 @@ class AiocqhttpMessageConverter(abstract_platform_adapter.AbstractMessageConvert
                     target.append(aiocqhttp.MessageSegment.record(file_arg))
             elif isinstance(component, platform_message.File):
                 file_arg = component.url or component.path or component.base64 or component.id
-                target.append({'type': 'file', 'data': {'file': file_arg, 'name': component.name or 'file'}})
+                target.append(
+                    aiocqhttp.MessageSegment(
+                        type_='file',
+                        data={
+                            'file': file_arg,
+                            'name': component.name or 'file',
+                        },
+                    )
+                )
             elif isinstance(component, platform_message.Face):
                 if component.face_type == 'rps':
                     target.append(aiocqhttp.MessageSegment.rps())

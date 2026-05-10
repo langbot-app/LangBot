@@ -118,3 +118,28 @@ Verified on May 7, 2026 with a newly created Discord application/bot named `Lang
 Not verified in the shared LangBot server live run: `mute_member`, `unmute_member`, and `kick_member`, because the run did not use a disposable target member. They are implemented through Discord timeout/kick APIs and should only be exercised against a disposable account or bot.
 
 The test fixed one real test-fixture issue: `EBAEventProbe` previously assumed `get_bots()` returned UUID strings. The current standalone runtime returns bot dictionaries, so the probe now selects an enabled bot dictionary and passes its `uuid` to `get_bot_info` and `send_message`. The probe also now subscribes to `MessageDeleted`.
+
+## Standalone Runtime Plugin E2E Record
+
+Verified again on May 10, 2026 with SDK standalone runtime, LangBot `--standalone-runtime`, Discord web client, the LangBot server, and `#🐞-debugging`.
+
+Evidence:
+
+- Main plugin JSONL: `data/temp/discord-plugin-e2e-20260510-final.jsonl`
+- LangBot runtime log: `data/temp/discord-langbot-e2e-20260510-rerun.log`
+
+Observed and verified:
+
+- A newly invited Discord bot connected to the LangBot server and received a real web-client message in `#🐞-debugging`.
+- `MessageReceived` reached the plugin with `bot_uuid=eba-discord-live`, `adapter_name=discord`, common `Source`/`Plain` message components, common `User`, and common `UserGroup` for the guild.
+- SDK API calls succeeded: `get_langbot_version`, `get_bots`, `get_bot_info`, `send_message`, plugin storage, workspace storage, `list_plugins_manifest`, `list_commands`, `list_tools`, and `list_knowledge_bases`.
+- Outbound component sweep succeeded: plain text plus user mention, `AtAll`/`@everyone`, base64 image, quoted reply, file attachment, and flattened forward fallback.
+- Common APIs succeeded: `get_user_info`, `get_group_info`, `get_group_member_list`, and `get_group_member_info`.
+- Discord platform APIs succeeded through `call_platform_api`: `get_channel`, `typing`, `get_guild`, `get_guild_channels`, and `get_guild_roles`.
+
+Documented limits in this E2E run:
+
+- `get_message`, `get_friend_list`, and `get_group_list` are not supported by this Discord adapter.
+- Destructive moderation and guild-leave APIs were not repeated against the shared LangBot server.
+- Native Discord voice is not represented as common `Voice`; audio-like payloads are treated as file attachments.
+- `create_invite`, pin/unpin, and reaction mutation were covered by prior direct live probes but were not repeated by the final plugin run to avoid extra shared-server side effects.
