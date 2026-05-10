@@ -783,14 +783,16 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             yield cmd_ret
 
     # AgentRunner methods
-    async def list_agent_runners(self, bound_plugins: list[str] | None = None) -> list[ComponentManifest]:
-        """List all available AgentRunner components."""
+    async def list_agent_runners(self, bound_plugins: list[str] | None = None) -> list[dict[str, Any]]:
+        """List all available AgentRunner components.
+
+        Returns list of dicts with plugin_author, plugin_name, runner_name, manifest, etc.
+        """
         if not self.is_enable_plugin:
             return []
 
         runners_data = await self.handler.list_agent_runners(include_plugins=bound_plugins)
-        runners = [ComponentManifest.model_validate(runner) for runner in runners_data]
-        return runners
+        return runners_data
 
     async def run_agent(
         self,
@@ -808,10 +810,18 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             context: AgentRunContext as dict
 
         Yields:
-            AgentRunReturn results as dicts
+            AgentRunResult dicts per Protocol v1
         """
         if not self.is_enable_plugin:
-            yield {'type': 'finish', 'finish_reason': 'error', 'content': 'Plugin system is disabled'}
+            # Return v1 protocol run.failed
+            yield {
+                'type': 'run.failed',
+                'data': {
+                    'error': 'Plugin system is disabled',
+                    'code': 'plugin.disabled',
+                    'retryable': False,
+                },
+            }
             return
 
         gen = self.handler.run_agent(plugin_author, plugin_name, runner_name, context)

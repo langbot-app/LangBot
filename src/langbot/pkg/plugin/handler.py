@@ -419,76 +419,6 @@ class RuntimeConnectionHandler(handler.Handler):
                     message=f'Failed to execute tool {tool_name}: {e}',
                 )
 
-        @self.action(PluginToRuntimeAction.RETRIEVE_KNOWLEDGE)
-        async def retrieve_knowledge(data: dict[str, Any]) -> handler.ActionResponse:
-            """Retrieve knowledge from a knowledge base"""
-            kb_uuid = data['kb_uuid']
-            query = data['query']
-            top_k = data.get('top_k', 5)
-
-            try:
-                kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(kb_uuid)
-                if kb is None:
-                    return handler.ActionResponse.error(
-                        message=f'Knowledge base with uuid {kb_uuid} not found',
-                    )
-
-                results = await kb.retrieve(query=query, top_k=top_k)
-
-                # Convert results to dict format
-                results_data = [
-                    {
-                        'id': r.id,
-                        'content': [c.model_dump() for c in r.content],
-                        'metadata': r.metadata,
-                    }
-                    for r in results
-                ]
-
-                return handler.ActionResponse.success(
-                    data={
-                        'results': results_data,
-                    },
-                )
-            except Exception as e:
-                traceback.print_exc()
-                return handler.ActionResponse.error(
-                    message=f'Failed to retrieve knowledge: {e}',
-                )
-
-        @self.action(PluginToRuntimeAction.INVOKE_EMBEDDING)
-        async def invoke_embedding(data: dict[str, Any]) -> handler.ActionResponse:
-            """Invoke an embedding model"""
-            embedding_model_uuid = data['embedding_model_uuid']
-            texts = data['texts']
-
-            try:
-                embedding_model = await self.ap.model_mgr.get_embedding_model_by_uuid(embedding_model_uuid)
-                if embedding_model is None:
-                    return handler.ActionResponse.error(
-                        message=f'Embedding model with uuid {embedding_model_uuid} not found',
-                    )
-
-                # Call embedding model to generate embeddings
-                embeddings = []
-                for text in texts:
-                    embedding = await embedding_model.provider.invoke_embedding(
-                        model=embedding_model,
-                        text=text,
-                    )
-                    embeddings.append(embedding)
-
-                return handler.ActionResponse.success(
-                    data={
-                        'embeddings': embeddings,
-                    },
-                )
-            except Exception as e:
-                traceback.print_exc()
-                return handler.ActionResponse.error(
-                    message=f'Failed to invoke embedding model: {e}',
-                )
-
         @self.action(RuntimeToLangBotAction.SET_BINARY_STORAGE)
         async def set_binary_storage(data: dict[str, Any]) -> handler.ActionResponse:
             """Set binary storage"""
@@ -856,10 +786,11 @@ class RuntimeConnectionHandler(handler.Handler):
             # Validate kb_id is in pipeline's allowed list
             allowed_kb_uuids = []
             if query.pipeline_config:
-                local_agent_config = query.pipeline_config.get('ai', {}).get('local-agent', {})
-                allowed_kb_uuids = local_agent_config.get('knowledge-bases', [])
+                from langbot.pkg.agent.runner.config_migration import ConfigMigration
+                runner_config = ConfigMigration.resolve_runner_config(query.pipeline_config, None)
+                allowed_kb_uuids = runner_config.get('knowledge-bases', [])
                 if not allowed_kb_uuids:
-                    old_kb_uuid = local_agent_config.get('knowledge-base', '')
+                    old_kb_uuid = runner_config.get('knowledge-base', '')
                     if old_kb_uuid and old_kb_uuid != '__none__':
                         allowed_kb_uuids = [old_kb_uuid]
 
@@ -1034,6 +965,55 @@ class RuntimeConnectionHandler(handler.Handler):
         )
 
         return result['tools']
+
+    async def list_agent_runners(self, include_plugins: list[str] | None = None) -> list[dict[str, Any]]:
+        """List agent runners from plugin runtime.
+
+        Returns list of dicts with:
+        - plugin_author
+        - plugin_name
+        - runner_name
+        - runner_description
+        - manifest
+        - protocol_version
+        - capabilities
+        - permissions
+        - config
+        """
+        result = await self.call_action(
+            LangBotToRuntimeAction.LIST_AGENT_RUNNERS,
+            {
+                'include_plugins': include_plugins,
+            },
+            timeout=20,
+        )
+
+        return result['runners']
+
+    async def run_agent(
+        self,
+        plugin_author: str,
+        plugin_name: str,
+        runner_name: str,
+        context: dict[str, Any],
+    ) -> typing.AsyncGenerator[dict[str, Any], None]:
+        """Run an AgentRunner component.
+
+        Yields AgentRunResult dicts per Protocol v1.
+        """
+        gen = self.call_action_generator(
+            LangBotToRuntimeAction.RUN_AGENT,
+            {
+                'plugin_author': plugin_author,
+                'plugin_name': plugin_name,
+                'runner_name': runner_name,
+                'context': context,
+            },
+            timeout=300,
+        )
+
+        async for ret in gen:
+            yield ret
 
     async def get_plugin_icon(self, plugin_author: str, plugin_name: str) -> dict[str, Any]:
         """Get plugin icon"""
