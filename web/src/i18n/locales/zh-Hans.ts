@@ -43,6 +43,8 @@ const zhHans = {
     success: '成功',
     save: '保存',
     saving: '保存中...',
+    recommend: '推荐',
+    start: '开始',
     confirm: '确认',
     confirmDelete: '确认删除',
     deleteConfirmation: '你确定要删除这个吗？',

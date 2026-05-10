@@ -43,6 +43,8 @@ const zhHant = {
     success: '成功',
     save: '儲存',
     saving: '儲存中...',
+    recommend: '推薦',
+    start: '開始',
     confirm: '確認',
     confirmDelete: '確認刪除',
     deleteConfirmation: '您確定要刪除這個嗎？',

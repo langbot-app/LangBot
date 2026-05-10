@@ -44,6 +44,8 @@ const enUS = {
     success: 'Success',
     save: 'Save',
     saving: 'Saving...',
+    recommend: 'Recommended',
+    start: 'Start',
     confirm: 'Confirm',
     confirmDelete: 'Confirm Delete',
     deleteConfirmation: 'Are you sure you want to delete this?',

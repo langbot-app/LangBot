@@ -552,27 +552,58 @@ export default function DynamicFormComponent({
           if (config.type === 'qr-code-login') {
             return (
               <FormItem key={config.id}>
-                <div className="flex items-center gap-2">
+                <div
+                  className="relative flex items-center gap-4 p-4 rounded-xl border-2 border-dashed cursor-pointer transition-all hover:border-solid hover:shadow-md group"
+                  style={{
+                    borderColor:
+                      'color-mix(in srgb, var(--primary) 25%, transparent)',
+                    background:
+                      'color-mix(in srgb, var(--primary) 3%, transparent)',
+                  }}
+                  onClick={() => {
+                    if (!isEditing) {
+                      setQrDialogPlatform(
+                        (config.login_platform as QrLoginPlatform) || 'feishu',
+                      );
+                      setQrDialogOpen(true);
+                    }
+                  }}
+                >
+                  <div className="flex items-center justify-center h-12 w-12 rounded-lg bg-primary/10 shrink-0">
+                    <QrCode className="h-6 w-6 text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-foreground">
+                        {extractI18nObject(config.label)}
+                      </span>
+                      <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-primary text-primary-foreground">
+                        {t('common.recommend')}
+                      </span>
+                    </div>
+                    {config.description && (
+                      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                        {extractI18nObject(config.description)}
+                      </p>
+                    )}
+                  </div>
                   <Button
                     type="button"
-                    variant="outline"
-                    onClick={() => {
+                    size="sm"
+                    disabled={!!isEditing}
+                    className="shrink-0"
+                    onClick={(e) => {
+                      e.stopPropagation();
                       setQrDialogPlatform(
                         (config.login_platform as QrLoginPlatform) || 'feishu',
                       );
                       setQrDialogOpen(true);
                     }}
-                    disabled={!!isEditing}
                   >
-                    <QrCode className="h-4 w-4 mr-1.5" />
-                    {extractI18nObject(config.label)}
+                    <QrCode className="h-3.5 w-3.5 mr-1" />
+                    {t('common.start')}
                   </Button>
                 </div>
-                {config.description && (
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {extractI18nObject(config.description)}
-                  </p>
-                )}
               </FormItem>
             );
           }

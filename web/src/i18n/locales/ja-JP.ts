@@ -45,6 +45,8 @@
     success: '成功',
     save: '保存',
     saving: '保存中...',
+    recommend: 'おすすめ',
+    start: '開始',
     confirm: '確認',
     confirmDelete: '削除の確認',
     deleteConfirmation: '本当に削除しますか？',
