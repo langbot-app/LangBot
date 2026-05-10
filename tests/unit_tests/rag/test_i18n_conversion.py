@@ -5,7 +5,6 @@ Tests cover:
 """
 from __future__ import annotations
 
-import pytest
 from importlib import import_module
 
 
