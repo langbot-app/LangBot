@@ -15,9 +15,10 @@ Current acceptance report: [EBA Adapter Acceptance Report](./acceptance-report.m
 
 | Adapter | Status | Document |
 |---------|--------|----------|
-| Telegram | Migrated and live-tested | [Telegram](./telegram.md) |
-| Discord | Migrated and live-tested | [Discord](./discord.md) |
-| OneBot v11 / aiocqhttp | Migrated; Matcha-tested where supported | [OneBot v11 / aiocqhttp](./aiocqhttp.md) |
+| Telegram | Migrated; partial plugin E2E, media-inbound gaps remain | [Telegram](./telegram.md) |
+| Discord | Migrated; partial plugin E2E, media-inbound gaps remain | [Discord](./discord.md) |
+| OneBot v11 / aiocqhttp | Migrated; Matcha UI plus protocol-level multi-component coverage | [OneBot v11 / aiocqhttp](./aiocqhttp.md) |
+| DingTalk | Migrated; partial plugin E2E, group/media-inbound gaps remain | [DingTalk](./dingtalk.md) |
 
 ## Documentation Checklist
 
@@ -29,3 +30,4 @@ When migrating a new adapter, add one document here with:
 - Supported `call_platform_api` action list.
 - Known unsupported APIs and the reason.
 - Live test notes, including platform, channel type, destructive operations, and residual risks.
+- A clear distinction between real UI inbound media, protocol-level injected inbound media, and bot outbound media.
