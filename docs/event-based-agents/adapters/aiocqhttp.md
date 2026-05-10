@@ -142,11 +142,12 @@ Verified on May 10, 2026 with `EBAEventProbe`, SDK standalone runtime, LangBot `
 
 Evidence:
 
-- Plugin JSONL: `data/temp/aiocqhttp-plugin-e2e-rerun.jsonl`
+- Plugin JSONL: `data/temp/aiocqhttp-plugin-e2e-20260510-multiformat.jsonl`
 
 Observed and verified:
 
 - A real Matcha group message reached the plugin as `MessageReceived` with `bot_uuid=eba-aiocqhttp-matcha`, `adapter_name=aiocqhttp`, common `Source`/`Plain` message components, common sender, and common group identifiers.
+- A protocol-level OneBot reverse WebSocket event reached the plugin as `MessageReceived` with a mixed common chain: `Source`, `Plain`, `At`, `Face`, `Image`, `Voice`, `File`, `Quote`, and trailing `Plain`. This proves the real adapter + LangBot + standalone runtime + plugin path for mixed inbound OneBot payloads, but it was not sent through Matcha UI.
 - SDK API calls succeeded: `get_langbot_version`, `get_bots`, `get_bot_info`, `send_message`, plugin storage, workspace storage, `list_plugins_manifest`, `list_commands`, `list_tools`, and `list_knowledge_bases`.
 - Outbound component sweep succeeded for plain text plus `At`/`Face`, `AtAll`, base64 `Image`, and quoted reply.
 - Common APIs succeeded through the plugin path: `get_message`, `get_user_info`, `get_friend_list`, `get_group_info`, `get_group_list`, `get_group_member_list`, and `get_group_member_info`.
@@ -154,6 +155,7 @@ Observed and verified:
 
 Documented Matcha limits in this E2E run:
 
+- Matcha UI did not provide a completed image/file upload/send path for inbound media. The rich inbound media evidence is `plugin-e2e-protocol`, not UI-level media upload evidence.
 - Outbound `File` failed in Matcha even after the adapter emitted an official `file` segment shape.
 - Outbound `Forward` failed because Matcha returned unsupported action for merged-forward.
 - `get_group_honor_info` failed because Matcha returned unsupported action.

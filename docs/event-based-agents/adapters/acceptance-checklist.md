@@ -8,13 +8,15 @@ Use these evidence levels consistently in adapter records:
 
 | Level | Meaning | Can Mark Complete |
 |-------|---------|-------------------|
-| `plugin-e2e` | Real SDK plugin running through standalone runtime, LangBot core, the migrated adapter, and a real or simulator platform endpoint. | Yes |
+| `plugin-e2e-ui` | Real SDK plugin running through standalone runtime, LangBot core, the migrated adapter, and a real platform/simulator UI action. | Yes |
+| `plugin-e2e-protocol` | Real SDK plugin running through standalone runtime, LangBot core, and the migrated adapter from a protocol-boundary event injection, such as a OneBot reverse WebSocket event. | Partial; must not be claimed as UI coverage |
+| `plugin-e2e-outbound` | Real SDK plugin calls an API and the bot output is visible in the real platform/simulator UI. | Yes for send/API coverage only |
 | `adapter-live` | Direct adapter probe connected to a real or simulator platform endpoint, bypassing plugin runtime. | No, auxiliary only |
 | `unit` | Unit/API-shape tests with mocked platform SDK objects or mocked APIs. | No, auxiliary only |
 | `not-supported` | Platform protocol or SDK has no equivalent capability. Must include reason and source. | Yes, as explicitly unsupported |
 | `blocked` | Intended capability could not be verified because of credentials, permissions, endpoint gaps, or simulator gaps. | No |
 
-The primary acceptance path must be `plugin-e2e`. `adapter-live` and `unit` tests are useful, but they do not prove the EBA architecture path.
+The primary acceptance path must be `plugin-e2e-ui` for inbound UI-triggered behavior and `plugin-e2e-outbound` for bot send/API behavior. `adapter-live`, `plugin-e2e-protocol`, and `unit` tests are useful, but they must be labelled precisely.
 
 ## Required Architecture Path
 
@@ -47,7 +49,7 @@ The test plugin must record JSONL evidence containing:
 
 ## Required Message Receive Tests
 
-For every adapter, inbound message conversion must be tested through `plugin-e2e` for each component the platform can receive. If the platform cannot create a component from the UI/simulator, record it as `blocked` with the endpoint limitation.
+For every adapter, inbound message conversion must be tested through `plugin-e2e-ui` for each component the platform can receive. If a protocol-level injection is used, label it `plugin-e2e-protocol`; it proves the adapter/core/plugin path, but it does not prove that the user-facing platform UI can send that component. If the platform UI/simulator cannot create a component, record it as `blocked` with the endpoint limitation.
 
 | Component | Required Receive Assertion |
 |-----------|----------------------------|
@@ -68,7 +70,7 @@ The plugin must subscribe to `MessageReceivedEvent` and assert that `message_cha
 
 ## Required Message Send Tests
 
-For every adapter, outbound message conversion must be tested through `plugin-e2e` by having the plugin call SDK platform APIs and verifying the platform UI/simulator receives the expected message.
+For every adapter, outbound message conversion must be tested through `plugin-e2e-outbound` by having the plugin call SDK platform APIs and verifying the platform UI/simulator receives the expected message.
 
 | Component | Required Send Assertion |
 |-----------|-------------------------|
@@ -87,7 +89,7 @@ If a platform supports a component only in one direction, the adapter record mus
 
 ## Required Event Tests
 
-The plugin must subscribe to every event declared in `manifest.yaml -> spec.supported_events` and record one of `plugin-e2e`, `not-supported`, or `blocked`.
+The plugin must subscribe to every event declared in `manifest.yaml -> spec.supported_events` and record one of `plugin-e2e-ui`, `plugin-e2e-protocol`, `not-supported`, or `blocked`.
 
 | Event | Required Assertion |
 |-------|--------------------|
@@ -154,7 +156,8 @@ The result must be serialized into JSON-safe values before it is returned to the
 
 Every action listed in `manifest.yaml -> spec.platform_specific_apis` must have one acceptance entry:
 
-- `plugin-e2e`: called by the plugin against the live/simulator endpoint.
+- `plugin-e2e-ui` or `plugin-e2e-outbound`: called by the plugin against the live/simulator endpoint.
+- `plugin-e2e-protocol`: called by the plugin after a protocol-boundary injected event; useful for endpoint-specific simulators but must be labelled.
 - `not-supported`: removed from manifest or explained if the platform SDK exposes it but this adapter intentionally does not.
 - `blocked`: endpoint did not implement it, permissions missing, or safe fixture unavailable.
 
@@ -195,10 +198,11 @@ Each adapter document must include:
 
 An adapter can be marked migrated only when:
 
-1. All declared events have `plugin-e2e` or `not-supported` evidence.
-2. All declared APIs have `plugin-e2e` or `not-supported` evidence.
-3. All platform-supported receive/send message components have `plugin-e2e` evidence.
-4. Unit tests cover conversion and API-shape boundaries.
-5. The adapter document lists every blocked or skipped item honestly.
+1. All declared events have `plugin-e2e-ui`, justified `plugin-e2e-protocol`, or `not-supported` evidence.
+2. All declared APIs have `plugin-e2e-outbound` or `not-supported` evidence.
+3. All platform-supported receive components have `plugin-e2e-ui` evidence; protocol-only receive coverage keeps the status partial.
+4. All platform-supported send components have `plugin-e2e-outbound` evidence.
+5. Unit tests cover conversion and API-shape boundaries.
+6. The adapter document lists every blocked or skipped item honestly.
 
 If any declared capability is only covered by `adapter-live` or `unit`, the adapter status must remain partial.

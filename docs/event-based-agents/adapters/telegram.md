@@ -122,6 +122,7 @@ Observed and verified:
 
 Documented limits in this E2E run:
 
+- Real Telegram UI inbound image, file, voice, sticker/emoji-as-common-component, and reply/quote messages were not completed in the plugin E2E evidence. Outbound image/file messages from the bot do not prove inbound media conversion.
 - `get_message`, `get_friend_list`, and `get_group_list` are not supported by this Telegram adapter.
 - Mutating/destructive Telegram-specific actions such as pin/unpin, title/description changes, invite-link creation, moderation, kick, and leave were not repeated in the plugin run. They remain opt-in live-probe cases.
 - Telegram does not expose a portable common `Face` component for native sticker/emoji semantics in the current adapter.

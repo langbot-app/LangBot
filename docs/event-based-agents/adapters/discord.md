@@ -139,6 +139,8 @@ Observed and verified:
 
 Documented limits in this E2E run:
 
+- Real Discord UI inbound attachment/image/file, reply/quote, and fresh mention-chain messages were not completed in the plugin E2E evidence. Outbound image/file attachments from the bot do not prove inbound attachment conversion.
+- A later May 10 UI retry could write text into the Discord message box, but the client kept the send button disabled and did not send the message, so it produced no new plugin evidence.
 - `get_message`, `get_friend_list`, and `get_group_list` are not supported by this Discord adapter.
 - Destructive moderation and guild-leave APIs were not repeated against the shared LangBot server.
 - Native Discord voice is not represented as common `Voice`; audio-like payloads are treated as file attachments.
