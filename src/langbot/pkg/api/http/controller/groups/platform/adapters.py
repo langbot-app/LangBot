@@ -363,13 +363,19 @@ class AdaptersRouterGroup(group.RouterGroup):
 
             async def run_device_flow():
                 try:
-                    async with aiohttp.ClientSession() as http:
+                    timeout = aiohttp.ClientTimeout(total=10)
+                    async with aiohttp.ClientSession(timeout=timeout) as http:
                         # Step 1: Init — get nonce
                         async with http.post(
                             f'{DINGTALK_BASE_URL}/app/registration/init',
                             json={'source': 'langbot'},
                         ) as resp:
-                            data = await resp.json()
+                            try:
+                                data = await resp.json()
+                            except (aiohttp.ContentTypeError, ValueError):
+                                session['status'] = 'error'
+                                session['error'] = 'Invalid response from DingTalk service'
+                                return
                             if data.get('errcode', -1) != 0:
                                 session['status'] = 'error'
                                 session['error'] = data.get('errmsg', 'Failed to init')
@@ -381,7 +387,12 @@ class AdaptersRouterGroup(group.RouterGroup):
                             f'{DINGTALK_BASE_URL}/app/registration/begin',
                             json={'nonce': nonce},
                         ) as resp:
-                            data = await resp.json()
+                            try:
+                                data = await resp.json()
+                            except (aiohttp.ContentTypeError, ValueError):
+                                session['status'] = 'error'
+                                session['error'] = 'Invalid response from DingTalk service'
+                                return
                             if data.get('errcode', -1) != 0:
                                 session['status'] = 'error'
                                 session['error'] = data.get('errmsg', 'Failed to begin authorization')
@@ -407,7 +418,10 @@ class AdaptersRouterGroup(group.RouterGroup):
                                 f'{DINGTALK_BASE_URL}/app/registration/poll',
                                 json={'device_code': device_code},
                             ) as poll_resp:
-                                poll_data = await poll_resp.json()
+                                try:
+                                    poll_data = await poll_resp.json()
+                                except (aiohttp.ContentTypeError, ValueError):
+                                    continue
 
                                 if poll_data.get('errcode', -1) != 0:
                                     session['status'] = 'error'
@@ -471,6 +485,7 @@ class AdaptersRouterGroup(group.RouterGroup):
         @self.route('/dingtalk/create-app/status/<session_id>', methods=['GET'])
         async def _(session_id: str) -> str:
             """Poll DingTalk Device Flow status."""
+            _cleanup_expired_dingtalk_sessions()
             session = _dingtalk_sessions.get(session_id)
             if not session:
                 return self.http_status(404, -1, 'Session not found')
@@ -491,6 +506,170 @@ class AdaptersRouterGroup(group.RouterGroup):
         async def _(session_id: str) -> str:
             """Cancel and clean up a DingTalk Device Flow session."""
             session = _dingtalk_sessions.pop(session_id, None)
+            if session and session.get('task') and not session['task'].done():
+                session['task'].cancel()
+            return self.success(data={})
+
+        # -----------------------------------------------------------------------
+        # WeComBot QR Code One-Click Create
+        # -----------------------------------------------------------------------
+
+        _wecombot_sessions: dict = {}
+        _WECOMBOT_SESSION_TTL = 300  # 5 minutes (WeCom QR validity window)
+
+        def _cleanup_expired_wecombot_sessions():
+            import time
+
+            now = time.time()
+            expired = [
+                sid for sid, s in _wecombot_sessions.items() if now - s.get('created_at', 0) > _WECOMBOT_SESSION_TTL
+            ]
+            for sid in expired:
+                session = _wecombot_sessions.pop(sid, None)
+                if session and session.get('task') and not session['task'].done():
+                    session['task'].cancel()
+
+        @self.route('/wecombot/create-bot', methods=['POST'])
+        async def _() -> str:
+            """Start WeComBot one-click creation via QR code. Returns session_id + QR code URL."""
+            import uuid
+            import time
+            import aiohttp
+
+            WECOM_QC_GENERATE_URL = 'https://work.weixin.qq.com/ai/qc/generate'
+            WECOM_QC_QUERY_URL = 'https://work.weixin.qq.com/ai/qc/query_result'
+
+            _cleanup_expired_wecombot_sessions()
+
+            session_id = str(uuid.uuid4())
+
+            session = {
+                'status': 'pending',
+                'qr_url': None,
+                'expire_at': None,
+                'botid': None,
+                'secret': None,
+                'error': None,
+                'created_at': time.time(),
+                'scode': None,
+                'task': None,
+            }
+            _wecombot_sessions[session_id] = session
+
+            async def run_qr_flow():
+                try:
+                    timeout = aiohttp.ClientTimeout(total=10)
+                    async with aiohttp.ClientSession(timeout=timeout) as http:
+                        # Step 1: Generate QR code
+                        async with http.get(
+                            f'{WECOM_QC_GENERATE_URL}?source=langbot&plat=0',
+                        ) as resp:
+                            try:
+                                data = await resp.json()
+                            except (aiohttp.ContentTypeError, ValueError):
+                                session['status'] = 'error'
+                                session['error'] = 'Invalid response from WeCom service'
+                                return
+                            if not data.get('data', {}).get('scode') or not data.get('data', {}).get('auth_url'):
+                                session['status'] = 'error'
+                                session['error'] = data.get('errmsg', 'Failed to generate QR code')
+                                return
+
+                            scode = data['data']['scode']
+                            auth_url = data['data']['auth_url']
+
+                            session['scode'] = scode
+                            session['qr_url'] = auth_url
+                            session['expire_at'] = time.time() + _WECOMBOT_SESSION_TTL
+                            session['status'] = 'waiting'
+
+                        # Step 2: Poll for scan result
+                        deadline = time.time() + _WECOMBOT_SESSION_TTL
+                        while time.time() < deadline:
+                            await asyncio.sleep(3)
+
+                            async with http.get(
+                                f'{WECOM_QC_QUERY_URL}?scode={scode}',
+                            ) as poll_resp:
+                                try:
+                                    poll_data = await poll_resp.json()
+                                except (aiohttp.ContentTypeError, ValueError):
+                                    continue
+
+                                status = poll_data.get('data', {}).get('status', '')
+                                if status == 'success':
+                                    bot_info = poll_data.get('data', {}).get('bot_info', {})
+                                    if bot_info.get('botid') and bot_info.get('secret'):
+                                        session['status'] = 'success'
+                                        session['botid'] = bot_info['botid']
+                                        session['secret'] = bot_info['secret']
+                                        return
+                                    else:
+                                        session['status'] = 'error'
+                                        session['error'] = 'Scan succeeded but bot info is incomplete'
+                                        return
+
+                        # Timeout
+                        session['status'] = 'error'
+                        session['error'] = 'QR code expired'
+
+                except asyncio.CancelledError:
+                    return
+                except Exception as e:
+                    session['status'] = 'error'
+                    session['error'] = str(e)
+
+            task = asyncio.create_task(run_qr_flow())
+            session['task'] = task
+
+            # Wait for QR code to be ready (max 10 seconds)
+            for _ in range(20):
+                if session['qr_url'] or session['error']:
+                    break
+                await asyncio.sleep(0.5)
+
+            if session['error']:
+                task.cancel()
+                return self.http_status(502, -1, session['error'])
+
+            if not session['qr_url']:
+                task.cancel()
+                session['status'] = 'error'
+                session['error'] = 'Timeout waiting for QR code'
+                return self.http_status(504, -1, 'Timeout waiting for QR code')
+
+            return self.success(
+                data={
+                    'session_id': session_id,
+                    'qr_url': session['qr_url'],
+                    'expire_at': session['expire_at'],
+                }
+            )
+
+        @self.route('/wecombot/create-bot/status/<session_id>', methods=['GET'])
+        async def _(session_id: str) -> str:
+            """Poll WeComBot creation status."""
+            _cleanup_expired_wecombot_sessions()
+            session = _wecombot_sessions.get(session_id)
+            if not session:
+                return self.http_status(404, -1, 'Session not found')
+
+            data = {'status': session['status']}
+
+            if session['status'] == 'success':
+                data['botid'] = session['botid']
+                data['secret'] = session['secret']
+                _wecombot_sessions.pop(session_id, None)
+            elif session['status'] == 'error':
+                data['error'] = session['error']
+                _wecombot_sessions.pop(session_id, None)
+
+            return self.success(data=data)
+
+        @self.route('/wecombot/create-bot/<session_id>', methods=['DELETE'])
+        async def _(session_id: str) -> str:
+            """Cancel and clean up a WeComBot creation session."""
+            session = _wecombot_sessions.pop(session_id, None)
             if session and session.get('task') and not session['task'].done():
                 session['task'].cancel()
             return self.success(data={})

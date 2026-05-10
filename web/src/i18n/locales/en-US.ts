@@ -1367,6 +1367,18 @@ const enUS = {
     robotCodeNote:
       'Robot Code cannot be obtained automatically. Please go to DingTalk Developer Backend > Robot Configuration to copy it manually. It is required for features like image recognition and file upload.',
   },
+  wecombot: {
+    createBot: 'One-Click Create WeCom Bot',
+    scanQRCode:
+      'Scan the QR code below with WeCom to authorize and automatically create the bot',
+    waitingForScan: 'Waiting for scan',
+    createSuccess: 'Bot created successfully! Credentials have been filled in',
+    createFailed: 'Creation failed',
+    connecting: 'Connecting to WeCom service...',
+    retry: 'Retry',
+    robotNameNote:
+      'Robot Name cannot be obtained automatically. Please fill it in manually.',
+  },
   pluginPages: {
     selectFromSidebar: 'Select a plugin page from the sidebar',
     invalidPage: 'Invalid plugin page',

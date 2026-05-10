@@ -1371,6 +1371,16 @@
     robotCodeNote:
       'ロボットコードは自動取得できません。DingTalk開発者バックエンド > ロボット設定から手動でコピーしてください。画像認識やファイルアップロードなどの機能に必要です。',
   },
+  wecombot: {
+    createBot: 'ワンクリックでWeComボット作成',
+    scanQRCode: '以下のQRコードをWeComでスキャンし、ボットを自動作成',
+    waitingForScan: 'スキャン待ち',
+    createSuccess: 'ボット作成成功！認証情報が自動入力されました',
+    createFailed: '作成失敗',
+    connecting: 'WeComサービスに接続中...',
+    retry: '再試行',
+    robotNameNote: 'ロボット名は自動取得できません。手動で入力してください。',
+  },
   pluginPages: {
     selectFromSidebar: 'サイドバーからプラグインページを選択してください',
     invalidPage: '無効なプラグインページ',

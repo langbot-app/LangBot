@@ -19,6 +19,18 @@ spec:
     en: https://link.langbot.app/en/platforms/wecombot
     ja: https://link.langbot.app/ja/platforms/wecombot
   config:
+    - name: one-click-create
+      label:
+        en_US: One-Click Create Bot
+        zh_Hans: 一键创建机器人
+        zh_Hant: 一鍵建立機器人
+      description:
+        en_US: "Scan QR code with WeCom to automatically create a bot and fill in BotId and Secret. Note: Robot Name needs to be filled in manually."
+        zh_Hans: "使用企业微信扫码自动创建机器人并填写 BotId 和 Secret。注意：机器人名称需手动填写。"
+        zh_Hant: "使用企業微信掃碼自動建立機器人並填寫 BotId 和 Secret。注意：機器人名稱需手動填寫。"
+      type: qr-code-login
+      login_platform: wecombot
+      required: false
     - name: BotId
       label:
         en_US: BotId

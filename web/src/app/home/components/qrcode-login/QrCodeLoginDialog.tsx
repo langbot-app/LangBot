@@ -11,7 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { Loader2, RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
 import QRCode from 'qrcode';
 
-export type QrLoginPlatform = 'feishu' | 'weixin' | 'dingtalk';
+export type QrLoginPlatform = 'feishu' | 'weixin' | 'dingtalk' | 'wecombot';
 
 interface PlatformConfig {
   titleKey: string;
@@ -72,6 +72,21 @@ const PLATFORM_CONFIGS: Record<QrLoginPlatform, PlatformConfig> = {
     }),
     successNoteKey: 'dingtalk.robotCodeNote',
   },
+  wecombot: {
+    titleKey: 'wecombot.createBot',
+    connectingKey: 'wecombot.connecting',
+    scanQRCodeKey: 'wecombot.scanQRCode',
+    waitingKey: 'wecombot.waitingForScan',
+    successKey: 'wecombot.createSuccess',
+    failedKey: 'wecombot.createFailed',
+    retryKey: 'wecombot.retry',
+    apiBase: '/api/v1/platform/adapters/wecombot/create-bot',
+    extractSuccess: (data) => ({
+      BotId: data.botid,
+      Secret: data.secret,
+    }),
+    successNoteKey: 'wecombot.robotNameNote',
+  },
 };
 
 interface QrCodeLoginDialogProps {
@@ -102,6 +117,7 @@ export default function QrCodeLoginDialog({
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const sessionIdRef = useRef<string | null>(null);
+  const cleanedRef = useRef(false);
 
   const onSuccessRef = useRef(onSuccess);
   onSuccessRef.current = onSuccess;
@@ -113,6 +129,9 @@ export default function QrCodeLoginDialog({
   platformConfigRef.current = platformConfig;
 
   const cleanup = useCallback(() => {
+    if (cleanedRef.current) return;
+    cleanedRef.current = true;
+
     if (pollTimerRef.current) {
       clearInterval(pollTimerRef.current);
       pollTimerRef.current = null;
@@ -135,6 +154,7 @@ export default function QrCodeLoginDialog({
         {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
+          keepalive: true,
         },
       ).catch(() => {});
       sessionIdRef.current = null;
@@ -143,6 +163,7 @@ export default function QrCodeLoginDialog({
 
   const startLogin = useCallback(async () => {
     cleanup();
+    cleanedRef.current = false;
     setState('connecting');
     setQrDataUrl('');
     setExpireIn(0);

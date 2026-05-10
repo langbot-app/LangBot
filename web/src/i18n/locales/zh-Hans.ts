@@ -1306,6 +1306,17 @@ const zhHans = {
     robotCodeNote:
       '机器人代码无法自动获取，请前往钉钉开发者后台 > 机器人配置中手动复制。识图、上传文件等功能需要填写此字段。',
   },
+  wecombot: {
+    createBot: '一键创建企业微信机器人',
+    scanQRCode:
+      '请使用企业微信扫描以下二维码，授权后将自动创建机器人并填写凭据',
+    waitingForScan: '等待扫码中',
+    createSuccess: '机器人创建成功！凭据已自动填入',
+    createFailed: '创建失败',
+    connecting: '正在连接企业微信服务...',
+    retry: '重试',
+    robotNameNote: '机器人名称无法自动获取，请手动填写。',
+  },
   pluginPages: {
     selectFromSidebar: '从侧边栏选择一个插件页面',
     invalidPage: '无效的插件页面',

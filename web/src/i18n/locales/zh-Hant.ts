@@ -1306,6 +1306,17 @@ const zhHant = {
     robotCodeNote:
       '機器人代碼無法自動取得，請前往釘釘開發者後台 > 機器人設定中手動複製。識圖、上傳檔案等功能需要填寫此欄位。',
   },
+  wecombot: {
+    createBot: '一鍵建立企業微信機器人',
+    scanQRCode:
+      '請使用企業微信掃描以下 QR Code，授權後將自動建立機器人並填寫憑證',
+    waitingForScan: '等待掃碼中',
+    createSuccess: '機器人建立成功！憑證已自動填入',
+    createFailed: '建立失敗',
+    connecting: '正在連線企業微信服務...',
+    retry: '重試',
+    robotNameNote: '機器人名稱無法自動取得，請手動填寫。',
+  },
   pluginPages: {
     selectFromSidebar: '從側邊欄選擇一個插件頁面',
     invalidPage: '無效的插件頁面',
