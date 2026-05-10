@@ -110,6 +110,7 @@ Evidence:
 
 - Private chat JSONL: `data/temp/telegram-plugin-e2e-rerun.jsonl`
 - Group chat JSONL: `data/temp/telegram-plugin-e2e-group.jsonl`
+- Private media JSONL: `data/temp/telegram-plugin-e2e-media-ui.jsonl`
 
 Observed and verified:
 
@@ -117,12 +118,13 @@ Observed and verified:
 - `BotInvitedToGroup` reached the plugin after adding the bot to `Rock'sBotGroup`.
 - SDK API calls succeeded: `get_langbot_version`, `get_bots`, `get_bot_info`, `send_message`, plugin storage, workspace storage, `list_plugins_manifest`, `list_commands`, `list_tools`, and `list_knowledge_bases`.
 - Outbound component sweep succeeded in private and group chats: plain text, mention text/equivalent, base64 image, quoted reply, file/document, and flattened forward fallback. Group mode also covered `AtAll` fallback behavior.
+- Real Telegram Lite private-chat inbound media was verified through the plugin path: a sent document arrived as common `File`, and a sent photo arrived as common `Image`.
 - Telegram platform API sweep succeeded for safe group actions: `get_chat_administrators`, `get_chat_member_count`, and `send_chat_action`.
 - Common group/user APIs succeeded in group mode: `get_user_info`, `get_group_info`, `get_group_member_list`, and `get_group_member_info`.
 
 Documented limits in this E2E run:
 
-- Real Telegram UI inbound image, file, voice, sticker/emoji-as-common-component, and reply/quote messages were not completed in the plugin E2E evidence. Outbound image/file messages from the bot do not prove inbound media conversion.
+- Real Telegram UI inbound voice, sticker/emoji-as-common-component, and reply/quote messages were not completed in the plugin E2E evidence.
 - `get_message`, `get_friend_list`, and `get_group_list` are not supported by this Telegram adapter.
 - Mutating/destructive Telegram-specific actions such as pin/unpin, title/description changes, invite-link creation, moderation, kick, and leave were not repeated in the plugin run. They remain opt-in live-probe cases.
 - Telegram does not expose a portable common `Face` component for native sticker/emoji semantics in the current adapter.

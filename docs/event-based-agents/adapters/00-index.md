@@ -15,10 +15,10 @@ Current acceptance report: [EBA Adapter Acceptance Report](./acceptance-report.m
 
 | Adapter | Status | Document |
 |---------|--------|----------|
-| Telegram | Migrated; partial plugin E2E, media-inbound gaps remain | [Telegram](./telegram.md) |
+| Telegram | Migrated; partial plugin E2E, real UI inbound image/file verified | [Telegram](./telegram.md) |
 | Discord | Migrated; partial plugin E2E, media-inbound gaps remain | [Discord](./discord.md) |
 | OneBot v11 / aiocqhttp | Migrated; Matcha UI plus protocol-level multi-component coverage | [OneBot v11 / aiocqhttp](./aiocqhttp.md) |
-| DingTalk | Migrated; partial plugin E2E, group/media-inbound gaps remain | [DingTalk](./dingtalk.md) |
+| DingTalk | Migrated; partial plugin E2E, real UI inbound image/file verified; group gap remains | [DingTalk](./dingtalk.md) |
 
 ## Documentation Checklist
 

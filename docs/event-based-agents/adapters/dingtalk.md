@@ -43,9 +43,9 @@ The legacy DingTalk HTTP client now returns successful JSON response bodies from
 | `Plain` | supported | `plugin-e2e-ui` private text. DingTalk emoji currently arrives as plain text such as `[smile]`. |
 | `At` | converter path | Group trigger was not completed in the latest run. |
 | `AtAll` | fallback/send-side only | Not completed inbound. |
-| `Image` | converter path | Real UI inbound image was not completed. |
+| `Image` | supported | Real DingTalk Mac private-chat image upload reached the plugin as common `Image`. |
 | `Voice` | converter path | Real UI inbound voice was not completed. |
-| `File` | converter path | Real UI inbound file was not completed. |
+| `File` | supported | Real DingTalk Mac private-chat file upload reached the plugin as common `File`. |
 | `Quote` | converter path | Real UI inbound quote was not completed. |
 | `Face` | not native common mapping | DingTalk emoji was observed as `Plain`, not `Face`. |
 | `Forward` | not-supported inbound | DingTalk does not expose a portable structured forward event in this adapter. |
@@ -76,7 +76,7 @@ The legacy DingTalk HTTP client now returns successful JSON response bodies from
 | `get_group_member_info` | supported where DingTalk API allows | Limited live coverage. |
 | `get_user_info` | supported | Private sender path verified. |
 | `get_friend_list` | limited | DingTalk does not expose a portable friend-list equivalent. |
-| `get_file_url` | supported with media/file identifiers | Needs real inbound media evidence. |
+| `get_file_url` | supported with media/file identifiers | Real inbound file yielded a platform file URL in the converted `File` component. |
 | `call_platform_api` | supported | Safe action `check_access_token` verified. |
 
 ## Platform-Specific APIs
@@ -85,26 +85,29 @@ The legacy DingTalk HTTP client now returns successful JSON response bodies from
 |--------|---------|----------|
 | `check_access_token` | supported | `plugin-e2e`. |
 | `refresh_access_token` | supported | Implemented; not separately reproduced in the latest plugin run. |
-| `get_file_url` | supported | Needs real inbound file/media ID. |
+| `get_file_url` | supported | Real inbound file yielded a platform file URL in the converted `File` component. |
 | `get_audio_base64` | supported | Needs real inbound audio/media ID. |
-| `download_image_base64` | supported | Needs real inbound image/media ID. |
+| `download_image_base64` | supported | Real inbound image reached the plugin as `Image`; separate image-download API replay was not completed. |
 
 ## End-to-End Evidence
 
-Evidence file: `data/temp/dingtalk-plugin-e2e-20260510-rerun.jsonl`
+Evidence files:
+
+- Text/API/component JSONL: `data/temp/dingtalk-plugin-e2e-20260510-rerun.jsonl`
+- Real UI inbound media JSONL: `data/temp/dingtalk-plugin-e2e-media-ui.jsonl`
 
 Verified:
 
 - DingTalk Mac private chat in the `LangBot Team` organization produced `MessageReceived` through LangBot standalone runtime and `EBAEventProbe`.
 - The common chain was `Source + Plain` for normal text.
 - DingTalk emoji was received as `Source + Plain`, not common `Face`.
+- Real DingTalk Mac private-chat image upload was received as `Source + Image`.
+- Real DingTalk Mac private-chat file upload was received as `Source + File`.
 - The plugin sent outbound text, mention/fallback, image, quote/fallback, file, and forward/fallback messages visible in DingTalk.
 - The plugin called safe SDK and DingTalk platform APIs.
 
 Not completed:
 
-- Real UI inbound image.
-- Real UI inbound file.
 - Real UI inbound voice.
 - Real UI inbound quote.
 - Group trigger with a real robot mention.
