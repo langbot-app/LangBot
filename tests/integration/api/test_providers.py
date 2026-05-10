@@ -99,10 +99,12 @@ def fake_provider_app():
     # Embedding model service
     app.embedding_models_service = Mock()
     app.embedding_models_service.get_embedding_models = AsyncMock(return_value=[])
+    app.embedding_models_service.create_embedding_model = AsyncMock(return_value={'uuid': 'new-embedding-uuid'})
 
     # Rerank model service
     app.rerank_models_service = Mock()
     app.rerank_models_service.get_rerank_models = AsyncMock(return_value=[])
+    app.rerank_models_service.create_rerank_model = AsyncMock(return_value={'uuid': 'new-rerank-uuid'})
 
     # Model manager
     app.model_mgr = Mock()
@@ -260,3 +262,67 @@ class TestModelEndpoints:
         )
 
         assert response.status_code == 200
+
+
+@pytest.mark.usefixtures('mock_circular_import_chain')
+class TestEmbeddingModelEndpoints:
+    """Tests for /api/v1/provider/models/embedding endpoints."""
+
+    @pytest.mark.asyncio
+    async def test_get_embedding_models_success(self, quart_test_client):
+        """GET /api/v1/provider/models/embedding returns model list."""
+        response = await quart_test_client.get(
+            '/api/v1/provider/models/embedding',
+            headers={'Authorization': 'Bearer test_token'}
+        )
+
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert data['code'] == 0
+        assert 'models' in data['data']
+
+    @pytest.mark.asyncio
+    async def test_create_embedding_model_success(self, quart_test_client):
+        """POST /api/v1/provider/models/embedding creates new model."""
+        response = await quart_test_client.post(
+            '/api/v1/provider/models/embedding',
+            headers={'Authorization': 'Bearer test_token'},
+            json={'name': 'New Embedding Model', 'provider_uuid': 'test-provider-uuid'}
+        )
+
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert data['code'] == 0
+        assert 'uuid' in data['data']
+
+
+@pytest.mark.usefixtures('mock_circular_import_chain')
+class TestRerankModelEndpoints:
+    """Tests for /api/v1/provider/models/rerank endpoints."""
+
+    @pytest.mark.asyncio
+    async def test_get_rerank_models_success(self, quart_test_client):
+        """GET /api/v1/provider/models/rerank returns model list."""
+        response = await quart_test_client.get(
+            '/api/v1/provider/models/rerank',
+            headers={'Authorization': 'Bearer test_token'}
+        )
+
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert data['code'] == 0
+        assert 'models' in data['data']
+
+    @pytest.mark.asyncio
+    async def test_create_rerank_model_success(self, quart_test_client):
+        """POST /api/v1/provider/models/rerank creates new model."""
+        response = await quart_test_client.post(
+            '/api/v1/provider/models/rerank',
+            headers={'Authorization': 'Bearer test_token'},
+            json={'name': 'New Rerank Model', 'provider_uuid': 'test-provider-uuid'}
+        )
+
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert data['code'] == 0
+        assert 'uuid' in data['data']
