@@ -5,6 +5,7 @@ from typing import Any
 import base64
 import traceback
 
+import pydantic
 import sqlalchemy
 
 from langbot_plugin.runtime.io import handler
@@ -33,6 +34,20 @@ class _RawAction:
 
 def _langbot_to_runtime_action(enum_name: str, fallback_value: str) -> Any:
     return getattr(LangBotToRuntimeAction, enum_name, _RawAction(fallback_value))
+
+
+def _serialize_plugin_api_result(value: Any) -> Any:
+    if isinstance(value, pydantic.BaseModel):
+        return value.model_dump(mode='json', serialize_as_any=True, exclude={'source_platform_object'})
+    if isinstance(value, list):
+        return [_serialize_plugin_api_result(item) for item in value]
+    if isinstance(value, tuple):
+        return [_serialize_plugin_api_result(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _serialize_plugin_api_result(item) for key, item in value.items()}
+    if isinstance(value, bytes):
+        return base64.b64encode(value).decode('utf-8')
+    return value
 
 
 def _make_rag_error_response(error: Exception, error_type: str, **extra_context) -> handler.ActionResponse:
@@ -311,14 +326,60 @@ class RuntimeConnectionHandler(handler.Handler):
                     message=f'Bot with bot_uuid {bot_uuid} not found',
                 )
 
-            await bot.adapter.send_message(
+            result = await bot.adapter.send_message(
                 target_type,
                 target_id,
                 message_chain_obj,
             )
 
             return handler.ActionResponse.success(
-                data={},
+                data={
+                    'result': _serialize_plugin_api_result(result),
+                },
+            )
+
+        @self.action(PluginToRuntimeAction.CALL_PLATFORM_API)
+        async def call_platform_api(data: dict[str, Any]) -> handler.ActionResponse:
+            """Call a platform adapter API"""
+            bot_uuid = data['bot_uuid']
+            action = data['action']
+            params = data.get('params') or {}
+
+            bot = await self.ap.platform_mgr.get_bot_by_uuid(bot_uuid)
+            if bot is None:
+                return handler.ActionResponse.error(
+                    message=f'Bot with bot_uuid {bot_uuid} not found',
+                )
+
+            supported_apis = bot.adapter.get_supported_apis()
+            if action not in supported_apis:
+                return handler.ActionResponse.error(
+                    message=f'Platform API {action} is not supported by bot {bot_uuid}',
+                )
+
+            try:
+                if action == 'call_platform_api':
+                    platform_action = params['action']
+                    platform_params = params.get('params') or {}
+                    result = await bot.adapter.call_platform_api(platform_action, platform_params)
+                else:
+                    api_func = getattr(bot.adapter, action, None)
+                    if api_func is None:
+                        return handler.ActionResponse.error(
+                            message=f'Platform API {action} is declared but not implemented by bot {bot_uuid}',
+                        )
+                    result = await api_func(**params)
+                if isinstance(result, pydantic.BaseModel) and hasattr(result, 'bot_uuid') and not result.bot_uuid:
+                    result.bot_uuid = bot_uuid
+            except Exception as e:
+                return handler.ActionResponse.error(
+                    message=f'Platform API {action} failed: {type(e).__name__}: {e}',
+                )
+
+            return handler.ActionResponse.success(
+                data={
+                    'result': _serialize_plugin_api_result(result),
+                },
             )
 
         @self.action(PluginToRuntimeAction.GET_LLM_MODELS)

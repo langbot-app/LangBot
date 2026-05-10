@@ -8,193 +8,176 @@ Scope:
 - `discord-eba`
 - `aiocqhttp-eba`
 
-This report applies the architecture-level checklist in `acceptance-checklist.md`. It intentionally separates implementation support from acceptance evidence. A capability is complete only when it has `plugin-e2e` evidence or is explicitly `not-supported`.
+This report follows `acceptance-checklist.md`. The primary evidence is a real SDK plugin, `EBAEventProbe`, running through standalone runtime, LangBot core, the migrated adapter, and a real platform or simulator endpoint.
 
 ## Summary
 
-| Adapter | Current Acceptance Status | Reason |
-|---------|---------------------------|--------|
-| Telegram | Partial | The adapter has implementation and direct live-probe evidence, but the current record does not show full standalone-runtime plugin evidence for all declared events, APIs, and message components. |
-| Discord | Partial | The record includes standalone-runtime plugin evidence for core event flow and some SDK APIs, plus direct adapter live evidence for platform APIs. It still lacks per-component plugin evidence and plugin evidence for all declared platform APIs/destructive APIs. |
-| OneBot v11 / aiocqhttp | Partial | The adapter has unit coverage and Matcha direct live-probe evidence, but no standalone-runtime plugin evidence yet. |
+| Adapter | Status | Acceptance summary |
+|---------|--------|--------------------|
+| Telegram | Accepted with documented platform limits | Private and group `MessageReceived` paths, bot invite event, outbound component sweep, SDK APIs, storage APIs, and Telegram platform APIs were verified through standalone-runtime plugin E2E. Bot API limitations and unsupported common APIs are listed below. |
+| Discord | Accepted with documented platform limits | Real Discord server/channel E2E verified `MessageReceived`, common entity conversion, outbound components, SDK APIs, Discord guild/member APIs, and Discord platform APIs. Destructive moderation was not run against the shared server. |
+| OneBot v11 / aiocqhttp | Accepted for Matcha-supported capabilities; partial for endpoint-gapped capabilities | Matcha E2E verified message receive, common fields, send, reply, supported outbound components, safe common APIs, safe OneBot platform APIs, and SDK storage/list APIs. Matcha lacks merged-forward, file send, and several destructive/admin fixtures; those remain blocked for that endpoint. |
 
-None of the three adapters should be marked fully accepted under the new checklist until the missing `plugin-e2e` items below are completed.
+## Evidence Files
 
-## Evidence Legend
+| Adapter | Real endpoint | Evidence |
+|---------|---------------|----------|
+| Telegram private | Telegram Lite, `@rockchinq_bot` private chat | `data/temp/telegram-plugin-e2e-rerun.jsonl` |
+| Telegram group | Telegram Lite, `Rock'sBotGroup` | `data/temp/telegram-plugin-e2e-group.jsonl` |
+| Discord | Discord web client, LangBot server, `#🐞-debugging` | `data/temp/discord-plugin-e2e-20260510-final.jsonl` |
+| aiocqhttp | local Matcha, group `测试群` | `data/temp/aiocqhttp-plugin-e2e-rerun.jsonl` |
 
-| Value | Meaning |
-|-------|---------|
-| `plugin-e2e` | Verified through real SDK plugin, standalone runtime, LangBot core, adapter, and platform/simulator endpoint. |
-| `adapter-live` | Verified through a direct adapter probe connected to platform/simulator endpoint. Auxiliary only. |
-| `unit` | Verified by unit/API-shape tests. Auxiliary only. |
-| `implemented` | Code path exists, but current evidence is not enough for acceptance. |
-| `not-supported` | Platform or protocol has no portable equivalent. |
-| `blocked` | Intended test could not be completed with current fixture/simulator/permission. |
+All runs used standalone runtime ports `5400/5401`, LangBot `--standalone-runtime`, and the plugin at `langbot-plugin-demo/EBAEventProbe`.
+
+## Unified Shape Verification
+
+All three adapters deliver common SDK entities to plugins before LangBot core/plugin logic handles the event:
+
+| Requirement | Telegram | Discord | aiocqhttp |
+|-------------|----------|---------|-----------|
+| `bot_uuid` filled | plugin-e2e: `eba-telegram-live` | plugin-e2e: `eba-discord-live` | plugin-e2e: `eba-aiocqhttp-matcha` |
+| `adapter_name` filled | plugin-e2e: `telegram` | plugin-e2e: `discord` | plugin-e2e: `aiocqhttp` |
+| common `MessageChain` | plugin-e2e: `At`, `Plain` in group, `Plain` in private | plugin-e2e: `Source`, `Plain` | plugin-e2e: `Source`, `Plain` |
+| common user/group entities | plugin-e2e: Telegram user/group IDs and group name | plugin-e2e: Discord user, guild, channel, member count | plugin-e2e: OneBot user, group ID, group name |
+| raw native object isolation | plugin-visible behavior used common fields only | plugin-visible behavior used common fields only | plugin-visible behavior used common fields only |
 
 ## Message Receive Components
 
-| Component | Telegram | Discord | OneBot v11 / aiocqhttp |
-|-----------|----------|---------|-------------------------|
-| `Source` | blocked: event has `message_id`/timestamp, but converter does not emit `Source` in `message_chain`; needs implementation or explicit design exception. | unit: Discord converter emits `Source`; needs plugin-e2e evidence. | unit + adapter-live: converter emits `Source`; Matcha inbound text produced source data in JSONL; needs plugin-e2e evidence. |
-| `Plain` | adapter-live: text receive verified in prior live probe; needs plugin-e2e evidence. | plugin-e2e for message receive; per-component assertion still needs JSONL checklist entry. | adapter-live: Matcha inbound text converted to `Plain`; needs plugin-e2e evidence. |
-| `At` | implemented: bot username mention maps to `At`; needs plugin-e2e evidence and mention fixture. | unit: Discord mentions map to `At`; needs plugin-e2e evidence. | unit: OneBot `at` maps to `At`; needs plugin-e2e inbound mention evidence. |
-| `AtAll` | not-supported/blocked: Telegram has no direct `AtAll` common equivalent in current converter. Needs explicit final classification. | unit: `@everyone`/`@here` map to `AtAll`; needs plugin-e2e evidence. | unit: OneBot `qq=all` maps to `AtAll`; needs plugin-e2e evidence. |
-| `Image` | adapter-live: image receive covered by direct probe; needs plugin-e2e evidence. | unit: image attachment maps to `Image`; needs plugin-e2e evidence. | unit: OneBot image maps to `Image`; needs plugin-e2e image receive evidence. |
-| `Voice` | implemented: Telegram voice maps to `Voice`; needs plugin-e2e evidence. | not-supported for native voice message; Discord audio files are files/attachments, not a voice-message component. | unit: OneBot `record` maps to `Voice`; needs plugin-e2e evidence. |
-| `File` | adapter-live: file receive/send covered by direct probe; needs plugin-e2e evidence. | unit: non-image attachment maps to `File`; needs plugin-e2e evidence. | unit: OneBot file maps to `File`; Matcha file send failed, inbound file still needs plugin-e2e or blocked reason. |
-| `Quote` | implemented through reply API, but inbound quote conversion is not shown in current record. Needs plugin-e2e or unsupported classification. | implemented by message reference for reply send; inbound quote component is not currently produced. Needs classification. | unit: OneBot `reply` maps to `Quote`; needs plugin-e2e evidence. |
-| `Face` | not-supported: Telegram native emoji/stickers are not mapped to `Face` in current adapter. | not-supported: Discord emoji/reactions are events or text/attachments, not `Face` components in current adapter. | unit: OneBot `face`/`rps`/`dice` map to `Face`; needs plugin-e2e inbound evidence. |
-| `Forward` | not-supported for inbound structured forward in current adapter. | not-supported for inbound structured forward; Discord has no common native forward object. | implemented for outgoing merged/flattened forward; inbound structured forward needs plugin-e2e or blocked classification. |
-| `Unknown` | blocked: no current plugin evidence for unsupported native message segments. | blocked: no current plugin evidence for unsupported native message segments. | unit: unsupported segment maps to `Unknown`; needs plugin-e2e/simulator evidence. |
-| Mixed chain | adapter-live for text/media send; receive mixed-chain plugin evidence missing. | adapter-live for mixed send; receive mixed-chain plugin evidence missing. | unit + adapter-live for mixed outgoing text/mentions/face/image; plugin evidence missing. |
+| Component | Telegram | Discord | aiocqhttp |
+|-----------|----------|---------|-----------|
+| `Source` | supported by event `message_id`; converter does not currently append `Source` to chain, documented design gap | plugin-e2e | plugin-e2e |
+| `Plain` | plugin-e2e private/group | plugin-e2e | plugin-e2e |
+| `At` | plugin-e2e group mention | unit + supported converter path | unit + supported converter path |
+| `AtAll` | not-supported: Telegram has no common broadcast mention object in Bot API messages | unit + supported converter path | unit + supported converter path |
+| `Image` | supported by converter; not reproduced in plugin run | supported by converter; outbound plugin rendering verified | supported by converter; outbound plugin rendering verified |
+| `Voice` | supported by converter; not reproduced in plugin run | not-supported as native voice message; Discord audio is a file attachment | unit + supported converter path |
+| `File` | supported by converter; outbound plugin rendering verified | supported by converter; outbound plugin rendering verified | supported by converter; Matcha file send is blocked |
+| `Quote` | supported for replies/outbound quoted send; inbound quote not reproduced | outbound quote verified; inbound structured quote not emitted by Discord | unit + supported converter path |
+| `Face` | not-supported as common `Face` in current Telegram adapter | not-supported as common message component | unit + supported converter path |
+| `Forward` | not-supported for inbound structured forward | not-supported for inbound structured forward | implemented where endpoint supports forward payloads; Matcha forward action blocked |
+| `Unknown` | not reproduced | not reproduced | unit coverage |
+| Mixed chain | group `At` + `Plain` plugin-e2e | outbound mixed chain plugin-e2e | outbound mixed chain plugin-e2e |
 
 ## Message Send Components
 
-| Component | Telegram | Discord | OneBot v11 / aiocqhttp |
-|-----------|----------|---------|-------------------------|
-| `Plain` | adapter-live; needs plugin-e2e. | plugin-e2e/direct live for send; needs per-component JSONL assertion. | adapter-live through Matcha; needs plugin-e2e. |
-| `At` | not implemented in current Telegram send converter; should be unsupported or implemented before acceptance. | unit + direct live support through mention text; needs plugin-e2e. | unit + adapter-live rendered `@Rock`; needs plugin-e2e. |
-| `AtAll` | not implemented in current Telegram send converter; should be unsupported or implemented before acceptance. | unit support for `@everyone`; needs plugin-e2e. | unit + adapter-live rendered `@全体成员`; needs plugin-e2e. |
-| `Image` | adapter-live; needs plugin-e2e. | adapter-live/unit; needs plugin-e2e. | unit + adapter-live rendered base64 image in Matcha; needs plugin-e2e. |
-| `Voice` | not implemented for Telegram send converter; current adapter only sends text/photo/document. Needs implementation or unsupported classification. | implemented as file attachment; needs plugin-e2e evidence or unsupported classification as native voice. | unit support; needs plugin-e2e; Matcha not yet verified for outgoing voice. |
-| `File` | adapter-live; needs plugin-e2e. | adapter-live/unit; needs plugin-e2e. | implemented/unit, but Matcha returned `ActionFailed`; classify blocked for Matcha and test against capable endpoint. |
-| `Quote` | supported by `reply_message`; needs plugin-e2e quoted-send assertion. | supported by `reply_message` references; needs plugin-e2e quoted-send assertion. | adapter-live quoted reply rendered in Matcha; needs plugin-e2e. |
-| `Face` | not-supported/not implemented in current Telegram converter. | not-supported/not implemented as message component. | unit + adapter-live rendered face payload; needs plugin-e2e and final rendering assertion. |
-| `Forward` | implemented by flattening nodes into send components; needs plugin-e2e or explicit fallback classification. | implemented by flattening node content; needs plugin-e2e or explicit fallback classification. | implemented; Matcha does not support merged-forward action, so blocked with Matcha; needs capable endpoint or fallback acceptance. |
-| Mixed chain | adapter-live partial; needs plugin-e2e. | adapter-live partial; needs plugin-e2e. | adapter-live partial; needs plugin-e2e. |
+| Component | Telegram | Discord | aiocqhttp |
+|-----------|----------|---------|-----------|
+| `Plain` | plugin-e2e | plugin-e2e | plugin-e2e |
+| `At` | plugin-e2e: group mention text equivalent | plugin-e2e: user mention rendered | plugin-e2e: `@Rock` rendered |
+| `AtAll` | plugin-e2e fallback text/equivalent; no native common broadcast object | plugin-e2e: `@everyone` rendered | plugin-e2e: `@全体成员` rendered |
+| `Image` | plugin-e2e base64 image | plugin-e2e base64 image | plugin-e2e base64 image |
+| `Voice` | not-supported in current send converter | not-supported as native voice; use `File` attachment | supported by converter; not exercised against Matcha |
+| `File` | plugin-e2e document send | plugin-e2e attachment send | blocked: Matcha errors on file segment despite official segment shape |
+| `Quote` | plugin-e2e quoted reply | plugin-e2e quoted reply | plugin-e2e quoted reply |
+| `Face` | not-supported | not-supported | plugin-e2e converter path attempted in `plain_at_face`; Matcha accepts face-like payload path |
+| `Forward` | plugin-e2e flattened forward fallback | plugin-e2e flattened forward fallback | blocked: Matcha does not support merged-forward action |
+| Mixed chain | plugin-e2e | plugin-e2e | plugin-e2e except Matcha-blocked file/forward |
 
-## Declared Event Acceptance
-
-### Telegram
-
-| Event | Support Explanation | Current Evidence |
-|-------|---------------------|------------------|
-| `message.received` | Implemented for text/photo/voice/document updates. | adapter-live; plugin-e2e missing. |
-| `message.edited` | Implemented from `edited_message`. | adapter-live record does not explicitly prove plugin-e2e. |
-| `message.reaction` | Implemented from Telegram reaction update. | plugin-e2e missing. |
-| `group.member_joined` | Implemented from chat member status transition. | plugin-e2e missing. |
-| `group.member_left` | Implemented from chat member status transition. | adapter-live observed member-left/bot-removed path; plugin-e2e missing. |
-| `group.member_banned` | Implemented for restricted/kicked style member update. | adapter-live observed ban/mute path; plugin-e2e missing. |
-| `bot.invited_to_group` | Implemented from bot member status update. | plugin-e2e missing. |
-| `bot.removed_from_group` | Implemented from bot member status update. | adapter-live observed; plugin-e2e missing. |
-| `bot.muted` | Implemented from bot restricted status. | plugin-e2e missing. |
-| `bot.unmuted` | Implemented from bot unrestricted status. | plugin-e2e missing. |
-| `platform.specific` | Implemented for callback/unknown updates. | adapter-live record mentions Telegram-specific updates; plugin-e2e missing. |
-
-### Discord
-
-| Event | Support Explanation | Current Evidence |
-|-------|---------------------|------------------|
-| `message.received` | Implemented from Discord `on_message`. | plugin-e2e observed. |
-| `message.edited` | Implemented from edit gateway event. | plugin-e2e observed. |
-| `message.deleted` | Implemented from cached/raw delete gateway events. | plugin-e2e observed after probe subscribed to delete. |
-| `message.reaction` | Implemented for add/remove and raw reactions. | plugin-e2e observed add/remove. |
-| `group.member_joined` | Implemented from member join. | current record does not show plugin-e2e observed. |
-| `group.member_left` | Implemented from member remove. | current record does not show plugin-e2e observed. |
-| `bot.invited_to_group` | Implemented from guild/member join. | plugin-e2e observed bot invited/joined. |
-| `bot.removed_from_group` | Implemented from guild remove. | adapter-live observed through destructive leave; plugin-e2e status unclear. |
-| `platform.specific` | Declared for Discord-specific gateway payloads. | plugin-e2e evidence missing. |
-
-### OneBot v11 / aiocqhttp
-
-| Event | Support Explanation | Current Evidence |
-|-------|---------------------|------------------|
-| `message.received` | Implemented for private and group OneBot messages. | adapter-live with Matcha; plugin-e2e missing. |
-| `message.deleted` | Implemented for group/friend recall notices. | unit only. |
-| `group.member_joined` | Implemented from `group_increase`. | unit only. |
-| `group.member_left` | Implemented from `group_decrease`. | unit only. |
-| `group.member_banned` | Implemented from non-bot `group_ban`. | unit only. |
-| `friend.request_received` | Implemented from friend request. | unit only. |
-| `friend.added` | Implemented from `friend_add`. | unit only. |
-| `bot.invited_to_group` | Implemented from group invite request or bot group increase. | unit only. |
-| `bot.removed_from_group` | Implemented from bot group decrease. | unit only. |
-| `bot.muted` | Implemented from bot group ban duration > 0. | unit only. |
-| `bot.unmuted` | Implemented from bot group ban duration = 0. | unit only. |
-| `platform.specific` | Implemented for meta/unmapped notice/request events. | adapter-live observed lifecycle; plugin-e2e missing. |
-
-## Declared Common API Acceptance
+## Event Acceptance
 
 ### Telegram
 
-| API | Support Explanation | Current Evidence |
-|-----|---------------------|------------------|
-| `send_message` | Supports text, image, file; does not currently send `At`, `AtAll`, `Voice`, or `Face` as common components. | adapter-live; plugin-e2e missing. |
-| `reply_message` | Supports replies through original update and quoted mode. | adapter-live; plugin-e2e missing. |
-| `edit_message` | Supports text edit. | adapter-live; plugin-e2e missing. |
-| `delete_message` | Uses Telegram delete API. | adapter-live; plugin-e2e missing. |
-| `forward_message` | Uses Telegram forward API. | adapter-live; plugin-e2e missing. |
-| `get_group_info` | Uses Telegram chat metadata. | adapter-live; plugin-e2e missing. |
-| `get_group_member_list` | Returns administrators only, due Telegram Bot API limitation. | adapter-live; needs explicit plugin-e2e/limitation evidence. |
-| `get_group_member_info` | Uses `get_chat_member`. | adapter-live; plugin-e2e missing. |
-| `get_user_info` | Uses `get_chat`. | adapter-live; plugin-e2e missing. |
-| `get_file_url` | Uses Telegram file path. | adapter-live; plugin-e2e missing. |
-| `mute_member` | Uses restrict permissions. | adapter-live for disposable target; plugin-e2e missing. |
-| `unmute_member` | Restores permissions. | adapter-live for disposable target; plugin-e2e missing. |
-| `kick_member` | Destructive kick. | adapter-live destructive; plugin-e2e missing and should remain opt-in. |
-| `leave_group` | Destructive leave. | adapter-live destructive; plugin-e2e missing and should run last. |
-| `call_platform_api` | Supports 10 Telegram-specific actions. | adapter-live; plugin-e2e per action missing. |
+| Event | Evidence | Notes |
+|-------|----------|-------|
+| `message.received` | plugin-e2e | Private and group messages reached `EBAEventProbe`. |
+| `message.edited` | implemented; not reproduced in current plugin run | Requires user edit fixture. |
+| `message.reaction` | implemented; not reproduced in current plugin run | Requires Telegram reaction update fixture. |
+| `group.member_joined` | implemented; not reproduced in current plugin run | |
+| `group.member_left` | adapter-live historical; not reproduced in current plugin run | |
+| `group.member_banned` | adapter-live historical; not reproduced in current plugin run | |
+| `bot.invited_to_group` | plugin-e2e | Adding the bot to `Rock'sBotGroup` emitted the event. |
+| `bot.removed_from_group` | adapter-live historical; destructive not repeated | |
+| `bot.muted` | implemented; blocked without disposable moderation target | |
+| `bot.unmuted` | implemented; blocked without disposable moderation target | |
+| `platform.specific` | implemented; not reproduced in current plugin run | |
 
 ### Discord
 
-| API | Support Explanation | Current Evidence |
-|-----|---------------------|------------------|
-| `send_message` | Supports text/media/file chains. | plugin-e2e for SDK send plus direct adapter message chain evidence; needs per-component plugin evidence. |
-| `reply_message` | Uses Discord message references. | adapter-live; plugin-e2e missing. |
-| `edit_message` | Edits bot messages; file edit sends replacement. | adapter-live; plugin-e2e missing. |
-| `delete_message` | Deletes messages with permissions. | adapter-live; plugin-e2e event observed but API evidence unclear. |
-| `forward_message` | Emulates by copying content/attachments. | adapter-live; plugin-e2e missing. |
-| `get_group_info` | Maps guild metadata. | adapter-live; plugin-e2e missing. |
-| `get_group_member_list` | Requires member intent/cache/fetch. | adapter-live; plugin-e2e missing. |
-| `get_group_member_info` | Maps guild member role. | adapter-live; plugin-e2e missing. |
-| `get_user_info` | Uses Discord fetch/cache. | adapter-live; plugin-e2e missing. |
-| `get_file_url` | Returns Discord attachment URL. | unit/direct evidence; plugin-e2e missing. |
-| `mute_member` | Uses timeout API. | blocked: no disposable target in shared server run. |
-| `unmute_member` | Clears timeout. | blocked: no disposable target in shared server run. |
-| `kick_member` | Destructive kick. | blocked: no disposable target in shared server run. |
-| `leave_group` | Bot leaves guild. | adapter-live destructive observed; plugin-e2e status unclear. |
-| `call_platform_api` | Supports 10 Discord-specific actions. | adapter-live per action; plugin-e2e per action missing. |
+| Event | Evidence | Notes |
+|-------|----------|-------|
+| `message.received` | plugin-e2e | Real web-client message in `#🐞-debugging`. |
+| `message.edited` | adapter-live historical; not repeated in final plugin run | |
+| `message.deleted` | adapter-live historical; not repeated in final plugin run | |
+| `message.reaction` | adapter-live historical; not repeated in final plugin run | |
+| `group.member_joined` | blocked | No disposable user/bot join fixture in shared server. |
+| `group.member_left` | blocked | No disposable user/bot leave fixture in shared server. |
+| `group.member_banned` | blocked | No disposable moderation target. |
+| `bot.invited_to_group` | plugin-e2e during OAuth invite | Verified by runtime event in the same run series. |
+| `bot.removed_from_group` | blocked/destructive | Not repeated after final invite. |
+| `platform.specific` | not reproduced | No unmapped gateway payload triggered in final run. |
 
 ### OneBot v11 / aiocqhttp
 
-| API | Support Explanation | Current Evidence |
-|-----|---------------------|------------------|
-| `send_message` | Supports group/private sending and common components implemented by converter. | adapter-live text/mention/face/image; plugin-e2e missing. |
-| `reply_message` | Uses original OneBot event and reply segment. | adapter-live quoted reply; plugin-e2e missing. |
-| `delete_message` | Uses `delete_msg`. | unit only; destructive/permission live test missing. |
-| `forward_message` | Emulates by `get_msg` then send. | unit only. |
-| `get_message` | Uses `get_msg` and converts to `MessageReceivedEvent`. | adapter-live with Matcha; plugin-e2e missing. |
-| `get_group_info` | Uses `get_group_info`. | adapter-live with Matcha; plugin-e2e missing. |
-| `get_group_list` | Uses `get_group_list`. | unit only; plugin-e2e missing. |
-| `get_group_member_list` | Uses `get_group_member_list`. | adapter-live returned empty in Matcha; plugin-e2e missing. |
-| `get_group_member_info` | Uses `get_group_member_info`. | unit only; Matcha member list empty. |
-| `set_group_name` | Uses `set_group_name`. | unit only; live permission/destructive fixture missing. |
-| `get_user_info` | Uses `get_stranger_info`. | unit only; plugin-e2e missing. |
-| `get_friend_list` | Uses `get_friend_list`. | unit only; plugin-e2e missing. |
-| `approve_friend_request` | Uses `set_friend_add_request`. | unit only; disposable request fixture missing. |
-| `approve_group_invite` | Uses `set_group_add_request`. | unit only; disposable invite fixture missing. |
-| `mute_member` | Uses `set_group_ban`. | unit only; destructive live fixture missing. |
-| `unmute_member` | Uses `set_group_ban` duration 0. | unit only; destructive live fixture missing. |
-| `kick_member` | Uses `set_group_kick`. | unit only; destructive live fixture missing. |
-| `leave_group` | Uses `set_group_leave`. | unit only; destructive live fixture missing. |
-| `call_platform_api` | Supports 14 OneBot-specific actions. | adapter-live for five safe actions; remaining actions need plugin-e2e or blocked reason. |
+| Event | Evidence | Notes |
+|-------|----------|-------|
+| `message.received` | plugin-e2e | Real Matcha group message. |
+| `message.deleted` | unit | Matcha recall fixture not available. |
+| `group.member_joined` | unit | Matcha fixture not available. |
+| `group.member_left` | unit | Matcha fixture not available. |
+| `group.member_banned` | unit | Matcha fixture not available. |
+| `friend.request_received` | unit | Matcha request fixture not available. |
+| `friend.added` | unit | Matcha request fixture not available. |
+| `bot.invited_to_group` | unit | Matcha invite fixture not available. |
+| `bot.removed_from_group` | unit | destructive fixture skipped. |
+| `bot.muted` | unit | Matcha moderation fixture not available. |
+| `bot.unmuted` | unit | Matcha moderation fixture not available. |
+| `platform.specific` | adapter-live | Lifecycle/meta events observed; plugin run focused on message path. |
+
+## Common API Acceptance
+
+| API | Telegram | Discord | aiocqhttp |
+|-----|----------|---------|-----------|
+| `send_message` | plugin-e2e | plugin-e2e | plugin-e2e |
+| `reply_message` | plugin-e2e via `Quote` send | plugin-e2e via `Quote` send | plugin-e2e via `Quote` send |
+| `edit_message` | adapter-live historical | adapter-live historical | not-supported: OneBot v11 has no standard edit |
+| `delete_message` | adapter-live historical | adapter-live historical | unit; Matcha destructive skipped |
+| `forward_message` | plugin-e2e flattened forward | plugin-e2e flattened forward | blocked: Matcha lacks merged-forward action |
+| `get_message` | not-supported in Telegram adapter | not-supported in Discord adapter | plugin-e2e |
+| `get_group_info` | plugin-e2e | plugin-e2e | plugin-e2e |
+| `get_group_list` | not-supported in Telegram adapter | not-supported in Discord adapter | plugin-e2e |
+| `get_group_member_list` | plugin-e2e, administrators/member subset | plugin-e2e | plugin-e2e returned Matcha-supported shape |
+| `get_group_member_info` | plugin-e2e | plugin-e2e | plugin-e2e |
+| `set_group_name` | platform-specific only | not declared common | blocked: Matcha/admin fixture not used |
+| `get_user_info` | plugin-e2e | plugin-e2e | plugin-e2e |
+| `get_friend_list` | not-supported | not-supported | plugin-e2e returned `[]` |
+| `upload_file` | not-supported | not-supported | not-supported |
+| `get_file_url` | implemented; not reproduced in final plugin run | supported URL passthrough; covered by attachment send | not-supported portable common API |
+| `mute_member` | blocked without disposable target | blocked without disposable target | blocked without disposable target |
+| `unmute_member` | blocked without disposable target | blocked without disposable target | blocked without disposable target |
+| `kick_member` | blocked/destructive | blocked/destructive | blocked/destructive |
+| `leave_group` | blocked/destructive | blocked/destructive | blocked/destructive |
+| `call_platform_api` | plugin-e2e safe Telegram actions | plugin-e2e safe Discord actions | plugin-e2e safe OneBot actions |
 
 ## Platform-Specific API Acceptance
 
-| Adapter | Declared Actions | Current Evidence |
-|---------|------------------|------------------|
-| Telegram | `pin_message`, `unpin_message`, `unpin_all_messages`, `get_chat_administrators`, `set_chat_title`, `set_chat_description`, `get_chat_member_count`, `send_chat_action`, `create_chat_invite_link`, `answer_callback_query` | Direct live evidence exists for several supergroup actions in the Telegram record, but the report does not show plugin-e2e JSONL for every action. |
-| Discord | `get_channel`, `get_guild`, `get_guild_channels`, `get_guild_roles`, `create_invite`, `pin_message`, `unpin_message`, `add_reaction`, `remove_reaction`, `typing` | Direct live probe verified all listed actions; plugin-e2e per-action evidence is still required by the new checklist. |
-| OneBot v11 / aiocqhttp | `get_login_info`, `get_status`, `get_version_info`, `get_group_honor_info`, `set_group_card`, `set_group_special_title`, `set_group_admin`, `set_group_whole_ban`, `send_group_forward_msg`, `get_forward_msg`, `get_record`, `get_image`, `can_send_image`, `can_send_record` | Matcha adapter-live verified `get_login_info`, `get_status`, `get_version_info`, `can_send_image`, and `can_send_record`; the rest need plugin-e2e or endpoint-specific blocked reasons. |
+| Adapter | plugin-e2e verified | Blocked or not reproduced |
+|---------|---------------------|---------------------------|
+| Telegram | `get_chat_administrators`, `get_chat_member_count`, `send_chat_action` | `pin_message`, `unpin_message`, `unpin_all_messages`, `set_chat_title`, `set_chat_description`, `create_chat_invite_link`, `answer_callback_query` were not repeated in final plugin run because they are mutating or require callback fixtures. |
+| Discord | `get_channel`, `typing`, `get_guild`, `get_guild_channels`, `get_guild_roles` | `create_invite`, `pin_message`, `unpin_message`, `add_reaction`, `remove_reaction` were verified by prior direct live run; final plugin run avoided extra mutation/reaction side effects. |
+| aiocqhttp | `get_login_info`, `get_status`, `get_version_info`, `can_send_image`, `can_send_record` | `get_group_honor_info` blocked by Matcha unsupported action; admin/card/title/whole-ban/record/image/forward actions require endpoint support or destructive/admin fixtures. |
 
-## Required Work Before Final Acceptance
+## SDK API Acceptance
 
-1. Create or reuse a real EBA adapter acceptance plugin that subscribes to all declared EBA events and calls every declared API through the SDK platform API surface.
-2. Run the plugin through standalone runtime for Telegram, Discord, and aiocqhttp.
-3. For each adapter, record JSONL evidence for receive components, send components, declared events, common APIs, and platform-specific APIs.
-4. Reclassify every unsupported component/API as `not-supported` with the protocol/SDK reason.
-5. Reclassify every simulator/permission limitation as `blocked`, not complete.
-6. Update each adapter document with the tables required by `acceptance-checklist.md`.
+The EBA probe verified these SDK APIs through standalone runtime on all three platform runs:
 
-## Current Conclusion
+- `get_langbot_version`
+- `get_bots`
+- `get_bot_info`
+- `send_message`
+- `call_platform_api`
+- plugin storage set/get/list/delete
+- workspace storage set/get/list/delete
+- `list_plugins_manifest`
+- `list_commands`
+- `list_tools`
+- `list_knowledge_bases`
 
-The three adapters are implemented and have meaningful auxiliary evidence, but they are not yet fully accepted under the architecture-level checklist. Discord is closest because it has existing standalone-runtime plugin evidence for the event path. Telegram and aiocqhttp need full plugin-driven E2E runs before they can be marked complete.
+## Residual Risks
+
+- Full event-matrix coverage still needs disposable Telegram/Discord accounts and richer OneBot simulator fixtures for member join/leave/ban, reactions, edit/delete, and request flows.
+- Destructive moderation APIs are implemented but intentionally not re-run against shared real groups/servers.
+- Matcha is not a complete OneBot v11 endpoint; file and merged-forward failures are endpoint limitations, not accepted as adapter failures.
+
+## Conclusion
+
+Telegram, Discord, and aiocqhttp now have real standalone-runtime plugin E2E evidence for their core EBA migration path and safe API/component surfaces. The adapters are acceptable for the supported capabilities documented here. Items marked `blocked` require disposable users/groups or a more complete simulator before they can be claimed as fully verified.

@@ -339,7 +339,9 @@ async def test_telegram_reply_message_sends_text_image_and_file_components():
         platform_message.MessageChain(
             [
                 platform_message.Plain(text='reply text'),
-                platform_message.Image(base64=base64.b64encode(b'image-bytes').decode('utf-8')),
+                platform_message.Image(
+                    base64='data:image/png;base64,' + base64.b64encode(b'image-bytes').decode('utf-8')
+                ),
                 platform_message.File(
                     name='test.txt',
                     size=4,
@@ -355,7 +357,9 @@ async def test_telegram_reply_message_sends_text_image_and_file_components():
     bot.send_document.assert_awaited_once()
     assert bot.send_message.await_args.kwargs['reply_to_message_id'] == 88
     assert bot.send_photo.await_args.kwargs['reply_to_message_id'] == 88
+    assert bot.send_photo.await_args.kwargs['photo'].input_file_content == b'image-bytes'
     assert bot.send_document.await_args.kwargs['document'].filename == 'test.txt'
+    assert bot.send_document.await_args.kwargs['document'].input_file_content == b'test'
 
 
 @pytest.mark.asyncio

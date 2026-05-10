@@ -102,6 +102,30 @@ Verified on May 7, 2026:
 
 The test fixed one real compatibility issue: `unmute_member` previously used Telegram's removed `can_send_media_messages` permission field. It now uses the split media permission fields required by current `python-telegram-bot`.
 
+## Standalone Runtime Plugin E2E Record
+
+Verified on May 10, 2026 with `EBAEventProbe`, SDK standalone runtime, Telegram Lite, `@rockchinq_bot`, and `Rock'sBotGroup`.
+
+Evidence:
+
+- Private chat JSONL: `data/temp/telegram-plugin-e2e-rerun.jsonl`
+- Group chat JSONL: `data/temp/telegram-plugin-e2e-group.jsonl`
+
+Observed and verified:
+
+- `MessageReceived` reached the plugin with `bot_uuid=eba-telegram-live`, `adapter_name=telegram`, common sender/chat fields, and common `MessageChain` content.
+- `BotInvitedToGroup` reached the plugin after adding the bot to `Rock'sBotGroup`.
+- SDK API calls succeeded: `get_langbot_version`, `get_bots`, `get_bot_info`, `send_message`, plugin storage, workspace storage, `list_plugins_manifest`, `list_commands`, `list_tools`, and `list_knowledge_bases`.
+- Outbound component sweep succeeded in private and group chats: plain text, mention text/equivalent, base64 image, quoted reply, file/document, and flattened forward fallback. Group mode also covered `AtAll` fallback behavior.
+- Telegram platform API sweep succeeded for safe group actions: `get_chat_administrators`, `get_chat_member_count`, and `send_chat_action`.
+- Common group/user APIs succeeded in group mode: `get_user_info`, `get_group_info`, `get_group_member_list`, and `get_group_member_info`.
+
+Documented limits in this E2E run:
+
+- `get_message`, `get_friend_list`, and `get_group_list` are not supported by this Telegram adapter.
+- Mutating/destructive Telegram-specific actions such as pin/unpin, title/description changes, invite-link creation, moderation, kick, and leave were not repeated in the plugin run. They remain opt-in live-probe cases.
+- Telegram does not expose a portable common `Face` component for native sticker/emoji semantics in the current adapter.
+
 ## Notes for Future Adapters
 
 Telegram is the reference implementation for:
