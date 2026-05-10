@@ -99,11 +99,11 @@ class BotService:
         # TODO: 检查配置信息格式
         bot_data['uuid'] = str(uuid.uuid4())
 
-        # checkout the default pipeline
+        # bind the most recently updated pipeline if any exist
         result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(
-                persistence_pipeline.LegacyPipeline.is_default == True
-            )
+            sqlalchemy.select(persistence_pipeline.LegacyPipeline)
+            .order_by(persistence_pipeline.LegacyPipeline.updated_at.desc())
+            .limit(1)
         )
         pipeline = result.first()
         if pipeline is not None:
