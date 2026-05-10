@@ -7,9 +7,7 @@ Tests cover:
 """
 from __future__ import annotations
 
-import pytest
 import datetime
-import sqlalchemy
 from sqlalchemy import Column, Integer, String, DateTime
 from sqlalchemy.orm import declarative_base
 from importlib import import_module
