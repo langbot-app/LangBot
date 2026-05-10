@@ -1295,6 +1295,17 @@ const zhHans = {
     loginSuccess: '登录成功！令牌已自动填入',
     loginFailed: '登录失败',
   },
+  dingtalk: {
+    createApp: '一键创建钉钉应用',
+    scanQRCode: '请使用钉钉扫描以下二维码，授权后将自动创建应用并填写凭据',
+    waitingForScan: '等待扫码中',
+    createSuccess: '应用创建成功！凭据已自动填入',
+    createFailed: '创建失败',
+    connecting: '正在连接钉钉服务...',
+    retry: '重试',
+    robotCodeNote:
+      '机器人代码无法自动获取，请前往钉钉开发者后台 > 机器人配置中手动复制。识图、上传文件等功能需要填写此字段。',
+  },
   pluginPages: {
     selectFromSidebar: '从侧边栏选择一个插件页面',
     invalidPage: '无效的插件页面',

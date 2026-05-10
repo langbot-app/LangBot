@@ -315,3 +315,182 @@ class AdaptersRouterGroup(group.RouterGroup):
             if session and session.get('task') and not session['task'].done():
                 session['task'].cancel()
             return self.success(data={})
+
+        # -----------------------------------------------------------------------
+        # DingTalk Device Flow QR Code Login
+        # -----------------------------------------------------------------------
+
+        _dingtalk_sessions: dict = {}
+        _DINGTALK_SESSION_TTL = 600  # 10 minutes (QR code validity window)
+
+        def _cleanup_expired_dingtalk_sessions():
+            import time
+
+            now = time.time()
+            expired = [
+                sid for sid, s in _dingtalk_sessions.items() if now - s.get('created_at', 0) > _DINGTALK_SESSION_TTL
+            ]
+            for sid in expired:
+                session = _dingtalk_sessions.pop(sid, None)
+                if session and session.get('task') and not session['task'].done():
+                    session['task'].cancel()
+
+        @self.route('/dingtalk/create-app', methods=['POST'])
+        async def _() -> str:
+            """Start DingTalk one-click app creation via Device Flow. Returns session_id + QR code URL."""
+            import uuid
+            import time
+            import aiohttp
+
+            DINGTALK_BASE_URL = 'https://oapi.dingtalk.com'
+
+            _cleanup_expired_dingtalk_sessions()
+
+            session_id = str(uuid.uuid4())
+
+            session = {
+                'status': 'pending',
+                'qr_url': None,
+                'expire_at': None,
+                'client_id': None,
+                'client_secret': None,
+                'error': None,
+                'created_at': time.time(),
+                'device_code': None,
+                'interval': 5,
+            }
+            _dingtalk_sessions[session_id] = session
+
+            async def run_device_flow():
+                try:
+                    async with aiohttp.ClientSession() as http:
+                        # Step 1: Init — get nonce
+                        async with http.post(
+                            f'{DINGTALK_BASE_URL}/app/registration/init',
+                            json={'source': 'langbot'},
+                        ) as resp:
+                            data = await resp.json()
+                            if data.get('errcode', -1) != 0:
+                                session['status'] = 'error'
+                                session['error'] = data.get('errmsg', 'Failed to init')
+                                return
+                            nonce = data['nonce']
+
+                        # Step 2: Begin — get device_code + QR URL
+                        async with http.post(
+                            f'{DINGTALK_BASE_URL}/app/registration/begin',
+                            json={'nonce': nonce},
+                        ) as resp:
+                            data = await resp.json()
+                            if data.get('errcode', -1) != 0:
+                                session['status'] = 'error'
+                                session['error'] = data.get('errmsg', 'Failed to begin authorization')
+                                return
+
+                            device_code = data['device_code']
+                            verification_uri_complete = data.get('verification_uri_complete', '')
+                            expires_in = data.get('expires_in', 7200)
+                            interval = data.get('interval', 5)
+
+                            session['device_code'] = device_code
+                            session['interval'] = interval
+                            session['qr_url'] = verification_uri_complete
+                            session['expire_at'] = time.time() + 600  # QR code valid for ~10 min
+                            session['status'] = 'waiting'
+
+                        # Step 3: Poll for authorization result
+                        deadline = time.time() + expires_in
+                        while time.time() < deadline:
+                            await asyncio.sleep(interval)
+
+                            async with http.post(
+                                f'{DINGTALK_BASE_URL}/app/registration/poll',
+                                json={'device_code': device_code},
+                            ) as poll_resp:
+                                poll_data = await poll_resp.json()
+
+                                if poll_data.get('errcode', -1) != 0:
+                                    session['status'] = 'error'
+                                    session['error'] = poll_data.get('errmsg', 'Poll failed')
+                                    return
+
+                                status = poll_data.get('status', '')
+
+                                if status == 'SUCCESS':
+                                    session['status'] = 'success'
+                                    session['client_id'] = poll_data.get('client_id', '')
+                                    session['client_secret'] = poll_data.get('client_secret', '')
+                                    return
+                                elif status == 'FAIL':
+                                    session['status'] = 'error'
+                                    session['error'] = poll_data.get('fail_reason', 'Authorization failed')
+                                    return
+                                elif status == 'EXPIRED':
+                                    session['status'] = 'error'
+                                    session['error'] = 'QR code expired'
+                                    return
+                                # status == 'WAITING': continue polling
+
+                        # Timeout
+                        session['status'] = 'error'
+                        session['error'] = 'QR code expired'
+
+                except asyncio.CancelledError:
+                    return
+                except Exception as e:
+                    session['status'] = 'error'
+                    session['error'] = str(e)
+
+            task = asyncio.create_task(run_device_flow())
+            session['task'] = task
+
+            # Wait for QR code to be ready (max 10 seconds)
+            for _ in range(20):
+                if session['qr_url'] or session['error']:
+                    break
+                await asyncio.sleep(0.5)
+
+            if session['error']:
+                task.cancel()
+                return self.http_status(502, -1, session['error'])
+
+            if not session['qr_url']:
+                task.cancel()
+                session['status'] = 'error'
+                session['error'] = 'Timeout waiting for QR code'
+                return self.http_status(504, -1, 'Timeout waiting for QR code')
+
+            return self.success(
+                data={
+                    'session_id': session_id,
+                    'qr_url': session['qr_url'],
+                    'expire_at': session['expire_at'],
+                }
+            )
+
+        @self.route('/dingtalk/create-app/status/<session_id>', methods=['GET'])
+        async def _(session_id: str) -> str:
+            """Poll DingTalk Device Flow status."""
+            session = _dingtalk_sessions.get(session_id)
+            if not session:
+                return self.http_status(404, -1, 'Session not found')
+
+            data = {'status': session['status']}
+
+            if session['status'] == 'success':
+                data['client_id'] = session['client_id']
+                data['client_secret'] = session['client_secret']
+                _dingtalk_sessions.pop(session_id, None)
+            elif session['status'] == 'error':
+                data['error'] = session['error']
+                _dingtalk_sessions.pop(session_id, None)
+
+            return self.success(data=data)
+
+        @self.route('/dingtalk/create-app/<session_id>', methods=['DELETE'])
+        async def _(session_id: str) -> str:
+            """Cancel and clean up a DingTalk Device Flow session."""
+            session = _dingtalk_sessions.pop(session_id, None)
+            if session and session.get('task') and not session['task'].done():
+                session['task'].cancel()
+            return self.success(data={})

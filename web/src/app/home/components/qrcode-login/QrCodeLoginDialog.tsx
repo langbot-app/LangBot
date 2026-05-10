@@ -11,7 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { Loader2, RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
 import QRCode from 'qrcode';
 
-export type QrLoginPlatform = 'feishu' | 'weixin';
+export type QrLoginPlatform = 'feishu' | 'weixin' | 'dingtalk';
 
 interface PlatformConfig {
   titleKey: string;
@@ -23,6 +23,7 @@ interface PlatformConfig {
   retryKey: string;
   apiBase: string;
   extractSuccess: (data: Record<string, string>) => Record<string, string>;
+  successNoteKey?: string;
 }
 
 const PLATFORM_CONFIGS: Record<QrLoginPlatform, PlatformConfig> = {
@@ -55,6 +56,21 @@ const PLATFORM_CONFIGS: Record<QrLoginPlatform, PlatformConfig> = {
       base_url: data.base_url,
       ...(data.account_id ? { account_id: data.account_id } : {}),
     }),
+  },
+  dingtalk: {
+    titleKey: 'dingtalk.createApp',
+    connectingKey: 'dingtalk.connecting',
+    scanQRCodeKey: 'dingtalk.scanQRCode',
+    waitingKey: 'dingtalk.waitingForScan',
+    successKey: 'dingtalk.createSuccess',
+    failedKey: 'dingtalk.createFailed',
+    retryKey: 'dingtalk.retry',
+    apiBase: '/api/v1/platform/adapters/dingtalk/create-app',
+    extractSuccess: (data) => ({
+      client_id: data.client_id,
+      client_secret: data.client_secret,
+    }),
+    successNoteKey: 'dingtalk.robotCodeNote',
   },
 };
 
@@ -293,6 +309,11 @@ export default function QrCodeLoginDialog({
               <p className="text-sm text-green-600 font-medium">
                 {t(platformConfig.successKey)}
               </p>
+              {platformConfig.successNoteKey && (
+                <p className="text-xs text-muted-foreground text-center max-w-xs">
+                  {t(platformConfig.successNoteKey)}
+                </p>
+              )}
             </div>
           )}
 

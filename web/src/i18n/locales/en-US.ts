@@ -1355,6 +1355,18 @@ const enUS = {
     loginSuccess: 'Login successful! Token has been filled in',
     loginFailed: 'Login failed',
   },
+  dingtalk: {
+    createApp: 'One-Click Create DingTalk App',
+    scanQRCode:
+      'Scan the QR code below with DingTalk to authorize and automatically create the app',
+    waitingForScan: 'Waiting for scan',
+    createSuccess: 'App created successfully! Credentials have been filled in',
+    createFailed: 'Creation failed',
+    connecting: 'Connecting to DingTalk service...',
+    retry: 'Retry',
+    robotCodeNote:
+      'Robot Code cannot be obtained automatically. Please go to DingTalk Developer Backend > Robot Configuration to copy it manually. It is required for features like image recognition and file upload.',
+  },
   pluginPages: {
     selectFromSidebar: 'Select a plugin page from the sidebar',
     invalidPage: 'Invalid plugin page',

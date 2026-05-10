@@ -1360,6 +1360,17 @@
     loginSuccess: 'ログイン成功！トークンが自動入力されました',
     loginFailed: 'ログイン失敗',
   },
+  dingtalk: {
+    createApp: 'ワンクリックでDingTalkアプリ作成',
+    scanQRCode: '以下のQRコードをDingTalkでスキャンし、アプリを自動作成',
+    waitingForScan: 'スキャン待ち',
+    createSuccess: 'アプリ作成成功！認証情報が自動入力されました',
+    createFailed: '作成失敗',
+    connecting: 'DingTalkサービスに接続中...',
+    retry: '再試行',
+    robotCodeNote:
+      'ロボットコードは自動取得できません。DingTalk開発者バックエンド > ロボット設定から手動でコピーしてください。画像認識やファイルアップロードなどの機能に必要です。',
+  },
   pluginPages: {
     selectFromSidebar: 'サイドバーからプラグインページを選択してください',
     invalidPage: '無効なプラグインページ',

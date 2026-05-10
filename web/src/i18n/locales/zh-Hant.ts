@@ -1295,6 +1295,17 @@ const zhHant = {
     loginSuccess: '登入成功！令牌已自動填入',
     loginFailed: '登入失敗',
   },
+  dingtalk: {
+    createApp: '一鍵建立釘釘應用',
+    scanQRCode: '請使用釘釘掃描以下 QR Code，授權後將自動建立應用並填寫憑證',
+    waitingForScan: '等待掃碼中',
+    createSuccess: '應用建立成功！憑證已自動填入',
+    createFailed: '建立失敗',
+    connecting: '正在連線釘釘服務...',
+    retry: '重試',
+    robotCodeNote:
+      '機器人代碼無法自動取得，請前往釘釘開發者後台 > 機器人設定中手動複製。識圖、上傳檔案等功能需要填寫此欄位。',
+  },
   pluginPages: {
     selectFromSidebar: '從側邊欄選擇一個插件頁面',
     invalidPage: '無效的插件頁面',
