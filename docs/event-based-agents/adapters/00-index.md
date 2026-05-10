@@ -9,10 +9,13 @@ This directory records adapter-level migration details for the Event-Based Agent
 
 ## Adapter Documents
 
+General acceptance checklist: [EBA Adapter Acceptance Checklist](./acceptance-checklist.md)
+
 | Adapter | Status | Document |
 |---------|--------|----------|
 | Telegram | Migrated and live-tested | [Telegram](./telegram.md) |
 | Discord | Migrated and live-tested | [Discord](./discord.md) |
+| OneBot v11 / aiocqhttp | Migrated; Matcha-tested where supported | [OneBot v11 / aiocqhttp](./aiocqhttp.md) |
 
 ## Documentation Checklist
 
