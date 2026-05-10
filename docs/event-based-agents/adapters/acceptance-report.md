@@ -22,23 +22,25 @@ This report follows `acceptance-checklist.md`. Evidence levels are intentionally
 
 | Adapter | Status | Honest acceptance summary |
 |---------|--------|---------------------------|
-| Telegram | Partial EBA acceptance | Real Telegram UI covered private text, group mention text, bot invite, outbound component sweep, safe SDK APIs, and safe Telegram platform APIs. Real UI inbound image/file/voice/quote was not completed in the latest plugin run. |
+| Telegram | Partial EBA acceptance | Real Telegram UI covered private text, group mention text, bot invite, inbound private image/file, outbound component sweep, safe SDK APIs, and safe Telegram platform APIs. Real UI inbound voice/quote was not completed in the latest plugin run. |
 | Discord | Partial EBA acceptance | Real Discord UI covered group text, outbound image/file/quote/mention components, safe SDK APIs, and safe Discord platform APIs. Real UI inbound attachment/image/file/reply/mention was not completed. A later UI retry was blocked because the Discord client kept the send button disabled. |
 | OneBot v11 / aiocqhttp | Partial EBA acceptance | Matcha UI covered real group text and outbound supported components/APIs. Multi-component inbound `Source/Plain/At/Face/Image/Voice/File/Quote` was verified through the real OneBot reverse WebSocket adapter endpoint, but not through Matcha UI upload/send. Matcha blocks file-send and merged-forward APIs. |
-| DingTalk | Partial EBA acceptance | Real DingTalk UI covered private text and emoji-as-text inbound, outbound image/file/quote/mention fallback components, safe SDK APIs, and safe DingTalk platform APIs. Real UI inbound image/file/voice/quote and group trigger were not completed. |
+| DingTalk | Partial EBA acceptance | Real DingTalk UI covered private text, emoji-as-text inbound, private inbound image/file, outbound image/file/quote/mention fallback components, safe SDK APIs, and safe DingTalk platform APIs. Real UI inbound voice/quote and group trigger were not completed. |
 
-No adapter in this report is marked as fully accepted for production-grade media inbound until real user-side UI image/file upload evidence exists in the plugin JSONL.
+Telegram and DingTalk now have real user-side UI image/file upload evidence in plugin JSONL. Discord and aiocqhttp do not yet have real UI inbound image/file evidence.
 
 ## Evidence Files
 
 | Adapter | Endpoint | Evidence |
 |---------|----------|----------|
 | Telegram private | Telegram Lite, `@rockchinq_bot` private chat | `data/temp/telegram-plugin-e2e-rerun.jsonl` |
+| Telegram private media | Telegram Lite, `@rockchinq_bot` private chat | `data/temp/telegram-plugin-e2e-media-ui.jsonl` |
 | Telegram group | Telegram Lite, `Rock'sBotGroup` | `data/temp/telegram-plugin-e2e-group.jsonl` |
 | Discord | Discord client, LangBot server, `#debugging` | `data/temp/discord-plugin-e2e-20260510-final.jsonl` |
 | aiocqhttp UI | local Matcha, group `test group` | `data/temp/aiocqhttp-plugin-e2e-20260510-multiformat.jsonl` |
 | aiocqhttp protocol | OneBot reverse WebSocket endpoint `127.0.0.1:2280/ws` | `data/temp/aiocqhttp-plugin-e2e-20260510-multiformat.jsonl` |
 | DingTalk | DingTalk Mac, `LangBot Team` org private chat | `data/temp/dingtalk-plugin-e2e-20260510-rerun.jsonl` |
+| DingTalk private media | DingTalk Mac, `LangBot Team` org private chat | `data/temp/dingtalk-plugin-e2e-media-ui.jsonl` |
 
 All plugin runs used SDK standalone runtime ports `5400/5401`, LangBot `--standalone-runtime`, and the real plugin at `langbot-plugin-demo/EBAEventProbe`.
 
@@ -50,7 +52,7 @@ All four adapters deliver common SDK entities to plugins before LangBot core/plu
 |-------------|----------|---------|-----------|----------|
 | `bot_uuid` filled | plugin-e2e | plugin-e2e | plugin-e2e | plugin-e2e |
 | `adapter_name` filled | `telegram` | `discord` | `aiocqhttp` | `dingtalk` |
-| common `MessageChain` delivered | `Plain`, group `At + Plain` | `Source + Plain` | UI `Source + Plain`; protocol `Source + Plain + At + Face + Image + Voice + File + Quote + Plain` | `Source + Plain` |
+| common `MessageChain` delivered | `Plain`, group `At + Plain`, private `Image`, private `File` | `Source + Plain` | UI `Source + Plain`; protocol `Source + Plain + At + Face + Image + Voice + File + Quote + Plain` | `Source + Plain`, private `Source + Image`, private `Source + File` |
 | common user/group entities | plugin-e2e | plugin-e2e | plugin-e2e | plugin-e2e private user; group not completed |
 | raw native object isolation | raw data stays in `source_platform_object` | raw data stays in `source_platform_object` | raw data stays in `source_platform_object` | raw data stays in `source_platform_object` |
 
@@ -62,13 +64,13 @@ All four adapters deliver common SDK entities to plugins before LangBot core/plu
 | `Plain` | plugin-e2e-ui private/group | plugin-e2e-ui | plugin-e2e-ui/protocol | plugin-e2e-ui |
 | `At` | plugin-e2e-ui group mention | unit; real UI mention not completed in latest run | plugin-e2e-protocol; unit | unit; group trigger not completed |
 | `AtAll` | not-supported | unit only | unit only | unit/send fallback only |
-| `Image` | converter/unit; real UI inbound not completed | converter/unit; real UI attachment not completed | plugin-e2e-protocol, not Matcha UI | converter/unit; real UI inbound not completed |
+| `Image` | plugin-e2e-ui private | converter/unit; real UI attachment not completed | plugin-e2e-protocol, not Matcha UI | plugin-e2e-ui private |
 | `Voice` | converter/unit; real UI inbound not completed | not-supported as native voice; audio is attachment/file | plugin-e2e-protocol, not Matcha UI | converter/unit; real UI inbound not completed |
-| `File` | converter/unit; real UI inbound not completed | converter/unit; real UI attachment not completed | plugin-e2e-protocol, not Matcha UI | converter/unit; real UI inbound not completed |
+| `File` | plugin-e2e-ui private | converter/unit; real UI attachment not completed | plugin-e2e-protocol, not Matcha UI | plugin-e2e-ui private |
 | `Quote` | converter/unit; real UI reply not completed | unit; real UI reply not completed | plugin-e2e-protocol | converter/unit; real UI quote not completed |
 | `Face` | not-supported as common `Face` | not-supported as common `Face` | plugin-e2e-protocol | UI emoji becomes `Plain` (`[smile]` text), not `Face` |
 | `Forward` | not-supported inbound | not-supported inbound | unit; Matcha forward UI/action blocked | not-supported inbound |
-| Mixed chain | group `At + Plain` only | not completed inbound | plugin-e2e-protocol | not completed inbound |
+| Mixed chain | group `At + Plain`; media tested as separate messages | not completed inbound | plugin-e2e-protocol | media tested as separate messages; mixed inbound not completed |
 
 ## Message Send Components
 
@@ -108,17 +110,17 @@ All four adapters deliver common SDK entities to plugins before LangBot core/plu
 | group info/member info | plugin-e2e safe subset | plugin-e2e safe subset | plugin-e2e safe subset | private path only; group not completed |
 | user/friend info | plugin-e2e where platform allows | plugin-e2e where platform allows | plugin-e2e | plugin-e2e private user |
 | moderation/leave | blocked without disposable safe targets | blocked without disposable safe targets | blocked without disposable safe targets | blocked/not declared |
-| `get_file_url` | implemented; not latest inbound-file verified | URL passthrough for attachments; inbound attachment not completed | not portable/endpoint-dependent | implemented through DingTalk media API; inbound file not completed |
+| `get_file_url` | implemented; latest inbound `File` carried downloadable file data in plugin evidence | URL passthrough for attachments; inbound attachment not completed | not portable/endpoint-dependent | implemented through DingTalk media API; latest inbound `File` carried a platform file URL |
 | `call_platform_api` | plugin-e2e safe actions | plugin-e2e safe actions | plugin-e2e safe actions, Matcha gaps documented | plugin-e2e safe `check_access_token` |
 
 ## Platform-Specific API Acceptance
 
 | Adapter | plugin-e2e verified | Blocked or not reproduced |
 |---------|---------------------|---------------------------|
-| Telegram | safe chat/admin/member count/chat-action actions | mutating actions and callback-only actions were not repeated; inbound file URL path lacks latest UI file evidence |
+| Telegram | safe chat/admin/member count/chat-action actions | mutating actions and callback-only actions were not repeated |
 | Discord | safe channel/guild/role/typing actions | mutating pin/reaction/invite actions were not repeated in the latest plugin run; inbound attachment paths not completed |
 | aiocqhttp | safe OneBot actions such as status/version/can-send checks | `get_group_honor_info` unsupported by Matcha; admin/card/title/ban/record/file/forward require better endpoint fixtures |
-| DingTalk | `check_access_token` | media download/get-file-url actions need real inbound media IDs; group actions need a working group trigger |
+| DingTalk | `check_access_token`; real inbound file produced a file URL in the common `File` component | separate media-download replay APIs and group actions need a working follow-up fixture |
 
 ## SDK API Acceptance
 
@@ -136,7 +138,7 @@ The probe logs set `ok=true` when the sweep completed with only expected unsuppo
 
 ## Residual Risks And Required Follow-Up
 
-- Telegram, Discord, and DingTalk still require real UI inbound image and file upload evidence before they can be called media-complete.
+- Discord still requires real UI inbound image/file upload evidence before it can be called media-complete.
 - aiocqhttp has rich inbound component evidence only at the OneBot reverse WebSocket boundary; Matcha UI did not provide image/file upload coverage.
 - DingTalk group trigger remains unclosed; current evidence is private chat only.
 - Discord UI retry on May 10, 2026 was blocked by the client keeping the send button disabled even after text was entered.
@@ -144,4 +146,4 @@ The probe logs set `ok=true` when the sweep completed with only expected unsuppo
 
 ## Conclusion
 
-The EBA conversion path is implemented and partially proven for all four adapters, but the current evidence does not support a claim that all platforms are fully end-to-end tested for real user-side image/file inbound. This report therefore treats the adapters as partial acceptance with explicit gaps, not production-complete media acceptance.
+The EBA conversion path is implemented and partially proven for all four adapters. Telegram and DingTalk now have real UI private-chat image/file inbound evidence. Discord and aiocqhttp still have explicit UI-level media gaps, so the overall adapter set remains partial acceptance rather than production-complete media acceptance.
