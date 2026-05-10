@@ -11,6 +11,8 @@ This directory records adapter-level migration details for the Event-Based Agent
 
 General acceptance checklist: [EBA Adapter Acceptance Checklist](./acceptance-checklist.md)
 
+Current acceptance report: [EBA Adapter Acceptance Report](./acceptance-report.md)
+
 | Adapter | Status | Document |
 |---------|--------|----------|
 | Telegram | Migrated and live-tested | [Telegram](./telegram.md) |
