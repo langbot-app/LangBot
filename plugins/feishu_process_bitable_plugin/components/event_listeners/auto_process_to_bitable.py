@@ -165,7 +165,7 @@ class AutoProcessToBitableListener(EventListener):
 
     @classmethod
     def _extract_production_line_from_batch_id(cls, batch_id: str) -> str:
-        match = re.search(r"-D([A-Z])\d{4}-", batch_id.strip().upper())
+        match = re.search(r"(?:^|-)D([A-Z])-?\d{4}-", batch_id.strip().upper())
         if not match:
             return "UNKNOWN"
         line = str(match.group(1)).upper().strip()
@@ -334,6 +334,7 @@ class AutoProcessToBitableListener(EventListener):
             "particle_size": "粒度数据汇总",
             "pure_water": "车间纯水PH汇总",
             "kiln_batch_io": "窑炉批次进窑出窑表",
+            "kiln_batch_io.phase2": "二期窑炉批次进窑出窑表",
             "custom": "自定义消息汇总",
             "raw": "原始消息汇总",
         }
@@ -1580,11 +1581,23 @@ class AutoProcessToBitableListener(EventListener):
             return row_mode
         return "segment"
 
+    @staticmethod
+    def _resolve_kiln_batch_io_route_key(line: str) -> str:
+        return "kiln_batch_io.phase2" if line.strip().upper() in {"C", "D", "E"} else "kiln_batch_io"
+
     def _parse_kiln_batch_io(self, text: str, message_time: str) -> list[ParsedRecord]:
         if not self._process_switch("kiln_batch_io", True):
             return []
 
         normalized_text = self._normalize_dash(text)
+        inline_event_regex = re.compile(
+            r"(?m)^\s*(D[A-E]-?\d{4}-\d+)\s*"
+            r"(开始\s*进窑|结束\s*进窑|进窑\s*开始|进窑\s*结束|"
+            r"开始\s*出窑|结束\s*出窑|出窑\s*开始|出窑\s*结束|"
+            r"进窑|出窑|开始|结束)\s*(?:时间)?\s*"
+            r"(\d{1,2})\s*[：:]\s*(\d{2})\s*$",
+            re.IGNORECASE,
+        )
         batch_header_regex = re.compile(
             r"([A-Z0-9]+(?:-[A-Z0-9]+)*)\s*批次\s*(开始|结束)\s*(进窑|出窑)",
             re.IGNORECASE,
@@ -1601,11 +1614,46 @@ class AutoProcessToBitableListener(EventListener):
         }
         row_mode = self._get_kiln_batch_io_row_mode()
 
-        batch_headers = list(batch_header_regex.finditer(normalized_text))
-        if not batch_headers:
-            return []
-
         records: list[ParsedRecord] = []
+        for inline_match in inline_event_regex.finditer(normalized_text):
+            batch_id = re.sub(
+                r"^D([A-E])-(\d{4}-\d+)$",
+                r"D\1\2",
+                str(inline_match.group(1)).upper().strip(),
+            )
+            action_text = re.sub(r"\s+", "", str(inline_match.group(2)).strip())
+            if "进窑" in action_text:
+                time_field = "进窑结束时间" if "结束" in action_text else "进窑开始时间"
+            elif "出窑" in action_text:
+                time_field = "出窑结束时间" if "结束" in action_text else "出窑开始时间"
+            elif "结束" in action_text:
+                time_field = "进窑结束时间"
+            else:
+                time_field = "进窑开始时间"
+
+            try:
+                hour = int(str(inline_match.group(3)).strip())
+                minute = int(str(inline_match.group(4)).strip())
+            except Exception:
+                continue
+            if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+                continue
+
+            line = self._extract_production_line_from_batch_id(batch_id)
+            records.append(
+                ParsedRecord(
+                    scenario="kiln_batch_io",
+                    line=line,
+                    batch_id=batch_id,
+                    route_key=self._resolve_kiln_batch_io_route_key(line),
+                    fields={
+                        time_field: self._compose_kiln_event_time(message_time, hour, minute),
+                        "消息时间": message_time,
+                    },
+                )
+            )
+
+        batch_headers = list(batch_header_regex.finditer(normalized_text))
         for idx, header_match in enumerate(batch_headers):
             batch_id = self._normalize_dash(str(header_match.group(1))).upper().strip()
             stage_status = str(header_match.group(2)).strip()
@@ -1613,6 +1661,9 @@ class AutoProcessToBitableListener(EventListener):
             time_field = action_to_field.get((stage_action, stage_status), "")
             if not batch_id or not time_field:
                 continue
+            route_key = self._resolve_kiln_batch_io_route_key(
+                self._extract_production_line_from_batch_id(batch_id)
+            )
 
             block_start = header_match.end()
             block_end = batch_headers[idx + 1].start() if idx + 1 < len(batch_headers) else len(normalized_text)
@@ -1654,7 +1705,7 @@ class AutoProcessToBitableListener(EventListener):
                         scenario="kiln_batch_io",
                         line=line,
                         batch_id=batch_id,
-                        route_key="kiln_batch_io",
+                        route_key=route_key,
                         fields=fields,
                     )
                 )

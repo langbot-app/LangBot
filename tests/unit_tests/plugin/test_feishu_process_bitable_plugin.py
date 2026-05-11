@@ -505,6 +505,72 @@ def test_parse_kiln_batch_io_maps_all_time_fields_and_merges_same_slot() -> None
     assert record.fields["1\u53f7\u51fa\u7a91\u7ed3\u675f\u65f6\u95f4"] == "2026-03-06 06:25:00"
 
 
+def test_parse_kiln_batch_io_supports_inline_batch_events() -> None:
+    listener = _build_listener()
+    text = (
+        "DC2605-001\u8fdb\u7a91\u7ed3\u675f\u65f6\u95f47:54\n"
+        "DC2605-002\u8fdb\u7a91\u5f00\u59cb\u65f6\u95f47:55\n"
+        "DC-2605-002\u8fdb\u7a91\u7ed3\u675f\u65f6\u95f410:04\n"
+        "DC2605-008\u7ed3\u675f\u65f6\u95f44:40\n"
+        "DC2605-009\u8fdb\u7a91\u65f6\u95f44:41\n"
+        "DC-2605-003\u5f00\u59cb\u51fa\u7a91\u65f6\u95f401:15\n"
+        "DC-2605-003\u7ed3\u675f\u51fa\u7a91\u65f6\u95f406:20\n"
+        "DC-2605-004\u5f00\u59cb\u51fa\u7a91\u65f6\u95f406:20"
+    )
+
+    records = listener._parse_kiln_batch_io(text, "2026-05-11 08:00:00")
+    assert len(records) == 8
+    assert {record.line for record in records} == {"C"}
+    assert {record.route_key for record in records} == {"kiln_batch_io.phase2"}
+
+    merged = listener._merge_records_for_write(records)
+    assert len(merged) == 6
+
+    record_002 = next(r for r in merged if r.batch_id == "DC2605-002")
+    assert record_002.fields["\u8fdb\u7a91\u5f00\u59cb\u65f6\u95f4"] == "2026-05-11 07:55:00"
+    assert record_002.fields["\u8fdb\u7a91\u7ed3\u675f\u65f6\u95f4"] == "2026-05-11 10:04:00"
+
+    record_008 = next(r for r in merged if r.batch_id == "DC2605-008")
+    assert record_008.fields["\u8fdb\u7a91\u7ed3\u675f\u65f6\u95f4"] == "2026-05-11 04:40:00"
+
+    record_009 = next(r for r in merged if r.batch_id == "DC2605-009")
+    assert record_009.fields["\u8fdb\u7a91\u5f00\u59cb\u65f6\u95f4"] == "2026-05-11 04:41:00"
+
+    record_003 = next(r for r in merged if r.batch_id == "DC2605-003")
+    assert record_003.fields["\u51fa\u7a91\u5f00\u59cb\u65f6\u95f4"] == "2026-05-11 01:15:00"
+    assert record_003.fields["\u51fa\u7a91\u7ed3\u675f\u65f6\u95f4"] == "2026-05-11 06:20:00"
+
+
+def test_parse_kiln_batch_io_routes_c_d_e_lines_to_phase2_table() -> None:
+    listener = _build_listener()
+    text = (
+        "DC2605-001\u8fdb\u7a91\u5f00\u59cb\u65f6\u95f47:55\n"
+        "DD2605-001\u8fdb\u7a91\u7ed3\u675f\u65f6\u95f47:54\n"
+        "DE-2605-002\u5f00\u59cb\u51fa\u7a91\u65f6\u95f406:20"
+    )
+
+    records = listener._parse_kiln_batch_io(text, "2026-05-11 08:00:00")
+
+    assert len(records) == 3
+    assert {record.line for record in records} == {"C", "D", "E"}
+    assert {record.route_key for record in records} == {"kiln_batch_io.phase2"}
+    assert listener._resolve_table_name("kiln_batch_io.phase2") == "\u4e8c\u671f\u7a91\u7089\u6279\u6b21\u8fdb\u7a91\u51fa\u7a91\u8868"
+
+
+def test_parse_kiln_batch_io_keeps_a_b_lines_on_primary_table() -> None:
+    listener = _build_listener()
+    text = (
+        "DA2605-001\u8fdb\u7a91\u5f00\u59cb\u65f6\u95f47:55\n"
+        "DB2605-001\u8fdb\u7a91\u7ed3\u675f\u65f6\u95f47:54"
+    )
+
+    records = listener._parse_kiln_batch_io(text, "2026-05-11 08:00:00")
+
+    assert len(records) == 2
+    assert {record.line for record in records} == {"A", "B"}
+    assert {record.route_key for record in records} == {"kiln_batch_io"}
+
+
 def test_parse_kiln_batch_io_slot_mode_keeps_one_row_per_position() -> None:
     listener = _build_listener({"kiln_batch_io_row_mode": "slot"})
     text = "DA2603-021\u6279\u6b21\u7ed3\u675f\u51fa\u7a91\nA2-1--06:23"
