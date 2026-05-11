@@ -27,6 +27,22 @@ const extractSavedFileKeys = (obj: any): string[] => {
   return keys;
 };
 
+const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  if (error && typeof error === 'object') {
+    const maybeError = error as { msg?: unknown; message?: unknown };
+    if (typeof maybeError.msg === 'string' && maybeError.msg) {
+      return maybeError.msg;
+    }
+    if (typeof maybeError.message === 'string' && maybeError.message) {
+      return maybeError.message;
+    }
+  }
+  return String(error);
+};
+
 export default function PluginForm({
   pluginAuthor,
   pluginName,
@@ -126,7 +142,7 @@ export default function PluginForm({
       toast.success(t('plugins.saveConfigSuccessNormal'));
       onFormSubmit(1000);
     } catch (error) {
-      toast.error(t('plugins.saveConfigError') + (error as Error).message);
+      toast.error(t('plugins.saveConfigError') + getErrorMessage(error));
     } finally {
       setIsLoading(false);
     }
