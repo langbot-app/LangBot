@@ -51,20 +51,20 @@ pytest tests/unit_tests/ --cov=langbot.pkg \
 |------|--------|------|
 | `command` | **99%** | ✅ 完成 |
 | `entity` | **99%** | ✅ 完成 |
-| `vector` | **82%** | ✅ 完成 |
+| `vector` | **76%** | ✅ 完成 |
 | `survey` | **84%** | ✅ 完成 |
 | `pipeline` | **72%** | ✅ 核心流程 |
-| `rag` | **70%** | ✅ 完成 |
-| `config` | **70%** | ✅ 完成 |
+| `rag` | **66%** | ✅ 完成 |
+| `telemetry` | **87%** | ✅ 完成 |
+| `storage` | **80%** | ✅ 完成 |
+| `provider` | **83%** | ✅ 完成 |
 | `discover` | **61%** | ✅ 完成 |
-| `telemetry` | **63%** | ✅ 完成 |
-| `storage` | **58%** | ✅ 完成 |
-| `provider` | **57%** | 🔄 部分完成 |
+| `config` | **70%** | ✅ 完成 |
 | `utils` | **48%** | 🔄 部分完成 |
 | `api` | **34%** | 🔄 需补充 controller |
 | `platform` | **35%** | 🔄 需补充 adapter base |
-| `core` | **30%** | 🔄 需补充 app 启动 |
-| `plugin` | **28%** | 🔄 需补充 handler |
+| `plugin` | **27%** | 🔄 需补充 handler |
+| `core` | **28%** | 🔄 需补充 app 启动 |
 | `persistence` | **24%** | 🔄 需补充 mgr |
 
 ---
@@ -101,24 +101,43 @@ tests/unit_tests/
 │       └── ...
 ├── core/
 │   ├── test_taskmgr.py                 # 21 tests ✅
-│   ├── test_load_config.py             # 19 tests ✅
+│   ├── test_load_config.py             # 21 tests ✅ (含env override)
 │   └── ...
 ├── plugin/
 │   ├── test_connector_static.py        # 8 tests ✅
 │   ├── test_connector_pure.py          # 7 tests ✅
 │   ├── test_connector_methods.py       # 24 tests ✅
-│   └── test_extract_deps.py            # 7 tests ✅
+│   ├── test_extract_deps.py            # 7 tests ✅
+│   ├── test_handler_actions.py         # 15 tests ✅ (新增)
+│   └── ...
+├── provider/
+│   ├── test_session_manager.py         # 11 tests ✅ (新增)
+│   ├── test_tool_manager.py            # 14 tests ✅ (新增)
+│   └── ...
 ├── rag/
 │   ├── test_i18n_conversion.py         # 8 tests ✅
 │   ├── test_kbmgr.py                   # 39 tests ✅
+│   ├── test_file_storage.py            # 21 tests ✅ (新增)
+│   └── ...
+├── storage/
+│   ├── test_s3storage.py               # 16 tests ✅ (新增)
+│   ├── test_localstorage_path_traversal.py # 11 tests ✅
 │   └── ...
 ├── survey/
 │   └── test_survey_manager.py          # 22 tests ✅
 ├── telemetry/
-│   └── test_telemetry.py               # 14 tests ✅
+│   └── test_telemetry.py               # 25 tests ✅ (重写)
+├── vector/
+│   ├── test_filter_utils.py            # 21 tests ✅
+│   ├── test_vdb_filter_conversion.py   # 30 tests ✅ (新增)
+│   └── ...
 ├── utils/
 │   ├── test_platform.py                # 7 tests ✅
 │   ├── test_funcschema.py              # 9 tests ✅
+│   └── ...
+├── pipeline/
+│   ├── test_ratelimit.py               # 12 tests ✅ (新增真实算法)
+│   ├── test_msgtrun.py                 # 9 tests ✅ (强化断言)
 │   └── ...
 └── persistence/
     ├── test_serialize_model.py         # 6 tests ✅
@@ -130,9 +149,9 @@ tests/unit_tests/
 
 ## 总结
 
-- **总测试数**: 1082 passed
-- **总体覆盖率**: 28.3%
-- **核心模块覆盖率**: **45.5%** (5659/12425 语句) - 排除外部适配器
+- **总测试数**: 1193 passed
+- **总体覆盖率**: 30%
+- **核心模块覆盖率**: **51.2%** (6549/12825 语句) - 排除外部适配器
 - **外部适配器覆盖率**: 5.6% (535/9483 语句) - 不纳入目标
 
 ### 核心模块覆盖率详情
@@ -141,19 +160,19 @@ tests/unit_tests/
 |------|--------|--------|------|
 | `command` | **99%** | 93 | ✅ 完成 |
 | `entity` | **99%** | 335 | ✅ 完成 |
-| `vector` | **82%** | 139 | ✅ 完成 |
+| `vector` | **76%** | 139 | ✅ 完成 (新增filter转换测试) |
 | `survey` | **84%** | 95 | ✅ 完成 |
-| `pipeline` | **72%** | 1761 | ✅ 核心流程 |
-| `rag` | **69%** | 347 | ✅ 完成 |
-| `storage` | **58%** | 170 | ✅ 完成 |
-| `provider` | **57%** | 854 | 🔄 部分完成 |
-| `telemetry` | **63%** | 70 | ✅ 完成 |
+| `pipeline` | **72%** | 1761 | ✅ 核心流程 (新增算法测试) |
+| `rag` | **66%** | 347 | ✅ 完成 (新增ZIP处理测试) |
+| `telemetry` | **87%** | 70 | ✅ 完成 (重写假测试) |
+| `storage` | **80%** | 170 | ✅ 完成 (新增S3测试) |
+| `provider` | **83%** | 854 | ✅ 完成 (新增Session/Tool测试) |
 | `discover` | **61%** | 188 | ✅ 完成 |
 | `config` | **70%** | 198 | ✅ 完成 |
 | `utils` | **48%** | 478 | 🔄 部分完成 |
 | `api` | **34%** | 4061 | 🔄 需补充 controller |
 | `platform` | **35%** | 433 | 🔄 需补充 adapter base |
-| `plugin` | **27%** | 815 | 🔄 需补充 handler |
+| `plugin` | **27%** | 815 | 🔄 需补充 handler (新增action测试) |
 | `core` | **28%** | 1289 | 🔄 需补充 app 启动 |
 | `persistence` | **24%** | 1099 | 🔄 需补充 mgr |
 
