@@ -9,6 +9,24 @@ import { extractI18nObject } from '@/i18n/I18nProvider';
 import { useTranslation } from 'react-i18next';
 import PluginComponentList from '@/app/home/plugins/components/plugin-installed/PluginComponentList';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const extractSavedFileKeys = (obj: any): string[] => {
+  const keys: string[] = [];
+  if (obj && typeof obj === 'object') {
+    if ('file_key' in obj && typeof obj.file_key === 'string') {
+      keys.push(obj.file_key);
+    }
+    for (const value of Object.values(obj)) {
+      if (Array.isArray(value)) {
+        value.forEach((item) => keys.push(...extractSavedFileKeys(item)));
+      } else if (typeof value === 'object' && value !== null) {
+        keys.push(...extractSavedFileKeys(value));
+      }
+    }
+  }
+  return keys;
+};
+
 export default function PluginForm({
   pluginAuthor,
   pluginName,
@@ -64,32 +82,16 @@ export default function PluginForm({
 
     try {
       // 保存配置
-      await httpClient.updatePluginConfig(
+      const savedConfig = await httpClient.updatePluginConfig(
         pluginAuthor,
         pluginName,
         currentFormValues.current,
       );
+      setPluginConfig(savedConfig);
+      currentFormValues.current = savedConfig.config;
 
       // 提取最终保存的配置中的所有文件 key
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const extractFileKeys = (obj: any): string[] => {
-        const keys: string[] = [];
-        if (obj && typeof obj === 'object') {
-          if ('file_key' in obj && typeof obj.file_key === 'string') {
-            keys.push(obj.file_key);
-          }
-          for (const value of Object.values(obj)) {
-            if (Array.isArray(value)) {
-              value.forEach((item) => keys.push(...extractFileKeys(item)));
-            } else if (typeof value === 'object' && value !== null) {
-              keys.push(...extractFileKeys(value));
-            }
-          }
-        }
-        return keys;
-      };
-
-      const finalFileKeys = new Set(extractFileKeys(currentFormValues.current));
+      const finalFileKeys = new Set(extractSavedFileKeys(savedConfig.config));
 
       // 计算需要删除的文件：
       // 1. 在编辑期间上传的，但最终未保存的文件
@@ -118,6 +120,8 @@ export default function PluginForm({
       );
 
       await Promise.all(deletePromises);
+      initialFileKeys.current = finalFileKeys;
+      uploadedFileKeys.current.clear();
 
       toast.success(t('plugins.saveConfigSuccessNormal'));
       onFormSubmit(1000);

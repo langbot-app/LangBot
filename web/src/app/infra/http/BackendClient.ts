@@ -552,7 +552,7 @@ export class BackendClient extends BaseHttpClient {
     author: string,
     name: string,
     config: object,
-  ): Promise<object> {
+  ): Promise<ApiRespPluginConfig> {
     return this.put(`/api/v1/plugins/${author}/${name}/config`, config);
   }
 

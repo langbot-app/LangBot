@@ -106,9 +106,9 @@ class PluginsRouterGroup(group.RouterGroup):
             elif quart.request.method == 'PUT':
                 data = await quart.request.json
 
-                await self.ap.plugin_connector.set_plugin_config(author, plugin_name, data)
+                result = await self.ap.plugin_connector.set_plugin_config(author, plugin_name, data)
 
-                return self.success(data={})
+                return self.success(data={'config': result.get('config', data)})
 
         @self.route(
             '/<author>/<plugin_name>/readme',
