@@ -122,6 +122,7 @@ package-data = { "langbot" = ["templates/**", "pkg/provider/modelmgr/requesters/
 
 [dependency-groups]
 dev = [
+    "moto>=5.2.1",
     "pre-commit>=4.2.0",
     "pytest>=9.0.3",
     "pytest-asyncio>=1.0.0",

@@ -54,13 +54,22 @@ class TestExecuteAsync:
 
     @pytest.mark.asyncio
     async def test_execute_async_returns_result(self):
-        """Test that execute_async returns the result."""
+        """Test that execute_async returns the result from execute.
+
+        NOTE: This test verifies the return value chain - that the result
+        from conn.execute() is properly returned by execute_async().
+        The mock verifies the value propagation, not the SQL execution.
+        For real SQL execution tests, see integration tests.
+        """
         persistence = get_persistence_module()
 
         mock_app = Mock()
         mgr = persistence.PersistenceManager(mock_app)
 
+        # Create a mock result with actual attributes to simulate real result
         mock_result = Mock(name='query_result')
+        mock_result.scalar = Mock(return_value=1)  # Simulate scalar() method
+        mock_result.scalars = Mock()  # Simulate scalars() method
 
         mock_engine = MagicMock()
         mock_conn = AsyncMock()
@@ -78,7 +87,11 @@ class TestExecuteAsync:
 
         result = await mgr.execute_async(sqlalchemy.text("SELECT 1"))
 
-        assert result == mock_result
+        # Verify result is the same object returned by execute
+        assert result is mock_result
+        # Verify result has expected methods (simulating real Result object)
+        assert hasattr(result, 'scalar')
+        assert result.scalar() == 1
 
 
 class TestGetDbEngine:

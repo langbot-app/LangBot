@@ -77,7 +77,7 @@ def fake_provider_app():
     app.provider_service.get_provider = AsyncMock(return_value={
         'uuid': 'test-provider-uuid', 'name': 'OpenAI', 'requester': 'chatcmpl'
     })
-    app.provider_service.create_provider = AsyncMock(return_value={'uuid': 'new-provider-uuid'})
+    app.provider_service.create_provider = AsyncMock(return_value='new-provider-uuid')
     app.provider_service.update_provider = AsyncMock(return_value={})
     app.provider_service.delete_provider = AsyncMock()
     app.provider_service.get_provider_model_counts = AsyncMock(return_value={
@@ -132,7 +132,7 @@ class TestProviderEndpoints:
 
     @pytest.mark.asyncio
     async def test_get_providers_success(self, quart_test_client):
-        """GET /api/v1/provider/providers returns provider list."""
+        """GET /api/v1/provider/providers returns provider list with complete structure."""
         response = await quart_test_client.get(
             '/api/v1/provider/providers',
             headers={'Authorization': 'Bearer test_token'}
@@ -142,10 +142,21 @@ class TestProviderEndpoints:
         data = await response.get_json()
         assert data['code'] == 0
         assert 'data' in data
+        # Verify response structure completeness
+        providers = data['data']['providers']
+        assert isinstance(providers, list)
+        assert len(providers) == 1
+        # Verify required fields in provider object
+        provider = providers[0]
+        assert 'uuid' in provider
+        assert 'name' in provider
+        assert 'requester' in provider
+        assert provider['uuid'] == 'test-provider-uuid'
+        assert provider['name'] == 'OpenAI'
 
     @pytest.mark.asyncio
     async def test_get_single_provider_success(self, quart_test_client):
-        """GET /api/v1/provider/providers/{uuid} returns provider."""
+        """GET /api/v1/provider/providers/{uuid} returns complete provider structure."""
         response = await quart_test_client.get(
             '/api/v1/provider/providers/test-provider-uuid',
             headers={'Authorization': 'Bearer test_token'}
@@ -154,10 +165,16 @@ class TestProviderEndpoints:
         assert response.status_code == 200
         data = await response.get_json()
         assert data['code'] == 0
+        # Verify response structure
+        provider = data['data']['provider']
+        assert 'uuid' in provider
+        assert 'name' in provider
+        assert 'requester' in provider
+        assert provider['uuid'] == 'test-provider-uuid'
 
     @pytest.mark.asyncio
     async def test_create_provider_success(self, quart_test_client):
-        """POST /api/v1/provider/providers creates new provider."""
+        """POST /api/v1/provider/providers creates new provider with uuid returned."""
         response = await quart_test_client.post(
             '/api/v1/provider/providers',
             headers={'Authorization': 'Bearer test_token'},
@@ -167,7 +184,10 @@ class TestProviderEndpoints:
         assert response.status_code == 200
         data = await response.get_json()
         assert data['code'] == 0
+        # Verify uuid is present and matches expected
+        assert 'data' in data
         assert 'uuid' in data['data']
+        assert data['data']['uuid'] == 'new-provider-uuid'
 
     @pytest.mark.asyncio
     async def test_update_provider_success(self, quart_test_client):
