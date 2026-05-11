@@ -14,6 +14,7 @@ LangBot 最终只保留 Agent Runner 的宿主能力：
 - 归一结果：`AgentRunResult` -> 当前 Pipeline 的 `Message` / `MessageChunk`
 - 隔离错误：插件异常、协议错误、超时、结果过大不能破坏主流程
 - 迁移旧配置：把旧内置 runner 配置迁到官方 AgentRunner 插件配置
+- 转发调用：插件 runtime 只维护已安装插件本身的运行实例，Pipeline 不创建插件实例或 runner 实例
 
 LangBot 不再长期维护内置业务 runner 分支。`local-agent`、Dify、n8n、Coze、DashScope、Langflow、Tbox 等都迁到官方 AgentRunner 插件。
 
@@ -45,6 +46,8 @@ SDK Runtime RUN_AGENT -> plugin AgentRunner.run()
 - `ChatMessageHandler` 不解析 `plugin:*`，不实例化 wrapper，不知道 runner 组件细节。
 - `PipelineService.get_pipeline_metadata()` 不直接访问插件 runtime，而是读取 registry。
 - 旧 `RequestRunner` 只作为迁移参考，不作为最终运行路径。
+- 插件是无状态执行单元：多个 Pipeline 可以绑定同一个 runner id，并分别保存自己的 `ai.runner_config[id]`；运行时 LangBot 只把当前绑定配置放入 `ctx.config` 转发给同一个插件 runner。
+- 禁止按 Pipeline 或 runner config 创建多个插件实例。需要跨请求持久化的状态必须走明确授权的 plugin storage / workspace storage / 外部服务，不能隐式保存在 per-pipeline 插件对象里。
 - EBA 只做字段预留，不在本轮实现 EventBus、EventRouter、平台动作执行。
 
 ## 3. 新增 LangBot 模块
@@ -138,7 +141,7 @@ class AgentRunnerDescriptor(BaseModel):
 - `input`: 从 `query.user_message` 和 `query.message_chain` 构造
 - `resources`: 由 `resource_builder` 注入
 - `runtime`: host/version/workspace/bot/pipeline/query/trace/deadline
-- `config`: 当前 runner id 对应的实例配置
+- `config`: 当前 Pipeline 对该 runner id 的绑定配置，即 `ai.runner_config[runner_id]`
 
 保留 SDK legacy helper 是 SDK 的责任，LangBot 不再构造 PoC 的 `query_id/session/messages/user_message/extra_config` 上下文。
 
@@ -148,7 +151,7 @@ class AgentRunnerDescriptor(BaseModel):
 
 1. runner manifest 声明的 `spec.permissions`
 2. Pipeline 的 `extensions_preferences`
-3. runner 实例配置中选择的资源范围
+3. 当前 Pipeline runner 绑定配置中选择的资源范围
 
 输出写入 `ctx.resources`，至少覆盖：
 
@@ -214,6 +217,8 @@ async def run_from_query(query: pipeline_query.Query) -> AsyncGenerator[Message 
 - task cancellation
 
 ## 4. 配置模型直接切换
+
+配置模型表达的是 Pipeline 到 runner id 的绑定，不表达插件实例。插件安装后由 plugin runtime 管理单个插件运行实例；不同 Pipeline 选择同一个 runner id 时，只是保存不同的 `runner_config[id]`，调用时随 `AgentRunContext.config` 传入。
 
 目标格式：
 
@@ -322,7 +327,7 @@ async def run_from_query(query: pipeline_query.Query) -> AsyncGenerator[Message 
 
 ### Step 6：权限和资源裁剪
 
-- resource builder 根据 manifest / pipeline / instance config 裁剪
+- resource builder 根据 manifest / pipeline / runner binding config 裁剪
 - proxy action 校验 resource scope
 - 禁止插件用 unrestricted API 访问未授权知识库、工具、模型
 
@@ -365,6 +370,7 @@ async def run_from_query(query: pipeline_query.Query) -> AsyncGenerator[Message 
 - `ChatMessageHandler` 不包含插件 runner 解析和 wrapper。
 - `PipelineService` 不直接拼插件 runner metadata。
 - 所有 runner 配置使用 `ai.runner.id` + `ai.runner_config`。
+- 插件 runtime 不为每个 Pipeline 或 runner 配置创建插件实例；`runner_config` 只作为绑定配置随 `ctx.config` 传入。
 - 旧内置 runner 不再作为 LangBot 内部运行分支执行。
 - 插件只能访问 `ctx.resources` 授权的模型、工具、知识库和文件。
 - EBA 相关字段只作为 context/result 预留，不执行平台动作。

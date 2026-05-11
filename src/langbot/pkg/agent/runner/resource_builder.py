@@ -1,6 +1,7 @@
 """Agent resource builder for constructing authorized resources."""
 from __future__ import annotations
 
+import asyncio
 import typing
 
 from ...core import app
@@ -68,10 +69,12 @@ class AgentResourceBuilder:
         from .config_migration import ConfigMigration
         runner_config = ConfigMigration.resolve_runner_config(query.pipeline_config, descriptor.id)
 
-        # Build each resource category
-        models = await self._build_models(manifest_perms, query)
-        tools = await self._build_tools(manifest_perms, bound_plugins, bound_mcp_servers, query)
-        knowledge_bases = await self._build_knowledge_bases(manifest_perms, runner_config, query)
+        # Build each resource category in parallel
+        models, tools, knowledge_bases = await asyncio.gather(
+            self._build_models(manifest_perms, query),
+            self._build_tools(manifest_perms, bound_plugins, bound_mcp_servers, query),
+            self._build_knowledge_bases(manifest_perms, runner_config, query),
+        )
         storage = self._build_storage(manifest_perms)
 
         return {
@@ -104,11 +107,10 @@ class AgentResourceBuilder:
         try:
             model = await self.ap.model_mgr.get_model_by_uuid(model_uuid)
             if model and model.model_entity:
-                # Use SDK v1 field names: model_id, model_type, provider
                 models.append({
                     'model_id': model_uuid,
-                    'model_type': model.model_entity.model_type,
-                    'provider': model.provider_entity.name if hasattr(model, 'provider_entity') else None,
+                    'model_type': getattr(model.model_entity, 'model_type', None),
+                    'provider': getattr(model.provider_entity, 'name', None) if hasattr(model, 'provider_entity') else None,
                 })
         except Exception:
             pass

@@ -16,6 +16,7 @@ from .resource_builder import AgentResourceBuilder
 from .result_normalizer import AgentResultNormalizer
 from .orchestrator import AgentRunOrchestrator
 from .config_migration import ConfigMigration
+from .session_registry import AgentRunSessionRegistry, AgentRunSession, get_session_registry
 
 __all__ = [
     'AgentRunnerDescriptor',
@@ -33,4 +34,7 @@ __all__ = [
     'AgentResultNormalizer',
     'AgentRunOrchestrator',
     'ConfigMigration',
+    'AgentRunSessionRegistry',
+    'AgentRunSession',
+    'get_session_registry',
 ]

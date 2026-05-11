@@ -84,6 +84,20 @@ class WebPageBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
     ):
         self.listeners.pop(event_type, None)
 
+    async def is_stream_output_supported(self) -> bool:
+        """Delegate stream output check to ws_adapter."""
+        if self._ws_adapter is not None:
+            return await self._ws_adapter.is_stream_output_supported()
+        return False
+
+    async def create_message_card(
+        self, message_id: str | int, event: platform_events.MessageEvent
+    ) -> bool:
+        """Delegate create_message_card to ws_adapter."""
+        if self._ws_adapter is not None:
+            return await self._ws_adapter.create_message_card(message_id, event)
+        return False
+
     async def is_muted(self, group_id: int) -> bool:
         return False
 

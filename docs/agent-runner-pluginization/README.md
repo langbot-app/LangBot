@@ -158,7 +158,7 @@ class AgentRunContext(BaseModel):
 - `input` 是 runner 的主输入，不再强制等同于纯文本消息。
 - `resources` 列出 LangBot 已授权给 runner 的工具、知识库、模型、文件等。
 - `runtime` 提供 host 信息、workspace/bot/pipeline 标识、trace id、deadline 等。
-- `config` 是当前 runner 的实例配置，替代当前 `extra_config`。
+- `config` 是当前 Pipeline 或未来事件绑定对该 runner id 的绑定配置，替代当前 `extra_config`。
 
 为了兼容现有实现，SDK 可提供：
 
@@ -223,6 +223,10 @@ SDK 应把这些能力按 capability 分组。LangBot 在调用 runner 前根据
 ### 6.2 配置模型与绑定位置
 
 当前阶段 runner 配置仍跟 Pipeline 绑定，并且仍然作为 Pipeline 的一个 stage 执行。也就是说，Bot 收到私聊/群聊消息后仍按现有 Pipeline 流转，只是在 AI runner stage 中选择插件化 Agent Runner。
+
+这里的“绑定配置”不代表插件实例。插件安装后由插件 runtime 维护插件本身的运行实例；LangBot 不会因为多个 Pipeline 选择同一个 runner id 而创建多个插件实例或 runner 实例。不同 Pipeline 可以保存不同的 `runner_config[id]`，调用时 LangBot 只把当前绑定配置放进 `AgentRunContext.config` 转发给同一个插件 runner。
+
+插件 runner 应按无状态执行单元设计。需要跨请求保存的 conversation id、外部平台状态或用户状态，应通过明确授权的 plugin storage、workspace storage、外部服务或 context runtime state 管理，不能隐式依赖 per-pipeline 插件对象状态。
 
 后续 EBA EventRouter 落地后，同一套 `AgentRunnerDescriptor` 和 `AgentRunOrchestrator` 需要支持直接与 Bot 的事件触发器绑定。届时 Bot event handler 可以绕过完整 Pipeline，直接选择某个 Agent Runner 处理 `message.received`、`group.member_joined`、`friend.request_received` 等事件。
 
@@ -317,7 +321,7 @@ LangBot 执行前做三层裁剪：
 
 - 插件 manifest 声明的权限。
 - Pipeline 或 Bot 绑定的扩展范围。
-- 用户在 runner 配置中选择的资源范围。
+- 用户在 Pipeline runner 绑定配置中选择的资源范围。
 
 最终写入 `ctx.resources`，并在 proxy action 里再次校验。
 
@@ -403,4 +407,5 @@ SDK：
 - 插件可以声明多个 `AgentRunner` 组件，每个组件独立暴露 manifest、配置 schema、能力和权限。
 - 本阶段不把 `action.requested` 作为必须实现的运行结果。它只是为未来 EBA 平台动作预留的返回类型；当前 Pipeline stage 中如收到该类型，只记录 telemetry，不执行动作。
 - 当前 runner 配置先跟 Pipeline 绑定，仍然在 Pipeline 的 AI runner stage 中执行；后续需要支持直接与 Bot 的事件触发器绑定。
+- Pipeline/Event 绑定只保存 runner id 和绑定配置，不创建插件实例或 runner 实例；插件 runner 按无状态转发调用处理，跨请求状态必须显式存储。
 - 内置 `RequestRunner` 最终强制迁移为插件形态，避免长期保留“内置 runner 分支”和“插件 runner 分支”两套执行体系。

@@ -45,20 +45,27 @@ class PipelineService:
                 break
 
         if runner_stage:
-            # Find the runner select config
+            # Find the runner select config (now uses 'id' field)
             for config_item in runner_stage.get('config', []):
-                if config_item.get('name') == 'runner':
+                if config_item.get('name') == 'id':
                     # Get plugin agent runners from registry
                     try:
                         runner_options, runner_stages = await self.ap.agent_runner_registry.get_runner_metadata_for_pipeline()
 
-                        # Add plugin runners to options
-                        for option in runner_options:
-                            config_item['options'].append(option)
+                        # Replace options entirely with registry options
+                        # Only installed/available runners should be shown
+                        config_item['options'] = runner_options
+
+                        # Set default to first available runner if not specified
+                        if runner_options and 'default' not in config_item:
+                            config_item['default'] = runner_options[0]['name']
 
                         # Add corresponding stage configuration for each runner
                         for stage_config in runner_stages:
-                            ai_metadata['stages'].append(stage_config)
+                            # Avoid duplicate stages
+                            existing_stage_names = {s.get('name') for s in ai_metadata.get('stages', [])}
+                            if stage_config['name'] not in existing_stage_names:
+                                ai_metadata['stages'].append(stage_config)
 
                     except Exception as e:
                         self.ap.logger.warning(f'Failed to load plugin agent runners from registry: {e}')
@@ -145,9 +152,15 @@ class PipelineService:
         return pipeline_data['uuid']
 
     async def update_pipeline(self, pipeline_uuid: str, pipeline_data: dict) -> None:
+        from ....agent.runner.config_migration import ConfigMigration
+
         pipeline_data = pipeline_data.copy()
         for protected_field in ('uuid', 'for_version', 'stages', 'is_default'):
             pipeline_data.pop(protected_field, None)
+
+        # Migrate config to new format before saving
+        if 'config' in pipeline_data:
+            pipeline_data['config'] = ConfigMigration.migrate_pipeline_config(pipeline_data['config'])
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_pipeline.LegacyPipeline)

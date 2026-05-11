@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .. import truncator
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+from ....agent.runner.config_migration import ConfigMigration
 
 
 @truncator.truncator_class('round')
@@ -10,7 +11,10 @@ class RoundTruncator(truncator.Truncator):
 
     async def truncate(self, query: pipeline_query.Query) -> pipeline_query.Query:
         """截断"""
-        max_round = query.pipeline_config['ai']['local-agent']['max-round']
+        # Get max-round from runner config (new or old format)
+        runner_id = ConfigMigration.resolve_runner_id(query.pipeline_config)
+        runner_config = ConfigMigration.resolve_runner_config(query.pipeline_config, runner_id) if runner_id else {}
+        max_round = runner_config.get('max-round', 10)
 
         temp_messages = []
 

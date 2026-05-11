@@ -10,6 +10,7 @@ from langbot_plugin.api.entities.builtin.pipeline import query as pipeline_query
 from ...core import app
 from .descriptor import AgentRunnerDescriptor
 from .config_migration import ConfigMigration
+from .state_store import get_state_store
 
 
 # Internal models for SDK v1 context protocol matching SDK v1 resources.py
@@ -39,6 +40,14 @@ class AgentInput(typing.TypedDict):
     contents: list[dict[str, typing.Any]]
     message_chain: dict[str, typing.Any] | None
     attachments: list[dict[str, typing.Any]]
+
+
+class AgentRunState(typing.TypedDict):
+    """Agent run state with 4 scopes."""
+    conversation: dict[str, typing.Any]
+    actor: dict[str, typing.Any]
+    subject: dict[str, typing.Any]
+    runner: dict[str, typing.Any]
 
 
 # SDK v1 Protocol resource models - matching langbot-plugin-sdk/resources.py
@@ -100,7 +109,11 @@ class AgentRuntimeContext(typing.TypedDict):
 
 
 class AgentRunContextV1(typing.TypedDict):
-    """SDK v1 AgentRunContext per PROTOCOL_V1.md."""
+    """SDK v1 AgentRunContext per PROTOCOL_V1.md.
+
+    Note: The 'config' field contains the binding config from ai.runner_config[runner_id],
+    which is Pipeline's configuration for this specific runner binding (not plugin instance config).
+    """
     run_id: str
     trigger: AgentTrigger
     conversation: ConversationContext | None
@@ -109,9 +122,11 @@ class AgentRunContextV1(typing.TypedDict):
     subject: dict[str, typing.Any] | None  # Reserved for EBA
     messages: list[dict[str, typing.Any]]
     input: AgentInput
+    params: dict[str, typing.Any]
     resources: AgentResources
+    state: AgentRunState
     runtime: AgentRuntimeContext
-    config: dict[str, typing.Any]
+    config: dict[str, typing.Any]  # Binding config from ai.runner_config[runner_id]
 
 
 class AgentRunContextBuilder:
@@ -123,12 +138,24 @@ class AgentRunContextBuilder:
     - Build conversation context from session
     - Convert messages to SDK format
     - Build input from user_message and message_chain
+    - Build params from query.variables with filtering
+    - Build state snapshot from state_store
     - Set resources from AgentResourceBuilder result
     - Build runtime context with host info, trace_id, deadline
-    - Set config from runner instance configuration
+    - Set config from runner binding configuration (ai.runner_config[runner_id])
     """
 
     ap: app.Application
+
+    # Params filtering rules
+    # Exclude variables starting with underscore (internal)
+    INTERNAL_PREFIX = '_'
+
+    # Exclude variables with sensitive naming patterns
+    SENSITIVE_PATTERNS = ('secret', 'token', 'key', 'password', 'credential', 'api_key', 'apikey')
+
+    # Exclude permission/control variables
+    PERMISSION_VARS = ('_pipeline_bound_plugins', '_authorized', '_permission')
 
     def __init__(self, ap: app.Application):
         self.ap = ap
@@ -178,7 +205,16 @@ class AgentRunContextBuilder:
         # Build messages
         messages = self._build_messages(query)
 
-        # Get runner config
+        # Build params from query.variables with filtering
+        params = self._build_params(query)
+
+        # Build state snapshot from state_store
+        state_store = get_state_store()
+        state: AgentRunState = state_store.build_snapshot(query, descriptor)
+
+        # Get runner binding config from ai.runner_config[runner_id]
+        # This is Pipeline's configuration for this specific runner binding,
+        # passed through AgentRunContext.config to the runner
         runner_config = ConfigMigration.resolve_runner_config(
             query.pipeline_config,
             descriptor.id,
@@ -207,7 +243,9 @@ class AgentRunContextBuilder:
             'subject': None,  # Reserved for EBA
             'messages': messages,
             'input': input,
+            'params': params,
             'resources': resources,
+            'state': state,
             'runtime': runtime,
             'config': runner_config,
         }
@@ -252,3 +290,71 @@ class AgentRunContextBuilder:
                 messages.append(msg.model_dump(mode='json'))
 
         return messages
+
+    def _build_params(self, query: pipeline_query.Query) -> dict[str, typing.Any]:
+        """Build params from query.variables with filtering.
+
+        Filtering rules:
+        1. Exclude variables starting with underscore (internal)
+        2. Exclude variables with sensitive naming patterns (secret, token, key, password)
+        3. Exclude permission/control variables
+        4. Keep only JSON-serializable values
+
+        Args:
+            query: Pipeline query
+
+        Returns:
+            Filtered params dict
+        """
+        params: dict[str, typing.Any] = {}
+
+        if not query.variables:
+            return params
+
+        for key, value in query.variables.items():
+            # Filter internal variables (starting with underscore)
+            if key.startswith(self.INTERNAL_PREFIX):
+                continue
+
+            # Filter sensitive naming patterns
+            key_lower = key.lower()
+            if any(pattern in key_lower for pattern in self.SENSITIVE_PATTERNS):
+                continue
+
+            # Filter permission variables
+            if any(key == perm_var or key.startswith(perm_var) for perm_var in self.PERMISSION_VARS):
+                continue
+
+            # Keep only JSON-serializable values
+            if self._is_json_serializable(value):
+                params[key] = value
+
+        return params
+
+    def _is_json_serializable(self, value: typing.Any) -> bool:
+        """Check if value is JSON-serializable.
+
+        Note: set is NOT JSON-serializable. json.dumps({"x": {1}}) fails.
+        Only list and tuple are allowed as collection types.
+
+        Args:
+            value: Value to check
+
+        Returns:
+            True if JSON-serializable, False otherwise
+        """
+        if value is None:
+            return True
+        if isinstance(value, (str, int, float, bool)):
+            return True
+        # Only allow list and tuple, NOT set (set is not JSON-serializable)
+        if isinstance(value, (list, tuple)):
+            return all(self._is_json_serializable(item) for item in value)
+        if isinstance(value, dict):
+            return all(
+                isinstance(k, str) and self._is_json_serializable(v)
+                for k, v in value.items()
+            )
+        # Pydantic models and other complex types are not directly serializable
+        # as params (they may have internal structure not meant for runners)
+        return False

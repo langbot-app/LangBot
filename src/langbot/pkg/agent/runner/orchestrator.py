@@ -13,6 +13,8 @@ from .registry import AgentRunnerRegistry
 from .context_builder import AgentRunContextBuilder, AgentRunContextV1
 from .resource_builder import AgentResourceBuilder
 from .result_normalizer import AgentResultNormalizer
+from .state_store import get_state_store, RunnerScopedStateStore
+from .session_registry import get_session_registry, AgentRunSessionRegistry
 from .config_migration import ConfigMigration
 from .errors import (
     RunnerNotFoundError,
@@ -46,6 +48,10 @@ class AgentRunOrchestrator:
 
     result_normalizer: AgentResultNormalizer
 
+    # Cached singleton references (set in __init__)
+    _session_registry: AgentRunSessionRegistry
+    _state_store: RunnerScopedStateStore
+
     def __init__(
         self,
         ap: app.Application,
@@ -56,6 +62,9 @@ class AgentRunOrchestrator:
         self.context_builder = AgentRunContextBuilder(ap)
         self.resource_builder = AgentResourceBuilder(ap)
         self.result_normalizer = AgentResultNormalizer(ap)
+        # Cache singleton references to avoid per-request getter calls
+        self._session_registry = get_session_registry()
+        self._state_store = get_state_store()
 
     async def run_from_query(
         self,
@@ -93,12 +102,33 @@ class AgentRunOrchestrator:
         # Build context
         context = await self.context_builder.build_context(query, descriptor, resources)
 
-        # Run via plugin connector
-        async for result_dict in self._invoke_runner(descriptor, context):
-            # Normalize result
-            result = await self.result_normalizer.normalize(result_dict, descriptor)
-            if result is not None:
-                yield result
+        # Register session for proxy action permission validation
+        run_id = context['run_id']
+        await self._session_registry.register(
+            run_id=run_id,
+            runner_id=descriptor.id,
+            query_id=query.query_id,
+            plugin_identity=descriptor.get_plugin_id(),
+            resources=resources,
+        )
+
+        try:
+            # Run via plugin connector
+            async for result_dict in self._invoke_runner(descriptor, context):
+                # Handle state.updated first - consume before normalizer
+                if result_dict.get('type') == 'state.updated':
+                    self._handle_state_updated(result_dict, query, descriptor)
+                    # Pass to normalizer for logging, but don't yield to pipeline
+                    await self.result_normalizer.normalize(result_dict, descriptor)
+                    continue
+
+                # Normalize result for other types
+                result = await self.result_normalizer.normalize(result_dict, descriptor)
+                if result is not None:
+                    yield result
+        finally:
+            # Unregister session after run completes (success or error)
+            await self._session_registry.unregister(run_id)
 
     async def _invoke_runner(
         self,
@@ -156,3 +186,47 @@ class AgentRunOrchestrator:
             Runner ID string, or None
         """
         return ConfigMigration.resolve_runner_id(query.pipeline_config)
+
+    def _handle_state_updated(
+        self,
+        result_dict: dict[str, typing.Any],
+        query: pipeline_query.Query,
+        descriptor: AgentRunnerDescriptor,
+    ) -> None:
+        """Handle state.updated result - apply to state store.
+
+        Args:
+            result_dict: Raw result dict with type='state.updated'
+            query: Pipeline query
+            descriptor: Runner descriptor
+        """
+        data = result_dict.get('data', {})
+
+        # Extract scope (default to 'conversation' for backward compat)
+        scope = data.get('scope', 'conversation')
+
+        # Extract key and value
+        key = data.get('key')
+        value = data.get('value')
+
+        if not key:
+            self.ap.logger.warning(
+                f'Runner {descriptor.id} state.updated missing key, ignoring'
+            )
+            return
+
+        # Apply update to state store
+        success = self._state_store.apply_update(
+            query=query,
+            descriptor=descriptor,
+            scope=scope,
+            key=key,
+            value=value,
+            logger=self.ap.logger,
+        )
+
+        if success:
+            self.ap.logger.debug(
+                f'Runner {descriptor.id} state.updated: scope={scope}, key={key}, value={value}'
+            )
+        # Invalid scope is already logged by state_store.apply_update

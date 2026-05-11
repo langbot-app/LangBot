@@ -108,9 +108,13 @@ class AgentResultNormalizer:
             return None
 
         elif result_type == 'state.updated':
-            # Log for telemetry, don't yield
+            # Log for telemetry, don't yield to pipeline
+            # Orchestrator already handles the actual state_store.apply_update
+            scope = data.get('scope', 'conversation')  # Default for backward compat
+            key = data.get('key', 'unknown')
+            value_repr = repr(data.get('value', '...'))[:100]  # Truncate for log
             self.ap.logger.debug(
-                f'Runner {descriptor.id} state updated: {data.get("key", "unknown")}={data.get("value", "...")}'
+                f'Runner {descriptor.id} state.updated logged: scope={scope}, key={key}, value={value_repr}'
             )
             return None
 

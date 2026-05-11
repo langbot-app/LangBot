@@ -219,6 +219,7 @@ export default function PipelineFormComponent({
         .getPipeline(pipelineId || '')
         .then((resp: GetPipelineResponseData) => {
           setIsDefaultPipeline(resp.pipeline.is_default ?? false);
+
           const loadedValues = {
             basic: {
               name: resp.pipeline.name,
@@ -349,8 +350,10 @@ export default function PipelineFormComponent({
   ) {
     // Special handling for AI config section
     if (formName === 'ai') {
-      // Get the currently selected runner
-      const currentRunner = form.watch('ai.runner.runner');
+      // Get the currently selected runner (use 'id' for new format, fallback to 'runner' for old)
+
+      const runnerConfig = (form.watch('ai.runner') as any) || {};
+      const currentRunner = runnerConfig.id || runnerConfig.runner;
 
       // If this is the runner selector stage, render it directly
       if (stage.name === 'runner') {
@@ -386,8 +389,8 @@ export default function PipelineFormComponent({
         return null;
       }
 
-      // For n8n-service-api config, use N8nAuthFormComponent for form linkage
-      if (stage.name === 'n8n-service-api') {
+      // For n8n runner config, use N8nAuthFormComponent for form linkage
+      if (stage.name === 'n8n-service-api' || stage.name === 'plugin:langbot/n8n-agent/default') {
         return (
           <Card key={stage.name}>
             <CardHeader>
@@ -408,6 +411,48 @@ export default function PipelineFormComponent({
                 }
                 onSubmit={(values) => {
                   handleDynamicFormEmit(formName, stage.name, values);
+                }}
+              />
+            </CardContent>
+          </Card>
+        );
+      }
+
+      // For plugin runner configs, store in ai.runner_config[runnerId]
+
+      const isPluginRunner =
+        currentRunner && currentRunner.startsWith('plugin:');
+      if (isPluginRunner) {
+        const runnerConfigs = (form.watch('ai.runner_config') as any) || {};
+        return (
+          <Card key={stage.name}>
+            <CardHeader>
+              <CardTitle>{extractI18nObject(stage.label)}</CardTitle>
+              {stage.description && (
+                <CardDescription>
+                  {extractI18nObject(stage.description)}
+                </CardDescription>
+              )}
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <DynamicFormComponent
+                itemConfigList={stage.config}
+                initialValues={runnerConfigs[stage.name] || {}}
+                onSubmit={(values) => {
+                  // Store in ai.runner_config[stage.name]
+
+                  const currentRunnerConfigs =
+                    (form.getValues('ai.runner_config') as any) || {};
+                  form.setValue('ai.runner_config', {
+                    ...currentRunnerConfigs,
+                    [stage.name]: values,
+                  });
+                  // Mark as initialized
+                  const stageKey = `ai.runner_config.${stage.name}`;
+                  if (!initializedStagesRef.current.has(stageKey)) {
+                    initializedStagesRef.current.add(stageKey);
+                    savedSnapshotRef.current = JSON.stringify(form.getValues());
+                  }
                 }}
               />
             </CardContent>

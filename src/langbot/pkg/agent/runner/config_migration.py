@@ -72,7 +72,7 @@ class ConfigMigration:
         pipeline_config: dict[str, typing.Any],
         runner_id: str,
     ) -> dict[str, typing.Any]:
-        """Resolve runner instance configuration from pipeline configuration.
+        """Resolve runner binding configuration from pipeline configuration.
 
         Priority:
         1. New format: ai.runner_config[runner_id]
