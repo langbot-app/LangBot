@@ -33,12 +33,16 @@ bash scripts/test-coverage.sh         # ~8 min
 ### Coverage Baseline
 
 Current coverage threshold: **18%**
-Actual coverage: **~22.14%**
+Actual coverage: **30%**
 
 This is a conservative baseline to prevent coverage regression. It does NOT represent the final quality target. Key modules have higher coverage:
 - `pipeline.preproc.preproc`: 53%
 - `pipeline.process.process`: 96%
 - `pipeline.respback.respback`: 88%
+- `telemetry.telemetry`: 87%
+- `provider.session.sessionmgr`: 100%
+- `provider.tools.toolmgr`: 83%
+- `storage.providers.s3storage`: 80%
 
 ## Important Note
 
@@ -75,8 +79,17 @@ tests/
 │   │   └── conftest.py          # Shared fixtures and test infrastructure
 │   ├── platform/                 # Platform adapter tests
 │   ├── plugin/                   # Plugin system tests
+│   │   └── test_handler_actions.py # Action handler tests
 │   ├── provider/                 # Provider tests
-│   └── storage/                  # Storage tests
+│   │   ├── test_session_manager.py # SessionManager tests
+│   │   └── test_tool_manager.py    # ToolManager tests
+│   ├── rag/                      # RAG tests
+│   │   └── test_file_storage.py   # File/ZIP storage tests
+│   ├── storage/                  # Storage tests
+│   │   └── test_s3storage.py      # S3StorageProvider tests
+│   ├── vector/                   # Vector tests
+│   │   └── test_vdb_filter_conversion.py # VDB filter tests
+│   └── telemetry/                # Telemetry tests (rewritten)
 ├── utils/                        # Test utilities
 │   ├── __init__.py
 │   └── import_isolation.py      # sys.modules isolation for circular imports
