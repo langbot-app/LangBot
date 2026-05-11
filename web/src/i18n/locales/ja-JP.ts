@@ -1386,6 +1386,18 @@ const jaJP = {
       backToWorkbench: 'ワークベンチに戻る',
     },
   },
+  addExtension: {
+    manualAdd: '手動追加',
+    uploadExtension: 'ドラッグ＆ドロップまたはクリックしてアップロード',
+    uploadHint: '.zip（スキル）と.lbpkg（プラグイン）ファイルに対応',
+    orContinueWith: 'または以下の操作を選択',
+    installFromGithub: 'GitHubからプラグインをインストール',
+    installFromGithubHint: 'GitHub Releaseからプラグイン拡張をインストール',
+    createSkill: '新しいスキルを作成',
+    createSkillHint: '新しいスキル拡張を手動で作成',
+    unsupportedFileType:
+      'サポートされていないファイルタイプです。.zipと.lbpkgファイルのみサポートされています',
+  },
   errorPage: {
     unexpectedError: 'エラーが発生しました',
     unexpectedErrorDescription:

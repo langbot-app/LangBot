@@ -1374,7 +1374,7 @@ const enUS = {
     selectSkills: 'Select Skills',
     addSkill: 'Add Skill',
     builtin: 'Built-in',
-    importFromGithub: 'Import from GitHub',
+    importFromGithub: 'Install Plugin from GitHub',
     createManually: 'Create Manually',
     uploadZip: 'Upload ZIP Package',
     uploadZipOnly: 'Only .zip skill packages are supported',
@@ -1468,6 +1468,18 @@ const enUS = {
         'Your bot has been created and connected to the AI pipeline. You can now manage it from the workbench.',
       backToWorkbench: 'Back to Workbench',
     },
+  },
+  addExtension: {
+    manualAdd: 'Manual Add',
+    uploadExtension: 'Drag & drop or click to upload',
+    uploadHint: 'Supports .zip (skills) and .lbpkg (plugins) files',
+    orContinueWith: 'or choose an action below',
+    installFromGithub: 'Install Plugin from GitHub',
+    installFromGithubHint: 'Install plugin extension from GitHub Release',
+    createSkill: 'Create New Skill',
+    createSkillHint: 'Manually create a new skill extension',
+    unsupportedFileType:
+      'Unsupported file type. Only .zip and .lbpkg files are supported',
   },
   errorPage: {
     unexpectedError: 'Something went wrong',
