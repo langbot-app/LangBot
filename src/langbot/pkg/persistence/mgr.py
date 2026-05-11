@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import datetime
 import typing
 
@@ -21,6 +22,9 @@ importutil.import_modules_in_pkg(persistence)
 
 class PersistenceManager:
     """Persistence module manager"""
+
+    _sqlite_locked_retry_attempts = 5
+    _sqlite_locked_retry_base_seconds = 0.1
 
     ap: app.Application
 
@@ -160,11 +164,29 @@ class PersistenceManager:
             self.ap.logger.error(f'Alembic migration failed: {e}', exc_info=True)
             raise
 
+    @staticmethod
+    def _is_sqlite_database_locked_error(exc: Exception) -> bool:
+        return isinstance(exc, sqlalchemy.exc.OperationalError) and 'database is locked' in str(exc).lower()
+
     async def execute_async(self, *args, **kwargs) -> sqlalchemy.engine.cursor.CursorResult:
-        async with self.get_db_engine().connect() as conn:
-            result = await conn.execute(*args, **kwargs)
-            await conn.commit()
-            return result
+        for attempt in range(self._sqlite_locked_retry_attempts):
+            try:
+                async with self.get_db_engine().connect() as conn:
+                    result = await conn.execute(*args, **kwargs)
+                    await conn.commit()
+                    return result
+            except sqlalchemy.exc.OperationalError as exc:
+                if not self._is_sqlite_database_locked_error(exc) or attempt >= self._sqlite_locked_retry_attempts - 1:
+                    raise
+
+                delay = self._sqlite_locked_retry_base_seconds * (2**attempt)
+                self.ap.logger.warning(
+                    f'SQLite database is locked, retrying query in {delay:.1f}s '
+                    f'({attempt + 1}/{self._sqlite_locked_retry_attempts})'
+                )
+                await asyncio.sleep(delay)
+
+        raise RuntimeError('unreachable sqlite locked retry state')
 
     def get_db_engine(self) -> sqlalchemy_asyncio.AsyncEngine:
         return self.db.get_engine()
