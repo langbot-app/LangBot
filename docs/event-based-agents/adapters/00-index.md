@@ -19,6 +19,7 @@ Current acceptance report: [EBA Adapter Acceptance Report](./acceptance-report.m
 | Discord | Migrated; partial plugin E2E, media-inbound gaps remain | [Discord](./discord.md) |
 | OneBot v11 / aiocqhttp | Migrated; Matcha UI plus protocol-level multi-component coverage | [OneBot v11 / aiocqhttp](./aiocqhttp.md) |
 | DingTalk | Migrated; partial plugin E2E, real UI inbound image/file verified; group gap remains | [DingTalk](./dingtalk.md) |
+| Lark / Feishu | Migrated; partial live text E2E, media-inbound gap remains | [Lark / Feishu](./lark.md) |
 
 ## Documentation Checklist
 

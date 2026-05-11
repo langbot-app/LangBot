@@ -1,0 +1,185 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+
+metadata:
+  name: lark-eba
+  label:
+    en_US: Lark / Feishu (EBA)
+    zh_Hans: 飞书 (EBA)
+    zh_Hant: 飛書 (EBA)
+    ja_JP: Lark (EBA)
+  description:
+    en_US: Lark/Feishu adapter (EBA architecture), supporting self-built/store apps and WebSocket/Webhook modes.
+    zh_Hans: 飞书适配器（EBA 架构版本），支持自建/商店应用和长连接/Webhook 两种通信模式。
+    zh_Hant: 飛書適配器（EBA 架構版本），支援自建/商店應用和長連線/Webhook 兩種通訊模式。
+    ja_JP: Lark アダプター（EBA アーキテクチャ）、カスタム/ストアアプリと WebSocket/Webhook モードをサポートします。
+  icon: lark.svg
+
+spec:
+  categories:
+    - popular
+    - china
+    - global
+  help_links:
+    zh: https://link.langbot.app/zh/platforms/lark
+    en: https://link.langbot.app/en/platforms/lark
+    ja: https://link.langbot.app/ja/platforms/lark
+  config:
+    - name: app_id
+      label:
+        en_US: App ID
+        zh_Hans: 应用ID
+        zh_Hant: 應用ID
+        ja_JP: アプリ ID
+      type: string
+      required: true
+      default: ""
+    - name: app_secret
+      label:
+        en_US: App Secret
+        zh_Hans: 应用密钥
+        zh_Hant: 應用密鑰
+        ja_JP: アプリシークレット
+      type: string
+      required: true
+      default: ""
+    - name: bot_name
+      label:
+        en_US: Bot Name
+        zh_Hans: 机器人名称
+        zh_Hant: 機器人名稱
+        ja_JP: ボット名
+      description:
+        en_US: Must match the Lark bot name so group mentions can be recognized.
+        zh_Hans: 必须与飞书机器人名称一致，否则机器人将无法在群内正常识别 @。
+        zh_Hant: 必須與飛書機器人名稱一致，否則機器人將無法在群組內正常識別 @。
+        ja_JP: グループメンションを認識するには Lark のボット名と一致する必要があります。
+      type: string
+      required: true
+      default: ""
+    - name: enable-webhook
+      label:
+        en_US: Enable Webhook Mode
+        zh_Hans: 启用 Webhook 模式
+        zh_Hant: 啟用 Webhook 模式
+        ja_JP: Webhook モードを有効化
+      description:
+        en_US: Enable request URL callback mode. Disable it to use WebSocket long connection mode.
+        zh_Hans: 启用 Request URL 回调模式。关闭时使用 WebSocket 长连接模式。
+        zh_Hant: 啟用 Request URL 回調模式。關閉時使用 WebSocket 長連線模式。
+        ja_JP: Request URL コールバックモードを有効化します。無効時は WebSocket 長期接続を使用します。
+      type: boolean
+      required: true
+      default: false
+    - name: webhook_url
+      label:
+        en_US: Webhook Callback URL
+        zh_Hans: Webhook 回调地址
+        zh_Hant: Webhook 回調地址
+        ja_JP: Webhook コールバック URL
+      description:
+        en_US: Copy this URL to the Lark app event subscription request URL.
+        zh_Hans: 复制此地址并粘贴到飞书应用事件订阅的 Request URL 中。
+        zh_Hant: 複製此地址並貼到飛書應用事件訂閱的 Request URL 中。
+        ja_JP: この URL を Lark アプリのイベント購読 Request URL に貼り付けてください。
+      type: webhook-url
+      required: false
+      default: ""
+      show_if:
+        field: enable-webhook
+        operator: eq
+        value: true
+    - name: encrypt-key
+      label:
+        en_US: Encrypt Key
+        zh_Hans: 加密密钥
+        zh_Hant: 加密密鑰
+        ja_JP: 暗号化キー
+      type: string
+      required: false
+      default: ""
+      show_if:
+        field: enable-webhook
+        operator: eq
+        value: true
+    - name: enable-stream-reply
+      label:
+        en_US: Enable Stream Reply Mode
+        zh_Hans: 启用飞书流式回复模式
+        zh_Hant: 啟用飛書串流回覆模式
+        ja_JP: ストリーミング返信モードを有効化
+      description:
+        en_US: If enabled, replies are rendered through an updating Lark card.
+        zh_Hans: 如果启用，将使用可更新的飞书卡片进行流式回复。
+        zh_Hant: 如果啟用，將使用可更新的飛書卡片進行串流回覆。
+        ja_JP: 有効にすると、更新可能な Lark カードでストリーミング返信します。
+      type: boolean
+      required: true
+      default: false
+    - name: app_type
+      label:
+        en_US: App Type
+        zh_Hans: 应用类型
+        zh_Hant: 應用類型
+        ja_JP: アプリタイプ
+      type: select
+      options:
+        - name: self
+          label:
+            en_US: Self-built Application
+            zh_Hans: 自建应用
+            zh_Hant: 自建應用
+            ja_JP: カスタムアプリ
+        - name: isv
+          label:
+            en_US: Store Application
+            zh_Hans: 商店应用
+            zh_Hant: 商店應用
+            ja_JP: ストアアプリ
+      required: false
+      default: self
+    - name: bot_added_welcome
+      label:
+        en_US: Bot Welcome Message
+        zh_Hans: 机器人进群欢迎语
+        zh_Hant: 機器人進群歡迎語
+        ja_JP: ボット参加時のウェルカムメッセージ
+      type: text
+      required: false
+      default: ""
+
+  supported_events:
+    - message.received
+    - bot.invited_to_group
+    - platform.specific
+
+  supported_apis:
+    required:
+      - send_message
+      - reply_message
+    optional:
+      - get_message
+      - get_group_info
+      - get_group_member_info
+      - get_user_info
+      - get_file_url
+      - call_platform_api
+
+  platform_specific_apis:
+    - action: check_tenant_access_token
+      description: { en_US: "Check whether the tenant access token can be obtained", zh_Hans: "检查 tenant access token 是否可获取" }
+    - action: refresh_app_access_token
+      description: { en_US: "Refresh store-app app access token", zh_Hans: "刷新商店应用 app access token" }
+    - action: refresh_tenant_access_token
+      description: { en_US: "Refresh store-app tenant access token", zh_Hans: "刷新商店应用 tenant access token" }
+    - action: get_chat
+      description: { en_US: "Get Lark chat metadata", zh_Hans: "获取飞书会话信息" }
+    - action: get_message
+      description: { en_US: "Get a Lark message", zh_Hans: "获取飞书消息" }
+    - action: get_message_resource
+      description: { en_US: "Download message image/file resource", zh_Hans: "下载消息图片/文件资源" }
+
+execution:
+  python:
+    path: ./adapter.py
+    attr: LarkAdapter
