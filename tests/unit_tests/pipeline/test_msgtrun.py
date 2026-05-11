@@ -133,7 +133,15 @@ class TestRoundTruncatorProcess:
 
     @pytest.mark.asyncio
     async def test_truncate_exceeds_limit(self):
-        """Messages exceeding max-round should be truncated."""
+        """Messages exceeding max-round should be truncated precisely.
+
+        Algorithm: traverse backwards, collect while current_round < max_round, count user messages as rounds.
+        For max_round=2 with 7 messages (u1, a1, u2, a2, u3, a3, u_current):
+        - Iterate: u_current(r=0<2, collect, r=1), a3(r=1<2, collect), u3(r=1<2, collect, r=2)
+        - a2: r=2 not < 2 → break
+        - Collected reverse: [u_current, a3, u3]
+        - Reversed: [u3, a3, u_current] = 3 messages
+        """
         msgtrun = get_msgtrun_module()
         entities = get_entities_module()
 
@@ -145,6 +153,7 @@ class TestRoundTruncatorProcess:
         await stage.initialize(pipeline_config)
 
         # Create query with many messages exceeding limit
+        # 7 messages = 3 full rounds + 1 current user
         query = text_query("current message")
         query.pipeline_config = pipeline_config
         query.messages = [
@@ -160,9 +169,17 @@ class TestRoundTruncatorProcess:
         result = await stage.process(query, 'ConversationMessageTruncator')
 
         assert result.result_type == entities.ResultType.CONTINUE
-        # Should only keep last 2 rounds (2 user messages)
-        # Each round = user + assistant, so 2 rounds = 4 messages + current = 5
-        assert len(result.new_query.messages) <= 5
+        # Should keep exactly 3 messages: message3, response3, current message
+        messages = result.new_query.messages
+        assert len(messages) == 3
+
+        # Verify exact message content
+        assert messages[0].role == 'user'
+        assert messages[0].content == 'message 3'
+        assert messages[1].role == 'assistant'
+        assert messages[1].content == 'response 3'
+        assert messages[2].role == 'user'
+        assert messages[2].content == 'current message'
 
     @pytest.mark.asyncio
     async def test_truncate_empty_messages(self):

@@ -264,3 +264,27 @@ class TestApplyEnvOverridesToConfig:
         assert result['system']['name'] == 'custom'
         assert result['system']['enable'] is False
         assert result['concurrency']['pipeline'] == 10
+
+    def test_webhook_prefix_override(self):
+        """Test overriding webhook_prefix via environment variable."""
+        load_config = get_load_config_module()
+
+        cfg = {'api': {'port': 5300, 'webhook_prefix': 'http://127.0.0.1:5300', 'extra_webhook_prefix': ''}}
+        env = {'API__WEBHOOK_PREFIX': 'https://example.com:8080'}
+
+        with patch.dict(os.environ, env, clear=True):
+            result = load_config._apply_env_overrides_to_config(cfg)
+
+        assert result['api']['webhook_prefix'] == 'https://example.com:8080'
+
+    def test_extra_webhook_prefix_override(self):
+        """Test overriding extra_webhook_prefix via environment variable."""
+        load_config = get_load_config_module()
+
+        cfg = {'api': {'port': 5300, 'webhook_prefix': 'http://127.0.0.1:5300', 'extra_webhook_prefix': ''}}
+        env = {'API__EXTRA_WEBHOOK_PREFIX': 'https://extra.example.com'}
+
+        with patch.dict(os.environ, env, clear=True):
+            result = load_config._apply_env_overrides_to_config(cfg)
+
+        assert result['api']['extra_webhook_prefix'] == 'https://extra.example.com'

@@ -167,30 +167,58 @@ class TestSQLiteMigrationFreshDatabase:
         await fresh_engine.dispose()
 
     @pytest.mark.asyncio
-    async def test_fresh_db_without_create_all_fails_gracefully(self, tmp_path):
+    async def test_fresh_db_without_create_all_behavior(self, tmp_path):
         """
-        Fresh database without create_all may fail or have empty tables.
+        Fresh database without create_all - test actual behavior.
 
-        This tests the edge case where migrations run on truly empty DB.
-        The behavior depends on migration script implementation.
+        This tests what happens when migrations run on truly empty DB.
+        The behavior is determined by Alembic and migration scripts.
+
+        EXPECTED: Either:
+        1. Migration succeeds (if scripts handle empty DB)
+        2. Migration fails with specific error (if scripts require tables)
+
+        IMPORTANT: This test verifies the ACTUAL behavior, not accepting
+        any arbitrary failure with try-except pass.
         """
         fresh_db_file = tmp_path / "test_empty_migrations.db"
         fresh_url = f"sqlite+aiosqlite:///{fresh_db_file}"
         fresh_engine = create_async_engine(fresh_url)
 
-        # Don't create tables - try upgrade directly
-        # This may fail if migrations expect tables to exist
+        # Capture the actual behavior
+        actual_result = None
+        actual_error = None
+
         try:
             await run_alembic_upgrade(fresh_engine, 'head')
             rev = await get_alembic_current(fresh_engine)
-            # If it succeeds, verify revision
-            assert rev is not None
-        except Exception:
-            # If it fails, that's acceptable behavior
-            # Migrations may require create_all first
-            pass
+            actual_result = rev
+        except Exception as e:
+            actual_error = e
 
         await fresh_engine.dispose()
+
+        # Verify specific behavior - one of two outcomes is expected
+        if actual_result is not None:
+            # Migration succeeded - verify revision exists
+            assert actual_result is not None, "Revision should exist after successful migration"
+        else:
+            # Migration failed - verify the error type is known
+            # Alembic typically raises specific errors for missing tables
+            assert actual_error is not None, "Error should be captured if migration failed"
+            # Log the error type for documentation (don't silently pass)
+            error_type = type(actual_error).__name__
+            # Acceptable error types for empty DB scenarios
+            acceptable_errors = [
+                'OperationalError',  # SQLite table not found
+                'ProgrammingError',  # SQLAlchemy errors
+                'CommandError',      # Alembic command errors
+            ]
+            assert error_type in acceptable_errors, (
+                f"Unexpected error type: {error_type}. "
+                f"This may indicate a regression in migration behavior. "
+                f"Error: {actual_error}"
+            )
 
 
 class TestSQLiteMigrationGetCurrent:
