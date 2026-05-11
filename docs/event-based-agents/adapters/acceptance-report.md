@@ -8,6 +8,7 @@ Scope:
 - `discord-eba`
 - `aiocqhttp-eba`
 - `dingtalk-eba`
+- `lark-eba`
 
 This report follows `acceptance-checklist.md`. Evidence levels are intentionally strict:
 
@@ -26,6 +27,7 @@ This report follows `acceptance-checklist.md`. Evidence levels are intentionally
 | Discord | Partial EBA acceptance | Real Discord UI covered group text, outbound image/file/quote/mention components, safe SDK APIs, and safe Discord platform APIs. Real UI inbound attachment/image/file/reply/mention was not completed. A later UI retry was blocked because the Discord client kept the send button disabled. |
 | OneBot v11 / aiocqhttp | Partial EBA acceptance | Matcha UI covered real group text and outbound supported components/APIs. Multi-component inbound `Source/Plain/At/Face/Image/Voice/File/Quote` was verified through the real OneBot reverse WebSocket adapter endpoint, but not through Matcha UI upload/send. Matcha blocks file-send and merged-forward APIs. |
 | DingTalk | Partial EBA acceptance | Real DingTalk UI covered private text, emoji-as-text inbound, private inbound image/file, outbound image/file/quote/mention fallback components, safe SDK APIs, and safe DingTalk platform APIs. Real UI inbound voice/quote and group trigger were not completed. |
+| Lark / Feishu | Partial EBA acceptance | EBA adapter structure, self-built/store app config, WebSocket/Webhook mode handling, converters, common APIs, platform APIs, and unit tests are in place. One real LangBot organization WebSocket private text event reached `EBAEventProbe`; outbound component sweep was visible in Feishu. Latest real UI image/file sends did not reach local plugin evidence, so media receive remains blocked. |
 
 Telegram and DingTalk now have real user-side UI image/file upload evidence in plugin JSONL. Discord and aiocqhttp do not yet have real UI inbound image/file evidence.
 
@@ -41,6 +43,8 @@ Telegram and DingTalk now have real user-side UI image/file upload evidence in p
 | aiocqhttp protocol | OneBot reverse WebSocket endpoint `127.0.0.1:2280/ws` | `data/temp/aiocqhttp-plugin-e2e-20260510-multiformat.jsonl` |
 | DingTalk | DingTalk Mac, `LangBot Team` org private chat | `data/temp/dingtalk-plugin-e2e-20260510-rerun.jsonl` |
 | DingTalk private media | DingTalk Mac, `LangBot Team` org private chat | `data/temp/dingtalk-plugin-e2e-media-ui.jsonl` |
+| Lark / Feishu unit | local mocked Feishu SDK/client paths | `tests/unit_tests/platform/test_lark_eba_adapter.py` |
+| Lark / Feishu partial live | Feishu Mac, LangBot organization `LangBotDev` private chat | `data/temp/lark-plugin-e2e-ws.jsonl` |
 
 All plugin runs used SDK standalone runtime ports `5400/5401`, LangBot `--standalone-runtime`, and the real plugin at `langbot-plugin-demo/EBAEventProbe`.
 
@@ -48,44 +52,44 @@ All plugin runs used SDK standalone runtime ports `5400/5401`, LangBot `--standa
 
 All four adapters deliver common SDK entities to plugins before LangBot core/plugin logic handles the event.
 
-| Requirement | Telegram | Discord | aiocqhttp | DingTalk |
-|-------------|----------|---------|-----------|----------|
-| `bot_uuid` filled | plugin-e2e | plugin-e2e | plugin-e2e | plugin-e2e |
-| `adapter_name` filled | `telegram` | `discord` | `aiocqhttp` | `dingtalk` |
-| common `MessageChain` delivered | `Plain`, group `At + Plain`, private `Image`, private `File` | `Source + Plain` | UI `Source + Plain`; protocol `Source + Plain + At + Face + Image + Voice + File + Quote + Plain` | `Source + Plain`, private `Source + Image`, private `Source + File` |
-| common user/group entities | plugin-e2e | plugin-e2e | plugin-e2e | plugin-e2e private user; group not completed |
-| raw native object isolation | raw data stays in `source_platform_object` | raw data stays in `source_platform_object` | raw data stays in `source_platform_object` | raw data stays in `source_platform_object` |
+| Requirement | Telegram | Discord | aiocqhttp | DingTalk | Lark / Feishu |
+|-------------|----------|---------|-----------|----------|---------------|
+| `bot_uuid` filled | plugin-e2e | plugin-e2e | plugin-e2e | plugin-e2e | live plugin-e2e pending |
+| `adapter_name` filled | `telegram` | `discord` | `aiocqhttp` | `dingtalk` | `lark-eba` in current unit/code; older live text evidence recorded `lark` before the naming fix |
+| common `MessageChain` delivered | `Plain`, group `At + Plain`, private `Image`, private `File` | `Source + Plain` | UI `Source + Plain`; protocol `Source + Plain + At + Face + Image + Voice + File + Quote + Plain` | `Source + Plain`, private `Source + Image`, private `Source + File` | live private `Source + Plain`; unit `Source + Plain + At/Image/File`; latest live image/file blocked |
+| common user/group entities | plugin-e2e | plugin-e2e | plugin-e2e | plugin-e2e private user; group not completed | live private user; unit private/group |
+| raw native object isolation | raw data stays in `source_platform_object` | raw data stays in `source_platform_object` | raw data stays in `source_platform_object` | raw data stays in `source_platform_object` | raw data stays in `source_platform_object` |
 
 ## Message Receive Components
 
-| Component | Telegram | Discord | aiocqhttp | DingTalk |
-|-----------|----------|---------|-----------|----------|
-| `Source` | design gap: event has message id but chain omits `Source` | plugin-e2e-ui | plugin-e2e-ui/protocol | plugin-e2e-ui |
-| `Plain` | plugin-e2e-ui private/group | plugin-e2e-ui | plugin-e2e-ui/protocol | plugin-e2e-ui |
-| `At` | plugin-e2e-ui group mention | unit; real UI mention not completed in latest run | plugin-e2e-protocol; unit | unit; group trigger not completed |
-| `AtAll` | not-supported | unit only | unit only | unit/send fallback only |
-| `Image` | plugin-e2e-ui private | converter/unit; real UI attachment not completed | plugin-e2e-protocol, not Matcha UI | plugin-e2e-ui private |
-| `Voice` | converter/unit; real UI inbound not completed | not-supported as native voice; audio is attachment/file | plugin-e2e-protocol, not Matcha UI | converter/unit; real UI inbound not completed |
-| `File` | plugin-e2e-ui private | converter/unit; real UI attachment not completed | plugin-e2e-protocol, not Matcha UI | plugin-e2e-ui private |
-| `Quote` | converter/unit; real UI reply not completed | unit; real UI reply not completed | plugin-e2e-protocol | converter/unit; real UI quote not completed |
-| `Face` | not-supported as common `Face` | not-supported as common `Face` | plugin-e2e-protocol | UI emoji becomes `Plain` (`[smile]` text), not `Face` |
-| `Forward` | not-supported inbound | not-supported inbound | unit; Matcha forward UI/action blocked | not-supported inbound |
-| Mixed chain | group `At + Plain`; media tested as separate messages | not completed inbound | plugin-e2e-protocol | media tested as separate messages; mixed inbound not completed |
+| Component | Telegram | Discord | aiocqhttp | DingTalk | Lark / Feishu |
+|-----------|----------|---------|-----------|----------|---------------|
+| `Source` | design gap: event has message id but chain omits `Source` | plugin-e2e-ui | plugin-e2e-ui/protocol | plugin-e2e-ui | plugin-e2e-ui private text |
+| `Plain` | plugin-e2e-ui private/group | plugin-e2e-ui | plugin-e2e-ui/protocol | plugin-e2e-ui | plugin-e2e-ui private text |
+| `At` | plugin-e2e-ui group mention | unit; real UI mention not completed in latest run | plugin-e2e-protocol; unit | unit; group trigger not completed | unit; group trigger not completed |
+| `AtAll` | not-supported | unit only | unit only | unit/send fallback only | unit only |
+| `Image` | plugin-e2e-ui private | converter/unit; real UI attachment not completed | plugin-e2e-protocol, not Matcha UI | plugin-e2e-ui private | unit; real UI image sent but not observed in plugin evidence |
+| `Voice` | converter/unit; real UI inbound not completed | not-supported as native voice; audio is attachment/file | plugin-e2e-protocol, not Matcha UI | converter/unit; real UI inbound not completed | unit; real UI inbound not completed |
+| `File` | plugin-e2e-ui private | converter/unit; real UI attachment not completed | plugin-e2e-protocol, not Matcha UI | plugin-e2e-ui private | unit; real UI file sent but not observed in plugin evidence |
+| `Quote` | converter/unit; real UI reply not completed | unit; real UI reply not completed | plugin-e2e-protocol | converter/unit; real UI quote not completed | unit/API-backed quote lookup; real UI quote not completed |
+| `Face` | not-supported as common `Face` | not-supported as common `Face` | plugin-e2e-protocol | UI emoji becomes `Plain` (`[smile]` text), not `Face` | not-supported as common `Face` |
+| `Forward` | not-supported inbound | not-supported inbound | unit; Matcha forward UI/action blocked | not-supported inbound | not-supported inbound |
+| Mixed chain | group `At + Plain`; media tested as separate messages | not completed inbound | plugin-e2e-protocol | media tested as separate messages; mixed inbound not completed | unit only |
 
 ## Message Send Components
 
-| Component | Telegram | Discord | aiocqhttp | DingTalk |
-|-----------|----------|---------|-----------|----------|
-| `Plain` | plugin-e2e-outbound | plugin-e2e-outbound | plugin-e2e-outbound | plugin-e2e-outbound |
-| `At` | plugin-e2e-outbound equivalent | plugin-e2e-outbound | plugin-e2e-outbound | plugin-e2e-outbound fallback/equivalent |
-| `AtAll` | plugin-e2e-outbound fallback | plugin-e2e-outbound | plugin-e2e-outbound | plugin-e2e-outbound fallback |
-| `Image` | plugin-e2e-outbound | plugin-e2e-outbound | plugin-e2e-outbound | plugin-e2e-outbound |
-| `Voice` | not-supported in current send converter | not-supported as native voice | converter path; not completed against Matcha UI | fallback as file/text depending DingTalk media support |
-| `File` | plugin-e2e-outbound | plugin-e2e-outbound | blocked by Matcha endpoint error | plugin-e2e-outbound |
-| `Quote` | plugin-e2e-outbound | plugin-e2e-outbound | plugin-e2e-outbound | plugin-e2e-outbound fallback |
-| `Face` | not-supported | not-supported | plugin-e2e-outbound attempted in mixed chain | fallback text |
-| `Forward` | flattened fallback | flattened fallback | blocked by Matcha unsupported action | flattened fallback |
-| Mixed chain | plugin-e2e-outbound | plugin-e2e-outbound | plugin-e2e-outbound except blocked file/forward | plugin-e2e-outbound |
+| Component | Telegram | Discord | aiocqhttp | DingTalk | Lark / Feishu |
+|-----------|----------|---------|-----------|----------|---------------|
+| `Plain` | plugin-e2e-outbound | plugin-e2e-outbound | plugin-e2e-outbound | plugin-e2e-outbound | plugin-e2e-outbound |
+| `At` | plugin-e2e-outbound equivalent | plugin-e2e-outbound | plugin-e2e-outbound | plugin-e2e-outbound fallback/equivalent | plugin-e2e-outbound |
+| `AtAll` | plugin-e2e-outbound fallback | plugin-e2e-outbound | plugin-e2e-outbound | plugin-e2e-outbound fallback | unit; group live not completed |
+| `Image` | plugin-e2e-outbound | plugin-e2e-outbound | plugin-e2e-outbound | plugin-e2e-outbound | plugin-e2e-outbound |
+| `Voice` | not-supported in current send converter | not-supported as native voice | converter path; not completed against Matcha UI | fallback as file/text depending DingTalk media support | converter path; live not completed |
+| `File` | plugin-e2e-outbound | plugin-e2e-outbound | blocked by Matcha endpoint error | plugin-e2e-outbound | plugin-e2e-outbound |
+| `Quote` | plugin-e2e-outbound | plugin-e2e-outbound | plugin-e2e-outbound | plugin-e2e-outbound fallback | plugin-e2e-outbound fallback |
+| `Face` | not-supported | not-supported | plugin-e2e-outbound attempted in mixed chain | fallback text | not-supported |
+| `Forward` | flattened fallback | flattened fallback | blocked by Matcha unsupported action | flattened fallback | plugin-e2e-outbound flattened fallback |
+| Mixed chain | plugin-e2e-outbound | plugin-e2e-outbound | plugin-e2e-outbound except blocked file/forward | plugin-e2e-outbound | plugin-e2e-outbound |
 
 ## Event Acceptance
 
@@ -141,9 +145,10 @@ The probe logs set `ok=true` when the sweep completed with only expected unsuppo
 - Discord still requires real UI inbound image/file upload evidence before it can be called media-complete.
 - aiocqhttp has rich inbound component evidence only at the OneBot reverse WebSocket boundary; Matcha UI did not provide image/file upload coverage.
 - DingTalk group trigger remains unclosed; current evidence is private chat only.
+- Lark / Feishu requires a clean follow-up live pass: the latest LangBot organization WebSocket run connected, but UI-sent text/image/file after the loop-scheduling fix did not append plugin events.
 - Discord UI retry on May 10, 2026 was blocked by the client keeping the send button disabled even after text was entered.
 - Destructive moderation and leave APIs are intentionally blocked until disposable users/groups are available.
 
 ## Conclusion
 
-The EBA conversion path is implemented and partially proven for all four adapters. Telegram and DingTalk now have real UI private-chat image/file inbound evidence. Discord and aiocqhttp still have explicit UI-level media gaps, so the overall adapter set remains partial acceptance rather than production-complete media acceptance.
+The EBA conversion path is implemented and partially proven for the migrated adapters. Telegram and DingTalk now have real UI private-chat image/file inbound evidence. Discord, aiocqhttp, and Lark / Feishu still have explicit UI-level media gaps, so the overall adapter set remains partial acceptance rather than production-complete media acceptance.
