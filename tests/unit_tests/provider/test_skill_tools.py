@@ -92,12 +92,7 @@ class TestSkillManagerActivation:
             'beta': _make_skill_data(name='beta'),
         }
 
-        response = (
-            '[ACTIVATE_SKILL: alpha]\n'
-            '[ACTIVATE_SKILL: beta]\n'
-            '[ACTIVATE_SKILL: alpha]\n'
-            'Let me handle this.'
-        )
+        response = '[ACTIVATE_SKILL: alpha]\n[ACTIVATE_SKILL: beta]\n[ACTIVATE_SKILL: alpha]\nLet me handle this.'
 
         assert mgr.detect_skill_activations(response) == ['alpha', 'beta']
         assert mgr.detect_skill_activation(response) == 'alpha'
@@ -240,7 +235,9 @@ class TestSkillAuthoringToolLoader:
 
         ap = _make_ap()
         ap.skill_service = SimpleNamespace(
-            create_skill=AsyncMock(return_value=_make_skill_data(name='prompt-skill', package_root='/data/skills/prompt-skill')),
+            create_skill=AsyncMock(
+                return_value=_make_skill_data(name='prompt-skill', package_root='/data/skills/prompt-skill')
+            ),
             reload_skills=AsyncMock(),
             list_skills=AsyncMock(return_value=[]),
         )
@@ -329,7 +326,9 @@ class TestSkillAuthoringToolLoader:
         ap = _make_ap()
         ap.skill_service = SimpleNamespace(
             create_skill=AsyncMock(),
-            update_skill=AsyncMock(return_value=_make_skill_data(name='time-now', package_root='/data/skills/time-now')),
+            update_skill=AsyncMock(
+                return_value=_make_skill_data(name='time-now', package_root='/data/skills/time-now')
+            ),
             reload_skills=AsyncMock(),
             list_skills=AsyncMock(return_value=[]),
         )
@@ -393,7 +392,7 @@ class TestSkillAuthoringToolLoader:
         )
 
         ap = _make_ap()
-        ap.box_service = SimpleNamespace(default_host_workspace='/tmp/langbot-workspace')
+        ap.box_service = SimpleNamespace(default_workspace='/tmp/langbot-workspace')
         ap.skill_service = SimpleNamespace(
             scan_directory=Mock(
                 return_value={
@@ -413,7 +412,7 @@ class TestSkillAuthoringToolLoader:
         await loader.initialize()
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ap.box_service.default_host_workspace = tmpdir
+            ap.box_service.default_workspace = tmpdir
             repo_dir = os.path.join(tmpdir, 'repos', 'cloned-skill')
             os.makedirs(repo_dir)
 
@@ -445,7 +444,7 @@ class TestSkillAuthoringToolLoader:
         )
 
         ap = _make_ap()
-        ap.box_service = SimpleNamespace(default_host_workspace='/tmp/langbot-workspace')
+        ap.box_service = SimpleNamespace(default_workspace='/tmp/langbot-workspace')
         ap.skill_service = SimpleNamespace(
             scan_directory=Mock(),
             create_skill=AsyncMock(),
@@ -501,7 +500,7 @@ class TestNativeToolLoaderSkillPaths:
                 f.write('demo instructions')
 
             ap = _make_ap()
-            ap.box_service = SimpleNamespace(available=True, default_host_workspace=tmpdir)
+            ap.box_service = SimpleNamespace(available=True, default_workspace=tmpdir)
             ap.skill_mgr = SimpleNamespace(skills={'demo': _make_skill_data(name='demo', package_root=tmpdir)})
             loader = NativeToolLoader(ap)
 
@@ -522,7 +521,7 @@ class TestNativeToolLoaderSkillPaths:
             ap = _make_ap()
             ap.box_service = SimpleNamespace(
                 available=True,
-                default_host_workspace=tmpdir,
+                default_workspace=tmpdir,
                 execute_spec_payload=AsyncMock(return_value={'ok': True}),
             )
             ap.skill_mgr = SimpleNamespace(refresh_skill_from_disk=Mock())
@@ -555,7 +554,7 @@ class TestNativeToolLoaderSkillPaths:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             ap = _make_ap()
-            ap.box_service = SimpleNamespace(available=True, default_host_workspace=tmpdir)
+            ap.box_service = SimpleNamespace(available=True, default_workspace=tmpdir)
             ap.skill_mgr = SimpleNamespace(skills={'demo': _make_skill_data(name='demo', package_root=tmpdir)})
             loader = NativeToolLoader(ap)
 

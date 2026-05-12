@@ -12,13 +12,6 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from '@/components/ui/card';
-import {
   Form,
   FormControl,
   FormDescription,
@@ -94,18 +87,16 @@ function StatusDisplay({
 // Tools list component
 function ToolsList({ tools }: { tools: MCPTool[] }) {
   return (
-    <div className="space-y-2 max-h-[300px] overflow-y-auto">
+    <div className="max-h-[300px] space-y-1 overflow-y-auto">
       {tools.map((tool, index) => (
-        <Card key={index} className="py-3 shadow-none">
-          <CardHeader>
-            <CardTitle className="text-sm">{tool.name}</CardTitle>
-            {tool.description && (
-              <CardDescription className="text-xs">
-                {tool.description}
-              </CardDescription>
-            )}
-          </CardHeader>
-        </Card>
+        <div key={index} className="rounded-md px-1 py-2">
+          <div className="text-sm font-medium">{tool.name}</div>
+          {tool.description && (
+            <div className="mt-0.5 text-xs text-muted-foreground">
+              {tool.description}
+            </div>
+          )}
+        </div>
       ))}
     </div>
   );
@@ -164,10 +155,14 @@ type FormValues = z.infer<ReturnType<typeof getFormSchema>> & {
   ssereadtimeout: number;
 };
 
+export type MCPFormDraft = Partial<FormValues>;
+
 interface MCPFormProps {
   initServerName?: string;
+  initialDraft?: MCPFormDraft;
   onFormSubmit: () => void;
   onNewServerCreated: (serverName: string) => void;
+  onDraftChange?: (draft: MCPFormDraft) => void;
   onDirtyChange?: (dirty: boolean) => void;
   onTestingChange?: (testing: boolean) => void;
 }
@@ -181,8 +176,10 @@ export interface MCPFormHandle {
 const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
   {
     initServerName,
+    initialDraft,
     onFormSubmit,
     onNewServerCreated,
+    onDraftChange,
     onDirtyChange,
     onTestingChange,
   },
@@ -191,6 +188,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
   const { t } = useTranslation();
   const formSchema = getFormSchema(t);
   const isEditMode = !!initServerName;
+  const initialDraftRef = useRef(initialDraft);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema) as unknown as Resolver<FormValues>,
@@ -203,6 +201,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
       timeout: 30,
       ssereadtimeout: 300,
       extra_args: [],
+      ...initialDraftRef.current,
     },
   });
 
@@ -259,9 +258,10 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
         timeout: 30,
         ssereadtimeout: 300,
         extra_args: [],
+        ...initialDraftRef.current,
       });
-      setExtraArgs([]);
-      setStdioArgs([]);
+      setExtraArgs(initialDraftRef.current?.extra_args ?? []);
+      setStdioArgs(initialDraftRef.current?.args ?? []);
       setRuntimeInfo(null);
       isInitializing.current = false;
     }
@@ -273,6 +273,20 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
       }
     };
   }, [initServerName]);
+
+  useEffect(() => {
+    if (!onDraftChange || isEditMode) return;
+
+    const subscription = form.watch((values) => {
+      onDraftChange({
+        ...values,
+        extra_args: extraArgs,
+        args: stdioArgs,
+      } as MCPFormDraft);
+    });
+
+    return () => subscription.unsubscribe();
+  }, [form, isEditMode, onDraftChange, extraArgs, stdioArgs]);
 
   // Poll for updates when runtime_info status is CONNECTING
   useEffect(() => {
@@ -595,126 +609,136 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
       <form
         id="mcp-form"
         onSubmit={form.handleSubmit(handleFormSubmit)}
-        className="space-y-6"
+        className="space-y-5"
       >
         {/* Runtime info: status + tools (edit mode only) */}
         {isEditMode && runtimeInfo && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">{t('mcp.title')}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {(mcpTesting ||
-                runtimeInfo.status !== MCPSessionStatus.CONNECTED) && (
-                <div className="p-3 rounded-lg border">
-                  <StatusDisplay
-                    testing={mcpTesting}
-                    runtimeInfo={runtimeInfo}
-                    t={t}
-                  />
-                </div>
-              )}
+          <section className="space-y-3">
+            <h3 className="text-sm font-medium">{t('mcp.title')}</h3>
+            {(mcpTesting ||
+              runtimeInfo.status !== MCPSessionStatus.CONNECTED) && (
+              <div className="rounded-md bg-muted/40 p-3">
+                <StatusDisplay
+                  testing={mcpTesting}
+                  runtimeInfo={runtimeInfo}
+                  t={t}
+                />
+              </div>
+            )}
 
-              {!mcpTesting &&
-                runtimeInfo.status === MCPSessionStatus.CONNECTED &&
-                runtimeInfo.tools?.length > 0 && (
-                  <>
-                    <div className="text-sm font-medium">
-                      {t('mcp.toolCount', {
-                        count: runtimeInfo.tools?.length || 0,
-                      })}
-                    </div>
-                    <ToolsList tools={runtimeInfo.tools} />
-                  </>
-                )}
-            </CardContent>
-          </Card>
+            {!mcpTesting &&
+              runtimeInfo.status === MCPSessionStatus.CONNECTED &&
+              runtimeInfo.tools?.length > 0 && (
+                <>
+                  <div className="text-sm font-medium">
+                    {t('mcp.toolCount', {
+                      count: runtimeInfo.tools?.length || 0,
+                    })}
+                  </div>
+                  <ToolsList tools={runtimeInfo.tools} />
+                </>
+              )}
+          </section>
         )}
 
         {/* Server configuration */}
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              {isEditMode ? t('mcp.editServer') : t('mcp.createServer')}
-            </CardTitle>
-            <CardDescription>
-              {t('mcp.extraParametersDescription')}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    {t('mcp.name')}
-                    <span className="text-destructive">*</span>
-                  </FormLabel>
+        <section className="space-y-4">
+          {isEditMode && (
+            <h3 className="text-sm font-medium">{t('mcp.editServer')}</h3>
+          )}
+          <FormField
+            control={form.control}
+            name="name"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>
+                  {t('mcp.name')}
+                  <span className="text-destructive">*</span>
+                </FormLabel>
+                <FormControl>
+                  <Input {...field} disabled={isEditMode} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="mode"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('mcp.serverMode')}</FormLabel>
+                <Select
+                  onValueChange={field.onChange}
+                  defaultValue={field.value}
+                  value={field.value}
+                >
                   <FormControl>
-                    <Input {...field} disabled={isEditMode} />
+                    <SelectTrigger>
+                      <SelectValue placeholder={t('mcp.selectMode')} />
+                    </SelectTrigger>
                   </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                  <SelectContent>
+                    <SelectItem value="http">{t('mcp.http')}</SelectItem>
+                    <SelectItem value="stdio">{t('mcp.stdio')}</SelectItem>
+                    <SelectItem value="sse">{t('mcp.sse')}</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
 
-            <FormField
-              control={form.control}
-              name="mode"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('mcp.serverMode')}</FormLabel>
-                  <Select
-                    onValueChange={field.onChange}
-                    defaultValue={field.value}
-                    value={field.value}
-                  >
+          {(watchMode === 'sse' || watchMode === 'http') && (
+            <>
+              <FormField
+                control={form.control}
+                name="url"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      {t('mcp.url')}
+                      <span className="text-destructive">*</span>
+                    </FormLabel>
                     <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder={t('mcp.selectMode')} />
-                      </SelectTrigger>
+                      <Input {...field} />
                     </FormControl>
-                    <SelectContent>
-                      <SelectItem value="http">{t('mcp.http')}</SelectItem>
-                      <SelectItem value="stdio">{t('mcp.stdio')}</SelectItem>
-                      <SelectItem value="sse">{t('mcp.sse')}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-            {(watchMode === 'sse' || watchMode === 'http') && (
-              <>
+              <FormField
+                control={form.control}
+                name="timeout"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('mcp.timeout')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        placeholder={t('mcp.timeout')}
+                        {...field}
+                        onChange={(e) => field.onChange(Number(e.target.value))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {watchMode === 'sse' && (
                 <FormField
                   control={form.control}
-                  name="url"
+                  name="ssereadtimeout"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>
-                        {t('mcp.url')}
-                        <span className="text-destructive">*</span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="timeout"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('mcp.timeout')}</FormLabel>
+                      <FormLabel>{t('mcp.sseTimeout')}</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
-                          placeholder={t('mcp.timeout')}
+                          placeholder={t('mcp.sseTimeoutDescription')}
                           {...field}
                           onChange={(e) =>
                             field.onChange(Number(e.target.value))
@@ -725,133 +749,104 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
                     </FormItem>
                   )}
                 />
+              )}
+            </>
+          )}
 
-                {watchMode === 'sse' && (
-                  <FormField
-                    control={form.control}
-                    name="ssereadtimeout"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('mcp.sseTimeout')}</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            placeholder={t('mcp.sseTimeoutDescription')}
-                            {...field}
-                            onChange={(e) =>
-                              field.onChange(Number(e.target.value))
-                            }
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+          {watchMode === 'stdio' && (
+            <>
+              <FormField
+                control={form.control}
+                name="command"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      {t('mcp.command')}
+                      <span className="text-destructive">*</span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
                 )}
-              </>
-            )}
+              />
 
-            {watchMode === 'stdio' && (
-              <>
-                <FormField
-                  control={form.control}
-                  name="command"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>
-                        {t('mcp.command')}
-                        <span className="text-destructive">*</span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+              <FormItem>
+                <FormLabel>{t('mcp.args')}</FormLabel>
+                <div className="space-y-2">
+                  {stdioArgs.map((arg, index) => (
+                    <div key={index} className="flex gap-2">
+                      <Input
+                        placeholder={t('mcp.args')}
+                        value={arg.value}
+                        onChange={(e) => updateStdioArg(index, e.target.value)}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="shrink-0 text-red-500 hover:text-red-600"
+                        onClick={() => removeStdioArg(index)}
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </Button>
+                    </div>
+                  ))}
+                  <Button type="button" variant="outline" onClick={addStdioArg}>
+                    {t('mcp.addArgument')}
+                  </Button>
+                </div>
+              </FormItem>
+            </>
+          )}
 
-                <FormItem>
-                  <FormLabel>{t('mcp.args')}</FormLabel>
-                  <div className="space-y-2">
-                    {stdioArgs.map((arg, index) => (
-                      <div key={index} className="flex gap-2">
-                        <Input
-                          placeholder={t('mcp.args')}
-                          value={arg.value}
-                          onChange={(e) =>
-                            updateStdioArg(index, e.target.value)
-                          }
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="shrink-0 text-red-500 hover:text-red-600"
-                          onClick={() => removeStdioArg(index)}
-                        >
-                          <Trash2 className="w-5 h-5" />
-                        </Button>
-                      </div>
-                    ))}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={addStdioArg}
-                    >
-                      {t('mcp.addArgument')}
-                    </Button>
-                  </div>
-                </FormItem>
-              </>
-            )}
-
-            <FormItem>
-              <FormLabel>
+          <FormItem>
+            <FormLabel>
+              {watchMode === 'sse' || watchMode === 'http'
+                ? t('mcp.headers')
+                : t('mcp.env')}
+            </FormLabel>
+            <div className="space-y-2">
+              {extraArgs.map((arg, index) => (
+                <div key={index} className="flex gap-2">
+                  <Input
+                    placeholder={t('models.keyName')}
+                    value={arg.key}
+                    onChange={(e) =>
+                      updateExtraArg(index, 'key', e.target.value)
+                    }
+                  />
+                  <Input
+                    placeholder={t('models.value')}
+                    value={arg.value}
+                    onChange={(e) =>
+                      updateExtraArg(index, 'value', e.target.value)
+                    }
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="shrink-0 text-red-500 hover:text-red-600"
+                    onClick={() => removeExtraArg(index)}
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </Button>
+                </div>
+              ))}
+              <Button type="button" variant="outline" onClick={addExtraArg}>
                 {watchMode === 'sse' || watchMode === 'http'
-                  ? t('mcp.headers')
-                  : t('mcp.env')}
-              </FormLabel>
-              <div className="space-y-2">
-                {extraArgs.map((arg, index) => (
-                  <div key={index} className="flex gap-2">
-                    <Input
-                      placeholder={t('models.keyName')}
-                      value={arg.key}
-                      onChange={(e) =>
-                        updateExtraArg(index, 'key', e.target.value)
-                      }
-                    />
-                    <Input
-                      placeholder={t('models.value')}
-                      value={arg.value}
-                      onChange={(e) =>
-                        updateExtraArg(index, 'value', e.target.value)
-                      }
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="shrink-0 text-red-500 hover:text-red-600"
-                      onClick={() => removeExtraArg(index)}
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </Button>
-                  </div>
-                ))}
-                <Button type="button" variant="outline" onClick={addExtraArg}>
-                  {watchMode === 'sse' || watchMode === 'http'
-                    ? t('mcp.addHeader')
-                    : t('mcp.addEnvVar')}
-                </Button>
-              </div>
-              <FormDescription>
-                {t('mcp.extraParametersDescription')}
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          </CardContent>
-        </Card>
+                  ? t('mcp.addHeader')
+                  : t('mcp.addEnvVar')}
+              </Button>
+            </div>
+            <FormDescription>
+              {t('mcp.extraParametersDescription')}
+            </FormDescription>
+            <FormMessage />
+          </FormItem>
+        </section>
       </form>
     </Form>
   );

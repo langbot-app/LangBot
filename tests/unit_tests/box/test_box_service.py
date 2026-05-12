@@ -67,11 +67,14 @@ class _InProcessBoxRuntimeClient(BoxRuntimeClient):
     async def start_managed_process(self, session_id: str, spec: BoxManagedProcessSpec):
         return await self._runtime.start_managed_process(session_id, spec)
 
-    async def get_managed_process(self, session_id: str):
-        return self._runtime.get_managed_process(session_id)
+    async def get_managed_process(self, session_id: str, process_id: str = 'default'):
+        return self._runtime.get_managed_process(session_id, process_id)
 
     async def get_session(self, session_id: str):
         return self._runtime.get_session(session_id)
+
+    async def init(self, config: dict) -> None:
+        self._runtime.init(config)
 
 
 class FakeBackend(BaseSandboxBackend):
@@ -141,19 +144,24 @@ def make_query(query_id: int = 42) -> pipeline_query.Query:
 
 def make_app(
     logger: Mock,
-    allowed_host_mount_roots: list[str] | None = None,
+    allowed_mount_roots: list[str] | None = None,
     profile: str = 'default',
-    shared_host_root: str = '',
+    host_root: str = '',
     workspace_quota_mb: int | None = None,
 ):
     box_config = {
-        'profile': profile,
-        'shared_host_root': shared_host_root,
-        'allowed_host_mount_roots': allowed_host_mount_roots or [],
-        'default_host_workspace': '',
+        'backend': 'local',
+        'runtime': {'endpoint': ''},
+        'local': {
+            'profile': profile,
+            'host_root': host_root,
+            'allowed_mount_roots': allowed_mount_roots or [],
+            'default_workspace': '',
+        },
+        'e2b': {'api_key': '', 'api_url': '', 'template': ''},
     }
     if workspace_quota_mb is not None:
-        box_config['workspace_quota_mb'] = workspace_quota_mb
+        box_config['local']['workspace_quota_mb'] = workspace_quota_mb
 
     return SimpleNamespace(
         logger=logger,
@@ -293,14 +301,14 @@ async def test_box_service_allows_host_mount_under_configured_root(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_box_service_uses_default_host_workspace_when_host_path_omitted(tmp_path):
+async def test_box_service_uses_default_workspace_when_host_path_omitted(tmp_path):
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
     host_dir = tmp_path / 'default-workspace'
     host_dir.mkdir()
     app = make_app(logger, [str(tmp_path)])
-    app.instance_config.data['box']['default_host_workspace'] = str(host_dir)
+    app.instance_config.data['box']['local']['default_workspace'] = str(host_dir)
     service = BoxService(app, client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
@@ -313,36 +321,36 @@ async def test_box_service_uses_default_host_workspace_when_host_path_omitted(tm
 
 
 @pytest.mark.asyncio
-async def test_box_service_creates_default_host_workspace_on_initialize(tmp_path):
+async def test_box_service_creates_default_workspace_on_initialize(tmp_path):
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
     allowed_root = tmp_path / 'allowed-root'
     allowed_root.mkdir()
-    default_host_workspace = allowed_root / 'default-workspace'
+    default_workspace = allowed_root / 'default-workspace'
     app = make_app(logger, [str(allowed_root)])
-    app.instance_config.data['box']['default_host_workspace'] = str(default_host_workspace)
+    app.instance_config.data['box']['local']['default_workspace'] = str(default_workspace)
     service = BoxService(app, client=_InProcessBoxRuntimeClient(logger, runtime))
 
     await service.initialize()
 
-    assert default_host_workspace.is_dir()
+    assert default_workspace.is_dir()
 
 
 @pytest.mark.asyncio
-async def test_box_service_derives_workspace_and_allowed_root_from_shared_host_root(tmp_path):
+async def test_box_service_derives_workspace_and_allowed_root_from_host_root(tmp_path):
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
     shared_root = tmp_path / 'shared-box-root'
-    app = make_app(logger, shared_host_root=str(shared_root))
+    app = make_app(logger, host_root=str(shared_root))
     service = BoxService(app, client=_InProcessBoxRuntimeClient(logger, runtime))
 
     await service.initialize()
 
-    assert service.shared_host_root == os.path.realpath(shared_root)
-    assert service.default_host_workspace == os.path.realpath(shared_root / 'default')
-    assert service.allowed_host_mount_roots == [os.path.realpath(shared_root)]
+    assert service.host_root == os.path.realpath(shared_root)
+    assert service.default_workspace == os.path.realpath(shared_root / 'default')
+    assert service.allowed_mount_roots == [os.path.realpath(shared_root)]
     assert (shared_root / 'default').is_dir()
 
 
@@ -557,9 +565,10 @@ async def test_profile_default_provides_defaults():
 
     assert result['ok'] is True
     spec = backend.start_specs[0]
+    profile = BUILTIN_PROFILES['default']
     assert spec.network == BoxNetworkMode.OFF
-    assert spec.image == 'python:3.11-slim'
-    assert spec.timeout_sec == 30
+    assert spec.image == profile.image
+    assert spec.timeout_sec == profile.timeout_sec
 
 
 @pytest.mark.asyncio
@@ -698,7 +707,7 @@ async def test_box_service_applies_workspace_quota_from_config(tmp_path):
     host_dir = tmp_path / 'default-workspace'
     host_dir.mkdir()
     app = make_app(logger, [str(tmp_path)], workspace_quota_mb=32)
-    app.instance_config.data['box']['default_host_workspace'] = str(host_dir)
+    app.instance_config.data['box']['local']['default_workspace'] = str(host_dir)
     service = BoxService(app, client=_InProcessBoxRuntimeClient(logger, runtime))
 
     await service.initialize()
@@ -716,7 +725,7 @@ async def test_box_service_rejects_execution_when_workspace_already_exceeds_quot
     host_dir.mkdir()
     (host_dir / 'already-too-large.bin').write_bytes(b'x' * (2 * 1024 * 1024))
     app = make_app(logger, [str(tmp_path)], workspace_quota_mb=1)
-    app.instance_config.data['box']['default_host_workspace'] = str(host_dir)
+    app.instance_config.data['box']['local']['default_workspace'] = str(host_dir)
     service = BoxService(app, client=_InProcessBoxRuntimeClient(logger, runtime))
 
     await service.initialize()
@@ -735,7 +744,7 @@ async def test_box_service_rejects_and_cleans_up_when_execution_exceeds_workspac
     host_dir = tmp_path / 'quota-workspace-post'
     host_dir.mkdir()
     app = make_app(logger, [str(tmp_path)], workspace_quota_mb=1)
-    app.instance_config.data['box']['default_host_workspace'] = str(host_dir)
+    app.instance_config.data['box']['local']['default_workspace'] = str(host_dir)
     service = BoxService(app, client=_InProcessBoxRuntimeClient(logger, runtime))
 
     await service.initialize()

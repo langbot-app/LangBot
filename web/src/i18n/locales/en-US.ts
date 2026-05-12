@@ -1347,6 +1347,8 @@ const enUS = {
     skillDescription: 'Skill Description',
     skillInstructions: 'Instructions',
     autoActivate: 'Auto Activate',
+    autoActivateDescription:
+      'When enabled, the Agent may match and activate this skill based on its description during conversations.',
     saveSuccess: 'Saved successfully',
     saveError: 'Save failed: ',
     createSuccess: 'Created successfully',
@@ -1475,6 +1477,7 @@ const enUS = {
     uploadExtension: 'Drag & drop or click to upload',
     uploadHint: 'Supports .zip (skills) and .lbpkg (plugins) files',
     orContinueWith: 'or choose an action below',
+    addMCPServerHint: 'Connect an MCP tool server extension',
     installFromGithub: 'Install Plugin from GitHub',
     installFromGithubHint: 'Install plugin extension from GitHub Release',
     createSkill: 'Create New Skill',

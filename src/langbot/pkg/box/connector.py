@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 import typing
@@ -13,6 +14,7 @@ from langbot_plugin.runtime.io.connection import Connection
 
 from langbot_plugin.box.client import ActionRPCBoxClient
 from langbot_plugin.box.errors import BoxRuntimeUnavailableError
+from langbot_plugin.box.actions import LangBotToBoxAction
 
 from ..utils import platform
 from ..utils.managed_runtime import ManagedRuntimeConnector
@@ -27,12 +29,25 @@ _DEFAULT_PORT = 5410
 
 _HEARTBEAT_INTERVAL_SEC = 20
 
+# Top-level keys under ``box`` that are LangBot-internal and should not be
+# forwarded to the Box runtime.
+_INTERNAL_BOX_CONFIG_KEYS = frozenset({'runtime'})
+
 
 def _get_box_config(ap) -> dict:
     """Return the 'box' section from instance config, with safe fallbacks."""
     instance_config = getattr(ap, 'instance_config', None)
     config_data = getattr(instance_config, 'data', {}) if instance_config is not None else {}
     return config_data.get('box', {})
+
+
+def _get_runtime_endpoint(box_cfg: dict) -> str:
+    runtime_cfg = box_cfg.get('runtime') or {}
+    return str(runtime_cfg.get('endpoint', '')).strip()
+
+
+def _filter_config_for_runtime(box_cfg: dict) -> dict:
+    return {k: v for k, v in box_cfg.items() if k not in _INTERNAL_BOX_CONFIG_KEYS}
 
 
 def resolve_box_ws_relay_url(ap: core_app.Application) -> str:
@@ -43,10 +58,19 @@ def resolve_box_ws_relay_url(ap: core_app.Application) -> str:
     """
     box_cfg = _get_box_config(ap)
 
-    # Explicit relay URL takes precedence.
-    runtime_url = str(box_cfg.get('runtime_url', '')).strip()
-    if runtime_url:
-        return runtime_url
+    # Explicit runtime endpoint takes precedence. The config value is a base
+    # URL; endpoint-specific paths are appended by the SDK client.
+    endpoint = _get_runtime_endpoint(box_cfg)
+    if endpoint:
+        parsed = urlparse(endpoint)
+        scheme = parsed.scheme or 'ws'
+        if scheme == 'ws':
+            scheme = 'http'
+        elif scheme == 'wss':
+            scheme = 'https'
+        host = parsed.hostname or '127.0.0.1'
+        port = parsed.port or _DEFAULT_PORT
+        return f'{scheme}://{host}:{port}'
 
     # In Docker, relay lives on the box runtime container.
     if platform.get_platform() == 'docker':
@@ -59,7 +83,7 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
     """Connect to the Box runtime via action RPC.
 
     Transport decision (mirrors Plugin runtime logic):
-      1. Docker / --standalone-box / explicit runtime_url  -> WebSocket to external Box process
+      1. Docker / --standalone-box / explicit runtime.endpoint -> WebSocket to external Box process
       2. Windows (non-Docker)                              -> subprocess + WebSocket (Windows lacks async stdio pipe)
       3. Unix / macOS                                      -> subprocess + stdio pipe
     """
@@ -74,7 +98,7 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
     ):
         super().__init__(ap)
         self.runtime_disconnect_callback = runtime_disconnect_callback
-        self.configured_runtime_url = self._load_configured_runtime_url()
+        self.configured_runtime_endpoint = self._load_configured_runtime_endpoint()
         self.ws_relay_base_url = resolve_box_ws_relay_url(ap)
         self.client = ActionRPCBoxClient(logger=ap.logger)
 
@@ -87,6 +111,7 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
         parsed = urlparse(self.ws_relay_base_url)
         self._relay_host = parsed.hostname or '127.0.0.1'
         self._relay_port = parsed.port or _DEFAULT_PORT
+        self._filtered_box_config = _filter_config_for_runtime(_get_box_config(ap))
 
     def _uses_websocket(self) -> bool:
         """Whether the connector should use WebSocket to reach the Box runtime.
@@ -94,17 +119,17 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
         True when:
           - Running inside Docker (Box runtime is a separate container)
           - The ``--standalone-box`` CLI flag was passed
-          - An explicit ``runtime_url`` was configured
+          - An explicit ``runtime.endpoint`` was configured
         """
         return bool(
-            self.configured_runtime_url
+            self.configured_runtime_endpoint
             or platform.get_platform() == 'docker'
             or platform.use_websocket_to_connect_box_runtime()
         )
 
     async def initialize(self) -> None:
         if self._uses_websocket():
-            if platform.get_platform() == 'win32' and not self.configured_runtime_url:
+            if platform.get_platform() == 'win32' and not self.configured_runtime_endpoint:
                 await self._start_subprocess_then_ws()
             else:
                 await self._connect_remote_ws()
@@ -141,6 +166,8 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
         self.ap.logger.info('Use stdio to connect to box runtime')
         python_path = sys.executable
         env = os.environ.copy()
+        if self._filtered_box_config:
+            env['LANGBOT_BOX_CONFIG'] = json.dumps(self._filtered_box_config)
 
         connected = asyncio.Event()
         connect_error: list[Exception] = []
@@ -168,12 +195,20 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
         """Launch box server as detached subprocess, then connect via WS (Windows)."""
         self.ap.logger.info('(windows) Use cmd to launch box runtime and communicate via ws')
 
-        await self._start_runtime_subprocess(
+        env = os.environ.copy()
+        if self._filtered_box_config:
+            env['LANGBOT_BOX_CONFIG'] = json.dumps(self._filtered_box_config)
+
+        python_path = sys.executable
+        self.runtime_subprocess = await asyncio.create_subprocess_exec(
+            python_path,
             '-m',
             'langbot_plugin.box.server',
             '--ws-control-port',
             str(self._relay_port),
+            env=env,
         )
+        self.runtime_subprocess_task = asyncio.create_task(self.runtime_subprocess.wait())
 
         ws_url = f'ws://localhost:{self._relay_port}/rpc/ws'
         await self._connect_ws(ws_url, '(windows) WebSocket')
@@ -191,8 +226,15 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
 
         All endpoints share a single port; action RPC is at ``/rpc/ws``.
         """
-        if self.configured_runtime_url:
-            return self.configured_runtime_url
+        if self.configured_runtime_endpoint:
+            base = self.configured_runtime_endpoint.rstrip('/')
+            parsed = urlparse(base)
+            scheme = parsed.scheme or 'ws'
+            if scheme in ('http', 'https'):
+                scheme = 'wss' if scheme == 'https' else 'ws'
+            host = parsed.hostname or '127.0.0.1'
+            port = parsed.port or _DEFAULT_PORT
+            return f'{scheme}://{host}:{port}/rpc/ws'
 
         if platform.get_platform() == 'docker':
             return f'ws://{_DOCKER_BOX_HOST}:{_DEFAULT_PORT}/rpc/ws'
@@ -242,6 +284,9 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
             self._handler_task = asyncio.create_task(handler.run())
             try:
                 await handler.call_action(CommonAction.PING, {})
+                if self._filtered_box_config:
+                    await handler.call_action(LangBotToBoxAction.INIT, self._filtered_box_config)
+                    self.ap.logger.debug('Sent box configuration to Box runtime via INIT.')
                 self.ap.logger.info(f'Connected to Box runtime via {transport_name}.')
                 connected.set()
                 await self._handler_task
@@ -292,5 +337,5 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
 
     # -- config helpers ------------------------------------------------------
 
-    def _load_configured_runtime_url(self) -> str:
-        return str(_get_box_config(self.ap).get('runtime_url', '')).strip()
+    def _load_configured_runtime_endpoint(self) -> str:
+        return _get_runtime_endpoint(_get_box_config(self.ap))

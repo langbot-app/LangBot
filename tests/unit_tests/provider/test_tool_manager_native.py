@@ -110,7 +110,7 @@ async def test_native_tool_loader_exposes_all_tools_when_box_available():
 
 def _make_loader_with_workspace(tmpdir: str) -> tuple[NativeToolLoader, Mock]:
     logger = Mock()
-    box_service = SimpleNamespace(available=True, default_host_workspace=tmpdir)
+    box_service = SimpleNamespace(available=True, default_workspace=tmpdir)
     ap = SimpleNamespace(box_service=box_service, logger=logger)
     return NativeToolLoader(ap), logger
 

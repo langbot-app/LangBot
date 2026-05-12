@@ -1392,6 +1392,7 @@ const jaJP = {
     uploadExtension: 'ドラッグ＆ドロップまたはクリックしてアップロード',
     uploadHint: '.zip（スキル）と.lbpkg（プラグイン）ファイルに対応',
     orContinueWith: 'または以下の操作を選択',
+    addMCPServerHint: 'MCPツールサーバー拡張を接続',
     installFromGithub: 'GitHubからプラグインをインストール',
     installFromGithubHint: 'GitHub Releaseからプラグイン拡張をインストール',
     createSkill: '新しいスキルを作成',

@@ -1327,6 +1327,7 @@ const zhHant = {
     uploadExtension: '拖拽或點擊上傳擴充套件',
     uploadHint: '支援 .zip（技能）和 .lbpkg（插件）檔案',
     orContinueWith: '或選擇以下操作',
+    addMCPServerHint: '連接一個 MCP 工具伺服器擴充',
     installFromGithub: '從 GitHub 安裝插件',
     installFromGithubHint: '從 GitHub Release 安裝插件擴充',
     createSkill: '建立新的技能',
@@ -1360,6 +1361,8 @@ const zhHant = {
     skillDescription: '技能描述',
     skillInstructions: '指令內容',
     autoActivate: '自動啟用',
+    autoActivateDescription:
+      '開啟後，Agent 會在對話中根據技能描述自動匹配並啟用此技能。',
     saveSuccess: '儲存成功',
     saveError: '儲存失敗：',
     createSuccess: '創建成功',

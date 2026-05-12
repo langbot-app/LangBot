@@ -79,6 +79,7 @@ async def test_workspace_session_execute_for_query_uses_session_payload():
         'session_id': 'skill-person_123-demo',
         'workdir': '/workspace',
         'env': {'FOO': 'bar'},
+        'persistent': False,
         'host_path': '/tmp/project',
         'host_path_mode': 'rw',
         'cmd': 'python run.py',
@@ -111,6 +112,7 @@ async def test_workspace_session_start_managed_process_rewrites_command_and_args
         'args': ['/workspace/server.py', '--config', '/workspace/config.json'],
         'env': {'TOKEN': '1'},
         'cwd': '/workspace',
+        'process_id': 'default',
     }
 
 
@@ -133,6 +135,7 @@ def test_workspace_session_build_session_payload_keeps_generic_workspace_shape()
         'session_id': 'workspace-1',
         'workdir': '/workspace',
         'env': {'FOO': 'bar'},
+        'persistent': False,
         'network': 'on',
         'read_only_rootfs': False,
         'host_path': '/tmp/project',

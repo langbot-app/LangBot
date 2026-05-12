@@ -54,6 +54,7 @@
                 }
             ],
             "knowledge-bases": [],
+            "box-session-id-template": "{launcher_type}_{launcher_id}",
             "rerank-model": "",
             "rerank-top-k": 5
         },

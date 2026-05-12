@@ -33,11 +33,6 @@ def _is_path_under(path: str, root: str) -> bool:
     return path == root or path.startswith(f'{root}{os.sep}')
 
 
-def _is_path_under(path: str, root: str) -> bool:
-    """Check whether *path* equals *root* or is a child of *root*."""
-    return path == root or path.startswith(f'{root}{os.sep}')
-
-
 if TYPE_CHECKING:
     from ..core import app as core_app
     import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -57,9 +52,9 @@ class BoxService:
             client = self._runtime_connector.client
         self.client = client
         self.output_limit_chars = output_limit_chars
-        self.shared_host_root = self._load_shared_host_root()
-        self.allowed_host_mount_roots = self._load_allowed_host_mount_roots()
-        self.default_host_workspace = self._load_default_host_workspace()
+        self.host_root = self._load_host_root()
+        self.allowed_mount_roots = self._load_allowed_mount_roots()
+        self.default_workspace = self._load_default_workspace()
         self.profile = self._load_profile()
         self.custom_image = self._load_custom_image()
         self.workspace_quota_mb = self._load_workspace_quota_mb()
@@ -70,7 +65,7 @@ class BoxService:
         self._reconnecting = False
 
     async def initialize(self):
-        self._ensure_default_host_workspace()
+        self._ensure_default_workspace()
         try:
             if self._runtime_connector is not None:
                 await self._runtime_connector.initialize()
@@ -80,7 +75,7 @@ class BoxService:
             self._connector_error = ''
             self.ap.logger.info(
                 f'LangBot Box runtime initialized: profile={self.profile.name} '
-                f'default_workspace={self.default_host_workspace or "(none)"}'
+                f'default_workspace={self.default_workspace or "(none)"}'
             )
         except Exception as exc:
             self.ap.logger.warning(f'LangBot Box runtime unavailable, sandbox features disabled: {exc}')
@@ -134,7 +129,7 @@ class BoxService:
         skip_host_mount_validation: bool = False,
     ) -> dict:
         if not self._available:
-            raise BoxError('Box runtime is not available. Install and start Podman or Docker to use sandbox features.')
+            raise BoxError('Box runtime is not available. Install and start Docker to use sandbox features.')
         try:
             spec = self.build_spec(spec_payload, skip_host_mount_validation=skip_host_mount_validation)
         except BoxError as exc:
@@ -251,8 +246,8 @@ class BoxService:
     def build_spec(self, spec_payload: dict, skip_host_mount_validation: bool = False) -> BoxSpec:
         spec_payload = dict(spec_payload)
         spec_payload.setdefault('env', {})
-        if spec_payload.get('host_path') in (None, '') and self.default_host_workspace is not None:
-            spec_payload['host_path'] = self.default_host_workspace
+        if spec_payload.get('host_path') in (None, '') and self.default_workspace is not None:
+            spec_payload['host_path'] = self.default_workspace
         if spec_payload.get('workspace_quota_mb') in (None, '') and self.workspace_quota_mb is not None:
             spec_payload['workspace_quota_mb'] = self.workspace_quota_mb
 
@@ -280,10 +275,10 @@ class BoxService:
         process_spec = BoxManagedProcessSpec.model_validate(process_payload)
         return await self.client.start_managed_process(session_id, process_spec)
 
-    async def get_managed_process(self, session_id: str) -> BoxManagedProcessInfo:
-        return await self.client.get_managed_process(session_id)
+    async def get_managed_process(self, session_id: str, process_id: str = 'default') -> BoxManagedProcessInfo:
+        return await self.client.get_managed_process(session_id, process_id)
 
-    def get_managed_process_websocket_url(self, session_id: str) -> str:
+    def get_managed_process_websocket_url(self, session_id: str, process_id: str = 'default') -> str:
         getter = getattr(self.client, 'get_managed_process_websocket_url', None)
         if getter is None:
             raise BoxValidationError('box runtime client does not support managed process websocket attach')
@@ -292,7 +287,7 @@ class BoxService:
             if self._runtime_connector is not None
             else 'http://127.0.0.1:5410'
         )
-        return getter(session_id, ws_relay_base_url)
+        return getter(session_id, ws_relay_base_url, process_id)
 
     def _serialize_result(self, result: BoxExecutionResult) -> dict:
         stdout, stdout_truncated = self._truncate(result.stdout)
@@ -382,8 +377,11 @@ class BoxService:
             'stderr_preview': stderr_preview,
         }
 
-    def _load_allowed_host_mount_roots(self) -> list[str]:
-        configured_roots = _get_box_config(self.ap).get('allowed_host_mount_roots', [])
+    def _local_config(self) -> dict:
+        return _get_box_config(self.ap).get('local') or {}
+
+    def _load_allowed_mount_roots(self) -> list[str]:
+        configured_roots = self._local_config().get('allowed_mount_roots', [])
 
         normalized_roots: list[str] = []
         for root in configured_roots:
@@ -392,31 +390,31 @@ class BoxService:
                 continue
             normalized_roots.append(os.path.realpath(os.path.abspath(root_value)))
 
-        if not normalized_roots and self.shared_host_root is not None:
-            normalized_roots.append(self.shared_host_root)
+        if not normalized_roots and self.host_root is not None:
+            normalized_roots.append(self.host_root)
 
         return normalized_roots
 
-    def _load_shared_host_root(self) -> str | None:
-        shared_host_root = str(_get_box_config(self.ap).get('shared_host_root', '')).strip()
-        if not shared_host_root:
+    def _load_host_root(self) -> str | None:
+        host_root = str(self._local_config().get('host_root', '')).strip()
+        if not host_root:
             return None
-        return os.path.realpath(os.path.abspath(shared_host_root))
+        return os.path.realpath(os.path.abspath(host_root))
 
-    def _load_default_host_workspace(self) -> str | None:
-        default_host_workspace = str(_get_box_config(self.ap).get('default_host_workspace', '')).strip()
-        if not default_host_workspace:
-            if self.shared_host_root is None:
+    def _load_default_workspace(self) -> str | None:
+        default_workspace = str(self._local_config().get('default_workspace', '')).strip()
+        if not default_workspace:
+            if self.host_root is None:
                 return None
-            default_host_workspace = os.path.join(self.shared_host_root, 'default')
-        return os.path.realpath(os.path.abspath(default_host_workspace))
+            default_workspace = os.path.join(self.host_root, 'default')
+        return os.path.realpath(os.path.abspath(default_workspace))
 
     def _load_custom_image(self) -> str | None:
-        raw = str(_get_box_config(self.ap).get('image', '') or '').strip()
+        raw = str(self._local_config().get('image', '') or '').strip()
         return raw or None
 
     def _load_workspace_quota_mb(self) -> int | None:
-        raw_value = _get_box_config(self.ap).get('workspace_quota_mb')
+        raw_value = self._local_config().get('workspace_quota_mb')
         if raw_value in (None, ''):
             return None
         try:
@@ -427,28 +425,28 @@ class BoxService:
             raise BoxValidationError('workspace_quota_mb must be greater than or equal to 0')
         return value
 
-    def _ensure_default_host_workspace(self):
-        if self.default_host_workspace is None:
+    def _ensure_default_workspace(self):
+        if self.default_workspace is None:
             return
 
-        if os.path.isdir(self.default_host_workspace):
+        if os.path.isdir(self.default_workspace):
             return
 
-        if os.path.exists(self.default_host_workspace):
-            raise BoxValidationError('default_host_workspace must point to a directory on the host')
+        if os.path.exists(self.default_workspace):
+            raise BoxValidationError('box.local.default_workspace must point to a directory on the host')
 
-        if not self.allowed_host_mount_roots:
+        if not self.allowed_mount_roots:
             raise BoxValidationError(
-                'default_host_workspace cannot be created because no allowed_host_mount_roots are configured'
+                'box.local.default_workspace cannot be created because no allowed_mount_roots are configured'
             )
 
-        for allowed_root in self.allowed_host_mount_roots:
-            if _is_path_under(self.default_host_workspace, allowed_root):
-                os.makedirs(self.default_host_workspace, exist_ok=True)
+        for allowed_root in self.allowed_mount_roots:
+            if _is_path_under(self.default_workspace, allowed_root):
+                os.makedirs(self.default_workspace, exist_ok=True)
                 return
 
-        allowed_roots = ', '.join(self.allowed_host_mount_roots)
-        raise BoxValidationError(f'default_host_workspace is outside allowed_host_mount_roots: {allowed_roots}')
+        allowed_roots = ', '.join(self.allowed_mount_roots)
+        raise BoxValidationError(f'box.local.default_workspace is outside allowed_mount_roots: {allowed_roots}')
 
     def _validate_host_mount(self, spec: BoxSpec):
         if spec.host_path is None:
@@ -458,20 +456,18 @@ class BoxService:
         if not os.path.isdir(host_path):
             raise BoxValidationError('host_path must point to an existing directory on the host')
 
-        if not self.allowed_host_mount_roots:
-            raise BoxValidationError(
-                'host_path mounting is disabled because no allowed_host_mount_roots are configured'
-            )
+        if not self.allowed_mount_roots:
+            raise BoxValidationError('host_path mounting is disabled because no allowed_mount_roots are configured')
 
-        for allowed_root in self.allowed_host_mount_roots:
+        for allowed_root in self.allowed_mount_roots:
             if _is_path_under(host_path, allowed_root):
                 return
 
-        allowed_roots = ', '.join(self.allowed_host_mount_roots)
-        raise BoxValidationError(f'host_path is outside allowed_host_mount_roots: {allowed_roots}')
+        allowed_roots = ', '.join(self.allowed_mount_roots)
+        raise BoxValidationError(f'host_path is outside allowed_mount_roots: {allowed_roots}')
 
     def _load_profile(self) -> BoxProfile:
-        profile_name = str(_get_box_config(self.ap).get('profile', 'default')).strip() or 'default'
+        profile_name = str(self._local_config().get('profile', 'default')).strip() or 'default'
 
         profile = BUILTIN_PROFILES.get(profile_name)
         if profile is None:
@@ -592,7 +588,7 @@ class BoxService:
             'and then answer from the tool result. Unless the user explicitly asks for the script, code, or implementation '
             'details, do not include the generated script in the final answer; return the result and a brief explanation only.'
         )
-        if self.default_host_workspace:
+        if self.default_workspace:
             guidance += (
                 ' A default workspace is mounted at /workspace for file tasks. When the user asks to read, create, or '
                 'modify local files in the working directory, use exec with /workspace paths directly; do not ask the '

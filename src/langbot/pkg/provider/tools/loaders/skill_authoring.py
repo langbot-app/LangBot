@@ -183,9 +183,9 @@ class SkillAuthoringToolLoader(loader.ToolLoader):
 
     def _resolve_workspace_directory(self, sandbox_path: str) -> str:
         box_service = getattr(self.ap, 'box_service', None)
-        workspace_root = getattr(box_service, 'default_host_workspace', None)
+        workspace_root = getattr(box_service, 'default_workspace', None)
         if not workspace_root:
-            raise ValueError('No default host workspace configured for importing skills')
+            raise ValueError('No default workspace configured for importing skills')
 
         normalized_path = str(sandbox_path).strip() or '/workspace'
         if not normalized_path.startswith('/workspace'):

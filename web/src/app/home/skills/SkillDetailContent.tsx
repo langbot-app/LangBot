@@ -143,7 +143,7 @@ export default function SkillDetailContent({ id }: { id: string }) {
       </div>
 
       <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <DialogContent>
+        <DialogContent className="max-h-[min(420px,80vh)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t('common.confirmDelete')}</DialogTitle>
           </DialogHeader>

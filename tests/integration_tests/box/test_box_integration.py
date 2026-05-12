@@ -297,9 +297,14 @@ async def test_full_service_to_remote_runtime(tmp_path):
             instance_config=SimpleNamespace(
                 data={
                     'box': {
-                        'profile': 'default',
-                        'allowed_host_mount_roots': [str(tmp_path)],
-                        'default_host_workspace': str(host_dir),
+                        'backend': 'local',
+                        'runtime': {'endpoint': ''},
+                        'local': {
+                            'profile': 'default',
+                            'allowed_mount_roots': [str(tmp_path)],
+                            'default_workspace': str(host_dir),
+                        },
+                        'e2b': {'api_key': '', 'api_url': '', 'template': ''},
                     }
                 }
             ),

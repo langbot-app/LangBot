@@ -1291,6 +1291,8 @@ const zhHans = {
     skillDescription: '技能描述',
     skillInstructions: '指令内容',
     autoActivate: '自动激活',
+    autoActivateDescription:
+      '开启后，Agent 会在对话中根据技能描述自动匹配并激活此技能。',
     saveSuccess: '保存成功',
     saveError: '保存失败：',
     createSuccess: '创建成功',
@@ -1414,6 +1416,7 @@ const zhHans = {
     uploadExtension: '拖拽或点击上传扩展包',
     uploadHint: '支持 .zip（技能）和 .lbpkg（插件）文件',
     orContinueWith: '或选择以下操作',
+    addMCPServerHint: '连接一个 MCP 工具服务器扩展',
     installFromGithub: '从 GitHub 安装插件',
     installFromGithubHint: '从 GitHub Release 安装插件扩展',
     createSkill: '创建新的技能',

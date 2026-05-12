@@ -16,6 +16,7 @@ import {
   Download,
   PlusIcon,
   ChevronLeft,
+  ChevronRight,
   Server,
   Github,
   BookOpen,
@@ -25,26 +26,20 @@ import {
   XCircle,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from '@/components/ui/card';
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { httpClient, systemInfo } from '@/app/infra/http/HttpClient';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { PluginV4 } from '@/app/infra/entities/plugin';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
-import {
-  usePluginInstallTasks,
-} from '@/app/home/plugins/components/plugin-install-task';
+import { usePluginInstallTasks } from '@/app/home/plugins/components/plugin-install-task';
 import MCPForm from '@/app/home/mcp/components/mcp-form/MCPForm';
-import type { MCPFormHandle } from '@/app/home/mcp/components/mcp-form/MCPForm';
+import type {
+  MCPFormDraft,
+  MCPFormHandle,
+} from '@/app/home/mcp/components/mcp-form/MCPForm';
 import SkillForm from '@/app/home/skills/components/skill-form/SkillForm';
+import type { SkillFormDraft } from '@/app/home/skills/components/skill-form/SkillForm';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 
@@ -100,7 +95,6 @@ export default function AddExtensionPage() {
 
 function AddExtensionContent() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const { refreshPlugins, refreshMCPServers, refreshSkills } = useSidebarData();
   const {
     addTask,
@@ -128,11 +122,15 @@ function AddExtensionContent() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mcpFormRef = useRef<MCPFormHandle>(null);
   const [mcpTesting, setMcpTesting] = useState(false);
+  const [mcpDraft, setMcpDraft] = useState<MCPFormDraft | undefined>();
+  const [skillDraft, setSkillDraft] = useState<SkillFormDraft | undefined>();
 
   // GitHub install state
   const [githubURL, setGithubURL] = useState('');
   const [githubReleases, setGithubReleases] = useState<GithubRelease[]>([]);
-  const [selectedRelease, setSelectedRelease] = useState<GithubRelease | null>(null);
+  const [selectedRelease, setSelectedRelease] = useState<GithubRelease | null>(
+    null,
+  );
   const [githubAssets, setGithubAssets] = useState<GithubAsset[]>([]);
   const [selectedAsset, setSelectedAsset] = useState<GithubAsset | null>(null);
   const [githubOwner, setGithubOwner] = useState('');
@@ -141,12 +139,14 @@ function AddExtensionContent() {
   const [fetchingAssets, setFetchingAssets] = useState(false);
   const [githubInstallStatus, setGithubInstallStatus] =
     useState<GithubInstallStatus>(GithubInstallStatus.WAIT_INPUT);
-  const [githubInstallError, setGithubInstallError] = useState<string | null>(null);
+  const [githubInstallError, setGithubInstallError] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     // Clear any stale completed tasks on mount
     clearCompletedTasks();
-  }, []);
+  }, [clearCompletedTasks]);
 
   useEffect(() => {
     const onComplete = (_taskId: number, success: boolean) => {
@@ -161,20 +161,17 @@ function AddExtensionContent() {
     };
   }, [registerOnTaskComplete, unregisterOnTaskComplete, refreshPlugins, t]);
 
-  const handleInstallPlugin = useCallback(
-    async (plugin: PluginV4) => {
-      setInstallInfo({
-        plugin_author: plugin.author,
-        plugin_name: plugin.name,
-        plugin_version: plugin.latest_version,
-      });
-      setInstallExtensionType(plugin.type || 'plugin');
-      setPluginInstallStatus(PluginInstallStatus.ASK_CONFIRM);
-      setInstallError(null);
-      setModalOpen(true);
-    },
-    [],
-  );
+  const handleInstallPlugin = useCallback(async (plugin: PluginV4) => {
+    setInstallInfo({
+      plugin_author: plugin.author,
+      plugin_name: plugin.name,
+      plugin_version: plugin.latest_version,
+    });
+    setInstallExtensionType(plugin.type || 'plugin');
+    setPluginInstallStatus(PluginInstallStatus.ASK_CONFIRM);
+    setInstallError(null);
+    setModalOpen(true);
+  }, []);
 
   function handleModalConfirm() {
     setPluginInstallStatus(PluginInstallStatus.INSTALLING);
@@ -266,7 +263,7 @@ function AddExtensionContent() {
           });
       }
     },
-    [t, addTask, setSelectedTaskId, refreshPlugins],
+    [t, addTask, setSelectedTaskId, refreshPlugins, refreshSkills],
   );
 
   const handleFileSelect = useCallback(() => {
@@ -308,13 +305,15 @@ function AddExtensionContent() {
     [uploadFile],
   );
 
-  function handleMCPCreated(serverName: string) {
+  function handleMCPCreated(_serverName: string) {
+    setMcpDraft(undefined);
     refreshMCPServers();
     setPopoverView('menu');
     setPopoverOpen(false);
   }
 
-  function handleSkillCreated(skillName: string) {
+  function handleSkillCreated(_skillName: string) {
+    setSkillDraft(undefined);
     refreshPlugins();
     refreshSkills();
     setPopoverView('menu');
@@ -467,13 +466,13 @@ function AddExtensionContent() {
   function getPopoverWidth(): string {
     switch (popoverView) {
       case 'mcp':
-        return 'w-[500px]';
+        return 'w-[calc(100vw-2rem)] sm:w-[560px]';
       case 'skill':
-        return 'w-[460px]';
+        return 'w-[calc(100vw-2rem)] sm:w-[560px]';
       case 'github':
-        return 'w-[460px]';
+        return 'w-[calc(100vw-2rem)] sm:w-[480px]';
       default:
-        return 'w-[360px]';
+        return 'w-[calc(100vw-2rem)] sm:w-[380px]';
     }
   }
 
@@ -491,9 +490,6 @@ function AddExtensionContent() {
         open={popoverOpen}
         onOpenChange={(open) => {
           setPopoverOpen(open);
-          if (!open) {
-            setPopoverView('menu');
-          }
         }}
       >
         <PopoverTrigger asChild>
@@ -508,12 +504,13 @@ function AddExtensionContent() {
           </Button>
         </PopoverTrigger>
         <PopoverContent
-          className={`${getPopoverWidth()} p-4 max-h-[80vh] overflow-y-auto`}
+          forceMount
+          className={`${getPopoverWidth()} max-h-[min(720px,80vh)] overflow-hidden p-0`}
           align="end"
         >
           {/* ===== Menu View ===== */}
           {popoverView === 'menu' && (
-            <div className="space-y-4">
+            <div className="space-y-4 p-4">
               {/* File upload area */}
               <div
                 className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
@@ -539,68 +536,75 @@ function AddExtensionContent() {
                 </p>
               </div>
 
-              {/* Divider */}
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t" />
-                </div>
-                <div className="relative flex justify-center text-xs">
-                  <span className="bg-popover px-2 text-muted-foreground">
-                    {t('addExtension.orContinueWith')}
+              <p className="text-center text-xs text-muted-foreground">
+                {t('addExtension.orContinueWith')}
+              </p>
+
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  className="group flex w-full items-center gap-3 rounded-md bg-muted/30 p-3 text-left transition-colors outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                  onClick={() => setPopoverView('mcp')}
+                >
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground transition-colors group-hover:text-foreground">
+                    <Server className="size-4" />
                   </span>
-                </div>
-              </div>
+                  <span className="min-w-0 flex-1 space-y-0.5">
+                    <span className="block text-sm font-medium leading-none">
+                      {t('mcp.addMCPServer')}
+                    </span>
+                    <span className="block text-xs leading-relaxed text-muted-foreground">
+                      {t('addExtension.addMCPServerHint')}
+                    </span>
+                  </span>
+                  <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                </button>
 
-              {/* MCP Config button */}
-              <Button
-                variant="outline"
-                className="w-full justify-start gap-2"
-                onClick={() => setPopoverView('mcp')}
-              >
-                <Server className="w-4 h-4" />
-                {t('mcp.addMCPServer')}
-              </Button>
-
-              {/* Two side-by-side buttons */}
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  variant="outline"
-                  className="flex-col h-auto py-3 gap-1"
+                <button
+                  type="button"
+                  className="group flex w-full items-center gap-3 rounded-md bg-muted/30 p-3 text-left transition-colors outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
                   onClick={() => setPopoverView('github')}
                 >
-                  <Github className="w-4 h-4" />
-                  <span className="text-xs">
-                    {t('addExtension.installFromGithub')}
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground transition-colors group-hover:text-foreground">
+                    <Github className="size-4" />
                   </span>
-                </Button>
-                <Button
-                  variant="outline"
-                  className="flex-col h-auto py-3 gap-1"
+                  <span className="min-w-0 flex-1 space-y-0.5">
+                    <span className="block text-sm font-medium leading-none">
+                      {t('addExtension.installFromGithub')}
+                    </span>
+                    <span className="block text-xs leading-relaxed text-muted-foreground">
+                      {t('addExtension.installFromGithubHint')}
+                    </span>
+                  </span>
+                  <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                </button>
+
+                <button
+                  type="button"
+                  className="group flex w-full items-center gap-3 rounded-md bg-muted/30 p-3 text-left transition-colors outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
                   onClick={() => setPopoverView('skill')}
                 >
-                  <BookOpen className="w-4 h-4" />
-                  <span className="text-xs">
-                    {t('addExtension.createSkill')}
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground transition-colors group-hover:text-foreground">
+                    <BookOpen className="size-4" />
                   </span>
-                </Button>
-              </div>
-
-              {/* Hints for the two buttons */}
-              <div className="grid grid-cols-2 gap-2">
-                <p className="text-[11px] text-muted-foreground text-center px-1">
-                  {t('addExtension.installFromGithubHint')}
-                </p>
-                <p className="text-[11px] text-muted-foreground text-center px-1">
-                  {t('addExtension.createSkillHint')}
-                </p>
+                  <span className="min-w-0 flex-1 space-y-0.5">
+                    <span className="block text-sm font-medium leading-none">
+                      {t('addExtension.createSkill')}
+                    </span>
+                    <span className="block text-xs leading-relaxed text-muted-foreground">
+                      {t('addExtension.createSkillHint')}
+                    </span>
+                  </span>
+                  <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                </button>
               </div>
             </div>
           )}
 
           {/* ===== MCP Form View ===== */}
           {popoverView === 'mcp' && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
+            <div className="flex max-h-[min(720px,80vh)] flex-col">
+              <div className="flex items-center gap-2 px-4 pb-1 pt-3">
                 <Button
                   variant="ghost"
                   size="icon"
@@ -614,17 +618,19 @@ function AddExtensionContent() {
                 </h4>
               </div>
 
-              <div className="max-h-[60vh] overflow-y-auto pr-1">
+              <div className="min-h-0 flex-1 overflow-y-auto p-4">
                 <MCPForm
                   ref={mcpFormRef}
                   initServerName={undefined}
+                  initialDraft={mcpDraft}
                   onFormSubmit={() => {}}
                   onNewServerCreated={handleMCPCreated}
+                  onDraftChange={setMcpDraft}
                   onTestingChange={setMcpTesting}
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t">
+              <div className="flex items-center justify-end gap-2 bg-popover px-4 pb-4 pt-1">
                 <Button
                   type="button"
                   variant="outline"
@@ -652,8 +658,8 @@ function AddExtensionContent() {
 
           {/* ===== Skill Form View ===== */}
           {popoverView === 'skill' && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
+            <div className="flex max-h-[min(720px,80vh)] flex-col">
+              <div className="flex items-center gap-2 px-4 pb-1 pt-3">
                 <Button
                   variant="ghost"
                   size="icon"
@@ -667,15 +673,17 @@ function AddExtensionContent() {
                 </h4>
               </div>
 
-              <div className="max-h-[60vh] overflow-y-auto pr-1">
+              <div className="min-h-0 flex-1 overflow-y-auto p-4">
                 <SkillForm
                   initSkillName={undefined}
+                  initialDraft={skillDraft}
                   onNewSkillCreated={handleSkillCreated}
                   onSkillUpdated={() => {}}
+                  onDraftChange={setSkillDraft}
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t">
+              <div className="flex items-center justify-end gap-2 bg-popover px-4 pb-4 pt-1">
                 <Button type="submit" form="skill-form" size="sm">
                   {t('common.save')}
                 </Button>
@@ -685,8 +693,8 @@ function AddExtensionContent() {
 
           {/* ===== GitHub Install View ===== */}
           {popoverView === 'github' && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
+            <div className="flex max-h-[min(720px,80vh)] flex-col">
+              <div className="flex items-center gap-2 px-4 pb-1 pt-3">
                 <Button
                   variant="ghost"
                   size="icon"
@@ -703,7 +711,7 @@ function AddExtensionContent() {
                 </h4>
               </div>
 
-              <div className="max-h-[60vh] overflow-y-auto pr-1 space-y-3">
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
                 {githubInstallStatus === GithubInstallStatus.WAIT_INPUT && (
                   <div className="space-y-2">
                     <p className="text-xs text-muted-foreground">
@@ -743,7 +751,9 @@ function AddExtensionContent() {
                         size="sm"
                         className="h-6 text-xs px-2"
                         onClick={() => {
-                          setGithubInstallStatus(GithubInstallStatus.WAIT_INPUT);
+                          setGithubInstallStatus(
+                            GithubInstallStatus.WAIT_INPUT,
+                          );
                           setGithubReleases([]);
                         }}
                       >
@@ -755,7 +765,7 @@ function AddExtensionContent() {
                       {githubReleases.map((release) => (
                         <div
                           key={release.id}
-                          className="flex items-center justify-between rounded-md border p-2 hover:bg-accent cursor-pointer text-sm"
+                          className="flex cursor-pointer items-center justify-between rounded-md px-2 py-2 text-sm hover:bg-accent"
                           onClick={() => handleReleaseSelect(release)}
                         >
                           <div className="flex-1 min-w-0">
@@ -764,7 +774,9 @@ function AddExtensionContent() {
                             </div>
                             <div className="text-[11px] text-muted-foreground">
                               {release.tag_name} &bull;{' '}
-                              {new Date(release.published_at).toLocaleDateString()}
+                              {new Date(
+                                release.published_at,
+                              ).toLocaleDateString()}
                             </div>
                           </div>
                           {release.prerelease && (
@@ -795,7 +807,9 @@ function AddExtensionContent() {
                         size="sm"
                         className="h-6 text-xs px-2"
                         onClick={() => {
-                          setGithubInstallStatus(GithubInstallStatus.SELECT_RELEASE);
+                          setGithubInstallStatus(
+                            GithubInstallStatus.SELECT_RELEASE,
+                          );
                           setGithubAssets([]);
                           setSelectedAsset(null);
                         }}
@@ -805,7 +819,7 @@ function AddExtensionContent() {
                       </Button>
                     </div>
                     {selectedRelease && (
-                      <div className="p-1.5 bg-muted rounded text-[11px]">
+                      <div className="rounded-md bg-muted/40 px-2 py-1.5 text-[11px]">
                         <span className="font-medium">
                           {selectedRelease.name || selectedRelease.tag_name}
                         </span>
@@ -815,7 +829,7 @@ function AddExtensionContent() {
                       {githubAssets.map((asset) => (
                         <div
                           key={asset.id}
-                          className="flex items-center justify-between rounded-md border p-2 hover:bg-accent cursor-pointer"
+                          className="flex cursor-pointer items-center justify-between rounded-md px-2 py-2 hover:bg-accent"
                           onClick={() => handleAssetSelect(asset)}
                         >
                           <span className="text-xs truncate">{asset.name}</span>
@@ -839,7 +853,9 @@ function AddExtensionContent() {
                         size="sm"
                         className="h-6 text-xs px-2"
                         onClick={() => {
-                          setGithubInstallStatus(GithubInstallStatus.SELECT_ASSET);
+                          setGithubInstallStatus(
+                            GithubInstallStatus.SELECT_ASSET,
+                          );
                           setSelectedAsset(null);
                         }}
                       >
@@ -848,10 +864,12 @@ function AddExtensionContent() {
                       </Button>
                     </div>
                     {selectedRelease && selectedAsset && (
-                      <div className="p-2 bg-muted rounded space-y-1 text-xs">
+                      <div className="space-y-1 rounded-md bg-muted/40 px-2 py-2 text-xs">
                         <div>
                           <span className="font-medium">Repository: </span>
-                          <span>{githubOwner}/{githubRepo}</span>
+                          <span>
+                            {githubOwner}/{githubRepo}
+                          </span>
                         </div>
                         <div>
                           <span className="font-medium">Release: </span>
@@ -863,10 +881,7 @@ function AddExtensionContent() {
                         </div>
                       </div>
                     )}
-                    <Button
-                      className="w-full"
-                      onClick={handleGithubConfirm}
-                    >
+                    <Button className="w-full" onClick={handleGithubConfirm}>
                       {t('common.confirm')}
                     </Button>
                   </div>

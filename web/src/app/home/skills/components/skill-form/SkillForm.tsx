@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,52 +12,72 @@ import { toast } from 'sonner';
 
 interface SkillFormProps {
   initSkillName?: string;
+  initialDraft?: SkillFormDraft;
   onNewSkillCreated: (skillName: string) => void;
   onSkillUpdated: (skillName: string) => void;
+  onDraftChange?: (draft: SkillFormDraft) => void;
 }
 
-export default function SkillForm({
-  initSkillName,
-  onNewSkillCreated,
-  onSkillUpdated,
-}: SkillFormProps) {
-  const { t } = useTranslation();
-  const [skill, setSkill] = useState<Partial<Skill>>({
+export interface SkillFormDraft {
+  skill: Partial<Skill>;
+  showAdvanced: boolean;
+}
+
+const emptySkillDraft: SkillFormDraft = {
+  skill: {
     name: '',
     display_name: '',
     description: '',
     instructions: '',
     package_root: '',
     auto_activate: true,
-  });
+  },
+  showAdvanced: false,
+};
+
+export default function SkillForm({
+  initSkillName,
+  initialDraft,
+  onNewSkillCreated,
+  onSkillUpdated,
+  onDraftChange,
+}: SkillFormProps) {
+  const { t } = useTranslation();
+  const initialDraftRef = useRef(initialDraft ?? emptySkillDraft);
+  const [skill, setSkill] = useState<Partial<Skill>>(
+    initialDraftRef.current.skill,
+  );
   const [scanning, setScanning] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(
+    initialDraftRef.current.showAdvanced,
+  );
+
+  const loadSkill = useCallback(
+    async (skillName: string) => {
+      try {
+        const resp = await httpClient.getSkill(skillName);
+        setSkill(resp.skill);
+      } catch (error) {
+        console.error('Failed to load skill:', error);
+        toast.error(t('skills.getSkillListError') + String(error));
+      }
+    },
+    [t],
+  );
 
   useEffect(() => {
     if (initSkillName) {
       loadSkill(initSkillName);
       return;
     }
-    setSkill({
-      name: '',
-      display_name: '',
-      description: '',
-      instructions: '',
-      package_root: '',
-      auto_activate: true,
-    });
-    setShowAdvanced(false);
-  }, [initSkillName]);
+    setSkill(initialDraftRef.current.skill);
+    setShowAdvanced(initialDraftRef.current.showAdvanced);
+  }, [initSkillName, loadSkill]);
 
-  async function loadSkill(skillName: string) {
-    try {
-      const resp = await httpClient.getSkill(skillName);
-      setSkill(resp.skill);
-    } catch (error) {
-      console.error('Failed to load skill:', error);
-      toast.error(t('skills.getSkillListError') + String(error));
-    }
-  }
+  useEffect(() => {
+    if (initSkillName) return;
+    onDraftChange?.({ skill, showAdvanced });
+  }, [initSkillName, onDraftChange, skill, showAdvanced]);
 
   async function scanDirectory() {
     const path = skill.package_root?.trim();
@@ -183,10 +203,16 @@ export default function SkillForm({
         />
       </div>
 
-      <div className="flex items-center justify-between">
-        <Label htmlFor="auto_activate">{t('skills.autoActivate')}</Label>
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-1">
+          <Label htmlFor="auto_activate">{t('skills.autoActivate')}</Label>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            {t('skills.autoActivateDescription')}
+          </p>
+        </div>
         <Switch
           id="auto_activate"
+          className="mt-0.5"
           checked={skill.auto_activate ?? true}
           onCheckedChange={(checked) =>
             setSkill({ ...skill, auto_activate: checked })
@@ -194,10 +220,10 @@ export default function SkillForm({
         />
       </div>
 
-      <div className="border rounded-md">
+      <div className="space-y-3">
         <button
           type="button"
-          className="flex items-center justify-between w-full p-3 text-sm font-medium text-left"
+          className="flex w-full items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-left text-sm font-medium hover:bg-muted/70"
           onClick={() => setShowAdvanced(!showAdvanced)}
         >
           {t('skills.advancedSettings')}
@@ -208,7 +234,7 @@ export default function SkillForm({
           )}
         </button>
         {showAdvanced && (
-          <div className="p-3 pt-0 space-y-4">
+          <div className="space-y-4">
             <div className="space-y-2">
               <Label>{t('skills.packageRoot')}</Label>
               <div className="flex gap-2">
