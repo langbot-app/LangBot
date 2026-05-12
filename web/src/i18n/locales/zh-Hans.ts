@@ -1290,9 +1290,6 @@ const zhHans = {
     skillSlugHelp: '用作技能目录名，仅支持英文字母、数字、连字符和下划线。',
     skillDescription: '技能描述',
     skillInstructions: '指令内容',
-    autoActivate: '自动激活',
-    autoActivateDescription:
-      '开启后，Agent 会在对话中根据技能描述自动匹配并激活此技能。',
     saveSuccess: '保存成功',
     saveError: '保存失败：',
     createSuccess: '创建成功',

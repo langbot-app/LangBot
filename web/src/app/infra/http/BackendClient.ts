@@ -1269,7 +1269,6 @@ export class BackendClient extends BaseHttpClient {
     display_name?: string;
     description: string;
     instructions: string;
-    auto_activate?: boolean;
   }> {
     return this.get('/api/v1/skills/scan', { path });
   }

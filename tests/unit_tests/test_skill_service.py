@@ -15,14 +15,11 @@ def _create_skill_file(
     name: str = 'imported-skill',
     display_name: str = '',
     description: str = 'Imported from local directory',
-    auto_activate: bool = True,
     body: str = 'Skill instructions',
 ) -> None:
     frontmatter = ['name: ' + name, 'description: ' + description]
     if display_name:
         frontmatter.insert(1, 'display_name: ' + display_name)
-    if not auto_activate:
-        frontmatter.append('auto_activate: false')
 
     path.write_text(
         '---\n' + '\n'.join(frontmatter) + f'\n---\n\n{body}\n',
@@ -83,7 +80,6 @@ async def test_create_skill_import_preserves_existing_skill_content_when_form_fi
         source_dir / 'SKILL.md',
         display_name='Imported Skill',
         description='Imported description',
-        auto_activate=False,
         body='Original instructions',
     )
 
@@ -96,7 +92,6 @@ async def test_create_skill_import_preserves_existing_skill_content_when_form_fi
             'package_root': str(managed_root.resolve()),
             'description': 'Imported description',
             'instructions': 'Original instructions',
-            'auto_activate': False,
         }
     )
 
@@ -115,7 +110,6 @@ async def test_create_skill_import_preserves_existing_skill_content_when_form_fi
     content = (managed_root / 'SKILL.md').read_text(encoding='utf-8')
     assert 'display_name: Imported Skill' in content
     assert 'description: Imported description' in content
-    assert 'auto_activate: false' in content
     assert content.endswith('Original instructions')
 
 
@@ -139,7 +133,6 @@ async def test_create_skill_reuses_existing_managed_directory_without_copying(tm
             'package_root': str(managed_root.resolve()),
             'description': 'Already managed',
             'instructions': 'Managed instructions',
-            'auto_activate': True,
         }
     )
 
@@ -167,11 +160,7 @@ def _build_skill_archive() -> bytes:
     with zipfile.ZipFile(stream, 'w') as archive:
         archive.writestr(
             'demo-repo-main/skills/nested-skill/SKILL.md',
-            '---\n'
-            'name: imported-skill\n'
-            'description: Imported from GitHub archive\n'
-            '---\n\n'
-            'Skill instructions\n',
+            '---\nname: imported-skill\ndescription: Imported from GitHub archive\n---\n\nSkill instructions\n',
         )
     return stream.getvalue()
 
@@ -336,7 +325,6 @@ async def test_update_skill_rejects_package_root_change(tmp_path):
             'display_name': 'Writer',
             'description': 'Writes things',
             'instructions': 'Do work',
-            'auto_activate': True,
         }
     )
 

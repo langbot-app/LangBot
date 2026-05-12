@@ -1360,9 +1360,6 @@ const zhHant = {
     skillSlugHelp: '用作技能目錄名，僅支援英文字母、數字、連字符和底線。',
     skillDescription: '技能描述',
     skillInstructions: '指令內容',
-    autoActivate: '自動啟用',
-    autoActivateDescription:
-      '開啟後，Agent 會在對話中根據技能描述自動匹配並啟用此技能。',
     saveSuccess: '儲存成功',
     saveError: '儲存失敗：',
     createSuccess: '創建成功',

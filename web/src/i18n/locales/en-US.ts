@@ -1346,9 +1346,6 @@ const enUS = {
       'Used as the skill directory name. Only letters, numbers, hyphens and underscores.',
     skillDescription: 'Skill Description',
     skillInstructions: 'Instructions',
-    autoActivate: 'Auto Activate',
-    autoActivateDescription:
-      'When enabled, the Agent may match and activate this skill based on its description during conversations.',
     saveSuccess: 'Saved successfully',
     saveError: 'Save failed: ',
     createSuccess: 'Created successfully',

@@ -119,7 +119,12 @@ def prepare_skill_activation(
     if not response_content or not getattr(ap, 'skill_mgr', None):
         return None
 
-    activated_skill_names = ap.skill_mgr.detect_skill_activations(response_content)
+    visible_skills = skill_loader.get_visible_skills(ap, query)
+    activated_skill_names = [
+        skill_name
+        for skill_name in ap.skill_mgr.detect_skill_activations(response_content)
+        if skill_name in visible_skills
+    ]
     if not activated_skill_names:
         return None
 

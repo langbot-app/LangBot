@@ -22,7 +22,6 @@ def _make_skill_data(
     instructions='Do something',
     package_root='',
     entry_file='SKILL.md',
-    auto_activate=True,
     **kwargs,
 ):
     return {
@@ -32,7 +31,6 @@ def _make_skill_data(
         'instructions': instructions,
         'package_root': package_root,
         'entry_file': entry_file,
-        'auto_activate': auto_activate,
         **kwargs,
     }
 
@@ -150,6 +148,30 @@ class TestSkillActivationHelper:
         assert activation.cleaned_content == 'Working on it.'
         assert set(query.variables[ACTIVATED_SKILLS_KEY].keys()) == {'primary', 'aux'}
 
+    def test_prepare_skill_activation_ignores_skills_not_bound_to_pipeline(self):
+        from langbot.pkg.skill.activation import prepare_skill_activation
+        from langbot.pkg.provider.tools.loaders.skill import ACTIVATED_SKILLS_KEY, PIPELINE_BOUND_SKILLS_KEY
+        from langbot.pkg.skill.manager import SkillManager
+
+        ap = _make_ap()
+        mgr = SkillManager(ap)
+        mgr.skills = {
+            'primary': _make_skill_data(name='primary', instructions='Primary instructions'),
+            'hidden': _make_skill_data(name='hidden', instructions='Hidden instructions'),
+        }
+        ap.skill_mgr = mgr
+
+        query = SimpleNamespace(variables={PIPELINE_BOUND_SKILLS_KEY: ['primary']}, use_funcs=[])
+        activation = prepare_skill_activation(
+            ap,
+            query,
+            '[ACTIVATE_SKILL: hidden]\n[ACTIVATE_SKILL: primary]\nWorking on it.',
+        )
+
+        assert activation is not None
+        assert activation.activated_skill_names == ['primary']
+        assert set(query.variables[ACTIVATED_SKILLS_KEY].keys()) == {'primary'}
+
 
 class TestSkillPathHelpers:
     def test_get_visible_skills_filters_by_bound_names(self):
@@ -252,7 +274,6 @@ class TestSkillAuthoringToolLoader:
                 'display_name': 'Prompt Skill',
                 'description': 'Prompt only skill',
                 'instructions': 'Follow these steps carefully.',
-                'auto_activate': False,
             },
             SimpleNamespace(),
         )
@@ -263,7 +284,6 @@ class TestSkillAuthoringToolLoader:
                 'display_name': 'Prompt Skill',
                 'description': 'Prompt only skill',
                 'instructions': 'Follow these steps carefully.',
-                'auto_activate': False,
             }
         )
         assert result == {
@@ -342,7 +362,6 @@ class TestSkillAuthoringToolLoader:
                 'name': 'time-now',
                 'description': 'Fixed to Beijing time',
                 'instructions': 'Always use Asia/Shanghai and never offer other timezones.',
-                'auto_activate': True,
             },
             SimpleNamespace(),
         )
@@ -353,7 +372,6 @@ class TestSkillAuthoringToolLoader:
                 'name': 'time-now',
                 'description': 'Fixed to Beijing time',
                 'instructions': 'Always use Asia/Shanghai and never offer other timezones.',
-                'auto_activate': True,
             },
         )
         assert result == {
@@ -400,7 +418,6 @@ class TestSkillAuthoringToolLoader:
                     'display_name': 'Cloned Skill',
                     'description': 'Imported from clone',
                     'instructions': 'Do work',
-                    'auto_activate': True,
                 }
             ),
             create_skill=AsyncMock(return_value=_make_skill_data(name='cloned-skill', package_root='/repo/root')),
@@ -430,7 +447,6 @@ class TestSkillAuthoringToolLoader:
                 'description': 'Imported from clone',
                 'instructions': 'Do work',
                 'package_root': os.path.realpath(repo_dir),
-                'auto_activate': True,
             }
         )
         assert result['imported'] is True

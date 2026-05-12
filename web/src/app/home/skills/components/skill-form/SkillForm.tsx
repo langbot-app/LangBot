@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { FolderSearch, ChevronDown, ChevronRight } from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
@@ -30,7 +29,6 @@ const emptySkillDraft: SkillFormDraft = {
     description: '',
     instructions: '',
     package_root: '',
-    auto_activate: true,
   },
   showAdvanced: false,
 };
@@ -95,7 +93,6 @@ export default function SkillForm({
         description: prev.description || result.description,
         package_root: result.package_root,
         instructions: result.instructions,
-        auto_activate: result.auto_activate ?? true,
       }));
       toast.success(t('skills.scanSuccess'));
     } catch (error) {
@@ -123,7 +120,6 @@ export default function SkillForm({
       display_name: skill.display_name || '',
       description: skill.description || '',
       instructions: skill.instructions || '',
-      auto_activate: skill.auto_activate ?? true,
     };
 
     try {
@@ -200,23 +196,6 @@ export default function SkillForm({
           placeholder={t('skills.instructionsPlaceholder')}
           rows={16}
           className="font-mono text-sm"
-        />
-      </div>
-
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-1">
-          <Label htmlFor="auto_activate">{t('skills.autoActivate')}</Label>
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            {t('skills.autoActivateDescription')}
-          </p>
-        </div>
-        <Switch
-          id="auto_activate"
-          className="mt-0.5"
-          checked={skill.auto_activate ?? true}
-          onCheckedChange={(checked) =>
-            setSkill({ ...skill, auto_activate: checked })
-          }
         />
       </div>
 
