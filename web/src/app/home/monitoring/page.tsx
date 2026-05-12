@@ -267,7 +267,7 @@ function MonitoringPageContent() {
   return (
     <div className="w-full h-full overflow-y-auto overflow-x-hidden">
       {/* Filters and Refresh Button - Sticky */}
-      <div className="sticky top-0 z-10 -mt-1 pb-4 pt-1 bg-background">
+      <div className="sticky top-0 z-10 -mt-1 pb-5 pt-1 bg-background">
         <div>
           <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-card rounded-xl border">
             <MonitoringFilters
@@ -295,7 +295,7 @@ function MonitoringPageContent() {
       </div>
 
       {/* Content Area */}
-      <div className="flex flex-col gap-6 pb-4">
+      <div className="relative z-0 flex flex-col gap-6 pb-4 pt-3">
         {/* Overview Section */}
         <OverviewCards
           metrics={data?.overview || null}
