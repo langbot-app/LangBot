@@ -267,8 +267,8 @@ function MonitoringPageContent() {
   return (
     <div className="w-full h-full overflow-y-auto overflow-x-hidden">
       {/* Filters and Refresh Button - Sticky */}
-      <div className="sticky top-[-1.5rem] z-10 -ml-[2rem] -mr-[1.5rem] -mt-[1.5rem] pt-[1.5rem] pb-4 bg-background">
-        <div className="ml-[2rem] mr-[1.5rem] px-[0.8rem]">
+      <div className="sticky top-0 z-10 -mt-1 pb-4 pt-1 bg-background">
+        <div>
           <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-card rounded-xl border">
             <MonitoringFilters
               selectedBots={filterState.selectedBots}
@@ -295,7 +295,7 @@ function MonitoringPageContent() {
       </div>
 
       {/* Content Area */}
-      <div className="flex flex-col gap-6 px-[0.8rem] pb-4">
+      <div className="flex flex-col gap-6 pb-4">
         {/* Overview Section */}
         <OverviewCards
           metrics={data?.overview || null}

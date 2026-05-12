@@ -58,6 +58,8 @@ function isExtensionsRoute(pathname: string): boolean {
   );
 }
 
+const HOME_CONTENT_MAX_WIDTH = 'max-w-[1360px]';
+
 export default function HomeLayout({
   children,
 }: Readonly<{
@@ -134,7 +136,9 @@ function HomeLayoutInner({ children }: { children: React.ReactNode }) {
 
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
-          <div className="flex items-center gap-2 px-4">
+          <div
+            className={`mx-auto flex w-full items-center gap-2 px-4 ${HOME_CONTENT_MAX_WIDTH}`}
+          >
             <SidebarTrigger className="-ml-1" />
             <Separator
               orientation="vertical"
@@ -178,9 +182,13 @@ function HomeLayoutInner({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <div className="flex-1 overflow-hidden p-4 pt-0 min-w-0">
-          {mainContent}
-        </div>
+        <main className="flex-1 overflow-hidden min-w-0 px-4 pb-4 pt-0">
+          <div
+            className={`mx-auto h-full w-full min-w-0 ${HOME_CONTENT_MAX_WIDTH}`}
+          >
+            {mainContent}
+          </div>
+        </main>
 
         <SurveyWidget />
       </SidebarInset>
