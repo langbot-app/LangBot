@@ -532,6 +532,7 @@ const viVN = {
     selectFileToUpload: 'Chọn tệp plugin để tải lên',
     askConfirm:
       'Bạn có chắc chắn muốn cài đặt plugin "{{name}}" ({{version}}) không?',
+    askConfirmNoVersion: 'Bạn có chắc chắn muốn cài đặt plugin "{{name}}" không?',
     fromGithub: 'Từ GitHub',
     fromLocal: 'Từ cục bộ',
     fromMarketplace: 'Từ chợ ứng dụng',

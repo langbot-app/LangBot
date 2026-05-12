@@ -519,6 +519,7 @@ const thTH = {
     uploadFailed: 'อัปโหลดล้มเหลว',
     selectFileToUpload: 'เลือกไฟล์ปลั๊กอินเพื่ออัปโหลด',
     askConfirm: 'คุณแน่ใจหรือไม่ที่จะติดตั้งปลั๊กอิน "{{name}}" ({{version}})?',
+    askConfirmNoVersion: 'คุณแน่ใจหรือไม่ที่จะติดตั้งปลั๊กอิน "{{name}}"?',
     fromGithub: 'จาก GitHub',
     fromLocal: 'จากเครื่อง',
     fromMarketplace: 'จากตลาดปลั๊กอิน',

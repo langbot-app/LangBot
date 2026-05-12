@@ -536,6 +536,8 @@ const ruRU = {
     selectFileToUpload: 'Выберите файл плагина для загрузки',
     askConfirm:
       'Вы уверены, что хотите установить плагин "{{name}}" ({{version}})?',
+    askConfirmNoVersion:
+      'Вы уверены, что хотите установить плагин "{{name}}"?',
     fromGithub: 'С GitHub',
     fromLocal: 'Из локального файла',
     fromMarketplace: 'Из маркетплейса',

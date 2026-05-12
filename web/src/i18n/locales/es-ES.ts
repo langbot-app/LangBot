@@ -539,6 +539,7 @@ const esES = {
     uploadFailed: 'Error en la subida',
     selectFileToUpload: 'Selecciona el archivo del plugin para subir',
     askConfirm: '¿Estás seguro de instalar el plugin "{{name}}" ({{version}})?',
+    askConfirmNoVersion: '¿Estás seguro de instalar el plugin "{{name}}"?',
     fromGithub: 'Desde GitHub',
     fromLocal: 'Desde local',
     fromMarketplace: 'Desde la tienda',

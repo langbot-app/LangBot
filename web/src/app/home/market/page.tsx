@@ -158,10 +158,14 @@ function MarketplaceContent() {
           {pluginInstallStatus === PluginInstallStatus.ASK_CONFIRM && (
             <div className="mt-4">
               <p className="mb-2">
-                {t('plugins.askConfirm', {
-                  name: installInfo.plugin_name,
-                  version: installInfo.plugin_version,
-                })}
+                {installInfo.plugin_version
+                  ? t('plugins.askConfirm', {
+                      name: installInfo.plugin_name,
+                      version: installInfo.plugin_version,
+                    })
+                  : t('plugins.askConfirmNoVersion', {
+                      name: installInfo.plugin_name,
+                    })}
               </p>
             </div>
           )}

@@ -503,6 +503,7 @@ const zhHant = {
     uploadFailed: '上傳失敗',
     selectFileToUpload: '選擇要上傳的插件文件',
     askConfirm: '確定要安裝插件 "{{name}}" ({{version}}) 嗎？',
+    askConfirmNoVersion: '確定要安裝插件 "{{name}}" 嗎？',
     fromGithub: '來自 GitHub',
     fromLocal: '本地安裝',
     fromMarketplace: '來自市場',
