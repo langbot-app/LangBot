@@ -322,7 +322,7 @@ async def test_full_service_to_remote_runtime(tmp_path):
         assert result['ok'] is True
         assert result['status'] == 'completed'
         assert 'service-path' in result['stdout']
-        assert result['session_id'] == '42'
+        assert result['session_id'] == 'query_42'
     finally:
         server_task.cancel()
         client_task.cancel()

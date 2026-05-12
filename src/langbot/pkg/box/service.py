@@ -172,6 +172,17 @@ class BoxService:
             .get('box-session-id-template', '{launcher_type}_{launcher_id}')
         )
         variables = dict(query.variables or {})
+        launcher_type = getattr(query, 'launcher_type', None)
+        if hasattr(launcher_type, 'value'):
+            launcher_type = launcher_type.value
+        launcher_id = getattr(query, 'launcher_id', None)
+        sender_id = getattr(query, 'sender_id', None)
+        query_id = getattr(query, 'query_id', None)
+
+        variables.setdefault('query_id', str(query_id or 'unknown'))
+        variables.setdefault('launcher_type', str(launcher_type or 'query'))
+        variables.setdefault('launcher_id', str(launcher_id or query_id or 'unknown'))
+        variables.setdefault('sender_id', str(sender_id or launcher_id or query_id or 'unknown'))
         variables.setdefault('global', 'global')
         return template.format_map(collections.defaultdict(lambda: 'unknown', variables))
 

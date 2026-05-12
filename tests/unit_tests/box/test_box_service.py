@@ -265,6 +265,38 @@ async def test_box_service_defaults_session_id_from_query():
 
 
 @pytest.mark.asyncio
+async def test_box_service_session_id_uses_query_attributes_without_variables():
+    logger = Mock()
+    backend = FakeBackend(logger)
+    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
+    service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime))
+    await service.initialize()
+
+    query = pipeline_query.Query.model_construct(query_id=7, launcher_type='group', launcher_id='room-1')
+    result = await service.execute_tool({'command': 'pwd'}, query)
+
+    assert result['session_id'] == 'group_room-1'
+    assert result['ok'] is True
+    assert backend.start_calls == ['group_room-1']
+
+
+@pytest.mark.asyncio
+async def test_box_service_session_id_falls_back_to_query_id_for_synthetic_queries():
+    logger = Mock()
+    backend = FakeBackend(logger)
+    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
+    service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime))
+    await service.initialize()
+
+    query = pipeline_query.Query.model_construct(query_id=7)
+    result = await service.execute_tool({'command': 'pwd'}, query)
+
+    assert result['session_id'] == 'query_7'
+    assert result['ok'] is True
+    assert backend.start_calls == ['query_7']
+
+
+@pytest.mark.asyncio
 async def test_box_service_fails_closed_when_backend_unavailable():
     logger = Mock()
     backend = FakeBackend(logger, available=False)

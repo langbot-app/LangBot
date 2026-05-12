@@ -522,7 +522,7 @@ class TestNativeToolLoaderSkillPaths:
             ap.box_service = SimpleNamespace(
                 available=True,
                 default_workspace=tmpdir,
-                execute_spec_payload=AsyncMock(return_value={'ok': True}),
+                execute_tool=AsyncMock(return_value={'ok': True}),
             )
             ap.skill_mgr = SimpleNamespace(refresh_skill_from_disk=Mock())
             loader = NativeToolLoader(ap)
@@ -540,11 +540,9 @@ class TestNativeToolLoaderSkillPaths:
             )
 
             assert result == {'ok': True}
-            spec_payload = ap.box_service.execute_spec_payload.await_args.args[0]
-            assert spec_payload['cmd'] == 'python /workspace/scripts/run.py'
-            assert spec_payload['workdir'] == '/workspace'
-            assert spec_payload['host_path'] == tmpdir
-            assert spec_payload['session_id'] == 'skill-person_123-demo'
+            tool_parameters = ap.box_service.execute_tool.await_args.args[0]
+            assert tool_parameters['command'] == 'python /workspace/.skills/demo/scripts/run.py'
+            assert tool_parameters['workdir'] == '/workspace/.skills/demo'
             ap.skill_mgr.refresh_skill_from_disk.assert_called_once_with('demo')
 
     @pytest.mark.asyncio
