@@ -48,22 +48,50 @@ class SkillsRouterGroup(group.RouterGroup):
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
 
+        @self.route('/<skill_name>/files', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
+        async def list_skill_files(skill_name: str) -> quart.Response:
+            """List files in skill package directory."""
+            path = quart.request.args.get('path', '.').strip()
+            include_hidden = quart.request.args.get('include_hidden', 'false').lower() == 'true'
+
+            try:
+                result = await self.ap.skill_service.list_skill_files(
+                    skill_name,
+                    path=path,
+                    include_hidden=include_hidden,
+                )
+                return self.success(data=result)
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+
+        @self.route('/<skill_name>/files/<path:path>', methods=['GET', 'PUT'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
+        async def read_or_write_skill_file(skill_name: str, path: str) -> quart.Response:
+            """Read or write a file in skill package."""
+            if quart.request.method == 'GET':
+                try:
+                    result = await self.ap.skill_service.read_skill_file(skill_name, path)
+                    return self.success(data=result)
+                except ValueError as exc:
+                    return self.http_status(400, -1, str(exc))
+
+            # PUT - write file
+            data = await quart.request.json
+            content = data.get('content', '')
+            if content is None:
+                return self.http_status(400, -1, 'Missing required field: content')
+
+            try:
+                result = await self.ap.skill_service.write_skill_file(skill_name, path, content)
+                return self.success(data=result)
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+
         @self.route('/<skill_name>/preview', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
         async def preview_skill(skill_name: str) -> quart.Response:
-            runtime_data = self.ap.skill_mgr.get_skill_runtime_data(skill_name)
-            if not runtime_data:
+            skill = self.ap.skill_mgr.get_skill_by_name(skill_name)
+            if not skill:
                 return self.http_status(404, -1, 'Skill not found')
-            return self.success(data={'instructions': runtime_data['instructions']})
-
-        @self.route('/index', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def get_skill_index() -> quart.Response:
-            pipeline_uuid = quart.request.args.get('pipeline_uuid')
-            bound_skills = quart.request.args.getlist('bound_skills')
-            skill_index = self.ap.skill_mgr.get_skill_index(
-                pipeline_uuid=pipeline_uuid,
-                bound_skills=bound_skills if bound_skills else None,
-            )
-            return self.success(data={'index': skill_index})
+            return self.success(data={'instructions': skill.get('instructions', '')})
 
         @self.route('/install/github', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
         async def install_skill_from_github() -> quart.Response:

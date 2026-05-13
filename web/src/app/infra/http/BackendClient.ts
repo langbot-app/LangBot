@@ -1272,6 +1272,52 @@ export class BackendClient extends BaseHttpClient {
   }> {
     return this.get('/api/v1/skills/scan', { path });
   }
+
+  public listSkillFiles(
+    skillName: string,
+    path: string = '.',
+    includeHidden: boolean = false,
+  ): Promise<{
+    skill: { name: string };
+    base_path: string;
+    entries: Array<{
+      path: string;
+      name: string;
+      is_dir: boolean;
+      size: number | null;
+    }>;
+    truncated: boolean;
+  }> {
+    return this.get(`/api/v1/skills/${skillName}/files`, {
+      path,
+      include_hidden: includeHidden,
+    });
+  }
+
+  public readSkillFile(
+    skillName: string,
+    filePath: string,
+  ): Promise<{
+    skill: { name: string };
+    path: string;
+    content: string;
+  }> {
+    return this.get(`/api/v1/skills/${skillName}/files/${filePath}`);
+  }
+
+  public writeSkillFile(
+    skillName: string,
+    filePath: string,
+    content: string,
+  ): Promise<{
+    skill: { name: string };
+    path: string;
+    bytes_written: number;
+  }> {
+    return this.put(`/api/v1/skills/${skillName}/files/${filePath}`, {
+      content,
+    });
+  }
 }
 
 export interface SurveyQuestion {

@@ -1347,6 +1347,13 @@ const zhHans = {
     selectFromSidebar: '从侧边栏选择一个技能',
     dangerZone: '危险区域',
     dangerZoneDescription: '不可逆的操作',
+    files: '文件',
+    noFiles: '暂无文件',
+    loadFilesError: '加载文件失败：',
+    readFileError: '读取文件失败：',
+    saveFile: '保存文件',
+    saveFileSuccess: '文件保存成功',
+    saveFileError: '保存文件失败：',
   },
   wizard: {
     sidebarDescription: '通过引导步骤创建机器人',

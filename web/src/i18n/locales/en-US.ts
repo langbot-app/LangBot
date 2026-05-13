@@ -1404,6 +1404,13 @@ const enUS = {
     selectFromSidebar: 'Select a skill from the sidebar',
     dangerZone: 'Danger Zone',
     dangerZoneDescription: 'Irreversible and destructive actions',
+    files: 'Files',
+    noFiles: 'No files found',
+    loadFilesError: 'Failed to load files: ',
+    readFileError: 'Failed to read file: ',
+    saveFile: 'Save File',
+    saveFileSuccess: 'File saved successfully',
+    saveFileError: 'Failed to save file: ',
   },
   wizard: {
     sidebarDescription: 'Create a bot with guided steps',
