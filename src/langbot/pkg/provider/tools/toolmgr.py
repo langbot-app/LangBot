@@ -113,12 +113,12 @@ class ToolManager:
             return await self.plugin_tool_loader.invoke_tool(name, parameters, query)
         if await self.mcp_tool_loader.has_tool(name):
             return await self.mcp_tool_loader.invoke_tool(name, parameters, query)
-        if await self.skill_authoring_tool_loader.has_tool(name):
-            return await self.skill_authoring_tool_loader.invoke_tool(name, parameters, query)
+        if await self.skill_tool_loader.has_tool(name):
+            return await self.skill_tool_loader.invoke_tool(name, parameters, query)
         raise ValueError(f'未找到工具: {name}')
 
     async def shutdown(self):
         await self.native_tool_loader.shutdown()
         await self.plugin_tool_loader.shutdown()
         await self.mcp_tool_loader.shutdown()
-        await self.skill_authoring_tool_loader.shutdown()
+        await self.skill_tool_loader.shutdown()
