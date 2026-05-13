@@ -47,10 +47,10 @@ class ToolManager:
         # Log native (sandbox) tool availability once at startup
         box_service = getattr(self.ap, 'box_service', None)
         if box_service and getattr(box_service, 'available', False):
-            self.ap.logger.info('Native sandbox tools (exec/read/write/edit) are available.')
+            self.ap.logger.info('Native sandbox tools (exec/read/write/edit/glob/grep) are available.')
         else:
             self.ap.logger.warning(
-                'Native sandbox tools (exec/read/write/edit) are NOT available. '
+                'Native sandbox tools (exec/read/write/edit/glob/grep) are NOT available. '
                 'Box runtime is not connected — the LLM will not have access to code execution tools.'
             )
 
