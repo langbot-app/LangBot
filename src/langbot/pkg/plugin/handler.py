@@ -527,6 +527,47 @@ class RuntimeConnectionHandler(handler.Handler):
                     message=f'Failed to execute tool {tool_name}: {e}',
                 )
 
+        @self.action(PluginToRuntimeAction.GET_TOOL_DETAIL)
+        async def get_tool_detail(data: dict[str, Any]) -> handler.ActionResponse:
+            """Get tool detail for LLM function calling.
+
+            For AgentRunner calls: requires run_id and validates tool_name against session.resources.tools.
+            For regular plugin calls: no run_id, unrestricted access (backward compatibility).
+
+            Returns tool manifest including name, description, and parameters schema.
+            """
+            tool_name = data['tool_name']
+            run_id = data.get('run_id')  # Optional: present for AgentRunner calls
+
+            # Permission validation for AgentRunner calls
+            if run_id:
+                session, error = await _validate_run_authorization(
+                    run_id, 'tool', tool_name, self.ap
+                )
+                if error:
+                    return error
+
+            try:
+                tool = self.ap.tool_mgr.get_tool_by_name(tool_name)
+                if tool is None:
+                    return handler.ActionResponse.error(
+                        message=f'Tool {tool_name} not found',
+                    )
+
+                # Build tool detail for LLM function calling
+                tool_detail = {
+                    'name': tool.name,
+                    'description': tool.description or '',
+                    'parameters': tool.parameters or {},
+                }
+
+                return handler.ActionResponse.success(data=tool_detail)
+            except Exception as e:
+                traceback.print_exc()
+                return handler.ActionResponse.error(
+                    message=f'Failed to get tool detail for {tool_name}: {e}',
+                )
+
         # ================= Binary Storage Handlers =================
         # Permission validation:
         # - For AgentRunner calls (with run_id): validates storage permission via session_registry

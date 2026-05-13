@@ -67,6 +67,27 @@ class ToolManager:
 
         return all_functions
 
+    async def get_tool_by_name(self, name: str) -> resource_tool.LLMTool | None:
+        """Get tool by name from plugin or MCP loaders.
+
+        Args:
+            name: Tool name (format: plugin_author/plugin_name/tool_name or mcp_server/tool_name)
+
+        Returns:
+            LLMTool if found, None otherwise
+        """
+        # Try plugin loader first
+        tool = await self.plugin_tool_loader._get_tool(name)
+        if tool:
+            return tool
+
+        # Try MCP loader
+        tool = await self.mcp_tool_loader._get_tool(name)
+        if tool:
+            return tool
+
+        return None
+
     async def generate_tools_for_openai(self, use_funcs: list[resource_tool.LLMTool]) -> list:
         tools = []
 
