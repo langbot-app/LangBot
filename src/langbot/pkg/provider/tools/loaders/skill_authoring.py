@@ -7,34 +7,22 @@ import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 
 from .. import loader
 
-# Skill authoring needs a managed abstraction above the generic box tools.
-# Pure prompt skills are just metadata plus SKILL.md instructions, so creating
-# or updating them should not require /workspace mounts, shell access, or box
-# to be enabled at all. These higher-level tools let local agents manage skills
-# directly through SkillService, while import_skill_from_directory remains the
-# path for file-based skills that actually need scripts or assets from box.
+# Align with Claude Code's Skill tool design:
+# - activate: Activate a skill via Tool Call, returns SKILL.md content
+# - register_skill: Register a skill from sandbox directory to data/skills/
+# - This protects KV Cache and follows industry standard
 
-CREATE_SKILL_TOOL_NAME = 'create_skill'
-LIST_SKILLS_TOOL_NAME = 'list_skills'
-GET_SKILL_TOOL_NAME = 'get_skill'
-UPDATE_SKILL_TOOL_NAME = 'update_skill'
-DELETE_SKILL_TOOL_NAME = 'delete_skill'
-IMPORT_SKILL_FROM_DIRECTORY_TOOL_NAME = 'import_skill_from_directory'
-RELOAD_SKILLS_TOOL_NAME = 'reload_skills'
+ACTIVATE_SKILL_TOOL_NAME = 'activate'
+REGISTER_SKILL_TOOL_NAME = 'register_skill'
 
-AUTHORING_TOOL_NAMES = {
-    CREATE_SKILL_TOOL_NAME,
-    LIST_SKILLS_TOOL_NAME,
-    GET_SKILL_TOOL_NAME,
-    UPDATE_SKILL_TOOL_NAME,
-    DELETE_SKILL_TOOL_NAME,
-    IMPORT_SKILL_FROM_DIRECTORY_TOOL_NAME,
-    RELOAD_SKILLS_TOOL_NAME,
+SKILL_TOOL_NAMES = {
+    ACTIVATE_SKILL_TOOL_NAME,
+    REGISTER_SKILL_TOOL_NAME,
 }
 
 
-class SkillAuthoringToolLoader(loader.ToolLoader):
-    """Minimal system actions for filesystem-backed skills."""
+class SkillToolLoader(loader.ToolLoader):
+    """Skill tools aligned with Claude Code's design."""
 
     def __init__(self, ap):
         super().__init__(ap)
@@ -42,304 +30,187 @@ class SkillAuthoringToolLoader(loader.ToolLoader):
 
     async def initialize(self):
         self._tools = [
-            self._build_create_skill_tool(),
-            self._build_list_skills_tool(),
-            self._build_get_skill_tool(),
-            self._build_update_skill_tool(),
-            self._build_delete_skill_tool(),
-            self._build_import_skill_from_directory_tool(),
-            self._build_reload_skills_tool(),
+            self._build_activate_skill_tool(),
+            self._build_register_skill_tool(),
         ]
 
     async def get_tools(self, bound_plugins: list[str] | None = None) -> list[resource_tool.LLMTool]:
-        if not self._has_authoring_services():
+        if not self._has_skill_manager():
             return []
         return list(self._tools)
 
     async def has_tool(self, name: str) -> bool:
-        return self._has_authoring_services() and name in AUTHORING_TOOL_NAMES
+        return self._has_skill_manager() and name in SKILL_TOOL_NAMES
 
     async def invoke_tool(self, name: str, parameters: dict, query) -> typing.Any:
-        if name == CREATE_SKILL_TOOL_NAME:
-            return await self._invoke_create_skill(parameters)
-        if name == LIST_SKILLS_TOOL_NAME:
-            return await self._invoke_list_skills()
-        if name == GET_SKILL_TOOL_NAME:
-            return await self._invoke_get_skill(parameters)
-        if name == UPDATE_SKILL_TOOL_NAME:
-            return await self._invoke_update_skill(parameters)
-        if name == DELETE_SKILL_TOOL_NAME:
-            return await self._invoke_delete_skill(parameters)
-        if name == IMPORT_SKILL_FROM_DIRECTORY_TOOL_NAME:
-            return await self._invoke_import_skill_from_directory(parameters)
-        if name == RELOAD_SKILLS_TOOL_NAME:
-            return await self._invoke_reload_skills()
-        raise ValueError(f'Unknown skill authoring tool: {name}')
+        if name == ACTIVATE_SKILL_TOOL_NAME:
+            return await self._invoke_activate_skill(parameters, query)
+        if name == REGISTER_SKILL_TOOL_NAME:
+            return await self._invoke_register_skill(parameters)
+        raise ValueError(f'Unknown skill tool: {name}')
 
     async def shutdown(self):
         pass
 
-    def _has_authoring_services(self) -> bool:
-        return getattr(self.ap, 'skill_service', None) is not None
+    def _has_skill_manager(self) -> bool:
+        return getattr(self.ap, 'skill_mgr', None) is not None
 
-    async def _invoke_reload_skills(self) -> typing.Any:
-        await self.ap.skill_service.reload_skills()
-        skills = await self.ap.skill_service.list_skills()
+    async def _invoke_activate_skill(self, parameters: dict, query) -> typing.Any:
+        """Activate a skill and return SKILL.md content via Tool Result."""
+        skill_name = str(parameters.get('skill_name', '') or '').strip()
+        if not skill_name:
+            raise ValueError('skill_name is required')
+
+        skill_mgr = self.ap.skill_mgr
+        skill_data = skill_mgr.get_skill_by_name(skill_name)
+        if skill_data is None:
+            visible_skills = getattr(skill_mgr, 'skills', {})
+            available_names = ', '.join(sorted(visible_skills.keys())) or 'none'
+            raise ValueError(
+                f'Skill "{skill_name}" not found. Available skills: {available_names}'
+            )
+
+        # Register activated skill for sandbox mount path resolution
+        from . import skill as skill_loader
+        skill_loader.register_activated_skill(query, skill_data)
+
+        # Return SKILL.md content as Tool Result (injects into context)
+        instructions = skill_data.get('instructions', '')
+        package_root = skill_data.get('package_root', '')
+        mount_path = skill_loader.get_virtual_skill_mount_path(skill_name)
+
+        # Build Tool Result content
+        result_content = f'<command-message>The "{skill_name}" skill is activated</command-message>\n'
+        result_content += f'<skill-activation>\n'
+        result_content += f'<skill-name>{skill_name}</skill-name>\n'
+        result_content += f'<mount-path>{mount_path}</mount-path>\n'
+        result_content += f'<package-root>{package_root}</package-root>\n'
+        result_content += f'\n## Instructions\n{instructions}\n'
+        result_content += f'\n## Runtime Context\n'
+        result_content += f'The skill package is mounted at {mount_path}. Use the standard tools to interact with it:\n'
+        result_content += f'- Use `read` to inspect files under {mount_path}\n'
+        result_content += f'- Use `exec` with workdir set to {mount_path} to run commands in that package\n'
+        result_content += f'- Use `write` and `edit` on that path when the instructions require updating files\n'
+        result_content += f'</skill-activation>\n'
+
         return {
-            'reloaded': True,
-            'skill_names': [skill['name'] for skill in skills],
-            'count': len(skills),
+            'activated': True,
+            'skill_name': skill_name,
+            'mount_path': mount_path,
+            'content': result_content,
         }
 
-    async def _invoke_create_skill(self, parameters: dict) -> typing.Any:
-        name = str(parameters.get('name', '') or '').strip()
-        instructions = str(parameters.get('instructions', '') or '')
-        if not name:
-            raise ValueError('name is required')
-        if not instructions.strip():
-            raise ValueError('instructions is required')
-
-        created = await self.ap.skill_service.create_skill(
-            {
-                'name': name,
-                'display_name': str(parameters.get('display_name', '') or '').strip(),
-                'description': str(parameters.get('description', '') or '').strip(),
-                'instructions': instructions,
-            }
-        )
-        return {
-            'created': True,
-            'skill': created,
-        }
-
-    async def _invoke_list_skills(self) -> typing.Any:
-        skills = await self.ap.skill_service.list_skills()
-        return {
-            'skills': skills,
-            'skill_names': [skill['name'] for skill in skills],
-            'count': len(skills),
-        }
-
-    async def _invoke_get_skill(self, parameters: dict) -> typing.Any:
-        name = str(parameters.get('name', '') or '').strip()
-        if not name:
-            raise ValueError('name is required')
-
-        skill = await self.ap.skill_service.get_skill(name)
-        if not skill:
-            raise ValueError(f'Skill "{name}" not found')
-        return {'skill': skill}
-
-    async def _invoke_update_skill(self, parameters: dict) -> typing.Any:
-        name = str(parameters.get('name', '') or '').strip()
-        if not name:
-            raise ValueError('name is required')
-
-        data = {'name': name}
-        for field in ('display_name', 'description', 'instructions'):
-            if field in parameters:
-                data[field] = parameters[field]
-
-        updated = await self.ap.skill_service.update_skill(name, data)
-        return {
-            'updated': True,
-            'skill': updated,
-        }
-
-    async def _invoke_delete_skill(self, parameters: dict) -> typing.Any:
-        name = str(parameters.get('name', '') or '').strip()
-        if not name:
-            raise ValueError('name is required')
-
-        await self.ap.skill_service.delete_skill(name)
-        return {
-            'deleted': True,
-            'skill_name': name,
-        }
-
-    async def _invoke_import_skill_from_directory(self, parameters: dict) -> typing.Any:
+    async def _invoke_register_skill(self, parameters: dict) -> typing.Any:
+        """Register a skill from sandbox directory to data/skills/."""
         sandbox_path = str(parameters.get('path', '') or '').strip()
         if not sandbox_path:
             raise ValueError('path is required')
 
+        # Resolve sandbox path to host path
         host_path = self._resolve_workspace_directory(sandbox_path)
-        scanned = self.ap.skill_service.scan_directory(host_path)
-        created = await self.ap.skill_service.create_skill(
+
+        # Verify SKILL.md exists
+        skill_md_path = os.path.join(host_path, 'SKILL.md')
+        if not os.path.isfile(skill_md_path):
+            # Try skill.md as alternative
+            skill_md_path = os.path.join(host_path, 'skill.md')
+            if not os.path.isfile(skill_md_path):
+                raise ValueError(f'SKILL.md not found in directory: {sandbox_path}')
+
+        # Get or create skill service
+        skill_service = getattr(self.ap, 'skill_service', None)
+        if skill_service is None:
+            raise ValueError('Skill service not available')
+
+        # Scan and register the skill
+        scanned = skill_service.scan_directory(host_path)
+
+        # Override name if provided
+        skill_name = str(parameters.get('name') or scanned['name']).strip()
+        if not skill_name:
+            raise ValueError('skill name is required')
+
+        # Create the skill
+        created = await skill_service.create_skill(
             {
-                'name': str(parameters.get('name') or scanned['name']).strip(),
+                'name': skill_name,
                 'display_name': str(parameters.get('display_name') or scanned.get('display_name', '')).strip(),
                 'description': str(parameters.get('description') or scanned.get('description', '')).strip(),
                 'instructions': str(parameters.get('instructions') or scanned.get('instructions', '')),
                 'package_root': host_path,
             }
         )
+
         return {
-            'imported': True,
+            'registered': True,
+            'skill_name': skill_name,
             'source_path': sandbox_path,
             'skill': created,
         }
 
     def _resolve_workspace_directory(self, sandbox_path: str) -> str:
+        """Resolve sandbox path to host filesystem path."""
         box_service = getattr(self.ap, 'box_service', None)
         workspace_root = getattr(box_service, 'default_workspace', None)
         if not workspace_root:
-            raise ValueError('No default workspace configured for importing skills')
+            raise ValueError('No default workspace configured')
 
         normalized_path = str(sandbox_path).strip() or '/workspace'
         if not normalized_path.startswith('/workspace'):
             raise ValueError('path must be under /workspace')
 
-        relative = normalized_path[len('/workspace') :].lstrip('/')
+        relative = normalized_path[len('/workspace'):].lstrip('/')
         host_root = os.path.realpath(workspace_root)
         host_path = os.path.realpath(os.path.join(host_root, relative))
+
+        # Security check: ensure path doesn't escape workspace
         if not (host_path == host_root or host_path.startswith(host_root + os.sep)):
             raise ValueError('path escapes the workspace boundary')
+
         if not os.path.isdir(host_path):
             raise ValueError(f'Directory does not exist: {sandbox_path}')
+
         return host_path
 
-    def _build_create_skill_tool(self) -> resource_tool.LLMTool:
+    def _build_activate_skill_tool(self) -> resource_tool.LLMTool:
         return resource_tool.LLMTool(
-            name=CREATE_SKILL_TOOL_NAME,
-            human_desc='Create a managed skill',
+            name=ACTIVATE_SKILL_TOOL_NAME,
+            human_desc='Activate a skill',
+            description=self._build_activate_tool_description(),
+            parameters={
+                'type': 'object',
+                'properties': {
+                    'skill_name': {
+                        'type': 'string',
+                        'description': 'The skill name to activate (no arguments). E.g., "pdf" or "create-skill"',
+                    },
+                },
+                'required': ['skill_name'],
+                'additionalProperties': False,
+            },
+            func=lambda parameters: parameters,
+        )
+
+    def _build_register_skill_tool(self) -> resource_tool.LLMTool:
+        return resource_tool.LLMTool(
+            name=REGISTER_SKILL_TOOL_NAME,
+            human_desc='Register a skill from sandbox',
             description=(
-                'Create a new managed skill directly in the skills store without using /workspace. '
-                'Use this for prompt-only skills or simple skills whose main content is the SKILL.md instructions. '
-                'Pure prompt skills should not depend on box or a workspace directory just to be created or edited later.'
-            ),
-            parameters={
-                'type': 'object',
-                'properties': {
-                    'name': {
-                        'type': 'string',
-                        'description': 'Skill name. Use lowercase letters, numbers, hyphens, or underscores.',
-                    },
-                    'display_name': {
-                        'type': 'string',
-                        'description': 'Optional human-friendly display name.',
-                    },
-                    'description': {
-                        'type': 'string',
-                        'description': 'Optional concise description of what the skill does and when to use it.',
-                    },
-                    'instructions': {
-                        'type': 'string',
-                        'description': 'The SKILL.md body instructions for the new skill.',
-                    },
-                },
-                'required': ['name', 'instructions'],
-                'additionalProperties': False,
-            },
-            func=lambda parameters: parameters,
-        )
-
-    def _build_list_skills_tool(self) -> resource_tool.LLMTool:
-        return resource_tool.LLMTool(
-            name=LIST_SKILLS_TOOL_NAME,
-            human_desc='List managed skills',
-            description='List all managed skills so you can inspect what already exists before creating, updating, or deleting one.',
-            parameters={
-                'type': 'object',
-                'properties': {},
-                'additionalProperties': False,
-            },
-            func=lambda parameters: parameters,
-        )
-
-    def _build_get_skill_tool(self) -> resource_tool.LLMTool:
-        return resource_tool.LLMTool(
-            name=GET_SKILL_TOOL_NAME,
-            human_desc='Get a managed skill',
-            description='Fetch one managed skill by name, including its current metadata and instructions, without relying on /workspace or skill activation.',
-            parameters={
-                'type': 'object',
-                'properties': {
-                    'name': {
-                        'type': 'string',
-                        'description': 'Existing skill name to fetch.',
-                    },
-                },
-                'required': ['name'],
-                'additionalProperties': False,
-            },
-            func=lambda parameters: parameters,
-        )
-
-    def _build_update_skill_tool(self) -> resource_tool.LLMTool:
-        return resource_tool.LLMTool(
-            name=UPDATE_SKILL_TOOL_NAME,
-            human_desc='Update a managed skill',
-            description=(
-                'Update an existing managed skill directly in the skills store without using /workspace. '
-                'Use this for prompt-only skills or for metadata and instruction changes to an existing skill. '
-                'Pure prompt skills should remain editable through managed skill tools instead of depending on box.'
-            ),
-            parameters={
-                'type': 'object',
-                'properties': {
-                    'name': {
-                        'type': 'string',
-                        'description': 'Existing skill name to update.',
-                    },
-                    'display_name': {
-                        'type': 'string',
-                        'description': 'Optional new human-friendly display name.',
-                    },
-                    'description': {
-                        'type': 'string',
-                        'description': 'Optional new concise description.',
-                    },
-                    'instructions': {
-                        'type': 'string',
-                        'description': 'Optional replacement SKILL.md body instructions.',
-                    },
-                },
-                'required': ['name'],
-                'additionalProperties': False,
-            },
-            func=lambda parameters: parameters,
-        )
-
-    def _build_delete_skill_tool(self) -> resource_tool.LLMTool:
-        return resource_tool.LLMTool(
-            name=DELETE_SKILL_TOOL_NAME,
-            human_desc='Delete a managed skill',
-            description='Delete an existing managed skill by name from the managed skills store.',
-            parameters={
-                'type': 'object',
-                'properties': {
-                    'name': {
-                        'type': 'string',
-                        'description': 'Existing skill name to delete.',
-                    },
-                },
-                'required': ['name'],
-                'additionalProperties': False,
-            },
-            func=lambda parameters: parameters,
-        )
-
-    def _build_import_skill_from_directory_tool(self) -> resource_tool.LLMTool:
-        return resource_tool.LLMTool(
-            name=IMPORT_SKILL_FROM_DIRECTORY_TOOL_NAME,
-            human_desc='Import skill from workspace directory',
-            description=(
-                'Import a skill package from a directory under /workspace into the managed skills store. '
-                'Use this after cloning or preparing a skill repository in the default workspace. '
-                'This is for file-based skills that actually need scripts, assets, or extra files. '
-                'Pure prompt skills should use create_skill or update_skill instead of depending on box. '
-                'If the source directory is already under the managed skills root, it will be registered in place instead of copied again.'
+                'Register a skill package from a directory under /workspace into LangBot\'s skill store. '
+                'Use this after creating or preparing a skill in the sandbox with exec/read/write/edit. '
+                'The directory must contain a SKILL.md file. '
+                'After registration, the skill can be activated with the activate tool.'
             ),
             parameters={
                 'type': 'object',
                 'properties': {
                     'path': {
                         'type': 'string',
-                        'description': 'Directory path under /workspace that contains a skill package or a nested SKILL.md.',
+                        'description': 'Directory path under /workspace containing the skill package (must have SKILL.md)',
                     },
                     'name': {
                         'type': 'string',
-                        'description': 'Optional skill name override. Defaults to the scanned skill name.',
+                        'description': 'Optional skill name override. Defaults to the name in SKILL.md or directory name.',
                     },
                     'display_name': {
                         'type': 'string',
@@ -360,18 +231,50 @@ class SkillAuthoringToolLoader(loader.ToolLoader):
             func=lambda parameters: parameters,
         )
 
-    def _build_reload_skills_tool(self) -> resource_tool.LLMTool:
-        return resource_tool.LLMTool(
-            name=RELOAD_SKILLS_TOOL_NAME,
-            human_desc='Reload filesystem skills',
-            description=(
-                'Reload skills from the filesystem after using the standard exec/read/write/edit tools '
-                'to create, rename, or modify skill packages under the managed skills directory.'
-            ),
-            parameters={
-                'type': 'object',
-                'properties': {},
-                'additionalProperties': False,
-            },
-            func=lambda parameters: parameters,
-        )
+    def _build_activate_tool_description(self) -> str:
+        """Build tool description with embedded available_skills list."""
+        skill_mgr = getattr(self.ap, 'skill_mgr', None)
+        if skill_mgr is None:
+            return 'Activate a skill. No skills are currently available.'
+
+        skills = getattr(skill_mgr, 'skills', {})
+        if not skills:
+            return 'Activate a skill. No skills are currently available.'
+
+        # Build <available_skills> section
+        available_skills_lines = ['<available_skills>']
+        for skill_name, skill_data in sorted(skills.items()):
+            display_name = skill_data.get('display_name') or skill_name
+            description = skill_data.get('description', '')
+            available_skills_lines.append(f'<skill>')
+            available_skills_lines.append(f'<name>{skill_name}</name>')
+            available_skills_lines.append(f'<description>{description}</description>')
+            available_skills_lines.append(f'</skill>')
+        available_skills_lines.append('</available_skills>')
+
+        available_skills_block = '\n'.join(available_skills_lines)
+
+        return f'''Activate a skill within the main conversation.
+
+<skills_instructions>
+When users ask you to perform tasks, check if any of the available skills
+below can help complete the task more effectively. Skills provide specialized
+capabilities and domain knowledge.
+
+How to use skills:
+- Invoke skills using this tool with the skill name only (no arguments)
+- When you invoke a skill, you will see <command-message>
+The skill is activated
+</command-message>
+- The skill's instructions will be provided in the tool result
+- Examples:
+  - skill_name: "pdf" - invoke the pdf skill
+  - skill_name: "create-skill" - invoke the create-skill skill for creating new skills
+
+Important:
+- Only use skills listed in <available_skills> below
+- Do not invoke a skill that is already running
+- To create a new skill: prepare it in /workspace, then use register_skill tool
+</skills_instructions>
+
+{available_skills_block}'''
