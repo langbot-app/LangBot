@@ -1,3 +1,12 @@
+"""
+Legacy Local Agent Runner.
+
+DEPRECATED: This runner has been migrated to the AgentRunner plugin format.
+Use the official `langbot/local-agent` plugin instead.
+
+Migration target: /home/glwuy/langbot-app/langbot-local-agent/
+"""
+
 from __future__ import annotations
 
 import json
@@ -13,8 +22,8 @@ import langbot_plugin.api.entities.builtin.rag.context as rag_context
 
 
 rag_combined_prompt_template = """
-The following are relevant context entries retrieved from the knowledge base. 
-Please use them to answer the user's message. 
+The following are relevant context entries retrieved from the knowledge base.
+Please use them to answer the user's message.
 Respond in the same language as the user's input.
 
 <context>

@@ -1,3 +1,12 @@
+"""
+Legacy Langflow API Runner.
+
+DEPRECATED: This runner has been migrated to the AgentRunner plugin format.
+Use the official `langbot/langflow-agent` plugin instead.
+
+Migration target: /home/glwuy/langbot-app/langbot-agent-runner/langflow-agent/
+"""
+
 from __future__ import annotations
 
 import typing

@@ -1,3 +1,12 @@
+"""
+Legacy Coze API Runner.
+
+DEPRECATED: This runner has been migrated to the AgentRunner plugin format.
+Use the official `langbot/coze-agent` plugin instead.
+
+Migration target: /home/glwuy/langbot-app/langbot-agent-runner/coze-agent/
+"""
+
 from __future__ import annotations
 
 import typing

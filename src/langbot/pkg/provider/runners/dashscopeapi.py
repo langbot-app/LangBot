@@ -1,3 +1,12 @@
+"""
+Legacy DashScope (阿里云百炼) API Runner.
+
+DEPRECATED: This runner has been migrated to the AgentRunner plugin format.
+Use the official `langbot/dashscope-agent` plugin instead.
+
+Migration target: /home/glwuy/langbot-app/langbot-agent-runner/dashscope-agent/
+"""
+
 from __future__ import annotations
 
 import typing
