@@ -30,6 +30,12 @@ interface FileEntry {
   size: number | null;
 }
 
+interface DirectoryContent {
+  path: string;
+  entries: FileEntry[];
+  loading: boolean;
+}
+
 interface FileTreeProps {
   skillName: string;
   onFileSelect: (path: string, content: string) => void;
@@ -37,18 +43,17 @@ interface FileTreeProps {
 
 function FileTree({ skillName, onFileSelect }: FileTreeProps) {
   const { t } = useTranslation();
-  const [basePath, setBasePath] = useState('.');
-  const [entries, setEntries] = useState<FileEntry[]>([]);
+  const [rootEntries, setRootEntries] = useState<FileEntry[]>([]);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
+  const [dirContents, setDirContents] = useState<Map<string, FileEntry[]>>(new Map());
   const [loading, setLoading] = useState(false);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
 
-  const loadFiles = useCallback(async (path: string = '.') => {
+  const loadRootFiles = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await httpClient.listSkillFiles(skillName, path);
-      setBasePath(result.base_path);
-      setEntries(result.entries);
+      const result = await httpClient.listSkillFiles(skillName, '.');
+      setRootEntries(result.entries);
     } catch (error) {
       console.error('Failed to load skill files:', error);
       toast.error(t('skills.loadFilesError') + String(error));
@@ -57,11 +62,30 @@ function FileTree({ skillName, onFileSelect }: FileTreeProps) {
     }
   }, [skillName, t]);
 
+  const loadDirFiles = useCallback(async (dirPath: string) => {
+    setDirContents(prev => {
+      const newMap = new Map(prev);
+      newMap.set(dirPath, []); // Clear while loading
+      return newMap;
+    });
+    try {
+      const result = await httpClient.listSkillFiles(skillName, dirPath);
+      setDirContents(prev => {
+        const newMap = new Map(prev);
+        newMap.set(dirPath, result.entries);
+        return newMap;
+      });
+    } catch (error) {
+      console.error('Failed to load directory files:', error);
+      toast.error(t('skills.loadFilesError') + String(error));
+    }
+  }, [skillName, t]);
+
   useEffect(() => {
     if (skillName) {
-      loadFiles('.');
+      loadRootFiles();
     }
-  }, [skillName, loadFiles]);
+  }, [skillName, loadRootFiles]);
 
   const toggleDir = async (dirPath: string) => {
     const newExpanded = new Set(expandedDirs);
@@ -71,7 +95,7 @@ function FileTree({ skillName, onFileSelect }: FileTreeProps) {
     } else {
       newExpanded.add(dirPath);
       setExpandedDirs(newExpanded);
-      loadFiles(dirPath);
+      loadDirFiles(dirPath);
     }
   };
 
@@ -86,11 +110,49 @@ function FileTree({ skillName, onFileSelect }: FileTreeProps) {
     }
   };
 
-  const getFullPath = (entry: FileEntry): string => {
-    if (basePath === '.' || basePath === '') {
-      return entry.path;
-    }
-    return `${basePath}/${entry.path}`;
+  const renderEntry = (entry: FileEntry, depth: number = 0): React.ReactNode => {
+    const isExpanded = expandedDirs.has(entry.path);
+    const isSelected = selectedPath === entry.path;
+
+    return (
+      <div key={entry.path}>
+        <div
+          className={`flex items-center gap-1 py-1 px-2 rounded cursor-pointer hover:bg-muted ${
+            isSelected ? 'bg-muted' : ''
+          }`}
+          style={{ paddingLeft: `${depth * 12 + 8}px` }}
+          onClick={() => entry.is_dir ? toggleDir(entry.path) : handleFileClick(entry.path)}
+        >
+          {entry.is_dir ? (
+            <>
+              {isExpanded ? (
+                <FolderOpen className="h-4 w-4 text-blue-500" />
+              ) : (
+                <Folder className="h-4 w-4 text-blue-500" />
+              )}
+              {isExpanded ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
+            </>
+          ) : (
+            <File className="h-4 w-4 text-gray-500" />
+          )}
+          <span className="text-sm truncate">{entry.name}</span>
+          {!entry.is_dir && entry.size !== null && (
+            <span className="text-xs text-muted-foreground ml-auto">
+              {entry.size > 1024 ? `${Math.round(entry.size / 1024)}KB` : `${entry.size}B`}
+            </span>
+          )}
+        </div>
+        {entry.is_dir && isExpanded && (
+          <div>
+            {(dirContents.get(entry.path) || []).map((child) => renderEntry(child, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -100,56 +162,19 @@ function FileTree({ skillName, onFileSelect }: FileTreeProps) {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => loadFiles('.')}
+          onClick={() => loadRootFiles()}
           disabled={loading}
         >
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
         </Button>
       </div>
       <div className="space-y-1 max-h-48 overflow-y-auto">
-        {entries.length === 0 && !loading && (
+        {rootEntries.length === 0 && !loading && (
           <div className="text-sm text-muted-foreground py-2">
             {t('skills.noFiles')}
           </div>
         )}
-        {entries.map((entry) => {
-          const fullPath = getFullPath(entry);
-          const isExpanded = expandedDirs.has(fullPath);
-          const isSelected = selectedPath === fullPath;
-
-          return (
-            <div
-              key={fullPath}
-              className={`flex items-center gap-1 py-1 px-2 rounded cursor-pointer hover:bg-muted ${
-                isSelected ? 'bg-muted' : ''
-              }`}
-              onClick={() => entry.is_dir ? toggleDir(fullPath) : handleFileClick(fullPath)}
-            >
-              {entry.is_dir ? (
-                <>
-                  {isExpanded ? (
-                    <FolderOpen className="h-4 w-4 text-blue-500" />
-                  ) : (
-                    <Folder className="h-4 w-4 text-blue-500" />
-                  )}
-                  {isExpanded ? (
-                    <ChevronDown className="h-3 w-3" />
-                  ) : (
-                    <ChevronRight className="h-3 w-3" />
-                  )}
-                </>
-              ) : (
-                <File className="h-4 w-4 text-gray-500" />
-              )}
-              <span className="text-sm truncate">{entry.name}</span>
-              {!entry.is_dir && entry.size !== null && (
-                <span className="text-xs text-muted-foreground ml-auto">
-                  {entry.size > 1024 ? `${Math.round(entry.size / 1024)}KB` : `${entry.size}B`}
-                </span>
-              )}
-            </div>
-          );
-        })}
+        {rootEntries.map((entry) => renderEntry(entry))}
       </div>
     </div>
   );
@@ -183,12 +208,14 @@ export default function SkillForm({
     initialDraftRef.current.showAdvanced,
   );
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [fileContent, setFileContent] = useState<string>('');
 
   const loadSkill = useCallback(
     async (skillName: string) => {
       try {
         const resp = await httpClient.getSkill(skillName);
         setSkill(resp.skill);
+        setFileContent(resp.skill.instructions || '');
       } catch (error) {
         console.error('Failed to load skill:', error);
         toast.error(t('skills.getSkillListError') + String(error));
@@ -228,6 +255,7 @@ export default function SkillForm({
         package_root: result.package_root,
         instructions: result.instructions,
       }));
+      setFileContent(result.instructions);
       toast.success(t('skills.scanSuccess'));
     } catch (error) {
       console.error('Failed to scan directory:', error);
@@ -239,8 +267,17 @@ export default function SkillForm({
 
   const handleFileSelect = (path: string, content: string) => {
     setSelectedFile(path);
-    // If selecting SKILL.md, update instructions
+    setFileContent(content);
+    // If selecting SKILL.md, also sync to skill.instructions
     if (path === 'SKILL.md' || path.endsWith('/SKILL.md')) {
+      setSkill((prev) => ({ ...prev, instructions: content }));
+    }
+  };
+
+  const handleContentChange = (content: string) => {
+    setFileContent(content);
+    // If editing SKILL.md, sync to skill.instructions
+    if (selectedFile === 'SKILL.md' || selectedFile?.endsWith('/SKILL.md')) {
       setSkill((prev) => ({ ...prev, instructions: content }));
     }
   };
@@ -249,7 +286,7 @@ export default function SkillForm({
     if (!initSkillName || !selectedFile) return;
 
     try {
-      await httpClient.writeSkillFile(initSkillName, selectedFile, skill.instructions || '');
+      await httpClient.writeSkillFile(initSkillName, selectedFile, fileContent);
       toast.success(t('skills.saveFileSuccess'));
     } catch (error) {
       console.error('Failed to save file:', error);
@@ -354,8 +391,8 @@ export default function SkillForm({
         </Label>
         <Textarea
           id="instructions"
-          value={skill.instructions || ''}
-          onChange={(e) => setSkill({ ...skill, instructions: e.target.value })}
+          value={fileContent}
+          onChange={(e) => handleContentChange(e.target.value)}
           placeholder={t('skills.instructionsPlaceholder')}
           rows={16}
           className="font-mono text-sm"
