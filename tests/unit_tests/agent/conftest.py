@@ -9,6 +9,7 @@ def make_resources(
     tools: list[dict] | None = None,
     knowledge_bases: list[dict] | None = None,
     storage: dict | None = None,
+    files: list[dict] | None = None,
 ) -> dict[str, typing.Any]:
     """Create a minimal AgentResources dict for testing.
 
@@ -17,6 +18,7 @@ def make_resources(
         tools: List of tool dicts with 'tool_name' key
         knowledge_bases: List of KB dicts with 'kb_id' key
         storage: Storage permissions dict
+        files: List of file dicts with 'file_id' key
 
     Returns:
         AgentResources dict with all required fields
@@ -25,7 +27,7 @@ def make_resources(
         'models': models or [],
         'tools': tools or [],
         'knowledge_bases': knowledge_bases or [],
-        'files': [],
+        'files': files or [],
         'storage': storage or {'plugin_storage': False, 'workspace_storage': False},
         'platform_capabilities': {},
     }
@@ -59,6 +61,7 @@ def make_session(
         'model': {m.get('model_id') for m in res.get('models', [])},
         'tool': {t.get('tool_name') for t in res.get('tools', [])},
         'knowledge_base': {kb.get('kb_id') for kb in res.get('knowledge_bases', [])},
+        'file': {f.get('file_id') for f in res.get('files', [])},
     }
 
     return {

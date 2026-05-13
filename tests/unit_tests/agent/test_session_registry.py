@@ -108,6 +108,7 @@ class TestSessionRegistryBasic:
                 'model': set(),
                 'tool': set(),
                 'knowledge_base': set(),
+                'file': set(),
             },
         }
 
@@ -169,6 +170,7 @@ class TestSessionRegistryBasic:
                 'model': set(),
                 'tool': set(),
                 'knowledge_base': set(),
+                'file': set(),
             },
         }
         new_session: AgentRunSession = {
@@ -185,6 +187,7 @@ class TestSessionRegistryBasic:
                 'model': set(),
                 'tool': set(),
                 'knowledge_base': set(),
+                'file': set(),
             },
         }
 
@@ -327,6 +330,36 @@ class TestIsResourceAllowed:
         session = make_session(resources=make_resources())
 
         assert registry.is_resource_allowed(session, 'unknown_type', 'something') is False
+
+    def test_file_allowed(self):
+        """File in resources should be allowed."""
+        registry = AgentRunSessionRegistry()
+        resources = make_resources(
+            files=[
+                {'file_id': 'file_001'},
+                {'file_id': 'file_002'},
+            ]
+        )
+        session = make_session(resources=resources)
+
+        assert registry.is_resource_allowed(session, 'file', 'file_001') is True
+        assert registry.is_resource_allowed(session, 'file', 'file_002') is True
+
+    def test_file_not_allowed(self):
+        """File not in resources should be denied."""
+        registry = AgentRunSessionRegistry()
+        resources = make_resources(files=[{'file_id': 'file_001'}])
+        session = make_session(resources=resources)
+
+        assert registry.is_resource_allowed(session, 'file', 'file_999') is False
+
+    def test_file_empty_resources(self):
+        """Empty files list should deny all."""
+        registry = AgentRunSessionRegistry()
+        resources = make_resources(files=[])
+        session = make_session(resources=resources)
+
+        assert registry.is_resource_allowed(session, 'file', 'file_001') is False
 
     def test_missing_resources_field(self):
         """Missing resources field should not raise."""

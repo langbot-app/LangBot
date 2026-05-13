@@ -81,6 +81,7 @@ class AgentRunSessionRegistry:
             'model': {m.get('model_id') for m in resources.get('models', [])},
             'tool': {t.get('tool_name') for t in resources.get('tools', [])},
             'knowledge_base': {kb.get('kb_id') for kb in resources.get('knowledge_bases', [])},
+            'file': {f.get('file_id') for f in resources.get('files', [])},
         }
 
         session: AgentRunSession = {
@@ -143,15 +144,15 @@ class AgentRunSessionRegistry:
 
         Args:
             session: AgentRunSession to check
-            resource_type: Resource type ('model', 'tool', 'knowledge_base', 'storage')
-            resource_id: Resource identifier (model_id, tool_name, kb_id)
+            resource_type: Resource type ('model', 'tool', 'knowledge_base', 'storage', 'file')
+            resource_id: Resource identifier (model_id, tool_name, kb_id, 'plugin'/'workspace', file_key)
 
         Returns:
             True if resource is authorized, False otherwise
         """
         authorized_ids = session.get('_authorized_ids', {})
 
-        if resource_type in ('model', 'tool', 'knowledge_base'):
+        if resource_type in ('model', 'tool', 'knowledge_base', 'file'):
             return resource_id in authorized_ids.get(resource_type, set())
 
         if resource_type == 'storage':

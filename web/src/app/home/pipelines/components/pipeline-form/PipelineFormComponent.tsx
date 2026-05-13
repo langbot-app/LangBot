@@ -389,8 +389,9 @@ export default function PipelineFormComponent({
         return null;
       }
 
-      // For n8n runner config, use N8nAuthFormComponent for form linkage
-      if (stage.name === 'n8n-service-api' || stage.name === 'plugin:langbot/n8n-agent/default') {
+      // For old n8n built-in runner config, use N8nAuthFormComponent for form linkage
+      // New plugin:langbot/n8n-agent/default follows normal plugin runner path below
+      if (stage.name === 'n8n-service-api') {
         return (
           <Card key={stage.name}>
             <CardHeader>

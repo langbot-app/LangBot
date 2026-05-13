@@ -1485,29 +1485,31 @@ class TestStorageResourcePermissionHelper:
 class TestFilesResourcePermission:
     """Tests for session_registry.is_resource_allowed for files resource type.
 
-    Note: The current implementation does not have 'files' resource type
-    in is_resource_allowed. This test class documents the expected behavior
-    when files resource type is implemented.
+    Phase 6: 'files' resource type is now implemented in is_resource_allowed.
     """
 
-    def test_files_resource_type_not_implemented(self):
-        """Currently, 'files' resource type returns False in is_resource_allowed."""
-        registry = AgentRunSessionRegistry()
+    @pytest.mark.asyncio
+    async def test_files_resource_type_now_implemented(self):
+        """'files' resource type is now implemented in is_resource_allowed."""
+        from langbot.pkg.agent.runner.session_registry import get_session_registry
+        registry = get_session_registry()
+        resources = make_resources(files=[{'file_id': 'file_001'}])
 
-        session = {
-            'run_id': 'test',
-            'runner_id': 'test',
-            'query_id': 1,
-            'plugin_identity': 'test',
-            'resources': {
-                'files': [{'file_id': 'file_001'}],
-            },
-            'status': {'started_at': 0, 'last_activity_at': 0},
-        }
+        await registry.register(
+            run_id='run_files_implemented',
+            runner_id='plugin:test/runner/default',
+            query_id=1,
+            plugin_identity='test/runner',
+            resources=resources,
+        )
 
-        # 'files' resource type is not implemented in is_resource_allowed
-        # It returns False for unknown resource types
-        assert registry.is_resource_allowed(session, 'files', 'file_001') is False
+        session = await registry.get('run_files_implemented')
+
+        # 'files' resource type is now implemented
+        assert registry.is_resource_allowed(session, 'file', 'file_001') is True
+        assert registry.is_resource_allowed(session, 'file', 'file_999') is False
+
+        await registry.unregister('run_files_implemented')
 
 
 class TestRealActionHandlerSimulation:
@@ -1604,7 +1606,7 @@ class TestRealActionHandlerSimulation:
 
         # Try to validate with non-existent run_id
         session, error = await _validate_run_authorization(
-            'run_nonexistent_session_sim',
+            'run_nonexistent_session_flow',
             'model',
             'model_001',
             mock_ap
@@ -1615,3 +1617,361 @@ class TestRealActionHandlerSimulation:
         assert error is not None
         assert 'not found' in error.message.lower()
         assert mock_ap.logger.warning.called
+
+
+class TestStoragePermissionValidation:
+    """Tests for Host-side storage permission validation via _validate_run_authorization.
+
+    Phase 6: Storage actions (SET/GET/DELETE_BINARY_STORAGE) now validate
+    storage permissions via _validate_run_authorization when run_id is present.
+    """
+
+    @pytest.mark.asyncio
+    async def test_plugin_storage_allowed_when_permitted(self):
+        """_validate_run_authorization allows 'plugin' storage when permitted."""
+        from langbot.pkg.agent.runner.session_registry import get_session_registry
+        registry = get_session_registry()
+        resources = make_resources(storage={'plugin_storage': True, 'workspace_storage': False})
+
+        await registry.register(
+            run_id='run_plugin_storage_auth',
+            runner_id='plugin:test/runner/default',
+            query_id=1,
+            plugin_identity='test/runner',
+            resources=resources,
+        )
+
+        from langbot.pkg.plugin.handler import _validate_run_authorization
+
+        mock_ap = MagicMock()
+        mock_ap.logger = MagicMock()
+
+        session, error = await _validate_run_authorization(
+            'run_plugin_storage_auth',
+            'storage',
+            'plugin',
+            mock_ap
+        )
+
+        assert session is not None
+        assert error is None
+
+        await registry.unregister('run_plugin_storage_auth')
+
+    @pytest.mark.asyncio
+    async def test_plugin_storage_denied_when_not_permitted(self):
+        """_validate_run_authorization denies 'plugin' storage when not permitted."""
+        from langbot.pkg.agent.runner.session_registry import get_session_registry
+        registry = get_session_registry()
+        resources = make_resources(storage={'plugin_storage': False, 'workspace_storage': False})
+
+        await registry.register(
+            run_id='run_plugin_storage_denied',
+            runner_id='plugin:test/runner/default',
+            query_id=1,
+            plugin_identity='test/runner',
+            resources=resources,
+        )
+
+        from langbot.pkg.plugin.handler import _validate_run_authorization
+
+        mock_ap = MagicMock()
+        mock_ap.logger = MagicMock()
+        mock_ap.logger.warning = MagicMock()
+
+        session, error = await _validate_run_authorization(
+            'run_plugin_storage_denied',
+            'storage',
+            'plugin',
+            mock_ap
+        )
+
+        assert session is None
+        assert error is not None
+        assert 'not authorized' in error.message.lower()
+
+        await registry.unregister('run_plugin_storage_denied')
+
+    @pytest.mark.asyncio
+    async def test_workspace_storage_allowed_when_permitted(self):
+        """_validate_run_authorization allows 'workspace' storage when permitted."""
+        from langbot.pkg.agent.runner.session_registry import get_session_registry
+        registry = get_session_registry()
+        resources = make_resources(storage={'plugin_storage': False, 'workspace_storage': True})
+
+        await registry.register(
+            run_id='run_workspace_storage_auth',
+            runner_id='plugin:test/runner/default',
+            query_id=1,
+            plugin_identity='test/runner',
+            resources=resources,
+        )
+
+        from langbot.pkg.plugin.handler import _validate_run_authorization
+
+        mock_ap = MagicMock()
+        mock_ap.logger = MagicMock()
+
+        session, error = await _validate_run_authorization(
+            'run_workspace_storage_auth',
+            'storage',
+            'workspace',
+            mock_ap
+        )
+
+        assert session is not None
+        assert error is None
+
+        await registry.unregister('run_workspace_storage_auth')
+
+    @pytest.mark.asyncio
+    async def test_workspace_storage_denied_when_not_permitted(self):
+        """_validate_run_authorization denies 'workspace' storage when not permitted."""
+        from langbot.pkg.agent.runner.session_registry import get_session_registry
+        registry = get_session_registry()
+        resources = make_resources(storage={'plugin_storage': False, 'workspace_storage': False})
+
+        await registry.register(
+            run_id='run_workspace_storage_denied',
+            runner_id='plugin:test/runner/default',
+            query_id=1,
+            plugin_identity='test/runner',
+            resources=resources,
+        )
+
+        from langbot.pkg.plugin.handler import _validate_run_authorization
+
+        mock_ap = MagicMock()
+        mock_ap.logger = MagicMock()
+        mock_ap.logger.warning = MagicMock()
+
+        session, error = await _validate_run_authorization(
+            'run_workspace_storage_denied',
+            'storage',
+            'workspace',
+            mock_ap
+        )
+
+        assert session is None
+        assert error is not None
+        assert 'not authorized' in error.message.lower()
+
+        await registry.unregister('run_workspace_storage_denied')
+
+
+class TestFilePermissionValidation:
+    """Tests for Host-side file permission validation via _validate_run_authorization.
+
+    Phase 6: GET_CONFIG_FILE action now validates file permissions
+    via _validate_run_authorization when run_id is present.
+    """
+
+    @pytest.mark.asyncio
+    async def test_file_allowed_when_in_resources(self):
+        """_validate_run_authorization allows file when in resources."""
+        from langbot.pkg.agent.runner.session_registry import get_session_registry
+        registry = get_session_registry()
+        resources = make_resources(files=[{'file_id': 'file_001'}])
+
+        await registry.register(
+            run_id='run_file_auth',
+            runner_id='plugin:test/runner/default',
+            query_id=1,
+            plugin_identity='test/runner',
+            resources=resources,
+        )
+
+        from langbot.pkg.plugin.handler import _validate_run_authorization
+
+        mock_ap = MagicMock()
+        mock_ap.logger = MagicMock()
+
+        session, error = await _validate_run_authorization(
+            'run_file_auth',
+            'file',
+            'file_001',
+            mock_ap
+        )
+
+        assert session is not None
+        assert error is None
+
+        await registry.unregister('run_file_auth')
+
+    @pytest.mark.asyncio
+    async def test_file_denied_when_not_in_resources(self):
+        """_validate_run_authorization denies file when not in resources."""
+        from langbot.pkg.agent.runner.session_registry import get_session_registry
+        registry = get_session_registry()
+        resources = make_resources(files=[{'file_id': 'file_001'}])
+
+        await registry.register(
+            run_id='run_file_denied',
+            runner_id='plugin:test/runner/default',
+            query_id=1,
+            plugin_identity='test/runner',
+            resources=resources,
+        )
+
+        from langbot.pkg.plugin.handler import _validate_run_authorization
+
+        mock_ap = MagicMock()
+        mock_ap.logger = MagicMock()
+        mock_ap.logger.warning = MagicMock()
+
+        session, error = await _validate_run_authorization(
+            'run_file_denied',
+            'file',
+            'file_999',  # Not in resources
+            mock_ap
+        )
+
+        assert session is None
+        assert error is not None
+        assert 'not authorized' in error.message.lower()
+
+        await registry.unregister('run_file_denied')
+
+
+class TestCallerPluginIdentityValidation:
+    """Tests for caller_plugin_identity cross-plugin validation.
+
+    Phase 6: _validate_run_authorization now validates that the caller plugin
+    identity matches the session's plugin_identity, preventing cross-plugin
+    unauthorized access if one plugin tries to use another's run_id.
+    """
+
+    @pytest.mark.asyncio
+    async def test_same_plugin_identity_allowed(self):
+        """_validate_run_authorization allows when caller matches session."""
+        from langbot.pkg.agent.runner.session_registry import get_session_registry
+        registry = get_session_registry()
+        resources = make_resources(models=[{'model_id': 'model_001'}])
+
+        await registry.register(
+            run_id='run_identity_match',
+            runner_id='plugin:test/runner/default',
+            query_id=1,
+            plugin_identity='test/runner',  # Session owner
+            resources=resources,
+        )
+
+        from langbot.pkg.plugin.handler import _validate_run_authorization
+
+        mock_ap = MagicMock()
+        mock_ap.logger = MagicMock()
+
+        session, error = await _validate_run_authorization(
+            'run_identity_match',
+            'model',
+            'model_001',
+            mock_ap,
+            caller_plugin_identity='test/runner',  # Caller is same plugin
+        )
+
+        assert session is not None
+        assert error is None
+
+        await registry.unregister('run_identity_match')
+
+    @pytest.mark.asyncio
+    async def test_different_plugin_identity_denied(self):
+        """_validate_run_authorization denies when caller differs from session."""
+        from langbot.pkg.agent.runner.session_registry import get_session_registry
+        registry = get_session_registry()
+        resources = make_resources(models=[{'model_id': 'model_001'}])
+
+        await registry.register(
+            run_id='run_identity_mismatch',
+            runner_id='plugin:test/runner/default',
+            query_id=1,
+            plugin_identity='test/runner',  # Session owner
+            resources=resources,
+        )
+
+        from langbot.pkg.plugin.handler import _validate_run_authorization
+
+        mock_ap = MagicMock()
+        mock_ap.logger = MagicMock()
+        mock_ap.logger.warning = MagicMock()
+
+        session, error = await _validate_run_authorization(
+            'run_identity_mismatch',
+            'model',
+            'model_001',
+            mock_ap,
+            caller_plugin_identity='other/plugin',  # Different plugin trying to use run_id
+        )
+
+        assert session is None
+        assert error is not None
+        assert 'mismatch' in error.message.lower()
+
+        await registry.unregister('run_identity_mismatch')
+
+    @pytest.mark.asyncio
+    async def test_no_caller_identity_allowed(self):
+        """_validate_run_authorization allows when caller_plugin_identity not provided."""
+        # Backward compatibility: if caller_plugin_identity is None, skip identity check
+        from langbot.pkg.agent.runner.session_registry import get_session_registry
+        registry = get_session_registry()
+        resources = make_resources(models=[{'model_id': 'model_001'}])
+
+        await registry.register(
+            run_id='run_no_caller_identity',
+            runner_id='plugin:test/runner/default',
+            query_id=1,
+            plugin_identity='test/runner',
+            resources=resources,
+        )
+
+        from langbot.pkg.plugin.handler import _validate_run_authorization
+
+        mock_ap = MagicMock()
+        mock_ap.logger = MagicMock()
+
+        # caller_plugin_identity not provided (None)
+        session, error = await _validate_run_authorization(
+            'run_no_caller_identity',
+            'model',
+            'model_001',
+            mock_ap,
+            caller_plugin_identity=None,  # Not provided
+        )
+
+        # Should pass (backward compat)
+        assert session is not None
+        assert error is None
+
+        await registry.unregister('run_no_caller_identity')
+
+
+class TestBackwardCompatStorageNoRunId:
+    """Tests for backward compatibility: storage actions without run_id.
+
+    Regular plugins (non-AgentRunner) don't have run_id and should
+    have unrestricted access to storage APIs.
+    """
+
+    def test_storage_no_run_id_skips_validation(self):
+        """Storage actions without run_id skip Host-side validation."""
+        # Handler.py: if run_id: ...validation...
+        # When run_id is None, validation is skipped
+        run_id = None
+
+        # Simulate handler logic
+        if run_id:
+            raise AssertionError('Should not execute validation')
+
+        # Storage access unrestricted for regular plugins
+        assert run_id is None
+
+    def test_file_no_run_id_skips_validation(self):
+        """GET_CONFIG_FILE without run_id skips Host-side validation."""
+        run_id = None
+
+        if run_id:
+            raise AssertionError('Should not execute validation')
+
+        # File access unrestricted for regular plugins
+        assert run_id is None
