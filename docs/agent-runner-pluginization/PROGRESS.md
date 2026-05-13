@@ -69,7 +69,7 @@
 
 ### 高优先级
 
-- [ ] 工具详情 API — local-agent runner 有 TODO 注释
+- [ ] 工具详情 API — 需要在 SDK 添加 GET_TOOL_DETAIL action 并在 AgentRunAPIProxy 中暴露
 
 ### 低优先级 / 未来
 
