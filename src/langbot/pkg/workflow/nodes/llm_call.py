@@ -20,7 +20,7 @@ class LLMCallNode(WorkflowNode):
 
     type_name = 'llm_call'
     category = 'process'
-    icon = '🤖'
+    icon = 'Brain'
     name = 'llm_call'
     name_zh = 'LLM 调用'
     name_en = 'LLM Call'

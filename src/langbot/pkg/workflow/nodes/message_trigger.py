@@ -19,7 +19,7 @@ class MessageTriggerNode(WorkflowNode):
 
     type_name = 'message_trigger'
     category = 'trigger'
-    icon = '💬'
+    icon = 'MessageSquare'
     name = 'message_trigger'
     description = 'message_trigger'
     name_zh = '消息触发'

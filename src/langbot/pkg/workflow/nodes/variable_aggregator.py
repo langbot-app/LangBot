@@ -17,7 +17,7 @@ class VariableAggregatorNode(WorkflowNode):
 
     type_name = 'variable_aggregator'
     category = 'control'
-    icon = '📊'
+    icon = 'GitMerge'
     name = 'variable_aggregator'
     description = 'variable_aggregator'
     name_zh = '变量聚合器'

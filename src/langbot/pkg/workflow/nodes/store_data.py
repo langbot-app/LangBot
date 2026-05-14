@@ -17,7 +17,7 @@ class StoreDataNode(WorkflowNode):
 
     type_name = 'store_data'
     category = 'action'
-    icon = '💾'
+    icon = 'Database'
     name = 'store_data'
     description = 'store_data'
     name_zh = '存储数据'

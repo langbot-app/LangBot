@@ -17,7 +17,7 @@ class ParameterExtractorNode(WorkflowNode):
 
     type_name = 'parameter_extractor'
     category = 'process'
-    icon: str = '📤'
+    icon: str = 'Variable'
     name = 'parameter_extractor'
     description = 'parameter_extractor'
     name_zh = '参数提取器'

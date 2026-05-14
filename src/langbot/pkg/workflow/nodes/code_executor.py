@@ -19,7 +19,7 @@ class CodeExecutorNode(WorkflowNode):
 
     type_name = 'code_executor'
     category = 'process'
-    icon = '💻'
+    icon = 'Code'
     name = 'code_executor'
     description = 'code_executor'
     name_zh = '代码执行'

@@ -14,7 +14,7 @@ class ParallelNode(WorkflowNode):
 
     type_name = 'parallel'
     category = 'control'
-    icon = '⚡'
+    icon = 'Layers'
     name = 'parallel'
     name_zh = '并行执行'
     name_en = 'Parallel'

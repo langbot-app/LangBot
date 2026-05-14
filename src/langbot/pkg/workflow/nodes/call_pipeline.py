@@ -24,7 +24,7 @@ class CallPipelineNode(WorkflowNode):
 
     type_name = 'call_pipeline'
     category = 'action'
-    icon = '⚙️'
+    icon = 'Workflow'
     name = 'call_pipeline'
     description = 'call_pipeline'
     name_zh = '调用 Pipeline'

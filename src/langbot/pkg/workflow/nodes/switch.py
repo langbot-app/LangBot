@@ -17,7 +17,7 @@ class SwitchNode(WorkflowNode):
 
     type_name = 'switch'
     category = 'control'
-    icon = '🔃'
+    icon = 'Split'
     name = 'switch'
     description = 'switch'
     name_zh = '多路分支'

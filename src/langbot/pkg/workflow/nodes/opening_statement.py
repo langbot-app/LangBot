@@ -17,7 +17,7 @@ class OpeningStatementNode(WorkflowNode):
 
     type_name = 'opening_statement'
     category = 'action'
-    icon = '👋'
+    icon = 'MessageSquare'
     name = 'opening_statement'
     description = 'opening_statement'
     name_zh = '对话开场白'

@@ -20,7 +20,7 @@ class ReplyMessageNode(WorkflowNode):
 
     type_name = 'reply_message'
     category = 'action'
-    icon = '↩️'
+    icon = 'Send'
     name = 'reply_message'
     description = 'reply_message'
     name_zh = '回复消息'

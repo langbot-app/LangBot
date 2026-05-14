@@ -17,7 +17,7 @@ class HTTPRequestNode(WorkflowNode):
 
     type_name = 'http_request'
     category = 'process'
-    icon = '🌐'
+    icon = 'Globe'
     name = 'http_request'
     description = 'http_request'
     name_zh = 'HTTP 请求'

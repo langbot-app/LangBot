@@ -1520,6 +1520,9 @@ const enUS = {
       question: 'Question',
       parameters: 'Parameters',
       key: 'Key',
+      payload: 'Payload',
+      input_value: 'Input Value',
+      conversation_id: 'Conversation ID',
       // Control inputs
       case_1: 'Case 1',
       case_2: 'Case 2',
@@ -1982,16 +1985,27 @@ const enUS = {
     },
     // Node outputs i18n
     nodeOutputs: {
+      // ===== Common Outputs =====
+      output: 'Output',
+      result: 'Result',
+      data: 'Data',
+      error: 'Error',
+      success: 'Success',
+      
+      // ===== Trigger Nodes =====
       // trigger.py - MessageTriggerNode
       message: 'Message Content',
+      sender: 'Sender',
       sender_id: 'Sender ID',
       sender_name: 'Sender Name',
       platform: 'Platform',
       conversation_id: 'Conversation ID',
       is_group: 'Is Group Chat',
       context: 'Full Message Context',
+      event: 'Event',
       // trigger.py - CronTriggerNode
       timestamp: 'Trigger Time',
+      trigger_time: 'Trigger Time',
       schedule: 'Trigger Schedule',
       cron_timestamp: 'Cron Timestamp',
       cron_schedule: 'Cron Schedule',
@@ -2000,6 +2014,7 @@ const enUS = {
       body: 'Request Body',
       headers: 'Request Headers',
       query: 'Query Parameters',
+      query_params: 'Query Parameters',
       method: 'Request Method',
       webhook_body: 'Webhook Body',
       webhook_headers: 'Webhook Headers',
@@ -2015,10 +2030,10 @@ const enUS = {
       prompt: 'Prompt/Question',
       context_info: 'Context Information',
       // process.py - CodeExecutorNode
-      output: 'Output Data',
       console: 'Console Output',
       code_input: 'Code Input',
       code_output: 'Code Output',
+      logs: 'Logs',
       // process.py - HTTPRequestNode
       status_code: 'Status Code',
       http_body: 'HTTP Body',
@@ -2026,23 +2041,27 @@ const enUS = {
       http_response: 'HTTP Response',
       response_headers: 'Response Headers',
       // process.py - DataTransformNode
-      result: 'Transform Result',
       transform_input: 'Transform Input',
       transform_result: 'Transform Result',
       // process.py - QuestionClassifierNode
       category: 'Category Result',
       confidence: 'Confidence',
       all_scores: 'All Category Scores',
+      scores: 'Scores',
       question: 'User Question',
       // process.py - ParameterExtractorNode
       parameters: 'Extracted Parameters',
       extraction_success: 'Extraction Success',
       extract_text: 'Input Text',
+      missing: 'Missing Parameters',
+      parsed: 'Parsed Result',
       // process.py - KnowledgeRetrievalNode
       documents: 'Retrieved Documents',
       citations: 'Citation Information',
       knowledge_context: 'Merged Context',
       knowledge_query: 'Retrieval Query',
+      chunks: 'Text Chunks',
+      text: 'Text',
       // control.py - ConditionNode
       true: 'True Branch Output',
       false: 'False Branch Output',
@@ -2051,12 +2070,15 @@ const enUS = {
       matched_case: 'Matched Branch Output',
       default: 'Default Branch Output',
       switch_input: 'Switch Input',
+      case_1: 'Case 1',
+      case_2: 'Case 2',
       // control.py - LoopNode
       item: 'Current Item',
       index: 'Current Index',
       results: 'All Iteration Results',
       completed: 'Is Completed',
       loop_items: 'Items to Iterate',
+      count: 'Count',
       // control.py - IteratorNode
       is_first: 'Is First',
       is_last: 'Is Last',
@@ -2077,6 +2099,8 @@ const enUS = {
       merge_input_2: 'Input 2',
       merge_input_3: 'Input 3',
       merge_input_4: 'Input 4',
+      branch_1: 'Branch 1 Output',
+      branch_2: 'Branch 2 Output',
       // control.py - VariableAggregatorNode
       aggregated: 'Aggregated Variables',
       aggregator_variables: 'Variable Input',
@@ -2084,6 +2108,8 @@ const enUS = {
       status: 'Send Status',
       message_id: 'Message ID',
       target: 'Target ID',
+      execution_id: 'Execution ID',
+      notification_id: 'Notification ID',
       // action.py - ReplyMessageNode
       reply_message: 'Reply Content',
       // action.py - CallPipelineNode
@@ -2101,6 +2127,7 @@ const enUS = {
       // action.py - OpeningStatementNode
       statement: 'Opening Statement',
       suggested_questions: 'Suggested Questions',
+      suggestions: 'Suggestions',
       // action.py - EndNode
       workflow_output: 'Workflow Output',
       final_result: 'Final Result',
@@ -2108,13 +2135,11 @@ const enUS = {
       query_results: 'Query Results',
       row_count: 'Affected/Returned Rows',
       query_success: 'Query Success',
-      query_params: 'Query Parameters',
       // integration.py - RedisOperationNode
       redis_result: 'Operation Result',
       redis_success: 'Operation Success',
       redis_key: 'Redis Key',
       redis_value: 'Redis Value',
-      error: 'Error Message',
       plugin_input: 'Plugin Input',
       // integration.py - MCPToolNode
       tool_result: 'Tool Execution Result',
@@ -2146,6 +2171,12 @@ const enUS = {
       coze_query: 'User Input/Query',
       coze_conversation_id: 'Conversation ID',
       bot_conversation_id: 'Conversation ID',
+      
+      // ===== Additional Keys =====
+      embedding: 'Embedding',
+      dimensions: 'Dimensions',
+      intent: 'Intent',
+      entities: 'Entities',
     },
   },
   unifiedBinding: {

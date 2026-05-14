@@ -1,0 +1,23 @@
+{
+  "_comment": "翻译模板 - 请填写各语言的翻译",
+  "_instructions": "1. 从workflows_chinese_texts.json复制需要翻译的键; 2. 为每个键添加各语言翻译; 3. 运行apply_translations.py应用翻译",
+  "_languages": {
+    "ja-JP": "日语",
+    "zh-Hant": "繁体中文",
+    "es-ES": "西班牙语",
+    "ru-RU": "俄语",
+    "th-TH": "泰语",
+    "vi-VN": "越南语"
+  },
+  "translations": {
+    "title": {
+      "zh-Hans": "工作流",
+      "ja-JP": "ワークフロー",
+      "zh-Hant": "工作流",
+      "es-ES": "Flujo de trabajo",
+      "ru-RU": "Рабочий процесс",
+      "th-TH": "เวิร์กโฟลว์",
+      "vi-VN": "Quy trình làm việc"
+    }
+  }
+}

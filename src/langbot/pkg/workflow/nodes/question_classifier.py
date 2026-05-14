@@ -17,7 +17,7 @@ class QuestionClassifierNode(WorkflowNode):
 
     type_name = 'question_classifier'
     category = 'process'
-    icon = '🏷️'
+    icon = 'ListFilter'
     name = 'question_classifier'
     description = 'question_classifier'
     name_zh = '问题分类器'

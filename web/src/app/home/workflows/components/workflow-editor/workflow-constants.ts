@@ -236,6 +236,16 @@ export const CATEGORY_I18N_KEYS: Record<string, { labelKey: string }> = {
 
 // ─── Icon mapping ───────────────────────────────────────────────────
 
+/**
+ * Legacy hardcoded icon mapping for workflow nodes.
+ *
+ * @deprecated This mapping is kept for backward compatibility only.
+ * New code should use the dynamic icon resolution via getIconComponent(),
+ * which reads icon names from the backend node definitions.
+ *
+ * This will be removed in a future version once all nodes properly
+ * define their icons in the backend.
+ */
 export const NODE_ICONS: Record<string, React.ElementType> = {
   // Trigger
   'trigger.message': MessageSquare,
@@ -410,4 +420,52 @@ export function getNodeTypeLabel(
     .split('_')
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ');
+}
+
+// ─── Dynamic Icon Resolution ────────────────────────────────────────
+
+import * as LucideIcons from 'lucide-react';
+
+/**
+ * Dynamically get Lucide icon component from backend icon name.
+ *
+ * This function enables the frontend to use icon names provided by the backend,
+ * eliminating the need to maintain a hardcoded NODE_ICONS mapping.
+ *
+ * @param iconName - Lucide icon name from backend (e.g., 'MessageSquare', 'Brain')
+ * @param nodeType - Node type for fallback to hardcoded mapping (backward compatibility)
+ * @returns React component for the icon
+ *
+ * @example
+ * ```tsx
+ * const Icon = getIconComponent('MessageSquare');
+ * return <Icon className="size-5" />;
+ * ```
+ */
+export function getIconComponent(
+  iconName: string | undefined,
+  nodeType?: string
+): React.ElementType {
+  // 1. Priority: Use backend-provided icon name
+  if (iconName) {
+    const IconComponent = (LucideIcons as any)[iconName];
+    if (IconComponent && typeof IconComponent === 'function') {
+      return IconComponent;
+    }
+    // Warn if icon name is invalid
+    if (process.env.NODE_ENV === 'development') {
+      console.warn(
+        `[Workflow] Icon "${iconName}" not found in Lucide icons. ` +
+        `Falling back to default. Check: https://lucide.dev/icons/`
+      );
+    }
+  }
+  
+  // 2. Fallback: Use hardcoded NODE_ICONS mapping (backward compatibility)
+  if (nodeType && NODE_ICONS[nodeType]) {
+    return NODE_ICONS[nodeType];
+  }
+  
+  // 3. Final fallback: Default Settings icon
+  return LucideIcons.Settings;
 }

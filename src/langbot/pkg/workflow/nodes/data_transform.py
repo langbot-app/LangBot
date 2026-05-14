@@ -18,7 +18,7 @@ class DataTransformNode(WorkflowNode):
 
     type_name = 'data_transform'
     category = 'process'
-    icon = '🔄'
+    icon = 'ArrowRightLeft'
     name = 'data_transform'
     description = 'data_transform'
     name_zh = '数据转换'

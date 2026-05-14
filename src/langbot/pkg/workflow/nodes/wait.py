@@ -17,7 +17,7 @@ class WaitNode(WorkflowNode):
 
     type_name = 'wait'
     category = 'control'
-    icon = '⏳'
+    icon = 'Clock'
     name = 'wait'
     description = 'wait'
     name_zh = '等待'

@@ -17,7 +17,7 @@ class MergeNode(WorkflowNode):
 
     type_name = 'merge'
     category = 'control'
-    icon = '🔗'
+    icon = 'GitMerge'
     name = 'merge'
     description = 'merge'
     name_zh = '合并'

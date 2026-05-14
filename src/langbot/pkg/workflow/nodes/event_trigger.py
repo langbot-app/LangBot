@@ -17,7 +17,7 @@ class EventTriggerNode(WorkflowNode):
 
     type_name = 'event_trigger'
     category = 'trigger'
-    icon = '📡'
+    icon = 'Bell'
     name = 'event_trigger'
     description = 'event_trigger'
     name_zh = '事件触发'

@@ -17,7 +17,7 @@ class CronTriggerNode(WorkflowNode):
 
     type_name = 'cron_trigger'
     category = 'trigger'
-    icon = '⏰'
+    icon = 'Timer'
     name = 'cron_trigger'
     description = 'cron_trigger'
     name_zh = '定时触发'

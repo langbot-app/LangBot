@@ -17,7 +17,7 @@ class EndNode(WorkflowNode):
 
     type_name = 'end'
     category = 'action'
-    icon = '🏁'
+    icon = 'PauseCircle'
     name = 'end'
     description = 'end'
     name_zh = '结束'

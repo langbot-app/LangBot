@@ -1,0 +1,1450 @@
+[
+  {
+    "key": "copySuccess",
+    "zh": "复制成功"
+  },
+  {
+    "key": "copyError",
+    "zh": "复制失败："
+  },
+  {
+    "key": "exportSuccess",
+    "zh": "工作流已导出"
+  },
+  {
+    "key": "importSuccess",
+    "zh": "工作流已导入"
+  },
+  {
+    "key": "importError",
+    "zh": "导入失败：文件格式无效"
+  },
+  {
+    "key": "publishSuccess",
+    "zh": "发布成功"
+  },
+  {
+    "key": "publishError",
+    "zh": "发布失败"
+  },
+  {
+    "key": "executions",
+    "zh": "执行记录"
+  },
+  {
+    "key": "editor",
+    "zh": "编辑器"
+  },
+  {
+    "key": "basicInfo",
+    "zh": "基础信息"
+  },
+  {
+    "key": "basicInfoDesc",
+    "zh": "设置工作流名称、图标和描述"
+  },
+  {
+    "key": "basicInfoDescription",
+    "zh": "设置工作流名称和描述"
+  },
+  {
+    "key": "dangerZoneDesc",
+    "zh": "不可逆的操作"
+  },
+  {
+    "key": "dangerZoneDescription",
+    "zh": "不可逆的操作"
+  },
+  {
+    "key": "deleteWorkflowAction",
+    "zh": "删除此工作流"
+  },
+  {
+    "key": "deleteWorkflowHint",
+    "zh": "删除后，所有关联配置将被永久移除，且无法恢复。"
+  },
+  {
+    "key": "deleteConfirmDesc",
+    "zh": "您确定要删除工作流 \"{{name}}\" 吗？此操作无法撤销。"
+  },
+  {
+    "key": "descriptionPlaceholder",
+    "zh": "输入工作流描述（可选）"
+  },
+  {
+    "key": "enabledDesc",
+    "zh": "启用后，工作流将可以被触发执行"
+  },
+  {
+    "key": "loading",
+    "zh": "加载中..."
+  },
+  {
+    "key": "createdAt",
+    "zh": "创建时间"
+  },
+  {
+    "key": "updatedAt",
+    "zh": "更新时间"
+  },
+  {
+    "key": "totalExecutions",
+    "zh": "共 {{count}} 条执行记录"
+  },
+  {
+    "key": "statistics",
+    "zh": "统计分析"
+  },
+  {
+    "key": "successfulCount",
+    "zh": "成功 {{count}} 次"
+  },
+  {
+    "key": "successRate",
+    "zh": "成功率"
+  },
+  {
+    "key": "perExecution",
+    "zh": "每次执行"
+  },
+  {
+    "key": "failedExecutions",
+    "zh": "失败次数"
+  },
+  {
+    "key": "lastExecution",
+    "zh": "最后执行"
+  },
+  {
+    "key": "filterByStatus",
+    "zh": "按状态筛选"
+  },
+  {
+    "key": "allStatuses",
+    "zh": "全部状态"
+  },
+  {
+    "key": "triggerType",
+    "zh": "触发类型"
+  },
+  {
+    "key": "startedAt",
+    "zh": "开始时间"
+  },
+  {
+    "key": "duration",
+    "zh": "等待时间"
+  },
+  {
+    "key": "noExecutions",
+    "zh": "暂无执行记录"
+  },
+  {
+    "key": "executionDetails",
+    "zh": "执行详情"
+  },
+  {
+    "key": "nodeExecutions",
+    "zh": "节点执行记录"
+  },
+  {
+    "key": "nodePalette",
+    "zh": "节点面板"
+  },
+  {
+    "key": "unsavedChanges",
+    "zh": "有未保存的更改"
+  },
+  {
+    "key": "deleted",
+    "zh": "已删除"
+  },
+  {
+    "key": "nothingToCopy",
+    "zh": "没有选中的节点可复制"
+  },
+  {
+    "key": "nothingToPaste",
+    "zh": "剪贴板为空"
+  },
+  {
+    "key": "copied",
+    "zh": "已复制 {{count}} 个节点"
+  },
+  {
+    "key": "pasted",
+    "zh": "已粘贴 {{count}} 个节点"
+  },
+  {
+    "key": "nodesSelected",
+    "zh": "已选中 {{count}} 个节点"
+  },
+  {
+    "key": "searchNodes",
+    "zh": "搜索节点..."
+  },
+  {
+    "key": "loadingNodeTypes",
+    "zh": "正在加载节点类型..."
+  },
+  {
+    "key": "noNodesFound",
+    "zh": "未找到匹配的节点"
+  },
+  {
+    "key": "clearSearch",
+    "zh": "清除搜索"
+  },
+  {
+    "key": "dragToAdd",
+    "zh": "拖拽节点到画布添加"
+  },
+  {
+    "key": "selectNodeOrEdge",
+    "zh": "选择一个节点或连线"
+  },
+  {
+    "key": "selectNodeOrEdgeHint",
+    "zh": "点击画布中的节点或连线来查看和编辑其属性"
+  },
+  {
+    "key": "nodeProperties",
+    "zh": "节点属性"
+  },
+  {
+    "key": "condition",
+    "zh": "条件分支"
+  },
+  {
+    "key": "hasCondition",
+    "zh": "已设置"
+  },
+  {
+    "key": "conditionPlaceholder",
+    "zh": "输入条件表达式，如: output.success == true"
+  },
+  {
+    "key": "conditionHelp",
+    "zh": "条件为空时，该连线将始终被执行。支持使用 {{变量名}} 引用上下文变量。"
+  },
+  {
+    "key": "deleteEdge",
+    "zh": "删除连线"
+  },
+  {
+    "key": "deleteEdgeConfirm",
+    "zh": "确定删除此连线？"
+  },
+  {
+    "key": "deleteEdgeConfirmDesc",
+    "zh": "删除后，该连线将被永久移除。"
+  },
+  {
+    "key": "nodeLabelPlaceholder",
+    "zh": "输入节点显示名称"
+  },
+  {
+    "key": "availableVariables",
+    "zh": "可用变量"
+  },
+  {
+    "key": "globalVariables",
+    "zh": "全局变量"
+  },
+  {
+    "key": "messageContent",
+    "zh": "模拟消息"
+  },
+  {
+    "key": "messageSender",
+    "zh": "发送者"
+  },
+  {
+    "key": "timestamp",
+    "zh": "时间戳"
+  },
+  {
+    "key": "noConfigOptions",
+    "zh": "该节点类型暂无配置选项"
+  },
+  {
+    "key": "deleteNodeConfirm",
+    "zh": "确定删除此节点？"
+  },
+  {
+    "key": "deleteNodeConfirmDesc",
+    "zh": "删除后，该节点及其所有连线将被永久移除。"
+  },
+  {
+    "key": "context",
+    "zh": "调试上下文"
+  },
+  {
+    "key": "body",
+    "zh": "请求体"
+  },
+  {
+    "key": "variables",
+    "zh": "监控变量"
+  },
+  {
+    "key": "items",
+    "zh": "项目列表"
+  },
+  {
+    "key": "parameters",
+    "zh": "参数定义"
+  },
+  {
+    "key": "branch_1",
+    "zh": "分支1输出"
+  },
+  {
+    "key": "branch_2",
+    "zh": "分支2输出"
+  },
+  {
+    "key": "hash_field",
+    "zh": "哈希字段"
+  },
+  {
+    "key": "server_name",
+    "zh": "服务器名称"
+  },
+  {
+    "key": "tool_name",
+    "zh": "工具名称"
+  },
+  {
+    "key": "arguments_template",
+    "zh": "参数模板"
+  },
+  {
+    "key": "sender",
+    "zh": "发送者"
+  },
+  {
+    "key": "sender_id",
+    "zh": "发送者 ID"
+  },
+  {
+    "key": "sender_name",
+    "zh": "发送者名称"
+  },
+  {
+    "key": "cron_timestamp",
+    "zh": "Cron 时间戳"
+  },
+  {
+    "key": "trigger_time",
+    "zh": "触发时间"
+  },
+  {
+    "key": "headers",
+    "zh": "请求头"
+  },
+  {
+    "key": "query_params",
+    "zh": "查询参数"
+  },
+  {
+    "key": "method",
+    "zh": "请求方法"
+  },
+  {
+    "key": "event_type",
+    "zh": "事件类型"
+  },
+  {
+    "key": "event_timestamp",
+    "zh": "事件时间戳"
+  },
+  {
+    "key": "usage",
+    "zh": "Token使用统计"
+  },
+  {
+    "key": "category",
+    "zh": "分类结果"
+  },
+  {
+    "key": "missing",
+    "zh": "缺失参数"
+  },
+  {
+    "key": "success",
+    "zh": "是否成功"
+  },
+  {
+    "key": "chunks",
+    "zh": "文本块"
+  },
+  {
+    "key": "prompt",
+    "zh": "提示/问题"
+  },
+  {
+    "key": "context_info",
+    "zh": "上下文信息"
+  },
+  {
+    "key": "console",
+    "zh": "控制台输出"
+  },
+  {
+    "key": "code_input",
+    "zh": "代码输入"
+  },
+  {
+    "key": "code_output",
+    "zh": "代码输出"
+  },
+  {
+    "key": "http_body",
+    "zh": "HTTP 请求体"
+  },
+  {
+    "key": "http_headers",
+    "zh": "HTTP 请求头"
+  },
+  {
+    "key": "response_headers",
+    "zh": "响应头"
+  },
+  {
+    "key": "transform_input",
+    "zh": "转换输入"
+  },
+  {
+    "key": "transform_result",
+    "zh": "转换结果"
+  },
+  {
+    "key": "extraction_success",
+    "zh": "提取成功"
+  },
+  {
+    "key": "extract_text",
+    "zh": "输入文本"
+  },
+  {
+    "key": "documents",
+    "zh": "检索的文档"
+  },
+  {
+    "key": "citations",
+    "zh": "引用信息"
+  },
+  {
+    "key": "knowledge_context",
+    "zh": "合并上下文"
+  },
+  {
+    "key": "true",
+    "zh": "条件为真输出"
+  },
+  {
+    "key": "false",
+    "zh": "条件为假输出"
+  },
+  {
+    "key": "matched_case",
+    "zh": "匹配分支"
+  },
+  {
+    "key": "completed",
+    "zh": "已完成"
+  },
+  {
+    "key": "is_first",
+    "zh": "是否第一个"
+  },
+  {
+    "key": "is_last",
+    "zh": "是否最后一个"
+  },
+  {
+    "key": "switch_input",
+    "zh": "开关输入"
+  },
+  {
+    "key": "iterator_array",
+    "zh": "输入数组"
+  },
+  {
+    "key": "parallel_input",
+    "zh": "并行输入"
+  },
+  {
+    "key": "parallel_results",
+    "zh": "所有分支结果"
+  },
+  {
+    "key": "wait_input",
+    "zh": "透传输入"
+  },
+  {
+    "key": "wait_output",
+    "zh": "透传输出"
+  },
+  {
+    "key": "merged",
+    "zh": "合并结果"
+  },
+  {
+    "key": "merge_array",
+    "zh": "数组结果"
+  },
+  {
+    "key": "aggregated",
+    "zh": "聚合变量"
+  },
+  {
+    "key": "status_code",
+    "zh": "状态码"
+  },
+  {
+    "key": "reply_message",
+    "zh": "回复内容"
+  },
+  {
+    "key": "pipeline_result",
+    "zh": "完整结果"
+  },
+  {
+    "key": "pipeline_query",
+    "zh": "查询内容"
+  },
+  {
+    "key": "context_data",
+    "zh": "上下文数据"
+  },
+  {
+    "key": "store_key",
+    "zh": "存储键"
+  },
+  {
+    "key": "store_value",
+    "zh": "存储值"
+  },
+  {
+    "key": "variable_result",
+    "zh": "设置变量结果"
+  },
+  {
+    "key": "suggested_questions",
+    "zh": "建议问题"
+  },
+  {
+    "key": "suggestions",
+    "zh": "建议问题"
+  },
+  {
+    "key": "final_result",
+    "zh": "最终结果"
+  },
+  {
+    "key": "query_results",
+    "zh": "查询结果"
+  },
+  {
+    "key": "query_success",
+    "zh": "查询成功"
+  },
+  {
+    "key": "plugin_input",
+    "zh": "插件输入"
+  },
+  {
+    "key": "tool_result",
+    "zh": "工具结果"
+  },
+  {
+    "key": "tool_success",
+    "zh": "工具成功"
+  },
+  {
+    "key": "mcp_arguments",
+    "zh": "工具参数"
+  },
+  {
+    "key": "memory_result",
+    "zh": "记忆结果"
+  },
+  {
+    "key": "memory_success",
+    "zh": "记忆成功"
+  },
+  {
+    "key": "memory_value",
+    "zh": "存储值"
+  },
+  {
+    "key": "dify_query",
+    "zh": "用户输入/查询"
+  },
+  {
+    "key": "search_results",
+    "zh": "搜索结果"
+  },
+  {
+    "key": "knowledge_base_query",
+    "zh": "查询内容"
+  },
+  {
+    "key": "n8n_payload",
+    "zh": "工作流输入数据"
+  },
+  {
+    "key": "flow_result",
+    "zh": "流程结果"
+  },
+  {
+    "key": "flow_success",
+    "zh": "流程成功"
+  },
+  {
+    "key": "langflow_input",
+    "zh": "输入内容"
+  },
+  {
+    "key": "bot_answer",
+    "zh": "机器人回复"
+  },
+  {
+    "key": "bot_success",
+    "zh": "机器人成功"
+  },
+  {
+    "key": "coze_query",
+    "zh": "用户输入/查询"
+  },
+  {
+    "key": "webhook_body",
+    "zh": "Webhook 请求体"
+  },
+  {
+    "key": "webhook_headers",
+    "zh": "Webhook 请求头"
+  },
+  {
+    "key": "webhook_query",
+    "zh": "Webhook 查询参数"
+  },
+  {
+    "key": "webhook_method",
+    "zh": "Webhook 请求方法"
+  },
+  {
+    "key": "edgeCondition",
+    "zh": "条件表达式"
+  },
+  {
+    "key": "noNodeSelected",
+    "zh": "未选中节点"
+  },
+  {
+    "key": "selectNodeToEdit",
+    "zh": "点击节点查看和编辑属性"
+  },
+  {
+    "key": "dragNodeHint",
+    "zh": "拖拽节点到画布"
+  },
+  {
+    "key": "triggerDescription",
+    "zh": "工作流的起始节点"
+  },
+  {
+    "key": "messageTrigger",
+    "zh": "消息触发"
+  },
+  {
+    "key": "messageTriggerDescription",
+    "zh": "当收到消息时触发"
+  },
+  {
+    "key": "scheduleTrigger",
+    "zh": "定时触发"
+  },
+  {
+    "key": "scheduleTriggerDescription",
+    "zh": "按计划定时触发"
+  },
+  {
+    "key": "cronTrigger",
+    "zh": "定时触发"
+  },
+  {
+    "key": "cronTriggerDescription",
+    "zh": "按定时计划触发工作流"
+  },
+  {
+    "key": "webhookTriggerDescription",
+    "zh": "通过 HTTP 请求触发"
+  },
+  {
+    "key": "eventTrigger",
+    "zh": "事件触发"
+  },
+  {
+    "key": "eventTriggerDescription",
+    "zh": "当系统事件发生时触发"
+  },
+  {
+    "key": "processDescription",
+    "zh": "数据处理节点"
+  },
+  {
+    "key": "aiProcessDescription",
+    "zh": "使用 AI 模型处理消息"
+  },
+  {
+    "key": "llmCallDescription",
+    "zh": "调用大语言模型进行对话或生成"
+  },
+  {
+    "key": "codeProcess",
+    "zh": "代码处理"
+  },
+  {
+    "key": "codeProcessDescription",
+    "zh": "执行自定义代码"
+  },
+  {
+    "key": "codeExecutor",
+    "zh": "代码执行"
+  },
+  {
+    "key": "codeExecutorDescription",
+    "zh": "执行 Python/JavaScript 代码"
+  },
+  {
+    "key": "templateProcessDescription",
+    "zh": "使用模板格式化输出"
+  },
+  {
+    "key": "httpRequest",
+    "zh": "HTTP 请求"
+  },
+  {
+    "key": "httpRequestDescription",
+    "zh": "发送 HTTP 请求"
+  },
+  {
+    "key": "questionClassifierDescription",
+    "zh": "使用 LLM 将用户问题分类到预定义类别"
+  },
+  {
+    "key": "parameterExtractor",
+    "zh": "参数提取器"
+  },
+  {
+    "key": "parameterExtractorDescription",
+    "zh": "使用 LLM 从文本中提取结构化参数"
+  },
+  {
+    "key": "knowledgeRetrieval",
+    "zh": "知识库检索"
+  },
+  {
+    "key": "knowledgeRetrievalDescription",
+    "zh": "从知识库中检索相关内容"
+  },
+  {
+    "key": "textTemplate",
+    "zh": "文本模板"
+  },
+  {
+    "key": "textTemplateDescription",
+    "zh": "使用模板生成文本"
+  },
+  {
+    "key": "dataAggregator",
+    "zh": "数据聚合"
+  },
+  {
+    "key": "dataAggregatorDescription",
+    "zh": "聚合多个数据源"
+  },
+  {
+    "key": "textSplitter",
+    "zh": "文本分割"
+  },
+  {
+    "key": "textSplitterDescription",
+    "zh": "将文本分割成块"
+  },
+  {
+    "key": "variableAssignment",
+    "zh": "变量赋值"
+  },
+  {
+    "key": "variableAssignmentDescription",
+    "zh": "为工作流变量赋值"
+  },
+  {
+    "key": "controlDescription",
+    "zh": "流程控制节点"
+  },
+  {
+    "key": "conditionDescription",
+    "zh": "根据条件分流"
+  },
+  {
+    "key": "switch",
+    "zh": "多路分支"
+  },
+  {
+    "key": "switchDescription",
+    "zh": "多条件分支选择"
+  },
+  {
+    "key": "loopDescription",
+    "zh": "重复执行"
+  },
+  {
+    "key": "iteratorDescription",
+    "zh": "遍历数组元素"
+  },
+  {
+    "key": "parallel",
+    "zh": "并行处理"
+  },
+  {
+    "key": "parallelDescription",
+    "zh": "并行执行多个分支"
+  },
+  {
+    "key": "waitDescription",
+    "zh": "等待指定时间"
+  },
+  {
+    "key": "delayDescription",
+    "zh": "等待指定时间"
+  },
+  {
+    "key": "mergeDescription",
+    "zh": "合并多个分支"
+  },
+  {
+    "key": "variableAggregator",
+    "zh": "变量聚合器"
+  },
+  {
+    "key": "variableAggregatorDescription",
+    "zh": "聚合多个分支的变量输出"
+  },
+  {
+    "key": "actionDescription",
+    "zh": "执行动作的节点"
+  },
+  {
+    "key": "sendMessageDescription",
+    "zh": "发送消息到平台"
+  },
+  {
+    "key": "replyMessage",
+    "zh": "回复消息"
+  },
+  {
+    "key": "replyMessageDescription",
+    "zh": "回复触发工作流的消息"
+  },
+  {
+    "key": "storeDataDescription",
+    "zh": "存储数据到数据库"
+  },
+  {
+    "key": "callPipelineDescription",
+    "zh": "调用现有的 Pipeline"
+  },
+  {
+    "key": "setVariable",
+    "zh": "设置变量"
+  },
+  {
+    "key": "setVariableDescription",
+    "zh": "设置上下文变量"
+  },
+  {
+    "key": "openingStatement",
+    "zh": "对话开场白"
+  },
+  {
+    "key": "openingStatementDescription",
+    "zh": "提供对话开场白和建议问题"
+  },
+  {
+    "key": "endDescription",
+    "zh": "标记工作流执行结束"
+  },
+  {
+    "key": "logDescription",
+    "zh": "记录日志信息"
+  },
+  {
+    "key": "integrationDescription",
+    "zh": "第三方平台集成节点"
+  },
+  {
+    "key": "difyWorkflowDescription",
+    "zh": "调用 Dify 平台工作流"
+  },
+  {
+    "key": "difyKnowledgeQuery",
+    "zh": "Dify 知识库"
+  },
+  {
+    "key": "difyKnowledgeQueryDescription",
+    "zh": "查询 Dify 知识库"
+  },
+  {
+    "key": "n8nWorkflowDescription",
+    "zh": "调用 n8n 工作流"
+  },
+  {
+    "key": "langflowFlowDescription",
+    "zh": "调用 Langflow 流程"
+  },
+  {
+    "key": "cozeBotDescription",
+    "zh": "调用扣子 Bot"
+  },
+  {
+    "key": "databaseQueryDescription",
+    "zh": "执行数据库查询"
+  },
+  {
+    "key": "redisOperationDescription",
+    "zh": "执行 Redis 缓存操作"
+  },
+  {
+    "key": "memoryStore",
+    "zh": "记忆存储"
+  },
+  {
+    "key": "memoryStoreDescription",
+    "zh": "从工作流记忆中存储和检索数据"
+  },
+  {
+    "key": "startTime",
+    "zh": "开始时间"
+  },
+  {
+    "key": "running",
+    "zh": "执行中"
+  },
+  {
+    "key": "nodeResults",
+    "zh": "节点执行结果"
+  },
+  {
+    "key": "current",
+    "zh": "当前版本"
+  },
+  {
+    "key": "rollback",
+    "zh": "回滚到此版本"
+  },
+  {
+    "key": "rollbackConfirm",
+    "zh": "确定回滚到此版本？当前更改将丢失。"
+  },
+  {
+    "key": "rollbackSuccess",
+    "zh": "回滚成功"
+  },
+  {
+    "key": "rollbackError",
+    "zh": "回滚失败："
+  },
+  {
+    "key": "mode",
+    "zh": "调试模式"
+  },
+  {
+    "key": "panel",
+    "zh": "调试面板"
+  },
+  {
+    "key": "step",
+    "zh": "单步执行"
+  },
+  {
+    "key": "messageContentPlaceholder",
+    "zh": "输入要模拟的消息内容"
+  },
+  {
+    "key": "senderId",
+    "zh": "发送者 ID"
+  },
+  {
+    "key": "senderIdPlaceholder",
+    "zh": "发送者唯一标识"
+  },
+  {
+    "key": "senderName",
+    "zh": "发送者名称"
+  },
+  {
+    "key": "senderNamePlaceholder",
+    "zh": "发送者显示名称"
+  },
+  {
+    "key": "conversationIdPlaceholder",
+    "zh": "会话唯一标识"
+  },
+  {
+    "key": "customVariables",
+    "zh": "自定义变量"
+  },
+  {
+    "key": "customVariablesDesc",
+    "zh": "添加自定义变量用于调试"
+  },
+  {
+    "key": "variableKey",
+    "zh": "变量名"
+  },
+  {
+    "key": "watchedVariables",
+    "zh": "监控变量"
+  },
+  {
+    "key": "noWatchedVariables",
+    "zh": "暂无监控变量"
+  },
+  {
+    "key": "addWatchVariable",
+    "zh": "添加监控"
+  },
+  {
+    "key": "nodeStates",
+    "zh": "节点状态"
+  },
+  {
+    "key": "noNodeOutputs",
+    "zh": "暂无节点输出"
+  },
+  {
+    "key": "toggleBreakpoint",
+    "zh": "切换断点"
+  },
+  {
+    "key": "breakpointSet",
+    "zh": "断点已设置"
+  },
+  {
+    "key": "noLogs",
+    "zh": "暂无日志"
+  },
+  {
+    "key": "clearLogs",
+    "zh": "清空日志"
+  },
+  {
+    "key": "logEntries",
+    "zh": "条日志"
+  },
+  {
+    "key": "resetContext",
+    "zh": "重置上下文"
+  },
+  {
+    "key": "starting",
+    "zh": "正在启动调试执行..."
+  },
+  {
+    "key": "started",
+    "zh": "调试执行已启动 (ID: {{id}})"
+  },
+  {
+    "key": "startError",
+    "zh": "启动调试失败"
+  },
+  {
+    "key": "unknownError",
+    "zh": "未知错误"
+  },
+  {
+    "key": "paused",
+    "zh": "已暂停"
+  },
+  {
+    "key": "resumed",
+    "zh": "执行已恢复"
+  },
+  {
+    "key": "resumeError",
+    "zh": "恢复失败"
+  },
+  {
+    "key": "steppedTo",
+    "zh": "已执行到节点: {{node}}"
+  },
+  {
+    "key": "stepError",
+    "zh": "单步执行失败"
+  },
+  {
+    "key": "stopped",
+    "zh": "调试已停止"
+  },
+  {
+    "key": "debugMode",
+    "zh": "调试模式"
+  },
+  {
+    "key": "debugPanel",
+    "zh": "调试面板"
+  },
+  {
+    "key": "stepDebug",
+    "zh": "单步执行"
+  },
+  {
+    "key": "debugContext",
+    "zh": "调试上下文"
+  },
+  {
+    "key": "simulatedMessage",
+    "zh": "模拟消息"
+  },
+  {
+    "key": "simulatedMessagePlaceholder",
+    "zh": "输入要模拟的消息内容"
+  },
+  {
+    "key": "variableName",
+    "zh": "变量名"
+  },
+  {
+    "key": "debugLogs",
+    "zh": "调试日志"
+  },
+  {
+    "key": "pending",
+    "zh": "等待中"
+  },
+  {
+    "key": "skipped",
+    "zh": "已跳过"
+  },
+  {
+    "key": "sessionType",
+    "zh": "会话类型"
+  },
+  {
+    "key": "reset",
+    "zh": "重置对话"
+  },
+  {
+    "key": "noMessages",
+    "zh": "暂无消息"
+  },
+  {
+    "key": "resetSuccess",
+    "zh": "对话已重置"
+  },
+  {
+    "key": "resetFailed",
+    "zh": "重置失败"
+  },
+  {
+    "key": "connected",
+    "zh": "WebSocket已连接"
+  },
+  {
+    "key": "disconnected",
+    "zh": "WebSocket未连接"
+  },
+  {
+    "key": "connectionError",
+    "zh": "WebSocket连接错误"
+  },
+  {
+    "key": "connectionFailed",
+    "zh": "WebSocket连接失败"
+  },
+  {
+    "key": "notConnected",
+    "zh": "WebSocket未连接，请稍后重试"
+  },
+  {
+    "key": "imageUploadFailed",
+    "zh": "图片上传失败"
+  },
+  {
+    "key": "replyTo",
+    "zh": "回复给"
+  },
+  {
+    "key": "filterByDate",
+    "zh": "按日期筛选"
+  },
+  {
+    "key": "allTime",
+    "zh": "全部时间"
+  },
+  {
+    "key": "lastMonth",
+    "zh": "最近一个月"
+  },
+  {
+    "key": "rerun",
+    "zh": "重新运行"
+  },
+  {
+    "key": "rerunExecution",
+    "zh": "重新执行"
+  },
+  {
+    "key": "completedAt",
+    "zh": "完成时间"
+  },
+  {
+    "key": "noNodeExecutions",
+    "zh": "暂无节点执行记录"
+  },
+  {
+    "key": "conditions",
+    "zh": "触发条件"
+  },
+  {
+    "key": "keyword_filter",
+    "zh": "关键词过滤"
+  },
+  {
+    "key": "respond_rules",
+    "zh": "群响应规则"
+  },
+  {
+    "key": "allowed_methods",
+    "zh": "允许的HTTP方法"
+  },
+  {
+    "key": "validation",
+    "zh": "请求验证"
+  },
+  {
+    "key": "event_types",
+    "zh": "事件类型"
+  },
+  {
+    "key": "debounce_ms",
+    "zh": "防抖时间"
+  },
+  {
+    "key": "prompt_template",
+    "zh": "提示词模板"
+  },
+  {
+    "key": "system_prompt",
+    "zh": "系统提示词"
+  },
+  {
+    "key": "max_tokens",
+    "zh": "最大Token数"
+  },
+  {
+    "key": "stop_sequences",
+    "zh": "停止序列"
+  },
+  {
+    "key": "stream",
+    "zh": "流式输出"
+  },
+  {
+    "key": "use_conversation_history",
+    "zh": "使用对话历史"
+  },
+  {
+    "key": "url",
+    "zh": "请求URL"
+  },
+  {
+    "key": "auth_config",
+    "zh": "认证配置"
+  },
+  {
+    "key": "transform_type",
+    "zh": "转换类型"
+  },
+  {
+    "key": "categories",
+    "zh": "分类类别"
+  },
+  {
+    "key": "knowledge_bases",
+    "zh": "知识库"
+  },
+  {
+    "key": "score_threshold",
+    "zh": "相似度阈值"
+  },
+  {
+    "key": "search_method",
+    "zh": "搜索方法"
+  },
+  {
+    "key": "enable_citations",
+    "zh": "启用引用"
+  },
+  {
+    "key": "condition_expression",
+    "zh": "条件表达式"
+  },
+  {
+    "key": "left_value",
+    "zh": "左值"
+  },
+  {
+    "key": "right_value",
+    "zh": "右值"
+  },
+  {
+    "key": "cases",
+    "zh": "分支条件"
+  },
+  {
+    "key": "max_iterations",
+    "zh": "最大迭代次数"
+  },
+  {
+    "key": "break_condition",
+    "zh": "中断条件"
+  },
+  {
+    "key": "max_concurrency",
+    "zh": "最大并发数"
+  },
+  {
+    "key": "branches",
+    "zh": "分支配置"
+  },
+  {
+    "key": "wait_all",
+    "zh": "等待所有"
+  },
+  {
+    "key": "fail_fast",
+    "zh": "快速失败"
+  },
+  {
+    "key": "duration_type",
+    "zh": "时间单位"
+  },
+  {
+    "key": "merge_strategy",
+    "zh": "合并策略"
+  },
+  {
+    "key": "variable_mappings",
+    "zh": "变量映射"
+  },
+  {
+    "key": "target_type",
+    "zh": "目标类型"
+  },
+  {
+    "key": "reply_mode",
+    "zh": "回复模式"
+  },
+  {
+    "key": "message_template",
+    "zh": "消息模板"
+  },
+  {
+    "key": "long_text_processing",
+    "zh": "长文本处理"
+  },
+  {
+    "key": "force_delay",
+    "zh": "强制延迟"
+  },
+  {
+    "key": "inherit_context",
+    "zh": "继承上下文"
+  },
+  {
+    "key": "storage_type",
+    "zh": "存储类型"
+  },
+  {
+    "key": "ttl",
+    "zh": "过期时间"
+  },
+  {
+    "key": "key_prefix",
+    "zh": "键前缀"
+  },
+  {
+    "key": "variable_scope",
+    "zh": "变量作用域"
+  },
+  {
+    "key": "set_variable_operation",
+    "zh": "操作类型"
+  },
+  {
+    "key": "output_format",
+    "zh": "输出格式"
+  },
+  {
+    "key": "connection_type",
+    "zh": "数据库类型"
+  },
+  {
+    "key": "connection_string",
+    "zh": "连接字符串"
+  },
+  {
+    "key": "query_type",
+    "zh": "查询类型"
+  },
+  {
+    "key": "operation",
+    "zh": "操作类型"
+  },
+  {
+    "key": "dataset_id",
+    "zh": "知识库ID"
+  },
+  {
+    "key": "json_transform_type",
+    "zh": "JSON转换类型"
+  },
+  {
+    "key": "mapping",
+    "zh": "字段映射"
+  },
+  {
+    "key": "code_content",
+    "zh": "代码内容"
+  },
+  {
+    "key": "aggregation_type",
+    "zh": "聚合类型"
+  },
+  {
+    "key": "field_path",
+    "zh": "字段路径"
+  },
+  {
+    "key": "split_type",
+    "zh": "分割类型"
+  },
+  {
+    "key": "regex_pattern",
+    "zh": "正则表达式"
+  },
+  {
+    "key": "assign_variable_name",
+    "zh": "变量名"
+  },
+  {
+    "key": "static_value",
+    "zh": "静态值"
+  }
+]

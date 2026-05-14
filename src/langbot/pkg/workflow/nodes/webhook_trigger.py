@@ -17,7 +17,7 @@ class WebhookTriggerNode(WorkflowNode):
 
     type_name = 'webhook_trigger'
     category = 'trigger'
-    icon = '🌐'
+    icon = 'Webhook'
     name = 'webhook_trigger'
     description = 'webhook_trigger'
     name_zh = 'Webhook 触发'

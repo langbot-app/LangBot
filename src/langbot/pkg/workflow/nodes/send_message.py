@@ -17,7 +17,7 @@ class SendMessageNode(WorkflowNode):
 
     type_name = 'send_message'
     category = 'action'
-    icon = '📤'
+    icon = 'MessageCircle'
     name = 'send_message'
     description = 'send_message'
     name_zh = '发送消息'

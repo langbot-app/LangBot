@@ -14,7 +14,7 @@ class LoopNode(WorkflowNode):
 
     type_name = 'loop'
     category = 'control'
-    icon = '🔁'
+    icon = 'Repeat'
     name = 'loop'
     name_zh = '循环'
     name_en = 'Loop'

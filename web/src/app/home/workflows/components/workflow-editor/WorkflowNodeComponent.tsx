@@ -22,6 +22,7 @@ import {
   NODE_ICONS,
   NODE_TYPE_I18N_KEYS,
   getNodeTypeLabel,
+  getIconComponent,
 } from './workflow-constants';
 import { resolveI18nLabel, maybeTranslateKey } from './workflow-i18n';
 import type { I18nObject } from '@/app/infra/entities/common';
@@ -143,6 +144,7 @@ const statusConfig: Record<
 export interface WorkflowNodeData extends Record<string, unknown> {
   label: string;
   type: string;
+  icon?: string; // Lucide icon name from backend
   config: Record<string, unknown>;
   inputs?: {
     name: string;
@@ -214,7 +216,7 @@ function WorkflowNodeComponent({ data, selected }: NodeProps) {
   const nodeData = data as WorkflowNodeData;
   const category = nodeData.type.split('.')[0];
   const colors = categoryColors[category] || categoryColors.process;
-  const Icon = nodeIcons[nodeData.type] || Settings;
+  const Icon = getIconComponent(nodeData.icon as string | undefined, nodeData.type);
 
   // Get execution status
   const status = nodeData.executionStatus || 'idle';

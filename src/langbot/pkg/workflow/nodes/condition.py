@@ -18,7 +18,7 @@ class ConditionNode(WorkflowNode):
 
     type_name = 'condition'
     category = 'control'
-    icon = '🔀'
+    icon = 'GitBranch'
     name = 'condition'
     description = 'condition'
     name_zh = '条件分支'

@@ -22,6 +22,7 @@ import {
   PALETTE_CATEGORY_BORDER as categoryBorderColors,
   CATEGORY_ICONS as categoryIcons,
   findNodeI18nKeys,
+  getIconComponent,
 } from './workflow-constants';
 import { resolveI18nLabel } from './workflow-i18n';
 
@@ -35,6 +36,7 @@ const categoryI18nKeys = CATEGORY_I18N_KEYS;
 interface NodeTypeForUI {
   type: string;
   category: string;
+  icon?: string; // Lucide icon name from backend
   labelKey?: string;
   descriptionKey?: string;
   // Also support raw label dict from backend
@@ -305,7 +307,7 @@ export default function NodePalette() {
                 {isExpanded && (
                   <div className="mt-1 space-y-0.5 ml-2">
                     {nodes.map((node) => {
-                      const Icon = nodeIcons[node.type] || Settings;
+                      const Icon = getIconComponent(node.icon, node.type);
                       const label = getNodeLabel(node);
                       const description = getNodeDescription(node);
 

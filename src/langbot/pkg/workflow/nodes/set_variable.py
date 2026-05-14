@@ -17,7 +17,7 @@ class SetVariableNode(WorkflowNode):
 
     type_name = 'set_variable'
     category = 'action'
-    icon = '📝'
+    icon = 'Variable'
     name = 'set_variable'
     description = 'set_variable'
     name_zh = '设置变量'

@@ -14,7 +14,7 @@ class IteratorNode(WorkflowNode):
 
     type_name = 'iterator'
     category = 'control'
-    icon = '🔄'
+    icon = 'Repeat'
     name = 'iterator'
     name_zh = '迭代器'
     name_en = 'Iterator'

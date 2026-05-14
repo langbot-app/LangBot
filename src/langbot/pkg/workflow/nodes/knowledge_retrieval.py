@@ -17,7 +17,7 @@ class KnowledgeRetrievalNode(WorkflowNode):
 
     type_name = 'knowledge_retrieval'
     category = 'process'
-    icon = '📚'
+    icon = 'Search'
     name = 'knowledge_retrieval'
     description = 'knowledge_retrieval'
     name_zh = '知识库检索'
