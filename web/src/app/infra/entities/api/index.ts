@@ -491,6 +491,8 @@ export interface MCPServerRuntimeInfo {
   error_message?: string;
   tool_count: number;
   tools: MCPTool[];
+  resource_count: number;
+  resources: MCPResource[];
 }
 
 export type MCPServer =
@@ -529,6 +531,29 @@ export interface MCPTool {
   name: string;
   description: string;
   parameters?: object;
+}
+
+export interface MCPResource {
+  uri: string;
+  name: string;
+  description: string;
+  mime_type: string;
+}
+
+export interface MCPResourceContent {
+  uri: string;
+  mime_type: string;
+  type: 'text' | 'blob';
+  text?: string;
+  blob?: string;
+}
+
+export interface ApiRespMCPResources {
+  resources: MCPResource[];
+}
+
+export interface ApiRespMCPResourceContents {
+  contents: MCPResourceContent[];
 }
 
 export interface PluginTool {
