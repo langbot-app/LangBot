@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import typing
 
-import langbot_plugin.api.entities.builtin.provider.message as provider_message
-
 from ..provider.tools.loaders import skill as skill_loader
 
 if typing.TYPE_CHECKING:

@@ -20,7 +20,7 @@ from ....core import app
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 from ....entity.persistence import mcp as persistence_mcp
-from .mcp_stdio import BoxStdioSessionRuntime, MCPServerBoxConfig as MCPServerBoxConfig, MCPSessionErrorPhase
+from .mcp_stdio import BoxStdioSessionRuntime, MCPSessionErrorPhase
 
 
 class MCPSessionStatus(enum.Enum):

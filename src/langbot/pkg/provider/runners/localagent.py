@@ -355,7 +355,6 @@ class LocalAgentRunner(runner.RequestRunner):
 
         if not is_stream:
             yield final_msg
-            initial_response_emitted = True
         elif not initial_response_emitted:
             yield final_msg
             initial_response_emitted = True

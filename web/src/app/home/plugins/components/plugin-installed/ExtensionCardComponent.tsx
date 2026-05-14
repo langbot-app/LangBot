@@ -22,7 +22,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { MCPSessionStatus } from '@/app/infra/entities/api';
 
 type ExtensionCardComponentProps = {
   cardVO: ExtensionCardVO;
@@ -70,19 +69,6 @@ export default function ExtensionCardComponent({
         return t('common.skill');
       default:
         return t('market.typePlugin');
-    }
-  };
-
-  const getStatusColor = (status?: string) => {
-    switch (status) {
-      case MCPSessionStatus.CONNECTED:
-        return 'text-green-600';
-      case MCPSessionStatus.CONNECTING:
-        return 'text-yellow-600';
-      case MCPSessionStatus.ERROR:
-        return 'text-red-600';
-      default:
-        return 'text-gray-600';
     }
   };
 

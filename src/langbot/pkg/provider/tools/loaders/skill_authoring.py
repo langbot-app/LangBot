@@ -275,7 +275,6 @@ class SkillToolLoader(loader.ToolLoader):
         # Build <available_skills> section
         available_skills_lines = ['<available_skills>']
         for skill_name, skill_data in sorted(skills.items()):
-            display_name = skill_data.get('display_name') or skill_name
             description = skill_data.get('description', '')
             available_skills_lines.append(f'<skill>')
             available_skills_lines.append(f'<name>{skill_name}</name>')
