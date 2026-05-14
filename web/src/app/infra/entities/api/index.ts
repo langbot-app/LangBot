@@ -561,6 +561,8 @@ export interface MCPServerRuntimeInfo {
    *  server runs inside Box. Absent when Box is unavailable. */
   box_session_id?: string;
   box_enabled?: boolean;
+  resource_count: number;
+  resources: MCPResource[];
 }
 
 export type MCPServer =
@@ -613,6 +615,29 @@ export interface MCPTool {
   name: string;
   description: string;
   parameters?: object;
+}
+
+export interface MCPResource {
+  uri: string;
+  name: string;
+  description: string;
+  mime_type: string;
+}
+
+export interface MCPResourceContent {
+  uri: string;
+  mime_type: string;
+  type: 'text' | 'blob';
+  text?: string;
+  blob?: string;
+}
+
+export interface ApiRespMCPResources {
+  resources: MCPResource[];
+}
+
+export interface ApiRespMCPResourceContents {
+  contents: MCPResourceContent[];
 }
 
 export interface PluginTool {

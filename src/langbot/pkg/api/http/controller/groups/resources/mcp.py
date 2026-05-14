@@ -66,3 +66,25 @@ class MCPRouterGroup(group.RouterGroup):
             server_data = await quart.request.json
             task_id = await self.ap.mcp_service.test_mcp_server(server_name=server_name, server_data=server_data)
             return self.success(data={'task_id': task_id})
+
+        @self.route('/servers/<server_name>/resources', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
+        async def _(server_name: str) -> str:
+            """Get resources from an MCP server"""
+            try:
+                resources = await self.ap.mcp_service.get_mcp_server_resources(server_name)
+                return self.success(data={'resources': resources})
+            except Exception as e:
+                return self.http_status(500, -1, f'Failed to get resources: {str(e)}')
+
+        @self.route('/servers/<server_name>/resources/read', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
+        async def _(server_name: str) -> str:
+            """Read a resource from an MCP server"""
+            data = await quart.request.json
+            uri = data.get('uri')
+            if not uri:
+                return self.http_status(400, -1, 'URI is required')
+            try:
+                contents = await self.ap.mcp_service.read_mcp_server_resource(server_name, uri)
+                return self.success(data={'contents': contents})
+            except Exception as e:
+                return self.http_status(500, -1, f'Failed to read resource: {str(e)}')

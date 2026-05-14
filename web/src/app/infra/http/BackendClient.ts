@@ -40,6 +40,8 @@ import {
   BoxSessionInfo,
   ApiRespMCPServers,
   ApiRespMCPServer,
+  ApiRespMCPResources,
+  ApiRespMCPResourceContents,
   MCPServer,
   ApiRespModelProviders,
   ApiRespModelProvider,
@@ -903,6 +905,21 @@ export class BackendClient extends BaseHttpClient {
     source: object,
   ): Promise<AsyncTaskCreatedResp> {
     return this.post('/api/v1/mcp/servers', { source });
+  }
+
+  public getMCPServerResources(
+    serverName: string,
+  ): Promise<ApiRespMCPResources> {
+    return this.get(`/api/v1/mcp/servers/${serverName}/resources`);
+  }
+
+  public readMCPServerResource(
+    serverName: string,
+    uri: string,
+  ): Promise<ApiRespMCPResourceContents> {
+    return this.post(`/api/v1/mcp/servers/${serverName}/resources/read`, {
+      uri,
+    });
   }
 
   // ============ System API ============
