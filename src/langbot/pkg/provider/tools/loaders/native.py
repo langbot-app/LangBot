@@ -26,6 +26,34 @@ class NativeToolLoader(loader.ToolLoader):
     def __init__(self, ap):
         super().__init__(ap)
         self._tools: list[resource_tool.LLMTool] | None = None
+        self._backend_available: bool | None = None
+
+    async def initialize(self):
+        """Check if backend is truly available at startup."""
+        self._backend_available = await self._check_backend_available()
+        if self._backend_available:
+            self.ap.logger.info('Native sandbox tools (exec/read/write/edit/glob/grep) are available.')
+        else:
+            self.ap.logger.warning(
+                'Native sandbox tools (exec/read/write/edit/glob/grep) are NOT available. '
+                'No sandbox backend (Docker/nsjail/E2B) is ready. '
+                'The LLM will not have access to code execution or file operation tools.'
+            )
+
+    async def _check_backend_available(self) -> bool:
+        """Check if the box backend is truly available (not just the runtime)."""
+        box_service = getattr(self.ap, 'box_service', None)
+        if box_service is None:
+            return False
+        if not getattr(box_service, 'available', False):
+            return False
+        # Check if backend is truly available via get_status
+        try:
+            status = await box_service.get_status()
+            backend_info = status.get('backend', {})
+            return backend_info.get('available', False)
+        except Exception:
+            return False
 
     async def get_tools(self, bound_plugins: list[str] | None = None) -> list[resource_tool.LLMTool]:
         if not self._is_sandbox_available():
@@ -225,8 +253,12 @@ class NativeToolLoader(loader.ToolLoader):
             refresh_skill(selected_skill.get('name', ''))
 
     def _is_sandbox_available(self) -> bool:
-        box_service = getattr(self.ap, 'box_service', None)
-        return bool(getattr(box_service, 'available', False))
+        """Check if sandbox backend is available.
+
+        This checks the cached backend availability from initialization,
+        not just whether the box_service process is running.
+        """
+        return bool(self._backend_available)
 
     def _build_exec_tool(self) -> resource_tool.LLMTool:
         return resource_tool.LLMTool(

@@ -27,20 +27,51 @@ class SkillToolLoader(loader.ToolLoader):
     def __init__(self, ap):
         super().__init__(ap)
         self._tools: list[resource_tool.LLMTool] = []
+        self._sandbox_available: bool = False
 
     async def initialize(self):
-        self._tools = [
-            self._build_activate_skill_tool(),
-            self._build_register_skill_tool(),
-        ]
+        # Check if sandbox backend is available (same check as native tools)
+        self._sandbox_available = await self._check_sandbox_available()
+        if self._sandbox_available:
+            self._tools = [
+                self._build_activate_skill_tool(),
+                self._build_register_skill_tool(),
+            ]
+        else:
+            self.ap.logger.info(
+                'Skill tools (activate/register_skill) are NOT available. '
+                'No sandbox backend (Docker/nsjail/E2B) is ready.'
+            )
+
+    async def _check_sandbox_available(self) -> bool:
+        """Check if the box backend is truly available (not just the runtime)."""
+        box_service = getattr(self.ap, 'box_service', None)
+        if box_service is None:
+            return False
+        if not getattr(box_service, 'available', False):
+            return False
+        # Check if backend is truly available via get_status
+        try:
+            status = await box_service.get_status()
+            backend_info = status.get('backend', {})
+            return backend_info.get('available', False)
+        except Exception:
+            return False
 
     async def get_tools(self, bound_plugins: list[str] | None = None) -> list[resource_tool.LLMTool]:
-        if not self._has_skill_manager():
+        if not self._is_available():
             return []
         return list(self._tools)
 
     async def has_tool(self, name: str) -> bool:
-        return self._has_skill_manager() and name in SKILL_TOOL_NAMES
+        return self._is_available() and name in SKILL_TOOL_NAMES
+
+    def _is_available(self) -> bool:
+        """Check if skill tools should be available.
+
+        Skill tools require both a skill manager and a sandbox backend.
+        """
+        return self._has_skill_manager() and self._sandbox_available
 
     async def invoke_tool(self, name: str, parameters: dict, query) -> typing.Any:
         if name == ACTIVATE_SKILL_TOOL_NAME:
