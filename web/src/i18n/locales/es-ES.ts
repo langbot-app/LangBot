@@ -1436,7 +1436,10 @@ const esES = {
     updatedAt: 'Fecha de actualización',
     // Executions tab
     totalExecutions: 'Total de {{count}} registros de ejecución',
-    statistics: 'Análisis estadístico',
+    statistics: 'Registros de monitoreo',
+    monitoringDescription: 'Ver historial de ejecución y errores de este flujo de trabajo (últimas 24 horas)',
+    monitoringTotalMessages: 'Total de mensajes',
+    monitoringErrorLogs: 'Registros de errores',
     successfulCount: '{{count}} éxitos',
     successRate: 'Tasa de éxito',
     averageDuration: 'Duración promedio',

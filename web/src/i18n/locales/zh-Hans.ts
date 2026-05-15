@@ -1358,7 +1358,10 @@ const zhHans = {
     updatedAt: '更新时间',
     // Executions tab
     totalExecutions: '共 {{count}} 条执行记录',
-    statistics: '统计分析',
+    statistics: '监控日志',
+    monitoringDescription: '查看此工作流的运行记录和错误信息（最近24小时）',
+    monitoringTotalMessages: '总消息数',
+    monitoringErrorLogs: '错误日志',
     successfulCount: '成功 {{count}} 次',
     successRate: '成功率',
     averageDuration: '平均耗时',

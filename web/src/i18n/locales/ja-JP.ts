@@ -1404,7 +1404,10 @@
     updatedAt: '更新日時',
     // Executions tab
     totalExecutions: '合計{{count}}件の実行',
-    statistics: '統計分析',
+    statistics: 'モニタリングログ',
+    monitoringDescription: 'このワークフローの実行履歴とエラー情報を表示（過去24時間）',
+    monitoringTotalMessages: '総メッセージ数',
+    monitoringErrorLogs: 'エラーログ',
     successfulCount: '成功{{count}}件',
     successRate: '成功率',
     averageDuration: '平均所要時間',

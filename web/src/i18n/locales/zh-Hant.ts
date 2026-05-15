@@ -1339,7 +1339,10 @@ const zhHant = {
     updatedAt: '更新時間',
     // Executions tab
     totalExecutions: '共 {{count}} 次執行',
-    statistics: '統計資訊',
+    statistics: '監控日誌',
+    monitoringDescription: '查看此工作流的運行記錄和錯誤信息（最近24小時）',
+    monitoringTotalMessages: '總訊息數',
+    monitoringErrorLogs: '錯誤日誌',
     successfulCount: '{{count}} 次成功',
     successRate: '成功率',
     averageDuration: '平均時長',

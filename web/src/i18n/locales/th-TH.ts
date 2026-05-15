@@ -1376,7 +1376,10 @@ const thTH = {
     updatedAt: 'เวลาอัปเดต',
     // Executions tab
     totalExecutions: 'ทั้งหมด {{count}} บันทึกการดำเนินการ',
-    statistics: 'สถิติการวิเคราะห์',
+    statistics: 'บันทึกการตรวจสอบ',
+    monitoringDescription: 'ดูประวัติการทำงานและข้อผิดพลาดของเวิร์กโฟลว์นี้ (24 ชั่วโมงล่าสุด)',
+    monitoringTotalMessages: 'ข้อความทั้งหมด',
+    monitoringErrorLogs: 'บันทึกข้อผิดพลาด',
     successfulCount: 'สำเร็จ {{count}} ครั้ง',
     successRate: 'อัตราความสำเร็จ',
     averageDuration: 'ระยะเวลาเฉลี่ย',

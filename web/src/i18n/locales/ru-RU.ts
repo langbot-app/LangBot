@@ -1407,7 +1407,10 @@ const ruRU = {
     updatedAt: 'Дата обновления',
     // Executions tab
     totalExecutions: 'Всего {{count}} записей выполнения',
-    statistics: 'Статистический анализ',
+    statistics: 'Журналы мониторинга',
+    monitoringDescription: 'Просмотр истории выполнения и ошибок этого рабочего процесса (за последние 24 часа)',
+    monitoringTotalMessages: 'Всего сообщений',
+    monitoringErrorLogs: 'Журналы ошибок',
     successfulCount: '{{count}} успешных',
     successRate: 'Процент успеха',
     averageDuration: 'Средняя длительность',

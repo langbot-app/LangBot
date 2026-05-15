@@ -16,10 +16,7 @@ import {
   FileText,
   RotateCcw,
   Filter,
-  TrendingUp,
   Calendar,
-  ChevronDown,
-  ChevronUp,
 } from 'lucide-react';
 import {
   Table,
@@ -43,13 +40,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
 
@@ -142,7 +133,6 @@ export default function WorkflowExecutionsTab({
   // Statistics
   const [stats, setStats] = useState<WorkflowStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
-  const [showStats, setShowStats] = useState(true);
 
   // Logs
   const [executionLogs, setExecutionLogs] = useState<ExecutionLog[]>([]);
@@ -331,107 +321,44 @@ export default function WorkflowExecutionsTab({
 
   return (
     <div className="space-y-4">
-      {/* Statistics Panel */}
-      <Collapsible open={showStats} onOpenChange={setShowStats}>
-        <CollapsibleTrigger asChild>
-          <Button variant="ghost" className="w-full justify-between p-2">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="size-4" />
-              <span className="font-medium">{t('workflows.statistics')}</span>
+      {/* Monitoring Logs Panel */}
+      <div>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          {t('workflows.monitoringDescription')}
+        </p>
+        {statsLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="size-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : stats ? (
+          <div className="grid grid-cols-3 gap-4 mb-6">
+            <div className="bg-white dark:bg-[#2a2a2e] rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+              <div className="text-sm text-gray-500 dark:text-gray-400">
+                {t('workflows.monitoringTotalMessages')}
+              </div>
+              <div className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-1">
+                {stats.total_executions ?? 0}
+              </div>
             </div>
-            {showStats ? (
-              <ChevronUp className="size-4" />
-            ) : (
-              <ChevronDown className="size-4" />
-            )}
-          </Button>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          {statsLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="size-6 animate-spin text-muted-foreground" />
+            <div className="bg-white dark:bg-[#2a2a2e] rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+              <div className="text-sm text-gray-500 dark:text-gray-400">
+                {t('workflows.successRate')}
+              </div>
+              <div className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-1">
+                {((stats.success_rate ?? 0) * 100).toFixed(1)}%
+              </div>
             </div>
-          ) : stats ? (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    {t('workflows.totalExecutions', {
-                      count: stats.total_executions ?? 0,
-                    })}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">
-                    {stats.total_executions ?? 0}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {t('workflows.successfulCount', {
-                      count: stats.successful_executions ?? 0,
-                    })}
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    {t('workflows.successRate')}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                    {((stats.success_rate ?? 0) * 100).toFixed(1)}%
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {stats.successful_executions ?? 0} /{' '}
-                    {stats.total_executions ?? 0}
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    {t('workflows.averageDuration')}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">
-                    {formatDuration((stats.average_duration_ms ?? 0) / 1000)}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {t('workflows.perExecution')}
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    {t('workflows.failedExecutions')}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-red-600 dark:text-red-400">
-                    {stats.failed_executions ?? 0}
-                  </div>
-                  {stats.last_execution_time && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {t('workflows.lastExecution')}:{' '}
-                      {new Date(stats.last_execution_time).toLocaleDateString()}
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
+            <div className="bg-white dark:bg-[#2a2a2e] rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+              <div className="text-sm text-gray-500 dark:text-gray-400">
+                {t('workflows.monitoringErrorLogs')}
+              </div>
+              <div className="text-2xl font-bold text-red-600 dark:text-red-400 mt-1">
+                {stats.failed_executions ?? 0}
+              </div>
             </div>
-          ) : (
-            <div className="text-center py-4 text-sm text-muted-foreground">
-              {t('workflows.noExecutions')}
-            </div>
-          )}
-        </CollapsibleContent>
-      </Collapsible>
+          </div>
+        ) : null}
+      </div>
 
       {/* Toolbar with Filters */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">

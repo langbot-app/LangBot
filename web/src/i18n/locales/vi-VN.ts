@@ -1398,7 +1398,10 @@ const viVN = {
     updatedAt: 'Thời gian cập nhật',
     // Executions tab
     totalExecutions: 'Tổng cộng {{count}} bản ghi thực thi',
-    statistics: 'Phân tích thống kê',
+    statistics: 'Nhật ký giám sát',
+    monitoringDescription: 'Xem lịch sử chạy và lỗi của quy trình làm việc này (24 giờ qua)',
+    monitoringTotalMessages: 'Tổng số tin nhắn',
+    monitoringErrorLogs: 'Nhật ký lỗi',
     successfulCount: 'Thành công {{count}} lần',
     successRate: 'Tỷ lệ thành công',
     averageDuration: 'Thời lượng trung bình',

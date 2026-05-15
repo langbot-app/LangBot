@@ -1419,7 +1419,10 @@ const enUS = {
     updatedAt: 'Updated At',
     // Executions tab
     totalExecutions: '{{count}} execution(s) total',
-    statistics: 'Statistics',
+    statistics: 'Monitoring Logs',
+    monitoringDescription: 'View run history and errors for this workflow (last 24 hours)',
+    monitoringTotalMessages: 'Total Messages',
+    monitoringErrorLogs: 'Error Logs',
     successfulCount: '{{count}} successful',
     successRate: 'Success Rate',
     averageDuration: 'Avg. Duration',
