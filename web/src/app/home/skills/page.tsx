@@ -64,17 +64,14 @@ export default function SkillsPage() {
             </Button>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto min-h-0">
-          <div className="mx-auto max-w-3xl space-y-6 pb-8">
-            <SkillForm
-              key="new-skill"
-              initSkillName={undefined}
-              onNewSkillCreated={(skillName) =>
-                handleImportedSkills([skillName])
-              }
-              onSkillUpdated={() => {}}
-            />
-          </div>
+        <div className="min-h-0 flex-1">
+          <SkillForm
+            key="new-skill"
+            initSkillName={undefined}
+            layout="split"
+            onNewSkillCreated={(skillName) => handleImportedSkills([skillName])}
+            onSkillUpdated={() => {}}
+          />
         </div>
       </div>
     );

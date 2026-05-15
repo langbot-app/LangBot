@@ -484,6 +484,8 @@ const zhHant = {
     close: '關閉',
     deleteConfirm: '刪除確認',
     deleteSuccess: '刪除成功',
+    dangerZone: '危險區域',
+    dangerZoneDescription: '不可逆的操作',
     modifyFailed: '修改失敗：',
     componentName: {
       Tool: '工具',
@@ -701,6 +703,8 @@ const zhHant = {
     loadFailed: '載入失敗',
     modifyFailed: '修改失敗：',
     toolCount: '工具：{{count}}',
+    parameterCount: '參數：{{count}}',
+    noParameters: '無參數',
     statusConnected: '已開啟',
     statusDisconnected: '未開啟',
     statusError: '連接錯誤',

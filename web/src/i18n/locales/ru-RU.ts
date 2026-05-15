@@ -515,6 +515,8 @@ const ruRU = {
     close: 'Закрыть',
     deleteConfirm: 'Подтверждение удаления',
     deleteSuccess: 'Удаление успешно',
+    dangerZone: 'Опасная зона',
+    dangerZoneDescription: 'Необратимые и разрушительные действия',
     modifyFailed: 'Ошибка изменения: ',
     componentName: {
       Tool: 'Инструмент',
@@ -536,8 +538,7 @@ const ruRU = {
     selectFileToUpload: 'Выберите файл плагина для загрузки',
     askConfirm:
       'Вы уверены, что хотите установить плагин "{{name}}" ({{version}})?',
-    askConfirmNoVersion:
-      'Вы уверены, что хотите установить плагин "{{name}}"?',
+    askConfirmNoVersion: 'Вы уверены, что хотите установить плагин "{{name}}"?',
     fromGithub: 'С GitHub',
     fromLocal: 'Из локального файла',
     fromMarketplace: 'Из маркетплейса',
@@ -740,6 +741,8 @@ const ruRU = {
     loadFailed: 'Ошибка загрузки',
     modifyFailed: 'Ошибка изменения: ',
     toolCount: 'Инструменты: {{count}}',
+    parameterCount: 'Параметры: {{count}}',
+    noParameters: 'Нет параметров',
     statusConnected: 'Подключён',
     statusDisconnected: 'Отключён',
     statusError: 'Ошибка подключения',

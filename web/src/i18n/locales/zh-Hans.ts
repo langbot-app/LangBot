@@ -483,6 +483,8 @@ const zhHans = {
     close: '关闭',
     deleteConfirm: '删除确认',
     deleteSuccess: '删除成功',
+    dangerZone: '危险区域',
+    dangerZoneDescription: '不可逆的操作',
     modifyFailed: '修改失败：',
     componentName: {
       Tool: '工具',
@@ -708,6 +710,8 @@ const zhHans = {
     loadFailed: '加载失败',
     modifyFailed: '修改失败：',
     toolCount: '工具：{{count}}',
+    parameterCount: '参数：{{count}}',
+    noParameters: '无参数',
     statusConnected: '已打开',
     statusDisconnected: '未打开',
     statusError: '连接错误',

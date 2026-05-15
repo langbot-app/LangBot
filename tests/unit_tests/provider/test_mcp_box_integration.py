@@ -513,6 +513,36 @@ class TestGetRuntimeInfoDict:
         assert info['status'] == 'connecting'
         assert 'box_session_id' not in info
 
+    def test_runtime_tools_include_parameters(self, mcp_module):
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'test-uuid',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+            },
+        )
+        s.functions = [
+            SimpleNamespace(
+                name='create-service',
+                description='Create a service',
+                parameters={
+                    'type': 'object',
+                    'properties': {
+                        'project_id': {'type': 'string'},
+                    },
+                    'required': ['project_id'],
+                },
+            )
+        ]
+
+        info = s.get_runtime_info_dict()
+
+        assert info['tools'][0]['parameters']['properties']['project_id']['type'] == 'string'
+        assert info['tools'][0]['parameters']['required'] == ['project_id']
+
     def test_stdio_session_includes_box_info(self, mcp_module):
         ap = _make_ap()
         ap.box_service.available = True

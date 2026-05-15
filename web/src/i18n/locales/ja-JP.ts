@@ -510,6 +510,8 @@ const jaJP = {
     close: '閉じる',
     deleteConfirm: '削除の確認',
     deleteSuccess: '削除に成功しました',
+    dangerZone: '危険ゾーン',
+    dangerZoneDescription: '取り消しできない操作です',
     modifyFailed: '変更に失敗しました：',
     componentName: {
       Tool: 'ツール',
@@ -734,6 +736,8 @@ const jaJP = {
     loadFailed: '読み込みに失敗しました',
     modifyFailed: '変更に失敗しました：',
     toolCount: 'ツール：{{count}}',
+    parameterCount: 'パラメータ：{{count}}',
+    noParameters: 'パラメータなし',
     statusConnected: '接続済み',
     statusDisconnected: '未接続',
     statusError: '接続エラー',

@@ -500,6 +500,8 @@ const thTH = {
     close: 'ปิด',
     deleteConfirm: 'ยืนยันการลบ',
     deleteSuccess: 'ลบสำเร็จ',
+    dangerZone: 'พื้นที่อันตราย',
+    dangerZoneDescription: 'การดำเนินการที่ไม่สามารถย้อนกลับได้',
     modifyFailed: 'แก้ไขล้มเหลว: ',
     componentName: {
       Tool: 'เครื่องมือ',
@@ -720,6 +722,8 @@ const thTH = {
     loadFailed: 'โหลดล้มเหลว',
     modifyFailed: 'แก้ไขล้มเหลว: ',
     toolCount: 'เครื่องมือ: {{count}}',
+    parameterCount: 'พารามิเตอร์: {{count}}',
+    noParameters: 'ไม่มีพารามิเตอร์',
     statusConnected: 'เชื่อมต่อแล้ว',
     statusDisconnected: 'ไม่ได้เชื่อมต่อ',
     statusError: 'ข้อผิดพลาดการเชื่อมต่อ',

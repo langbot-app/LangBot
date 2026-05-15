@@ -314,6 +314,7 @@ class RuntimeMCPSession:
                 {
                     'name': tool.name,
                     'description': tool.description,
+                    'parameters': tool.parameters,
                 }
                 for tool in self.get_tools()
             ],

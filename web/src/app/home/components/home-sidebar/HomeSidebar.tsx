@@ -233,6 +233,27 @@ function mcpStatusColor(item: SidebarEntityItem): string {
   }
 }
 
+function MCPStatusIcon({
+  item,
+  borderClass,
+}: {
+  item: SidebarEntityItem;
+  borderClass: string;
+}) {
+  return (
+    <span className="relative shrink-0">
+      <Server className="size-4 !text-blue-500" />
+      <span
+        className={cn(
+          'absolute -bottom-1 -right-1 size-3 rounded-full border-2',
+          borderClass,
+          mcpStatusColor(item),
+        )}
+      />
+    </span>
+  );
+}
+
 // Plugin operation type enum
 enum PluginOperationType {
   DELETE = 'DELETE',
@@ -514,7 +535,7 @@ function NavItems({
                   }}
                 >
                   {item.extensionType === 'mcp' ? (
-                    <Server className="size-4 shrink-0 !text-blue-500" />
+                    <MCPStatusIcon item={item} borderClass="border-popover" />
                   ) : item.extensionType === 'skill' ? (
                     <Sparkles className="size-4 shrink-0 !text-blue-500" />
                   ) : item.emoji ? (
@@ -574,7 +595,10 @@ function NavItems({
                         }}
                       >
                         {item.extensionType === 'mcp' ? (
-                          <Server className="size-4 shrink-0 !text-blue-500" />
+                          <MCPStatusIcon
+                            item={item}
+                            borderClass="border-sidebar"
+                          />
                         ) : item.extensionType === 'skill' ? (
                           <Sparkles className="size-4 shrink-0 !text-blue-500" />
                         ) : item.emoji ? (

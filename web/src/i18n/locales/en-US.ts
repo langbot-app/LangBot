@@ -506,6 +506,8 @@ const enUS = {
     close: 'Close',
     deleteConfirm: 'Delete Confirmation',
     deleteSuccess: 'Delete successful',
+    dangerZone: 'Danger Zone',
+    dangerZoneDescription: 'Irreversible and destructive actions',
     modifyFailed: 'Modify failed: ',
     componentName: {
       Tool: 'Tool',
@@ -736,6 +738,8 @@ const enUS = {
     loadFailed: 'Load failed',
     modifyFailed: 'Modify failed: ',
     toolCount: 'Tools: {{count}}',
+    parameterCount: 'Parameters: {{count}}',
+    noParameters: 'No parameters',
     statusConnected: 'Connected',
     statusDisconnected: 'Disconnected',
     statusError: 'Connection Error',

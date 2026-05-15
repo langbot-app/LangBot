@@ -1,4 +1,5 @@
 import React, {
+  type ReactNode,
   useState,
   useEffect,
   useRef,
@@ -6,7 +7,8 @@ import React, {
   useImperativeHandle,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, XCircle, Trash2 } from 'lucide-react';
+import type { TFunction } from 'i18next';
+import { Braces, Loader2, Trash2, Wrench, XCircle } from 'lucide-react';
 import { Resolver, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -29,6 +31,14 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import {
   MCPServerRuntimeInfo,
@@ -41,7 +51,6 @@ import {
 } from '@/app/infra/entities/api';
 import { CustomApiError } from '@/app/infra/entities/common';
 
-// Status display for test / connecting / error states
 function StatusDisplay({
   testing,
   runtimeInfo,
@@ -49,12 +58,12 @@ function StatusDisplay({
 }: {
   testing: boolean;
   runtimeInfo: MCPServerRuntimeInfo;
-  t: (key: string) => string;
+  t: TFunction;
 }) {
   if (testing) {
     return (
       <div className="flex items-center gap-2 text-blue-600">
-        <Loader2 className="w-5 h-5 animate-spin" />
+        <Loader2 className="size-5 animate-spin" />
         <span className="font-medium">{t('mcp.testing')}</span>
       </div>
     );
@@ -63,7 +72,7 @@ function StatusDisplay({
   if (runtimeInfo.status === MCPSessionStatus.CONNECTING) {
     return (
       <div className="flex items-center gap-2 text-blue-600">
-        <Loader2 className="w-5 h-5 animate-spin" />
+        <Loader2 className="size-5 animate-spin" />
         <span className="font-medium">{t('mcp.connecting')}</span>
       </div>
     );
@@ -72,11 +81,11 @@ function StatusDisplay({
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-2 text-red-600">
-        <XCircle className="w-5 h-5" />
+        <XCircle className="size-5" />
         <span className="font-medium">{t('mcp.connectionFailed')}</span>
       </div>
       {runtimeInfo.error_message && (
-        <div className="text-sm text-red-500 pl-7">
+        <div className="pl-7 text-sm text-red-500">
           {runtimeInfo.error_message}
         </div>
       )}
@@ -84,25 +93,181 @@ function StatusDisplay({
   );
 }
 
-// Tools list component
-function ToolsList({ tools }: { tools: MCPTool[] }) {
+type ToolParameter = {
+  name: string;
+  type?: string;
+  description?: string;
+  required?: boolean;
+};
+
+function getToolParameters(parameters?: object): ToolParameter[] {
+  if (!parameters || typeof parameters !== 'object') return [];
+
+  const schema = parameters as {
+    properties?: Record<
+      string,
+      { type?: string; description?: string; title?: string }
+    >;
+    required?: string[];
+  };
+
+  if (schema.properties && typeof schema.properties === 'object') {
+    const required = new Set(schema.required ?? []);
+    return Object.entries(schema.properties).map(([name, parameter]) => ({
+      name,
+      type: parameter?.type,
+      description: parameter?.description || parameter?.title,
+      required: required.has(name),
+    }));
+  }
+
+  return Object.keys(parameters).map((name) => ({ name }));
+}
+
+function ToolsList({ tools, t }: { tools: MCPTool[]; t: TFunction }) {
   return (
-    <div className="max-h-[300px] space-y-1 overflow-y-auto">
-      {tools.map((tool, index) => (
-        <div key={index} className="rounded-md px-1 py-2">
-          <div className="text-sm font-medium">{tool.name}</div>
-          {tool.description && (
-            <div className="mt-0.5 text-xs text-muted-foreground">
-              {tool.description}
+    <div className="grid gap-3 pb-6 xl:grid-cols-2">
+      {tools.map((tool, index) => {
+        const parameters = getToolParameters(tool.parameters);
+        const visibleParameters = parameters.slice(0, 4);
+        const hiddenParameterCount =
+          parameters.length - visibleParameters.length;
+
+        return (
+          <div
+            key={`${tool.name}-${index}`}
+            className="rounded-lg border bg-background p-4 transition-colors hover:border-primary/40 hover:bg-muted/20"
+          >
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                <Wrench className="size-4" />
+              </div>
+              <div className="min-w-0 flex-1 space-y-3">
+                <div className="min-w-0 space-y-1">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="truncate font-mono text-sm font-semibold">
+                      {tool.name}
+                    </span>
+                    <Badge variant="secondary" className="h-5 shrink-0 px-1.5">
+                      #{index + 1}
+                    </Badge>
+                  </div>
+                  <p className="line-clamp-4 text-xs leading-relaxed text-muted-foreground">
+                    {tool.description || t('market.noDescription')}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                    <Braces className="size-3.5" />
+                    <span>
+                      {t('mcp.parameterCount', {
+                        count: parameters.length,
+                      })}
+                    </span>
+                  </div>
+
+                  {visibleParameters.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {visibleParameters.map((parameter) => (
+                        <span
+                          key={parameter.name}
+                          title={parameter.description || parameter.name}
+                          className="inline-flex max-w-full items-center gap-1 rounded-md border bg-muted/40 px-2 py-1 text-xs"
+                        >
+                          <span className="truncate font-mono">
+                            {parameter.name}
+                          </span>
+                          {parameter.type && (
+                            <span className="shrink-0 text-muted-foreground">
+                              {parameter.type}
+                            </span>
+                          )}
+                          {parameter.required && (
+                            <span className="shrink-0 text-destructive">*</span>
+                          )}
+                        </span>
+                      ))}
+                      {hiddenParameterCount > 0 && (
+                        <span className="inline-flex items-center rounded-md border bg-muted/40 px-2 py-1 text-xs text-muted-foreground">
+                          +{hiddenParameterCount}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-muted-foreground">
+                      {t('mcp.noParameters')}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
-          )}
-        </div>
-      ))}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-const getFormSchema = (t: (key: string) => string) =>
+function RuntimePanel({
+  isEditMode,
+  mcpTesting,
+  runtimeInfo,
+  t,
+}: {
+  isEditMode: boolean;
+  mcpTesting: boolean;
+  runtimeInfo: MCPServerRuntimeInfo | null;
+  t: TFunction;
+}) {
+  if (!isEditMode || !runtimeInfo) {
+    return (
+      <div className="flex min-h-[280px] items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
+        {t('mcp.noToolsFound')}
+      </div>
+    );
+  }
+
+  const isConnected =
+    !mcpTesting && runtimeInfo.status === MCPSessionStatus.CONNECTED;
+  const tools = runtimeInfo.tools || [];
+
+  return (
+    <section className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="space-y-1">
+          <h3 className="text-sm font-medium">{t('mcp.title')}</h3>
+          <p className="text-sm text-muted-foreground">
+            {isConnected
+              ? t('mcp.toolCount', { count: tools.length })
+              : t('mcp.connectionFailedStatus')}
+          </p>
+        </div>
+        {isConnected && (
+          <Badge variant="outline">
+            {t('mcp.toolCount', { count: tools.length })}
+          </Badge>
+        )}
+      </div>
+
+      {!isConnected && (
+        <div className="rounded-md bg-muted/40 p-3">
+          <StatusDisplay testing={mcpTesting} runtimeInfo={runtimeInfo} t={t} />
+        </div>
+      )}
+
+      {isConnected && tools.length > 0 && <ToolsList tools={tools} t={t} />}
+
+      {isConnected && tools.length === 0 && (
+        <div className="flex min-h-[220px] items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
+          {t('mcp.noToolsFound')}
+        </div>
+      )}
+    </section>
+  );
+}
+
+const getFormSchema = (t: TFunction) =>
   z
     .object({
       name: z
@@ -165,9 +330,11 @@ interface MCPFormProps {
   onDraftChange?: (draft: MCPFormDraft) => void;
   onDirtyChange?: (dirty: boolean) => void;
   onTestingChange?: (testing: boolean) => void;
+  layout?: 'stacked' | 'split';
+  sideHeader?: ReactNode;
+  sideFooter?: ReactNode;
 }
 
-// Handle exposed to parent via ref
 export interface MCPFormHandle {
   testMcp: () => void;
   isTesting: boolean;
@@ -182,6 +349,9 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
     onDraftChange,
     onDirtyChange,
     onTestingChange,
+    layout = 'stacked',
+    sideHeader,
+    sideFooter,
   },
   ref,
 ) {
@@ -205,9 +375,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
     },
   });
 
-  // Track whether initial data loading is complete (to avoid marking form dirty)
   const isInitializing = useRef(true);
-
   const [extraArgs, setExtraArgs] = useState<
     { key: string; type: 'string' | 'number' | 'boolean'; value: string }[]
   >([]);
@@ -217,21 +385,17 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
     null,
   );
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
   const watchMode = form.watch('mode');
 
-  // Notify parent when dirty state changes
   const { isDirty } = form.formState;
   useEffect(() => {
     onDirtyChange?.(isDirty);
   }, [isDirty, onDirtyChange]);
 
-  // Notify parent when testing state changes
   useEffect(() => {
     onTestingChange?.(mcpTesting);
   }, [mcpTesting, onTestingChange]);
 
-  // Expose test action and testing state to parent
   useImperativeHandle(
     ref,
     () => ({
@@ -241,7 +405,6 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
     [mcpTesting],
   );
 
-  // Load server data
   useEffect(() => {
     isInitializing.current = true;
     if (isEditMode && initServerName) {
@@ -288,7 +451,6 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
     return () => subscription.unsubscribe();
   }, [form, isEditMode, onDraftChange, extraArgs, stdioArgs]);
 
-  // Poll for updates when runtime_info status is CONNECTING
   useEffect(() => {
     if (
       !isEditMode ||
@@ -323,7 +485,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
       const server = resp.server ?? resp;
 
       const formValues: FormValues = {
-        name: server.name.replace(/__/g, '/'), // Convert __ back to / for display
+        name: server.name.replace(/__/g, '/'),
         mode: server.mode,
         url: '',
         command: '',
@@ -379,15 +541,8 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
 
       setExtraArgs(newExtraArgs);
       setStdioArgs(newStdioArgs);
-
-      // Use form.reset so isDirty stays false after initial load
       form.reset(formValues);
-
-      if (server.runtime_info) {
-        setRuntimeInfo(server.runtime_info);
-      } else {
-        setRuntimeInfo(null);
-      }
+      setRuntimeInfo(server.runtime_info ?? null);
     } catch (error) {
       console.error('Failed to load server:', error);
       toast.error(t('mcp.loadFailed'));
@@ -411,7 +566,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
             enable: true,
             extra_args: {
               url: value.url!,
-              headers: headers,
+              headers,
               timeout: value.timeout,
               ssereadtimeout: value.ssereadtimeout,
             },
@@ -423,7 +578,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
             enable: true,
             extra_args: {
               url: value.url!,
-              headers: headers,
+              headers,
               timeout: value.timeout,
             },
           };
@@ -433,7 +588,6 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
         value.extra_args?.forEach((arg) => {
           env[arg.key] = String(arg.value);
         });
-        const args = value.args?.map((arg) => arg.value) || [];
 
         serverConfig = {
           name: value.name,
@@ -441,8 +595,8 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
           enable: true,
           extra_args: {
             command: value.command!,
-            args: args,
-            env: env,
+            args: value.args?.map((arg) => arg.value) || [],
+            env,
           },
         };
       }
@@ -450,7 +604,6 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
       if (isEditMode && initServerName) {
         await httpClient.updateMCPServer(initServerName, serverConfig);
         toast.success(t('mcp.updateSuccess'));
-        // Reset dirty baseline to current values
         form.reset(form.getValues());
         onFormSubmit();
       } else {
@@ -504,7 +657,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
 
       const { task_id } = await httpClient.testMCPServer('_', {
         name: form.getValues('name'),
-        mode: mode,
+        mode,
         enable: true,
         extra_args: extraArgsData,
       } as MCPServer);
@@ -604,121 +757,108 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
     form.setValue('args', newArgs, { shouldDirty: !isInitializing.current });
   };
 
-  return (
-    <Form {...form}>
-      <form
-        id="mcp-form"
-        onSubmit={form.handleSubmit(handleFormSubmit)}
-        className="space-y-5"
-      >
-        {/* Runtime info: status + tools (edit mode only) */}
-        {isEditMode && runtimeInfo && (
-          <section className="space-y-3">
-            <h3 className="text-sm font-medium">{t('mcp.title')}</h3>
-            {(mcpTesting ||
-              runtimeInfo.status !== MCPSessionStatus.CONNECTED) && (
-              <div className="rounded-md bg-muted/40 p-3">
-                <StatusDisplay
-                  testing={mcpTesting}
-                  runtimeInfo={runtimeInfo}
-                  t={t}
-                />
-              </div>
-            )}
-
-            {!mcpTesting &&
-              runtimeInfo.status === MCPSessionStatus.CONNECTED &&
-              runtimeInfo.tools?.length > 0 && (
-                <>
-                  <div className="text-sm font-medium">
-                    {t('mcp.toolCount', {
-                      count: runtimeInfo.tools?.length || 0,
-                    })}
-                  </div>
-                  <ToolsList tools={runtimeInfo.tools} />
-                </>
-              )}
-          </section>
-        )}
-
-        {/* Server configuration */}
-        <section className="space-y-4">
-          {isEditMode && (
-            <h3 className="text-sm font-medium">{t('mcp.editServer')}</h3>
+  const configSection = (
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          {isEditMode ? t('mcp.editServer') : t('mcp.createServer')}
+        </CardTitle>
+        <CardDescription>{t('mcp.extraParametersDescription')}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <FormField
+          control={form.control}
+          name="name"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>
+                {t('mcp.name')}
+                <span className="text-destructive">*</span>
+              </FormLabel>
+              <FormControl>
+                <Input {...field} disabled={isEditMode} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
           )}
-          <FormField
-            control={form.control}
-            name="name"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  {t('mcp.name')}
-                  <span className="text-destructive">*</span>
-                </FormLabel>
+        />
+
+        <FormField
+          control={form.control}
+          name="mode"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t('mcp.serverMode')}</FormLabel>
+              <Select
+                onValueChange={field.onChange}
+                defaultValue={field.value}
+                value={field.value}
+              >
                 <FormControl>
-                  <Input {...field} disabled={isEditMode} />
+                  <SelectTrigger>
+                    <SelectValue placeholder={t('mcp.selectMode')} />
+                  </SelectTrigger>
                 </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+                <SelectContent>
+                  <SelectItem value="http">{t('mcp.http')}</SelectItem>
+                  <SelectItem value="stdio">{t('mcp.stdio')}</SelectItem>
+                  <SelectItem value="sse">{t('mcp.sse')}</SelectItem>
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-          <FormField
-            control={form.control}
-            name="mode"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t('mcp.serverMode')}</FormLabel>
-                <Select
-                  onValueChange={field.onChange}
-                  defaultValue={field.value}
-                  value={field.value}
-                >
+        {(watchMode === 'sse' || watchMode === 'http') && (
+          <>
+            <FormField
+              control={form.control}
+              name="url"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    {t('mcp.url')}
+                    <span className="text-destructive">*</span>
+                  </FormLabel>
                   <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder={t('mcp.selectMode')} />
-                    </SelectTrigger>
+                    <Input {...field} />
                   </FormControl>
-                  <SelectContent>
-                    <SelectItem value="http">{t('mcp.http')}</SelectItem>
-                    <SelectItem value="stdio">{t('mcp.stdio')}</SelectItem>
-                    <SelectItem value="sse">{t('mcp.sse')}</SelectItem>
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-          {(watchMode === 'sse' || watchMode === 'http') && (
-            <>
+            <FormField
+              control={form.control}
+              name="timeout"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('mcp.timeout')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      placeholder={t('mcp.timeout')}
+                      {...field}
+                      onChange={(e) => field.onChange(Number(e.target.value))}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {watchMode === 'sse' && (
               <FormField
                 control={form.control}
-                name="url"
+                name="ssereadtimeout"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>
-                      {t('mcp.url')}
-                      <span className="text-destructive">*</span>
-                    </FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="timeout"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('mcp.timeout')}</FormLabel>
+                    <FormLabel>{t('mcp.sseTimeout')}</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
-                        placeholder={t('mcp.timeout')}
+                        placeholder={t('mcp.sseTimeoutDescription')}
                         {...field}
                         onChange={(e) => field.onChange(Number(e.target.value))}
                       />
@@ -727,126 +867,147 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
                   </FormItem>
                 )}
               />
+            )}
+          </>
+        )}
 
-              {watchMode === 'sse' && (
-                <FormField
-                  control={form.control}
-                  name="ssereadtimeout"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('mcp.sseTimeout')}</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          placeholder={t('mcp.sseTimeoutDescription')}
-                          {...field}
-                          onChange={(e) =>
-                            field.onChange(Number(e.target.value))
-                          }
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+        {watchMode === 'stdio' && (
+          <>
+            <FormField
+              control={form.control}
+              name="command"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    {t('mcp.command')}
+                    <span className="text-destructive">*</span>
+                  </FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
               )}
-            </>
-          )}
+            />
 
-          {watchMode === 'stdio' && (
-            <>
-              <FormField
-                control={form.control}
-                name="command"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      {t('mcp.command')}
-                      <span className="text-destructive">*</span>
-                    </FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            <FormItem>
+              <FormLabel>{t('mcp.args')}</FormLabel>
+              <div className="space-y-2">
+                {stdioArgs.map((arg, index) => (
+                  <div key={index} className="flex gap-2">
+                    <Input
+                      placeholder={t('mcp.args')}
+                      value={arg.value}
+                      onChange={(e) => updateStdioArg(index, e.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="shrink-0 text-red-500 hover:text-red-600"
+                      onClick={() => removeStdioArg(index)}
+                    >
+                      <Trash2 className="size-5" />
+                    </Button>
+                  </div>
+                ))}
+                <Button type="button" variant="outline" onClick={addStdioArg}>
+                  {t('mcp.addArgument')}
+                </Button>
+              </div>
+            </FormItem>
+          </>
+        )}
 
-              <FormItem>
-                <FormLabel>{t('mcp.args')}</FormLabel>
-                <div className="space-y-2">
-                  {stdioArgs.map((arg, index) => (
-                    <div key={index} className="flex gap-2">
-                      <Input
-                        placeholder={t('mcp.args')}
-                        value={arg.value}
-                        onChange={(e) => updateStdioArg(index, e.target.value)}
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="shrink-0 text-red-500 hover:text-red-600"
-                        onClick={() => removeStdioArg(index)}
-                      >
-                        <Trash2 className="w-5 h-5" />
-                      </Button>
-                    </div>
-                  ))}
-                  <Button type="button" variant="outline" onClick={addStdioArg}>
-                    {t('mcp.addArgument')}
-                  </Button>
-                </div>
-              </FormItem>
-            </>
-          )}
-
-          <FormItem>
-            <FormLabel>
+        <FormItem>
+          <FormLabel>
+            {watchMode === 'sse' || watchMode === 'http'
+              ? t('mcp.headers')
+              : t('mcp.env')}
+          </FormLabel>
+          <div className="space-y-2">
+            {extraArgs.map((arg, index) => (
+              <div key={index} className="flex gap-2">
+                <Input
+                  placeholder={t('models.keyName')}
+                  value={arg.key}
+                  onChange={(e) => updateExtraArg(index, 'key', e.target.value)}
+                />
+                <Input
+                  placeholder={t('models.value')}
+                  value={arg.value}
+                  onChange={(e) =>
+                    updateExtraArg(index, 'value', e.target.value)
+                  }
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0 text-red-500 hover:text-red-600"
+                  onClick={() => removeExtraArg(index)}
+                >
+                  <Trash2 className="size-5" />
+                </Button>
+              </div>
+            ))}
+            <Button type="button" variant="outline" onClick={addExtraArg}>
               {watchMode === 'sse' || watchMode === 'http'
-                ? t('mcp.headers')
-                : t('mcp.env')}
-            </FormLabel>
-            <div className="space-y-2">
-              {extraArgs.map((arg, index) => (
-                <div key={index} className="flex gap-2">
-                  <Input
-                    placeholder={t('models.keyName')}
-                    value={arg.key}
-                    onChange={(e) =>
-                      updateExtraArg(index, 'key', e.target.value)
-                    }
-                  />
-                  <Input
-                    placeholder={t('models.value')}
-                    value={arg.value}
-                    onChange={(e) =>
-                      updateExtraArg(index, 'value', e.target.value)
-                    }
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="shrink-0 text-red-500 hover:text-red-600"
-                    onClick={() => removeExtraArg(index)}
-                  >
-                    <Trash2 className="w-5 h-5" />
-                  </Button>
-                </div>
-              ))}
-              <Button type="button" variant="outline" onClick={addExtraArg}>
-                {watchMode === 'sse' || watchMode === 'http'
-                  ? t('mcp.addHeader')
-                  : t('mcp.addEnvVar')}
-              </Button>
-            </div>
-            <FormDescription>
-              {t('mcp.extraParametersDescription')}
-            </FormDescription>
-            <FormMessage />
-          </FormItem>
-        </section>
+                ? t('mcp.addHeader')
+                : t('mcp.addEnvVar')}
+            </Button>
+          </div>
+          <FormDescription>
+            {t('mcp.extraParametersDescription')}
+          </FormDescription>
+          <FormMessage />
+        </FormItem>
+      </CardContent>
+    </Card>
+  );
+
+  const runtimePanel = (
+    <RuntimePanel
+      isEditMode={isEditMode}
+      mcpTesting={mcpTesting}
+      runtimeInfo={runtimeInfo}
+      t={t}
+    />
+  );
+
+  if (layout === 'split') {
+    return (
+      <Form {...form}>
+        <form
+          id="mcp-form"
+          onSubmit={form.handleSubmit(handleFormSubmit)}
+          className="flex h-full min-h-0 max-w-full flex-col gap-6 overflow-y-auto lg:flex-row lg:overflow-hidden"
+        >
+          <div className="space-y-5 pb-6 lg:min-h-0 lg:w-[360px] lg:flex-shrink-0 lg:overflow-y-auto lg:overflow-x-hidden xl:w-[400px]">
+            {sideHeader}
+            {configSection}
+            {sideFooter}
+          </div>
+          <div className="hidden w-px shrink-0 bg-border lg:block" />
+          <div className="min-w-0 flex-1 pb-6 lg:min-h-0 lg:overflow-y-auto lg:overflow-x-hidden">
+            {runtimePanel}
+          </div>
+        </form>
+      </Form>
+    );
+  }
+
+  return (
+    <Form {...form}>
+      <form
+        id="mcp-form"
+        onSubmit={form.handleSubmit(handleFormSubmit)}
+        className="space-y-5"
+      >
+        {sideHeader}
+        {runtimePanel}
+        {configSection}
+        {sideFooter}
       </form>
     </Form>
   );

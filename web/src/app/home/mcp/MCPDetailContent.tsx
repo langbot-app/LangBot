@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import {
   Card,
   CardContent,
@@ -23,7 +24,7 @@ import type { MCPFormHandle } from '@/app/home/mcp/components/mcp-form/MCPForm';
 import { httpClient, systemInfo } from '@/app/infra/http/HttpClient';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { useTranslation } from 'react-i18next';
-import { Trash2 } from 'lucide-react';
+import { Server, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function MCPDetailContent({ id }: { id: string }) {
@@ -32,19 +33,18 @@ export default function MCPDetailContent({ id }: { id: string }) {
   const { t } = useTranslation();
   const { refreshMCPServers, mcpServers, setDetailEntityName } =
     useSidebarData();
+  const server = mcpServers.find((s) => s.id === id);
+  const displayName = (server?.name ?? id).replace(/__/g, '/');
 
   // Set breadcrumb entity name
   useEffect(() => {
     if (isCreateMode) {
       setDetailEntityName(t('mcp.createServer'));
     } else {
-      const server = mcpServers.find((s) => s.id === id);
-      // Convert __ back to / for display (since / is used as separator in stored names)
-      const displayName = (server?.name ?? id).replace(/__/g, '/');
       setDetailEntityName(displayName);
     }
     return () => setDetailEntityName(null);
-  }, [id, isCreateMode, mcpServers, setDetailEntityName, t]);
+  }, [displayName, isCreateMode, setDetailEntityName, t]);
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
@@ -144,10 +144,17 @@ export default function MCPDetailContent({ id }: { id: string }) {
   if (isCreateMode) {
     return (
       <div className="flex h-full flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between pb-4 shrink-0">
-          <h1 className="text-xl font-semibold">{t('mcp.createServer')}</h1>
-          <div className="flex items-center gap-2">
+        <div className="flex shrink-0 flex-col gap-3 pb-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <h1 className="truncate text-xl font-semibold">
+              {t('mcp.createServer')}
+            </h1>
+            <Badge variant="outline" className="shrink-0 text-[0.7rem]">
+              <Server className="size-3.5" />
+              {t('mcp.title')}
+            </Badge>
+          </div>
+          <div className="flex flex-wrap gap-2">
             <Button
               type="button"
               variant="outline"
@@ -177,47 +184,89 @@ export default function MCPDetailContent({ id }: { id: string }) {
           </div>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto min-h-0">
-          <div className="mx-auto max-w-3xl pb-8">
-            <MCPForm
-              ref={formRef}
-              initServerName={undefined}
-              onFormSubmit={handleFormSubmit}
-              onNewServerCreated={handleNewServerCreated}
-              onTestingChange={setMcpTesting}
-            />
-          </div>
+        <div className="min-h-0 flex-1">
+          <MCPForm
+            ref={formRef}
+            initServerName={undefined}
+            layout="split"
+            onFormSubmit={handleFormSubmit}
+            onNewServerCreated={handleNewServerCreated}
+            onTestingChange={setMcpTesting}
+          />
         </div>
       </div>
     );
   }
 
+  const enableControl = enableLoaded && (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('common.enable')}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center justify-between">
+          <Label
+            htmlFor="mcp-enable-switch"
+            className="cursor-pointer text-sm font-medium"
+          >
+            {t('common.enable')}
+          </Label>
+          <Switch
+            id="mcp-enable-switch"
+            checked={serverEnabled}
+            onCheckedChange={handleEnableToggle}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+
+  const editActions = (
+    <Card className="border-destructive/50">
+      <CardHeader>
+        <CardTitle className="text-destructive">
+          {t('mcp.dangerZone')}
+        </CardTitle>
+        <CardDescription>{t('mcp.dangerZoneDescription')}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <p className="text-sm font-medium">{t('mcp.deleteMCPAction')}</p>
+            <p className="text-sm text-muted-foreground">
+              {t('mcp.deleteMCPHint')}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            onClick={() => setShowDeleteConfirm(true)}
+            className="shrink-0"
+          >
+            <Trash2 className="mr-1.5 size-4" />
+            {t('common.delete')}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
   // ==================== Edit Mode ====================
   return (
     <>
       <div className="flex h-full flex-col">
-        {/* Header: title + enable switch + save button */}
-        <div className="flex items-center justify-between pb-4 shrink-0">
-          <div className="flex items-center gap-4">
-            <h1 className="text-xl font-semibold">{t('mcp.editServer')}</h1>
-            {enableLoaded && (
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="mcp-enable-switch"
-                  checked={serverEnabled}
-                  onCheckedChange={handleEnableToggle}
-                />
-                <Label
-                  htmlFor="mcp-enable-switch"
-                  className="text-sm text-muted-foreground cursor-pointer"
-                >
-                  {t('common.enable')}
-                </Label>
-              </div>
-            )}
+        <div className="flex shrink-0 flex-col gap-3 pb-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 space-y-1">
+            <div className="flex min-w-0 items-center gap-3">
+              <h1 className="truncate text-xl font-semibold">{displayName}</h1>
+              <Badge variant="outline" className="shrink-0 text-[0.7rem]">
+                <Server className="size-3.5" />
+                {t('mcp.title')}
+              </Badge>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button
               type="button"
               variant="outline"
@@ -232,51 +281,18 @@ export default function MCPDetailContent({ id }: { id: string }) {
           </div>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto min-h-0">
-          <div className="mx-auto max-w-3xl space-y-6 pb-8">
-            <MCPForm
-              ref={formRef}
-              initServerName={id}
-              onFormSubmit={handleFormSubmit}
-              onNewServerCreated={handleNewServerCreated}
-              onDirtyChange={setFormDirty}
-              onTestingChange={setMcpTesting}
-            />
-
-            {/* Card: Danger Zone */}
-            <Card className="border-destructive/50">
-              <CardHeader>
-                <CardTitle className="text-destructive">
-                  {t('mcp.dangerZone')}
-                </CardTitle>
-                <CardDescription>
-                  {t('mcp.dangerZoneDescription')}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium">
-                      {t('mcp.deleteMCPAction')}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {t('mcp.deleteMCPHint')}
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => setShowDeleteConfirm(true)}
-                  >
-                    <Trash2 className="size-4 mr-1.5" />
-                    {t('common.delete')}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+        <div className="min-h-0 flex-1">
+          <MCPForm
+            ref={formRef}
+            initServerName={id}
+            layout="split"
+            sideHeader={enableControl}
+            sideFooter={editActions}
+            onFormSubmit={handleFormSubmit}
+            onNewServerCreated={handleNewServerCreated}
+            onDirtyChange={setFormDirty}
+            onTestingChange={setMcpTesting}
+          />
         </div>
       </div>
 

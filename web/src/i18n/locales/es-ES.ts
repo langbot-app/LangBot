@@ -519,6 +519,8 @@ const esES = {
     close: 'Cerrar',
     deleteConfirm: 'Confirmación de eliminación',
     deleteSuccess: 'Eliminación exitosa',
+    dangerZone: 'Zona de peligro',
+    dangerZoneDescription: 'Acciones irreversibles y destructivas',
     modifyFailed: 'Error al modificar: ',
     componentName: {
       Tool: 'Herramienta',
@@ -744,6 +746,8 @@ const esES = {
     loadFailed: 'Error al cargar',
     modifyFailed: 'Error al modificar: ',
     toolCount: 'Herramientas: {{count}}',
+    parameterCount: 'Parámetros: {{count}}',
+    noParameters: 'Sin parámetros',
     statusConnected: 'Conectado',
     statusDisconnected: 'Desconectado',
     statusError: 'Error de conexión',

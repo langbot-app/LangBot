@@ -511,6 +511,8 @@ const viVN = {
     close: 'Đóng',
     deleteConfirm: 'Xác nhận xóa',
     deleteSuccess: 'Xóa thành công',
+    dangerZone: 'Vùng nguy hiểm',
+    dangerZoneDescription: 'Các thao tác không thể hoàn tác',
     modifyFailed: 'Sửa đổi thất bại: ',
     componentName: {
       Tool: 'Công cụ',
@@ -532,7 +534,8 @@ const viVN = {
     selectFileToUpload: 'Chọn tệp plugin để tải lên',
     askConfirm:
       'Bạn có chắc chắn muốn cài đặt plugin "{{name}}" ({{version}}) không?',
-    askConfirmNoVersion: 'Bạn có chắc chắn muốn cài đặt plugin "{{name}}" không?',
+    askConfirmNoVersion:
+      'Bạn có chắc chắn muốn cài đặt plugin "{{name}}" không?',
     fromGithub: 'Từ GitHub',
     fromLocal: 'Từ cục bộ',
     fromMarketplace: 'Từ chợ ứng dụng',
@@ -733,6 +736,8 @@ const viVN = {
     loadFailed: 'Tải thất bại',
     modifyFailed: 'Sửa đổi thất bại: ',
     toolCount: 'Công cụ: {{count}}',
+    parameterCount: 'Tham số: {{count}}',
+    noParameters: 'Không có tham số',
     statusConnected: 'Đã kết nối',
     statusDisconnected: 'Đã ngắt kết nối',
     statusError: 'Lỗi kết nối',

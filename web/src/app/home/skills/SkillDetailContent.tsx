@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   Card,
   CardContent,
@@ -20,6 +21,7 @@ import {
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import SkillForm from '@/app/home/skills/components/skill-form/SkillForm';
+import { Sparkles, Trash2 } from 'lucide-react';
 
 export default function SkillDetailContent({ id }: { id: string }) {
   const isCreateMode = id === 'new';
@@ -27,16 +29,16 @@ export default function SkillDetailContent({ id }: { id: string }) {
   const { t } = useTranslation();
   const { refreshSkills, skills, setDetailEntityName } = useSidebarData();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const skill = skills.find((item) => item.id === id);
 
   useEffect(() => {
     if (isCreateMode) {
       setDetailEntityName(t('skills.createSkill'));
     } else {
-      const skill = skills.find((item) => item.id === id);
       setDetailEntityName(skill?.name ?? id);
     }
     return () => setDetailEntityName(null);
-  }, [id, isCreateMode, setDetailEntityName, skills, t]);
+  }, [id, isCreateMode, setDetailEntityName, skill, t]);
 
   function handleImportedSkills(skillNames: string[]) {
     void refreshSkills();
@@ -67,78 +69,101 @@ export default function SkillDetailContent({ id }: { id: string }) {
   if (isCreateMode) {
     return (
       <div className="flex h-full flex-col">
-        <div className="flex items-center justify-between pb-4 shrink-0">
-          <h1 className="text-xl font-semibold">{t('skills.createSkill')}</h1>
-          <Button type="submit" form="skill-form">
+        <div className="flex shrink-0 flex-col gap-3 pb-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 space-y-1">
+            <div className="flex min-w-0 items-center gap-3">
+              <h1 className="truncate text-xl font-semibold">
+                {t('skills.createSkill')}
+              </h1>
+              <Badge variant="outline" className="shrink-0 text-[0.7rem]">
+                <Sparkles className="size-3.5" />
+                {t('skills.title')}
+              </Badge>
+            </div>
+          </div>
+          <Button type="submit" form="skill-form" className="shrink-0">
             {t('common.save')}
           </Button>
         </div>
 
-        <div className="flex-1 overflow-y-auto min-h-0">
-          <div className="mx-auto max-w-3xl space-y-6 pb-8">
-            <SkillForm
-              key="new-skill"
-              initSkillName={undefined}
-              onNewSkillCreated={(skillName) =>
-                handleImportedSkills([skillName])
-              }
-              onSkillUpdated={() => {}}
-            />
-          </div>
+        <div className="min-h-0 flex-1">
+          <SkillForm
+            key="new-skill"
+            initSkillName={undefined}
+            layout="split"
+            onNewSkillCreated={(skillName) => handleImportedSkills([skillName])}
+            onSkillUpdated={() => {}}
+          />
         </div>
       </div>
     );
   }
 
+  const editActions = (
+    <Card className="border-destructive/50">
+      <CardHeader>
+        <CardTitle className="text-destructive">
+          {t('skills.dangerZone')}
+        </CardTitle>
+        <CardDescription>{t('skills.dangerZoneDescription')}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <p className="text-sm font-medium">{t('skills.delete')}</p>
+            <p className="text-sm text-muted-foreground">
+              {t('skills.deleteConfirmation')}
+            </p>
+          </div>
+          <Button
+            variant="destructive"
+            type="button"
+            size="sm"
+            onClick={() => setShowDeleteConfirm(true)}
+            className="shrink-0"
+          >
+            <Trash2 className="mr-1.5 size-4" />
+            {t('common.delete')}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
   return (
     <>
       <div className="flex h-full flex-col">
-        <div className="flex items-center justify-between pb-4 shrink-0">
-          <h1 className="text-xl font-semibold">{t('skills.editSkill')}</h1>
-          <Button type="submit" form="skill-form">
+        <div className="flex shrink-0 flex-col gap-3 pb-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 space-y-1">
+            <div className="flex min-w-0 items-center gap-3">
+              <h1 className="truncate text-xl font-semibold">
+                {skill?.name ?? id}
+              </h1>
+              <Badge variant="outline" className="shrink-0 text-[0.7rem]">
+                <Sparkles className="size-3.5" />
+                {t('skills.title')}
+              </Badge>
+            </div>
+            {skill?.description && (
+              <p className="line-clamp-2 text-sm text-muted-foreground">
+                {skill.description}
+              </p>
+            )}
+          </div>
+          <Button type="submit" form="skill-form" className="shrink-0">
             {t('common.save')}
           </Button>
         </div>
 
-        <div className="flex-1 overflow-y-auto min-h-0">
-          <div className="mx-auto max-w-3xl space-y-6 pb-8">
-            <SkillForm
-              key={id}
-              initSkillName={id}
-              onNewSkillCreated={(skillName) =>
-                handleImportedSkills([skillName])
-              }
-              onSkillUpdated={handleSkillUpdated}
-            />
-
-            <Card className="border-destructive/50">
-              <CardHeader>
-                <CardTitle className="text-destructive">
-                  {t('skills.dangerZone')}
-                </CardTitle>
-                <CardDescription>
-                  {t('skills.dangerZoneDescription')}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium">{t('common.delete')}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {t('skills.deleteConfirmation')}
-                    </p>
-                  </div>
-                  <Button
-                    variant="destructive"
-                    type="button"
-                    onClick={() => setShowDeleteConfirm(true)}
-                  >
-                    {t('common.delete')}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+        <div className="min-h-0 flex-1">
+          <SkillForm
+            key={id}
+            initSkillName={id}
+            layout="split"
+            sideFooter={editActions}
+            onNewSkillCreated={(skillName) => handleImportedSkills([skillName])}
+            onSkillUpdated={handleSkillUpdated}
+          />
         </div>
       </div>
 
