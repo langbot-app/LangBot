@@ -186,6 +186,20 @@ const ENTITY_ROUTE_MAP: Record<EntityCategoryId, string> = {
 
 // localStorage key for collapsible section open/closed state
 const SIDEBAR_SECTIONS_KEY = 'sidebar_sections';
+const SIDEBAR_LIST_EXPANSION_KEY = 'sidebar_entity_list_expansion';
+
+type SidebarNavSection = 'home' | 'extensions';
+type SidebarListExpansionState = Record<
+  SidebarNavSection,
+  Partial<Record<EntityCategoryId, boolean>>
+>;
+
+function createEmptyListExpansionState(): SidebarListExpansionState {
+  return {
+    home: {},
+    extensions: {},
+  };
+}
 
 function loadSectionState(): Record<string, boolean> {
   if (typeof window === 'undefined') return {};
@@ -200,6 +214,29 @@ function loadSectionState(): Record<string, boolean> {
 function saveSectionState(state: Record<string, boolean>) {
   try {
     localStorage.setItem(SIDEBAR_SECTIONS_KEY, JSON.stringify(state));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+function loadListExpansionState(): SidebarListExpansionState {
+  if (typeof window === 'undefined') return createEmptyListExpansionState();
+  try {
+    const stored = localStorage.getItem(SIDEBAR_LIST_EXPANSION_KEY);
+    if (!stored) return createEmptyListExpansionState();
+    const parsed = JSON.parse(stored) as Partial<SidebarListExpansionState>;
+    return {
+      home: parsed.home ?? {},
+      extensions: parsed.extensions ?? {},
+    };
+  } catch {
+    return createEmptyListExpansionState();
+  }
+}
+
+function saveListExpansionState(state: SidebarListExpansionState) {
+  try {
+    localStorage.setItem(SIDEBAR_LIST_EXPANSION_KEY, JSON.stringify(state));
   } catch {
     // Ignore storage errors
   }
@@ -270,7 +307,7 @@ function NavItems({
 }: {
   selectedChild: SidebarChildVO | undefined;
   onChildClick: (child: SidebarChildVO) => void;
-  section: 'home' | 'extensions';
+  section: SidebarNavSection;
   sectionOpenState: Record<string, boolean>;
   onSectionToggle: (id: string, open: boolean) => void;
 }) {
@@ -284,8 +321,8 @@ function NavItems({
   const { state: sidebarState, isMobile } = useSidebar();
   const { t } = useTranslation();
   // Track which entity categories have their full list expanded
-  const [expandedLists, setExpandedLists] = useState<Record<string, boolean>>(
-    {},
+  const [expandedLists, setExpandedLists] = useState<SidebarListExpansionState>(
+    loadListExpansionState,
   );
   // Track popover open state for collapsed sidebar entity categories
   const [popoverOpen, setPopoverOpen] = useState<Record<string, boolean>>({});
@@ -356,6 +393,21 @@ function NavItems({
 
   const sectionItems = sidebarConfigList.filter((c) => c.section === section);
 
+  function handleListExpansionToggle(id: EntityCategoryId, expanded: boolean) {
+    setExpandedLists(() => {
+      const latest = loadListExpansionState();
+      const next = {
+        ...latest,
+        [section]: {
+          ...latest[section],
+          [id]: expanded,
+        },
+      };
+      saveListExpansionState(next);
+      return next;
+    });
+  }
+
   // Persist open state for sections that become active through navigation,
   // so they remain expanded when the user switches to a different section.
   const sectionOpenRef = useRef(sectionOpenState);
@@ -392,8 +444,9 @@ function NavItems({
         }
 
         // Entity categories: collapsible with sub-items
-        const entityKey = ENTITY_KEY_MAP[config.id];
-        const isExtensionsCategory = config.id === 'plugins';
+        const categoryId = config.id;
+        const entityKey = ENTITY_KEY_MAP[categoryId];
+        const isExtensionsCategory = categoryId === 'plugins';
         const items: SidebarEntityItem[] = isExtensionsCategory
           ? [
               ...sidebarData.plugins.map((p) => ({
@@ -410,14 +463,14 @@ function NavItems({
               })),
             ]
           : sidebarData[entityKey];
-        const routePrefix = ENTITY_ROUTE_MAP[config.id];
-        const hasDetailPages = DETAIL_PAGE_CATEGORIES.includes(config.id);
-        const canCreate = CREATABLE_CATEGORIES.includes(config.id);
-        const isCollapseOnly = COLLAPSIBLE_ONLY_CATEGORIES.includes(config.id);
-        const isPlugin = config.id === 'plugins';
-        const isSkill = config.id === 'skills';
-        const isBot = config.id === 'bots';
-        const isMCP = config.id === 'mcp';
+        const routePrefix = ENTITY_ROUTE_MAP[categoryId];
+        const hasDetailPages = DETAIL_PAGE_CATEGORIES.includes(categoryId);
+        const canCreate = CREATABLE_CATEGORIES.includes(categoryId);
+        const isCollapseOnly = COLLAPSIBLE_ONLY_CATEGORIES.includes(categoryId);
+        const isPlugin = categoryId === 'plugins';
+        const isSkill = categoryId === 'skills';
+        const isBot = categoryId === 'bots';
+        const isMCP = categoryId === 'mcp';
 
         const resolveItemRoute = (item: SidebarEntityItem): string => {
           if (item.extensionType === 'mcp') {
@@ -431,12 +484,12 @@ function NavItems({
             : routePrefix;
         };
         const isActive =
-          selectedChild?.id === config.id ||
+          selectedChild?.id === categoryId ||
           pathname === routePrefix ||
           pathname.startsWith(routePrefix + '/');
 
         // Use stored open state if available, otherwise default to active state
-        const isOpen = sectionOpenState[config.id] ?? isActive;
+        const isOpen = sectionOpenState[categoryId] ?? isActive;
 
         // When sidebar is collapsed on desktop and category is collapse-only,
         // show a popover flyout instead of the hidden collapsible sub-items
@@ -452,7 +505,7 @@ function NavItems({
                 }),
               )
             : sortByRecent(items);
-          const isExpanded = expandedLists[config.id] ?? false;
+          const isExpanded = expandedLists[section]?.[categoryId] ?? false;
           const maxItems = inPopover ? 10 : MAX_VISIBLE_ITEMS;
           const visibleItems =
             sortedItems.length > maxItems && !isExpanded
@@ -530,7 +583,7 @@ function NavItems({
                     navigate(itemRoute);
                     setPopoverOpen((prev) => ({
                       ...prev,
-                      [config.id]: false,
+                      [categoryId]: false,
                     }));
                   }}
                 >
@@ -692,10 +745,7 @@ function NavItems({
                     <button
                       type="button"
                       onClick={() =>
-                        setExpandedLists((prev) => ({
-                          ...prev,
-                          [config.id]: !isExpanded,
-                        }))
+                        handleListExpansionToggle(categoryId, !isExpanded)
                       }
                     >
                       <span className="text-xs">
@@ -711,12 +761,7 @@ function NavItems({
                 <button
                   type="button"
                   className="flex w-full items-center justify-center rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-accent transition-colors"
-                  onClick={() =>
-                    setExpandedLists((prev) => ({
-                      ...prev,
-                      [config.id]: true,
-                    }))
-                  }
+                  onClick={() => handleListExpansionToggle(categoryId, true)}
                 >
                   {t('common.more', { count: hiddenCount })}
                 </button>
