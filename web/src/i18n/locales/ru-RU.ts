@@ -1393,6 +1393,18 @@ const ruRU = {
       backToWorkbench: 'Вернуться к рабочей панели',
     },
   },
+  errorPage: {
+    unexpectedError: 'Что-то пошло не так',
+    unexpectedErrorDescription:
+      'Произошла непредвиденная ошибка. Повторите попытку позже.',
+    notFound: 'Страница не найдена',
+    notFoundDescription:
+      'Страница, которую вы ищете, не существует или была перемещена.',
+    backendUnavailableStatus: 'Бэкенд недоступен',
+    goBack: 'Назад',
+    backToHome: 'На главную',
+    backToLogin: 'Вернуться к входу',
+  },
   pluginPages: {
     selectFromSidebar: 'Выберите страницу плагина на боковой панели',
     invalidPage: 'Недопустимая страница плагина',

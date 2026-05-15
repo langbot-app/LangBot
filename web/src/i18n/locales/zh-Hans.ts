@@ -1436,8 +1436,10 @@ const zhHans = {
     unexpectedErrorDescription: '发生了意外错误，请稍后重试。',
     notFound: '页面未找到',
     notFoundDescription: '你访问的页面不存在或已被移动。',
+    backendUnavailableStatus: '后端服务不可用',
     goBack: '返回上页',
     backToHome: '返回首页',
+    backToLogin: '返回登录',
   },
   pluginPages: {
     selectFromSidebar: '从侧边栏选择一个插件页面',

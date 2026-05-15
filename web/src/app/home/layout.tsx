@@ -76,18 +76,26 @@ export default function HomeLayout({
 
   // Auto-redirect to wizard on first visit (wizard not yet completed on this instance)
   useEffect(() => {
+    let cancelled = false;
+
     const checkWizard = async () => {
       try {
         // Always re-fetch to ensure we have the latest wizard_status from backend
-        await initializeSystemInfo();
-        if (systemInfo.wizard_status === 'none') {
-          navigate('/wizard');
+        await initializeSystemInfo({ throwOnError: true });
+        if (!cancelled && systemInfo.wizard_status === 'none') {
+          navigate('/wizard', { replace: true });
         }
       } catch {
-        // If fetching system info fails, don't redirect
+        if (!cancelled) {
+          navigate('/backend-unavailable', { replace: true });
+        }
       }
     };
     checkWizard();
+
+    return () => {
+      cancelled = true;
+    };
   }, [navigate]);
 
   return (

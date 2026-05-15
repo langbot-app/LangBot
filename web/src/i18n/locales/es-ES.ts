@@ -1429,8 +1429,10 @@ const esES = {
       'Ocurrió un error inesperado. Por favor, inténtelo de nuevo más tarde.',
     notFound: 'Página no encontrada',
     notFoundDescription: 'La página que buscas no existe o ha sido movida.',
+    backendUnavailableStatus: 'Backend no disponible',
     goBack: 'Volver',
     backToHome: 'Ir al inicio',
+    backToLogin: 'Volver al inicio de sesión',
   },
   pluginPages: {
     selectFromSidebar: 'Selecciona una página de plugin en la barra lateral',

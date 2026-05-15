@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import datetime as dt
 import os
-import shutil
 import typing
 
 from ..core import app
@@ -16,9 +15,7 @@ if typing.TYPE_CHECKING:
 class SkillManager:
     """Skill manager backed by filesystem packages.
 
-    Skills are loaded from two sources:
-    1. Builtin skills: templates/skills/ (shipped with LangBot)
-    2. User skills: data/skills/ (created by users)
+    Skills are loaded from data/skills/ and managed by users.
 
     Skills are activated through the `activate` tool (Tool Call mechanism),
     aligned with Claude Code's design. This protects KV Cache and follows
@@ -38,8 +35,7 @@ class SkillManager:
     async def reload_skills(self):
         """Reload all skills.
 
-        Builtin skills (templates/skills/) are copied to data/skills/ on first run,
-        then all skills are loaded from data/skills/.
+        All skills are loaded from data/skills/.
 
         NOTE: This performs a full scan. For registering a single new skill,
         consider adding it directly to self.skills instead of reloading all.
@@ -50,25 +46,6 @@ class SkillManager:
         # Ensure data/skills/ exists
         managed_root = self.get_managed_skills_root()
         os.makedirs(managed_root, exist_ok=True)
-
-        # Copy builtin skills to data/skills/ if not already present
-        builtin_root = self.get_builtin_skills_root()
-        if os.path.isdir(builtin_root):
-            for package_root, entry_file in self._discover_skill_directories(builtin_root):
-                skill_data = {
-                    'package_root': package_root,
-                    'entry_file': entry_file,
-                }
-                if not self._load_skill_file(skill_data):
-                    continue
-
-                skill_name = skill_data['name']
-                target_path = os.path.join(managed_root, skill_name)
-
-                # Only copy if target doesn't exist (preserve user modifications)
-                if not os.path.exists(target_path):
-                    shutil.copytree(package_root, target_path)
-                    self.ap.logger.info(f'Copied builtin skill "{skill_name}" to data/skills/')
 
         # Load all skills from data/skills/
         if os.path.isdir(managed_root):
@@ -104,11 +81,6 @@ class SkillManager:
     def get_managed_skills_root() -> str:
         """Get the root directory for managed user skills."""
         return paths.get_data_path('skills')
-
-    @staticmethod
-    def get_builtin_skills_root() -> str:
-        """Get the root directory for builtin skills (templates/skills/)."""
-        return paths.get_resource_path('templates/skills')
 
     def _discover_skill_directories(self, root_path: str, max_depth: int = 6) -> list[tuple[str, str]]:
         """Discover all skill directories under root_path."""

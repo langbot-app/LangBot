@@ -1393,8 +1393,10 @@ const viVN = {
     notFound: 'Không tìm thấy trang',
     notFoundDescription:
       'Trang bạn tìm kiếm không tồn tại hoặc đã được di chuyển.',
+    backendUnavailableStatus: 'Backend không khả dụng',
     goBack: 'Quay lại',
     backToHome: 'Về trang chủ',
+    backToLogin: 'Quay lại đăng nhập',
   },
   pluginPages: {
     selectFromSidebar: 'Chọn một trang plugin từ thanh bên',

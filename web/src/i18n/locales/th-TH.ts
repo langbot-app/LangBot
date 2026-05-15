@@ -1369,8 +1369,10 @@ const thTH = {
       'เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้งในภายหลัง',
     notFound: 'ไม่พบหน้า',
     notFoundDescription: 'หน้าที่คุณกำลังมองหาไม่มีอยู่หรือถูกย้ายแล้ว',
+    backendUnavailableStatus: 'แบ็กเอนด์ไม่พร้อมใช้งาน',
     goBack: 'ย้อนกลับ',
     backToHome: 'กลับหน้าหลัก',
+    backToLogin: 'กลับไปหน้าเข้าสู่ระบบ',
   },
   pluginPages: {
     selectFromSidebar: 'เลือกหน้าปลั๊กอินจากแถบด้านข้าง',

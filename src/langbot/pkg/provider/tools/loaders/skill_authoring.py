@@ -97,12 +97,11 @@ class SkillToolLoader(loader.ToolLoader):
         if skill_data is None:
             visible_skills = getattr(skill_mgr, 'skills', {})
             available_names = ', '.join(sorted(visible_skills.keys())) or 'none'
-            raise ValueError(
-                f'Skill "{skill_name}" not found. Available skills: {available_names}'
-            )
+            raise ValueError(f'Skill "{skill_name}" not found. Available skills: {available_names}')
 
         # Register activated skill for sandbox mount path resolution
         from . import skill as skill_loader
+
         skill_loader.register_activated_skill(query, skill_data)
 
         # Return SKILL.md content as Tool Result (injects into context)
@@ -112,17 +111,17 @@ class SkillToolLoader(loader.ToolLoader):
 
         # Build Tool Result content
         result_content = f'<command-message>The "{skill_name}" skill is activated</command-message>\n'
-        result_content += f'<skill-activation>\n'
+        result_content += '<skill-activation>\n'
         result_content += f'<skill-name>{skill_name}</skill-name>\n'
         result_content += f'<mount-path>{mount_path}</mount-path>\n'
         result_content += f'<package-root>{package_root}</package-root>\n'
         result_content += f'\n## Instructions\n{instructions}\n'
-        result_content += f'\n## Runtime Context\n'
+        result_content += '\n## Runtime Context\n'
         result_content += f'The skill package is mounted at {mount_path}. Use the standard tools to interact with it:\n'
         result_content += f'- Use `read` to inspect files under {mount_path}\n'
         result_content += f'- Use `exec` with workdir set to {mount_path} to run commands in that package\n'
-        result_content += f'- Use `write` and `edit` on that path when the instructions require updating files\n'
-        result_content += f'</skill-activation>\n'
+        result_content += '- Use `write` and `edit` on that path when the instructions require updating files\n'
+        result_content += '</skill-activation>\n'
 
         return {
             'activated': True,
@@ -190,7 +189,7 @@ class SkillToolLoader(loader.ToolLoader):
         if not normalized_path.startswith('/workspace'):
             raise ValueError('path must be under /workspace')
 
-        relative = normalized_path[len('/workspace'):].lstrip('/')
+        relative = normalized_path[len('/workspace') :].lstrip('/')
         host_root = os.path.realpath(workspace_root)
         host_path = os.path.realpath(os.path.join(host_root, relative))
 
@@ -213,7 +212,7 @@ class SkillToolLoader(loader.ToolLoader):
                 'properties': {
                     'skill_name': {
                         'type': 'string',
-                        'description': 'The skill name to activate (no arguments). E.g., "pdf" or "create-skill"',
+                        'description': 'The skill name to activate (no arguments). E.g., "pdf" or "data-analysis"',
                     },
                 },
                 'required': ['skill_name'],
@@ -227,7 +226,7 @@ class SkillToolLoader(loader.ToolLoader):
             name=REGISTER_SKILL_TOOL_NAME,
             human_desc='Register a skill from sandbox',
             description=(
-                'Register a skill package from a directory under /workspace into LangBot\'s skill store. '
+                "Register a skill package from a directory under /workspace into LangBot's skill store. "
                 'Use this after creating or preparing a skill in the sandbox with exec/read/write/edit. '
                 'The directory must contain a SKILL.md file. '
                 'After registration, the skill can be activated with the activate tool.'
@@ -276,15 +275,15 @@ class SkillToolLoader(loader.ToolLoader):
         available_skills_lines = ['<available_skills>']
         for skill_name, skill_data in sorted(skills.items()):
             description = skill_data.get('description', '')
-            available_skills_lines.append(f'<skill>')
+            available_skills_lines.append('<skill>')
             available_skills_lines.append(f'<name>{skill_name}</name>')
             available_skills_lines.append(f'<description>{description}</description>')
-            available_skills_lines.append(f'</skill>')
+            available_skills_lines.append('</skill>')
         available_skills_lines.append('</available_skills>')
 
         available_skills_block = '\n'.join(available_skills_lines)
 
-        return f'''Activate a skill within the main conversation.
+        return f"""Activate a skill within the main conversation.
 
 <skills_instructions>
 When users ask you to perform tasks, check if any of the available skills
@@ -299,7 +298,7 @@ The skill is activated
 - The skill's instructions will be provided in the tool result
 - Examples:
   - skill_name: "pdf" - invoke the pdf skill
-  - skill_name: "create-skill" - invoke the create-skill skill for creating new skills
+  - skill_name: "data-analysis" - invoke the data-analysis skill
 
 Important:
 - Only use skills listed in <available_skills> below
@@ -307,4 +306,4 @@ Important:
 - To create a new skill: prepare it in /workspace, then use register_skill tool
 </skills_instructions>
 
-{available_skills_block}'''
+{available_skills_block}"""

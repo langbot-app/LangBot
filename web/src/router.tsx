@@ -25,6 +25,7 @@ import MCPPage from '@/app/home/mcp/page';
 import KnowledgePage from '@/app/home/knowledge/page';
 import SkillsPage from '@/app/home/skills/page';
 import ErrorPage from '@/components/ErrorPage';
+import BackendUnavailablePage from '@/components/BackendUnavailablePage';
 import PluginPagesPage from '@/app/home/plugin-pages/page';
 
 const Loading = () => <div>Loading...</div>;
@@ -64,6 +65,10 @@ export const router = createBrowserRouter([
       {
         path: '/wizard',
         element: <WizardPage />,
+      },
+      {
+        path: '/backend-unavailable',
+        element: <BackendUnavailablePage />,
       },
       {
         path: '/auth/space/callback',

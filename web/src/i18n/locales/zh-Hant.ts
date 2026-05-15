@@ -1343,8 +1343,10 @@ const zhHant = {
     unexpectedErrorDescription: '發生了意外錯誤，請稍後重試。',
     notFound: '頁面未找到',
     notFoundDescription: '你訪問的頁面不存在或已被移動。',
+    backendUnavailableStatus: '後端服務不可用',
     goBack: '返回上頁',
     backToHome: '返回首頁',
+    backToLogin: '返回登入',
   },
   pluginPages: {
     selectFromSidebar: '從側邊欄選擇一個插件頁面',

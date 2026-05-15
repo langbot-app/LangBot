@@ -50,17 +50,6 @@ export default function ExtensionCardComponent({
     cardVO.iconURL || httpClient.getPluginIconURL(cardVO.author, cardVO.name);
   const showFallback = iconFailed || !iconSrc;
 
-  const getTypeBadgeColor = (type: ExtensionType) => {
-    switch (type) {
-      case 'mcp':
-        return 'border-sky-500 text-sky-600 dark:border-sky-400 dark:text-sky-300';
-      case 'skill':
-        return 'border-emerald-500 text-emerald-600 dark:border-emerald-400 dark:text-emerald-300';
-      default:
-        return 'border-violet-500 text-violet-600 dark:border-violet-400 dark:text-violet-300';
-    }
-  };
-
   const getTypeLabel = (type: ExtensionType) => {
     switch (type) {
       case 'mcp':
@@ -70,6 +59,30 @@ export default function ExtensionCardComponent({
       default:
         return t('market.typePlugin');
     }
+  };
+
+  const getTypeIcon = (type: ExtensionType) => {
+    switch (type) {
+      case 'mcp':
+        return Server;
+      case 'skill':
+        return Sparkles;
+      default:
+        return Puzzle;
+    }
+  };
+
+  const renderTypeBadge = (type: ExtensionType) => {
+    const TypeIcon = getTypeIcon(type);
+    return (
+      <Badge
+        variant="outline"
+        className="flex-shrink-0 gap-1.5 border-blue-200 bg-blue-50/60 text-[0.7rem] text-blue-700 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-300"
+      >
+        <TypeIcon className="size-3.5" />
+        {getTypeLabel(type)}
+      </Badge>
+    );
   };
 
   const renderPluginContent = () => (
@@ -84,12 +97,7 @@ export default function ExtensionCardComponent({
         <Badge variant="outline" className="text-[0.7rem] flex-shrink-0">
           v{cardVO.version}
         </Badge>
-        <Badge
-          variant="outline"
-          className={`text-[0.7rem] flex-shrink-0 ${getTypeBadgeColor(cardVO.type)}`}
-        >
-          {getTypeLabel(cardVO.type)}
-        </Badge>
+        {renderTypeBadge(cardVO.type)}
         {cardVO.debug && (
           <Badge
             variant="outline"
@@ -143,12 +151,7 @@ export default function ExtensionCardComponent({
         <div className="text-[1.2rem] text-foreground truncate max-w-[10rem]">
           {cardVO.label}
         </div>
-        <Badge
-          variant="outline"
-          className={`text-[0.7rem] flex-shrink-0 ${getTypeBadgeColor('mcp')}`}
-        >
-          MCP
-        </Badge>
+        {renderTypeBadge('mcp')}
         {cardVO.mode && (
           <Badge
             variant="outline"
@@ -169,12 +172,10 @@ export default function ExtensionCardComponent({
         </Badge>
       </div>
       <div className="text-[0.8rem] text-muted-foreground line-clamp-2 w-full">
-        {cardVO.description || t('mcp.noToolsFound')}
-        {cardVO.tools !== undefined && cardVO.tools > 0 && (
-          <span className="ml-1">
-            {t('mcp.toolCount', { count: cardVO.tools })}
-          </span>
-        )}
+        {cardVO.description ||
+          (cardVO.tools !== undefined && cardVO.tools > 0
+            ? t('mcp.toolCount', { count: cardVO.tools })
+            : t('mcp.noToolsFound'))}
       </div>
     </>
   );
@@ -188,12 +189,7 @@ export default function ExtensionCardComponent({
         <div className="text-[1.2rem] text-foreground truncate max-w-[10rem]">
           {cardVO.label}
         </div>
-        <Badge
-          variant="outline"
-          className={`text-[0.7rem] flex-shrink-0 ${getTypeBadgeColor('skill')}`}
-        >
-          {t('common.skill')}
-        </Badge>
+        {renderTypeBadge('skill')}
       </div>
       <div className="text-[0.8rem] text-muted-foreground line-clamp-2 w-full">
         {cardVO.description}

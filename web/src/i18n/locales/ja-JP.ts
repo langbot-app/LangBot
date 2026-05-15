@@ -1411,8 +1411,10 @@ const jaJP = {
     notFound: 'ページが見つかりません',
     notFoundDescription:
       'お探しのページは存在しないか、移動された可能性があります。',
+    backendUnavailableStatus: 'バックエンドを利用できません',
     goBack: '戻る',
     backToHome: 'ホームに戻る',
+    backToLogin: 'ログインに戻る',
   },
   pluginPages: {
     selectFromSidebar: 'サイドバーからプラグインページを選択してください',

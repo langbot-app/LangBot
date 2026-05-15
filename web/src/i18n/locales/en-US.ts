@@ -1500,8 +1500,10 @@ const enUS = {
     notFound: 'Page not found',
     notFoundDescription:
       'The page you are looking for does not exist or has been moved.',
+    backendUnavailableStatus: 'Backend unavailable',
     goBack: 'Go Back',
     backToHome: 'Back to Home',
+    backToLogin: 'Back to Login',
   },
   pluginPages: {
     selectFromSidebar: 'Select a plugin page from the sidebar',
