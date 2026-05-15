@@ -22,7 +22,6 @@ export default function PluginMarketCardComponent({
   tagNames?: Record<string, string>;
 }) {
   const { t } = useTranslation();
-  const [isHovered, setIsHovered] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [visibleTags, setVisibleTags] = useState(2);
   const [iconFailed, setIconFailed] = useState(!cardVO.iconURL);
@@ -36,6 +35,18 @@ export default function PluginMarketCardComponent({
   })();
 
   const showTypeBadge = cardVO.type;
+  const typeLabel =
+    cardVO.type === 'mcp'
+      ? t('market.typeMCP')
+      : cardVO.type === 'skill'
+        ? t('market.typeSkill')
+        : t('market.typePlugin');
+  const typeDotClass =
+    cardVO.type === 'mcp'
+      ? 'bg-sky-500/70'
+      : cardVO.type === 'skill'
+        ? 'bg-emerald-500/70'
+        : 'bg-violet-500/70';
 
   useEffect(() => {
     setIconFailed(!cardVO.iconURL);
@@ -56,7 +67,10 @@ export default function PluginMarketCardComponent({
       }
       const tagWidth = 80;
       const plusBadgeWidth = 40;
-      const maxTags = Math.max(0, Math.floor((availableForTags - plusBadgeWidth) / tagWidth));
+      const maxTags = Math.max(
+        0,
+        Math.floor((availableForTags - plusBadgeWidth) / tagWidth),
+      );
       if (maxTags >= tags.length) {
         setVisibleTags(tags.length);
       } else {
@@ -73,11 +87,7 @@ export default function PluginMarketCardComponent({
   const remainingTags = cardVO.tags ? cardVO.tags.length - visibleTags : 0;
 
   return (
-    <div
-      className="w-[100%] h-[10rem] bg-white rounded-[10px] shadow-[0px_0px_4px_0_rgba(0,0,0,0.2)] p-3 sm:p-[1rem] cursor-pointer hover:shadow-[0px_2px_8px_0_rgba(0,0,0,0.15)] transition-shadow duration-200 dark:bg-[#1f1f22] dark:shadow-[0px_0px_4px_0_rgba(255,255,255,0.1)] dark:hover:shadow-[0px_2px_8px_0_rgba(255,255,255,0.15)] relative"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
+    <div className="w-[100%] h-[10rem] bg-white rounded-[10px] shadow-[0px_0px_4px_0_rgba(0,0,0,0.2)] p-3 sm:p-[1rem] hover:shadow-[0px_2px_8px_0_rgba(0,0,0,0.15)] transition-shadow duration-200 dark:bg-[#1f1f22] dark:shadow-[0px_0px_4px_0_rgba(255,255,255,0.1)] dark:hover:shadow-[0px_2px_8px_0_rgba(255,255,255,0.15)] relative">
       <div className="w-full h-full flex flex-col justify-between">
         <div className="flex flex-row items-start justify-start gap-2 sm:gap-[1.2rem] min-h-0 flex-1 overflow-hidden">
           {iconFailed ? (
@@ -96,15 +106,22 @@ export default function PluginMarketCardComponent({
             />
           )}
 
-          <div className="flex-1 flex flex-col items-start justify-start gap-[0.4rem] sm:gap-[0.6rem] min-w-0 overflow-hidden">
+          <div className="flex-1 flex flex-col items-start justify-start gap-[0.4rem] sm:gap-[0.6rem] min-w-0 pr-1 overflow-hidden">
             <div className="flex flex-col items-start justify-start w-full min-w-0">
-              <div className="text-[0.65rem] sm:text-[0.7rem] text-[#666] dark:text-[#999] truncate w-full">{cardVO.pluginId}</div>
+              <div className="text-[0.65rem] sm:text-[0.7rem] text-[#666] dark:text-[#999] truncate w-full">
+                {cardVO.pluginId}
+              </div>
               <div className="flex items-center gap-1.5 w-full min-w-0">
-                <div className="text-base sm:text-[1.2rem] text-black dark:text-[#f0f0f0] truncate">{cardVO.label}</div>
+                <div className="text-base sm:text-[1.2rem] text-black dark:text-[#f0f0f0] truncate">
+                  {cardVO.label}
+                </div>
                 {isDeprecated && (
                   <TooltipProvider delayDuration={200}>
                     <Tooltip>
-                      <TooltipTrigger asChild onClick={(e) => e.preventDefault()}>
+                      <TooltipTrigger
+                        asChild
+                        onClick={(e) => e.preventDefault()}
+                      >
                         <Badge
                           variant="outline"
                           className="text-[0.6rem] px-1.5 py-0 h-4 flex-shrink-0 border-red-400 text-red-500 dark:border-red-500 dark:text-red-400 gap-0.5 cursor-help"
@@ -113,7 +130,10 @@ export default function PluginMarketCardComponent({
                           <Info className="w-2.5 h-2.5" />
                         </Badge>
                       </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-[240px] text-xs">
+                      <TooltipContent
+                        side="top"
+                        className="max-w-[240px] text-xs"
+                      >
                         {t('market.deprecatedTooltip')}
                       </TooltipContent>
                     </Tooltip>
@@ -122,19 +142,12 @@ export default function PluginMarketCardComponent({
                 {showTypeBadge && (
                   <Badge
                     variant="outline"
-                    className={`text-[0.6rem] px-1.5 py-0 h-4 flex-shrink-0 gap-0.5 ${
-                      cardVO.type === 'mcp'
-                        ? 'border-sky-500 text-sky-600 dark:border-sky-400 dark:text-sky-300'
-                        : cardVO.type === 'skill'
-                        ? 'border-emerald-500 text-emerald-600 dark:border-emerald-400 dark:text-emerald-300'
-                        : 'border-violet-500 text-violet-600 dark:border-violet-400 dark:text-violet-300'
-                    }`}
+                    className="h-4 max-w-[4.5rem] flex-shrink-0 gap-1 border-border/60 bg-muted/30 px-1.5 py-0 text-[0.58rem] font-normal text-muted-foreground"
                   >
-                    {cardVO.type === 'mcp'
-                      ? 'MCP'
-                      : cardVO.type === 'skill'
-                      ? t('common.skill')
-                      : t('market.typePlugin')}
+                    <span
+                      className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${typeDotClass}`}
+                    />
+                    <span className="truncate">{typeLabel}</span>
                   </Badge>
                 )}
               </div>
@@ -145,26 +158,68 @@ export default function PluginMarketCardComponent({
             </div>
           </div>
 
-          <div className="flex flex-row items-start justify-center gap-[0.4rem] flex-shrink-0">
+          <div className="flex flex-row items-start justify-center gap-1 flex-shrink-0">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              title={t('market.install')}
+              aria-label={t('market.install')}
+              className="h-7 w-7 rounded-md text-blue-600 hover:bg-blue-50 hover:text-blue-700 dark:text-blue-400 dark:hover:bg-blue-950/40 dark:hover:text-blue-300"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onInstall) {
+                  onInstall(cardVO);
+                }
+              }}
+            >
+              <Download className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              title={t('market.viewDetails')}
+              aria-label={t('market.viewDetails')}
+              className="h-7 w-7 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(pluginDetailUrl, '_blank');
+              }}
+            >
+              <ExternalLink className="h-4 w-4" />
+            </Button>
             {cardVO.githubURL && (
-              <svg
-                className="w-5 h-5 sm:w-[1.4rem] sm:h-[1.4rem] text-black cursor-pointer hover:text-gray-600 dark:text-[#f0f0f0] dark:hover:text-[#c0c0c0] flex-shrink-0"
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="currentColor"
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                title="GitHub"
+                aria-label="GitHub"
+                className="h-7 w-7 rounded-md text-foreground hover:bg-muted hover:text-foreground"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
                   window.open(cardVO.githubURL, '_blank');
                 }}
               >
-                <path d="M12.001 2C6.47598 2 2.00098 6.475 2.00098 12C2.00098 16.425 4.86348 20.1625 8.83848 21.4875C9.33848 21.575 9.52598 21.275 9.52598 21.0125C9.52598 20.775 9.51348 19.9875 9.51348 19.15C7.00098 19.6125 6.35098 18.5375 6.15098 17.975C6.03848 17.6875 5.55098 16.8 5.12598 16.5625C4.77598 16.375 4.27598 15.9125 5.11348 15.9C5.90098 15.8875 6.46348 16.625 6.65098 16.925C7.55098 18.4375 8.98848 18.0125 9.56348 17.75C9.65098 17.1 9.91348 16.6625 10.201 16.4125C7.97598 16.1625 5.65098 15.3 5.65098 11.475C5.65098 10.3875 6.03848 9.4875 6.67598 8.7875C6.57598 8.5375 6.22598 7.5125 6.77598 6.1375C6.77598 6.1375 7.61348 5.875 9.52598 7.1625C10.326 6.9375 11.176 6.825 12.026 6.825C12.876 6.825 13.726 6.9375 14.526 7.1625C16.4385 5.8625 17.276 6.1375 17.276 6.1375C17.826 7.5125 17.476 8.5375 17.376 8.7875C18.0135 9.4875 18.401 10.375 18.401 11.475C18.401 15.3125 16.0635 16.1625 13.8385 16.4125C14.201 16.725 14.5135 17.325 14.5135 18.2625C14.5135 19.6 14.501 20.675 14.501 21.0125C14.501 21.275 14.6885 21.5875 15.1885 21.4875C19.259 20.1133 21.9999 16.2963 22.001 12C22.001 6.475 17.526 2 12.001 2Z"></path>
-              </svg>
+                <svg
+                  className="h-4 w-4"
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path d="M12.001 2C6.47598 2 2.00098 6.475 2.00098 12C2.00098 16.425 4.86348 20.1625 8.83848 21.4875C9.33848 21.575 9.52598 21.275 9.52598 21.0125C9.52598 20.775 9.51348 19.9875 9.51348 19.15C7.00098 19.6125 6.35098 18.5375 6.15098 17.975C6.03848 17.6875 5.55098 16.8 5.12598 16.5625C4.77598 16.375 4.27598 15.9125 5.11348 15.9C5.90098 15.8875 6.46348 16.625 6.65098 16.925C7.55098 18.4375 8.98848 18.0125 9.56348 17.75C9.65098 17.1 9.91348 16.6625 10.201 16.4125C7.97598 16.1625 5.65098 15.3 5.65098 11.475C5.65098 10.3875 6.03848 9.4875 6.67598 8.7875C6.57598 8.5375 6.22598 7.5125 6.77598 6.1375C6.77598 6.1375 7.61348 5.875 9.52598 7.1625C10.326 6.9375 11.176 6.825 12.026 6.825C12.876 6.825 13.726 6.9375 14.526 7.1625C16.4385 5.8625 17.276 6.1375 17.276 6.1375C17.826 7.5125 17.476 8.5375 17.376 8.7875C18.0135 9.4875 18.401 10.375 18.401 11.475C18.401 15.3125 16.0635 16.1625 13.8385 16.4125C14.201 16.725 14.5135 17.325 14.5135 18.2625C14.5135 19.6 14.501 20.675 14.501 21.0125C14.501 21.275 14.6885 21.5875 15.1885 21.4875C19.259 20.1133 21.9999 16.2963 22.001 12C22.001 6.475 17.526 2 12.001 2Z"></path>
+                </svg>
+              </Button>
             )}
           </div>
         </div>
 
-        <div ref={bottomRef} className="w-full flex flex-row items-center justify-between gap-2 px-0 sm:px-[0.4rem] flex-shrink-0 overflow-hidden">
+        <div
+          ref={bottomRef}
+          className="w-full flex flex-row items-center justify-between gap-2 px-0 sm:px-[0.4rem] flex-shrink-0 overflow-hidden"
+        >
           <div className="flex flex-row items-center justify-start gap-2 min-w-0 overflow-hidden">
             <div className="flex flex-row items-center gap-[0.3rem] sm:gap-[0.4rem] flex-shrink-0">
               <svg
@@ -205,7 +260,9 @@ export default function PluginMarketCardComponent({
                       <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
                       <line x1="7" y1="7" x2="7.01" y2="7" />
                     </svg>
-                    <span className="truncate max-w-[5rem]">{tagNames[tag] || tag}</span>
+                    <span className="truncate max-w-[5rem]">
+                      {tagNames[tag] || tag}
+                    </span>
                   </Badge>
                 ))}
                 {remainingTags > 0 && (
@@ -233,42 +290,6 @@ export default function PluginMarketCardComponent({
             </div>
           )}
         </div>
-      </div>
-
-      <div
-        className={`absolute inset-0 bg-gray-100/55 dark:bg-black/35 rounded-[10px] flex items-center justify-center gap-3 transition-all duration-200 ${
-          isHovered ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        }`}
-      >
-        <Button
-          onClick={(e) => {
-            e.stopPropagation();
-            if (onInstall) {
-              onInstall(cardVO);
-            }
-          }}
-          className={`bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-sm flex items-center gap-2 transition-all duration-200 ${
-            isHovered ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0'
-          }`}
-          style={{ transitionDelay: isHovered ? '10ms' : '0ms' }}
-        >
-          <Download className="w-4 h-4" />
-          {t('market.install')}
-        </Button>
-        <Button
-          onClick={(e) => {
-            e.stopPropagation();
-            window.open(pluginDetailUrl, '_blank');
-          }}
-          variant="outline"
-          className={`bg-white hover:bg-gray-100 text-gray-900 dark:bg-white dark:hover:bg-gray-100 dark:text-gray-900 px-4 py-2 rounded-lg shadow-sm flex items-center gap-2 transition-all duration-200 ${
-            isHovered ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0'
-          }`}
-          style={{ transitionDelay: isHovered ? '20ms' : '0ms' }}
-        >
-          <ExternalLink className="w-4 h-4" />
-          {t('market.viewDetails')}
-        </Button>
       </div>
     </div>
   );

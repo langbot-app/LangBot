@@ -640,11 +640,12 @@ const zhHans = {
       noTags: '暂无标签',
     },
     filters: {
-      allFormats: '全部类型',
-      more: '更多',
+      allFormats: '全部格式',
+      more: '筛选',
       advancedTitle: '高级筛选',
-      advancedDescription: '按扩展类型筛选',
-      technicalType: '技术类型',
+      advancedDescription:
+        '普通用户通常不需要选择这些类型；仅在你明确知道扩展格式时使用。',
+      technicalType: '扩展格式',
     },
     allExtensions: '全部扩展',
     viewDetails: '查看详情',

@@ -664,11 +664,12 @@ const enUS = {
     deprecatedTooltip:
       'Please install the corresponding Knowledge Engine plugin.',
     filters: {
-      allFormats: 'All Types',
-      more: 'More',
-      advancedTitle: 'Advanced Filters',
-      advancedDescription: 'Filter by extension type',
-      technicalType: 'Technical Type',
+      allFormats: 'All formats',
+      more: 'Filters',
+      advancedTitle: 'Advanced filters',
+      advancedDescription:
+        'Most users do not need these. Use them only when you know the extension format you want.',
+      technicalType: 'Extension format',
     },
     allExtensions: 'All Extensions',
     tags: {

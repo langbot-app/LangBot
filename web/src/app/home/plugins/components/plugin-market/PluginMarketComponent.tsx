@@ -19,7 +19,9 @@ import {
   Search,
   Wrench,
   AudioWaveform,
+  Hash,
   Book,
+  FileText,
   SlidersHorizontal,
   X,
 } from 'lucide-react';
@@ -34,8 +36,6 @@ import { ApiRespMarketplacePlugins } from '@/app/infra/entities/api';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Button } from '@/components/ui/button';
 import { PluginTag } from '@/app/infra/http/CloudServiceClient';
-
-import { RecommendationLists, RecommendationList } from './RecommendationLists';
 
 interface SortOption {
   value: string;
@@ -65,6 +65,7 @@ function MarketPageContent({
   ];
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [componentFilter, setComponentFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState<string>(() => {
     const type = searchParams.get('type');
     if (type && validTypes.includes(type)) {
@@ -72,7 +73,8 @@ function MarketPageContent({
     }
     return 'all';
   });
-  const activeAdvancedFilters = 0;
+  const activeAdvancedFilters =
+    (typeFilter === 'all' ? 0 : 1) + (componentFilter === 'all' ? 0 : 1);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [availableTags, setAvailableTags] = useState<PluginTag[]>([]);
   const [tagNames, setTagNames] = useState<Record<string, string>>({});
@@ -83,9 +85,6 @@ function MarketPageContent({
   const [currentPage, setCurrentPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [sortOption, setSortOption] = useState('install_count_desc');
-  const [recommendationLists, setRecommendationLists] = useState<
-    RecommendationList[]
-  >([]);
 
   const pageSize = 12; // 每页12个
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -120,6 +119,27 @@ function MarketPageContent({
     },
   ];
 
+  const componentOptions = [
+    { value: 'all', label: t('market.allComponents'), icon: null },
+    { value: 'Tool', label: t('market.componentName.Tool'), icon: Wrench },
+    { value: 'Command', label: t('market.componentName.Command'), icon: Hash },
+    {
+      value: 'EventListener',
+      label: t('market.componentName.EventListener'),
+      icon: AudioWaveform,
+    },
+    {
+      value: 'KnowledgeEngine',
+      label: t('market.componentName.KnowledgeEngine'),
+      icon: Book,
+    },
+    {
+      value: 'Parser',
+      label: t('market.componentName.Parser'),
+      icon: FileText,
+    },
+  ];
+
   // 获取当前排序参数
   const getCurrentSort = useCallback(() => {
     const option = sortOptions.find((opt) => opt.value === sortOption);
@@ -129,71 +149,30 @@ function MarketPageContent({
   }, [sortOption]);
 
   // 将API响应转换为VO对象
-  const transformToVO = useCallback((plugin: PluginV4): PluginMarketCardVO => {
-    return new PluginMarketCardVO({
-      pluginId: plugin.author + ' / ' + plugin.name,
-      author: plugin.author,
-      pluginName: plugin.name,
-      label: extractI18nObject(plugin.label),
-      description:
-        extractI18nObject(plugin.description) || t('market.noDescription'),
-      installCount: plugin.install_count,
-      iconURL: getCloudServiceClientSync().getPluginIconURL(
-        plugin.author,
-        plugin.name,
-      ),
-      githubURL: plugin.repository,
-      version: plugin.latest_version,
-      components: plugin.components,
-      tags: plugin.tags || [],
-      type: plugin.type,
-    });
-  }, []);
+  const transformToVO = useCallback(
+    (plugin: PluginV4): PluginMarketCardVO => {
+      const cloudClient = getCloudServiceClientSync();
+      const iconURL =
+        plugin.type === 'mcp'
+          ? cloudClient.getMCPMarketplaceIconURL(plugin.author, plugin.name)
+          : plugin.type === 'skill'
+            ? cloudClient.getSkillMarketplaceIconURL(plugin.author, plugin.name)
+            : cloudClient.getPluginIconURL(plugin.author, plugin.name);
 
-  const transformMCPToVO = useCallback(
-    (mcp: any): PluginMarketCardVO => {
       return new PluginMarketCardVO({
-        pluginId: mcp.author + ' / ' + mcp.name,
-        author: mcp.author,
-        pluginName: mcp.name,
-        label: extractI18nObject(mcp.label),
+        pluginId: plugin.author + ' / ' + plugin.name,
+        author: plugin.author,
+        pluginName: plugin.name,
+        label: extractI18nObject(plugin.label),
         description:
-          extractI18nObject(mcp.description) || t('market.noDescription'),
-        installCount: mcp.install_count || 0,
-        iconURL:
-          mcp.icon ||
-          getCloudServiceClientSync().getPluginIconURL(mcp.author, mcp.name),
-        githubURL: mcp.repository,
-        version: mcp.latest_version,
-        components: mcp.components || {},
-        tags: mcp.tags || [],
-        type: 'mcp',
-      });
-    },
-    [t],
-  );
-
-  const transformSkillToVO = useCallback(
-    (skill: any): PluginMarketCardVO => {
-      return new PluginMarketCardVO({
-        pluginId: skill.author + ' / ' + skill.name,
-        author: skill.author,
-        pluginName: skill.name,
-        label: extractI18nObject(skill.label),
-        description:
-          extractI18nObject(skill.description) || t('market.noDescription'),
-        installCount: skill.install_count || 0,
-        iconURL:
-          skill.icon ||
-          getCloudServiceClientSync().getPluginIconURL(
-            skill.author,
-            skill.name,
-          ),
-        githubURL: skill.repository,
-        version: skill.latest_version,
-        components: skill.components || {},
-        tags: skill.tags || [],
-        type: 'skill',
+          extractI18nObject(plugin.description) || t('market.noDescription'),
+        installCount: plugin.install_count || 0,
+        iconURL,
+        githubURL: plugin.repository,
+        version: plugin.latest_version,
+        components: plugin.components || {},
+        tags: plugin.tags || [],
+        type: plugin.type,
       });
     },
     [t],
@@ -201,7 +180,12 @@ function MarketPageContent({
 
   // 获取插件列表
   const fetchPlugins = useCallback(
-    async (page: number, isSearch: boolean = false, reset: boolean = false) => {
+    async (
+      page: number,
+      isSearch: boolean = false,
+      reset: boolean = false,
+      queryOverride?: string,
+    ) => {
       if (page === 1) {
         setIsLoading(true);
       } else {
@@ -210,109 +194,24 @@ function MarketPageContent({
 
       try {
         const { sortBy, sortOrder } = getCurrentSort();
-        const query = isSearch && searchQuery.trim() ? searchQuery.trim() : '';
+        const query = (queryOverride ?? searchQuery).trim();
 
-        let newPlugins: PluginMarketCardVO[] = [];
-        let total = 0;
+        const response =
+          await getCloudServiceClientSync().searchMarketplaceExtensions({
+            query: isSearch ? query : '',
+            page,
+            page_size: pageSize,
+            sort_by: sortBy,
+            sort_order: sortOrder,
+            type_filter: typeFilter === 'all' ? undefined : typeFilter,
+            component_filter:
+              componentFilter === 'all' ? undefined : componentFilter,
+            tags_filter: selectedTags.length > 0 ? selectedTags : undefined,
+          });
 
-        if (typeFilter === 'all') {
-          let pluginsResult: PluginMarketCardVO[] = [];
-          let mcpsResult: PluginMarketCardVO[] = [];
-          let skillsResult: PluginMarketCardVO[] = [];
-          let pluginsTotal = 0;
-          let mcpsTotal = 0;
-          let skillsTotal = 0;
-
-          try {
-            const pluginsResponse =
-              await getCloudServiceClientSync().searchMarketplacePlugins(
-                query,
-                page,
-                pageSize,
-                sortBy,
-                sortOrder,
-                undefined,
-                selectedTags.length > 0 ? selectedTags : undefined,
-                'plugin',
-              );
-            pluginsResult = pluginsResponse.plugins
-              .filter((plugin) => {
-                const keys = Object.keys(plugin.components || {});
-                return !(
-                  keys.length > 0 &&
-                  keys.every((k) => k === 'KnowledgeRetriever')
-                );
-              })
-              .map(transformToVO);
-            pluginsTotal = pluginsResponse.total || 0;
-          } catch (e) {
-            console.warn('Failed to fetch plugins:', e);
-          }
-
-          try {
-            const mcpsResponse =
-              await getCloudServiceClientSync().searchMarketplacePlugins(
-                query,
-                page,
-                pageSize,
-                sortBy,
-                sortOrder,
-                undefined,
-                selectedTags.length > 0 ? selectedTags : undefined,
-                'mcp',
-              );
-            mcpsResult = (mcpsResponse.plugins || []).map(transformMCPToVO);
-            mcpsTotal = mcpsResponse.total || 0;
-          } catch (e) {
-            console.warn('Failed to fetch mcps:', e);
-          }
-
-          try {
-            const skillsResponse =
-              await getCloudServiceClientSync().searchMarketplacePlugins(
-                query,
-                page,
-                pageSize,
-                sortBy,
-                sortOrder,
-                undefined,
-                selectedTags.length > 0 ? selectedTags : undefined,
-                'skill',
-              );
-            skillsResult = (skillsResponse.plugins || []).map(
-              transformSkillToVO,
-            );
-            skillsTotal = skillsResponse.total || 0;
-          } catch (e) {
-            console.warn('Failed to fetch skills:', e);
-          }
-
-          newPlugins = [...pluginsResult, ...mcpsResult, ...skillsResult];
-          total = pluginsTotal + mcpsTotal + skillsTotal;
-        } else {
-          const response =
-            await getCloudServiceClientSync().searchMarketplacePlugins(
-              query,
-              page,
-              pageSize,
-              sortBy,
-              sortOrder,
-              undefined,
-              selectedTags.length > 0 ? selectedTags : undefined,
-              typeFilter === 'all' ? undefined : typeFilter,
-            );
-
-          const data: ApiRespMarketplacePlugins = response;
-          newPlugins = data.plugins
-            .filter((plugin) => {
-              const keys = Object.keys(plugin.components || {});
-              return !(
-                keys.length > 0 && keys.every((k) => k === 'KnowledgeRetriever')
-              );
-            })
-            .map(transformToVO);
-          total = data.total;
-        }
+        const data: ApiRespMarketplacePlugins = response;
+        const newPlugins = data.plugins.map(transformToVO);
+        const total = data.total;
 
         if (reset || page === 1) {
           setPlugins(newPlugins);
@@ -337,11 +236,10 @@ function MarketPageContent({
     },
     [
       searchQuery,
+      componentFilter,
       selectedTags,
       pageSize,
       transformToVO,
-      transformMCPToVO,
-      transformSkillToVO,
       plugins.length,
       getCurrentSort,
       typeFilter,
@@ -379,27 +277,13 @@ function MarketPageContent({
     }
   };
 
-  // Fetch recommendation lists
-  useEffect(() => {
-    async function fetchRecommendationLists() {
-      try {
-        const response =
-          await getCloudServiceClientSync().getRecommendationLists();
-        setRecommendationLists(response.lists || []);
-      } catch (error) {
-        console.error('Failed to fetch recommendation lists:', error);
-      }
-    }
-    fetchRecommendationLists();
-  }, []);
-
   // 搜索功能
   const handleSearch = useCallback(
     (query: string) => {
       setSearchQuery(query);
       setCurrentPage(1);
       setPlugins([]);
-      fetchPlugins(1, !!query.trim(), true);
+      fetchPlugins(1, !!query.trim(), true, query);
     },
     [fetchPlugins],
   );
@@ -436,7 +320,11 @@ function MarketPageContent({
   // Handle type filter change
   const handleTypeFilterChange = useCallback((value: string) => {
     setTypeFilter(value);
+    if (value !== 'plugin') {
+      setComponentFilter('all');
+    }
     setCurrentPage(1);
+    setSelectedTags([]);
     setPlugins([]);
 
     // Update URL query param to keep it in sync
@@ -452,10 +340,27 @@ function MarketPageContent({
     window.history.replaceState({}, '', newUrl);
   }, []);
 
-  // 当排序选项或类型筛选变化时重新加载数据
+  const handleComponentFilterChange = useCallback((value: string) => {
+    setComponentFilter(value);
+    setCurrentPage(1);
+    setPlugins([]);
+
+    if (value !== 'all') {
+      setTypeFilter('plugin');
+
+      const params = new URLSearchParams(window.location.search);
+      params.set('type', 'plugin');
+      const newUrl = params.toString()
+        ? `${window.location.pathname}?${params.toString()}`
+        : window.location.pathname;
+      window.history.replaceState({}, '', newUrl);
+    }
+  }, []);
+
+  // 当排序选项或组件筛选或类型筛选变化时重新加载数据
   useEffect(() => {
     fetchPlugins(1, !!searchQuery.trim(), true);
-  }, [sortOption, typeFilter]);
+  }, [sortOption, componentFilter, typeFilter]);
 
   // Tags 筛选变化时重新搜索
   useEffect(() => {
@@ -609,11 +514,11 @@ function MarketPageContent({
 
   return (
     <div className="h-full flex flex-col">
-      {/* Fixed header with search and sort controls */}
-      <div className="flex-shrink-0 space-y-4 px-3 sm:px-4 py-4 sm:py-6">
-        {/* Search box and actions */}
-        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-center gap-3">
-          <div className="relative flex-1 lg:max-w-xl">
+      {/* Fixed header section with search, sort, and status */}
+      <div className="flex-none px-3 sm:px-4 py-2 sm:py-4 space-y-4 sm:space-y-6 container mx-auto">
+        {/* 搜索、排序和筛选入口 */}
+        <div className="flex w-full items-center justify-center gap-2 sm:gap-3">
+          <div className="relative min-w-0 flex-1 lg:max-w-xl">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
             <Input
               placeholder={t('market.searchPlaceholder')}
@@ -634,25 +539,13 @@ function MarketPageContent({
                   handleSearch(searchQuery);
                 }
               }}
-              className="pl-10 pr-4 text-sm sm:text-base"
+              className="min-w-0 pl-10 pr-4 text-sm sm:text-base"
             />
           </div>
-          {headerActions && (
-            <div className="flex items-center gap-2 flex-wrap lg:flex-nowrap lg:flex-shrink-0">
-              {headerActions}
-            </div>
-          )}
-        </div>
 
-        {/* Sort, filters and tags in one row */}
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 px-0">
-          {/* Sort dropdown */}
-          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-            <span className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">
-              {t('market.sortBy')}:
-            </span>
+          <div className="flex shrink-0 items-center gap-2">
             <Select value={sortOption} onValueChange={handleSortChange}>
-              <SelectTrigger className="w-[128px] sm:w-40 text-xs sm:text-sm">
+              <SelectTrigger className="w-28 shrink-0 text-xs sm:w-40 sm:text-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -666,7 +559,10 @@ function MarketPageContent({
 
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" className="relative flex-shrink-0">
+                <Button
+                  variant="outline"
+                  className="relative shrink-0 px-3 sm:px-4"
+                >
                   <SlidersHorizontal className="h-4 w-4" />
                   <span className="hidden sm:inline">
                     {t('market.filters.more')}
@@ -718,49 +614,79 @@ function MarketPageContent({
                     })}
                   </ToggleGroup>
                 </div>
+                <Separator />
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-muted-foreground">
+                    {t('market.filterByComponent')}
+                  </div>
+                  <ToggleGroup
+                    type="single"
+                    spacing={2}
+                    size="sm"
+                    value={componentFilter}
+                    onValueChange={(value) => {
+                      if (value) handleComponentFilterChange(value);
+                    }}
+                    className="flex flex-wrap justify-start gap-2"
+                  >
+                    {componentOptions.map((option) => {
+                      const Icon = option.icon;
+                      return (
+                        <ToggleGroupItem
+                          key={option.value}
+                          value={option.value}
+                          aria-label={option.label}
+                          className="cursor-pointer text-xs"
+                        >
+                          {Icon && <Icon className="mr-1 h-3.5 w-3.5" />}
+                          {option.label}
+                        </ToggleGroupItem>
+                      );
+                    })}
+                  </ToggleGroup>
+                </div>
               </PopoverContent>
             </Popover>
-          </div>
 
-          {/* Separator */}
-          <div className="hidden sm:block w-px h-6 bg-border flex-shrink-0"></div>
-
-          {/* Quick tag filter buttons */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible flex-shrink-0">
-            <Button
-              type="button"
-              variant={selectedTags.length === 0 ? 'secondary' : 'ghost'}
-              size="sm"
-              className="h-8 shrink-0"
-              onClick={() => handleTagsChange([])}
-            >
-              {t('market.allExtensions')}
-            </Button>
-            {availableTags.map((tag) => {
-              const selected = selectedTags.includes(tag.tag);
-              return (
-                <Button
-                  key={tag.tag}
-                  type="button"
-                  variant={selected ? 'secondary' : 'ghost'}
-                  size="sm"
-                  className="h-8 shrink-0"
-                  onClick={() => {
-                    const newTags = selected
-                      ? selectedTags.filter((t) => t !== tag.tag)
-                      : [...selectedTags, tag.tag];
-                    handleTagsChange(newTags);
-                  }}
-                >
-                  {tagNames[tag.tag] || tag.tag}
-                  {selected && <X className="h-3.5 w-3.5" />}
-                </Button>
-              );
-            })}
+            {headerActions}
           </div>
         </div>
 
-        {/* Search results stats */}
+        {/* 用真实标签做快速筛选 */}
+        <div className="mx-auto flex w-full max-w-4xl items-center gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:justify-center sm:overflow-visible">
+          <Button
+            type="button"
+            variant={selectedTags.length === 0 ? 'secondary' : 'ghost'}
+            size="sm"
+            className="h-8 shrink-0"
+            onClick={() => handleTagsChange([])}
+          >
+            {t('market.allExtensions')}
+          </Button>
+          {availableTags.map((tag) => {
+            const selected = selectedTags.includes(tag.tag);
+            return (
+              <Button
+                key={tag.tag}
+                type="button"
+                variant={selected ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-8 shrink-0"
+                onClick={() => {
+                  const newTags = selected
+                    ? selectedTags.filter((t) => t !== tag.tag)
+                    : [...selectedTags, tag.tag];
+                  handleTagsChange(newTags);
+                }}
+              >
+                {tagNames[tag.tag] || tag.tag}
+                {selected && <X className="h-3.5 w-3.5" />}
+              </Button>
+            );
+          })}
+        </div>
+
+        {/* 搜索结果统计 */}
         {total > 0 && (
           <div className="text-center text-muted-foreground text-sm">
             {searchQuery
@@ -770,22 +696,11 @@ function MarketPageContent({
         )}
       </div>
 
-      {/* Scrollable content area */}
+      {/* Scrollable extension list section */}
       <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto px-3 sm:px-4"
+        className="flex-1 overflow-y-auto px-3 sm:px-4 pb-6 container mx-auto"
       >
-        {/* Recommendation Lists */}
-        {!searchQuery && selectedTags.length === 0 && (
-          <div className="pt-4">
-            <RecommendationLists
-              lists={recommendationLists}
-              tagNames={tagNames}
-              onInstall={handleInstallPlugin}
-            />
-          </div>
-        )}
-
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <LoadingSpinner text={t('market.loading')} />
@@ -805,7 +720,7 @@ function MarketPageContent({
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-6 pb-6 pt-4">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,22rem),1fr))] gap-6 mt-6">
               {visiblePlugins.map((plugin) => (
                 <PluginMarketCardComponent
                   key={plugin.pluginId}
