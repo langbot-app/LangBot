@@ -99,6 +99,49 @@ class TestGetRunnerCategory:
             result = runner.get_runner_category("test", "http://example.com")
             assert result == RunnerCategory.UNKNOWN
 
+    @pytest.mark.parametrize(
+        "runner_url",
+        [
+            "api.dify.ai/v1",
+            "localhost:7860",
+            "https:///v1",
+            "https://",
+            "https://exa mple.com",
+            "http://[::1",
+            "http://localhost:bad",
+        ],
+    )
+    def test_invalid_urls_return_unknown(self, runner_url):
+        """Invalid or scheme-less URLs should not default to CLOUD."""
+        assert get_runner_category("test", runner_url) == RunnerCategory.UNKNOWN
+
+    @pytest.mark.parametrize(
+        "runner_url",
+        [
+            "http://localhost:7860",
+            "http://127.0.0.1:7860",
+            "http://10.0.0.1:7860",
+            "http://172.16.0.1:7860",
+            "http://172.31.255.255:7860",
+            "http://192.168.1.20:7860",
+            "http://[::1]:7860",
+        ],
+    )
+    def test_local_hosts_are_detected_with_ipaddress(self, runner_url):
+        """Loopback/private IP addresses and localhost should be LOCAL."""
+        assert get_runner_category("test", runner_url) == RunnerCategory.LOCAL
+
+    @pytest.mark.parametrize(
+        "runner_url",
+        [
+            "http://10.evil.com",
+            "http://192.168.example.com",
+        ],
+    )
+    def test_private_ip_prefix_domains_are_not_local(self, runner_url):
+        """Domain names that only look like private IP prefixes should not be LOCAL."""
+        assert get_runner_category("test", runner_url) == RunnerCategory.CLOUD
+
 
 class TestIsCloudRunner:
     """Test is_cloud_runner helper function."""
