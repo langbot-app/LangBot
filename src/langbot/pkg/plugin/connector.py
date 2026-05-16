@@ -35,6 +35,10 @@ from ..core import taskmgr
 from ..entity.persistence import plugin as persistence_plugin
 
 
+class PluginRuntimeNotConnectedError(RuntimeError):
+    """Raised when plugin runtime operations are requested before connection."""
+
+
 class PluginRuntimeConnector:
     """Plugin runtime connector"""
 
@@ -192,7 +196,7 @@ class PluginRuntimeConnector:
 
     async def ping_plugin_runtime(self):
         if not hasattr(self, 'handler'):
-            raise Exception('Plugin runtime is not connected')
+            raise PluginRuntimeNotConnectedError('Plugin runtime is not connected')
 
         return await self.handler.ping()
 
