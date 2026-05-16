@@ -141,25 +141,21 @@ class TestNormalizeModalities:
         requester = self._create_requester_with_mocks()
 
         result = requester._normalize_modalities('text,image')
-        assert 'text' in result
-        assert 'image' in result
+        assert result == ['text', 'image']
 
     def test_normalize_list_modalities(self):
         """Normalize list of modalities."""
         requester = self._create_requester_with_mocks()
 
         result = requester._normalize_modalities(['text', 'image', 'audio'])
-        assert 'text' in result
-        assert 'image' in result
-        assert 'audio' in result
+        assert result == ['text', 'image', 'audio']
 
     def test_normalize_dict_modalities(self):
         """Normalize dict with nested modalities."""
         requester = self._create_requester_with_mocks()
 
         result = requester._normalize_modalities({'input': ['text'], 'output': ['text', 'image']})
-        assert 'text' in result
-        assert 'image' in result
+        assert result == ['text', 'image']
 
     def test_normalize_none(self):
         """Handle None input."""
@@ -173,8 +169,7 @@ class TestNormalizeModalities:
         requester = self._create_requester_with_mocks()
 
         result = requester._normalize_modalities('text->image')
-        assert 'text' in result
-        assert 'image' in result
+        assert result == ['text', 'image']
 
 
 class TestParseRerankResponse:
@@ -192,9 +187,10 @@ class TestParseRerankResponse:
         }
 
         result = OpenAIChatCompletions._parse_rerank_response(data)
-        assert len(result) == 2
-        assert result[0]['index'] == 0
-        assert result[0]['relevance_score'] == 0.95
+        assert result == [
+            {'index': 0, 'relevance_score': 0.95},
+            {'index': 1, 'relevance_score': 0.80},
+        ]
 
     def test_parse_voyage_format(self):
         """Parse Voyage AI format."""
@@ -208,8 +204,10 @@ class TestParseRerankResponse:
         }
 
         result = OpenAIChatCompletions._parse_rerank_response(data)
-        assert len(result) == 2
-        assert result[0]['index'] == 0
+        assert result == [
+            {'index': 0, 'relevance_score': 0.90},
+            {'index': 2, 'relevance_score': 0.75},
+        ]
 
     def test_parse_dashscope_format(self):
         """Parse DashScope format."""
@@ -224,8 +222,7 @@ class TestParseRerankResponse:
         }
 
         result = OpenAIChatCompletions._parse_rerank_response(data)
-        assert len(result) == 1
-        assert result[0]['index'] == 0
+        assert result == [{'index': 0, 'relevance_score': 0.85}]
 
     def test_parse_unknown_format(self):
         """Handle unknown format returns empty list."""

@@ -1,4 +1,4 @@
-"""Unit tests for plugin connector _extract_deps_metadata method.
+"""Unit tests for plugin connector _inspect_plugin_package method.
 
 Tests cover:
 - Extracting requirements.txt from ZIP
@@ -60,7 +60,7 @@ def create_zip_without_requirements() -> bytes:
 
 
 class TestExtractDepsMetadata:
-    """Tests for _extract_deps_metadata method."""
+    """Tests for dependency metadata extraction from plugin packages."""
 
     def test_extract_simple_requirements(self):
         """Test extracting simple requirements.txt."""
@@ -73,7 +73,7 @@ class TestExtractDepsMetadata:
         task_context = Mock()
         task_context.metadata = {}
 
-        connector_instance._extract_deps_metadata(zip_bytes, task_context)
+        connector_instance._inspect_plugin_package(zip_bytes, task_context)
 
         assert task_context.metadata.get('deps_total') == 3
         assert task_context.metadata.get('deps_list') == ['requests>=2.0', 'flask==1.0', 'numpy']
@@ -94,7 +94,7 @@ numpy'''
         task_context = Mock()
         task_context.metadata = {}
 
-        connector_instance._extract_deps_metadata(zip_bytes, task_context)
+        connector_instance._inspect_plugin_package(zip_bytes, task_context)
 
         assert task_context.metadata.get('deps_total') == 3
         assert '# This is a comment' not in task_context.metadata.get('deps_list', [])
@@ -108,7 +108,7 @@ numpy'''
         task_context = Mock()
         task_context.metadata = {}
 
-        connector_instance._extract_deps_metadata(zip_bytes, task_context)
+        connector_instance._inspect_plugin_package(zip_bytes, task_context)
 
         # Should find nested requirements.txt (ends with 'requirements.txt')
         assert task_context.metadata.get('deps_total') == 2
@@ -122,7 +122,7 @@ numpy'''
         task_context = Mock()
         task_context.metadata = {}
 
-        connector_instance._extract_deps_metadata(zip_bytes, task_context)
+        connector_instance._inspect_plugin_package(zip_bytes, task_context)
 
         # metadata should remain empty (no deps found)
         assert task_context.metadata.get('deps_total') is None
@@ -137,7 +137,7 @@ numpy'''
         task_context = Mock()
         task_context.metadata = {}
 
-        connector_instance._extract_deps_metadata(zip_bytes, task_context)
+        connector_instance._inspect_plugin_package(zip_bytes, task_context)
 
         # deps_total should be 0 (empty list after filtering)
         assert task_context.metadata.get('deps_total') == 0
@@ -155,7 +155,7 @@ numpy'''
         task_context = Mock()
         task_context.metadata = {}
 
-        connector_instance._extract_deps_metadata(zip_bytes, task_context)
+        connector_instance._inspect_plugin_package(zip_bytes, task_context)
 
         assert task_context.metadata.get('deps_total') == 0
         assert task_context.metadata.get('deps_list') == []
@@ -167,7 +167,7 @@ numpy'''
         zip_bytes = create_zip_with_requirements('requests')
 
         # Should return without error when task_context is None
-        connector_instance._extract_deps_metadata(zip_bytes, None)
+        connector_instance._inspect_plugin_package(zip_bytes, None)
 
         # No exception should be raised
 
@@ -182,7 +182,7 @@ numpy'''
         task_context.metadata = {}
 
         # Should silently handle exception (pass in try/except)
-        connector_instance._extract_deps_metadata(invalid_bytes, task_context)
+        connector_instance._inspect_plugin_package(invalid_bytes, task_context)
 
         # metadata should remain unchanged
         assert task_context.metadata == {}
@@ -203,7 +203,7 @@ numpy'''
         task_context.metadata = {}
 
         # errors='ignore' will decode \x80invalid as 'invalid' (skipping \x80)
-        connector_instance._extract_deps_metadata(zip_bytes, task_context)
+        connector_instance._inspect_plugin_package(zip_bytes, task_context)
 
         # All 3 lines will be parsed (requests, flask, invalid)
         assert task_context.metadata.get('deps_total') == 3

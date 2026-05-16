@@ -6,7 +6,6 @@ Tests version comparison logic without network calls.
 
 from __future__ import annotations
 
-import pytest
 from unittest.mock import Mock
 
 from langbot.pkg.utils.version import VersionManager

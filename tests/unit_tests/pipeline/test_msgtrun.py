@@ -254,13 +254,12 @@ class TestRoundTruncatorProcess:
 
         assert result.result_type == entities.ResultType.CONTINUE
 
-        # Check order is preserved (user2 -> asst2 -> user3)
         messages = result.new_query.messages
-        if len(messages) >= 3:
-            assert messages[0].role == 'user'
-            assert messages[0].content == 'user2'
-            assert messages[1].role == 'assistant'
-            assert messages[1].content == 'asst2'
+        assert [(msg.role, msg.content) for msg in messages] == [
+            ('user', 'user2'),
+            ('assistant', 'asst2'),
+            ('user', 'user3'),
+        ]
 
     @pytest.mark.asyncio
     async def test_truncate_max_round_one(self):
@@ -286,10 +285,8 @@ class TestRoundTruncatorProcess:
         result = await stage.process(query, 'ConversationMessageTruncator')
 
         assert result.result_type == entities.ResultType.CONTINUE
-        # Only last round (user + assistant pair) should remain
         messages = result.new_query.messages
-        # At most 2 messages (user + assistant before current)
-        assert len(messages) <= 2
+        assert [(msg.role, msg.content) for msg in messages] == [('user', 'current')]
 
 
 class TestRoundTruncatorDirect:

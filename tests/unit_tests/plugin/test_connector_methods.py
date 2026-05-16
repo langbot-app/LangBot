@@ -73,7 +73,7 @@ class TestListPlugins:
         result = await connector.list_plugins()
 
         connector.handler.list_plugins.assert_called_once()
-        assert len(result) == 1
+        assert result == [{'manifest': {'manifest': {'metadata': {'author': 'test', 'name': 'plugin'}}}}]
 
     @pytest.mark.asyncio
     async def test_filters_by_component_kinds(self):
@@ -171,7 +171,7 @@ class TestListKnowledgeEngines:
         result = await connector.list_knowledge_engines()
 
         connector.handler.list_knowledge_engines.assert_called_once()
-        assert len(result) == 1
+        assert result == [{'plugin_id': 'author/engine', 'name': 'Engine'}]
 
 
 class TestListParsers:
@@ -208,7 +208,7 @@ class TestListParsers:
         result = await connector.list_parsers()
 
         connector.handler.list_parsers.assert_called_once()
-        assert len(result) == 1
+        assert result == [{'plugin_id': 'author/parser', 'supported_mime_types': ['text/plain']}]
 
 
 class TestCallParser:
@@ -269,8 +269,19 @@ class TestRAGMethods:
 
         result = await connector.call_rag_retrieve('author/engine', {'query': 'test'})
 
-        connector.handler.retrieve_knowledge.assert_called_once()
-        assert 'results' in result
+        connector.handler.retrieve_knowledge.assert_called_once_with(
+            'author', 'engine', '', {'query': 'test'}
+        )
+        assert result == {
+            'results': [
+                {
+                    'id': 'doc1',
+                    'content': [{'type': 'text', 'text': 'test'}],
+                    'metadata': {},
+                    'distance': 0.1,
+                }
+            ]
+        }
 
     @pytest.mark.asyncio
     async def test_get_rag_creation_schema(self):
@@ -286,7 +297,7 @@ class TestRAGMethods:
         result = await connector.get_rag_creation_schema('author/engine')
 
         connector.handler.get_rag_creation_schema.assert_called_once_with('author', 'engine')
-        assert 'properties' in result
+        assert result == {'properties': {'name': {'type': 'string'}}}
 
     @pytest.mark.asyncio
     async def test_get_rag_retrieval_schema(self):
@@ -302,7 +313,7 @@ class TestRAGMethods:
         result = await connector.get_rag_retrieval_schema('author/engine')
 
         connector.handler.get_rag_retrieval_schema.assert_called_once_with('author', 'engine')
-        assert 'properties' in result
+        assert result == {'properties': {'top_k': {'type': 'integer'}}}
 
     @pytest.mark.asyncio
     async def test_rag_on_kb_create(self):
@@ -442,7 +453,7 @@ class TestGetPluginInfo:
         result = await connector.get_plugin_info('author', 'plugin')
 
         connector.handler.get_plugin_info.assert_called_once_with('author', 'plugin')
-        assert 'manifest' in result
+        assert result == {'manifest': {'metadata': {'name': 'plugin'}}}
 
 
 class TestSetPluginConfig:
@@ -474,7 +485,7 @@ class TestPingPluginRuntime:
         connector = create_mock_connector()
 
         # handler is not set
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(Exception, match='Plugin runtime is not connected') as exc_info:
             await connector.ping_plugin_runtime()
 
         assert 'not connected' in str(exc_info.value)

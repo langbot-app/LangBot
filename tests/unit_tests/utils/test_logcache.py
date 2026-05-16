@@ -6,7 +6,6 @@ Tests log page management and pointer-based retrieval.
 
 from __future__ import annotations
 
-import pytest
 
 from langbot.pkg.utils.logcache import LogPage, LogCache, LOG_PAGE_SIZE, MAX_CACHED_PAGES
 

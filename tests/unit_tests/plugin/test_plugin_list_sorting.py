@@ -8,7 +8,7 @@ import pytest
 @pytest.mark.asyncio
 async def test_plugin_list_sorting_debug_first():
     """Test that debug plugins appear before non-debug plugins."""
-    from src.langbot.pkg.plugin.connector import PluginRuntimeConnector
+    from langbot.pkg.plugin.connector import PluginRuntimeConnector
 
     # Mock the application
     mock_app = MagicMock()
@@ -110,7 +110,7 @@ async def test_plugin_list_sorting_debug_first():
 @pytest.mark.asyncio
 async def test_plugin_list_sorting_by_installation_time():
     """Test that non-debug plugins are sorted by installation time (newest first)."""
-    from src.langbot.pkg.plugin.connector import PluginRuntimeConnector
+    from langbot.pkg.plugin.connector import PluginRuntimeConnector
 
     # Mock the application
     mock_app = MagicMock()
@@ -207,7 +207,7 @@ async def test_plugin_list_sorting_by_installation_time():
 @pytest.mark.asyncio
 async def test_plugin_list_empty():
     """Test that empty plugin list is handled correctly."""
-    from src.langbot.pkg.plugin.connector import PluginRuntimeConnector
+    from langbot.pkg.plugin.connector import PluginRuntimeConnector
 
     # Mock the application
     mock_app = MagicMock()

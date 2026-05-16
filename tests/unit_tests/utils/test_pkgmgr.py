@@ -7,8 +7,7 @@ Tests pip command generation without actual installation.
 from __future__ import annotations
 
 import inspect
-import pytest
-from unittest.mock import patch, Mock
+from unittest.mock import patch
 
 from langbot.pkg.utils import pkgmgr
 

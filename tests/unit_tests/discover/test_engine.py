@@ -6,7 +6,6 @@ Tests I18nString, Metadata, and Component utilities.
 
 from __future__ import annotations
 
-import pytest
 
 from langbot.pkg.discover.engine import I18nString, Metadata, Component
 

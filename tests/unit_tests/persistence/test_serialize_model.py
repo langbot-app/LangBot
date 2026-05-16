@@ -8,6 +8,8 @@ Tests cover:
 from __future__ import annotations
 
 import datetime
+from unittest.mock import Mock
+
 from sqlalchemy import Column, Integer, String, DateTime
 from sqlalchemy.orm import declarative_base
 from importlib import import_module
@@ -124,7 +126,3 @@ class TestSerializeModel:
         assert 'id' not in result
         assert 'name' not in result
         assert 'created_at' in result
-
-
-# Import Mock for type annotations
-from unittest.mock import Mock

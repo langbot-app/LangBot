@@ -146,7 +146,6 @@ class TestGetRunnerCategory:
         """Domain names that only look like private IP prefixes should not be LOCAL."""
         assert get_runner_category('langflow-api', runner_url) == RunnerCategory.CLOUD
 
-
 class TestIsCloudRunner:
     """Test is_cloud_runner helper function."""
 

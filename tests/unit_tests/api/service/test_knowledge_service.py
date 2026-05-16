@@ -153,7 +153,7 @@ class TestCreateKnowledgeBase:
 
         service = knowledge_module.KnowledgeService(mock_app)
 
-        result = await service.create_knowledge_base({
+        await service.create_knowledge_base({
             'knowledge_engine_plugin_id': 'author/engine'
         })
 

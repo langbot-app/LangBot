@@ -1,45 +1,37 @@
-"""Unit tests for RuntimeConnectionHandler action handlers.
+"""Unit tests for RuntimeConnectionHandler action handlers."""
 
-Tests cover critical action handlers:
-- initialize_plugin_settings with setting inheritance
-- set_binary_storage with size limit validation
-- get_binary_storage
-- get_plugin_settings with defaults
-"""
 from __future__ import annotations
 
-import pytest
 import base64
-from unittest.mock import Mock, AsyncMock, MagicMock
-from importlib import import_module
-import sqlalchemy
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
+
+import pytest
+from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction, RuntimeToLangBotAction
 
 
-def get_handler_module():
-    """Lazy import to avoid circular import issues."""
-    return import_module('langbot.pkg.plugin.handler')
+def make_handler(app):
+    """Create a RuntimeConnectionHandler with mocked external connection."""
+    from langbot.pkg.plugin.handler import RuntimeConnectionHandler
+
+    return RuntimeConnectionHandler(Mock(), AsyncMock(return_value=True), app)
 
 
-def get_persistence_plugin_module():
-    """Lazy import for plugin persistence entity."""
-    return import_module('langbot.pkg.entity.persistence.plugin')
+def make_result(first_item=None):
+    result = Mock()
+    result.first = Mock(return_value=first_item)
+    return result
 
 
-def get_persistence_bstorage_module():
-    """Lazy import for binary storage entity."""
-    return import_module('langbot.pkg.entity.persistence.bstorage')
+def compiled_params(statement):
+    return statement.compile().params
 
 
 class TestInitializePluginSettings:
-    """Tests for initialize_plugin_settings action handler.
-
-    IMPORTANT: Tests verify setting inheritance logic - existing settings
-    should be inherited when creating new plugin settings.
-    """
+    """Tests for initialize_plugin_settings action handler."""
 
     @pytest.fixture
-    def mock_app_with_persistence(self):
-        """Create mock app with persistence manager."""
+    def app(self):
         mock_app = Mock()
         mock_app.persistence_mgr = Mock()
         mock_app.persistence_mgr.execute_async = AsyncMock()
@@ -47,381 +39,285 @@ class TestInitializePluginSettings:
         return mock_app
 
     @pytest.mark.asyncio
-    async def test_creates_new_setting_when_not_exists(self, mock_app_with_persistence):
-        """Test that new setting is created when plugin setting doesn't exist."""
-        handler_module = get_handler_module()
-        persistence_plugin = get_persistence_plugin_module()
+    async def test_creates_new_setting_when_not_exists(self, app):
+        """New plugin settings use default enabled, priority and config values."""
+        runtime_handler = make_handler(app)
+        app.persistence_mgr.execute_async.side_effect = [
+            make_result(),
+            Mock(),
+        ]
 
-        # Mock select result - no existing setting
-        mock_result = Mock()
-        mock_result.first = Mock(return_value=None)
-        mock_app_with_persistence.persistence_mgr.execute_async.return_value = mock_result
-
-        # Create handler instance with mock connection
-        from langbot_plugin.runtime.io.connection import Connection
-        mock_connection = Mock(spec=Connection)
-
-        handler = handler_module.RuntimeConnectionHandler(
-            mock_connection,
-            AsyncMock(return_value=True),
-            mock_app_with_persistence
-        )
-
-        # Get the initialize_plugin_settings action handler
-        # Action handlers are registered via @self.action decorator
-        # We test by calling the persistence operations directly
-        data = {
+        response = await runtime_handler.actions[RuntimeToLangBotAction.INITIALIZE_PLUGIN_SETTINGS.value]({
             'plugin_author': 'test-author',
             'plugin_name': 'test-plugin',
             'install_source': 'local',
             'install_info': {'path': '/test'},
+        })
+
+        assert response.code == 0
+        assert app.persistence_mgr.execute_async.await_count == 2
+        insert_params = compiled_params(app.persistence_mgr.execute_async.await_args_list[1].args[0])
+        assert insert_params == {
+            'plugin_author': 'test-author',
+            'plugin_name': 'test-plugin',
+            'install_source': 'local',
+            'install_info': {'path': '/test'},
+            'enabled': True,
+            'priority': 0,
+            'config': {},
         }
 
-        # Simulate the action handler logic
-        result = await mock_app_with_persistence.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_plugin.PluginSetting)
-            .where(persistence_plugin.PluginSetting.plugin_author == data['plugin_author'])
-            .where(persistence_plugin.PluginSetting.plugin_name == data['plugin_name'])
+    @pytest.mark.asyncio
+    async def test_inherits_values_from_existing_setting(self, app):
+        """Existing settings are replaced while preserving user-controlled values."""
+        runtime_handler = make_handler(app)
+        existing_setting = SimpleNamespace(
+            enabled=False,
+            priority=5,
+            config={'key': 'value'},
         )
+        app.persistence_mgr.execute_async.side_effect = [
+            make_result(existing_setting),
+            Mock(),
+            Mock(),
+        ]
 
-        # Verify select was called
-        assert mock_app_with_persistence.persistence_mgr.execute_async.called
+        response = await runtime_handler.actions[RuntimeToLangBotAction.INITIALIZE_PLUGIN_SETTINGS.value]({
+            'plugin_author': 'test-author',
+            'plugin_name': 'test-plugin',
+            'install_source': 'github',
+            'install_info': {'repo': 'author/name'},
+        })
 
-    @pytest.mark.asyncio
-    async def test_inherits_enabled_from_existing_setting(self, mock_app_with_persistence):
-        """Test that enabled status is inherited from existing setting."""
-        handler_module = get_handler_module()
-        persistence_plugin = get_persistence_plugin_module()
-
-        # Mock existing setting with enabled=False
-        mock_existing_setting = Mock()
-        mock_existing_setting.enabled = False
-        mock_existing_setting.priority = 5
-        mock_existing_setting.config = {'key': 'value'}
-
-        mock_result = Mock()
-        mock_result.first = Mock(return_value=mock_existing_setting)
-        mock_app_with_persistence.persistence_mgr.execute_async.return_value = mock_result
-
-        # Simulate inheritance logic
-        # When existing setting exists, delete old and create new with inherited values
-        setting = mock_result.first()
-        inherited_enabled = setting.enabled if setting is not None else True
-        inherited_priority = setting.priority if setting is not None else 0
-        inherited_config = setting.config if setting is not None else {}
-
-        assert inherited_enabled is False
-        assert inherited_priority == 5
-        assert inherited_config == {'key': 'value'}
-
-    @pytest.mark.asyncio
-    async def test_defaults_enabled_true_when_no_existing(self, mock_app_with_persistence):
-        """Test that enabled defaults to True when no existing setting."""
-        # No existing setting
-        mock_result = Mock()
-        mock_result.first = Mock(return_value=None)
-        mock_app_with_persistence.persistence_mgr.execute_async.return_value = mock_result
-
-        setting = mock_result.first()
-        default_enabled = setting.enabled if setting is not None else True
-
-        assert default_enabled is True
+        assert response.code == 0
+        assert app.persistence_mgr.execute_async.await_count == 3
+        insert_params = compiled_params(app.persistence_mgr.execute_async.await_args_list[2].args[0])
+        assert insert_params['enabled'] is False
+        assert insert_params['priority'] == 5
+        assert insert_params['config'] == {'key': 'value'}
+        assert insert_params['install_source'] == 'github'
+        assert insert_params['install_info'] == {'repo': 'author/name'}
 
 
 class TestSetBinaryStorage:
-    """Tests for set_binary_storage action handler with size limit validation.
-
-    IMPORTANT: This tests security-critical size limit validation.
-    """
+    """Tests for set_binary_storage action handler with size limit validation."""
 
     @pytest.fixture
-    def mock_app_with_size_limit(self):
-        """Create mock app with plugin binary storage size limit."""
+    def app(self):
         mock_app = Mock()
         mock_app.instance_config = Mock()
         mock_app.instance_config.data = {
             'plugin': {
                 'binary_storage': {
-                    'max_value_bytes': 1024,  # 1KB limit for testing
-                }
-            }
+                    'max_value_bytes': 1024,
+                },
+            },
         }
         mock_app.persistence_mgr = Mock()
-        mock_app.persistence_mgr.execute_async = AsyncMock()
+        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=make_result())
         mock_app.logger = Mock()
         return mock_app
 
-    @pytest.fixture
-    def mock_app_no_limit(self):
-        """Create mock app without explicit size limit (uses default)."""
-        mock_app = Mock()
-        mock_app.instance_config = Mock()
-        mock_app.instance_config.data = {
-            'plugin': {}
-        }
-        mock_app.persistence_mgr = Mock()
-        mock_app.persistence_mgr.execute_async = AsyncMock()
-        mock_app.logger = Mock()
-        return mock_app
-
-    @pytest.mark.asyncio
-    async def test_rejects_value_exceeding_limit(self, mock_app_with_size_limit):
-        """Test that values exceeding max_value_bytes are rejected."""
-        handler_module = get_handler_module()
-
-        # Value larger than 1024 bytes
-        large_value = b'x' * 2048
-        value_base64 = base64.b64encode(large_value).decode('utf-8')
-
-        data = {
+    @staticmethod
+    def payload(value: bytes):
+        return {
             'key': 'test-key',
             'owner_type': 'plugin',
             'owner': 'test-owner',
-            'value_base64': value_base64,
+            'value_base64': base64.b64encode(value).decode('utf-8'),
         }
 
-        # Simulate size limit check logic from handler
-        value = base64.b64decode(data['value_base64'])
-        max_value_bytes = (
-            mock_app_with_size_limit.instance_config.data
-            .get('plugin', {})
-            .get('binary_storage', {})
-            .get('max_value_bytes', 10 * 1024 * 1024)
+    @pytest.mark.asyncio
+    async def test_rejects_value_exceeding_limit(self, app):
+        """Values larger than max_value_bytes are rejected before persistence writes."""
+        runtime_handler = make_handler(app)
+
+        response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](
+            self.payload(b'x' * 2048)
         )
 
-        if max_value_bytes >= 0 and len(value) > max_value_bytes:
-            error_message = f'Binary storage value exceeds limit ({len(value)} > {max_value_bytes} bytes)'
-            # Should return error response
-            assert len(value) > max_value_bytes
-            assert error_message is not None
+        assert response.code != 0
+        assert '2048 > 1024 bytes' in response.message
+        app.persistence_mgr.execute_async.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_accepts_value_within_limit(self, mock_app_with_size_limit):
-        """Test that values within limit are accepted."""
-        # Value smaller than 1024 bytes
-        small_value = b'x' * 512
-        value_base64 = base64.b64encode(small_value).decode('utf-8')
+    async def test_accepts_value_within_limit_and_inserts_storage(self, app):
+        """A new small value is inserted into binary storage."""
+        runtime_handler = make_handler(app)
 
-        data = {
-            'key': 'test-key',
-            'owner_type': 'plugin',
-            'owner': 'test-owner',
-            'value_base64': value_base64,
-        }
-
-        value = base64.b64decode(data['value_base64'])
-        max_value_bytes = 1024
-
-        assert len(value) <= max_value_bytes
-
-    @pytest.mark.asyncio
-    async def test_handles_invalid_max_value_bytes(self, mock_app_with_size_limit):
-        """Test that invalid max_value_bytes falls back to default."""
-        # Invalid config value
-        mock_app_with_size_limit.instance_config.data['plugin']['binary_storage']['max_value_bytes'] = 'invalid'
-
-        max_value_bytes = (
-            mock_app_with_size_limit.instance_config.data
-            .get('plugin', {})
-            .get('binary_storage', {})
-            .get('max_value_bytes', 10 * 1024 * 1024)
+        response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](
+            self.payload(b'x' * 512)
         )
 
-        try:
-            max_value_bytes = int(max_value_bytes)
-        except (TypeError, ValueError):
-            max_value_bytes = 10 * 1024 * 1024  # Default 10MB
-
-        assert max_value_bytes == 10 * 1024 * 1024
+        assert response.code == 0
+        assert app.persistence_mgr.execute_async.await_count == 2
+        insert_params = compiled_params(app.persistence_mgr.execute_async.await_args_list[1].args[0])
+        assert insert_params['unique_key'] == 'plugin:test-owner:test-key'
+        assert insert_params['value'] == b'x' * 512
 
     @pytest.mark.asyncio
-    async def test_negative_limit_disables_check(self, mock_app_with_size_limit):
-        """Test that negative max_value_bytes disables size check."""
-        mock_app_with_size_limit.instance_config.data['plugin']['binary_storage']['max_value_bytes'] = -1
+    async def test_updates_existing_storage(self, app):
+        """An existing binary storage row is updated instead of inserted."""
+        runtime_handler = make_handler(app)
+        app.persistence_mgr.execute_async.return_value = make_result(SimpleNamespace(value=b'old'))
 
-        # Large value
-        large_value = b'x' * 20 * 1024 * 1024  # 20MB
-        value_base64 = base64.b64encode(large_value).decode('utf-8')
-
-        max_value_bytes = (
-            mock_app_with_size_limit.instance_config.data
-            .get('plugin', {})
-            .get('binary_storage', {})
-            .get('max_value_bytes', 10 * 1024 * 1024)
+        response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](
+            self.payload(b'new')
         )
 
-        try:
-            max_value_bytes = int(max_value_bytes)
-        except (TypeError, ValueError):
-            max_value_bytes = 10 * 1024 * 1024
-
-        # When max_value_bytes < 0, size check is disabled (condition: max_value_bytes >= 0)
-        if max_value_bytes >= 0 and len(large_value) > max_value_bytes:
-            should_reject = True
-        else:
-            should_reject = False
-
-        assert should_reject is False  # Negative limit disables check
+        assert response.code == 0
+        assert app.persistence_mgr.execute_async.await_count == 2
+        update_params = compiled_params(app.persistence_mgr.execute_async.await_args_list[1].args[0])
+        assert update_params['value'] == b'new'
 
     @pytest.mark.asyncio
-    async def test_default_limit_is_10mb(self, mock_app_no_limit):
-        """Test that default limit is 10MB when not configured."""
-        max_value_bytes = (
-            mock_app_no_limit.instance_config.data
-            .get('plugin', {})
-            .get('binary_storage', {})
-            .get('max_value_bytes', 10 * 1024 * 1024)
+    async def test_invalid_max_value_bytes_falls_back_to_default_limit(self, app):
+        """Invalid max_value_bytes uses the 10MB default limit."""
+        runtime_handler = make_handler(app)
+        app.instance_config.data['plugin']['binary_storage']['max_value_bytes'] = 'invalid'
+
+        response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](
+            self.payload(b'x' * (10 * 1024 * 1024 + 1))
         )
 
-        assert max_value_bytes == 10 * 1024 * 1024
+        assert response.code != 0
+        assert '10485761 > 10485760 bytes' in response.message
+        app.persistence_mgr.execute_async.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_zero_limit_rejects_all_values(self, mock_app_with_size_limit):
-        """Test that zero limit rejects all non-empty values."""
-        mock_app_with_size_limit.instance_config.data['plugin']['binary_storage']['max_value_bytes'] = 0
+    async def test_negative_limit_disables_size_check(self, app):
+        """Negative max_value_bytes allows values larger than the normal default."""
+        runtime_handler = make_handler(app)
+        app.instance_config.data['plugin']['binary_storage']['max_value_bytes'] = -1
 
-        small_value = b'x'  # Just 1 byte
-        max_value_bytes = 0
+        response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](
+            self.payload(b'x' * 2048)
+        )
 
-        if max_value_bytes >= 0 and len(small_value) > max_value_bytes:
-            should_reject = True
-        else:
-            should_reject = False
+        assert response.code == 0
+        assert app.persistence_mgr.execute_async.await_count == 2
 
-        assert should_reject is True
+    @pytest.mark.asyncio
+    async def test_zero_limit_rejects_non_empty_values(self, app):
+        """A zero byte limit rejects non-empty values."""
+        runtime_handler = make_handler(app)
+        app.instance_config.data['plugin']['binary_storage']['max_value_bytes'] = 0
+
+        response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](
+            self.payload(b'x')
+        )
+
+        assert response.code != 0
+        assert '1 > 0 bytes' in response.message
+        app.persistence_mgr.execute_async.assert_not_awaited()
 
 
 class TestGetPluginSettings:
     """Tests for get_plugin_settings action handler with defaults."""
 
     @pytest.fixture
-    def mock_app(self):
-        """Create mock app."""
+    def app(self):
         mock_app = Mock()
         mock_app.persistence_mgr = Mock()
         mock_app.persistence_mgr.execute_async = AsyncMock()
         return mock_app
 
     @pytest.mark.asyncio
-    async def test_returns_defaults_when_setting_not_found(self, mock_app):
-        """Test that default values are returned when setting doesn't exist."""
-        persistence_plugin = get_persistence_plugin_module()
+    async def test_returns_defaults_when_setting_not_found(self, app):
+        """Default plugin settings are returned when no persisted row exists."""
+        runtime_handler = make_handler(app)
+        app.persistence_mgr.execute_async.return_value = make_result()
 
-        # Mock no existing setting
-        mock_result = Mock()
-        mock_result.first = Mock(return_value=None)
-        mock_app.persistence_mgr.execute_async.return_value = mock_result
+        response = await runtime_handler.actions[RuntimeToLangBotAction.GET_PLUGIN_SETTINGS.value]({
+            'plugin_author': 'test-author',
+            'plugin_name': 'test-plugin',
+        })
 
-        # Simulate get_plugin_settings logic
-        default_data = {
+        assert response.code == 0
+        assert response.data == {
             'enabled': True,
             'priority': 0,
             'plugin_config': {},
             'install_source': 'local',
             'install_info': {},
         }
-
-        setting = mock_result.first()
-        if setting is None:
-            result_data = default_data
-
-        assert result_data['enabled'] is True
-        assert result_data['priority'] == 0
-        assert result_data['plugin_config'] == {}
 
     @pytest.mark.asyncio
-    async def test_returns_actual_values_when_setting_exists(self, mock_app):
-        """Test that actual setting values are returned when setting exists."""
-        persistence_plugin = get_persistence_plugin_module()
+    async def test_returns_actual_values_when_setting_exists(self, app):
+        """Persisted plugin setting values override defaults."""
+        runtime_handler = make_handler(app)
+        setting = SimpleNamespace(
+            enabled=False,
+            priority=10,
+            config={'custom': 'config'},
+            install_source='github',
+            install_info={'repo': 'test/repo'},
+        )
+        app.persistence_mgr.execute_async.return_value = make_result(setting)
 
-        # Mock existing setting
-        mock_setting = Mock()
-        mock_setting.enabled = False
-        mock_setting.priority = 10
-        mock_setting.config = {'custom': 'config'}
-        mock_setting.install_source = 'github'
-        mock_setting.install_info = {'repo': 'test/repo'}
+        response = await runtime_handler.actions[RuntimeToLangBotAction.GET_PLUGIN_SETTINGS.value]({
+            'plugin_author': 'test-author',
+            'plugin_name': 'test-plugin',
+        })
 
-        mock_result = Mock()
-        mock_result.first = Mock(return_value=mock_setting)
-        mock_app.persistence_mgr.execute_async.return_value = mock_result
-
-        # Simulate get_plugin_settings logic
-        data = {
-            'enabled': True,
-            'priority': 0,
-            'plugin_config': {},
-            'install_source': 'local',
-            'install_info': {},
+        assert response.code == 0
+        assert response.data == {
+            'enabled': False,
+            'priority': 10,
+            'plugin_config': {'custom': 'config'},
+            'install_source': 'github',
+            'install_info': {'repo': 'test/repo'},
         }
-
-        setting = mock_result.first()
-        if setting is not None:
-            data['enabled'] = setting.enabled
-            data['priority'] = setting.priority
-            data['plugin_config'] = setting.config
-            data['install_source'] = setting.install_source
-            data['install_info'] = setting.install_info
-
-        assert data['enabled'] is False
-        assert data['priority'] == 10
-        assert data['plugin_config'] == {'custom': 'config'}
-        assert data['install_source'] == 'github'
 
 
 class TestGetBinaryStorage:
     """Tests for get_binary_storage action handler."""
 
     @pytest.fixture
-    def mock_app(self):
-        """Create mock app."""
+    def app(self):
         mock_app = Mock()
         mock_app.persistence_mgr = Mock()
         mock_app.persistence_mgr.execute_async = AsyncMock()
         return mock_app
 
     @pytest.mark.asyncio
-    async def test_returns_base64_encoded_value(self, mock_app):
-        """Test that returned value is base64 encoded."""
-        persistence_bstorage = get_persistence_bstorage_module()
+    async def test_returns_base64_encoded_value(self, app):
+        """Stored bytes are returned as base64."""
+        runtime_handler = make_handler(app)
+        app.persistence_mgr.execute_async.return_value = make_result(SimpleNamespace(value=b'test binary content'))
 
-        # Mock existing storage
-        test_value = b'test binary content'
-        mock_storage = Mock()
-        mock_storage.value = test_value
+        response = await runtime_handler.actions[RuntimeToLangBotAction.GET_BINARY_STORAGE.value]({
+            'key': 'test-key',
+            'owner_type': 'plugin',
+            'owner': 'test-owner',
+        })
 
-        mock_result = Mock()
-        mock_result.first = Mock(return_value=mock_storage)
-        mock_app.persistence_mgr.execute_async.return_value = mock_result
-
-        storage = mock_result.first()
-        if storage is not None:
-            value_base64 = base64.b64encode(storage.value).decode('utf-8')
-
-        assert value_base64 == base64.b64encode(test_value).decode('utf-8')
+        assert response.code == 0
+        assert response.data == {
+            'value_base64': base64.b64encode(b'test binary content').decode('utf-8'),
+        }
 
     @pytest.mark.asyncio
-    async def test_returns_error_when_not_found(self, mock_app):
-        """Test that error is returned when storage not found."""
-        persistence_bstorage = get_persistence_bstorage_module()
+    async def test_returns_error_when_not_found(self, app):
+        """Missing binary storage rows return an error response."""
+        runtime_handler = make_handler(app)
+        app.persistence_mgr.execute_async.return_value = make_result()
 
-        mock_result = Mock()
-        mock_result.first = Mock(return_value=None)
-        mock_app.persistence_mgr.execute_async.return_value = mock_result
+        response = await runtime_handler.actions[RuntimeToLangBotAction.GET_BINARY_STORAGE.value]({
+            'key': 'test-key',
+            'owner_type': 'plugin',
+            'owner': 'test-owner',
+        })
 
-        storage = mock_result.first()
-        if storage is None:
-            key = 'test-key'
-            error_message = f'Storage with key {key} not found'
-            assert error_message is not None
+        assert response.code != 0
+        assert 'Storage with key test-key not found' in response.message
 
 
 class TestHandlerQueryLookup:
     """Tests for query lookup in cached_queries."""
 
     @pytest.fixture
-    def mock_app_with_query_pool(self):
-        """Create mock app with query pool."""
+    def app(self):
         mock_app = Mock()
         mock_app.query_pool = Mock()
         mock_app.query_pool.cached_queries = {}
@@ -429,26 +325,27 @@ class TestHandlerQueryLookup:
         return mock_app
 
     @pytest.mark.asyncio
-    async def test_query_not_found_returns_error(self, mock_app_with_query_pool):
-        """Test that operations return error when query_id not found."""
-        query_id = 'nonexistent-query'
+    async def test_query_not_found_returns_error(self, app):
+        """Query-bound actions return error when query_id is not cached."""
+        runtime_handler = make_handler(app)
 
-        if query_id not in mock_app_with_query_pool.query_pool.cached_queries:
-            error_message = f'Query with query_id {query_id} not found'
-            # Should return error response
-            assert error_message is not None
+        response = await runtime_handler.actions[PluginToRuntimeAction.GET_BOT_UUID.value]({
+            'query_id': 'nonexistent-query',
+        })
+
+        assert response.code != 0
+        assert 'nonexistent-query' in response.message
 
     @pytest.mark.asyncio
-    async def test_query_found_returns_success(self, mock_app_with_query_pool):
-        """Test that operations succeed when query exists."""
-        mock_query = Mock()
-        mock_query.variables = {}
-        mock_query.bot_uuid = 'test-bot-uuid'
+    async def test_query_found_returns_success(self, app):
+        """Query-bound actions read data from the cached query object."""
+        runtime_handler = make_handler(app)
+        query = SimpleNamespace(variables={}, bot_uuid='test-bot-uuid')
+        app.query_pool.cached_queries['existing-query'] = query
 
-        query_id = 'existing-query'
-        mock_app_with_query_pool.query_pool.cached_queries[query_id] = mock_query
+        response = await runtime_handler.actions[PluginToRuntimeAction.GET_BOT_UUID.value]({
+            'query_id': 'existing-query',
+        })
 
-        if query_id in mock_app_with_query_pool.query_pool.cached_queries:
-            query = mock_app_with_query_pool.query_pool.cached_queries[query_id]
-            # Operations can proceed
-            assert query is mock_query
+        assert response.code == 0
+        assert response.data == {'bot_uuid': 'test-bot-uuid'}

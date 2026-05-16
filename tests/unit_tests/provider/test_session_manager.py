@@ -13,7 +13,6 @@ from unittest.mock import Mock
 from importlib import import_module
 
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
-import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 

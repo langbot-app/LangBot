@@ -155,11 +155,10 @@ class TestPreProcessorEmptyMessage:
 
         result = await stage.process(query, 'PreProcessor')
 
-        # Empty message should still continue (behavior depends on code)
+        # Empty message should still continue with an empty provider content list.
         assert result.result_type == entities.ResultType.CONTINUE
         assert result.new_query.user_message is not None
-        # Empty content list
-        assert result.new_query.user_message.content == [] or result.new_query.user_message.content is None
+        assert result.new_query.user_message.content == []
 
 
 class TestPreProcessorImageSegment:
