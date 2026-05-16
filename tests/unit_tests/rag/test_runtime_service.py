@@ -472,3 +472,50 @@ class TestRAGRuntimeServiceGetFileStream:
             # Let's test a simple valid path
             await service.get_file_stream('knowledge/files/test.pdf')
             mock_app.storage_mgr.storage_provider.load.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_get_file_stream_normalizes_safe_relative_path(self):
+        """Safe relative paths are normalized before loading."""
+        mock_app = self._create_mock_app()
+
+        mocks = self._make_rag_import_mocks()
+
+        with isolated_sys_modules(mocks):
+            from langbot.pkg.rag.service.runtime import RAGRuntimeService
+
+            service = RAGRuntimeService(mock_app)
+
+            await service.get_file_stream('knowledge/./files/doc.pdf')
+
+            mock_app.storage_mgr.storage_provider.load.assert_called_once_with('knowledge/files/doc.pdf')
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "storage_path",
+        [
+            "",
+            "../secret.txt",
+            "/absolute/path.txt",
+            "..\\secret.txt",
+            "nested\\..\\secret.txt",
+            "%2e%2e/secret.txt",
+            "nested/%2e%2e/secret.txt",
+            "C:\\secret.txt",
+            "safe/\x00file.txt",
+        ],
+    )
+    async def test_get_file_stream_rejects_unsafe_paths(self, storage_path):
+        """Traversal, absolute, encoded, and Windows-style paths are rejected."""
+        mock_app = self._create_mock_app()
+
+        mocks = self._make_rag_import_mocks()
+
+        with isolated_sys_modules(mocks):
+            from langbot.pkg.rag.service.runtime import RAGRuntimeService
+
+            service = RAGRuntimeService(mock_app)
+
+            with pytest.raises(ValueError, match='Invalid storage path'):
+                await service.get_file_stream(storage_path)
+
+            mock_app.storage_mgr.storage_provider.load.assert_not_called()
