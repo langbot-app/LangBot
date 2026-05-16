@@ -81,6 +81,15 @@ def test_token_manager_filters_blank_and_duplicate_tokens():
     assert token_mgr.get_token() == 'first-key'
 
 
+def test_token_manager_next_token_ignores_empty_token_list():
+    token_mgr = TokenManager('provider-uuid', [])
+
+    token_mgr.next_token()
+
+    assert token_mgr.get_token() == ''
+    assert token_mgr.using_token_index == 0
+
+
 @pytest.mark.asyncio
 async def test_openai_requester_initialize_uses_placeholder_api_key(monkeypatch):
     captured_kwargs = {}
