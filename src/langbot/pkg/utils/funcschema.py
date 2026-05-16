@@ -83,7 +83,7 @@ def get_func_schema(function: typing.Callable) -> dict:
 
         parameters['properties'][param.name] = {
             'type': param_type,
-            'description': args_doc[param.name],
+            'description': args_doc.get(param.name, ''),
         }
 
         # add schema for array

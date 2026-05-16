@@ -189,3 +189,21 @@ class TestGetFuncSchema:
         result = funcschema.get_func_schema(doc_func)
 
         assert result['parameters']['properties']['param_name']['description'] == 'This is the param description.'
+
+    def test_missing_parameter_doc_uses_empty_description(self):
+        """Test that undocumented parameters do not crash schema generation."""
+        funcschema = get_funcschema_module()
+
+        def partially_documented_func(documented: str, undocumented: int):
+            """Function with one undocumented param.
+
+            Args:
+                documented: Documented parameter.
+            """
+            pass
+
+        result = funcschema.get_func_schema(partially_documented_func)
+
+        props = result['parameters']['properties']
+        assert props['documented']['description'] == 'Documented parameter.'
+        assert props['undocumented']['description'] == ''
