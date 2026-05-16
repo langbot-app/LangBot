@@ -101,11 +101,9 @@ def fake_embed_app():
 
 
 @pytest.fixture(scope='module')
-async def quart_test_client(fake_embed_app):
+async def quart_test_client(fake_embed_app, http_controller_cls):
     """Create Quart test client (module scope)."""
-    from langbot.pkg.api.http.controller.main import HTTPController
-
-    controller = HTTPController(fake_embed_app)
+    controller = http_controller_cls(fake_embed_app)
     await controller.initialize()
 
     client = controller.quart_app.test_client()

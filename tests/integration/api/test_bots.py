@@ -102,11 +102,9 @@ def fake_bot_app():
 
 
 @pytest.fixture(scope='module')
-async def quart_test_client(fake_bot_app):
+async def quart_test_client(fake_bot_app, http_controller_cls):
     """Create Quart test client (module scope to avoid route re-registration)."""
-    from langbot.pkg.api.http.controller.main import HTTPController
-
-    controller = HTTPController(fake_bot_app)
+    controller = http_controller_cls(fake_bot_app)
     await controller.initialize()
 
     client = controller.quart_app.test_client()

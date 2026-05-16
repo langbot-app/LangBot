@@ -119,15 +119,13 @@ def fake_api_app():
 # ============== QUART TEST CLIENT FIXTURE ==============
 
 @pytest.fixture
-async def quart_test_client(fake_api_app):
+async def quart_test_client(fake_api_app, http_controller_cls):
     """
     Create Quart test client with real HTTPController and route registration.
 
     Requires mock_circular_import_chain fixture to run first (usefixtures).
     """
-    from langbot.pkg.api.http.controller.main import HTTPController
-
-    controller = HTTPController(fake_api_app)
+    controller = http_controller_cls(fake_api_app)
     await controller.initialize()
 
     client = controller.quart_app.test_client()

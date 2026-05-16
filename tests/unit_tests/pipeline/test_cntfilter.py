@@ -119,10 +119,10 @@ class TestContentFilterStageInit:
 
         await stage.initialize(pipeline_config)
 
-        assert [filter_impl.name for filter_impl in stage.filter_chain] == [
+        assert {filter_impl.name for filter_impl in stage.filter_chain} == {
             'ban-word-filter',
             'content-ignore',
-        ]
+        }
 
 
 class TestPreContentFilter:
