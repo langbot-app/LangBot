@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ipaddress
+import re
 from urllib.parse import urlparse
 
 
@@ -20,29 +22,39 @@ CLOUD_DOMAINS = [
     '.langflow.org',
 ]
 
-LOCAL_PATTERNS = [
-    'localhost',
-    '127.0.0.1',
-    '0.0.0.0',
-    '192.168.',
-    '10.',
-    '172.16.',
-    '172.17.',
-    '172.18.',
-    '172.19.',
-    '172.20.',
-    '172.21.',
-    '172.22.',
-    '172.23.',
-    '172.24.',
-    '172.25.',
-    '172.26.',
-    '172.27.',
-    '172.28.',
-    '172.29.',
-    '172.30.',
-    '172.31.',
-]
+HOST_LABEL_PATTERN = re.compile(r'^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$')
+
+
+def _is_valid_hostname(host: str) -> bool:
+    if host == 'localhost':
+        return True
+
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        pass
+
+    if not host or len(host) > 253 or any(char.isspace() for char in host):
+        return False
+
+    host = host.rstrip('.')
+    if not host:
+        return False
+
+    return all(HOST_LABEL_PATTERN.match(label) for label in host.split('.'))
+
+
+def _is_local_host(host: str) -> bool:
+    if host == 'localhost':
+        return True
+
+    try:
+        ip_address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+
+    return ip_address.is_private or ip_address.is_loopback or ip_address.is_unspecified
 
 
 def get_runner_category(runner_name: str, runner_url: str) -> str:
@@ -52,12 +64,15 @@ def get_runner_category(runner_name: str, runner_url: str) -> str:
     try:
         parsed_url = urlparse(runner_url)
         host = parsed_url.hostname.lower() if parsed_url.hostname else ''
-    except Exception:
+        _ = parsed_url.port
+    except (TypeError, ValueError):
         return RunnerCategory.UNKNOWN
 
-    for pattern in LOCAL_PATTERNS:
-        if host.startswith(pattern):
-            return RunnerCategory.LOCAL
+    if not parsed_url.scheme or not host or not _is_valid_hostname(host):
+        return RunnerCategory.UNKNOWN
+
+    if _is_local_host(host):
+        return RunnerCategory.LOCAL
 
     for domain in CLOUD_DOMAINS:
         if host.endswith(domain):
