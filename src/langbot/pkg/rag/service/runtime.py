@@ -107,7 +107,7 @@ class RAGRuntimeService:
         )
 
     async def get_file_stream(self, storage_path: str) -> bytes:
-        """Handle GET_KNOWLEDEGE_FILE_STREAM action.
+        """Handle GET_KNOWLEDGE_FILE_STREAM action.
 
         Uses the storage manager abstraction to load file content,
         regardless of the underlying storage provider.

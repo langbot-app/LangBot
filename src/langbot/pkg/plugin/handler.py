@@ -979,7 +979,7 @@ class RuntimeConnectionHandler(handler.Handler):
             except Exception as e:
                 return _make_rag_error_response(e, 'VectorStoreError', collection_id=collection_id)
 
-        @self.action(PluginToRuntimeAction.GET_KNOWLEDEGE_FILE_STREAM)
+        @self.action(PluginToRuntimeAction.GET_KNOWLEDGE_FILE_STREAM)
         async def get_knowledge_file_stream(data: dict[str, Any]) -> handler.ActionResponse:
             storage_path = data['storage_path']
             try:

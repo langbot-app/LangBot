@@ -843,15 +843,6 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         async for ret in gen:
             yield ret
 
-    # KnowledgeRetriever methods
-    async def list_knowledge_retrievers(self, bound_plugins: list[str] | None = None) -> list[dict[str, Any]]:
-        """List all available KnowledgeRetriever components."""
-        if not self.is_enable_plugin:
-            return []
-
-        retrievers_data = await self.handler.list_knowledge_retrievers(include_plugins=bound_plugins)
-        return retrievers_data
-
     async def retrieve_knowledge(
         self,
         plugin_author: str,
