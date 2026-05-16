@@ -38,12 +38,10 @@
     },
     "ai": {
         "runner": {
-            "id": "plugin:langbot/local-agent/default",
+            "id": "",
             "expire-time": 0
         },
-        "runner_config": {
-            "plugin:langbot/local-agent/default": {}
-        }
+        "runner_config": {}
     },
     "output": {
         "long-text-processing": {

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import sqlalchemy
 import traceback
 
@@ -85,7 +86,21 @@ class ModelManager:
             return
 
         try:
-            await self.sync_new_models_from_space()
+            sync_timeout = float(space_config.get('models_sync_timeout', 10))
+        except (TypeError, ValueError):
+            sync_timeout = 10
+
+        try:
+            self.ap.logger.info('Syncing new models from LangBot Space...')
+            if sync_timeout > 0:
+                await asyncio.wait_for(self.sync_new_models_from_space(), timeout=sync_timeout)
+            else:
+                await self.sync_new_models_from_space()
+            self.ap.logger.info('LangBot Space model sync completed.')
+        except asyncio.TimeoutError:
+            self.ap.logger.warning(
+                f'LangBot Space model sync timed out after {sync_timeout:g}s, skipping startup sync.'
+            )
         except Exception as e:
             self.ap.logger.warning('Failed to sync new models from LangBot Space, model list may not be updated.')
             self.ap.logger.warning(f'  - Error: {e}')
@@ -103,6 +118,9 @@ class ModelManager:
         )
         for provider in providers_result.all():
             try:
+                self.ap.logger.info(
+                    f'Loading model provider {provider.uuid} ({provider.name}, requester={provider.requester})...'
+                )
                 runtime_provider = await self.load_provider(provider)
                 self.provider_dict[provider.uuid] = runtime_provider
             except provider_errors.RequesterNotFoundError as e:
@@ -156,6 +174,14 @@ class ModelManager:
                 self.rerank_models.append(runtime_rerank_model)
             except Exception as e:
                 self.ap.logger.error(f'Failed to load model {rerank_model.uuid}: {e}\n{traceback.format_exc()}')
+
+        self.ap.logger.info(
+            'Loaded models from db: '
+            f'{len(self.provider_dict)} providers, '
+            f'{len(self.llm_models)} llm models, '
+            f'{len(self.embedding_models)} embedding models, '
+            f'{len(self.rerank_models)} rerank models.'
+        )
 
     async def sync_new_models_from_space(self):
         """Sync models from Space"""

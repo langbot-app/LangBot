@@ -4,7 +4,7 @@
 
 ## 总体进度
 
-**当前阶段**: Phase 3 进行中
+**当前阶段**: Phase 3 已完成，Phase 4 预留/部分上下文字段已填充
 
 | Phase | 描述 | 状态 |
 |-------|------|------|
@@ -12,7 +12,7 @@
 | Phase 1 | 核心架构（Registry、Orchestrator、上下文模型） | ✅ 完成 |
 | Phase 2 | 权限、能力声明、资源注入 | ✅ 完成 |
 | Phase 3 | 内置 runner 迁移到插件 | ✅ 完成（7/7） |
-| Phase 4 | EBA 事件支持 | 🔲 未开始 |
+| Phase 4 | EBA 事件支持 | 🔲 未开始（message event/actor/subject 上下文已预填充） |
 
 ---
 
@@ -49,7 +49,8 @@
 
 ### 官方插件
 
-> 插件仓库：`/home/glwuy/langbot-app/langbot-agent-runner/` (monorepo)
+> 外部服务插件仓库：`/home/glwuy/langbot-app/langbot-agent-runner/`  
+> 本地 Local Agent 插件仓库：`/home/glwuy/langbot-app/langbot-local-agent/`
 
 | 插件 | 状态 | 备注 |
 |------|------|------|
@@ -69,11 +70,11 @@
 
 ### 高优先级
 
-- [ ] 工具详情 API — 需要在 SDK 添加 GET_TOOL_DETAIL action 并在 AgentRunAPIProxy 中暴露
+- [x] 工具详情 API — SDK `GET_TOOL_DETAIL` action、`AgentRunAPIProxy.get_tool_detail()` 与 Host 侧授权校验已接通
 
 ### 低优先级 / 未来
 
-- [ ] EBA 完整集成 — event context 未在 context builder 中填充
+- [ ] EBA 完整集成 — message event/actor/subject 上下文已填充，完整事件路由与非消息事件仍待实现
 - [ ] 平台 API 动作执行 — `action.requested` 结果类型存在但未执行
 
 ---

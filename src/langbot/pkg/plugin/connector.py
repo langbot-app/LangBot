@@ -187,6 +187,15 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
     async def initialize_plugins(self):
         pass
 
+    async def _refresh_agent_runner_registry(self) -> None:
+        registry = getattr(self.ap, 'agent_runner_registry', None)
+        if registry is None:
+            return
+        try:
+            await registry.refresh()
+        except Exception as e:
+            self.ap.logger.warning(f'Failed to refresh agent runner registry: {e}')
+
     async def ping_plugin_runtime(self):
         if not hasattr(self, 'handler'):
             raise PluginRuntimeNotConnectedError('Plugin runtime is not connected')
@@ -550,6 +559,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 task_context.metadata.update(metadata)
 
         await self._wait_for_installed_plugin_ready(plugin_author, plugin_name, task_context)
+        await self._refresh_agent_runner_registry()
 
     async def upgrade_plugin(
         self,
@@ -567,6 +577,8 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             if trace is not None:
                 if task_context is not None:
                     task_context.trace(trace)
+
+        await self._refresh_agent_runner_registry()
 
     async def delete_plugin(
         self,
@@ -591,6 +603,8 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             if task_context is not None:
                 task_context.trace('Cleaning up plugin configuration and storage...')
             await self.handler.cleanup_plugin_data(plugin_author, plugin_name)
+
+        await self._refresh_agent_runner_registry()
 
     async def list_plugins(self, component_kinds: list[str] | None = None) -> list[dict[str, Any]]:
         """List plugins, optionally filtered by component kinds.

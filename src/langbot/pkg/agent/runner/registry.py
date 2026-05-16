@@ -1,4 +1,5 @@
 """Agent runner registry for discovering and caching runner descriptors."""
+
 from __future__ import annotations
 
 import typing
@@ -109,11 +110,14 @@ class AgentRunnerRegistry:
         if not label:
             label = {name: name}  # fallback
 
-        # SDK now provides these directly extracted from spec
-        protocol_version = runner_data.get('protocol_version', '1')
-        config_schema = runner_data.get('config', [])
-        capabilities = runner_data.get('capabilities', {})
-        permissions = runner_data.get('permissions', {})
+        spec = manifest.get('spec', {})
+
+        # SDK now provides these directly extracted from spec. Fall back to
+        # manifest.spec for older runtimes/tests that return the raw manifest.
+        protocol_version = runner_data.get('protocol_version') or spec.get('protocol_version', '1')
+        config_schema = runner_data.get('config') or spec.get('config', [])
+        capabilities = runner_data.get('capabilities') or spec.get('capabilities', {})
+        permissions = runner_data.get('permissions') or spec.get('permissions', {})
 
         # Build descriptor
         runner_id = format_runner_id(
@@ -259,19 +263,23 @@ class AgentRunnerRegistry:
 
         for descriptor in runners:
             # Add runner option
-            options.append({
-                'name': descriptor.id,
-                'label': descriptor.label,
-                'description': descriptor.description,
-            })
-
-            # Add config schema as stage if not empty
-            if descriptor.config_schema:
-                stages.append({
+            options.append(
+                {
                     'name': descriptor.id,
                     'label': descriptor.label,
                     'description': descriptor.description,
-                    'config': descriptor.config_schema,
-                })
+                }
+            )
+
+            # Add config schema as stage if not empty
+            if descriptor.config_schema:
+                stages.append(
+                    {
+                        'name': descriptor.id,
+                        'label': descriptor.label,
+                        'description': descriptor.description,
+                        'config': descriptor.config_schema,
+                    }
+                )
 
         return options, stages

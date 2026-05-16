@@ -13,9 +13,11 @@ Authorization paths:
 from __future__ import annotations
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+import types
+from unittest.mock import AsyncMock, MagicMock
 
 from langbot.pkg.agent.runner.session_registry import AgentRunSessionRegistry
+from langbot.pkg.plugin.handler import _build_tool_detail
 
 # Import shared test fixtures from conftest.py
 from .conftest import make_resources
@@ -112,10 +114,6 @@ class MockDisconnectCallback:
     """Mock disconnect callback for testing."""
     async def __call__(self):
         return True
-
-
-# Import ActionResponse for checking responses
-from langbot_plugin.runtime.io import handler
 
 
 class TestInvokeLLMAuthorization:
@@ -236,6 +234,33 @@ class TestInvokeLLMStreamAuthorization:
         run_id = None
         # No authorization check
         assert run_id is None
+
+
+def test_build_tool_detail_normalizes_plugin_component_manifest():
+    """GET_TOOL_DETAIL returns a uniform schema for ordinary plugin Tool manifests."""
+    manifest_tool = types.SimpleNamespace(
+        metadata=types.SimpleNamespace(
+            name='search',
+            label={'en_US': 'Search'},
+            description={'en_US': 'Search public data'},
+        ),
+        spec={
+            'llm_prompt': 'Search test data',
+            'parameters': {
+                'type': 'object',
+                'properties': {'q': {'type': 'string'}},
+            },
+        },
+    )
+
+    detail = _build_tool_detail(manifest_tool, requested_tool_name='author/plugin/search')
+
+    assert detail['name'] == 'author/plugin/search'
+    assert detail['description'] == 'Search test data'
+    assert detail['human_desc'] == 'Search test data'
+    assert detail['parameters']['properties']['q']['type'] == 'string'
+    assert detail['label'] == {'en_US': 'Search'}
+    assert detail['spec'] == manifest_tool.spec
 
 
 class TestCallToolAuthorization:
@@ -559,8 +584,6 @@ class TestHandlerActionAuthorization:
     @pytest.mark.asyncio
     async def test_invoke_llm_handler_authorized_path(self):
         """INVOKE_LLM handler: authorized when model in resources."""
-        from langbot_plugin.runtime.io import handler as io_handler
-
         registry = AgentRunSessionRegistry()
         resources = make_resources(models=[{'model_id': 'model_001'}])
 
@@ -822,8 +845,6 @@ class TestSDKAgentRunAPIProxyFieldConsistency:
         """RETRIEVE_KNOWLEDGE_BASE: SDK fields match Host handler."""
         # SDK agent_run_api.py lines 178-183
         sdk_fields = ['run_id', 'kb_id', 'query_text', 'top_k', 'filters']
-        # Host handler.py lines 863-867
-        host_fields = ['query_id', 'kb_id', 'query_text', 'top_k', 'filters', 'run_id']
 
         # Note: query_id is from query context, not SDK proxy
         for field in ['run_id', 'kb_id', 'query_text', 'top_k', 'filters']:
@@ -934,6 +955,7 @@ class TestSessionExpiryAndCleanup:
         # Check session status
         started_at = session['status']['started_at']
         last_activity = session['status']['last_activity_at']
+        assert last_activity >= started_at
 
         # Session should be valid initially
         current_time = int(time.time())
@@ -964,6 +986,7 @@ class TestSessionExpiryAndCleanup:
         # Note: This won't actually cleanup because session is just created
         # We need to manually test cleanup logic
         cleaned = await registry.cleanup_stale_sessions(max_age_seconds=0)
+        assert isinstance(cleaned, int)
 
         # Session should still exist (it was just created)
         # With max_age=0, sessions with last_activity > 0 seconds ago would be cleaned

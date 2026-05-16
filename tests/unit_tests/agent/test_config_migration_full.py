@@ -1,4 +1,5 @@
 """Tests for pipeline config migration to new runner format."""
+
 from __future__ import annotations
 
 import json
@@ -149,7 +150,7 @@ class TestDefaultPipelineConfig:
     """Tests for default-pipeline-config.json format."""
 
     def test_default_config_is_new_format(self):
-        """Default pipeline config should use new format."""
+        """Default pipeline template should use the new runner config shape."""
         from langbot.pkg.utils import paths as path_utils
 
         template_path = path_utils.get_resource_path('templates/default-pipeline-config.json')
@@ -160,27 +161,25 @@ class TestDefaultPipelineConfig:
         assert 'ai' in config
         assert 'runner' in config['ai']
         assert 'id' in config['ai']['runner']
-        assert config['ai']['runner']['id'] == 'plugin:langbot/local-agent/default'
+        assert config['ai']['runner']['id'] == ''
 
-        # Should have runner_config with local-agent default
+        # Plugin runner selection and config defaults are rendered at creation
+        # time from installed AgentRunner metadata.
         assert 'runner_config' in config['ai']
-        assert 'plugin:langbot/local-agent/default' in config['ai']['runner_config']
+        assert config['ai']['runner_config'] == {}
 
         # Should NOT have old local-agent key
         assert 'local-agent' not in config['ai']
 
-    def test_default_config_has_model_config(self):
-        """Default config should have model config in runner_config."""
+    def test_default_config_does_not_hardcode_plugin_schema(self):
+        """Default template should not duplicate plugin-provided config schema."""
         from langbot.pkg.utils import paths as path_utils
 
         template_path = path_utils.get_resource_path('templates/default-pipeline-config.json')
         with open(template_path, 'r', encoding='utf-8') as f:
             config = json.load(f)
 
-        runner_config = config['ai']['runner_config']['plugin:langbot/local-agent/default']
-        assert 'model' in runner_config
-        assert 'max-round' in runner_config
-        assert 'prompt' in runner_config
+        assert config['ai']['runner_config'] == {}
 
 
 class TestResolveRunnerIdBackwardCompat:
@@ -242,9 +241,7 @@ class TestResolveRunnerConfigBackwardCompat:
                 },
             },
         }
-        runner_config = ConfigMigration.resolve_runner_config(
-            config, 'plugin:langbot/local-agent/default'
-        )
+        runner_config = ConfigMigration.resolve_runner_config(config, 'plugin:langbot/local-agent/default')
         assert runner_config['max-round'] == 20
 
     def test_resolve_old_format_config(self):
@@ -254,9 +251,7 @@ class TestResolveRunnerConfigBackwardCompat:
                 'local-agent': {'max-round': 15},
             },
         }
-        runner_config = ConfigMigration.resolve_runner_config(
-            config, 'plugin:langbot/local-agent/default'
-        )
+        runner_config = ConfigMigration.resolve_runner_config(config, 'plugin:langbot/local-agent/default')
         assert runner_config['max-round'] == 15
 
     def test_resolve_new_format_priority(self):
@@ -269,7 +264,5 @@ class TestResolveRunnerConfigBackwardCompat:
                 'local-agent': {'max-round': 10},  # Old, should be ignored
             },
         }
-        runner_config = ConfigMigration.resolve_runner_config(
-            config, 'plugin:langbot/local-agent/default'
-        )
+        runner_config = ConfigMigration.resolve_runner_config(config, 'plugin:langbot/local-agent/default')
         assert runner_config['max-round'] == 25

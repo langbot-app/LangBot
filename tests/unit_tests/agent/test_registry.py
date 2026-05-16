@@ -1,4 +1,5 @@
 """Tests for agent runner registry."""
+
 from __future__ import annotations
 
 import pytest
@@ -10,14 +11,18 @@ from langbot.pkg.agent.runner.errors import RunnerNotFoundError, RunnerNotAuthor
 
 class FakeApplication:
     """Fake Application for testing."""
+
     def __init__(self):
         class FakeLogger:
             def info(self, msg):
                 pass
+
             def debug(self, msg):
                 pass
+
             def warning(self, msg):
                 pass
+
             def error(self, msg):
                 pass
 
@@ -234,13 +239,11 @@ class TestRegistryMetadataForPipeline:
         assert 'plugin:langbot/local-agent/default' in option_ids
         assert 'plugin:alice/my-agent/custom' in option_ids
 
-        # Should have stages for runners with config
-        # Note: stages may be empty if config_schema is empty list
-        # In real scenarios, runners with config_schema will generate stages
-        # Only runners with non-empty config_schema generate stages
-        # mock data has config: [{'name': 'param1', 'type': 'string'}] for alice/my-agent
-        # but config is now taken from runner_data.get('config', [])
-        assert len(stages) >= 0  # Can be 0 if all runners have empty config
+        # Should fall back to manifest.spec.config when runtime does not return
+        # extracted config at top level.
+        assert len(stages) == 1
+        assert stages[0]['name'] == 'plugin:alice/my-agent/custom'
+        assert stages[0]['config'] == [{'name': 'param1', 'type': 'string'}]
 
 
 class TestDescriptorValidation:

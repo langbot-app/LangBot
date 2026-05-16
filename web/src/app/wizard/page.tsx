@@ -202,7 +202,9 @@ export default function WizardPage() {
 
   const runnerOptions = useMemo(() => {
     if (!runnerStage) return [];
-    const runnerField = runnerStage.config.find((c) => c.name === 'runner');
+    const runnerField =
+      runnerStage.config.find((c) => c.name === 'id') ??
+      runnerStage.config.find((c) => c.name === 'runner');
     return runnerField?.options ?? [];
   }, [runnerStage]);
 
@@ -257,9 +259,11 @@ export default function WizardPage() {
   const handleSelectRunner = useCallback(
     (runner: string) => {
       setSelectedRunner(runner);
+      const configStage = aiConfigTab?.stages.find((s) => s.name === runner);
+      setRunnerConfig(configStage ? getDefaultValues(configStage.config) : {});
       saveProgress({ step: 2, selected_runner: runner });
     },
-    [saveProgress],
+    [aiConfigTab, saveProgress],
   );
 
   // ---- Navigation helpers ----
@@ -427,14 +431,36 @@ export default function WizardPage() {
       //    (includes trigger, safety, ai, output sections).
       //    Then merge only the AI section with the wizard's runner config.
       const createdPipeline = await httpClient.getPipeline(pipelineResp.uuid);
-      const fullConfig = createdPipeline.pipeline.config;
+      const fullConfig = createdPipeline.pipeline.config as unknown as Record<
+        string,
+        unknown
+      >;
+      const fullAiConfig =
+        fullConfig.ai && typeof fullConfig.ai === 'object'
+          ? (fullConfig.ai as Record<string, unknown>)
+          : {};
+      const existingRunner =
+        fullAiConfig.runner && typeof fullAiConfig.runner === 'object'
+          ? (fullAiConfig.runner as Record<string, unknown>)
+          : {};
+      const existingRunnerConfigs =
+        fullAiConfig.runner_config &&
+        typeof fullAiConfig.runner_config === 'object'
+          ? (fullAiConfig.runner_config as Record<string, unknown>)
+          : {};
 
       const mergedConfig = {
         ...fullConfig,
         ai: {
-          ...fullConfig.ai,
-          runner: { runner: selectedRunner },
-          [selectedRunner]: runnerConfig,
+          ...fullAiConfig,
+          runner: {
+            ...existingRunner,
+            id: selectedRunner,
+          },
+          runner_config: {
+            ...existingRunnerConfigs,
+            [selectedRunner]: runnerConfig,
+          },
         },
       };
 
@@ -1113,26 +1139,28 @@ function StepAIEngine({
             })}
 
             {/* Space promotion banner */}
-            {selected === 'local-agent' && isLocalAccount && (
-              <div className="animate-in fade-in slide-in-from-left-2 duration-300">
-                <div className="relative rounded-lg p-[2px] bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500">
-                  <div className="rounded-[calc(0.5rem-2px)] bg-background p-3 flex flex-col items-center gap-2 text-center">
-                    <Sparkles className="w-6 h-6 text-purple-500 shrink-0" />
-                    <p className="text-xs font-medium">
-                      {t('wizard.spaceBanner.message')}
-                    </p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={onSpaceAuth}
-                      className="w-full"
-                    >
-                      {t('wizard.spaceBanner.action')}
-                    </Button>
+            {(selected === 'local-agent' ||
+              selected === 'plugin:langbot/local-agent/default') &&
+              isLocalAccount && (
+                <div className="animate-in fade-in slide-in-from-left-2 duration-300">
+                  <div className="relative rounded-lg p-[2px] bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500">
+                    <div className="rounded-[calc(0.5rem-2px)] bg-background p-3 flex flex-col items-center gap-2 text-center">
+                      <Sparkles className="w-6 h-6 text-purple-500 shrink-0" />
+                      <p className="text-xs font-medium">
+                        {t('wizard.spaceBanner.message')}
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={onSpaceAuth}
+                        className="w-full"
+                      >
+                        {t('wizard.spaceBanner.action')}
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
           </div>
         </div>
 

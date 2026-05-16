@@ -6,6 +6,7 @@ import time
 import typing
 
 from langbot_plugin.api.entities.builtin.pipeline import query as pipeline_query
+from langbot_plugin.api.entities.builtin.platform import message as platform_message
 
 from ...core import app
 from .descriptor import AgentRunnerDescriptor
@@ -117,9 +118,9 @@ class AgentRunContextV1(typing.TypedDict):
     run_id: str
     trigger: AgentTrigger
     conversation: ConversationContext | None
-    event: dict[str, typing.Any] | None  # Reserved for EBA
-    actor: dict[str, typing.Any] | None  # Reserved for EBA
-    subject: dict[str, typing.Any] | None  # Reserved for EBA
+    event: dict[str, typing.Any] | None
+    actor: dict[str, typing.Any] | None
+    subject: dict[str, typing.Any] | None
     messages: list[dict[str, typing.Any]]
     input: AgentInput
     params: dict[str, typing.Any]
@@ -226,7 +227,7 @@ class AgentRunContextBuilder:
             'sdk_protocol_version': descriptor.protocol_version,
             'query_id': query.query_id,
             'trace_id': run_id,  # Use run_id as trace_id for now
-            'deadline_at': None,  # TODO: set from runner config timeout
+            'deadline_at': self._build_deadline(runner_config),
             'metadata': {
                 'bot_name': query.variables.get('_monitoring_bot_name', 'Unknown'),
                 'pipeline_name': query.variables.get('_monitoring_pipeline_name', 'Unknown'),
@@ -238,9 +239,9 @@ class AgentRunContextBuilder:
             'run_id': run_id,
             'trigger': trigger,
             'conversation': conversation,
-            'event': None,  # Reserved for EBA
-            'actor': None,  # Reserved for EBA
-            'subject': None,  # Reserved for EBA
+            'event': self._build_event(query),
+            'actor': self._build_actor(query),
+            'subject': self._build_subject(query),
             'messages': messages,
             'input': input,
             'params': params,
@@ -278,8 +279,199 @@ class AgentRunContextBuilder:
             'text': text,
             'contents': contents,
             'message_chain': message_chain_dict,
-            'attachments': [],  # TODO: extract attachments from message_chain
+            'attachments': self._build_attachments(query, contents),
         }
+
+    def _build_attachments(
+        self,
+        query: pipeline_query.Query,
+        contents: list[dict[str, typing.Any]],
+    ) -> list[dict[str, typing.Any]]:
+        """Extract runner-consumable attachment data from input contents."""
+        attachments: list[dict[str, typing.Any]] = []
+
+        for elem in contents:
+            elem_type = elem.get('type')
+            if elem_type == 'image_url':
+                image_url = elem.get('image_url') or {}
+                attachments.append(
+                    {
+                        'type': 'image',
+                        'source': 'url',
+                        'url': image_url.get('url') if isinstance(image_url, dict) else str(image_url),
+                    }
+                )
+            elif elem_type == 'image_base64':
+                image_base64 = elem.get('image_base64')
+                attachments.append(
+                    {
+                        'type': 'image',
+                        'source': 'base64',
+                        'content': image_base64,
+                        'content_type': self._infer_base64_content_type(image_base64, 'image/jpeg'),
+                        'name': 'image',
+                        'has_content': bool(image_base64),
+                    }
+                )
+            elif elem_type == 'file_url':
+                attachments.append(
+                    {
+                        'type': 'file',
+                        'source': 'url',
+                        'url': elem.get('file_url'),
+                        'name': elem.get('file_name'),
+                    }
+                )
+            elif elem_type == 'file_base64':
+                file_base64 = elem.get('file_base64')
+                attachments.append(
+                    {
+                        'type': 'file',
+                        'source': 'base64',
+                        'name': elem.get('file_name'),
+                        'content': file_base64,
+                        'content_type': self._infer_base64_content_type(file_base64, 'application/octet-stream'),
+                        'has_content': bool(file_base64),
+                    }
+                )
+
+        message_chain = getattr(query, 'message_chain', None)
+        if message_chain:
+            for component in message_chain:
+                if isinstance(component, platform_message.Image):
+                    attachments.append(
+                        {
+                            'type': 'image',
+                            'source': 'message_chain',
+                            'id': component.image_id or None,
+                            'url': component.url or None,
+                            'path': str(component.path) if component.path else None,
+                            'content': component.base64 or None,
+                            'content_type': self._infer_base64_content_type(component.base64, 'image/jpeg'),
+                            'name': 'image',
+                            'has_content': bool(component.base64),
+                        }
+                    )
+                elif isinstance(component, platform_message.File):
+                    attachments.append(
+                        {
+                            'type': 'file',
+                            'source': 'message_chain',
+                            'id': component.id or None,
+                            'name': component.name or None,
+                            'size': component.size or 0,
+                            'url': component.url or None,
+                            'path': component.path or None,
+                            'content': component.base64 or None,
+                            'content_type': self._infer_base64_content_type(component.base64, 'application/octet-stream'),
+                            'has_content': bool(component.base64),
+                        }
+                    )
+                elif isinstance(component, platform_message.Voice):
+                    attachments.append(
+                        {
+                            'type': 'voice',
+                            'source': 'message_chain',
+                            'id': component.voice_id or None,
+                            'url': component.url or None,
+                            'path': component.path or None,
+                            'duration': component.length or 0,
+                            'content': component.base64 or None,
+                            'content_type': self._infer_base64_content_type(component.base64, 'audio/mpeg'),
+                            'name': 'voice',
+                            'has_content': bool(component.base64),
+                        }
+                    )
+
+        return attachments
+
+    def _infer_base64_content_type(self, value: typing.Any, default: str) -> str:
+        """Infer MIME type from a data URL base64 value."""
+        if not isinstance(value, str):
+            return default
+        if value.startswith('data:') and ';base64,' in value:
+            return value[5:value.find(';base64,')] or default
+        return default
+
+    def _build_event(self, query: pipeline_query.Query) -> dict[str, typing.Any]:
+        """Build a minimal event envelope from the platform message event."""
+        message_event = getattr(query, 'message_event', None)
+        event_data: dict[str, typing.Any] = {}
+
+        if message_event and hasattr(message_event, 'model_dump'):
+            try:
+                event_data = message_event.model_dump(mode='json')
+            except TypeError:
+                event_data = message_event.model_dump()
+            except Exception:
+                event_data = {}
+            event_data.pop('source_platform_object', None)
+
+        message_chain = getattr(query, 'message_chain', None)
+        message_id = getattr(message_chain, 'message_id', None)
+        if message_id == -1:
+            message_id = None
+
+        event_time = getattr(message_event, 'time', None) if message_event else None
+        event_timestamp = int(event_time) if isinstance(event_time, (int, float)) else None
+
+        return {
+            'event_type': getattr(message_event, 'type', None) or 'message.received',
+            'event_id': str(message_id or getattr(query, 'query_id', '')),
+            'event_timestamp': event_timestamp,
+            'event_data': event_data,
+        }
+
+    def _build_actor(self, query: pipeline_query.Query) -> dict[str, typing.Any]:
+        """Build actor context for the sender that triggered the run."""
+        message_event = getattr(query, 'message_event', None)
+        sender = getattr(message_event, 'sender', None) if message_event else None
+        actor_id = getattr(sender, 'id', None) or getattr(query, 'sender_id', None)
+        actor_name = sender.get_name() if sender and hasattr(sender, 'get_name') else None
+
+        return {
+            'actor_type': 'user',
+            'actor_id': str(actor_id) if actor_id is not None else None,
+            'actor_name': actor_name,
+        }
+
+    def _build_subject(self, query: pipeline_query.Query) -> dict[str, typing.Any]:
+        """Build subject context for the current message."""
+        message_chain = getattr(query, 'message_chain', None)
+        message_id = getattr(message_chain, 'message_id', None)
+        if message_id == -1:
+            message_id = None
+
+        launcher_type = getattr(query, 'launcher_type', None)
+        launcher_type_value = getattr(launcher_type, 'value', launcher_type)
+
+        return {
+            'subject_type': 'message',
+            'subject_id': str(message_id or getattr(query, 'query_id', '')),
+            'subject_data': {
+                'launcher_type': launcher_type_value,
+                'launcher_id': getattr(query, 'launcher_id', None),
+                'sender_id': str(getattr(query, 'sender_id', '')),
+                'bot_uuid': getattr(query, 'bot_uuid', None),
+                'pipeline_uuid': getattr(query, 'pipeline_uuid', None),
+            },
+        }
+
+    def _build_deadline(self, runner_config: dict[str, typing.Any]) -> int | None:
+        """Build deadline timestamp from runner timeout config if present."""
+        timeout = runner_config.get('timeout')
+        if timeout is None:
+            return None
+
+        try:
+            timeout_seconds = float(timeout)
+        except (TypeError, ValueError):
+            return None
+
+        if timeout_seconds <= 0:
+            return None
+
+        return int(time.time() + timeout_seconds)
 
     def _build_messages(self, query: pipeline_query.Query) -> list[dict[str, typing.Any]]:
         """Build messages list from query."""

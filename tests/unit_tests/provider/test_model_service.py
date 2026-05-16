@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -16,6 +17,8 @@ from langbot.pkg.entity.persistence import model as persistence_model
 from langbot.pkg.pipeline.preproc.preproc import PreProcessor
 from langbot.pkg.provider.modelmgr import requester
 from langbot.pkg.provider.modelmgr.modelmgr import ModelManager
+from langbot.pkg.provider.modelmgr.requesters.chatcmpl import OpenAIChatCompletions
+from langbot.pkg.provider.modelmgr.requesters.modelscopechatcmpl import ModelScopeChatCompletions
 from langbot.pkg.provider.modelmgr.token import TokenManager
 from langbot.pkg.provider.runners.localagent import LocalAgentRunner
 
@@ -86,6 +89,96 @@ def test_token_manager_next_token_ignores_empty_token_list():
 
     assert token_mgr.get_token() == ''
     assert token_mgr.using_token_index == 0
+
+
+@pytest.mark.asyncio
+async def test_openai_requester_initialize_uses_placeholder_api_key(monkeypatch):
+    captured_kwargs = {}
+
+    def fake_client(**kwargs):
+        captured_kwargs.update(kwargs)
+        return SimpleNamespace(**kwargs)
+
+    monkeypatch.setattr('langbot.pkg.provider.modelmgr.requesters.chatcmpl.openai.AsyncClient', fake_client)
+    monkeypatch.setattr('langbot.pkg.provider.modelmgr.requesters.chatcmpl.httpx.AsyncClient', fake_client)
+
+    requester_inst = OpenAIChatCompletions(ap=SimpleNamespace(), config={})
+    await requester_inst.initialize()
+
+    assert captured_kwargs['api_key'] == OpenAIChatCompletions.init_api_key
+
+
+@pytest.mark.asyncio
+async def test_modelscope_requester_initialize_uses_placeholder_api_key(monkeypatch):
+    captured_kwargs = {}
+
+    def fake_client(**kwargs):
+        captured_kwargs.update(kwargs)
+        return SimpleNamespace(**kwargs)
+
+    monkeypatch.setattr('langbot.pkg.provider.modelmgr.requesters.modelscopechatcmpl.openai.AsyncClient', fake_client)
+    monkeypatch.setattr('langbot.pkg.provider.modelmgr.requesters.modelscopechatcmpl.httpx.AsyncClient', fake_client)
+
+    requester_inst = ModelScopeChatCompletions(ap=SimpleNamespace(), config={})
+    await requester_inst.initialize()
+
+    assert captured_kwargs['api_key'] == ModelScopeChatCompletions.init_api_key
+
+
+@pytest.mark.asyncio
+async def test_openai_embedding_call_overrides_placeholder_api_key():
+    captured_request = {}
+
+    async def fake_create(**kwargs):
+        captured_request['api_key'] = fake_client.api_key
+        captured_request['kwargs'] = kwargs
+        return SimpleNamespace(
+            data=[SimpleNamespace(embedding=[0.1, 0.2])],
+            usage=SimpleNamespace(prompt_tokens=3, total_tokens=3),
+        )
+
+    fake_client = SimpleNamespace(
+        api_key=OpenAIChatCompletions.init_api_key,
+        embeddings=SimpleNamespace(create=fake_create),
+    )
+
+    requester_inst = OpenAIChatCompletions(ap=SimpleNamespace(), config={})
+    requester_inst.client = fake_client
+
+    embeddings, usage_info = await requester_inst.invoke_embedding(
+        model=requester.RuntimeEmbeddingModel(
+            model_entity=SimpleNamespace(name='text-embedding-3-small', extra_args={}),
+            provider=SimpleNamespace(token_mgr=TokenManager('provider-uuid', ['  runtime-key  ', '', 'runtime-key'])),
+        ),
+        input_text=['hello'],
+    )
+
+    assert captured_request['api_key'] == 'runtime-key'
+    assert captured_request['kwargs']['model'] == 'text-embedding-3-small'
+    assert embeddings == [[0.1, 0.2]]
+    assert usage_info == {'prompt_tokens': 3, 'total_tokens': 3}
+
+
+@pytest.mark.asyncio
+async def test_model_manager_initialize_skips_space_sync_after_timeout():
+    ap = SimpleNamespace()
+    ap.discover = SimpleNamespace(get_components_by_kind=Mock(return_value=[]))
+    ap.instance_config = SimpleNamespace(data={'space': {'models_sync_timeout': 0.01}})
+    ap.logger = Mock()
+
+    mgr = ModelManager(ap)
+    mgr.load_models_from_db = AsyncMock()
+
+    async def slow_sync():
+        await asyncio.sleep(1)
+
+    mgr.sync_new_models_from_space = AsyncMock(side_effect=slow_sync)
+
+    await mgr.initialize()
+
+    mgr.load_models_from_db.assert_awaited_once()
+    mgr.sync_new_models_from_space.assert_awaited_once()
+    ap.logger.warning.assert_any_call('LangBot Space model sync timed out after 0.01s, skipping startup sync.')
 
 
 @pytest.mark.asyncio

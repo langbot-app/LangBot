@@ -41,6 +41,63 @@ def _make_rag_error_response(error: Exception, error_type: str, **extra_context)
     return handler.ActionResponse.error(message=message)
 
 
+def _i18n_to_dict(value: Any) -> dict[str, Any]:
+    """Convert SDK i18n values to plain dictionaries."""
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+    if hasattr(value, 'to_dict'):
+        return value.to_dict()
+    if hasattr(value, 'model_dump'):
+        return value.model_dump()
+    return {'en_US': str(value)}
+
+
+def _i18n_to_text(value: Any) -> str:
+    """Return a stable human-readable text from SDK i18n values."""
+    data = _i18n_to_dict(value)
+    for key in ('en_US', 'zh_Hans', 'zh_Hant'):
+        text = data.get(key)
+        if text:
+            return str(text)
+    for text in data.values():
+        if text:
+            return str(text)
+    return ''
+
+
+def _build_tool_detail(tool: Any, requested_tool_name: str | None = None) -> dict[str, Any]:
+    """Normalize LLMTool and plugin ComponentManifest objects for tool detail APIs."""
+    if hasattr(tool, 'metadata') and hasattr(tool, 'spec'):
+        metadata = tool.metadata
+        spec = tool.spec or {}
+        description = spec.get('llm_prompt') or _i18n_to_text(getattr(metadata, 'description', None))
+        parameters = spec.get('parameters') or {}
+
+        return {
+            'name': requested_tool_name or getattr(metadata, 'name', ''),
+            'label': _i18n_to_dict(getattr(metadata, 'label', None)),
+            'description': description,
+            'human_desc': description,
+            'parameters': parameters,
+            'spec': spec,
+        }
+
+    name = getattr(tool, 'name', requested_tool_name or '')
+    description = getattr(tool, 'description', None) or getattr(tool, 'human_desc', '') or ''
+    parameters = getattr(tool, 'parameters', None) or {}
+
+    return {
+        'name': name,
+        'label': {},
+        'description': description,
+        'human_desc': getattr(tool, 'human_desc', description) or description,
+        'parameters': parameters,
+        'spec': {'parameters': parameters},
+    }
+
+
 async def _validate_run_authorization(
     run_id: str,
     resource_type: str,
@@ -462,7 +519,13 @@ class RuntimeConnectionHandler(handler.Handler):
                 return
 
             messages_obj = [provider_message.Message.model_validate(message) for message in messages]
-            funcs_obj = [resource_tool.LLMTool.model_validate(func) for func in funcs]
+
+            # The func field is excluded during model_dump() in plugin side
+            # but required by LLMTool validation on Host.
+            async def _placeholder_func(**kwargs):
+                pass
+
+            funcs_obj = [resource_tool.LLMTool.model_validate({**func, 'func': _placeholder_func}) for func in funcs]
 
             async for chunk in llm_model.provider.invoke_llm_stream(
                 query=None,
@@ -538,30 +601,26 @@ class RuntimeConnectionHandler(handler.Handler):
             """
             tool_name = data['tool_name']
             run_id = data.get('run_id')  # Optional: present for AgentRunner calls
+            caller_plugin_identity = data.get('caller_plugin_identity')  # Optional: for cross-plugin validation
 
             # Permission validation for AgentRunner calls
             if run_id:
                 session, error = await _validate_run_authorization(
-                    run_id, 'tool', tool_name, self.ap
+                    run_id, 'tool', tool_name, self.ap, caller_plugin_identity
                 )
                 if error:
                     return error
 
             try:
-                tool = self.ap.tool_mgr.get_tool_by_name(tool_name)
+                tool = await self.ap.tool_mgr.get_tool_by_name(tool_name)
                 if tool is None:
                     return handler.ActionResponse.error(
                         message=f'Tool {tool_name} not found',
                     )
 
-                # Build tool detail for LLM function calling
-                tool_detail = {
-                    'name': tool.name,
-                    'description': tool.description or '',
-                    'parameters': tool.parameters or {},
-                }
+                tool_detail = _build_tool_detail(tool, requested_tool_name=tool_name)
 
-                return handler.ActionResponse.success(data=tool_detail)
+                return handler.ActionResponse.success(data={'tool': tool_detail})
             except Exception as e:
                 traceback.print_exc()
                 return handler.ActionResponse.error(
