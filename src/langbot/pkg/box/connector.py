@@ -38,7 +38,23 @@ def _get_box_config(ap) -> dict:
     """Return the 'box' section from instance config, with safe fallbacks."""
     instance_config = getattr(ap, 'instance_config', None)
     config_data = getattr(instance_config, 'data', {}) if instance_config is not None else {}
-    return config_data.get('box', {})
+    box_config = dict(config_data.get('box', {}) or {})
+    local_config = dict(box_config.get('local') or {})
+    env_overrides = {
+        'host_root': os.getenv('LANGBOT_BOX_LOCAL_HOST_ROOT', ''),
+        'default_workspace': os.getenv('LANGBOT_BOX_LOCAL_DEFAULT_WORKSPACE', ''),
+        'skills_root': os.getenv('LANGBOT_BOX_LOCAL_SKILLS_ROOT', ''),
+    }
+    for key, value in env_overrides.items():
+        if value:
+            local_config[key] = value
+
+    allowed_mount_roots = os.getenv('LANGBOT_BOX_LOCAL_ALLOWED_MOUNT_ROOTS', '')
+    if allowed_mount_roots:
+        local_config['allowed_mount_roots'] = [item.strip() for item in allowed_mount_roots.split(',') if item.strip()]
+    if local_config:
+        box_config['local'] = local_config
+    return box_config
 
 
 def _get_runtime_endpoint(box_cfg: dict) -> str:

@@ -300,6 +300,52 @@ class BoxService:
         )
         return getter(session_id, ws_relay_base_url, process_id)
 
+    async def list_skills(self) -> list[dict]:
+        return await self.client.list_skills()
+
+    async def get_skill(self, name: str) -> dict | None:
+        return await self.client.get_skill(name)
+
+    async def create_skill(self, skill: dict) -> dict:
+        return await self.client.create_skill(skill)
+
+    async def update_skill(self, name: str, skill: dict) -> dict:
+        return await self.client.update_skill(name, skill)
+
+    async def delete_skill(self, name: str) -> None:
+        await self.client.delete_skill(name)
+
+    async def scan_skill_directory(self, path: str) -> dict:
+        return await self.client.scan_skill_directory(path)
+
+    async def list_skill_files(
+        self,
+        name: str,
+        path: str = '.',
+        include_hidden: bool = False,
+        max_entries: int = 200,
+    ) -> dict:
+        return await self.client.list_skill_files(name, path, include_hidden, max_entries)
+
+    async def read_skill_file(self, name: str, path: str) -> dict:
+        return await self.client.read_skill_file(name, path)
+
+    async def write_skill_file(self, name: str, path: str, content: str) -> dict:
+        return await self.client.write_skill_file(name, path, content)
+
+    async def preview_skill_zip(self, file_bytes: bytes, filename: str, source_subdir: str = '') -> list[dict]:
+        return await self.client.preview_skill_zip(file_bytes, filename, source_subdir)
+
+    async def install_skill_zip(
+        self,
+        file_bytes: bytes,
+        filename: str,
+        source_paths: list[str] | None = None,
+        source_path: str = '',
+        source_subdir: str = '',
+    ) -> list[dict]:
+        return await self.client.install_skill_zip(file_bytes, filename, source_paths, source_path, source_subdir)
+
     def _serialize_result(self, result: BoxExecutionResult) -> dict:
         stdout, stdout_truncated = self._truncate(result.stdout)
         stderr, stderr_truncated = self._truncate(result.stderr)
@@ -389,7 +435,22 @@ class BoxService:
         }
 
     def _local_config(self) -> dict:
-        return _get_box_config(self.ap).get('local') or {}
+        local_config = dict(_get_box_config(self.ap).get('local') or {})
+        env_overrides = {
+            'host_root': os.getenv('LANGBOT_BOX_LOCAL_HOST_ROOT', ''),
+            'default_workspace': os.getenv('LANGBOT_BOX_LOCAL_DEFAULT_WORKSPACE', ''),
+            'skills_root': os.getenv('LANGBOT_BOX_LOCAL_SKILLS_ROOT', ''),
+        }
+        for key, value in env_overrides.items():
+            if value:
+                local_config[key] = value
+
+        allowed_mount_roots = os.getenv('LANGBOT_BOX_LOCAL_ALLOWED_MOUNT_ROOTS', '')
+        if allowed_mount_roots:
+            local_config['allowed_mount_roots'] = [
+                item.strip() for item in allowed_mount_roots.split(',') if item.strip()
+            ]
+        return local_config
 
     def _load_allowed_mount_roots(self) -> list[str]:
         configured_roots = self._local_config().get('allowed_mount_roots', [])
@@ -418,7 +479,17 @@ class BoxService:
             if self.host_root is None:
                 return None
             default_workspace = os.path.join(self.host_root, 'default')
+        elif not os.path.isabs(default_workspace) and self.host_root is not None:
+            default_workspace = os.path.join(self.host_root, default_workspace)
         return os.path.realpath(os.path.abspath(default_workspace))
+
+    def get_skills_root(self) -> str | None:
+        skills_root = str(self._local_config().get('skills_root', '') or 'skills').strip()
+        if not skills_root:
+            skills_root = 'skills'
+        if not os.path.isabs(skills_root) and self.host_root is not None:
+            skills_root = os.path.join(self.host_root, skills_root)
+        return os.path.realpath(os.path.abspath(skills_root))
 
     def _load_custom_image(self) -> str | None:
         raw = str(self._local_config().get('image', '') or '').strip()

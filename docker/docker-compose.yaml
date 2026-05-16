@@ -22,7 +22,10 @@ services:
     image: rockchin/langbot:latest
     container_name: langbot_box
     volumes:
-      - ./data/box:/workspaces
+      # Keep the source and target path identical because langbot_box uses the
+      # host Docker socket to create sandbox containers. Override
+      # LANGBOT_BOX_ROOT with an absolute path if you do not want the default.
+      - ${LANGBOT_BOX_ROOT:-${PWD}/data/box}:${LANGBOT_BOX_ROOT:-${PWD}/data/box}
       # Mount container runtime socket for Box sandbox backend.
       # Uncomment the one that matches your container runtime:
       # - /var/run/podman/podman.sock:/var/run/podman/podman.sock   # Podman
@@ -30,6 +33,10 @@ services:
     restart: on-failure
     environment:
       - TZ=Asia/Shanghai
+      - LANGBOT_BOX_LOCAL_HOST_ROOT=${LANGBOT_BOX_ROOT:-${PWD}/data/box}
+      - LANGBOT_BOX_LOCAL_DEFAULT_WORKSPACE=default
+      - LANGBOT_BOX_LOCAL_SKILLS_ROOT=skills
+      - LANGBOT_BOX_LOCAL_ALLOWED_MOUNT_ROOTS=${LANGBOT_BOX_ROOT:-${PWD}/data/box}
     command: ["uv", "run", "--no-sync", "-m", "langbot_plugin.box", "--mode", "ws"]
     networks:
       - langbot_network
@@ -39,10 +46,13 @@ services:
     container_name: langbot
     volumes:
       - ./data:/app/data
-      - ./data/box:/workspaces
     restart: on-failure
     environment:
       - TZ=Asia/Shanghai
+      - LANGBOT_BOX_LOCAL_HOST_ROOT=${LANGBOT_BOX_ROOT:-${PWD}/data/box}
+      - LANGBOT_BOX_LOCAL_DEFAULT_WORKSPACE=default
+      - LANGBOT_BOX_LOCAL_SKILLS_ROOT=skills
+      - LANGBOT_BOX_LOCAL_ALLOWED_MOUNT_ROOTS=${LANGBOT_BOX_ROOT:-${PWD}/data/box}
     ports:
       - 5300:5300  # For web ui and webhook callback
       - 2280-2285:2280-2285  # For platform reverse connection

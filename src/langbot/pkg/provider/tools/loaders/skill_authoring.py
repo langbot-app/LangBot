@@ -139,21 +139,13 @@ class SkillToolLoader(loader.ToolLoader):
         # Resolve sandbox path to host path
         host_path = self._resolve_workspace_directory(sandbox_path)
 
-        # Verify SKILL.md exists
-        skill_md_path = os.path.join(host_path, 'SKILL.md')
-        if not os.path.isfile(skill_md_path):
-            # Try skill.md as alternative
-            skill_md_path = os.path.join(host_path, 'skill.md')
-            if not os.path.isfile(skill_md_path):
-                raise ValueError(f'SKILL.md not found in directory: {sandbox_path}')
-
         # Get or create skill service
         skill_service = getattr(self.ap, 'skill_service', None)
         if skill_service is None:
             raise ValueError('Skill service not available')
 
         # Scan and register the skill
-        scanned = skill_service.scan_directory(host_path)
+        scanned = await skill_service.scan_directory_async(host_path)
 
         # Override name if provided
         skill_name = str(parameters.get('name') or scanned['name']).strip()
@@ -196,6 +188,9 @@ class SkillToolLoader(loader.ToolLoader):
         # Security check: ensure path doesn't escape workspace
         if not (host_path == host_root or host_path.startswith(host_root + os.sep)):
             raise ValueError('path escapes the workspace boundary')
+
+        if getattr(box_service, 'available', False):
+            return host_path
 
         if not os.path.isdir(host_path):
             raise ValueError(f'Directory does not exist: {sandbox_path}')

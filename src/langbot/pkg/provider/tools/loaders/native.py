@@ -177,15 +177,234 @@ class NativeToolLoader(loader.ToolLoader):
 
         return host_path, selected_skill
 
+    def _resolve_skill_relative_path(
+        self,
+        query: pipeline_query.Query,
+        sandbox_path: str,
+        *,
+        include_visible: bool,
+        include_activated: bool,
+    ) -> tuple[dict, str] | None:
+        selected_skill, rewritten_path = skill_loader.resolve_virtual_skill_path(
+            self.ap,
+            query,
+            sandbox_path,
+            include_visible=include_visible,
+            include_activated=include_activated,
+        )
+        if selected_skill is None:
+            return None
+
+        mount_path = '/workspace'
+        if not rewritten_path.startswith(mount_path):
+            raise ValueError(f'Path must be under {mount_path}.')
+        relative = rewritten_path[len(mount_path) :].lstrip('/') or '.'
+        return selected_skill, relative
+
+    def _should_use_box_workspace_files(self, selected_skill: dict | None) -> bool:
+        if selected_skill is not None:
+            return False
+        box_service = getattr(self.ap, 'box_service', None)
+        if box_service is None or not hasattr(box_service, 'execute_tool'):
+            return False
+        default_workspace = getattr(box_service, 'default_workspace', None)
+        return bool(default_workspace and not os.path.isdir(os.path.realpath(default_workspace)))
+
+    async def _run_workspace_file_script(self, script: str, query: pipeline_query.Query) -> dict:
+        result = await self.ap.box_service.execute_tool(
+            {
+                'command': f"python - <<'PY'\n{script}\nPY",
+                'timeout_sec': 30,
+            },
+            query,
+        )
+        if not result.get('ok'):
+            return {'ok': False, 'error': result.get('stderr') or result.get('stdout') or 'Box execution failed'}
+        stdout = str(result.get('stdout') or '').strip()
+        try:
+            return json.loads(stdout.splitlines()[-1])
+        except Exception:
+            return {'ok': False, 'error': stdout or 'Box file operation returned no result'}
+
+    async def _read_workspace_via_box(self, path: str, query: pipeline_query.Query) -> dict:
+        script = f"""
+import json, os
+path = {json.dumps(path)}
+if not path.startswith('/workspace'):
+    print(json.dumps({{'ok': False, 'error': 'Path must be under /workspace.'}}))
+elif not os.path.exists(path):
+    print(json.dumps({{'ok': False, 'error': f'File not found: {{path}}'}}))
+elif os.path.isdir(path):
+    print(json.dumps({{'ok': True, 'content': '\\n'.join(sorted(os.listdir(path))), 'is_directory': True}}))
+else:
+    with open(path, 'r', encoding='utf-8', errors='replace') as f:
+        print(json.dumps({{'ok': True, 'content': f.read()}}))
+""".strip()
+        return await self._run_workspace_file_script(script, query)
+
+    async def _write_workspace_via_box(self, path: str, content: str, query: pipeline_query.Query) -> dict:
+        script = f"""
+import json, os
+path = {json.dumps(path)}
+content = {json.dumps(content)}
+if not path.startswith('/workspace'):
+    print(json.dumps({{'ok': False, 'error': 'Path must be under /workspace.'}}))
+else:
+    os.makedirs(os.path.dirname(path) or '/workspace', exist_ok=True)
+    with open(path, 'w', encoding='utf-8') as f:
+        f.write(content)
+    print(json.dumps({{'ok': True, 'path': path}}))
+""".strip()
+        return await self._run_workspace_file_script(script, query)
+
+    async def _edit_workspace_via_box(
+        self,
+        path: str,
+        old_string: str,
+        new_string: str,
+        query: pipeline_query.Query,
+    ) -> dict:
+        script = f"""
+import json, os
+path = {json.dumps(path)}
+old_string = {json.dumps(old_string)}
+new_string = {json.dumps(new_string)}
+if not path.startswith('/workspace'):
+    print(json.dumps({{'ok': False, 'error': 'Path must be under /workspace.'}}))
+elif not os.path.isfile(path):
+    print(json.dumps({{'ok': False, 'error': f'File not found: {{path}}'}}))
+else:
+    with open(path, 'r', encoding='utf-8', errors='replace') as f:
+        content = f.read()
+    count = content.count(old_string)
+    if count == 0:
+        print(json.dumps({{'ok': False, 'error': 'old_string not found in file.'}}))
+    elif count > 1:
+        print(json.dumps({{'ok': False, 'error': f'old_string matches {{count}} locations; provide a more unique string.'}}))
+    else:
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(content.replace(old_string, new_string, 1))
+        print(json.dumps({{'ok': True, 'path': path}}))
+""".strip()
+        return await self._run_workspace_file_script(script, query)
+
+    async def _glob_workspace_via_box(self, path: str, pattern: str, query: pipeline_query.Query) -> dict:
+        script = f"""
+import json, os
+from pathlib import Path
+path = {json.dumps(path)}
+pattern = {json.dumps(pattern)}
+skip_dirs = {json.dumps(sorted(_SKIP_DIRS))}
+if not path.startswith('/workspace'):
+    print(json.dumps({{'ok': False, 'error': 'Path must be under /workspace.'}}))
+elif not os.path.isdir(path):
+    print(json.dumps({{'ok': False, 'error': f'Path is not a directory: {{path}}'}}))
+else:
+    base = Path(path)
+    hits = [
+        item for item in base.rglob(pattern)
+        if not any(part in skip_dirs for part in item.parts)
+    ]
+    hits.sort(key=lambda item: item.stat().st_mtime if item.exists() else 0, reverse=True)
+    shown = hits[:100]
+    matches = []
+    for item in shown:
+        rel = os.path.relpath(str(item), path)
+        matches.append(os.path.join(path, rel).replace(os.sep, '/'))
+    print(json.dumps({{'ok': True, 'matches': matches, 'total': len(hits), 'truncated': len(hits) > 100}}))
+""".strip()
+        return await self._run_workspace_file_script(script, query)
+
+    async def _grep_workspace_via_box(
+        self,
+        path: str,
+        pattern: str,
+        include: str | None,
+        query: pipeline_query.Query,
+    ) -> dict:
+        script = f"""
+import json, os, re
+from pathlib import Path
+path = {json.dumps(path)}
+pattern = {json.dumps(pattern)}
+include = {json.dumps(include)}
+skip_dirs = {json.dumps(sorted(_SKIP_DIRS))}
+try:
+    regex = re.compile(pattern)
+except re.error as exc:
+    print(json.dumps({{'ok': False, 'error': f'Invalid regex: {{exc}}'}}))
+else:
+    if not path.startswith('/workspace'):
+        print(json.dumps({{'ok': False, 'error': 'Path must be under /workspace.'}}))
+    elif not os.path.exists(path):
+        print(json.dumps({{'ok': False, 'error': f'Path not found: {{path}}'}}))
+    else:
+        base = Path(path)
+        if base.is_file():
+            files = [base]
+        else:
+            files = []
+            for item in base.rglob(include or '*'):
+                if any(part in skip_dirs for part in item.parts):
+                    continue
+                if item.is_file():
+                    files.append(item)
+                if len(files) >= 5000:
+                    break
+
+        matches = []
+        for fp in files:
+            try:
+                text = fp.read_text(errors='ignore')
+            except OSError:
+                continue
+            for lineno, line in enumerate(text.splitlines(), 1):
+                if regex.search(line):
+                    if base.is_file():
+                        file_path = path
+                    else:
+                        rel = os.path.relpath(str(fp), path)
+                        file_path = os.path.join(path, rel).replace(os.sep, '/')
+                    matches.append({{'file': file_path, 'line': lineno, 'content': line.rstrip()}})
+                    if len(matches) >= 200:
+                        break
+            if len(matches) >= 200:
+                break
+
+        print(json.dumps({{'ok': True, 'matches': matches, 'total': len(matches), 'truncated': len(matches) >= 200}}))
+""".strip()
+        return await self._run_workspace_file_script(script, query)
+
     async def _invoke_read(self, parameters: dict, query: pipeline_query.Query) -> dict:
         path = parameters['path']
         self.ap.logger.info(f'read tool invoked: query_id={query.query_id} path={path}')
-        host_path, _selected_skill = self._resolve_host_path(
+        skill_request = self._resolve_skill_relative_path(
             query,
             path,
             include_visible=True,
             include_activated=True,
         )
+        if skill_request is not None and hasattr(self.ap.box_service, 'read_skill_file'):
+            selected_skill, relative = skill_request
+            try:
+                result = await self.ap.box_service.read_skill_file(selected_skill['name'], relative)
+                return {'ok': True, 'content': result.get('content', '')}
+            except Exception:
+                try:
+                    result = await self.ap.box_service.list_skill_files(selected_skill['name'], relative)
+                    entries = [entry['name'] for entry in result.get('entries', [])]
+                    return {'ok': True, 'content': '\n'.join(sorted(entries)), 'is_directory': True}
+                except Exception as exc:
+                    return {'ok': False, 'error': str(exc)}
+
+        host_path, selected_skill = self._resolve_host_path(
+            query,
+            path,
+            include_visible=True,
+            include_activated=True,
+        )
+        if self._should_use_box_workspace_files(selected_skill):
+            return await self._read_workspace_via_box(path, query)
         if not os.path.exists(host_path):
             return {'ok': False, 'error': f'File not found: {path}'}
         if os.path.isdir(host_path):
@@ -199,12 +418,26 @@ class NativeToolLoader(loader.ToolLoader):
         path = parameters['path']
         content = parameters['content']
         self.ap.logger.info(f'write tool invoked: query_id={query.query_id} path={path} length={len(content)}')
+        skill_request = self._resolve_skill_relative_path(
+            query,
+            path,
+            include_visible=False,
+            include_activated=True,
+        )
+        if skill_request is not None and hasattr(self.ap.box_service, 'write_skill_file'):
+            selected_skill, relative = skill_request
+            await self.ap.box_service.write_skill_file(selected_skill['name'], relative, content)
+            await self.ap.skill_mgr.reload_skills()
+            return {'ok': True, 'path': path}
+
         host_path, selected_skill = self._resolve_host_path(
             query,
             path,
             include_visible=False,
             include_activated=True,
         )
+        if self._should_use_box_workspace_files(selected_skill):
+            return await self._write_workspace_via_box(path, content, query)
         os.makedirs(os.path.dirname(host_path), exist_ok=True)
         with open(host_path, 'w', encoding='utf-8') as f:
             f.write(content)
@@ -219,12 +452,41 @@ class NativeToolLoader(loader.ToolLoader):
             f'edit tool invoked: query_id={query.query_id} path={path} '
             f'old_len={len(old_string)} new_len={len(new_string)}'
         )
+        skill_request = self._resolve_skill_relative_path(
+            query,
+            path,
+            include_visible=False,
+            include_activated=True,
+        )
+        if (
+            skill_request is not None
+            and hasattr(self.ap.box_service, 'read_skill_file')
+            and hasattr(self.ap.box_service, 'write_skill_file')
+        ):
+            selected_skill, relative = skill_request
+            try:
+                result = await self.ap.box_service.read_skill_file(selected_skill['name'], relative)
+            except Exception:
+                return {'ok': False, 'error': f'File not found: {path}'}
+            content = result.get('content', '')
+            count = content.count(old_string)
+            if count == 0:
+                return {'ok': False, 'error': 'old_string not found in file.'}
+            if count > 1:
+                return {'ok': False, 'error': f'old_string matches {count} locations; provide a more unique string.'}
+            new_content = content.replace(old_string, new_string, 1)
+            await self.ap.box_service.write_skill_file(selected_skill['name'], relative, new_content)
+            await self.ap.skill_mgr.reload_skills()
+            return {'ok': True, 'path': path}
+
         host_path, selected_skill = self._resolve_host_path(
             query,
             path,
             include_visible=False,
             include_activated=True,
         )
+        if self._should_use_box_workspace_files(selected_skill):
+            return await self._edit_workspace_via_box(path, old_string, new_string, query)
         if not os.path.isfile(host_path):
             return {'ok': False, 'error': f'File not found: {path}'}
         with open(host_path, 'r', encoding='utf-8', errors='replace') as f:
@@ -453,12 +715,14 @@ class NativeToolLoader(loader.ToolLoader):
         path = str(parameters.get('path', '/workspace') or '/workspace')
         self.ap.logger.info(f'glob tool invoked: query_id={query.query_id} pattern={pattern} path={path}')
 
-        host_path, _selected_skill = self._resolve_host_path(
+        host_path, selected_skill = self._resolve_host_path(
             query,
             path,
             include_visible=True,
             include_activated=True,
         )
+        if self._should_use_box_workspace_files(selected_skill):
+            return await self._glob_workspace_via_box(path, pattern, query)
 
         if not os.path.isdir(host_path):
             return {'ok': False, 'error': f'Path is not a directory: {path}'}
@@ -506,12 +770,14 @@ class NativeToolLoader(loader.ToolLoader):
         except re.error as e:
             return {'ok': False, 'error': f'Invalid regex: {e}'}
 
-        host_path, _selected_skill = self._resolve_host_path(
+        host_path, selected_skill = self._resolve_host_path(
             query,
             path,
             include_visible=True,
             include_activated=True,
         )
+        if self._should_use_box_workspace_files(selected_skill):
+            return await self._grep_workspace_via_box(path, pattern, include, query)
 
         if not os.path.exists(host_path):
             return {'ok': False, 'error': f'Path not found: {path}'}
@@ -533,11 +799,13 @@ class NativeToolLoader(loader.ToolLoader):
                 if regex.search(line):
                     rel = os.path.relpath(str(fp), host_path)
                     sandbox_path = os.path.join(path, rel)
-                    matches.append({
-                        'file': sandbox_path,
-                        'line': lineno,
-                        'content': line.rstrip(),
-                    })
+                    matches.append(
+                        {
+                            'file': sandbox_path,
+                            'line': lineno,
+                            'content': line.rstrip(),
+                        }
+                    )
                     if len(matches) >= 200:
                         break
             if len(matches) >= 200:
@@ -553,7 +821,6 @@ class NativeToolLoader(loader.ToolLoader):
     @staticmethod
     def _grep_walk(root, include: str | None) -> list:
         """Walk dir tree for grep, skipping junk dirs."""
-        from pathlib import Path
         results = []
         for item in root.rglob(include or '*'):
             if any(skip in item.parts for skip in _SKIP_DIRS):

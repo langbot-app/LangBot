@@ -111,8 +111,9 @@ box:
     local:
         profile: 'default'
         image: ''  # Custom local sandbox image. Leave empty to use the profile default.
-        host_root: './data/box'  # Base host directory for local workspace mounts. For Docker deployment, use '/workspaces'.
-        default_workspace: ''  # Defaults to '<host_root>/default'.
+        host_root: './data/box'  # Base host directory for local workspace mounts. Docker deployments should override this with an absolute host path.
+        default_workspace: ''  # Defaults to '<host_root>/default'. Relative paths are resolved under host_root.
+        skills_root: 'skills'  # Box-owned skill package directory. Relative paths are resolved under host_root.
         allowed_mount_roots:  # Defaults to ['<host_root>'] when left empty.
             - './data/box'
             - '/tmp'

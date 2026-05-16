@@ -64,7 +64,9 @@ class SkillsRouterGroup(group.RouterGroup):
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
 
-        @self.route('/<skill_name>/files/<path:path>', methods=['GET', 'PUT'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
+        @self.route(
+            '/<skill_name>/files/<path:path>', methods=['GET', 'PUT'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY
+        )
         async def read_or_write_skill_file(skill_name: str, path: str) -> quart.Response:
             """Read or write a file in skill package."""
             if quart.request.method == 'GET':
@@ -168,7 +170,7 @@ class SkillsRouterGroup(group.RouterGroup):
                 return self.http_status(400, -1, 'Missing required parameter: path')
 
             try:
-                result = self.ap.skill_service.scan_directory(path)
+                result = await self.ap.skill_service.scan_directory_async(path)
                 return self.success(data=result)
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))

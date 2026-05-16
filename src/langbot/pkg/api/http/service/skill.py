@@ -68,16 +68,31 @@ class SkillService:
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
 
+    def _box_service(self):
+        box_service = getattr(self.ap, 'box_service', None)
+        if box_service is not None and getattr(box_service, 'available', False):
+            return box_service
+        return None
+
     @staticmethod
     def _serialize_skill(skill: dict) -> dict:
         return {field: skill.get(field) for field in _PUBLIC_SKILL_FIELDS if field in skill}
 
     async def list_skills(self) -> list[dict]:
+        box_service = self._box_service()
+        if box_service is not None:
+            return [self._serialize_skill(skill) for skill in await box_service.list_skills()]
+
         skills = [dict(skill) for skill in getattr(self.ap.skill_mgr, 'skills', {}).values()]
         skills.sort(key=lambda item: item.get('updated_at', ''), reverse=True)
         return [self._serialize_skill(skill) for skill in skills]
 
     async def get_skill(self, skill_name: str) -> Optional[dict]:
+        box_service = self._box_service()
+        if box_service is not None:
+            skill = await box_service.get_skill(skill_name)
+            return self._serialize_skill(skill) if skill else None
+
         skill = getattr(self.ap.skill_mgr, 'get_skill_by_name', lambda _name: None)(skill_name)
         return self._serialize_skill(skill) if skill else None
 
@@ -85,6 +100,12 @@ class SkillService:
         return await self.get_skill(name)
 
     async def create_skill(self, data: dict) -> dict:
+        box_service = self._box_service()
+        if box_service is not None:
+            created = await box_service.create_skill(data)
+            await self._reload_skills()
+            return self._serialize_skill(created)
+
         name = self._validate_skill_name(data.get('name', ''))
         if await self.get_skill_by_name(name):
             raise ValueError(f'Skill with name "{name}" already exists')
@@ -125,6 +146,12 @@ class SkillService:
         return created
 
     async def update_skill(self, skill_name: str, data: dict) -> dict:
+        box_service = self._box_service()
+        if box_service is not None:
+            updated = await box_service.update_skill(skill_name, data)
+            await self._reload_skills()
+            return self._serialize_skill(updated)
+
         skill = await self.get_skill(skill_name)
         if not skill:
             raise ValueError(f'Skill "{skill_name}" not found')
@@ -153,6 +180,12 @@ class SkillService:
         return updated
 
     async def delete_skill(self, skill_name: str) -> bool:
+        box_service = self._box_service()
+        if box_service is not None:
+            await box_service.delete_skill(skill_name)
+            await self._reload_skills()
+            return True
+
         skill = await self.get_skill(skill_name)
         if not skill:
             raise ValueError(f'Skill "{skill_name}" not found')
@@ -173,6 +206,10 @@ class SkillService:
         include_hidden: bool = False,
         max_entries: int = 200,
     ) -> dict:
+        box_service = self._box_service()
+        if box_service is not None:
+            return await box_service.list_skill_files(skill_name, path, include_hidden, max_entries)
+
         skill = await self.get_skill(skill_name)
         if not skill:
             raise ValueError(f'Skill "{skill_name}" not found')
@@ -204,6 +241,10 @@ class SkillService:
         }
 
     async def read_skill_file(self, skill_name: str, path: str) -> dict:
+        box_service = self._box_service()
+        if box_service is not None:
+            return await box_service.read_skill_file(skill_name, path)
+
         skill = await self.get_skill(skill_name)
         if not skill:
             raise ValueError(f'Skill "{skill_name}" not found')
@@ -225,6 +266,12 @@ class SkillService:
         }
 
     async def write_skill_file(self, skill_name: str, path: str, content: str) -> dict:
+        box_service = self._box_service()
+        if box_service is not None:
+            result = await box_service.write_skill_file(skill_name, path, content)
+            await self._reload_skills()
+            return result
+
         skill = await self.get_skill(skill_name)
         if not skill:
             raise ValueError(f'Skill "{skill_name}" not found')
@@ -253,6 +300,20 @@ class SkillService:
         asset_url = self._validate_github_asset_url(data['asset_url'], owner=owner, repo=repo, release_tag=release_tag)
         source_subdir = str(data.get('source_subdir', '') or '').strip()
 
+        box_service = self._box_service()
+        if box_service is not None:
+            zip_bytes = await self._download_github_asset(asset_url)
+            filename = f'{repo}-{release_tag.lstrip("v").replace("/", "-") or "source"}.zip'
+            installed = await box_service.install_skill_zip(
+                zip_bytes,
+                filename,
+                source_paths=data.get('source_paths') or [],
+                source_path=str(data.get('source_path', '') or ''),
+                source_subdir=source_subdir,
+            )
+            await self._reload_skills()
+            return [self._serialize_skill(skill) for skill in installed]
+
         tmp_dir = tempfile.mkdtemp(prefix='langbot_skill_')
         try:
             skill_root = await self._download_github_skill_to_temp(asset_url, tmp_dir)
@@ -277,6 +338,15 @@ class SkillService:
         asset_url = self._validate_github_asset_url(data['asset_url'], owner=owner, repo=repo, release_tag=release_tag)
         source_subdir = str(data.get('source_subdir', '') or '').strip()
 
+        box_service = self._box_service()
+        if box_service is not None:
+            zip_bytes = await self._download_github_asset(asset_url)
+            return await box_service.preview_skill_zip(
+                zip_bytes,
+                f'{repo}-{release_tag.lstrip("v").replace("/", "-") or "source"}.zip',
+                source_subdir=source_subdir,
+            )
+
         tmp_dir = tempfile.mkdtemp(prefix='langbot_skill_preview_')
         try:
             skill_root = await self._download_github_skill_to_temp(asset_url, tmp_dir)
@@ -297,6 +367,17 @@ class SkillService:
         source_paths: list[str] | None = None,
         source_path: str = '',
     ) -> list[dict]:
+        box_service = self._box_service()
+        if box_service is not None:
+            installed = await box_service.install_skill_zip(
+                file_bytes,
+                filename,
+                source_paths=source_paths or [],
+                source_path=source_path,
+            )
+            await self._reload_skills()
+            return [self._serialize_skill(skill) for skill in installed]
+
         if not file_bytes:
             raise ValueError('Uploaded file is empty')
 
@@ -321,6 +402,10 @@ class SkillService:
         return await self._resolve_installed_skills(scanned)
 
     async def preview_install_from_zip_upload(self, *, file_bytes: bytes, filename: str) -> list[dict]:
+        box_service = self._box_service()
+        if box_service is not None:
+            return await box_service.preview_skill_zip(file_bytes, filename)
+
         if not file_bytes:
             raise ValueError('Uploaded file is empty')
 
@@ -368,6 +453,12 @@ class SkillService:
             'instructions': instructions,
         }
 
+    async def scan_directory_async(self, path: str) -> dict:
+        box_service = self._box_service()
+        if box_service is not None:
+            return await box_service.scan_skill_directory(path)
+        return self.scan_directory(path)
+
     async def _reload_skills(self) -> None:
         skill_mgr = getattr(self.ap, 'skill_mgr', None)
         reload_skills = getattr(skill_mgr, 'reload_skills', None)
@@ -397,11 +488,9 @@ class SkillService:
 
     async def _download_github_skill_to_temp(self, asset_url: str, tmp_dir: str) -> str:
         zip_path = os.path.join(tmp_dir, 'skill.zip')
-        async with httpx.AsyncClient(follow_redirects=True, timeout=120) as client:
-            resp = await client.get(asset_url)
-            resp.raise_for_status()
-            with open(zip_path, 'wb') as f:
-                f.write(resp.content)
+        content = await self._download_github_asset(asset_url)
+        with open(zip_path, 'wb') as f:
+            f.write(content)
 
         extract_dir = os.path.join(tmp_dir, 'extracted')
         with zipfile.ZipFile(zip_path, 'r') as zf:
@@ -411,6 +500,12 @@ class SkillService:
         if len(entries) == 1 and os.path.isdir(os.path.join(extract_dir, entries[0])):
             return os.path.join(extract_dir, entries[0])
         return extract_dir
+
+    async def _download_github_asset(self, asset_url: str) -> bytes:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=120) as client:
+            resp = await client.get(asset_url)
+            resp.raise_for_status()
+            return resp.content
 
     def _extract_uploaded_skill_to_temp(self, file_bytes: bytes, tmp_dir: str) -> str:
         extract_dir = os.path.join(tmp_dir, 'extracted')

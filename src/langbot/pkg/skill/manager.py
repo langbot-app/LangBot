@@ -13,9 +13,10 @@ if typing.TYPE_CHECKING:
 
 
 class SkillManager:
-    """Skill manager backed by filesystem packages.
+    """Skill manager backed by Box-managed or local filesystem packages.
 
-    Skills are loaded from data/skills/ and managed by users.
+    In sandbox deployments, skills are loaded from the Box runtime. Local
+    data/skills remains as the fallback for non-Box development.
 
     Skills are activated through the `activate` tool (Tool Call mechanism),
     aligned with Claude Code's design. This protects KV Cache and follows
@@ -35,13 +36,28 @@ class SkillManager:
     async def reload_skills(self):
         """Reload all skills.
 
-        All skills are loaded from data/skills/.
+        In sandbox deployments, skills are owned by the Box runtime so the
+        sandbox can mount them without requiring LangBot to share the same
+        filesystem. If Box is unavailable, fall back to the legacy local
+        data/skills directory.
 
         NOTE: This performs a full scan. For registering a single new skill,
         consider adding it directly to self.skills instead of reloading all.
         Current implementation is acceptable for typical skill counts (<50).
         """
         self.skills = {}
+
+        box_service = getattr(self.ap, 'box_service', None)
+        if box_service is not None and getattr(box_service, 'available', False):
+            try:
+                for skill_data in await box_service.list_skills():
+                    skill_name = skill_data.get('name')
+                    if skill_name:
+                        self.skills[skill_name] = skill_data
+                self.ap.logger.info(f'Loaded {len(self.skills)} skills from Box runtime')
+                return
+            except Exception as exc:
+                self.ap.logger.warning(f'Failed to load skills from Box runtime, falling back to local data: {exc}')
 
         # Ensure data/skills/ exists
         managed_root = self.get_managed_skills_root()
@@ -66,6 +82,12 @@ class SkillManager:
         """Refresh a single skill from disk."""
         if not skill_name:
             return False
+
+        box_service = getattr(self.ap, 'box_service', None)
+        if box_service is not None and getattr(box_service, 'available', False):
+            # Box refresh is async; callers that need a guaranteed refresh call
+            # SkillService.write_skill_file/update_skill, which awaits reload.
+            return skill_name in self.skills
 
         skill_data = self.skills.get(skill_name)
         if not skill_data:
