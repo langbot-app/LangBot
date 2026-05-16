@@ -167,6 +167,29 @@ class TestLongTextProcessStageProcess:
         assert components[0].text == 'short response'
 
     @pytest.mark.asyncio
+    async def test_empty_response_message_chain_continues_without_processing(self):
+        """Empty response chains should be a no-op for long text processing."""
+        longtext = get_longtext_module()
+        entities = get_entities_module()
+
+        app = FakeApp()
+        stage = longtext.LongTextProcessStage(app)
+
+        pipeline_config = make_longtext_config(strategy='forward', threshold=1)
+
+        await stage.initialize(pipeline_config)
+
+        query = text_query("hello")
+        query.pipeline_config = pipeline_config
+        query.resp_message_chain = []
+
+        result = await stage.process(query, 'LongTextProcessStage')
+
+        assert result.result_type == entities.ResultType.CONTINUE
+        assert result.new_query is query
+        assert query.resp_message_chain == []
+
+    @pytest.mark.asyncio
     async def test_non_plain_component_skips(self):
         """resp_message_chain with non-Plain components should skip processing."""
         longtext = get_longtext_module()
