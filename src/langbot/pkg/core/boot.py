@@ -46,12 +46,14 @@ async def make_app(loop: asyncio.AbstractEventLoop) -> app.Application:
 
 
 async def main(loop: asyncio.AbstractEventLoop):
+    app_inst: app.Application | None = None
     try:
         # Hang system signal processing
         import signal
 
         def signal_handler(sig, frame):
-            app_inst.dispose()
+            if app_inst is not None:
+                app_inst.dispose()
             print('[Signal] Program exit.')
             os._exit(0)
 
