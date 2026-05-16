@@ -89,7 +89,7 @@ def get_runner_category(runner_name: str, runner_url: str) -> str:
         parsed_url = urlparse(runner_url)
         host = parsed_url.hostname.lower() if parsed_url.hostname else ''
         _ = parsed_url.port
-    except (TypeError, ValueError):
+    except Exception:
         return RunnerCategory.UNKNOWN
 
     if not parsed_url.scheme or not host or not _is_valid_hostname(host):
