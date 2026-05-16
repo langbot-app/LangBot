@@ -6,6 +6,7 @@ Tests pip command generation without actual installation.
 
 from __future__ import annotations
 
+import inspect
 from unittest.mock import patch
 
 from langbot.pkg.utils import pkgmgr
@@ -99,3 +100,34 @@ class TestPkgMgr:
             call_args = mock_pipmain.call_args[0][0]
             assert '--no-cache-dir' in call_args
             assert '--verbose' in call_args
+
+    def test_install_requirements_defaults_extra_params_to_none(self):
+        """install_requirements does not use a mutable list default."""
+        signature = inspect.signature(pkgmgr.install_requirements)
+
+        assert signature.parameters['extra_params'].default is None
+
+    def test_install_requirements_omitted_extra_params_are_isolated(self):
+        """Repeated calls without extra_params use independent base commands."""
+        with patch('langbot.pkg.utils.pkgmgr.pipmain') as mock_pipmain:
+            pkgmgr.install_requirements('requirements.txt')
+            pkgmgr.install_requirements('requirements-dev.txt')
+
+            assert mock_pipmain.call_args_list[0].args[0] == [
+                'install',
+                '-r',
+                'requirements.txt',
+                '-i',
+                'https://pypi.tuna.tsinghua.edu.cn/simple',
+                '--trusted-host',
+                'pypi.tuna.tsinghua.edu.cn',
+            ]
+            assert mock_pipmain.call_args_list[1].args[0] == [
+                'install',
+                '-r',
+                'requirements-dev.txt',
+                '-i',
+                'https://pypi.tuna.tsinghua.edu.cn/simple',
+                '--trusted-host',
+                'pypi.tuna.tsinghua.edu.cn',
+            ]
