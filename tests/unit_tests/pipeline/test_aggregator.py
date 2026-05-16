@@ -594,3 +594,44 @@ class TestMessageAggregatorFlushAll:
         # Both buffers should be flushed
         assert len(agg.buffers) == 0
         assert app.query_pool.add_query.call_count == 2
+
+
+class TestMessageAggregatorMergeRoutedFlag:
+    """Tests for preserving routed message state during merge."""
+
+    def test_merge_messages_preserves_routed_by_rule_if_any_input_matches(self):
+        """Merged PendingMessage keeps routed_by_rule when any input was rule-routed."""
+        aggregator = get_aggregator_module()
+        agg = aggregator.MessageAggregator(ap=None)
+        chain1 = text_chain("first")
+        chain2 = text_chain("second")
+        event = friend_message_event(chain1)
+        adapter = mock_adapter()
+
+        pending1 = aggregator.PendingMessage(
+            bot_uuid='test-bot',
+            launcher_type=provider_session.LauncherTypes.PERSON,
+            launcher_id=12345,
+            sender_id=12345,
+            message_event=event,
+            message_chain=chain1,
+            adapter=adapter,
+            pipeline_uuid='test-pipeline',
+            routed_by_rule=False,
+        )
+        pending2 = aggregator.PendingMessage(
+            bot_uuid='test-bot',
+            launcher_type=provider_session.LauncherTypes.PERSON,
+            launcher_id=12345,
+            sender_id=12345,
+            message_event=event,
+            message_chain=chain2,
+            adapter=adapter,
+            pipeline_uuid='test-pipeline',
+            routed_by_rule=True,
+        )
+
+        merged = agg._merge_messages([pending1, pending2])
+
+        assert merged.routed_by_rule is True
+        assert str(merged.message_chain) == 'first\nsecond'
