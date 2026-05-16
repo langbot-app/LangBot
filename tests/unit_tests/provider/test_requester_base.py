@@ -223,11 +223,10 @@ def test_token_manager_next_token_empty():
     """Test TokenManager.next_token with empty tokens doesn't error."""
     mgr = token.TokenManager(name='test', tokens=[])
 
-    # Should not error, but behavior is modulo 0
-    # Actually this would cause ZeroDivisionError if next_token is called
-    # Let's check if it handles empty case
-    with pytest.raises(ZeroDivisionError):
-        mgr.next_token()
+    mgr.next_token()
+
+    assert mgr.get_token() == ''
+    assert mgr.using_token_index == 0
 
 
 # ============================================================================
