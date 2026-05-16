@@ -87,15 +87,6 @@ class TestGetRunnerCategory:
         assert get_runner_category("test", "https://example.com") == RunnerCategory.CLOUD
         assert get_runner_category("test", "https://myserver.example.org") == RunnerCategory.CLOUD
 
-    def test_invalid_url_returns_unknown(self):
-        """Invalid URL that causes parsing error should return UNKNOWN."""
-        # URLs that cause exceptions during parsing return UNKNOWN
-        # Note: "not a valid url" is actually parseable by urlparse, it just has no scheme
-        # Use a URL that genuinely causes an exception
-        result = get_runner_category("test", "://invalid")
-        # urlparse may handle this differently, but exceptions return UNKNOWN
-        assert result in (RunnerCategory.UNKNOWN, RunnerCategory.CLOUD)
-
     def test_urlparse_exception_returns_unknown(self):
         """Exception during URL parsing should return UNKNOWN."""
         # Test by mocking urlparse to raise an exception
@@ -107,14 +98,6 @@ class TestGetRunnerCategory:
         with patch("langbot.pkg.utils.runner.urlparse", side_effect=mock_urlparse):
             result = runner.get_runner_category("test", "http://example.com")
             assert result == RunnerCategory.UNKNOWN
-
-    def test_url_without_scheme(self):
-        """URL without scheme should still be parseable."""
-        # urlparse can parse this, hostname might be None
-        result = get_runner_category("test", "example.com")
-        # Without scheme, urlparse treats it as path, so hostname is None
-        # This should return UNKNOWN or CLOUD depending on implementation
-        assert result in (RunnerCategory.UNKNOWN, RunnerCategory.CLOUD)
 
 
 class TestIsCloudRunner:

@@ -6,7 +6,6 @@ Tests cover:
 """
 from __future__ import annotations
 
-import pytest
 from unittest.mock import Mock
 from importlib import import_module
 

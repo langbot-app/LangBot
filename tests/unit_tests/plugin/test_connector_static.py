@@ -24,14 +24,6 @@ class TestParsePluginId:
         assert author == 'langbot'
         assert name == 'rag-engine'
 
-    def test_valid_plugin_id_with_slash_in_name(self):
-        """Test parsing plugin ID where name contains additional slashes."""
-        connector = get_connector_module()
-        # split('/', 1) only splits on first slash
-        author, name = connector.PluginRuntimeConnector._parse_plugin_id('author/name/with/slashes')
-        assert author == 'author'
-        assert name == 'name/with/slashes'
-
     def test_invalid_plugin_id_no_slash(self):
         """Test that ValueError is raised when no slash present."""
         connector = get_connector_module()
@@ -60,19 +52,3 @@ class TestParsePluginId:
         author, name = connector.PluginRuntimeConnector._parse_plugin_id('lang-bot/my_rag_engine')
         assert author == 'lang-bot'
         assert name == 'my_rag_engine'
-
-    def test_valid_plugin_id_author_only(self):
-        """Test that plugin ID with only author (trailing slash) is parsed."""
-        connector = get_connector_module()
-        # 'author/' - split returns ('author', '')
-        author, name = connector.PluginRuntimeConnector._parse_plugin_id('author/')
-        assert author == 'author'
-        assert name == ''
-
-    def test_valid_plugin_id_name_only(self):
-        """Test that plugin ID with only name (leading slash) is parsed."""
-        connector = get_connector_module()
-        # '/name' - split returns ('', 'name')
-        author, name = connector.PluginRuntimeConnector._parse_plugin_id('/name')
-        assert author == ''
-        assert name == 'name'

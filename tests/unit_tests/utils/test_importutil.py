@@ -137,11 +137,9 @@ class TestReadResourceFile:
         """Should read content from a resource file."""
         from langbot.pkg.utils import importutil
 
-        try:
-            content = importutil.read_resource_file("templates/config.yaml")
-            assert isinstance(content, str)
-        except FileNotFoundError:
-            pass
+        content = importutil.read_resource_file("templates/config.yaml")
+        assert "admins:" in content
+        assert "edition: community" in content
 
     def test_raises_for_nonexistent_file(self):
         """Should raise exception for non-existent resource file."""
@@ -158,11 +156,9 @@ class TestReadResourceFileBytes:
         """Should read content as bytes from a resource file."""
         from langbot.pkg.utils import importutil
 
-        try:
-            content = importutil.read_resource_file_bytes("templates/config.yaml")
-            assert isinstance(content, bytes)
-        except FileNotFoundError:
-            pass
+        content = importutil.read_resource_file_bytes("templates/config.yaml")
+        assert b"admins:" in content
+        assert b"edition: community" in content
 
     def test_raises_for_nonexistent_file_bytes(self):
         """Should raise exception for non-existent resource file."""
@@ -179,13 +175,10 @@ class TestListResourceFiles:
         """Should list files in a resource directory."""
         from langbot.pkg.utils import importutil
 
-        try:
-            files = importutil.list_resource_files("templates")
-            assert isinstance(files, list)
-            for f in files:
-                assert isinstance(f, str)
-        except (FileNotFoundError, Exception):
-            pass
+        files = importutil.list_resource_files("templates")
+        assert "config.yaml" in files
+        assert "default-pipeline-config.json" in files
+        assert all(isinstance(file, str) for file in files)
 
     def test_raises_for_nonexistent_directory(self):
         """Should raise exception for non-existent directory."""

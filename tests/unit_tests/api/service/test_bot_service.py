@@ -432,7 +432,7 @@ class TestBotServiceUpdateBot:
     """Tests for update_bot method."""
 
     async def test_update_bot_removes_uuid_from_data(self):
-        """Removes uuid field from update data."""
+        """Does not persist caller-provided uuid in update payload."""
         # Setup
         ap = SimpleNamespace()
         ap.persistence_mgr = SimpleNamespace()
@@ -456,9 +456,9 @@ class TestBotServiceUpdateBot:
         update_data = {'uuid': 'should-be-removed', 'name': 'Updated Name'}
         await service.update_bot('test-uuid', update_data)
 
-        # Verify - uuid was removed from bot_data dict
-        assert 'uuid' not in update_data
-        assert 'name' in update_data
+        update_params = ap.persistence_mgr.execute_async.await_args_list[0].args[0].compile().params
+        assert update_params['name'] == 'Updated Name'
+        assert 'should-be-removed' not in update_params.values()
 
     async def test_update_bot_pipeline_not_found_raises(self):
         """Raises Exception when updating with nonexistent pipeline UUID."""
@@ -513,7 +513,9 @@ class TestBotServiceUpdateBot:
         # Execute
         await service.update_bot('test-uuid', {'use_pipeline_uuid': 'pipeline-uuid'})
 
-        # Verify - pipeline name was captured
+        update_params = ap.persistence_mgr.execute_async.await_args_list[1].args[0].compile().params
+        assert update_params['use_pipeline_uuid'] == 'pipeline-uuid'
+        assert update_params['use_pipeline_name'] == 'Updated Pipeline'
 
 
 class TestBotServiceDeleteBot:

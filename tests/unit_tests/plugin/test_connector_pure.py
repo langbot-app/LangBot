@@ -1,7 +1,7 @@
 """Tests for PluginRuntimeConnector pure logic methods.
 
 Tests methods that don't require real plugin runtime processes:
-- _extract_deps_metadata: deps extraction from zip files
+- _inspect_plugin_package: identity and deps extraction from zip files
 - _parse_plugin_id: plugin ID string parsing
 """
 
@@ -12,13 +12,15 @@ import zipfile
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 
 class TestExtractDepsMetadata:
-    """Tests for _extract_deps_metadata method."""
+    """Tests for dependency metadata extraction from plugin packages."""
 
     def _create_connector(self):
         """Create a connector instance for testing."""
-        from src.langbot.pkg.plugin.connector import PluginRuntimeConnector
+        from langbot.pkg.plugin.connector import PluginRuntimeConnector
 
         mock_app = MagicMock()
         mock_app.instance_config.data.get.return_value = {'enable': True}
@@ -39,7 +41,7 @@ class TestExtractDepsMetadata:
         zip_bytes = zip_buffer.getvalue()
 
         task_context = SimpleNamespace(metadata={})
-        connector._extract_deps_metadata(zip_bytes, task_context)
+        connector._inspect_plugin_package(zip_bytes, task_context)
 
         assert task_context.metadata['deps_total'] == 3  # requests>=2.0, flask, numpy
         # deps_list contains full requirement lines including version specifiers
@@ -58,7 +60,7 @@ class TestExtractDepsMetadata:
         zip_bytes = zip_buffer.getvalue()
 
         task_context = SimpleNamespace(metadata={})
-        connector._extract_deps_metadata(zip_bytes, task_context)
+        connector._inspect_plugin_package(zip_bytes, task_context)
 
         assert task_context.metadata['deps_total'] == 0
         assert task_context.metadata['deps_list'] == []
@@ -74,7 +76,7 @@ class TestExtractDepsMetadata:
         zip_bytes = zip_buffer.getvalue()
 
         task_context = SimpleNamespace(metadata={})
-        connector._extract_deps_metadata(zip_bytes, task_context)
+        connector._inspect_plugin_package(zip_bytes, task_context)
 
         # No requirements.txt found, metadata unchanged
         assert 'deps_total' not in task_context.metadata
@@ -90,7 +92,7 @@ class TestExtractDepsMetadata:
         zip_bytes = zip_buffer.getvalue()
 
         # Should return early without error
-        connector._extract_deps_metadata(zip_bytes, None)
+        connector._inspect_plugin_package(zip_bytes, None)
 
     def test_extract_deps_invalid_zip(self):
         """Handle invalid zip file gracefully."""
@@ -100,7 +102,7 @@ class TestExtractDepsMetadata:
         invalid_bytes = b'not a zip file'
 
         task_context = SimpleNamespace(metadata={})
-        connector._extract_deps_metadata(invalid_bytes, task_context)
+        connector._inspect_plugin_package(invalid_bytes, task_context)
 
         # Should catch exception and pass silently
         assert 'deps_total' not in task_context.metadata
@@ -116,7 +118,7 @@ class TestExtractDepsMetadata:
         zip_bytes = zip_buffer.getvalue()
 
         task_context = SimpleNamespace(metadata={})
-        connector._extract_deps_metadata(zip_bytes, task_context)
+        connector._inspect_plugin_package(zip_bytes, task_context)
 
         # Should find requirements.txt in subdirectory
         assert task_context.metadata['deps_total'] == 2
@@ -127,25 +129,15 @@ class TestParsePluginId:
 
     def test_parse_valid_plugin_id(self):
         """Parse valid plugin ID format 'author/name'."""
-        from src.langbot.pkg.plugin.connector import PluginRuntimeConnector
+        from langbot.pkg.plugin.connector import PluginRuntimeConnector
 
         author, name = PluginRuntimeConnector._parse_plugin_id('myauthor/myplugin')
         assert author == 'myauthor'
         assert name == 'myplugin'
 
-    def test_parse_plugin_id_with_multiple_slashes(self):
-        """Parse plugin ID with multiple slashes uses split('/', 1)."""
-        from src.langbot.pkg.plugin.connector import PluginRuntimeConnector
-
-        # split('/', 1) only splits on first slash
-        author, name = PluginRuntimeConnector._parse_plugin_id('org/author/plugin-name')
-        assert author == 'org'
-        assert name == 'author/plugin-name'
-
     def test_parse_plugin_id_empty(self):
-        """Handle empty plugin ID."""
+        """Empty plugin ID is invalid."""
+        from langbot.pkg.plugin.connector import PluginRuntimeConnector
 
-        # Empty string behavior
-        parts = ''.split('/')
-        assert len(parts) == 1
-        assert parts[0] == ''
+        with pytest.raises(ValueError):
+            PluginRuntimeConnector._parse_plugin_id('')

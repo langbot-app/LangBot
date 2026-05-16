@@ -102,36 +102,33 @@ class TestPrecheckPluginDeps:
 
     def test_precheck_plugin_deps_no_plugins_dir(self):
         """precheck_plugin_deps skips when plugins dir doesn't exist."""
-        mocks = self._make_deps_import_mocks()
+        from langbot.pkg.core.bootutils.deps import precheck_plugin_deps
 
-        with isolated_sys_modules(mocks):
-            with patch('os.path.exists', return_value=False):
-                from langbot.pkg.core.bootutils.deps import precheck_plugin_deps
-
+        with patch('os.path.exists', return_value=False):
+            with patch('langbot.pkg.core.bootutils.deps.pkgmgr.install_requirements') as mock_install:
                 import asyncio
                 asyncio.get_event_loop().run_until_complete(precheck_plugin_deps())
 
-                # Should not raise, just skip
+                mock_install.assert_not_called()
 
     def test_precheck_plugin_deps_with_plugins_dir(self):
         """precheck_plugin_deps checks plugins subdirectories."""
-        mocks = self._make_deps_import_mocks()
-        mock_pkgmgr = MagicMock()
-        mocks['langbot.pkg.utils.pkgmgr'].install_requirements = mock_pkgmgr
+        from langbot.pkg.core.bootutils.deps import precheck_plugin_deps
 
-        with isolated_sys_modules(mocks):
-            from langbot.pkg.core.bootutils.deps import precheck_plugin_deps
+        def mock_listdir(path):
+            if path == 'plugins':
+                return ['plugin1', 'plugin2']
+            if path == 'plugins/plugin1':
+                return ['requirements.txt', 'main.py']
+            if path == 'plugins/plugin2':
+                return ['main.py']
+            return []
 
-            # Mock os functions
-            with patch('os.path.exists', return_value=True):
-                with patch('os.listdir', return_value=['plugin1', 'plugin2']):
-                    with patch('os.path.isdir', return_value=True):
-                        # plugin1 has requirements.txt, plugin2 doesn't
-                        def mock_listdir_subdir(path):
-                            if 'plugin1' in path:
-                                return ['requirements.txt', 'main.py']
-                            return ['main.py']
+        with patch('os.path.exists', return_value=True):
+            with patch('os.path.isdir', return_value=True):
+                with patch('os.listdir', side_effect=mock_listdir):
+                    with patch('langbot.pkg.core.bootutils.deps.pkgmgr.install_requirements') as mock_install:
+                        import asyncio
+                        asyncio.get_event_loop().run_until_complete(precheck_plugin_deps())
 
-                        with patch('os.listdir', side_effect=lambda p: mock_listdir_subdir(p) if 'plugin' in p else ['plugin1', 'plugin2']):
-                            import asyncio
-                            asyncio.get_event_loop().run_until_complete(precheck_plugin_deps())
+        mock_install.assert_called_once_with('plugins/plugin1/requirements.txt', extra_params=[])

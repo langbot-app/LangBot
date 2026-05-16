@@ -38,31 +38,6 @@ class TestTelemetryManagerInit:
         manager = telemetry.TelemetryManager(mock_app)
         assert manager.telemetry_config == {}
 
-    def test_send_tasks_is_instance_variable(self):
-        """Test that send_tasks is an instance variable (not class variable).
-
-        NOTE: This test documents a known bug - send_tasks is currently
-        a class variable which causes state pollution between instances.
-        The source code should be fixed to make it an instance variable.
-        """
-        telemetry = get_telemetry_module()
-        mock_app1 = Mock()
-        mock_app2 = Mock()
-
-        manager1 = telemetry.TelemetryManager(mock_app1)
-        manager2 = telemetry.TelemetryManager(mock_app2)
-
-        # Current behavior (bug): send_tasks is shared across instances
-        # This test will FAIL after source bug is fixed
-        # After fix: manager1.send_tasks should be independent from manager2.send_tasks
-        assert manager1.send_tasks is manager2.send_tasks  # BUG - they share same list
-
-        # Expected behavior after fix:
-        # assert manager1.send_tasks is not manager2.send_tasks
-        # assert manager1.send_tasks == []
-        # assert manager2.send_tasks == []
-
-
 class TestTelemetryManagerInitialize:
     """Tests for initialize() method."""
 

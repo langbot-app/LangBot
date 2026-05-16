@@ -72,7 +72,8 @@ def fake_pipeline_app():
     # Auth services
     app.user_service = Mock()
     app.user_service.is_initialized = AsyncMock(return_value=True)
-    app.user_service.verify_jwt_token = AsyncMock(return_value={'email': 'test@example.com'})
+    app.user_service.verify_jwt_token = AsyncMock(return_value='test@example.com')
+    app.user_service.get_user_by_email = AsyncMock(return_value=Mock(email='test@example.com'))
     app.apikey_service = Mock()
     app.apikey_service.verify_api_key = AsyncMock(return_value=True)
 

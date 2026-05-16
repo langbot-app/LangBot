@@ -9,6 +9,8 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock
 import pytest
 
+from langbot.pkg.provider.modelmgr.errors import RequesterError
+
 
 class TestOllamaRequesterConfig:
     """Tests for default config."""
@@ -228,7 +230,7 @@ class TestOllamaErrorHandling:
         """TimeoutError is converted to RequesterError."""
         requester_with_mocked_client.client.chat = AsyncMock(side_effect=asyncio.TimeoutError())
 
-        with pytest.raises(Exception) as exc:
+        with pytest.raises(RequesterError) as exc:
             await requester_with_mocked_client.invoke_llm(
                 query=None,
                 model=mock_model,

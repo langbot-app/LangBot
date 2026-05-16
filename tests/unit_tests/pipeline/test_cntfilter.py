@@ -91,9 +91,7 @@ class TestContentFilterStageInit:
 
         await stage.initialize(pipeline_config)
 
-        assert stage.filter_chain is not None
-        # Should have at least 'content-ignore' filter
-        assert len(stage.filter_chain) >= 1
+        assert [filter_impl.name for filter_impl in stage.filter_chain] == ['content-ignore']
 
     @pytest.mark.asyncio
     async def test_initialize_with_sensitive_words(self):
@@ -121,8 +119,10 @@ class TestContentFilterStageInit:
 
         await stage.initialize(pipeline_config)
 
-        # Should have content-ignore and ban-word-filter
-        assert len(stage.filter_chain) >= 2
+        assert [filter_impl.name for filter_impl in stage.filter_chain] == [
+            'ban-word-filter',
+            'content-ignore',
+        ]
 
 
 class TestPreContentFilter:

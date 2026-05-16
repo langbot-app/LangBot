@@ -12,8 +12,6 @@ Run: uv run pytest tests/e2e/test_startup.py -v -m e2e
 from __future__ import annotations
 
 import pytest
-import httpx
-from pathlib import Path
 
 pytestmark = pytest.mark.e2e
 
@@ -64,9 +62,8 @@ class TestStartupFlow:
     def test_chroma_directory_created(self, e2e_tmpdir):
         """Verify Chroma vector database directory was created."""
         chroma_path = e2e_tmpdir / 'chroma'
-        # Chroma should create its storage on startup or when first used
-        # This test just verifies the directory exists (created by config factory)
-        assert chroma_path.exists() or True  # May not be created until first use
+        # Created by the E2E config factory before startup.
+        assert chroma_path.exists()
 
     def test_pipelines_endpoint(self, e2e_client):
         """Test /api/v1/pipelines endpoint (requires auth)."""
@@ -86,8 +83,7 @@ class TestStartupFlow:
         # - 200 if auth succeeds
         # - 400 if credentials wrong
         # - 401 if user not initialized
-        # - 500 if internal error (e.g., user service not initialized)
-        assert response.status_code in [200, 400, 401, 500]
+        assert response.status_code in [200, 400, 401]
 
 
 class TestStartupStages:
@@ -127,8 +123,8 @@ class TestStartupStages:
 
         for endpoint in endpoints:
             response = e2e_client.get(endpoint)
-            # Should get valid response (even if 401 unauthorized)
-            assert response.status_code < 500, f'{endpoint} should not return 5xx'
+            # Should get a real route response, even if auth is required.
+            assert response.status_code in [200, 401, 403], f'{endpoint} should be registered'
 
 
 class TestMinimalStartupNoLLM:

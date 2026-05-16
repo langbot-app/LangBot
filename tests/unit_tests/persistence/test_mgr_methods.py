@@ -47,7 +47,7 @@ class TestExecuteAsync:
         mgr.db = mock_db
 
         # Execute a simple select
-        result = await mgr.execute_async(sqlalchemy.select(1))
+        await mgr.execute_async(sqlalchemy.select(1))
 
         mock_conn.execute.assert_called_once()
         mock_conn.commit.assert_called_once()

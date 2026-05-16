@@ -9,7 +9,7 @@ Source: src/langbot/pkg/api/http/service/apikey.py
 from __future__ import annotations
 
 import pytest
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 from types import SimpleNamespace
 
 from langbot.pkg.api.http.service.apikey import ApiKeyService
@@ -101,43 +101,42 @@ class TestApiKeyServiceCreateApiKey:
         ap = SimpleNamespace()
         ap.persistence_mgr = SimpleNamespace()
 
-        # Mock insert result
-        insert_result = Mock()
-        insert_result.all = Mock(return_value=[])
-
-        # Mock select result for retrieving created key
         created_key = Mock(spec=ApiKey)
         created_key.id = 1
         created_key.name = 'New Key'
-        created_key.key = 'lbk_generated_key'
+        created_key.key = 'lbk_fixed-token'
         created_key.description = 'Test description'
         select_result = Mock()
         select_result.first = Mock(return_value=created_key)
+        insert_params = []
 
-        # execute_async returns different results for insert vs select
         async def mock_execute(query):
-            # First call is insert, second is select
-            if hasattr(query, 'values'):
-                return insert_result
+            params = query.compile().params
+            if {'name', 'key', 'description'}.issubset(params):
+                insert_params.append(params)
+                return Mock()
             return select_result
 
         ap.persistence_mgr.execute_async = AsyncMock(side_effect=mock_execute)
         ap.persistence_mgr.serialize_model = Mock(
-            return_value={
+            side_effect=lambda model_cls, entity: {
                 'id': 1,
-                'name': 'New Key',
-                'key': 'lbk_generated_key',
-                'description': 'Test description',
+                'name': entity.name,
+                'key': entity.key,
+                'description': entity.description,
             }
         )
 
         service = ApiKeyService(ap)
 
-        # Execute
-        result = await service.create_api_key('New Key', 'Test description')
+        with patch('langbot.pkg.api.http.service.apikey.secrets.token_urlsafe', return_value='fixed-token'):
+            result = await service.create_api_key('New Key', 'Test description')
 
-        # Verify key format
+        assert insert_params == [
+            {'name': 'New Key', 'key': 'lbk_fixed-token', 'description': 'Test description'}
+        ]
         assert result['key'].startswith('lbk_')
+        assert result['key'] == 'lbk_fixed-token'
         assert result['name'] == 'New Key'
         assert result['description'] == 'Test description'
 
@@ -313,8 +312,8 @@ class TestApiKeyServiceVerifyApiKey:
         # Verify
         assert result is False
 
-    async def test_verify_api_key_wrong_prefix(self):
-        """Returns False for key without correct prefix."""
+    async def test_verify_api_key_unknown_key(self):
+        """Returns False when the key is not present in persistence."""
         # Setup
         ap = SimpleNamespace()
         ap.persistence_mgr = SimpleNamespace()
@@ -326,7 +325,7 @@ class TestApiKeyServiceVerifyApiKey:
         service = ApiKeyService(ap)
 
         # Execute
-        result = await service.verify_api_key('invalid_prefix_key')
+        result = await service.verify_api_key('unknown_key')
 
         # Verify
         assert result is False

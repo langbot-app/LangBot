@@ -318,24 +318,22 @@ class TestPipelineServiceCreatePipeline:
         service.get_pipelines = AsyncMock(return_value=[])
         service.get_pipeline = AsyncMock(return_value={
             'uuid': 'new-uuid',
-            'extensions_preferences': {
-                'enable_all_plugins': True,
-                'enable_all_mcp_servers': True,
-                'plugins': [],
-                'mcp_servers': [],
-            }
+            'extensions_preferences': {},
         })
 
-        ap.persistence_mgr.execute_async = AsyncMock()
+        insert_params = []
+
+        async def mock_execute(query):
+            params = query.compile().params
+            if 'extensions_preferences' in params:
+                insert_params.append(params)
+            return Mock()
+
+        ap.persistence_mgr.execute_async = AsyncMock(side_effect=mock_execute)
         ap.persistence_mgr.serialize_model = Mock(
             return_value={
                 'uuid': 'new-uuid',
-                'extensions_preferences': {
-                    'enable_all_plugins': True,
-                    'enable_all_mcp_servers': True,
-                    'plugins': [],
-                    'mcp_servers': [],
-                }
+                'extensions_preferences': {},
             }
         )
 
@@ -344,8 +342,13 @@ class TestPipelineServiceCreatePipeline:
             with patch('langbot.pkg.utils.paths.get_resource_path', return_value='templates/default-pipeline-config.json'):
                 await service.create_pipeline({'name': 'New Pipeline'})
 
-        # Verify - extensions_preferences should have been set
-        ap.persistence_mgr.execute_async.assert_called()
+        assert len(insert_params) == 1
+        assert insert_params[0]['extensions_preferences'] == {
+            'enable_all_plugins': True,
+            'enable_all_mcp_servers': True,
+            'plugins': [],
+            'mcp_servers': [],
+        }
 
 
 class _MockResultWithBots:
@@ -364,7 +367,7 @@ class TestPipelineServiceUpdatePipeline:
     """Tests for update_pipeline method."""
 
     async def test_update_pipeline_removes_protected_fields(self):
-        """Removes uuid, for_version, stages, is_default from update data."""
+        """Does not persist protected fields from update data."""
         # Setup
         ap = SimpleNamespace()
         ap.persistence_mgr = SimpleNamespace()
@@ -390,12 +393,11 @@ class TestPipelineServiceUpdatePipeline:
         }
         await service.update_pipeline('test-uuid', pipeline_data)
 
-        # Verify - protected fields removed
-        assert 'uuid' not in pipeline_data
-        assert 'for_version' not in pipeline_data
-        assert 'stages' not in pipeline_data
-        assert 'is_default' not in pipeline_data
-        assert 'description' in pipeline_data
+        update_params = ap.persistence_mgr.execute_async.await_args_list[0].args[0].compile().params
+        assert update_params['description'] == 'New description'
+        assert 'should-be-removed' not in update_params.values()
+        assert ['should-be-removed'] not in update_params.values()
+        assert not any(value is True for value in update_params.values())
 
     async def test_update_pipeline_syncs_bot_names(self):
         """Updates bot use_pipeline_name when pipeline name changes."""

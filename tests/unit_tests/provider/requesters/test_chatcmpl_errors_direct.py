@@ -11,6 +11,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import openai  # Import real openai package
 
+from langbot.pkg.provider.modelmgr.errors import RequesterError
+
 
 class TestInvokeLLMErrorHandling:
     """Tests for invoke_llm error handling branches."""
@@ -66,7 +68,7 @@ class TestInvokeLLMErrorHandling:
             side_effect=asyncio.TimeoutError()
         )
 
-        with pytest.raises(Exception) as exc:
+        with pytest.raises(RequesterError) as exc:
             await requester_with_mocked_client.invoke_llm(
                 query=None,
                 model=mock_model,
@@ -87,7 +89,7 @@ class TestInvokeLLMErrorHandling:
             side_effect=error
         )
 
-        with pytest.raises(Exception) as exc:
+        with pytest.raises(RequesterError) as exc:
             await requester_with_mocked_client.invoke_llm(
                 query=None,
                 model=mock_model,
@@ -108,7 +110,7 @@ class TestInvokeLLMErrorHandling:
             side_effect=error
         )
 
-        with pytest.raises(Exception) as exc:
+        with pytest.raises(RequesterError) as exc:
             await requester_with_mocked_client.invoke_llm(
                 query=None,
                 model=mock_model,
@@ -129,7 +131,7 @@ class TestInvokeLLMErrorHandling:
             side_effect=error
         )
 
-        with pytest.raises(Exception) as exc:
+        with pytest.raises(RequesterError) as exc:
             await requester_with_mocked_client.invoke_llm(
                 query=None,
                 model=mock_model,
@@ -175,7 +177,7 @@ class TestInvokeEmbeddingErrorHandling:
             side_effect=asyncio.TimeoutError()
         )
 
-        with pytest.raises(Exception) as exc:
+        with pytest.raises(RequesterError) as exc:
             await requester_with_mocked_client.invoke_embedding(
                 model=mock_embedding_model,
                 input_text=['test'],
@@ -195,7 +197,7 @@ class TestInvokeEmbeddingErrorHandling:
             side_effect=error
         )
 
-        with pytest.raises(Exception) as exc:
+        with pytest.raises(RequesterError) as exc:
             await requester_with_mocked_client.invoke_embedding(
                 model=mock_embedding_model,
                 input_text=['test'],

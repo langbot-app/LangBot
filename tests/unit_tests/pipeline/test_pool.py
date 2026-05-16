@@ -7,7 +7,7 @@ Tests query management, ID generation, and async context handling.
 from __future__ import annotations
 
 import pytest
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import Mock, patch
 
 from langbot.pkg.pipeline.pool import QueryPool
 
@@ -37,8 +37,8 @@ class TestQueryPoolInit:
 class TestQueryPoolAddQuery:
     """Tests for add_query method."""
 
-    async def test_add_query_returns_query_with_id(self):
-        """add_query creates a Query with correct ID."""
+    async def test_add_query_adds_query_with_id(self):
+        """add_query creates, stores, and caches a Query with the correct ID."""
         pool = QueryPool()
 
         # Mock Query creation
@@ -134,7 +134,7 @@ class TestQueryPoolAddQuery:
         with patch('langbot.pkg.pipeline.pool.pipeline_query.Query') as MockQuery:
             MockQuery.return_value = mock_query
 
-            query = await pool.add_query(
+            await pool.add_query(
                 bot_uuid='bot1',
                 launcher_type=Mock(),
                 launcher_id=1,
@@ -158,7 +158,7 @@ class TestQueryPoolAddQuery:
         with patch('langbot.pkg.pipeline.pool.pipeline_query.Query') as MockQuery:
             MockQuery.return_value = mock_query
 
-            query = await pool.add_query(
+            await pool.add_query(
                 bot_uuid='bot1',
                 launcher_type=Mock(),
                 launcher_id=1,
@@ -184,7 +184,7 @@ class TestQueryPoolAddQuery:
         with patch('langbot.pkg.pipeline.pool.pipeline_query.Query') as MockQuery:
             MockQuery.return_value = mock_query
 
-            query = await pool.add_query(
+            await pool.add_query(
                 bot_uuid='bot1',
                 launcher_type=Mock(),
                 launcher_id=1,

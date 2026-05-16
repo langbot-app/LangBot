@@ -9,7 +9,6 @@ import subprocess
 import time
 import signal
 import os
-import shutil
 from pathlib import Path
 from typing import Optional
 import logging

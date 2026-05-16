@@ -238,9 +238,9 @@ class TestResponseWrapperAssistant:
     async def test_assistant_empty_content(self):
         """Assistant with empty content should not emit event."""
         wrapper = get_wrapper_module()
-        get_entities_module()
 
         app = FakeApp()
+        app.plugin_connector.emit_event = AsyncMock()
         stage = wrapper.ResponseWrapper(app)
 
         pipeline_config = make_wrapper_config()
@@ -262,8 +262,9 @@ class TestResponseWrapperAssistant:
         async for result in stage.process(query, 'ResponseWrapper'):
             results.append(result)
 
-        # Should have at least one result (for empty content case)
-        assert len(results) >= 0
+        assert results == []
+        assert query.resp_message_chain == []
+        app.plugin_connector.emit_event.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_assistant_tool_calls(self):
@@ -313,10 +314,10 @@ class TestResponseWrapperAssistant:
         async for result in stage.process(query, 'ResponseWrapper'):
             results.append(result)
 
-        # Should have results for content and tool_calls
-        assert len(results) >= 1
+        assert len(results) == 2
         for result in results:
             assert result.result_type == entities.ResultType.CONTINUE
+        assert app.plugin_connector.emit_event.await_count == 2
 
 
 class TestResponseWrapperInterrupt:

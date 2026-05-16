@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import pytest
 import aiohttp
+from aiohttp import web
 
 from langbot.pkg.utils import httpclient
 
@@ -108,19 +109,30 @@ class TestSessionPoolIntegration:
     """Integration tests for session pool behavior."""
 
     async def test_session_can_make_request(self):
-        """Session can be used for actual HTTP requests."""
+        """Session can be used for HTTP requests without relying on external network."""
+        app = web.Application()
+
+        async def handle_get(request):
+            return web.json_response({'ok': True})
+
+        app.router.add_get('/get', handle_get)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, '127.0.0.1', 0)
+        await site.start()
+        port = site._server.sockets[0].getsockname()[1]
         session = httpclient.get_session()
 
-        # Make a simple request (using httpbin or similar)
-        # This is a basic smoke test
         try:
-            async with session.get('https://httpbin.org/get', timeout=aiohttp.ClientTimeout(total=5)) as resp:
+            async with session.get(
+                f'http://127.0.0.1:{port}/get',
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as resp:
                 assert resp.status == 200
-        except Exception:
-            # Network may be unavailable in CI, just verify session is usable
-            pass
-
-        await httpclient.close_all()
+                assert await resp.json() == {'ok': True}
+        finally:
+            await httpclient.close_all()
+            await runner.cleanup()
 
     async def test_multiple_requests_same_session(self):
         """Multiple requests can use the same session."""
