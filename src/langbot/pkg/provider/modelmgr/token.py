@@ -30,4 +30,6 @@ class TokenManager:
         return self.tokens[self.using_token_index]
 
     def next_token(self):
+        if len(self.tokens) == 0:
+            return
         self.using_token_index = (self.using_token_index + 1) % len(self.tokens)
