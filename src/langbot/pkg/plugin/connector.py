@@ -633,11 +633,12 @@ class PluginRuntimeConnector:
         Raises:
             ValueError: If plugin_id is not in the expected 'author/name' format.
         """
-        if '/' not in plugin_id:
+        segments = plugin_id.split('/')
+        if len(segments) != 2 or not all(segments):
             raise ValueError(
                 f"Invalid plugin_id format: '{plugin_id}'. Expected 'author/name' format (e.g. 'langbot/rag-engine')."
             )
-        return plugin_id.split('/', 1)
+        return segments[0], segments[1]
 
     async def call_rag_ingest(self, plugin_id: str, context_data: dict[str, Any]) -> dict[str, Any]:
         """Call plugin to ingest document.
