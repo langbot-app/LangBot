@@ -56,13 +56,21 @@ class TestGetQQImageDownloadableUrl:
         # Fragment is not included in query string parsing
         assert "http://example.com/image.jpg" in result_url
 
-    def test_https_url(self):
-        """Parse HTTPS URL - note: function returns http:// regardless of input scheme."""
+    def test_https_url_preserves_scheme(self):
+        """Parse HTTPS URL without downgrading the scheme."""
         url = "https://example.com/image.jpg"
         result_url, query = get_qq_image_downloadable_url(url)
 
-        # The function constructs URL with http:// scheme
-        assert "example.com/image.jpg" in result_url
+        assert result_url == "https://example.com/image.jpg"
+        assert query == {}
+
+    def test_missing_scheme_defaults_to_http(self):
+        """Parse scheme-less URL with the existing HTTP default."""
+        url = "example.com/image.jpg?param=value"
+        result_url, query = get_qq_image_downloadable_url(url)
+
+        assert result_url == "http://example.com/image.jpg"
+        assert query == {"param": ["value"]}
 
 
 class TestExtractB64AndFormat:
