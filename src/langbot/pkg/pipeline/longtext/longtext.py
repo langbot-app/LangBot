@@ -76,6 +76,10 @@ class LongTextProcessStage(stage.PipelineStage):
             self.ap.logger.debug('Long message processing strategy is not set, skip long message processing.')
             return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
+        if not query.resp_message_chain:
+            self.ap.logger.debug('Response message chain is empty, skip long message processing.')
+            return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
+
         # 检查是否包含非 Plain 组件
         contains_non_plain = False
 
