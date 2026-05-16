@@ -22,6 +22,30 @@ CLOUD_DOMAINS = [
     '.langflow.org',
 ]
 
+LOCAL_PATTERNS = [
+    'localhost',
+    '127.0.0.1',
+    '0.0.0.0',
+    '192.168.',
+    '10.',
+    '172.16.',
+    '172.17.',
+    '172.18.',
+    '172.19.',
+    '172.20.',
+    '172.21.',
+    '172.22.',
+    '172.23.',
+    '172.24.',
+    '172.25.',
+    '172.26.',
+    '172.27.',
+    '172.28.',
+    '172.29.',
+    '172.30.',
+    '172.31.',
+]
+
 HOST_LABEL_PATTERN = re.compile(r'^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$')
 
 
@@ -65,7 +89,7 @@ def get_runner_category(runner_name: str, runner_url: str) -> str:
         parsed_url = urlparse(runner_url)
         host = parsed_url.hostname.lower() if parsed_url.hostname else ''
         _ = parsed_url.port
-    except (TypeError, ValueError):
+    except Exception:
         return RunnerCategory.UNKNOWN
 
     if not parsed_url.scheme or not host or not _is_valid_hostname(host):
