@@ -594,12 +594,13 @@ export default function DynamicFormComponent({
           }}
         />
 
-        {itemConfigList.map((config) => {
+        {itemConfigList.map((config, index) => {
           // Create a normalized config with type converted to frontend format
           const normalizedConfig = {
             ...config,
             type: normalizeItemType(config.type),
           };
+          const fieldKey = config.id || config.name || `field-${index}`;
 
           if (config.show_if) {
             const dependValue = resolveShowIfValue(
@@ -704,7 +705,7 @@ export default function DynamicFormComponent({
 
             return (
               <WebhookUrlField
-                key={config.id}
+                key={fieldKey}
                 label={extractI18nObject(config.label)}
                 description={
                   config.description
@@ -735,7 +736,7 @@ export default function DynamicFormComponent({
 
             return (
               <EmbedCodeField
-                key={config.id}
+                key={fieldKey}
                 label={extractI18nObject(config.label)}
                 description={
                   config.description
@@ -750,7 +751,7 @@ export default function DynamicFormComponent({
           // QR code login button (e.g. Feishu one-click create, WeChat scan login)
           if (config.type === 'qr-code-login') {
             return (
-              <FormItem key={config.id}>
+              <FormItem key={fieldKey}>
                 <div
                   className="relative flex items-center gap-4 p-4 rounded-xl border-2 border-dashed cursor-pointer transition-all hover:border-solid hover:shadow-md group"
                   style={{
@@ -811,7 +812,7 @@ export default function DynamicFormComponent({
           if (normalizedConfig.type === 'boolean') {
             return (
               <FormField
-                key={config.id}
+                key={fieldKey}
                 control={form.control}
                 name={config.name as keyof FormValues}
                 render={({ field }) => (
@@ -850,7 +851,7 @@ export default function DynamicFormComponent({
 
           return (
             <FormField
-              key={config.id}
+              key={fieldKey}
               control={form.control}
               name={config.name as keyof FormValues}
               render={({ field }) => (

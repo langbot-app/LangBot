@@ -170,6 +170,8 @@ export default function PipelineFormComponent({
     resolver: zodResolver(formSchema),
     defaultValues: {
       basic: {
+        name: '',
+        description: '',
         emoji: '⚙️',
       },
       ai: {},
@@ -222,8 +224,8 @@ export default function PipelineFormComponent({
 
           const loadedValues = {
             basic: {
-              name: resp.pipeline.name,
-              description: resp.pipeline.description,
+              name: resp.pipeline.name ?? '',
+              description: resp.pipeline.description ?? '',
               emoji: resp.pipeline.emoji || '⚙️',
             },
             ai: resp.pipeline.config.ai,
@@ -629,7 +631,7 @@ export default function PipelineFormComponent({
                                   <span className="text-destructive">*</span>
                                 </FormLabel>
                                 <FormControl>
-                                  <Input {...field} />
+                                  <Input {...field} value={field.value ?? ''} />
                                 </FormControl>
                                 <FormMessage />
                               </FormItem>
@@ -660,7 +662,7 @@ export default function PipelineFormComponent({
                             <FormItem>
                               <FormLabel>{t('common.description')}</FormLabel>
                               <FormControl>
-                                <Input {...field} />
+                                <Input {...field} value={field.value ?? ''} />
                               </FormControl>
                               <FormMessage />
                             </FormItem>

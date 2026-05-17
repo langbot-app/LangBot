@@ -262,6 +262,14 @@ class AgentRunnerRegistry:
         stages = []
 
         for descriptor in runners:
+            config_schema = []
+            for index, config_item in enumerate(descriptor.config_schema):
+                item = dict(config_item)
+                if not item.get('id'):
+                    item_name = item.get('name') or str(index)
+                    item['id'] = f'{descriptor.id}.{item_name}'
+                config_schema.append(item)
+
             # Add runner option
             options.append(
                 {
@@ -278,7 +286,7 @@ class AgentRunnerRegistry:
                         'name': descriptor.id,
                         'label': descriptor.label,
                         'description': descriptor.description,
-                        'config': descriptor.config_schema,
+                        'config': config_schema,
                     }
                 )
 
