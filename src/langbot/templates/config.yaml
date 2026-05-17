@@ -150,6 +150,4 @@ space:
     # OAuth authorization page URL (user will be redirected here)
     oauth_authorize_url: 'https://space.langbot.app/auth/authorize'
     disable_models_service: false
-    # Max seconds to wait for startup model-list sync. Set to 0 to disable the timeout.
-    models_sync_timeout: 10
     disable_telemetry: false
