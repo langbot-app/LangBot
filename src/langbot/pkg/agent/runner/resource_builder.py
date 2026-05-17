@@ -112,8 +112,8 @@ class AgentResourceBuilder:
                     'model_type': getattr(model.model_entity, 'model_type', None),
                     'provider': getattr(model.provider_entity, 'name', None) if hasattr(model, 'provider_entity') else None,
                 })
-        except Exception:
-            pass
+        except Exception as e:
+            self.ap.logger.warning(f'Failed to build model resource {model_uuid}: {e}')
 
         # Add fallback models if present
         fallback_uuids = query.variables.get('_fallback_model_uuids', [])
@@ -126,8 +126,8 @@ class AgentResourceBuilder:
                         'model_type': model.model_entity.model_type,
                         'provider': model.provider_entity.name if hasattr(model, 'provider_entity') else None,
                     })
-            except Exception:
-                pass
+            except Exception as e:
+                self.ap.logger.warning(f'Failed to build fallback model resource {fb_uuid}: {e}')
 
         return models
 
@@ -195,8 +195,8 @@ class AgentResourceBuilder:
                         'kb_name': kb.get_name(),
                         'kb_type': kb.knowledge_base_entity.kb_type if hasattr(kb.knowledge_base_entity, 'kb_type') else None,
                     })
-            except Exception:
-                pass
+            except Exception as e:
+                self.ap.logger.warning(f'Failed to build knowledge base resource {kb_uuid}: {e}')
 
         return kb_resources
 

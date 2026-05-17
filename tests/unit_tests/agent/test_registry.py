@@ -243,7 +243,11 @@ class TestRegistryMetadataForPipeline:
         # extracted config at top level.
         assert len(stages) == 1
         assert stages[0]['name'] == 'plugin:alice/my-agent/custom'
-        assert stages[0]['config'] == [{'name': 'param1', 'type': 'string'}]
+        assert stages[0]['config'] == [{
+            'name': 'param1',
+            'type': 'string',
+            'id': 'plugin:alice/my-agent/custom.param1',
+        }]
 
 
 class TestDescriptorValidation:

@@ -81,8 +81,8 @@ class AgentResultNormalizer:
                     if isinstance(content, str) and len(content) > 10000:
                         # Keep reasonable length
                         data['chunk'] = {'role': 'assistant', 'content': content[:10000] + '...[truncated]'}
-        except Exception:
-            pass
+        except Exception as e:
+            self.ap.logger.warning(f'Failed to validate runner {descriptor.id} result size: {e}')
 
         # Handle each result type
         data = result_dict.get('data', {})
