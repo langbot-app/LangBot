@@ -9,6 +9,7 @@ import {
   useReactFlow,
   BackgroundVariant,
   SelectionMode,
+  MarkerType,
 } from '@xyflow/react';
 import type { Node, NodeTypes, OnSelectionChangeParams } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -446,8 +447,14 @@ function WorkflowEditorInner() {
             panOnDrag={[1, 2]} // Middle click and right click to pan
             selectNodesOnDrag={false}
             defaultEdgeOptions={{
-              type: 'smoothstep',
+              type: 'bezier',
               animated: true,
+              markerEnd: {
+                type: MarkerType.ArrowClosed,
+                width: 20,
+                height: 20,
+                color: 'hsl(var(--muted-foreground))',
+              },
             }}
             deleteKeyCode={null} // We handle delete manually
           >
