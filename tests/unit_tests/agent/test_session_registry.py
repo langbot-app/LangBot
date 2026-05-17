@@ -27,8 +27,6 @@ class TestSessionRegistryBasic:
             models=[{'model_id': 'model_001', 'model_type': 'chat', 'provider': 'openai'}],
             tools=[{'tool_name': 'web_search', 'tool_type': 'builtin'}],
         )
-        session = make_session(run_id=run_id, resources=resources)
-
         await registry.register(
             run_id=run_id,
             runner_id='plugin:test/my-runner/default',
@@ -393,10 +391,10 @@ class TestGlobalRegistry:
         # In production, calling get_session_registry() multiple times
         # returns the same instance. We verify this by checking the
         # module-level variable directly.
-        import langbot.pkg.agent.runner.session_registry as registry_module
+        from langbot.pkg.agent.runner.session_registry import _global_registry
 
         # Check that the global variable exists and is either None or an instance
-        global_reg = registry_module._global_registry
+        global_reg = _global_registry
         if global_reg is None:
             # First call creates the instance
             registry1 = get_session_registry()
@@ -453,7 +451,7 @@ class TestThreadSafety:
             registry.get('run_1'),
         ]
 
-        results = await asyncio.gather(*tasks)
+        await asyncio.gather(*tasks)
 
         # After both complete, session should be unregistered
         result = await registry.get('run_1')

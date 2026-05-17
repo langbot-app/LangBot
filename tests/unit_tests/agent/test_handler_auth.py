@@ -431,11 +431,9 @@ class TestAuthorizationPathDifferentiation:
         # Regular plugin call has no run_id
         run_id = None
 
-        # Authorization check should be skipped when run_id is None
+        # Authorization check should be skipped when run_id is None.
         # This is handled in handler.py with: if run_id: ...
-        if run_id:
-            # This block should NOT execute for regular plugin calls
-            raise AssertionError('Authorization check should not run for regular plugin calls')
+        assert run_id is None
 
         # For regular plugins:
         # - INVOKE_LLM: unrestricted access to any model
@@ -661,12 +659,7 @@ class TestHandlerActionAuthorization:
         run_id = None
 
         # In handler.py, authorization check is inside: if run_id: ...
-        # So when run_id is None, authorization is skipped
-        if run_id:
-            # This block should NOT execute
-            raise AssertionError('Should not execute authorization for no run_id')
-
-        # No authorization check - unrestricted access
+        # So when run_id is None, authorization is skipped.
         assert run_id is None
 
     @pytest.mark.asyncio
@@ -733,9 +726,6 @@ class TestHandlerActionAuthorization:
         run_id = None
 
         # Authorization check is inside: if run_id: ...
-        if run_id:
-            raise AssertionError('Should not execute authorization for no run_id')
-
         assert run_id is None
 
     @pytest.mark.asyncio
@@ -880,10 +870,8 @@ class TestNoRunIdBackwardCompatPath:
         run_id = None
         llm_model_uuid = 'any_model'
 
-        # Simulate handler logic
-        if run_id:
-            # This should NOT execute
-            raise AssertionError('Authorization should not run')
+        # Simulate handler logic: no run_id skips authorization.
+        assert run_id is None
 
         # Model can be any UUID (unrestricted)
         assert llm_model_uuid == 'any_model'
@@ -895,8 +883,7 @@ class TestNoRunIdBackwardCompatPath:
         tool_name = 'any_tool'
 
         # Handler.py line 463: if run_id: ...
-        if run_id:
-            raise AssertionError('Authorization should not run')
+        assert run_id is None
 
         assert tool_name == 'any_tool'
 
@@ -1982,9 +1969,8 @@ class TestBackwardCompatStorageNoRunId:
         # When run_id is None, validation is skipped
         run_id = None
 
-        # Simulate handler logic
-        if run_id:
-            raise AssertionError('Should not execute validation')
+        # Simulate handler logic: no run_id skips validation.
+        assert run_id is None
 
         # Storage access unrestricted for regular plugins
         assert run_id is None
@@ -1993,8 +1979,7 @@ class TestBackwardCompatStorageNoRunId:
         """GET_CONFIG_FILE without run_id skips Host-side validation."""
         run_id = None
 
-        if run_id:
-            raise AssertionError('Should not execute validation')
+        assert run_id is None
 
         # File access unrestricted for regular plugins
         assert run_id is None
