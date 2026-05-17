@@ -262,6 +262,77 @@ class FeishuBitableSource:
                 break
         return records
 
+    async def search_table_records(
+        self,
+        app_token: str,
+        headers: dict[str, str],
+        table_id: str,
+        *,
+        conditions: list[dict[str, Any]] | None = None,
+        sort: list[dict[str, Any]] | None = None,
+        scan_limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        if not app_token or not table_id:
+            return []
+
+        endpoint = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records/search"
+        records: list[dict[str, Any]] = []
+        page_token = ""
+        scanned = 0
+        while scanned < scan_limit:
+            page_size = min(200, scan_limit - scanned)
+            params: dict[str, Any] = {"page_size": page_size}
+            if page_token:
+                params["page_token"] = page_token
+
+            payload: dict[str, Any] = {"automatic_fields": False}
+            if conditions:
+                payload["filter"] = {"conjunction": "and", "conditions": conditions}
+            if sort:
+                payload["sort"] = sort
+
+            data = await self._api_call("POST", endpoint, headers=headers, payload=payload, params=params)
+            items = data.get("items", [])
+            if isinstance(items, list):
+                for item in items:
+                    if isinstance(item, dict):
+                        records.append(item)
+                scanned += len(items)
+
+            if not bool(data.get("has_more", False)):
+                break
+            page_token = str(data.get("page_token", "")).strip()
+            if not page_token:
+                break
+        return records
+
+    async def query_table_records(
+        self,
+        app_token: str,
+        headers: dict[str, str],
+        table_id: str,
+        *,
+        scan_limit: int,
+        conditions: list[dict[str, Any]] | None = None,
+        sort: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
+        try:
+            return await self.search_table_records(
+                app_token=app_token,
+                headers=headers,
+                table_id=table_id,
+                conditions=conditions,
+                sort=sort,
+                scan_limit=scan_limit,
+            )
+        except Exception:
+            return await self.list_table_records(
+                app_token=app_token,
+                headers=headers,
+                table_id=table_id,
+                scan_limit=scan_limit,
+            )
+
     @staticmethod
     def build_detail_text(fields: dict[str, Any], detail_max_fields: int) -> str:
         ignore_keys = {"消息时间", "原始文本", "OCR文本", "路由", "批次号", "业务类型", "产线"}
@@ -401,10 +472,11 @@ class FeishuBitableSource:
 
         by_batch: dict[str, dict[str, Any]] = {}
         for table_id in table_ids:
-            records = await self.list_table_records(
+            records = await self.query_table_records(
                 app_token=app_token,
                 headers=headers,
                 table_id=table_id,
+                conditions=[{"field_name": "窑炉段", "operator": "is", "value": [self._normalize_segment(segment)]}],
                 scan_limit=scan_limit,
             )
             for item in records:
@@ -558,10 +630,12 @@ class FeishuBitableSource:
 
         best: dict[str, Any] | None = None
         for table_id in table_ids:
-            records = await self.list_table_records(
+            records = await self.query_table_records(
                 app_token=app_token,
                 headers=headers,
                 table_id=table_id,
+                conditions=[{"field_name": batch_field, "operator": "contains", "value": [normalized_target]}],
+                sort=[{"field_name": message_time_field, "desc": True}],
                 scan_limit=scan_limit,
             )
             for item in records:
@@ -642,10 +716,11 @@ class FeishuBitableSource:
 
         latest_by_line: dict[str, dict[str, Any]] = {}
         for table_id in table_ids:
-            records = await self.list_table_records(
+            records = await self.query_table_records(
                 app_token=app_token,
                 headers=headers,
                 table_id=table_id,
+                sort=[{"field_name": message_time_field, "desc": True}],
                 scan_limit=scan_limit,
             )
             for item in records:

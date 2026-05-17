@@ -267,6 +267,8 @@ class BitableSourceTest(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_query_latest_brief(self) -> None:
+        search_calls: list[dict[str, object]] = []
+
         async def fake_api(method, endpoint, headers, payload=None, params=None):
             if endpoint.endswith("/tables"):
                 return {
@@ -276,7 +278,8 @@ class BitableSourceTest(unittest.IsolatedAsyncioTestCase):
                     ],
                     "has_more": False,
                 }
-            if endpoint.endswith("/tables/tblA/records"):
+            if endpoint.endswith("/tables/tblA/records/search"):
+                search_calls.append({"endpoint": endpoint, "payload": payload or {}, "params": params or {}})
                 return {
                     "items": [
                         {
@@ -290,7 +293,8 @@ class BitableSourceTest(unittest.IsolatedAsyncioTestCase):
                     ],
                     "has_more": False,
                 }
-            if endpoint.endswith("/tables/tblB/records"):
+            if endpoint.endswith("/tables/tblB/records/search"):
+                search_calls.append({"endpoint": endpoint, "payload": payload or {}, "params": params or {}})
                 return {
                     "items": [
                         {
@@ -322,6 +326,29 @@ class BitableSourceTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIn("A线：S18-SC-DA2603-005", text)
         self.assertIn("B线：S006-SC-DB2602-130", text)
+        self.assertEqual(len(search_calls), 2)
+        self.assertTrue(all("sort" in call["payload"] for call in search_calls))
+
+    async def test_query_records_falls_back_when_server_search_fails(self) -> None:
+        async def fake_api(method, endpoint, headers, payload=None, params=None):
+            if endpoint.endswith("/records/search"):
+                raise RuntimeError("search unsupported")
+            if endpoint.endswith("/records"):
+                return {
+                    "items": [{"fields": {"批次号": "DA2603-001"}}],
+                    "has_more": False,
+                }
+            raise AssertionError(f"Unexpected endpoint: {endpoint}")
+
+        source = FeishuBitableSource(fake_api)
+        records = await source.query_table_records(
+            app_token="app_token",
+            headers={"Authorization": "Bearer test"},
+            table_id="tbl",
+            scan_limit=1000,
+            conditions=[{"field_name": "批次号", "operator": "contains", "value": ["DA2603-001"]}],
+        )
+        self.assertEqual(records[0]["fields"]["批次号"], "DA2603-001")
 
     async def test_query_latest_brief_supports_dynamic_lines(self) -> None:
         async def fake_api(method, endpoint, headers, payload=None, params=None):

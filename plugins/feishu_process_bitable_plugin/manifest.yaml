@@ -4,7 +4,7 @@ metadata:
   author: local
   name: feishu_process_bitable_plugin
   repository: 'https://open.feishu.cn/'
-  version: 0.3.29
+  version: 0.3.30
   description:
     en_US: Parse process messages with OCR and write structured records into Feishu Bitable.
     zh_Hans: 解析工艺消息并支持OCR，把结构化结果写入飞书多维表格。
@@ -84,9 +84,12 @@ spec:
       label:
         en_US: Auto Create Table By Route
         zh_Hans: 按路由自动建表
+      description:
+        en_US: Disabled by default in production to avoid creating wrong tables from misparsed messages.
+        zh_Hans: 生产默认关闭，避免误解析消息时创建错误数据表。
       type: boolean
       required: false
-      default: true
+      default: false
     - name: table_name_routing_json
       label:
         en_US: Table Name Routing JSON
@@ -101,9 +104,12 @@ spec:
       label:
         en_US: Auto Create Missing Fields
         zh_Hans: 自动创建缺失字段
+      description:
+        en_US: Disabled by default in production; configure table fields explicitly before writing.
+        zh_Hans: 生产默认关闭；请先显式配置目标表字段后再写入。
       type: boolean
       required: false
-      default: true
+      default: false
     - name: auto_numeric_field
       label:
         en_US: Auto Numeric Field

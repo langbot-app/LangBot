@@ -247,3 +247,43 @@ class AutoProcessToBitableListenerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(record.route_key, "feeding.C")
         self.assertEqual(record.fields["磷酸铁需补(kg)"], 12.5)
         self.assertEqual(record.fields["BL总量(kg)"], 88.8)
+
+    async def test_default_auto_create_fields_is_strict(self) -> None:
+        listener = self._build_listener()
+        listener._list_all_table_fields = AsyncMock(return_value={"批次号": 1})  # type: ignore[method-assign]
+
+        ok, detail, field_types = await listener._ensure_table_fields(
+            "tbl-process",
+            {"批次号": "DA2603-001", "D50": 1.23},
+        )
+
+        self.assertFalse(ok)
+        self.assertIn("missing fields", detail)
+        self.assertEqual(field_types, {"批次号": 1})
+
+    async def test_default_auto_create_table_by_route_is_disabled(self) -> None:
+        listener = self._build_listener()
+        listener._list_all_bitable_tables = AsyncMock(return_value=[])  # type: ignore[method-assign]
+        listener._create_bitable_table = AsyncMock(return_value="tbl-created")  # type: ignore[method-assign]
+
+        table_id = await listener._get_or_create_table_id_by_name("新表")
+
+        self.assertEqual(table_id, "")
+        listener._create_bitable_table.assert_not_called()  # type: ignore[attr-defined]
+
+    async def test_find_existing_record_uses_server_search_first(self) -> None:
+        listener = self._build_listener({"bitable_app_token": "app_token"})
+        listener._get_tenant_access_token = AsyncMock(return_value="token")  # type: ignore[method-assign]
+        listener._call_feishu_json_api = AsyncMock(  # type: ignore[method-assign]
+            return_value={"items": [{"record_id": "rec-1", "fields": {"批次号": "DA2603-001"}}]}
+        )
+
+        record_id = await listener._find_existing_record_id("tbl-process", {"批次号": "DA2603-001"})
+
+        self.assertEqual(record_id, "rec-1")
+        listener._call_feishu_json_api.assert_awaited_once()  # type: ignore[attr-defined]
+        args = listener._call_feishu_json_api.await_args.args  # type: ignore[attr-defined]
+        kwargs = listener._call_feishu_json_api.await_args.kwargs  # type: ignore[attr-defined]
+        self.assertEqual(args[0], "POST")
+        self.assertIn("/records/search", args[1])
+        self.assertEqual(kwargs["params"], {"page_size": 1})

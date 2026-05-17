@@ -5,7 +5,7 @@
 - `日报`：优先读 Feishu Sheets 生成标准日报，失败可回退 Feishu Bitable 简报。
 - `摸料`：联动窑炉批次表 + 烧结表 + Sheets 配方表，返回指定段位当前出窑批次与压实信息。
 
-默认情况下，`日报` 与 `摸料` 的配方表检索都会自动纳入符合 `S18-*线` / `S006-*线` 规则的工作表；后续新增 `S006-A线`、`S18-C线`、`S006-D线` 等无需改代码。
+默认情况下，`日报` 与 `摸料` 的配方表检索都会自动纳入符合 `S18-*线` / `S006-*线` / `S20-*线` 规则的工作表；后续新增 `S006-A线`、`S18-C线`、`S20-C线` 等无需改代码。
 
 ## 口令协议
 
@@ -22,7 +22,7 @@
 
 ### 2. 摸料（新增）
 
-格式：`摸料 A1|A2|B1|B2`
+格式：`摸料 A1|A2|B1|B2|C1|C2`
 
 示例：
 
@@ -30,20 +30,22 @@
 - `摸料 A2`
 - `摸料 B1`
 - `摸料 B2`
+- `摸料 C1`
+- `摸料 C2`
 
 规则：
 
 - 仅支持单段位。
-- 当前仅开放 `A1|A2|B1|B2`；底层已兼容未来线别扩展，但本次不开放 `C/D` 口令。
+- 当前默认开放 `A1|A2|B1|B2|C1|C2`；可通过 `touch_material_segments` 继续扩展或收窄。
 - 大小写不敏感（如 `摸料 a2`）。
 - 可去标点（如 `摸料，A2`）。
-- 参数无效时回复：`摸料参数无效，请使用：摸料 A1|A2|B1|B2。`
+- 参数无效时回复会按当前配置段位生成，例如：`摸料参数无效，请使用：摸料 A1|A2|B1|B2|C1|C2。`
 
 ## 摸料链路说明
 
 ### 当前出窑批次来源
 
-- 数据表：`kiln_batch_io` 对应表（默认表名 `窑炉批次进窑出窑表`）。
+- 数据表：`kiln_batch_io` 对应表（默认表名 `窑炉批次进窑出窑表,二期窑炉批次进窑出窑表`）。
 - 判定策略：同段位内“出窑开始时间优先，缺失回退出窑结束时间”，取时间最大批次。
 - 兼容两种行模式：
   - `segment`：`1号出窑开始时间/2号...`
@@ -64,6 +66,7 @@
 - Sheet 优先级：
   - A1/A2 优先 A 线 Sheet
   - B1/B2 优先 B 线 Sheet
+  - C1/C2 优先 C 线 Sheet
   - 未命中回退全量 Sheet 扫描
 
 ### 物理性质推断
@@ -114,8 +117,8 @@
 - `keyword_commands`（默认 `日报`）
 - `data_source_mode`：`auto|sheets|bitable`
 - `sheets_spreadsheet_token`
-- `sheets_sheet_names`：可选补充工作表列表；未配置也会自动扫描并纳入 `S18-*线` / `S006-*线`
-- `sheet_auto_discovery_patterns_json`：日报工作表自动发现正则数组，例如 `["(S18|S006)-.+线","S20-.+产线"]`
+- `sheets_sheet_names`：可选补充工作表列表；未配置也会自动扫描并纳入 `S18-*线` / `S006-*线` / `S20-*线`
+- `sheet_auto_discovery_patterns_json`：日报工作表自动发现正则数组，例如 `["(S18|S006|S20)-.+线"]`
 - `sheets_range`
 - `sheet_snapshot_header_rows`（截图固定保留前几行，默认 `3`）
 - `sheet_snapshot_tail_nonempty_rows`（截图保留尾部有效行数，默认 `20`）
@@ -132,10 +135,10 @@
 ### 摸料配置（新增）
 
 - `touch_material_commands`（默认 `摸料`）
-- `touch_material_segments`（默认 `A1,A2,B1,B2`）
+- `touch_material_segments`（默认 `A1,A2,B1,B2,C1,C2`）
 - `kiln_batch_table_ids`
-- `kiln_batch_table_names`（默认 `窑炉批次进窑出窑表`）
-- 配方表检索默认复用日报的自动选表逻辑，会自动纳入新增的 `S18-*线` / `S006-*线`
+- `kiln_batch_table_names`（默认 `窑炉批次进窑出窑表,二期窑炉批次进窑出窑表`）
+- 配方表检索默认复用日报的自动选表逻辑，会自动纳入新增的 `S18-*线` / `S006-*线` / `S20-*线`
 - `touch_recipe_field_aliases_json`
 - `touch_material_infer_rules_json`
 - `touch_material_no_data_text`（默认 `未查到当前出窑批次或烧结压实数据。`）

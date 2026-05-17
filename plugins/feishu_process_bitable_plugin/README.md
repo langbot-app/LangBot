@@ -44,9 +44,9 @@
 - `bitable_app_token`
 - `bitable_default_table_id`
 - `table_routing_json`：把不同路由写入不同表
-- `auto_create_table_by_route`：未配置 `table_id` 时按路由自动建表
+- `auto_create_table_by_route`：未配置 `table_id` 时按路由自动建表（生产默认 `false`）
 - `table_name_routing_json`：路由 -> 表名（用于自动建表）
-- `auto_create_fields`：缺列自动创建
+- `auto_create_fields`：缺列自动创建（生产默认 `false`）
 - `enable_ocr_for_images`
 - `process_switch_json`
 - `kiln_batch_io_row_mode`：`segment|slot`（默认 `segment`）
@@ -96,13 +96,13 @@
 说明：
 - 先匹配完整路由键（如 `spray.A`）
 - 未命中时匹配前缀键（如 `spray`）
-- 若未配置到 `table_id`，可按 `table_name_routing_json` / 默认表名自动建表
+- 若开启 `auto_create_table_by_route` 且未配置到 `table_id`，可按 `table_name_routing_json` / 默认表名自动建表
 - 自动建表仍失败时，最后回退到 `bitable_default_table_id`
 
 ## 自动建表与自动补列
 
-- 默认开启 `auto_create_table_by_route=true`、`auto_create_fields=true`
-- 当 `table_routing_json` 没有命中时，插件会按路由自动找表/建表
+- 生产默认关闭 `auto_create_table_by_route=false`、`auto_create_fields=false`
+- 当 `table_routing_json` 没有命中且 `auto_create_table_by_route=false` 时，插件不会自动建表，会返回配置错误
 - 默认表名（可被 `table_name_routing_json` 覆盖）：
   - `spray.A` -> `A线喷雾汇总`
   - `spray.B` -> `B线喷雾汇总`
@@ -131,8 +131,9 @@
   - `wet_process.E` -> `E线湿法汇总`
   - `pure_water` -> `车间纯水PH汇总`
   - `kiln_batch_io` -> `窑炉批次进窑出窑表`
+  - `kiln_batch_io.phase2` -> `二期窑炉批次进窑出窑表`
 - 若 `merge_particle_size_to_stage_tables=false`，仍可使用 `particle_size.FS/CM/XM/HP/SC/QQT` 独立路由
-- 写入前会检查字段，缺失字段自动创建（默认文本列）
+- 写入前会检查字段；默认缺字段时报错，只有显式开启 `auto_create_fields=true` 时才会自动创建（默认文本列）
 
 `table_name_routing_json` 示例：
 

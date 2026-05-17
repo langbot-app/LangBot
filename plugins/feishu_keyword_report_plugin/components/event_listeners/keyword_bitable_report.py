@@ -197,7 +197,7 @@ class KeywordBitableReportListener(EventListener):
             else:
                 patterns = [item for item in self._split_csv(text) if item]
 
-        return patterns or [r"(S18|S006)-.+线"]
+        return patterns or [r"(S18|S006|S20)-.+线"]
 
     def _is_auto_target_sheet_name(self, sheet_name: str) -> bool:
         title = str(sheet_name).strip()
@@ -240,7 +240,7 @@ class KeywordBitableReportListener(EventListener):
         else:
             raw_segments = self._split_csv(str(configured or ""))
         segments = {item.upper() for item in raw_segments if item.strip()}
-        return segments or {"A1", "A2", "B1", "B2"}
+        return segments or {"A1", "A2", "B1", "B2", "C1", "C2"}
 
     def _resolve_target_sheet_names_for_error(self, command_sheets: list[str]) -> list[str]:
         if command_sheets:
@@ -339,8 +339,8 @@ class KeywordBitableReportListener(EventListener):
             return "S18"
         if normalized.startswith("DB"):
             return "S006"
-        if normalized.startswith("DC"):
-            return "C"
+        if normalized.startswith(("DC", "DD", "DE")):
+            return "S20"
         return ""
 
     @staticmethod
@@ -655,7 +655,7 @@ class KeywordBitableReportListener(EventListener):
             app_token=app_token,
             headers=headers,
             table_ids_raw=self._get_str_config("sintering_table_ids", ""),
-            table_names_raw=self._get_str_config("sintering_table_names", "A线烧结汇总,B线烧结汇总"),
+            table_names_raw=self._get_str_config("sintering_table_names", "A线烧结汇总,B线烧结汇总,C线烧结汇总"),
             route_field=self._get_str_config("route_field", "路由"),
             batch_field=self._get_str_config("batch_field", "批次号"),
             message_time_field=self._get_str_config("message_time_field", "消息时间"),
@@ -784,7 +784,7 @@ class KeywordBitableReportListener(EventListener):
             headers=headers,
             segment=segment,
             table_ids_raw=self._get_str_config("kiln_batch_table_ids", ""),
-            table_names_raw=self._get_str_config("kiln_batch_table_names", "窑炉批次进窑出窑表"),
+            table_names_raw=self._get_str_config("kiln_batch_table_names", "窑炉批次进窑出窑表,二期窑炉批次进窑出窑表"),
             batch_field=self._get_str_config("batch_field", "批次号"),
             scan_limit=scan_limit,
         )
@@ -812,7 +812,7 @@ class KeywordBitableReportListener(EventListener):
             batch_core=batch_core or batch_display,
             segment=segment,
             table_ids_raw=self._get_str_config("sintering_table_ids", ""),
-            table_names_raw=self._get_str_config("sintering_table_names", "A线烧结汇总,B线烧结汇总"),
+            table_names_raw=self._get_str_config("sintering_table_names", "A线烧结汇总,B线烧结汇总,C线烧结汇总"),
             route_field=self._get_str_config("route_field", "路由"),
             batch_field=self._get_str_config("batch_field", "批次号"),
             message_time_field=self._get_str_config("message_time_field", "消息时间"),

@@ -145,10 +145,10 @@ class FeishuSheetsSource:
         normalized = re.sub(r"\s*-\s*", "-", FeishuSheetsSource.field_to_text(batch_text).upper())
         if not normalized:
             return ""
-        match = re.search(r"(D[ABC]\d{4}-\d+)", normalized)
+        match = re.search(r"(D[A-Z]\d{4}-\d+)", normalized)
         if match:
             return str(match.group(1))
-        match = re.search(r"([ABC]\d{4}-\d+)", normalized)
+        match = re.search(r"([A-Z]\d{4}-\d+)", normalized)
         if match:
             return f"D{match.group(1)}"
         return normalized
@@ -171,8 +171,8 @@ class FeishuSheetsSource:
             return "S18"
         if normalized.startswith("DB"):
             return "S006"
-        if normalized.startswith("DC"):
-            return "C"
+        if normalized.startswith(("DC", "DD", "DE")):
+            return "S20"
         return ""
 
     @classmethod

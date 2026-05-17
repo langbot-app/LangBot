@@ -491,7 +491,7 @@ class AutoProcessToBitableListener(EventListener):
             if cached:
                 return cached
 
-            if not self._get_bool_config("auto_create_table_by_route", True):
+            if not self._get_bool_config("auto_create_table_by_route", False):
                 return ""
 
             created = await self._create_bitable_table(table_name)
@@ -589,10 +589,10 @@ class AutoProcessToBitableListener(EventListener):
                     return False, f"list fields failed: {exc}", {}
                 self._table_field_types_cache[table_id] = field_types
 
-            if not self._get_bool_config("auto_create_fields", True):
-                return True, "", field_types
-
             missing = [name for name in write_fields.keys() if name and name not in field_types]
+            if missing and not self._get_bool_config("auto_create_fields", False):
+                return False, f"missing fields: {', '.join(missing)}", field_types
+
             for field_name in missing:
                 try:
                     field_type = self._resolve_auto_field_type(write_fields.get(field_name))
@@ -2189,7 +2189,7 @@ class AutoProcessToBitableListener(EventListener):
         if cached:
             return cached
 
-        if not self._get_bool_config("auto_create_table_by_route", True):
+        if not self._get_bool_config("auto_create_table_by_route", False):
             return ""
 
         table_name = self._resolve_table_name(route_key)
@@ -2906,6 +2906,14 @@ class AutoProcessToBitableListener(EventListener):
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json; charset=utf-8",
         }
+        try:
+            record_id = await self._search_existing_record_id(table_id, match_fields, headers)
+            if record_id:
+                self._record_lookup_cache[cache_key] = record_id
+                return record_id
+        except Exception:
+            pass
+
         endpoint = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records"
 
         page_token = ""
@@ -2947,6 +2955,48 @@ class AutoProcessToBitableListener(EventListener):
             if not page_token:
                 break
 
+        return ""
+
+    async def _search_existing_record_id(
+        self,
+        table_id: str,
+        match_fields: dict[str, str],
+        headers: dict[str, str],
+    ) -> str:
+        app_token = self._get_str_config("bitable_app_token", "")
+        if not app_token or not table_id or not match_fields:
+            return ""
+
+        endpoint = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records/search"
+        conditions = [
+            {"field_name": field_name, "operator": "is", "value": [self._field_to_text(value)]}
+            for field_name, value in match_fields.items()
+            if field_name and self._field_to_text(value)
+        ]
+        if not conditions:
+            return ""
+
+        payload = {
+            "automatic_fields": False,
+            "filter": {
+                "conjunction": "and",
+                "conditions": conditions,
+            },
+        }
+        data = await self._call_feishu_json_api(
+            "POST",
+            endpoint,
+            headers=headers,
+            payload=payload,
+            params={"page_size": 1},
+        )
+        items = data.get("items", []) or []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            record_id = str(item.get("record_id", "")).strip()
+            if record_id:
+                return record_id
         return ""
 
     def _build_upsert_match_fields(self, write_fields: dict[str, Any]) -> dict[str, str]:

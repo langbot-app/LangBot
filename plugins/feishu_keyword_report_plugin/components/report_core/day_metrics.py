@@ -56,6 +56,7 @@ class SpecHealthConfig:
 PRODUCT_SPEC_PROFILES: dict[str, ProductSpecProfile] = {
     "S18": ProductSpecProfile(model="S18", enable_spec=True),
     "S006": ProductSpecProfile(model="S006", enable_spec=True),
+    "S20": ProductSpecProfile(model="S20", enable_spec=True),
 }
 DEFAULT_PROFILE = ProductSpecProfile(model="UNKNOWN", enable_spec=False)
 LINE_A_SPEC_ENABLED = True
@@ -141,6 +142,8 @@ def detect_model_from_sheet(sheet_name: str) -> str:
         return "S18"
     if "S006" in text:
         return "S006"
+    if "S20" in text:
+        return "S20"
     return "UNKNOWN"
 
 
@@ -2480,6 +2483,9 @@ _DEFAULT_SPEC_REGISTRY_PAYLOAD: dict[str, Any] = {
         {"model": "S006", "metric": "成品压实", "spec": ">=2.53"},
         {"model": "S006", "metric": "首效", "spec": ">=96.3"},
         {"model": "S006", "metric": "比表(麦克比表)", "spec": "11.25~13.45"},
+        {"model": "S20", "metric": "成品压实", "spec": ">=2.45"},
+        {"model": "S20", "metric": "首效", "spec": ">=96"},
+        {"model": "S20", "metric": "比表(麦克比表)", "spec": "9.75~11.25"},
     ]
 }
 

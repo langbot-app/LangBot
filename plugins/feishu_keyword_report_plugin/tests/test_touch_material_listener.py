@@ -118,6 +118,16 @@ class TouchMaterialListenerTest(unittest.IsolatedAsyncioTestCase):
         listener._run_touch_material_report.assert_awaited_once_with(segment="C1")  # type: ignore[attr-defined]
         self.assertEqual(self._extract_reply_text(ctx.event), "touch-c1")
 
+    async def test_touch_command_accepts_c_segment_by_default(self) -> None:
+        listener = self._build_listener()
+        listener._run_touch_material_report = AsyncMock(return_value="touch-c2")  # type: ignore[method-assign]
+
+        ctx = DummyEventContext(DummyEvent("摸料 C2"))
+        await listener._handle_command(ctx)
+
+        listener._run_touch_material_report.assert_awaited_once_with(segment="C2")  # type: ignore[attr-defined]
+        self.assertEqual(self._extract_reply_text(ctx.event), "touch-c2")
+
     async def test_report_command_keeps_original_flow(self) -> None:
         listener = self._build_listener()
         listener._run_touch_material_report = AsyncMock(return_value="touch-ok")  # type: ignore[method-assign]
@@ -219,7 +229,7 @@ class TouchMaterialListenerTest(unittest.IsolatedAsyncioTestCase):
         )
         listener._build_auth_headers = AsyncMock(return_value={"Authorization": "Bearer test"})  # type: ignore[method-assign]
         listener._sheets_source.list_sheet_titles = AsyncMock(  # type: ignore[method-assign]
-            return_value=["S18-A线", "S006-A线", "S006-B线", "说明", "S18-A线成品数据源"]
+            return_value=["S18-A线", "S006-A线", "S006-B线", "S20-C线", "说明", "S18-A线成品数据源"]
         )
         listener._sheets_source.fetch_line_matrices = AsyncMock(  # type: ignore[method-assign]
             return_value=(
@@ -227,8 +237,9 @@ class TouchMaterialListenerTest(unittest.IsolatedAsyncioTestCase):
                     "S18-A线": [["批次", "投料日期"], ["DA2603-001", "2026-03-03"]],
                     "S006-A线": [["批次", "投料日期"], ["DB2603-001", "2026-03-03"]],
                     "S006-B线": [["批次", "投料日期"], ["DB2603-002", "2026-03-03"]],
+                    "S20-C线": [["批次", "投料日期"], ["DC2604-001", "2026-04-24"]],
                 },
-                ["S18-A线", "S006-A线", "S006-B线", "说明", "S18-A线成品数据源"],
+                ["S18-A线", "S006-A线", "S006-B线", "S20-C线", "说明", "S18-A线成品数据源"],
                 [],
             )
         )
@@ -238,7 +249,7 @@ class TouchMaterialListenerTest(unittest.IsolatedAsyncioTestCase):
             return_value={
                 "text": "report-ok",
                 "line_errors": [],
-                "used_sheets": ["S18-A线", "S006-A线", "S006-B线"],
+                "used_sheets": ["S18-A线", "S006-A线", "S006-B线", "S20-C线"],
             },
         ) as mock_build:
             payload = await listener._run_sheets_report(date_arg=None, command_sheets=[])
@@ -246,11 +257,11 @@ class TouchMaterialListenerTest(unittest.IsolatedAsyncioTestCase):
         listener._sheets_source.fetch_line_matrices.assert_awaited_once_with(  # type: ignore[attr-defined]
             spreadsheet_token="sp_token",
             headers={"Authorization": "Bearer test"},
-            target_sheet_names=["S18-A线", "S006-A线", "S006-B线"],
+            target_sheet_names=["S18-A线", "S006-A线", "S006-B线", "S20-C线"],
             cell_range="A1:ZZ2000",
         )
         mock_build.assert_called_once()
-        self.assertEqual(payload["used_sheets"], ["S18-A线", "S006-A线", "S006-B线"])
+        self.assertEqual(payload["used_sheets"], ["S18-A线", "S006-A线", "S006-B线", "S20-C线"])
 
     async def test_touch_material_report_recipe_uses_auto_discovered_sheets(self) -> None:
         listener = self._build_listener()

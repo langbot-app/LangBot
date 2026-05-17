@@ -4,7 +4,7 @@ metadata:
   author: local
   name: feishu_keyword_report_plugin
   repository: "https://open.feishu.cn/"
-  version: 0.1.16
+  version: 0.1.17
   description:
     en_US: Reply keyword commands for daily report and touch-material query with Feishu Sheets + Bitable.
     zh_Hans: 通过口令查询日报与摸料信息，联动飞书在线表格和多维表。
@@ -66,8 +66,8 @@ spec:
         en_US: Sheets Names
         zh_Hans: 在线表格工作表
       description:
-        en_US: Optional extra sheet titles. Empty still auto-discovers matching S18-*/S006-* line sheets.
-        zh_Hans: 可选补充工作表标题；为空时仍会自动发现符合 S18-*线 / S006-*线 规则的工作表。
+        en_US: Optional extra sheet titles. Empty still auto-discovers matching S18-*/S006-*/S20-* line sheets.
+        zh_Hans: 可选补充工作表标题；为空时仍会自动发现符合 S18-*线 / S006-*线 / S20-*线 规则的工作表。
       type: string
       required: false
       default: ""
@@ -76,8 +76,8 @@ spec:
         en_US: Sheet Auto Discovery Patterns
         zh_Hans: 工作表自动发现规则
       description:
-        en_US: JSON array of regex patterns for line sheet discovery, e.g. ["(S18|S006)-.+线"].
-        zh_Hans: 自动发现日报工作表的正则数组，例如 ["(S18|S006)-.+线"]。
+        en_US: JSON array of regex patterns for line sheet discovery, e.g. ["(S18|S006|S20)-.+线"].
+        zh_Hans: 自动发现日报工作表的正则数组，例如 ["(S18|S006|S20)-.+线"]。
       type: string
       required: false
       default: ""
@@ -258,7 +258,7 @@ spec:
         zh_Hans: 逗号分隔允许查询的摸料段位，例如 A1,A2,B1,B2,C1,C2。
       type: string
       required: false
-      default: "A1,A2,B1,B2"
+      default: "A1,A2,B1,B2,C1,C2"
 
     - name: sintering_table_ids
       label:
@@ -279,7 +279,7 @@ spec:
         zh_Hans: 未配置 table_id 时按表名查找（逗号分隔）。
       type: string
       required: false
-      default: "A线烧结汇总,B线烧结汇总"
+      default: "A线烧结汇总,B线烧结汇总,C线烧结汇总"
     - name: kiln_batch_table_ids
       label:
         en_US: Kiln Batch Table IDs
@@ -299,7 +299,7 @@ spec:
         zh_Hans: 未配置 table_id 时，用表名查找窑炉批次进窑出窑表。
       type: string
       required: false
-      default: "窑炉批次进窑出窑表"
+      default: "窑炉批次进窑出窑表,二期窑炉批次进窑出窑表"
 
     - name: route_field
       label:
