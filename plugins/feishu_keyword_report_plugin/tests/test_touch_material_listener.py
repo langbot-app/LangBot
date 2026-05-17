@@ -261,6 +261,7 @@ class TouchMaterialListenerTest(unittest.IsolatedAsyncioTestCase):
             cell_range="A1:ZZ2000",
         )
         mock_build.assert_called_once()
+        self.assertEqual(mock_build.call_args.kwargs["report_output_style"], "concise")
         self.assertEqual(payload["used_sheets"], ["S18-A线", "S006-A线", "S006-B线", "S20-C线"])
 
     async def test_touch_material_report_recipe_uses_auto_discovered_sheets(self) -> None:

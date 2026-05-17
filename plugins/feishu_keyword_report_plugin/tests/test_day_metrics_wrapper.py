@@ -34,7 +34,7 @@ class DayMetricsWrapperTest(unittest.TestCase):
         self.assertIn("批次", df.columns)
         self.assertTrue(len(df) >= 2)
 
-    def test_build_standard_report_and_strip_placeholder(self) -> None:
+    def test_build_standard_report_defaults_to_concise_summary(self) -> None:
         out = day_metrics.build_standard_report_from_matrices(
             sheet_matrices={"S18-A线": self._sample_matrix()},
             selected_sheets=["S18-A线"],
@@ -49,13 +49,96 @@ class DayMetricsWrapperTest(unittest.TestCase):
             spec_registry_json="",
         )
         text = out["text"]
+        self.assertTrue(text.startswith("2026.03.04 制程及成品日报"))
+        self.assertIn("1、总体结论", text)
+        self.assertIn("2、异常项", text)
+        self.assertIn("3、关键指标", text)
+        self.assertIn("4、数据质量", text)
+        self.assertNotIn("原料bom", text)
+        self.assertNotIn("制程趋势", text)
+        self.assertNotIn("成品趋势", text)
+        self.assertNotIn("工艺验证", text)
+
+    def test_build_standard_report_detailed_keeps_original_detail_text(self) -> None:
+        out = day_metrics.build_standard_report_from_matrices(
+            sheet_matrices={"S18-A线": self._sample_matrix()},
+            selected_sheets=["S18-A线"],
+            date_arg="2026-03-03",
+            date_mode="global",
+            lookback_days=7,
+            trend_days=3,
+            stale_threshold_process=2,
+            stale_threshold_product=3,
+            stale_threshold_electrochem=5,
+            report_show_placeholder_sections=False,
+            spec_registry_json="",
+            report_output_style="detailed",
+        )
+        text = out["text"]
         self.assertTrue(text.startswith("2026.03.04数据表更新"))
-        self.assertIn("制程", text)
         self.assertIn("1、制程", text)
         self.assertIn("2、成品", text)
         self.assertNotIn("3、制程", text)
         self.assertNotIn("原料bom", text)
         self.assertNotIn("工艺验证", text)
+
+    def test_build_standard_report_hybrid_appends_engineering_detail(self) -> None:
+        out = day_metrics.build_standard_report_from_matrices(
+            sheet_matrices={"S18-A线": self._sample_matrix()},
+            selected_sheets=["S18-A线"],
+            date_arg="2026-03-03",
+            date_mode="global",
+            lookback_days=7,
+            trend_days=3,
+            stale_threshold_process=2,
+            stale_threshold_product=3,
+            stale_threshold_electrochem=5,
+            report_show_placeholder_sections=False,
+            spec_registry_json="",
+            report_output_style="hybrid",
+        )
+        text = out["text"]
+        self.assertTrue(text.startswith("2026.03.04 制程及成品日报"))
+        self.assertIn("【工程版】", text)
+        self.assertIn("2026.03.04数据表更新", text)
+
+    def test_build_standard_report_concise_supports_multiple_lines(self) -> None:
+        out = day_metrics.build_standard_report_from_matrices(
+            sheet_matrices={"S18-A线": self._sample_matrix(), "S20-C线": self._sample_matrix()},
+            selected_sheets=["S18-A线", "S20-C线"],
+            date_arg="2026-03-03",
+            date_mode="global",
+            lookback_days=7,
+            trend_days=3,
+            stale_threshold_process=2,
+            stale_threshold_product=3,
+            stale_threshold_electrochem=5,
+            report_show_placeholder_sections=False,
+            spec_registry_json="",
+        )
+        text = out["text"]
+        self.assertIn("S18-A线 烧结压实", text)
+        self.assertIn("S20-C线 烧结压实", text)
+        self.assertNotIn("成品趋势", text)
+
+    def test_build_standard_report_concise_summarizes_abnormal_items(self) -> None:
+        out = day_metrics.build_standard_report_from_matrices(
+            sheet_matrices={"S18-A线": self._sample_matrix()},
+            selected_sheets=["S18-A线"],
+            date_arg="2026-03-03",
+            date_mode="global",
+            lookback_days=7,
+            trend_days=3,
+            stale_threshold_process=2,
+            stale_threshold_product=3,
+            stale_threshold_electrochem=5,
+            report_show_placeholder_sections=False,
+            spec_registry_json='{"rules":[{"model":"S18","metric":"成品压实","spec":">=2.50"}]}',
+        )
+        text = out["text"]
+        self.assertIn("需关注", text)
+        self.assertIn("成品压实", text)
+        self.assertIn("投料批次", text)
 
     def test_fmt_status_can_hide_governance_attention(self) -> None:
         stat = {

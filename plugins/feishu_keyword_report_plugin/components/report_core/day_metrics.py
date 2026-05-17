@@ -2205,6 +2205,16 @@ def _stat_source_batch_text(stat: Any) -> str:
     return "投料批次未知"
 
 
+def _leader_abnormal_item_text(line_label: str, key: str, stat: Any) -> str:
+    if not isinstance(stat, dict):
+        return f"{line_label} {key}"
+    status = _fmt_status(stat, force=True, show_spec_attention=False)
+    source = _stat_source_batch_text(stat)
+    if status:
+        return f"{line_label} {key}{status}（{source}）"
+    return f"{line_label} {key}（{source}）"
+
+
 def _leader_key_metric_line(line_label: str, metrics: dict[str, Any]) -> str:
     parts: list[str] = []
     for section, key, decimals, unit in _LEADER_KEY_METRICS:
@@ -2232,9 +2242,9 @@ def build_wecom_text_leader(line_reports: list[dict[str, Any]], show_spec_attent
     report_dates = [r.get("report_date") for r in valid_reports if isinstance(r.get("report_date"), dt.date)]
     date_set = sorted({d for d in report_dates if isinstance(d, dt.date)})
     if len(date_set) == 1:
-        date_str = date_set[0].strftime("%Y.%m.%d")
+        date_str = _fmt_report_date(date_set[0])
     else:
-        date_str = "/".join(d.strftime("%Y.%m.%d") for d in date_set) if date_set else dt.date.today().strftime("%Y.%m.%d")
+        date_str = "/".join(_fmt_report_date(d) for d in date_set) if date_set else _fmt_report_date(dt.date.today())
 
     abnormal_items: list[str] = []
     spec_attention_items: list[str] = []
@@ -2249,7 +2259,7 @@ def build_wecom_text_leader(line_reports: list[dict[str, Any]], show_spec_attent
             if show_spec_attention and _spec_health_is_suspect(st):
                 spec_attention_items.append(f"{line_label} {key}")
             elif _stat_is_abnormal(st):
-                abnormal_items.append(f"{line_label} {key}（{_stat_source_batch_text(st)}）")
+                abnormal_items.append(_leader_abnormal_item_text(line_label, key, st))
         for issue in r.get("quality_issues", []) if isinstance(r.get("quality_issues"), list) else []:
             if isinstance(issue, dict):
                 quality_items.append(_quality_issue_to_text(issue, line_label=line_label))
@@ -2258,14 +2268,16 @@ def build_wecom_text_leader(line_reports: list[dict[str, Any]], show_spec_attent
     spec_attention_items = list(dict.fromkeys(spec_attention_items))
     quality_items = list(dict.fromkeys(quality_items))
     if abnormal_items:
-        conclusion = f"关注（{len(abnormal_items)}项异常）"
+        conclusion = f"需关注，发现{len(abnormal_items)}项异常"
+        if show_spec_attention and spec_attention_items:
+            conclusion += f"，另有{len(spec_attention_items)}项口径疑似"
         abnormal_text = "；".join(abnormal_items)
         if show_spec_attention and spec_attention_items:
             abnormal_text += f"；治理关注（{len(spec_attention_items)}项口径疑似）：" + "；".join(spec_attention_items[:3])
             if len(spec_attention_items) > 3:
                 abnormal_text += f"；其余{len(spec_attention_items) - 3}项省略"
     elif show_spec_attention and spec_attention_items:
-        conclusion = f"治理关注（{len(spec_attention_items)}项口径疑似）"
+        conclusion = f"数据治理关注，发现{len(spec_attention_items)}项口径疑似"
         abnormal_text = "；".join(spec_attention_items[:3])
         if len(spec_attention_items) > 3:
             abnormal_text += f"；其余{len(spec_attention_items) - 3}项省略"
@@ -2282,10 +2294,12 @@ def build_wecom_text_leader(line_reports: list[dict[str, Any]], show_spec_attent
 
     key_metric_text = "；".join([x for x in key_metric_lines if x]) if key_metric_lines else "无"
     lines = [
-        f"1、今日结论（{date_str}）：{conclusion}",
-        f"2、异常项清单：{abnormal_text}",
-        f"3、关键指标区间：{key_metric_text}",
-        f"4、数据质量告警：{quality_text}",
+        f"{date_str} 制程及成品日报",
+        "",
+        f"1、总体结论：{conclusion}。",
+        f"2、异常项：{abnormal_text}。",
+        f"3、关键指标：{key_metric_text}。",
+        f"4、数据质量：{quality_text}。",
     ]
     return "\n".join(lines)
 
@@ -2645,6 +2659,7 @@ def build_standard_report_from_matrices(
     spec_registry_json: str = "",
     metric_aliases_json: str = "",
     auto_fix_quality: bool = False,
+    report_output_style: str = "concise",
 ) -> dict[str, Any]:
     target_sheets = list(selected_sheets or sheet_matrices.keys())
     if not target_sheets:
@@ -2741,7 +2756,7 @@ def build_standard_report_from_matrices(
     line_reports.sort(key=lambda x: str(x.get("line_label", "")))
     if len(line_reports) == 1:
         report = line_reports[0]
-        text = build_wecom_text_single(
+        detail_text = build_wecom_text_single(
             report_date=report["report_date"],
             metrics=report["metrics"],
             line_label=report["line_label"],
@@ -2751,10 +2766,19 @@ def build_standard_report_from_matrices(
             show_spec_attention=show_spec_attention,
         )
     else:
-        text = build_wecom_text_multi(line_reports, show_spec_attention=show_spec_attention)
+        detail_text = build_wecom_text_multi(line_reports, show_spec_attention=show_spec_attention)
 
     if not report_show_placeholder_sections:
-        text = strip_placeholder_sections(text)
+        detail_text = strip_placeholder_sections(detail_text)
+
+    leader_text = build_wecom_text_leader(line_reports, show_spec_attention=show_spec_attention)
+    output_style = str(report_output_style or "concise").strip().lower()
+    if output_style == "detailed":
+        text = detail_text
+    elif output_style == "hybrid":
+        text = leader_text if not detail_text else (leader_text + "\n\n【工程版】\n" + detail_text)
+    else:
+        text = leader_text
 
     return {
         "text": text.strip(),

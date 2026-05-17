@@ -623,12 +623,13 @@ class KeywordBitableReportListener(EventListener):
             spec_registry_json=self._resolve_spec_registry_json(),
             metric_aliases_json=self._resolve_report_metric_aliases_json(),
             auto_fix_quality=False,
+            report_output_style=self._get_str_config("report_output_style", "concise"),
         )
         text = str(report.get("text", "")).strip()
         text = self._strip_trend_sections(
             text=text,
-            show_process_trend=self._get_bool_config("report_show_process_trend", True),
-            show_product_trend=self._get_bool_config("report_show_product_trend", True),
+            show_process_trend=self._get_bool_config("report_show_process_trend", False),
+            show_product_trend=self._get_bool_config("report_show_product_trend", False),
         )
         line_errors = report.get("line_errors", [])
         if isinstance(line_errors, list) and line_errors:

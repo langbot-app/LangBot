@@ -124,9 +124,13 @@
 - `sheet_snapshot_tail_nonempty_rows`（截图保留尾部有效行数，默认 `20`）
 - `date_mode`
 - `report_show_placeholder_sections`
+- `report_output_style`：日报输出模式，默认 `concise`
+  - `concise`：管理摘要，只输出总体结论、异常项、关键指标、数据质量
+  - `detailed`：工程明细，保留原有完整指标与趋势段
+  - `hybrid`：先输出管理摘要，再追加 `【工程版】` 明细
 - `lookback_days` / `trend_days`
-- `report_show_process_trend`
-- `report_show_product_trend`
+- `report_show_process_trend`（默认 `false`，仅明细文本中生效）
+- `report_show_product_trend`（默认 `false`，仅明细文本中生效）
 - `stale_threshold_process` / `stale_threshold_product` / `stale_threshold_electrochem`
 - `spec_registry_json`
 - `spec_limits_json`：追加规格上下限规则，格式同 `spec_registry_json`
