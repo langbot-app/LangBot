@@ -9,36 +9,24 @@ The i18n for label and description is handled on the frontend side.
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any
 
 from ..entities import ExecutionContext
-from ..node import WorkflowNode, workflow_node, NodePort, NodeConfig
-
+from ..node import WorkflowNode, workflow_node
 
 @workflow_node('mcp_tool')
 class MCPToolNode(WorkflowNode):
     """MCP tool node - invoke MCP (Model Context Protocol) tools"""
 
     # Node type for registration
-    type_name = 'mcp_tool'
 
     # Category and icon - these are not i18n
     category = 'integration'
-    icon = 'Wrench'
 
     # Name and description - i18n handled on frontend side
     # Frontend will use node type key to look up translation
-    name = 'mcp_tool'
-    description = 'mcp_tool'
-    name_zh = 'MCP 工具'
-    name_en = 'MCP Tool'
-    description_zh = '调用 MCP 工具'
-    description_en = 'Invoke an MCP (Model Context Protocol) tool'
 
     # Inputs/outputs/config - loaded from YAML at runtime
-    inputs: ClassVar[list[NodePort]] = []
-    outputs: ClassVar[list[NodePort]] = []
-    config_schema: ClassVar[list[NodeConfig]] = []
 
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         """Execute the MCP tool node

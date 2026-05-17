@@ -1,9 +1,14 @@
 # Reply Message Node Configuration
 name: reply_message
+label:
+  en_US: Reply Message
+  zh_Hans: 回复消息
 category: action
-icon: "↩️"
+icon: Send
 color: '#ef4444'
-description: 'workflows.nodes.replyMessageDescription'
+description:
+  en_US: Reply to the message that triggered the workflow
+  zh_Hans: 回复触发工作流的消息
 
 inputs:
   - name: message

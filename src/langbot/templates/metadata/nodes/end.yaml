@@ -3,10 +3,15 @@
 # The corresponding Python implementation is in: pkg/workflow/nodes/end.py
 
 name: end
+label:
+  en_US: End
+  zh_Hans: 结束
 category: control
-icon: "🛑"
+icon: PauseCircle
 color: '#8b5cf6'
-description: 'workflows.nodes.endDescription'
+description:
+  en_US: End the workflow execution
+  zh_Hans: 结束工作流执行
 
 inputs:
   - name: input

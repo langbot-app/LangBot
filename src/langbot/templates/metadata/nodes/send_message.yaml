@@ -3,10 +3,15 @@
 # The corresponding Python implementation is in: pkg/workflow/nodes/send_message.py
 
 name: send_message
+label:
+  en_US: Send Message
+  zh_Hans: 发送消息
 category: action
-icon: "📤"
+icon: MessageCircle
 color: '#10b981'
-description: 'workflows.nodes.sendMessageDescription'
+description:
+  en_US: Send a message to a chat or user
+  zh_Hans: 向聊天或用户发送消息
 
 inputs:
   - name: content

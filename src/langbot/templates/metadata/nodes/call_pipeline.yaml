@@ -1,9 +1,14 @@
 # Call Pipeline Node Configuration
 name: call_pipeline
+label:
+  en_US: Call Pipeline
+  zh_Hans: 调用 Pipeline
 category: action
-icon: "⚙️"
+icon: Workflow
 color: '#ef4444'
-description: 'workflows.nodes.callPipelineDescription'
+description:
+  en_US: Invoke an existing Pipeline for processing
+  zh_Hans: 调用现有的 Pipeline 进行处理
 
 inputs:
   - name: query

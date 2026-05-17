@@ -3,10 +3,15 @@
 # The corresponding Python implementation is in: pkg/workflow/nodes/http_request.py
 
 name: http_request
+label:
+  en_US: HTTP Request
+  zh_Hans: HTTP 请求
 category: action
-icon: "🌍"
+icon: Globe
 color: '#10b981'
-description: 'workflows.nodes.httpRequestDescription'
+description:
+  en_US: Make HTTP requests to external APIs
+  zh_Hans: 向外部 API 发送 HTTP 请求
 
 inputs:
   - name: body

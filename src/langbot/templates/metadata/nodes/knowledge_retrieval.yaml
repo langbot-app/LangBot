@@ -3,10 +3,15 @@
 # The corresponding Python implementation is in: pkg/workflow/nodes/knowledge_retrieval.py
 
 name: knowledge_retrieval
+label:
+  en_US: Knowledge Retrieval
+  zh_Hans: 知识库检索
 category: process
-icon: "📚"
+icon: Search
 color: '#8b5cf6'
-description: 'workflows.nodes.knowledgeRetrievalDescription'
+description:
+  en_US: Retrieve relevant information from knowledge bases
+  zh_Hans: 从知识库中检索相关信息
 
 inputs:
   - name: query
@@ -46,7 +51,7 @@ outputs:
 
 config:
   - name: knowledge_bases
-    type: json
+    type: knowledge-base-multi-selector
     required: true
     default: []
     label:
@@ -101,7 +106,7 @@ config:
       zh_Hans: 使用重排序模型提高结果相关性
 
   - name: rerank_model
-    type: string
+    type: rerank-model-selector
     default: ""
     label:
       en_US: Rerank Model
@@ -109,3 +114,5 @@ config:
     description:
       en_US: Model to use for reranking results
       zh_Hans: 用于结果重排序的模型
+    show_if:
+      rerank_enabled: true

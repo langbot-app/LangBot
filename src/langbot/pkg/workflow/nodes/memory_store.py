@@ -5,11 +5,10 @@ Node metadata is loaded from: ../../templates/metadata/nodes/memory_store.yaml
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any
 
 from ..entities import ExecutionContext
-from ..node import WorkflowNode, workflow_node, NodePort, NodeConfig
-
+from ..node import WorkflowNode, workflow_node
 
 class MemoryHelper:
     """Helper class wrapping context.memory dict with get/set/delete/list_all/append operations"""
@@ -47,24 +46,11 @@ class MemoryHelper:
         self.set(key, current, scope=scope, ttl=ttl)
         return current
 
-
 @workflow_node('memory_store')
 class MemoryStoreNode(WorkflowNode):
     """Memory store node - store and retrieve from workflow memory"""
 
-    type_name = 'memory_store'
     category = 'integration'
-    icon = 'HardDrive'
-    name = 'memory_store'
-    description = 'memory_store'
-    name_zh = '记忆存储'
-    name_en = 'Memory Store'
-    description_zh = '从工作流记忆中存储和检索数据'
-    description_en = 'Store and retrieve data from workflow memory'
-
-    inputs: ClassVar[list[NodePort]] = []
-    outputs: ClassVar[list[NodePort]] = []
-    config_schema: ClassVar[list[NodeConfig]] = []
 
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         operation = self.get_config('operation', 'get')

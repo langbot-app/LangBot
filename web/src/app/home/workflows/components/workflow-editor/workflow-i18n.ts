@@ -2,8 +2,8 @@
  * Unified i18n utilities for the Workflow module.
  *
  * The backend API returns label dicts with keys like `zh-CN`, `en`,
- * while node-configs use `zh_Hans`, `en_US`, and the i18next system
- * uses `zh-Hans`, `en-US`.  This module normalises **all** variants
+ * while some legacy persisted data may still use `zh_Hans`, `en_US`,
+ * and the i18next system uses `zh-Hans`, `en-US`. This module normalises **all** variants
  * into a single lookup so every consumer gets the right value without
  * maintaining its own fallback chain.
  */
@@ -26,7 +26,7 @@ const EN_KEYS = ['en-US', 'en_US', 'en'] as const;
  * combination of `zh-CN`, `zh_Hans`, `en`, `en-US`, `en_US` etc.
  *
  * Works with both `Record<string, string>` (backend) and the typed
- * `I18nObject` (node-configs).
+ * `I18nObject` used by legacy persisted workflow data.
  *
  * Optionally falls through to `i18n.t(value)` when the stored value
  * itself looks like an i18n key (e.g. `"workflows.nodes.llmCall"`).

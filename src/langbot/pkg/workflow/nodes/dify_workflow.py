@@ -5,29 +5,16 @@ Node metadata is loaded from: ../../templates/metadata/nodes/dify_workflow.yaml
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any
 
 from ..entities import ExecutionContext
-from ..node import WorkflowNode, workflow_node, NodePort, NodeConfig
-
+from ..node import WorkflowNode, workflow_node
 
 @workflow_node('dify_workflow')
 class DifyWorkflowNode(WorkflowNode):
     """Dify workflow node - call Dify service API"""
 
-    type_name = 'dify_workflow'
     category = 'integration'
-    icon = 'Bot'
-    name = 'dify_workflow'
-    description = 'dify_workflow'
-    name_zh = 'Dify 工作流'
-    name_en = 'Dify Workflow'
-    description_zh = '调用 Dify 平台工作流'
-    description_en = 'Call a Dify platform workflow'
-
-    inputs: ClassVar[list[NodePort]] = []
-    outputs: ClassVar[list[NodePort]] = []
-    config_schema: ClassVar[list[NodeConfig]] = []
 
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         base_url = self.get_config('base_url', 'https://api.dify.ai/v1')

@@ -25,8 +25,8 @@ export interface WorkflowNode extends Node {
     label: string;
     type: string;
     config: Record<string, unknown>;
-    inputs?: { name: string; label?: string; type?: string }[];
-    outputs?: { name: string; label?: string; type?: string }[];
+    inputs?: { name: string; label?: string | Record<string, string>; type?: string }[];
+    outputs?: { name: string; label?: string | Record<string, string>; type?: string }[];
   };
 }
 
@@ -270,9 +270,14 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   // Add new node
   addNode: (type, position) => {
     const { nodeTypes } = get();
+    const shortName = type.includes('.') ? type.split('.').pop()! : type;
     const nodeType = normalizeWorkflowNodeTypeMeta(
       type,
-      nodeTypes.find((t) => t.type === type),
+      nodeTypes.find((t) => {
+        if (t.type === type) return true;
+        const tShort = t.type.includes('.') ? t.type.split('.').pop()! : t.type;
+        return tShort === shortName;
+      }),
     );
 
     const getNodeLabel = (

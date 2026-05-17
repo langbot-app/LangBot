@@ -3,10 +3,15 @@
 # The corresponding Python implementation is in: pkg/workflow/nodes/loop.py
 
 name: loop
+label:
+  en_US: Loop
+  zh_Hans: 循环
 category: control
-icon: "🔁"
+icon: Repeat
 color: '#8b5cf6'
-description: 'workflows.nodes.loopDescription'
+description:
+  en_US: Iterate over items or repeat until condition
+  zh_Hans: 遍历项目或重复直到满足条件
 
 inputs:
   - name: items

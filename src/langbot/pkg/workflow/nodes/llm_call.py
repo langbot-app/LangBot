@@ -4,81 +4,20 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, ClassVar
+from typing import Any
 
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
 from ..entities import ExecutionContext
-from ..node import WorkflowNode, workflow_node, NodePort, NodeConfig
+from ..node import WorkflowNode, workflow_node
 
 logger = logging.getLogger(__name__)
-
 
 @workflow_node('llm_call')
 class LLMCallNode(WorkflowNode):
     """LLM call node - invoke large language model"""
 
-    type_name = 'llm_call'
     category = 'process'
-    icon = 'Brain'
-    name = 'llm_call'
-    name_zh = 'LLM 调用'
-    name_en = 'LLM Call'
-    description = 'llm_call'
-    description_zh = '调用大语言模型生成响应'
-    description_en = 'Call a large language model to generate responses'
-
-    inputs: ClassVar[list[NodePort]] = [
-        NodePort(name='input', type='string', description='Input text to send to the model', required=False),
-        NodePort(name='context', type='object', description='Additional context data', required=False),
-    ]
-    outputs: ClassVar[list[NodePort]] = [
-        NodePort(name='response', type='string', description='Model response text'),
-        NodePort(name='usage', type='object', description='Token usage information'),
-    ]
-    config_schema: ClassVar[list[NodeConfig]] = [
-        NodeConfig(
-            name='model',
-            type='llm-model-selector',
-            required=True,
-            description='Select the LLM model to use',
-            label={'en_US': 'Model', 'zh_Hans': '模型'},
-        ),
-        NodeConfig(
-            name='system_prompt',
-            type='textarea',
-            required=False,
-            default='',
-            description='System prompt to set model behavior',
-            label={'en_US': 'System Prompt', 'zh_Hans': '系统提示词'},
-        ),
-        NodeConfig(
-            name='user_prompt_template',
-            type='textarea',
-            required=True,
-            default='{{input}}',
-            description='User prompt template with variable placeholders',
-            label={'en_US': 'User Prompt Template', 'zh_Hans': '用户提示词模板'},
-        ),
-        NodeConfig(
-            name='temperature',
-            type='number',
-            required=False,
-            default=0.7,
-            description='Controls randomness (0.0-2.0)',
-            label={'en_US': 'Temperature', 'zh_Hans': '温度'},
-            min_value=0.0,
-            max_value=2.0,
-        ),
-        NodeConfig(
-            name='max_tokens',
-            type='integer',
-            required=False,
-            default=0,
-            description='Max tokens to generate (0 = model default)',
-            label={'en_US': 'Max Tokens', 'zh_Hans': '最大令牌数'},
-        ),
-    ]
 
     def _resolve_template(self, template: str, inputs: dict[str, Any], context: ExecutionContext) -> str:
         """Resolve {{variable}} placeholders in a template string."""

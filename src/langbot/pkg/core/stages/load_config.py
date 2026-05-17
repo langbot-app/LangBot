@@ -222,51 +222,35 @@ class LoadConfigStage(stage.BootingStage):
         ap.pipeline_config_meta_ai = await load_resource_yaml_template_data('metadata/pipeline/ai.yaml')
         ap.pipeline_config_meta_output = await load_resource_yaml_template_data('metadata/pipeline/output.yaml')
 
-        # Load workflow node configurations from YAML files
-        ap.workflow_node_configs = {}
-        node_config_files = [
-            # Trigger nodes
-            'metadata/nodes/message_trigger.yaml',
-            'metadata/nodes/cron_trigger.yaml',
-            'metadata/nodes/webhook_trigger.yaml',
-            'metadata/nodes/event_trigger.yaml',
-            # AI/Process nodes
-            'metadata/nodes/llm_call.yaml',
-            'metadata/nodes/question_classifier.yaml',
-            'metadata/nodes/parameter_extractor.yaml',
-            'metadata/nodes/knowledge_retrieval.yaml',
-            'metadata/nodes/code_executor.yaml',
-            'metadata/nodes/data_transform.yaml',
-            # Control nodes
-            'metadata/nodes/condition.yaml',
-            'metadata/nodes/switch.yaml',
-            'metadata/nodes/loop.yaml',
-            'metadata/nodes/parallel.yaml',
-            'metadata/nodes/wait.yaml',
-            'metadata/nodes/end.yaml',
-            # Action nodes
-            'metadata/nodes/send_message.yaml',
-            'metadata/nodes/http_request.yaml',
-            # Integration nodes - Data & Tools
-            'metadata/nodes/database_query.yaml',
-            'metadata/nodes/redis_operation.yaml',
-            'metadata/nodes/mcp_tool.yaml',
-            'metadata/nodes/memory_store.yaml',
-            # Integration nodes - External services
-            'metadata/nodes/dify_workflow.yaml',
-            'metadata/nodes/dify_knowledge_query.yaml',
-            'metadata/nodes/n8n_workflow.yaml',
-            'metadata/nodes/langflow_flow.yaml',
-            'metadata/nodes/coze_bot.yaml',
-        ]
-        for config_file in node_config_files:
-            try:
-                node_config = await load_resource_yaml_template_data(config_file)
-                node_name = node_config.get('name')
-                node_category = node_config.get('category', 'misc')
-                if node_name:
-                    # Use category.name format to match node type format (e.g., integration.coze_bot)
-                    full_type = f'{node_category}.{node_name}'
-                    ap.workflow_node_configs[full_type] = node_config
-            except Exception as e:
-                print(f'Failed to load node config {config_file}: {e}')
+        # Load workflow node metadata from YAML files. YAML is the source of
+        # truth for workflow editor metadata; Python classes provide execution
+        # logic and are bound through the registry.
+        from langbot.pkg.workflow.metadata import NodeMetadataLoader
+        from langbot.pkg.workflow.registry import NodeTypeRegistry
+
+        workflow_metadata_loader = NodeMetadataLoader()
+        workflow_node_count = await workflow_metadata_loader.load_core_metadata()
+        ap.workflow_node_configs = workflow_metadata_loader.get_all_metadata()
+        ap.workflow_node_metadata_loader = workflow_metadata_loader
+
+        workflow_registry = NodeTypeRegistry.instance()
+        for node_config in ap.workflow_node_configs.values():
+            workflow_registry.register_metadata(node_config, source=node_config.get('_source', 'core'))
+
+        # Import node modules after metadata registration so decorators can bind
+        # implementations to YAML-defined canonical node types.
+        from langbot.pkg.workflow import nodes as workflow_nodes  # noqa: F401
+
+        workflow_registry.process_pending_registrations()
+
+        workflow_load_errors = workflow_metadata_loader.get_load_errors()
+        if workflow_load_errors:
+            print(f'Workflow node metadata load errors: {len(workflow_load_errors)}')
+            for error in workflow_load_errors:
+                print(f"  - {error.get('file')}: {error.get('error')}")
+
+        print(
+            f'Loaded {workflow_node_count} workflow node metadata files; '
+            f'registered {workflow_registry.metadata_count()} metadata definitions, '
+            f'{workflow_registry.count()} node types'
+        )

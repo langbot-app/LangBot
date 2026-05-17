@@ -5,29 +5,16 @@ Node metadata is loaded from: ../../templates/metadata/nodes/redis_operation.yam
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any
 
 from ..entities import ExecutionContext
-from ..node import WorkflowNode, workflow_node, NodePort, NodeConfig
-
+from ..node import WorkflowNode, workflow_node
 
 @workflow_node('redis_operation')
 class RedisOperationNode(WorkflowNode):
     """Redis operation node - perform Redis cache operations"""
 
-    type_name = 'redis_operation'
     category = 'integration'
-    icon = 'Server'
-    name = 'redis_operation'
-    description = 'redis_operation'
-    name_zh = 'Redis 操作'
-    name_en = 'Redis Operation'
-    description_zh = '执行 Redis 缓存操作'
-    description_en = 'Perform Redis cache operations'
-
-    inputs: ClassVar[list[NodePort]] = []
-    outputs: ClassVar[list[NodePort]] = []
-    config_schema: ClassVar[list[NodeConfig]] = []
 
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         connection_url = self.get_config('connection_url', 'redis://localhost:6379')

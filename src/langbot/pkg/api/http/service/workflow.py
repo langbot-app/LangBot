@@ -567,58 +567,30 @@ class WorkflowService:
         return result
 
     def _enrich_node_type_configs(self, node_types: list[dict]) -> list[dict]:
-        """Enrich node schemas with node YAML config metadata if available"""
-        # Get workflow node configs loaded from YAML files
-        workflow_node_configs = getattr(self.ap, 'workflow_node_configs', {})
+        """Enrich node schemas with pipeline config metadata if available.
 
+        Dedicated workflow node YAML metadata is already applied by
+        NodeTypeRegistry before this method runs. This method only keeps the
+        older pipeline metadata reuse path for nodes that explicitly request it.
+        """
         for node_schema in node_types:
-            node_type = node_schema.get('type', '')
+            node_schema.setdefault('config_schema', [])
 
-            # First, try to load config from dedicated node YAML file
-            if node_type in workflow_node_configs:
-                node_config = workflow_node_configs[node_type]
-
-                # Enrich inputs from YAML if Python class has empty inputs
-                yaml_inputs = node_config.get('inputs', [])
-                if yaml_inputs and not node_schema.get('inputs'):
-                    node_schema['inputs'] = [self._normalize_port_item(inp) for inp in yaml_inputs]
-
-                # Enrich outputs from YAML if Python class has empty outputs
-                yaml_outputs = node_config.get('outputs', [])
-                if yaml_outputs and not node_schema.get('outputs'):
-                    node_schema['outputs'] = [self._normalize_port_item(out) for out in yaml_outputs]
-
-                # Enrich config_schema from YAML
-                yaml_configs = node_config.get('config', [])
-
-                # Normalize and add YAML configs to config_schema
-                existing_names = {cfg.get('name') for cfg in node_schema.get('config_schema', [])}
-                for cfg in yaml_configs:
-                    if cfg.get('name') not in existing_names:
-                        normalized_cfg = self._normalize_config_item(cfg)
-                        node_schema['config_schema'].append(normalized_cfg)
-                        existing_names.add(cfg.get('name'))
-
-            # Second, try to load from pipeline config metadata (for backward compatibility)
             config_schema_source = node_schema.get('config_schema_source')
             config_stages = node_schema.get('config_stages', [])
 
             if config_schema_source and config_stages:
-                # Get pipeline config metadata
                 pipeline_meta = self._get_pipeline_config_meta(config_schema_source)
                 if pipeline_meta:
-                    # Extract config items from specified stages
                     enriched_configs = []
                     for stage_name in config_stages:
                         stage_data = self._find_stage_in_pipeline(pipeline_meta, stage_name)
                         if stage_data and 'config' in stage_data:
                             enriched_configs.extend(stage_data['config'])
 
-                    # Merge with existing config_schema (avoid duplicates by name)
                     existing_names = {cfg.get('name') for cfg in node_schema.get('config_schema', [])}
                     for cfg in enriched_configs:
                         if cfg.get('name') not in existing_names:
-                            # Normalize config item format for frontend compatibility
                             normalized_cfg = self._normalize_config_item(cfg)
                             node_schema['config_schema'].append(normalized_cfg)
                             existing_names.add(cfg.get('name'))

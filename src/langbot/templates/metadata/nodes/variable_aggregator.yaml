@@ -1,9 +1,14 @@
 # Variable Aggregator Node Configuration
 name: variable_aggregator
+label:
+  en_US: Variable Aggregator
+  zh_Hans: 变量聚合器
 category: control
-icon: "📊"
+icon: GitMerge
 color: '#f59e0b'
-description: 'workflows.nodes.variableAggregatorDescription'
+description:
+  en_US: Aggregate variable outputs from multiple branches
+  zh_Hans: 聚合多个分支的变量输出
 
 inputs:
   - name: variables

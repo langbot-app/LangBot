@@ -1,9 +1,14 @@
 # Store Data Node Configuration
 name: store_data
+label:
+  en_US: Store Data
+  zh_Hans: 存储数据
 category: action
-icon: "💾"
+icon: Database
 color: '#ef4444'
-description: 'workflows.nodes.storeDataDescription'
+description:
+  en_US: Store data to persistent storage
+  zh_Hans: 将数据存储到持久化存储
 
 inputs:
   - name: key

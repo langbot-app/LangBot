@@ -1,9 +1,14 @@
 # Merge Node Configuration
 name: merge
+label:
+  en_US: Merge
+  zh_Hans: 合并
 category: control
-icon: "🔗"
+icon: GitMerge
 color: '#f59e0b'
-description: 'workflows.nodes.mergeDescription'
+description:
+  en_US: Merge multiple branches back together
+  zh_Hans: 将多个分支合并在一起
 
 inputs:
   - name: input_1

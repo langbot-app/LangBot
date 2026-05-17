@@ -3,10 +3,15 @@
 # The corresponding Python implementation is in: pkg/workflow/nodes/data_transform.py
 
 name: data_transform
+label:
+  en_US: Data Transform
+  zh_Hans: 数据转换
 category: process
-icon: "🔄"
+icon: ArrowRightLeft
 color: '#3b82f6'
-description: 'workflows.nodes.dataTransformDescription'
+description:
+  en_US: Transform data using templates or JSONPath
+  zh_Hans: 使用模板或 JSONPath 转换数据
 
 inputs:
   - name: data

@@ -1,9 +1,14 @@
 # Opening Statement Node Configuration
 name: opening_statement
+label:
+  en_US: Opening Statement
+  zh_Hans: 对话开场白
 category: action
-icon: "👋"
+icon: MessageSquare
 color: '#ef4444'
-description: 'workflows.nodes.openingStatementDescription'
+description:
+  en_US: Provide conversation opener and suggested questions
+  zh_Hans: 提供对话开场白和建议问题
 
 inputs: []
 

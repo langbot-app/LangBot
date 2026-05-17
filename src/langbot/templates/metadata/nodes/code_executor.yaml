@@ -3,10 +3,15 @@
 # The corresponding Python implementation is in: pkg/workflow/nodes/code_executor.py
 
 name: code_executor
+label:
+  en_US: Code Executor
+  zh_Hans: 代码执行
 category: process
-icon: "💻"
+icon: Code
 color: '#3b82f6'
-description: 'workflows.nodes.codeExecutorDescription'
+description:
+  en_US: Execute custom code to process data
+  zh_Hans: 执行自定义代码处理数据
 
 inputs:
   - name: input

@@ -5,30 +5,17 @@ Node metadata is loaded from: ../../templates/metadata/nodes/data_transform.yaml
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any
 
 from ..entities import ExecutionContext
-from ..node import WorkflowNode, workflow_node, NodePort, NodeConfig
+from ..node import WorkflowNode, workflow_node
 from ..safe_eval import safe_eval_with_vars
-
 
 @workflow_node('data_transform')
 class DataTransformNode(WorkflowNode):
     """Data transform node - transform data using templates or JSONPath"""
 
-    type_name = 'data_transform'
     category = 'process'
-    icon = 'ArrowRightLeft'
-    name = 'data_transform'
-    description = 'data_transform'
-    name_zh = '数据转换'
-    name_en = 'Data Transform'
-    description_zh = '使用模板或 JSONPath 转换数据'
-    description_en = 'Transform data using templates or JSONPath'
-
-    inputs: ClassVar[list[NodePort]] = []
-    outputs: ClassVar[list[NodePort]] = []
-    config_schema: ClassVar[list[NodeConfig]] = []
 
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         data = inputs.get('data')

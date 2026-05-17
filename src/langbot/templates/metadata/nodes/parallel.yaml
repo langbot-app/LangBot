@@ -3,10 +3,15 @@
 # The corresponding Python implementation is in: pkg/workflow/nodes/parallel.py
 
 name: parallel
+label:
+  en_US: Parallel
+  zh_Hans: 并行执行
 category: control
-icon: "⚡"
+icon: Layers
 color: '#8b5cf6'
-description: 'workflows.nodes.parallelDescription'
+description:
+  en_US: Execute multiple branches in parallel
+  zh_Hans: 并行执行多个分支
 
 inputs:
   - name: input

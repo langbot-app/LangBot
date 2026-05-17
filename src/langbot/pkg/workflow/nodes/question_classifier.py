@@ -5,29 +5,16 @@ Node metadata is loaded from: ../../templates/metadata/nodes/question_classifier
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any
 
 from ..entities import ExecutionContext
-from ..node import WorkflowNode, workflow_node, NodePort, NodeConfig
-
+from ..node import WorkflowNode, workflow_node
 
 @workflow_node('question_classifier')
 class QuestionClassifierNode(WorkflowNode):
     """Question classifier node - classify user questions into categories"""
 
-    type_name = 'question_classifier'
     category = 'process'
-    icon = 'ListFilter'
-    name = 'question_classifier'
-    description = 'question_classifier'
-    name_zh = '问题分类器'
-    name_en = 'Question Classifier'
-    description_zh = '使用 AI 将问题分类到预定义类别'
-    description_en = 'Classify questions into predefined categories using AI'
-
-    inputs: ClassVar[list[NodePort]] = []
-    outputs: ClassVar[list[NodePort]] = []
-    config_schema: ClassVar[list[NodeConfig]] = []
 
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         categories = self.get_config('categories', [])

@@ -3,10 +3,15 @@
 # The corresponding Python implementation is in: pkg/workflow/nodes/switch.py
 
 name: switch
+label:
+  en_US: Switch
+  zh_Hans: 多路分支
 category: control
-icon: "🔀"
+icon: Split
 color: '#8b5cf6'
-description: 'workflows.nodes.switchDescription'
+description:
+  en_US: Branch workflow based on multiple cases
+  zh_Hans: 根据多个条件分支工作流
 
 inputs:
   - name: input

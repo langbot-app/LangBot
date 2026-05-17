@@ -20,7 +20,6 @@ import {
 } from 'lucide-react';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import { IDynamicFormItemSchema } from '@/app/infra/entities/form/dynamic';
-import { getNodeConfig } from './node-configs';
 import i18n from 'i18next';
 import { I18nObject } from '@/app/infra/entities/common';
 import { normalizeWorkflowNodeTypeMeta } from './workflow-node-metadata';
@@ -232,58 +231,38 @@ export default function PropertyPanel({
   }, [edges, selectedEdgeId]);
 
   // Get node type metadata for selected node
-  // Priority: API metadata first, local registry as normalized fallback
+  // Supports both full type (category.name) and short name matching
   const nodeTypeMeta = useMemo(() => {
     if (!selectedNode) return null;
 
     const nodeType = selectedNode.data.type;
-    return normalizeWorkflowNodeTypeMeta(
-      nodeType,
-      nodeTypes.find((t) => t.type === nodeType),
-    );
+    const shortName = nodeType.includes('.') ? nodeType.split('.').pop()! : nodeType;
+    const matched = nodeTypes.find((t) => {
+      if (t.type === nodeType) return true;
+      const tShort = t.type.includes('.') ? t.type.split('.').pop()! : t.type;
+      return tShort === shortName;
+    });
+    return normalizeWorkflowNodeTypeMeta(nodeType, matched);
   }, [selectedNode, nodeTypes]);
 
-  // Get local node config for additional metadata not carried by backend schema
-  const localNodeConfig = useMemo(() => {
-    if (!selectedNode) return null;
-    const nodeType = selectedNode.data.type;
-    return getNodeConfig(nodeType) || null;
-  }, [selectedNode]);
-
-  // Prefer local registry config schema so workflow editor can reuse the existing
-  // form item definitions, i18n labels/descriptions and option labels consistently.
-  // Fall back to backend metadata for nodes that do not exist in the local registry.
+  // Backend YAML is the single source of truth for node configuration schema.
   const configSchema = useMemo(() => {
-    const localConfigSchema =
-      (localNodeConfig?.configSchema as IDynamicFormItemSchema[]) || [];
     const backendConfigSchema =
       (nodeTypeMeta?.config_schema as IDynamicFormItemSchema[]) || [];
-    const rawConfigSchema =
-      localConfigSchema.length > 0 ? localConfigSchema : backendConfigSchema;
 
-    return rawConfigSchema.map((item) => {
-      const backendItem = backendConfigSchema.find(
-        (candidate) => candidate.name === item.name || candidate.id === item.id,
-      );
-
-      return {
-        ...(backendItem || {}),
-        ...item,
-        label: item.label ||
-          backendItem?.label || {
-            en_US: item.name,
-            zh_Hans: item.name,
-          },
-        description: item.description ||
-          backendItem?.description || {
-            en_US: '',
-            zh_Hans: '',
-          },
-        options: item.options || backendItem?.options,
-        show_if: item.show_if || backendItem?.show_if,
-      };
-    });
-  }, [localNodeConfig?.configSchema, nodeTypeMeta?.config_schema]);
+    return backendConfigSchema.map((item) => ({
+      ...item,
+      id: item.id || item.name,
+      label: item.label || {
+        en_US: item.name,
+        zh_Hans: item.name,
+      },
+      description: item.description || {
+        en_US: '',
+        zh_Hans: '',
+      },
+    }));
+  }, [nodeTypeMeta?.config_schema]);
 
   // Get available input variables from connected upstream nodes
   const availableInputVariables = useMemo(() => {
@@ -554,9 +533,6 @@ export default function PropertyPanel({
     const nodeDescription = nodeTypeMeta?.description
       ? extractI18nLabel(nodeTypeMeta.description)
       : undefined;
-
-    // Get node category color from local config
-    const nodeColor = localNodeConfig?.color || nodeTypeMeta?.color;
 
     return (
       <TooltipProvider>

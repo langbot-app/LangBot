@@ -5,29 +5,16 @@ Node metadata is loaded from: ../../templates/metadata/nodes/merge.yaml
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any
 
 from ..entities import ExecutionContext
-from ..node import WorkflowNode, workflow_node, NodePort, NodeConfig
-
+from ..node import WorkflowNode, workflow_node
 
 @workflow_node('merge')
 class MergeNode(WorkflowNode):
     """Merge node - combine multiple inputs"""
 
-    type_name = 'merge'
     category = 'control'
-    icon = 'GitMerge'
-    name = 'merge'
-    description = 'merge'
-    name_zh = '合并'
-    name_en = 'Merge'
-    description_zh = '将多个分支合并在一起'
-    description_en = 'Merge multiple branches back together'
-
-    inputs: ClassVar[list[NodePort]] = []
-    outputs: ClassVar[list[NodePort]] = []
-    config_schema: ClassVar[list[NodeConfig]] = []
 
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         strategy = self.get_config('merge_strategy', 'object')

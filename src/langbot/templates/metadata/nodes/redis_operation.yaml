@@ -3,10 +3,15 @@
 # The corresponding Python implementation is in: pkg/workflow/nodes/redis_operation.py
 
 name: redis_operation
+label:
+  en_US: Redis Operation
+  zh_Hans: Redis 操作
 category: integration
-icon: "🔴"
+icon: Server
 color: '#ec4899'
-description: 'workflows.nodes.redisOperationDescription'
+description:
+  en_US: Perform Redis cache operations
+  zh_Hans: 执行 Redis 缓存操作
 
 inputs:
   - name: key

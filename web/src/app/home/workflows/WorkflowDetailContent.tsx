@@ -79,19 +79,17 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
     return () => setDetailEntityName(null);
   }, [id, isCreateMode, workflows, setDetailEntityName, t]);
 
-  // Load node types
+  // Load node types - always fetch from backend to ensure fresh metadata
   useEffect(() => {
-    if (nodeTypes.length === 0) {
-      backendClient
-        .getWorkflowNodeTypes()
-        .then((resp) => {
-          setNodeTypes(resp.node_types, resp.categories);
-        })
-        .catch((err) => {
-          console.error('Failed to load node types:', err);
-        });
-    }
-  }, [nodeTypes.length, setNodeTypes]);
+    backendClient
+      .getWorkflowNodeTypes()
+      .then((resp) => {
+        setNodeTypes(resp.node_types, resp.categories);
+      })
+      .catch((err) => {
+        console.error('Failed to load node types:', err);
+      });
+  }, [setNodeTypes]);
 
   // Load workflow data
   useEffect(() => {

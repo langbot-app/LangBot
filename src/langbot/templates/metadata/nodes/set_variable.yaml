@@ -1,9 +1,14 @@
 # Set Variable Node Configuration
 name: set_variable
+label:
+  en_US: Set Variable
+  zh_Hans: 设置变量
 category: action
-icon: "📝"
+icon: Variable
 color: '#ef4444'
-description: 'workflows.nodes.setVariableDescription'
+description:
+  en_US: Set a context variable value
+  zh_Hans: 设置上下文变量值
 
 inputs:
   - name: value

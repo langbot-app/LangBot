@@ -3,10 +3,15 @@
 # The corresponding Python implementation is in: pkg/workflow/nodes/event_trigger.py
 
 name: event_trigger
+label:
+  en_US: Event Trigger
+  zh_Hans: 事件触发
 category: trigger
-icon: "📡"
+icon: Bell
 color: '#22c55e'
-description: 'workflows.nodes.eventTriggerDescription'
+description:
+  en_US: Trigger workflow when a system event occurs
+  zh_Hans: 当系统事件发生时触发工作流
 
 inputs: []
 

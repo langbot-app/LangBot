@@ -3,10 +3,15 @@
 # The corresponding Python implementation is in: pkg/workflow/nodes/webhook_trigger.py
 
 name: webhook_trigger
+label:
+  en_US: Webhook Trigger
+  zh_Hans: Webhook 触发
 category: trigger
-icon: "🌐"
+icon: Webhook
 color: '#22c55e'
-description: 'workflows.nodes.webhookTriggerDescription'
+description:
+  en_US: Trigger workflow via HTTP webhook
+  zh_Hans: 通过 HTTP 请求触发工作流
 
 inputs: []
 

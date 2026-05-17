@@ -5,29 +5,16 @@ Node metadata is loaded from: ../../templates/metadata/nodes/database_query.yaml
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any
 
 from ..entities import ExecutionContext
-from ..node import WorkflowNode, workflow_node, NodePort, NodeConfig
-
+from ..node import WorkflowNode, workflow_node
 
 @workflow_node('database_query')
 class DatabaseQueryNode(WorkflowNode):
     """Database query node - execute database queries"""
 
-    type_name = 'database_query'
     category = 'integration'
-    icon = 'Database'
-    name = 'database_query'
-    description = 'database_query'
-    name_zh = '数据库查询'
-    name_en = 'Database Query'
-    description_zh = '执行数据库查询'
-    description_en = 'Execute database queries'
-
-    inputs: ClassVar[list[NodePort]] = []
-    outputs: ClassVar[list[NodePort]] = []
-    config_schema: ClassVar[list[NodeConfig]] = []
 
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         connection_type = self.get_config('connection_type', 'postgresql')

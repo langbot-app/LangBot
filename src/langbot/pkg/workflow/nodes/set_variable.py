@@ -5,29 +5,16 @@ Node metadata is loaded from: ../../templates/metadata/nodes/set_variable.yaml
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any
 
 from ..entities import ExecutionContext
-from ..node import WorkflowNode, workflow_node, NodePort, NodeConfig
-
+from ..node import WorkflowNode, workflow_node
 
 @workflow_node('set_variable')
 class SetVariableNode(WorkflowNode):
     """Set variable node - set workflow or conversation variable"""
 
-    type_name = 'set_variable'
     category = 'action'
-    icon = 'Variable'
-    name = 'set_variable'
-    description = 'set_variable'
-    name_zh = '设置变量'
-    name_en = 'Set Variable'
-    description_zh = '设置上下文变量值'
-    description_en = 'Set a context variable value'
-
-    inputs: ClassVar[list[NodePort]] = []
-    outputs: ClassVar[list[NodePort]] = []
-    config_schema: ClassVar[list[NodeConfig]] = []
 
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         value = inputs.get('value')

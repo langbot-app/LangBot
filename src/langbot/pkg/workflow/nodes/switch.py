@@ -5,29 +5,16 @@ Node metadata is loaded from: ../../templates/metadata/nodes/switch.yaml
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any
 
 from ..entities import ExecutionContext
-from ..node import WorkflowNode, workflow_node, NodePort, NodeConfig
-
+from ..node import WorkflowNode, workflow_node
 
 @workflow_node('switch')
 class SwitchNode(WorkflowNode):
     """Switch node - multi-way branch based on value"""
 
-    type_name = 'switch'
     category = 'control'
-    icon = 'Split'
-    name = 'switch'
-    description = 'switch'
-    name_zh = '多路分支'
-    name_en = 'Switch'
-    description_zh = '根据多个条件分支工作流'
-    description_en = 'Branch workflow based on multiple cases'
-
-    inputs: ClassVar[list[NodePort]] = []
-    outputs: ClassVar[list[NodePort]] = []
-    config_schema: ClassVar[list[NodeConfig]] = []
 
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         expression = self.get_config('expression', '')

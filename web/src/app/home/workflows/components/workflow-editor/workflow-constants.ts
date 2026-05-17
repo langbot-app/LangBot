@@ -38,7 +38,12 @@ import {
   Play,
   Plug,
   ExternalLink,
+  BookOpen,
+  HardDrive,
+  Server,
+  Wrench,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 import i18n from 'i18next';
 import { resolveI18nLabel, maybeTranslateKey } from './workflow-i18n';
@@ -424,23 +429,56 @@ export function getNodeTypeLabel(
 
 // ─── Dynamic Icon Resolution ────────────────────────────────────────
 
-import * as LucideIcons from 'lucide-react';
+/**
+ * Explicit icon registry mapping PascalCase icon names to their components.
+ *
+ * We use an explicit map instead of `import * as LucideIcons` because
+ * Next.js/webpack tree-shaking removes unused exports from barrel imports,
+ * causing dynamic lookups like `LucideIcons[name]` to fail at runtime.
+ */
+const LUCIDE_ICON_REGISTRY: Record<string, LucideIcon> = {
+  ArrowRightLeft,
+  Bell,
+  BookOpen,
+  Bot,
+  Brain,
+  Clock,
+  Code,
+  Cpu,
+  Database,
+  ExternalLink,
+  FileText,
+  GitBranch,
+  GitMerge,
+  Globe,
+  HardDrive,
+  Layers,
+  ListFilter,
+  MessageCircle,
+  MessageSquare,
+  PauseCircle,
+  Play,
+  Plug,
+  Repeat,
+  Search,
+  Send,
+  Server,
+  Settings,
+  Split,
+  Timer,
+  Variable,
+  Webhook,
+  Workflow,
+  Wrench,
+  Zap,
+};
 
 /**
  * Dynamically get Lucide icon component from backend icon name.
  *
- * This function enables the frontend to use icon names provided by the backend,
- * eliminating the need to maintain a hardcoded NODE_ICONS mapping.
- *
  * @param iconName - Lucide icon name from backend (e.g., 'MessageSquare', 'Brain')
  * @param nodeType - Node type for fallback to hardcoded mapping (backward compatibility)
  * @returns React component for the icon
- *
- * @example
- * ```tsx
- * const Icon = getIconComponent('MessageSquare');
- * return <Icon className="size-5" />;
- * ```
  */
 export function getIconComponent(
   iconName: string | undefined,
@@ -448,24 +486,24 @@ export function getIconComponent(
 ): React.ElementType {
   // 1. Priority: Use backend-provided icon name
   if (iconName) {
-    const IconComponent = (LucideIcons as any)[iconName];
-    if (IconComponent && typeof IconComponent === 'function') {
+    const IconComponent = LUCIDE_ICON_REGISTRY[iconName];
+    if (IconComponent) {
       return IconComponent;
     }
-    // Warn if icon name is invalid
+    // Warn if icon name is not in registry
     if (process.env.NODE_ENV === 'development') {
       console.warn(
-        `[Workflow] Icon "${iconName}" not found in Lucide icons. ` +
-        `Falling back to default. Check: https://lucide.dev/icons/`
+        `[Workflow] Icon "${iconName}" not found in LUCIDE_ICON_REGISTRY. ` +
+        `Add it to workflow-constants.ts. Check: https://lucide.dev/icons/`
       );
     }
   }
-  
+
   // 2. Fallback: Use hardcoded NODE_ICONS mapping (backward compatibility)
   if (nodeType && NODE_ICONS[nodeType]) {
     return NODE_ICONS[nodeType];
   }
-  
+
   // 3. Final fallback: Default Settings icon
-  return LucideIcons.Settings;
+  return Settings;
 }

@@ -6,5 +6,3 @@ export {
 export { default as NodePalette } from './NodePalette';
 export { default as PropertyPanel } from './PropertyPanel';
 
-// Export node configurations
-export * from './node-configs';

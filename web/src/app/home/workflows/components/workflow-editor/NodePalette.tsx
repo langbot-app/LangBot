@@ -14,8 +14,6 @@ import {
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
-  NODE_ICONS,
-  NODE_TYPE_I18N_KEYS,
   CATEGORY_I18N_KEYS,
   PALETTE_CATEGORY_COLORS as categoryColors,
   PALETTE_CATEGORY_BG as categoryBgColors,
@@ -25,9 +23,6 @@ import {
   getIconComponent,
 } from './workflow-constants';
 import { resolveI18nLabel } from './workflow-i18n';
-
-// Use shared icon mapping
-const nodeIcons = NODE_ICONS;
 
 // Use shared category i18n keys
 const categoryI18nKeys = CATEGORY_I18N_KEYS;
@@ -43,16 +38,6 @@ interface NodeTypeForUI {
   label?: Record<string, string>;
   description?: Record<string, string>;
 }
-
-// Default node types generated from shared constants
-const defaultNodeTypes: NodeTypeForUI[] = Object.entries(
-  NODE_TYPE_I18N_KEYS,
-).map(([type, keys]) => ({
-  type,
-  category: type.split('.')[0],
-  labelKey: keys.labelKey,
-  descriptionKey: keys.descriptionKey,
-}));
 
 export default function NodePalette() {
   const { t, i18n } = useTranslation();
@@ -96,24 +81,25 @@ export default function NodePalette() {
     [t],
   );
 
-  // Use backend node types if available, otherwise use defaults
+  // Backend node types are the only source of palette node definitions.
   const nodeTypes = useMemo((): NodeTypeForUI[] => {
-    if (backendNodeTypes && backendNodeTypes.length > 0) {
-      return backendNodeTypes.map((node) => {
-        const i18nKeys = findNodeI18nKeys(node.type);
-
-        return {
-          type: node.type,
-          category: node.category,
-          labelKey: i18nKeys?.labelKey,
-          descriptionKey: i18nKeys?.descriptionKey,
-          // Keep raw label dict as fallback for unknown nodes
-          label: i18nKeys ? undefined : node.label,
-          description: i18nKeys ? undefined : node.description,
-        };
-      });
+    if (!backendNodeTypes || backendNodeTypes.length === 0) {
+      return [];
     }
-    return defaultNodeTypes;
+
+    return backendNodeTypes.map((node) => {
+      const i18nKeys = findNodeI18nKeys(node.type);
+
+      return {
+        type: node.type,
+        category: node.category,
+        icon: node.icon,
+        labelKey: i18nKeys?.labelKey,
+        descriptionKey: i18nKeys?.descriptionKey,
+        label: i18nKeys ? undefined : node.label,
+        description: i18nKeys ? undefined : node.description,
+      };
+    });
   }, [backendNodeTypes]);
 
   // Filter nodes based on search query

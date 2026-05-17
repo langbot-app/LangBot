@@ -6,31 +6,18 @@ Node metadata is loaded from: ../../templates/metadata/nodes/reply_message.yaml
 from __future__ import annotations
 
 import logging
-from typing import Any, ClassVar
+from typing import Any
 
 from ..entities import ExecutionContext
-from ..node import WorkflowNode, workflow_node, NodePort, NodeConfig
+from ..node import WorkflowNode, workflow_node
 
 logger = logging.getLogger(__name__)
-
 
 @workflow_node('reply_message')
 class ReplyMessageNode(WorkflowNode):
     """Reply message node - reply to the triggering message"""
 
-    type_name = 'reply_message'
     category = 'action'
-    icon = 'Send'
-    name = 'reply_message'
-    description = 'reply_message'
-    name_zh = '回复消息'
-    name_en = 'Reply Message'
-    description_zh = '回复触发工作流的消息'
-    description_en = 'Reply to the message that triggered the workflow'
-
-    inputs: ClassVar[list[NodePort]] = []
-    outputs: ClassVar[list[NodePort]] = []
-    config_schema: ClassVar[list[NodeConfig]] = []
 
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         message = inputs.get('message')

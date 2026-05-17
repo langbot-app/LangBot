@@ -7,29 +7,16 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, ClassVar
+from typing import Any
 
 from ..entities import ExecutionContext
-from ..node import WorkflowNode, workflow_node, NodePort, NodeConfig
-
+from ..node import WorkflowNode, workflow_node
 
 @workflow_node('code_executor')
 class CodeExecutorNode(WorkflowNode):
     """Code executor node - run Python or JavaScript code"""
 
-    type_name = 'code_executor'
     category = 'process'
-    icon = 'Code'
-    name = 'code_executor'
-    description = 'code_executor'
-    name_zh = '代码执行'
-    name_en = 'Code Executor'
-    description_zh = '执行自定义代码处理数据'
-    description_en = 'Execute custom code to process data'
-
-    inputs: ClassVar[list[NodePort]] = []
-    outputs: ClassVar[list[NodePort]] = []
-    config_schema: ClassVar[list[NodeConfig]] = []
 
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         code = self.get_config('code', '')

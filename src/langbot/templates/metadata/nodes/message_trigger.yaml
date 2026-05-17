@@ -3,10 +3,15 @@
 # The corresponding Python implementation is in: pkg/workflow/nodes/message_trigger.py
 
 name: message_trigger
+label:
+  en_US: Message Trigger
+  zh_Hans: 消息触发
 category: trigger
-icon: "💬"
+icon: MessageSquare
 color: '#22c55e'
-description: 'workflows.nodes.messageTriggerDescription'
+description:
+  en_US: Trigger workflow when a message is received
+  zh_Hans: 当收到消息时触发工作流
 
 inputs: []
 

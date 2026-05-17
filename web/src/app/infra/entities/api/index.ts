@@ -557,7 +557,7 @@ export interface WorkflowPosition {
 
 export interface WorkflowPortDefinition {
   name: string;
-  label?: string;
+  label?: string | Record<string, string>;
   type?: string;
 }
 

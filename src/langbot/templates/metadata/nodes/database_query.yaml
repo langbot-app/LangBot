@@ -3,10 +3,15 @@
 # The corresponding Python implementation is in: pkg/workflow/nodes/database_query.py
 
 name: database_query
+label:
+  en_US: Database Query
+  zh_Hans: 数据库查询
 category: integration
-icon: "🗄️"
+icon: Database
 color: '#ec4899'
-description: 'workflows.nodes.databaseQueryDescription'
+description:
+  en_US: Execute database queries
+  zh_Hans: 执行数据库查询
 
 inputs:
   - name: parameters

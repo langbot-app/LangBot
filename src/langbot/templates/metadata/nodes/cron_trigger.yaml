@@ -3,10 +3,15 @@
 # The corresponding Python implementation is in: pkg/workflow/nodes/cron_trigger.py
 
 name: cron_trigger
+label:
+  en_US: Scheduled Trigger
+  zh_Hans: 定时触发
 category: trigger
-icon: "⏰"
+icon: Timer
 color: '#22c55e'
-description: 'workflows.nodes.cronTriggerDescription'
+description:
+  en_US: Trigger workflow on a scheduled time
+  zh_Hans: 按定时计划触发工作流
 
 inputs: []
 

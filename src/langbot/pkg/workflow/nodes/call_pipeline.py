@@ -5,7 +5,7 @@ Node metadata is loaded from: ../../templates/metadata/nodes/call_pipeline.yaml
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any
 
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -15,26 +15,13 @@ import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 
 from ..entities import ExecutionContext
-from ..node import WorkflowNode, workflow_node, NodePort, NodeConfig
-
+from ..node import WorkflowNode, workflow_node
 
 @workflow_node('call_pipeline')
 class CallPipelineNode(WorkflowNode):
     """Call pipeline node - invoke an existing pipeline"""
 
-    type_name = 'call_pipeline'
     category = 'action'
-    icon = 'Workflow'
-    name = 'call_pipeline'
-    description = 'call_pipeline'
-    name_zh = '调用 Pipeline'
-    name_en = 'Call Pipeline'
-    description_zh = '调用现有的 Pipeline 进行处理'
-    description_en = 'Invoke an existing Pipeline for processing'
-
-    inputs: ClassVar[list[NodePort]] = []
-    outputs: ClassVar[list[NodePort]] = []
-    config_schema: ClassVar[list[NodeConfig]] = []
 
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         if not self.ap:
@@ -124,7 +111,6 @@ class CallPipelineNode(WorkflowNode):
         if context.message_context and context.message_context.is_group:
             group = platform_entities.Group(
                 id=context.message_context.group_id or context.session_id or 'workflow_group',
-                name='Workflow Group',
                 permission=platform_entities.Permission.Member,
             )
             sender = platform_entities.GroupMember(
@@ -151,7 +137,6 @@ class CallPipelineNode(WorkflowNode):
             if context.message_context and context.message_context.raw_message
             else None,
         )
-
 
 class _WorkflowPipelineCaptureAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     responses: list[dict[str, Any]] = []

@@ -5,29 +5,17 @@ Node metadata is loaded from: ../../templates/metadata/nodes/parameter_extractor
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any
 
 from ..entities import ExecutionContext
-from ..node import WorkflowNode, workflow_node, NodePort, NodeConfig
-
+from ..node import WorkflowNode, workflow_node
 
 @workflow_node('parameter_extractor')
 class ParameterExtractorNode(WorkflowNode):
     """Parameter extractor node - extract structured parameters from text"""
 
-    type_name = 'parameter_extractor'
     category = 'process'
     icon: str = 'Variable'
-    name = 'parameter_extractor'
-    description = 'parameter_extractor'
-    name_zh = '参数提取器'
-    name_en = 'Parameter Extractor'
-    description_zh = '使用 AI 从文本中提取结构化参数'
-    description_en = 'Extract structured parameters from text using AI'
-
-    inputs: ClassVar[list[NodePort]] = []
-    outputs: ClassVar[list[NodePort]] = []
-    config_schema: ClassVar[list[NodeConfig]] = []
 
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         param_defs = self.get_config('parameters', [])

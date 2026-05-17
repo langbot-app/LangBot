@@ -3,10 +3,15 @@
 # The corresponding Python implementation is in: pkg/workflow/nodes/condition.py
 
 name: condition
+label:
+  en_US: Condition
+  zh_Hans: 条件分支
 category: control
-icon: "🔀"
+icon: GitBranch
 color: '#8b5cf6'
-description: 'workflows.nodes.conditionDescription'
+description:
+  en_US: Branch workflow based on a condition
+  zh_Hans: 根据条件分支工作流
 
 inputs:
   - name: input

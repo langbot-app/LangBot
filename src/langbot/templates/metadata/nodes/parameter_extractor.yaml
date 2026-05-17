@@ -3,10 +3,15 @@
 # The corresponding Python implementation is in: pkg/workflow/nodes/parameter_extractor.py
 
 name: parameter_extractor
+label:
+  en_US: Parameter Extractor
+  zh_Hans: 参数提取器
 category: process
-icon: "🔍"
+icon: Variable
 color: '#8b5cf6'
-description: 'workflows.nodes.parameterExtractorDescription'
+description:
+  en_US: Extract structured parameters from text using AI
+  zh_Hans: 使用 AI 从文本中提取结构化参数
 
 inputs:
   - name: text

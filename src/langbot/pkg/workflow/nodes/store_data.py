@@ -5,29 +5,16 @@ Node metadata is loaded from: ../../templates/metadata/nodes/store_data.yaml
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any
 
 from ..entities import ExecutionContext
-from ..node import WorkflowNode, workflow_node, NodePort, NodeConfig
-
+from ..node import WorkflowNode, workflow_node
 
 @workflow_node('store_data')
 class StoreDataNode(WorkflowNode):
     """Store data node - save data to storage"""
 
-    type_name = 'store_data'
     category = 'action'
-    icon = 'Database'
-    name = 'store_data'
-    description = 'store_data'
-    name_zh = '存储数据'
-    name_en = 'Store Data'
-    description_zh = '将数据存储到持久化存储'
-    description_en = 'Store data to persistent storage'
-
-    inputs: ClassVar[list[NodePort]] = []
-    outputs: ClassVar[list[NodePort]] = []
-    config_schema: ClassVar[list[NodeConfig]] = []
 
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         key = inputs.get('key', '')

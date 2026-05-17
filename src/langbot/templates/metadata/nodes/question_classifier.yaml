@@ -3,10 +3,15 @@
 # The corresponding Python implementation is in: pkg/workflow/nodes/question_classifier.py
 
 name: question_classifier
+label:
+  en_US: Question Classifier
+  zh_Hans: 问题分类器
 category: process
-icon: "🏷️"
+icon: ListFilter
 color: '#8b5cf6'
-description: 'workflows.nodes.questionClassifierDescription'
+description:
+  en_US: Classify questions into predefined categories using AI
+  zh_Hans: 使用 AI 将问题分类到预定义类别
 
 inputs:
   - name: question

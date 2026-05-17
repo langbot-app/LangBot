@@ -5,30 +5,17 @@ Node metadata is loaded from: ../../templates/metadata/nodes/condition.yaml
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any
 
 from ..entities import ExecutionContext
-from ..node import WorkflowNode, workflow_node, NodePort, NodeConfig
+from ..node import WorkflowNode, workflow_node
 from ..safe_eval import safe_eval_with_vars
-
 
 @workflow_node('condition')
 class ConditionNode(WorkflowNode):
     """Condition node - branch based on condition"""
 
-    type_name = 'condition'
     category = 'control'
-    icon = 'GitBranch'
-    name = 'condition'
-    description = 'condition'
-    name_zh = '条件分支'
-    name_en = 'Condition'
-    description_zh = '根据条件分支工作流'
-    description_en = 'Branch workflow based on a condition'
-
-    inputs: ClassVar[list[NodePort]] = []
-    outputs: ClassVar[list[NodePort]] = []
-    config_schema: ClassVar[list[NodeConfig]] = []
 
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         condition_type = self.get_config('condition_type', 'expression')

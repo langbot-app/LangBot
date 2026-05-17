@@ -3,10 +3,15 @@
 # The corresponding Python implementation is in: pkg/workflow/nodes/llm_call.py
 
 name: llm_call
+label:
+  en_US: LLM Call
+  zh_Hans: LLM 调用
 category: process
-icon: "🤖"
+icon: Brain
 color: '#8b5cf6'
-description: 'workflows.nodes.llmCallDescription'
+description:
+  en_US: Call a large language model to generate responses
+  zh_Hans: 调用大语言模型生成响应
 
 inputs:
   - name: input

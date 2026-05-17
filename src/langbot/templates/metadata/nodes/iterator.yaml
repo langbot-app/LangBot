@@ -1,9 +1,14 @@
 # Iterator Node Configuration
 name: iterator
+label:
+  en_US: Iterator
+  zh_Hans: 迭代器
 category: control
-icon: "🔄"
+icon: Repeat
 color: '#f59e0b'
-description: 'workflows.nodes.iteratorDescription'
+description:
+  en_US: Iterate over array elements one by one
+  zh_Hans: 逐个遍历数组元素
 
 inputs:
   - name: array

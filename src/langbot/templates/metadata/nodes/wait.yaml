@@ -3,10 +3,15 @@
 # The corresponding Python implementation is in: pkg/workflow/nodes/wait.py
 
 name: wait
+label:
+  en_US: Wait
+  zh_Hans: 等待
 category: control
-icon: "⏳"
+icon: Clock
 color: '#8b5cf6'
-description: 'workflows.nodes.waitDescription'
+description:
+  en_US: Pause workflow execution for a specified duration
+  zh_Hans: 暂停工作流执行指定时间
 
 inputs:
   - name: input
