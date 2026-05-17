@@ -333,8 +333,14 @@ class BoxService:
     async def write_skill_file(self, name: str, path: str, content: str) -> dict:
         return await self.client.write_skill_file(name, path, content)
 
-    async def preview_skill_zip(self, file_bytes: bytes, filename: str, source_subdir: str = '') -> list[dict]:
-        return await self.client.preview_skill_zip(file_bytes, filename, source_subdir)
+    async def preview_skill_zip(
+        self,
+        file_bytes: bytes,
+        filename: str,
+        source_subdir: str = '',
+        target_suffix: str = 'upload',
+    ) -> list[dict]:
+        return await self.client.preview_skill_zip(file_bytes, filename, source_subdir, target_suffix)
 
     async def install_skill_zip(
         self,
@@ -343,8 +349,16 @@ class BoxService:
         source_paths: list[str] | None = None,
         source_path: str = '',
         source_subdir: str = '',
+        target_suffix: str = 'upload',
     ) -> list[dict]:
-        return await self.client.install_skill_zip(file_bytes, filename, source_paths, source_path, source_subdir)
+        return await self.client.install_skill_zip(
+            file_bytes,
+            filename,
+            source_paths,
+            source_path,
+            source_subdir,
+            target_suffix,
+        )
 
     def _serialize_result(self, result: BoxExecutionResult) -> dict:
         stdout, stdout_truncated = self._truncate(result.stdout)

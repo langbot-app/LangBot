@@ -713,8 +713,8 @@ const zhHans = {
     toolCount: '工具：{{count}}',
     parameterCount: '参数：{{count}}',
     noParameters: '无参数',
-    statusConnected: '已打开',
-    statusDisconnected: '未打开',
+    statusConnected: '已连接',
+    statusDisconnected: '未连接',
     statusError: '连接错误',
     statusDisabled: '已禁用',
     loading: '加载中...',
@@ -1279,7 +1279,7 @@ const zhHans = {
     maxPipelinesReached:
       '已达到流水线数量上限（{{max}}个）。请先删除已有流水线后再创建新的。',
     maxExtensionsReached:
-      '已达到扩展数量上限（{{max}}个）。请先删除已有的 MCP 服务器或插件后再添加新的。',
+      '已达到扩展数量上限（{{max}}个）。请先删除已有扩展后再添加新的。',
   },
   skills: {
     title: '技能',
@@ -1322,7 +1322,7 @@ const zhHans = {
     selectSkills: '选择技能',
     builtin: '内置',
     addSkill: '添加技能',
-    importFromGithub: '从 GitHub 安装插件',
+    importFromGithub: '从 GitHub 安装技能',
     createManually: '手动创建',
     uploadZip: '上传 ZIP 包',
     uploadZipOnly: '仅支持 .zip 技能包',
@@ -1426,8 +1426,18 @@ const zhHans = {
     uploadHint: '支持 .zip（技能）和 .lbpkg（插件）文件',
     orContinueWith: '或选择以下操作',
     addMCPServerHint: '连接一个 MCP 工具服务器扩展',
-    installFromGithub: '从 GitHub 安装插件',
-    installFromGithubHint: '从 GitHub Release 安装插件扩展',
+    installFromGithub: '从 GitHub 安装插件或 Skill',
+    installFromGithubHint:
+      '支持 GitHub Release 插件包，也支持直接导入 GitHub 上的 SKILL.md',
+    githubUrlHelp:
+      '粘贴 GitHub 仓库地址安装插件；如果要安装 Skill，请粘贴 GitHub 上的 SKILL.md 文件地址。',
+    githubUrlPlaceholder:
+      '例如 https://github.com/owner/repo 或 https://github.com/owner/repo/blob/main/path/SKILL.md',
+    githubUrlRequired: '请输入 GitHub 地址',
+    skillMdUrlHelp:
+      'Skill 需要复制具体文件链接，例如仓库中某个技能目录下的 SKILL.md 页面地址。',
+    previewSkill: '预览 Skill',
+    noSkillPreviewFound: '未找到可导入的 Skill',
     createSkill: '创建新的技能',
     createSkillHint: '手动创建一个新的技能扩展',
     unsupportedFileType: '不支持的文件类型，仅支持 .zip 和 .lbpkg 文件',

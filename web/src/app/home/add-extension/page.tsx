@@ -31,6 +31,7 @@ import { httpClient, systemInfo } from '@/app/infra/http/HttpClient';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { PluginV4 } from '@/app/infra/entities/plugin';
+import type { Skill } from '@/app/infra/entities/api';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { usePluginInstallTasks } from '@/app/home/plugins/components/plugin-install-task';
 import MCPForm from '@/app/home/mcp/components/mcp-form/MCPForm';
@@ -51,6 +52,8 @@ enum GithubInstallStatus {
   SELECT_ASSET = 'select_asset',
   ASK_CONFIRM = 'ask_confirm',
   INSTALLING = 'installing',
+  SKILL_PREVIEW = 'skill_preview',
+  SKILL_INSTALLING = 'skill_installing',
   ERROR = 'error',
 }
 
@@ -71,6 +74,53 @@ interface GithubAsset {
   size: number;
   download_url: string;
   content_type: string;
+}
+
+interface GithubSkillMdInfo {
+  owner: string;
+  repo: string;
+  ref: string;
+  path: string;
+}
+
+function isGithubSkillMdUrl(rawUrl: string): boolean {
+  try {
+    const url = new URL(rawUrl.trim());
+    return url.pathname.toLowerCase().endsWith('/skill.md');
+  } catch {
+    return rawUrl.trim().toLowerCase().split('?', 1)[0].endsWith('skill.md');
+  }
+}
+
+function parseGithubSkillMdUrl(rawUrl: string): GithubSkillMdInfo {
+  const url = new URL(rawUrl.trim());
+  const parts = url.pathname.split('/').filter(Boolean);
+
+  if (url.hostname === 'github.com') {
+    if (parts.length < 5 || parts[2] !== 'blob') {
+      throw new Error('Invalid GitHub SKILL.md URL');
+    }
+    return {
+      owner: parts[0],
+      repo: parts[1],
+      ref: parts[3],
+      path: parts.slice(4).join('/'),
+    };
+  }
+
+  if (url.hostname === 'raw.githubusercontent.com') {
+    if (parts.length < 4) {
+      throw new Error('Invalid GitHub SKILL.md URL');
+    }
+    return {
+      owner: parts[0],
+      repo: parts[1],
+      ref: parts[2],
+      path: parts.slice(3).join('/'),
+    };
+  }
+
+  throw new Error('Invalid GitHub SKILL.md URL');
 }
 
 enum PluginInstallStatus {
@@ -137,6 +187,12 @@ function AddExtensionContent() {
   const [githubRepo, setGithubRepo] = useState('');
   const [fetchingReleases, setFetchingReleases] = useState(false);
   const [fetchingAssets, setFetchingAssets] = useState(false);
+  const [fetchingSkillPreview, setFetchingSkillPreview] = useState(false);
+  const [githubSkillInfo, setGithubSkillInfo] =
+    useState<GithubSkillMdInfo | null>(null);
+  const [githubSkillPreview, setGithubSkillPreview] = useState<Skill | null>(
+    null,
+  );
   const [githubInstallStatus, setGithubInstallStatus] =
     useState<GithubInstallStatus>(GithubInstallStatus.WAIT_INPUT);
   const [githubInstallError, setGithubInstallError] = useState<string | null>(
@@ -324,12 +380,15 @@ function AddExtensionContent() {
     const maxExtensions = systemInfo.limitation?.max_extensions ?? -1;
     if (maxExtensions < 0) return true;
     try {
-      const [pluginsResp, mcpResp] = await Promise.all([
+      const [pluginsResp, mcpResp, skillsResp] = await Promise.all([
         httpClient.getPlugins(),
         httpClient.getMCPServers(),
+        httpClient.getSkills(),
       ]);
       const total =
-        (pluginsResp.plugins?.length ?? 0) + (mcpResp.servers?.length ?? 0);
+        (pluginsResp.plugins?.length ?? 0) +
+        (mcpResp.servers?.length ?? 0) +
+        (skillsResp.skills?.length ?? 0);
       if (total >= maxExtensions) {
         toast.error(
           t('limitation.maxExtensionsReached', { max: maxExtensions }),
@@ -352,8 +411,19 @@ function AddExtensionContent() {
     setGithubRepo('');
     setFetchingReleases(false);
     setFetchingAssets(false);
+    setFetchingSkillPreview(false);
+    setGithubSkillInfo(null);
+    setGithubSkillPreview(null);
     setGithubInstallStatus(GithubInstallStatus.WAIT_INPUT);
     setGithubInstallError(null);
+  }
+
+  async function handleGithubAddressSubmit() {
+    if (isGithubSkillMdUrl(githubURL)) {
+      await previewGithubSkillMd();
+      return;
+    }
+    await fetchGithubReleases();
   }
 
   async function fetchGithubReleases() {
@@ -364,6 +434,8 @@ function AddExtensionContent() {
 
     setFetchingReleases(true);
     setGithubInstallError(null);
+    setGithubSkillInfo(null);
+    setGithubSkillPreview(null);
 
     try {
       const result = await httpClient.getGithubReleases(githubURL);
@@ -383,6 +455,46 @@ function AddExtensionContent() {
       setGithubInstallStatus(GithubInstallStatus.ERROR);
     } finally {
       setFetchingReleases(false);
+    }
+  }
+
+  async function previewGithubSkillMd() {
+    if (!githubURL.trim()) {
+      toast.error(t('addExtension.githubUrlRequired'));
+      return;
+    }
+
+    setFetchingSkillPreview(true);
+    setGithubInstallError(null);
+    setGithubReleases([]);
+    setGithubAssets([]);
+    setSelectedRelease(null);
+    setSelectedAsset(null);
+
+    try {
+      const skillInfo = parseGithubSkillMdUrl(githubURL);
+      const result = await httpClient.previewSkillInstallFromGithub(
+        githubURL.trim(),
+        skillInfo.owner,
+        skillInfo.repo,
+        skillInfo.ref,
+      );
+      const preview = result.skills?.[0];
+      if (!preview) {
+        throw new Error(t('addExtension.noSkillPreviewFound'));
+      }
+      setGithubOwner(skillInfo.owner);
+      setGithubRepo(skillInfo.repo);
+      setGithubSkillInfo(skillInfo);
+      setGithubSkillPreview(preview);
+      setGithubInstallStatus(GithubInstallStatus.SKILL_PREVIEW);
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      setGithubInstallError(errorMessage || t('skills.previewLoadError'));
+      setGithubInstallStatus(GithubInstallStatus.ERROR);
+    } finally {
+      setFetchingSkillPreview(false);
     }
   }
 
@@ -455,6 +567,35 @@ function AddExtensionContent() {
       });
   }
 
+  async function handleGithubSkillConfirm() {
+    if (!githubSkillInfo) return;
+    if (!(await checkExtensionsLimit())) return;
+
+    setGithubInstallStatus(GithubInstallStatus.SKILL_INSTALLING);
+    try {
+      await httpClient.installSkillFromGithub(
+        githubURL.trim(),
+        githubSkillInfo.owner,
+        githubSkillInfo.repo,
+        githubSkillInfo.ref,
+      );
+      toast.success(t('skills.installSuccess'));
+      refreshPlugins();
+      refreshSkills();
+      resetGithubState();
+      setPopoverOpen(false);
+    } catch (err: unknown) {
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'object' && err && 'msg' in err
+            ? String((err as { msg?: string }).msg || '')
+            : String(err);
+      setGithubInstallError(errorMessage);
+      setGithubInstallStatus(GithubInstallStatus.ERROR);
+    }
+  }
+
   function formatFileSize(bytes: number): string {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -470,7 +611,7 @@ function AddExtensionContent() {
       case 'skill':
         return 'w-[calc(100vw-2rem)] sm:w-[560px]';
       case 'github':
-        return 'w-[calc(100vw-2rem)] sm:w-[480px]';
+        return 'w-[calc(100vw-2rem)] sm:w-[560px]';
       default:
         return 'w-[calc(100vw-2rem)] sm:w-[380px]';
     }
@@ -707,7 +848,7 @@ function AddExtensionContent() {
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
                 <h4 className="text-sm font-medium leading-none">
-                  {t('plugins.installFromGithub')}
+                  {t('addExtension.installFromGithub')}
                 </h4>
               </div>
 
@@ -715,25 +856,32 @@ function AddExtensionContent() {
                 {githubInstallStatus === GithubInstallStatus.WAIT_INPUT && (
                   <div className="space-y-2">
                     <p className="text-xs text-muted-foreground">
-                      {t('plugins.enterRepoUrl')}
+                      {t('addExtension.githubUrlHelp')}
                     </p>
                     <Input
-                      placeholder={t('plugins.repoUrlPlaceholder')}
+                      placeholder={t('addExtension.githubUrlPlaceholder')}
                       value={githubURL}
                       onChange={(e) => setGithubURL(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') fetchGithubReleases();
+                        if (e.key === 'Enter') handleGithubAddressSubmit();
                       }}
                     />
+                    <p className="text-[11px] leading-relaxed text-muted-foreground">
+                      {t('addExtension.skillMdUrlHelp')}
+                    </p>
                     <Button
                       className="w-full"
-                      onClick={fetchGithubReleases}
-                      disabled={!githubURL.trim() || fetchingReleases}
+                      onClick={handleGithubAddressSubmit}
+                      disabled={
+                        !githubURL.trim() ||
+                        fetchingReleases ||
+                        fetchingSkillPreview
+                      }
                     >
-                      {fetchingReleases && (
+                      {(fetchingReleases || fetchingSkillPreview) && (
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                       )}
-                      {fetchingReleases
+                      {fetchingReleases || fetchingSkillPreview
                         ? t('plugins.loading')
                         : t('common.confirm')}
                     </Button>
@@ -887,10 +1035,100 @@ function AddExtensionContent() {
                   </div>
                 )}
 
+                {githubInstallStatus === GithubInstallStatus.SKILL_PREVIEW && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-medium">
+                        {t('addExtension.previewSkill')}
+                      </p>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-xs px-2"
+                        onClick={() => {
+                          setGithubInstallStatus(
+                            GithubInstallStatus.WAIT_INPUT,
+                          );
+                          setGithubSkillInfo(null);
+                          setGithubSkillPreview(null);
+                        }}
+                      >
+                        <ChevronLeft className="w-3 h-3 mr-1" />
+                        {t('plugins.backToRepoUrl')}
+                      </Button>
+                    </div>
+
+                    {githubSkillPreview && (
+                      <div className="space-y-2 rounded-md bg-muted/40 p-3 text-xs">
+                        <div className="flex items-start gap-2">
+                          <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground">
+                            <BookOpen className="size-3.5" />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-medium">
+                              {githubSkillPreview.display_name ||
+                                githubSkillPreview.name}
+                            </div>
+                            <div className="truncate text-[11px] text-muted-foreground">
+                              {githubSkillPreview.name}
+                            </div>
+                          </div>
+                        </div>
+                        {githubSkillPreview.description && (
+                          <p className="leading-relaxed text-muted-foreground">
+                            {githubSkillPreview.description}
+                          </p>
+                        )}
+                        <div className="space-y-1 text-[11px] text-muted-foreground">
+                          <div>
+                            <span className="font-medium text-foreground">
+                              Repository:{' '}
+                            </span>
+                            {githubSkillInfo?.owner}/{githubSkillInfo?.repo}
+                          </div>
+                          <div>
+                            <span className="font-medium text-foreground">
+                              File:{' '}
+                            </span>
+                            <span className="break-all">
+                              {githubSkillInfo?.path}
+                            </span>
+                          </div>
+                          {githubSkillPreview.package_root && (
+                            <div>
+                              <span className="font-medium text-foreground">
+                                Directory:{' '}
+                              </span>
+                              <span className="break-all">
+                                {githubSkillPreview.package_root}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    <Button
+                      className="w-full"
+                      onClick={handleGithubSkillConfirm}
+                    >
+                      {t('common.confirm')}
+                    </Button>
+                  </div>
+                )}
+
                 {githubInstallStatus === GithubInstallStatus.INSTALLING && (
                   <div className="flex items-center gap-2 text-sm text-blue-600">
                     <Loader2 className="w-4 h-4 animate-spin" />
                     <span>{t('plugins.installing')}</span>
+                  </div>
+                )}
+
+                {githubInstallStatus ===
+                  GithubInstallStatus.SKILL_INSTALLING && (
+                  <div className="flex items-center gap-2 text-sm text-blue-600">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>{t('skills.installing')}</span>
                   </div>
                 )}
 

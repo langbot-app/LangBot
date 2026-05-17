@@ -27,6 +27,14 @@ import { useTranslation } from 'react-i18next';
 import { Server, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+type MCPRuntimeState = 'connected' | 'connecting' | 'error';
+type MCPConnectionState =
+  | 'connected'
+  | 'connecting'
+  | 'error'
+  | 'disabled'
+  | 'disconnected';
+
 export default function MCPDetailContent({ id }: { id: string }) {
   const isCreateMode = id === 'new';
   const navigate = useNavigate();
@@ -58,13 +66,55 @@ export default function MCPDetailContent({ id }: { id: string }) {
   // Enable state managed here so the header switch works
   const [serverEnabled, setServerEnabled] = useState(true);
   const [enableLoaded, setEnableLoaded] = useState(false);
+  const [detailRuntimeStatus, setDetailRuntimeStatus] =
+    useState<MCPRuntimeState | null>(null);
+
+  const runtimeStatus = detailRuntimeStatus ?? server?.runtimeStatus;
+
+  const currentConnectionState: MCPConnectionState =
+    (enableLoaded ? serverEnabled : server?.enabled) === false
+      ? 'disabled'
+      : runtimeStatus === 'connected' ||
+          runtimeStatus === 'connecting' ||
+          runtimeStatus === 'error'
+        ? runtimeStatus
+        : 'disconnected';
+
+  const connectionStatusLabel: Record<MCPConnectionState, string> = {
+    connected: t('mcp.statusConnected'),
+    connecting: t('mcp.connecting'),
+    error: t('mcp.statusError'),
+    disabled: t('mcp.statusDisabled'),
+    disconnected: t('mcp.statusDisconnected'),
+  };
+
+  const connectionStatusClassName: Record<MCPConnectionState, string> = {
+    connected:
+      'border-green-200 bg-green-50 text-green-700 dark:border-green-900/70 dark:bg-green-950/40 dark:text-green-300',
+    connecting:
+      'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-300',
+    error:
+      'border-red-200 bg-red-50 text-red-700 dark:border-red-900/70 dark:bg-red-950/40 dark:text-red-300',
+    disabled: 'border-muted-foreground/20 bg-muted text-muted-foreground',
+    disconnected: 'border-muted-foreground/20 bg-muted text-muted-foreground',
+  };
+
+  const connectionDotClassName: Record<MCPConnectionState, string> = {
+    connected: 'bg-green-500',
+    connecting: 'bg-amber-500',
+    error: 'bg-red-500',
+    disabled: 'bg-muted-foreground/50',
+    disconnected: 'bg-muted-foreground/50',
+  };
 
   // Fetch server enable state
   useEffect(() => {
     if (!isCreateMode) {
+      setDetailRuntimeStatus(null);
       httpClient.getMCPServer(id).then((res) => {
         const server = res.server ?? res;
         setServerEnabled(server.enable ?? true);
+        setDetailRuntimeStatus(server.runtime_info?.status ?? null);
         setEnableLoaded(true);
       });
     }
@@ -264,6 +314,15 @@ export default function MCPDetailContent({ id }: { id: string }) {
                 <Server className="size-3.5" />
                 {t('mcp.title')}
               </Badge>
+              <Badge
+                variant="outline"
+                className={`shrink-0 gap-1.5 text-[0.7rem] ${connectionStatusClassName[currentConnectionState]}`}
+              >
+                <span
+                  className={`size-1.5 rounded-full ${connectionDotClassName[currentConnectionState]}`}
+                />
+                {connectionStatusLabel[currentConnectionState]}
+              </Badge>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -292,6 +351,9 @@ export default function MCPDetailContent({ id }: { id: string }) {
             onNewServerCreated={handleNewServerCreated}
             onDirtyChange={setFormDirty}
             onTestingChange={setMcpTesting}
+            onRuntimeInfoChange={(runtimeInfo) =>
+              setDetailRuntimeStatus(runtimeInfo?.status ?? null)
+            }
           />
         </div>
       </div>

@@ -1451,6 +1451,36 @@ function PluginPagesNav() {
   );
 }
 
+function findSidebarChildForPath(pathname: string): SidebarChildVO | undefined {
+  const matchedChild =
+    sidebarConfigList.find((childConfig) => childConfig.route === pathname) ||
+    sidebarConfigList.find((childConfig) =>
+      pathname.startsWith(childConfig.route + '/'),
+    );
+  if (matchedChild) return matchedChild;
+
+  if (
+    pathname === '/home/mcp' ||
+    pathname === '/home/skills' ||
+    pathname === '/home/plugin-pages' ||
+    pathname.startsWith('/home/mcp/') ||
+    pathname.startsWith('/home/skills/') ||
+    pathname.startsWith('/home/plugin-pages/')
+  ) {
+    return sidebarConfigList.find(
+      (childConfig) => childConfig.id === 'plugins',
+    );
+  }
+
+  if (pathname === '/home/market' || pathname.startsWith('/home/market/')) {
+    return sidebarConfigList.find(
+      (childConfig) => childConfig.id === 'add-extension',
+    );
+  }
+
+  return undefined;
+}
+
 export default function HomeSidebar({
   onSelectedChangeAction,
 }: {
@@ -1624,14 +1654,7 @@ export default function HomeSidebar({
 
   function initSelect() {
     const currentPath = pathname;
-    // Match exact route or sub-routes (e.g., /home/bots/abc-123 matches /home/bots)
-    const matchedChild =
-      sidebarConfigList.find(
-        (childConfig) => childConfig.route === currentPath,
-      ) ||
-      sidebarConfigList.find((childConfig) =>
-        currentPath.startsWith(childConfig.route + '/'),
-      );
+    const matchedChild = findSidebarChildForPath(currentPath);
     if (matchedChild) {
       // Route already matches — just select without navigating (preserves ?id= query params)
       selectChild(matchedChild);
@@ -1646,12 +1669,7 @@ export default function HomeSidebar({
 
   function handleRouteChange(pathname: string) {
     if (!pathname.startsWith('/home')) return;
-    // Match exact route or sub-routes (entity detail pages)
-    const routeSelectChild =
-      sidebarConfigList.find((childConfig) => childConfig.route === pathname) ||
-      sidebarConfigList.find((childConfig) =>
-        pathname.startsWith(childConfig.route + '/'),
-      );
+    const routeSelectChild = findSidebarChildForPath(pathname);
     if (routeSelectChild) {
       setSelectedChild(routeSelectChild);
       onSelectedChangeAction(routeSelectChild);

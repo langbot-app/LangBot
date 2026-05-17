@@ -705,8 +705,8 @@ const zhHant = {
     toolCount: '工具：{{count}}',
     parameterCount: '參數：{{count}}',
     noParameters: '無參數',
-    statusConnected: '已開啟',
-    statusDisconnected: '未開啟',
+    statusConnected: '已連線',
+    statusDisconnected: '未連線',
     statusError: '連接錯誤',
     statusDisabled: '已停用',
     loading: '載入中...',
@@ -1264,7 +1264,7 @@ const zhHant = {
     maxPipelinesReached:
       '已達到流水線數量上限（{{max}}個）。請先刪除已有流水線後再建立新的。',
     maxExtensionsReached:
-      '已達到擴充功能數量上限（{{max}}個）。請先刪除已有的 MCP 伺服器或外掛後再新增。',
+      '已達到擴充功能數量上限（{{max}}個）。請先刪除已有擴充功能後再新增。',
   },
   wizard: {
     sidebarDescription: '透過引導步驟建立機器人',
@@ -1332,8 +1332,18 @@ const zhHant = {
     uploadHint: '支援 .zip（技能）和 .lbpkg（插件）檔案',
     orContinueWith: '或選擇以下操作',
     addMCPServerHint: '連接一個 MCP 工具伺服器擴充',
-    installFromGithub: '從 GitHub 安裝插件',
-    installFromGithubHint: '從 GitHub Release 安裝插件擴充',
+    installFromGithub: '從 GitHub 安裝插件或 Skill',
+    installFromGithubHint:
+      '支援 GitHub Release 插件包，也支援直接匯入 GitHub 上的 SKILL.md',
+    githubUrlHelp:
+      '貼上 GitHub 倉庫地址安裝插件；如果要安裝 Skill，請貼上 GitHub 上的 SKILL.md 檔案地址。',
+    githubUrlPlaceholder:
+      '例如 https://github.com/owner/repo 或 https://github.com/owner/repo/blob/main/path/SKILL.md',
+    githubUrlRequired: '請輸入 GitHub 地址',
+    skillMdUrlHelp:
+      'Skill 需要複製具體檔案連結，例如倉庫中某個技能目錄下的 SKILL.md 頁面地址。',
+    previewSkill: '預覽 Skill',
+    noSkillPreviewFound: '未找到可匯入的 Skill',
     createSkill: '建立新的技能',
     createSkillHint: '手動建立一個新的技能擴充',
     unsupportedFileType: '不支援的檔案類型，僅支援 .zip 和 .lbpkg 檔案',
@@ -1392,7 +1402,7 @@ const zhHant = {
     selectSkills: '選擇技能',
     builtin: '內建',
     addSkill: '添加技能',
-    importFromGithub: '從 GitHub 安裝插件',
+    importFromGithub: '從 GitHub 安裝技能',
     createManually: '手動創建',
     uploadZip: '上傳 ZIP 包',
     uploadZipOnly: '僅支援 .zip 技能包',

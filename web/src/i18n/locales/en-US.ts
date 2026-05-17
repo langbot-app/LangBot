@@ -1333,7 +1333,7 @@ const enUS = {
     maxPipelinesReached:
       'Maximum number of pipelines ({{max}}) reached. Please remove an existing pipeline before creating a new one.',
     maxExtensionsReached:
-      'Maximum number of extensions ({{max}}) reached. Please remove an existing MCP server or plugin before adding a new one.',
+      'Maximum number of extensions ({{max}}) reached. Please remove an existing extension before adding a new one.',
   },
   skills: {
     title: 'Skills',
@@ -1379,7 +1379,7 @@ const enUS = {
     selectSkills: 'Select Skills',
     addSkill: 'Add Skill',
     builtin: 'Built-in',
-    importFromGithub: 'Install Plugin from GitHub',
+    importFromGithub: 'Install Skill from GitHub',
     createManually: 'Create Manually',
     uploadZip: 'Upload ZIP Package',
     uploadZipOnly: 'Only .zip skill packages are supported',
@@ -1487,8 +1487,18 @@ const enUS = {
     uploadHint: 'Supports .zip (skills) and .lbpkg (plugins) files',
     orContinueWith: 'or choose an action below',
     addMCPServerHint: 'Connect an MCP tool server extension',
-    installFromGithub: 'Install Plugin from GitHub',
-    installFromGithubHint: 'Install plugin extension from GitHub Release',
+    installFromGithub: 'Install Plugin or Skill from GitHub',
+    installFromGithubHint:
+      'Supports GitHub Release plugin packages and direct GitHub SKILL.md imports',
+    githubUrlHelp:
+      'Paste a GitHub repository URL to install a plugin. To install a Skill, paste the GitHub SKILL.md file URL.',
+    githubUrlPlaceholder:
+      'e.g. https://github.com/owner/repo or https://github.com/owner/repo/blob/main/path/SKILL.md',
+    githubUrlRequired: 'Enter a GitHub URL',
+    skillMdUrlHelp:
+      'For Skills, copy the exact SKILL.md file link from the skill directory in GitHub.',
+    previewSkill: 'Preview Skill',
+    noSkillPreviewFound: 'No importable Skill found',
     createSkill: 'Create New Skill',
     createSkillHint: 'Manually create a new skill extension',
     unsupportedFileType:

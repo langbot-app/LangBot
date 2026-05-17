@@ -98,10 +98,13 @@ class SkillsRouterGroup(group.RouterGroup):
         @self.route('/install/github', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
         async def install_skill_from_github() -> quart.Response:
             data = await quart.request.json
-            required_fields = ['asset_url', 'owner', 'repo', 'release_tag']
+            required_fields = ['asset_url', 'owner', 'repo']
             for field in required_fields:
                 if field not in data or not data[field]:
                     return self.http_status(400, -1, f'Missing required field: {field}')
+            asset_url = str(data['asset_url']).strip().lower().split('?', 1)[0].split('#', 1)[0]
+            if not asset_url.endswith('skill.md') and not data.get('release_tag'):
+                return self.http_status(400, -1, 'Missing required field: release_tag')
 
             try:
                 skill = await self.ap.skill_service.install_from_github(data)
@@ -114,10 +117,13 @@ class SkillsRouterGroup(group.RouterGroup):
         @self.route('/install/github/preview', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
         async def preview_skill_from_github() -> quart.Response:
             data = await quart.request.json
-            required_fields = ['asset_url', 'owner', 'repo', 'release_tag']
+            required_fields = ['asset_url', 'owner', 'repo']
             for field in required_fields:
                 if field not in data or not data[field]:
                     return self.http_status(400, -1, f'Missing required field: {field}')
+            asset_url = str(data['asset_url']).strip().lower().split('?', 1)[0].split('#', 1)[0]
+            if not asset_url.endswith('skill.md') and not data.get('release_tag'):
+                return self.http_status(400, -1, 'Missing required field: release_tag')
 
             try:
                 preview = await self.ap.skill_service.preview_install_from_github(data)

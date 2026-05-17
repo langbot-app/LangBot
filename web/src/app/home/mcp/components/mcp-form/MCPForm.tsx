@@ -330,6 +330,7 @@ interface MCPFormProps {
   onDraftChange?: (draft: MCPFormDraft) => void;
   onDirtyChange?: (dirty: boolean) => void;
   onTestingChange?: (testing: boolean) => void;
+  onRuntimeInfoChange?: (runtimeInfo: MCPServerRuntimeInfo | null) => void;
   layout?: 'stacked' | 'split';
   sideHeader?: ReactNode;
   sideFooter?: ReactNode;
@@ -349,6 +350,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
     onDraftChange,
     onDirtyChange,
     onTestingChange,
+    onRuntimeInfoChange,
     layout = 'stacked',
     sideHeader,
     sideFooter,
@@ -395,6 +397,10 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
   useEffect(() => {
     onTestingChange?.(mcpTesting);
   }, [mcpTesting, onTestingChange]);
+
+  useEffect(() => {
+    onRuntimeInfoChange?.(runtimeInfo);
+  }, [onRuntimeInfoChange, runtimeInfo]);
 
   useImperativeHandle(
     ref,
