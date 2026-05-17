@@ -1,12 +1,12 @@
-# 官方 AgentRunner 插件仓库计划
+# 官方 AgentRunner 插件迁移计划
 
-本文档描述内置 `RequestRunner` 迁出 LangBot 后，官方 runner 插件仓库应如何组织。建议新建仓库：
+本文档描述内置 `RequestRunner` 迁出 LangBot 后，官方 runner 插件如何组织、迁移和验收。
 
-```text
-/home/glwuy/langbot-app/langbot-official-agent-runners
-```
+当前实现已经进入过渡阶段：
 
-远端仓库名建议：`langbot-official-agent-runners`。
+- LangBot 主聊天路径通过 `AgentRunOrchestrator` 调用插件化 `AgentRunner`。
+- 旧 `src/langbot/pkg/provider/runners/*` 仍保留，作为迁移参考和回退分析材料；在官方插件迁移完成前不要求删除。
+- 官方 runner 当前以独立插件目录/仓库推进，例如 `langbot-local-agent/` 和 `langbot-agent-runner/*-agent/`。不再要求先落地单一 monorepo。
 
 ## 1. 为什么新仓库
 
@@ -16,43 +16,32 @@
 - SDK 仓库维护 AgentRunner 组件和 runtime 协议。
 - 官方 runner 插件承载业务 runner 的具体实现和第三方平台适配。
 
-不要把官方 runner 插件继续留在 LangBot 主仓库，否则容易重新形成“宿主和业务 runner 绑死”的结构。
+不要把官方 runner 插件重新绑死在 LangBot 主仓库内。允许开发期使用本地路径插件，但运行边界必须保持为：
+
+- LangBot 提供通用宿主能力：上下文、资源授权、模型/工具/知识库调用代理、结果归一。
+- 插件消费这些能力，实现具体 runner 行为。
+- 旧内置 runner 只作为行为对齐的基准，不作为长期运行路径。
 
 ## 2. 仓库结构
 
-建议采用 monorepo：
+当前推荐策略是“官方插件可独立发布，必要时共享 SDK helper”。开发期可以采用本地多目录布局：
 
 ```text
-langbot-official-agent-runners/
-  README.md
-  pyproject.toml
-  packages/
-    local-agent/
-      manifest.yaml
-      components/default.yaml
-      main.py
-      src/
-      tests/
-    dify-agent/
+langbot-app/
+  langbot-local-agent/
+    manifest.yaml
+    components/agent_runner/default.yaml
+    components/agent_runner/default.py
+    pkg/
+    tests/
+  langbot-agent-runner/
     n8n-agent/
-    coze-agent/
-    dashscope-agent/
-    langflow-agent/
-    tbox-agent/
-  shared/
-    langbot_agent_runner_utils/
-      __init__.py
-      context.py
-      config.py
-      streaming.py
-      tool_calling.py
-      errors.py
-  tests/
-    fixtures/
-    integration/
+    ...
 ```
 
-先用一个仓库统一迁移，避免每个 runner 复制 SDK helper、测试夹具、发布脚本。
+后续可以把多个官方 runner 聚合进 monorepo，也可以继续独立发布。这个选择不影响协议设计；协议边界由 SDK 和 LangBot 宿主保证。
+
+如果多个 runner 出现重复逻辑，优先沉淀到 SDK 或一个明确的共享 helper 包，不要把宿主私有结构泄漏给插件。
 
 ## 3. 插件命名和 runner id
 
@@ -155,9 +144,17 @@ execution:
 
 与 LangBot 主仓库的责任边界：
 
-- LangBot 构造 `ctx.messages`、`ctx.input`、`ctx.resources`
+- LangBot 构造 `ctx.prompt`、`ctx.messages`、`ctx.input`、`ctx.resources`
 - 插件负责选择模型、拼请求、调用 LLM、处理 tool call loop、输出 result stream
 - 插件不能绕过 `ctx.resources` 调用未授权模型、工具或知识库
+
+为了保持旧内置 runner 行为，`local-agent` 插件必须优先消费宿主处理后的有效上下文：
+
+- `ctx.prompt`：PreProcessor 和 `PromptPreProcessing` 插件事件处理后的有效 prompt；不是静态 `ctx.config["prompt"]` 的同义词。
+- `ctx.messages`：已由宿主加载并经过 prompt preprocessing 的历史消息。
+- `ctx.input.contents`：当前结构化输入，必须保留图片、文件等多模态内容。
+- `ctx.runtime.metadata.streaming_supported`：当前 adapter 是否能消费流式输出。
+- 宿主代理 action：模型、工具、知识库、rerank 调用应通过 `run_id/query_id` 找回当前 Query，以复用旧 runner 拥有的上下文能力。
 
 ## 7. 外部 runner 插件要求
 
@@ -182,11 +179,13 @@ execution:
 - 开发阶段使用本地路径插件。
 - 发布前支持 marketplace 安装。
 - 历史配置 migration 只在官方插件可用时执行。
+- 迁移期间保留旧内置 runner 文件，直到对应官方插件通过 parity 验收。
 
 ## 9. 验收标准
 
 - 每个旧 runner 都有对应官方 AgentRunner 插件。
 - 旧 runner 配置能无损复制到新 `runner_config[id]`。
-- LangBot 主仓库不再通过 `RequestRunner` 执行业务 runner。
+- LangBot 主聊天路径不再通过 `RequestRunner` 执行业务 runner。
 - 官方插件测试覆盖非流式、流式、错误、timeout、配置缺失。
-- `local-agent` 插件能完成模型 fallback、tool calling、知识库检索。
+- `local-agent` 插件能完成模型 fallback、tool calling、知识库检索、多模态输入、prompt preprocessing 后的有效 prompt 消费、rerank。
+- 对外行为与旧内置 local-agent runner 保持一致；代码结构不需要相同。

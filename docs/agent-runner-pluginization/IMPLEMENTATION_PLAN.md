@@ -1,6 +1,8 @@
-# Agent Runner 插件化最终实现计划
+# Agent Runner 插件化当前实现与收尾计划
 
-本文档面向实现 agent，用来把当前 PoC 分支直接推进到最终架构。这个分支不按线上渐进发布节奏处理，因此可以接受一次性破坏内部 runner 实现和 Pipeline AI 配置结构；但最终必须提供历史配置迁移。
+本文档面向实现 agent，用来把当前 AgentRunner 插件化实现推进到可迁移状态。
+
+当前代码已经不是从零开始的 PoC。LangBot 已经具备 registry、orchestrator、context/resource builder、result normalizer 和插件 runtime action。本计划重点描述剩余工作：补齐宿主通用能力、对齐旧内置 runner 行为、完成官方 runner 插件迁移验收。
 
 ## 1. 最终状态
 
@@ -17,6 +19,28 @@ LangBot 最终只保留 Agent Runner 的宿主能力：
 - 转发调用：插件 runtime 只维护已安装插件本身的运行实例，Pipeline 不创建插件实例或 runner 实例
 
 LangBot 不再长期维护内置业务 runner 分支。`local-agent`、Dify、n8n、Coze、DashScope、Langflow、Tbox 等都迁到官方 AgentRunner 插件。
+
+迁移期间允许旧 `RequestRunner` 文件继续存在，作为行为对齐基准和回退分析材料。它们不影响当前进度；真正的最终条件是主聊天执行路径不再依赖旧 runner。
+
+## 1.1 当前状态快照
+
+已完成或基本完成：
+
+- `AgentRunnerDescriptor`、runner id 解析、registry。
+- `AgentRunOrchestrator` 替换 `ChatMessageHandler` 内部 runner 调度。
+- `AgentRunContextBuilder`、`AgentResourceBuilder`、`AgentResultNormalizer`。
+- `ai.runner.id` + `ai.runner_config[id]` 的读取与旧配置映射。
+- AgentRunner runtime action：`LIST_AGENT_RUNNERS`、`RUN_AGENT`。
+- run-scoped proxy authorization：模型、工具、知识库、存储、文件。
+
+仍需收尾：
+
+- `AgentRunContext` 暴露宿主处理后的有效 prompt、结构化输入和 runtime metadata。
+- AgentRun proxy action 通过 `run_id/query_id` 找回当前 Query，保留旧 runner 行为所需上下文。
+- `AgentResourceBuilder` 按 DynamicForm schema 泛化模型/rerank/知识库/文件授权。
+- 官方 `local-agent` 插件完成旧内置 local-agent parity。
+- timeout/deadline、取消、插件无输出、协议错误的端到端保护。
+- 官方 runner 插件安装/预装/迁移缺失处理。
 
 ## 2. 高层架构
 
@@ -137,13 +161,28 @@ class AgentRunnerDescriptor(BaseModel):
 - `event`: message event envelope 子集
 - `actor`: sender
 - `subject`: 当前消息或 launcher
+- `prompt`: 宿主已处理的有效 prompt，即 `query.prompt.messages`
 - `messages`: `query.messages`
 - `input`: 从 `query.user_message` 和 `query.message_chain` 构造
+- `params`: 过滤后的公开业务变量
 - `resources`: 由 `resource_builder` 注入
+- `state`: host-managed scoped state snapshot
 - `runtime`: host/version/workspace/bot/pipeline/query/trace/deadline
 - `config`: 当前 Pipeline 对该 runner id 的绑定配置，即 `ai.runner_config[runner_id]`
 
 保留 SDK legacy helper 是 SDK 的责任，LangBot 不再构造 PoC 的 `query_id/session/messages/user_message/extra_config` 上下文。
+
+`prompt` 的语义必须明确：它不是静态配置 `config["prompt"]`，而是 LangBot PreProcessor 和 `PromptPreProcessing` 插件事件之后的有效 prompt。旧内置 local-agent 请求模型时使用：
+
+```python
+query.prompt.messages + query.messages + [query.user_message]
+```
+
+插件化 runner 要保持行为一致，应消费：
+
+```python
+ctx.prompt + ctx.messages + [current_user_message_from_ctx.input]
+```
 
 ### 3.5 resource_builder.py
 
@@ -155,14 +194,22 @@ class AgentRunnerDescriptor(BaseModel):
 
 输出写入 `ctx.resources`，至少覆盖：
 
-- models：可调用模型 UUID、类型、能力摘要
+- models：可调用模型 UUID、类型、能力摘要。包括 LLM、fallback LLM、rerank 等 runner config schema 中选择的模型类资源。
 - tools：可见工具 manifest，使用当前 bound plugins / MCP server 范围
 - knowledge_bases：可检索知识库列表
 - storage：plugin storage / workspace storage 权限摘要
 - files：允许读取的配置文件、知识文件摘要
 - platform_capabilities：本阶段只声明，不执行平台动作
 
-注意：旧的 unrestricted proxy action 必须在 Phase 2 被二次校验，不能只靠 context 声明。
+注意：旧的 unrestricted proxy action 必须二次校验，不能只靠 context 声明。AgentRunner 可用资源应来自 `ctx.resources`，不是插件 runtime 的全局能力。
+
+资源裁剪要尽量通用，不应只写死 local-agent：
+
+- `model-fallback-selector` 授权 primary/fallback LLM。
+- `llm-model-selector` 授权 LLM。
+- `rerank-model-selector` 授权 rerank 模型。
+- `knowledge-base-multi-selector` 授权知识库。
+- 后续新增 selector 时应在 resource builder 中统一扩展。
 
 ### 3.6 result_normalizer.py
 
@@ -293,51 +340,53 @@ async def run_from_query(query: pipeline_query.Query) -> AsyncGenerator[Message 
 
 可以暂时保留文件作为官方插件迁移参考，但不应被运行时引用。
 
-## 6. 实现顺序
+## 6. 收尾实现顺序
 
-### Step 1：接入新版 SDK
+### Step 1：补齐宿主上下文
 
-- 更新 LangBot 依赖到包含 SDK v1 AgentRunner 协议的版本
-- 删除 LangBot 中对旧 `AgentRunReturn` 类型名的依赖
-- 确认 `langbot_plugin` 的本地 editable / lockfile 指向正确 SDK
+- SDK `AgentRunContext` 增加 `prompt`，并保持向后兼容默认空列表。
+- LangBot context builder 写入 `ctx.prompt`、`ctx.input.contents`、`ctx.runtime.metadata.streaming_supported`、`ctx.runtime.metadata.remove_think`。
+- 保持 `ctx.config` 只表达静态绑定配置。
 
-### Step 2：Agent 子系统骨架
+### Step 2：增强宿主 AgentRun proxy action
 
-- 新增 descriptor/id/errors
-- 新增 registry，先只 list plugin runner
-- 为 registry 加单测，使用 fake connector
+- `invoke_llm` / `invoke_llm_stream` 通过 `run_id/query_id` 找回当前 Query。
+- 自动合并 model persisted `extra_args` 与 action-level override。
+- 自动应用 pipeline `remove-think`，并允许 action 显式 override。
+- `call_tool` 传回当前 Query，恢复旧工具调用上下文。
+- `retrieve_knowledge` 保持 `bot_uuid`、`sender_id`、`session_name` 等 settings。
+- `invoke_rerank` 使用 run-scoped model authorization。
 
-### Step 3：Pipeline metadata 切 registry
+### Step 3：泛化资源构建
 
-- `get_pipeline_metadata()` 只通过 registry 输出 runner option
-- 插件 runner config stage 从 descriptor.config_schema 生成
-- schema 错误不影响 metadata 返回
+- 按 manifest permissions + bound plugins/MCP + runner config schema 构造资源。
+- 支持 primary/fallback LLM、rerank model、KB selector。
+- 不把 local-agent 特例扩散到通用资源层。
 
-### Step 4：Orchestrator 替换 ChatMessageHandler
+### Step 4：local-agent parity
 
-- 新增 context builder / result normalizer / orchestrator
-- `chat.py` 删除 wrapper 和 runner 查找
-- 维持现有流式卡片和 resp_messages 行为
+- 使用 `ctx.prompt` 而不是重新读取 `ctx.config["prompt"]`。
+- 当前 user message 从 `ctx.input.contents` 构造，保留多模态内容。
+- RAG 只替换/插入文本部分，不丢图片/文件。
+- streaming/non-streaming 默认跟随 `runtime.metadata.streaming_supported`。
+- 首轮 fallback 成功后，tool loop 固定使用 committed model。
+- tool loop 继续传可用 tools，支持多步工具调用。
+- rerank 通过授权模型资源调用。
 
-### Step 5：新配置读写
+### Step 5：端到端保护和测试
 
-- 后端 resolve runner id 支持新旧配置
-- 前端表单改 `runner.id` + `runner_config`
-- 默认配置改官方 local-agent 插件 id
+- 插件无输出时按 runner failed 处理。
+- timeout/deadline 覆盖 plugin runtime、模型调用和外部 runner 调用。
+- runner 协议错误转受控错误。
+- 覆盖旧 local-agent 行为 parity：普通回复、流式、工具、多步工具、KB、rerank、多模态、PromptPreProcessing。
 
-### Step 6：权限和资源裁剪
-
-- resource builder 根据 manifest / pipeline / runner binding config 裁剪
-- proxy action 校验 resource scope
-- 禁止插件用 unrestricted API 访问未授权知识库、工具、模型
-
-### Step 7：删除内置 runner 运行分支
+### Step 6：官方 runner 迁移
 
 - 官方插件 ready 后移除内置 runner registry
 - 删除或隔离 provider runners 的运行引用
 - 测试旧 runner 名只能通过 migration 映射到插件 id
 
-### Step 8：历史配置迁移
+### Step 7：历史配置迁移
 
 - 写 persistence migration
 - 更新 default pipeline config
@@ -371,6 +420,8 @@ async def run_from_query(query: pipeline_query.Query) -> AsyncGenerator[Message 
 - `PipelineService` 不直接拼插件 runner metadata。
 - 所有 runner 配置使用 `ai.runner.id` + `ai.runner_config`。
 - 插件 runtime 不为每个 Pipeline 或 runner 配置创建插件实例；`runner_config` 只作为绑定配置随 `ctx.config` 传入。
-- 旧内置 runner 不再作为 LangBot 内部运行分支执行。
+- 主聊天路径不再通过旧内置 runner 执行业务 runner。迁移期间旧文件可以保留。
 - 插件只能访问 `ctx.resources` 授权的模型、工具、知识库和文件。
+- 宿主 action 能为 AgentRunner 调用恢复必要 Query 语义，插件不需要拿裸 Query。
+- 官方 `local-agent` 插件对外行为与旧内置 local-agent 对齐。
 - EBA 相关字段只作为 context/result 预留，不执行平台动作。

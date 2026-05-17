@@ -154,6 +154,51 @@ async def _validate_run_authorization(
     return session, None
 
 
+def _get_cached_query(ap: app.Application, query_id: int | None) -> Any | None:
+    """Return a cached pipeline Query for runtime actions when available."""
+    if query_id is None:
+        return None
+
+    try:
+        return ap.query_pool.cached_queries.get(query_id)
+    except Exception:
+        return None
+
+
+def _resolve_action_query(data: dict[str, Any], session: Any | None, ap: app.Application) -> Any | None:
+    """Resolve the current Query from an AgentRunner session or action payload."""
+    query_id = None
+    if session:
+        query_id = session.get('query_id')
+    if query_id is None:
+        query_id = data.get('query_id')
+    return _get_cached_query(ap, query_id)
+
+
+def _resolve_remove_think(data: dict[str, Any], query: Any | None) -> bool:
+    """Resolve remove-think using explicit action override, then pipeline config."""
+    if 'remove_think' in data:
+        return bool(data.get('remove_think'))
+
+    if query and getattr(query, 'pipeline_config', None):
+        return bool(query.pipeline_config.get('output', {}).get('misc', {}).get('remove-think', False))
+
+    return False
+
+
+def _merge_model_extra_args(model: Any, call_extra_args: Any) -> dict[str, Any]:
+    """Merge persisted model extra_args with action-level overrides."""
+    merged: dict[str, Any] = {}
+
+    model_extra_args = getattr(getattr(model, 'model_entity', None), 'extra_args', None)
+    if isinstance(model_extra_args, dict):
+        merged.update(model_extra_args)
+    if isinstance(call_extra_args, dict):
+        merged.update(call_extra_args)
+
+    return merged
+
+
 class RuntimeConnectionHandler(handler.Handler):
     """Runtime connection handler"""
 
@@ -449,6 +494,7 @@ class RuntimeConnectionHandler(handler.Handler):
             extra_args = data.get('extra_args', {})
             run_id = data.get('run_id')  # Optional: present for AgentRunner calls
             caller_plugin_identity = data.get('caller_plugin_identity')  # Optional: for cross-plugin validation
+            session = None
 
             # Permission validation for AgentRunner calls
             if run_id:
@@ -473,13 +519,18 @@ class RuntimeConnectionHandler(handler.Handler):
                 pass
 
             funcs_obj = [resource_tool.LLMTool.model_validate({**func, 'func': _placeholder_func}) for func in funcs]
+            query = _resolve_action_query(data, session, self.ap)
+            effective_extra_args = _merge_model_extra_args(llm_model, extra_args)
+            remove_think = _resolve_remove_think(data, query)
+            effective_funcs = funcs_obj if 'func_call' in (llm_model.model_entity.abilities or []) else []
 
             result = await llm_model.provider.invoke_llm(
-                query=None,
+                query=query,
                 model=llm_model,
                 messages=messages_obj,
-                funcs=funcs_obj,
-                extra_args=extra_args,
+                funcs=effective_funcs,
+                extra_args=effective_extra_args,
+                remove_think=remove_think,
             )
 
             return handler.ActionResponse.success(
@@ -501,6 +552,7 @@ class RuntimeConnectionHandler(handler.Handler):
             extra_args = data.get('extra_args', {})
             run_id = data.get('run_id')  # Optional: present for AgentRunner calls
             caller_plugin_identity = data.get('caller_plugin_identity')  # Optional: for cross-plugin validation
+            session = None
 
             # Permission validation for AgentRunner calls
             if run_id:
@@ -526,13 +578,18 @@ class RuntimeConnectionHandler(handler.Handler):
                 pass
 
             funcs_obj = [resource_tool.LLMTool.model_validate({**func, 'func': _placeholder_func}) for func in funcs]
+            query = _resolve_action_query(data, session, self.ap)
+            effective_extra_args = _merge_model_extra_args(llm_model, extra_args)
+            remove_think = _resolve_remove_think(data, query)
+            effective_funcs = funcs_obj if 'func_call' in (llm_model.model_entity.abilities or []) else []
 
             async for chunk in llm_model.provider.invoke_llm_stream(
-                query=None,
+                query=query,
                 model=llm_model,
                 messages=messages_obj,
-                funcs=funcs_obj,
-                extra_args=extra_args,
+                funcs=effective_funcs,
+                extra_args=effective_extra_args,
+                remove_think=remove_think,
             ):
                 yield handler.ActionResponse.success(
                     data={
@@ -558,6 +615,7 @@ class RuntimeConnectionHandler(handler.Handler):
             caller_plugin_identity = data.get('caller_plugin_identity')  # Optional: for cross-plugin validation
             # session_data = data['session']
             # query_id = data['query_id']
+            session = None
 
             # Permission validation for AgentRunner calls
             if run_id:
@@ -571,10 +629,11 @@ class RuntimeConnectionHandler(handler.Handler):
             # In real implementation, you would reconstruct the full session
             # For now, we'll call the tool manager's execute method
             try:
+                query = _resolve_action_query(data, session, self.ap)
                 result = await self.ap.tool_mgr.execute_func_call(
                     name=tool_name,
                     parameters=parameters,
-                    query=None,  # TODO: reconstruct query from session_data if needed
+                    query=query,
                 )
                 # Return both 'tool_response' (LangBotAPIProxy) and 'result' (AgentRunAPIProxy)
                 # LangBotAPIProxy expects 'tool_response', AgentRunAPIProxy expects 'result'
@@ -872,10 +931,11 @@ class RuntimeConnectionHandler(handler.Handler):
             query = data['query']
             documents = data['documents']
             top_k = data.get('top_k')
+            caller_plugin_identity = data.get('caller_plugin_identity')
 
             # Validate run authorization
             session, error = await _validate_run_authorization(
-                run_id, 'model', rerank_model_uuid, self.ap
+                run_id, 'model', rerank_model_uuid, self.ap, caller_plugin_identity
             )
             if error:
                 return error
@@ -895,6 +955,7 @@ class RuntimeConnectionHandler(handler.Handler):
                     model=rerank_model,
                     query=query,
                     documents=documents_capped,
+                    extra_args=_merge_model_extra_args(rerank_model, data.get('extra_args', {})),
                 )
 
                 # Sort by relevance score descending

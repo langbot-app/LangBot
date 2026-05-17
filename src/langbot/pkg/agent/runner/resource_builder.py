@@ -71,7 +71,7 @@ class AgentResourceBuilder:
 
         # Build each resource category in parallel
         models, tools, knowledge_bases = await asyncio.gather(
-            self._build_models(manifest_perms, query),
+            self._build_models(manifest_perms, runner_config, descriptor, query),
             self._build_tools(manifest_perms, bound_plugins, bound_mcp_servers, query),
             self._build_knowledge_bases(manifest_perms, runner_config, query),
         )
@@ -89,10 +89,13 @@ class AgentResourceBuilder:
     async def _build_models(
         self,
         manifest_perms: dict[str, list[str]],
+        runner_config: dict[str, typing.Any],
+        descriptor: AgentRunnerDescriptor,
         query: typing.Any,
     ) -> list[ModelResource]:
         """Build models list with SDK v1 field names."""
         models: list[ModelResource] = []
+        seen_model_ids: set[str] = set()
 
         # Check manifest permission
         model_perms = manifest_perms.get('models', [])
@@ -101,8 +104,72 @@ class AgentResourceBuilder:
 
         # Get model from query (preproc already resolved this)
         model_uuid = getattr(query, 'use_llm_model_uuid', None)
-        if not model_uuid:
-            return models
+        if model_uuid:
+            await self._append_llm_model_resource(models, seen_model_ids, model_uuid)
+
+        # Add fallback models if present
+        fallback_uuids = query.variables.get('_fallback_model_uuids', [])
+        for fb_uuid in fallback_uuids:
+            await self._append_llm_model_resource(models, seen_model_ids, fb_uuid)
+
+        # Add model resources referenced by the runner binding config schema.
+        # This makes authorization generic for AgentRunner plugins instead of
+        # hard-coding only local-agent's primary/fallback model path.
+        await self._append_config_declared_model_resources(
+            models=models,
+            seen_model_ids=seen_model_ids,
+            descriptor=descriptor,
+            runner_config=runner_config,
+        )
+
+        return models
+
+    async def _append_config_declared_model_resources(
+        self,
+        models: list[ModelResource],
+        seen_model_ids: set[str],
+        descriptor: AgentRunnerDescriptor,
+        runner_config: dict[str, typing.Any],
+    ) -> None:
+        """Authorize model-like values selected through DynamicForm fields."""
+        for item in descriptor.config_schema or []:
+            if not isinstance(item, dict):
+                continue
+
+            field_name = item.get('name')
+            field_type = item.get('type')
+            if not field_name or field_name not in runner_config:
+                continue
+
+            value = runner_config.get(field_name)
+            if field_type == 'model-fallback-selector':
+                if isinstance(value, str):
+                    await self._append_llm_model_resource(models, seen_model_ids, value)
+                elif isinstance(value, dict):
+                    primary = value.get('primary')
+                    if isinstance(primary, str):
+                        await self._append_llm_model_resource(models, seen_model_ids, primary)
+                    fallbacks = value.get('fallbacks', [])
+                    if isinstance(fallbacks, list):
+                        for fallback_uuid in fallbacks:
+                            if isinstance(fallback_uuid, str):
+                                await self._append_llm_model_resource(models, seen_model_ids, fallback_uuid)
+            elif field_type == 'llm-model-selector':
+                if isinstance(value, str):
+                    await self._append_llm_model_resource(models, seen_model_ids, value)
+            elif field_type == 'rerank-model-selector':
+                if isinstance(value, str):
+                    await self._append_rerank_model_resource(models, seen_model_ids, value)
+
+    async def _append_llm_model_resource(
+        self,
+        models: list[ModelResource],
+        seen_model_ids: set[str],
+        model_uuid: str | None,
+    ) -> None:
+        """Append an LLM model resource if it exists and has not been added."""
+        if not model_uuid or model_uuid == '__none__' or model_uuid in seen_model_ids:
+            return
 
         try:
             model = await self.ap.model_mgr.get_model_by_uuid(model_uuid)
@@ -112,24 +179,31 @@ class AgentResourceBuilder:
                     'model_type': getattr(model.model_entity, 'model_type', None),
                     'provider': getattr(model.provider_entity, 'name', None) if hasattr(model, 'provider_entity') else None,
                 })
+                seen_model_ids.add(model_uuid)
         except Exception as e:
-            self.ap.logger.warning(f'Failed to build model resource {model_uuid}: {e}')
+            self.ap.logger.warning(f'Failed to build LLM model resource {model_uuid}: {e}')
 
-        # Add fallback models if present
-        fallback_uuids = query.variables.get('_fallback_model_uuids', [])
-        for fb_uuid in fallback_uuids:
-            try:
-                model = await self.ap.model_mgr.get_model_by_uuid(fb_uuid)
-                if model and model.model_entity:
-                    models.append({
-                        'model_id': fb_uuid,
-                        'model_type': model.model_entity.model_type,
-                        'provider': model.provider_entity.name if hasattr(model, 'provider_entity') else None,
-                    })
-            except Exception as e:
-                self.ap.logger.warning(f'Failed to build fallback model resource {fb_uuid}: {e}')
+    async def _append_rerank_model_resource(
+        self,
+        models: list[ModelResource],
+        seen_model_ids: set[str],
+        model_uuid: str | None,
+    ) -> None:
+        """Append a rerank model resource if it exists and has not been added."""
+        if not model_uuid or model_uuid == '__none__' or model_uuid in seen_model_ids:
+            return
 
-        return models
+        try:
+            model = await self.ap.model_mgr.get_rerank_model_by_uuid(model_uuid)
+            if model and model.model_entity:
+                models.append({
+                    'model_id': model_uuid,
+                    'model_type': getattr(model.model_entity, 'model_type', 'rerank') or 'rerank',
+                    'provider': getattr(model.provider_entity, 'name', None) if hasattr(model, 'provider_entity') else None,
+                })
+                seen_model_ids.add(model_uuid)
+        except Exception as e:
+            self.ap.logger.warning(f'Failed to build rerank model resource {model_uuid}: {e}')
 
     async def _build_tools(
         self,

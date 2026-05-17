@@ -122,6 +122,7 @@ class AgentRunContextV1(typing.TypedDict):
     actor: dict[str, typing.Any] | None
     subject: dict[str, typing.Any] | None
     messages: list[dict[str, typing.Any]]
+    prompt: list[dict[str, typing.Any]]
     input: AgentInput
     params: dict[str, typing.Any]
     resources: AgentResources
@@ -221,6 +222,9 @@ class AgentRunContextBuilder:
             descriptor.id,
         )
 
+        streaming_supported = await self._is_stream_output_supported(query)
+        remove_think = query.pipeline_config.get('output', {}).get('misc', {}).get('remove-think', False)
+
         # Build runtime context
         runtime: AgentRuntimeContext = {
             'langbot_version': self.ap.ver_mgr.get_current_version(),
@@ -231,6 +235,8 @@ class AgentRunContextBuilder:
             'metadata': {
                 'bot_name': query.variables.get('_monitoring_bot_name', 'Unknown'),
                 'pipeline_name': query.variables.get('_monitoring_pipeline_name', 'Unknown'),
+                'streaming_supported': streaming_supported,
+                'remove_think': remove_think,
             },
         }
 
@@ -243,6 +249,7 @@ class AgentRunContextBuilder:
             'actor': self._build_actor(query),
             'subject': self._build_subject(query),
             'messages': messages,
+            'prompt': self._build_prompt(query),
             'input': input,
             'params': params,
             'resources': resources,
@@ -256,6 +263,7 @@ class AgentRunContextBuilder:
     def _build_input(self, query: pipeline_query.Query) -> AgentInput:
         """Build AgentInput from query."""
         text = None
+        text_parts: list[str] = []
         contents: list[dict[str, typing.Any]] = []
 
         if query.user_message:
@@ -264,11 +272,16 @@ class AgentRunContextBuilder:
                 for elem in query.user_message.content:
                     contents.append(elem.model_dump(mode='json'))
                     if elem.type == 'text':
-                        text = getattr(elem, 'text', None)
+                        elem_text = getattr(elem, 'text', None)
+                        if elem_text:
+                            text_parts.append(elem_text)
             else:
                 # Single string content
                 text = str(query.user_message.content)
                 contents.append({'type': 'text', 'text': text})
+
+        if text_parts:
+            text = ''.join(text_parts)
 
         # Include message_chain for platform-specific format
         message_chain_dict = None
@@ -472,6 +485,29 @@ class AgentRunContextBuilder:
             return None
 
         return int(time.time() + timeout_seconds)
+
+    async def _is_stream_output_supported(self, query: pipeline_query.Query) -> bool:
+        """Check whether the current adapter can consume streaming chunks."""
+        try:
+            return await query.adapter.is_stream_output_supported()
+        except AttributeError:
+            return False
+        except Exception:
+            return False
+
+    def _build_prompt(self, query: pipeline_query.Query) -> list[dict[str, typing.Any]]:
+        """Build effective prompt messages from query.prompt after preprocessing."""
+        prompt_messages: list[dict[str, typing.Any]] = []
+
+        prompt = getattr(query, 'prompt', None)
+        messages = getattr(prompt, 'messages', None)
+        if not messages:
+            return prompt_messages
+
+        for msg in messages:
+            prompt_messages.append(msg.model_dump(mode='json'))
+
+        return prompt_messages
 
     def _build_messages(self, query: pipeline_query.Query) -> list[dict[str, typing.Any]]:
         """Build messages list from query."""

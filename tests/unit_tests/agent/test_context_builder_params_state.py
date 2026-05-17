@@ -66,6 +66,21 @@ class FakeMessage:
         self.content = content
         self.role = 'user'
 
+    def model_dump(self, mode='json'):
+        return {'role': self.role, 'content': self.content}
+
+
+class FakePrompt:
+    """Fake prompt container."""
+    def __init__(self, messages=None):
+        self.messages = messages or []
+
+
+class FakeAdapter:
+    """Fake adapter with streaming capability."""
+    async def is_stream_output_supported(self):
+        return True
+
 
 class TestBuildParams:
     """Tests for _build_params filtering."""
@@ -447,3 +462,34 @@ class TestBuildParamsInContext:
         # state should have seeded conversation_id
         assert 'state' in context
         assert context['state']['conversation']['external.conversation_id'] == 'conv_abc'
+
+    @pytest.mark.asyncio
+    async def test_context_includes_effective_prompt_and_runtime_capabilities(self):
+        """Context should expose host-preprocessed prompt and adapter capabilities."""
+        reset_state_store()
+        ap = FakeApplication()
+        builder = AgentRunContextBuilder(ap)
+        descriptor = make_descriptor()
+        resources = make_resources()
+
+        session = FakeSession()
+        query = type('Query', (), {
+            'query_id': 1,
+            'bot_uuid': 'bot_001',
+            'pipeline_uuid': 'pipeline_001',
+            'sender_id': 'user_001',
+            'session': session,
+            'user_message': None,
+            'message_chain': None,
+            'messages': [],
+            'prompt': FakePrompt([FakeMessage('Effective prompt')]),
+            'adapter': FakeAdapter(),
+            'pipeline_config': {'output': {'misc': {'remove-think': True}}},
+            'variables': {},
+        })()
+
+        context = await builder.build_context(query, descriptor, resources)
+
+        assert context['prompt'][0]['content'] == 'Effective prompt'
+        assert context['runtime']['metadata']['streaming_supported'] is True
+        assert context['runtime']['metadata']['remove_think'] is True

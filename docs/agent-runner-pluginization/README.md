@@ -8,6 +8,22 @@
 
 本设计只聚焦 Agent Runner 插件化。EBA 文档中的事件体系、平台 API、事件路由只作为接口预留和未来兼容参考，不纳入本阶段实现范围。
 
+## 1.1 当前实现状态
+
+当前实现已经不是早期 PoC：
+
+- LangBot 已有 `AgentRunnerRegistry`、`AgentRunOrchestrator`、`AgentRunContextBuilder`、`AgentResourceBuilder`、`AgentResultNormalizer`。
+- `ChatMessageHandler` 主路径已经委托给 orchestrator，不再直接解析插件 runner 或实例化 wrapper。
+- Pipeline metadata 已经从 registry 动态生成插件 runner 选项和配置 stage。
+- SDK 已有 Protocol v1 的 `AgentRunContext`、`AgentRunResult`、capabilities、permissions、`AgentRunAPIProxy`。
+- 旧 `RequestRunner` 文件仍保留，当前作为迁移基准和回退分析材料；最终 parity 完成后再移除或隔离。
+
+当前仍在收尾的重点不是“能不能调用插件 runner”，而是：
+
+- 宿主侧通用能力是否足够，让插件 runner 获得旧内置 runner 隐式拥有的上下文。
+- `local-agent` 官方插件是否能在对外行为上对齐旧内置 local-agent。
+- 权限裁剪、timeout、错误隔离和端到端 parity 测试是否完整。
+
 ## 2. 目标与非目标
 
 目标：
@@ -26,16 +42,15 @@
 - 不改变现有 Pipeline 的阶段链和私聊/群聊入口。
 - 不引入插件内自定义长驻调度器；Agent Runner 仍由 LangBot 显式调用。
 
-## 3. 当前分支问题
+## 3. 当前实现剩余问题
 
-当前分支的实现可以作为 PoC，但需要调整：
+以下是当前实现仍需要收敛的点：
 
-- `AgentRunContext` 仍是 query 视角，字段包括 `query_id`、`session`、`messages`、`user_message`、`use_funcs`、`extra_config`，对非消息事件和复杂任务上下文表达不足。
-- runner 标识使用 `plugin:author/plugin_name/runner_name` 字符串拼接，缺少结构化 ID、版本、能力和权限信息。
-- LangBot 在 `PipelineService.get_pipeline_metadata()` 中直接把插件配置 schema 拼进 AI metadata，缺少缓存、失败隔离和 schema 兼容验证。
-- `ChatMessageHandler` 内部直接解析插件 runner 名称并调用 wrapper，调度逻辑和消息处理逻辑耦合。
-- SDK 的 `AgentRunner.run()` 只接受单一上下文，没有生命周期 hooks、能力声明、配置 schema 分层和运行结果协议版本。
-- 工具调用、知识检索、LLM 调用目前依赖零散 proxy action，缺少 Agent 运行期明确的 capability set。
+- `AgentRunContext` 需要持续补齐宿主处理后的有效上下文，例如有效 prompt、结构化输入、runtime metadata、params/state。
+- `AgentRunAPIProxy` 需要通过 `run_id/query_id` 保留旧 runner 隐式拥有的 Query 语义，例如工具调用上下文、知识库检索 settings、模型 extra args、remove-think。
+- `AgentResourceBuilder` 应按 manifest + Pipeline 绑定 + runner config schema 通用裁剪资源，不能只为 local-agent 写死。
+- `local-agent` 插件需要对齐旧内置 runner 的外部行为，包括 prompt preprocessing、多模态、fallback、tool loop、RAG、rerank、流式/非流式选择。
+- timeout/deadline、取消、插件无输出、结果过大等运行保护还需要更完整的端到端验证。
 
 ## 4. 总体架构
 
@@ -142,9 +157,12 @@ class AgentRunContext(BaseModel):
     event: AgentEventContext | None = None
     actor: ActorContext | None = None
     subject: SubjectContext | None = None
+    prompt: list[Message] = []
     messages: list[Message] = []
     input: AgentInput
+    params: dict[str, Any] = {}
     resources: AgentResources
+    state: AgentRunState = AgentRunState()
     runtime: AgentRuntimeContext
     config: dict[str, Any] = {}
 ```
@@ -155,8 +173,12 @@ class AgentRunContext(BaseModel):
 - `conversation` 承载会话历史、launcher、sender、bot 等聊天语义。
 - `event` 是未来 EBA 的预留封装，本阶段可以由 query 生成一个最小 message event。
 - `actor` 表示触发者，`subject` 表示事件作用对象，例如被邀请用户、被撤回消息、被操作群组。
-- `input` 是 runner 的主输入，不再强制等同于纯文本消息。
+- `prompt` 是宿主处理后的有效 prompt。它来自 LangBot 当前 conversation prompt，并且已经过 `PromptPreProcessing` 等插件事件处理；runner 调模型时应优先使用它，而不是重新读取静态 `config["prompt"]`。
+- `messages` 是历史消息，也已经过宿主 pipeline preprocessing。
+- `input` 是 runner 的主输入，不再强制等同于纯文本消息；`input.contents` 必须保留图片、文件等结构化内容。
+- `params` 是单次运行的公开业务变量，宿主过滤内部变量和敏感变量后提供。
 - `resources` 列出 LangBot 已授权给 runner 的工具、知识库、模型、文件等。
+- `state` 是宿主管理的持久 runner-scoped 状态快照。
 - `runtime` 提供 host 信息、workspace/bot/pipeline 标识、trace id、deadline 等。
 - `config` 是当前 Pipeline 或未来事件绑定对该 runner id 的绑定配置，替代当前 `extra_config`。
 
@@ -199,13 +221,21 @@ class AgentRunResult(BaseModel):
 
 Agent Runner 插件需要使用 LangBot 能力，但这些能力必须通过显式授权暴露：
 
-- 模型：`invoke_llm`、`invoke_llm_stream`、embedding。
-- 工具：`list_tools`、`get_tool_detail`、`call_tool`。
-- 知识：`list_knowledge_bases`、`retrieve_knowledge`。
+- 模型：`invoke_llm`、`invoke_llm_stream`、rerank、后续 embedding。
+- 工具：`get_tool_detail`、`call_tool`。runner 通过 `ctx.resources.tools` 获取已授权工具列表，不暴露 unrestricted `list_tools`。
+- 知识：`retrieve_knowledge`。runner 通过 `ctx.resources.knowledge_bases` 获取已授权知识库列表，不暴露 unrestricted `list_knowledge_bases`。
 - 存储：plugin storage、workspace storage。
 - 文件：配置文件读取、知识文件读取。
 
 SDK 应把这些能力按 capability 分组。LangBot 在调用 runner 前根据 runner manifest、pipeline 配置、插件绑定范围生成 `resources`，插件不能绕过资源列表调用未授权对象。
+
+宿主 action handler 不应只是把请求转发给 provider/tool/knowledge manager。对 AgentRunner 调用，它还需要通过 `run_id/query_id` 找回当前 Pipeline Query，并自动补齐旧内置 runner 过去直接拥有的上下文，例如：
+
+- provider 调用的 `query`
+- model `extra_args`
+- 输出设置 `remove-think`
+- 工具调用需要的 Query 上下文
+- 知识库检索的 `bot_uuid`、`sender_id`、`session_name`
 
 ## 6. LangBot 设计
 
@@ -366,8 +396,9 @@ LangBot 执行前做三层裁剪：
 - 兼容当前 `plugin:author/name/runner` 字符串 ID。
 - 兼容 `runner.runner` 配置键。
 - 提供从旧 runner 配置到 `runner.id` / `runner_config` 的迁移。
-- 将所有内置 `RequestRunner` 强制迁移为内置插件或官方插件包。
-- LangBot 只保留插件 runtime、registry、orchestrator 和兼容迁移逻辑，不再维护独立的内置 runner 执行分支。
+- 将所有内置 `RequestRunner` 强制迁移为官方插件包。
+- 迁移期间旧 `RequestRunner` 文件可以保留作为 parity 基准；主聊天路径不应继续依赖它们。
+- LangBot 最终只保留插件 runtime、registry、orchestrator 和兼容迁移逻辑，不再维护独立的内置 runner 执行分支。
 
 ### Phase 4：为 EBA 接入做预留
 
@@ -400,6 +431,7 @@ SDK：
 - 插件 runner 只能看到 LangBot 注入的工具、知识库、模型资源。
 - 插件 runner 异常不会中断插件 runtime 或 Pipeline 主流程。
 - 旧 Pipeline 配置和旧内置 runner 正常工作。
+- 官方 `local-agent` 插件在外部行为上对齐旧内置 local-agent：有效 prompt、历史消息、结构化输入、RAG、rerank、工具循环、模型 fallback、streaming/non-streaming。
 - 文档明确区分“Agent Runner 插件化”和“未来 EBA 架构”。
 
 ## 11. 已确认决策
