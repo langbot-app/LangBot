@@ -3,7 +3,7 @@ import { useRef, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import PluginComponentList from '../PluginComponentList';
 import { Badge } from '@/components/ui/badge';
-import { Info, Package, Download, ExternalLink } from 'lucide-react';
+import { Info, Package, ExternalLink } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -85,9 +85,24 @@ export default function PluginMarketCardComponent({
   }, [cardVO.tags]);
 
   const remainingTags = cardVO.tags ? cardVO.tags.length - visibleTags : 0;
+  const handleInstallClick = () => {
+    onInstall?.(cardVO);
+  };
 
   return (
-    <div className="w-[100%] h-[10rem] bg-white rounded-[10px] shadow-[0px_0px_4px_0_rgba(0,0,0,0.2)] p-3 sm:p-[1rem] hover:shadow-[0px_2px_8px_0_rgba(0,0,0,0.15)] transition-shadow duration-200 dark:bg-[#1f1f22] dark:shadow-[0px_0px_4px_0_rgba(255,255,255,0.1)] dark:hover:shadow-[0px_2px_8px_0_rgba(255,255,255,0.15)] relative">
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={t('market.installCard', { name: cardVO.label })}
+      className="w-[100%] h-[10rem] cursor-pointer bg-white rounded-[10px] shadow-[0px_0px_4px_0_rgba(0,0,0,0.2)] p-3 sm:p-[1rem] hover:shadow-[0px_2px_8px_0_rgba(0,0,0,0.15)] transition-shadow duration-200 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-[#1f1f22] dark:shadow-[0px_0px_4px_0_rgba(255,255,255,0.1)] dark:hover:shadow-[0px_2px_8px_0_rgba(255,255,255,0.15)] relative"
+      onClick={handleInstallClick}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          handleInstallClick();
+        }
+      }}
+    >
       <div className="w-full h-full flex flex-col justify-between">
         <div className="flex flex-row items-start justify-start gap-2 sm:gap-[1.2rem] min-h-0 flex-1 overflow-hidden">
           {iconFailed ? (
@@ -120,7 +135,10 @@ export default function PluginMarketCardComponent({
                     <Tooltip>
                       <TooltipTrigger
                         asChild
-                        onClick={(e) => e.preventDefault()}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
                       >
                         <Badge
                           variant="outline"
@@ -159,22 +177,6 @@ export default function PluginMarketCardComponent({
           </div>
 
           <div className="flex flex-row items-start justify-center gap-1 flex-shrink-0">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              title={t('market.install')}
-              aria-label={t('market.install')}
-              className="h-7 w-7 rounded-md text-blue-600 hover:bg-blue-50 hover:text-blue-700 dark:text-blue-400 dark:hover:bg-blue-950/40 dark:hover:text-blue-300"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (onInstall) {
-                  onInstall(cardVO);
-                }
-              }}
-            >
-              <Download className="h-4 w-4" />
-            </Button>
             <Button
               type="button"
               variant="ghost"

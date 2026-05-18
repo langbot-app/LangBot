@@ -593,6 +593,7 @@ const zhHans = {
     loading: '加载中...',
     allLoaded: '已显示全部插件',
     install: '安装',
+    installCard: '安装 {{name}}',
     installConfirm: '确定要安装插件 "{{name}}" ({{version}}) 吗？',
     downloadComplete: '插件 "{{name}}" 下载完成',
     installFailed: '安装失败，请稍后重试',

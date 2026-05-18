@@ -586,6 +586,7 @@ const zhHant = {
     loading: '載入中...',
     allLoaded: '已顯示全部插件',
     install: '安裝',
+    installCard: '安裝 {{name}}',
     installConfirm: '確定要安裝插件 "{{name}}" ({{version}}) 嗎？',
     downloadComplete: '插件 "{{name}}" 下載完成',
     installFailed: '安裝失敗，請稍後重試',

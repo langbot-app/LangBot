@@ -619,6 +619,7 @@ const enUS = {
     loading: 'Loading...',
     allLoaded: 'All plugins displayed',
     install: 'Install',
+    installCard: 'Install {{name}}',
     installConfirm:
       'Are you sure you want to install plugin "{{name}}" ({{version}})?',
     downloadComplete: 'Plugin "{{name}}" download completed',
