@@ -1,5 +1,3 @@
-'use client';
-
 import React, {
   useState,
   useEffect,
@@ -12,7 +10,16 @@ import { useTranslation } from 'react-i18next';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { Copy, Check } from 'lucide-react';
+import {
+  Ban,
+  Bot,
+  Copy,
+  Check,
+  Workflow,
+  ThumbsUp,
+  ThumbsDown,
+} from 'lucide-react';
+import { copyToClipboard } from '@/app/utils/clipboard';
 import {
   MessageChainComponent,
   Plain,
@@ -21,6 +28,7 @@ import {
   Quote,
   Voice,
 } from '@/app/infra/entities/message';
+import { PIPELINE_DISCARD } from '@/app/home/bots/components/bot-form/RoutingRulesEditor';
 
 interface SessionInfo {
   session_id: string;
@@ -55,6 +63,12 @@ interface SessionMessage {
   role?: string | null;
 }
 
+interface SessionFeedback {
+  feedback_type: number; // 1=like, 2=dislike
+  feedback_content?: string | null;
+  stream_id?: string | null;
+}
+
 export interface BotSessionMonitorHandle {
   refreshSessions: () => Promise<void>;
 }
@@ -76,6 +90,9 @@ const BotSessionMonitor = forwardRef<
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [copiedUserId, setCopiedUserId] = useState(false);
+  const [feedbackMap, setFeedbackMap] = useState<
+    Record<string, SessionFeedback>
+  >({});
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   const parseSessionType = (sessionId: string): string | null => {
@@ -92,10 +109,9 @@ const BotSessionMonitor = forwardRef<
   };
 
   const copyUserId = (userId: string) => {
-    navigator.clipboard.writeText(userId).then(() => {
-      setCopiedUserId(true);
-      setTimeout(() => setCopiedUserId(false), 2000);
-    });
+    copyToClipboard(userId).catch(() => {});
+    setCopiedUserId(true);
+    setTimeout(() => setCopiedUserId(false), 2000);
   };
 
   const loadSessions = useCallback(async () => {
@@ -118,21 +134,50 @@ const BotSessionMonitor = forwardRef<
     [loadSessions],
   );
 
-  const loadMessages = useCallback(async (sessionId: string) => {
-    setLoadingMessages(true);
-    try {
-      const response = await httpClient.getSessionMessages(sessionId);
-      const sorted = (response.messages ?? []).sort(
-        (a, b) =>
-          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-      );
-      setMessages(sorted);
-    } catch (error) {
-      console.error('Failed to load session messages:', error);
-    } finally {
-      setLoadingMessages(false);
-    }
-  }, []);
+  const loadMessages = useCallback(
+    async (sessionId: string) => {
+      setLoadingMessages(true);
+      try {
+        const messagesRes = await httpClient.getSessionMessages(sessionId);
+        const sorted = (messagesRes.messages ?? []).sort(
+          (a, b) =>
+            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+        );
+        setMessages(sorted);
+
+        // Collect user message IDs for feedback matching
+        const userMsgIds = new Set(
+          sorted.filter((m) => !m.role || m.role === 'user').map((m) => m.id),
+        );
+
+        if (userMsgIds.size > 0) {
+          // Fetch feedback for this bot, then match by stream_id locally
+          const feedbackRes = await httpClient.get<{
+            feedback: SessionFeedback[];
+          }>(
+            `/api/v1/monitoring/feedback?botId=${encodeURIComponent(botId)}&limit=200`,
+          );
+
+          const map: Record<string, SessionFeedback> = {};
+          if (feedbackRes?.feedback) {
+            for (const fb of feedbackRes.feedback) {
+              if (fb.stream_id && userMsgIds.has(fb.stream_id)) {
+                map[fb.stream_id] = fb;
+              }
+            }
+          }
+          setFeedbackMap(map);
+        } else {
+          setFeedbackMap({});
+        }
+      } catch (error) {
+        console.error('Failed to load session messages:', error);
+      } finally {
+        setLoadingMessages(false);
+      }
+    },
+    [botId],
+  );
 
   useEffect(() => {
     loadSessions();
@@ -147,14 +192,18 @@ const BotSessionMonitor = forwardRef<
   }, [selectedSessionId, loadMessages]);
 
   useEffect(() => {
-    const container = messagesContainerRef.current;
-    if (container) {
-      const viewport = container.querySelector(
-        '[data-radix-scroll-area-viewport]',
-      );
-      const scrollTarget = viewport || container;
-      scrollTarget.scrollTop = scrollTarget.scrollHeight;
-    }
+    if (messages.length === 0) return;
+    // Wait for DOM to render the new messages before scrolling
+    requestAnimationFrame(() => {
+      const container = messagesContainerRef.current;
+      if (container) {
+        const viewport = container.querySelector(
+          '[data-radix-scroll-area-viewport]',
+        );
+        const scrollTarget = viewport || container;
+        scrollTarget.scrollTop = scrollTarget.scrollHeight;
+      }
+    });
   }, [messages]);
 
   const parseMessageChain = (content: string): MessageChainComponent[] => {
@@ -393,7 +442,6 @@ const BotSessionMonitor = forwardRef<
                           <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
                         </span>
                       )}
-                      <span className="truncate">{session.pipeline_name}</span>
                     </div>
                   </button>
                 );
@@ -449,12 +497,6 @@ const BotSessionMonitor = forwardRef<
                       </button>
                     </>
                   )}
-                  {selectedSession?.pipeline_name && (
-                    <>
-                      <span>·</span>
-                      <span>{selectedSession.pipeline_name}</span>
-                    </>
-                  )}
                   {selectedSession?.is_active && (
                     <>
                       <span>·</span>
@@ -483,8 +525,21 @@ const BotSessionMonitor = forwardRef<
                     {t('bots.sessionMonitor.noMessages')}
                   </div>
                 ) : (
-                  messages.map((msg) => {
+                  messages.map((msg, msgIndex) => {
                     const isUser = isUserMessage(msg);
+                    const isDiscarded =
+                      msg.status === 'discarded' ||
+                      msg.pipeline_id === PIPELINE_DISCARD;
+                    // For bot replies, find feedback linked to the preceding user message
+                    let msgFeedback: SessionFeedback | undefined;
+                    if (!isUser) {
+                      for (let i = msgIndex - 1; i >= 0; i--) {
+                        if (isUserMessage(messages[i])) {
+                          msgFeedback = feedbackMap[messages[i].id];
+                          break;
+                        }
+                      }
+                    }
                     return (
                       <div
                         key={msg.id}
@@ -500,10 +555,11 @@ const BotSessionMonitor = forwardRef<
                               ? 'bg-primary/10 rounded-br-sm'
                               : 'bg-muted rounded-bl-sm',
                             msg.status === 'error' && 'ring-1 ring-red-400/50',
+                            isDiscarded && 'opacity-60',
                           )}
                         >
                           {renderMessageContent(msg)}
-                          {/* Role label + timestamp */}
+                          {/* Role label + pipeline + timestamp */}
                           <div
                             className={cn(
                               'text-[11px] mt-1.5 flex items-center gap-1.5 text-muted-foreground',
@@ -521,14 +577,52 @@ const BotSessionMonitor = forwardRef<
                             <span className="tabular-nums">
                               {formatTime(msg.timestamp)}
                             </span>
+                            {isDiscarded ? (
+                              <span className="inline-flex items-center gap-0.5 text-destructive">
+                                <Ban className="w-3 h-3" />
+                                {t('bots.sessionMonitor.discarded', {
+                                  defaultValue: 'Discarded',
+                                })}
+                              </span>
+                            ) : msg.pipeline_name ? (
+                              <span className="inline-flex items-center gap-0.5 opacity-70">
+                                <Workflow className="w-3 h-3" />
+                                {msg.pipeline_name}
+                              </span>
+                            ) : null}
                             {msg.status === 'error' && (
                               <span className="text-red-500">error</span>
                             )}
                             {msg.runner_name && (
-                              <span className="opacity-70">
+                              <span className="inline-flex items-center gap-0.5 opacity-70">
+                                <Bot className="w-3 h-3" />
                                 {msg.runner_name}
                               </span>
                             )}
+                            {/* Feedback indicator — same line, pushed right */}
+                            {!isUser &&
+                              msgFeedback &&
+                              (msgFeedback.feedback_type === 1 ? (
+                                <span className="inline-flex items-center gap-1 ml-auto text-green-600 dark:text-green-400 cursor-default relative group">
+                                  <ThumbsUp className="w-3 h-3 flex-shrink-0" />
+                                  {t('monitoring.feedback.like')}
+                                  {msgFeedback.feedback_content && (
+                                    <span className="hidden group-hover:block absolute bottom-full right-0 mb-1 px-3 py-1.5 rounded-lg bg-popover border text-popover-foreground text-xs whitespace-nowrap shadow-md z-10">
+                                      {msgFeedback.feedback_content}
+                                    </span>
+                                  )}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 ml-auto text-red-500 dark:text-red-400 cursor-default relative group">
+                                  <ThumbsDown className="w-3 h-3 flex-shrink-0" />
+                                  {t('monitoring.feedback.dislike')}
+                                  {msgFeedback.feedback_content && (
+                                    <span className="hidden group-hover:block absolute bottom-full right-0 mb-1 px-3 py-1.5 rounded-lg bg-popover border text-popover-foreground text-xs whitespace-nowrap shadow-md z-10">
+                                      {msgFeedback.feedback_content}
+                                    </span>
+                                  )}
+                                </span>
+                              ))}
                           </div>
                         </div>
                       </div>

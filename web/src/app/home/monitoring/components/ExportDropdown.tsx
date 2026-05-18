@@ -1,5 +1,3 @@
-'use client';
-
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -9,6 +7,7 @@ import {
   AlertCircle,
   Users,
   Layers,
+  ThumbsUp,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -27,7 +26,8 @@ export type ExportType =
   | 'llm-calls'
   | 'embedding-calls'
   | 'errors'
-  | 'sessions';
+  | 'sessions'
+  | 'feedback';
 
 interface ExportDropdownProps {
   filterState: FilterState;
@@ -163,6 +163,11 @@ export function ExportDropdown({ filterState }: ExportDropdownProps) {
       type: 'sessions',
       label: t('monitoring.export.sessions'),
       icon: <Users className="w-4 h-4 mr-2" />,
+    },
+    {
+      type: 'feedback',
+      label: t('monitoring.export.feedback'),
+      icon: <ThumbsUp className="w-4 h-4 mr-2" />,
     },
   ];
 

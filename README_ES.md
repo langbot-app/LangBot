@@ -19,9 +19,9 @@
 [![GitHub stars](https://img.shields.io/github/stars/langbot-app/LangBot?style=social)](https://github.com/langbot-app/LangBot/stargazers)
 
 <a href="https://langbot.app">Inicio</a> ｜
-<a href="https://docs.langbot.app/en/insight/features.html">Características</a> ｜
-<a href="https://docs.langbot.app/en/insight/guide.html">Documentación</a> ｜
-<a href="https://docs.langbot.app/en/tags/readme.html">API</a> ｜
+<a href="https://link.langbot.app/en/docs/features">Características</a> ｜
+<a href="https://link.langbot.app/en/docs/guide">Documentación</a> ｜
+<a href="https://link.langbot.app/en/docs/api">API</a> ｜
 <a href="https://space.langbot.app">Mercado de Plugins</a> ｜
 <a href="https://langbot.featurebase.app/roadmap">Hoja de Ruta</a>
 
@@ -44,7 +44,9 @@ LangBot es una **plataforma de código abierto y grado de producción** para con
 - **Panel de Gestión Web** — Configure, gestione y monitoree sus bots a través de una interfaz de navegador intuitiva. Sin necesidad de editar YAML.
 - **Arquitectura Multi-Pipeline** — Diferentes bots para diferentes escenarios, con monitoreo completo y manejo de excepciones.
 
-[→ Conocer más sobre todas las funcionalidades](https://docs.langbot.app/en/insight/features.html)
+[→ Conocer más sobre todas las funcionalidades](https://link.langbot.app/en/docs/features)
+
+📍 Guías prácticas: [desplegar un bot de IA multiplataforma en 5 minutos](https://blog.langbot.app/en/blog/deploy-ai-bot-in-5-minutes/), [conectar DeepSeek a WeChat, Discord y Telegram](https://blog.langbot.app/en/blog/connect-deepseek-to-wechat/), [ejecutar un Dify Agent en Discord, Telegram y Slack](https://blog.langbot.app/en/blog/dify-agent-discord-telegram-slack/) y [crear un chatbot con n8n](https://blog.langbot.app/en/blog/n8n-multi-platform-ai-chatbot/).
 
 ---
 
@@ -75,7 +77,7 @@ docker compose up -d
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/en-US/templates/ZKTBDH)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
 
-**Más opciones:** [Docker](https://docs.langbot.app/en/deploy/langbot/docker.html) · [Manual](https://docs.langbot.app/en/deploy/langbot/manual.html) · [BTPanel](https://docs.langbot.app/en/deploy/langbot/one-click/bt.html) · [Kubernetes](./docker/README_K8S.md)
+**Más opciones:** [Docker](https://link.langbot.app/en/docs/docker) · [Manual](https://link.langbot.app/en/docs/manual-deploy) · [BTPanel](https://link.langbot.app/en/docs/bt-panel) · [Kubernetes](./docker/README_K8S.md)
 
 ---
 
@@ -83,17 +85,19 @@ docker compose up -d
 
 | Plataforma | Estado | Notas |
 |----------|--------|-------|
-| Discord | ✅ |  |
-| Telegram | ✅ |  |
-| Slack | ✅ |  |
-| LINE | ✅ |  |
-| QQ | ✅ | Personal y API Oficial |
+| Discord | ✅ | Oficial |
+| Telegram | ✅ | Oficial |
+| Slack | ✅ | Oficial |
+| LINE | ✅ | Oficial |
+| QQ | ✅ | Personal y API Oficial (Canal, DM, Grupo) |
 | WeCom | ✅ | WeChat Empresarial, CS Externo, AI Bot |
 | WeChat | ✅ | Personal y Cuenta Oficial |
-| Lark | ✅ |  |
-| DingTalk | ✅ |  |
-| KOOK | ✅ |  |
+| Lark | ✅ | Oficial |
+| DingTalk | ✅ | Oficial |
+| KOOK | ✅ | Oficial |
 | Satori | ✅ |  |
+| Email | ✅ | Matrix, Satori |
+| Matrix | ✅ | Admite varias plataformas puenteadas como Signal, WhatsApp, Messenger, iMessage, Mattermost, Google Chat, IRC, XMPP, Zulip y más |
 
 ---
 
@@ -122,8 +126,9 @@ docker compose up -d
 | [ShengSuanYun](https://www.shengsuanyun.com/?from=CH_KYIPP758) | Plataforma GPU | ✅ |
 | [接口 AI](https://jiekou.ai/) | Pasarela | ✅ |
 | [302.AI](https://share.302.ai/SuTG99) | Pasarela | ✅ |
+| [Qiniu](https://www.qiniu.com/ai/agent) | Pasarela | ✅ |
 
-[→ Ver todas las integraciones](https://docs.langbot.app/en/insight/features.html)
+[→ Ver todas las integraciones](https://link.langbot.app/en/docs/features)
 
 ---
 

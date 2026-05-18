@@ -203,7 +203,7 @@ class VersionManager:
         try:
             if await self.ap.ver_mgr.is_new_version_available():
                 return (
-                    'New version available:\n有新版本可用，根据文档更新: \nhttps://docs.langbot.app/zh/deploy/update.html',
+                    'New version available:\n有新版本可用，根据文档更新: \nhttps://link.langbot.app/zh/docs/update',
                     logging.INFO,
                 )
 

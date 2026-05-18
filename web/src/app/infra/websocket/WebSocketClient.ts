@@ -78,10 +78,10 @@ export class WebSocketClient {
 
         // 构建WebSocket URL
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        // extract host from process.env.NEXT_PUBLIC_API_BASE_URL
-        // 如果环境变量未定义,使用当前页面的 host (适配生产环境)
+        // extract host from import.meta.env.VITE_API_BASE_URL
+        // If env var is undefined, use current page host (for production)
         const host =
-          process.env.NEXT_PUBLIC_API_BASE_URL?.split('://')[1] ||
+          import.meta.env.VITE_API_BASE_URL?.split('://')[1] ||
           window.location.host;
         const url = `${protocol}//${host}/api/v1/pipelines/${this.pipelineId}/ws/connect?session_type=${this.sessionType}`;
 

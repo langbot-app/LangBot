@@ -1,7 +1,5 @@
-'use client';
-
-import { useEffect, useState, useCallback, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useState, useCallback, Suspense, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -22,10 +20,39 @@ import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import langbotIcon from '@/app/assets/langbot-logo.webp';
 
+type SpaceOAuthLoginResult = {
+  token: string;
+  user: string;
+};
+
+const pendingSpaceOAuthLogins = new Map<
+  string,
+  Promise<SpaceOAuthLoginResult>
+>();
+
+function getOrCreateSpaceOAuthLoginPromise(
+  authCode: string,
+): Promise<SpaceOAuthLoginResult> {
+  const pendingRequest = pendingSpaceOAuthLogins.get(authCode);
+  if (pendingRequest) {
+    return pendingRequest;
+  }
+
+  const requestPromise = httpClient
+    .exchangeSpaceOAuthCode(authCode)
+    .finally(() => {
+      pendingSpaceOAuthLogins.delete(authCode);
+    });
+
+  pendingSpaceOAuthLogins.set(authCode, requestPromise);
+  return requestPromise;
+}
+
 function SpaceOAuthCallbackContent() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { t } = useTranslation();
+  const isMountedRef = useRef(true);
 
   const [status, setStatus] = useState<
     'loading' | 'confirm' | 'success' | 'error'
@@ -39,7 +66,11 @@ function SpaceOAuthCallbackContent() {
   const handleOAuthCallback = useCallback(
     async (authCode: string) => {
       try {
-        const response = await httpClient.exchangeSpaceOAuthCode(authCode);
+        const response = await getOrCreateSpaceOAuthLoginPromise(authCode);
+        if (!isMountedRef.current) {
+          return;
+        }
+
         localStorage.setItem('token', response.token);
         if (response.user) {
           localStorage.setItem('userEmail', response.user);
@@ -51,9 +82,13 @@ function SpaceOAuthCallbackContent() {
         const wizardState = localStorage.getItem('langbot_wizard_state');
         const redirectTo = wizardState ? '/wizard' : '/home';
         setTimeout(() => {
-          router.push(redirectTo);
+          navigate(redirectTo);
         }, 1000);
       } catch (err) {
+        if (!isMountedRef.current) {
+          return;
+        }
+
         setStatus('error');
         const errorObj = err as { msg?: string };
         const errMsg = (errorObj?.msg || '').toLowerCase();
@@ -64,7 +99,7 @@ function SpaceOAuthCallbackContent() {
         }
       }
     },
-    [router, t],
+    [navigate, t],
   );
 
   const [bindState, setBindState] = useState<string | null>(null);
@@ -74,6 +109,10 @@ function SpaceOAuthCallbackContent() {
       setIsProcessing(true);
       try {
         const response = await httpClient.bindSpaceAccount(authCode, state);
+        if (!isMountedRef.current) {
+          return;
+        }
+
         localStorage.setItem('token', response.token);
         if (response.user) {
           localStorage.setItem('userEmail', response.user);
@@ -81,9 +120,13 @@ function SpaceOAuthCallbackContent() {
         setStatus('success');
         toast.success(t('account.bindSpaceSuccess'));
         setTimeout(() => {
-          router.push('/home');
+          navigate('/home');
         }, 1000);
       } catch (err) {
+        if (!isMountedRef.current) {
+          return;
+        }
+
         setStatus('error');
         const errorObj = err as { msg?: string };
         const errMsg = (errorObj?.msg || '').toLowerCase();
@@ -93,13 +136,17 @@ function SpaceOAuthCallbackContent() {
           setErrorMessage(t('account.bindSpaceFailed'));
         }
       } finally {
-        setIsProcessing(false);
+        if (isMountedRef.current) {
+          setIsProcessing(false);
+        }
       }
     },
-    [router, t],
+    [navigate, t],
   );
 
   useEffect(() => {
+    isMountedRef.current = true;
+
     const authCode = searchParams.get('code');
     const error = searchParams.get('error');
     const errorDescription = searchParams.get('error_description');
@@ -137,6 +184,9 @@ function SpaceOAuthCallbackContent() {
       // Normal login/register mode
       handleOAuthCallback(authCode);
     }
+    return () => {
+      isMountedRef.current = false;
+    };
   }, [searchParams, handleOAuthCallback, t]);
 
   const handleConfirmBind = () => {
@@ -146,7 +196,7 @@ function SpaceOAuthCallbackContent() {
   };
 
   const handleCancelBind = () => {
-    router.push('/home');
+    navigate('/home');
   };
 
   return (
@@ -154,7 +204,7 @@ function SpaceOAuthCallbackContent() {
       <Card className="w-[400px] shadow-lg dark:shadow-white/10">
         <CardHeader className="text-center">
           <img
-            src={langbotIcon.src}
+            src={langbotIcon}
             alt="LangBot"
             className="w-16 h-16 mb-4 mx-auto"
           />
@@ -217,7 +267,7 @@ function SpaceOAuthCallbackContent() {
             <>
               <AlertCircle className="h-12 w-12 text-red-500" />
               <Button
-                onClick={() => router.push(isBindMode ? '/home' : '/login')}
+                onClick={() => navigate(isBindMode ? '/home' : '/login')}
                 className="w-full mt-4"
               >
                 {isBindMode ? t('common.backToHome') : t('common.backToLogin')}

@@ -456,6 +456,31 @@ class MonitoringRouterGroup(group.RouterGroup):
                     'platform',
                     'user_id',
                 ]
+            elif export_type == 'feedback':
+                data = await self.ap.monitoring_service.export_feedback(
+                    bot_ids=bot_ids if bot_ids else None,
+                    pipeline_ids=pipeline_ids if pipeline_ids else None,
+                    start_time=start_time,
+                    end_time=end_time,
+                    limit=limit,
+                )
+                headers = [
+                    'id',
+                    'timestamp',
+                    'feedback_id',
+                    'feedback_type',
+                    'feedback_content',
+                    'inaccurate_reasons',
+                    'bot_id',
+                    'bot_name',
+                    'pipeline_id',
+                    'pipeline_name',
+                    'session_id',
+                    'message_id',
+                    'stream_id',
+                    'user_id',
+                    'platform',
+                ]
             else:
                 return self.error(message=f'Invalid export type: {export_type}', code=400)
 
@@ -486,3 +511,63 @@ class MonitoringRouterGroup(group.RouterGroup):
             )
 
             return response, 200
+
+        @self.route('/feedback/stats', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
+        async def get_feedback_stats() -> str:
+            """Get feedback statistics"""
+            # Parse query parameters
+            bot_ids = quart.request.args.getlist('botId')
+            pipeline_ids = quart.request.args.getlist('pipelineId')
+            start_time_str = quart.request.args.get('startTime')
+            end_time_str = quart.request.args.get('endTime')
+
+            # Parse datetime
+            start_time = parse_iso_datetime(start_time_str)
+            end_time = parse_iso_datetime(end_time_str)
+
+            stats = await self.ap.monitoring_service.get_feedback_stats(
+                bot_ids=bot_ids if bot_ids else None,
+                pipeline_ids=pipeline_ids if pipeline_ids else None,
+                start_time=start_time,
+                end_time=end_time,
+            )
+
+            return self.success(data=stats)
+
+        @self.route('/feedback', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
+        async def get_feedback() -> str:
+            """Get feedback list"""
+            # Parse query parameters
+            bot_ids = quart.request.args.getlist('botId')
+            pipeline_ids = quart.request.args.getlist('pipelineId')
+            feedback_type_str = quart.request.args.get('feedbackType')
+            start_time_str = quart.request.args.get('startTime')
+            end_time_str = quart.request.args.get('endTime')
+            limit = int(quart.request.args.get('limit', 100))
+            offset = int(quart.request.args.get('offset', 0))
+
+            # Parse datetime
+            start_time = parse_iso_datetime(start_time_str)
+            end_time = parse_iso_datetime(end_time_str)
+
+            # Parse feedback type
+            feedback_type = int(feedback_type_str) if feedback_type_str else None
+
+            feedback_list, total = await self.ap.monitoring_service.get_feedback_list(
+                bot_ids=bot_ids if bot_ids else None,
+                pipeline_ids=pipeline_ids if pipeline_ids else None,
+                feedback_type=feedback_type,
+                start_time=start_time,
+                end_time=end_time,
+                limit=limit,
+                offset=offset,
+            )
+
+            return self.success(
+                data={
+                    'feedback': feedback_list,
+                    'total': total,
+                    'limit': limit,
+                    'offset': offset,
+                }
+            )

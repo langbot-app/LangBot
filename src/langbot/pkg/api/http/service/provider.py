@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+import traceback
 
 import sqlalchemy
 
@@ -15,6 +16,24 @@ class ModelProviderService:
 
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
+
+    @staticmethod
+    def _normalize_api_keys(api_keys: str | list[str] | tuple[str, ...] | None) -> list[str]:
+        if api_keys is None:
+            return []
+
+        raw_keys = [api_keys] if isinstance(api_keys, str) else list(api_keys)
+        normalized_keys = []
+        seen_keys = set()
+
+        for raw_key in raw_keys:
+            normalized_key = raw_key.strip() if isinstance(raw_key, str) else ''
+            if not normalized_key or normalized_key in seen_keys:
+                continue
+            normalized_keys.append(normalized_key)
+            seen_keys.add(normalized_key)
+
+        return normalized_keys
 
     async def get_providers(self) -> list[dict]:
         """Get all providers"""
@@ -58,6 +77,7 @@ class ModelProviderService:
     async def create_provider(self, provider_data: dict) -> str:
         """Create a new provider"""
         provider_data['uuid'] = str(uuid.uuid4())
+        provider_data['api_keys'] = self._normalize_api_keys(provider_data.get('api_keys'))
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.insert(persistence_model.ModelProvider).values(**provider_data)
         )
@@ -71,6 +91,8 @@ class ModelProviderService:
         """Update an existing provider"""
         if 'uuid' in provider_data:
             del provider_data['uuid']
+        if 'api_keys' in provider_data:
+            provider_data['api_keys'] = self._normalize_api_keys(provider_data.get('api_keys'))
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_model.ModelProvider)
             .where(persistence_model.ModelProvider.uuid == provider_uuid)
@@ -97,6 +119,14 @@ class ModelProviderService:
         if embedding_result.first() is not None:
             raise ValueError('Cannot delete provider: Embedding models still reference it')
 
+        rerank_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_model.RerankModel).where(
+                persistence_model.RerankModel.provider_uuid == provider_uuid
+            )
+        )
+        if rerank_result.first() is not None:
+            raise ValueError('Cannot delete provider: Rerank models still reference it')
+
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.delete(persistence_model.ModelProvider).where(
                 persistence_model.ModelProvider.uuid == provider_uuid
@@ -121,10 +151,19 @@ class ModelProviderService:
         )
         embedding_count = embedding_result.scalar() or 0
 
-        return {'llm_count': llm_count, 'embedding_count': embedding_count}
+        rerank_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(sqlalchemy.func.count())
+            .select_from(persistence_model.RerankModel)
+            .where(persistence_model.RerankModel.provider_uuid == provider_uuid)
+        )
+        rerank_count = rerank_result.scalar() or 0
+
+        return {'llm_count': llm_count, 'embedding_count': embedding_count, 'rerank_count': rerank_count}
 
     async def find_or_create_provider(self, requester: str, base_url: str, api_keys: list) -> str:
         """Find existing provider or create new one"""
+        api_keys = self._normalize_api_keys(api_keys)
+
         # Try to find existing provider with same config
         result = await self.ap.persistence_mgr.execute_async(
             sqlalchemy.select(persistence_model.ModelProvider).where(
@@ -152,7 +191,7 @@ class ModelProviderService:
                 'name': provider_name,
                 'requester': requester,
                 'base_url': base_url,
-                'api_keys': api_keys or [],
+                'api_keys': api_keys,
             }
         )
 
@@ -161,6 +200,69 @@ class ModelProviderService:
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_model.ModelProvider)
             .where(persistence_model.ModelProvider.uuid == '00000000-0000-0000-0000-000000000000')
-            .values(api_keys=[api_key])
+            .values(api_keys=self._normalize_api_keys(api_key))
         )
         await self.ap.model_mgr.reload_provider('00000000-0000-0000-0000-000000000000')
+
+    async def scan_provider_models(self, provider_uuid: str, model_type: str | None = None) -> dict:
+        provider = await self.get_provider(provider_uuid)
+        if provider is None:
+            raise ValueError('provider not found')
+
+        runtime_provider = await self.ap.model_mgr.load_provider(provider)
+
+        try:
+            scan_result = await runtime_provider.requester.scan_models(
+                runtime_provider.token_mgr.get_token() if runtime_provider.token_mgr.tokens else None
+            )
+        except NotImplementedError:
+            raise ValueError('current provider does not support model scanning')
+        except Exception as exc:
+            self.ap.logger.warning(
+                f'Failed to scan models for provider {provider_uuid}: {exc}\n{traceback.format_exc()}'
+            )
+            raise ValueError(str(exc)) from exc
+
+        if isinstance(scan_result, dict):
+            scanned_models = scan_result.get('models', [])
+            debug_info = scan_result.get('debug')
+        else:
+            scanned_models = scan_result
+            debug_info = None
+
+        llm_models = await self.ap.llm_model_service.get_llm_models_by_provider(provider_uuid)
+        embedding_models = await self.ap.embedding_models_service.get_embedding_models_by_provider(provider_uuid)
+        existing_llm_names = {model['name'] for model in llm_models}
+        existing_embedding_names = {model['name'] for model in embedding_models}
+
+        filtered_models = []
+        for model in scanned_models:
+            scanned_type = model.get('type', 'llm')
+            if model_type and scanned_type != model_type:
+                continue
+
+            model_name = model.get('name') or model.get('id')
+            if not model_name:
+                continue
+
+            filtered_models.append(
+                {
+                    'id': model.get('id', model_name),
+                    'name': model_name,
+                    'type': scanned_type,
+                    'abilities': model.get('abilities', []),
+                    'display_name': model.get('display_name'),
+                    'description': model.get('description'),
+                    'context_length': model.get('context_length'),
+                    'owned_by': model.get('owned_by'),
+                    'input_modalities': model.get('input_modalities', []),
+                    'output_modalities': model.get('output_modalities', []),
+                    'already_added': (
+                        model_name in existing_embedding_names
+                        if scanned_type == 'embedding'
+                        else model_name in existing_llm_names
+                    ),
+                }
+            )
+
+        return {'models': filtered_models, 'debug': debug_info}

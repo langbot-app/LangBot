@@ -59,3 +59,22 @@ class EmbeddingModel(Base):
         server_default=sqlalchemy.func.now(),
         onupdate=sqlalchemy.func.now(),
     )
+
+
+class RerankModel(Base):
+    """Rerank model"""
+
+    __tablename__ = 'rerank_models'
+
+    uuid = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True, unique=True)
+    name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
+    provider_uuid = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
+    extra_args = sqlalchemy.Column(sqlalchemy.JSON, nullable=False, default={})
+    prefered_ranking = sqlalchemy.Column(sqlalchemy.Integer, nullable=False, default=0)
+    created_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, server_default=sqlalchemy.func.now())
+    updated_at = sqlalchemy.Column(
+        sqlalchemy.DateTime,
+        nullable=False,
+        server_default=sqlalchemy.func.now(),
+        onupdate=sqlalchemy.func.now(),
+    )

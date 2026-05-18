@@ -6,10 +6,49 @@ import re
 import httpx
 import uuid
 import os
+import posixpath
+import sqlalchemy
 
 from .....core import taskmgr
+from .....entity.persistence import plugin as persistence_plugin
 from .. import group
 from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
+
+# Resolve the built-in page SDK JS from the langbot_plugin package
+_PAGE_SDK_PATH = None
+try:
+    import langbot_plugin.assets as _assets_pkg
+
+    _candidate = os.path.join(os.path.dirname(_assets_pkg.__file__), 'langbot-page-sdk.js')
+    if os.path.exists(_candidate):
+        _PAGE_SDK_PATH = _candidate
+except Exception:
+    pass
+
+
+def _normalize_plugin_asset_path(filepath: str) -> str | None:
+    filepath = filepath.replace('\\', '/')
+    if filepath.startswith('/'):
+        return None
+
+    normalized = posixpath.normpath(filepath)
+    if normalized == '.' or normalized.startswith('../') or normalized == '..':
+        return None
+
+    if normalized.startswith('components/pages/'):
+        return normalized
+
+    return f'assets/{normalized}'
+
+
+def _get_request_origin() -> str:
+    """Return the public request origin, respecting reverse-proxy headers."""
+    forwarded_proto = quart.request.headers.get('X-Forwarded-Proto', '').split(',')[0].strip()
+    forwarded_host = quart.request.headers.get('X-Forwarded-Host', '').split(',')[0].strip()
+
+    scheme = forwarded_proto or quart.request.scheme
+    host = forwarded_host or quart.request.host
+    return f'{scheme}://{host}'
 
 
 @group.group_class('plugins', '/api/v1/plugins')
@@ -27,6 +66,15 @@ class PluginsRouterGroup(group.RouterGroup):
         return None
 
     async def initialize(self) -> None:
+        @self.route('/_sdk/page-sdk.js', methods=['GET'], auth_type=group.AuthType.NONE)
+        async def _() -> quart.Response:
+            """Serve the built-in LangBot page SDK JavaScript."""
+            if _PAGE_SDK_PATH and os.path.exists(_PAGE_SDK_PATH):
+                with open(_PAGE_SDK_PATH, 'r') as f:
+                    content = f.read()
+                return quart.Response(content, mimetype='application/javascript')
+            return quart.Response('// SDK not found', status=404, mimetype='application/javascript')
+
         @self.route('', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
         async def _() -> str:
             plugins = await self.ap.plugin_connector.list_plugins()
@@ -102,7 +150,15 @@ class PluginsRouterGroup(group.RouterGroup):
                 return self.http_status(404, -1, 'plugin not found')
 
             if quart.request.method == 'GET':
-                return self.success(data={'config': plugin['plugin_config']})
+                result = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(persistence_plugin.PluginSetting.config)
+                    .where(persistence_plugin.PluginSetting.plugin_author == author)
+                    .where(persistence_plugin.PluginSetting.plugin_name == plugin_name)
+                )
+                persisted_config = result.scalar_one_or_none()
+
+                config = persisted_config if persisted_config is not None else plugin['plugin_config']
+                return self.success(data={'config': config})
             elif quart.request.method == 'PUT':
                 data = await quart.request.json
 
@@ -135,15 +191,62 @@ class PluginsRouterGroup(group.RouterGroup):
             return quart.Response(icon_data, mimetype=mime_type)
 
         @self.route(
-            '/<author>/<plugin_name>/assets/<filepath>',
+            '/<author>/<plugin_name>/assets/<path:filepath>',
             methods=['GET'],
             auth_type=group.AuthType.NONE,
         )
         async def _(author: str, plugin_name: str, filepath: str) -> quart.Response:
-            asset_data = await self.ap.plugin_connector.get_plugin_assets(author, plugin_name, filepath)
+            asset_path = _normalize_plugin_asset_path(filepath)
+            if asset_path is None:
+                return quart.Response('Asset not found', status=404)
+
+            asset_data = await self.ap.plugin_connector.get_plugin_assets(author, plugin_name, asset_path)
+            if not asset_data.get('asset_base64'):
+                return quart.Response('Asset not found', status=404)
             asset_bytes = base64.b64decode(asset_data['asset_base64'])
             mime_type = asset_data['mime_type']
-            return quart.Response(asset_bytes, mimetype=mime_type)
+            resp = quart.Response(asset_bytes, mimetype=mime_type)
+            # CSP for HTML pages served to sandboxed iframes (opaque origin).
+            # 'self' doesn't work in sandboxed iframes — use actual server origin.
+            if mime_type and mime_type.startswith('text/html'):
+                origin = _get_request_origin()
+                resp.headers['Content-Security-Policy'] = (
+                    f'default-src {origin}; '
+                    f"script-src {origin} 'unsafe-inline'; "
+                    f"style-src {origin} 'unsafe-inline'; "
+                    f'img-src {origin} data:; '
+                    f'connect-src {origin}; '
+                    "frame-src 'none'; "
+                    "object-src 'none'"
+                )
+            return resp
+
+        @self.route(
+            '/<author>/<plugin_name>/page-api',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+        )
+        async def _(author: str, plugin_name: str) -> str:
+            """Forward a page API request to the plugin."""
+            data = await quart.request.json
+            if not isinstance(data, dict):
+                return self.http_status(400, -1, 'invalid request body')
+
+            page_id = data.get('page_id', '')
+            endpoint = data.get('endpoint', '')
+            method = data.get('method', 'POST')
+            body = data.get('body')
+            if not isinstance(page_id, str) or not isinstance(endpoint, str) or not isinstance(method, str):
+                return self.http_status(400, -1, 'invalid page api request')
+            if not endpoint.startswith('/') or '..' in endpoint:
+                return self.http_status(400, -1, 'invalid endpoint')
+
+            result = await self.ap.plugin_connector.handle_page_api(
+                author, plugin_name, page_id, endpoint, method.upper(), body
+            )
+            if result.get('error'):
+                return self.http_status(400, -1, result['error'])
+            return self.success(data=result.get('data'))
 
         @self.route('/github/releases', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
         async def _() -> str:
@@ -265,6 +368,8 @@ class PluginsRouterGroup(group.RouterGroup):
                 return self.http_status(400, -1, 'Missing asset_url parameter')
 
             ctx = taskmgr.TaskContext.new()
+            ctx.metadata['plugin_name'] = f'{owner}/{repo}'
+            ctx.metadata['install_source'] = 'github'
             install_info = {
                 'asset_url': asset_url,
                 'owner': owner,
@@ -295,12 +400,17 @@ class PluginsRouterGroup(group.RouterGroup):
 
             data = await quart.request.json
 
+            plugin_author = data.get('plugin_author', '')
+            plugin_name = data.get('plugin_name', '')
+
             ctx = taskmgr.TaskContext.new()
+            ctx.metadata['plugin_name'] = f'{plugin_author}/{plugin_name}'
+            ctx.metadata['install_source'] = 'marketplace'
             wrapper = self.ap.task_mgr.create_user_task(
                 self.ap.plugin_connector.install_plugin(PluginInstallSource.MARKETPLACE, data, task_context=ctx),
                 kind='plugin-operation',
                 name='plugin-install-marketplace',
-                label=f'Installing plugin from marketplace ...{data}',
+                label=f'Installing plugin from marketplace {plugin_author}/{plugin_name}',
                 context=ctx,
             )
 
@@ -323,11 +433,13 @@ class PluginsRouterGroup(group.RouterGroup):
             }
 
             ctx = taskmgr.TaskContext.new()
+            ctx.metadata['plugin_name'] = file.filename or 'local plugin'
+            ctx.metadata['install_source'] = 'local'
             wrapper = self.ap.task_mgr.create_user_task(
                 self.ap.plugin_connector.install_plugin(PluginInstallSource.LOCAL, data, task_context=ctx),
                 kind='plugin-operation',
                 name='plugin-install-local',
-                label=f'Installing plugin from local ...{file.filename}',
+                label=f'Installing plugin from local {file.filename}',
                 context=ctx,
             )
 

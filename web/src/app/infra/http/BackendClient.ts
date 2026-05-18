@@ -31,16 +31,22 @@ import {
   ApiRespProviderEmbeddingModels,
   ApiRespProviderEmbeddingModel,
   EmbeddingModel,
+  ApiRespProviderRerankModels,
+  ApiRespProviderRerankModel,
+  RerankModel,
   ApiRespPluginSystemStatus,
   ApiRespMCPServers,
   ApiRespMCPServer,
   MCPServer,
   ApiRespModelProviders,
   ApiRespModelProvider,
+  ApiRespScannedProviderModels,
   ModelProvider,
   ApiRespKnowledgeEngines,
   ApiRespParsers,
   RagMigrationStatusResp,
+  ApiRespTools,
+  ApiRespToolDetail,
 } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
@@ -102,6 +108,14 @@ export class BackendClient extends BaseHttpClient {
 
   public deleteModelProvider(uuid: string): Promise<object> {
     return this.delete(`/api/v1/provider/providers/${uuid}`);
+  }
+
+  public scanProviderModels(
+    uuid: string,
+    modelType?: 'llm' | 'embedding' | 'rerank',
+  ): Promise<ApiRespScannedProviderModels> {
+    const params = modelType ? { type: modelType } : {};
+    return this.get(`/api/v1/provider/providers/${uuid}/scan-models`, params);
   }
 
   // ============ Provider Model LLM ============
@@ -169,6 +183,39 @@ export class BackendClient extends BaseHttpClient {
     model: EmbeddingModel,
   ): Promise<object> {
     return this.post(`/api/v1/provider/models/embedding/${uuid}/test`, model);
+  }
+
+  // ============ Provider Model Rerank ============
+  public getProviderRerankModels(
+    providerUuid?: string,
+  ): Promise<ApiRespProviderRerankModels> {
+    const params = providerUuid ? { provider_uuid: providerUuid } : {};
+    return this.get('/api/v1/provider/models/rerank', params);
+  }
+
+  public getProviderRerankModel(
+    uuid: string,
+  ): Promise<ApiRespProviderRerankModel> {
+    return this.get(`/api/v1/provider/models/rerank/${uuid}`);
+  }
+
+  public createProviderRerankModel(model: RerankModel): Promise<object> {
+    return this.post('/api/v1/provider/models/rerank', model);
+  }
+
+  public deleteProviderRerankModel(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/provider/models/rerank/${uuid}`);
+  }
+
+  public updateProviderRerankModel(
+    uuid: string,
+    model: RerankModel,
+  ): Promise<object> {
+    return this.put(`/api/v1/provider/models/rerank/${uuid}`, model);
+  }
+
+  public testRerankModel(uuid: string, model: RerankModel): Promise<object> {
+    return this.post(`/api/v1/provider/models/rerank/${uuid}/test`, model);
   }
 
   // ============ Pipeline API ============
@@ -543,10 +590,34 @@ export class BackendClient extends BaseHttpClient {
     name: string,
     filepath: string,
   ): string {
+    if (this.instance.defaults.baseURL === '/') {
+      return `${window.location.origin}/api/v1/plugins/${author}/${name}/assets/${filepath}`;
+    }
     return (
       this.instance.defaults.baseURL +
       `/api/v1/plugins/${author}/${name}/assets/${filepath}`
     );
+  }
+
+  public async pluginPageApi(
+    author: string,
+    name: string,
+    pageId: string,
+    endpoint: string,
+    method: string = 'POST',
+    body?: unknown,
+  ): Promise<unknown> {
+    const resp = await this.instance.request({
+      url: `/api/v1/plugins/${author}/${name}/page-api`,
+      method: 'POST',
+      data: {
+        page_id: pageId,
+        endpoint,
+        method,
+        body,
+      },
+    });
+    return resp.data?.data;
   }
 
   public getPluginIconURL(author: string, name: string): string {
@@ -649,6 +720,16 @@ export class BackendClient extends BaseHttpClient {
     return this.get('/api/v1/mcp/servers');
   }
 
+  // ========== Tools ==========
+
+  public getTools(): Promise<ApiRespTools> {
+    return this.get('/api/v1/tools');
+  }
+
+  public getToolDetail(toolName: string): Promise<ApiRespToolDetail> {
+    return this.get(`/api/v1/tools/${toolName}`);
+  }
+
   public getMCPServer(serverName: string): Promise<ApiRespMCPServer> {
     return this.get(`/api/v1/mcp/servers/${serverName}`);
   }
@@ -701,8 +782,29 @@ export class BackendClient extends BaseHttpClient {
     return this.get('/api/v1/system/info');
   }
 
-  public getAsyncTasks(): Promise<ApiRespAsyncTasks> {
-    return this.get('/api/v1/system/tasks');
+  public updateWizardStatus(status: 'skipped' | 'completed'): Promise<void> {
+    return this.post('/api/v1/system/wizard/completed', { status });
+  }
+
+  public saveWizardProgress(progress: {
+    step: number;
+    selected_adapter: string | null;
+    created_bot_uuid: string | null;
+    bot_saved: boolean;
+    selected_runner: string | null;
+  }): Promise<void> {
+    return this.put('/api/v1/system/wizard/progress', progress);
+  }
+
+  public getAsyncTasks(params?: {
+    type?: string;
+    kind?: string;
+  }): Promise<ApiRespAsyncTasks> {
+    const query = new URLSearchParams();
+    if (params?.type) query.set('type', params.type);
+    if (params?.kind) query.set('kind', params.kind);
+    const qs = query.toString();
+    return this.get(`/api/v1/system/tasks${qs ? `?${qs}` : ''}`);
   }
 
   public getAsyncTask(id: number): Promise<AsyncTask> {

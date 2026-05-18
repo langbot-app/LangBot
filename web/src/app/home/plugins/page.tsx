@@ -1,4 +1,3 @@
-'use client';
 import PluginInstalledComponent, {
   PluginInstalledComponentRef,
 } from '@/app/home/plugins/components/plugin-installed/PluginInstalledComponent';
@@ -19,6 +18,7 @@ import {
   Check,
   Bug,
 } from 'lucide-react';
+import { copyToClipboard } from '@/app/utils/clipboard';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,13 +45,17 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { systemInfo } from '@/app/infra/http/HttpClient';
 import { ApiRespPluginSystemStatus } from '@/app/infra/entities/api';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
+import {
+  PluginInstallTaskQueue,
+  usePluginInstallTasks,
+} from '@/app/home/plugins/components/plugin-install-task';
 
 enum PluginInstallStatus {
   WAIT_INPUT = 'wait_input',
@@ -80,7 +84,7 @@ interface GithubAsset {
 }
 
 export default function PluginConfigPage() {
-  const searchParams = useSearchParams();
+  const [searchParams] = useSearchParams();
   const detailId = searchParams.get('id');
 
   // Show plugin detail view when ?id= query param is present
@@ -93,12 +97,18 @@ export default function PluginConfigPage() {
 
 function PluginListView() {
   const { t } = useTranslation();
-  const router = useRouter();
+  const navigate = useNavigate();
   const {
     refreshPlugins,
     pendingPluginInstallAction,
     setPendingPluginInstallAction,
   } = useSidebarData();
+  const {
+    addTask,
+    setSelectedTaskId,
+    registerOnTaskComplete,
+    unregisterOnTaskComplete,
+  } = usePluginInstallTasks();
   const [modalOpen, setModalOpen] = useState(false);
   const [installSource, setInstallSource] = useState<string>('local');
   const [installInfo] = useState<Record<string, any>>({}); // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -155,30 +165,22 @@ function PluginListView() {
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
   }
 
-  function watchTask(taskId: number) {
-    let alreadySuccess = false;
-
-    const interval = setInterval(() => {
-      httpClient.getAsyncTask(taskId).then((resp) => {
-        if (resp.runtime.done) {
-          clearInterval(interval);
-          if (resp.runtime.exception) {
-            setInstallError(resp.runtime.exception);
-            setPluginInstallStatus(PluginInstallStatus.ERROR);
-          } else {
-            if (!alreadySuccess) {
-              toast.success(t('plugins.installSuccess'));
-              alreadySuccess = true;
-            }
-            resetGithubState();
-            setModalOpen(false);
-            pluginInstalledRef.current?.refreshPluginList();
-            refreshPlugins();
-          }
-        }
-      });
-    }, 1000);
-  }
+  // Register task completion callback for toast and plugin list refresh
+  useEffect(() => {
+    const onComplete = (_taskId: number, success: boolean, error?: string) => {
+      if (success) {
+        toast.success(t('plugins.installSuccess'));
+        pluginInstalledRef.current?.refreshPluginList();
+        refreshPlugins();
+      } else {
+        toast.error(error || t('plugins.installFailed'));
+      }
+    };
+    registerOnTaskComplete(onComplete);
+    return () => {
+      unregisterOnTaskComplete(onComplete);
+    };
+  }, [registerOnTaskComplete, unregisterOnTaskComplete, refreshPlugins, t]);
 
   const pluginInstalledRef = useRef<PluginInstalledComponentRef>(null);
 
@@ -300,6 +302,8 @@ function PluginListView() {
   ) {
     setPluginInstallStatus(PluginInstallStatus.INSTALLING);
     if (installSource === 'github') {
+      const pluginDisplayName = `${installInfo.owner}/${installInfo.repo}`;
+      const assetSize = selectedAsset?.size;
       httpClient
         .installPluginFromGithub(
           installInfo.asset_url,
@@ -309,18 +313,37 @@ function PluginListView() {
         )
         .then((resp) => {
           const taskId = resp.task_id;
-          watchTask(taskId);
+          const taskKey = `github-${taskId}`;
+          addTask({
+            taskId,
+            pluginName: pluginDisplayName,
+            source: 'github',
+            fileSize: assetSize,
+          });
+          setSelectedTaskId(taskKey);
+          resetGithubState();
+          setModalOpen(false);
         })
         .catch((err) => {
           setInstallError(err.msg);
           setPluginInstallStatus(PluginInstallStatus.ERROR);
         });
     } else if (installSource === 'local') {
+      const fileName = installInfo.file?.name || 'local plugin';
+      const fileSize = installInfo.file?.size;
       httpClient
         .installPluginFromLocal(installInfo.file)
         .then((resp) => {
           const taskId = resp.task_id;
-          watchTask(taskId);
+          const taskKey = `local-${taskId}`;
+          addTask({
+            taskId,
+            pluginName: fileName,
+            source: 'local',
+            fileSize: fileSize,
+          });
+          setSelectedTaskId(taskKey);
+          setModalOpen(false);
         })
         .catch((err) => {
           setInstallError(err.msg);
@@ -446,33 +469,13 @@ function PluginListView() {
   };
 
   const handleCopyDebugInfo = (text: string, type: 'url' | 'key') => {
-    try {
-      navigator.clipboard.writeText(text);
-      if (type === 'url') {
-        setCopiedDebugUrl(true);
-        setTimeout(() => setCopiedDebugUrl(false), 2000);
-      } else {
-        setCopiedDebugKey(true);
-        setTimeout(() => setCopiedDebugKey(false), 2000);
-      }
-    } catch {
-      const textArea = document.createElement('textarea');
-      textArea.value = text;
-      textArea.style.position = 'fixed';
-      textArea.style.left = '-999999px';
-      textArea.style.top = '-999999px';
-      document.body.appendChild(textArea);
-      textArea.select();
-      textArea.setSelectionRange(0, 99999);
-      const success = document.execCommand('copy');
-      document.body.removeChild(textArea);
-      if (success) {
-        setCopiedDebugUrl(true);
-        setTimeout(() => setCopiedDebugUrl(false), 2000);
-      } else {
-        setCopiedDebugKey(true);
-        setTimeout(() => setCopiedDebugKey(false), 2000);
-      }
+    copyToClipboard(text).catch(() => {});
+    if (type === 'url') {
+      setCopiedDebugUrl(true);
+      setTimeout(() => setCopiedDebugUrl(false), 2000);
+    } else {
+      setCopiedDebugKey(true);
+      setTimeout(() => setCopiedDebugKey(false), 2000);
     }
   };
 
@@ -546,8 +549,10 @@ function PluginListView() {
         style={{ display: 'none' }}
       />
 
-      {/* Header bar with debug info and install button */}
+      {/* Header bar with debug info, task queue, and install button */}
       <div className="flex flex-row justify-end items-center px-[0.8rem] pb-4 flex-shrink-0 gap-2">
+        <PluginInstallTaskQueue />
+
         <Popover open={debugPopoverOpen} onOpenChange={setDebugPopoverOpen}>
           <PopoverTrigger asChild>
             <Button
@@ -649,7 +654,7 @@ function PluginListView() {
             {systemInfo.enable_marketplace && (
               <DropdownMenuItem
                 onClick={() => {
-                  router.push('/home/market');
+                  navigate('/home/market');
                 }}
               >
                 <StoreIcon className="w-4 h-4" />

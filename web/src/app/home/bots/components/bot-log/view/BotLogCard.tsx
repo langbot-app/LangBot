@@ -1,5 +1,3 @@
-'use client';
-
 import { useState } from 'react';
 import { BotLog } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
 import { httpClient } from '@/app/infra/http/HttpClient';
@@ -8,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { Check, ChevronDown, ChevronRight, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { copyToClipboard } from '@/app/utils/clipboard';
 
 const LEVEL_STYLES: Record<string, string> = {
   error: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
@@ -33,36 +32,19 @@ export function BotLogCard({
 
   function copySessionId() {
     const text = botLog.message_session_id;
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard
-        .writeText(text)
-        .then(() => {
+    copyToClipboard(text)
+      .then((ok) => {
+        if (ok) {
           setCopied(true);
           setTimeout(() => setCopied(false), 2000);
           toast.success(t('common.copySuccess'));
-        })
-        .catch(() => fallbackCopy(text));
-    } else {
-      fallbackCopy(text);
-    }
-  }
-
-  function fallbackCopy(text: string) {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px';
-    document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
-    try {
-      document.execCommand('copy');
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-      toast.success(t('common.copySuccess'));
-    } catch {
-      toast.error(t('common.copyFailed'));
-    }
-    document.body.removeChild(ta);
+        } else {
+          toast.error(t('common.copyFailed'));
+        }
+      })
+      .catch(() => {
+        toast.error(t('common.copyFailed'));
+      });
   }
 
   function formatTime(timestamp: number) {

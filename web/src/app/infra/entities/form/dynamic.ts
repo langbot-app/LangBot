@@ -21,6 +21,7 @@ export interface IDynamicFormItemSchema {
   /** when type is PLUGIN_SELECTOR, the scopes is the scopes of components(plugin contains), the default is all */
   scopes?: string[];
   accept?: string; // For file type: accepted MIME types
+  login_platform?: string; // For qr-code-login type: platform identifier (e.g. 'feishu', 'weixin')
 }
 
 export enum DynamicFormItemType {
@@ -35,6 +36,7 @@ export enum DynamicFormItemType {
   SELECT = 'select',
   LLM_MODEL_SELECTOR = 'llm-model-selector',
   EMBEDDING_MODEL_SELECTOR = 'embedding-model-selector',
+  RERANK_MODEL_SELECTOR = 'rerank-model-selector',
   MODEL_FALLBACK_SELECTOR = 'model-fallback-selector',
   PROMPT_EDITOR = 'prompt-editor',
   UNKNOWN = 'unknown',
@@ -42,6 +44,10 @@ export enum DynamicFormItemType {
   KNOWLEDGE_BASE_MULTI_SELECTOR = 'knowledge-base-multi-selector',
   PLUGIN_SELECTOR = 'plugin-selector',
   BOT_SELECTOR = 'bot-selector',
+  TOOLS_SELECTOR = 'tools-selector',
+  WEBHOOK_URL = 'webhook-url',
+  EMBED_CODE = 'embed-code',
+  QR_CODE_LOGIN = 'qr-code-login',
 }
 
 export interface IFileConfig {

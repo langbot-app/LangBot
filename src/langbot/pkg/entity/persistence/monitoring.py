@@ -106,3 +106,26 @@ class MonitoringEmbeddingCall(Base):
     session_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
     message_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
     call_type = sqlalchemy.Column(sqlalchemy.String(50), nullable=True)  # embedding, retrieve
+
+
+class MonitoringFeedback(Base):
+    """User feedback records (like/dislike) from AI Bot conversations"""
+
+    __tablename__ = 'monitoring_feedback'
+
+    id = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True)
+    timestamp = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, index=True)
+    feedback_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=False, unique=True, index=True)
+    feedback_type = sqlalchemy.Column(sqlalchemy.Integer, nullable=False)  # 1=like, 2=dislike
+    feedback_content = sqlalchemy.Column(sqlalchemy.Text, nullable=True)  # User feedback text
+    inaccurate_reasons = sqlalchemy.Column(sqlalchemy.Text, nullable=True)  # JSON list of inaccurate reasons
+    # Context fields
+    bot_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
+    bot_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
+    pipeline_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
+    pipeline_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
+    session_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
+    message_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
+    stream_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
+    user_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
+    platform = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)  # e.g., wecom

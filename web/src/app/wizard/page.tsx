@@ -1,7 +1,5 @@
-'use client';
-
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { UUID } from 'uuidjs';
 import { toast } from 'sonner';
@@ -13,15 +11,22 @@ import {
   PartyPopper,
   Loader2,
   X,
+  ExternalLink,
 } from 'lucide-react';
 
 import { httpClient } from '@/app/infra/http/HttpClient';
 import {
   userInfo,
+  systemInfo,
   initializeUserInfo,
   initializeSystemInfo,
 } from '@/app/infra/http';
-import { Adapter, Bot, Pipeline } from '@/app/infra/entities/api';
+import {
+  Adapter,
+  Bot,
+  Pipeline,
+  WizardProgress,
+} from '@/app/infra/entities/api';
 import { IDynamicFormItemSchema } from '@/app/infra/entities/form/dynamic';
 import {
   PipelineConfigTab,
@@ -29,11 +34,18 @@ import {
 } from '@/app/infra/entities/pipeline';
 import {
   DynamicFormItemConfig,
+  getDefaultValues,
   parseDynamicFormItemType,
 } from '@/app/home/components/dynamic-form/DynamicFormItemConfig';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import { BotLogListComponent } from '@/app/home/bots/components/bot-log/view/BotLogListComponent';
 import { extractI18nObject } from '@/i18n/I18nProvider';
+import {
+  groupByCategory,
+  getCategoryLabel,
+} from '@/app/infra/entities/adapter-categories';
+import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
+import i18n from 'i18next';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -47,62 +59,19 @@ import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { cn } from '@/lib/utils';
 import { LanguageSelector } from '@/components/ui/language-selector';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-interface WizardState {
-  currentStep: number;
-  selectedAdapter: string | null;
-  selectedRunner: string | null;
-  botName: string;
-  botDescription: string;
-  adapterConfig: Record<string, unknown>;
-  runnerConfig: Record<string, unknown>;
-  createdBotUuid: string | null;
-}
-
-const WIZARD_STORAGE_KEY = 'langbot_wizard_state';
-
 const TOTAL_STEPS = 4;
-
-// ---------------------------------------------------------------------------
-// Persistence helpers
-// ---------------------------------------------------------------------------
-
-function loadWizardState(): WizardState | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = localStorage.getItem(WIZARD_STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as WizardState;
-  } catch {
-    return null;
-  }
-}
-
-function saveWizardState(state: WizardState): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(WIZARD_STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    // localStorage may be full - silently ignore
-  }
-}
-
-function clearWizardState(): void {
-  if (typeof window === 'undefined') return;
-  localStorage.removeItem(WIZARD_STORAGE_KEY);
-}
 
 // ---------------------------------------------------------------------------
 // Main Wizard Page (full-screen, no sidebar)
@@ -110,33 +79,22 @@ function clearWizardState(): void {
 
 export default function WizardPage() {
   const { t } = useTranslation();
-  const router = useRouter();
+  const navigate = useNavigate();
 
   // ---- Wizard state ----
-  const restoredState = useRef(loadWizardState());
-  const [currentStep, setCurrentStep] = useState(
-    restoredState.current?.currentStep ?? 0,
-  );
-  const [selectedAdapter, setSelectedAdapter] = useState<string | null>(
-    restoredState.current?.selectedAdapter ?? null,
-  );
-  const [selectedRunner, setSelectedRunner] = useState<string | null>(
-    restoredState.current?.selectedRunner ?? null,
-  );
-  const [botName, setBotName] = useState(restoredState.current?.botName ?? '');
+  const [currentStep, setCurrentStep] = useState(0);
+  const [selectedAdapter, setSelectedAdapter] = useState<string | null>(null);
+  const [selectedRunner, setSelectedRunner] = useState<string | null>(null);
+  const [botName, setBotName] = useState('');
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [botDescription, _setBotDescription] = useState(
-    restoredState.current?.botDescription ?? '',
-  );
+  const [botDescription, _setBotDescription] = useState('');
   const [adapterConfig, setAdapterConfig] = useState<Record<string, unknown>>(
-    restoredState.current?.adapterConfig ?? {},
+    {},
   );
-  const [runnerConfig, setRunnerConfig] = useState<Record<string, unknown>>(
-    restoredState.current?.runnerConfig ?? {},
-  );
-  const [createdBotUuid, setCreatedBotUuid] = useState<string | null>(
-    restoredState.current?.createdBotUuid ?? null,
-  );
+  const [runnerConfig, setRunnerConfig] = useState<Record<string, unknown>>({});
+  const [createdBotUuid, setCreatedBotUuid] = useState<string | null>(null);
+  const [webhookUrl, setWebhookUrl] = useState<string>('');
+  const [extraWebhookUrl, setExtraWebhookUrl] = useState<string>('');
 
   // ---- Remote data ----
   const [adapters, setAdapters] = useState<Adapter[]>([]);
@@ -149,30 +107,24 @@ export default function WizardPage() {
   const [isSavingBot, setIsSavingBot] = useState(false);
   const [botSaved, setBotSaved] = useState(false);
 
-  // ---- Persist state on every change ----
-  useEffect(() => {
-    saveWizardState({
-      currentStep,
-      selectedAdapter,
-      selectedRunner,
-      botName,
-      botDescription,
-      adapterConfig,
-      runnerConfig,
-      createdBotUuid,
-    });
-  }, [
-    currentStep,
-    selectedAdapter,
-    selectedRunner,
-    botName,
-    botDescription,
-    adapterConfig,
-    runnerConfig,
-    createdBotUuid,
-  ]);
+  // ---- Helper: persist wizard progress to backend (fire-and-forget) ----
+  const saveProgress = useCallback(
+    (overrides: Partial<WizardProgress> = {}) => {
+      const progress: WizardProgress = {
+        step: overrides.step ?? currentStep,
+        selected_adapter: overrides.selected_adapter ?? selectedAdapter,
+        created_bot_uuid: overrides.created_bot_uuid ?? createdBotUuid,
+        bot_saved: overrides.bot_saved ?? botSaved,
+        selected_runner: overrides.selected_runner ?? selectedRunner,
+      };
+      httpClient.saveWizardProgress(progress).catch((err) => {
+        console.error('Failed to save wizard progress', err);
+      });
+    },
+    [currentStep, selectedAdapter, createdBotUuid, botSaved, selectedRunner],
+  );
 
-  // ---- Fetch remote data ----
+  // ---- Fetch remote data & restore progress ----
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -188,6 +140,47 @@ export default function WizardPage() {
         setAdapters(adaptersResp.adapters);
         const aiTab = metadataResp.configs.find((c) => c.name === 'ai');
         if (aiTab) setAiConfigTab(aiTab);
+
+        // Restore wizard progress if available
+        const progress = systemInfo.wizard_progress;
+        if (progress && progress.created_bot_uuid) {
+          // Verify the bot still exists before restoring
+          try {
+            const botData = await httpClient.getBot(progress.created_bot_uuid);
+            if (cancelled) return;
+
+            setSelectedAdapter(progress.selected_adapter);
+            setCreatedBotUuid(progress.created_bot_uuid);
+            setBotSaved(progress.bot_saved ?? false);
+            setSelectedRunner(progress.selected_runner);
+
+            // Restore bot name from fetched bot data
+            setBotName(botData.bot.name);
+
+            // Restore webhook URLs
+            const runtimeValues = botData.bot.adapter_runtime_values as
+              | Record<string, unknown>
+              | undefined;
+            setWebhookUrl((runtimeValues?.webhook_full_url as string) || '');
+            setExtraWebhookUrl(
+              (runtimeValues?.extra_webhook_full_url as string) || '',
+            );
+
+            // Restore step (cap at step 2 — step 3 means done)
+            setCurrentStep(Math.min(progress.step, 2));
+          } catch {
+            // Bot no longer exists — clear stale progress and start fresh
+            httpClient
+              .saveWizardProgress({
+                step: 0,
+                selected_adapter: null,
+                created_bot_uuid: null,
+                bot_saved: false,
+                selected_runner: null,
+              })
+              .catch(() => {});
+          }
+        }
       } catch (err) {
         console.error('Failed to load wizard data', err);
         toast.error(t('wizard.loadError'));
@@ -235,6 +228,7 @@ export default function WizardPage() {
           type: parseDynamicFormItemType(item.type),
           options: item.options,
           show_if: item.show_if,
+          login_platform: item.login_platform,
         }),
     );
   }, [adapters, selectedAdapter]);
@@ -254,9 +248,19 @@ export default function WizardPage() {
           type: parseDynamicFormItemType(item.type),
           options: item.options,
           show_if: item.show_if,
+          login_platform: item.login_platform,
         }),
     );
   }, [selectedRunnerConfigStage]);
+
+  // ---- Runner selection with progress saving ----
+  const handleSelectRunner = useCallback(
+    (runner: string) => {
+      setSelectedRunner(runner);
+      saveProgress({ step: 2, selected_runner: runner });
+    },
+    [saveProgress],
+  );
 
   // ---- Navigation helpers ----
 
@@ -275,15 +279,19 @@ export default function WizardPage() {
 
   const goNext = useCallback(() => {
     if (currentStep < TOTAL_STEPS - 1 && canProceed()) {
-      setCurrentStep((s) => s + 1);
+      const nextStep = currentStep + 1;
+      setCurrentStep(nextStep);
+      saveProgress({ step: nextStep });
     }
-  }, [currentStep, canProceed]);
+  }, [currentStep, canProceed, saveProgress]);
 
   const goPrev = useCallback(() => {
     if (currentStep > 0) {
-      setCurrentStep((s) => s - 1);
+      const prevStep = currentStep - 1;
+      setCurrentStep(prevStep);
+      saveProgress({ step: prevStep });
     }
-  }, [currentStep]);
+  }, [currentStep, saveProgress]);
 
   // ---- Create Bot (Step 0) ----
   // Creates a disabled bot using the adapter label as name.
@@ -300,18 +308,45 @@ export default function WizardPage() {
         : selectedAdapter;
       setBotName(defaultName);
 
+      const defaultConfig = adapter
+        ? getDefaultValues(adapter.spec.config)
+        : {};
+
       const bot: Bot = {
         name: defaultName,
         description: '',
         adapter: selectedAdapter,
-        adapter_config: {},
+        adapter_config: defaultConfig,
         enable: false,
       };
       const resp = await httpClient.createBot(bot);
       setCreatedBotUuid(resp.uuid);
-      toast.success(t('wizard.botCreateSuccess'));
+
+      // Fetch runtime info to get webhook URL(s)
+      try {
+        const botData = await httpClient.getBot(resp.uuid);
+        const runtimeValues = botData.bot.adapter_runtime_values as
+          | Record<string, unknown>
+          | undefined;
+        setWebhookUrl((runtimeValues?.webhook_full_url as string) || '');
+        setExtraWebhookUrl(
+          (runtimeValues?.extra_webhook_full_url as string) || '',
+        );
+      } catch {
+        // Non-critical — webhook URL display is optional
+      }
+
       // Advance to Step 1
       setCurrentStep(1);
+
+      // Persist progress
+      saveProgress({
+        step: 1,
+        selected_adapter: selectedAdapter,
+        created_bot_uuid: resp.uuid,
+        bot_saved: false,
+        selected_runner: null,
+      });
     } catch (err) {
       const apiErr = err as { msg?: string };
       toast.error(
@@ -320,7 +355,7 @@ export default function WizardPage() {
     } finally {
       setIsCreatingBot(false);
     }
-  }, [selectedAdapter, adapters, t]);
+  }, [selectedAdapter, adapters, t, saveProgress]);
 
   // ---- Save Bot Config & Enable (Step 1) ----
   // Updates the bot's adapter config and enables it.
@@ -338,6 +373,23 @@ export default function WizardPage() {
         enable: true,
       });
       setBotSaved(true);
+
+      // Re-fetch runtime info to get updated webhook URL(s)
+      try {
+        const botData = await httpClient.getBot(createdBotUuid);
+        const runtimeValues = botData.bot.adapter_runtime_values as
+          | Record<string, unknown>
+          | undefined;
+        setWebhookUrl((runtimeValues?.webhook_full_url as string) || '');
+        setExtraWebhookUrl(
+          (runtimeValues?.extra_webhook_full_url as string) || '',
+        );
+      } catch {
+        // Non-critical
+      }
+
+      // Persist progress
+      saveProgress({ step: 1, bot_saved: true });
     } catch (err) {
       const apiErr = err as { msg?: string };
       toast.error(
@@ -353,6 +405,7 @@ export default function WizardPage() {
     botDescription,
     adapterConfig,
     t,
+    saveProgress,
   ]);
 
   // ---- Create Pipeline & Link (Step 2 finish) ----
@@ -403,7 +456,6 @@ export default function WizardPage() {
         use_pipeline_uuid: pipelineResp.uuid,
       });
 
-      toast.success(t('wizard.createSuccess'));
       setCurrentStep(3);
     } catch (err) {
       const apiErr = err as { msg?: string };
@@ -442,11 +494,33 @@ export default function WizardPage() {
 
   // ---- Skip handler ----
   const [showSkipConfirm, setShowSkipConfirm] = useState(false);
+  const [isSkipping, setIsSkipping] = useState(false);
 
-  const handleSkipConfirm = useCallback(() => {
-    clearWizardState();
-    router.push('/home');
-  }, [router]);
+  const handleSkipConfirm = useCallback(async () => {
+    setIsSkipping(true);
+    try {
+      if (systemInfo.wizard_status === 'none') {
+        await httpClient.updateWizardStatus('skipped');
+        systemInfo.wizard_status = 'skipped';
+      }
+      // Always clear persisted progress so re-entering starts fresh
+      await httpClient.saveWizardProgress({
+        step: 0,
+        selected_adapter: null,
+        created_bot_uuid: null,
+        bot_saved: false,
+        selected_runner: null,
+      });
+      systemInfo.wizard_progress = null;
+    } catch {
+      toast.error(t('wizard.skipSaveError'));
+      setIsSkipping(false);
+      return;
+    }
+    setIsSkipping(false);
+    setShowSkipConfirm(false);
+    navigate('/home');
+  }, [navigate, t]);
 
   // ---- Render ----
 
@@ -500,9 +574,9 @@ export default function WizardPage() {
                   className={cn(
                     'w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-xs font-medium transition-colors',
                     idx < currentStep
-                      ? 'bg-primary text-primary-foreground'
+                      ? 'bg-blue-600 text-white'
                       : idx === currentStep
-                        ? 'bg-primary text-primary-foreground'
+                        ? 'bg-blue-600 text-white'
                         : 'bg-muted text-muted-foreground',
                   )}
                 >
@@ -516,7 +590,7 @@ export default function WizardPage() {
                   className={cn(
                     'text-sm hidden sm:inline',
                     idx === currentStep
-                      ? 'font-medium text-foreground'
+                      ? 'font-medium text-blue-600'
                       : 'text-muted-foreground',
                   )}
                 >
@@ -527,7 +601,7 @@ export default function WizardPage() {
                 <div
                   className={cn(
                     'w-4 sm:w-8 h-px',
-                    idx < currentStep ? 'bg-primary' : 'bg-border',
+                    idx < currentStep ? 'bg-blue-600' : 'bg-border',
                   )}
                 />
               )}
@@ -563,13 +637,15 @@ export default function WizardPage() {
             isSavingBot={isSavingBot}
             botSaved={botSaved}
             onSaveBot={handleSaveBot}
+            webhookUrl={webhookUrl}
+            extraWebhookUrl={extraWebhookUrl}
           />
         )}
         {currentStep === 2 && (
           <StepAIEngine
             runnerOptions={runnerOptions}
             selected={selectedRunner}
-            onSelect={setSelectedRunner}
+            onSelect={handleSelectRunner}
             isLocalAccount={isLocalAccount}
             onSpaceAuth={handleSpaceAuth}
             runnerConfigItems={selectedRunnerConfigItems}
@@ -623,21 +699,31 @@ export default function WizardPage() {
       )}
 
       {/* Skip confirmation dialog */}
-      <AlertDialog open={showSkipConfirm} onOpenChange={setShowSkipConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('wizard.skip')}</AlertDialogTitle>
-            <AlertDialogDescription>
+      <Dialog open={showSkipConfirm} onOpenChange={setShowSkipConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('wizard.skip')}</DialogTitle>
+            <DialogDescription>
               {t('wizard.skipConfirmMessage')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogAction onClick={handleSkipConfirm}>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowSkipConfirm(false)}
+              disabled={isSkipping}
+            >
+              {t('wizard.prev')}
+            </Button>
+            <Button onClick={handleSkipConfirm} disabled={isSkipping}>
+              {isSkipping && (
+                <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+              )}
               {t('wizard.skipConfirmOk')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -657,6 +743,14 @@ function StepPlatform({
 }) {
   const { t } = useTranslation();
 
+  const groupedAdapters = useMemo(() => {
+    const withCategories = adapters.map((a) => ({
+      ...a,
+      categories: a.spec.categories,
+    }));
+    return groupByCategory(withCategories);
+  }, [adapters]);
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       <div className="text-center">
@@ -665,45 +759,72 @@ function StepPlatform({
           {t('wizard.platform.description')}
         </p>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {adapters.map((adapter) => (
-          <Card
-            key={adapter.name}
-            className={cn(
-              'cursor-pointer transition-all hover:shadow-md',
-              selected === adapter.name
-                ? 'ring-2 ring-primary shadow-md'
-                : 'hover:border-primary/50',
-            )}
-            onClick={() => onSelect(adapter.name)}
-          >
-            <CardHeader className="flex flex-row items-center gap-3 pb-2">
-              <img
-                src={httpClient.getAdapterIconURL(adapter.name)}
-                alt=""
-                className="w-10 h-10 rounded-lg shrink-0"
-              />
-              <div className="min-w-0">
-                <CardTitle className="text-base truncate">
-                  {extractI18nObject(adapter.label)}
-                </CardTitle>
-              </div>
-              {selected === adapter.name && (
-                <div className="ml-auto shrink-0">
-                  <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-                    <Check className="w-3 h-3 text-primary-foreground" />
+      {groupedAdapters.map((group) => (
+        <div key={group.categoryId ?? 'uncategorized'} className="space-y-3">
+          {group.categoryId && (
+            <h3 className="text-sm font-medium text-muted-foreground">
+              {getCategoryLabel(t, group.categoryId)}
+            </h3>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {group.items.map((adapter) => (
+              <Card
+                key={adapter.name}
+                className={cn(
+                  'cursor-pointer transition-all hover:shadow-md',
+                  selected === adapter.name
+                    ? 'ring-2 ring-primary shadow-md'
+                    : 'hover:border-primary/50',
+                )}
+                onClick={() => onSelect(adapter.name)}
+              >
+                <CardHeader className="flex flex-row items-center gap-3 pb-2">
+                  <img
+                    src={httpClient.getAdapterIconURL(adapter.name)}
+                    alt=""
+                    className="w-10 h-10 rounded-lg shrink-0"
+                  />
+                  <div className="min-w-0">
+                    <CardTitle className="text-base truncate">
+                      {extractI18nObject(adapter.label)}
+                    </CardTitle>
                   </div>
-                </div>
-              )}
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground line-clamp-2">
-                {extractI18nObject(adapter.description)}
-              </p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+                  {selected === adapter.name && (
+                    <div className="ml-auto shrink-0">
+                      <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                        <Check className="w-3 h-3 text-primary-foreground" />
+                      </div>
+                    </div>
+                  )}
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground line-clamp-2">
+                    {extractI18nObject(adapter.description)}
+                  </p>
+                  {(() => {
+                    const docUrl = getAdapterDocUrl(
+                      adapter.spec.help_links,
+                      i18n.language,
+                    );
+                    return docUrl ? (
+                      <a
+                        href={docUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 inline-flex items-center text-xs text-primary hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <ExternalLink className="mr-1 h-3 w-3" />
+                        {t('bots.viewAdapterDocs')}
+                      </a>
+                    ) : null;
+                  })()}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -722,6 +843,8 @@ function StepBotConfig({
   isSavingBot,
   botSaved,
   onSaveBot,
+  webhookUrl,
+  extraWebhookUrl,
 }: {
   adapterConfigItems: IDynamicFormItemSchema[];
   adapterConfigValues: Record<string, unknown>;
@@ -732,6 +855,8 @@ function StepBotConfig({
   isSavingBot: boolean;
   botSaved: boolean;
   onSaveBot: () => void;
+  webhookUrl: string;
+  extraWebhookUrl: string;
 }) {
   const { t } = useTranslation();
 
@@ -763,11 +888,34 @@ function StepBotConfig({
           {adapterConfigItems.length > 0 && (
             <Card>
               <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-                <CardTitle className="text-base">
-                  {t('wizard.config.platformConfig', {
-                    platform: adapterLabel,
-                  })}
-                </CardTitle>
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-base">
+                    {t('wizard.config.platformConfig', {
+                      platform: adapterLabel,
+                    })}
+                  </CardTitle>
+                  {selectedAdapterName &&
+                    (() => {
+                      const selectedAdapter = adapters.find(
+                        (a) => a.name === selectedAdapterName,
+                      );
+                      const docUrl = getAdapterDocUrl(
+                        selectedAdapter?.spec.help_links,
+                        i18n.language,
+                      );
+                      return docUrl ? (
+                        <a
+                          href={docUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center text-xs text-primary hover:underline"
+                        >
+                          <ExternalLink className="mr-1 h-3 w-3" />
+                          {t('bots.viewAdapterDocs')}
+                        </a>
+                      ) : null;
+                    })()}
+                </div>
                 <Button
                   size="sm"
                   onClick={onSaveBot}
@@ -787,7 +935,11 @@ function StepBotConfig({
                   itemConfigList={adapterConfigItems}
                   initialValues={adapterConfigValues as Record<string, object>}
                   onSubmit={stableAdapterConfigCb}
-                  systemContext={{ is_wizard: true }}
+                  systemContext={{
+                    is_wizard: true,
+                    webhook_url: webhookUrl,
+                    extra_webhook_url: extraWebhookUrl,
+                  }}
                 />
               </CardContent>
             </Card>
@@ -1017,7 +1169,7 @@ function StepAIEngine({
 
 function StepDone() {
   const { t } = useTranslation();
-  const router = useRouter();
+  const navigate = useNavigate();
 
   const [particles] = useState(() =>
     Array.from({ length: 30 }, (_, i) => ({
@@ -1037,10 +1189,32 @@ function StepDone() {
     })),
   );
 
-  const handleBack = useCallback(() => {
-    clearWizardState();
-    router.push('/home/bots');
-  }, [router]);
+  const [isCompleting, setIsCompleting] = useState(false);
+
+  const handleBack = useCallback(async () => {
+    setIsCompleting(true);
+    try {
+      if (systemInfo.wizard_status === 'none') {
+        await httpClient.updateWizardStatus('completed');
+        systemInfo.wizard_status = 'completed';
+      }
+      // Always clear persisted progress so re-entering starts fresh
+      await httpClient.saveWizardProgress({
+        step: 0,
+        selected_adapter: null,
+        created_bot_uuid: null,
+        bot_saved: false,
+        selected_runner: null,
+      });
+      systemInfo.wizard_progress = null;
+    } catch {
+      toast.error(t('wizard.completeSaveError'));
+      setIsCompleting(false);
+      return;
+    }
+    setIsCompleting(false);
+    navigate('/home/bots');
+  }, [navigate, t]);
 
   return (
     <div className="relative flex flex-col items-center justify-center h-full min-h-[400px]">
@@ -1065,11 +1239,12 @@ function StepDone() {
       <p className="text-muted-foreground mt-2 text-center max-w-md">
         {t('wizard.done.description')}
       </p>
-      <Button className="mt-6" onClick={handleBack}>
+      <Button className="mt-6" onClick={handleBack} disabled={isCompleting}>
+        {isCompleting && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
         {t('wizard.done.backToWorkbench')}
       </Button>
 
-      <style jsx>{`
+      <style>{`
         @keyframes wizardConfetti {
           0% {
             transform: translateY(100vh) rotate(0deg);

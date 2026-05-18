@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   Select,
@@ -219,6 +220,12 @@ export default function FileUploadZone({
                 <p className="text-sm text-yellow-800 dark:text-yellow-200">
                   {t('knowledge.documentsTab.noParserAvailable')}
                 </p>
+                <Link
+                  to="/home/market?category=Parser"
+                  className="text-sm text-primary hover:underline mt-1 inline-block"
+                >
+                  {t('knowledge.documentsTab.installParserHint')}
+                </Link>
               </div>
             ) : (
               <div className="space-y-2">

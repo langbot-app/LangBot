@@ -1,5 +1,3 @@
-'use client';
-
 import { useEffect } from 'react';
 import PluginForm from '@/app/home/plugins/components/plugin-installed/plugin-form/PluginForm';
 import PluginReadme from '@/app/home/plugins/components/plugin-installed/plugin-readme/PluginReadme';
@@ -86,6 +84,8 @@ export default function PluginDetailContent({ id }: { id: string }) {
             onFormSubmit={handleFormSubmit}
           />
         </div>
+        {/* Divider */}
+        <div className="hidden md:block w-px bg-border shrink-0" />
         {/* Right side - Readme */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden min-w-0">
           <PluginReadme pluginAuthor={pluginAuthor} pluginName={pluginName} />

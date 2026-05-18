@@ -1,5 +1,3 @@
-'use client';
-
 import { useState, useEffect } from 'react';
 import { Trash2, Eye, Wrench, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -48,10 +46,25 @@ interface ModelItemProps {
 function convertExtraArgsToArray(extraArgs?: object): ExtraArg[] {
   if (!extraArgs) return [];
   return Object.entries(extraArgs).map(([key, value]) => {
-    let type: 'string' | 'number' | 'boolean' = 'string';
-    if (typeof value === 'number') type = 'number';
-    else if (typeof value === 'boolean') type = 'boolean';
-    return { key, type, value: String(value) };
+    let type: ExtraArg['type'] = 'string';
+    let stringValue: string;
+    if (typeof value === 'number') {
+      type = 'number';
+      stringValue = String(value);
+    } else if (typeof value === 'boolean') {
+      type = 'boolean';
+      stringValue = String(value);
+    } else if (
+      value !== null &&
+      typeof value === 'object' &&
+      !Array.isArray(value)
+    ) {
+      type = 'object';
+      stringValue = JSON.stringify(value, null, 2);
+    } else {
+      stringValue = String(value);
+    }
+    return { key, type, value: stringValue };
   });
 }
 
@@ -141,7 +154,11 @@ export default function ModelItem({
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-medium">{model.name}</span>
             <Badge variant="secondary" className="text-xs">
-              {modelType === 'llm' ? t('models.chat') : t('models.embedding')}
+              {modelType === 'llm'
+                ? t('models.chat')
+                : modelType === 'embedding'
+                  ? t('models.embedding')
+                  : t('models.rerank')}
             </Badge>
             {modelType === 'llm' &&
               (model as LLMModel).abilities?.includes('vision') && (
@@ -207,7 +224,16 @@ export default function ModelItem({
           )}
         </div>
       </PopoverTrigger>
-      <PopoverContent className="w-80" align="start">
+      <PopoverContent
+        className="w-80 max-h-[70vh] overflow-y-auto overscroll-none focus:outline-none focus-visible:outline-none focus-visible:ring-0"
+        align="start"
+        collisionPadding={16}
+        style={{
+          maxHeight: 'min(70vh, var(--radix-popover-content-available-height))',
+        }}
+        onWheel={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
+      >
         <div className="space-y-3">
           <div className="space-y-2">
             <Label>{t('models.modelName')}</Label>
@@ -265,6 +291,7 @@ export default function ModelItem({
             args={editExtraArgs}
             onChange={setEditExtraArgs}
             disabled={isLangBotModels}
+            modelType={modelType}
           />
 
           <div className="flex gap-2">

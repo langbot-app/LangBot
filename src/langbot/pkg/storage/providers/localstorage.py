@@ -12,6 +12,23 @@ from .. import provider
 LOCAL_STORAGE_PATH = os.path.join('data', 'storage')
 
 
+def _safe_resolve(base: str, key: str) -> str:
+    """Resolve *key* under *base* and ensure the result stays inside *base*.
+
+    Raises ``ValueError`` if the resolved path escapes the storage root
+    (e.g. via absolute paths, ``..`` components, or symlinks).
+    """
+    # os.path.realpath resolves symlinks and normalises the path.
+    resolved = os.path.realpath(os.path.join(base, key))
+    canonical_base = os.path.realpath(base)
+    # The resolved path must be *strictly* inside the base directory (or equal
+    # to it only for directory operations).  We append os.sep so that a base of
+    # "/data/storage" does not match "/data/storage_evil".
+    if not (resolved == canonical_base or resolved.startswith(canonical_base + os.sep)):
+        raise ValueError(f'Path traversal detected: key {key!r} resolves outside storage root')
+    return resolved
+
+
 class LocalStorageProvider(provider.StorageProvider):
     def __init__(self, ap: app.Application):
         super().__init__(ap)
@@ -23,40 +40,47 @@ class LocalStorageProvider(provider.StorageProvider):
         key: str,
         value: bytes,
     ):
-        if not os.path.exists(os.path.join(LOCAL_STORAGE_PATH, os.path.dirname(key))):
-            os.makedirs(os.path.join(LOCAL_STORAGE_PATH, os.path.dirname(key)))
-        async with aiofiles.open(os.path.join(LOCAL_STORAGE_PATH, f'{key}'), 'wb') as f:
+        resolved = _safe_resolve(LOCAL_STORAGE_PATH, key)
+        parent = os.path.dirname(resolved)
+        if not os.path.exists(parent):
+            os.makedirs(parent)
+        async with aiofiles.open(resolved, 'wb') as f:
             await f.write(value)
 
     async def load(
         self,
         key: str,
     ) -> bytes:
-        async with aiofiles.open(os.path.join(LOCAL_STORAGE_PATH, f'{key}'), 'rb') as f:
+        resolved = _safe_resolve(LOCAL_STORAGE_PATH, key)
+        async with aiofiles.open(resolved, 'rb') as f:
             return await f.read()
 
     async def exists(
         self,
         key: str,
     ) -> bool:
-        return os.path.exists(os.path.join(LOCAL_STORAGE_PATH, f'{key}'))
+        resolved = _safe_resolve(LOCAL_STORAGE_PATH, key)
+        return os.path.exists(resolved)
 
     async def delete(
         self,
         key: str,
     ):
-        os.remove(os.path.join(LOCAL_STORAGE_PATH, f'{key}'))
+        resolved = _safe_resolve(LOCAL_STORAGE_PATH, key)
+        os.remove(resolved)
 
     async def size(
         self,
         key: str,
     ) -> int:
-        return os.path.getsize(os.path.join(LOCAL_STORAGE_PATH, f'{key}'))
+        resolved = _safe_resolve(LOCAL_STORAGE_PATH, key)
+        return os.path.getsize(resolved)
 
     async def delete_dir_recursive(
         self,
         dir_path: str,
     ):
+        resolved = _safe_resolve(LOCAL_STORAGE_PATH, dir_path)
         # 直接删除整个目录
-        if os.path.exists(os.path.join(LOCAL_STORAGE_PATH, dir_path)):
-            shutil.rmtree(os.path.join(LOCAL_STORAGE_PATH, dir_path))
+        if os.path.exists(resolved):
+            shutil.rmtree(resolved)

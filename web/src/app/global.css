@@ -1,3 +1,5 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
 :root {
   /* 适用于 Firefox 的滚动条 */
   scrollbar-color: rgba(0, 0, 0, 0.2) transparent; /* 滑块颜色 + 轨道颜色 */
@@ -71,10 +73,6 @@
     -ms-overflow-style: -ms-autohiding-scrollbar; /* 自动隐藏滚动条 */
   }
 }
-
-@import 'tailwindcss';
-
-@import 'tw-animate-css';
 
 @custom-variant dark (&:is(.dark *));
 

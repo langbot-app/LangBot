@@ -1,5 +1,3 @@
-'use client';
-
 import MarketPage from '@/app/home/plugins/components/plugin-market/PluginMarketComponent';
 import {
   Dialog,
@@ -10,13 +8,14 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Download } from 'lucide-react';
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { systemInfo } from '@/app/infra/http/HttpClient';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { PluginV4 } from '@/app/infra/entities/plugin';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
+import { usePluginInstallTasks } from '@/app/home/plugins/components/plugin-install-task';
 
 enum PluginInstallStatus {
   ASK_CONFIRM = 'ask_confirm',
@@ -41,6 +40,12 @@ export default function MarketplacePage() {
 function MarketplaceContent() {
   const { t } = useTranslation();
   const { refreshPlugins } = useSidebarData();
+  const {
+    addTask,
+    setSelectedTaskId,
+    registerOnTaskComplete,
+    unregisterOnTaskComplete,
+  } = usePluginInstallTasks();
   const [modalOpen, setModalOpen] = useState(false);
   const [installInfo, setInstallInfo] = useState<Record<string, string>>({});
   const [pluginInstallStatus, setPluginInstallStatus] =
@@ -69,28 +74,21 @@ function MarketplaceContent() {
     return true;
   }
 
-  function watchTask(taskId: number) {
-    let alreadySuccess = false;
-
-    const interval = setInterval(() => {
-      httpClient.getAsyncTask(taskId).then((resp) => {
-        if (resp.runtime.done) {
-          clearInterval(interval);
-          if (resp.runtime.exception) {
-            setInstallError(resp.runtime.exception);
-            setPluginInstallStatus(PluginInstallStatus.ERROR);
-          } else {
-            if (!alreadySuccess) {
-              toast.success(t('plugins.installSuccess'));
-              alreadySuccess = true;
-            }
-            setModalOpen(false);
-            refreshPlugins();
-          }
-        }
-      });
-    }, 1000);
-  }
+  // Register task completion callback for toast and plugin list refresh
+  useEffect(() => {
+    const onComplete = (_taskId: number, success: boolean, error?: string) => {
+      if (success) {
+        toast.success(t('plugins.installSuccess'));
+        refreshPlugins();
+      } else {
+        toast.error(error || t('plugins.installFailed'));
+      }
+    };
+    registerOnTaskComplete(onComplete);
+    return () => {
+      unregisterOnTaskComplete(onComplete);
+    };
+  }, [registerOnTaskComplete, unregisterOnTaskComplete, refreshPlugins, t]);
 
   const handleInstallPlugin = useCallback(
     async (plugin: PluginV4) => {
@@ -109,6 +107,7 @@ function MarketplaceContent() {
 
   function handleModalConfirm() {
     setPluginInstallStatus(PluginInstallStatus.INSTALLING);
+    const pluginDisplayName = `${installInfo.plugin_author}/${installInfo.plugin_name}`;
     httpClient
       .installPluginFromMarketplace(
         installInfo.plugin_author,
@@ -117,7 +116,14 @@ function MarketplaceContent() {
       )
       .then((resp) => {
         const taskId = resp.task_id;
-        watchTask(taskId);
+        const taskKey = `marketplace-${taskId}`;
+        addTask({
+          taskId,
+          pluginName: pluginDisplayName,
+          source: 'marketplace',
+        });
+        setSelectedTaskId(taskKey);
+        setModalOpen(false);
       })
       .catch((err) => {
         setInstallError(err.msg);

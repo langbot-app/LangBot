@@ -49,6 +49,7 @@ export interface ModelProvider {
   api_keys: string[];
   llm_count?: number;
   embedding_count?: number;
+  rerank_count?: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -59,6 +60,34 @@ export interface ApiRespModelProviders {
 
 export interface ApiRespModelProvider {
   provider: ModelProvider;
+}
+
+export interface ScannedProviderModel {
+  id: string;
+  name: string;
+  type: 'llm' | 'embedding';
+  abilities?: string[];
+  display_name?: string;
+  description?: string;
+  context_length?: number | null;
+  owned_by?: string;
+  input_modalities?: string[];
+  output_modalities?: string[];
+  already_added: boolean;
+}
+
+export interface ProviderScanDebugInfo {
+  request?: {
+    method?: string;
+    url?: string;
+    headers?: Record<string, string>;
+  };
+  response?: unknown;
+}
+
+export interface ApiRespScannedProviderModels {
+  models: ScannedProviderModel[];
+  debug?: ProviderScanDebugInfo;
 }
 
 export interface LLMModel {
@@ -79,6 +108,22 @@ export interface ApiRespProviderEmbeddingModel {
 }
 
 export interface EmbeddingModel {
+  uuid: string;
+  name: string;
+  provider_uuid: string;
+  provider?: ModelProvider;
+  extra_args?: object;
+}
+
+export interface ApiRespProviderRerankModels {
+  models: RerankModel[];
+}
+
+export interface ApiRespProviderRerankModel {
+  model: RerankModel;
+}
+
+export interface RerankModel {
   uuid: string;
   name: string;
   provider_uuid: string;
@@ -117,6 +162,8 @@ export interface Adapter {
   description: I18nObject;
   icon?: string;
   spec: {
+    categories?: string[];
+    help_links?: Record<string, string>;
     config: IDynamicFormItemSchema[];
   };
 }
@@ -138,9 +185,29 @@ export interface Bot {
   adapter_config: object;
   use_pipeline_name?: string;
   use_pipeline_uuid?: string;
+  pipeline_routing_rules?: PipelineRoutingRule[];
   created_at?: string;
   updated_at?: string;
   adapter_runtime_values?: object;
+}
+
+export type RoutingRuleOperator =
+  | 'eq'
+  | 'neq'
+  | 'contains'
+  | 'not_contains'
+  | 'starts_with'
+  | 'regex';
+
+export interface PipelineRoutingRule {
+  type:
+    | 'launcher_type'
+    | 'launcher_id'
+    | 'message_content'
+    | 'message_has_element';
+  operator: RoutingRuleOperator;
+  value: string;
+  pipeline_uuid: string;
 }
 
 export interface ApiRespKnowledgeBases {
@@ -251,6 +318,14 @@ export interface SystemLimitation {
   max_extensions: number;
 }
 
+export interface WizardProgress {
+  step: number;
+  selected_adapter: string | null;
+  created_bot_uuid: string | null;
+  bot_saved: boolean;
+  selected_runner: string | null;
+}
+
 export interface ApiRespSystemInfo {
   debug: boolean;
   version: string;
@@ -260,6 +335,8 @@ export interface ApiRespSystemInfo {
   allow_modify_login_info: boolean;
   disable_models_service: boolean;
   limitation: SystemLimitation;
+  wizard_status: string; // 'none' | 'skipped' | 'completed'
+  wizard_progress: WizardProgress | null;
 }
 
 export interface RagMigrationStatusResp {
@@ -288,12 +365,14 @@ export interface AsyncTaskRuntimeInfo {
 export interface AsyncTaskTaskContext {
   current_action: string;
   log: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface AsyncTask {
   id: number;
   kind: string;
   name: string;
+  label: string;
   task_type: string; // system or user
   runtime: AsyncTaskRuntimeInfo;
   task_context: AsyncTaskTaskContext;
@@ -450,4 +529,19 @@ export interface MCPTool {
   name: string;
   description: string;
   parameters?: object;
+}
+
+export interface PluginTool {
+  name: string;
+  description: string;
+  human_desc: string;
+  parameters: object;
+}
+
+export interface ApiRespTools {
+  tools: PluginTool[];
+}
+
+export interface ApiRespToolDetail {
+  tool: PluginTool;
 }

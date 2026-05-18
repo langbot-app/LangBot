@@ -1,6 +1,7 @@
 export interface IChooseAdapterEntity {
   label: string;
   value: string;
+  categories?: string[];
 }
 
 export interface IPipelineEntity {

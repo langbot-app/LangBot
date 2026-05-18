@@ -1,7 +1,15 @@
-'use client';
-
-import { useState, useEffect } from 'react';
-import { Plus, MessageSquareText, Cpu, Eye, Wrench, Check } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import {
+  Plus,
+  MessageSquareText,
+  Cpu,
+  ArrowUpDown,
+  Eye,
+  Wrench,
+  Check,
+  RefreshCw,
+  Search,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,7 +21,14 @@ import {
 } from '@/components/ui/popover';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useTranslation } from 'react-i18next';
-import { ExtraArg, ModelType, TestResult } from '../types';
+import { ScannedProviderModel } from '@/app/infra/entities/api';
+import {
+  ExtraArg,
+  ModelType,
+  ScanModelsResult,
+  SelectedScannedModel,
+  TestResult,
+} from '../types';
 import ExtraArgsEditor from './ExtraArgsEditor';
 
 interface AddModelPopoverProps {
@@ -25,6 +40,11 @@ interface AddModelPopoverProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+  ) => Promise<void>;
+  onScanModels: (modelType: ModelType) => Promise<ScanModelsResult>;
+  onAddScannedModels: (
+    modelType: ModelType,
+    models: SelectedScannedModel[],
   ) => Promise<void>;
   onTestModel: (
     name: string,
@@ -43,6 +63,8 @@ export default function AddModelPopover({
   onOpen,
   onClose,
   onAddModel,
+  onScanModels,
+  onAddScannedModels,
   onTestModel,
   isSubmitting,
   isTesting,
@@ -50,22 +72,44 @@ export default function AddModelPopover({
   onResetTestResult,
 }: AddModelPopoverProps) {
   const { t } = useTranslation();
+  const prevIsOpenRef = useRef(false);
 
   const [tab, setTab] = useState<ModelType>('llm');
+  const [mode, setMode] = useState<'manual' | 'scan'>('manual');
   const [name, setName] = useState('');
   const [abilities, setAbilities] = useState<string[]>([]);
   const [extraArgs, setExtraArgs] = useState<ExtraArg[]>([]);
+  const [scanLoading, setScanLoading] = useState(false);
+  const [scannedModels, setScannedModels] = useState<ScannedProviderModel[]>(
+    [],
+  );
+  const [selectedScannedModels, setSelectedScannedModels] = useState<
+    Record<string, SelectedScannedModel>
+  >({});
+  const [scanQuery, setScanQuery] = useState('');
 
-  // Reset form when popover opens
   useEffect(() => {
-    if (isOpen) {
+    const wasOpen = prevIsOpenRef.current;
+    if (isOpen && !wasOpen) {
       setTab('llm');
+      setMode('manual');
       setName('');
       setAbilities([]);
       setExtraArgs([]);
+      setScanLoading(false);
+      setScannedModels([]);
+      setSelectedScannedModels({});
+      setScanQuery('');
       onResetTestResult();
     }
-  }, [isOpen]);
+    prevIsOpenRef.current = isOpen;
+  }, [isOpen, onResetTestResult]);
+
+  useEffect(() => {
+    setScannedModels([]);
+    setSelectedScannedModels({});
+    setScanQuery('');
+  }, [tab, mode]);
 
   const handleAdd = async () => {
     await onAddModel(tab, name, abilities, extraArgs);
@@ -75,11 +119,125 @@ export default function AddModelPopover({
     await onTestModel(name, tab, tab === 'llm' ? abilities : [], extraArgs);
   };
 
+  const handleScan = async () => {
+    setScanLoading(true);
+    try {
+      const result = await onScanModels(tab);
+
+      // Enrich abilities from debug.response.data (e.g. features.tools.function_calling)
+      const debugData = (
+        result.debug?.response as { data?: Record<string, unknown>[] }
+      )?.data;
+      if (Array.isArray(debugData)) {
+        const debugMap = new Map<string, Record<string, unknown>>();
+        for (const item of debugData) {
+          if (typeof item?.id === 'string') {
+            debugMap.set(item.id, item);
+          }
+        }
+        for (const model of result.models) {
+          const debugItem = debugMap.get(model.id);
+          if (!debugItem) continue;
+          const features = debugItem.features as
+            | Record<string, unknown>
+            | undefined;
+          const tools = features?.tools as Record<string, unknown> | undefined;
+          if (tools?.function_calling === true) {
+            const abilities = new Set(model.abilities || []);
+            abilities.add('func_call');
+            model.abilities = [...abilities];
+          }
+        }
+      }
+
+      setScannedModels(result.models);
+      setSelectedScannedModels({});
+    } finally {
+      setScanLoading(false);
+    }
+  };
+
+  const handleAddScanned = async () => {
+    const selectedModels = Object.values(selectedScannedModels);
+    if (selectedModels.length === 0) return;
+    await onAddScannedModels(tab, selectedModels);
+  };
+
   const toggleAbility = (ability: string, checked: boolean) => {
     if (checked) {
       setAbilities([...abilities, ability]);
     } else {
       setAbilities(abilities.filter((a) => a !== ability));
+    }
+  };
+
+  const toggleScannedModel = (
+    model: ScannedProviderModel,
+    checked: boolean,
+  ) => {
+    setSelectedScannedModels((prev) => {
+      const next = { ...prev };
+      if (checked) {
+        next[model.id] = {
+          model,
+          abilities:
+            model.type === 'llm'
+              ? prev[model.id]?.abilities || model.abilities || []
+              : [],
+        };
+      } else {
+        delete next[model.id];
+      }
+      return next;
+    });
+  };
+
+  const toggleScannedModelAbility = (
+    modelId: string,
+    ability: string,
+    checked: boolean,
+  ) => {
+    setSelectedScannedModels((prev) => {
+      const current = prev[modelId];
+      if (!current) return prev;
+
+      const nextAbilities = checked
+        ? [...current.abilities, ability]
+        : current.abilities.filter((item) => item !== ability);
+
+      return {
+        ...prev,
+        [modelId]: {
+          ...current,
+          abilities: nextAbilities,
+        },
+      };
+    });
+  };
+
+  const filteredScannedModels = scannedModels.filter((model) =>
+    model.name.toLowerCase().includes(scanQuery.trim().toLowerCase()),
+  );
+
+  const selectableModels = filteredScannedModels.filter(
+    (m) => !m.already_added,
+  );
+  const allSelected =
+    selectableModels.length > 0 &&
+    selectableModels.every((m) => Boolean(selectedScannedModels[m.id]));
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedScannedModels({});
+    } else {
+      const next: Record<string, SelectedScannedModel> = {};
+      for (const model of selectableModels) {
+        next[model.id] = {
+          model,
+          abilities: model.type === 'llm' ? model.abilities || [] : [],
+        };
+      }
+      setSelectedScannedModels(next);
     }
   };
 
@@ -100,12 +258,20 @@ export default function AddModelPopover({
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-80"
+        className="w-[min(24rem,calc(100vw-2rem))] max-h-[70vh] overflow-y-auto overscroll-none focus:outline-none focus-visible:outline-none focus-visible:ring-0"
+        style={{
+          maxHeight: 'min(70vh, var(--radix-popover-content-available-height))',
+        }}
         align="end"
+        side="left"
+        sideOffset={8}
+        collisionPadding={16}
+        onWheel={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
       >
         <Tabs value={tab} onValueChange={(v) => setTab(v as ModelType)}>
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="llm">
               <MessageSquareText className="h-4 w-4 mr-1" />
               {t('models.chat')}
@@ -114,118 +280,272 @@ export default function AddModelPopover({
               <Cpu className="h-4 w-4 mr-1" />
               {t('models.embedding')}
             </TabsTrigger>
+            <TabsTrigger value="rerank">
+              <ArrowUpDown className="h-4 w-4 mr-1" />
+              {t('models.rerank')}
+            </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="llm" className="space-y-3 mt-3">
-            <div className="space-y-2">
-              <Label>{t('models.modelName')}</Label>
-              <Input
-                placeholder={t('models.modelName')}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>{t('models.abilities')}</Label>
-              <div className="flex gap-4">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="add-vision"
-                    checked={abilities.includes('vision')}
-                    onCheckedChange={(checked) =>
-                      toggleAbility('vision', checked as boolean)
-                    }
+          <Tabs
+            value={mode}
+            onValueChange={(v) => setMode(v as 'manual' | 'scan')}
+          >
+            <TabsList className="grid w-full grid-cols-2 mt-3">
+              <TabsTrigger value="manual">{t('models.manualAdd')}</TabsTrigger>
+              <TabsTrigger value="scan">{t('models.scanAdd')}</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="manual" className="mt-3">
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label>{t('models.modelName')}</Label>
+                  <Input
+                    placeholder={t('models.modelName')}
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
                   />
-                  <Label htmlFor="add-vision" className="text-sm">
-                    <Eye className="h-3 w-3 inline mr-1" />
-                    {t('models.visionAbility')}
-                  </Label>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="add-func-call"
-                    checked={abilities.includes('func_call')}
-                    onCheckedChange={(checked) =>
-                      toggleAbility('func_call', checked as boolean)
-                    }
-                  />
-                  <Label htmlFor="add-func-call" className="text-sm">
-                    <Wrench className="h-3 w-3 inline mr-1" />
-                    {t('models.functionCallAbility')}
-                  </Label>
+
+                {tab === 'llm' && (
+                  <div className="space-y-2">
+                    <Label>{t('models.abilities')}</Label>
+                    <div className="flex gap-4">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="add-vision"
+                          checked={abilities.includes('vision')}
+                          onCheckedChange={(checked) =>
+                            toggleAbility('vision', checked as boolean)
+                          }
+                        />
+                        <Label htmlFor="add-vision" className="text-sm">
+                          <Eye className="h-3 w-3 inline mr-1" />
+                          {t('models.visionAbility')}
+                        </Label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="add-func-call"
+                          checked={abilities.includes('func_call')}
+                          onCheckedChange={(checked) =>
+                            toggleAbility('func_call', checked as boolean)
+                          }
+                        />
+                        <Label htmlFor="add-func-call" className="text-sm">
+                          <Wrench className="h-3 w-3 inline mr-1" />
+                          {t('models.functionCallAbility')}
+                        </Label>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <ExtraArgsEditor
+                  args={extraArgs}
+                  onChange={setExtraArgs}
+                  modelType={tab}
+                />
+                <div className="flex gap-2">
+                  <Button
+                    className="flex-1"
+                    size="sm"
+                    onClick={handleAdd}
+                    disabled={isSubmitting || isTesting}
+                  >
+                    {isSubmitting ? t('common.saving') : t('common.add')}
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleTest}
+                    disabled={isSubmitting || isTesting}
+                  >
+                    {isTesting ? (
+                      t('common.loading')
+                    ) : testResult?.success ? (
+                      <>
+                        <Check className="h-4 w-4 mr-1 text-green-500" />
+                        {(testResult.duration / 1000).toFixed(1)}s
+                      </>
+                    ) : (
+                      t('common.test')
+                    )}
+                  </Button>
                 </div>
               </div>
-            </div>
-            <ExtraArgsEditor args={extraArgs} onChange={setExtraArgs} />
-            <div className="flex gap-2">
-              <Button
-                className="flex-1"
-                size="sm"
-                onClick={handleAdd}
-                disabled={isSubmitting || isTesting}
-              >
-                {isSubmitting ? t('common.saving') : t('common.add')}
-              </Button>
-              <Button
-                className="flex-1"
-                size="sm"
-                variant="outline"
-                onClick={handleTest}
-                disabled={isSubmitting || isTesting}
-              >
-                {isTesting ? (
-                  t('common.loading')
-                ) : testResult?.success ? (
-                  <>
-                    <Check className="h-4 w-4 mr-1 text-green-500" />
-                    {(testResult.duration / 1000).toFixed(1)}s
-                  </>
-                ) : (
-                  t('common.test')
-                )}
-              </Button>
-            </div>
-          </TabsContent>
+            </TabsContent>
 
-          <TabsContent value="embedding" className="space-y-3 mt-3">
-            <div className="space-y-2">
-              <Label>{t('models.modelName')}</Label>
-              <Input
-                placeholder={t('models.modelName')}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </div>
-            <ExtraArgsEditor args={extraArgs} onChange={setExtraArgs} />
-            <div className="flex gap-2">
-              <Button
-                className="flex-1"
-                size="sm"
-                onClick={handleAdd}
-                disabled={isSubmitting || isTesting}
-              >
-                {isSubmitting ? t('common.saving') : t('common.add')}
-              </Button>
-              <Button
-                className="flex-1"
-                size="sm"
-                variant="outline"
-                onClick={handleTest}
-                disabled={isSubmitting || isTesting}
-              >
-                {isTesting ? (
-                  t('common.loading')
-                ) : testResult?.success ? (
-                  <>
-                    <Check className="h-4 w-4 mr-1 text-green-500" />
-                    {(testResult.duration / 1000).toFixed(1)}s
-                  </>
-                ) : (
-                  t('common.test')
+            <TabsContent value="scan" className="space-y-3 mt-3">
+              <div className="text-xs text-muted-foreground">
+                {t('models.scanModelsHint')}
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  className="flex-1"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleScan}
+                  disabled={scanLoading || isSubmitting}
+                >
+                  {scanLoading ? (
+                    <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+                  ) : (
+                    <Search className="h-4 w-4 mr-1" />
+                  )}
+                  {t('models.scanModels')}
+                </Button>
+                <Button
+                  className="flex-1"
+                  size="sm"
+                  onClick={handleAddScanned}
+                  disabled={
+                    isSubmitting ||
+                    scanLoading ||
+                    Object.keys(selectedScannedModels).length === 0
+                  }
+                >
+                  {isSubmitting
+                    ? t('common.saving')
+                    : t('models.addSelectedModels')}
+                </Button>
+              </div>
+
+              <div className="space-y-2">
+                <Label>{t('models.scannedModels')}</Label>
+                <Input
+                  placeholder={t('models.searchScannedModels')}
+                  value={scanQuery}
+                  onChange={(e) => setScanQuery(e.target.value)}
+                  disabled={scannedModels.length === 0}
+                />
+                {selectableModels.length > 0 && (
+                  <div className="flex items-center gap-2 pt-1">
+                    <Checkbox
+                      id="scan-select-all"
+                      checked={allSelected}
+                      onCheckedChange={toggleSelectAll}
+                    />
+                    <Label
+                      htmlFor="scan-select-all"
+                      className="text-sm font-medium"
+                    >
+                      {t('models.selectAll')}
+                      <span className="text-muted-foreground ml-1">
+                        ({Object.keys(selectedScannedModels).length}/
+                        {selectableModels.length})
+                      </span>
+                    </Label>
+                  </div>
                 )}
-              </Button>
-            </div>
-          </TabsContent>
+              </div>
+
+              <div
+                className="h-64 overflow-y-auto overscroll-none rounded-md border"
+                onWheel={(e) => e.stopPropagation()}
+              >
+                <div className="p-3 space-y-2">
+                  {filteredScannedModels.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      {scannedModels.length === 0
+                        ? t('models.noScannedModels')
+                        : t('models.noScannedModelsMatch')}
+                    </p>
+                  ) : (
+                    filteredScannedModels.map((model) => {
+                      const isSelected = Boolean(
+                        selectedScannedModels[model.id],
+                      );
+                      const selectedAbilities =
+                        selectedScannedModels[model.id]?.abilities || [];
+                      return (
+                        <div
+                          key={model.id}
+                          className="rounded-md border p-3 space-y-2"
+                        >
+                          <div className="flex items-start gap-3">
+                            <Checkbox
+                              checked={isSelected || model.already_added}
+                              disabled={model.already_added}
+                              onCheckedChange={(checked) =>
+                                toggleScannedModel(model, checked as boolean)
+                              }
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-medium break-all">
+                                {model.name}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {model.already_added
+                                  ? t('models.alreadyAdded')
+                                  : model.type === 'llm'
+                                    ? t('models.chat')
+                                    : model.type === 'embedding'
+                                      ? t('models.embedding')
+                                      : t('models.rerank')}
+                              </div>
+                            </div>
+                          </div>
+
+                          {tab === 'llm' &&
+                            isSelected &&
+                            !model.already_added && (
+                              <div className="flex gap-4 pl-7">
+                                <div className="flex items-center gap-2">
+                                  <Checkbox
+                                    id={`scan-vision-${model.id}`}
+                                    checked={selectedAbilities.includes(
+                                      'vision',
+                                    )}
+                                    onCheckedChange={(checked) =>
+                                      toggleScannedModelAbility(
+                                        model.id,
+                                        'vision',
+                                        checked as boolean,
+                                      )
+                                    }
+                                  />
+                                  <Label
+                                    htmlFor={`scan-vision-${model.id}`}
+                                    className="text-sm"
+                                  >
+                                    <Eye className="h-3 w-3 inline mr-1" />
+                                    {t('models.visionAbility')}
+                                  </Label>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Checkbox
+                                    id={`scan-func-${model.id}`}
+                                    checked={selectedAbilities.includes(
+                                      'func_call',
+                                    )}
+                                    onCheckedChange={(checked) =>
+                                      toggleScannedModelAbility(
+                                        model.id,
+                                        'func_call',
+                                        checked as boolean,
+                                      )
+                                    }
+                                  />
+                                  <Label
+                                    htmlFor={`scan-func-${model.id}`}
+                                    className="text-sm"
+                                  >
+                                    <Wrench className="h-3 w-3 inline mr-1" />
+                                    {t('models.functionCallAbility')}
+                                  </Label>
+                                </div>
+                              </div>
+                            )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
         </Tabs>
       </PopoverContent>
     </Popover>

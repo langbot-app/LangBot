@@ -23,30 +23,50 @@ stages:
             label:
               en_US: Local Agent
               zh_Hans: 内置 Agent
-          - name: tbox-app-api
-            label:
-              en_US: Tbox App API
-              zh_Hans: 蚂蚁百宝箱平台 API
           - name: dify-service-api
             label:
               en_US: Dify Service API
               zh_Hans: Dify 服务 API
-          - name: dashscope-app-api
-            label:
-              en_US: Aliyun Dashscope App API
-              zh_Hans: 阿里云百炼平台 API
           - name: n8n-service-api
             label:
               en_US: n8n Workflow API
               zh_Hans: n8n 工作流 API
-          - name: langflow-api
-            label:
-              en_US: Langflow API
-              zh_Hans: Langflow API
           - name: coze-api
             label:
               en_US: Coze API
               zh_Hans: 扣子 API
+          - name: tbox-app-api
+            label:
+              en_US: Tbox App API
+              zh_Hans: 蚂蚁百宝箱平台 API
+          - name: dashscope-app-api
+            label:
+              en_US: Aliyun Dashscope App API
+              zh_Hans: 阿里云百炼平台 API
+          - name: langflow-api
+            label:
+              en_US: Langflow API
+              zh_Hans: Langflow API
+      - name: expire-time
+        label:
+          en_US: Conversation expire time (seconds)
+          zh_Hans: 单个对话过期时间（秒）
+        description:
+          en_US: >-
+            Maximum idle time of a single conversation, measured from the last
+            message/preprocess update time. When a new message arrives and the
+            current conversation has been idle for longer than this value, the
+            existing external conversation id is discarded and a new one is
+            started automatically — the user does not need to trigger a reset
+            manually. Set to 0 to disable expiry (conversations live until the
+            user or another mechanism resets them).
+          zh_Hans: >-
+            单个对话的最长空闲时间，从最后一条消息/preprocess 更新时间开始计算。
+            当新消息到达且当前对话空闲时间已超过该值时，旧的外部对话 ID 会被自动丢弃并开启新对话，
+            用户无需手动重置。设置为 0 表示不限制过期时间（对话会一直保留，直到用户或其他机制主动重置）。
+        type: integer
+        required: true
+        default: 0
   - name: local-agent
     label:
       en_US: Local Agent
@@ -104,28 +124,34 @@ stages:
           field: __system.is_wizard
           operator: neq
           value: true
-  - name: tbox-app-api
-    label:
-      en_US: Tbox App API
-      zh_Hans: 蚂蚁百宝箱平台 API
-    description:
-      en_US: Configure the Tbox App API of the pipeline
-      zh_Hans: 配置蚂蚁百宝箱平台 API
-    config:
-      - name: api-key
+      - name: rerank-model
         label:
-          en_US: API Key
-          zh_Hans: API 密钥
-        type: string
-        required: true
+          en_US: Rerank Model
+          zh_Hans: 重排序模型
+        description:
+          en_US: Optional rerank model to improve retrieval quality by re-scoring retrieved chunks
+          zh_Hans: 可选的重排序模型，通过重新评分检索结果来提升检索质量
+        type: rerank-model-selector
+        required: false
         default: ''
-      - name: app-id
+        show_if:
+          field: knowledge-bases
+          operator: neq
+          value: []
+      - name: rerank-top-k
         label:
-          en_US: App ID
-          zh_Hans: 应用 ID
-        type: string
-        required: true
-        default: ''
+          en_US: Rerank Top K
+          zh_Hans: 重排序保留数量
+        description:
+          en_US: Number of top results to keep after reranking
+          zh_Hans: 重排序后保留的最相关结果数量
+        type: integer
+        required: false
+        default: 5
+        show_if:
+          field: rerank-model
+          operator: neq
+          value: ''
   - name: dify-service-api
     label:
       en_US: Dify Service API
@@ -140,6 +166,11 @@ stages:
           zh_Hans: 基础 URL
         type: string
         required: true
+        options:
+          - name: 'https://api.dify.ai/v1'
+            label:
+              en_US: Dify Cloud
+              zh_Hans: Dify 云服务
         default: 'https://api.dify.ai/v1'
       - name: base-prompt
         label:
@@ -178,54 +209,6 @@ stages:
         type: string
         required: true
         default: 'your-api-key'
-  - name: dashscope-app-api
-    label:
-      en_US: Aliyun Dashscope App API
-      zh_Hans: 阿里云百炼平台 API
-    description:
-      en_US: Configure the Aliyun Dashscope App API of the pipeline
-      zh_Hans: 配置阿里云百炼平台 API
-    config:
-      - name: app-type
-        label:
-          en_US: App Type
-          zh_Hans: 应用类型
-        type: select
-        required: true
-        default: agent
-        options:
-          - name: agent
-            label:
-              en_US: Agent
-              zh_Hans: Agent
-          - name: workflow
-            label:
-              en_US: Workflow
-              zh_Hans: 工作流
-      - name: api-key
-        label:
-          en_US: API Key
-          zh_Hans: API 密钥
-        type: string
-        required: true
-        default: 'your-api-key'
-      - name: app-id
-        label:
-          en_US: App ID
-          zh_Hans: 应用 ID
-        type: string
-        required: true
-        default: 'your-app-id'
-      - name: references_quote
-        label:
-          en_US: References Quote
-          zh_Hans: 引用文本
-        description:
-          en_US: The text prompt when the references are included
-          zh_Hans: 包含引用资料时的文本提示
-        type: string
-        required: false
-        default: '参考资料来自:'
   - name: n8n-service-api
     label:
       en_US: n8n Workflow API
@@ -375,6 +358,140 @@ stages:
         type: string
         required: false
         default: 'response'
+  - name: coze-api
+    label:
+      en_US: coze API
+      zh_Hans: 扣子 API
+    description:
+      en_US: Configure the Coze API of the pipeline
+      zh_Hans: 配置Coze API
+    config:
+      - name: api-key
+        label:
+          en_US: API Key
+          zh_Hans: API 密钥
+        description:
+          en_US: The API key for the Coze server
+          zh_Hans: Coze服务器的 API 密钥
+        type: string
+        required: true
+        default: ''
+      - name: bot-id
+        label:
+          en_US: Bot ID
+          zh_Hans: 机器人 ID
+        description:
+          en_US: The ID of the bot to run
+          zh_Hans: 要运行的机器人 ID
+        type: string
+        required: true
+        default: ''
+      - name: api-base
+        label:
+          en_US: API Base URL
+          zh_Hans: API 基础 URL
+        description:
+          en_US: The base URL for the Coze API, please use https://api.coze.com for global Coze edition(coze.com).
+          zh_Hans: Coze API 的基础 URL，请使用 https://api.coze.com 用于全球 Coze 版（coze.com）
+        type: string
+        options:
+          - name: 'https://api.coze.cn'
+            label:
+              en_US: Coze China
+              zh_Hans: Coze 中国版
+          - name: 'https://api.coze.com'
+            label:
+              en_US: Coze Global
+              zh_Hans: Coze 全球版
+        default: "https://api.coze.cn"
+      - name: auto-save-history
+        label:
+          en_US: Auto Save History
+          zh_Hans: 自动保存历史
+        description:
+          en_US: Whether to automatically save conversation history
+          zh_Hans: 是否自动保存对话历史
+        type: boolean
+        default: true
+      - name: timeout
+        label:
+          en_US: Request Timeout
+          zh_Hans: 请求超时
+        description:
+          en_US: Timeout in seconds for API requests
+          zh_Hans: API 请求超时时间（秒）
+        type: number
+        default: 120
+  - name: tbox-app-api
+    label:
+      en_US: Tbox App API
+      zh_Hans: 蚂蚁百宝箱平台 API
+    description:
+      en_US: Configure the Tbox App API of the pipeline
+      zh_Hans: 配置蚂蚁百宝箱平台 API
+    config:
+      - name: api-key
+        label:
+          en_US: API Key
+          zh_Hans: API 密钥
+        type: string
+        required: true
+        default: ''
+      - name: app-id
+        label:
+          en_US: App ID
+          zh_Hans: 应用 ID
+        type: string
+        required: true
+        default: ''
+  - name: dashscope-app-api
+    label:
+      en_US: Aliyun Dashscope App API
+      zh_Hans: 阿里云百炼平台 API
+    description:
+      en_US: Configure the Aliyun Dashscope App API of the pipeline
+      zh_Hans: 配置阿里云百炼平台 API
+    config:
+      - name: app-type
+        label:
+          en_US: App Type
+          zh_Hans: 应用类型
+        type: select
+        required: true
+        default: agent
+        options:
+          - name: agent
+            label:
+              en_US: Agent
+              zh_Hans: Agent
+          - name: workflow
+            label:
+              en_US: Workflow
+              zh_Hans: 工作流
+      - name: api-key
+        label:
+          en_US: API Key
+          zh_Hans: API 密钥
+        type: string
+        required: true
+        default: 'your-api-key'
+      - name: app-id
+        label:
+          en_US: App ID
+          zh_Hans: 应用 ID
+        type: string
+        required: true
+        default: 'your-app-id'
+      - name: references_quote
+        label:
+          en_US: References Quote
+          zh_Hans: 引用文本
+        description:
+          en_US: The text prompt when the references are included
+          zh_Hans: 包含引用资料时的文本提示
+        type: string
+        required: false
+        default: '参考资料来自:'
   - name: langflow-api
     label:
       en_US: Langflow API
@@ -443,58 +560,3 @@ stages:
         type: json
         required: false
         default: '{}'
-  - name: coze-api
-    label:
-      en_US: coze API
-      zh_Hans: 扣子 API
-    description:
-      en_US: Configure the Coze API of the pipeline
-      zh_Hans: 配置Coze API
-    config:
-      - name: api-key
-        label:
-          en_US: API Key
-          zh_Hans: API 密钥
-        description:
-          en_US: The API key for the Coze server
-          zh_Hans: Coze服务器的 API 密钥
-        type: string
-        required: true
-        default: ''
-      - name: bot-id
-        label:
-          en_US: Bot ID
-          zh_Hans: 机器人 ID
-        description:
-          en_US: The ID of the bot to run
-          zh_Hans: 要运行的机器人 ID
-        type: string
-        required: true
-        default: ''
-      - name: api-base
-        label:
-          en_US: API Base URL
-          zh_Hans: API 基础 URL
-        description:
-          en_US: The base URL for the Coze API, please use https://api.coze.com for global Coze edition(coze.com).
-          zh_Hans: Coze API 的基础 URL，请使用 https://api.coze.com 用于全球 Coze 版（coze.com）
-        type: string
-        default: "https://api.coze.cn"
-      - name: auto-save-history
-        label:
-          en_US: Auto Save History
-          zh_Hans: 自动保存历史
-        description:
-          en_US: Whether to automatically save conversation history
-          zh_Hans: 是否自动保存对话历史
-        type: boolean
-        default: true
-      - name: timeout
-        label:
-          en_US: Request Timeout
-          zh_Hans: 请求超时
-        description:
-          en_US: Timeout in seconds for API requests
-          zh_Hans: API 请求超时时间（秒）
-        type: number
-        default: 120

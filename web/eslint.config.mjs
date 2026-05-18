@@ -1,18 +1,27 @@
-import { dirname } from 'path';
-import { fileURLToPath } from 'url';
-import { FlatCompat } from '@eslint/eslintrc';
 import eslintPluginPrettierRecommended from 'eslint-plugin-prettier/recommended';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
+import reactHooks from 'eslint-plugin-react-hooks';
+import tseslint from 'typescript-eslint';
 
 const eslintConfig = [
-  ...compat.extends('next/core-web-vitals', 'next/typescript'),
+  ...tseslint.configs.recommended,
+  {
+    files: ['**/*.{js,jsx,ts,tsx}'],
+    plugins: {
+      'react-hooks': reactHooks,
+    },
+    rules: {
+      ...reactHooks.configs.recommended.rules,
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
+      '@typescript-eslint/no-explicit-any': 'off',
+    },
+  },
   eslintPluginPrettierRecommended,
+  {
+    ignores: ['dist/**', 'node_modules/**'],
+  },
 ];
 
 export default eslintConfig;

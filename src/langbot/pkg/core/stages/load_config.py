@@ -80,8 +80,12 @@ def _apply_env_overrides_to_config(cfg: dict) -> dict:
             if i == len(keys) - 1:
                 # At the final key
                 if key in current:
-                    if isinstance(current[key], (dict, list)):
-                        # Skip dict and list types
+                    if isinstance(current[key], list):
+                        # Convert comma-separated string to list
+                        # e.g., SYSTEM__DISABLED_ADAPTERS="aiocqhttp,dingtalk"
+                        current[key] = [item.strip() for item in env_value.split(',') if item.strip()]
+                    elif isinstance(current[key], dict):
+                        # Skip dict types
                         pass
                     else:
                         # Valid scalar value - convert and set it

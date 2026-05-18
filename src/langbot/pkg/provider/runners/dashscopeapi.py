@@ -107,7 +107,7 @@ class DashScopeAPIRunner(runner.RequestRunner):
 
         plain_text, image_ids = await self._preprocess_user_message(query)
         has_thoughts = True  # 获取思考过程
-        remove_think = self.pipeline_config['output'].get('misc', '').get('remove-think')
+        remove_think = self.pipeline_config['output'].get('misc', {}).get('remove-think')
         if remove_think:
             has_thoughts = False
         # 发送对话请求
@@ -141,7 +141,7 @@ class DashScopeAPIRunner(runner.RequestRunner):
                 idx_chunk += 1
                 # 获取流式传输的output
                 stream_output = chunk.get('output', {})
-                stream_think = stream_output.get('thoughts', [])
+                stream_think = stream_output.get('thoughts') or []
                 if stream_think and stream_think[0].get('thought'):
                     if not think_start:
                         think_start = True
@@ -149,7 +149,7 @@ class DashScopeAPIRunner(runner.RequestRunner):
                     else:
                         # 继续输出 reasoning_content
                         pending_content += stream_think[0].get('thought')
-                elif (not stream_think or stream_think[0].get('thought') == '') and not think_end:
+                elif think_start and (not stream_think or stream_think[0].get('thought') == '') and not think_end:
                     think_end = True
                     pending_content += '\n</think>\n'
                 if stream_output.get('text') is not None:
@@ -188,15 +188,15 @@ class DashScopeAPIRunner(runner.RequestRunner):
                 idx_chunk += 1
                 # 获取流式传输的output
                 stream_output = chunk.get('output', {})
-                stream_think = stream_output.get('thoughts', [])
-                if stream_think[0].get('thought'):
+                stream_think = stream_output.get('thoughts') or []
+                if stream_think and stream_think[0].get('thought'):
                     if not think_start:
                         think_start = True
                         pending_content += f'<think>\n{stream_think[0].get("thought")}'
                     else:
                         # 继续输出 reasoning_content
                         pending_content += stream_think[0].get('thought')
-                elif stream_think[0].get('thought') == '' and not think_end:
+                elif think_start and (not stream_think or stream_think[0].get('thought') == '') and not think_end:
                     think_end = True
                     pending_content += '\n</think>\n'
                 if stream_output.get('text') is not None:

@@ -38,7 +38,8 @@
     },
     "ai": {
         "runner": {
-            "runner": "local-agent"
+            "runner": "local-agent",
+            "expire-time": 0
         },
         "local-agent": {
             "model": {
@@ -52,7 +53,9 @@
                     "content": "You are a helpful assistant."
                 }
             ],
-            "knowledge-bases": []
+            "knowledge-bases": [],
+            "rerank-model": "",
+            "rerank-top-k": 5
         },
         "dify-service-api": {
             "base-url": "https://api.dify.ai/v1",

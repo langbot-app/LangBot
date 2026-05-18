@@ -76,6 +76,9 @@ class PersistenceManager:
 
             self.ap.logger.info(f'Successfully upgraded database to version {last_migration_number}.')
 
+        # Run Alembic migrations (new migration system)
+        await self._run_alembic_migrations()
+
         await self.write_space_model_providers()
 
     async def create_tables(self):
@@ -134,6 +137,28 @@ class PersistenceManager:
                 )
 
     # =================================
+
+    async def _run_alembic_migrations(self):
+        """Run Alembic-based migrations after legacy migrations complete."""
+        from . import alembic_runner
+
+        engine = self.get_db_engine()
+
+        try:
+            current_rev = await alembic_runner.get_alembic_current(engine)
+
+            if current_rev is None:
+                # First time: stamp baseline so Alembic knows existing schema is up-to-date
+                self.ap.logger.info('Alembic: no revision found, stamping baseline...')
+                await alembic_runner.run_alembic_stamp(engine, '0001_baseline')
+                current_rev = '0001_baseline'
+
+            # Upgrade to head
+            await alembic_runner.run_alembic_upgrade(engine, 'head')
+            self.ap.logger.info('Alembic migrations completed.')
+        except Exception as e:
+            self.ap.logger.error(f'Alembic migration failed: {e}', exc_info=True)
+            raise
 
     async def execute_async(self, *args, **kwargs) -> sqlalchemy.engine.cursor.CursorResult:
         async with self.get_db_engine().connect() as conn:

@@ -71,7 +71,8 @@ class DingTalkMessageConverter(abstract_platform_adapter.AbstractMessageConverte
                     yiri_msg_list.append(platform_message.Image(base64=element['Picture']))
         else:
             # 回退到原有简单逻辑
-            if event.content:
+            # 对于音频消息，content 来自 recognition 转写文字，在下方音频处理块中统一处理
+            if event.content and event.type != 'audio':
                 text_content = event.content.replace('@' + bot_name, '')
                 yiri_msg_list.append(platform_message.Plain(text=text_content))
             if event.picture:
@@ -81,7 +82,38 @@ class DingTalkMessageConverter(abstract_platform_adapter.AbstractMessageConverte
         if event.file:
             yiri_msg_list.append(platform_message.File(url=event.file, name=event.name))
         if event.audio:
-            yiri_msg_list.append(platform_message.Voice(base64=event.audio))
+            # 优先使用钉钉自带的语音转写文字（recognition字段）
+            if event.content and event.type == 'audio':
+                yiri_msg_list.append(platform_message.Plain(text=event.content))
+            else:
+                yiri_msg_list.append(platform_message.Voice(base64=event.audio))
+
+        # Handle quoted/replied message - extract content as top-level components
+        # so that plugins like FileReader can process them the same way as direct messages
+        if event.quoted_message:
+            quote_info = event.quoted_message
+            msg_type = quote_info.get('msg_type', '')
+
+            # Process quoted file - add as top-level File component (same as private chat)
+            if msg_type == 'file' and quote_info.get('file_url'):
+                file_name = quote_info.get('file_name', 'file')
+                yiri_msg_list.append(platform_message.File(url=quote_info['file_url'], name=file_name))
+
+            # Process quoted image - add as top-level Image component
+            elif msg_type == 'picture' and quote_info.get('picture'):
+                yiri_msg_list.append(platform_message.Image(base64=quote_info['picture']))
+
+            # Process quoted audio - add as top-level Voice component
+            elif msg_type == 'audio' and quote_info.get('audio'):
+                yiri_msg_list.append(platform_message.Voice(base64=quote_info['audio']))
+
+            # Process quoted text - add as Plain text with context prefix
+            elif msg_type == 'text' and quote_info.get('content'):
+                yiri_msg_list.append(platform_message.Plain(text=f'[引用消息] {quote_info["content"]}'))
+
+            # Process quoted rich text - add as Plain text with context prefix
+            elif msg_type == 'richText' and quote_info.get('content'):
+                yiri_msg_list.append(platform_message.Plain(text=f'[引用消息] {quote_info["content"]}'))
 
         chain = platform_message.MessageChain(yiri_msg_list)
 

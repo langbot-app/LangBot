@@ -15,6 +15,7 @@ class ModelProvidersRouterGroup(group.RouterGroup):
                     counts = await self.ap.provider_service.get_provider_model_counts(provider['uuid'])
                     provider['llm_count'] = counts['llm_count']
                     provider['embedding_count'] = counts['embedding_count']
+                    provider['rerank_count'] = counts['rerank_count']
                 return self.success(data={'providers': providers})
             elif quart.request.method == 'POST':
                 json_data = await quart.request.json
@@ -32,6 +33,7 @@ class ModelProvidersRouterGroup(group.RouterGroup):
                 counts = await self.ap.provider_service.get_provider_model_counts(provider_uuid)
                 provider['llm_count'] = counts['llm_count']
                 provider['embedding_count'] = counts['embedding_count']
+                provider['rerank_count'] = counts['rerank_count']
                 return self.success(data={'provider': provider})
             elif quart.request.method == 'PUT':
                 json_data = await quart.request.json
@@ -43,3 +45,12 @@ class ModelProvidersRouterGroup(group.RouterGroup):
                     return self.success()
                 except ValueError as e:
                     return self.http_status(400, -1, str(e))
+
+        @self.route('/<provider_uuid>/scan-models', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
+        async def _(provider_uuid: str) -> str:
+            try:
+                model_type = quart.request.args.get('type')
+                result = await self.ap.provider_service.scan_provider_models(provider_uuid, model_type)
+                return self.success(data=result)
+            except ValueError as e:
+                return self.http_status(400, -1, str(e))

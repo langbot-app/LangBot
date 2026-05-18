@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import i18n from 'i18next';
 import {
   IChooseAdapterEntity,
   IPipelineEntity,
@@ -13,15 +14,16 @@ import { UUID } from 'uuidjs';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { Bot } from '@/app/infra/entities/api';
+import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
+import { ExternalLink } from 'lucide-react';
+import RoutingRulesEditor from './RoutingRulesEditor';
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
-import { Copy, Check } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
 import {
   Form,
   FormControl,
@@ -37,6 +39,7 @@ import {
   SelectContent,
   SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -49,6 +52,10 @@ import {
 } from '@/components/ui/card';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { CustomApiError } from '@/app/infra/entities/common';
+import {
+  groupByCategory,
+  getCategoryLabel,
+} from '@/app/infra/entities/adapter-categories';
 
 const getFormSchema = (t: (key: string) => string) =>
   z.object({
@@ -58,6 +65,28 @@ const getFormSchema = (t: (key: string) => string) =>
     adapter_config: z.record(z.string(), z.any()),
     enable: z.boolean().optional(),
     use_pipeline_uuid: z.string().optional(),
+    pipeline_routing_rules: z
+      .array(
+        z.object({
+          type: z.enum([
+            'launcher_type',
+            'launcher_id',
+            'message_content',
+            'message_has_element',
+          ]),
+          operator: z.enum([
+            'eq',
+            'neq',
+            'contains',
+            'not_contains',
+            'starts_with',
+            'regex',
+          ]),
+          value: z.string(),
+          pipeline_uuid: z.string(),
+        }),
+      )
+      .optional(),
   });
 
 export default function BotForm({
@@ -83,6 +112,7 @@ export default function BotForm({
       adapter_config: {},
       enable: true,
       use_pipeline_uuid: '',
+      pipeline_routing_rules: [],
     },
   });
 
@@ -99,6 +129,9 @@ export default function BotForm({
   const [adapterDescriptionList, setAdapterDescriptionList] = useState<
     Record<string, string>
   >({});
+  const [adapterHelpLinks, setAdapterHelpLinks] = useState<
+    Record<string, Record<string, string>>
+  >({});
 
   const [pipelineNameList, setPipelineNameList] = useState<IPipelineEntity[]>(
     [],
@@ -110,29 +143,16 @@ export default function BotForm({
   const [, setIsLoading] = useState<boolean>(false);
   const [webhookUrl, setWebhookUrl] = useState<string>('');
   const [extraWebhookUrl, setExtraWebhookUrl] = useState<string>('');
-  const [copied, setCopied] = useState<boolean>(false);
-  const [extraCopied, setExtraCopied] = useState<boolean>(false);
 
   // Watch adapter and adapter_config for filtering
   const currentAdapter = form.watch('adapter');
   const currentAdapterConfig = form.watch('adapter_config');
 
-  // Derive the filtered config list via useMemo instead of useEffect+setState
-  // to avoid creating new array references that would cause DynamicFormComponent
-  // to re-subscribe its form.watch, re-emit values, and trigger an infinite loop.
-  // Only depend on the specific field we care about (enable-webhook) rather than
-  // the entire currentAdapterConfig object, which changes on every emission.
-  const enableWebhook = currentAdapterConfig?.['enable-webhook'];
-  const filteredDynamicFormConfigList = useMemo(() => {
-    if (currentAdapter === 'lark' && enableWebhook === false) {
-      // Hide encrypt-key field when webhook is disabled
-      return dynamicFormConfigList.filter(
-        (config) => config.name !== 'encrypt-key',
-      );
-    }
-    // For non-Lark adapters or when webhook is enabled/undefined, show all fields
-    return dynamicFormConfigList;
-  }, [currentAdapter, enableWebhook, dynamicFormConfigList]);
+  // Group adapters by category for the Select dropdown
+  const groupedAdapters = useMemo(
+    () => groupByCategory(adapterNameList),
+    [adapterNameList],
+  );
 
   // Notify parent when dirty state changes
   const { isDirty } = form.formState;
@@ -143,43 +163,6 @@ export default function BotForm({
   useEffect(() => {
     setBotFormValues();
   }, []);
-
-  const copyToClipboard = (
-    text: string,
-    setStatus: React.Dispatch<React.SetStateAction<boolean>>,
-  ) => {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard
-        .writeText(text)
-        .then(() => {
-          setStatus(true);
-          setTimeout(() => setStatus(false), 2000);
-        })
-        .catch(() => {
-          fallbackCopy(text, setStatus);
-        });
-    } else {
-      fallbackCopy(text, setStatus);
-    }
-  };
-
-  const fallbackCopy = (
-    text: string,
-    setStatus: React.Dispatch<React.SetStateAction<boolean>>,
-  ) => {
-    const textarea = document.createElement('textarea');
-    textarea.value = text;
-    textarea.style.position = 'fixed';
-    textarea.style.opacity = '0';
-    document.body.appendChild(textarea);
-    textarea.select();
-    const successful = document.execCommand('copy');
-    document.body.removeChild(textarea);
-    if (successful) {
-      setStatus(true);
-      setTimeout(() => setStatus(false), 2000);
-    }
-  };
 
   function setBotFormValues() {
     isInitializing.current = true;
@@ -196,6 +179,7 @@ export default function BotForm({
               adapter_config: val.adapter_config,
               enable: val.enable,
               use_pipeline_uuid: val.use_pipeline_uuid || '',
+              pipeline_routing_rules: val.pipeline_routing_rules || [],
             });
             handleAdapterSelect(val.adapter);
 
@@ -241,6 +225,7 @@ export default function BotForm({
         return {
           label: extractI18nObject(item.label),
           value: item.name,
+          categories: item.spec.categories,
         };
       }),
     );
@@ -252,6 +237,18 @@ export default function BotForm({
           return acc;
         },
         {} as Record<string, string>,
+      ),
+    );
+
+    setAdapterHelpLinks(
+      adaptersRes.adapters.reduce(
+        (acc, item) => {
+          if (item.spec.help_links) {
+            acc[item.name] = item.spec.help_links;
+          }
+          return acc;
+        },
+        {} as Record<string, Record<string, string>>,
       ),
     );
 
@@ -270,6 +267,7 @@ export default function BotForm({
               type: parseDynamicFormItemType(item.type),
               options: item.options,
               show_if: item.show_if,
+              login_platform: item.login_platform,
             }),
         ),
       );
@@ -298,6 +296,7 @@ export default function BotForm({
             adapter_config: bot.adapter_config,
             enable: bot.enable ?? true,
             use_pipeline_uuid: bot.use_pipeline_uuid ?? '',
+            pipeline_routing_rules: bot.pipeline_routing_rules ?? [],
             webhook_full_url: runtimeValues?.webhook_full_url as
               | string
               | undefined,
@@ -342,6 +341,7 @@ export default function BotForm({
         adapter_config: form.getValues().adapter_config,
         enable: form.getValues().enable,
         use_pipeline_uuid: form.getValues().use_pipeline_uuid,
+        pipeline_routing_rules: form.getValues().pipeline_routing_rules ?? [],
       };
       httpClient
         .updateBot(initBotId, updateBot)
@@ -383,12 +383,6 @@ export default function BotForm({
         });
     }
   }
-
-  // --- Webhook URL display helper ---
-  const showWebhook =
-    initBotId &&
-    webhookUrl &&
-    (currentAdapter !== 'lark' || enableWebhook !== false);
 
   return (
     <Form {...form}>
@@ -498,6 +492,12 @@ export default function BotForm({
                   </FormItem>
                 )}
               />
+
+              {/* Pipeline Routing Rules */}
+              <RoutingRulesEditor
+                form={form}
+                pipelineNameList={pipelineNameList}
+              />
             </CardContent>
           </Card>
         )}
@@ -521,48 +521,81 @@ export default function BotForm({
                     <span className="text-destructive">*</span>
                   </FormLabel>
                   <FormControl>
-                    <Select
-                      onValueChange={(value) => {
-                        field.onChange(value);
-                        handleAdapterSelect(value);
-                      }}
-                      value={field.value}
-                    >
-                      <SelectTrigger className="w-[240px]">
-                        {field.value ? (
-                          <div className="flex items-center gap-2">
-                            <img
-                              src={httpClient.getAdapterIconURL(field.value)}
-                              alt=""
-                              className="h-5 w-5 rounded"
+                    <div className="flex items-center gap-2">
+                      <Select
+                        onValueChange={(value) => {
+                          field.onChange(value);
+                          handleAdapterSelect(value);
+                        }}
+                        value={field.value}
+                      >
+                        <SelectTrigger className="w-[240px]">
+                          {field.value ? (
+                            <div className="flex items-center gap-2">
+                              <img
+                                src={httpClient.getAdapterIconURL(field.value)}
+                                alt=""
+                                className="h-5 w-5 rounded"
+                              />
+                              <span>
+                                {adapterNameList.find(
+                                  (a) => a.value === field.value,
+                                )?.label ?? field.value}
+                              </span>
+                            </div>
+                          ) : (
+                            <SelectValue
+                              placeholder={t('bots.selectAdapter')}
                             />
-                            <span>
-                              {adapterNameList.find(
-                                (a) => a.value === field.value,
-                              )?.label ?? field.value}
-                            </span>
-                          </div>
-                        ) : (
-                          <SelectValue placeholder={t('bots.selectAdapter')} />
-                        )}
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          {adapterNameList.map((item) => (
-                            <SelectItem key={item.value} value={item.value}>
-                              <div className="flex items-center gap-2">
-                                <img
-                                  src={httpClient.getAdapterIconURL(item.value)}
-                                  alt=""
-                                  className="h-5 w-5 rounded"
-                                />
-                                <span>{item.label}</span>
-                              </div>
-                            </SelectItem>
+                          )}
+                        </SelectTrigger>
+                        <SelectContent>
+                          {groupedAdapters.map((group) => (
+                            <SelectGroup
+                              key={group.categoryId ?? 'uncategorized'}
+                            >
+                              {group.categoryId && (
+                                <SelectLabel>
+                                  {getCategoryLabel(t, group.categoryId)}
+                                </SelectLabel>
+                              )}
+                              {group.items.map((item) => (
+                                <SelectItem key={item.value} value={item.value}>
+                                  <div className="flex items-center gap-2">
+                                    <img
+                                      src={httpClient.getAdapterIconURL(
+                                        item.value,
+                                      )}
+                                      alt=""
+                                      className="h-5 w-5 rounded"
+                                    />
+                                    <span>{item.label}</span>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
                           ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
+                        </SelectContent>
+                      </Select>
+                      {currentAdapter &&
+                        (() => {
+                          const docUrl = getAdapterDocUrl(
+                            adapterHelpLinks[currentAdapter],
+                            i18n.language,
+                          );
+                          return docUrl ? (
+                            <a
+                              href={docUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex shrink-0 items-center gap-1 text-xs text-primary hover:underline"
+                            >
+                              {t('bots.viewAdapterDocs')}
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          ) : null;
+                        })()}
+                    </div>
                   </FormControl>
                   {currentAdapter && adapterDescriptionList[currentAdapter] && (
                     <FormDescription>
@@ -574,74 +607,20 @@ export default function BotForm({
               )}
             />
 
-            {/* Webhook URL: shown after adapter is selected (edit mode only) */}
-            {showWebhook && (
-              <FormItem>
-                <FormLabel>{t('bots.webhookUrl')}</FormLabel>
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={webhookUrl}
-                    readOnly
-                    className="flex-1 bg-muted"
-                    onClick={(e) => {
-                      (e.target as HTMLInputElement).select();
-                    }}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => copyToClipboard(webhookUrl, setCopied)}
-                  >
-                    {copied ? (
-                      <Check className="h-4 w-4 text-green-600" />
-                    ) : (
-                      <Copy className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-                {extraWebhookUrl && (
-                  <div className="flex items-center gap-2 mt-2">
-                    <Input
-                      value={extraWebhookUrl}
-                      readOnly
-                      className="flex-1 bg-muted"
-                      onClick={(e) => {
-                        (e.target as HTMLInputElement).select();
-                      }}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        copyToClipboard(extraWebhookUrl, setExtraCopied)
-                      }
-                    >
-                      {extraCopied ? (
-                        <Check className="h-4 w-4 text-green-600" />
-                      ) : (
-                        <Copy className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
-                )}
-                <FormDescription>
-                  {extraWebhookUrl
-                    ? t('bots.webhookUrlHintEither')
-                    : t('bots.webhookUrlHint')}
-                </FormDescription>
-              </FormItem>
-            )}
-
-            {showDynamicForm && filteredDynamicFormConfigList.length > 0 && (
+            {showDynamicForm && dynamicFormConfigList.length > 0 && (
               <DynamicFormComponent
-                itemConfigList={filteredDynamicFormConfigList}
+                itemConfigList={dynamicFormConfigList}
                 initialValues={currentAdapterConfig}
                 onSubmit={(values) => {
                   form.setValue('adapter_config', values, {
                     shouldDirty: !isInitializing.current,
                   });
+                }}
+                systemContext={{
+                  webhook_url: webhookUrl,
+                  extra_webhook_url: extraWebhookUrl,
+                  bot_uuid: initBotId || '',
+                  adapter_config: form.getValues('adapter_config') || {},
                 }}
               />
             )}

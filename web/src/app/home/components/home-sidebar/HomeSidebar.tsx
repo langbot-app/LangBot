@@ -1,8 +1,6 @@
-'use client';
-
 import { useEffect, useState } from 'react';
 import { SidebarChildVO } from '@/app/home/components/home-sidebar/HomeSidebarChild';
-import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { sidebarConfigList } from '@/app/home/components/home-sidebar/sidbarConfigList';
 import langbotIcon from '@/app/assets/langbot-logo.webp';
 import { systemInfo, httpClient } from '@/app/infra/http/HttpClient';
@@ -27,8 +25,10 @@ import {
   Upload,
   Store,
   Github,
+  Zap,
+  HardDrive,
 } from 'lucide-react';
-import { useTheme } from 'next-themes';
+import { useTheme } from '@/components/providers/theme-provider';
 
 import {
   DropdownMenu,
@@ -56,6 +56,7 @@ import AccountSettingsDialog from '@/app/home/components/account-settings-dialog
 import ApiIntegrationDialog from '@/app/home/components/api-integration-dialog/ApiIntegrationDialog';
 import NewVersionDialog from '@/app/home/components/new-version-dialog/NewVersionDialog';
 import ModelsDialog from '@/app/home/components/models-dialog/ModelsDialog';
+import StorageAnalysisDialog from '@/app/home/components/storage-analysis-dialog/StorageAnalysisDialog';
 import { GitHubRelease } from '@/app/infra/http/CloudServiceClient';
 import { useAsyncTask, AsyncTaskStatus } from '@/hooks/useAsyncTask';
 import { toast } from 'sonner';
@@ -243,9 +244,10 @@ function NavItems({
   sectionOpenState: Record<string, boolean>;
   onSectionToggle: (id: string, open: boolean) => void;
 }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const pathname = location.pathname;
+  const [searchParams] = useSearchParams();
   const sidebarData = useSidebarData();
   const { setPendingPluginInstallAction } = sidebarData;
   const { state: sidebarState, isMobile } = useSidebar();
@@ -336,7 +338,9 @@ function NavItems({
                 tooltip={config.name}
               >
                 {config.icon}
-                <span>{config.name}</span>
+                <span className="cursor-pointer select-none">
+                  {config.name}
+                </span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           );
@@ -412,7 +416,7 @@ function NavItems({
                           'bg-accent text-accent-foreground font-medium',
                       )}
                       onClick={() => {
-                        router.push(itemRoute);
+                        navigate(itemRoute);
                         setPopoverOpen((prev) => ({
                           ...prev,
                           [config.id]: false,
@@ -470,7 +474,7 @@ function NavItems({
                             )}
                             onClick={(e) => {
                               e.preventDefault();
-                              router.push(itemRoute);
+                              navigate(itemRoute);
                             }}
                           >
                             {item.emoji ? (
@@ -622,7 +626,7 @@ function NavItems({
                               <DropdownMenuItem
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  router.push('/home/market');
+                                  navigate('/home/market');
                                   setPopoverOpen((prev) => ({
                                     ...prev,
                                     [config.id]: false,
@@ -637,7 +641,7 @@ function NavItems({
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setPendingPluginInstallAction('local');
-                                router.push('/home/plugins');
+                                navigate('/home/plugins');
                                 setPopoverOpen((prev) => ({
                                   ...prev,
                                   [config.id]: false,
@@ -651,7 +655,7 @@ function NavItems({
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setPendingPluginInstallAction('github');
-                                router.push('/home/plugins');
+                                navigate('/home/plugins');
                                 setPopoverOpen((prev) => ({
                                   ...prev,
                                   [config.id]: false,
@@ -668,7 +672,7 @@ function NavItems({
                           type="button"
                           className="p-1 rounded-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
                           onClick={() => {
-                            router.push(`${routePrefix}?id=new`);
+                            navigate(`${routePrefix}?id=new`);
                             setPopoverOpen((prev) => ({
                               ...prev,
                               [config.id]: false,
@@ -699,87 +703,105 @@ function NavItems({
           >
             <SidebarMenuItem>
               <SidebarMenuButton
+                asChild
                 isActive={false}
-                onClick={() => {
-                  if (isCollapseOnly) {
-                    onSectionToggle(config.id, !isOpen);
-                  } else {
-                    onChildClick(config);
-                  }
-                }}
                 tooltip={config.name}
                 className="group/category-header"
               >
-                {config.icon}
-                <span>{config.name}</span>
-                <div className="ml-auto flex items-center gap-0.5 -mr-1">
-                  {canCreate &&
-                    (isPlugin ? (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            type="button"
-                            className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground opacity-0 group-hover/category-header:opacity-100 transition-all"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <Plus className="size-3.5" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {systemInfo.enable_marketplace && (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    if (isCollapseOnly) {
+                      onSectionToggle(config.id, !isOpen);
+                    } else {
+                      onChildClick(config);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      if (isCollapseOnly) {
+                        onSectionToggle(config.id, !isOpen);
+                      } else {
+                        onChildClick(config);
+                      }
+                    }
+                  }}
+                >
+                  {config.icon}
+                  <span className="cursor-pointer select-none">
+                    {config.name}
+                  </span>
+                  <div className="ml-auto flex items-center gap-0.5 -mr-1">
+                    {canCreate &&
+                      (isPlugin ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Plus className="size-3.5" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {systemInfo.enable_marketplace && (
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate('/home/market');
+                                }}
+                              >
+                                <Store className="size-4" />
+                                {t('plugins.goToMarketplace')}
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation();
-                                router.push('/home/market');
+                                setPendingPluginInstallAction('local');
+                                navigate('/home/plugins');
                               }}
                             >
-                              <Store className="size-4" />
-                              {t('plugins.goToMarketplace')}
+                              <Upload className="size-4" />
+                              {t('plugins.uploadLocal')}
                             </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setPendingPluginInstallAction('local');
-                              router.push('/home/plugins');
-                            }}
-                          >
-                            <Upload className="size-4" />
-                            {t('plugins.uploadLocal')}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setPendingPluginInstallAction('github');
-                              router.push('/home/plugins');
-                            }}
-                          >
-                            <Github className="size-4" />
-                            {t('plugins.installFromGithub')}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    ) : (
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPendingPluginInstallAction('github');
+                                navigate('/home/plugins');
+                              }}
+                            >
+                              <Github className="size-4" />
+                              {t('plugins.installFromGithub')}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : (
+                        <button
+                          type="button"
+                          className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`${routePrefix}?id=new`);
+                          }}
+                        >
+                          <Plus className="size-3.5" />
+                        </button>
+                      ))}
+                    <CollapsibleTrigger asChild>
                       <button
                         type="button"
-                        className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground opacity-0 group-hover/category-header:opacity-100 transition-all"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          router.push(`${routePrefix}?id=new`);
-                        }}
+                        className="p-1 rounded-sm hover:bg-sidebar-accent"
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        <Plus className="size-3.5" />
+                        <ChevronRight className="size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                       </button>
-                    ))}
-                  <CollapsibleTrigger asChild>
-                    <button
-                      type="button"
-                      className="p-1 rounded-sm hover:bg-sidebar-accent"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <ChevronRight className="size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                    </button>
-                  </CollapsibleTrigger>
+                    </CollapsibleTrigger>
+                  </div>
                 </div>
               </SidebarMenuButton>
               <CollapsibleContent>
@@ -1023,14 +1045,138 @@ function PluginItemMenu({
   );
 }
 
+// Plugin pages navigation section — grouped by plugin
+function PluginPagesNav() {
+  const { pluginPages } = useSidebarData();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const { t } = useTranslation();
+
+  if (pluginPages.length === 0) return null;
+
+  const pathname = location.pathname;
+  const currentId =
+    pathname === '/home/plugin-pages' ? searchParams.get('id') : null;
+
+  // Group pages by plugin (author/name)
+  const grouped = new Map<
+    string,
+    { label: string; iconURL: string; pages: typeof pluginPages }
+  >();
+  for (const page of pluginPages) {
+    const key = `${page.pluginAuthor}/${page.pluginName}`;
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        label: page.pluginLabel,
+        iconURL: page.pluginIconURL,
+        pages: [],
+      });
+    }
+    grouped.get(key)!.pages.push(page);
+  }
+
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel title={t('sidebar.pluginPagesTooltip')}>
+        {t('sidebar.pluginPages')}
+      </SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {Array.from(grouped.entries()).map(
+            ([pluginKey, { label, iconURL, pages }]) => {
+              const hasActivePage = pages.some((p) => p.id === currentId);
+
+              const pluginIcon = (
+                <img
+                  src={iconURL}
+                  alt=""
+                  className="size-4 rounded-sm object-cover shrink-0"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
+                />
+              );
+
+              // Single page — render directly without nesting
+              if (pages.length === 1) {
+                const page = pages[0];
+                const isActive = currentId === page.id;
+                const route = `/home/plugin-pages?id=${encodeURIComponent(page.id)}`;
+                return (
+                  <SidebarMenuItem key={page.id}>
+                    <SidebarMenuButton
+                      isActive={isActive}
+                      tooltip={page.name}
+                      onClick={() => navigate(route)}
+                      className="select-none"
+                    >
+                      {pluginIcon}
+                      <span className="cursor-pointer">{page.name}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              }
+
+              // Multiple pages — collapsible group
+              return (
+                <Collapsible
+                  key={pluginKey}
+                  defaultOpen={hasActivePage}
+                  className="group/collapsible"
+                >
+                  <SidebarMenuItem>
+                    <CollapsibleTrigger asChild>
+                      <SidebarMenuButton
+                        tooltip={label}
+                        className="select-none"
+                      >
+                        {pluginIcon}
+                        <span className="cursor-pointer">{label}</span>
+                        <ChevronRight className="ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                      </SidebarMenuButton>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <SidebarMenuSub>
+                        {pages.map((page) => {
+                          const isActive = currentId === page.id;
+                          const route = `/home/plugin-pages?id=${encodeURIComponent(page.id)}`;
+                          return (
+                            <SidebarMenuSubItem key={page.id}>
+                              <SidebarMenuSubButton
+                                isActive={isActive}
+                                onClick={() => navigate(route)}
+                                className="select-none"
+                              >
+                                <span className="cursor-pointer">
+                                  {page.name}
+                                </span>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          );
+                        })}
+                      </SidebarMenuSub>
+                    </CollapsibleContent>
+                  </SidebarMenuItem>
+                </Collapsible>
+              );
+            },
+          )}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+}
+
 export default function HomeSidebar({
   onSelectedChangeAction,
 }: {
   onSelectedChangeAction: (sidebarChild: SidebarChildVO) => void;
 }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const pathname = location.pathname;
+  const [searchParams] = useSearchParams();
   const { isMobile } = useSidebar();
 
   useEffect(() => {
@@ -1047,6 +1193,9 @@ export default function HomeSidebar({
     if (searchParams.get('action') === 'showApiIntegrationSettings') {
       setApiKeyDialogOpen(true);
     }
+    if (searchParams.get('action') === 'showStorageAnalysis') {
+      setStorageAnalysisOpen(true);
+    }
   }, [searchParams]);
 
   const [selectedChild, setSelectedChild] = useState<SidebarChildVO>();
@@ -1062,6 +1211,7 @@ export default function HomeSidebar({
   const [hasNewVersion, setHasNewVersion] = useState(false);
   const [versionDialogOpen, setVersionDialogOpen] = useState(false);
   const [modelsDialogOpen, setModelsDialogOpen] = useState(false);
+  const [storageAnalysisOpen, setStorageAnalysisOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string>('');
   const [starCount, setStarCount] = useState<number | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -1070,14 +1220,16 @@ export default function HomeSidebar({
     if (open) {
       const params = new URLSearchParams(searchParams.toString());
       params.set('action', 'showModelSettings');
-      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+      navigate(`${pathname}?${params.toString()}`, {
+        preventScrollReset: true,
+      });
     } else {
       const params = new URLSearchParams(searchParams.toString());
       params.delete('action');
       const newUrl = params.toString()
         ? `${pathname}?${params.toString()}`
         : pathname;
-      router.replace(newUrl, { scroll: false });
+      navigate(newUrl, { preventScrollReset: true });
     }
   }
 
@@ -1086,14 +1238,34 @@ export default function HomeSidebar({
     if (open) {
       const params = new URLSearchParams(searchParams.toString());
       params.set('action', 'showAccountSettings');
-      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+      navigate(`${pathname}?${params.toString()}`, {
+        preventScrollReset: true,
+      });
     } else {
       const params = new URLSearchParams(searchParams.toString());
       params.delete('action');
       const newUrl = params.toString()
         ? `${pathname}?${params.toString()}`
         : pathname;
-      router.replace(newUrl, { scroll: false });
+      navigate(newUrl, { preventScrollReset: true });
+    }
+  }
+
+  function handleStorageAnalysisChange(open: boolean) {
+    setStorageAnalysisOpen(open);
+    if (open) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('action', 'showStorageAnalysis');
+      navigate(`${pathname}?${params.toString()}`, {
+        preventScrollReset: true,
+      });
+    } else {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete('action');
+      const newUrl = params.toString()
+        ? `${pathname}?${params.toString()}`
+        : pathname;
+      navigate(newUrl, { preventScrollReset: true });
     }
   }
 
@@ -1164,7 +1336,7 @@ export default function HomeSidebar({
   // User click: update state AND navigate
   function handleChildClick(child: SidebarChildVO) {
     selectChild(child);
-    router.push(child.route);
+    navigate(child.route);
   }
 
   function initSelect() {
@@ -1225,7 +1397,7 @@ export default function HomeSidebar({
                 tooltip="LangBot"
               >
                 <img
-                  src={langbotIcon.src}
+                  src={langbotIcon}
                   alt="LangBot"
                   className="size-8 rounded-lg"
                 />
@@ -1252,28 +1424,6 @@ export default function HomeSidebar({
 
         {/* Navigation items grouped by section */}
         <SidebarContent>
-          {/* Standalone items (e.g. Quick Start) — rendered before section groups */}
-          {sidebarConfigList
-            .filter((c) => c.section === 'standalone')
-            .map((config) => (
-              <SidebarGroup key={config.id}>
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton
-                        isActive={selectedChild?.id === config.id}
-                        onClick={() => handleChildClick(config)}
-                        tooltip={config.name}
-                      >
-                        {config.icon}
-                        <span>{config.name}</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
-            ))}
-
           <SidebarGroup>
             <SidebarGroupLabel>{t('sidebar.home')}</SidebarGroupLabel>
             <SidebarGroupContent>
@@ -1302,6 +1452,7 @@ export default function HomeSidebar({
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+          <PluginPagesNav />
         </SidebarContent>
 
         {/* Footer */}
@@ -1313,7 +1464,7 @@ export default function HomeSidebar({
                 onClick={() => setApiKeyDialogOpen(true)}
                 tooltip={t('common.apiIntegration')}
               >
-                <KeyRound className="size-4" />
+                <KeyRound className="size-4 text-blue-500" />
                 <span>{t('common.apiIntegration')}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -1331,6 +1482,7 @@ export default function HomeSidebar({
                   viewBox="0 0 24 24"
                   fill="currentColor"
                   aria-hidden="true"
+                  className="text-blue-500"
                 >
                   <path d="M10.6144 17.7956C10.277 18.5682 9.20776 18.5682 8.8704 17.7956L7.99275 15.7854C7.21171 13.9966 5.80589 12.5726 4.0523 11.7942L1.63658 10.7219C.868536 10.381.868537 9.26368 1.63658 8.92276L3.97685 7.88394C5.77553 7.08552 7.20657 5.60881 7.97427 3.75892L8.8633 1.61673C9.19319.821767 10.2916.821765 10.6215 1.61673L11.5105 3.75894C12.2782 5.60881 13.7092 7.08552 15.5079 7.88394L17.8482 8.92276C18.6162 9.26368 18.6162 10.381 17.8482 10.7219L15.4325 11.7942C13.6789 12.5726 12.2731 13.9966 11.492 15.7854L10.6144 17.7956ZM4.53956 9.82234C6.8254 10.837 8.68402 12.5048 9.74238 14.7996 10.8008 12.5048 12.6594 10.837 14.9452 9.82234 12.6321 8.79557 10.7676 7.04647 9.74239 4.71088 8.71719 7.04648 6.85267 8.79557 4.53956 9.82234ZM19.4014 22.6899 19.6482 22.1242C20.0882 21.1156 20.8807 20.3125 21.8695 19.8732L22.6299 19.5353C23.0412 19.3526 23.0412 18.7549 22.6299 18.5722L21.9121 18.2532C20.8978 17.8026 20.0911 16.9698 19.6586 15.9269L19.4052 15.3156C19.2285 14.8896 18.6395 14.8896 18.4628 15.3156L18.2094 15.9269C17.777 16.9698 16.9703 17.8026 15.956 18.2532L15.2381 18.5722C14.8269 18.7549 14.8269 19.3526 15.2381 19.5353L15.9985 19.8732C16.9874 20.3125 17.7798 21.1156 18.2198 22.1242L18.4667 22.6899C18.6473 23.104 19.2207 23.104 19.4014 22.6899ZM18.3745 19.0469 18.937 18.4883 19.4878 19.0469 18.937 19.5898 18.3745 19.0469Z" />
                 </svg>
@@ -1423,6 +1575,24 @@ export default function HomeSidebar({
                       <Settings />
                       {t('account.settings')}
                     </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        handleStorageAnalysisChange(true);
+                      }}
+                    >
+                      <HardDrive />
+                      {t('storageAnalysis.title')}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        navigate('/wizard');
+                      }}
+                    >
+                      <Zap className="text-blue-500" />
+                      {t('sidebar.quickStart')}
+                    </DropdownMenuItem>
                   </DropdownMenuGroup>
                   <DropdownMenuSeparator />
 
@@ -1434,12 +1604,12 @@ export default function HomeSidebar({
                           localStorage.getItem('langbot_language');
                         if (language === 'zh-Hans' || language === 'zh-Hant') {
                           window.open(
-                            'https://docs.langbot.app/zh/insight/guide',
+                            'https://link.langbot.app/zh/docs/guide',
                             '_blank',
                           );
                         } else {
                           window.open(
-                            'https://docs.langbot.app/en/insight/guide',
+                            'https://link.langbot.app/en/docs/guide',
                             '_blank',
                           );
                         }
@@ -1513,6 +1683,10 @@ export default function HomeSidebar({
       <ModelsDialog
         open={modelsDialogOpen}
         onOpenChange={handleModelsDialogChange}
+      />
+      <StorageAnalysisDialog
+        open={storageAnalysisOpen}
+        onOpenChange={handleStorageAnalysisChange}
       />
     </>
   );

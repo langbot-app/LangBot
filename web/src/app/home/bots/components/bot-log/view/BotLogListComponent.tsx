@@ -1,5 +1,3 @@
-'use client';
-
 import { BotLogManager } from '@/app/home/bots/components/bot-log/BotLogManager';
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { BotLog } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
@@ -15,7 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ChevronDownIcon, ExternalLink } from 'lucide-react';
 import { debounce } from 'lodash';
 import { useTranslation } from 'react-i18next';
-import { useRouter } from 'next/navigation';
+import { useNavigate } from 'react-router-dom';
 
 export function BotLogListComponent({
   botId,
@@ -32,7 +30,7 @@ export function BotLogListComponent({
   hideToolbar?: boolean;
 }) {
   const { t } = useTranslation();
-  const router = useRouter();
+  const navigate = useNavigate();
   const manager = useRef(new BotLogManager(botId)).current;
   const [botLogList, setBotLogList] = useState<BotLog[]>([]);
   const [autoFlush, setAutoFlush] = useState(true);
@@ -231,7 +229,7 @@ export function BotLogListComponent({
               variant="outline"
               size="sm"
               className="gap-1"
-              onClick={() => router.push(`/home/monitoring?botId=${botId}`)}
+              onClick={() => navigate(`/home/monitoring?botId=${botId}`)}
             >
               <ExternalLink className="size-3.5" />
               <span className="text-sm">{t('bots.viewDetailedLogs')}</span>

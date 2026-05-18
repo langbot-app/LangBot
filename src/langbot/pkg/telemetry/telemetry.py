@@ -13,12 +13,11 @@ class TelemetryManager:
         await telemetry.send({ ... })
     """
 
-    send_tasks: list[asyncio.Task] = []
-
     def __init__(self, ap: core_app.Application):
         self.ap = ap
 
         self.telemetry_config = {}
+        self.send_tasks: list[asyncio.Task] = []
 
     async def initialize(self):
         self.telemetry_config = self.ap.instance_config.data.get('space', {})
@@ -60,7 +59,16 @@ class TelemetryManager:
                     except Exception:
                         sanitized['query_id'] = str(sanitized.get('query_id', ''))
 
-                for sfield in ('adapter', 'runner', 'runner_category', 'model_name', 'version', 'error', 'timestamp'):
+                for sfield in (
+                    'adapter',
+                    'runner',
+                    'runner_category',
+                    'model_name',
+                    'version',
+                    'edition',
+                    'error',
+                    'timestamp',
+                ):
                     v = sanitized.get(sfield)
                     sanitized[sfield] = '' if v is None else str(v)
 

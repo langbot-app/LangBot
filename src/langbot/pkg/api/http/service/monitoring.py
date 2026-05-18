@@ -18,54 +18,118 @@ class MonitoringService:
 
     # ========== Cleanup Methods ==========
 
-    async def cleanup_expired_records(self, retention_days: int) -> dict[str, int]:
+    async def cleanup_expired_records(self, retention_days: int, batch_size: int = 1000) -> dict[str, int]:
         """Delete monitoring records older than the specified retention period.
 
         Args:
             retention_days: Number of days to retain records.
+            batch_size: Maximum rows to delete per table batch.
 
         Returns:
             A dict mapping table name to the number of deleted rows.
         """
+        if retention_days < 1:
+            raise ValueError('retention_days must be >= 1')
+        if batch_size < 1:
+            raise ValueError('batch_size must be >= 1')
+
         cutoff = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) - datetime.timedelta(
             days=retention_days
         )
 
-        tables_and_columns: list[tuple[str, type, sqlalchemy.Column]] = [
+        tables_and_columns: list[tuple[str, type, sqlalchemy.Column, sqlalchemy.Column]] = [
             (
                 'monitoring_messages',
                 persistence_monitoring.MonitoringMessage,
                 persistence_monitoring.MonitoringMessage.timestamp,
+                persistence_monitoring.MonitoringMessage.id,
             ),
             (
                 'monitoring_llm_calls',
                 persistence_monitoring.MonitoringLLMCall,
                 persistence_monitoring.MonitoringLLMCall.timestamp,
+                persistence_monitoring.MonitoringLLMCall.id,
             ),
             (
                 'monitoring_embedding_calls',
                 persistence_monitoring.MonitoringEmbeddingCall,
                 persistence_monitoring.MonitoringEmbeddingCall.timestamp,
+                persistence_monitoring.MonitoringEmbeddingCall.id,
             ),
             (
                 'monitoring_errors',
                 persistence_monitoring.MonitoringError,
                 persistence_monitoring.MonitoringError.timestamp,
+                persistence_monitoring.MonitoringError.id,
             ),
             (
                 'monitoring_sessions',
                 persistence_monitoring.MonitoringSession,
                 persistence_monitoring.MonitoringSession.last_activity,
+                persistence_monitoring.MonitoringSession.session_id,
+            ),
+            (
+                'monitoring_feedback',
+                persistence_monitoring.MonitoringFeedback,
+                persistence_monitoring.MonitoringFeedback.timestamp,
+                persistence_monitoring.MonitoringFeedback.id,
             ),
         ]
 
         deleted_counts: dict[str, int] = {}
 
-        for table_name, model_cls, ts_column in tables_and_columns:
-            result = await self.ap.persistence_mgr.execute_async(sqlalchemy.delete(model_cls).where(ts_column < cutoff))
-            deleted_counts[table_name] = result.rowcount
+        for table_name, model_cls, ts_column, pk_column in tables_and_columns:
+            deleted_counts[table_name] = await self._delete_expired_in_batches(
+                model_cls=model_cls,
+                ts_column=ts_column,
+                pk_column=pk_column,
+                cutoff=cutoff,
+                batch_size=batch_size,
+            )
+
+        if sum(deleted_counts.values()) > 0:
+            await self._release_sqlite_space()
 
         return deleted_counts
+
+    async def _delete_expired_in_batches(
+        self,
+        model_cls: type,
+        ts_column: sqlalchemy.Column,
+        pk_column: sqlalchemy.Column,
+        cutoff: datetime.datetime,
+        batch_size: int,
+    ) -> int:
+        deleted_total = 0
+
+        while True:
+            select_result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(pk_column).where(ts_column < cutoff).limit(batch_size)
+            )
+            pk_values = list(select_result.scalars().all())
+            if not pk_values:
+                break
+
+            delete_result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.delete(model_cls).where(pk_column.in_(pk_values))
+            )
+            deleted = delete_result.rowcount or 0
+            deleted_total += deleted
+
+            if len(pk_values) < batch_size:
+                break
+
+        return deleted_total
+
+    async def _release_sqlite_space(self) -> None:
+        database_type = self.ap.instance_config.data.get('database', {}).get('use', 'sqlite')
+        if database_type != 'sqlite':
+            return
+
+        async with self.ap.persistence_mgr.get_db_engine().connect() as conn:
+            autocommit_conn = await conn.execution_options(isolation_level='AUTOCOMMIT')
+            await autocommit_conn.execute(sqlalchemy.text('PRAGMA wal_checkpoint(TRUNCATE)'))
+            await autocommit_conn.execute(sqlalchemy.text('VACUUM'))
 
     # ========== Recording Methods ==========
 
@@ -1180,6 +1244,317 @@ class MonitoringService:
                 'is_active': str(row[0].is_active if isinstance(row, tuple) else row.is_active),
                 'platform': row[0].platform if isinstance(row, tuple) else row.platform,
                 'user_id': row[0].user_id if isinstance(row, tuple) else row.user_id,
+            }
+            for row in rows
+        ]
+
+    # ========== Feedback Methods ==========
+
+    async def record_feedback(
+        self,
+        feedback_id: str,
+        feedback_type: int,
+        feedback_content: str | None = None,
+        inaccurate_reasons: list[str] | None = None,
+        bot_id: str | None = None,
+        bot_name: str | None = None,
+        pipeline_id: str | None = None,
+        pipeline_name: str | None = None,
+        session_id: str | None = None,
+        message_id: str | None = None,
+        stream_id: str | None = None,
+        user_id: str | None = None,
+        platform: str | None = None,
+    ) -> str:
+        """Record user feedback (like/dislike) from AI Bot conversation.
+
+        Args:
+            feedback_id: Unique feedback identifier from platform (e.g., WeChat Work)
+            feedback_type: 1 = like (thumbs up), 2 = dislike (thumbs down)
+            feedback_content: Optional user feedback text
+            inaccurate_reasons: List of reasons for inaccurate response (for dislike)
+            bot_id: Bot ID
+            bot_name: Bot name
+            pipeline_id: Pipeline ID
+            pipeline_name: Pipeline name
+            session_id: Session ID
+            message_id: Message ID
+            stream_id: Stream ID (for WeChat Work streaming messages)
+            user_id: User ID
+            platform: Platform name (e.g., 'wecom')
+
+        Returns:
+            The record ID
+        """
+        import json
+
+        now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+        reasons_json = json.dumps(inaccurate_reasons, ensure_ascii=False) if inaccurate_reasons else None
+
+        MonitoringFeedback = persistence_monitoring.MonitoringFeedback
+
+        # Handle cancel feedback (type=3): delete existing record
+        if feedback_type == 3:
+            await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.delete(MonitoringFeedback).where(MonitoringFeedback.feedback_id == feedback_id)
+            )
+            return None
+
+        # Check if record with this feedback_id already exists
+        existing_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(MonitoringFeedback).where(MonitoringFeedback.feedback_id == feedback_id)
+        )
+        existing_row = existing_result.first()
+
+        if existing_row:
+            # UPDATE existing record
+            existing = existing_row[0] if isinstance(existing_row, tuple) else existing_row
+            await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.update(MonitoringFeedback)
+                .where(MonitoringFeedback.feedback_id == feedback_id)
+                .values(
+                    timestamp=now,
+                    feedback_type=feedback_type,
+                    feedback_content=feedback_content,
+                    inaccurate_reasons=reasons_json,
+                    bot_id=bot_id or existing.bot_id,
+                    bot_name=bot_name or existing.bot_name,
+                    pipeline_id=pipeline_id or existing.pipeline_id,
+                    pipeline_name=pipeline_name or existing.pipeline_name,
+                    session_id=session_id or existing.session_id,
+                    message_id=message_id or existing.message_id,
+                    stream_id=stream_id or existing.stream_id,
+                    user_id=user_id or existing.user_id,
+                    platform=platform or existing.platform,
+                )
+            )
+            return existing.id
+        else:
+            # INSERT new record with IntegrityError defense
+            record_id = str(uuid.uuid4())
+            record_data = {
+                'id': record_id,
+                'timestamp': now,
+                'feedback_id': feedback_id,
+                'feedback_type': feedback_type,
+                'feedback_content': feedback_content,
+                'inaccurate_reasons': reasons_json,
+                'bot_id': bot_id,
+                'bot_name': bot_name,
+                'pipeline_id': pipeline_id,
+                'pipeline_name': pipeline_name,
+                'session_id': session_id,
+                'message_id': message_id,
+                'stream_id': stream_id,
+                'user_id': user_id,
+                'platform': platform,
+            }
+            try:
+                await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(MonitoringFeedback).values(record_data))
+                return record_id
+            except Exception:
+                # UNIQUE constraint conflict (concurrent feedback for same feedback_id)
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.update(MonitoringFeedback)
+                    .where(MonitoringFeedback.feedback_id == feedback_id)
+                    .values(
+                        timestamp=now,
+                        feedback_type=feedback_type,
+                        feedback_content=feedback_content,
+                        inaccurate_reasons=reasons_json,
+                    )
+                )
+                return feedback_id
+
+    async def get_feedback_stats(
+        self,
+        bot_ids: list[str] | None = None,
+        pipeline_ids: list[str] | None = None,
+        start_time: datetime.datetime | None = None,
+        end_time: datetime.datetime | None = None,
+    ) -> dict:
+        """Get feedback statistics.
+
+        Returns:
+            Dictionary with total likes, dislikes, and breakdown by bot/pipeline
+        """
+        conditions = []
+
+        if bot_ids:
+            conditions.append(persistence_monitoring.MonitoringFeedback.bot_id.in_(bot_ids))
+        if pipeline_ids:
+            conditions.append(persistence_monitoring.MonitoringFeedback.pipeline_id.in_(pipeline_ids))
+        if start_time:
+            conditions.append(persistence_monitoring.MonitoringFeedback.timestamp >= start_time)
+        if end_time:
+            conditions.append(persistence_monitoring.MonitoringFeedback.timestamp <= end_time)
+
+        # Get total likes (feedback_type = 1)
+        likes_query = sqlalchemy.select(sqlalchemy.func.count(persistence_monitoring.MonitoringFeedback.id)).where(
+            persistence_monitoring.MonitoringFeedback.feedback_type == 1
+        )
+        if conditions:
+            likes_query = likes_query.where(sqlalchemy.and_(*conditions))
+        likes_result = await self.ap.persistence_mgr.execute_async(likes_query)
+        total_likes = likes_result.scalar() or 0
+
+        # Get total dislikes (feedback_type = 2)
+        dislikes_query = sqlalchemy.select(sqlalchemy.func.count(persistence_monitoring.MonitoringFeedback.id)).where(
+            persistence_monitoring.MonitoringFeedback.feedback_type == 2
+        )
+        if conditions:
+            dislikes_query = dislikes_query.where(sqlalchemy.and_(*conditions))
+        dislikes_result = await self.ap.persistence_mgr.execute_async(dislikes_query)
+        total_dislikes = dislikes_result.scalar() or 0
+
+        # Get total feedback count
+        total_query = sqlalchemy.select(sqlalchemy.func.count(persistence_monitoring.MonitoringFeedback.id))
+        if conditions:
+            total_query = total_query.where(sqlalchemy.and_(*conditions))
+        total_result = await self.ap.persistence_mgr.execute_async(total_query)
+        total_feedback = total_result.scalar() or 0
+
+        # Calculate satisfaction rate
+        satisfaction_rate = (total_likes / total_feedback * 100) if total_feedback > 0 else 0
+
+        # Get feedback by bot
+        bot_stats_query = sqlalchemy.select(
+            persistence_monitoring.MonitoringFeedback.bot_id,
+            persistence_monitoring.MonitoringFeedback.bot_name,
+            sqlalchemy.func.count(persistence_monitoring.MonitoringFeedback.id).label('total'),
+            sqlalchemy.func.sum(
+                sqlalchemy.case((persistence_monitoring.MonitoringFeedback.feedback_type == 1, 1), else_=0)
+            ).label('likes'),
+            sqlalchemy.func.sum(
+                sqlalchemy.case((persistence_monitoring.MonitoringFeedback.feedback_type == 2, 1), else_=0)
+            ).label('dislikes'),
+        ).group_by(
+            persistence_monitoring.MonitoringFeedback.bot_id,
+            persistence_monitoring.MonitoringFeedback.bot_name,
+        )
+        if conditions:
+            bot_stats_query = bot_stats_query.where(sqlalchemy.and_(*conditions))
+        bot_stats_result = await self.ap.persistence_mgr.execute_async(bot_stats_query)
+        bot_stats = [
+            {
+                'bot_id': row.bot_id,
+                'bot_name': row.bot_name,
+                'total': row.total,
+                'likes': row.likes or 0,
+                'dislikes': row.dislikes or 0,
+            }
+            for row in bot_stats_result.all()
+        ]
+
+        return {
+            'total_feedback': total_feedback,
+            'total_likes': total_likes,
+            'total_dislikes': total_dislikes,
+            'satisfaction_rate': round(satisfaction_rate, 2),
+            'by_bot': bot_stats,
+        }
+
+    async def get_feedback_list(
+        self,
+        bot_ids: list[str] | None = None,
+        pipeline_ids: list[str] | None = None,
+        feedback_type: int | None = None,
+        start_time: datetime.datetime | None = None,
+        end_time: datetime.datetime | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[list[dict], int]:
+        """Get feedback list with filters."""
+        conditions = []
+
+        if bot_ids:
+            conditions.append(persistence_monitoring.MonitoringFeedback.bot_id.in_(bot_ids))
+        if pipeline_ids:
+            conditions.append(persistence_monitoring.MonitoringFeedback.pipeline_id.in_(pipeline_ids))
+        if feedback_type is not None:
+            conditions.append(persistence_monitoring.MonitoringFeedback.feedback_type == feedback_type)
+        if start_time:
+            conditions.append(persistence_monitoring.MonitoringFeedback.timestamp >= start_time)
+        if end_time:
+            conditions.append(persistence_monitoring.MonitoringFeedback.timestamp <= end_time)
+
+        # Get total count
+        count_query = sqlalchemy.select(sqlalchemy.func.count(persistence_monitoring.MonitoringFeedback.id))
+        if conditions:
+            count_query = count_query.where(sqlalchemy.and_(*conditions))
+        count_result = await self.ap.persistence_mgr.execute_async(count_query)
+        total = count_result.scalar() or 0
+
+        # Get feedback list
+        query = sqlalchemy.select(persistence_monitoring.MonitoringFeedback).order_by(
+            persistence_monitoring.MonitoringFeedback.timestamp.desc()
+        )
+        if conditions:
+            query = query.where(sqlalchemy.and_(*conditions))
+        query = query.limit(limit).offset(offset)
+
+        result = await self.ap.persistence_mgr.execute_async(query)
+        rows = result.all()
+
+        return (
+            [
+                self.ap.persistence_mgr.serialize_model(
+                    persistence_monitoring.MonitoringFeedback, row[0] if isinstance(row, tuple) else row
+                )
+                for row in rows
+            ],
+            total,
+        )
+
+    async def export_feedback(
+        self,
+        bot_ids: list[str] | None = None,
+        pipeline_ids: list[str] | None = None,
+        start_time: datetime.datetime | None = None,
+        end_time: datetime.datetime | None = None,
+        limit: int = 100000,
+    ) -> list[dict]:
+        """Export feedback as list of dictionaries for CSV conversion."""
+        conditions = []
+
+        if bot_ids:
+            conditions.append(persistence_monitoring.MonitoringFeedback.bot_id.in_(bot_ids))
+        if pipeline_ids:
+            conditions.append(persistence_monitoring.MonitoringFeedback.pipeline_id.in_(pipeline_ids))
+        if start_time:
+            conditions.append(persistence_monitoring.MonitoringFeedback.timestamp >= start_time)
+        if end_time:
+            conditions.append(persistence_monitoring.MonitoringFeedback.timestamp <= end_time)
+
+        query = sqlalchemy.select(persistence_monitoring.MonitoringFeedback).order_by(
+            persistence_monitoring.MonitoringFeedback.timestamp.desc()
+        )
+        if conditions:
+            query = query.where(sqlalchemy.and_(*conditions))
+        query = query.limit(limit)
+
+        result = await self.ap.persistence_mgr.execute_async(query)
+        rows = result.all()
+
+        return [
+            {
+                'id': row[0].id if isinstance(row, tuple) else row.id,
+                'timestamp': self._format_timestamp(row[0].timestamp if isinstance(row, tuple) else row.timestamp),
+                'feedback_id': row[0].feedback_id if isinstance(row, tuple) else row.feedback_id,
+                'feedback_type': 'like'
+                if (row[0].feedback_type if isinstance(row, tuple) else row.feedback_type) == 1
+                else 'dislike',
+                'feedback_content': row[0].feedback_content if isinstance(row, tuple) else row.feedback_content,
+                'inaccurate_reasons': row[0].inaccurate_reasons if isinstance(row, tuple) else row.inaccurate_reasons,
+                'bot_id': row[0].bot_id if isinstance(row, tuple) else row.bot_id,
+                'bot_name': row[0].bot_name if isinstance(row, tuple) else row.bot_name,
+                'pipeline_id': row[0].pipeline_id if isinstance(row, tuple) else row.pipeline_id,
+                'pipeline_name': row[0].pipeline_name if isinstance(row, tuple) else row.pipeline_name,
+                'session_id': row[0].session_id if isinstance(row, tuple) else row.session_id,
+                'message_id': row[0].message_id if isinstance(row, tuple) else row.message_id,
+                'stream_id': row[0].stream_id if isinstance(row, tuple) else row.stream_id,
+                'user_id': row[0].user_id if isinstance(row, tuple) else row.user_id,
+                'platform': row[0].platform if isinstance(row, tuple) else row.platform,
             }
             for row in rows
         ]

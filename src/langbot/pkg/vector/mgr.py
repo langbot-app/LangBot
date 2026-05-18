@@ -2,11 +2,6 @@ from __future__ import annotations
 
 from ..core import app
 from .vdb import VectorDatabase, SearchType
-from .vdbs.chroma import ChromaVectorDatabase
-from .vdbs.qdrant import QdrantVectorDatabase
-from .vdbs.seekdb import SeekDBVectorDatabase
-from .vdbs.milvus import MilvusVectorDatabase
-from .vdbs.pgvector_db import PgVectorDatabase
 
 
 class VectorDBManager:
@@ -22,17 +17,25 @@ class VectorDBManager:
             vdb_type = kb_config.get('use')
 
             if vdb_type == 'chroma':
+                from .vdbs.chroma import ChromaVectorDatabase
+
                 self.vector_db = ChromaVectorDatabase(self.ap)
                 self.ap.logger.info('Initialized Chroma vector database backend.')
 
             elif vdb_type == 'qdrant':
+                from .vdbs.qdrant import QdrantVectorDatabase
+
                 self.vector_db = QdrantVectorDatabase(self.ap)
                 self.ap.logger.info('Initialized Qdrant vector database backend.')
             elif vdb_type == 'seekdb':
+                from .vdbs.seekdb import SeekDBVectorDatabase
+
                 self.vector_db = SeekDBVectorDatabase(self.ap)
                 self.ap.logger.info('Initialized SeekDB vector database backend.')
 
             elif vdb_type == 'milvus':
+                from .vdbs.milvus import MilvusVectorDatabase
+
                 # Get Milvus configuration
                 milvus_config = kb_config.get('milvus', {})
                 uri = milvus_config.get('uri', './data/milvus.db')
@@ -42,6 +45,8 @@ class VectorDBManager:
                 self.ap.logger.info('Initialized Milvus vector database backend.')
 
             elif vdb_type == 'pgvector':
+                from .vdbs.pgvector_db import PgVectorDatabase
+
                 # Get pgvector configuration
                 pgvector_config = kb_config.get('pgvector', {})
                 connection_string = pgvector_config.get('connection_string')
@@ -60,9 +65,13 @@ class VectorDBManager:
                 self.ap.logger.info('Initialized pgvector database backend.')
 
             else:
+                from .vdbs.chroma import ChromaVectorDatabase
+
                 self.vector_db = ChromaVectorDatabase(self.ap)
                 self.ap.logger.warning('No valid vector database backend configured, defaulting to Chroma.')
         else:
+            from .vdbs.chroma import ChromaVectorDatabase
+
             self.vector_db = ChromaVectorDatabase(self.ap)
             self.ap.logger.warning('No vector database backend configured, defaulting to Chroma.')
 
