@@ -316,8 +316,6 @@ function NavItems({
   const pathname = location.pathname;
   const [searchParams] = useSearchParams();
   const sidebarData = useSidebarData();
-  const { setPendingPluginInstallAction, setPendingSkillInstallAction } =
-    sidebarData;
   const { state: sidebarState, isMobile } = useSidebar();
   const { t } = useTranslation();
   // Track which entity categories have their full list expanded
@@ -814,7 +812,7 @@ function NavItems({
                               <DropdownMenuItem
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  navigate('/home/market');
+                                  navigate('/home/add-extension');
                                   setPopoverOpen((prev) => ({
                                     ...prev,
                                     [config.id]: false,
@@ -828,8 +826,7 @@ function NavItems({
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setPendingPluginInstallAction('local');
-                                navigate('/home/extensions');
+                                navigate('/home/add-extension?manual=1');
                                 setPopoverOpen((prev) => ({
                                   ...prev,
                                   [config.id]: false,
@@ -842,8 +839,7 @@ function NavItems({
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setPendingPluginInstallAction('github');
-                                navigate('/home/extensions');
+                                navigate('/home/add-extension?manual=1');
                                 setPopoverOpen((prev) => ({
                                   ...prev,
                                   [config.id]: false,
@@ -869,8 +865,7 @@ function NavItems({
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setPendingSkillInstallAction('create');
-                                navigate('/home/skills');
+                                navigate('/home/skills?action=create');
                                 setPopoverOpen((prev) => ({
                                   ...prev,
                                   [config.id]: false,
@@ -883,8 +878,7 @@ function NavItems({
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setPendingSkillInstallAction('upload');
-                                navigate('/home/skills');
+                                navigate('/home/add-extension?manual=1');
                                 setPopoverOpen((prev) => ({
                                   ...prev,
                                   [config.id]: false,
@@ -897,8 +891,7 @@ function NavItems({
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setPendingSkillInstallAction('github');
-                                navigate('/home/skills');
+                                navigate('/home/add-extension?manual=1');
                                 setPopoverOpen((prev) => ({
                                   ...prev,
                                   [config.id]: false,
@@ -992,7 +985,7 @@ function NavItems({
                               <DropdownMenuItem
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  navigate('/home/market');
+                                  navigate('/home/add-extension');
                                 }}
                               >
                                 <Store className="size-4" />
@@ -1002,8 +995,7 @@ function NavItems({
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setPendingPluginInstallAction('local');
-                                navigate('/home/extensions');
+                                navigate('/home/add-extension?manual=1');
                               }}
                             >
                               <Upload className="size-4" />
@@ -1012,8 +1004,7 @@ function NavItems({
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setPendingPluginInstallAction('github');
-                                navigate('/home/extensions');
+                                navigate('/home/add-extension?manual=1');
                               }}
                             >
                               <Github className="size-4" />
@@ -1036,8 +1027,7 @@ function NavItems({
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setPendingSkillInstallAction('create');
-                                navigate('/home/skills');
+                                navigate('/home/skills?action=create');
                               }}
                             >
                               <FilePlus2 className="size-4" />
@@ -1046,8 +1036,7 @@ function NavItems({
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setPendingSkillInstallAction('upload');
-                                navigate('/home/skills');
+                                navigate('/home/add-extension?manual=1');
                               }}
                             >
                               <Upload className="size-4" />
@@ -1056,8 +1045,7 @@ function NavItems({
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setPendingSkillInstallAction('github');
-                                navigate('/home/skills');
+                                navigate('/home/add-extension?manual=1');
                               }}
                             >
                               <Github className="size-4" />
@@ -1472,7 +1460,10 @@ function findSidebarChildForPath(pathname: string): SidebarChildVO | undefined {
     );
   }
 
-  if (pathname === '/home/market' || pathname.startsWith('/home/market/')) {
+  if (
+    pathname === '/home/add-extension' ||
+    pathname.startsWith('/home/add-extension/')
+  ) {
     return sidebarConfigList.find(
       (childConfig) => childConfig.id === 'add-extension',
     );

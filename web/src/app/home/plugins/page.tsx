@@ -9,40 +9,21 @@ import { Label } from '@/components/ui/label';
 import PluginDetailContent from './PluginDetailContent';
 import styles from './plugins.module.css';
 import { Button } from '@/components/ui/button';
-import {
-  UploadIcon,
-  Power,
-  Github,
-  ChevronLeft,
-  Code,
-  Copy,
-  Check,
-  Bug,
-  Unlink,
-} from 'lucide-react';
+import { Power, Code, Copy, Check, Bug, Unlink } from 'lucide-react';
 import { copyToClipboard } from '@/app/utils/clipboard';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-} from '@/components/ui/card';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import React, { useState, useRef, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
-import { systemInfo } from '@/app/infra/http/HttpClient';
 import { ApiRespPluginSystemStatus } from '@/app/infra/entities/api';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import {
@@ -50,39 +31,10 @@ import {
   usePluginInstallTasks,
 } from '@/app/home/plugins/components/plugin-install-task';
 
-enum PluginInstallStatus {
-  WAIT_INPUT = 'wait_input',
-  SELECT_RELEASE = 'select_release',
-  SELECT_ASSET = 'select_asset',
-  ASK_CONFIRM = 'ask_confirm',
-  INSTALLING = 'installing',
-  ERROR = 'error',
-}
-
-interface GithubRelease {
-  id: number;
-  tag_name: string;
-  name: string;
-  published_at: string;
-  prerelease: boolean;
-  draft: boolean;
-  source_type?: 'release' | 'tag' | 'branch';
-  archive_url?: string;
-}
-
-interface GithubAsset {
-  id: number;
-  name: string;
-  size: number;
-  download_url: string;
-  content_type: string;
-}
-
 export default function PluginConfigPage() {
   const [searchParams] = useSearchParams();
   const detailId = searchParams.get('id');
 
-  // Show plugin detail view when ?id= query param is present
   if (detailId) {
     return <PluginDetailContent id={detailId} />;
   }
@@ -92,40 +44,16 @@ export default function PluginConfigPage() {
 
 function PluginListView() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const {
     refreshPlugins,
-    pendingPluginInstallAction,
-    setPendingPluginInstallAction,
+    extensionsGroupByType: groupByType,
+    setExtensionsGroupByType: setGroupByType,
   } = useSidebarData();
-  const {
-    addTask,
-    setSelectedTaskId,
-    registerOnTaskComplete,
-    unregisterOnTaskComplete,
-  } = usePluginInstallTasks();
-  const [showGithubInstall, setShowGithubInstall] = useState(false);
-  const [installSource, setInstallSource] = useState<string>('local');
-  const [installInfo] = useState<Record<string, any>>({});
-  const [pluginInstallStatus, setPluginInstallStatus] =
-    useState<PluginInstallStatus>(PluginInstallStatus.WAIT_INPUT);
-  const [installError, setInstallError] = useState<string | null>(null);
-  const [githubURL, setGithubURL] = useState('');
-  const [githubReleases, setGithubReleases] = useState<GithubRelease[]>([]);
-  const [selectedRelease, setSelectedRelease] = useState<GithubRelease | null>(
-    null,
-  );
-  const [githubAssets, setGithubAssets] = useState<GithubAsset[]>([]);
-  const [selectedAsset, setSelectedAsset] = useState<GithubAsset | null>(null);
-  const [githubOwner, setGithubOwner] = useState('');
-  const [githubRepo, setGithubRepo] = useState('');
-  const [fetchingReleases, setFetchingReleases] = useState(false);
-  const [fetchingAssets, setFetchingAssets] = useState(false);
-  const [isDragOver, setIsDragOver] = useState(false);
+  const { registerOnTaskComplete, unregisterOnTaskComplete } =
+    usePluginInstallTasks();
   const [pluginSystemStatus, setPluginSystemStatus] =
     useState<ApiRespPluginSystemStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [debugInfo, setDebugInfo] = useState<{
     debug_url: string;
     plugin_debug_key: string;
@@ -134,8 +62,7 @@ function PluginListView() {
   const [copiedDebugUrl, setCopiedDebugUrl] = useState(false);
   const [copiedDebugKey, setCopiedDebugKey] = useState(false);
   const [filterType, setFilterType] = useState<FilterType>('all');
-  const groupByType = useSidebarData().extensionsGroupByType;
-  const setGroupByType = useSidebarData().setExtensionsGroupByType;
+  const pluginInstalledRef = useRef<PluginInstalledComponentRef>(null);
 
   useEffect(() => {
     const fetchPluginSystemStatus = async () => {
@@ -151,19 +78,9 @@ function PluginListView() {
       }
     };
 
-    fetchPluginSystemStatus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    void fetchPluginSystemStatus();
+  }, [t]);
 
-  function formatFileSize(bytes: number): string {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
-  }
-
-  // Register task completion callback for toast and plugin list refresh
   useEffect(() => {
     const onComplete = (_taskId: number, success: boolean) => {
       if (success) {
@@ -177,285 +94,6 @@ function PluginListView() {
       unregisterOnTaskComplete(onComplete);
     };
   }, [registerOnTaskComplete, unregisterOnTaskComplete, refreshPlugins, t]);
-
-  const pluginInstalledRef = useRef<PluginInstalledComponentRef>(null);
-
-  function resetGithubState() {
-    setGithubURL('');
-    setGithubReleases([]);
-    setSelectedRelease(null);
-    setGithubAssets([]);
-    setSelectedAsset(null);
-    setGithubOwner('');
-    setGithubRepo('');
-    setFetchingReleases(false);
-    setFetchingAssets(false);
-  }
-
-  async function checkExtensionsLimit(): Promise<boolean> {
-    const maxExtensions = systemInfo.limitation?.max_extensions ?? -1;
-    if (maxExtensions < 0) return true;
-    try {
-      const [pluginsResp, mcpResp] = await Promise.all([
-        httpClient.getPlugins(),
-        httpClient.getMCPServers(),
-      ]);
-      const total =
-        (pluginsResp.plugins?.length ?? 0) + (mcpResp.servers?.length ?? 0);
-      if (total >= maxExtensions) {
-        toast.error(
-          t('limitation.maxExtensionsReached', { max: maxExtensions }),
-        );
-        return false;
-      }
-    } catch {
-      // If we can't check, let backend handle it
-    }
-    return true;
-  }
-
-  async function fetchGithubReleases() {
-    if (!githubURL.trim()) {
-      toast.error(t('plugins.enterRepoUrl'));
-      return;
-    }
-
-    setFetchingReleases(true);
-    setInstallError(null);
-
-    try {
-      const result = await httpClient.getGithubReleases(githubURL);
-      setGithubReleases(result.releases);
-      setGithubOwner(result.owner);
-      setGithubRepo(result.repo);
-
-      if (result.releases.length === 0) {
-        toast.warning(t('plugins.noReleasesFound'));
-      } else {
-        setPluginInstallStatus(PluginInstallStatus.SELECT_RELEASE);
-      }
-    } catch (error: unknown) {
-      console.error('Failed to fetch GitHub releases:', error);
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      setInstallError(errorMessage || t('plugins.fetchReleasesError'));
-      setPluginInstallStatus(PluginInstallStatus.ERROR);
-    } finally {
-      setFetchingReleases(false);
-    }
-  }
-
-  async function handleReleaseSelect(release: GithubRelease) {
-    setSelectedRelease(release);
-    setFetchingAssets(true);
-    setInstallError(null);
-
-    try {
-      const result = await httpClient.getGithubReleaseAssets(
-        githubOwner,
-        githubRepo,
-        release.id,
-        release.tag_name,
-        release.source_type,
-        release.archive_url,
-      );
-      setGithubAssets(result.assets);
-
-      if (result.assets.length === 0) {
-        toast.warning(t('plugins.noAssetsFound'));
-      } else {
-        setPluginInstallStatus(PluginInstallStatus.SELECT_ASSET);
-      }
-    } catch (error: unknown) {
-      console.error('Failed to fetch GitHub release assets:', error);
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      setInstallError(errorMessage || t('plugins.fetchAssetsError'));
-      setPluginInstallStatus(PluginInstallStatus.ERROR);
-    } finally {
-      setFetchingAssets(false);
-    }
-  }
-
-  function handleAssetSelect(asset: GithubAsset) {
-    setSelectedAsset(asset);
-    setPluginInstallStatus(PluginInstallStatus.ASK_CONFIRM);
-  }
-
-  function handleModalConfirm() {
-    if (installSource === 'github' && selectedAsset && selectedRelease) {
-      installPlugin('github', {
-        asset_url: selectedAsset.download_url,
-        owner: githubOwner,
-        repo: githubRepo,
-        release_tag: selectedRelease.tag_name,
-      });
-    } else {
-      installPlugin(installSource, installInfo as Record<string, any>);
-    }
-  }
-
-  function installPlugin(
-    installSource: string,
-    installInfo: Record<string, any>,
-  ) {
-    setPluginInstallStatus(PluginInstallStatus.INSTALLING);
-    if (installSource === 'github') {
-      const pluginDisplayName = `${installInfo.owner}/${installInfo.repo}`;
-      const assetSize = selectedAsset?.size;
-      httpClient
-        .installPluginFromGithub(
-          installInfo.asset_url,
-          installInfo.owner,
-          installInfo.repo,
-          installInfo.release_tag,
-        )
-        .then((resp) => {
-          const taskId = resp.task_id;
-          const taskKey = `github-${taskId}`;
-          addTask({
-            taskId,
-            pluginName: pluginDisplayName,
-            source: 'github',
-            extensionType: 'plugin',
-            fileSize: assetSize,
-          });
-          setSelectedTaskId(taskKey);
-          resetGithubState();
-          setShowGithubInstall(false);
-        })
-        .catch((err) => {
-          setInstallError(err.msg);
-          setPluginInstallStatus(PluginInstallStatus.ERROR);
-        });
-    } else if (installSource === 'local') {
-      const fileName = installInfo.file?.name || 'local plugin';
-      const fileSize = installInfo.file?.size;
-      httpClient
-        .installPluginFromLocal(installInfo.file)
-        .then((resp) => {
-          const taskId = resp.task_id;
-          const taskKey = `local-${taskId}`;
-          addTask({
-            taskId,
-            pluginName: fileName,
-            source: 'local',
-            extensionType: 'plugin',
-            fileSize: fileSize,
-          });
-          setSelectedTaskId(taskKey);
-        })
-        .catch((err) => {
-          setInstallError(err.msg);
-          setPluginInstallStatus(PluginInstallStatus.ERROR);
-          toast.error(t('plugins.installFailed') + (err.msg || ''));
-        });
-    }
-  }
-
-  const validateFileType = (file: File): boolean => {
-    const allowedExtensions = ['.lbpkg', '.zip'];
-    const fileName = file.name.toLowerCase();
-    return allowedExtensions.some((ext) => fileName.endsWith(ext));
-  };
-
-  const uploadPluginFile = useCallback(
-    async (file: File) => {
-      if (!pluginSystemStatus?.is_enable || !pluginSystemStatus?.is_connected) {
-        toast.error(t('plugins.pluginSystemNotReady'));
-        return;
-      }
-
-      if (!validateFileType(file)) {
-        toast.error(t('plugins.unsupportedFileType'));
-        return;
-      }
-
-      if (!(await checkExtensionsLimit())) return;
-
-      setPluginInstallStatus(PluginInstallStatus.INSTALLING);
-      setInstallError(null);
-      installPlugin('local', { file });
-    },
-    [t, pluginSystemStatus, installPlugin],
-  );
-
-  const handleFileSelect = useCallback(async () => {
-    if (!(await checkExtensionsLimit())) return;
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
-    }
-  }, []);
-
-  const handleFileChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      if (file) {
-        uploadPluginFile(file);
-      }
-
-      event.target.value = '';
-    },
-    [uploadPluginFile],
-  );
-
-  const isPluginSystemReady =
-    pluginSystemStatus?.is_enable && pluginSystemStatus?.is_connected;
-
-  const handleDragOver = useCallback(
-    (event: React.DragEvent) => {
-      event.preventDefault();
-      if (isPluginSystemReady) {
-        setIsDragOver(true);
-      }
-    },
-    [isPluginSystemReady],
-  );
-
-  const handleDragLeave = useCallback((event: React.DragEvent) => {
-    event.preventDefault();
-    setIsDragOver(false);
-  }, []);
-
-  const handleDrop = useCallback(
-    (event: React.DragEvent) => {
-      event.preventDefault();
-      setIsDragOver(false);
-
-      if (!isPluginSystemReady) {
-        toast.error(t('plugins.pluginSystemNotReady'));
-        return;
-      }
-
-      const files = Array.from(event.dataTransfer.files);
-      if (files.length > 0) {
-        uploadPluginFile(files[0]);
-      }
-    },
-    [uploadPluginFile, isPluginSystemReady, t],
-  );
-
-  // Auto-trigger install action from sidebar via shared context
-  useEffect(() => {
-    if (!pendingPluginInstallAction || statusLoading || !isPluginSystemReady)
-      return;
-
-    // Consume the action immediately
-    const action = pendingPluginInstallAction;
-    setPendingPluginInstallAction(null);
-
-    if (action === 'local') {
-      // Small delay to ensure file input ref is ready
-      setTimeout(() => fileInputRef.current?.click(), 100);
-    } else if (action === 'github') {
-      setInstallSource('github');
-      setPluginInstallStatus(PluginInstallStatus.WAIT_INPUT);
-      setInstallError(null);
-      resetGithubState();
-      setShowGithubInstall(true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingPluginInstallAction, statusLoading, isPluginSystemReady]);
 
   const handleShowDebugInfo = async () => {
     try {
@@ -520,23 +158,7 @@ function PluginListView() {
   }
 
   return (
-    <div
-      className={`${styles.pageContainer} h-full flex flex-col ${
-        isDragOver ? 'bg-blue-50' : ''
-      }`}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-    >
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".lbpkg,.zip"
-        onChange={handleFileChange}
-        style={{ display: 'none' }}
-      />
-
-      {/* Header bar with filter tabs, debug info, and task queue */}
+    <div className={`${styles.pageContainer} h-full flex flex-col`}>
       <div className="flex flex-col md:flex-row md:justify-between md:items-center px-[0.8rem] pb-4 flex-shrink-0 gap-2">
         <div className="overflow-x-auto -mx-1 px-1">
           <Tabs
@@ -588,7 +210,6 @@ function PluginListView() {
               align="end"
             >
               <div className="space-y-3">
-                {/* Header with icon and title */}
                 <div className="flex items-center gap-2 pb-2 border-b">
                   <Bug className="w-4 h-4" />
                   <h4 className="font-semibold text-sm">
@@ -596,7 +217,6 @@ function PluginListView() {
                   </h4>
                 </div>
 
-                {/* Debug URL row */}
                 <div className="flex items-center gap-2">
                   <label className="text-sm font-medium whitespace-nowrap min-w-[50px]">
                     {t('plugins.debugUrl')}:
@@ -622,7 +242,6 @@ function PluginListView() {
                   </Button>
                 </div>
 
-                {/* Debug Key row */}
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <label className="text-sm font-medium whitespace-nowrap min-w-[50px]">
@@ -666,251 +285,6 @@ function PluginListView() {
         </div>
       </div>
 
-      {/* Inline GitHub install flow */}
-      {showGithubInstall && (
-        <div className="px-[0.8rem] pb-4 flex-shrink-0">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Github className="size-5" />
-                <span>{t('plugins.installPlugin')}</span>
-              </CardTitle>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setShowGithubInstall(false);
-                  resetGithubState();
-                  setInstallError(null);
-                }}
-              >
-                {t('common.cancel')}
-              </Button>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Step 1: Enter repo URL */}
-              {pluginInstallStatus === PluginInstallStatus.WAIT_INPUT && (
-                <div>
-                  <p className="mb-2 text-sm">{t('plugins.enterRepoUrl')}</p>
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder={t('plugins.repoUrlPlaceholder')}
-                      value={githubURL}
-                      onChange={(e) => setGithubURL(e.target.value)}
-                    />
-                    <Button
-                      onClick={fetchGithubReleases}
-                      disabled={!githubURL.trim() || fetchingReleases}
-                    >
-                      {fetchingReleases
-                        ? t('plugins.loading')
-                        : t('common.confirm')}
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* Step 2: Select release */}
-              {pluginInstallStatus === PluginInstallStatus.SELECT_RELEASE && (
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="font-medium text-sm">
-                      {t('plugins.selectRelease')}
-                    </p>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setPluginInstallStatus(PluginInstallStatus.WAIT_INPUT);
-                        setGithubReleases([]);
-                      }}
-                    >
-                      <ChevronLeft className="w-4 h-4 mr-1" />
-                      {t('plugins.backToRepoUrl')}
-                    </Button>
-                  </div>
-                  <div className="max-h-[400px] overflow-y-auto space-y-2 pb-2">
-                    {githubReleases.map((release) => (
-                      <Card
-                        key={release.id}
-                        className="cursor-pointer hover:shadow-sm transition-shadow duration-200 shadow-none py-4"
-                        onClick={() => handleReleaseSelect(release)}
-                      >
-                        <CardHeader className="flex flex-row items-start justify-between px-3 space-y-0">
-                          <div className="flex-1">
-                            <CardTitle className="text-sm">
-                              {release.name || release.tag_name}
-                            </CardTitle>
-                            <CardDescription className="text-xs mt-1">
-                              {t('plugins.releaseTag', {
-                                tag: release.tag_name,
-                              })}{' '}
-                              &bull;{' '}
-                              {t('plugins.publishedAt', {
-                                date: new Date(
-                                  release.published_at,
-                                ).toLocaleDateString(),
-                              })}
-                            </CardDescription>
-                          </div>
-                          {release.prerelease && (
-                            <Badge
-                              variant="secondary"
-                              className="ml-2 shrink-0"
-                            >
-                              {t('plugins.prerelease')}
-                            </Badge>
-                          )}
-                        </CardHeader>
-                      </Card>
-                    ))}
-                  </div>
-                  {fetchingAssets && (
-                    <p className="text-sm text-muted-foreground mt-4">
-                      {t('plugins.loading')}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {/* Step 3: Select asset */}
-              {pluginInstallStatus === PluginInstallStatus.SELECT_ASSET && (
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="font-medium text-sm">
-                      {t('plugins.selectAsset')}
-                    </p>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setPluginInstallStatus(
-                          PluginInstallStatus.SELECT_RELEASE,
-                        );
-                        setGithubAssets([]);
-                        setSelectedAsset(null);
-                      }}
-                    >
-                      <ChevronLeft className="w-4 h-4 mr-1" />
-                      {t('plugins.backToReleases')}
-                    </Button>
-                  </div>
-                  {selectedRelease && (
-                    <div className="mb-3 p-2 bg-muted rounded">
-                      <div className="text-sm font-medium">
-                        {selectedRelease.name || selectedRelease.tag_name}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {selectedRelease.tag_name}
-                      </div>
-                    </div>
-                  )}
-                  <div className="max-h-[400px] overflow-y-auto space-y-2 pb-2">
-                    {githubAssets.map((asset) => (
-                      <Card
-                        key={asset.id}
-                        className="cursor-pointer hover:shadow-sm transition-shadow duration-200 shadow-none py-3"
-                        onClick={() => handleAssetSelect(asset)}
-                      >
-                        <CardHeader className="px-3">
-                          <CardTitle className="text-sm">
-                            {asset.name}
-                          </CardTitle>
-                          <CardDescription className="text-xs">
-                            {t('plugins.assetSize', {
-                              size: formatFileSize(asset.size),
-                            })}
-                          </CardDescription>
-                        </CardHeader>
-                      </Card>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Step 4: Confirm install */}
-              {pluginInstallStatus === PluginInstallStatus.ASK_CONFIRM && (
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="font-medium text-sm">
-                      {t('plugins.confirmInstall')}
-                    </p>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setPluginInstallStatus(
-                          PluginInstallStatus.SELECT_ASSET,
-                        );
-                        setSelectedAsset(null);
-                      }}
-                    >
-                      <ChevronLeft className="w-4 h-4 mr-1" />
-                      {t('plugins.backToAssets')}
-                    </Button>
-                  </div>
-                  {selectedRelease && selectedAsset && (
-                    <div className="p-3 bg-muted rounded space-y-2">
-                      <div>
-                        <span className="text-sm font-medium">
-                          Repository:{' '}
-                        </span>
-                        <span className="text-sm">
-                          {githubOwner}/{githubRepo}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-sm font-medium">Release: </span>
-                        <span className="text-sm">
-                          {selectedRelease.tag_name}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-sm font-medium">File: </span>
-                        <span className="text-sm">{selectedAsset.name}</span>
-                      </div>
-                    </div>
-                  )}
-                  <div className="flex justify-end mt-4">
-                    <Button onClick={() => handleModalConfirm()}>
-                      {t('common.confirm')}
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* Installing state */}
-              {pluginInstallStatus === PluginInstallStatus.INSTALLING && (
-                <div>
-                  <p className="text-sm">{t('plugins.installing')}</p>
-                </div>
-              )}
-
-              {/* Error state */}
-              {pluginInstallStatus === PluginInstallStatus.ERROR && (
-                <div>
-                  <p className="text-sm mb-1">{t('plugins.installFailed')}</p>
-                  <p className="text-sm text-destructive">{installError}</p>
-                  <div className="flex justify-end mt-4">
-                    <Button
-                      variant="default"
-                      onClick={() => {
-                        setShowGithubInstall(false);
-                        resetGithubState();
-                        setInstallError(null);
-                      }}
-                    >
-                      {t('common.close')}
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Installed plugins grid */}
       <div className="flex-1 overflow-y-auto">
         <PluginInstalledComponent
           ref={pluginInstalledRef}
@@ -918,17 +292,6 @@ function PluginListView() {
           groupByType={groupByType}
         />
       </div>
-
-      {isDragOver && (
-        <div className="fixed inset-0 bg-foreground/40 flex items-center justify-center z-50 pointer-events-none">
-          <Card className="border-2 border-dashed">
-            <CardContent className="flex flex-col items-center justify-center px-8 py-6">
-              <UploadIcon className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-lg font-medium">{t('plugins.dragToUpload')}</p>
-            </CardContent>
-          </Card>
-        </div>
-      )}
     </div>
   );
 }

@@ -222,7 +222,7 @@ export default function FileUploadZone({
                   {t('knowledge.documentsTab.noParserAvailable')}
                 </p>
                 <Link
-                  to="/home/market?category=Parser"
+                  to="/home/add-extension"
                   className="text-sm text-primary hover:underline mt-1 inline-block"
                 >
                   {t('knowledge.documentsTab.installParserHint')}

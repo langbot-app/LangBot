@@ -525,6 +525,21 @@ const viVN = {
     uploadLocal: 'Tải lên cục bộ',
     debugging: 'Gỡ lỗi',
     uploadLocalPlugin: 'Tải lên Plugin cục bộ',
+    localPreview: {
+      title: 'Xem trước gói plugin cục bộ',
+      unpacking: 'Đang giải nén để xem trước gói...',
+      unpackComplete: 'Bản xem trước gói đã sẵn sàng',
+      failed: 'Không thể xem trước gói',
+      pluginInfo: 'Thông tin plugin',
+      packageInfo: 'Thông tin gói',
+      name: 'Tên',
+      author: 'Tác giả',
+      version: 'Phiên bản',
+      fileCount: 'Tệp',
+      dependencies: 'Phụ thuộc',
+      components: 'Thành phần',
+      ready: 'Gói plugin đã được giải nén. Xác nhận để bắt đầu cài đặt.',
+    },
     dragToUpload: 'Kéo tệp plugin vào đây để tải lên',
     unsupportedFileType:
       'Loại tệp không được hỗ trợ, chỉ hỗ trợ tệp .lbpkg và .zip',
@@ -1451,7 +1466,7 @@ const viVN = {
     scanError: 'Quét thư mục thất bại: ',
     noSkills: 'Chưa cấu hình kỹ năng nào',
     preview: 'Xem trước',
-    previewInstructions: 'Xem trước hướng dẫn',
+    previewInstructions: 'Xem trước nội dung SKILL.md',
     instructionsPlaceholder:
       'Nhập hướng dẫn kỹ năng theo định dạng Markdown...',
     descriptionPlaceholder:

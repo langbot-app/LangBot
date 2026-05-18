@@ -30,10 +30,6 @@ export interface SidebarEntityItem {
   extensionType?: 'plugin' | 'mcp' | 'skill';
 }
 
-// Install action types that can be triggered from sidebar
-export type PluginInstallAction = 'local' | 'github' | null;
-export type SkillInstallAction = 'create' | 'github' | 'upload' | null;
-
 // Plugin page registered by a plugin
 export interface PluginPageItem {
   id: string; // "author/name/pageId"
@@ -65,12 +61,6 @@ export interface SidebarDataContextValue {
   // Breadcrumb: entity name shown when viewing a detail page
   detailEntityName: string | null;
   setDetailEntityName: (name: string | null) => void;
-  // Pending plugin install action triggered from sidebar
-  pendingPluginInstallAction: PluginInstallAction;
-  setPendingPluginInstallAction: (action: PluginInstallAction) => void;
-  // Pending skill install action triggered from sidebar
-  pendingSkillInstallAction: SkillInstallAction;
-  setPendingSkillInstallAction: (action: SkillInstallAction) => void;
   // Whether the extensions list is grouped by type (shared between page and sidebar)
   extensionsGroupByType: boolean;
   setExtensionsGroupByType: (enabled: boolean) => void;
@@ -91,10 +81,6 @@ export function SidebarDataProvider({
   const [skills, setSkills] = useState<SidebarEntityItem[]>([]);
   const [pluginPages, setPluginPages] = useState<PluginPageItem[]>([]);
   const [detailEntityName, setDetailEntityName] = useState<string | null>(null);
-  const [pendingPluginInstallAction, setPendingPluginInstallAction] =
-    useState<PluginInstallAction>(null);
-  const [pendingSkillInstallAction, setPendingSkillInstallAction] =
-    useState<SkillInstallAction>(null);
   const [extensionsGroupByType, setExtensionsGroupByTypeState] =
     useState<boolean>(() => {
       if (typeof window === 'undefined') return false;
@@ -320,10 +306,6 @@ export function SidebarDataProvider({
         refreshAll,
         detailEntityName,
         setDetailEntityName,
-        pendingPluginInstallAction,
-        setPendingPluginInstallAction,
-        pendingSkillInstallAction,
-        setPendingSkillInstallAction,
         extensionsGroupByType,
         setExtensionsGroupByType,
       }}

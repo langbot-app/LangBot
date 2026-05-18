@@ -4,8 +4,6 @@ import { Progress } from '@/components/ui/progress';
 import {
   Download,
   Package,
-  Settings,
-  Rocket,
   CheckCircle2,
   XCircle,
   Loader2,
@@ -32,8 +30,6 @@ import { cn } from '@/lib/utils';
 const STAGE_ICONS: Record<string, React.ElementType> = {
   [InstallStage.DOWNLOADING]: Download,
   [InstallStage.INSTALLING_DEPS]: Package,
-  [InstallStage.INITIALIZING]: Settings,
-  [InstallStage.LAUNCHING]: Rocket,
   [InstallStage.DONE]: CheckCircle2,
   [InstallStage.ERROR]: XCircle,
 };
@@ -99,12 +95,10 @@ function TaskQueueItem({
         return t('plugins.installProgress.downloading');
       case InstallStage.INSTALLING_DEPS:
         return t('plugins.installProgress.installingDeps');
-      case InstallStage.INITIALIZING:
-        return t('plugins.installProgress.initializing');
-      case InstallStage.LAUNCHING:
-        return t('plugins.installProgress.launching');
       case InstallStage.DONE:
-        return isDone ? getInstallCompleteMessage() : t('plugins.installProgress.completed');
+        return isDone
+          ? getInstallCompleteMessage()
+          : t('plugins.installProgress.completed');
       case InstallStage.ERROR:
         return t('plugins.installProgress.failed');
       default:
@@ -140,7 +134,10 @@ function TaskQueueItem({
           <div className="text-sm font-medium truncate">{task.pluginName}</div>
           <Badge
             variant="outline"
-            className={cn('text-[0.6rem] px-1 py-0 flex-shrink-0', getTypeBadgeClass())}
+            className={cn(
+              'text-[0.6rem] px-1 py-0 flex-shrink-0',
+              getTypeBadgeClass(),
+            )}
           >
             <TypeIcon className="w-3 h-3 mr-0.5" />
             {getTypeLabel()}

@@ -532,6 +532,22 @@ const esES = {
     uploadLocal: 'Subir local',
     debugging: 'Depuración',
     uploadLocalPlugin: 'Subir plugin local',
+    localPreview: {
+      title: 'Previsualizar paquete de plugin local',
+      unpacking: 'Descomprimiendo vista previa del paquete...',
+      unpackComplete: 'Vista previa del paquete lista',
+      failed: 'No se pudo previsualizar el paquete',
+      pluginInfo: 'Información del plugin',
+      packageInfo: 'Información del paquete',
+      name: 'Nombre',
+      author: 'Autor',
+      version: 'Versión',
+      fileCount: 'Archivos',
+      dependencies: 'Dependencias',
+      components: 'Componentes',
+      ready:
+        'El paquete del plugin está descomprimido. Confirma para iniciar la instalación.',
+    },
     dragToUpload: 'Arrastra el archivo del plugin aquí para subirlo',
     unsupportedFileType:
       'Tipo de archivo no soportado, solo se admiten archivos .lbpkg y .zip',
@@ -1486,7 +1502,7 @@ const esES = {
     scanError: 'Error al escanear el directorio: ',
     noSkills: 'No hay skills configuradas',
     preview: 'Vista previa',
-    previewInstructions: 'Vista previa de instrucciones',
+    previewInstructions: 'Vista previa del contenido de SKILL.md',
     instructionsPlaceholder:
       'Introduce las instrucciones de la skill en formato Markdown...',
     descriptionPlaceholder:

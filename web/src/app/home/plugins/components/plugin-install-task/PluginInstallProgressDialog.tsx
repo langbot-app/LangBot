@@ -10,8 +10,6 @@ import { Button } from '@/components/ui/button';
 import {
   Download,
   Package,
-  Settings,
-  Rocket,
   CheckCircle2,
   XCircle,
   Loader2,
@@ -38,16 +36,6 @@ const STAGES: {
     key: InstallStage.INSTALLING_DEPS,
     icon: Package,
     i18nKey: 'plugins.installProgress.installingDeps',
-  },
-  {
-    key: InstallStage.INITIALIZING,
-    icon: Settings,
-    i18nKey: 'plugins.installProgress.initializing',
-  },
-  {
-    key: InstallStage.LAUNCHING,
-    icon: Rocket,
-    i18nKey: 'plugins.installProgress.launching',
   },
 ];
 

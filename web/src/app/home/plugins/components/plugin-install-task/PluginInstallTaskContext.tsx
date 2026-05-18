@@ -89,8 +89,8 @@ function mapActionToStage(action: string): InstallStage {
   if (lower.includes('dependencies') || lower.includes('requirements'))
     return InstallStage.INSTALLING_DEPS;
   if (lower.includes('initializ') || lower.includes('setting'))
-    return InstallStage.INITIALIZING;
-  if (lower.includes('launch')) return InstallStage.LAUNCHING;
+    return InstallStage.INSTALLING_DEPS;
+  if (lower.includes('launch')) return InstallStage.INSTALLING_DEPS;
   if (lower.includes('installed') || lower.includes('complete'))
     return InstallStage.DONE;
   return InstallStage.DOWNLOADING;
@@ -104,7 +104,7 @@ function stageToProgress(stage: InstallStage): number {
     case InstallStage.DOWNLOADING:
       return 10;
     case InstallStage.INSTALLING_DEPS:
-      return 40;
+      return 70;
     case InstallStage.INITIALIZING:
       return 70;
     case InstallStage.LAUNCHING:
@@ -133,7 +133,11 @@ function extractSourceFromName(
  * Check if a backend task name is a plugin install task.
  */
 function isPluginInstallTask(name: string): boolean {
-  return name.startsWith('plugin-install-') || name.startsWith('mcp-install-') || name.startsWith('skill-install-');
+  return (
+    name.startsWith('plugin-install-') ||
+    name.startsWith('mcp-install-') ||
+    name.startsWith('skill-install-')
+  );
 }
 
 /**
@@ -218,8 +222,9 @@ export function PluginInstallTaskProvider({
 
   // Cleanup all intervals on unmount
   useEffect(() => {
+    const intervals = intervalRefs.current;
     return () => {
-      intervalRefs.current.forEach((interval) => {
+      intervals.forEach((interval) => {
         clearInterval(interval);
       });
       if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);

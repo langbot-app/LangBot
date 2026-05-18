@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import base64
+import io
 import quart
 import re
 import httpx
 import uuid
 import os
+import zipfile
+import yaml
 from urllib.parse import urlparse
 import posixpath
 
@@ -42,6 +45,60 @@ def _normalize_plugin_asset_path(filepath: str) -> str | None:
 
 @group.group_class('plugins', '/api/v1/plugins')
 class PluginsRouterGroup(group.RouterGroup):
+    @staticmethod
+    def _normalize_archive_path(path: str) -> str:
+        normalized = str(path or '').replace('\\', '/').strip('/')
+        return posixpath.normpath(normalized) if normalized else ''
+
+    @classmethod
+    def _component_source_path(cls, entry) -> str:
+        if isinstance(entry, dict):
+            return cls._normalize_archive_path(entry.get('path') or '')
+        return cls._normalize_archive_path(str(entry or ''))
+
+    @classmethod
+    def _count_component_configs(cls, component_config, archive_names: list[str]) -> int:
+        normalized_names = [cls._normalize_archive_path(name) for name in archive_names]
+        component_files: set[str] = set()
+
+        if isinstance(component_config, list):
+            return len(component_config)
+        if not isinstance(component_config, dict):
+            return 1 if component_config else 0
+
+        for entry in component_config.get('fromFiles') or []:
+            source_path = cls._component_source_path(entry)
+            if source_path and source_path in normalized_names:
+                component_files.add(source_path)
+
+        for entry in component_config.get('fromDirs') or []:
+            source_dir = cls._component_source_path(entry).rstrip('/')
+            if not source_dir:
+                continue
+            prefix = f'{source_dir}/'
+            for archive_name in normalized_names:
+                if not archive_name.startswith(prefix):
+                    continue
+                if archive_name.lower().endswith(('.yaml', '.yml')):
+                    component_files.add(archive_name)
+
+        if component_files:
+            return len(component_files)
+
+        return 1 if any(key in component_config for key in ('path', 'name', 'kind')) else 0
+
+    @classmethod
+    def _count_plugin_components(cls, components, archive_names: list[str]) -> dict[str, int]:
+        if not isinstance(components, dict):
+            return {}
+
+        component_counts: dict[str, int] = {}
+        for kind, component_config in components.items():
+            count = cls._count_component_configs(component_config, archive_names)
+            if count > 0:
+                component_counts[str(kind)] = count
+        return component_counts
+
     @staticmethod
     def _parse_github_repo_url(repo_url: str) -> dict | None:
         raw_url = str(repo_url or '').strip()
@@ -489,6 +546,62 @@ class PluginsRouterGroup(group.RouterGroup):
             )
 
             return self.success(data={'task_id': wrapper.id})
+
+        @self.route('/install/local/preview', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
+        async def _() -> str:
+            file = (await quart.request.files).get('file')
+            if file is None:
+                return self.http_status(400, -1, 'file is required')
+
+            file_bytes = file.read()
+            try:
+                with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
+                    names = [name for name in zf.namelist() if not name.endswith('/')]
+                    manifest_name = next(
+                        (
+                            name
+                            for name in names
+                            if name.replace('\\', '/').strip('/').lower() in ('manifest.yaml', 'manifest.yml')
+                        ),
+                        None,
+                    )
+                    if manifest_name is None:
+                        return self.http_status(400, -1, 'manifest.yaml is required')
+
+                    manifest = yaml.safe_load(zf.read(manifest_name).decode('utf-8')) or {}
+                    requirements: list[str] = []
+                    requirements_name = next(
+                        (name for name in names if name.replace('\\', '/').strip('/').lower() == 'requirements.txt'),
+                        None,
+                    )
+                    if requirements_name is not None:
+                        requirements = [
+                            line.strip()
+                            for line in zf.read(requirements_name).decode('utf-8', errors='ignore').splitlines()
+                            if line.strip() and not line.strip().startswith('#')
+                        ]
+
+                    spec = manifest.get('spec') or {}
+                    components = spec.get('components') or {}
+                    component_counts = self._count_plugin_components(components, names)
+                    component_types = list(component_counts.keys())
+
+                    return self.success(
+                        data={
+                            'filename': file.filename or 'local plugin',
+                            'size': len(file_bytes),
+                            'manifest': manifest,
+                            'metadata': manifest.get('metadata') or {},
+                            'component_types': component_types,
+                            'component_counts': component_counts,
+                            'requirements': requirements,
+                            'file_count': len(names),
+                        }
+                    )
+            except zipfile.BadZipFile:
+                return self.http_status(400, -1, 'invalid .lbpkg file')
+            except Exception as exc:
+                return self.http_status(500, -1, f'Failed to preview plugin package: {exc}')
 
         @self.route('/config-files', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:

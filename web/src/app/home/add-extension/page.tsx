@@ -22,8 +22,6 @@ import {
   BookOpen,
   FileArchive,
   Loader2,
-  CheckCircle2,
-  XCircle,
   CircleHelp,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -33,7 +31,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { httpClient, systemInfo } from '@/app/infra/http/HttpClient';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -46,8 +44,8 @@ import type {
   MCPFormDraft,
   MCPFormHandle,
 } from '@/app/home/mcp/components/mcp-form/MCPForm';
-import { Progress } from '@/components/ui/progress';
-import { cn } from '@/lib/utils';
+import SkillZipPreviewPanel from '@/app/home/skills/components/SkillZipPreviewPanel';
+import PluginLocalPreviewPanel from '@/app/home/plugins/components/PluginLocalPreviewPanel';
 
 type PopoverView = 'menu' | 'mcp' | 'github';
 
@@ -151,6 +149,7 @@ export default function AddExtensionPage() {
 function AddExtensionContent() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { refreshPlugins, refreshMCPServers, refreshSkills } = useSidebarData();
   const {
     addTask,
@@ -170,11 +169,12 @@ function AddExtensionContent() {
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [popoverView, setPopoverView] = useState<PopoverView>('menu');
   const [isDragOver, setIsDragOver] = useState(false);
-  const [skillUploadState, setSkillUploadState] = useState<
-    'idle' | 'uploading' | 'done' | 'error'
-  >('idle');
-  const [skillUploadFileName, setSkillUploadFileName] = useState('');
-  const [skillUploadError, setSkillUploadError] = useState<string | null>(null);
+  const [skillUploadPreviewOpen, setSkillUploadPreviewOpen] = useState(false);
+  const [skillUploadPreviewFile, setSkillUploadPreviewFile] =
+    useState<File | null>(null);
+  const [pluginUploadPreviewOpen, setPluginUploadPreviewOpen] = useState(false);
+  const [pluginUploadPreviewFile, setPluginUploadPreviewFile] =
+    useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mcpFormRef = useRef<MCPFormHandle>(null);
   const [mcpTesting, setMcpTesting] = useState(false);
@@ -208,6 +208,21 @@ function AddExtensionContent() {
     // Clear any stale completed tasks on mount
     clearCompletedTasks();
   }, [clearCompletedTasks]);
+
+  useEffect(() => {
+    if (searchParams.get('manual') !== '1') return;
+
+    setPopoverView('menu');
+    setPopoverOpen(true);
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.delete('manual');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     const onComplete = (_taskId: number, success: boolean) => {
@@ -282,49 +297,20 @@ function AddExtensionContent() {
       }
 
       const extType = getExtensionTypeFromFile(file);
-      const fileName = file.name;
-      const fileSize = file.size;
 
       setPopoverOpen(false);
       // Clear any selected task to avoid showing stale dialogs
       setSelectedTaskId(null);
 
       if (extType === 'plugin') {
-        httpClient
-          .installPluginFromLocal(file)
-          .then((resp) => {
-            const taskId = resp.task_id;
-            const taskKey = `local-${taskId}`;
-            addTask({
-              taskId,
-              pluginName: fileName,
-              source: 'local',
-              extensionType: 'plugin',
-              fileSize,
-            });
-            setSelectedTaskId(taskKey);
-          })
-          .catch((err: { msg?: string }) => {
-            toast.error(t('plugins.installFailed') + (err.msg || ''));
-          });
+        setPluginUploadPreviewFile(file);
+        setPluginUploadPreviewOpen(true);
       } else {
-        setSkillUploadFileName(fileName);
-        setSkillUploadState('uploading');
-        setSkillUploadError(null);
-        httpClient
-          .installSkillFromUpload(file)
-          .then(() => {
-            setSkillUploadState('done');
-            refreshPlugins();
-            refreshSkills();
-          })
-          .catch((err: { msg?: string }) => {
-            setSkillUploadState('error');
-            setSkillUploadError(err.msg || null);
-          });
+        setSkillUploadPreviewFile(file);
+        setSkillUploadPreviewOpen(true);
       }
     },
-    [t, addTask, setSelectedTaskId, refreshPlugins, refreshSkills],
+    [t, setSelectedTaskId],
   );
 
   const handleFileSelect = useCallback(() => {
@@ -1211,170 +1197,76 @@ function AddExtensionContent() {
         </DialogContent>
       </Dialog>
 
-      {/* Skill Upload Progress Dialog */}
+      {/* Plugin Upload Preview Dialog */}
       <Dialog
-        open={skillUploadState !== 'idle'}
+        open={pluginUploadPreviewOpen}
         onOpenChange={(open) => {
-          if (!open && skillUploadState !== 'uploading') {
-            setSkillUploadState('idle');
-            setSkillUploadError(null);
+          setPluginUploadPreviewOpen(open);
+          if (!open) {
+            setPluginUploadPreviewFile(null);
           }
         }}
       >
-        <DialogContent
-          className="sm:max-w-lg w-[90vw] max-h-[80vh] p-4 sm:p-6 bg-white dark:bg-[#1a1a1e] overflow-y-auto overflow-x-hidden"
-          hideCloseButton={skillUploadState === 'uploading'}
-        >
+        <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-xl max-h-[85vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader>
-            <DialogTitle className="flex items-start gap-3">
-              <Download className="size-5 shrink-0 mt-0.5" />
-              <span className="break-words">
-                {t('plugins.installProgress.title', {
-                  name: skillUploadFileName,
-                })}
-              </span>
+            <DialogTitle className="flex items-center gap-2">
+              <FileArchive className="size-5" />
+              <span>{t('plugins.localPreview.title')}</span>
             </DialogTitle>
           </DialogHeader>
+          {pluginUploadPreviewFile && (
+            <PluginLocalPreviewPanel
+              file={pluginUploadPreviewFile}
+              onCancel={() => {
+                setPluginUploadPreviewOpen(false);
+                setPluginUploadPreviewFile(null);
+              }}
+              onInstallStarted={() => {
+                setPluginUploadPreviewOpen(false);
+                setPluginUploadPreviewFile(null);
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
-          <div className="space-y-4">
-            {/* Overall progress bar */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <span
-                  className={cn(
-                    'text-sm font-medium shrink-0',
-                    skillUploadState === 'done'
-                      ? 'text-green-700 dark:text-green-300'
-                      : skillUploadState === 'error'
-                        ? 'text-red-700 dark:text-red-300'
-                        : 'text-blue-700 dark:text-blue-300',
-                  )}
-                >
-                  {skillUploadState === 'done'
-                    ? t('plugins.installProgress.completed')
-                    : skillUploadState === 'error'
-                      ? t('plugins.installProgress.failed')
-                      : t('plugins.installProgress.overallProgress')}
-                </span>
-                <span
-                  className={cn(
-                    'text-sm font-medium',
-                    skillUploadState === 'done'
-                      ? 'text-green-600 dark:text-green-400'
-                      : skillUploadState === 'error'
-                        ? 'text-red-600 dark:text-red-400'
-                        : 'text-blue-600 dark:text-blue-400',
-                  )}
-                >
-                  {skillUploadState === 'done'
-                    ? '100%'
-                    : skillUploadState === 'error'
-                      ? '0%'
-                      : '50%'}
-                </span>
-              </div>
-              <Progress
-                value={
-                  skillUploadState === 'done'
-                    ? 100
-                    : skillUploadState === 'error'
-                      ? 0
-                      : 50
-                }
-                className={cn(
-                  'h-2.5',
-                  '[&>div]:bg-blue-500 dark:[&>div]:bg-blue-400',
-                  'bg-blue-100 dark:bg-blue-900/30',
-                  skillUploadState === 'done' &&
-                    '[&>div]:bg-green-500 dark:[&>div]:bg-green-400 bg-green-100 dark:bg-green-900/30',
-                  skillUploadState === 'error' &&
-                    '[&>div]:bg-red-500 dark:[&>div]:bg-red-400 bg-red-100 dark:bg-red-900/30',
-                )}
-              />
-            </div>
-
-            {/* Stage display */}
-            <div className="space-y-1.5">
-              {skillUploadState === 'uploading' && (
-                <div className="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 sm:py-2.5 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
-                  <div className="flex items-center justify-center w-7 h-7 rounded-full shrink-0 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
-                      {t('plugins.installProgress.downloading')}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {skillUploadState === 'done' && (
-                <div className="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 sm:py-2.5 rounded-lg bg-green-50/50 dark:bg-green-950/15 border border-green-100 dark:border-green-900/50">
-                  <div className="flex items-center justify-center w-7 h-7 rounded-full shrink-0 bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400">
-                    <CheckCircle2 className="w-4 h-4" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm font-medium text-green-600 dark:text-green-400">
-                      {t('plugins.installProgress.downloading')}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {skillUploadState === 'error' && (
-                <div className="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 sm:py-2.5 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900">
-                  <div className="flex items-center justify-center w-7 h-7 rounded-full shrink-0 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400">
-                    <XCircle className="w-4 h-4" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm font-medium text-red-600 dark:text-red-400">
-                      {t('plugins.installProgress.downloading')}
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Done banner */}
-            {skillUploadState === 'done' && (
-              <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900">
-                <CheckCircle2 className="w-5 h-5 shrink-0 text-green-600 dark:text-green-400" />
-                <span className="text-sm text-green-700 dark:text-green-300 font-medium break-words">
-                  {t('plugins.installProgress.installComplete')}
-                </span>
-              </div>
-            )}
-
-            {/* Error detail */}
-            {skillUploadState === 'error' && skillUploadError && (
-              <div className="px-3 py-2 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900">
-                <p className="text-xs text-red-600 dark:text-red-400 break-all line-clamp-4">
-                  {skillUploadError}
-                </p>
-              </div>
-            )}
-          </div>
-
-          <div className="flex justify-end gap-2 mt-2">
-            <Button
-              variant="default"
-              size="sm"
-              onClick={() => {
-                if (
-                  skillUploadState === 'done' ||
-                  skillUploadState === 'error'
-                ) {
-                  setSkillUploadState('idle');
-                  setSkillUploadError(null);
+      {/* Skill Upload Preview Dialog */}
+      <Dialog
+        open={skillUploadPreviewOpen}
+        onOpenChange={(open) => {
+          setSkillUploadPreviewOpen(open);
+          if (!open) {
+            setSkillUploadPreviewFile(null);
+          }
+        }}
+      >
+        <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-3xl max-h-[85vh] overflow-y-auto p-4 sm:p-6">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileArchive className="size-5" />
+              <span>{t('skills.uploadZip')}</span>
+            </DialogTitle>
+          </DialogHeader>
+          {skillUploadPreviewFile && (
+            <SkillZipPreviewPanel
+              file={skillUploadPreviewFile}
+              onCancel={() => {
+                setSkillUploadPreviewOpen(false);
+                setSkillUploadPreviewFile(null);
+              }}
+              onImported={(skillNames) => {
+                setSkillUploadPreviewOpen(false);
+                setSkillUploadPreviewFile(null);
+                void refreshSkills();
+                const firstSkillName = skillNames[0];
+                if (firstSkillName) {
+                  navigate(
+                    `/home/skills?id=${encodeURIComponent(firstSkillName)}`,
+                  );
                 }
               }}
-              disabled={skillUploadState === 'uploading'}
-            >
-              {skillUploadState === 'done' || skillUploadState === 'error'
-                ? t('common.close')
-                : t('plugins.installProgress.background')}
-            </Button>
-          </div>
+            />
+          )}
         </DialogContent>
       </Dialog>
     </>

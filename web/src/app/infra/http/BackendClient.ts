@@ -55,6 +55,7 @@ import {
   ApiRespSkill,
 } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
+import type { I18nObject } from '@/app/infra/entities/common';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
 import { GetBotLogsResponse } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
 
@@ -708,6 +709,28 @@ export class BackendClient extends BaseHttpClient {
     const formData = new FormData();
     formData.append('file', file);
     return this.postFile('/api/v1/plugins/install/local', formData);
+  }
+
+  public previewPluginInstallFromLocal(file: File): Promise<{
+    filename: string;
+    size: number;
+    manifest: Record<string, unknown>;
+    metadata: {
+      author?: string;
+      name?: string;
+      version?: string;
+      label?: I18nObject;
+      description?: I18nObject;
+      repository?: string;
+    };
+    component_types: string[];
+    component_counts: Record<string, number>;
+    requirements: string[];
+    file_count: number;
+  }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.postFile('/api/v1/plugins/install/local/preview', formData);
   }
 
   // ============ Skill Install API ============

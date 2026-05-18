@@ -46,7 +46,7 @@ import {
 // Routes that belong to the "Extensions" section
 const EXTENSIONS_ROUTES = [
   '/home/extensions',
-  '/home/market',
+  '/home/add-extension',
   '/home/mcp',
   '/home/skills',
   '/home/plugin-pages',
