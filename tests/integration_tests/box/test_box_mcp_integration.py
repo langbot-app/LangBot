@@ -23,7 +23,7 @@ import pytest
 from aiohttp.test_utils import TestServer
 
 from langbot_plugin.box.client import ActionRPCBoxClient
-from langbot_plugin.box.errors import BoxSessionNotFoundError
+from langbot_plugin.box.errors import BoxManagedProcessNotFoundError, BoxSessionNotFoundError
 from langbot_plugin.box.models import BoxManagedProcessSpec, BoxManagedProcessStatus, BoxSpec
 from langbot_plugin.box.runtime import BoxRuntime
 from langbot_plugin.box.server import BoxServerHandler, create_ws_relay_app
@@ -168,6 +168,13 @@ async def test_managed_process_start_and_query(box_server):
     info2 = await client.get_managed_process('mcp-int-lifecycle')
     assert info2.status == BoxManagedProcessStatus.RUNNING
     assert info2.command == 'sh'
+
+    # Stop only the managed process while keeping the session available
+    await client.stop_managed_process('mcp-int-lifecycle')
+    with pytest.raises(BoxManagedProcessNotFoundError):
+        await client.get_managed_process('mcp-int-lifecycle')
+    session_info = await client.get_session('mcp-int-lifecycle')
+    assert session_info['session_id'] == 'mcp-int-lifecycle'
 
     # Cleanup
     await client.delete_session('mcp-int-lifecycle')

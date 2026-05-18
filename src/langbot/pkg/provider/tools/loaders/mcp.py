@@ -20,7 +20,7 @@ from ....core import app
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 from ....entity.persistence import mcp as persistence_mcp
-from .mcp_stdio import BoxStdioSessionRuntime, MCPSessionErrorPhase
+from .mcp_stdio import BoxStdioSessionRuntime, MCPServerBoxConfig, MCPSessionErrorPhase  # noqa: F401
 
 
 class MCPSessionStatus(enum.Enum):
@@ -241,7 +241,7 @@ class RuntimeMCPSession:
         self._lifecycle_task = asyncio.create_task(self._lifecycle_loop_with_retry())
 
         # Wait for connection or failure (with timeout)
-        startup_timeout = self.box_config.startup_timeout_sec if self._uses_box_stdio() else 30.0
+        startup_timeout = (self.box_config.startup_timeout_sec + 30) if self._uses_box_stdio() else 30.0
         try:
             await asyncio.wait_for(self._ready_event.wait(), timeout=startup_timeout)
         except asyncio.TimeoutError:

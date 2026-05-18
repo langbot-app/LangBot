@@ -403,6 +403,9 @@ class BoxWorkspaceSession:
     async def get_managed_process(self, process_id: str = 'default'):
         return await self.box_service.get_managed_process(self.session_id, process_id)
 
+    async def stop_managed_process(self, process_id: str = 'default') -> None:
+        await self.box_service.stop_managed_process(self.session_id, process_id)
+
     def get_managed_process_websocket_url(self, process_id: str = 'default') -> str:
         return self.box_service.get_managed_process_websocket_url(self.session_id, process_id)
 

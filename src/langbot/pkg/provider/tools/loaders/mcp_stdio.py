@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import enum
 import asyncio
+import os
+import shutil
+import shlex
 from typing import TYPE_CHECKING, Any
 
 import pydantic
@@ -11,6 +14,7 @@ from ....box.workspace import (
     BoxWorkspaceSession,
     classify_python_workspace,
     infer_workspace_host_path,
+    normalize_host_path,
     rewrite_mounted_path,
     rewrite_venv_command,
     unwrap_venv_path,
@@ -68,13 +72,22 @@ class BoxStdioSessionRuntime:
     def server_config(self) -> dict:
         return self.owner.server_config
 
-    def _build_workspace(self) -> BoxWorkspaceSession:
+    def _build_workspace(
+        self,
+        *,
+        host_path: str | None | object = ...,
+        workdir: str = '/workspace',
+        mount_path: str = '/workspace',
+    ) -> BoxWorkspaceSession:
+        resolved_host_path = self.resolve_host_path() if host_path is ... else host_path
         return BoxWorkspaceSession(
             self.ap.box_service,
             self.owner._build_box_session_id(),
-            host_path=self.resolve_host_path(),
+            host_path=resolved_host_path,
             host_path_mode=self.config.host_path_mode,
+            workdir=workdir,
             env=self.config.env,
+            mount_path=mount_path,
             network=self.config.network,
             read_only_rootfs=self.config.read_only_rootfs if self.config.read_only_rootfs is not None else False,
             image=self.config.image,
@@ -92,14 +105,17 @@ class BoxStdioSessionRuntime:
     def uses_box_stdio(self) -> bool:
         if self.server_config.get('mode') != 'stdio':
             return False
-        try:
-            return bool(getattr(self.ap.box_service, 'available', False))
-        except Exception:
-            return False
+        return getattr(self.ap, 'box_service', None) is not None
 
     async def initialize(self) -> None:
-        workspace = self._build_workspace()
-        host_path = workspace.host_path
+        await self._wait_for_box_runtime()
+
+        # All stdio MCP servers share one Box session. Per-server host paths
+        # are staged into the shared workspace instead of becoming session
+        # mounts, because an existing Docker container cannot add bind mounts.
+        workspace = self._build_workspace(host_path=None)
+        host_path = self.resolve_host_path()
+        process_cwd = '/workspace'
 
         try:
             await workspace.create_session()
@@ -108,7 +124,8 @@ class BoxStdioSessionRuntime:
             raise
 
         if host_path:
-            install_cmd = self.owner._detect_install_command(host_path)
+            process_cwd = await self._stage_host_path_to_shared_workspace(host_path)
+            install_cmd = self.detect_install_command(host_path, process_cwd)
             if install_cmd:
                 self.ap.logger.info(
                     f'MCP server {self.server_name}: installing dependencies in Box with: {install_cmd}'
@@ -116,6 +133,7 @@ class BoxStdioSessionRuntime:
                 try:
                     result = await workspace.execute_raw(
                         install_cmd,
+                        workdir=process_cwd,
                         timeout_sec=self.config.startup_timeout_sec or 120,
                     )
                 except Exception:
@@ -127,12 +145,19 @@ class BoxStdioSessionRuntime:
                     raise Exception(f'Dependency install failed (exit code {result.exit_code}): {stderr_preview}')
 
         try:
-            await workspace.start_managed_process(
+            process_workspace = (
+                self._build_workspace(host_path=host_path, workdir=process_cwd, mount_path=process_cwd)
+                if host_path
+                else workspace
+            )
+            payload = process_workspace.build_process_payload(
                 self.server_config['command'],
                 self.server_config.get('args', []),
-                process_id=self.process_id,
                 env=self.server_config.get('env', {}),
+                cwd=process_cwd,
             )
+            payload['process_id'] = self.process_id
+            await workspace.box_service.start_managed_process(workspace.session_id, payload)
         except Exception:
             self.owner.error_phase = MCPSessionErrorPhase.PROCESS_START
             raise
@@ -180,15 +205,98 @@ class BoxStdioSessionRuntime:
                     return
             await asyncio.sleep(self.owner._MONITOR_POLL_INTERVAL)
 
+    async def _stage_host_path_to_shared_workspace(self, host_path: str) -> str:
+        source_path = normalize_host_path(host_path)
+        if not source_path:
+            return '/workspace'
+        if not os.path.isdir(source_path):
+            raise FileNotFoundError(f'MCP host_path does not exist or is not a directory: {host_path}')
+
+        self._validate_host_path(source_path)
+
+        shared_host_path = self._shared_workspace_host_path()
+        process_host_root = os.path.join(shared_host_path, '.mcp', self.process_id)
+        process_host_workspace = os.path.join(process_host_root, 'workspace')
+        await asyncio.to_thread(self._copy_workspace_tree, source_path, process_host_root, process_host_workspace)
+        return f'/workspace/.mcp/{self.process_id}/workspace'
+
+    def _validate_host_path(self, host_path: str) -> None:
+        self.ap.box_service.build_spec(
+            {
+                'session_id': f'mcp-validate-{self.process_id}',
+                'host_path': host_path,
+                'host_path_mode': self.config.host_path_mode,
+                'network': self.config.network,
+                'read_only_rootfs': self.config.read_only_rootfs if self.config.read_only_rootfs is not None else False,
+            }
+        )
+
+    def _shared_workspace_host_path(self) -> str:
+        default_workspace = getattr(self.ap.box_service, 'default_workspace', None)
+        if not default_workspace:
+            raise RuntimeError('Box default workspace is required for shared MCP host_path staging')
+        shared_host_path = normalize_host_path(default_workspace)
+        os.makedirs(shared_host_path, exist_ok=True)
+        return shared_host_path
+
+    @staticmethod
+    def _copy_workspace_tree(source_path: str, process_host_root: str, process_host_workspace: str) -> None:
+        shutil.rmtree(process_host_root, ignore_errors=True)
+        os.makedirs(process_host_root, exist_ok=True)
+        shutil.copytree(
+            source_path,
+            process_host_workspace,
+            symlinks=True,
+            ignore=shutil.ignore_patterns('.git', '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache'),
+        )
+
+    async def _cleanup_staged_workspace(self) -> None:
+        if not self.resolve_host_path():
+            return
+        try:
+            process_host_root = os.path.join(self._shared_workspace_host_path(), '.mcp', self.process_id)
+            await asyncio.to_thread(shutil.rmtree, process_host_root, True)
+        except Exception as exc:
+            self.ap.logger.warning(
+                f'MCP server {self.server_name}: failed to clean staged workspace '
+                f'process_id={self.process_id}: {type(exc).__name__}: {exc}'
+            )
+
+    async def _wait_for_box_runtime(self) -> None:
+        timeout_sec = max(float(self.config.startup_timeout_sec or 120), 1.0)
+        deadline = asyncio.get_running_loop().time() + timeout_sec
+        warned = False
+        while not getattr(self.ap.box_service, 'available', False):
+            if not warned:
+                self.ap.logger.warning(
+                    f'MCP server {self.server_name}: waiting for Box runtime before starting stdio process'
+                )
+                warned = True
+            if asyncio.get_running_loop().time() >= deadline:
+                self.owner.error_phase = MCPSessionErrorPhase.SESSION_CREATE
+                raise Exception(f'Box runtime is not available after {int(timeout_sec)} seconds')
+            await asyncio.sleep(1)
+
     async def cleanup_session(self) -> None:
         if not self.uses_box_stdio():
             return
 
         # In the shared-session model, we do not delete the session itself.
-        # The managed process exits independently; deleting the session would
-        # kill other MCP servers sharing the same container.
+        # Stop only this MCP server's managed process; deleting the session
+        # would kill other MCP servers sharing the same container.
+        workspace = self._build_workspace(host_path=None)
+        try:
+            await workspace.stop_managed_process(self.process_id)
+        except Exception as exc:
+            self.ap.logger.warning(
+                f'MCP server {self.server_name}: failed to stop managed process '
+                f'process_id={self.process_id}: {type(exc).__name__}: {exc}'
+            )
+            await self._cleanup_staged_workspace()
+            return
+        await self._cleanup_staged_workspace()
         self.ap.logger.info(
-            f'MCP server {self.server_name}: process_id={self.process_id} cleanup complete '
+            f'MCP server {self.server_name}: stopped process_id={self.process_id} '
             f'(shared session {self.owner._build_box_session_id()} kept alive)'
         )
 
@@ -206,12 +314,13 @@ class BoxStdioSessionRuntime:
         return self.config.host_path or self.infer_host_path()
 
     @staticmethod
-    def detect_install_command(host_path: str) -> str | None:
+    def detect_install_command(host_path: str, workspace_path: str = '/workspace') -> str | None:
         workspace_kind = classify_python_workspace(host_path)
+        quoted_workspace_path = shlex.quote(workspace_path)
         if workspace_kind == 'package':
             return (
                 'mkdir -p /opt/_lb_src'
-                ' && tar -C /workspace'
+                f' && tar -C {quoted_workspace_path}'
                 ' --exclude=.venv --exclude=.git --exclude=__pycache__'
                 ' --exclude=node_modules --exclude=.tox --exclude=.nox'
                 ' --exclude="*.egg-info" --exclude=.uv-cache'
@@ -221,7 +330,7 @@ class BoxStdioSessionRuntime:
                 ' && rm -rf /opt/_lb_src'
             )
         if workspace_kind == 'requirements':
-            return 'pip install --no-cache-dir -r /workspace/requirements.txt'
+            return f'pip install --no-cache-dir -r {quoted_workspace_path}/requirements.txt'
         return None
 
     def build_box_session_payload(self, session_id: str, host_path: str | None = None) -> dict[str, Any]:

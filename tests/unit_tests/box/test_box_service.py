@@ -70,6 +70,9 @@ class _InProcessBoxRuntimeClient(BoxRuntimeClient):
     async def get_managed_process(self, session_id: str, process_id: str = 'default'):
         return self._runtime.get_managed_process(session_id, process_id)
 
+    async def stop_managed_process(self, session_id: str, process_id: str = 'default'):
+        await self._runtime.stop_managed_process(session_id, process_id)
+
     async def get_session(self, session_id: str):
         return self._runtime.get_session(session_id)
 

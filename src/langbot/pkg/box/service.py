@@ -289,6 +289,9 @@ class BoxService:
     async def get_managed_process(self, session_id: str, process_id: str = 'default') -> BoxManagedProcessInfo:
         return await self.client.get_managed_process(session_id, process_id)
 
+    async def stop_managed_process(self, session_id: str, process_id: str = 'default') -> None:
+        return await self.client.stop_managed_process(session_id, process_id)
+
     def get_managed_process_websocket_url(self, session_id: str, process_id: str = 'default') -> str:
         getter = getattr(self.client, 'get_managed_process_websocket_url', None)
         if getter is None:

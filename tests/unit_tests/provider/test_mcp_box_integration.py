@@ -561,9 +561,27 @@ class TestGetRuntimeInfoDict:
         assert info['box_session_id'] == 'mcp-shared'
         assert info['box_enabled'] is True
 
-    def test_stdio_session_without_box_runtime(self, mcp_module):
+    def test_stdio_session_waits_for_unavailable_box_runtime(self, mcp_module):
         ap = _make_ap()
         ap.box_service.available = False
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'test-uuid',
+                'mode': 'stdio',
+                'command': 'python',
+                'args': [],
+            },
+            ap=ap,
+        )
+        info = s.get_runtime_info_dict()
+        assert info['box_session_id'] == 'mcp-shared'
+        assert info['box_enabled'] is True
+
+    def test_stdio_session_without_box_service_uses_local_stdio(self, mcp_module):
+        ap = _make_ap()
+        del ap.box_service
         s = _make_session(
             mcp_module,
             {
@@ -616,7 +634,7 @@ class TestBoxConfigParsing:
 
 
 @pytest.mark.asyncio
-async def test_init_box_stdio_server_keeps_host_mount_validation_enabled(mcp_module):
+async def test_init_box_stdio_server_stages_host_path_in_shared_workspace(mcp_module, tmp_path):
     mcp_stdio_module = sys.modules['langbot.pkg.provider.tools.loaders.mcp_stdio']
 
     class FakeClientSession:
@@ -641,6 +659,7 @@ async def test_init_box_stdio_server_keeps_host_mount_validation_enabled(mcp_mod
 
     ap = _make_ap()
     ap.box_service.available = True
+    ap.box_service.default_workspace = str(tmp_path / 'shared-box-workspace')
     ap.box_service.create_session = AsyncMock(return_value={})
     ap.box_service.build_spec = Mock(return_value='validated-spec')
     ap.box_service.client = SimpleNamespace(
@@ -649,24 +668,40 @@ async def test_init_box_stdio_server_keeps_host_mount_validation_enabled(mcp_mod
     ap.box_service.start_managed_process = AsyncMock(return_value={})
     ap.box_service.get_managed_process_websocket_url = Mock(return_value='ws://box.example/process')
 
+    host_path = tmp_path / 'mcp-source'
+    host_path.mkdir()
+    server_file = host_path / 'server.py'
+    server_file.write_text('print("hello")\n', encoding='utf-8')
+
     session = _make_session(
         mcp_module,
         {
             'name': 'test',
             'uuid': 'u1',
             'mode': 'stdio',
-            'command': '/home/user/mcp/.venv/bin/python',
-            'args': ['/home/user/mcp/server.py'],
-            'box': {'host_path': '/home/user/mcp'},
+            'command': str(host_path / '.venv' / 'bin' / 'python'),
+            'args': [str(server_file)],
+            'box': {'host_path': str(host_path)},
         },
         ap=ap,
     )
-    session._detect_install_command = Mock(return_value='pip install --no-cache-dir -r /workspace/requirements.txt')
 
     await session._init_box_stdio_server()
     await session.exit_stack.aclose()
 
     assert ap.box_service.create_session.await_count == 1
-    assert ap.box_service.create_session.await_args.kwargs.get('skip_host_mount_validation', False) is False
+    session_payload = ap.box_service.create_session.await_args.args[0]
+    assert session_payload['session_id'] == 'mcp-shared'
+    assert 'host_path' not in session_payload
     assert ap.box_service.build_spec.call_count == 1
     assert ap.box_service.build_spec.call_args.kwargs.get('skip_host_mount_validation', False) is False
+    assert ap.box_service.build_spec.call_args.args[0]['host_path'] == str(host_path)
+
+    staged_file = tmp_path / 'shared-box-workspace' / '.mcp' / 'u1' / 'workspace' / 'server.py'
+    assert staged_file.read_text(encoding='utf-8') == 'print("hello")\n'
+
+    process_payload = ap.box_service.start_managed_process.await_args.args[1]
+    assert process_payload['process_id'] == 'u1'
+    assert process_payload['command'] == 'python'
+    assert process_payload['args'] == ['/workspace/.mcp/u1/workspace/server.py']
+    assert process_payload['cwd'] == '/workspace/.mcp/u1/workspace'
