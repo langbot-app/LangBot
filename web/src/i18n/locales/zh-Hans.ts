@@ -1286,6 +1286,7 @@ const zhHans = {
     title: '技能',
     description: '创建和管理可在对话中激活的技能',
     createSkill: '创建技能',
+    createSkillDescription: '导入本地目录或手动填写信息创建',
     editSkill: '编辑技能',
     getSkillListError: '获取技能列表失败：',
     skillName: '技能名称',
@@ -1318,6 +1319,15 @@ const zhHans = {
     packageRoot: '技能目录',
     packageRootHelp:
       '非必填。仅在导入已有技能目录时需要填写，新建技能可留空。扫描会检查当前目录及两级子目录。',
+    importLocalDirectory: '导入本地技能目录',
+    chooseSkillDirectory: '选择 SKILL.md 所在目录',
+    chooseAnotherDirectory: '重新选择目录',
+    importingDirectory: '正在预览...',
+    clearDirectoryPreview: '清除已选目录',
+    noSkillMdInDirectory: '选择的目录中没有找到 SKILL.md',
+    multipleSkillMdInDirectory:
+      '选择的目录中包含多个 SKILL.md，请直接选择单个技能目录。',
+    importDirectoryError: '导入目录失败：',
     advancedSettings: '高级设置',
     searchSkills: '搜索技能...',
     selectSkills: '选择技能',
@@ -1437,7 +1447,7 @@ const zhHans = {
     previewSkill: '预览技能',
     noSkillPreviewFound: '未找到可导入的技能',
     createSkill: '创建新的技能',
-    createSkillHint: '手动创建一个新的技能扩展',
+    createSkillHint: '从本地目录导入或手动创建',
     unsupportedFileType: '不支持的文件类型，仅支持 .zip 和 .lbpkg 文件',
   },
   errorPage: {

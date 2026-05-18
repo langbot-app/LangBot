@@ -33,6 +33,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { httpClient, systemInfo } from '@/app/infra/http/HttpClient';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -45,12 +46,10 @@ import type {
   MCPFormDraft,
   MCPFormHandle,
 } from '@/app/home/mcp/components/mcp-form/MCPForm';
-import SkillForm from '@/app/home/skills/components/skill-form/SkillForm';
-import type { SkillFormDraft } from '@/app/home/skills/components/skill-form/SkillForm';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 
-type PopoverView = 'menu' | 'mcp' | 'skill' | 'github';
+type PopoverView = 'menu' | 'mcp' | 'github';
 
 enum GithubInstallStatus {
   WAIT_INPUT = 'wait_input',
@@ -151,6 +150,7 @@ export default function AddExtensionPage() {
 
 function AddExtensionContent() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { refreshPlugins, refreshMCPServers, refreshSkills } = useSidebarData();
   const {
     addTask,
@@ -179,7 +179,6 @@ function AddExtensionContent() {
   const mcpFormRef = useRef<MCPFormHandle>(null);
   const [mcpTesting, setMcpTesting] = useState(false);
   const [mcpDraft, setMcpDraft] = useState<MCPFormDraft | undefined>();
-  const [skillDraft, setSkillDraft] = useState<SkillFormDraft | undefined>();
 
   // GitHub install state
   const [githubURL, setGithubURL] = useState('');
@@ -370,14 +369,6 @@ function AddExtensionContent() {
   function handleMCPCreated(_serverName: string) {
     setMcpDraft(undefined);
     refreshMCPServers();
-    setPopoverView('menu');
-    setPopoverOpen(false);
-  }
-
-  function handleSkillCreated(_skillName: string) {
-    setSkillDraft(undefined);
-    refreshPlugins();
-    refreshSkills();
     setPopoverView('menu');
     setPopoverOpen(false);
   }
@@ -614,8 +605,6 @@ function AddExtensionContent() {
     switch (popoverView) {
       case 'mcp':
         return 'w-[calc(100vw-2rem)] sm:w-[560px]';
-      case 'skill':
-        return 'w-[calc(100vw-2rem)] sm:w-[560px]';
       case 'github':
         return 'w-[calc(100vw-2rem)] sm:w-[560px]';
       default:
@@ -729,7 +718,11 @@ function AddExtensionContent() {
                 <button
                   type="button"
                   className="group flex w-full items-center gap-3 rounded-md bg-muted/30 p-3 text-left transition-colors outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                  onClick={() => setPopoverView('skill')}
+                  onClick={async () => {
+                    if (!(await checkExtensionsLimit())) return;
+                    setPopoverOpen(false);
+                    navigate('/home/skills?action=create');
+                  }}
                 >
                   <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground transition-colors group-hover:text-foreground">
                     <BookOpen className="size-4" />
@@ -798,41 +791,6 @@ function AddExtensionContent() {
                   }}
                 >
                   {t('common.submit')}
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* ===== Skill Form View ===== */}
-          {popoverView === 'skill' && (
-            <div className="flex max-h-[min(720px,80vh)] flex-col">
-              <div className="flex items-center gap-2 px-4 pb-1 pt-3">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={() => setPopoverView('menu')}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <h4 className="text-sm font-medium leading-none">
-                  {t('skills.createSkill')}
-                </h4>
-              </div>
-
-              <div className="min-h-0 flex-1 overflow-y-auto p-4">
-                <SkillForm
-                  initSkillName={undefined}
-                  initialDraft={skillDraft}
-                  onNewSkillCreated={handleSkillCreated}
-                  onSkillUpdated={() => {}}
-                  onDraftChange={setSkillDraft}
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 bg-popover px-4 pb-4 pt-1">
-                <Button type="submit" form="skill-form" size="sm">
-                  {t('common.save')}
                 </Button>
               </div>
             </div>

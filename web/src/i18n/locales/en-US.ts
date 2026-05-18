@@ -1341,6 +1341,8 @@ const enUS = {
     description:
       'Create and manage skills that can be activated during conversations',
     createSkill: 'Create Skill',
+    createSkillDescription:
+      'Import a local directory or create one by filling in details',
     editSkill: 'Edit Skill',
     getSkillListError: 'Failed to get skill list: ',
     skillName: 'Skill Name',
@@ -1375,6 +1377,15 @@ const enUS = {
     packageRoot: 'Package Directory',
     packageRootHelp:
       'Optional. Only needed when importing an existing skill directory. Leave empty for new skills. Scanning checks the current directory and subdirectories up to 2 levels deep.',
+    importLocalDirectory: 'Import Local Skill Directory',
+    chooseSkillDirectory: 'Choose SKILL.md Directory',
+    chooseAnotherDirectory: 'Choose Another Directory',
+    importingDirectory: 'Previewing...',
+    clearDirectoryPreview: 'Clear Selected Directory',
+    noSkillMdInDirectory: 'No SKILL.md was found in the selected directory',
+    multipleSkillMdInDirectory:
+      'The selected directory contains multiple SKILL.md files. Choose a single skill directory directly.',
+    importDirectoryError: 'Failed to import directory: ',
     advancedSettings: 'Advanced Settings',
     searchSkills: 'Search skills...',
     selectSkills: 'Select Skills',
@@ -1498,7 +1509,7 @@ const enUS = {
     previewSkill: 'Preview Skill',
     noSkillPreviewFound: 'No importable Skill found',
     createSkill: 'Create New Skill',
-    createSkillHint: 'Manually create a new skill extension',
+    createSkillHint: 'Import from a local directory or create manually',
     unsupportedFileType:
       'Unsupported file type. Only .zip and .lbpkg files are supported',
   },

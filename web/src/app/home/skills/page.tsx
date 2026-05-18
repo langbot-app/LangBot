@@ -39,7 +39,7 @@ export default function SkillsPage() {
     return <SkillDetailContent id={detailId} />;
   }
 
-  function handleImportedSkills(skillNames: string[]) {
+  function handleImportedSkills(_skillNames: string[]) {
     void refreshSkills();
     setActiveView(null);
     navigate('/home/add-extension');
@@ -54,7 +54,12 @@ export default function SkillsPage() {
     return (
       <div className="flex h-full flex-col">
         <div className="flex items-center justify-between pb-4 shrink-0">
-          <h1 className="text-xl font-semibold">{t('skills.createSkill')}</h1>
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h1 className="text-xl font-semibold">{t('skills.createSkill')}</h1>
+            <p className="text-sm text-muted-foreground">
+              {t('skills.createSkillDescription')}
+            </p>
+          </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={handleCancel}>
               {t('common.cancel')}
