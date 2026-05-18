@@ -4,7 +4,7 @@ metadata:
   author: local
   name: feishu_keyword_report_plugin
   repository: "https://open.feishu.cn/"
-  version: 0.1.18
+  version: 0.1.19
   description:
     en_US: Reply keyword commands for daily report and touch-material query with Feishu Sheets + Bitable.
     zh_Hans: 通过口令查询日报与摸料信息，联动飞书在线表格和多维表。
@@ -58,6 +58,9 @@ spec:
       label:
         en_US: Sheets Spreadsheet Token
         zh_Hans: 在线表格 Token
+      description:
+        en_US: Sheets token/URL. Legacy Wiki token/URL is also accepted and resolved automatically.
+        zh_Hans: 支持在线表格 token/URL；旧配置保留的 Wiki token/URL 会自动解析为真实在线表格 token。
       type: string
       required: false
       default: ""
@@ -235,6 +238,9 @@ spec:
       label:
         en_US: Bitable App Token
         zh_Hans: 多维表 App Token
+      description:
+        en_US: Base token/URL. Legacy Wiki token/URL is also accepted and resolved automatically.
+        zh_Hans: 支持多维表 token/URL；旧配置保留的 Wiki token/URL 会自动解析为真实多维表 token。
       type: string
       required: false
       default: ""

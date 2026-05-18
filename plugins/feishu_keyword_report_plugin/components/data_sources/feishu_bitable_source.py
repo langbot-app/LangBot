@@ -34,7 +34,16 @@ class FeishuBitableSource:
             return ""
         if isinstance(value, str):
             return value.strip()
-        if isinstance(value, (dict, list)):
+        if isinstance(value, list):
+            parts = [FeishuBitableSource.field_to_text(item) for item in value]
+            return "".join(part for part in parts if part).strip()
+        if isinstance(value, dict):
+            for key in ("text", "name", "en_name", "email", "link", "url"):
+                raw = value.get(key)
+                if raw is not None:
+                    text = FeishuBitableSource.field_to_text(raw)
+                    if text:
+                        return text
             try:
                 return json.dumps(value, ensure_ascii=False)
             except Exception:

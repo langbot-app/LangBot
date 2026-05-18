@@ -5,6 +5,7 @@ import json
 import re
 import time
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -531,12 +532,72 @@ class KeywordBitableReportListener(EventListener):
             return {}
         return data
 
+    @staticmethod
+    def _extract_lark_token(raw: str) -> str:
+        text = str(raw or "").strip()
+        if not text:
+            return ""
+        if text.startswith(("http://", "https://")):
+            path_parts = [part for part in urlparse(text).path.split("/") if part]
+            if len(path_parts) >= 2 and path_parts[0] in {"wiki", "sheets", "base"}:
+                return path_parts[1].strip()
+        return text
+
+    @staticmethod
+    def _looks_like_lark_wiki_token(raw: str, token: str) -> bool:
+        text = str(raw or "").strip()
+        if text.startswith(("http://", "https://")):
+            path_parts = [part for part in urlparse(text).path.split("/") if part]
+            return bool(path_parts and path_parts[0] == "wiki")
+        return token.startswith(("wik", "Wik")) or len(token) >= 20
+
+    async def _resolve_wiki_obj_token(self, raw_token: str, expected_obj_type: str, headers: dict[str, str]) -> str:
+        token = self._extract_lark_token(raw_token)
+        if not token:
+            return ""
+        if not self._looks_like_lark_wiki_token(raw_token, token):
+            return token
+
+        endpoint = "https://open.feishu.cn/open-apis/wiki/v2/spaces/get_node"
+        try:
+            data = await self._call_feishu_json_api(
+                "GET",
+                endpoint,
+                headers=headers,
+                params={"token": token, "obj_type": "wiki"},
+            )
+        except Exception:
+            return token
+
+        node = data.get("node", {})
+        if not isinstance(node, dict):
+            return token
+
+        obj_type = str(node.get("obj_type", "")).strip().lower()
+        obj_token = str(node.get("obj_token", "")).strip()
+        if obj_type == expected_obj_type and obj_token:
+            return obj_token
+        return token
+
+    async def _resolve_spreadsheet_token(self, headers: dict[str, str]) -> str:
+        return await self._resolve_wiki_obj_token(self._get_str_config("sheets_spreadsheet_token", ""), "sheet", headers)
+
+    async def _resolve_bitable_app_token(self, headers: dict[str, str]) -> str:
+        return await self._resolve_wiki_obj_token(self._get_str_config("bitable_app_token", ""), "bitable", headers)
+
     # ===== Data source orchestration =====
 
     async def _build_sheet_snapshot_components(
         self, sheet_names: list[str], strict: bool = False
     ) -> list[platform_message.Plain | platform_message.Image]:
-        spreadsheet_token = self._get_str_config("sheets_spreadsheet_token", "")
+        spreadsheet_token_raw = self._get_str_config("sheets_spreadsheet_token", "")
+        if not spreadsheet_token_raw:
+            if strict:
+                raise ValueError("未配置 sheets_spreadsheet_token。")
+            return []
+
+        headers = await self._build_auth_headers()
+        spreadsheet_token = await self._resolve_wiki_obj_token(spreadsheet_token_raw, "sheet", headers)
         if not spreadsheet_token:
             if strict:
                 raise ValueError("未配置 sheets_spreadsheet_token。")
@@ -554,7 +615,6 @@ class KeywordBitableReportListener(EventListener):
             return []
 
         cell_range = self._get_str_config("sheets_range", "A1:ZZ2000") or "A1:ZZ2000"
-        headers = await self._build_auth_headers()
         matrices, available_titles, missing = await self._sheets_source.fetch_line_matrices(
             spreadsheet_token=spreadsheet_token,
             headers=headers,
@@ -588,12 +648,16 @@ class KeywordBitableReportListener(EventListener):
         return components
 
     async def _run_sheets_report(self, date_arg: str | None, command_sheets: list[str]) -> dict[str, Any]:
-        spreadsheet_token = self._get_str_config("sheets_spreadsheet_token", "")
+        spreadsheet_token_raw = self._get_str_config("sheets_spreadsheet_token", "")
+        if not spreadsheet_token_raw:
+            raise ValueError("未配置 sheets_spreadsheet_token。")
+
+        headers = await self._build_auth_headers()
+        spreadsheet_token = await self._resolve_wiki_obj_token(spreadsheet_token_raw, "sheet", headers)
         if not spreadsheet_token:
             raise ValueError("未配置 sheets_spreadsheet_token。")
 
         cell_range = self._get_str_config("sheets_range", "A1:ZZ2000") or "A1:ZZ2000"
-        headers = await self._build_auth_headers()
         target_sheets = await self._resolve_target_sheets(headers, spreadsheet_token, command_sheets)
 
         matrices, available_titles, missing = await self._sheets_source.fetch_line_matrices(
@@ -647,11 +711,15 @@ class KeywordBitableReportListener(EventListener):
         }
 
     async def _run_bitable_brief_report(self, title_text: str) -> str:
-        app_token = self._get_str_config("bitable_app_token", "")
-        if not app_token:
+        app_token_raw = self._get_str_config("bitable_app_token", "")
+        if not app_token_raw:
             raise ValueError("未配置 bitable_app_token。")
 
         headers = await self._build_auth_headers()
+        app_token = await self._resolve_wiki_obj_token(app_token_raw, "bitable", headers)
+        if not app_token:
+            raise ValueError("未配置 bitable_app_token。")
+
         return await self._bitable_source.query_latest_brief(
             app_token=app_token,
             headers=headers,
@@ -773,11 +841,15 @@ class KeywordBitableReportListener(EventListener):
         return f"{label}：{value}"
 
     async def _run_touch_material_report(self, segment: str) -> str:
-        app_token = self._get_str_config("bitable_app_token", "")
-        if not app_token:
+        app_token_raw = self._get_str_config("bitable_app_token", "")
+        if not app_token_raw:
             raise ValueError("未配置 bitable_app_token。")
 
         headers = await self._build_auth_headers()
+        app_token = await self._resolve_wiki_obj_token(app_token_raw, "bitable", headers)
+        if not app_token:
+            raise ValueError("未配置 bitable_app_token。")
+
         scan_limit = self._get_int_config("scan_limit", 1000, min_value=50, max_value=5000)
 
         kiln_info = await self._bitable_source.query_latest_kiln_batch_by_segment(
@@ -842,11 +914,12 @@ class KeywordBitableReportListener(EventListener):
             "peg量": "--",
             "窑炉温度": "--",
         }
-        spreadsheet_token = self._get_str_config("sheets_spreadsheet_token", "")
-        if not spreadsheet_token:
+        spreadsheet_token_raw = self._get_str_config("sheets_spreadsheet_token", "")
+        if not spreadsheet_token_raw:
             missing_steps.append("配方表配置")
         else:
             try:
+                spreadsheet_token = await self._resolve_wiki_obj_token(spreadsheet_token_raw, "sheet", headers)
                 recipe_target_sheets = await self._resolve_target_sheets(headers, spreadsheet_token, [])
                 recipe_target_empty = not recipe_target_sheets
                 recipe = await self._sheets_source.query_recipe_by_batch(

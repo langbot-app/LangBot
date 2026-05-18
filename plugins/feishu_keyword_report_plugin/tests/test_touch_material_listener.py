@@ -264,6 +264,49 @@ class TouchMaterialListenerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(mock_build.call_args.kwargs["report_output_style"], "concise")
         self.assertEqual(payload["used_sheets"], ["S18-A线", "S006-A线", "S006-B线", "S20-C线"])
 
+    async def test_run_sheets_report_resolves_wiki_token_from_legacy_config(self) -> None:
+        listener = self._build_listener()
+        listener.plugin = DummyPlugin(
+            {
+                "sheets_spreadsheet_token": "wiki_sheet_token",
+                "sheets_sheet_names": "S18-A线",
+            }
+        )
+        listener._build_auth_headers = AsyncMock(return_value={"Authorization": "Bearer test"})  # type: ignore[method-assign]
+        listener._call_feishu_json_api = AsyncMock(  # type: ignore[method-assign]
+            return_value={"node": {"obj_type": "sheet", "obj_token": "real_sheet_token"}}
+        )
+        listener._sheets_source.list_sheet_titles = AsyncMock(return_value=["S18-A线"])  # type: ignore[method-assign]
+        listener._sheets_source.fetch_line_matrices = AsyncMock(  # type: ignore[method-assign]
+            return_value=({"S18-A线": [["批次", "投料日期"], ["DA2603-001", "2026-03-03"]]}, ["S18-A线"], [])
+        )
+
+        with patch(
+            "components.event_listeners.keyword_bitable_report.day_metrics.build_standard_report_from_matrices",
+            return_value={"text": "report-ok", "line_errors": [], "used_sheets": ["S18-A线"]},
+        ):
+            await listener._run_sheets_report(date_arg=None, command_sheets=[])
+
+        listener._sheets_source.fetch_line_matrices.assert_awaited_once()  # type: ignore[attr-defined]
+        kwargs = listener._sheets_source.fetch_line_matrices.await_args.kwargs  # type: ignore[attr-defined]
+        self.assertEqual(kwargs["spreadsheet_token"], "real_sheet_token")
+
+    async def test_bitable_report_resolves_wiki_token_from_legacy_config(self) -> None:
+        listener = self._build_listener()
+        listener.plugin = DummyPlugin({"bitable_app_token": "wiki_base_token"})
+        listener._build_auth_headers = AsyncMock(return_value={"Authorization": "Bearer test"})  # type: ignore[method-assign]
+        listener._call_feishu_json_api = AsyncMock(  # type: ignore[method-assign]
+            return_value={"node": {"obj_type": "bitable", "obj_token": "real_base_token"}}
+        )
+        listener._bitable_source.query_latest_brief = AsyncMock(return_value="bitable-ok")  # type: ignore[method-assign]
+
+        text = await listener._run_bitable_brief_report("title")
+
+        self.assertEqual(text, "bitable-ok")
+        listener._bitable_source.query_latest_brief.assert_awaited_once()  # type: ignore[attr-defined]
+        kwargs = listener._bitable_source.query_latest_brief.await_args.kwargs  # type: ignore[attr-defined]
+        self.assertEqual(kwargs["app_token"], "real_base_token")
+
     async def test_touch_material_report_recipe_uses_auto_discovered_sheets(self) -> None:
         listener = self._build_listener()
         listener.plugin = DummyPlugin(

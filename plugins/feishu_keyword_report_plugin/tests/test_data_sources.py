@@ -218,6 +218,13 @@ class SheetsSourceTest(unittest.IsolatedAsyncioTestCase):
 
 
 class BitableSourceTest(unittest.IsolatedAsyncioTestCase):
+    def test_field_to_text_unwraps_feishu_rich_text_cells(self) -> None:
+        self.assertEqual(
+            FeishuBitableSource.field_to_text([{"text": "S006-SC-DA2604-001", "type": "text"}]),
+            "S006-SC-DA2604-001",
+        )
+        self.assertEqual(FeishuBitableSource.field_to_text([{"text": "2.409", "type": "text"}]), "2.409")
+
     def test_infer_line_prefers_route_fields_segment_and_batch_fallback(self) -> None:
         self.assertEqual(
             FeishuBitableSource.infer_line(

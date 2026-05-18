@@ -116,7 +116,7 @@
 
 - `keyword_commands`（默认 `日报`）
 - `data_source_mode`：`auto|sheets|bitable`
-- `sheets_spreadsheet_token`
+- `sheets_spreadsheet_token`：支持填写真实 Sheets token / Sheets URL，也兼容旧配置保留的 Wiki token / Wiki URL；插件会自动解析为真实 Sheets token。
 - `sheets_sheet_names`：可选补充工作表列表；未配置也会自动扫描并纳入 `S18-*线` / `S006-*线` / `S20-*线`
 - `sheet_auto_discovery_patterns_json`：日报工作表自动发现正则数组，例如 `["(S18|S006|S20)-.+线"]`
 - `sheets_range`
@@ -150,7 +150,7 @@
 
 ### Bitable 配置（日报回退与摸料共用）
 
-- `bitable_app_token`
+- `bitable_app_token`：支持填写真实 Base token / Base URL，也兼容旧配置保留的 Wiki token / Wiki URL；插件会自动解析为真实 Base token。
 - `sintering_table_ids`
 - `sintering_table_names`
 - `route_field`
