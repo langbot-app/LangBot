@@ -214,7 +214,7 @@ const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree(
 
   return (
     <div className="space-y-2">
-      <div className="max-h-48 space-y-1 overflow-y-auto">
+      <div className="max-h-[min(46vh,32rem)] space-y-1 overflow-y-auto overscroll-contain pr-1">
         {rootEntries.length === 0 && !loading && (
           <div className="text-sm text-muted-foreground py-2">
             {t('skills.noFiles')}
@@ -330,24 +330,9 @@ export default function SkillForm({
     }
   };
 
-  const handleContentChange = (content: string) => {
+  const handleInstructionDraftChange = (content: string) => {
     setFileContent(content);
-    // If editing SKILL.md, sync to skill.instructions
-    if (selectedFile === 'SKILL.md' || selectedFile?.endsWith('/SKILL.md')) {
-      setSkill((prev) => ({ ...prev, instructions: content }));
-    }
-  };
-
-  const handleSaveFile = async () => {
-    if (!initSkillName || !selectedFile) return;
-
-    try {
-      await httpClient.writeSkillFile(initSkillName, selectedFile, fileContent);
-      toast.success(t('skills.saveFileSuccess'));
-    } catch (error) {
-      console.error('Failed to save file:', error);
-      toast.error(t('skills.saveFileError') + String(error));
-    }
+    setSkill((prev) => ({ ...prev, instructions: content }));
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -462,23 +447,12 @@ export default function SkillForm({
       <Textarea
         id="instructions"
         value={fileContent}
-        onChange={(e) => handleContentChange(e.target.value)}
+        onChange={(e) => handleInstructionDraftChange(e.target.value)}
+        readOnly={Boolean(initSkillName)}
         placeholder={t('skills.instructionsPlaceholder')}
         rows={16}
-        className="min-h-[360px] resize-y font-mono text-sm lg:min-h-[calc(100vh-220px)]"
+        className="min-h-[360px] resize-y font-mono text-sm read-only:cursor-default read-only:bg-muted/30 lg:min-h-[calc(100vh-220px)]"
       />
-      {selectedFile &&
-        selectedFile !== 'SKILL.md' &&
-        !selectedFile.endsWith('/SKILL.md') && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleSaveFile}
-          >
-            {t('skills.saveFile')}
-          </Button>
-        )}
     </div>
   );
 

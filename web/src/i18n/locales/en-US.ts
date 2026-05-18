@@ -1487,16 +1487,13 @@ const enUS = {
     uploadHint: 'Supports .zip (skills) and .lbpkg (plugins) files',
     orContinueWith: 'or choose an action below',
     addMCPServerHint: 'Connect an MCP tool server extension',
-    installFromGithub: 'Install Plugin or Skill from GitHub',
-    installFromGithubHint:
-      'Supports GitHub Release plugin packages and direct GitHub SKILL.md imports',
-    githubUrlHelp:
-      'Paste a GitHub repository URL to install a plugin. To install a Skill, paste the GitHub SKILL.md file URL.',
-    githubUrlPlaceholder:
-      'e.g. https://github.com/owner/repo or https://github.com/owner/repo/blob/main/path/SKILL.md',
+    installFromGithub: 'Install from GitHub',
+    installFromGithubHint: 'Plugin package or Skill (SKILL.md)',
+    githubUrlHelp: 'Paste a GitHub URL',
+    githubUrlTooltip:
+      'Plugin: paste a repository, Release, or Tag URL. Skill: paste the SKILL.md page URL inside the skill directory.',
+    githubUrlPlaceholder: 'GitHub repository, Release, or SKILL.md link',
     githubUrlRequired: 'Enter a GitHub URL',
-    skillMdUrlHelp:
-      'For Skills, copy the exact SKILL.md file link from the skill directory in GitHub.',
     previewSkill: 'Preview Skill',
     noSkillPreviewFound: 'No importable Skill found',
     createSkill: 'Create New Skill',

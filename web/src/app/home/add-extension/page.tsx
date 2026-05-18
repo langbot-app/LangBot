@@ -24,8 +24,14 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
+  CircleHelp,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { httpClient, systemInfo } from '@/app/infra/http/HttpClient';
 import { toast } from 'sonner';
@@ -855,9 +861,23 @@ function AddExtensionContent() {
               <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
                 {githubInstallStatus === GithubInstallStatus.WAIT_INPUT && (
                   <div className="space-y-2">
-                    <p className="text-xs text-muted-foreground">
-                      {t('addExtension.githubUrlHelp')}
-                    </p>
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <span>{t('addExtension.githubUrlHelp')}</span>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            className="inline-flex size-4 items-center justify-center rounded-full transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                            aria-label={t('addExtension.githubUrlTooltip')}
+                          >
+                            <CircleHelp className="size-3.5" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-[280px]">
+                          {t('addExtension.githubUrlTooltip')}
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
                     <Input
                       placeholder={t('addExtension.githubUrlPlaceholder')}
                       value={githubURL}
@@ -866,9 +886,6 @@ function AddExtensionContent() {
                         if (e.key === 'Enter') handleGithubAddressSubmit();
                       }}
                     />
-                    <p className="text-[11px] leading-relaxed text-muted-foreground">
-                      {t('addExtension.skillMdUrlHelp')}
-                    </p>
                     <Button
                       className="w-full"
                       onClick={handleGithubAddressSubmit}

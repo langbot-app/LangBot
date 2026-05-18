@@ -1426,18 +1426,15 @@ const zhHans = {
     uploadHint: '支持 .zip（技能）和 .lbpkg（插件）文件',
     orContinueWith: '或选择以下操作',
     addMCPServerHint: '连接一个 MCP 工具服务器扩展',
-    installFromGithub: '从 GitHub 安装插件或 Skill',
-    installFromGithubHint:
-      '支持 GitHub Release 插件包，也支持直接导入 GitHub 上的 SKILL.md',
-    githubUrlHelp:
-      '粘贴 GitHub 仓库地址安装插件；如果要安装 Skill，请粘贴 GitHub 上的 SKILL.md 文件地址。',
-    githubUrlPlaceholder:
-      '例如 https://github.com/owner/repo 或 https://github.com/owner/repo/blob/main/path/SKILL.md',
+    installFromGithub: '从 GitHub 安装',
+    installFromGithubHint: '插件包或技能（SKILL.md）',
+    githubUrlHelp: '粘贴 GitHub 地址',
+    githubUrlTooltip:
+      '插件：粘贴仓库、Release 或 Tag 地址。技能：粘贴技能目录里的 SKILL.md 页面地址。',
+    githubUrlPlaceholder: 'GitHub 仓库、Release 或 SKILL.md 链接',
     githubUrlRequired: '请输入 GitHub 地址',
-    skillMdUrlHelp:
-      'Skill 需要复制具体文件链接，例如仓库中某个技能目录下的 SKILL.md 页面地址。',
-    previewSkill: '预览 Skill',
-    noSkillPreviewFound: '未找到可导入的 Skill',
+    previewSkill: '预览技能',
+    noSkillPreviewFound: '未找到可导入的技能',
     createSkill: '创建新的技能',
     createSkillHint: '手动创建一个新的技能扩展',
     unsupportedFileType: '不支持的文件类型，仅支持 .zip 和 .lbpkg 文件',

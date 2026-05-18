@@ -8,7 +8,7 @@ import shutil
 import tempfile
 import zipfile
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import quote, unquote, urlparse
 
 import httpx
 import yaml
@@ -429,7 +429,7 @@ class SkillService:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
     async def _install_github_skill_md(self, asset_url: str, *, owner: str, repo: str, data: dict) -> list[dict]:
-        zip_bytes, filename, package_name = await self._download_github_skill_md_as_zip(
+        zip_bytes, filename, package_name = await self._download_github_skill_directory_as_zip(
             asset_url,
             owner=owner,
             repo=repo,
@@ -464,7 +464,7 @@ class SkillService:
         return await self._resolve_installed_skills(scanned)
 
     async def _preview_github_skill_md(self, asset_url: str, *, owner: str, repo: str) -> list[dict]:
-        zip_bytes, _filename, package_name = await self._download_github_skill_md_as_zip(
+        zip_bytes, _filename, package_name = await self._download_github_skill_directory_as_zip(
             asset_url,
             owner=owner,
             repo=repo,
@@ -572,30 +572,85 @@ class SkillService:
             resp.raise_for_status()
             return resp.content
 
-    async def _download_github_skill_md_as_zip(
+    async def _download_github_skill_directory_as_zip(
         self, asset_url: str, *, owner: str, repo: str
     ) -> tuple[bytes, str, str]:
         info = self._parse_github_skill_md_url(asset_url, owner=owner, repo=repo)
-        content = await self._download_github_skill_md(info['raw_url'])
-        package_name = self._resolve_github_skill_md_package_name(content, info['package_name'])
-
-        buffer = io.BytesIO()
-        with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr(f'{package_name}/SKILL.md', content)
-        return buffer.getvalue(), f'{package_name}.zip', package_name
-
-    async def _download_github_skill_md(self, raw_url: str) -> str:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=60) as client:
-            try:
-                resp = await client.get(raw_url)
-                resp.raise_for_status()
-            except httpx.HTTPError as exc:
-                raise ValueError(f'Failed to download SKILL.md from GitHub: {exc}') from exc
+        archive_url = f'https://codeload.github.com/{owner}/{repo}/zip/{quote(info["ref"], safe="/")}'
+        archive_bytes = await self._download_github_asset(archive_url)
 
         try:
-            return resp.content.decode('utf-8')
-        except UnicodeDecodeError as exc:
-            raise ValueError('GitHub SKILL.md must be valid UTF-8 text') from exc
+            source_archive = zipfile.ZipFile(io.BytesIO(archive_bytes), 'r')
+        except zipfile.BadZipFile as exc:
+            raise ValueError('GitHub repository archive must be a valid .zip archive') from exc
+
+        with source_archive as source_zip:
+            skill_entry = self._find_github_skill_archive_entry(source_zip, info['file_path'])
+            try:
+                skill_md_content = source_zip.read(skill_entry).decode('utf-8')
+            except UnicodeDecodeError as exc:
+                raise ValueError('GitHub SKILL.md must be valid UTF-8 text') from exc
+
+            package_name = self._resolve_github_skill_md_package_name(skill_md_content, info['package_name'])
+            source_skill_dir = posixpath.dirname(posixpath.normpath(skill_entry.filename))
+
+            buffer = io.BytesIO()
+            with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as target_zip:
+                self._copy_github_skill_directory_to_zip(source_zip, target_zip, source_skill_dir, package_name)
+        return buffer.getvalue(), f'{package_name}.zip', package_name
+
+    def _find_github_skill_archive_entry(self, archive: zipfile.ZipFile, file_path: str) -> zipfile.ZipInfo:
+        normalized_file_path = posixpath.normpath(file_path).lower()
+        for member in archive.infolist():
+            if member.is_dir():
+                continue
+            normalized_member = posixpath.normpath(member.filename)
+            path_parts = normalized_member.split('/', 1)
+            if len(path_parts) != 2:
+                continue
+            archive_relative_path = path_parts[1].lower()
+            if archive_relative_path == normalized_file_path:
+                return member
+        raise ValueError(f'GitHub archive does not contain requested SKILL.md: {file_path}')
+
+    def _copy_github_skill_directory_to_zip(
+        self,
+        source_zip: zipfile.ZipFile,
+        target_zip: zipfile.ZipFile,
+        source_skill_dir: str,
+        package_name: str,
+    ) -> None:
+        normalized_source_dir = posixpath.normpath(source_skill_dir)
+        source_prefix = f'{normalized_source_dir}/'
+        copied_files = 0
+
+        for member in source_zip.infolist():
+            normalized_member = posixpath.normpath(member.filename)
+            if normalized_member != normalized_source_dir and not normalized_member.startswith(source_prefix):
+                continue
+
+            relative_path = posixpath.relpath(normalized_member, normalized_source_dir)
+            if relative_path in ('', '.'):
+                continue
+            if relative_path.startswith('../') or relative_path == '..' or posixpath.isabs(relative_path):
+                raise ValueError(f'GitHub archive contains an unsafe skill path: {member.filename}')
+
+            target_name = f'{package_name}/{relative_path}'
+            if member.is_dir() and not target_name.endswith('/'):
+                target_name = f'{target_name}/'
+            target_info = zipfile.ZipInfo(target_name, date_time=member.date_time)
+            target_info.external_attr = member.external_attr
+            target_info.compress_type = zipfile.ZIP_DEFLATED
+
+            if member.is_dir():
+                target_zip.writestr(target_info, b'')
+                continue
+
+            target_zip.writestr(target_info, source_zip.read(member))
+            copied_files += 1
+
+        if copied_files == 0:
+            raise ValueError('GitHub skill directory is empty')
 
     def _extract_uploaded_skill_to_temp(self, file_bytes: bytes, tmp_dir: str) -> str:
         extract_dir = os.path.join(tmp_dir, 'extracted')
@@ -758,31 +813,38 @@ class SkillService:
             raise ValueError('asset_url must be a valid HTTPS GitHub SKILL.md URL')
 
         host = parsed.netloc.lower()
-        path_parts = [part for part in (parsed.path or '').split('/') if part]
+        path_parts = [unquote(part) for part in (parsed.path or '').split('/') if part]
         if host == 'github.com':
-            if len(path_parts) < 5 or path_parts[0] != owner or path_parts[1] != repo or path_parts[2] != 'blob':
+            if (
+                len(path_parts) < 5
+                or path_parts[0] != owner
+                or path_parts[1] != repo
+                or path_parts[2]
+                not in (
+                    'blob',
+                    'raw',
+                )
+            ):
                 raise ValueError('GitHub SKILL.md URL must point to the requested owner/repo blob path')
             ref = path_parts[3]
             file_path = '/'.join(path_parts[4:])
-            raw_url = f'https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{file_path}'
         elif host == 'raw.githubusercontent.com':
             if len(path_parts) < 4 or path_parts[0] != owner or path_parts[1] != repo:
                 raise ValueError('GitHub SKILL.md URL must point to the requested owner/repo raw path')
             ref = path_parts[2]
             file_path = '/'.join(path_parts[3:])
-            raw_url = parsed.geturl()
         else:
             raise ValueError('asset_url must point to a GitHub SKILL.md file')
 
-        normalized_file_path = posixpath.normpath(file_path).lower()
-        if normalized_file_path != 'skill.md' and not normalized_file_path.endswith('/skill.md'):
+        normalized_file_path = posixpath.normpath(file_path)
+        normalized_file_path_lower = normalized_file_path.lower()
+        if normalized_file_path_lower != 'skill.md' and not normalized_file_path_lower.endswith('/skill.md'):
             raise ValueError('GitHub skill import requires a URL ending with SKILL.md')
 
-        parent_dir = posixpath.basename(posixpath.dirname(file_path)) or repo
+        parent_dir = posixpath.basename(posixpath.dirname(normalized_file_path)) or repo
         return {
-            'raw_url': raw_url,
             'ref': ref,
-            'file_path': file_path,
+            'file_path': normalized_file_path,
             'package_name': self._uploaded_skill_target_stem(parent_dir),
         }
 

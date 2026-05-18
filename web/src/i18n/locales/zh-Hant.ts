@@ -1332,18 +1332,15 @@ const zhHant = {
     uploadHint: '支援 .zip（技能）和 .lbpkg（插件）檔案',
     orContinueWith: '或選擇以下操作',
     addMCPServerHint: '連接一個 MCP 工具伺服器擴充',
-    installFromGithub: '從 GitHub 安裝插件或 Skill',
-    installFromGithubHint:
-      '支援 GitHub Release 插件包，也支援直接匯入 GitHub 上的 SKILL.md',
-    githubUrlHelp:
-      '貼上 GitHub 倉庫地址安裝插件；如果要安裝 Skill，請貼上 GitHub 上的 SKILL.md 檔案地址。',
-    githubUrlPlaceholder:
-      '例如 https://github.com/owner/repo 或 https://github.com/owner/repo/blob/main/path/SKILL.md',
+    installFromGithub: '從 GitHub 安裝',
+    installFromGithubHint: '插件包或技能（SKILL.md）',
+    githubUrlHelp: '貼上 GitHub 地址',
+    githubUrlTooltip:
+      '插件：貼上倉庫、Release 或 Tag 地址。技能：貼上技能目錄裡的 SKILL.md 頁面地址。',
+    githubUrlPlaceholder: 'GitHub 倉庫、Release 或 SKILL.md 連結',
     githubUrlRequired: '請輸入 GitHub 地址',
-    skillMdUrlHelp:
-      'Skill 需要複製具體檔案連結，例如倉庫中某個技能目錄下的 SKILL.md 頁面地址。',
-    previewSkill: '預覽 Skill',
-    noSkillPreviewFound: '未找到可匯入的 Skill',
+    previewSkill: '預覽技能',
+    noSkillPreviewFound: '未找到可匯入的技能',
     createSkill: '建立新的技能',
     createSkillHint: '手動建立一個新的技能擴充',
     unsupportedFileType: '不支援的檔案類型，僅支援 .zip 和 .lbpkg 檔案',
