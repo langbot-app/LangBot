@@ -17,6 +17,13 @@ from .result_normalizer import AgentResultNormalizer
 from .orchestrator import AgentRunOrchestrator
 from .config_migration import ConfigMigration
 from .session_registry import AgentRunSessionRegistry, AgentRunSession, get_session_registry
+from .events import (
+    MESSAGE_RECEIVED,
+    MESSAGE_RECALLED,
+    GROUP_MEMBER_JOINED,
+    FRIEND_REQUEST_RECEIVED,
+    RESERVED_EVENT_TYPES,
+)
 
 __all__ = [
     'AgentRunnerDescriptor',
@@ -37,4 +44,9 @@ __all__ = [
     'AgentRunSessionRegistry',
     'AgentRunSession',
     'get_session_registry',
+    'MESSAGE_RECEIVED',
+    'MESSAGE_RECALLED',
+    'GROUP_MEMBER_JOINED',
+    'FRIEND_REQUEST_RECEIVED',
+    'RESERVED_EVENT_TYPES',
 ]

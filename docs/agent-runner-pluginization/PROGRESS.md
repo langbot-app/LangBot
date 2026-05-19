@@ -12,7 +12,7 @@
 | Phase 1 | 核心架构（Registry、Orchestrator、上下文模型） | ✅ 完成 |
 | Phase 2 | 权限、能力声明、资源注入 | ✅ 完成 |
 | Phase 3 | 内置 runner 迁移到插件 | ✅ 完成（7/7） |
-| Phase 4 | EBA 事件支持 | 🔲 未开始（message event/actor/subject 上下文已预填充） |
+| Phase 4 | EBA 事件支持 | 🔲 未开始（已预留稳定事件名，message event/actor/subject 上下文已预填充） |
 
 ---
 
@@ -74,7 +74,7 @@
 
 ### 低优先级 / 未来
 
-- [ ] EBA 完整集成 — message event/actor/subject 上下文已填充，完整事件路由与非消息事件仍待实现
+- [ ] EBA 完整集成 — 稳定事件名与 message event/actor/subject 上下文已预留，完整事件路由与非消息事件仍待实现
 - [ ] 平台 API 动作执行 — `action.requested` 结果类型存在但未执行
 
 ---
@@ -91,5 +91,6 @@
 ## 相关文档
 
 - [README.md](./README.md) — 总体设计
+- [PHASE1_QA_ACCEPTANCE_MATRIX.md](./PHASE1_QA_ACCEPTANCE_MATRIX.md) — Phase 1 agent QA 验收矩阵
 - [OFFICIAL_RUNNER_PLUGINS.md](./OFFICIAL_RUNNER_PLUGINS.md) — 官方插件仓库计划
 - [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) — 具体实施细节

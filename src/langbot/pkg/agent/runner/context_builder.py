@@ -12,6 +12,7 @@ from ...core import app
 from .descriptor import AgentRunnerDescriptor
 from .config_migration import ConfigMigration
 from .state_store import get_state_store
+from . import events as runner_events
 
 
 # Internal models for SDK v1 context protocol matching SDK v1 resources.py
@@ -183,7 +184,7 @@ class AgentRunContextBuilder:
 
         # Build trigger
         trigger: AgentTrigger = {
-            'type': 'message.received',
+            'type': runner_events.MESSAGE_RECEIVED,
             'source': 'pipeline',
             'timestamp': int(time.time()),
         }
@@ -407,7 +408,12 @@ class AgentRunContextBuilder:
         return default
 
     def _build_event(self, query: pipeline_query.Query) -> dict[str, typing.Any]:
-        """Build a minimal event envelope from the platform message event."""
+        """Build a minimal EBA-compatible event envelope from the message query.
+
+        The public event_type must be a stable AgentRunner protocol name. Keep
+        platform or SDK class names inside event_data so future EventRouter
+        events can share the same top-level naming contract.
+        """
         message_event = getattr(query, 'message_event', None)
         event_data: dict[str, typing.Any] = {}
 
@@ -420,6 +426,10 @@ class AgentRunContextBuilder:
                 event_data = {}
             event_data.pop('source_platform_object', None)
 
+        source_event_type = getattr(message_event, 'type', None) if message_event else None
+        if source_event_type:
+            event_data.setdefault('source_event_type', source_event_type)
+
         message_chain = getattr(query, 'message_chain', None)
         message_id = getattr(message_chain, 'message_id', None)
         if message_id == -1:
@@ -429,7 +439,7 @@ class AgentRunContextBuilder:
         event_timestamp = int(event_time) if isinstance(event_time, (int, float)) else None
 
         return {
-            'event_type': getattr(message_event, 'type', None) or 'message.received',
+            'event_type': runner_events.MESSAGE_RECEIVED,
             'event_id': str(message_id or getattr(query, 'query_id', '')),
             'event_timestamp': event_timestamp,
             'event_data': event_data,

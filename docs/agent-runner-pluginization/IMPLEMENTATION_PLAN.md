@@ -158,7 +158,7 @@ class AgentRunnerDescriptor(BaseModel):
 - `run_id`: 新 UUID，不使用 query id 作为全局 run id
 - `trigger.type`: `message.received`
 - `conversation`: launcher、sender、bot、pipeline、历史消息
-- `event`: message event envelope 子集
+- `event`: message event envelope 子集，`event_type` 使用稳定协议名，平台/SDK 原始事件名放入 `event_data.source_event_type`
 - `actor`: sender
 - `subject`: 当前消息或 launcher
 - `prompt`: 宿主已处理的有效 prompt，即 `query.prompt.messages`
@@ -210,6 +210,34 @@ ctx.prompt + ctx.messages + [current_user_message_from_ctx.input]
 - `rerank-model-selector` 授权 rerank 模型。
 - `knowledge-base-multi-selector` 授权知识库。
 - 后续新增 selector 时应在 resource builder 中统一扩展。
+
+### 3.5.1 future EventRouter 预留
+
+当前分支不实现 EBA EventRouter，但 AgentRunner 协议必须从现在开始兼容非消息事件。未来不要为消息撤回、群成员加入、好友申请各写一套 runner wrapper；统一入口应是：
+
+```text
+EventRouter -> AgentRunOrchestrator.run_from_event(event_request)
+```
+
+`event_request` 至少需要包含：
+
+- `event_type`: 稳定协议名，例如 `message.recalled`、`group.member_joined`、`friend.request_received`
+- `event_id` / `event_timestamp`
+- `event_data`: 平台原始 payload 摘要和 source event type
+- `actor`: 触发者，例如撤回操作者、新成员、好友申请人
+- `subject`: 事件作用对象，例如被撤回消息、群/成员关系、好友申请
+- `conversation`: 可选。群事件有 launcher 语义，好友申请可能还没有 conversation
+- `input`: 可选结构化输入。非消息事件允许 `text=None`、`contents=[]`
+- `binding`: 事件绑定解析出的 runner id、runner config、资源范围
+
+先保留的稳定事件名：
+
+- `message.received`
+- `message.recalled`
+- `group.member_joined`
+- `friend.request_received`
+
+这些事件名应作为插件协议的一部分保持稳定。平台原始事件名只能进入 `event_data`，不能成为 `ctx.event.event_type` 的公共契约。
 
 ### 3.6 result_normalizer.py
 

@@ -281,7 +281,8 @@ async def test_orchestrator_runs_fake_plugin_with_authorized_context():
     assert context["config"]["timeout"] == 30
     assert context["runtime"]["deadline_at"] is not None
     assert context["params"] == {"public_param": "visible"}
-    assert context["event"]["event_type"] == "FriendMessage"
+    assert context["event"]["event_type"] == "message.received"
+    assert context["event"]["event_data"]["source_event_type"] == "FriendMessage"
     assert context["actor"]["actor_id"] == "user_001"
     assert context["actor"]["actor_name"] == "Alice"
     assert context["subject"]["subject_id"] == "msg_001"

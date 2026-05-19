@@ -374,6 +374,40 @@ LangBot 执行前做三层裁剪：
 
 因此文档和代码命名应避免把当前任务称为 EBA 实现。推荐使用 `agent-runner-pluginization`、`AgentRunContext`、`AgentRunResult` 等命名。
 
+### 7.1 现在必须预留的事件适配方式
+
+后续消息撤回、群成员加入、新好友申请等事件不要再走“伪造一条用户文本消息”的方式接入 AgentRunner。正确方向是让未来 `EventRouter` 构造同一份 `AgentRunContext`，然后复用当前 `AgentRunOrchestrator` 的 registry、resource builder、result normalizer 和插件调用协议。
+
+当前先固定这些公共协议约束：
+
+- 顶层 `ctx.event.event_type` 使用稳定协议名，不暴露 SDK 类名或平台原始事件名。
+- 平台原始事件名、平台 payload、适配器细节放进 `ctx.event.event_data`。
+- `ctx.input.text` 可以为空；runner 不能假设所有触发都是一段用户文本。
+- `ctx.actor` 表示触发动作的主体，`ctx.subject` 表示被操作或被关注的对象。
+- 需要平台动作时，runner 只能返回 `action.requested`；当前阶段只记录，真正执行等统一平台 API 和权限模型落地。
+
+已预留的事件类型：
+
+| event_type | actor | subject | input |
+| --- | --- | --- | --- |
+| `message.received` | 发消息的人 | 当前消息 | 文本、图片、文件等消息内容 |
+| `message.recalled` | 撤回操作者，未知时为系统 | 被撤回消息 | 通常为空，原消息摘要放 `event_data` |
+| `group.member_joined` | 新成员或邀请人，按平台 payload 标明 | 群/成员关系 | 通常为空，可把欢迎上下文放 `event_data` |
+| `friend.request_received` | 申请人 | 好友申请 | 验证消息或申请理由 |
+
+未来 EventRouter 的最小调用链应是：
+
+```text
+Platform Adapter
+  -> EventRouter normalize platform payload
+  -> resolve event binding: event_type + bot/workspace/scope -> runner id + config
+  -> AgentRunOrchestrator.run_from_event(event_request)
+  -> AgentRunContextBuilder.build_context_from_event(event_request)
+  -> PluginRuntimeConnector.run_agent()
+```
+
+`run_from_event()` 不能重新实现一套 runner 调用逻辑，只能复用当前 `run_from_query()` 已经使用的 registry、资源裁剪、session registry、状态更新和结果归一化能力。这样 Pipeline 消息入口和 EBA 非消息入口不会分裂成两套协议。
+
 ## 8. 分阶段落地
 
 ### Phase 1：整理当前分支
@@ -441,3 +475,7 @@ SDK：
 - 当前 runner 配置先跟 Pipeline 绑定，仍然在 Pipeline 的 AI runner stage 中执行；后续需要支持直接与 Bot 的事件触发器绑定。
 - Pipeline/Event 绑定只保存 runner id 和绑定配置，不创建插件实例或 runner 实例；插件 runner 按无状态转发调用处理，跨请求状态必须显式存储。
 - 内置 `RequestRunner` 最终强制迁移为插件形态，避免长期保留“内置 runner 分支”和“插件 runner 分支”两套执行体系。
+
+## 12. QA 验收
+
+Phase 1 收尾进入 agent QA 时，使用 [PHASE1_QA_ACCEPTANCE_MATRIX.md](./PHASE1_QA_ACCEPTANCE_MATRIX.md) 作为验收标准。该矩阵只验收 Agent Runner 插件化 parity，不验收 EBA EventBus、EventRouter 或平台动作执行。
