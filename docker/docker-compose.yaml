@@ -33,10 +33,9 @@ services:
     restart: on-failure
     environment:
       - TZ=Asia/Shanghai
-      - LANGBOT_BOX_LOCAL_HOST_ROOT=${LANGBOT_BOX_ROOT:-${PWD}/data/box}
-      - LANGBOT_BOX_LOCAL_DEFAULT_WORKSPACE=default
-      - LANGBOT_BOX_LOCAL_SKILLS_ROOT=skills
-      - LANGBOT_BOX_LOCAL_ALLOWED_MOUNT_ROOTS=${LANGBOT_BOX_ROOT:-${PWD}/data/box}
+      # The Box runtime does NOT read box.local.* from config.yaml or env; it
+      # receives its configuration from LangBot via the INIT RPC action.
+      # Do not add LANGBOT_BOX_* / BOX__* here — they would be silently ignored.
     command: ["uv", "run", "--no-sync", "-m", "langbot_plugin.box", "--mode", "ws"]
     networks:
       - langbot_network
@@ -49,10 +48,13 @@ services:
     restart: on-failure
     environment:
       - TZ=Asia/Shanghai
-      - LANGBOT_BOX_LOCAL_HOST_ROOT=${LANGBOT_BOX_ROOT:-${PWD}/data/box}
-      - LANGBOT_BOX_LOCAL_DEFAULT_WORKSPACE=default
-      - LANGBOT_BOX_LOCAL_SKILLS_ROOT=skills
-      - LANGBOT_BOX_LOCAL_ALLOWED_MOUNT_ROOTS=${LANGBOT_BOX_ROOT:-${PWD}/data/box}
+      # Unified env-override convention: SECTION__SUBSECTION__KEY overrides the
+      # matching config.yaml field (see LoadConfigStage). These map onto
+      # box.local.* and are forwarded to the Box runtime via INIT RPC.
+      - BOX__LOCAL__HOST_ROOT=${LANGBOT_BOX_ROOT:-${PWD}/data/box}
+      - BOX__LOCAL__DEFAULT_WORKSPACE=default
+      - BOX__LOCAL__SKILLS_ROOT=skills
+      - BOX__LOCAL__ALLOWED_MOUNT_ROOTS=${LANGBOT_BOX_ROOT:-${PWD}/data/box}
     ports:
       - 5300:5300  # For web ui and webhook callback
       - 2280-2285:2280-2285  # For platform reverse connection

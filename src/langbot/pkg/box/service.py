@@ -452,25 +452,24 @@ class BoxService:
         }
 
     def _local_config(self) -> dict:
-        local_config = dict(_get_box_config(self.ap).get('local') or {})
-        env_overrides = {
-            'host_root': os.getenv('LANGBOT_BOX_LOCAL_HOST_ROOT', ''),
-            'default_workspace': os.getenv('LANGBOT_BOX_LOCAL_DEFAULT_WORKSPACE', ''),
-            'skills_root': os.getenv('LANGBOT_BOX_LOCAL_SKILLS_ROOT', ''),
-        }
-        for key, value in env_overrides.items():
-            if value:
-                local_config[key] = value
+        """Return ``box.local`` from instance config.
 
-        allowed_mount_roots = os.getenv('LANGBOT_BOX_LOCAL_ALLOWED_MOUNT_ROOTS', '')
-        if allowed_mount_roots:
-            local_config['allowed_mount_roots'] = [
-                item.strip() for item in allowed_mount_roots.split(',') if item.strip()
-            ]
-        return local_config
+        Environment overrides are applied uniformly by
+        ``LoadConfigStage._apply_env_overrides_to_config`` (e.g.
+        ``BOX__LOCAL__HOST_ROOT``) before this is read, so no box-specific
+        env parsing happens here.
+        """
+        return dict(_get_box_config(self.ap).get('local') or {})
 
     def _load_allowed_mount_roots(self) -> list[str]:
         configured_roots = self._local_config().get('allowed_mount_roots', [])
+        # The unified env-override mechanism stores a brand-new key as a raw
+        # string when the key is absent from config.yaml. Accept a
+        # comma-separated string as well as a list so that
+        # ``BOX__LOCAL__ALLOWED_MOUNT_ROOTS="/a,/b"`` keeps working even when
+        # the config file has no ``box.local.allowed_mount_roots`` entry.
+        if isinstance(configured_roots, str):
+            configured_roots = [item.strip() for item in configured_roots.split(',') if item.strip()]
 
         normalized_roots: list[str] = []
         for root in configured_roots:
