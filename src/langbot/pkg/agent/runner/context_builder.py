@@ -15,6 +15,9 @@ from .state_store import get_state_store
 from . import events as runner_events
 
 
+DEFAULT_RUNNER_TIMEOUT_SECONDS = 300
+
+
 # Internal models for the agent runner context protocol.
 
 
@@ -106,7 +109,7 @@ class AgentRuntimeContext(typing.TypedDict):
     sdk_protocol_version: str
     query_id: int | None
     trace_id: str | None
-    deadline_at: int | None
+    deadline_at: float | None
     metadata: dict[str, typing.Any]
 
 
@@ -480,9 +483,13 @@ class AgentRunContextBuilder:
             },
         }
 
-    def _build_deadline(self, runner_config: dict[str, typing.Any]) -> int | None:
-        """Build deadline timestamp from runner timeout config if present."""
-        timeout = runner_config.get('timeout')
+    def _build_deadline(self, runner_config: dict[str, typing.Any]) -> float | None:
+        """Build deadline timestamp from runner timeout config.
+
+        A missing timeout uses the host default. Explicit null, zero, or negative
+        values disable the total run deadline for advanced deployments.
+        """
+        timeout = runner_config.get('timeout', DEFAULT_RUNNER_TIMEOUT_SECONDS)
         if timeout is None:
             return None
 
@@ -494,7 +501,7 @@ class AgentRunContextBuilder:
         if timeout_seconds <= 0:
             return None
 
-        return int(time.time() + timeout_seconds)
+        return time.time() + timeout_seconds
 
     async def _is_stream_output_supported(self, query: pipeline_query.Query) -> bool:
         """Check whether the current adapter can consume streaming chunks."""

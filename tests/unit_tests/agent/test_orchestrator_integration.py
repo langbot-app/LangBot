@@ -1,6 +1,7 @@
 """Integration-style tests for AgentRunOrchestrator with a fake plugin runner."""
 from __future__ import annotations
 
+import asyncio
 import datetime
 import types
 from unittest.mock import AsyncMock
@@ -61,9 +62,10 @@ class FakeKnowledgeBase:
 class FakePluginConnector:
     is_enable_plugin = True
 
-    def __init__(self, results=None, error: Exception | None = None):
+    def __init__(self, results=None, error: Exception | None = None, delay: float = 0):
         self.results = results or []
         self.error = error
+        self.delay = delay
         self.calls: list[dict] = []
         self.contexts: list[dict] = []
         self.sessions_during_run: list[dict | None] = []
@@ -83,6 +85,8 @@ class FakePluginConnector:
             raise self.error
 
         for result in self.results:
+            if self.delay:
+                await asyncio.sleep(self.delay)
             yield result
 
 
@@ -125,7 +129,11 @@ def make_descriptor() -> AgentRunnerDescriptor:
         plugin_name="local-agent",
         runner_name="default",
         protocol_version="1",
-        capabilities={"streaming": True, "tool_calling": True},
+        capabilities={"streaming": True, "tool_calling": True, "knowledge_retrieval": True},
+        config_schema=[
+            {"name": "model", "type": "model-fallback-selector"},
+            {"name": "knowledge-bases", "type": "knowledge-base-multi-selector", "default": []},
+        ],
         permissions={
             "models": ["invoke", "stream"],
             "tools": ["list", "detail", "call"],
@@ -367,3 +375,27 @@ async def test_orchestrator_unregisters_session_after_runner_failure():
     context = plugin_connector.contexts[0]
     assert plugin_connector.sessions_during_run[0] is not None
     assert await get_session_registry().get(context["run_id"]) is None
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_enforces_total_runner_deadline():
+    descriptor = make_descriptor()
+    plugin_connector = FakePluginConnector(
+        results=[
+            {
+                "type": "message.completed",
+                "data": {"message": {"role": "assistant", "content": "too late"}},
+            }
+        ],
+        delay=0.05,
+    )
+    orchestrator = AgentRunOrchestrator(FakeApplication(plugin_connector), FakeRegistry(descriptor))
+    query = make_query()
+    query.pipeline_config["ai"]["runner_config"][RUNNER_ID]["timeout"] = 0.01
+
+    with pytest.raises(RunnerExecutionError) as exc_info:
+        [message async for message in orchestrator.run_from_query(query)]
+
+    assert exc_info.value.retryable is True
+    assert "runner.timeout" in str(exc_info.value)
+    assert await get_session_registry().get(plugin_connector.contexts[0]["run_id"]) is None

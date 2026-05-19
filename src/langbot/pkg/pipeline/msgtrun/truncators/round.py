@@ -11,7 +11,8 @@ class RoundTruncator(truncator.Truncator):
 
     async def truncate(self, query: pipeline_query.Query) -> pipeline_query.Query:
         """截断"""
-        # Get max-round from runner config (new or old format)
+        # max-round remains a pipeline-side trimming knob until token-budget
+        # based compaction replaces this stage.
         runner_id = ConfigMigration.resolve_runner_id(query.pipeline_config)
         runner_config = ConfigMigration.resolve_runner_config(query.pipeline_config, runner_id) if runner_id else {}
         max_round = runner_config.get('max-round', 10)

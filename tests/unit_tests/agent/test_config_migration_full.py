@@ -229,8 +229,8 @@ class TestResolveRunnerIdBackwardCompat:
         assert runner_id == 'plugin:new-runner/default'
 
 
-class TestResolveRunnerConfigBackwardCompat:
-    """Tests for backward compatibility in resolve_runner_config."""
+class TestResolveRunnerConfig:
+    """Tests for runtime runner config resolution."""
 
     def test_resolve_new_format_config(self):
         """resolve_runner_config should read from runner_config."""
@@ -245,13 +245,23 @@ class TestResolveRunnerConfigBackwardCompat:
         assert runner_config['max-round'] == 20
 
     def test_resolve_old_format_config(self):
-        """resolve_runner_config should read from old ai.local-agent."""
+        """resolve_runner_config should not read old ai.local-agent at runtime."""
         config = {
             'ai': {
                 'local-agent': {'max-round': 15},
             },
         }
         runner_config = ConfigMigration.resolve_runner_config(config, 'plugin:langbot/local-agent/default')
+        assert runner_config == {}
+
+    def test_resolve_legacy_runner_config_for_migration(self):
+        """resolve_legacy_runner_config should read old ai.local-agent for migration."""
+        config = {
+            'ai': {
+                'local-agent': {'max-round': 15},
+            },
+        }
+        runner_config = ConfigMigration.resolve_legacy_runner_config(config, 'plugin:langbot/local-agent/default')
         assert runner_config['max-round'] == 15
 
     def test_resolve_new_format_priority(self):

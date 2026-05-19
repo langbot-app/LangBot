@@ -132,7 +132,7 @@ class TestResolveRunnerConfig:
         assert config == {'model': 'uuid-123', 'max_round': 10}
 
     def test_resolve_old_format_config(self):
-        """Resolve runner config from old format."""
+        """Runtime config resolver should not read old format."""
         pipeline_config = {
             'ai': {
                 'local-agent': {
@@ -143,6 +143,23 @@ class TestResolveRunnerConfig:
         }
 
         config = ConfigMigration.resolve_runner_config(
+            pipeline_config,
+            'plugin:langbot/local-agent/default',
+        )
+        assert config == {}
+
+    def test_resolve_legacy_config_for_migration(self):
+        """Migration helper should read old format."""
+        pipeline_config = {
+            'ai': {
+                'local-agent': {
+                    'model': 'uuid-123',
+                    'max_round': 10,
+                },
+            },
+        }
+
+        config = ConfigMigration.resolve_legacy_runner_config(
             pipeline_config,
             'plugin:langbot/local-agent/default',
         )

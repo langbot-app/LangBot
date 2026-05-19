@@ -12,6 +12,7 @@ import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 
 from langbot.pkg.api.http.service.model import _runtime_model_data
+from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
 from langbot.pkg.api.http.service.provider import ModelProviderService
 from langbot.pkg.entity.persistence import model as persistence_model
 from langbot.pkg.pipeline.preproc.preproc import PreProcessor
@@ -21,6 +22,32 @@ from langbot.pkg.provider.modelmgr.requesters.chatcmpl import OpenAIChatCompleti
 from langbot.pkg.provider.modelmgr.requesters.modelscopechatcmpl import ModelScopeChatCompletions
 from langbot.pkg.provider.modelmgr.token import TokenManager
 from langbot.pkg.provider.runners.localagent import LocalAgentRunner
+
+
+DEFAULT_RUNNER_ID = 'plugin:langbot/local-agent/default'
+
+
+class FakeAgentRunnerRegistry:
+    async def get(self, runner_id, bound_plugins=None):
+        return AgentRunnerDescriptor(
+            id=runner_id,
+            source='plugin',
+            label={'en_US': 'Local Agent'},
+            plugin_author='langbot',
+            plugin_name='local-agent',
+            runner_name='default',
+            config_schema=[
+                {'name': 'model', 'type': 'model-fallback-selector'},
+                {'name': 'prompt', 'type': 'prompt-editor', 'default': []},
+                {'name': 'knowledge-bases', 'type': 'knowledge-base-multi-selector', 'default': []},
+            ],
+            capabilities={'tool_calling': True, 'knowledge_retrieval': True, 'multimodal_input': True},
+            permissions={
+                'models': ['list', 'invoke', 'stream'],
+                'tools': ['list', 'detail', 'call'],
+                'knowledge_bases': ['list', 'retrieve'],
+            },
+        )
 
 
 def test_runtime_llm_model_data_preserves_uuid_after_update_payload_uuid_removed():
@@ -190,6 +217,7 @@ async def test_updated_llm_model_is_immediately_usable_by_local_agent_pipeline()
 
     ap = SimpleNamespace()
     ap.logger = Mock()
+    ap.agent_runner_registry = FakeAgentRunnerRegistry()
     ap.persistence_mgr = SimpleNamespace(execute_async=AsyncMock())
     ap.tool_mgr = SimpleNamespace(get_all_tools=AsyncMock(return_value=[]))
     ap.skill_mgr = None  # PreProcessor only uses skill_mgr for the local-agent skill-binding branch
@@ -253,11 +281,13 @@ async def test_updated_llm_model_is_immediately_usable_by_local_agent_pipeline()
     )
     pipeline_config = {
         'ai': {
-            'runner': {'runner': 'local-agent'},
-            'local-agent': {
-                'model': {'primary': model_uuid, 'fallbacks': []},
-                'prompt': [],
-                'knowledge-bases': [],
+            'runner': {'id': DEFAULT_RUNNER_ID},
+            'runner_config': {
+                DEFAULT_RUNNER_ID: {
+                    'model': {'primary': model_uuid, 'fallbacks': []},
+                    'prompt': [],
+                    'knowledge-bases': [],
+                },
             },
         },
         'trigger': {'misc': {'combine-quote-message': False}},

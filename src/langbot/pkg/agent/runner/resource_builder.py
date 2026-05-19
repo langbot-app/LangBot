@@ -13,6 +13,7 @@ from .context_builder import (
     KnowledgeBaseResource,
     StorageResource,
 )
+from . import config_schema
 
 
 class AgentResourceBuilder:
@@ -73,7 +74,7 @@ class AgentResourceBuilder:
         models, tools, knowledge_bases = await asyncio.gather(
             self._build_models(manifest_perms, runner_config, descriptor, query),
             self._build_tools(manifest_perms, bound_plugins, bound_mcp_servers, query),
-            self._build_knowledge_bases(manifest_perms, runner_config, query),
+            self._build_knowledge_bases(manifest_perms, runner_config, descriptor, query),
         )
         storage = self._build_storage(manifest_perms)
 
@@ -132,34 +133,11 @@ class AgentResourceBuilder:
         runner_config: dict[str, typing.Any],
     ) -> None:
         """Authorize model-like values selected through DynamicForm fields."""
-        for item in descriptor.config_schema or []:
-            if not isinstance(item, dict):
-                continue
-
-            field_name = item.get('name')
-            field_type = item.get('type')
-            if not field_name or field_name not in runner_config:
-                continue
-
-            value = runner_config.get(field_name)
-            if field_type == 'model-fallback-selector':
-                if isinstance(value, str):
-                    await self._append_llm_model_resource(models, seen_model_ids, value)
-                elif isinstance(value, dict):
-                    primary = value.get('primary')
-                    if isinstance(primary, str):
-                        await self._append_llm_model_resource(models, seen_model_ids, primary)
-                    fallbacks = value.get('fallbacks', [])
-                    if isinstance(fallbacks, list):
-                        for fallback_uuid in fallbacks:
-                            if isinstance(fallback_uuid, str):
-                                await self._append_llm_model_resource(models, seen_model_ids, fallback_uuid)
-            elif field_type == 'llm-model-selector':
-                if isinstance(value, str):
-                    await self._append_llm_model_resource(models, seen_model_ids, value)
-            elif field_type == 'rerank-model-selector':
-                if isinstance(value, str):
-                    await self._append_rerank_model_resource(models, seen_model_ids, value)
+        for model_type, model_uuid in config_schema.iter_config_model_refs(descriptor, runner_config):
+            if model_type == 'llm':
+                await self._append_llm_model_resource(models, seen_model_ids, model_uuid)
+            elif model_type == 'rerank':
+                await self._append_rerank_model_resource(models, seen_model_ids, model_uuid)
 
     async def _append_llm_model_resource(
         self,
@@ -236,6 +214,7 @@ class AgentResourceBuilder:
         self,
         manifest_perms: dict[str, list[str]],
         runner_config: dict[str, typing.Any],
+        descriptor: AgentRunnerDescriptor,
         query: typing.Any,
     ) -> list[KnowledgeBaseResource]:
         """Build knowledge bases list with plugin SDK field names."""
@@ -246,13 +225,8 @@ class AgentResourceBuilder:
         if 'list' not in kb_perms and 'retrieve' not in kb_perms:
             return kb_resources
 
-        # Get knowledge base UUIDs from config
-        kb_uuids = runner_config.get('knowledge-bases', [])
-        if not kb_uuids:
-            # Old single KB config
-            old_kb_uuid = runner_config.get('knowledge-base', '')
-            if old_kb_uuid and old_kb_uuid != '__none__':
-                kb_uuids = [old_kb_uuid]
+        # Get knowledge base UUIDs from schema-defined config fields.
+        kb_uuids = config_schema.extract_knowledge_base_uuids(descriptor, runner_config)
 
         # Also check query variables (may be modified by plugin PromptPreProcessing)
         kb_uuids_from_vars = query.variables.get('_knowledge_base_uuids', [])

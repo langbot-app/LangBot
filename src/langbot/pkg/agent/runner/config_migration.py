@@ -24,7 +24,8 @@ class ConfigMigration:
     Responsibilities:
     - Resolve runner ID from new ai.runner.id or old ai.runner.runner
     - Map old built-in runner names to official plugin runner IDs
-    - Extract runner config from ai.runner_config or old ai.<runner-name>
+    - Extract runtime runner config from ai.runner_config
+    - Migrate old ai.<runner-name> blocks into ai.runner_config
     """
 
     @staticmethod
@@ -74,9 +75,9 @@ class ConfigMigration:
     ) -> dict[str, typing.Any]:
         """Resolve runner binding configuration from pipeline configuration.
 
-        Priority:
-        1. New format: ai.runner_config[runner_id]
-        2. Old format: ai.<runner-name> (mapped from runner_id if applicable)
+        Runtime code should only read the migrated format. Legacy
+        ai.<runner-name> blocks are handled by migration helpers, not by the
+        hot path.
 
         Args:
             pipeline_config: Pipeline configuration dict
@@ -92,7 +93,16 @@ class ConfigMigration:
         if runner_id in runner_configs:
             return runner_configs[runner_id]
 
-        # Check old format: ai.<old_runner_name>
+        return {}
+
+    @staticmethod
+    def resolve_legacy_runner_config(
+        pipeline_config: dict[str, typing.Any],
+        runner_id: str,
+    ) -> dict[str, typing.Any]:
+        """Resolve old ai.<runner-name> config for migration only."""
+        ai_config = pipeline_config.get('ai', {})
+
         # Try to find old runner name from runner_id
         old_runner_name = None
         for old_name, mapped_id in OLD_RUNNER_TO_PLUGIN_RUNNER_ID.items():
@@ -104,12 +114,6 @@ class ConfigMigration:
             old_config = ai_config.get(old_runner_name, {})
             if old_config:
                 return old_config
-
-        # If runner_id is plugin:* format, try extracting runner_name as config key
-        if is_plugin_runner_id(runner_id):
-            # Some configs might use just the runner_name component as key
-            # But this is legacy behavior - prefer ai.runner_config[id]
-            pass
 
         return {}
 
@@ -181,6 +185,8 @@ class ConfigMigration:
 
             # Migrate runner config
             resolved_config = ConfigMigration.resolve_runner_config(pipeline_config, runner_id)
+            if not resolved_config:
+                resolved_config = ConfigMigration.resolve_legacy_runner_config(pipeline_config, runner_id)
             if resolved_config:
                 runner_configs[runner_id] = resolved_config
                 # Remove old runner config block

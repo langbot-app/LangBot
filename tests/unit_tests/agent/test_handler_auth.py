@@ -16,8 +16,9 @@ import pytest
 import types
 from unittest.mock import AsyncMock, MagicMock
 
+from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
 from langbot.pkg.agent.runner.session_registry import AgentRunSessionRegistry
-from langbot.pkg.plugin.handler import _build_tool_detail
+from langbot.pkg.plugin.handler import _build_tool_detail, _get_pipeline_knowledge_base_uuids
 
 # Import shared test fixtures from conftest.py
 from .conftest import make_resources
@@ -105,9 +106,51 @@ class MockApplication:
         self.persistence_mgr.execute_async = AsyncMock(return_value=MagicMock(first=lambda: None))
 
 
+class FakeAgentRunnerRegistry:
+    async def get(self, runner_id, bound_plugins=None):
+        return AgentRunnerDescriptor(
+            id=runner_id,
+            source='plugin',
+            label={'en_US': 'Test Runner'},
+            plugin_author='test',
+            plugin_name='runner',
+            runner_name='default',
+            config_schema=[
+                {'name': 'knowledge-bases', 'type': 'knowledge-base-multi-selector', 'default': []},
+            ],
+            capabilities={'knowledge_retrieval': True},
+            permissions={'knowledge_bases': ['list', 'retrieve']},
+        )
+
+
 class MockConnection:
     """Mock connection for testing."""
     pass
+
+
+class TestPipelineKnowledgeBaseScope:
+    """Tests for schema-driven pipeline KB scope resolution."""
+
+    @pytest.mark.asyncio
+    async def test_uses_preprocessed_query_scope(self):
+        app = MockApplication()
+        query = MockQuery()
+        query.variables = {'_knowledge_base_uuids': ['kb_var', '__none__', 'kb_var']}
+
+        kb_uuids = await _get_pipeline_knowledge_base_uuids(app, query)
+
+        assert kb_uuids == ['kb_var']
+
+    @pytest.mark.asyncio
+    async def test_uses_runner_schema_when_query_scope_not_preprocessed(self):
+        app = MockApplication()
+        app.agent_runner_registry = FakeAgentRunnerRegistry()
+        query = MockQuery()
+        query.variables = {}
+
+        kb_uuids = await _get_pipeline_knowledge_base_uuids(app, query)
+
+        assert kb_uuids == ['kb_001', 'kb_002']
 
 
 class MockDisconnectCallback:

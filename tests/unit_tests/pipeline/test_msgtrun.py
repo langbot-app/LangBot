@@ -21,6 +21,9 @@ from tests.factories import (
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
 
+RUNNER_ID = 'plugin:langbot/local-agent/default'
+
+
 def get_msgtrun_module():
     """Lazy import to avoid circular import issues."""
     # Import pipelinemgr first to trigger stage registration
@@ -47,9 +50,12 @@ def make_truncate_config(max_round: int = 5):
     """Create a pipeline config with max-round setting."""
     return {
         'ai': {
-            'local-agent': {
-                'max-round': max_round,
-            }
+            'runner': {'id': RUNNER_ID},
+            'runner_config': {
+                RUNNER_ID: {
+                    'max-round': max_round,
+                },
+            },
         }
     }
 
