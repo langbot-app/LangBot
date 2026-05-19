@@ -44,6 +44,11 @@ def __getattr__(name: str) -> Any:
 
         return WorkflowExecutor
 
+    if name in ('DebugWorkflowExecutor', 'DebugExecutionState', 'ExecutionLog'):
+        from . import debug
+
+        return getattr(debug, name)
+
     if name == 'nodes':
         return import_module('.nodes', __name__)
 
@@ -69,4 +74,8 @@ __all__ = [
     'NodeTypeRegistry',
     # Executor
     'WorkflowExecutor',
+    # Debug
+    'DebugWorkflowExecutor',
+    'DebugExecutionState',
+    'ExecutionLog',
 ]

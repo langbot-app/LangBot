@@ -153,3 +153,58 @@ config:
     description:
       en_US: Select tools that the model can use
       zh_Hans: 选择模型可以使用的工具
+
+  - name: exception_handling
+    type: select
+    required: true
+    default: show-hint
+    options:
+      - name: show-error
+        label:
+          en_US: Show Full Error
+          zh_Hans: 显示完整报错信息
+      - name: show-hint
+        label:
+          en_US: Show Failure Hint
+          zh_Hans: 仅文字提示
+      - name: hide
+        label:
+          en_US: Hide All
+          zh_Hans: 不显示任何异常信息
+    label:
+      en_US: Exception Handling Strategy
+      zh_Hans: 异常处理策略
+    description:
+      en_US: Controls how error messages are displayed to the user when an AI request fails
+      zh_Hans: 控制 AI 请求失败时向用户展示错误信息的方式
+
+  - name: failure_hint
+    type: string
+    required: false
+    default: 'Request failed.'
+    label:
+      en_US: Failure Hint Text
+      zh_Hans: 失败提示文本
+    description:
+      en_US: The text to display when a request fails. Only effective when Exception Handling Strategy is set to "Show Failure Hint"
+      zh_Hans: 请求失败时显示的提示文本，仅在异常处理策略设置为"仅文字提示"时生效
+
+  - name: remove_think
+    type: boolean
+    default: false
+    label:
+      en_US: Remove CoT
+      zh_Hans: 删除思维链
+    description:
+      en_US: 'If enabled, the model thinking content in the response will be automatically removed. Note: When using streaming response, removing CoT may cause the first token to wait for a long time.'
+      zh_Hans: '如果启用，将自动删除大模型回复中的模型思考内容。注意：当您使用流式响应时，删除思维链可能会导致首个 Token 的等待时间过长'
+
+  - name: track_function_calls
+    type: boolean
+    default: false
+    label:
+      en_US: Track Function Calls
+      zh_Hans: 跟踪函数调用
+    description:
+      en_US: If enabled, the Agent will output a hint to the user each time a tool is called
+      zh_Hans: 启用后，Agent 每次调用工具时都会输出一个提示给用户

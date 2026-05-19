@@ -257,7 +257,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     const newEdge: WorkflowEdge = {
       ...connection,
       id: generateEdgeId(),
-      type: 'bezier',
+      type: 'default',
     } as WorkflowEdge;
 
     set((state) => ({
@@ -464,7 +464,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       target: edge.target,
       sourceHandle: edge.source_port,
       targetHandle: edge.target_port,
-      type: 'bezier',
+      type: 'default',
       data: {
         label: edge.label,
         condition: edge.condition,

@@ -447,7 +447,7 @@ function WorkflowEditorInner() {
             panOnDrag={[1, 2]} // Middle click and right click to pan
             selectNodesOnDrag={false}
             defaultEdgeOptions={{
-              type: 'bezier',
+              type: 'default',
               animated: true,
               markerEnd: {
                 type: MarkerType.ArrowClosed,

@@ -342,6 +342,23 @@ class WorkflowService:
 
         if trigger_type == 'message':
             message_context_data = raw_trigger_data.get('message_context') or {}
+            # Fallback: if message_context is missing but trigger_data has 'message',
+            # construct a minimal message_context so rerun and downstream nodes work.
+            if not message_context_data and raw_trigger_data.get('message'):
+                raw_msg = raw_trigger_data['message']
+                message_context_data = {
+                    'message_id': str(raw_trigger_data.get('message_id', execution_uuid)),
+                    'message_content': raw_msg if isinstance(raw_msg, str) else str(raw_msg),
+                    'sender_id': str(raw_trigger_data.get('sender_id', '')),
+                    'sender_name': str(raw_trigger_data.get('sender_name', 'User')),
+                    'platform': str(raw_trigger_data.get('platform', '')),
+                    'conversation_id': str(raw_trigger_data.get('connection_id', '')),
+                    'is_group': bool(raw_trigger_data.get('is_group', False)),
+                    'group_id': raw_trigger_data.get('group_id'),
+                    'mentions': raw_trigger_data.get('mentions', []),
+                    'reply_to': raw_trigger_data.get('reply_to'),
+                    'raw_message': raw_trigger_data.get('raw_message', {}),
+                }
             if message_context_data:
                 context.message_context = MessageContext(
                     message_id=str(message_context_data.get('message_id', execution_uuid)),
