@@ -4,7 +4,7 @@ on:
   pull_request:
     types: [opened, ready_for_review, synchronize]
     paths:
-      - 'pkg/**'
+      - 'src/langbot/pkg/**'
       - 'tests/**'
       - '.github/workflows/run-tests.yml'
       - 'pyproject.toml'
@@ -13,12 +13,10 @@ on:
     branches:
       - master
       - develop
-    paths:
-      - 'pkg/**'
-      - 'tests/**'
-      - '.github/workflows/run-tests.yml'
-      - 'pyproject.toml'
-      - 'run_tests.sh'
+      - 'feat/**'
+    # No path filter on push: every push to the branches above runs the
+    # full unit-test suite. feat/** branches in particular must be tested
+    # on every push (they accumulate large changes before a PR exists).
 
 jobs:
   test:
