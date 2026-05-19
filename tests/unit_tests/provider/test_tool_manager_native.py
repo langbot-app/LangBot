@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import tempfile
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -45,7 +45,7 @@ def make_tool(name: str) -> resource_tool.LLMTool:
 async def test_tool_manager_omits_skill_authoring_tools_by_default():
     manager = ToolManager(SimpleNamespace())
     manager.native_tool_loader = StubLoader([make_tool('exec')])
-    manager.skill_authoring_tool_loader = StubLoader([make_tool('reload_skills')])
+    manager.skill_tool_loader = StubLoader([make_tool('activate')])
     manager.plugin_tool_loader = StubLoader([make_tool('plugin_tool')])
     manager.mcp_tool_loader = StubLoader([make_tool('mcp_tool')])
 
@@ -58,13 +58,13 @@ async def test_tool_manager_omits_skill_authoring_tools_by_default():
 async def test_tool_manager_includes_skill_authoring_tools_when_requested():
     manager = ToolManager(SimpleNamespace())
     manager.native_tool_loader = StubLoader([make_tool('exec')])
-    manager.skill_authoring_tool_loader = StubLoader([make_tool('reload_skills')])
+    manager.skill_tool_loader = StubLoader([make_tool('activate')])
     manager.plugin_tool_loader = StubLoader([make_tool('plugin_tool')])
     manager.mcp_tool_loader = StubLoader([make_tool('mcp_tool')])
 
     tools = await manager.get_all_tools(include_skill_authoring=True)
 
-    assert [tool.name for tool in tools] == ['exec', 'reload_skills', 'plugin_tool', 'mcp_tool']
+    assert [tool.name for tool in tools] == ['exec', 'activate', 'plugin_tool', 'mcp_tool']
 
 
 @pytest.mark.asyncio
@@ -72,7 +72,7 @@ async def test_tool_manager_routes_native_tool_calls():
     app = SimpleNamespace()
     manager = ToolManager(app)
     manager.native_tool_loader = StubLoader([make_tool('exec')], invoke_result={'backend': 'fake'})
-    manager.skill_authoring_tool_loader = StubLoader([make_tool('reload_skills')])
+    manager.skill_tool_loader = StubLoader([make_tool('activate')])
     manager.plugin_tool_loader = StubLoader([make_tool('plugin_tool')])
     manager.mcp_tool_loader = StubLoader([make_tool('mcp_tool')])
 
@@ -86,23 +86,24 @@ async def test_native_tool_loader_hides_tools_when_box_unavailable():
     loader = NativeToolLoader(SimpleNamespace(box_service=SimpleNamespace(available=False)))
 
     assert await loader.get_tools() == []
-    assert await loader.has_tool('exec') is False
-    assert await loader.has_tool('read') is False
-    assert await loader.has_tool('write') is False
-    assert await loader.has_tool('edit') is False
+    for tool_name in ('exec', 'read', 'write', 'edit', 'glob', 'grep'):
+        assert await loader.has_tool(tool_name) is False
 
 
 @pytest.mark.asyncio
 async def test_native_tool_loader_exposes_all_tools_when_box_available():
-    loader = NativeToolLoader(SimpleNamespace(box_service=SimpleNamespace(available=True)))
+    box_service = SimpleNamespace(
+        available=True,
+        get_status=AsyncMock(return_value={'backend': {'available': True}}),
+    )
+    loader = NativeToolLoader(SimpleNamespace(box_service=box_service, logger=Mock()))
+    await loader.initialize()
 
     tools = await loader.get_tools()
 
-    assert [tool.name for tool in tools] == ['exec', 'read', 'write', 'edit']
-    assert await loader.has_tool('exec') is True
-    assert await loader.has_tool('read') is True
-    assert await loader.has_tool('write') is True
-    assert await loader.has_tool('edit') is True
+    assert [tool.name for tool in tools] == ['exec', 'read', 'write', 'edit', 'glob', 'grep']
+    for tool_name in ('exec', 'read', 'write', 'edit', 'glob', 'grep'):
+        assert await loader.has_tool(tool_name) is True
 
 
 # ── read/write/edit file tool tests ─────────────────────────────

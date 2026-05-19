@@ -69,6 +69,7 @@ async def test_updated_llm_model_is_immediately_usable_by_local_agent_pipeline()
     ap.logger = Mock()
     ap.persistence_mgr = SimpleNamespace(execute_async=AsyncMock())
     ap.tool_mgr = SimpleNamespace(get_all_tools=AsyncMock(return_value=[]))
+    ap.skill_mgr = None  # PreProcessor only uses skill_mgr for the local-agent skill-binding branch
     ap.plugin_connector = SimpleNamespace(
         emit_event=AsyncMock(return_value=SimpleNamespace(event=SimpleNamespace(default_prompt=[], prompt=[])))
     )

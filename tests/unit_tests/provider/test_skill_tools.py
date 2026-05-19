@@ -79,52 +79,18 @@ class TestSkillManagerPackageLoading:
             assert skill_data['description'] == 'Second'
 
 
-class TestSkillManagerActivation:
-    def test_detect_skill_activations_returns_unique_ordered_skills(self):
-        from langbot.pkg.skill.manager import SkillManager
-
-        ap = _make_ap()
-        mgr = SkillManager(ap)
-        mgr.skills = {
-            'alpha': _make_skill_data(name='alpha'),
-            'beta': _make_skill_data(name='beta'),
-        }
-
-        response = '[ACTIVATE_SKILL: alpha]\n[ACTIVATE_SKILL: beta]\n[ACTIVATE_SKILL: alpha]\nLet me handle this.'
-
-        assert mgr.detect_skill_activations(response) == ['alpha', 'beta']
-        assert mgr.detect_skill_activation(response) == 'alpha'
-
-    def test_build_activation_prompt_for_skills_includes_runtime_guidance(self):
-        from langbot.pkg.skill.manager import SkillManager
-
-        ap = _make_ap()
-        mgr = SkillManager(ap)
-        mgr.skills = {
-            'primary': _make_skill_data(name='primary', instructions='Primary instructions'),
-            'aux': _make_skill_data(name='aux', instructions='Aux instructions'),
-        }
-
-        prompt = mgr.build_activation_prompt_for_skills(['primary', 'aux'])
-
-        assert 'Activated skills: primary, aux' in prompt
-        assert 'role="primary"' in prompt
-        assert 'role="auxiliary"' in prompt
-        assert '/workspace/.skills/<skill-name>' in prompt
-
-    def test_remove_activation_marker_removes_multiple_markers(self):
-        from langbot.pkg.skill.manager import SkillManager
-
-        ap = _make_ap()
-        mgr = SkillManager(ap)
-
-        response = '[ACTIVATE_SKILL: alpha]\n[ACTIVATE_SKILL: beta]\nFinal answer'
-        assert mgr.remove_activation_marker(response) == 'Final answer'
-
-
 class TestSkillActivationHelper:
-    def test_prepare_skill_activation_registers_only_explicit_activated_skills(self):
-        from langbot.pkg.skill.activation import prepare_skill_activation
+    """Skill activation is now Tool-Call based.
+
+    The legacy text-marker mechanism (``[ACTIVATE_SKILL: x]`` detection,
+    ``build_activation_prompt_for_skills``, ``remove_activation_marker``,
+    ``prepare_skill_activation``) has been removed. Activation now goes
+    through ``skill.activation.register_activated_skill``, invoked by the
+    ``activate`` Tool Call.
+    """
+
+    def test_register_activated_skill_records_known_skill(self):
+        from langbot.pkg.skill.activation import register_activated_skill
         from langbot.pkg.provider.tools.loaders.skill import ACTIVATED_SKILLS_KEY
         from langbot.pkg.skill.manager import SkillManager
 
@@ -132,45 +98,37 @@ class TestSkillActivationHelper:
         mgr = SkillManager(ap)
         mgr.skills = {
             'primary': _make_skill_data(name='primary', instructions='Primary instructions'),
-            'aux': _make_skill_data(name='aux', instructions='Aux instructions'),
         }
         ap.skill_mgr = mgr
 
-        query = SimpleNamespace(variables={}, use_funcs=[])
-        activation = prepare_skill_activation(
-            ap,
-            query,
-            '[ACTIVATE_SKILL: primary]\n[ACTIVATE_SKILL: aux]\nWorking on it.',
-        )
+        query = SimpleNamespace(variables={})
 
-        assert activation is not None
-        assert activation.activated_skill_names == ['primary', 'aux']
-        assert activation.cleaned_content == 'Working on it.'
-        assert set(query.variables[ACTIVATED_SKILLS_KEY].keys()) == {'primary', 'aux'}
+        assert register_activated_skill(ap, query, 'primary') is True
+        assert set(query.variables[ACTIVATED_SKILLS_KEY].keys()) == {'primary'}
+        assert query.variables[ACTIVATED_SKILLS_KEY]['primary']['name'] == 'primary'
 
-    def test_prepare_skill_activation_ignores_skills_not_bound_to_pipeline(self):
-        from langbot.pkg.skill.activation import prepare_skill_activation
-        from langbot.pkg.provider.tools.loaders.skill import ACTIVATED_SKILLS_KEY, PIPELINE_BOUND_SKILLS_KEY
+    def test_register_activated_skill_rejects_unknown_skill(self):
+        from langbot.pkg.skill.activation import register_activated_skill
+        from langbot.pkg.provider.tools.loaders.skill import ACTIVATED_SKILLS_KEY
         from langbot.pkg.skill.manager import SkillManager
 
         ap = _make_ap()
         mgr = SkillManager(ap)
-        mgr.skills = {
-            'primary': _make_skill_data(name='primary', instructions='Primary instructions'),
-            'hidden': _make_skill_data(name='hidden', instructions='Hidden instructions'),
-        }
+        mgr.skills = {'primary': _make_skill_data(name='primary')}
         ap.skill_mgr = mgr
 
-        query = SimpleNamespace(variables={PIPELINE_BOUND_SKILLS_KEY: ['primary']}, use_funcs=[])
-        activation = prepare_skill_activation(
-            ap,
-            query,
-            '[ACTIVATE_SKILL: hidden]\n[ACTIVATE_SKILL: primary]\nWorking on it.',
-        )
+        query = SimpleNamespace(variables={})
 
-        assert activation is not None
-        assert activation.activated_skill_names == ['primary']
-        assert set(query.variables[ACTIVATED_SKILLS_KEY].keys()) == {'primary'}
+        assert register_activated_skill(ap, query, 'missing') is False
+        assert ACTIVATED_SKILLS_KEY not in query.variables
+
+    def test_register_activated_skill_without_skill_manager_returns_false(self):
+        from langbot.pkg.skill.activation import register_activated_skill
+
+        ap = _make_ap()  # no skill_mgr attribute
+        query = SimpleNamespace(variables={})
+
+        assert register_activated_skill(ap, query, 'primary') is False
 
 
 class TestSkillPathHelpers:
@@ -247,199 +205,97 @@ class TestSkillPathHelpers:
         assert command.rstrip().endswith('python scripts/run.py')
 
 
-class TestSkillAuthoringToolLoader:
+class TestSkillToolLoader:
+    """The skill tool surface is now just ``activate`` + ``register_skill``.
+
+    The legacy CRUD authoring tools (create/list/get/update/delete/
+    import_skill_from_directory/reload_skills) were removed; skill CRUD is
+    handled by SkillService via the HTTP API / web UI instead.
+    """
+
     @pytest.mark.asyncio
-    async def test_create_skill_creates_managed_prompt_only_skill(self):
+    async def test_activate_returns_instructions_and_registers_skill(self):
         from langbot.pkg.provider.tools.loaders.skill_authoring import (
-            CREATE_SKILL_TOOL_NAME,
-            SkillAuthoringToolLoader,
+            ACTIVATE_SKILL_TOOL_NAME,
+            SkillToolLoader,
+        )
+        from langbot.pkg.provider.tools.loaders.skill import ACTIVATED_SKILLS_KEY
+
+        skill = _make_skill_data(name='demo', package_root='/data/skills/demo', instructions='Step 1')
+        ap = _make_ap()
+        ap.skill_mgr = SimpleNamespace(
+            skills={'demo': skill},
+            get_skill_by_name=lambda name: skill if name == 'demo' else None,
+        )
+
+        loader = SkillToolLoader(ap)
+        query = SimpleNamespace(variables={})
+
+        result = await loader.invoke_tool(ACTIVATE_SKILL_TOOL_NAME, {'skill_name': 'demo'}, query)
+
+        assert result['activated'] is True
+        assert result['skill_name'] == 'demo'
+        assert result['mount_path'] == '/workspace/.skills/demo'
+        assert 'Step 1' in result['content']
+        assert set(query.variables[ACTIVATED_SKILLS_KEY].keys()) == {'demo'}
+
+    @pytest.mark.asyncio
+    async def test_activate_unknown_skill_raises(self):
+        from langbot.pkg.provider.tools.loaders.skill_authoring import (
+            ACTIVATE_SKILL_TOOL_NAME,
+            SkillToolLoader,
         )
 
         ap = _make_ap()
-        ap.skill_service = SimpleNamespace(
-            create_skill=AsyncMock(
-                return_value=_make_skill_data(name='prompt-skill', package_root='/data/skills/prompt-skill')
-            ),
-            reload_skills=AsyncMock(),
-            list_skills=AsyncMock(return_value=[]),
+        ap.skill_mgr = SimpleNamespace(
+            skills={'demo': _make_skill_data(name='demo')},
+            get_skill_by_name=lambda name: None,
         )
 
-        loader = SkillAuthoringToolLoader(ap)
-        await loader.initialize()
+        loader = SkillToolLoader(ap)
 
-        result = await loader.invoke_tool(
-            CREATE_SKILL_TOOL_NAME,
-            {
-                'name': 'prompt-skill',
-                'display_name': 'Prompt Skill',
-                'description': 'Prompt only skill',
-                'instructions': 'Follow these steps carefully.',
-            },
-            SimpleNamespace(),
-        )
-
-        ap.skill_service.create_skill.assert_awaited_once_with(
-            {
-                'name': 'prompt-skill',
-                'display_name': 'Prompt Skill',
-                'description': 'Prompt only skill',
-                'instructions': 'Follow these steps carefully.',
-            }
-        )
-        assert result == {
-            'created': True,
-            'skill': _make_skill_data(name='prompt-skill', package_root='/data/skills/prompt-skill'),
-        }
+        with pytest.raises(ValueError, match='not found'):
+            await loader.invoke_tool(
+                ACTIVATE_SKILL_TOOL_NAME,
+                {'skill_name': 'ghost'},
+                SimpleNamespace(variables={}),
+            )
 
     @pytest.mark.asyncio
-    async def test_list_skills_returns_managed_skills(self):
+    async def test_register_skill_scans_directory_and_creates_skill(self):
         from langbot.pkg.provider.tools.loaders.skill_authoring import (
-            LIST_SKILLS_TOOL_NAME,
-            SkillAuthoringToolLoader,
+            REGISTER_SKILL_TOOL_NAME,
+            SkillToolLoader,
         )
-
-        ap = _make_ap()
-        ap.skill_service = SimpleNamespace(
-            list_skills=AsyncMock(return_value=[_make_skill_data(name='alpha'), _make_skill_data(name='beta')]),
-        )
-
-        loader = SkillAuthoringToolLoader(ap)
-        await loader.initialize()
-
-        result = await loader.invoke_tool(LIST_SKILLS_TOOL_NAME, {}, SimpleNamespace())
-
-        assert result == {
-            'skills': [_make_skill_data(name='alpha'), _make_skill_data(name='beta')],
-            'skill_names': ['alpha', 'beta'],
-            'count': 2,
-        }
-
-    @pytest.mark.asyncio
-    async def test_get_skill_returns_one_managed_skill(self):
-        from langbot.pkg.provider.tools.loaders.skill_authoring import (
-            GET_SKILL_TOOL_NAME,
-            SkillAuthoringToolLoader,
-        )
-
-        ap = _make_ap()
-        ap.skill_service = SimpleNamespace(
-            get_skill=AsyncMock(return_value=_make_skill_data(name='time-now', package_root='/data/skills/time-now')),
-        )
-
-        loader = SkillAuthoringToolLoader(ap)
-        await loader.initialize()
-
-        result = await loader.invoke_tool(GET_SKILL_TOOL_NAME, {'name': 'time-now'}, SimpleNamespace())
-
-        ap.skill_service.get_skill.assert_awaited_once_with('time-now')
-        assert result == {
-            'skill': _make_skill_data(name='time-now', package_root='/data/skills/time-now'),
-        }
-
-    @pytest.mark.asyncio
-    async def test_update_skill_updates_managed_prompt_only_skill(self):
-        from langbot.pkg.provider.tools.loaders.skill_authoring import (
-            UPDATE_SKILL_TOOL_NAME,
-            SkillAuthoringToolLoader,
-        )
-
-        ap = _make_ap()
-        ap.skill_service = SimpleNamespace(
-            create_skill=AsyncMock(),
-            update_skill=AsyncMock(
-                return_value=_make_skill_data(name='time-now', package_root='/data/skills/time-now')
-            ),
-            reload_skills=AsyncMock(),
-            list_skills=AsyncMock(return_value=[]),
-        )
-
-        loader = SkillAuthoringToolLoader(ap)
-        await loader.initialize()
-
-        result = await loader.invoke_tool(
-            UPDATE_SKILL_TOOL_NAME,
-            {
-                'name': 'time-now',
-                'description': 'Fixed to Beijing time',
-                'instructions': 'Always use Asia/Shanghai and never offer other timezones.',
-            },
-            SimpleNamespace(),
-        )
-
-        ap.skill_service.update_skill.assert_awaited_once_with(
-            'time-now',
-            {
-                'name': 'time-now',
-                'description': 'Fixed to Beijing time',
-                'instructions': 'Always use Asia/Shanghai and never offer other timezones.',
-            },
-        )
-        assert result == {
-            'updated': True,
-            'skill': _make_skill_data(name='time-now', package_root='/data/skills/time-now'),
-        }
-
-    @pytest.mark.asyncio
-    async def test_delete_skill_deletes_managed_skill(self):
-        from langbot.pkg.provider.tools.loaders.skill_authoring import (
-            DELETE_SKILL_TOOL_NAME,
-            SkillAuthoringToolLoader,
-        )
-
-        ap = _make_ap()
-        ap.skill_service = SimpleNamespace(
-            delete_skill=AsyncMock(return_value=True),
-        )
-
-        loader = SkillAuthoringToolLoader(ap)
-        await loader.initialize()
-
-        result = await loader.invoke_tool(DELETE_SKILL_TOOL_NAME, {'name': 'time-now'}, SimpleNamespace())
-
-        ap.skill_service.delete_skill.assert_awaited_once_with('time-now')
-        assert result == {
-            'deleted': True,
-            'skill_name': 'time-now',
-        }
-
-    @pytest.mark.asyncio
-    async def test_import_skill_from_directory_uses_workspace_path_and_service_import(self):
-        from langbot.pkg.provider.tools.loaders.skill_authoring import (
-            IMPORT_SKILL_FROM_DIRECTORY_TOOL_NAME,
-            SkillAuthoringToolLoader,
-        )
-
-        ap = _make_ap()
-        ap.box_service = SimpleNamespace(default_workspace='/tmp/langbot-workspace')
-        ap.skill_service = SimpleNamespace(
-            scan_directory=Mock(
-                return_value={
-                    'name': 'cloned-skill',
-                    'display_name': 'Cloned Skill',
-                    'description': 'Imported from clone',
-                    'instructions': 'Do work',
-                }
-            ),
-            create_skill=AsyncMock(return_value=_make_skill_data(name='cloned-skill', package_root='/repo/root')),
-            reload_skills=AsyncMock(),
-            list_skills=AsyncMock(return_value=[]),
-        )
-
-        loader = SkillAuthoringToolLoader(ap)
-        await loader.initialize()
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ap.box_service.default_workspace = tmpdir
-            repo_dir = os.path.join(tmpdir, 'repos', 'cloned-skill')
+            repo_dir = os.path.join(tmpdir, 'repo')
             os.makedirs(repo_dir)
 
+            ap = _make_ap()
+            ap.box_service = SimpleNamespace(default_workspace=tmpdir, available=True)
+            ap.skill_service = SimpleNamespace(
+                scan_directory_async=AsyncMock(
+                    return_value={
+                        'name': 'cloned-skill',
+                        'display_name': 'Cloned Skill',
+                        'description': 'Imported from clone',
+                        'instructions': 'Do work',
+                    }
+                ),
+                create_skill=AsyncMock(
+                    return_value=_make_skill_data(name='cloned-skill', package_root=os.path.realpath(repo_dir))
+                ),
+            )
+
+            loader = SkillToolLoader(ap)
             result = await loader.invoke_tool(
-                IMPORT_SKILL_FROM_DIRECTORY_TOOL_NAME,
-                {'path': '/workspace/repos/cloned-skill'},
+                REGISTER_SKILL_TOOL_NAME,
+                {'path': '/workspace/repo'},
                 SimpleNamespace(),
             )
 
-        ap.skill_service.scan_directory.assert_called_once_with(os.path.realpath(repo_dir))
+        ap.skill_service.scan_directory_async.assert_awaited_once_with(os.path.realpath(repo_dir))
         ap.skill_service.create_skill.assert_awaited_once_with(
             {
                 'name': 'cloned-skill',
@@ -449,59 +305,88 @@ class TestSkillAuthoringToolLoader:
                 'package_root': os.path.realpath(repo_dir),
             }
         )
-        assert result['imported'] is True
-        assert result['source_path'] == '/workspace/repos/cloned-skill'
+        assert result['registered'] is True
+        assert result['skill_name'] == 'cloned-skill'
+        assert result['source_path'] == '/workspace/repo'
 
     @pytest.mark.asyncio
-    async def test_import_skill_from_directory_rejects_workspace_escape(self):
+    async def test_register_skill_rejects_workspace_escape(self):
         from langbot.pkg.provider.tools.loaders.skill_authoring import (
-            IMPORT_SKILL_FROM_DIRECTORY_TOOL_NAME,
-            SkillAuthoringToolLoader,
+            REGISTER_SKILL_TOOL_NAME,
+            SkillToolLoader,
         )
 
-        ap = _make_ap()
-        ap.box_service = SimpleNamespace(default_workspace='/tmp/langbot-workspace')
-        ap.skill_service = SimpleNamespace(
-            scan_directory=Mock(),
-            create_skill=AsyncMock(),
-            reload_skills=AsyncMock(),
-            list_skills=AsyncMock(return_value=[]),
-        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ap = _make_ap()
+            ap.box_service = SimpleNamespace(default_workspace=tmpdir, available=True)
+            ap.skill_service = SimpleNamespace(scan_directory_async=AsyncMock(), create_skill=AsyncMock())
 
-        loader = SkillAuthoringToolLoader(ap)
-        await loader.initialize()
+            loader = SkillToolLoader(ap)
 
-        with pytest.raises(ValueError, match='escapes the workspace boundary'):
-            await loader.invoke_tool(
-                IMPORT_SKILL_FROM_DIRECTORY_TOOL_NAME,
-                {'path': '/workspace/../../etc'},
-                SimpleNamespace(),
-            )
+            with pytest.raises(ValueError, match='escapes the workspace boundary'):
+                await loader.invoke_tool(
+                    REGISTER_SKILL_TOOL_NAME,
+                    {'path': '/workspace/../../etc'},
+                    SimpleNamespace(),
+                )
 
     @pytest.mark.asyncio
-    async def test_reload_skills_rescans_filesystem_and_returns_current_names(self):
+    async def test_register_skill_requires_skill_service(self):
         from langbot.pkg.provider.tools.loaders.skill_authoring import (
-            RELOAD_SKILLS_TOOL_NAME,
-            SkillAuthoringToolLoader,
+            REGISTER_SKILL_TOOL_NAME,
+            SkillToolLoader,
         )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ap = _make_ap()  # no skill_service attribute
+            ap.box_service = SimpleNamespace(default_workspace=tmpdir, available=True)
+
+            loader = SkillToolLoader(ap)
+
+            with pytest.raises(ValueError, match='Skill service not available'):
+                await loader.invoke_tool(
+                    REGISTER_SKILL_TOOL_NAME,
+                    {'path': '/workspace/foo'},
+                    SimpleNamespace(),
+                )
+
+    @pytest.mark.asyncio
+    async def test_tools_hidden_when_sandbox_backend_unavailable(self):
+        from langbot.pkg.provider.tools.loaders.skill_authoring import SkillToolLoader
 
         ap = _make_ap()
-        ap.skill_service = SimpleNamespace(
-            reload_skills=AsyncMock(),
-            list_skills=AsyncMock(return_value=[_make_skill_data(name='alpha'), _make_skill_data(name='beta')]),
+        ap.skill_mgr = SimpleNamespace(skills={})
+        ap.box_service = SimpleNamespace(
+            available=True,
+            get_status=AsyncMock(return_value={'backend': {'available': False}}),
         )
 
-        loader = SkillAuthoringToolLoader(ap)
+        loader = SkillToolLoader(ap)
         await loader.initialize()
 
-        result = await loader.invoke_tool(RELOAD_SKILLS_TOOL_NAME, {}, SimpleNamespace())
+        assert await loader.get_tools() == []
+        assert await loader.has_tool('activate') is False
+        assert await loader.has_tool('register_skill') is False
 
-        assert result == {
-            'reloaded': True,
-            'skill_names': ['alpha', 'beta'],
-            'count': 2,
-        }
-        ap.skill_service.reload_skills.assert_awaited_once_with()
+    @pytest.mark.asyncio
+    async def test_tools_exposed_when_sandbox_backend_available(self):
+        from langbot.pkg.provider.tools.loaders.skill_authoring import SkillToolLoader
+
+        ap = _make_ap()
+        ap.skill_mgr = SimpleNamespace(skills={'demo': _make_skill_data(name='demo')})
+        ap.box_service = SimpleNamespace(
+            available=True,
+            get_status=AsyncMock(return_value={'backend': {'available': True}}),
+        )
+
+        loader = SkillToolLoader(ap)
+        await loader.initialize()
+
+        tools = await loader.get_tools()
+
+        assert sorted(tool.name for tool in tools) == ['activate', 'register_skill']
+        assert await loader.has_tool('activate') is True
+        assert await loader.has_tool('register_skill') is True
 
 
 class TestNativeToolLoaderSkillPaths:

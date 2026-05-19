@@ -34,6 +34,9 @@ class MockApplication:
         self.query_pool = self._create_mock_query_pool()
         self.instance_config = self._create_mock_instance_config()
         self.task_mgr = self._create_mock_task_manager()
+        # Skill manager is optional; PreProcessor only touches it for the
+        # local-agent runner. None keeps the skill-binding branch inert.
+        self.skill_mgr = None
 
     def _create_mock_logger(self):
         logger = Mock()
