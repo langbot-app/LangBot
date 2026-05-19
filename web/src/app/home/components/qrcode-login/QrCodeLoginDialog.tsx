@@ -4,7 +4,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from 'react-i18next';
@@ -96,7 +95,7 @@ interface QrCodeLoginDialogProps {
   onSuccess: (credentials: Record<string, string>) => void;
 }
 
-type DialogState = 'connecting' | 'waiting' | 'success' | 'error';
+type DialogState = 'connecting' | 'waiting' | 'expired' | 'success' | 'error';
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -115,8 +114,10 @@ export default function QrCodeLoginDialog({
   const [errorMessage, setErrorMessage] = useState('');
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const checkExpiredRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const sessionIdRef = useRef<string | null>(null);
+  const baseUrlRef = useRef('');
   const cleanedRef = useRef(false);
 
   const onSuccessRef = useRef(onSuccess);
@@ -140,11 +141,14 @@ export default function QrCodeLoginDialog({
       clearInterval(countdownRef.current);
       countdownRef.current = null;
     }
+    if (checkExpiredRef.current) {
+      clearInterval(checkExpiredRef.current);
+      checkExpiredRef.current = null;
+    }
     if (abortRef.current) {
       abortRef.current.abort();
       abortRef.current = null;
     }
-    // Cancel backend session
     if (sessionIdRef.current) {
       const token = localStorage.getItem('token');
       const baseUrl =
@@ -171,6 +175,7 @@ export default function QrCodeLoginDialog({
 
     const token = localStorage.getItem('token');
     const baseUrl = import.meta.env.VITE_API_BASE_URL || window.location.origin;
+    baseUrlRef.current = baseUrl;
     const cfg = platformConfigRef.current;
 
     try {
@@ -191,8 +196,6 @@ export default function QrCodeLoginDialog({
       const { session_id, qr_data_url, qr_url, expire_at } = json.data;
       sessionIdRef.current = session_id;
 
-      // qr_data_url is a pre-rendered data URL (WeChat);
-      // qr_url is a plain URL string (Feishu) that needs local QR generation.
       if (qr_data_url) {
         setQrDataUrl(qr_data_url);
       } else if (qr_url) {
@@ -204,11 +207,9 @@ export default function QrCodeLoginDialog({
       }
       setState('waiting');
 
-      // Calculate remaining seconds
       const remaining = Math.max(0, Math.floor(expire_at - Date.now() / 1000));
       setExpireIn(remaining);
 
-      // Start countdown
       countdownRef.current = setInterval(() => {
         setExpireIn((prev) => {
           if (prev <= 1) {
@@ -222,7 +223,35 @@ export default function QrCodeLoginDialog({
         });
       }, 1000);
 
-      // Start polling
+      // When countdown hits 0, stop polling and show expired state
+      checkExpiredRef.current = setInterval(() => {
+        setExpireIn((current) => {
+          if (current <= 0) {
+            if (checkExpiredRef.current) {
+              clearInterval(checkExpiredRef.current);
+              checkExpiredRef.current = null;
+            }
+            if (pollTimerRef.current) {
+              clearInterval(pollTimerRef.current);
+              pollTimerRef.current = null;
+            }
+            if (sessionIdRef.current) {
+              fetch(
+                `${baseUrlRef.current}${cfg.apiBase}/${sessionIdRef.current}`,
+                {
+                  method: 'DELETE',
+                  headers: { Authorization: `Bearer ${token}` },
+                  keepalive: true,
+                },
+              ).catch(() => {});
+              sessionIdRef.current = null;
+            }
+            setState('expired');
+          }
+          return current;
+        });
+      }, 500);
+
       pollTimerRef.current = setInterval(async () => {
         try {
           const pollRes = await fetch(
@@ -237,7 +266,7 @@ export default function QrCodeLoginDialog({
           const { status, error, ...rest } = pollJson.data;
 
           if (status === 'success') {
-            sessionIdRef.current = null; // backend already cleaned up
+            sessionIdRef.current = null;
             cleanup();
             setState('success');
             setTimeout(() => {
@@ -251,7 +280,7 @@ export default function QrCodeLoginDialog({
             setErrorMessage(error || tRef.current(cfg.failedKey));
           }
         } catch {
-          // ignore poll errors, will retry next interval
+          // ignore poll errors
         }
       }, POLL_INTERVAL_MS);
     } catch (err: unknown) {
@@ -323,6 +352,29 @@ export default function QrCodeLoginDialog({
             </div>
           )}
 
+          {/* QR code expired — click overlay to refresh */}
+          {state === 'expired' && qrDataUrl && (
+            <div className="flex flex-col items-center space-y-3">
+              <p className="text-sm text-muted-foreground text-center">
+                {t(platformConfig.scanQRCodeKey)}
+              </p>
+              <button
+                type="button"
+                className="relative border rounded-lg p-2 bg-white cursor-pointer group"
+                onClick={() => startLogin()}
+              >
+                <img
+                  src={qrDataUrl}
+                  alt="QR Code"
+                  className="w-56 h-56 opacity-40"
+                />
+                <div className="absolute inset-0 flex items-center justify-center bg-white/60 rounded-lg group-hover:bg-white/70 transition-colors">
+                  <RefreshCw className="h-10 w-10 text-red-500" />
+                </div>
+              </button>
+            </div>
+          )}
+
           {/* Success */}
           {state === 'success' && (
             <div className="flex flex-col items-center space-y-3 py-8">
@@ -350,7 +402,7 @@ export default function QrCodeLoginDialog({
         </div>
 
         {state === 'error' && (
-          <DialogFooter>
+          <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => handleOpenChange(false)}>
               {t('common.cancel')}
             </Button>
@@ -358,7 +410,7 @@ export default function QrCodeLoginDialog({
               <RefreshCw className="h-4 w-4 mr-1.5" />
               {t(platformConfig.retryKey)}
             </Button>
-          </DialogFooter>
+          </div>
         )}
       </DialogContent>
     </Dialog>
