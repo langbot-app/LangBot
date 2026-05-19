@@ -105,7 +105,7 @@ spec:
         zh_Hans: 逗号分隔的工作表标题正则片段。
       type: string
       required: false
-      default: "成品数据源,S18,S006,S20"
+      default: "成品数据源,型号关键词,产线关键词"
     - name: product_range
       label:
         en_US: Product Read Range

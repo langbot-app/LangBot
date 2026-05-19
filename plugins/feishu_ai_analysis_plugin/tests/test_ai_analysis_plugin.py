@@ -11,20 +11,20 @@ from components.diagnosis import diagnose_process
 
 class CommandParserTest(unittest.TestCase):
     def test_parse_abnormal_command(self) -> None:
-        result = parse_analysis_command("异常分析 S18-DA2603-005 压实偏低")
+        result = parse_analysis_command("异常分析 S99-DX9999-001 压实偏低")
         self.assertTrue(result.triggered)
         assert result.value is not None
         self.assertEqual(result.value.kind, "abnormal")
-        self.assertEqual(result.value.batch, "S18-DA2603-005")
+        self.assertEqual(result.value.batch, "S99-DX9999-001")
         self.assertEqual(result.value.abnormal, "压实偏低")
 
     def test_parse_product_command_with_date(self) -> None:
-        result = parse_analysis_command("成品分析 2026-05-19 S18-A线")
+        result = parse_analysis_command("成品分析 2026-05-19 示例A线")
         self.assertTrue(result.triggered)
         assert result.value is not None
         self.assertEqual(result.value.kind, "product")
         self.assertEqual(result.value.date_arg, "2026-05-19")
-        self.assertEqual(result.value.target, "S18-A线")
+        self.assertEqual(result.value.target, "示例A线")
 
     def test_parse_batch_requires_batch(self) -> None:
         result = parse_analysis_command("批次分析")
@@ -34,20 +34,20 @@ class CommandParserTest(unittest.TestCase):
 
 class BatchTest(unittest.TestCase):
     def test_normalize_batch_variants(self) -> None:
-        self.assertEqual(normalize_batch("S18-SC-DA2603-005").core, "DA2603-005")
-        self.assertEqual(normalize_batch("S18-FS-DA2603-005-A1").stage, "FS")
-        self.assertEqual(normalize_batch("DB2603-008").line, "B")
-        self.assertEqual(normalize_batch("S18-DA2603-007-A1").segment, "A1")
+        self.assertEqual(normalize_batch("S99-SC-DX9999-001").core, "DX9999-001")
+        self.assertEqual(normalize_batch("S99-FS-DX9999-001-A1").stage, "FS")
+        self.assertEqual(normalize_batch("DB9999-002").line, "B")
+        self.assertEqual(normalize_batch("S99-DX9999-003-A1").segment, "A1")
 
 
 class DiagnosisTest(unittest.TestCase):
     def test_diagnose_low_compaction_and_missing_data(self) -> None:
         wide = {
-            "identity": {"core": "DA2603-005"},
+            "identity": {"core": "DX9999-001"},
             "stages": {
                 "sintering": {"A1-均值": "2.320", "A2-均值": "2.380"},
                 "spray": {"进口温度": "242.7"},
-                "crushing": {"批次号": "S18-FS-DA2603-005"},
+                "crushing": {"批次号": "S99-FS-DX9999-001"},
             },
             "missing_data": [],
         }
@@ -64,7 +64,7 @@ class SheetSourceTest(unittest.TestCase):
         values = [
             ["", "", "原料D5", ""],
             ["投料日期", "批次", "Fe/p", "锂量kg/t"],
-            ["2026.03.01", "DA2603-005", "97.4", "253.1"],
+            ["2026.03.01", "DX9999-001", "97.4", "253.1"],
         ]
         rows = FeishuSheetSource.matrix_to_rows(values)
         self.assertEqual(len(rows), 1)
@@ -88,7 +88,7 @@ class AnalysisServiceTest(unittest.IsolatedAsyncioTestCase):
                     "items": [
                         {
                             "fields": {
-                                "批次号": "S18-DA2603-005-A1",
+                                "批次号": "S99-DX9999-001-A1",
                                 "消息时间": "2026-03-01 10:00:00",
                                 "磷酸铁需补(kg)": "1.2",
                             }
@@ -101,7 +101,7 @@ class AnalysisServiceTest(unittest.IsolatedAsyncioTestCase):
                     "items": [
                         {
                             "fields": {
-                                "批次号": "S18-SC-DA2603-005",
+                                "批次号": "S99-SC-DX9999-001",
                                 "消息时间": "2026-03-01 12:00:00",
                                 "A1-均值": "2.321",
                             }
@@ -110,13 +110,13 @@ class AnalysisServiceTest(unittest.IsolatedAsyncioTestCase):
                     "has_more": False,
                 }
             if endpoint.endswith("/sheets/query"):
-                return {"sheets": [{"title": "S18-A线成品数据源", "sheet_id": "sheetA"}]}
+                return {"sheets": [{"title": "示例A线成品数据源", "sheet_id": "sheetA"}]}
             if "/values/" in endpoint:
                 return {
                     "valueRange": {
                         "values": [
                             ["检测时间", "批次", "压实"],
-                            ["2026.03.02", "DA2603-005", "2.37"],
+                            ["2026.03.02", "DX9999-001", "2.37"],
                         ]
                     }
                 }
@@ -129,7 +129,7 @@ class AnalysisServiceTest(unittest.IsolatedAsyncioTestCase):
             app_token="app",
             spreadsheet_token="sheet",
             headers={},
-            batch_text="S18-DA2603-005",
+            batch_text="S99-DX9999-001",
             process_tables_raw={"feeding": ["A线投料汇总"], "sintering": ["A线烧结汇总"]},
             product_sheet_patterns=["成品数据源"],
             product_range="A1:ZZ2000",
@@ -138,16 +138,16 @@ class AnalysisServiceTest(unittest.IsolatedAsyncioTestCase):
             scan_limit=100,
             max_stage_fields=10,
         )
-        self.assertEqual(wide["identity"]["core"], "DA2603-005")
+        self.assertEqual(wide["identity"]["core"], "DX9999-001")
         self.assertIn("feeding", wide["stages"])
         self.assertIn("sintering", wide["stages"])
-        self.assertEqual(wide["product"]["sheet"], "S18-A线成品数据源")
+        self.assertEqual(wide["product"]["sheet"], "示例A线成品数据源")
 
     async def test_analyze_batch_fallback_without_llm(self) -> None:
         service = AnalysisService(base_source=FeishuBaseSource(lambda *a, **k: None), sheet_source=FeishuSheetSource(lambda *a, **k: None))
         text = await service.analyze_batch(
             {
-                "identity": {"core": "DA2603-005"},
+                "identity": {"core": "DX9999-001"},
                 "stages": {"sintering": {"A1-均值": "2.320"}},
                 "missing_data": ["spray 未查询到记录"],
             },

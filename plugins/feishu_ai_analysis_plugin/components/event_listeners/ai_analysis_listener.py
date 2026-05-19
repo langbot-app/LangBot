@@ -270,7 +270,7 @@ class AiAnalysisListener(EventListener):
             )
 
             product_patterns = self._split_csv(
-                self._get_str_config("product_sheet_patterns", "成品数据源,S18,S006,S20")
+                self._get_str_config("product_sheet_patterns", "成品数据源,型号关键词,产线关键词")
             )
             if command.kind == "product":
                 if not product_sheet_token:
