@@ -1,8 +1,35 @@
 # Box Session Scope Design
 
-> Date: 2026-04-18
+> Date: 2026-04-18 (last reviewed 2026-05-19)
 > Branch: `feat/sandbox` (LangBot + langbot-plugin-sdk)
 > Related: [Box Architecture](./box-architecture.md) | [Box vs Plugin Runtime](./box-vs-plugin-runtime.md)
+
+---
+
+## 0. Implementation Status (2026-05-19)
+
+This document was authored as a design proposal. The current `feat/sandbox` branch
+has shipped the design largely as written:
+
+| Item | Status | Notes |
+|------|--------|-------|
+| `BoxMountSpec` + `BoxSpec.extra_mounts` | ✅ Shipped | SDK `box/models.py` |
+| Docker / nsjail / E2B backends apply extra mounts | ✅ Shipped | Last gap closed by SDK commit `0fea9b1` (E2B) |
+| `box-session-id-template` in `local-agent` pipeline config | ✅ Shipped | `templates/metadata/pipeline/ai.yaml`, default `{launcher_type}_{launcher_id}` |
+| `BoxService.resolve_box_session_id(query)` | ✅ Shipped | `pkg/box/service.py:166` |
+| `BoxService.build_skill_extra_mounts(query)` | ✅ Shipped | `pkg/box/service.py:189` |
+| Skill exec uses unified container + extra mounts | ✅ Shipped | `pkg/provider/tools/loaders/native.py` skill branch |
+| MCP-in-Box uses shared persistent session, multi-process | ✅ Shipped (earlier than originally scoped) | SDK commit `529088e`, LangBot `mcp_stdio.py:_build_box_session_id` |
+| `BoxManagedProcessSpec.process_id` + multi-process per session | ✅ Shipped | `BoxRuntime` keeps `managed_processes: dict[pid, _ManagedProcess]` |
+| Per-tenant / quota integration with templates | ❌ Not started | See [box-tob-analysis.md](./box-tob-analysis.md) |
+
+The "Phase 2 deferred" note in §10 is **out of date** — MCP unification went in on
+the same line. Pipeline-scoped (not user-scoped) MCP container is the realized
+behavior: each pipeline's MCP servers share one `mcp-<pipeline>` session, and
+user exec sessions use the template-derived id.
+
+The remaining open work is multi-tenant overlays (tenant_id in session_id,
+quota counters keyed by tenant), tracked in the toB analysis doc rather than here.
 
 ---
 

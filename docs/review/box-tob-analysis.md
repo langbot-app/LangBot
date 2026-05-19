@@ -1,6 +1,6 @@
 # Box 系统 toB 商业化分析
 
-> 更新日期: 2026-04-16
+> 更新日期: 2026-05-19
 > 分支: `feat/sandbox` (LangBot + langbot-plugin-sdk)
 
 ---
@@ -10,7 +10,9 @@
 | 能力 | toB 价值 | 代码位置 |
 |------|---------|---------|
 | **沙箱隔离执行** | 企业安全运行不受信代码的基础能力 | SDK `box/backend.py` |
-| **多后端支持** | 适配不同企业容器基础设施 (Podman/Docker/nsjail) | SDK `box/runtime.py` `_select_backend()` |
+| **多后端支持** | 适配不同企业容器基础设施 (Podman/Docker/nsjail/E2B) | SDK `box/runtime.py` `_select_backend()` |
+| **E2B 云沙箱** | SaaS / 无 Docker 部署的兜底执行环境 | SDK `box/e2b_backend.py` |
+| **连接自愈** | 心跳 + 自动重连，单点 Box runtime 故障可恢复 | `pkg/box/connector.py` `_heartbeat_loop`, `pkg/box/service.py` `_reconnect_loop` |
 | **Profile + locked 字段** | 运维锁定安全边界，LLM/用户无法绕过 | `pkg/box/service.py`, SDK `box/models.py` |
 | **资源限制** | CPU/内存/PID 数限制防止资源滥用 | SDK `backend.py` `--cpus/--memory/--pids-limit` |
 | **Workspace quota** | 磁盘用量控制 | `pkg/box/service.py` `_enforce_workspace_quota` |
@@ -47,10 +49,11 @@
 
 | 维度 | 现状 | toB 要求 | 优先级 |
 |------|------|---------|--------|
-| **连接恢复** | 无重连、无心跳 | 自动重连 + 健康检查 | **P0** |
+| **连接恢复** | 已实现：20s 心跳 + `_reconnect_loop` 指数退避 | 已满足基本要求 | 已有 |
 | **Session 清理** | 机会性（仅新建时触发） | 定时清理 + 独立 reaper | **P1** |
-| **水平扩展** | 单 Box Runtime 实例 | 多实例负载均衡 | **P1** |
+| **水平扩展** | 单 Box Runtime 实例 | 多实例负载均衡（按 tenant 路由） | **P1** |
 | **优雅降级** | 已有（_available=False） | 已满足基本要求 | 已有 |
+| **Backend 自愈** | 已实现：`get_status` 时若 backend 不可用会重新选择 | 已满足基本要求 | 已有 |
 
 ### 2.4 可观测性
 
@@ -58,7 +61,7 @@
 |------|------|---------|--------|
 | **监控指标** | 无 Prometheus metrics | session 数/执行延迟/资源用量/错误率 | **P1** |
 | **结构化日志** | Python logging, 无结构化 | JSON 格式日志，含 trace_id/tenant_id | **P1** |
-| **前端面板** | 无 Box UI | 状态面板：可用性/活跃 session/错误/资源用量 | **P2** |
+| **前端面板** | 监控页接入 `/api/v1/box/status`（backend 名 + 活跃 session 数）；`sessions` / `errors` 仍未接入 | 完整状态面板 + 历史错误/审计列表 | **P2** |
 
 ---
 
@@ -141,9 +144,10 @@ LangBot ──> K8s Job per execution
 
 - [ ] WS relay 加 token 认证
 - [ ] 接入或删除 policy.py
-- [ ] Box 加重连和心跳
+- [x] ~~Box 加重连和心跳~~（已完成，见 [box-issues.md 已解决](./box-issues.md)）
 - [ ] 审计日志持久化（至少写文件/数据库）
 - [ ] `security.py` 加 `/` 拦截，考虑白名单
+- [ ] INIT 与 backend 初始化顺序整理（避免 backend 在配置到达前实例化）
 
 ### Phase 2 (4-8 周): 多租户基础
 
