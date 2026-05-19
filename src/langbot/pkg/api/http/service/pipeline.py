@@ -8,7 +8,10 @@ import typing
 from ....core import app
 from ....entity.persistence import pipeline as persistence_pipeline
 
-DEFAULT_RUNNER_ID = 'plugin:langbot/local-agent/default'
+# Prefer the official local-agent plugin when it is installed. This is not a
+# built-in fallback: when no AgentRunner plugin is available, the default
+# pipeline stays unbound so the UI can guide users to install a runner.
+PREFERRED_DEFAULT_RUNNER_ID = 'plugin:langbot/local-agent/default'
 
 
 default_stage_order = [
@@ -52,16 +55,25 @@ class PipelineService:
         with open(template_path, 'r', encoding='utf-8') as f:
             config = json.load(f)
 
+        agent_runner_registry = getattr(self.ap, 'agent_runner_registry', None)
+        if agent_runner_registry is None:
+            return config
+
         try:
-            runners = await self.ap.agent_runner_registry.list_runners(bound_plugins=None)
+            runners = await agent_runner_registry.list_runners(bound_plugins=None)
         except Exception as e:
-            self.ap.logger.warning(f'Failed to load plugin agent runners for default pipeline config: {e}')
+            logger = getattr(self.ap, 'logger', None)
+            if logger:
+                logger.warning(f'Failed to load plugin agent runners for default pipeline config: {e}')
             return config
 
         if not runners:
             return config
 
-        selected_runner = next((runner for runner in runners if runner.id == DEFAULT_RUNNER_ID), runners[0])
+        selected_runner = next(
+            (runner for runner in runners if runner.id == PREFERRED_DEFAULT_RUNNER_ID),
+            runners[0],
+        )
         ai_config = config.setdefault('ai', {})
         runner_config = ai_config.setdefault('runner', {})
         runner_config['id'] = selected_runner.id
@@ -102,10 +114,12 @@ class PipelineService:
                         # Only installed/available runners should be shown
                         config_item['options'] = runner_options
 
-                        # Set default to the official local-agent when installed, otherwise first available runner.
+                        # Prefer the official local-agent plugin when installed; otherwise use the first
+                        # discoverable runner. If no runner is available, leave the default unset so the
+                        # UI can recommend installing an AgentRunner plugin, similar to the RAG flow.
                         if runner_options and 'default' not in config_item:
                             default_option = next(
-                                (option for option in runner_options if option['name'] == DEFAULT_RUNNER_ID),
+                                (option for option in runner_options if option['name'] == PREFERRED_DEFAULT_RUNNER_ID),
                                 runner_options[0],
                             )
                             config_item['default'] = default_option['name']
