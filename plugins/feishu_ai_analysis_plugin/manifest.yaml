@@ -1,0 +1,231 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: local
+  name: feishu_ai_analysis_plugin
+  repository: "https://open.feishu.cn/"
+  version: 0.1.0
+  description:
+    en_US: AI-assisted LFP process abnormal diagnosis, product data analysis, and recipe review for Feishu Base/Sheets.
+    zh_Hans: 基于飞书多维表和电子表格的 LFP 制程异常分析、成品数据分析、配方复盘推荐插件。
+  label:
+    en_US: Feishu AI Analysis Plugin
+    zh_Hans: 飞书 AI 分析插件
+  icon: assets/icon.svg
+spec:
+  config:
+    - name: app_id
+      label:
+        en_US: App ID
+        zh_Hans: App ID
+      type: string
+      required: true
+      default: ""
+    - name: app_secret
+      label:
+        en_US: App Secret
+        zh_Hans: App Secret
+      type: string
+      required: true
+      default: ""
+    - name: token_endpoint
+      label:
+        en_US: Token Endpoint
+        zh_Hans: Token 接口
+      type: string
+      required: false
+      default: "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
+    - name: timeout_seconds
+      label:
+        en_US: Feishu Timeout Seconds
+        zh_Hans: 飞书接口超时秒数
+      type: string
+      required: false
+      default: "30"
+
+    - name: process_base_token
+      label:
+        en_US: Process Base Token Or Wiki URL
+        zh_Hans: 制程 Base Token 或 Wiki 链接
+      type: string
+      required: true
+      default: ""
+    - name: product_spreadsheet_token
+      label:
+        en_US: Product Spreadsheet Token Or Wiki URL
+        zh_Hans: 成品 Sheets Token 或 Wiki 链接
+      type: string
+      required: false
+      default: ""
+    - name: process_tables_json
+      label:
+        en_US: Process Tables JSON
+        zh_Hans: 制程表路由 JSON
+      description:
+        en_US: Optional stage to table names map. Empty uses built-in A/B/C/D/E production table defaults.
+        zh_Hans: 可选，工序到表名列表的映射；为空时使用内置 A/B/C/D/E 线默认表名。
+      type: json
+      required: false
+      default: ""
+    - name: batch_field
+      label:
+        en_US: Batch Field
+        zh_Hans: 批次字段名
+      type: string
+      required: false
+      default: "批次号"
+    - name: message_time_field
+      label:
+        en_US: Message Time Field
+        zh_Hans: 消息时间字段名
+      type: string
+      required: false
+      default: "消息时间"
+    - name: scan_limit
+      label:
+        en_US: Base Scan Limit
+        zh_Hans: Base 扫描上限
+      type: string
+      required: false
+      default: "500"
+    - name: max_stage_fields
+      label:
+        en_US: Max Stage Fields
+        zh_Hans: 每工序最大证据字段数
+      type: string
+      required: false
+      default: "30"
+
+    - name: product_sheet_patterns
+      label:
+        en_US: Product Sheet Patterns
+        zh_Hans: 成品工作表匹配规则
+      description:
+        en_US: Comma separated regex fragments for target product sheets.
+        zh_Hans: 逗号分隔的工作表标题正则片段。
+      type: string
+      required: false
+      default: "成品数据源,S18,S006,S20"
+    - name: product_range
+      label:
+        en_US: Product Read Range
+        zh_Hans: 成品读取范围
+      type: string
+      required: false
+      default: "A1:ZZ2000"
+    - name: product_max_rows
+      label:
+        en_US: Product Max Rows
+        zh_Hans: 成品分析最大行数
+      type: string
+      required: false
+      default: "80"
+
+    - name: enable_ai
+      label:
+        en_US: Enable AI
+        zh_Hans: 启用 AI 生成
+      type: boolean
+      required: false
+      default: true
+    - name: llm_base_url
+      label:
+        en_US: LLM Base URL
+        zh_Hans: AI 接口 Base URL
+      type: string
+      required: false
+      default: ""
+    - name: llm_api_key
+      label:
+        en_US: LLM API Key
+        zh_Hans: AI API Key
+      type: string
+      required: false
+      default: ""
+    - name: llm_model
+      label:
+        en_US: LLM Model
+        zh_Hans: AI 模型
+      type: string
+      required: false
+      default: ""
+    - name: llm_temperature
+      label:
+        en_US: LLM Temperature
+        zh_Hans: AI 温度
+      type: string
+      required: false
+      default: "0.2"
+    - name: llm_timeout_seconds
+      label:
+        en_US: LLM Timeout Seconds
+        zh_Hans: AI 超时秒数
+      type: string
+      required: false
+      default: "60"
+
+    - name: batch_commands
+      label:
+        en_US: Batch Commands
+        zh_Hans: 批次分析口令
+      type: string
+      required: false
+      default: "批次分析,制程复盘"
+    - name: abnormal_commands
+      label:
+        en_US: Abnormal Commands
+        zh_Hans: 异常分析口令
+      type: string
+      required: false
+      default: "异常分析"
+    - name: product_commands
+      label:
+        en_US: Product Commands
+        zh_Hans: 成品分析口令
+      type: string
+      required: false
+      default: "成品分析,成品趋势,成品异常"
+    - name: recipe_commands
+      label:
+        en_US: Recipe Commands
+        zh_Hans: 配方复盘口令
+      type: string
+      required: false
+      default: "配方复盘,配方建议"
+    - name: similar_commands
+      label:
+        en_US: Similar Batch Commands
+        zh_Hans: 相似批次口令
+      type: string
+      required: false
+      default: "相似批次"
+    - name: reply_in_group
+      label:
+        en_US: Reply In Group
+        zh_Hans: 允许群聊回复
+      type: boolean
+      required: false
+      default: true
+    - name: reply_in_person
+      label:
+        en_US: Reply In Person
+        zh_Hans: 允许私聊回复
+      type: boolean
+      required: false
+      default: true
+    - name: reply_max_chars
+      label:
+        en_US: Reply Max Characters
+        zh_Hans: 回复最大字符数
+      type: string
+      required: false
+      default: "3500"
+  components:
+    EventListener:
+      fromDirs:
+        - path: components/event_listeners/
+execution:
+  python:
+    path: main.py
+    attr: FeishuAiAnalysisPlugin
+
