@@ -9,6 +9,7 @@ const zhHant = {
     pluginPages: '插件頁面',
     pluginPagesTooltip: '由已安裝的插件提供的視覺化頁面',
     quickStart: '快速開始',
+    scrollToBottom: '捲動到底部',
   },
   common: {
     login: '登入',
@@ -1384,6 +1385,8 @@ const zhHant = {
     goBack: '返回上頁',
     backToHome: '返回首頁',
     backToLogin: '返回登入',
+    retrying: '正在重試',
+    retryFailed: '仍然無法連接後端，請確認服務已啟動後再重試。',
   },
   pluginPages: {
     selectFromSidebar: '從側邊欄選擇一個插件頁面',

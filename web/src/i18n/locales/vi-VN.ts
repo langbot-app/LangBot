@@ -10,6 +10,7 @@ const viVN = {
     pluginPagesTooltip:
       'Các trang trực quan được cung cấp bởi plugin đã cài đặt',
     quickStart: 'Bắt đầu nhanh',
+    scrollToBottom: 'Cuộn xuống cuối',
   },
   common: {
     login: 'Đăng nhập',
@@ -1427,6 +1428,9 @@ const viVN = {
     goBack: 'Quay lại',
     backToHome: 'Về trang chủ',
     backToLogin: 'Quay lại đăng nhập',
+    retrying: 'Đang thử lại',
+    retryFailed:
+      'Vẫn không thể kết nối backend. Hãy khởi động dịch vụ rồi thử lại.',
   },
   pluginPages: {
     selectFromSidebar: 'Chọn một trang plugin từ thanh bên',

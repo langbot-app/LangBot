@@ -10,6 +10,7 @@ const ruRU = {
     pluginPagesTooltip:
       'Визуальные страницы, предоставляемые установленными плагинами',
     quickStart: 'Быстрый старт',
+    scrollToBottom: 'Прокрутить вниз',
   },
   common: {
     login: 'Войти',
@@ -1435,6 +1436,9 @@ const ruRU = {
     goBack: 'Назад',
     backToHome: 'На главную',
     backToLogin: 'Вернуться к входу',
+    retrying: 'Повторяем',
+    retryFailed:
+      'По-прежнему не удается подключиться к бэкенду. Запустите сервис и повторите попытку.',
   },
   pluginPages: {
     selectFromSidebar: 'Выберите страницу плагина на боковой панели',

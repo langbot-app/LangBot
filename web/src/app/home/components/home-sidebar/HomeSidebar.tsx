@@ -85,7 +85,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { ChevronRight, Plus } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -187,6 +187,7 @@ const ENTITY_ROUTE_MAP: Record<EntityCategoryId, string> = {
 // localStorage key for collapsible section open/closed state
 const SIDEBAR_SECTIONS_KEY = 'sidebar_sections';
 const SIDEBAR_LIST_EXPANSION_KEY = 'sidebar_entity_list_expansion';
+const SCROLL_HINT_BOTTOM_THRESHOLD = 40;
 
 type SidebarNavSection = 'home' | 'extensions';
 type SidebarListExpansionState = Record<
@@ -1519,6 +1520,27 @@ export default function HomeSidebar({
   const [userEmail, setUserEmail] = useState<string>('');
   const [starCount, setStarCount] = useState<number | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const navigationContentRef = useRef<HTMLDivElement | null>(null);
+  const [showScrollHint, setShowScrollHint] = useState(false);
+
+  function scrollNavigationToBottom() {
+    const contentEl = navigationContentRef.current;
+    if (!contentEl) return;
+
+    const maxScrollTop = contentEl.scrollHeight - contentEl.clientHeight;
+    contentEl.scrollTo({
+      top: maxScrollTop,
+      behavior: 'smooth',
+    });
+    setShowScrollHint(false);
+
+    window.setTimeout(() => {
+      if (contentEl.scrollTop < maxScrollTop - 2) {
+        contentEl.scrollTop = maxScrollTop;
+      }
+      setShowScrollHint(false);
+    }, 250);
+  }
   function handleModelsDialogChange(open: boolean) {
     setModelsDialogOpen(open);
     if (open) {
@@ -1622,6 +1644,48 @@ export default function HomeSidebar({
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    const contentEl = navigationContentRef.current;
+    if (!contentEl) return;
+
+    let animationFrame = 0;
+    const updateScrollHint = () => {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = requestAnimationFrame(() => {
+        const hasHiddenContent =
+          contentEl.scrollTop + contentEl.clientHeight <
+          contentEl.scrollHeight - SCROLL_HINT_BOTTOM_THRESHOLD;
+        setShowScrollHint(hasHiddenContent);
+      });
+    };
+
+    updateScrollHint();
+    contentEl.addEventListener('scroll', updateScrollHint, { passive: true });
+
+    const resizeObserver = new ResizeObserver(updateScrollHint);
+    resizeObserver.observe(contentEl);
+    if (contentEl.firstElementChild) {
+      resizeObserver.observe(contentEl.firstElementChild);
+    }
+
+    const mutationObserver = new MutationObserver(updateScrollHint);
+    mutationObserver.observe(contentEl, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+    });
+
+    window.addEventListener('resize', updateScrollHint);
+
+    return () => {
+      cancelAnimationFrame(animationFrame);
+      contentEl.removeEventListener('scroll', updateScrollHint);
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      window.removeEventListener('resize', updateScrollHint);
+    };
+  }, []);
+
   // Update selected state + notify parent without navigating
   function selectChild(child: SidebarChildVO) {
     setSelectedChild(child);
@@ -1715,37 +1779,57 @@ export default function HomeSidebar({
         </SidebarHeader>
 
         {/* Navigation items grouped by section */}
-        <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupLabel>{t('sidebar.home')}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <NavItems
-                  selectedChild={selectedChild}
-                  onChildClick={handleChildClick}
-                  section="home"
-                  sectionOpenState={sectionOpenState}
-                  onSectionToggle={handleSectionToggle}
-                />
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-          <SidebarGroup>
-            <SidebarGroupLabel>{t('sidebar.extensions')}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <NavItems
-                  selectedChild={selectedChild}
-                  onChildClick={handleChildClick}
-                  section="extensions"
-                  sectionOpenState={sectionOpenState}
-                  onSectionToggle={handleSectionToggle}
-                />
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-          <PluginPagesNav />
-        </SidebarContent>
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+          <SidebarContent ref={navigationContentRef} className="min-h-0 pb-8">
+            <SidebarGroup>
+              <SidebarGroupLabel>{t('sidebar.home')}</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <NavItems
+                    selectedChild={selectedChild}
+                    onChildClick={handleChildClick}
+                    section="home"
+                    sectionOpenState={sectionOpenState}
+                    onSectionToggle={handleSectionToggle}
+                  />
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+            <SidebarGroup>
+              <SidebarGroupLabel>{t('sidebar.extensions')}</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <NavItems
+                    selectedChild={selectedChild}
+                    onChildClick={handleChildClick}
+                    section="extensions"
+                    sectionOpenState={sectionOpenState}
+                    onSectionToggle={handleSectionToggle}
+                  />
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+            <PluginPagesNav />
+          </SidebarContent>
+          <button
+            type="button"
+            onClick={scrollNavigationToBottom}
+            disabled={!showScrollHint}
+            aria-label={t('sidebar.scrollToBottom')}
+            aria-hidden={!showScrollHint}
+            tabIndex={showScrollHint ? 0 : -1}
+            className={cn(
+              'absolute inset-x-0 bottom-2 z-10 mx-auto flex w-fit justify-center rounded-full transition-opacity duration-200 group-data-[collapsible=icon]:hidden',
+              showScrollHint
+                ? 'pointer-events-auto opacity-100'
+                : 'pointer-events-none opacity-0',
+            )}
+          >
+            <span className="flex size-7 items-center justify-center rounded-full border border-sidebar-border bg-sidebar/95 text-sidebar-foreground/70 shadow-sm backdrop-blur transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
+              <ChevronDown className="size-4" />
+            </span>
+          </button>
+        </div>
 
         {/* Footer */}
         <SidebarFooter>

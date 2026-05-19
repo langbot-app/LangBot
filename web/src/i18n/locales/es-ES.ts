@@ -10,6 +10,7 @@ const esES = {
     pluginPagesTooltip:
       'Páginas visuales proporcionadas por los plugins instalados',
     quickStart: 'Inicio rápido',
+    scrollToBottom: 'Desplazar al final',
   },
   common: {
     login: 'Iniciar sesión',
@@ -1463,6 +1464,9 @@ const esES = {
     goBack: 'Volver',
     backToHome: 'Ir al inicio',
     backToLogin: 'Volver al inicio de sesión',
+    retrying: 'Reintentando',
+    retryFailed:
+      'Aún no se puede conectar con el backend. Inicia el servicio e inténtalo de nuevo.',
   },
   pluginPages: {
     selectFromSidebar: 'Selecciona una página de plugin en la barra lateral',

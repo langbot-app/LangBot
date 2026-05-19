@@ -9,6 +9,7 @@ const enUS = {
     pluginPages: 'Plugin Pages',
     pluginPagesTooltip: 'Visual pages provided by installed plugins',
     quickStart: 'Quick Start',
+    scrollToBottom: 'Scroll to bottom',
   },
   common: {
     login: 'Login',
@@ -1539,6 +1540,9 @@ const enUS = {
     goBack: 'Go Back',
     backToHome: 'Back to Home',
     backToLogin: 'Back to Login',
+    retrying: 'Retrying',
+    retryFailed:
+      'Still cannot connect to the backend. Start the service and try again.',
   },
   pluginPages: {
     selectFromSidebar: 'Select a plugin page from the sidebar',

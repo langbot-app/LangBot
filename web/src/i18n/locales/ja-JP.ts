@@ -9,6 +9,7 @@ const jaJP = {
     pluginPages: 'プラグインページ',
     pluginPagesTooltip: 'インストール済みプラグインが提供するビジュアルページ',
     quickStart: 'クイックスタート',
+    scrollToBottom: '一番下までスクロール',
   },
   common: {
     login: 'ログイン',
@@ -1454,6 +1455,9 @@ const jaJP = {
     goBack: '戻る',
     backToHome: 'ホームに戻る',
     backToLogin: 'ログインに戻る',
+    retrying: '再試行中',
+    retryFailed:
+      'バックエンドにまだ接続できません。サービスを起動してからもう一度お試しください。',
   },
   pluginPages: {
     selectFromSidebar: 'サイドバーからプラグインページを選択してください',

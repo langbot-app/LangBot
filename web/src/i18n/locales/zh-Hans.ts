@@ -9,6 +9,7 @@ const zhHans = {
     pluginPages: '插件页面',
     pluginPagesTooltip: '由已安装的插件提供的可视化页面',
     quickStart: '快速开始向导',
+    scrollToBottom: '滚动到底部',
   },
   common: {
     login: '登录',
@@ -1474,6 +1475,8 @@ const zhHans = {
     goBack: '返回上页',
     backToHome: '返回首页',
     backToLogin: '返回登录',
+    retrying: '正在重试',
+    retryFailed: '仍然无法连接后端，请确认服务已启动后再重试。',
   },
   pluginPages: {
     selectFromSidebar: '从侧边栏选择一个插件页面',

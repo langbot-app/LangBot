@@ -9,6 +9,7 @@ const thTH = {
     pluginPages: 'หน้าปลั๊กอิน',
     pluginPagesTooltip: 'หน้าเว็บที่จัดทำโดยปลั๊กอินที่ติดตั้ง',
     quickStart: 'เริ่มต้นอย่างรวดเร็ว',
+    scrollToBottom: 'เลื่อนไปด้านล่าง',
   },
   common: {
     login: 'เข้าสู่ระบบ',
@@ -1403,6 +1404,9 @@ const thTH = {
     goBack: 'ย้อนกลับ',
     backToHome: 'กลับหน้าหลัก',
     backToLogin: 'กลับไปหน้าเข้าสู่ระบบ',
+    retrying: 'กำลังลองใหม่',
+    retryFailed:
+      'ยังไม่สามารถเชื่อมต่อแบ็กเอนด์ได้ โปรดเริ่มบริการแล้วลองใหม่อีกครั้ง',
   },
   pluginPages: {
     selectFromSidebar: 'เลือกหน้าปลั๊กอินจากแถบด้านข้าง',

@@ -59,6 +59,8 @@ function isExtensionsRoute(pathname: string): boolean {
 }
 
 const HOME_CONTENT_MAX_WIDTH = 'max-w-[1360px]';
+const BACKEND_UNAVAILABLE_RETURN_TO_STORAGE_KEY =
+  'langbot_backend_unavailable_return_to';
 
 export default function HomeLayout({
   children,
@@ -66,6 +68,7 @@ export default function HomeLayout({
   children: React.ReactNode;
 }>) {
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Initialize user info if not already initialized
   useEffect(() => {
@@ -87,7 +90,15 @@ export default function HomeLayout({
         }
       } catch {
         if (!cancelled) {
-          navigate('/backend-unavailable', { replace: true });
+          const returnTo = `${location.pathname}${location.search}${location.hash}`;
+          sessionStorage.setItem(
+            BACKEND_UNAVAILABLE_RETURN_TO_STORAGE_KEY,
+            returnTo,
+          );
+          navigate('/backend-unavailable', {
+            replace: true,
+            state: { from: returnTo },
+          });
         }
       }
     };
@@ -96,7 +107,7 @@ export default function HomeLayout({
     return () => {
       cancelled = true;
     };
-  }, [navigate]);
+  }, [location.hash, location.pathname, location.search, navigate]);
 
   return (
     <SidebarDataProvider>
