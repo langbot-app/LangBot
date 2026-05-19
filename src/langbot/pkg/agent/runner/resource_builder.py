@@ -31,7 +31,7 @@ class AgentResourceBuilder:
     Note: This only builds the resource declaration. The actual proxy actions
     in handler.py must still validate against ctx.resources at runtime.
 
-    Resource field names match SDK v1 Protocol:
+    Resource field names match the plugin SDK payload:
     - ModelResource: model_id, model_type, provider
     - ToolResource: tool_name, tool_type, description
     - KnowledgeBaseResource: kb_id, kb_name, kb_type
@@ -93,7 +93,7 @@ class AgentResourceBuilder:
         descriptor: AgentRunnerDescriptor,
         query: typing.Any,
     ) -> list[ModelResource]:
-        """Build models list with SDK v1 field names."""
+        """Build models list with plugin SDK field names."""
         models: list[ModelResource] = []
         seen_model_ids: set[str] = set()
 
@@ -212,7 +212,7 @@ class AgentResourceBuilder:
         bound_mcp_servers: list[str] | None,
         query: typing.Any,
     ) -> list[ToolResource]:
-        """Build tools list with SDK v1 field names."""
+        """Build tools list with plugin SDK field names."""
         tools: list[ToolResource] = []
 
         # Check manifest permission
@@ -223,7 +223,7 @@ class AgentResourceBuilder:
         # Get tools from query (preproc already resolved this for local-agent)
         use_funcs = getattr(query, 'use_funcs', [])
         for tool in use_funcs:
-            # Use SDK v1 field names: tool_name, tool_type, description
+            # Use plugin SDK field names: tool_name, tool_type, description
             tools.append({
                 'tool_name': tool.name,
                 'tool_type': None,  # Tool type not available in current LLMTool
@@ -238,7 +238,7 @@ class AgentResourceBuilder:
         runner_config: dict[str, typing.Any],
         query: typing.Any,
     ) -> list[KnowledgeBaseResource]:
-        """Build knowledge bases list with SDK v1 field names."""
+        """Build knowledge bases list with plugin SDK field names."""
         kb_resources: list[KnowledgeBaseResource] = []
 
         # Check manifest permission
@@ -263,7 +263,7 @@ class AgentResourceBuilder:
             try:
                 kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(kb_uuid)
                 if kb:
-                    # Use SDK v1 field names: kb_id, kb_name, kb_type
+                    # Use plugin SDK field names: kb_id, kb_name, kb_type
                     kb_resources.append({
                         'kb_id': kb_uuid,
                         'kb_name': kb.get_name(),
@@ -278,7 +278,7 @@ class AgentResourceBuilder:
         self,
         manifest_perms: dict[str, list[str]],
     ) -> StorageResource:
-        """Build storage permissions with SDK v1 field names."""
+        """Build storage permissions with plugin SDK field names."""
         storage_perms = manifest_perms.get('storage', [])
         return {
             'plugin_storage': 'plugin' in storage_perms,

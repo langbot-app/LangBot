@@ -824,10 +824,10 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             context: AgentRunContext as dict
 
         Yields:
-            AgentRunResult dicts per Protocol v1
+            AgentRunResult dicts
         """
         if not self.is_enable_plugin:
-            # Return v1 protocol run.failed
+            # Return a protocol-level failure result.
             yield {
                 'type': 'run.failed',
                 'data': {

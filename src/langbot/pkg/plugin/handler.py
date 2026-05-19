@@ -1432,7 +1432,7 @@ class RuntimeConnectionHandler(handler.Handler):
     ) -> typing.AsyncGenerator[dict[str, Any], None]:
         """Run an AgentRunner component.
 
-        Yields AgentRunResult dicts per Protocol v1.
+        Yields AgentRunResult dicts.
         """
         gen = self.call_action_generator(
             LangBotToRuntimeAction.RUN_AGENT,

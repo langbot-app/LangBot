@@ -10,7 +10,7 @@ from langbot_plugin.api.entities.builtin.pipeline import query as pipeline_query
 from ...core import app
 from .descriptor import AgentRunnerDescriptor
 from .registry import AgentRunnerRegistry
-from .context_builder import AgentRunContextBuilder, AgentRunContextV1
+from .context_builder import AgentRunContextBuilder, AgentRunContextPayload
 from .resource_builder import AgentResourceBuilder
 from .result_normalizer import AgentResultNormalizer
 from .state_store import get_state_store, RunnerScopedStateStore
@@ -133,7 +133,7 @@ class AgentRunOrchestrator:
     async def _invoke_runner(
         self,
         descriptor: AgentRunnerDescriptor,
-        context: AgentRunContextV1,
+        context: AgentRunContextPayload,
     ) -> typing.AsyncGenerator[dict[str, typing.Any], None]:
         """Invoke runner via plugin connector.
 

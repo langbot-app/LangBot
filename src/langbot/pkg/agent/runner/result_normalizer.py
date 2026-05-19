@@ -1,4 +1,4 @@
-"""Agent result normalizer for converting SDK v1 AgentRunResult to Pipeline messages."""
+"""Agent result normalizer for converting AgentRunResult to Pipeline messages."""
 from __future__ import annotations
 
 import typing
@@ -15,10 +15,10 @@ MAX_RESULT_SIZE_BYTES = 1024 * 1024  # 1 MB
 
 
 class AgentResultNormalizer:
-    """Normalizer for converting SDK v1 AgentRunResult to Pipeline messages.
+    """Normalizer for converting AgentRunResult to Pipeline messages.
 
     Responsibilities:
-    - Accept only SDK v1 result types (message.delta, message.completed, etc.)
+    - Accept only supported result types (message.delta, message.completed, etc.)
     - Map message.delta -> MessageChunk
     - Map message.completed -> Message
     - Map run.completed (with message) -> Message
@@ -27,7 +27,7 @@ class AgentResultNormalizer:
     - Validate result size
     - Validate message schema
 
-    Per PROTOCOL_V1.md, accepted types:
+    Accepted result types:
     - message.delta
     - message.completed
     - tool.call.started
@@ -144,10 +144,10 @@ class AgentResultNormalizer:
             return None
 
         else:
-            # Unknown type - warn and ignore (SDK v1 only)
+            # Unknown type - warn and ignore.
             self.ap.logger.warning(
                 f'Runner {descriptor.id} returned unknown result type: {result_type}. '
-                f'Expected SDK v1 types (message.delta, message.completed, run.completed, run.failed, etc.)'
+                f'Expected supported types (message.delta, message.completed, run.completed, run.failed, etc.)'
             )
             return None
 

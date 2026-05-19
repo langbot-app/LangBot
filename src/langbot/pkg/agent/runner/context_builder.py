@@ -1,4 +1,4 @@
-"""Agent run context builder for converting Query to SDK v1 AgentRunContext."""
+"""Agent run context builder for converting Query to AgentRunContext."""
 from __future__ import annotations
 
 import uuid
@@ -15,7 +15,7 @@ from .state_store import get_state_store
 from . import events as runner_events
 
 
-# Internal models for SDK v1 context protocol matching SDK v1 resources.py
+# Internal models for the agent runner context protocol.
 
 
 class AgentTrigger(typing.TypedDict):
@@ -52,32 +52,32 @@ class AgentRunState(typing.TypedDict):
     runner: dict[str, typing.Any]
 
 
-# SDK v1 Protocol resource models - matching langbot-plugin-sdk/resources.py
+# Resource payload models matching langbot-plugin-sdk/resources.py.
 
 
 class ModelResource(typing.TypedDict):
-    """Model resource per SDK v1."""
+    """Model resource payload."""
     model_id: str
     model_type: str | None
     provider: str | None
 
 
 class ToolResource(typing.TypedDict):
-    """Tool resource per SDK v1."""
+    """Tool resource payload."""
     tool_name: str
     tool_type: str | None
     description: str | None
 
 
 class KnowledgeBaseResource(typing.TypedDict):
-    """Knowledge base resource per SDK v1."""
+    """Knowledge base resource payload."""
     kb_id: str
     kb_name: str | None
     kb_type: str | None
 
 
 class FileResource(typing.TypedDict):
-    """File resource per SDK v1."""
+    """File resource payload."""
     file_id: str
     file_name: str | None
     mime_type: str | None
@@ -85,13 +85,13 @@ class FileResource(typing.TypedDict):
 
 
 class StorageResource(typing.TypedDict):
-    """Storage resource per SDK v1."""
+    """Storage resource payload."""
     plugin_storage: bool
     workspace_storage: bool
 
 
 class AgentResources(typing.TypedDict):
-    """Agent resources per SDK v1."""
+    """Agent resources payload."""
     models: list[ModelResource]
     tools: list[ToolResource]
     knowledge_bases: list[KnowledgeBaseResource]
@@ -110,8 +110,8 @@ class AgentRuntimeContext(typing.TypedDict):
     metadata: dict[str, typing.Any]
 
 
-class AgentRunContextV1(typing.TypedDict):
-    """SDK v1 AgentRunContext per PROTOCOL_V1.md.
+class AgentRunContextPayload(typing.TypedDict):
+    """AgentRunContext payload passed to an agent runner.
 
     Note: The 'config' field contains the binding config from ai.runner_config[runner_id],
     which is Pipeline's configuration for this specific runner binding (not plugin instance config).
@@ -133,7 +133,7 @@ class AgentRunContextV1(typing.TypedDict):
 
 
 class AgentRunContextBuilder:
-    """Builder for converting Query to SDK v1 AgentRunContext.
+    """Builder for converting Query to AgentRunContext.
 
     Responsibilities:
     - Generate new run_id (UUID, not query id)
@@ -168,7 +168,7 @@ class AgentRunContextBuilder:
         query: pipeline_query.Query,
         descriptor: AgentRunnerDescriptor,
         resources: AgentResources,
-    ) -> AgentRunContextV1:
+    ) -> AgentRunContextPayload:
         """Build AgentRunContext from Query.
 
         Args:
@@ -177,7 +177,7 @@ class AgentRunContextBuilder:
             resources: Built resources from AgentResourceBuilder
 
         Returns:
-            AgentRunContextV1 dict matching PROTOCOL_V1.md
+            AgentRunContext payload for the plugin runner
         """
         # Generate new run_id
         run_id = str(uuid.uuid4())
@@ -242,7 +242,7 @@ class AgentRunContextBuilder:
         }
 
         # Build full context
-        context: AgentRunContextV1 = {
+        context: AgentRunContextPayload = {
             'run_id': run_id,
             'trigger': trigger,
             'conversation': conversation,

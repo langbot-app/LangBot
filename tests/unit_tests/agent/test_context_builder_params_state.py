@@ -330,7 +330,7 @@ class TestBuildState:
 
     @pytest.mark.asyncio
     async def test_context_has_state_field(self):
-        """AgentRunContextV1 should have state field."""
+        """AgentRunContext should have state field."""
         reset_state_store()
         ap = FakeApplication()
         builder = AgentRunContextBuilder(ap)
@@ -394,7 +394,7 @@ class TestBuildParamsInContext:
 
     @pytest.mark.asyncio
     async def test_context_has_params_field(self):
-        """AgentRunContextV1 should have params field."""
+        """AgentRunContext should have params field."""
         reset_state_store()
         ap = FakeApplication()
         builder = AgentRunContextBuilder(ap)

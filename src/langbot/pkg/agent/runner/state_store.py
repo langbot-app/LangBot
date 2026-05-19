@@ -9,7 +9,7 @@ from langbot_plugin.api.entities.builtin.pipeline import query as pipeline_query
 from .descriptor import AgentRunnerDescriptor
 
 
-# Valid state scopes per PROTOCOL_V1.md
+# Valid state scopes for agent runner state updates.
 VALID_STATE_SCOPES = ('conversation', 'actor', 'subject', 'runner')
 
 # Key mapping for backward compatibility
@@ -25,7 +25,7 @@ class RunnerScopedStateStore:
 
     Key Design Principles:
     1. Host-owned: State is owned and managed by LangBot host, not by the plugin.
-       The plugin can only read/write through the SDK v1 protocol state API.
+       The plugin can only read/write through agent runner state updates.
     2. Scope keys based on stable host identity: Uses host-controlled identifiers
        (runner_id, bot_uuid, pipeline_uuid, launcher_type, launcher_id) rather
        than external/unstable identifiers like external conversation id.
