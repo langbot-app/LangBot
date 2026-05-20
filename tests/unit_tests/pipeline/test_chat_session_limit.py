@@ -91,7 +91,11 @@ async def test_preprocessor_keeps_conversation_when_last_update_is_not_expired(m
 
 
 def test_expire_time_metadata_lives_under_ai_runner_not_safety():
-    metadata_dir = Path('src/langbot/templates/metadata/pipeline')
+    # Use path relative to test file location for portability
+    # test file: tests/unit_tests/pipeline/test_chat_session_limit.py
+    # project root: 4 levels up
+    project_root = Path(__file__).parent.parent.parent.parent
+    metadata_dir = project_root / 'src' / 'langbot' / 'templates' / 'metadata' / 'pipeline'
 
     ai_meta = yaml.safe_load((metadata_dir / 'ai.yaml').read_text())
     safety_meta = yaml.safe_load((metadata_dir / 'safety.yaml').read_text())

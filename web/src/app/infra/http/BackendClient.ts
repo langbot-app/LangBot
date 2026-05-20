@@ -609,6 +609,9 @@ export class BackendClient extends BaseHttpClient {
     name: string,
     filepath: string,
   ): string {
+    if (this.instance.defaults.baseURL === '/') {
+      return `${window.location.origin}/api/v1/plugins/${author}/${name}/assets/${filepath}`;
+    }
     return (
       this.instance.defaults.baseURL +
       `/api/v1/plugins/${author}/${name}/assets/${filepath}`

@@ -48,6 +48,8 @@ const viVN = {
     success: 'Thành công',
     save: 'Lưu',
     saving: 'Đang lưu...',
+    recommend: 'Đề xuất',
+    start: 'Bắt đầu',
     confirm: 'Xác nhận',
     confirmDelete: 'Xác nhận xóa',
     deleteConfirmation: 'Bạn có chắc chắn muốn xóa mục này không?',
@@ -1008,6 +1010,10 @@ const viVN = {
     engineSettings: 'Cài đặt công cụ',
     engineSettingsDescription: 'Cấu hình cho công cụ tri thức đã chọn',
     engineSettingsReadonly: 'chỉ đọc trong chế độ chỉnh sửa',
+    engineSettingsInvalid:
+      'Cài đặt công cụ không hợp lệ, vui lòng kiểm tra các trường bắt buộc',
+    retrievalSettingsInvalid:
+      'Cài đặt truy xuất không hợp lệ, vui lòng kiểm tra các trường bắt buộc',
     retrievalSettings: 'Cài đặt truy xuất',
     retrievalSettingsDescription:
       'Cấu hình cách truy xuất tài liệu từ cơ sở tri thức này',
@@ -1446,6 +1452,52 @@ const viVN = {
     retrying: 'Đang thử lại',
     retryFailed:
       'Vẫn không thể kết nối backend. Hãy khởi động dịch vụ rồi thử lại.',
+  },
+  feishu: {
+    createApp: 'Tạo ứng dụng Feishu chỉ với một lần nhấp',
+    scanQRCode:
+      'Quét mã QR bên dưới bằng Feishu để ủy quyền và tự động tạo ứng dụng',
+    waitingForScan: 'Đang chờ quét',
+    createSuccess:
+      'Tạo ứng dụng thành công! Thông tin xác thực đã được điền tự động',
+    createFailed: 'Tạo ứng dụng thất bại',
+    connecting: 'Đang kết nối tới dịch vụ Feishu...',
+    expired: 'Mã QR đã hết hạn, vui lòng thử lại',
+    denied: 'Người dùng đã từ chối ủy quyền',
+    connectionLost: 'Kết nối đã bị mất, vui lòng thử lại',
+    reconnecting: 'Đang kết nối lại...',
+    retry: 'Thử lại',
+  },
+  weixin: {
+    scanLogin: 'Đăng nhập WeChat bằng mã QR',
+    scanQRCode:
+      'Quét mã QR bên dưới bằng WeChat để ủy quyền và tự động điền token',
+    loginSuccess: 'Đăng nhập thành công! Token đã được điền tự động',
+    loginFailed: 'Đăng nhập thất bại',
+  },
+  dingtalk: {
+    createApp: 'Tạo ứng dụng DingTalk chỉ với một lần nhấp',
+    scanQRCode:
+      'Quét mã QR bên dưới bằng DingTalk để ủy quyền và tự động tạo ứng dụng',
+    waitingForScan: 'Đang chờ quét',
+    createSuccess:
+      'Tạo ứng dụng thành công! Thông tin xác thực đã được điền tự động',
+    createFailed: 'Tạo ứng dụng thất bại',
+    connecting: 'Đang kết nối tới dịch vụ DingTalk...',
+    retry: 'Thử lại',
+    robotCodeNote:
+      'Không thể tự động lấy Robot Code. Vui lòng vào trang quản trị nhà phát triển DingTalk > Cấu hình robot để sao chép thủ công. Trường này là bắt buộc cho các tính năng như nhận diện hình ảnh và tải tệp lên.',
+  },
+  wecombot: {
+    createBot: 'Tạo bot WeCom chỉ với một lần nhấp',
+    scanQRCode: 'Quét mã QR bên dưới bằng WeCom để ủy quyền và tự động tạo bot',
+    waitingForScan: 'Đang chờ quét',
+    createSuccess:
+      'Tạo bot thành công! Thông tin xác thực đã được điền tự động',
+    createFailed: 'Tạo bot thất bại',
+    connecting: 'Đang kết nối tới dịch vụ WeCom...',
+    retry: 'Thử lại',
+    robotNameNote: 'Không thể tự động lấy tên bot. Vui lòng điền thủ công.',
   },
   pluginPages: {
     selectFromSidebar: 'Chọn một trang plugin từ thanh bên',

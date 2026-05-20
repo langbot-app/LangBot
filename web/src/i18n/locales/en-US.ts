@@ -47,6 +47,8 @@ const enUS = {
     success: 'Success',
     save: 'Save',
     saving: 'Saving...',
+    recommend: 'Recommended',
+    start: 'Start',
     confirm: 'Confirm',
     confirmDelete: 'Confirm Delete',
     deleteConfirmation: 'Are you sure you want to delete this?',
@@ -1008,6 +1010,10 @@ const enUS = {
     engineSettingsDescription:
       'Configuration for the selected knowledge engine',
     engineSettingsReadonly: 'read-only in edit mode',
+    engineSettingsInvalid:
+      'Engine settings validation failed, please check required fields',
+    retrievalSettingsInvalid:
+      'Retrieval settings validation failed, please check required fields',
     retrievalSettings: 'Retrieval Settings',
     retrievalSettingsDescription:
       'Configure how documents are retrieved from this knowledge base',
@@ -1558,6 +1564,51 @@ const enUS = {
     retrying: 'Retrying',
     retryFailed:
       'Still cannot connect to the backend. Start the service and try again.',
+  },
+  feishu: {
+    createApp: 'One-Click Create Feishu App',
+    scanQRCode:
+      'Scan the QR code below with Feishu to authorize and automatically create the app',
+    waitingForScan: 'Waiting for scan',
+    createSuccess: 'App created successfully! Credentials have been filled in',
+    createFailed: 'Creation failed',
+    connecting: 'Connecting to Feishu service...',
+    expired: 'QR code expired, please try again',
+    denied: 'Authorization denied by user',
+    connectionLost: 'Connection lost, please try again',
+    reconnecting: 'Reconnecting...',
+    retry: 'Retry',
+  },
+  weixin: {
+    scanLogin: 'Scan QR Login',
+    scanQRCode:
+      'Scan the QR code below with WeChat to authorize and automatically fill in the token',
+    loginSuccess: 'Login successful! Token has been filled in',
+    loginFailed: 'Login failed',
+  },
+  dingtalk: {
+    createApp: 'One-Click Create DingTalk App',
+    scanQRCode:
+      'Scan the QR code below with DingTalk to authorize and automatically create the app',
+    waitingForScan: 'Waiting for scan',
+    createSuccess: 'App created successfully! Credentials have been filled in',
+    createFailed: 'Creation failed',
+    connecting: 'Connecting to DingTalk service...',
+    retry: 'Retry',
+    robotCodeNote:
+      'Robot Code cannot be obtained automatically. Please go to DingTalk Developer Backend > Robot Configuration to copy it manually. It is required for features like image recognition and file upload.',
+  },
+  wecombot: {
+    createBot: 'One-Click Create WeCom Bot',
+    scanQRCode:
+      'Scan the QR code below with WeCom to authorize and automatically create the bot',
+    waitingForScan: 'Waiting for scan',
+    createSuccess: 'Bot created successfully! Credentials have been filled in',
+    createFailed: 'Creation failed',
+    connecting: 'Connecting to WeCom service...',
+    retry: 'Retry',
+    robotNameNote:
+      'Robot Name cannot be obtained automatically. Please fill it in manually.',
   },
   pluginPages: {
     selectFromSidebar: 'Select a plugin page from the sidebar',

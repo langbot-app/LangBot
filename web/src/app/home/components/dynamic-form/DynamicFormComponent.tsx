@@ -11,13 +11,16 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import DynamicFormItemComponent from '@/app/home/components/dynamic-form/DynamicFormItemComponent';
+import QrCodeLoginDialog, {
+  QrLoginPlatform,
+} from '@/app/home/components/qrcode-login/QrCodeLoginDialog';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Copy, Check, Globe, Info } from 'lucide-react';
+import { Copy, Check, Globe, Info, QrCode } from 'lucide-react';
 import { copyToClipboard } from '@/app/utils/clipboard';
 import {
   Tooltip,
@@ -203,6 +206,7 @@ export default function DynamicFormComponent({
   isEditing,
   externalDependentValues,
   systemContext,
+  onValidate,
 }: {
   itemConfigList: IDynamicFormItemSchema[];
   onSubmit?: (val: object) => unknown;
@@ -213,6 +217,9 @@ export default function DynamicFormComponent({
   /** Extra variables accessible via the `__system.*` namespace in show_if conditions.
    *  e.g. `{ is_wizard: true }` makes `show_if: { field: "__system.is_wizard", ... }` work. */
   systemContext?: Record<string, unknown>;
+  /** Callback to expose validation function to parent component.
+   *  Parent can call this function to trigger validation and get validity state. */
+  onValidate?: (validateFn: () => Promise<boolean>) => void;
 }) {
   const isInitialMount = useRef(true);
   const previousInitialValues = useRef(initialValues);
@@ -259,7 +266,10 @@ export default function DynamicFormComponent({
   const editableItems = useMemo(
     () =>
       itemConfigList.filter(
-        (item) => item.type !== 'webhook-url' && item.type !== 'embed-code',
+        (item) =>
+          item.type !== 'webhook-url' &&
+          item.type !== 'embed-code' &&
+          item.type !== 'qr-code-login',
       ),
     [itemConfigList],
   );
@@ -360,6 +370,17 @@ export default function DynamicFormComponent({
     }, {} as FormValues),
   });
 
+  // Expose validation function to parent component
+  const validate = async (): Promise<boolean> => {
+    // Trigger validation for all fields
+    const result = await form.trigger();
+    return result;
+  };
+
+  useEffect(() => {
+    onValidate?.(validate);
+  }, [onValidate]);
+
   // 当 initialValues 变化时更新表单值
   // 但要避免因为内部表单更新触发的 onSubmit 导致的 initialValues 变化而重新设置表单
   useEffect(() => {
@@ -442,9 +463,28 @@ export default function DynamicFormComponent({
     return () => subscription.unsubscribe();
   }, [form, editableItems]);
 
+  // State for QR code login dialog
+  const [qrDialogOpen, setQrDialogOpen] = useState(false);
+  const [qrDialogPlatform, setQrDialogPlatform] =
+    useState<QrLoginPlatform>('feishu');
+
   return (
     <Form {...form}>
       <div className="min-w-0 max-w-full space-y-4 overflow-x-hidden">
+        {/* QR code login dialog */}
+        <QrCodeLoginDialog
+          open={qrDialogOpen}
+          onOpenChange={setQrDialogOpen}
+          platform={qrDialogPlatform}
+          onSuccess={(credentials) => {
+            for (const [key, value] of Object.entries(credentials)) {
+              if (value) {
+                form.setValue(key as keyof FormValues, value as never);
+              }
+            }
+          }}
+        />
+
         {itemConfigList.map((config) => {
           if (config.show_if) {
             const dependValue = resolveShowIfValue(
@@ -573,6 +613,66 @@ export default function DynamicFormComponent({
                 }
                 snippet={embedSnippet}
               />
+            );
+          }
+
+          // QR code login button (e.g. Feishu one-click create, WeChat scan login)
+          if (config.type === 'qr-code-login') {
+            return (
+              <FormItem key={config.id}>
+                <div
+                  className="relative flex items-center gap-4 p-4 rounded-xl border-2 border-dashed cursor-pointer transition-all hover:border-solid hover:shadow-md group"
+                  style={{
+                    borderColor:
+                      'color-mix(in srgb, var(--primary) 25%, transparent)',
+                    background:
+                      'color-mix(in srgb, var(--primary) 3%, transparent)',
+                  }}
+                  onClick={() => {
+                    if (!isEditing) {
+                      setQrDialogPlatform(
+                        (config.login_platform as QrLoginPlatform) || 'feishu',
+                      );
+                      setQrDialogOpen(true);
+                    }
+                  }}
+                >
+                  <div className="flex items-center justify-center h-12 w-12 rounded-lg bg-primary/10 shrink-0">
+                    <QrCode className="h-6 w-6 text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-foreground">
+                        {extractI18nObject(config.label)}
+                      </span>
+                      <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-primary text-primary-foreground">
+                        {t('common.recommend')}
+                      </span>
+                    </div>
+                    {config.description && (
+                      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                        {extractI18nObject(config.description)}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={!!isEditing}
+                    className="shrink-0"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setQrDialogPlatform(
+                        (config.login_platform as QrLoginPlatform) || 'feishu',
+                      );
+                      setQrDialogOpen(true);
+                    }}
+                  >
+                    <QrCode className="h-3.5 w-3.5 mr-1" />
+                    {t('common.start')}
+                  </Button>
+                </div>
+              </FormItem>
             );
           }
 

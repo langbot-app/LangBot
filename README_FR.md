@@ -46,6 +46,8 @@ LangBot est une **plateforme open-source de niveau production** pour créer des 
 
 [→ En savoir plus sur toutes les fonctionnalités](https://link.langbot.app/en/docs/features)
 
+📍 Guides pratiques : [déployer un bot IA multiplateforme en 5 minutes](https://blog.langbot.app/en/blog/deploy-ai-bot-in-5-minutes/), [connecter DeepSeek à WeChat, Discord et Telegram](https://blog.langbot.app/en/blog/connect-deepseek-to-wechat/), [exécuter un Dify Agent dans Discord, Telegram et Slack](https://blog.langbot.app/en/blog/dify-agent-discord-telegram-slack/) et [créer un chatbot avec n8n](https://blog.langbot.app/en/blog/n8n-multi-platform-ai-chatbot/).
+
 ---
 
 ## Démarrage Rapide

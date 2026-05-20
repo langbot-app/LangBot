@@ -23,6 +23,20 @@ spec:
     en: https://link.langbot.app/en/platforms/lark
     ja: https://link.langbot.app/ja/platforms/lark
   config:
+    - name: one-click-create
+      label:
+        en_US: One-Click Create App
+        zh_Hans: 一键创建应用
+        zh_Hant: 一鍵建立應用
+        ja_JP: ワンクリックでアプリ作成
+      description:
+        en_US: Scan QR code to automatically create a Feishu app and fill in credentials
+        zh_Hans: 扫码自动创建飞书应用并填写凭据
+        zh_Hant: 掃碼自動建立飛書應用並填寫憑證
+        ja_JP: QRコードをスキャンしてFeishuアプリを自動作成し、認証情報を入力
+      type: qr-code-login
+      login_platform: feishu
+      required: false
     - name: app_id
       label:
         en_US: App ID

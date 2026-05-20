@@ -19,9 +19,12 @@ import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
 # Break the circular import chain while importing n8nsvapi:
 #   n8nsvapi → runner → app → pipelinemgr → all runners → runner (partially init)
-# The stubs are restored immediately afterwards so this module does NOT pollute
+# The stubs are restored in a ``finally`` block so this module does NOT pollute
 # sys.modules for other test modules (e.g. ones importing the real
 # LocalAgentRunner, which would otherwise inherit ``object`` and break).
+# Mirrors master's intent but uses try/finally so a raised import doesn't
+# leave the global namespace in a stubbed state, and includes
+# ``langbot.pkg.utils.httpclient`` which master didn't stub.
 _runner_stub = MagicMock()
 _runner_stub.runner_class = lambda name: (lambda cls: cls)  # no-op decorator
 _runner_stub.RequestRunner = object
@@ -99,10 +102,10 @@ async def test_stream_format_single_item():
 
     chunks = await collect_chunks(runner, [data])
 
-    assert len(chunks) >= 1
-    final = chunks[-1]
-    assert final.is_final is True
-    assert final.content == 'hello'
+    assert len(chunks) == 1
+    assert chunks[0].is_final is True
+    assert chunks[0].content == 'hello'
+    assert chunks[0].msg_sequence == 1
 
 
 @pytest.mark.asyncio
@@ -117,9 +120,10 @@ async def test_stream_format_multi_item_accumulates():
 
     chunks = await collect_chunks(runner, chunks_data)
 
-    final = chunks[-1]
-    assert final.is_final is True
-    assert final.content == 'foobar'
+    assert len(chunks) == 1
+    assert chunks[0].is_final is True
+    assert chunks[0].content == 'foobar'
+    assert chunks[0].msg_sequence == 1
 
 
 @pytest.mark.asyncio
@@ -132,9 +136,13 @@ async def test_stream_format_batches_every_8_items():
 
     chunks = await collect_chunks(runner, [data])
 
-    # At least the batch yield at chunk_idx==8 + final yield
-    assert len(chunks) >= 2
-    assert chunks[-1].is_final is True
+    assert len(chunks) == 2
+    assert chunks[0].is_final is False
+    assert chunks[0].content == '01234567'
+    assert chunks[0].msg_sequence == 1
+    assert chunks[1].is_final is True
+    assert chunks[1].content == '01234567'
+    assert chunks[1].msg_sequence == 2
 
 
 @pytest.mark.asyncio
@@ -146,9 +154,9 @@ async def test_stream_format_split_across_network_chunks():
 
     chunks = await collect_chunks(runner, [part1, part2])
 
-    final = chunks[-1]
-    assert final.is_final is True
-    assert final.content == 'world'
+    assert len(chunks) == 1
+    assert chunks[0].is_final is True
+    assert chunks[0].content == 'world'
 
 
 @pytest.mark.asyncio
@@ -160,10 +168,8 @@ async def test_stream_format_no_spurious_empty_yield():
 
     chunks = await collect_chunks(runner, [data])
 
-    # No chunk should have empty content before the real content arrives
-    non_final = [c for c in chunks if not c.is_final]
-    for c in non_final:
-        assert c.content  # must be non-empty
+    assert len(chunks) == 1
+    assert chunks[0].content == 'x'
 
 
 # ---------------------------------------------------------------------------

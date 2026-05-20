@@ -31,14 +31,125 @@ class KnowledgeService:
         if not knowledge_engine_plugin_id:
             raise ValueError('knowledge_engine_plugin_id is required')
 
+        creation_settings = kb_data.get('creation_settings', {})
+        retrieval_settings = kb_data.get('retrieval_settings', {})
+
+        # Validate required fields based on plugin's creation_schema and retrieval_schema
+        await self._validate_schema_required_fields(
+            knowledge_engine_plugin_id,
+            creation_settings,
+            retrieval_settings,
+        )
+
         kb = await self.ap.rag_mgr.create_knowledge_base(
             name=kb_data.get('name', 'Untitled'),
             knowledge_engine_plugin_id=knowledge_engine_plugin_id,
-            creation_settings=kb_data.get('creation_settings', {}),
-            retrieval_settings=kb_data.get('retrieval_settings', {}),
+            creation_settings=creation_settings,
+            retrieval_settings=retrieval_settings,
             description=kb_data.get('description', ''),
         )
         return kb.uuid
+
+    async def _validate_schema_required_fields(
+        self,
+        plugin_id: str,
+        creation_settings: dict,
+        retrieval_settings: dict,
+    ) -> None:
+        """Validate required fields based on plugin's creation_schema and retrieval_schema.
+
+        This is a business-agnostic validation that checks all fields marked as
+        required in the plugin's schema, regardless of field type.
+
+        Args:
+            plugin_id: Knowledge Engine plugin ID.
+            creation_settings: User-provided creation settings.
+            retrieval_settings: User-provided retrieval settings.
+
+        Raises:
+            ValueError: If any required field is missing or empty.
+        """
+        # Validate creation_schema
+        try:
+            creation_schema = await self.ap.plugin_connector.get_rag_creation_schema(plugin_id)
+            self._check_required_fields(creation_schema, creation_settings, 'creation_settings')
+        except ValueError:
+            raise
+        except Exception as e:
+            self.ap.logger.warning(f'Failed to get creation_schema for validation: {e}')
+
+        # Validate retrieval_schema
+        try:
+            retrieval_schema = await self.ap.plugin_connector.get_rag_retrieval_schema(plugin_id)
+            self._check_required_fields(retrieval_schema, retrieval_settings, 'retrieval_settings')
+        except ValueError:
+            raise
+        except Exception as e:
+            self.ap.logger.warning(f'Failed to get retrieval_schema for validation: {e}')
+
+    def _check_required_fields(
+        self,
+        schema: dict | list,
+        settings: dict,
+        context: str,
+    ) -> None:
+        """Check required fields in schema against provided settings.
+
+        Args:
+            schema: Plugin-defined schema (can be list or dict with 'schema' key).
+            settings: User-provided settings values.
+            context: Context name for error messages (e.g., 'creation_settings').
+
+        Raises:
+            ValueError: If a required field is missing or empty.
+        """
+        if not schema:
+            return
+
+        # schema can be a list directly, or a dict with 'schema' key
+        items = schema if isinstance(schema, list) else schema.get('schema', [])
+        if not items:
+            return
+
+        for item in items:
+            field_name = item.get('name')
+            if not field_name:
+                continue
+
+            is_required = item.get('required', False)
+            if not is_required:
+                continue
+
+            # Check show_if condition - if field is conditionally shown, only validate when condition is met
+            show_if = item.get('show_if')
+            if show_if:
+                depend_field = show_if.get('field')
+                operator = show_if.get('operator')
+                expected_value = show_if.get('value')
+
+                if depend_field and operator:
+                    depend_value = settings.get(depend_field)
+                    # If show_if condition is not met, skip validation for this field
+                    if operator == 'eq' and depend_value != expected_value:
+                        continue
+                    if operator == 'neq' and depend_value == expected_value:
+                        continue
+                    if operator == 'in' and isinstance(expected_value, list) and depend_value not in expected_value:
+                        continue
+
+            value = settings.get(field_name)
+
+            # Validate required field has a non-empty value
+            if value is None or (isinstance(value, str) and value.strip() == ''):
+                # Get field label for friendly error message
+                label = item.get('label', {})
+                field_label = (
+                    label.get('en_US', field_name)
+                    or label.get('zh_Hans', field_name)
+                    or label.get('zh_Hant', field_name)
+                    or field_name
+                )
+                raise ValueError(f'{field_label} is required ({context}.{field_name})')
 
     async def update_knowledge_base(self, kb_uuid: str, kb_data: dict) -> None:
         """更新知识库"""

@@ -3,6 +3,7 @@ import typing
 import asyncio
 import traceback
 import datetime
+import json
 
 import aiocqhttp
 import pydantic
@@ -293,6 +294,29 @@ class AiocqhttpMessageConverter(abstract_platform_adapter.AbstractMessageConvert
             elif msg.type == 'dice':
                 face_id = msg.data['result']
                 yiri_msg_list.append(platform_message.Face(face_type='dice', face_id=int(face_id), face_name='骰子'))
+            elif msg.type == 'json':
+                try:
+                    raw = msg.data.get('data', {})
+                    if isinstance(raw, str):
+                        raw = json.loads(raw)
+                    if isinstance(raw, dict):
+                        _meta = raw.get('meta', {}) or {}
+                        if isinstance(_meta, dict):
+                            _detail = _meta.get('detail_1') or _meta.get('music') or _meta.get('news') or {}
+                        else:
+                            _detail = {}
+                        if isinstance(_detail, dict):
+                            preview = _detail.get('preview', '')
+                            title = _detail.get('desc', '') or _detail.get('title', '')
+                            url = _detail.get('qqdocurl', '') or _detail.get('jumpUrl', '')
+                        else:
+                            preview = title = url = ''
+                        text = ' '.join([f'[{raw.get("app", "")}]', preview, title, url]).strip()
+                        yiri_msg_list.append(platform_message.Plain(text=text or '[收到一张JSON卡片]'))
+                    else:
+                        yiri_msg_list.append(platform_message.Plain(text=str(raw)))
+                except Exception:
+                    yiri_msg_list.append(platform_message.Plain(text='[收到一张JSON卡片]'))
 
         chain = platform_message.MessageChain(yiri_msg_list)
 

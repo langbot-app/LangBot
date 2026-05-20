@@ -82,11 +82,13 @@ function PluginListView() {
   }, [t]);
 
   useEffect(() => {
-    const onComplete = (_taskId: number, success: boolean) => {
+    const onComplete = (_taskId: number, success: boolean, error?: string) => {
       if (success) {
         toast.success(t('plugins.installSuccess'));
         pluginInstalledRef.current?.refreshPluginList();
         refreshPlugins();
+      } else {
+        toast.error(error || t('plugins.installFailed'));
       }
     };
     registerOnTaskComplete(onComplete);

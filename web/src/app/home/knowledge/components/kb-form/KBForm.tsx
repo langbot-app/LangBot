@@ -57,7 +57,6 @@ const getFormSchema = (t: (key: string) => string) =>
  * Parse creation schema from Knowledge Engine to IDynamicFormItemSchema[]
  */
 function parseCreationSchema(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   schemaItems: any | any[] | undefined,
 ): IDynamicFormItemSchema[] {
   if (!schemaItems) return [];
@@ -106,6 +105,10 @@ export default function KBForm({
   // Dirty tracking: snapshot of saved state for comparison
   const savedSnapshotRef = useRef<string>('');
   const isInitializing = useRef(true);
+
+  // Refs to store validation functions from dynamic forms
+  const configValidateRef = useRef<(() => Promise<boolean>) | null>(null);
+  const retrievalValidateRef = useRef<(() => Promise<boolean>) | null>(null);
 
   const formSchema = getFormSchema(t);
 
@@ -235,7 +238,24 @@ export default function KBForm({
     }
   };
 
-  const onSubmit = (data: z.infer<typeof formSchema>) => {
+  const onSubmit = async (data: z.infer<typeof formSchema>) => {
+    // Validate dynamic forms before submission
+    if (configValidateRef.current) {
+      const configValid = await configValidateRef.current();
+      if (!configValid) {
+        toast.error(t('knowledge.engineSettingsInvalid'));
+        return;
+      }
+    }
+
+    if (retrievalValidateRef.current) {
+      const retrievalValid = await retrievalValidateRef.current();
+      if (!retrievalValid) {
+        toast.error(t('knowledge.retrievalSettingsInvalid'));
+        return;
+      }
+    }
+
     const kbData: KnowledgeBase = {
       name: data.name,
       description: data.description ?? '',
@@ -490,6 +510,9 @@ export default function KBForm({
                 }
                 isEditing={isEditing}
                 externalDependentValues={retrievalSettings}
+                onValidate={(validateFn) =>
+                  (configValidateRef.current = validateFn)
+                }
               />
             </CardContent>
           </Card>
@@ -512,6 +535,9 @@ export default function KBForm({
                   setRetrievalSettings(val as Record<string, unknown>)
                 }
                 externalDependentValues={configSettings}
+                onValidate={(validateFn) =>
+                  (retrievalValidateRef.current = validateFn)
+                }
               />
             </CardContent>
           </Card>

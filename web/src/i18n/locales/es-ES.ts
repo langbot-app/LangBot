@@ -50,6 +50,8 @@ const esES = {
     success: 'Éxito',
     save: 'Guardar',
     saving: 'Guardando...',
+    recommend: 'Recomendado',
+    start: 'Iniciar',
     confirm: 'Confirmar',
     confirmDelete: 'Confirmar eliminación',
     deleteConfirmation: '¿Estás seguro de que deseas eliminar esto?',
@@ -1030,6 +1032,10 @@ const esES = {
     engineSettingsDescription:
       'Configuración del motor de conocimiento seleccionado',
     engineSettingsReadonly: 'solo lectura en modo de edición',
+    engineSettingsInvalid:
+      'La configuración del motor no es válida, verifique los campos obligatorios',
+    retrievalSettingsInvalid:
+      'La configuración de recuperación no es válida, verifique los campos obligatorios',
     retrievalSettings: 'Configuración de recuperación',
     retrievalSettingsDescription:
       'Configura cómo se recuperan los documentos de esta base de conocimiento',
@@ -1482,6 +1488,55 @@ const esES = {
     retrying: 'Reintentando',
     retryFailed:
       'Aún no se puede conectar con el backend. Inicia el servicio e inténtalo de nuevo.',
+  },
+  feishu: {
+    createApp: 'Crear aplicación de Feishu con un clic',
+    scanQRCode:
+      'Escanea el código QR de abajo con Feishu para autorizar y crear la aplicación automáticamente',
+    waitingForScan: 'Esperando escaneo',
+    createSuccess:
+      '¡Aplicación creada correctamente! Las credenciales se han rellenado automáticamente',
+    createFailed: 'Error al crear la aplicación',
+    connecting: 'Conectando con el servicio de Feishu...',
+    expired: 'El código QR ha caducado. Inténtalo de nuevo',
+    denied: 'El usuario rechazó la autorización',
+    connectionLost: 'Se perdió la conexión. Inténtalo de nuevo',
+    reconnecting: 'Reconectando...',
+    retry: 'Reintentar',
+  },
+  weixin: {
+    scanLogin: 'Iniciar sesión en WeChat con QR',
+    scanQRCode:
+      'Escanea el código QR de abajo con WeChat para autorizar e introducir el token automáticamente',
+    loginSuccess:
+      '¡Inicio de sesión correcto! El token se ha rellenado automáticamente',
+    loginFailed: 'Error al iniciar sesión',
+  },
+  dingtalk: {
+    createApp: 'Crear aplicación de DingTalk con un clic',
+    scanQRCode:
+      'Escanea el código QR de abajo con DingTalk para autorizar y crear la aplicación automáticamente',
+    waitingForScan: 'Esperando escaneo',
+    createSuccess:
+      '¡Aplicación creada correctamente! Las credenciales se han rellenado automáticamente',
+    createFailed: 'Error al crear la aplicación',
+    connecting: 'Conectando con el servicio de DingTalk...',
+    retry: 'Reintentar',
+    robotCodeNote:
+      'El código del robot no puede obtenerse automáticamente. Ve al panel de desarrolladores de DingTalk > Configuración del robot para copiarlo manualmente. Es necesario para funciones como reconocimiento de imágenes y carga de archivos.',
+  },
+  wecombot: {
+    createBot: 'Crear bot de WeCom con un clic',
+    scanQRCode:
+      'Escanea el código QR de abajo con WeCom para autorizar y crear el bot automáticamente',
+    waitingForScan: 'Esperando escaneo',
+    createSuccess:
+      '¡Bot creado correctamente! Las credenciales se han rellenado automáticamente',
+    createFailed: 'Error al crear el bot',
+    connecting: 'Conectando con el servicio de WeCom...',
+    retry: 'Reintentar',
+    robotNameNote:
+      'El nombre del robot no puede obtenerse automáticamente. Introdúcelo manualmente.',
   },
   pluginPages: {
     selectFromSidebar: 'Selecciona una página de plugin en la barra lateral',

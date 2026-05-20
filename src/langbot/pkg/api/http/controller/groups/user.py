@@ -146,6 +146,7 @@ class UserRouterGroup(group.RouterGroup):
                 return self.fail(3, str(e))
             except ValueError as e:
                 traceback.print_exc()
+                self.ap.logger.warning(f'Space OAuth callback failed: {e}')
                 return self.fail(1, str(e))
             except Exception as e:
                 traceback.print_exc()

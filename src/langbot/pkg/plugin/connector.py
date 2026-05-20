@@ -11,6 +11,7 @@ import os
 import sys
 import httpx
 import sqlalchemy
+import yaml
 from async_lru import alru_cache
 from langbot_plugin.api.entities.builtin.pipeline.query import provider_session
 
@@ -33,6 +34,10 @@ from langbot_plugin.api.entities.builtin.command import (
 from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
 from ..core import taskmgr
 from ..entity.persistence import plugin as persistence_plugin
+
+
+class PluginRuntimeNotConnectedError(RuntimeError):
+    """Raised when plugin runtime operations are requested before connection."""
 
 
 class PluginRuntimeConnector(ManagedRuntimeConnector):
@@ -174,33 +179,45 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
 
     async def ping_plugin_runtime(self):
         if not hasattr(self, 'handler'):
-            raise Exception('Plugin runtime is not connected')
+            raise PluginRuntimeNotConnectedError('Plugin runtime is not connected')
 
         return await self.handler.ping()
 
-    def _extract_deps_metadata(
+    def _inspect_plugin_package(
         self,
         file_bytes: bytes,
         task_context: taskmgr.TaskContext | None,
-    ):
-        """Extract dependency count from requirements.txt inside plugin zip."""
-        if task_context is None:
-            return
+    ) -> tuple[str | None, str | None]:
+        """Extract plugin identity and dependency metadata from a plugin package."""
+        plugin_author = None
+        plugin_name = None
+
         try:
             with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
-                for name in zf.namelist():
-                    if name.endswith('requirements.txt'):
-                        content = zf.read(name).decode('utf-8', errors='ignore')
-                        deps = [
-                            line.strip()
-                            for line in content.splitlines()
-                            if line.strip() and not line.strip().startswith('#')
-                        ]
-                        task_context.metadata['deps_total'] = len(deps)
-                        task_context.metadata['deps_list'] = deps
-                        break
+                try:
+                    manifest = yaml.safe_load(zf.read('manifest.yaml').decode('utf-8', errors='ignore')) or {}
+                    metadata = manifest.get('metadata', {})
+                    plugin_author = metadata.get('author')
+                    plugin_name = metadata.get('name')
+                except Exception:
+                    pass
+
+                if task_context is not None:
+                    for name in zf.namelist():
+                        if name.endswith('requirements.txt'):
+                            content = zf.read(name).decode('utf-8', errors='ignore')
+                            deps = [
+                                line.strip()
+                                for line in content.splitlines()
+                                if line.strip() and not line.strip().startswith('#')
+                            ]
+                            task_context.metadata['deps_total'] = len(deps)
+                            task_context.metadata['deps_list'] = deps
+                            break
         except Exception:
             pass
+
+        return plugin_author, plugin_name
 
     async def _install_mcp_from_marketplace(
         self,
@@ -214,7 +231,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         config = mcp_data.get('config', {})
         url = config.get('url', '')
         # Use __ instead of / to avoid URL routing issues with slashes
-        name = f"{mcp_data.get('author', '')}__{mcp_data.get('name', '')}"
+        name = f'{mcp_data.get("author", "")}__{mcp_data.get("name", "")}'
 
         # Determine mode from URL
         if 'sse' in url.lower():
@@ -249,9 +266,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             'extra_args': extra_args,
         }
 
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.insert(persistence_mcp.MCPServer).values(server_data)
-        )
+        await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_mcp.MCPServer).values(server_data))
 
         # Start the MCP server
         result = await self.ap.persistence_mgr.execute_async(
@@ -261,9 +276,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         if server_entity:
             server_config = self.ap.persistence_mgr.serialize_model(persistence_mcp.MCPServer, server_entity)
             if self.ap.tool_mgr.mcp_tool_loader:
-                mcp_task = asyncio.create_task(
-                    self.ap.tool_mgr.mcp_tool_loader.host_mcp_server(server_config)
-                )
+                mcp_task = asyncio.create_task(self.ap.tool_mgr.mcp_tool_loader.host_mcp_server(server_config))
                 self.ap.tool_mgr.mcp_tool_loader._hosted_mcp_tasks.append(mcp_task)
 
         self.ap.logger.info(f'Installed MCP server {name} from marketplace')
@@ -288,17 +301,75 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         )
         self.ap.logger.info(f'Skill installed successfully: {result}')
 
+    def _build_plugin_startup_failure_message(
+        self,
+        plugin_author: str,
+        plugin_name: str,
+        task_context: taskmgr.TaskContext | None,
+    ) -> str:
+        dep_hint = ''
+        if task_context is not None:
+            current_dep = task_context.metadata.get('current_dep')
+            if current_dep:
+                dep_hint = f' Last dependency: {current_dep}.'
+
+        return (
+            f'Plugin {plugin_author}/{plugin_name} failed to start after installation. '
+            f'Dependency installation or plugin initialization may have failed.{dep_hint} '
+            f'Please check the plugin requirements and runtime logs.'
+        )
+
+    async def _wait_for_installed_plugin_ready(
+        self,
+        plugin_author: str | None,
+        plugin_name: str | None,
+        task_context: taskmgr.TaskContext | None,
+        timeout: float = 30,
+    ):
+        """Wait until the installed plugin is registered by the runtime.
+
+        The plugin runtime launches plugins asynchronously. If dependency installation
+        fails, the plugin process exits before registration; without this check the
+        install task can incorrectly finish successfully.
+        """
+        if not plugin_author or not plugin_name:
+            return
+
+        deadline = time.time() + timeout
+        last_error: Exception | None = None
+        while time.time() < deadline:
+            try:
+                plugin = await self.get_plugin_info(plugin_author, plugin_name)
+                if plugin is not None:
+                    status = plugin.get('status')
+                    if status == 'initialized':
+                        return
+            except Exception as e:
+                last_error = e
+
+            await asyncio.sleep(0.5)
+
+        message = self._build_plugin_startup_failure_message(plugin_author, plugin_name, task_context)
+        if last_error is not None:
+            message = f'{message} Last runtime error: {last_error}'
+        raise RuntimeError(message)
+
     async def install_plugin(
         self,
         install_source: PluginInstallSource,
         install_info: dict[str, Any],
         task_context: taskmgr.TaskContext | None = None,
     ):
+        plugin_author = install_info.get('plugin_author')
+        plugin_name = install_info.get('plugin_name')
+
         if install_source == PluginInstallSource.MARKETPLACE:
             # Handle marketplace plugin/mcp/skill installation
             plugin_author = install_info.get('plugin_author', '')
             plugin_name = install_info.get('plugin_name', '')
-            space_url = self.ap.instance_config.data.get('space', {}).get('url', 'https://space.langbot.app').rstrip('/')
+            space_url = (
+                self.ap.instance_config.data.get('space', {}).get('url', 'https://space.langbot.app').rstrip('/')
+            )
 
             # Try MCP endpoint first
             async with httpx.AsyncClient(trust_env=True, timeout=15) as client:
@@ -321,7 +392,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                         task_context.set_current_action('checking skill marketplace')
 
                     # Get skill detail to find version
-                    skill_resp = await client.get(f'{space_url}/api/v1/marketplace/skills/{plugin_author}/{plugin_name}')
+                    skill_resp = await client.get(
+                        f'{space_url}/api/v1/marketplace/skills/{plugin_author}/{plugin_name}'
+                    )
                     if skill_resp.status_code == 200:
                         self.ap.logger.info(f'Installing skill from marketplace: {plugin_author}/{plugin_name}')
                         if task_context:
@@ -335,7 +408,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                             f'{space_url}/api/v1/marketplace/skills/download/{plugin_author}/{plugin_name}'
                         )
                         if download_resp.status_code != 200:
-                            raise Exception(f'Failed to download skill {plugin_author}/{plugin_name}: {download_resp.status_code}')
+                            raise Exception(
+                                f'Failed to download skill {plugin_author}/{plugin_name}: {download_resp.status_code}'
+                            )
 
                         file_bytes = download_resp.content
                         file_size = len(file_bytes)
@@ -359,7 +434,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                             if versions_data:
                                 latest_version = versions_data[0].get('version', '')
                                 if latest_version:
-                                    self.ap.logger.info(f'Installing plugin from marketplace: {plugin_author}/{plugin_name} v{latest_version}')
+                                    self.ap.logger.info(
+                                        f'Installing plugin from marketplace: {plugin_author}/{plugin_name} v{latest_version}'
+                                    )
                                     if task_context:
                                         task_context.set_current_action('downloading plugin package')
 
@@ -367,7 +444,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                                         f'{space_url}/api/v1/marketplace/plugins/download/{plugin_author}/{plugin_name}/{latest_version}'
                                     )
                                     if download_resp.status_code != 200:
-                                        raise Exception(f'Failed to download plugin {plugin_author}/{plugin_name}: {download_resp.status_code}')
+                                        raise Exception(
+                                            f'Failed to download plugin {plugin_author}/{plugin_name}: {download_resp.status_code}'
+                                        )
 
                                     file_bytes = download_resp.content
                                     self._extract_deps_metadata(file_bytes, task_context)
@@ -391,7 +470,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         if install_source == PluginInstallSource.LOCAL:
             # transfer file before install
             file_bytes = install_info['plugin_file']
-            self._extract_deps_metadata(file_bytes, task_context)
+            plugin_author, plugin_name = self._inspect_plugin_package(file_bytes, task_context)
+            if task_context is not None and plugin_author and plugin_name:
+                task_context.metadata['plugin_name'] = f'{plugin_author}/{plugin_name}'
             file_key = await self.handler.send_file(file_bytes, 'lbpkg')
             install_info['plugin_file_key'] = file_key
             del install_info['plugin_file']
@@ -428,7 +509,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                                 task_context.metadata['download_speed'] = downloaded / elapsed if elapsed > 0 else 0
 
                     file_bytes = b''.join(chunks)
-                    self._extract_deps_metadata(file_bytes, task_context)
+                    plugin_author, plugin_name = self._inspect_plugin_package(file_bytes, task_context)
+                    if task_context is not None and plugin_author and plugin_name:
+                        task_context.metadata['plugin_name'] = f'{plugin_author}/{plugin_name}'
                     file_key = await self.handler.send_file(file_bytes, 'lbpkg')
                     install_info['plugin_file_key'] = file_key
                     self.ap.logger.info(f'Transfered file {file_key} to plugin runtime')
@@ -451,6 +534,8 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             metadata = ret.get('metadata', None)
             if metadata is not None and task_context is not None:
                 task_context.metadata.update(metadata)
+
+        await self._wait_for_installed_plugin_ready(plugin_author, plugin_name, task_context)
 
     async def upgrade_plugin(
         self,
@@ -726,11 +811,12 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         Raises:
             ValueError: If plugin_id is not in the expected 'author/name' format.
         """
-        if '/' not in plugin_id:
+        segments = plugin_id.split('/')
+        if len(segments) != 2 or not all(segments):
             raise ValueError(
                 f"Invalid plugin_id format: '{plugin_id}'. Expected 'author/name' format (e.g. 'langbot/rag-engine')."
             )
-        return plugin_id.split('/', 1)
+        return segments[0], segments[1]
 
     async def call_rag_ingest(self, plugin_id: str, context_data: dict[str, Any]) -> dict[str, Any]:
         """Call plugin to ingest document.
