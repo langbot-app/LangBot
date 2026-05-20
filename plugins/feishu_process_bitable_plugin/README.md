@@ -27,6 +27,11 @@
 - `spray`：喷雾（A/B/C/D/E线，批次 + 开度/进出口温度/雾化轮转速/水分）
   - 额外支持快速水分格式：`S006-QQT-DB2602-130-B-60min：1.08％MC`（自动写入 `水分`，并归并到 `S006-DB2602-130`）
 - `feeding`：投料（A/B/C/D/E线，批次 + 磷酸铁需补/碳酸锂需补/D5总量/BL总量）
+- `product`：成品数据（按系列分表，成品批次 + 产线 + 段位 + 送检项目/送检状态/关注项/下料说明）
+  - 批次编码示例：`S18-CP-DA2605-104-A1`、`S20-CP-DA2605-101-A1`
+  - 兼容旧写法：`S18--DA2605-085-Cs-A1` 会归一为成品批次并记录后缀
+  - 状态文本示例：`全检已送检`、`水分，扣电已送`、`铜锌颗粒，大颗粒`、`三倍全检已送检`
+  - 图片消息会先走飞书 OCR，再按同一套成品规则解析
 - `sintering`：烧结（A/B/C/D/E线，批次 + 样品值 + 自动均值）
 - `crushing`：粉碎压实（A/B/C/D/E线，批次 + 样品值 + 频率）
 - `pure_water`：纯水（PH + 批次）
@@ -48,7 +53,7 @@
 - `table_name_routing_json`：路由 -> 表名（用于自动建表）
 - `auto_create_fields`：缺列自动创建（生产默认 `false`）
 - `enable_ocr_for_images`
-- `process_switch_json`
+- `process_switch_json`（默认包含 `product=true`）
 - `kiln_batch_io_row_mode`：`segment|slot`（默认 `segment`）
 - `merge_particle_size_to_stage_tables`：粒度数据归并到工序汇总表（默认 `true`）
 - `upsert_by_batch`：按批次优先更新已有行（默认 `true`，避免同批次拆成多行）
@@ -72,6 +77,9 @@
   "spray.C": "tblCxxxx",
   "spray.E": "tblExxxx",
   "spray.B": "tblByyyy",
+  "product.S18": "tblProductS18xxxx",
+  "product.S20": "tblProductS20yyyy",
+  "product.S006": "tblProductS006xxxx",
   "feeding.A": "tblAxxxx",
   "feeding.C": "tblCxxxx",
   "feeding.E": "tblExxxx",
@@ -114,6 +122,10 @@
   - `feeding.C` -> `C线投料汇总`
   - `feeding.D` -> `D线投料汇总`
   - `feeding.E` -> `E线投料汇总`
+  - `product.S006` -> `S006成品数据汇总`
+  - `product.S18` -> `S18成品数据汇总`
+  - `product.S20` -> `S20成品数据汇总`
+  - 其他成品系列默认 -> `<系列>成品数据汇总`
   - `sintering.A` -> `A线烧结汇总`
   - `sintering.B` -> `B线烧结汇总`
   - `sintering.C` -> `C线烧结汇总`
@@ -144,6 +156,9 @@
   "spray.C": "C线喷雾汇总",
   "spray.D": "D线喷雾汇总",
   "spray.E": "E线喷雾汇总",
+  "product.S006": "S006成品数据汇总",
+  "product.S18": "S18成品数据汇总",
+  "product.S20": "S20成品数据汇总",
   "feeding.A": "A线分散罐汇总",
   "feeding.B": "B线分散罐汇总",
   "feeding.C": "C线分散罐汇总",

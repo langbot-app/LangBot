@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import datetime
+import html
 import json
 import re
 import time
@@ -332,6 +333,10 @@ class AutoProcessToBitableListener(EventListener):
             "particle_size.HP": "合批工序粒度汇总",
             "particle_size.QQT": "喷雾工序粒度汇总",
             "particle_size": "粒度数据汇总",
+            "product": "成品数据汇总",
+            "product.S006": "S006成品数据汇总",
+            "product.S18": "S18成品数据汇总",
+            "product.S20": "S20成品数据汇总",
             "pure_water": "车间纯水PH汇总",
             "kiln_batch_io": "窑炉批次进窑出窑表",
             "kiln_batch_io.phase2": "二期窑炉批次进窑出窑表",
@@ -345,6 +350,7 @@ class AutoProcessToBitableListener(EventListener):
             "sintering": "烧结",
             "crushing": "粉碎压实",
             "wet_process": "湿法",
+            "product": "成品",
             "pure_water": "纯水PH",
         }
         for line in cls._supported_production_lines():
@@ -364,6 +370,13 @@ class AutoProcessToBitableListener(EventListener):
         defaults = self._default_table_names()
         if route_key in defaults:
             return defaults[route_key]
+
+        if "." in route_key:
+            route_prefix, route_suffix = route_key.split(".", 1)
+            route_suffix = route_suffix.strip().upper()
+            if route_prefix == "product" and route_suffix and not self._is_supported_production_line(route_suffix):
+                return f"{route_suffix}成品数据汇总"
+
         if prefix in defaults:
             return defaults[prefix]
 
@@ -376,6 +389,7 @@ class AutoProcessToBitableListener(EventListener):
                     "sintering": "烧结",
                     "crushing": "粉碎压实",
                     "wet_process": "湿法",
+                    "product": "成品",
                     "pure_water": "纯水PH",
                 }
                 return f"{part_b}线{route_labels.get(part_a, part_a)}汇总"
@@ -647,6 +661,14 @@ class AutoProcessToBitableListener(EventListener):
         # Normalize Unicode dash/minus variants to ASCII hyphen only.
         # Avoid broad ranges that may accidentally replace non-dash characters.
         return re.sub(r"[‐‑‒–—−－]+", "-", value)
+
+    @classmethod
+    def _normalize_message_text(cls, value: str) -> str:
+        text = html.unescape(str(value or ""))
+        text = re.sub(r"(?i)</p\s*>", "\n", text)
+        text = re.sub(r"(?i)<br\s*/?>", "\n", text)
+        text = re.sub(r"(?i)<[^>]+>", "", text)
+        return cls._normalize_dash(text)
 
     @staticmethod
     def _extract_plain_text(message_chain: platform_message.MessageChain) -> str:
@@ -1061,6 +1083,7 @@ class AutoProcessToBitableListener(EventListener):
                 "sintering": True,
                 "crushing": True,
                 "particle_size": True,
+                "product": True,
                 "pure_water": True,
                 "kiln_batch_io": True,
             },
@@ -1220,6 +1243,105 @@ class AutoProcessToBitableListener(EventListener):
                     line=line,
                     batch_id=batch_id,
                     route_key=route_key,
+                    fields=fields,
+                )
+            )
+
+        return records
+
+    @staticmethod
+    def _normalize_product_batch_id(raw_batch: str) -> str:
+        batch = re.sub(r"\s*-\s*", "-", raw_batch.strip().upper())
+        batch = re.sub(r"-{2,}", "-", batch)
+        batch = re.sub(r"^(S\d+)-(D[A-E]\d{4}-\d+)", r"\1-CP-\2", batch, flags=re.IGNORECASE)
+        return batch
+
+    @staticmethod
+    def _extract_product_status_fields(block_text: str) -> dict[str, Any]:
+        text = re.sub(r"\s+", "", block_text.strip())
+        fields: dict[str, Any] = {}
+        if not text:
+            return fields
+
+        check_items: list[str] = []
+        if "全检" in text:
+            check_items.append("全检")
+        if "水分" in text:
+            check_items.append("水分")
+        if "扣电" in text:
+            check_items.append("扣电")
+        if "三倍" in text:
+            fields["检测倍率"] = "三倍"
+
+        if check_items:
+            fields["送检项目"] = "、".join(dict.fromkeys(check_items))
+        if "已送检" in text or "已送" in text:
+            fields["送检状态"] = "已送检"
+
+        attention_items: list[str] = []
+        for label in ("铜锌颗粒", "大颗粒"):
+            if label in text:
+                attention_items.append(label)
+        if attention_items:
+            fields["关注项"] = "、".join(attention_items)
+
+        feeding_match = re.search(r"([A-E][12])下(?:的)?料", text, flags=re.IGNORECASE)
+        if feeding_match:
+            fields["下料段位"] = feeding_match.group(1).upper()
+        package_matches = re.findall(r"([A-E][12])下(\d+)包", text, flags=re.IGNORECASE)
+        if package_matches:
+            fields["下料说明"] = "；".join(f"{slot.upper()}下{count}包" for slot, count in package_matches)
+
+        return fields
+
+    def _parse_product(self, text: str, message_time: str) -> list[ParsedRecord]:
+        if not self._process_switch("product", True):
+            return []
+
+        normalized_text = self._normalize_message_text(text)
+        line_pattern = self._production_line_pattern()
+        batch_regex = re.compile(
+            rf"(S\d+)\s*(?:-\s*CP)?\s*-+\s*D([{line_pattern}])\s*(\d{{4}})\s*-\s*(\d+)"
+            rf"(?:\s*-\s*([A-Z]{{1,4}}))?\s*-\s*([{line_pattern}][12])",
+            re.IGNORECASE,
+        )
+        matches = list(batch_regex.finditer(normalized_text))
+        if not matches:
+            return []
+
+        records: list[ParsedRecord] = []
+        for idx, match in enumerate(matches):
+            material_type = str(match.group(1)).upper().strip()
+            line = str(match.group(2)).upper().strip()
+            date_code = str(match.group(3)).strip()
+            seq = str(match.group(4)).strip()
+            suffix = str(match.group(5) or "").upper().strip()
+            segment = str(match.group(6)).upper().strip()
+            if not self._is_supported_production_line(line):
+                continue
+
+            batch_id = f"{material_type}-CP-D{line}{date_code}-{seq}-{segment}"
+            start_pos = match.end()
+            end_pos = matches[idx + 1].start() if idx + 1 < len(matches) else len(normalized_text)
+            block_text = normalized_text[start_pos:end_pos]
+
+            fields: dict[str, Any] = {
+                "物料类型": material_type,
+                "成品批次": batch_id,
+                "产线": line,
+                "段位": segment,
+                "消息时间": message_time,
+            }
+            if suffix:
+                fields["成品后缀"] = suffix
+            fields.update(self._extract_product_status_fields(block_text))
+
+            records.append(
+                ParsedRecord(
+                    scenario="product",
+                    line=line,
+                    batch_id=batch_id,
+                    route_key=f"product.{material_type}",
                     fields=fields,
                 )
             )
@@ -3239,6 +3361,7 @@ class AutoProcessToBitableListener(EventListener):
 
     def _parse_records(self, full_text: str, message_time: str) -> list[ParsedRecord]:
         records: list[ParsedRecord] = []
+        records.extend(self._parse_product(full_text, message_time))
         records.extend(self._parse_particle_size(full_text, message_time))
         records.extend(self._parse_xm_solids(full_text, message_time))
         records.extend(self._parse_spray(full_text, message_time))

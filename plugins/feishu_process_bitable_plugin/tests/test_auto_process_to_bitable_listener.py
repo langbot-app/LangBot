@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+from pathlib import Path
 from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, Mock
@@ -36,6 +37,7 @@ class DummyEvent:
         message_id: str,
         source_time: datetime.datetime,
         launcher_type: str = "person",
+        images: list[platform_message.Image] | None = None,
         message_event_time: datetime.datetime | None = None,
         query_variables: dict[str, object] | None = None,
     ):
@@ -46,12 +48,11 @@ class DummyEvent:
         if query_variables is not None:
             self.query.variables = query_variables
 
-        chain = platform_message.MessageChain(
-            [
-                platform_message.Source(id=message_id, time=source_time),
-                platform_message.Plain(text=text),
-            ]
-        )
+        components: list[object] = [platform_message.Source(id=message_id, time=source_time)]
+        if text:
+            components.append(platform_message.Plain(text=text))
+        components.extend(images or [])
+        chain = platform_message.MessageChain(components)
         self.message_chain = chain
         self.reply_message_chain: platform_message.MessageChain | None = None
         if message_event_time is not None:
@@ -247,6 +248,103 @@ class AutoProcessToBitableListenerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(record.route_key, "feeding.C")
         self.assertEqual(record.fields["磷酸铁需补(kg)"], 12.5)
         self.assertEqual(record.fields["BL总量(kg)"], 88.8)
+
+    async def test_parse_product_supports_group_text_samples(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_product(
+            "S20-CP-DA2605-101-A1\nB2下的料\n"
+            "S18-CP-DA2605-105-A2\n\n"
+            "S18-CP-DA2605-104-A1\n"
+            "S18-CP-DB2605-102-B1\n铜锌颗粒、大颗粒\n全检已送检",
+            "2026-05-20 14:29:00",
+        )
+
+        self.assertEqual(len(records), 4)
+        self.assertEqual(records[0].scenario, "product")
+        self.assertEqual(records[0].line, "A")
+        self.assertEqual(records[0].route_key, "product.S20")
+        self.assertEqual(records[0].batch_id, "S20-CP-DA2605-101-A1")
+        self.assertEqual(records[0].fields["产线"], "A")
+        self.assertEqual(records[0].fields["下料段位"], "B2")
+        self.assertEqual(records[-1].route_key, "product.S18")
+        self.assertEqual(records[-1].fields["关注项"], "铜锌颗粒、大颗粒")
+        self.assertEqual(records[-1].fields["送检项目"], "全检")
+        self.assertEqual(records[-1].fields["送检状态"], "已送检")
+
+    async def test_parse_product_supports_html_post_text_and_legacy_batch(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_product(
+            "<p>S18--DA2605-085-Cs-A1</p><p>A1下14包B1 下20包</p><p>全检已送</p>",
+            "2026-05-20 06:39:00",
+        )
+
+        self.assertEqual(len(records), 1)
+        record = records[0]
+        self.assertEqual(record.batch_id, "S18-CP-DA2605-085-A1")
+        self.assertEqual(record.route_key, "product.S18")
+        self.assertEqual(record.fields["成品后缀"], "CS")
+        self.assertEqual(record.fields["下料说明"], "A1下14包；B1下20包")
+        self.assertEqual(record.fields["送检状态"], "已送检")
+
+    async def test_parse_records_with_text_priority_uses_ocr_for_product_images(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_records_with_text_priority(
+            "",
+            "S18-CP-DA2605-103-A2\n三倍水分，扣电已送检",
+            "2026-05-20 00:27:00",
+        )
+
+        self.assertEqual(len(records), 1)
+        record = records[0]
+        self.assertEqual(record.scenario, "product")
+        self.assertEqual(record.batch_id, "S18-CP-DA2605-103-A2")
+        self.assertEqual(record.fields["检测倍率"], "三倍")
+        self.assertEqual(record.fields["送检项目"], "水分、扣电")
+
+    async def test_image_ocr_product_text_writes_product_record(self) -> None:
+        listener = self._build_listener({"enable_ocr_for_images": True})
+        source_time = datetime.datetime(2026, 5, 20, 14, 42, tzinfo=ZoneInfo("Asia/Shanghai"))
+        image_path = Path(__file__)
+        ctx = DummyEventContext(
+            DummyEvent(
+                "",
+                message_id="msg-product-image",
+                source_time=source_time,
+                images=[platform_message.Image(path=str(image_path))],
+            )
+        )
+        upsert_result = UpsertResult(
+            ok=True,
+            detail="rec-product",
+            record_id="rec-product",
+            operation="create",
+            before_fields={},
+            after_fields={},
+        )
+
+        listener._extract_recall_meta = AsyncMock(return_value=None)  # type: ignore[method-assign]
+        listener._recognize_image_bytes = AsyncMock(  # type: ignore[method-assign]
+            return_value="S20-CP-DA2605-100-A2\n全检已送检"
+        )
+        listener._resolve_or_create_table_id = AsyncMock(return_value="tbl-product")  # type: ignore[method-assign]
+        listener._ensure_table_fields = AsyncMock(return_value=(True, "", {}))  # type: ignore[method-assign]
+        listener._upsert_record_to_bitable = AsyncMock(return_value=upsert_result)  # type: ignore[method-assign]
+        listener._normalize_write_fields = lambda fields, field_types: dict(fields)  # type: ignore[method-assign]
+        listener._build_upsert_match_fields = lambda fields: {"批次号": str(fields.get("批次号", ""))}  # type: ignore[method-assign]
+
+        await listener._handle_normal_message(ctx)
+
+        listener._upsert_record_to_bitable.assert_awaited_once()  # type: ignore[attr-defined]
+        args = listener._upsert_record_to_bitable.await_args.args  # type: ignore[attr-defined]
+        self.assertEqual(args[0], "tbl-product")
+        self.assertEqual(args[1]["业务类型"], "product")
+        self.assertEqual(args[1]["路由"], "product.S20")
+        self.assertEqual(args[1]["产线"], "A")
+        self.assertEqual(args[1]["批次号"], "S20-CP-DA2605-100-A2")
+        self.assertEqual(args[1]["OCR文本"], "S20-CP-DA2605-100-A2\n全检已送检")
 
     async def test_default_auto_create_fields_is_strict(self) -> None:
         listener = self._build_listener()
