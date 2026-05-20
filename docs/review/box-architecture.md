@@ -504,6 +504,13 @@ Box 额外做了 RPC SHUTDOWN 通知 Runtime 主动清理容器，比 Plugin 的
 
 ```yaml
 box:
+    enabled: true         # 整个 Box 子系统的总开关。设为 false 时：
+                          #  - 不连接远程 Box runtime，不 fork 本地 stdio 子进程
+                          #  - sandbox 工具 (exec/read/write/edit/glob/grep) 不暴露给 LLM
+                          #  - skill 添加/编辑 / GitHub 安装 / 文件写入全部拒绝
+                          #  - stdio 模式的 MCP server 启动时报错（http/sse 模式不受影响）
+                          #  - skill 列表/读取保持只读可用
+                          # BOX__ENABLED 环境变量可覆盖（统一约定）
     backend: 'local'      # 'local' (探测) / 'docker' / 'nsjail' / 'e2b'
                           # BOX_BACKEND 环境变量优先级更高
     runtime:
@@ -529,11 +536,40 @@ box:
 
 ### docker-compose.yaml
 
+`langbot_box` 服务受 compose profile 控制,默认 `docker compose up` **不会**启动它。需要 sandbox 时:
+
+```bash
+docker compose --profile box up        # 启动 langbot + langbot_box + plugin runtime
+docker compose --profile all up        # 同上
+docker compose up                       # 只起 langbot + plugin runtime (box 关闭)
+```
+
+若不起 `langbot_box`,需要同步在 `data/config.yaml` 中设 `box.enabled: false`(或 langbot 容器 env 加 `BOX__ENABLED=false`),否则 LangBot 会一直尝试连接不存在的 Box runtime 并报错。
+
 ```yaml
+# langbot_box 的关键 volume
 volumes:
-  - ./data/box:/workspaces                          # 工作区挂载
+  - ${LANGBOT_BOX_ROOT}:${LANGBOT_BOX_ROOT}         # 工作区挂载(源/目标同路径)
   - /var/run/docker.sock:/var/run/docker.sock       # Docker backend 复用宿主 docker
 ```
+
+### 关闭/连接失败时的行为矩阵
+
+`box.enabled = false` 与"启用但连接失败"在用户可观察行为上**完全一致**——都通过 `BoxService.available = False` 表达,只是 `get_status` 多返回 `enabled` 字段供前端区分文案。
+
+| 消费方 | Box 可用 | Box 不可用(disabled 或 failed) |
+|---|---|---|
+| native exec/read/write/edit/glob/grep 工具 | 暴露给 LLM | **不暴露** |
+| `activate` / `register_skill` 工具 | 暴露给 LLM | **不暴露** |
+| stdio MCP server | 在 Box 内启动 | **`_init_stdio_python_server` 抛 RuntimeError** 拒绝;不退化到宿主 stdio |
+| http/sse MCP server | 正常 | 正常(不依赖 Box) |
+| Skill 列表/读取 (`list_skills`/`get_skill`/`read_skill_file`) | 走 Box runtime | 走 LangBot 本地 `data/skills/` 只读 fallback |
+| Skill 创建/编辑/安装/写文件 | 走 Box runtime | **HTTP 400** + 明确错误信息(`_require_box_for_write`) |
+| Pipeline AI 配置中 `box-session-id-template` | 正常生效 | **前端 banner** 提示字段无效 |
+| Pipeline 扩展页 `enable_all_skills` / 绑定 skill | 可编辑 | **前端禁用** + banner |
+| 仪表盘 Box 状态卡片 | 绿点 / "已连接" | 灰点 / "已禁用"(disabled) 或 红点 / "已断开"(failed) |
+
+> 后端拒写的边界条件:如果 `ap.box_service` **完全没装**(老式 dev mode,没经过 BuildAppStage),`_require_box_for_write` 视作 no-op,保留 `data/skills/` 本地路径——以兼容历史测试与最小化设置。生产环境总会装 `ap.box_service`,因此该 fallback 不会被触发。
 
 ### Pipeline 配置 (templates/metadata/pipeline/ai.yaml)
 

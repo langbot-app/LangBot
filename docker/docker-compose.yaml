@@ -18,9 +18,16 @@ services:
     networks:
       - langbot_network
 
+  # The Box sandbox runtime is optional. It is only started when you run
+  # ``docker compose --profile box up`` (or ``docker compose --profile all
+  # up``). With Box off, LangBot keeps the dashboard / skills list visible
+  # (read-only) but disables sandbox tools, skill add/edit and stdio MCP —
+  # set ``box.enabled: false`` in ``data/config.yaml`` (or
+  # ``BOX__ENABLED=false`` in the langbot service env below) to match.
   langbot_box:
     image: rockchin/langbot:latest
     container_name: langbot_box
+    profiles: ["box", "all"]
     volumes:
       # Keep the source and target path identical because langbot_box uses the
       # host Docker socket to create sandbox containers. Override
