@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import os
+import tempfile
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -1222,3 +1223,63 @@ class TestBoxHostMountModeNone:
                 mount_path='/project',
                 workdir='/workspace',
             )
+
+
+class TestBuildSkillExtraMounts:
+    """Robustness of skill mount construction against a stale skill cache.
+
+    The three sandbox backends behave inconsistently when a skill's
+    package_root no longer exists on disk (nsjail aborts the whole sandbox
+    start, Docker silently auto-creates a root-owned empty directory, E2B
+    silently skips). Mount construction must filter these out up front so
+    the backend never sees a bad mount.
+    """
+
+    def _make_service(self, logger, skills):
+        app = make_app(logger)
+        app.skill_mgr = SimpleNamespace(skills=skills)
+        client = Mock(spec=BoxRuntimeClient)
+        return BoxService(app, client=client)
+
+    def test_skips_skill_with_missing_package_root(self):
+        logger = Mock()
+        with tempfile.TemporaryDirectory() as live_dir:
+            skills = {
+                'alive': {'name': 'alive', 'package_root': live_dir},
+                'ghost': {'name': 'ghost', 'package_root': '/nonexistent/path/should/never/exist'},
+            }
+            service = self._make_service(logger, skills)
+            query = make_query()
+
+            mounts = service.build_skill_extra_mounts(query)
+
+            assert mounts == [
+                {
+                    'host_path': live_dir,
+                    'mount_path': '/workspace/.skills/alive',
+                    'mode': 'rw',
+                }
+            ]
+            # Warning logged so operators can see what was dropped
+            assert any(
+                'ghost' in str(call.args[0]) and 'package_root missing' in str(call.args[0])
+                for call in logger.warning.call_args_list
+            )
+
+    def test_skips_skill_with_empty_package_root(self):
+        logger = Mock()
+        skills = {
+            'no_root': {'name': 'no_root', 'package_root': ''},
+            'whitespace': {'name': 'whitespace', 'package_root': '   '},
+        }
+        service = self._make_service(logger, skills)
+
+        assert service.build_skill_extra_mounts(make_query()) == []
+
+    def test_returns_empty_when_no_skill_manager(self):
+        logger = Mock()
+        app = make_app(logger)
+        # no skill_mgr attribute
+        service = BoxService(app, client=Mock(spec=BoxRuntimeClient))
+
+        assert service.build_skill_extra_mounts(make_query()) == []

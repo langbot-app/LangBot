@@ -50,11 +50,32 @@ class SkillManager:
         box_service = getattr(self.ap, 'box_service', None)
         if box_service is not None and getattr(box_service, 'available', False):
             try:
+                dropped = 0
                 for skill_data in await box_service.list_skills():
                     skill_name = skill_data.get('name')
-                    if skill_name:
-                        self.skills[skill_name] = skill_data
-                self.ap.logger.info(f'Loaded {len(self.skills)} skills from Box runtime')
+                    if not skill_name:
+                        continue
+                    # Drop skills whose package_root is no longer visible on the
+                    # LangBot-side filesystem (e.g. Box volume was rebuilt or the
+                    # directory was deleted out-of-band). Keeping them in the cache
+                    # would cause stale extra_mounts and confusing UI states.
+                    package_root = str(skill_data.get('package_root', '') or '').strip()
+                    if package_root and not os.path.isdir(package_root):
+                        self.ap.logger.warning(
+                            f'Skill "{skill_name}" reported by Box runtime but '
+                            f'package_root missing on LangBot filesystem '
+                            f'({package_root}); dropping from in-memory cache.'
+                        )
+                        dropped += 1
+                        continue
+                    self.skills[skill_name] = skill_data
+                if dropped:
+                    self.ap.logger.warning(
+                        f'Loaded {len(self.skills)} skills from Box runtime '
+                        f'({dropped} dropped due to missing package_root).'
+                    )
+                else:
+                    self.ap.logger.info(f'Loaded {len(self.skills)} skills from Box runtime')
                 return
             except Exception as exc:
                 self.ap.logger.warning(f'Failed to load skills from Box runtime, falling back to local data: {exc}')

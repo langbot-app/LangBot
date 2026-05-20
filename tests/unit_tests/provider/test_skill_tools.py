@@ -78,6 +78,36 @@ class TestSkillManagerPackageLoading:
             assert skill_data['instructions'] == 'Updated instructions'
             assert skill_data['description'] == 'Second'
 
+    @pytest.mark.asyncio
+    async def test_reload_skills_drops_box_skills_with_missing_package_root(self):
+        """When Box reports a skill whose package_root is gone from the
+        LangBot-visible filesystem, the cache must drop it instead of
+        keeping a stale entry that would later produce a bad mount."""
+        from langbot.pkg.skill.manager import SkillManager
+
+        with tempfile.TemporaryDirectory() as live_dir:
+            ghost_dir = os.path.join(live_dir, '_does_not_exist')
+            box_service = SimpleNamespace(
+                available=True,
+                list_skills=AsyncMock(
+                    return_value=[
+                        _make_skill_data(name='alive', package_root=live_dir),
+                        _make_skill_data(name='ghost', package_root=ghost_dir),
+                    ]
+                ),
+            )
+
+            ap = _make_ap()
+            ap.box_service = box_service
+            mgr = SkillManager(ap)
+
+            await mgr.reload_skills()
+
+        assert list(mgr.skills) == ['alive']
+        # Warning fired with the dropped skill name so operators can see it.
+        warning_messages = [str(call.args[0]) for call in ap.logger.warning.call_args_list]
+        assert any('ghost' in msg and 'package_root missing' in msg for msg in warning_messages)
+
 
 class TestSkillActivationHelper:
     """Skill activation is now Tool-Call based.

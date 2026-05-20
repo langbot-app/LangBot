@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import quart
 
+from langbot_plugin.box.errors import BoxError
+
 from .. import group
 
 
@@ -13,7 +15,10 @@ class SkillsRouterGroup(group.RouterGroup):
         @self.route('', methods=['GET', 'POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
         async def list_or_create_skills() -> quart.Response:
             if quart.request.method == 'GET':
-                skills = await self.ap.skill_service.list_skills()
+                try:
+                    skills = await self.ap.skill_service.list_skills()
+                except (ValueError, BoxError) as exc:
+                    return self.http_status(400, -1, str(exc))
                 return self.success(data={'skills': skills})
 
             data = await quart.request.json
@@ -23,13 +28,16 @@ class SkillsRouterGroup(group.RouterGroup):
             try:
                 skill = await self.ap.skill_service.create_skill(data)
                 return self.success(data={'skill': skill})
-            except ValueError as exc:
+            except (ValueError, BoxError) as exc:
                 return self.http_status(400, -1, str(exc))
 
         @self.route('/<skill_name>', methods=['GET', 'PUT', 'DELETE'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
         async def get_update_delete_skill(skill_name: str) -> quart.Response:
             if quart.request.method == 'GET':
-                skill = await self.ap.skill_service.get_skill(skill_name)
+                try:
+                    skill = await self.ap.skill_service.get_skill(skill_name)
+                except (ValueError, BoxError) as exc:
+                    return self.http_status(400, -1, str(exc))
                 if not skill:
                     return self.http_status(404, -1, 'Skill not found')
                 return self.success(data={'skill': skill})
@@ -39,13 +47,13 @@ class SkillsRouterGroup(group.RouterGroup):
                 try:
                     skill = await self.ap.skill_service.update_skill(skill_name, data)
                     return self.success(data={'skill': skill})
-                except ValueError as exc:
+                except (ValueError, BoxError) as exc:
                     return self.http_status(400, -1, str(exc))
 
             try:
                 await self.ap.skill_service.delete_skill(skill_name)
                 return self.success()
-            except ValueError as exc:
+            except (ValueError, BoxError) as exc:
                 return self.http_status(400, -1, str(exc))
 
         @self.route('/<skill_name>/files', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
@@ -61,7 +69,7 @@ class SkillsRouterGroup(group.RouterGroup):
                     include_hidden=include_hidden,
                 )
                 return self.success(data=result)
-            except ValueError as exc:
+            except (ValueError, BoxError) as exc:
                 return self.http_status(400, -1, str(exc))
 
         @self.route(
@@ -73,7 +81,7 @@ class SkillsRouterGroup(group.RouterGroup):
                 try:
                     result = await self.ap.skill_service.read_skill_file(skill_name, path)
                     return self.success(data=result)
-                except ValueError as exc:
+                except (ValueError, BoxError) as exc:
                     return self.http_status(400, -1, str(exc))
 
             # PUT - write file
@@ -85,7 +93,7 @@ class SkillsRouterGroup(group.RouterGroup):
             try:
                 result = await self.ap.skill_service.write_skill_file(skill_name, path, content)
                 return self.success(data=result)
-            except ValueError as exc:
+            except (ValueError, BoxError) as exc:
                 return self.http_status(400, -1, str(exc))
 
         @self.route('/<skill_name>/preview', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
@@ -109,7 +117,7 @@ class SkillsRouterGroup(group.RouterGroup):
             try:
                 skill = await self.ap.skill_service.install_from_github(data)
                 return self.success(data={'skills': skill})
-            except ValueError as exc:
+            except (ValueError, BoxError) as exc:
                 return self.http_status(400, -1, str(exc))
             except Exception as exc:
                 return self.http_status(500, -1, f'Failed to install skill: {exc}')
@@ -128,7 +136,7 @@ class SkillsRouterGroup(group.RouterGroup):
             try:
                 preview = await self.ap.skill_service.preview_install_from_github(data)
                 return self.success(data={'skills': preview})
-            except ValueError as exc:
+            except (ValueError, BoxError) as exc:
                 return self.http_status(400, -1, str(exc))
             except Exception as exc:
                 return self.http_status(500, -1, f'Failed to preview skill: {exc}')
@@ -147,7 +155,7 @@ class SkillsRouterGroup(group.RouterGroup):
                     source_paths=form.getlist('source_paths'),
                 )
                 return self.success(data={'skills': skill})
-            except ValueError as exc:
+            except (ValueError, BoxError) as exc:
                 return self.http_status(400, -1, str(exc))
             except Exception as exc:
                 return self.http_status(500, -1, f'Failed to install skill: {exc}')
@@ -164,7 +172,7 @@ class SkillsRouterGroup(group.RouterGroup):
                     filename=file.filename or '',
                 )
                 return self.success(data={'skills': preview})
-            except ValueError as exc:
+            except (ValueError, BoxError) as exc:
                 return self.http_status(400, -1, str(exc))
             except Exception as exc:
                 return self.http_status(500, -1, f'Failed to preview skill: {exc}')
@@ -178,5 +186,5 @@ class SkillsRouterGroup(group.RouterGroup):
             try:
                 result = await self.ap.skill_service.scan_directory_async(path)
                 return self.success(data=result)
-            except ValueError as exc:
+            except (ValueError, BoxError) as exc:
                 return self.http_status(400, -1, str(exc))

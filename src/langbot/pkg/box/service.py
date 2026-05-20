@@ -192,6 +192,15 @@ class BoxService:
         This ensures that when a container is first created it already has
         all skill packages mounted, regardless of which skill is currently
         activated.
+
+        Skills whose ``package_root`` is missing or no longer a directory on
+        the LangBot-visible filesystem are skipped with a warning instead of
+        being passed through to the backend. Without this guard the three
+        backends behave inconsistently on a stale mount: nsjail refuses to
+        start the sandbox (failing every exec in the session), Docker
+        silently auto-creates a root-owned empty directory on the host, and
+        E2B silently skips the upload — none of which surfaces an
+        actionable error to the agent or operator.
         """
         skill_mgr = getattr(self.ap, 'skill_mgr', None)
         if skill_mgr is None:
@@ -204,6 +213,13 @@ class BoxService:
         for skill_name, skill_data in visible_skills.items():
             package_root = str(skill_data.get('package_root', '') or '').strip()
             if not package_root:
+                continue
+            if not os.path.isdir(package_root):
+                self.ap.logger.warning(
+                    f'Skill "{skill_name}" package_root missing on filesystem '
+                    f'({package_root}); skipping mount to prevent sandbox failures. '
+                    f'The skill cache may be stale — consider reloading skills.'
+                )
                 continue
             mounts.append(
                 {
