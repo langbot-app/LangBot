@@ -5,7 +5,6 @@ import inspect
 import os
 import posixpath
 import shutil
-import tempfile
 import zipfile
 from typing import Optional
 from urllib.parse import quote, unquote, urlparse
@@ -74,24 +73,19 @@ class SkillService:
             return box_service
         return None
 
-    def _require_box_for_write(self, action: str) -> None:
-        """Refuse a write operation when Box is installed but unavailable.
+    def _require_box(self, action: str):
+        """Return the Box service or raise if it is not available.
 
-        Distinguishes three states:
-        - Box available → no-op (caller proceeds via the Box delegate path).
-        - Box installed but disabled by config or currently failed → raise
-          with a clear, actionable message. The frontend translates this to
-          a banner / disabled affordance.
-        - Box not installed at all (legacy / pre-Box dev mode, no
-          ``ap.box_service`` attribute) → also no-op so the local-skills
-          fallback still works for that minimal setup.
+        Box is the only source of truth for skills. Every read and write
+        operation goes through it — there is no local-filesystem fallback.
         """
+        box_service = self._box_service()
+        if box_service is not None:
+            return box_service
         ap_box = getattr(self.ap, 'box_service', None)
         if ap_box is None:
-            return  # legacy mode, allow local fallback
-        if getattr(ap_box, 'available', False):
-            return  # Box is up, delegate path will be used
-        if not getattr(ap_box, 'enabled', True):
+            reason = 'not initialised'
+        elif not getattr(ap_box, 'enabled', True):
             reason = 'disabled in config (box.enabled = false)'
         else:
             connector_error = getattr(ap_box, '_connector_error', '') or 'currently unavailable'
@@ -102,130 +96,48 @@ class SkillService:
             f'runtime is reachable before retrying.'
         )
 
+    def _require_box_for_write(self, action: str) -> None:
+        """Backwards-compatible alias preserved for clarity at call sites."""
+        self._require_box(action)
+
     @staticmethod
     def _serialize_skill(skill: dict) -> dict:
         return {field: skill.get(field) for field in _PUBLIC_SKILL_FIELDS if field in skill}
 
     async def list_skills(self) -> list[dict]:
+        # When Box is unavailable, surface an empty list rather than raising —
+        # the skills page should render cleanly, and the UI separately renders
+        # a "Box disabled / unavailable" banner via useBoxStatus.
         box_service = self._box_service()
-        if box_service is not None:
-            return [self._serialize_skill(skill) for skill in await box_service.list_skills()]
-
-        skills = [dict(skill) for skill in getattr(self.ap.skill_mgr, 'skills', {}).values()]
-        skills.sort(key=lambda item: item.get('updated_at', ''), reverse=True)
-        return [self._serialize_skill(skill) for skill in skills]
+        if box_service is None:
+            return []
+        return [self._serialize_skill(skill) for skill in await box_service.list_skills()]
 
     async def get_skill(self, skill_name: str) -> Optional[dict]:
         box_service = self._box_service()
-        if box_service is not None:
-            skill = await box_service.get_skill(skill_name)
-            return self._serialize_skill(skill) if skill else None
-
-        skill = getattr(self.ap.skill_mgr, 'get_skill_by_name', lambda _name: None)(skill_name)
+        if box_service is None:
+            return None
+        skill = await box_service.get_skill(skill_name)
         return self._serialize_skill(skill) if skill else None
 
     async def get_skill_by_name(self, name: str) -> Optional[dict]:
         return await self.get_skill(name)
 
     async def create_skill(self, data: dict) -> dict:
-        self._require_box_for_write('Creating a skill')
-        box_service = self._box_service()
-        if box_service is not None:
-            created = await box_service.create_skill(data)
-            await self._reload_skills()
-            return self._serialize_skill(created)
-
-        name = self._validate_skill_name(data.get('name', ''))
-        if await self.get_skill_by_name(name):
-            raise ValueError(f'Skill with name "{name}" already exists')
-
-        package_root = self._normalize_package_root(data.get('package_root', ''))
-        managed_root = self._managed_skill_path(name)
-        target_root = managed_root
-        imported_skill_data: dict | None = None
-
-        if package_root and self._managed_install_root_for_package(package_root):
-            if not os.path.isdir(package_root):
-                raise ValueError(f'Directory does not exist: {package_root}')
-            target_root = package_root
-            imported_skill_data = self._read_skill_package(target_root)
-        elif package_root and package_root != managed_root:
-            if not os.path.isdir(package_root):
-                raise ValueError(f'Directory does not exist: {package_root}')
-            if os.path.exists(managed_root):
-                raise ValueError(f'Skill directory already exists: {managed_root}')
-            os.makedirs(os.path.dirname(managed_root), exist_ok=True)
-            shutil.copytree(package_root, managed_root)
-            imported_skill_data = self._read_skill_package(managed_root)
-        else:
-            os.makedirs(managed_root, exist_ok=True)
-
-        metadata = {
-            'name': name,
-            'display_name': self._resolve_create_field(data, 'display_name', imported_skill_data, default=''),
-            'description': self._resolve_create_field(data, 'description', imported_skill_data, default=''),
-        }
-        instructions = self._resolve_create_field(data, 'instructions', imported_skill_data, default='')
-        self._write_skill_md(target_root, metadata, instructions)
-
+        box_service = self._require_box('Creating a skill')
+        created = await box_service.create_skill(data)
         await self._reload_skills()
-        created = await self.get_skill(name)
-        if not created:
-            raise ValueError(f'Failed to create skill "{name}"')
-        return created
+        return self._serialize_skill(created)
 
     async def update_skill(self, skill_name: str, data: dict) -> dict:
-        self._require_box_for_write('Editing a skill')
-        box_service = self._box_service()
-        if box_service is not None:
-            updated = await box_service.update_skill(skill_name, data)
-            await self._reload_skills()
-            return self._serialize_skill(updated)
-
-        skill = await self.get_skill(skill_name)
-        if not skill:
-            raise ValueError(f'Skill "{skill_name}" not found')
-
-        requested_name = str(data.get('name', skill['name']) or skill['name']).strip()
-        if requested_name != skill['name']:
-            raise ValueError('Renaming skills is not supported')
-
-        requested_package_root = str(data.get('package_root', '') or '').strip()
-        existing_package_root = self._normalize_package_root(skill['package_root'])
-        if requested_package_root and self._normalize_package_root(requested_package_root) != existing_package_root:
-            raise ValueError('Updating package_root is not supported; recreate the skill to import a different package')
-
-        metadata = {
-            'name': skill['name'],
-            'display_name': data.get('display_name', skill.get('display_name', '')),
-            'description': data.get('description', skill.get('description', '')),
-        }
-        instructions = str(data.get('instructions', skill.get('instructions', '')) or '')
-        self._write_skill_md(skill['package_root'], metadata, instructions)
-
+        box_service = self._require_box('Editing a skill')
+        updated = await box_service.update_skill(skill_name, data)
         await self._reload_skills()
-        updated = await self.get_skill(skill_name)
-        if not updated:
-            raise ValueError(f'Skill "{skill_name}" not found after update')
-        return updated
+        return self._serialize_skill(updated)
 
     async def delete_skill(self, skill_name: str) -> bool:
-        box_service = self._box_service()
-        if box_service is not None:
-            await box_service.delete_skill(skill_name)
-            await self._reload_skills()
-            return True
-
-        skill = await self.get_skill(skill_name)
-        if not skill:
-            raise ValueError(f'Skill "{skill_name}" not found')
-
-        package_root = self._normalize_package_root(skill['package_root'])
-        managed_install_root = self._managed_install_root_for_package(package_root)
-        if not managed_install_root:
-            raise ValueError('Only managed skills under data/skills can be deleted via LangBot')
-
-        shutil.rmtree(managed_install_root, ignore_errors=True)
+        box_service = self._require_box('Deleting a skill')
+        await box_service.delete_skill(skill_name)
         await self._reload_skills()
         return True
 
@@ -236,96 +148,21 @@ class SkillService:
         include_hidden: bool = False,
         max_entries: int = 200,
     ) -> dict:
-        box_service = self._box_service()
-        if box_service is not None:
-            return await box_service.list_skill_files(skill_name, path, include_hidden, max_entries)
-
-        skill = await self.get_skill(skill_name)
-        if not skill:
-            raise ValueError(f'Skill "{skill_name}" not found')
-
-        target_dir, relative_path = self._resolve_skill_path(skill, path, expect_directory=True)
-        entries: list[dict] = []
-        with os.scandir(target_dir) as iterator:
-            for entry in sorted(iterator, key=lambda item: item.name):
-                if not include_hidden and entry.name.startswith('.'):
-                    continue
-                entry_rel_path = entry.name if relative_path in ('', '.') else os.path.join(relative_path, entry.name)
-                is_dir = entry.is_dir()
-                entries.append(
-                    {
-                        'path': entry_rel_path.replace(os.sep, '/'),
-                        'name': entry.name,
-                        'is_dir': is_dir,
-                        'size': None if is_dir else entry.stat().st_size,
-                    }
-                )
-                if len(entries) >= max_entries:
-                    break
-
-        return {
-            'skill': {'name': skill['name']},
-            'base_path': '.' if relative_path in ('', '.') else relative_path.replace(os.sep, '/'),
-            'entries': entries,
-            'truncated': len(entries) >= max_entries,
-        }
+        box_service = self._require_box('Browsing skill files')
+        return await box_service.list_skill_files(skill_name, path, include_hidden, max_entries)
 
     async def read_skill_file(self, skill_name: str, path: str) -> dict:
-        box_service = self._box_service()
-        if box_service is not None:
-            return await box_service.read_skill_file(skill_name, path)
-
-        skill = await self.get_skill(skill_name)
-        if not skill:
-            raise ValueError(f'Skill "{skill_name}" not found')
-
-        target_path, relative_path = self._resolve_skill_path(skill, path, expect_directory=False)
-        if not os.path.isfile(target_path):
-            raise ValueError(f'Skill file not found: {relative_path}')
-
-        try:
-            with open(target_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-        except UnicodeDecodeError as exc:
-            raise ValueError(f'Skill file is not valid UTF-8 text: {relative_path}') from exc
-
-        return {
-            'skill': {'name': skill['name']},
-            'path': relative_path.replace(os.sep, '/'),
-            'content': content,
-        }
+        box_service = self._require_box('Reading a skill file')
+        return await box_service.read_skill_file(skill_name, path)
 
     async def write_skill_file(self, skill_name: str, path: str, content: str) -> dict:
-        self._require_box_for_write('Editing skill files')
-        box_service = self._box_service()
-        if box_service is not None:
-            result = await box_service.write_skill_file(skill_name, path, content)
-            await self._reload_skills()
-            return result
-
-        skill = await self.get_skill(skill_name)
-        if not skill:
-            raise ValueError(f'Skill "{skill_name}" not found')
-
-        target_path, relative_path = self._resolve_skill_path(skill, path, expect_directory=False)
-        os.makedirs(os.path.dirname(target_path), exist_ok=True)
-        with open(target_path, 'w', encoding='utf-8') as f:
-            f.write(content)
-
-        skill_mgr = getattr(self.ap, 'skill_mgr', None)
-        if skill_mgr is not None:
-            refresh_skill = getattr(skill_mgr, 'refresh_skill_from_disk', None)
-            if callable(refresh_skill):
-                refresh_skill(skill.get('name', ''))
-
-        return {
-            'skill': {'name': skill['name']},
-            'path': relative_path.replace(os.sep, '/'),
-            'bytes_written': len(content.encode('utf-8')),
-        }
+        box_service = self._require_box('Editing skill files')
+        result = await box_service.write_skill_file(skill_name, path, content)
+        await self._reload_skills()
+        return result
 
     async def install_from_github(self, data: dict) -> list[dict]:
-        self._require_box_for_write('Installing a skill from GitHub')
+        box_service = self._require_box('Installing a skill from GitHub')
         owner = str(data['owner']).strip()
         repo = str(data['repo']).strip()
         release_tag = str(data.get('release_tag', '')).strip()
@@ -336,38 +173,20 @@ class SkillService:
         asset_url = self._validate_github_asset_url(raw_asset_url, owner=owner, repo=repo, release_tag=release_tag)
         source_subdir = str(data.get('source_subdir', '') or '').strip()
 
-        box_service = self._box_service()
-        if box_service is not None:
-            zip_bytes = await self._download_github_asset(asset_url)
-            filename = f'{repo}-{release_tag.lstrip("v").replace("/", "-") or "source"}.zip'
-            installed = await box_service.install_skill_zip(
-                zip_bytes,
-                filename,
-                source_paths=data.get('source_paths') or [],
-                source_path=str(data.get('source_path', '') or ''),
-                source_subdir=source_subdir,
-            )
-            await self._reload_skills()
-            return [self._serialize_skill(skill) for skill in installed]
-
-        tmp_dir = tempfile.mkdtemp(prefix='langbot_skill_')
-        try:
-            skill_root = await self._download_github_skill_to_temp(asset_url, tmp_dir)
-            skill_root = self._resolve_github_source_root(skill_root, source_subdir)
-            previews = self._preview_skill_candidates(
-                skill_root,
-                base_target_name=repo,
-                suffix=release_tag.lstrip('v').replace('/', '-') or 'source',
-            )
-            selected_previews = self._select_preview_candidates(previews, data)
-            scanned = self._install_preview_candidates(skill_root, selected_previews)
-        finally:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-
+        zip_bytes = await self._download_github_asset(asset_url)
+        filename = f'{repo}-{release_tag.lstrip("v").replace("/", "-") or "source"}.zip'
+        installed = await box_service.install_skill_zip(
+            zip_bytes,
+            filename,
+            source_paths=data.get('source_paths') or [],
+            source_path=str(data.get('source_path', '') or ''),
+            source_subdir=source_subdir,
+        )
         await self._reload_skills()
-        return await self._resolve_installed_skills(scanned)
+        return [self._serialize_skill(skill) for skill in installed]
 
     async def preview_install_from_github(self, data: dict) -> list[dict]:
+        box_service = self._require_box('Previewing a skill from GitHub')
         owner = str(data['owner']).strip()
         repo = str(data['repo']).strip()
         release_tag = str(data.get('release_tag', '')).strip()
@@ -378,26 +197,12 @@ class SkillService:
         asset_url = self._validate_github_asset_url(raw_asset_url, owner=owner, repo=repo, release_tag=release_tag)
         source_subdir = str(data.get('source_subdir', '') or '').strip()
 
-        box_service = self._box_service()
-        if box_service is not None:
-            zip_bytes = await self._download_github_asset(asset_url)
-            return await box_service.preview_skill_zip(
-                zip_bytes,
-                f'{repo}-{release_tag.lstrip("v").replace("/", "-") or "source"}.zip',
-                source_subdir=source_subdir,
-            )
-
-        tmp_dir = tempfile.mkdtemp(prefix='langbot_skill_preview_')
-        try:
-            skill_root = await self._download_github_skill_to_temp(asset_url, tmp_dir)
-            skill_root = self._resolve_github_source_root(skill_root, source_subdir)
-            return self._preview_skill_candidates(
-                skill_root,
-                base_target_name=repo,
-                suffix=release_tag.lstrip('v').replace('/', '-') or 'source',
-            )
-        finally:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
+        zip_bytes = await self._download_github_asset(asset_url)
+        return await box_service.preview_skill_zip(
+            zip_bytes,
+            f'{repo}-{release_tag.lstrip("v").replace("/", "-") or "source"}.zip',
+            source_subdir=source_subdir,
+        )
 
     async def install_from_zip_upload(
         self,
@@ -407,116 +212,46 @@ class SkillService:
         source_paths: list[str] | None = None,
         source_path: str = '',
     ) -> list[dict]:
-        self._require_box_for_write('Installing a skill from upload')
-        box_service = self._box_service()
-        if box_service is not None:
-            installed = await box_service.install_skill_zip(
-                file_bytes,
-                filename,
-                source_paths=source_paths or [],
-                source_path=source_path,
-            )
-            await self._reload_skills()
-            return [self._serialize_skill(skill) for skill in installed]
-
-        if not file_bytes:
-            raise ValueError('Uploaded file is empty')
-
-        tmp_dir = tempfile.mkdtemp(prefix='langbot_skill_upload_')
-        try:
-            skill_root = self._extract_uploaded_skill_to_temp(file_bytes, tmp_dir)
-            base_target_name = self._uploaded_skill_target_stem(filename)
-            previews = self._preview_skill_candidates(
-                skill_root,
-                base_target_name=base_target_name,
-                suffix='upload',
-            )
-            selected_previews = self._select_preview_candidates(
-                previews,
-                {'source_paths': source_paths or [], 'source_path': source_path},
-            )
-            scanned = self._install_preview_candidates(skill_root, selected_previews)
-        finally:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-
+        box_service = self._require_box('Installing a skill from upload')
+        installed = await box_service.install_skill_zip(
+            file_bytes,
+            filename,
+            source_paths=source_paths or [],
+            source_path=source_path,
+        )
         await self._reload_skills()
-        return await self._resolve_installed_skills(scanned)
+        return [self._serialize_skill(skill) for skill in installed]
 
     async def preview_install_from_zip_upload(self, *, file_bytes: bytes, filename: str) -> list[dict]:
-        box_service = self._box_service()
-        if box_service is not None:
-            return await box_service.preview_skill_zip(file_bytes, filename)
-
-        if not file_bytes:
-            raise ValueError('Uploaded file is empty')
-
-        tmp_dir = tempfile.mkdtemp(prefix='langbot_skill_upload_preview_')
-        try:
-            skill_root = self._extract_uploaded_skill_to_temp(file_bytes, tmp_dir)
-            return self._preview_skill_candidates(
-                skill_root,
-                base_target_name=self._uploaded_skill_target_stem(filename),
-                suffix='upload',
-            )
-        finally:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
+        box_service = self._require_box('Previewing a skill upload')
+        return await box_service.preview_skill_zip(file_bytes, filename)
 
     async def _install_github_skill_md(self, asset_url: str, *, owner: str, repo: str, data: dict) -> list[dict]:
-        zip_bytes, filename, package_name = await self._download_github_skill_directory_as_zip(
+        box_service = self._require_box('Installing a skill from GitHub')
+        zip_bytes, filename, _package_name = await self._download_github_skill_directory_as_zip(
             asset_url,
             owner=owner,
             repo=repo,
         )
 
-        box_service = self._box_service()
-        if box_service is not None:
-            installed = await box_service.install_skill_zip(
-                zip_bytes,
-                filename,
-                source_paths=data.get('source_paths') or [],
-                source_path=str(data.get('source_path', '') or ''),
-                target_suffix='',
-            )
-            await self._reload_skills()
-            return [self._serialize_skill(skill) for skill in installed]
-
-        tmp_dir = tempfile.mkdtemp(prefix='langbot_skill_md_')
-        try:
-            skill_root = self._extract_uploaded_skill_to_temp(zip_bytes, tmp_dir)
-            previews = self._preview_skill_candidates(
-                skill_root,
-                base_target_name=package_name,
-                suffix='',
-            )
-            selected_previews = self._select_preview_candidates(previews, data)
-            scanned = self._install_preview_candidates(skill_root, selected_previews)
-        finally:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-
+        installed = await box_service.install_skill_zip(
+            zip_bytes,
+            filename,
+            source_paths=data.get('source_paths') or [],
+            source_path=str(data.get('source_path', '') or ''),
+            target_suffix='',
+        )
         await self._reload_skills()
-        return await self._resolve_installed_skills(scanned)
+        return [self._serialize_skill(skill) for skill in installed]
 
     async def _preview_github_skill_md(self, asset_url: str, *, owner: str, repo: str) -> list[dict]:
+        box_service = self._require_box('Previewing a skill from GitHub')
         zip_bytes, _filename, package_name = await self._download_github_skill_directory_as_zip(
             asset_url,
             owner=owner,
             repo=repo,
         )
-
-        box_service = self._box_service()
-        if box_service is not None:
-            return await box_service.preview_skill_zip(zip_bytes, f'{package_name}.zip', target_suffix='')
-
-        tmp_dir = tempfile.mkdtemp(prefix='langbot_skill_md_preview_')
-        try:
-            skill_root = self._extract_uploaded_skill_to_temp(zip_bytes, tmp_dir)
-            return self._preview_skill_candidates(
-                skill_root,
-                base_target_name=package_name,
-                suffix='',
-            )
-        finally:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
+        return await box_service.preview_skill_zip(zip_bytes, f'{package_name}.zip', target_suffix='')
 
     async def reload_skills(self) -> list[dict]:
         await self._reload_skills()
@@ -552,10 +287,8 @@ class SkillService:
         }
 
     async def scan_directory_async(self, path: str) -> dict:
-        box_service = self._box_service()
-        if box_service is not None:
-            return await box_service.scan_skill_directory(path)
-        return self.scan_directory(path)
+        box_service = self._require_box('Scanning a skill directory')
+        return await box_service.scan_skill_directory(path)
 
     async def _reload_skills(self) -> None:
         skill_mgr = getattr(self.ap, 'skill_mgr', None)

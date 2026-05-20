@@ -34,90 +34,57 @@ class SkillManager:
         await self.reload_skills()
 
     async def reload_skills(self):
-        """Reload all skills.
+        """Reload all skills from the Box runtime.
 
-        In sandbox deployments, skills are owned by the Box runtime so the
-        sandbox can mount them without requiring LangBot to share the same
-        filesystem. If Box is unavailable, fall back to the legacy local
-        data/skills directory.
-
-        NOTE: This performs a full scan. For registering a single new skill,
-        consider adding it directly to self.skills instead of reloading all.
-        Current implementation is acceptable for typical skill counts (<50).
+        Box is the only source of truth for skills. When Box is unavailable
+        (disabled in config or unreachable) the cache is emptied — there is
+        no local filesystem fallback. Skills whose ``package_root`` is no
+        longer visible on the LangBot-side filesystem are dropped so they
+        don't surface as stale ``extra_mounts``.
         """
         self.skills = {}
 
         box_service = getattr(self.ap, 'box_service', None)
-        if box_service is not None and getattr(box_service, 'available', False):
-            try:
-                dropped = 0
-                for skill_data in await box_service.list_skills():
-                    skill_name = skill_data.get('name')
-                    if not skill_name:
-                        continue
-                    # Drop skills whose package_root is no longer visible on the
-                    # LangBot-side filesystem (e.g. Box volume was rebuilt or the
-                    # directory was deleted out-of-band). Keeping them in the cache
-                    # would cause stale extra_mounts and confusing UI states.
-                    package_root = str(skill_data.get('package_root', '') or '').strip()
-                    if package_root and not os.path.isdir(package_root):
-                        self.ap.logger.warning(
-                            f'Skill "{skill_name}" reported by Box runtime but '
-                            f'package_root missing on LangBot filesystem '
-                            f'({package_root}); dropping from in-memory cache.'
-                        )
-                        dropped += 1
-                        continue
-                    self.skills[skill_name] = skill_data
-                if dropped:
-                    self.ap.logger.warning(
-                        f'Loaded {len(self.skills)} skills from Box runtime '
-                        f'({dropped} dropped due to missing package_root).'
-                    )
-                else:
-                    self.ap.logger.info(f'Loaded {len(self.skills)} skills from Box runtime')
-                return
-            except Exception as exc:
-                self.ap.logger.warning(f'Failed to load skills from Box runtime, falling back to local data: {exc}')
+        if box_service is None or not getattr(box_service, 'available', False):
+            self.ap.logger.info('Box runtime unavailable; skill cache is empty.')
+            return
 
-        # Ensure data/skills/ exists
-        managed_root = self.get_managed_skills_root()
-        os.makedirs(managed_root, exist_ok=True)
-
-        # Load all skills from data/skills/
-        if os.path.isdir(managed_root):
-            for package_root, entry_file in self._discover_skill_directories(managed_root):
-                skill_data = {
-                    'package_root': package_root,
-                    'entry_file': entry_file,
-                }
-                if not self._load_skill_file(skill_data):
+        try:
+            dropped = 0
+            for skill_data in await box_service.list_skills():
+                skill_name = skill_data.get('name')
+                if not skill_name:
                     continue
-
-                skill_name = skill_data['name']
+                package_root = str(skill_data.get('package_root', '') or '').strip()
+                if package_root and not os.path.isdir(package_root):
+                    self.ap.logger.warning(
+                        f'Skill "{skill_name}" reported by Box runtime but '
+                        f'package_root missing on LangBot filesystem '
+                        f'({package_root}); dropping from in-memory cache.'
+                    )
+                    dropped += 1
+                    continue
                 self.skills[skill_name] = skill_data
-
-        self.ap.logger.info(f'Loaded {len(self.skills)} skills')
+            if dropped:
+                self.ap.logger.warning(
+                    f'Loaded {len(self.skills)} skills from Box runtime '
+                    f'({dropped} dropped due to missing package_root).'
+                )
+            else:
+                self.ap.logger.info(f'Loaded {len(self.skills)} skills from Box runtime')
+        except Exception as exc:
+            self.ap.logger.warning(f'Failed to load skills from Box runtime: {exc}')
 
     def refresh_skill_from_disk(self, skill_name: str) -> bool:
-        """Refresh a single skill from disk."""
+        """Confirm a single skill is present in the cache.
+
+        With Box as the only source of truth, the actual reload is driven by
+        SkillService callers awaiting ``reload_skills``; this method only
+        reports whether the cache still has the skill.
+        """
         if not skill_name:
             return False
-
-        box_service = getattr(self.ap, 'box_service', None)
-        if box_service is not None and getattr(box_service, 'available', False):
-            # Box refresh is async; callers that need a guaranteed refresh call
-            # SkillService.write_skill_file/update_skill, which awaits reload.
-            return skill_name in self.skills
-
-        skill_data = self.skills.get(skill_name)
-        if not skill_data:
-            return False
-
-        if not self._load_skill_file(skill_data):
-            return False
-
-        self.skills[skill_name] = skill_data
+        return skill_name in self.skills
         return True
 
     @staticmethod

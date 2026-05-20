@@ -54,29 +54,25 @@ class TestSkillManagerPackageLoading:
             assert skill_data['instructions'] == '# Test Skill\nDo things.'
             assert skill_data['description'] == 'Test skill'
 
-    def test_refresh_skill_from_disk_updates_cached_dict_in_place(self):
+    def test_refresh_skill_from_disk_reports_cache_presence(self):
+        """Box is the only source of truth for skill content. refresh_skill_from_disk
+        now just reports whether the skill is still in the in-memory cache —
+        the actual content refresh is driven by SkillService awaiting
+        ``reload_skills`` after every Box mutation."""
         from langbot.pkg.skill.manager import SkillManager
 
         ap = _make_ap()
         mgr = SkillManager(ap)
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            skill_md = os.path.join(tmpdir, 'SKILL.md')
-            with open(skill_md, 'w', encoding='utf-8') as f:
-                f.write('---\ndescription: First\n---\n\nOriginal instructions')
+        # Empty cache → returns False
+        assert mgr.refresh_skill_from_disk('test-skill') is False
 
-            skill_data = _make_skill_data(name='test-skill', package_root=tmpdir)
-            assert mgr._load_skill_file(skill_data) is True
-
-            mgr.skills['test-skill'] = skill_data
-
-            with open(skill_md, 'w', encoding='utf-8') as f:
-                f.write('---\ndescription: Second\n---\n\nUpdated instructions')
-
-            assert mgr.refresh_skill_from_disk('test-skill') is True
-            assert mgr.skills['test-skill'] is skill_data
-            assert skill_data['instructions'] == 'Updated instructions'
-            assert skill_data['description'] == 'Second'
+        # Cache populated → returns True; method does NOT mutate the cache
+        cached = _make_skill_data(name='test-skill', instructions='Cached')
+        mgr.skills['test-skill'] = cached
+        assert mgr.refresh_skill_from_disk('test-skill') is True
+        assert mgr.skills['test-skill'] is cached
+        assert mgr.refresh_skill_from_disk('') is False
 
     @pytest.mark.asyncio
     async def test_reload_skills_drops_box_skills_with_missing_package_root(self):
