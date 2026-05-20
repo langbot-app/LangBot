@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: EventListener
+metadata:
+  name: ai_analysis_listener
+  label:
+    en_US: Feishu AI Analysis Listener
+    zh_Hans: 飞书 AI 分析监听器
+  description:
+    en_US: Intercepts Feishu process, product, recipe, and batch analysis requests.
+    zh_Hans: 接管飞书制程、成品、配方和批次分析请求。
+spec: {}
+execution:
+  python:
+    path: ai_analysis_listener.py
+    attr: AiAnalysisListener
