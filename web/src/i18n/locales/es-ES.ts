@@ -758,6 +758,9 @@ const esES = {
       'Los servidores MCP en modo stdio requieren el sandbox de Box, actualmente no accesible.',
     boxStdioRefusedSuggestion:
       'Active Box (box.enabled = true) y asegúrese de que el runtime está conectado, o cambie este servidor a modo http/sse.',
+    boxRequired: 'requiere Box',
+    stdioBlockedByBoxToast:
+      'No se puede guardar el MCP en modo stdio mientras el sandbox de Box está desactivado o no disponible. Active Box o seleccione modo http/sse.',
     toolsFound: 'herramientas',
     unknownError: 'Error desconocido',
     noToolsFound: 'No se encontraron herramientas',

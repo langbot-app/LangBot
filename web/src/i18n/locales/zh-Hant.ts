@@ -715,6 +715,9 @@ const zhHant = {
       'Stdio 模式的 MCP 伺服器依賴 Box 沙箱，目前無法連線。',
     boxStdioRefusedSuggestion:
       '請啟用 Box（box.enabled = true）並確認執行時連線正常，或將此伺服器切換到 http/sse 模式。',
+    boxRequired: '需要 Box',
+    stdioBlockedByBoxToast:
+      'Box 沙箱已停用或無法使用，無法儲存 stdio 模式的 MCP。請啟用 Box 或改為 http/sse 模式。',
     toolsFound: '個工具',
     unknownError: '未知錯誤',
     noToolsFound: '未找到任何工具',

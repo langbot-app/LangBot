@@ -754,6 +754,9 @@ const ruRU = {
       'MCP-серверы в режиме stdio требуют песочницу Box, которая сейчас недоступна.',
     boxStdioRefusedSuggestion:
       'Включите Box (box.enabled = true) и убедитесь, что среда работает, либо переключите этот сервер в режим http/sse.',
+    boxRequired: 'требуется Box',
+    stdioBlockedByBoxToast:
+      'Сохранить MCP в режиме stdio нельзя: песочница Box отключена или недоступна. Включите Box либо выберите режим http/sse.',
     toolsFound: 'инструментов',
     unknownError: 'Неизвестная ошибка',
     noToolsFound: 'Инструменты не найдены',

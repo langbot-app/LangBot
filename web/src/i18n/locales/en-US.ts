@@ -744,6 +744,9 @@ const enUS = {
       'Stdio MCP servers require the Box sandbox, which is currently unreachable.',
     boxStdioRefusedSuggestion:
       'Enable Box (box.enabled = true) and ensure the runtime is healthy, or switch this server to http/sse mode.',
+    boxRequired: 'requires Box',
+    stdioBlockedByBoxToast:
+      'Stdio MCP cannot be saved while the Box sandbox is disabled or unreachable. Enable Box or pick http/sse.',
     toolsFound: 'tools',
     unknownError: 'Unknown error',
     noToolsFound: 'No tools found',

@@ -749,6 +749,9 @@ const jaJP = {
       'Stdio モードの MCP サーバーは Box サンドボックスを必要としますが、現在接続できません。',
     boxStdioRefusedSuggestion:
       'Box を有効化（box.enabled = true）してランタイムの接続を確認するか、このサーバーを http/sse モードに切り替えてください。',
+    boxRequired: 'Box が必要',
+    stdioBlockedByBoxToast:
+      'Box サンドボックスが無効または利用できないため、stdio モードの MCP は保存できません。Box を有効化するか、http/sse モードに切り替えてください。',
     toolsFound: '個のツール',
     unknownError: '不明なエラー',
     noToolsFound: 'ツールが見つかりません',

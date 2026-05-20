@@ -748,6 +748,9 @@ const viVN = {
       'MCP server ở chế độ stdio cần Sandbox Box, hiện không thể kết nối.',
     boxStdioRefusedSuggestion:
       'Hãy bật Box (box.enabled = true) và đảm bảo runtime hoạt động, hoặc chuyển server này sang chế độ http/sse.',
+    boxRequired: 'cần Box',
+    stdioBlockedByBoxToast:
+      'Không thể lưu MCP ở chế độ stdio khi Sandbox Box bị tắt hoặc không khả dụng. Hãy bật Box hoặc chọn chế độ http/sse.',
     toolsFound: 'công cụ',
     unknownError: 'Lỗi không xác định',
     noToolsFound: 'Không tìm thấy công cụ nào',

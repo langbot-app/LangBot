@@ -58,6 +58,9 @@ export default function MCPDetailContent({ id }: { id: string }) {
 
   // Track whether the form has unsaved changes
   const [formDirty, setFormDirty] = useState(false);
+  // True when the form picked stdio mode but Box is disabled/unreachable —
+  // saving would create a server that can never start, so block it.
+  const [saveBlockedByBox, setSaveBlockedByBox] = useState(false);
 
   // Ref to MCPForm for triggering test from header
   const formRef = useRef<MCPFormHandle>(null);
@@ -223,6 +226,7 @@ export default function MCPDetailContent({ id }: { id: string }) {
             <Button
               type="submit"
               form="mcp-form"
+              disabled={saveBlockedByBox}
               onClick={async (e) => {
                 if (!(await checkExtensionsLimit())) {
                   e.preventDefault();
@@ -242,6 +246,7 @@ export default function MCPDetailContent({ id }: { id: string }) {
             onFormSubmit={handleFormSubmit}
             onNewServerCreated={handleNewServerCreated}
             onTestingChange={setMcpTesting}
+            onSaveBlockedChange={setSaveBlockedByBox}
           />
         </div>
       </div>
@@ -334,7 +339,11 @@ export default function MCPDetailContent({ id }: { id: string }) {
             >
               {t('common.test')}
             </Button>
-            <Button type="submit" form="mcp-form" disabled={!formDirty}>
+            <Button
+              type="submit"
+              form="mcp-form"
+              disabled={!formDirty || saveBlockedByBox}
+            >
               {t('common.save')}
             </Button>
           </div>
@@ -351,6 +360,7 @@ export default function MCPDetailContent({ id }: { id: string }) {
             onNewServerCreated={handleNewServerCreated}
             onDirtyChange={setFormDirty}
             onTestingChange={setMcpTesting}
+            onSaveBlockedChange={setSaveBlockedByBox}
             onRuntimeInfoChange={(runtimeInfo) =>
               setDetailRuntimeStatus(runtimeInfo?.status ?? null)
             }

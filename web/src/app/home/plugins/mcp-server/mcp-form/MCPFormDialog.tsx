@@ -47,6 +47,8 @@ import {
   MCPServerExtraArgsStdio,
 } from '@/app/infra/entities/api';
 import { CustomApiError } from '@/app/infra/entities/common';
+import { BoxUnavailableNotice } from '@/app/home/components/BoxUnavailableNotice';
+import { useBoxStatus } from '@/app/infra/hooks/useBoxStatus';
 
 // Status Display Component - 在测试中、连接中或连接失败时使用
 function StatusDisplay({
@@ -237,6 +239,10 @@ export default function MCPFormDialog({
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const watchMode = form.watch('mode');
+  const { available: boxAvailable, hint: boxHint } = useBoxStatus();
+  // stdio mode requires the Box sandbox at runtime. Block creation here
+  // so users aren't surprised by a connection failure on the detail page.
+  const stdioBlockedByBox = watchMode === 'stdio' && !boxAvailable;
 
   // Load server data when editing
   useEffect(() => {
@@ -360,6 +366,12 @@ export default function MCPFormDialog({
   }
 
   async function handleFormSubmit(value: z.infer<typeof formSchema>) {
+    // Belt-and-suspenders: Save button is also disabled in this case, but
+    // a programmatic submit (e.g. Enter key) should still be refused.
+    if (value.mode === 'stdio' && !boxAvailable) {
+      toast.error(t('mcp.stdioBlockedByBoxToast'));
+      return;
+    }
     try {
       let serverConfig: MCPServer;
 
@@ -652,10 +664,20 @@ export default function MCPFormDialog({
                       </FormControl>
                       <SelectContent>
                         <SelectItem value="http">{t('mcp.http')}</SelectItem>
-                        <SelectItem value="stdio">{t('mcp.stdio')}</SelectItem>
+                        <SelectItem value="stdio" disabled={!boxAvailable}>
+                          {t('mcp.stdio')}
+                          {!boxAvailable && (
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              ({t('mcp.boxRequired')})
+                            </span>
+                          )}
+                        </SelectItem>
                         <SelectItem value="sse">{t('mcp.sse')}</SelectItem>
                       </SelectContent>
                     </Select>
+                    {stdioBlockedByBox && (
+                      <BoxUnavailableNotice hint={boxHint} className="mt-2" />
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}
@@ -847,7 +869,7 @@ export default function MCPFormDialog({
                   </Button>
                 )}
 
-                <Button type="submit">
+                <Button type="submit" disabled={stdioBlockedByBox}>
                   {isEditMode ? t('common.save') : t('common.submit')}
                 </Button>
 

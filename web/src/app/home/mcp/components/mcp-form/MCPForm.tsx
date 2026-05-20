@@ -50,6 +50,8 @@ import {
   MCPServerExtraArgsStdio,
 } from '@/app/infra/entities/api';
 import { CustomApiError } from '@/app/infra/entities/common';
+import { BoxUnavailableNotice } from '@/app/home/components/BoxUnavailableNotice';
+import { useBoxStatus } from '@/app/infra/hooks/useBoxStatus';
 
 function StatusDisplay({
   testing,
@@ -357,6 +359,10 @@ interface MCPFormProps {
   onDirtyChange?: (dirty: boolean) => void;
   onTestingChange?: (testing: boolean) => void;
   onRuntimeInfoChange?: (runtimeInfo: MCPServerRuntimeInfo | null) => void;
+  /** Reported when the form cannot be saved because the current mode is
+   * ``stdio`` and the Box sandbox is disabled/unavailable. Parents that
+   * render the Save button outside this component should disable it. */
+  onSaveBlockedChange?: (blocked: boolean) => void;
   layout?: 'stacked' | 'split';
   sideHeader?: ReactNode;
   sideFooter?: ReactNode;
@@ -377,6 +383,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
     onDirtyChange,
     onTestingChange,
     onRuntimeInfoChange,
+    onSaveBlockedChange,
     layout = 'stacked',
     sideHeader,
     sideFooter,
@@ -414,11 +421,21 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
   );
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const watchMode = form.watch('mode');
+  const { available: boxAvailable, hint: boxHint } = useBoxStatus();
+  // stdio mode requires the Box sandbox at runtime. If the user picks
+  // stdio while Box is disabled / unreachable, the server would refuse
+  // to start anyway — block creation upfront so they aren't surprised
+  // by an immediate "Connection failed" on the detail page.
+  const stdioBlockedByBox = watchMode === 'stdio' && !boxAvailable;
 
   const { isDirty } = form.formState;
   useEffect(() => {
     onDirtyChange?.(isDirty);
   }, [isDirty, onDirtyChange]);
+
+  useEffect(() => {
+    onSaveBlockedChange?.(stdioBlockedByBox);
+  }, [stdioBlockedByBox, onSaveBlockedChange]);
 
   useEffect(() => {
     onTestingChange?.(mcpTesting);
@@ -582,6 +599,12 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
   }
 
   async function handleFormSubmit(value: z.infer<typeof formSchema>) {
+    // Belt-and-suspenders: even though the Save button is disabled when
+    // stdio is unselectable, intercept programmatic submits too.
+    if (value.mode === 'stdio' && !boxAvailable) {
+      toast.error(t('mcp.stdioBlockedByBoxToast'));
+      return;
+    }
     try {
       let serverConfig: MCPServer;
 
@@ -833,10 +856,20 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
                 </FormControl>
                 <SelectContent>
                   <SelectItem value="http">{t('mcp.http')}</SelectItem>
-                  <SelectItem value="stdio">{t('mcp.stdio')}</SelectItem>
+                  <SelectItem value="stdio" disabled={!boxAvailable}>
+                    {t('mcp.stdio')}
+                    {!boxAvailable && (
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        ({t('mcp.boxRequired')})
+                      </span>
+                    )}
+                  </SelectItem>
                   <SelectItem value="sse">{t('mcp.sse')}</SelectItem>
                 </SelectContent>
               </Select>
+              {stdioBlockedByBox && (
+                <BoxUnavailableNotice hint={boxHint} className="mt-2" />
+              )}
               <FormMessage />
             </FormItem>
           )}
