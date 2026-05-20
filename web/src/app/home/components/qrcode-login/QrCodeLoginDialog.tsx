@@ -7,7 +7,13 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from 'react-i18next';
-import { Loader2, RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
+import {
+  Loader2,
+  RefreshCw,
+  RotateCw,
+  CheckCircle2,
+  XCircle,
+} from 'lucide-react';
 import QRCode from 'qrcode';
 
 export type QrLoginPlatform = 'feishu' | 'weixin' | 'dingtalk' | 'wecombot';
@@ -369,7 +375,9 @@ export default function QrCodeLoginDialog({
                   className="w-56 h-56 opacity-40"
                 />
                 <div className="absolute inset-0 flex items-center justify-center bg-white/60 rounded-lg group-hover:bg-white/70 transition-colors">
-                  <RefreshCw className="h-10 w-10 text-red-500" />
+                  <div className="flex items-center justify-center w-16 h-16 rounded-full bg-black/5 group-hover:bg-black/10 transition-colors">
+                    <RotateCw className="h-8 w-8 text-muted-foreground" />
+                  </div>
                 </div>
               </button>
             </div>
