@@ -86,3 +86,50 @@ class SkillManager:
     def get_skill_by_name(self, name: str) -> dict | None:
         """Get skill data by name."""
         return self.skills.get(name)
+
+    def get_skill_index(self, bound_skills: list[str] | None = None) -> str:
+        """Render the pipeline-visible skills as a short ``name: description``
+        index suitable for the system prompt.
+
+        ``bound_skills`` follows the same convention as
+        ``query.variables['_pipeline_bound_skills']``: ``None`` means every
+        loaded skill is exposed; an explicit list filters to that subset.
+        Returns an empty string when no skills are visible.
+        """
+        lines: list[str] = []
+        for skill in self.skills.values():
+            name = skill.get('name')
+            if not name:
+                continue
+            if bound_skills is not None and name not in bound_skills:
+                continue
+            display = skill.get('display_name') or name
+            description = (skill.get('description') or '').strip().replace('\n', ' ')
+            lines.append(f'- {name} ({display}): {description}')
+
+        if not lines:
+            return ''
+        return 'Available Skills:\n' + '\n'.join(lines)
+
+    def build_skill_aware_prompt_addition(self, bound_skills: list[str] | None = None) -> str:
+        """Build the system-prompt addendum that makes the LLM aware of the
+        pipeline-visible skills.
+
+        Only metadata (name + description) is injected — the full SKILL.md is
+        loaded later via the ``activate`` Tool Call, protecting KV cache and
+        matching Claude Code's progressive disclosure pattern. Returns an
+        empty string when no skills are visible (no prompt change at all).
+        """
+        skill_index = self.get_skill_index(bound_skills)
+        if not skill_index:
+            return ''
+        return (
+            '\n\n'
+            f'{skill_index}\n\n'
+            "When the user's request clearly matches one or more skills "
+            'based on their descriptions above, call the `activate` tool with '
+            'the skill name to load its full instructions. Only the name and '
+            'description are visible here; the actual instructions arrive as '
+            'the tool result. If no skill is a clear match, respond normally '
+            'without activating any skill.'
+        )

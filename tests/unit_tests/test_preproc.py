@@ -132,3 +132,73 @@ async def test_preproc_disables_skill_authoring_tools_when_skill_service_missing
 
     assert result.result_type == entities_module.ResultType.CONTINUE
     app.tool_mgr.get_all_tools.assert_awaited_once_with(None, None, include_skill_authoring=False)
+
+
+@pytest.mark.asyncio
+async def test_preproc_injects_skill_index_into_system_prompt():
+    """The Tool Call activation pattern still needs the LLM to know which
+    skills exist. PreProcessor must append the SkillManager's index
+    addendum to the first system message."""
+    preproc_module, entities_module = _import_preproc_modules()
+
+    app = _make_app(skill_service=SimpleNamespace())
+    addendum = '\n\nAvailable Skills:\n- demo (demo): Demo skill.\n\nCall activate ...'
+    app.skill_mgr.build_skill_aware_prompt_addition = Mock(return_value=addendum)
+
+    query = _make_query()
+    result = await stage_process_capture(preproc_module, app, query)
+
+    assert result.result_type == entities_module.ResultType.CONTINUE
+    app.skill_mgr.build_skill_aware_prompt_addition.assert_called_once_with(bound_skills=None)
+    head = query.prompt.messages[0]
+    assert head.role == 'system'
+    assert head.content.endswith(addendum)
+
+
+@pytest.mark.asyncio
+async def test_preproc_respects_pipeline_bound_skills_subset():
+    """When ``enable_all_skills`` is false the bound list is passed through
+    so the addendum only mentions skills allowed for this pipeline."""
+    preproc_module, entities_module = _import_preproc_modules()
+
+    app = _make_app(skill_service=SimpleNamespace())
+    app.pipeline_service.get_pipeline = AsyncMock(
+        return_value={
+            'extensions_preferences': {
+                'enable_all_skills': False,
+                'skills': ['only-this'],
+            }
+        }
+    )
+    app.skill_mgr.build_skill_aware_prompt_addition = Mock(return_value='')
+
+    query = _make_query()
+    result = await stage_process_capture(preproc_module, app, query)
+
+    assert result.result_type == entities_module.ResultType.CONTINUE
+    app.skill_mgr.build_skill_aware_prompt_addition.assert_called_once_with(bound_skills=['only-this'])
+    assert query.variables.get('_pipeline_bound_skills') == ['only-this']
+
+
+@pytest.mark.asyncio
+async def test_preproc_skips_injection_when_addendum_is_empty():
+    """No visible skills → system prompt is left untouched (no
+    ``Available Skills`` block appended)."""
+    preproc_module, entities_module = _import_preproc_modules()
+
+    app = _make_app(skill_service=SimpleNamespace())
+    app.skill_mgr.build_skill_aware_prompt_addition = Mock(return_value='')
+
+    query = _make_query()
+    result = await stage_process_capture(preproc_module, app, query)
+
+    assert result.result_type == entities_module.ResultType.CONTINUE
+    if query.prompt and query.prompt.messages:
+        assert 'Available Skills' not in (query.prompt.messages[0].content or '')
+
+
+async def stage_process_capture(preproc_module, app, query):
+    """Run PreProcessor.process and return the result while keeping ``query``
+    accessible to the assertions (process mutates query in place)."""
+    stage = preproc_module.PreProcessor(app)
+    return await stage.process(query, 'PreProcessor')
