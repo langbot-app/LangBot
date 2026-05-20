@@ -1294,6 +1294,68 @@ class AutoProcessToBitableListener(EventListener):
 
         return fields
 
+    @classmethod
+    def _extract_product_metric_fields(cls, block_text: str) -> dict[str, Any]:
+        text = cls._normalize_message_text(block_text)
+        compact = re.sub(r"\s+", "", text)
+        fields: dict[str, Any] = {}
+
+        metric_aliases: list[tuple[str, tuple[str, ...]]] = [
+            ("成品压实", ("成品压实", "压实密度", "压实")),
+            ("0.1C充电", ("0.1C充电", "0.1C充", "0.1C充容", "0.1C充电容量")),
+            ("0.1C放电", ("0.1C放电", "0.1C放", "0.1C放容", "0.1C放电容量")),
+            ("首效", ("0.1C首效", "首效", "首次效率")),
+            ("平台效率", ("3.2V容量占比", "3.2V平台效率", "2.95V容量占比", "平台效率")),
+            ("残碱(Li+)", ("残碱(Li+)", "Li+含量", "Li含量", "Li+", "残碱锂", "残锂")),
+            ("碳含量", ("碳含量", "C含量")),
+            ("粉阻(粉末电阻)", ("粉阻(粉末电阻)", "粉末电阻", "粉阻")),
+            ("比表(麦克比表)", ("比表(麦克比表)", "麦克比表", "比表面积", "比表")),
+        ]
+        all_aliases = [alias for _field_name, aliases in metric_aliases for alias in aliases]
+
+        def _extract_alias_value(alias: str) -> float | None:
+            pattern = rf"{re.escape(alias)}(?:值|均值|结果)?\s*[:：=]?\s*(-?\d+(?:\.\d+)?)"
+            match = re.search(pattern, text, flags=re.IGNORECASE)
+            if match:
+                try:
+                    return float(match.group(1))
+                except Exception:
+                    return None
+
+            compact_alias = re.sub(r"\s+", "", alias)
+            start = compact.lower().find(compact_alias.lower())
+            if start < 0:
+                return None
+            segment_start = start + len(compact_alias)
+            segment_end = len(compact)
+            for other_alias in all_aliases:
+                compact_other = re.sub(r"\s+", "", other_alias)
+                if not compact_other or compact_other.lower() == compact_alias.lower():
+                    continue
+                other_pos = compact.lower().find(compact_other.lower(), segment_start)
+                if other_pos >= 0:
+                    segment_end = min(segment_end, other_pos)
+            segment = compact[segment_start:segment_end]
+            match = re.search(r"(?:值|均值|结果)?[:：=]?(-?\d+(?:\.\d+)?)", segment, flags=re.IGNORECASE)
+            if not match:
+                return None
+            try:
+                return float(match.group(1))
+            except Exception:
+                return None
+
+        for field_name, aliases in metric_aliases:
+            for alias in aliases:
+                value = _extract_alias_value(alias)
+                if value is None:
+                    continue
+                if field_name == "首效" and value > 1000:
+                    value = value / 100.0
+                fields[field_name] = value
+                break
+
+        return fields
+
     def _parse_product(self, text: str, message_time: str) -> list[ParsedRecord]:
         if not self._process_switch("product", True):
             return []
@@ -1335,6 +1397,7 @@ class AutoProcessToBitableListener(EventListener):
             if suffix:
                 fields["成品后缀"] = suffix
             fields.update(self._extract_product_status_fields(block_text))
+            fields.update(self._extract_product_metric_fields(block_text))
 
             records.append(
                 ParsedRecord(

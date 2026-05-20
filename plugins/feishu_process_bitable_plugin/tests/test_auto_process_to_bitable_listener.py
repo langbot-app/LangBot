@@ -288,6 +288,36 @@ class AutoProcessToBitableListenerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(record.fields["下料说明"], "A1下14包；B1下20包")
         self.assertEqual(record.fields["送检状态"], "已送检")
 
+    async def test_parse_product_extracts_ocr_metrics_for_statistics(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_product(
+            "S18-CP-DA2605-103-A2\n"
+            "成品压实 2.384\n"
+            "0.1C充电：160.2\n"
+            "0.1C放电 156.8\n"
+            "0.1C首效 9688\n"
+            "3.2V平台效率 82.1\n"
+            "Li+含量 316\n"
+            "碳含量 1.22\n"
+            "粉末电阻 34.5\n"
+            "麦克比表 10.8",
+            "2026-05-20 00:27:00",
+        )
+
+        self.assertEqual(len(records), 1)
+        fields = records[0].fields
+        self.assertEqual(records[0].route_key, "product.S18")
+        self.assertEqual(fields["成品压实"], 2.384)
+        self.assertEqual(fields["0.1C充电"], 160.2)
+        self.assertEqual(fields["0.1C放电"], 156.8)
+        self.assertEqual(fields["首效"], 96.88)
+        self.assertEqual(fields["平台效率"], 82.1)
+        self.assertEqual(fields["残碱(Li+)"], 316.0)
+        self.assertEqual(fields["碳含量"], 1.22)
+        self.assertEqual(fields["粉阻(粉末电阻)"], 34.5)
+        self.assertEqual(fields["比表(麦克比表)"], 10.8)
+
     async def test_parse_records_with_text_priority_uses_ocr_for_product_images(self) -> None:
         listener = self._build_listener()
 
