@@ -35,24 +35,10 @@ def _make_skill_data(
     }
 
 
-class TestSkillManagerPackageLoading:
-    def test_load_skill_file_success(self):
-        from langbot.pkg.skill.manager import SkillManager
-
-        ap = _make_ap()
-        mgr = SkillManager(ap)
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            skill_md = os.path.join(tmpdir, 'SKILL.md')
-            with open(skill_md, 'w', encoding='utf-8') as f:
-                f.write('---\ndescription: Test skill\n---\n\n# Test Skill\nDo things.')
-
-            skill_data = _make_skill_data(package_root=tmpdir)
-            result = mgr._load_skill_file(skill_data)
-
-            assert result is True
-            assert skill_data['instructions'] == '# Test Skill\nDo things.'
-            assert skill_data['description'] == 'Test skill'
+class TestSkillManagerCache:
+    """The Box runtime is the only source of truth — SkillManager just holds
+    an in-memory cache populated by ``reload_skills``. There is no local
+    filesystem reader anymore."""
 
     def test_refresh_skill_from_disk_reports_cache_presence(self):
         """Box is the only source of truth for skill content. refresh_skill_from_disk

@@ -6,69 +6,6 @@ import pytest
 from langbot.pkg.api.http.service.skill import SkillService
 
 
-def _create_skill_file(
-    path,
-    *,
-    name: str = 'imported-skill',
-    display_name: str = '',
-    description: str = 'Imported from local directory',
-    body: str = 'Skill instructions',
-) -> None:
-    frontmatter = ['name: ' + name, 'description: ' + description]
-    if display_name:
-        frontmatter.insert(1, 'display_name: ' + display_name)
-
-    path.write_text(
-        '---\n' + '\n'.join(frontmatter) + f'\n---\n\n{body}\n',
-        encoding='utf-8',
-    )
-
-
-@pytest.fixture
-def skill_service():
-    app = SimpleNamespace(
-        skill_mgr=SimpleNamespace(
-            refresh_skill_from_disk=lambda *_args, **_kwargs: True,
-            reload_skills=AsyncMock(),
-        )
-    )
-    return SkillService(app)
-
-
-def test_scan_directory_supports_nested_skill_within_two_levels(skill_service, tmp_path):
-    nested_dir = tmp_path / 'downloaded' / 'self-improving-agent'
-    nested_dir.mkdir(parents=True)
-    _create_skill_file(nested_dir / 'SKILL.md')
-
-    result = skill_service.scan_directory(str(tmp_path))
-
-    assert result['package_root'] == str(nested_dir.resolve())
-    assert result['entry_file'] == 'SKILL.md'
-    assert result['name'] == 'imported-skill'
-    assert result['instructions'] == 'Skill instructions'
-
-
-def test_scan_directory_rejects_ambiguous_nested_skill_directories(skill_service, tmp_path):
-    first_dir = tmp_path / 'skills' / 'alpha'
-    second_dir = tmp_path / 'skills' / 'beta'
-    first_dir.mkdir(parents=True)
-    second_dir.mkdir(parents=True)
-    _create_skill_file(first_dir / 'SKILL.md', body='alpha instructions')
-    _create_skill_file(second_dir / 'SKILL.md', body='beta instructions')
-
-    with pytest.raises(ValueError, match='Multiple skill directories found'):
-        skill_service.scan_directory(str(tmp_path))
-
-
-def test_scan_directory_errors_when_skill_is_deeper_than_two_levels(skill_service, tmp_path):
-    deep_dir = tmp_path / 'a' / 'b' / 'c'
-    deep_dir.mkdir(parents=True)
-    _create_skill_file(deep_dir / 'SKILL.md')
-
-    with pytest.raises(ValueError, match='max depth: 2'):
-        skill_service.scan_directory(str(tmp_path))
-
-
 class TestRequireBoxForWrite:
     """Box is the only source of truth for skills — there is no local
     filesystem fallback. Every write and (most) read methods refuse cleanly
