@@ -284,6 +284,11 @@ export default function QrCodeLoginDialog({
             cleanup();
             setState('error');
             setErrorMessage(error || tRef.current(cfg.failedKey));
+          } else if (status === 'expired') {
+            sessionIdRef.current = null;
+            cleanup();
+            setExpireIn(0);
+            setState('expired');
           }
         } catch {
           // ignore poll errors

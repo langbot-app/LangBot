@@ -210,13 +210,13 @@ class AdaptersRouterGroup(group.RouterGroup):
                     def on_qrcode(qr_data_url: str, _qr_url: str):
                         def _update():
                             session['qr_data_url'] = qr_data_url
-                            session['expire_at'] = time.time() + 480
+                            session['expire_at'] = time.time() + 180
                             session['status'] = 'waiting'
 
                         loop.call_soon_threadsafe(_update)
 
                     result = await client.login(
-                        max_retries=5,
+                        max_retries=1,
                         poll_timeout_ms=180_000,
                         on_qrcode=on_qrcode,
                     )
@@ -225,8 +225,13 @@ class AdaptersRouterGroup(group.RouterGroup):
                     session['base_url'] = result.base_url
                     session['account_id'] = result.account_id
                 except Exception as e:
-                    session['status'] = 'error'
-                    session['error'] = str(e)
+                    error_message = str(e)
+                    if 'expired' in error_message.lower() or 'max retries exceeded' in error_message.lower():
+                        session['status'] = 'expired'
+                        session['error'] = 'QR code expired'
+                    else:
+                        session['status'] = 'error'
+                        session['error'] = error_message
                 finally:
                     await client.close()
 
@@ -260,7 +265,11 @@ class AdaptersRouterGroup(group.RouterGroup):
             if not session:
                 return self.http_status(404, -1, 'Session not found')
 
-            data = {'status': session['status']}
+            data = {
+                'status': session['status'],
+                'qr_data_url': session['qr_data_url'],
+                'expire_at': session['expire_at'],
+            }
 
             if session['status'] == 'success':
                 data['token'] = session['token']
@@ -268,6 +277,9 @@ class AdaptersRouterGroup(group.RouterGroup):
                 data['account_id'] = session['account_id']
                 _weixin_login_sessions.pop(session_id, None)
             elif session['status'] == 'error':
+                data['error'] = session['error']
+                _weixin_login_sessions.pop(session_id, None)
+            elif session['status'] == 'expired':
                 data['error'] = session['error']
                 _weixin_login_sessions.pop(session_id, None)
 
