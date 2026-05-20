@@ -126,13 +126,13 @@ function WebhookUrlField({
   };
 
   return (
-    <FormItem>
-      <FormLabel>{label}</FormLabel>
-      <div className="flex items-center gap-2">
+    <FormItem className="min-w-0">
+      <FormLabel className="break-words">{label}</FormLabel>
+      <div className="flex min-w-0 items-center gap-2">
         <Input
           value={url}
           readOnly
-          className="flex-1 bg-muted"
+          className="min-w-0 flex-1 bg-muted"
           onClick={(e) => (e.target as HTMLInputElement).select()}
         />
         <Button
@@ -149,11 +149,11 @@ function WebhookUrlField({
         </Button>
       </div>
       {extraUrl && (
-        <div className="flex items-center gap-2 mt-2">
+        <div className="mt-2 flex min-w-0 items-center gap-2">
           <Input
             value={extraUrl}
             readOnly
-            className="flex-1 bg-muted"
+            className="min-w-0 flex-1 bg-muted"
             onClick={(e) => (e.target as HTMLInputElement).select()}
           />
           <Button
@@ -171,12 +171,14 @@ function WebhookUrlField({
         </div>
       )}
       {description && (
-        <p className="text-sm text-muted-foreground">{description}</p>
+        <p className="text-sm break-words text-muted-foreground">
+          {description}
+        </p>
       )}
       {systemInfo.edition === 'community' && (
-        <div className="flex items-start gap-2.5 rounded-md border border-border/60 bg-muted/40 px-3 py-2.5 mt-1 max-w-2xl">
+        <div className="mt-1 flex max-w-full min-w-0 items-start gap-2.5 rounded-md border border-border/60 bg-muted/40 px-3 py-2.5">
           <Globe className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-          <p className="text-sm text-muted-foreground leading-relaxed">
+          <p className="text-sm leading-relaxed break-words text-muted-foreground">
             {t('bots.webhookSaasHint')}{' '}
             <a
               href="https://space.langbot.app/cloud?utm_source=local_webui&utm_medium=webhook_alert&utm_campaign=saas_conversion"
@@ -442,7 +444,7 @@ export default function DynamicFormComponent({
 
   return (
     <Form {...form}>
-      <div className="space-y-4">
+      <div className="min-w-0 max-w-full space-y-4 overflow-x-hidden">
         {itemConfigList.map((config) => {
           if (config.show_if) {
             const dependValue = resolveShowIfValue(
@@ -582,20 +584,20 @@ export default function DynamicFormComponent({
                 control={form.control}
                 name={config.name as keyof FormValues}
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="min-w-0">
                     <div
                       className={cn(
-                        'flex flex-row items-center justify-between rounded-lg border p-4 max-w-2xl',
+                        'flex w-full min-w-0 max-w-full flex-row items-center justify-between rounded-lg border p-4',
                         isFieldDisabled && 'pointer-events-none opacity-60',
                       )}
                     >
-                      <div className="space-y-0.5">
-                        <FormLabel className="text-base flex items-center gap-1.5">
+                      <div className="min-w-0 space-y-0.5">
+                        <FormLabel className="flex min-w-0 items-center gap-1.5 text-base">
                           {extractI18nObject(config.label)}
                           {renderDisabledTooltipIcon()}
                         </FormLabel>
                         {config.description && (
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-sm break-words text-muted-foreground">
                             {extractI18nObject(config.description)}
                           </p>
                         )}
@@ -621,9 +623,9 @@ export default function DynamicFormComponent({
               control={form.control}
               name={config.name as keyof FormValues}
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="flex items-center gap-1.5">
-                    <span>
+                <FormItem className="min-w-0">
+                  <FormLabel className="flex min-w-0 items-center gap-1.5">
+                    <span className="min-w-0 break-words">
                       {extractI18nObject(config.label)}{' '}
                       {config.required && (
                         <span className="text-red-500">*</span>
@@ -633,9 +635,10 @@ export default function DynamicFormComponent({
                   </FormLabel>
                   <FormControl>
                     <div
-                      className={
-                        isFieldDisabled ? 'pointer-events-none opacity-60' : ''
-                      }
+                      className={cn(
+                        'min-w-0 max-w-full overflow-x-hidden',
+                        isFieldDisabled && 'pointer-events-none opacity-60',
+                      )}
                     >
                       <DynamicFormItemComponent
                         config={config}
@@ -645,7 +648,7 @@ export default function DynamicFormComponent({
                     </div>
                   </FormControl>
                   {config.description && (
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-sm break-words text-muted-foreground">
                       {extractI18nObject(config.description)}
                     </p>
                   )}

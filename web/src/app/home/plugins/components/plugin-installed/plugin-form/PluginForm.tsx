@@ -42,7 +42,6 @@ export default function PluginForm({
       setPluginConfig(res);
 
       // 提取初始配置中的所有文件 key
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const extractFileKeys = (obj: any): string[] => {
         const keys: string[] = [];
         if (obj && typeof obj === 'object') {
@@ -77,7 +76,6 @@ export default function PluginForm({
       );
 
       // 提取最终保存的配置中的所有文件 key
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const extractFileKeys = (obj: any): string[] => {
         const keys: string[] = [];
         if (obj && typeof obj === 'object') {
@@ -143,13 +141,13 @@ export default function PluginForm({
   }
 
   return (
-    <div className="space-y-4">
-      <Card>
+    <div className="min-w-0 max-w-full space-y-4">
+      <Card className="min-w-0 overflow-x-hidden">
         <CardHeader>
           <CardTitle>{t('plugins.pluginConfig')}</CardTitle>
           <CardDescription>{t('plugins.saveConfig')}</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="min-w-0 overflow-x-hidden">
           {pluginInfo.manifest.manifest.spec.config.length > 0 ? (
             <DynamicFormComponent
               itemConfigList={pluginInfo.manifest.manifest.spec.config}
