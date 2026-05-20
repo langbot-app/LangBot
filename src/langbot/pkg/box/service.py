@@ -768,10 +768,27 @@ class BoxService:
                 'recent_error_count': len(self._recent_errors),
                 'connector_error': str(exc),
             }
-        return {
+        # Backend state can be unavailable even when the connector is healthy
+        # (operator selected nsjail but the binary is missing, Docker daemon
+        # went down after the runtime started, E2B credentials wrong, ...).
+        # Report the combined state in the top-level ``available`` so the
+        # frontend banner / ``useBoxStatus`` hook / native-tool gate all
+        # agree on "actually usable" rather than "connector alive". The
+        # detailed ``backend`` object stays in the payload so the dialog
+        # can still show which backend was tried.
+        backend_info = runtime_status.get('backend') if isinstance(runtime_status, dict) else None
+        backend_ok = bool(backend_info and backend_info.get('available', False))
+        payload = {
             **runtime_status,
-            'available': True,
+            'available': backend_ok,
             'enabled': self._enabled,
             'profile': self.profile.name,
             'recent_error_count': len(self._recent_errors),
         }
+        if not backend_ok and 'connector_error' not in payload:
+            backend_name = backend_info.get('name') if backend_info else None
+            if backend_name:
+                payload['connector_error'] = f'Configured sandbox backend "{backend_name}" is unavailable'
+            else:
+                payload['connector_error'] = 'No supported sandbox backend (Docker / nsjail / E2B) is available'
+        return payload

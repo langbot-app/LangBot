@@ -1275,6 +1275,52 @@ class TestBoxDisabledByConfig:
         assert 'docker daemon' in status['connector_error']
 
     @pytest.mark.asyncio
+    async def test_get_status_downgrades_available_when_backend_dead(self):
+        """The connector can be healthy while the runtime reports no usable
+        backend (operator selected nsjail but binary missing, Docker daemon
+        crashed after handshake, ...). The top-level ``available`` must
+        reflect the combined state so the dashboard / useBoxStatus hook /
+        skill_service gate stay consistent with the native-tool gate."""
+        logger = Mock()
+        client = Mock(spec=BoxRuntimeClient)
+        client.initialize = AsyncMock()
+        client.get_status = AsyncMock(
+            return_value={
+                'backend': {'name': 'nsjail', 'available': False},
+                'active_sessions': 0,
+            }
+        )
+        service = BoxService(make_app(logger, enabled=True), client=client)
+        await service.initialize()
+
+        status = await service.get_status()
+        assert status['available'] is False
+        assert status['enabled'] is True
+        # The detailed backend object is preserved for the dialog
+        assert status['backend'] == {'name': 'nsjail', 'available': False}
+        assert 'nsjail' in status['connector_error']
+
+    @pytest.mark.asyncio
+    async def test_get_status_keeps_available_true_when_backend_ok(self):
+        logger = Mock()
+        client = Mock(spec=BoxRuntimeClient)
+        client.initialize = AsyncMock()
+        client.get_status = AsyncMock(
+            return_value={
+                'backend': {'name': 'docker', 'available': True},
+                'active_sessions': 2,
+            }
+        )
+        service = BoxService(make_app(logger, enabled=True), client=client)
+        await service.initialize()
+
+        status = await service.get_status()
+        assert status['available'] is True
+        assert status['backend'] == {'name': 'docker', 'available': True}
+        # No spurious connector_error overlay when everything is healthy
+        assert 'connector_error' not in status or not status['connector_error']
+
+    @pytest.mark.asyncio
     async def test_disconnect_callback_is_no_op_when_disabled(self):
         logger = Mock()
         service = BoxService(make_app(logger, enabled=False), client=Mock(spec=BoxRuntimeClient))
