@@ -382,6 +382,93 @@ class AutoProcessToBitableListenerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fields["pH"], 9.15)
         self.assertEqual(fields["检测日期"], "2026.05.20")
 
+    async def test_parse_product_extracts_feishu_ocr_battery_table(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_product(
+            "恒流比均值\n"
+            "3.2V平台比容\n"
+            "平台占比均值\n"
+            "首充均值(mAh/\n"
+            "首放均值(mAh/\n"
+            "样品批号\n"
+            "充放电制度\n"
+            "首效均值(%)\n"
+            "g)\n"
+            "g)\n"
+            "(%)\n"
+            "量均值\n"
+            "(%)\n"
+            "0.1C\n"
+            "158.81\n"
+            "98.08\n"
+            "99.29\n"
+            "96.11\n"
+            "161.91\n"
+            "153.75\n"
+            "S18-CP-DB2605-091-B1\n"
+            "1C\n"
+            "160.36\n"
+            "136.60\n"
+            "85.18\n"
+            "94.58\n"
+            "120.86\n"
+            "88.48\n"
+            "0.1C\n"
+            "161.63\n"
+            "158.84\n"
+            "98.28\n"
+            "99.33\n"
+            "153.41\n"
+            "95.91\n"
+            "S18-CP-DB2605-092-B2\n"
+            "1C\n"
+            "160.32\n"
+            "137.29\n"
+            "85.64\n"
+            "94.38\n"
+            "121.04\n"
+            "88.16",
+            "2026-05-20 11:00:00",
+        )
+
+        self.assertEqual(len(records), 2)
+
+        first = records[0]
+        self.assertEqual(first.batch_id, "S18-CP-DB2605-091-B1")
+        self.assertEqual(first.fields["送检项目"], "扣电")
+        self.assertEqual(first.fields["0.1C首充均值"], 161.91)
+        self.assertEqual(first.fields["0.1C首放均值"], 158.81)
+        self.assertEqual(first.fields["0.1C首效均值"], 98.08)
+        self.assertEqual(first.fields["0.1C恒流比均值"], 99.29)
+        self.assertEqual(first.fields["0.1C3.2V平台比容量均值"], 153.75)
+        self.assertEqual(first.fields["0.1C平台占比均值"], 96.11)
+        self.assertEqual(first.fields["1C首充均值"], 160.36)
+        self.assertEqual(first.fields["1C首放均值"], 136.60)
+        self.assertEqual(first.fields["1C首效均值"], 85.18)
+        self.assertEqual(first.fields["1C恒流比均值"], 94.58)
+        self.assertEqual(first.fields["1C3.2V平台比容量均值"], 120.86)
+        self.assertEqual(first.fields["1C平台占比均值"], 88.48)
+        self.assertEqual(first.fields["0.1C充电"], 161.91)
+        self.assertEqual(first.fields["0.1C放电"], 158.81)
+        self.assertEqual(first.fields["首效"], 98.08)
+        self.assertEqual(first.fields["平台效率"], 96.11)
+
+        second = records[1]
+        self.assertEqual(second.batch_id, "S18-CP-DB2605-092-B2")
+        self.assertEqual(second.fields["0.1C首充均值"], 161.63)
+        self.assertEqual(second.fields["0.1C首放均值"], 158.84)
+        self.assertEqual(second.fields["0.1C首效均值"], 98.28)
+        self.assertEqual(second.fields["0.1C恒流比均值"], 99.33)
+        self.assertEqual(second.fields["0.1C3.2V平台比容量均值"], 153.41)
+        self.assertEqual(second.fields["0.1C平台占比均值"], 95.91)
+        self.assertEqual(second.fields["1C首充均值"], 160.32)
+        self.assertEqual(second.fields["1C首放均值"], 137.29)
+        self.assertEqual(second.fields["1C首效均值"], 85.64)
+        self.assertEqual(second.fields["1C恒流比均值"], 94.38)
+        self.assertEqual(second.fields["1C3.2V平台比容量均值"], 121.04)
+        self.assertEqual(second.fields["1C平台占比均值"], 88.16)
+
     async def test_parse_records_with_text_priority_uses_ocr_for_product_images(self) -> None:
         listener = self._build_listener()
 

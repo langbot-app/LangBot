@@ -1421,6 +1421,111 @@ class AutoProcessToBitableListener(EventListener):
 
         return fields
 
+    @classmethod
+    def _extract_product_battery_table_fields(cls, block_text: str) -> dict[str, dict[str, Any]]:
+        text = cls._normalize_message_text(block_text)
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        if not lines or "充放电制度" not in text:
+            return {}
+
+        line_pattern = cls._production_line_pattern()
+        batch_regex = re.compile(
+            rf"S\d+-CP-D[{line_pattern}]\d{{4}}-\d+(?:-[{line_pattern}][12])?",
+            re.IGNORECASE,
+        )
+
+        def _numeric_value(cell_text: str) -> float | None:
+            stripped = cell_text.strip()
+            if not re.fullmatch(r"-?\d+(?:\.\d+)?", stripped):
+                return None
+            try:
+                return float(stripped)
+            except Exception:
+                return None
+
+        def _collect_numbers(start_idx: int, stop_idx: int) -> list[float]:
+            values: list[float] = []
+            for cell in lines[start_idx:stop_idx]:
+                value = _numeric_value(cell)
+                if value is not None:
+                    values.append(value)
+            return values
+
+        def _next_boundary(start_idx: int) -> int:
+            idx = start_idx
+            while idx < len(lines):
+                cell = lines[idx].upper()
+                if idx > start_idx and (cell in {"0.1C", "1C"} or batch_regex.fullmatch(cell)):
+                    break
+                idx += 1
+            return idx
+
+        def _map_battery_values(rate: str, values: list[float]) -> dict[str, float]:
+            if len(values) < 6:
+                return {}
+            usable = values[:6]
+            if rate == "0.1C" and usable[1] <= 110 and usable[4] > 120:
+                first_charge, first_discharge, efficiency, constant_current, platform_capacity, platform_ratio = (
+                    usable[4],
+                    usable[0],
+                    usable[1],
+                    usable[2],
+                    usable[5],
+                    usable[3],
+                )
+            else:
+                first_charge, first_discharge, efficiency, constant_current, platform_capacity, platform_ratio = usable
+
+            prefix = rate
+            return {
+                f"{prefix}首充均值": first_charge,
+                f"{prefix}首放均值": first_discharge,
+                f"{prefix}首效均值": efficiency,
+                f"{prefix}恒流比均值": constant_current,
+                f"{prefix}3.2V平台比容量均值": platform_capacity,
+                f"{prefix}平台占比均值": platform_ratio,
+            }
+
+        battery_fields_by_batch: dict[str, dict[str, Any]] = {}
+        batch_positions = [
+            (idx, lines[idx].upper())
+            for idx in range(len(lines))
+            if batch_regex.fullmatch(lines[idx].upper())
+        ]
+        for batch_idx, batch_id in batch_positions:
+            fields: dict[str, Any] = {}
+
+            row_start = -1
+            for idx in range(batch_idx - 1, -1, -1):
+                if lines[idx].upper() == "0.1C":
+                    row_start = idx
+                    break
+                if batch_regex.fullmatch(lines[idx].upper()):
+                    break
+            if row_start >= 0:
+                values = _collect_numbers(row_start + 1, batch_idx)
+                fields.update(_map_battery_values("0.1C", values))
+
+            if batch_idx + 1 < len(lines) and lines[batch_idx + 1].upper() == "1C":
+                row_start = batch_idx + 1
+                row_end = _next_boundary(row_start + 1)
+                values = _collect_numbers(row_start + 1, row_end)
+                fields.update(_map_battery_values("1C", values))
+
+            if fields:
+                fields["送检项目"] = "扣电"
+                if "0.1C首充均值" in fields:
+                    fields["0.1C充电"] = fields["0.1C首充均值"]
+                if "0.1C首放均值" in fields:
+                    fields["0.1C放电"] = fields["0.1C首放均值"]
+                if "0.1C首效均值" in fields:
+                    fields["首效"] = fields["0.1C首效均值"]
+                if "0.1C平台占比均值" in fields:
+                    fields["平台效率"] = fields["0.1C平台占比均值"]
+                battery_fields_by_batch[batch_id] = fields
+
+        return battery_fields_by_batch
+
     @staticmethod
     def _extract_product_date_field(block_text: str) -> dict[str, Any]:
         match = re.search(r"(\d{4})[./-](\d{1,2})[./-](\d{1,2})", block_text)
@@ -1444,6 +1549,7 @@ class AutoProcessToBitableListener(EventListener):
         if not matches:
             return []
 
+        battery_fields_by_batch = self._extract_product_battery_table_fields(normalized_text)
         records: list[ParsedRecord] = []
         for idx, match in enumerate(matches):
             material_type = str(match.group(1)).upper().strip()
@@ -1487,6 +1593,7 @@ class AutoProcessToBitableListener(EventListener):
                 fields["成品后缀"] = suffix
             fields.update(self._extract_product_status_fields(block_text))
             fields.update(self._extract_product_metric_fields(block_text))
+            fields.update(battery_fields_by_batch.get(batch_id, {}))
             fields.update(self._extract_product_date_field(block_text))
 
             records.append(
