@@ -1306,7 +1306,7 @@ class AutoProcessToBitableListener(EventListener):
             ("0.1C放电", ("0.1C放电", "0.1C放", "0.1C放容", "0.1C放电容量")),
             ("首效", ("0.1C首效", "首效", "首次效率")),
             ("平台效率", ("3.2V容量占比", "3.2V平台效率", "2.95V容量占比", "平台效率")),
-            ("残碱(Li+)", ("残碱(Li+)", "Li+含量", "Li含量", "Li+", "残碱锂", "残锂")),
+            ("残碱(Li+)", ("残碱(Li+)", "Li+含量", "Li+", "残碱锂", "残锂")),
             ("碳含量", ("碳含量", "C含量")),
             ("粉阻(粉末电阻)", ("粉阻(粉末电阻)", "粉末电阻", "粉阻")),
             ("比表(麦克比表)", ("比表(麦克比表)", "麦克比表", "比表面积", "比表")),
@@ -1464,17 +1464,45 @@ class AutoProcessToBitableListener(EventListener):
             if len(values) < 6:
                 return {}
             usable = values[:6]
-            if rate == "0.1C" and usable[1] <= 110 and usable[4] > 120:
-                first_charge, first_discharge, efficiency, constant_current, platform_capacity, platform_ratio = (
-                    usable[4],
-                    usable[0],
-                    usable[1],
-                    usable[2],
-                    usable[5],
-                    usable[3],
-                )
+
+            unused = set(range(len(usable)))
+
+            def _take_index(candidates: list[int], default_idx: int) -> float:
+                idx = candidates[0] if candidates else default_idx
+                unused.discard(idx)
+                return usable[idx]
+
+            if rate == "0.1C":
+                high_indices = [idx for idx, value in enumerate(usable) if value >= 150]
+                high_by_value = sorted(high_indices, key=lambda idx: usable[idx], reverse=True)
+                first_charge = _take_index(high_by_value[:1], 0)
+                first_discharge = _take_index(high_by_value[1:2], 1)
+                platform_capacity = _take_index(high_by_value[2:3], 4)
+
+                low_indices = [idx for idx in unused if usable[idx] < 150]
+                ratio_indices = sorted(low_indices, key=lambda idx: usable[idx])
+                platform_ratio = _take_index(ratio_indices[:1], 5)
+                remaining_low = [idx for idx in unused if usable[idx] < 150]
+                constant_indices = sorted(remaining_low, key=lambda idx: usable[idx], reverse=True)
+                constant_current = _take_index(constant_indices[:1], 3)
+                remaining_low = [idx for idx in unused if usable[idx] < 150]
+                efficiency = _take_index(remaining_low[:1], 2)
             else:
-                first_charge, first_discharge, efficiency, constant_current, platform_capacity, platform_ratio = usable
+                charge_indices = [idx for idx, value in enumerate(usable) if value >= 150]
+                first_charge = _take_index(charge_indices[:1], 0)
+                discharge_indices = [idx for idx in unused if 130 <= usable[idx] < 150]
+                first_discharge = _take_index(discharge_indices[:1], 1)
+                efficiency_indices = [idx for idx in unused if 80 <= usable[idx] < 90]
+                efficiency = _take_index(efficiency_indices[:1], 2)
+                constant_indices = [idx for idx in unused if 90 <= usable[idx] < 100]
+                constant_current = _take_index(constant_indices[:1], 3)
+
+                remaining = [idx for idx in unused]
+                capacity_indices = sorted(remaining, key=lambda idx: usable[idx], reverse=True)
+                platform_capacity = _take_index(capacity_indices[:1], 4)
+                remaining = [idx for idx in unused]
+                ratio_indices = sorted(remaining, key=lambda idx: usable[idx])
+                platform_ratio = _take_index(ratio_indices[:1], 5)
 
             prefix = rate
             return {
@@ -1526,6 +1554,51 @@ class AutoProcessToBitableListener(EventListener):
 
         return battery_fields_by_batch
 
+    @classmethod
+    def _extract_product_ph_table_fields(cls, block_text: str) -> dict[str, dict[str, Any]]:
+        text = cls._normalize_message_text(block_text)
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        if not lines or not any(line.lower() in {"ph", "hp"} for line in lines):
+            return {}
+
+        line_pattern = cls._production_line_pattern()
+        batch_regex = re.compile(
+            rf"S\d+-CP-D[{line_pattern}]\d{{4}}-\d+(?:-[A-Z0-9]+)*",
+            re.IGNORECASE,
+        )
+        date_regex = re.compile(r"\d{4}[./-]\d{1,2}[./-]\d{1,2}")
+        ph_table: dict[str, dict[str, Any]] = {}
+        for idx, line in enumerate(lines):
+            if not batch_regex.fullmatch(line.upper()):
+                continue
+
+            prev_cells = lines[max(0, idx - 4):idx]
+            next_cells = lines[idx + 1:idx + 5]
+            nearby = prev_cells + next_cells
+            ph_value: float | None = None
+            for cell in nearby:
+                if not re.fullmatch(r"\d{1,2}(?:\.\d+)?", cell):
+                    continue
+                value = float(cell)
+                if 0 <= value <= 14:
+                    ph_value = value
+                    break
+            if ph_value is None:
+                continue
+
+            fields: dict[str, Any] = {"pH": ph_value}
+            for cell in nearby:
+                if date_regex.fullmatch(cell):
+                    year, month, day = re.split(r"[./-]", cell)
+                    fields["检测日期"] = f"{int(year):04d}.{int(month):02d}.{int(day):02d}"
+                    break
+            normalized_batch = cls._normalize_product_batch_id(line.upper())
+            normalized_batch = re.sub(r"-\d+$", "", normalized_batch)
+            ph_table[line.upper()] = fields
+            ph_table[normalized_batch] = fields
+
+        return ph_table
+
     @staticmethod
     def _extract_product_date_field(block_text: str) -> dict[str, Any]:
         match = re.search(r"(\d{4})[./-](\d{1,2})[./-](\d{1,2})", block_text)
@@ -1550,6 +1623,7 @@ class AutoProcessToBitableListener(EventListener):
             return []
 
         battery_fields_by_batch = self._extract_product_battery_table_fields(normalized_text)
+        ph_fields_by_batch = self._extract_product_ph_table_fields(normalized_text)
         records: list[ParsedRecord] = []
         for idx, match in enumerate(matches):
             material_type = str(match.group(1)).upper().strip()
@@ -1594,6 +1668,8 @@ class AutoProcessToBitableListener(EventListener):
             fields.update(self._extract_product_status_fields(block_text))
             fields.update(self._extract_product_metric_fields(block_text))
             fields.update(battery_fields_by_batch.get(batch_id, {}))
+            fields.update(ph_fields_by_batch.get(sample_batch_id, {}))
+            fields.update(ph_fields_by_batch.get(batch_id, {}))
             fields.update(self._extract_product_date_field(block_text))
 
             records.append(
