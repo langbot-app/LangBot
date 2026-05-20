@@ -4,6 +4,7 @@ Tests cover:
 - Tool schema generation for OpenAI and Anthropic
 - Tool execution dispatch
 """
+
 from __future__ import annotations
 
 import pytest
@@ -52,11 +53,12 @@ class TestToolManagerSchemaGeneration:
     @pytest.fixture
     def sample_tools(self):
         """Create sample LLMTool list for testing."""
+
         def dummy_weather_func(**kwargs):
-            return "weather result"
+            return 'weather result'
 
         def dummy_calc_func(**kwargs):
-            return "calc result"
+            return 'calc result'
 
         tools = [
             resource_tool.LLMTool(
@@ -65,15 +67,10 @@ class TestToolManagerSchemaGeneration:
                 description='Get current weather for a location',
                 parameters={
                     'type': 'object',
-                    'properties': {
-                        'location': {
-                            'type': 'string',
-                            'description': 'City name'
-                        }
-                    },
-                    'required': ['location']
+                    'properties': {'location': {'type': 'string', 'description': 'City name'}},
+                    'required': ['location'],
                 },
-                func=dummy_weather_func
+                func=dummy_weather_func,
             ),
             resource_tool.LLMTool(
                 name='calculate',
@@ -81,15 +78,10 @@ class TestToolManagerSchemaGeneration:
                 description='Perform a calculation',
                 parameters={
                     'type': 'object',
-                    'properties': {
-                        'expression': {
-                            'type': 'string',
-                            'description': 'Math expression'
-                        }
-                    },
-                    'required': ['expression']
+                    'properties': {'expression': {'type': 'string', 'description': 'Math expression'}},
+                    'required': ['expression'],
                 },
-                func=dummy_calc_func
+                func=dummy_calc_func,
             ),
         ]
         return tools
@@ -188,25 +180,47 @@ class TestToolManagerExecuteFuncCall:
 
     @pytest.fixture
     def mock_app_with_loaders(self):
-        """Create mock app with mock tool loaders."""
+        """Create mock app with mock tool loaders.
+
+        Returns (app, plugin_loader, mcp_loader). The native and skill loaders
+        are attached directly to the app for tests that don't need to assert
+        against them — they all default to ``has_tool == False`` so the
+        execute_func_call probe falls through to the plugin/mcp pair.
+        """
         mock_app = Mock()
         mock_app.logger = Mock()
 
+        def _make_inert_loader():
+            loader = Mock()
+            loader.has_tool = AsyncMock(return_value=False)
+            loader.invoke_tool = AsyncMock(return_value=None)
+            loader.initialize = AsyncMock()
+            loader.shutdown = AsyncMock()
+            return loader
+
         # Create mock plugin loader
-        mock_plugin_loader = Mock()
-        mock_plugin_loader.has_tool = AsyncMock(return_value=False)
+        mock_plugin_loader = _make_inert_loader()
         mock_plugin_loader.invoke_tool = AsyncMock(return_value='plugin_result')
-        mock_plugin_loader.initialize = AsyncMock()
-        mock_plugin_loader.shutdown = AsyncMock()
 
         # Create mock MCP loader
-        mock_mcp_loader = Mock()
-        mock_mcp_loader.has_tool = AsyncMock(return_value=False)
+        mock_mcp_loader = _make_inert_loader()
         mock_mcp_loader.invoke_tool = AsyncMock(return_value='mcp_result')
-        mock_mcp_loader.initialize = AsyncMock()
-        mock_mcp_loader.shutdown = AsyncMock()
+
+        # Stash inert native/skill loaders so the ToolManager probe order
+        # (native → plugin → mcp → skill) doesn't AttributeError. Tests that
+        # need to override these can replace the attributes on the manager.
+        mock_app._inert_native_loader = _make_inert_loader()
+        mock_app._inert_skill_loader = _make_inert_loader()
 
         return mock_app, mock_plugin_loader, mock_mcp_loader
+
+    @staticmethod
+    def _wire_loaders(manager, mock_app, plugin_loader, mcp_loader):
+        """Attach all four loaders (native + plugin + mcp + skill) to manager."""
+        manager.native_tool_loader = mock_app._inert_native_loader
+        manager.plugin_tool_loader = plugin_loader
+        manager.mcp_tool_loader = mcp_loader
+        manager.skill_tool_loader = mock_app._inert_skill_loader
 
     @pytest.fixture
     def sample_query(self):
@@ -215,9 +229,7 @@ class TestToolManagerExecuteFuncCall:
         return query
 
     @pytest.mark.asyncio
-    async def test_execute_calls_plugin_loader_when_has_tool(
-        self, mock_app_with_loaders, sample_query
-    ):
+    async def test_execute_calls_plugin_loader_when_has_tool(self, mock_app_with_loaders, sample_query):
         """Test that execute_func_call uses plugin loader when tool exists there."""
         toolmgr = get_toolmgr_module()
 
@@ -225,26 +237,17 @@ class TestToolManagerExecuteFuncCall:
         mock_plugin_loader.has_tool = AsyncMock(return_value=True)
 
         manager = toolmgr.ToolManager(mock_app)
-        manager.plugin_tool_loader = mock_plugin_loader
-        manager.mcp_tool_loader = mock_mcp_loader
+        self._wire_loaders(manager, mock_app, mock_plugin_loader, mock_mcp_loader)
 
-        result = await manager.execute_func_call(
-            'test_tool',
-            {'param': 'value'},
-            sample_query
-        )
+        result = await manager.execute_func_call('test_tool', {'param': 'value'}, sample_query)
 
         assert result == 'plugin_result'
-        mock_plugin_loader.invoke_tool.assert_called_once_with(
-            'test_tool', {'param': 'value'}, sample_query
-        )
+        mock_plugin_loader.invoke_tool.assert_called_once_with('test_tool', {'param': 'value'}, sample_query)
         # MCP loader should not be called
         mock_mcp_loader.invoke_tool.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_execute_calls_mcp_loader_when_plugin_not_found(
-        self, mock_app_with_loaders, sample_query
-    ):
+    async def test_execute_calls_mcp_loader_when_plugin_not_found(self, mock_app_with_loaders, sample_query):
         """Test that execute_func_call uses MCP loader when plugin doesn't have tool."""
         toolmgr = get_toolmgr_module()
 
@@ -253,24 +256,15 @@ class TestToolManagerExecuteFuncCall:
         mock_mcp_loader.has_tool = AsyncMock(return_value=True)
 
         manager = toolmgr.ToolManager(mock_app)
-        manager.plugin_tool_loader = mock_plugin_loader
-        manager.mcp_tool_loader = mock_mcp_loader
+        self._wire_loaders(manager, mock_app, mock_plugin_loader, mock_mcp_loader)
 
-        result = await manager.execute_func_call(
-            'test_tool',
-            {'param': 'value'},
-            sample_query
-        )
+        result = await manager.execute_func_call('test_tool', {'param': 'value'}, sample_query)
 
         assert result == 'mcp_result'
-        mock_mcp_loader.invoke_tool.assert_called_once_with(
-            'test_tool', {'param': 'value'}, sample_query
-        )
+        mock_mcp_loader.invoke_tool.assert_called_once_with('test_tool', {'param': 'value'}, sample_query)
 
     @pytest.mark.asyncio
-    async def test_execute_raises_when_tool_not_found(
-        self, mock_app_with_loaders, sample_query
-    ):
+    async def test_execute_raises_when_tool_not_found(self, mock_app_with_loaders, sample_query):
         """Test that execute_func_call raises ValueError when tool not found."""
         toolmgr = get_toolmgr_module()
 
@@ -279,20 +273,13 @@ class TestToolManagerExecuteFuncCall:
         mock_mcp_loader.has_tool = AsyncMock(return_value=False)
 
         manager = toolmgr.ToolManager(mock_app)
-        manager.plugin_tool_loader = mock_plugin_loader
-        manager.mcp_tool_loader = mock_mcp_loader
+        self._wire_loaders(manager, mock_app, mock_plugin_loader, mock_mcp_loader)
 
         with pytest.raises(ValueError, match='未找到工具'):
-            await manager.execute_func_call(
-                'unknown_tool',
-                {},
-                sample_query
-            )
+            await manager.execute_func_call('unknown_tool', {}, sample_query)
 
     @pytest.mark.asyncio
-    async def test_plugin_loader_checked_first(
-        self, mock_app_with_loaders, sample_query
-    ):
+    async def test_plugin_loader_checked_first(self, mock_app_with_loaders, sample_query):
         """Test that plugin loader is checked before MCP loader."""
         toolmgr = get_toolmgr_module()
 
@@ -302,8 +289,7 @@ class TestToolManagerExecuteFuncCall:
         mock_mcp_loader.has_tool = AsyncMock(return_value=True)
 
         manager = toolmgr.ToolManager(mock_app)
-        manager.plugin_tool_loader = mock_plugin_loader
-        manager.mcp_tool_loader = mock_mcp_loader
+        self._wire_loaders(manager, mock_app, mock_plugin_loader, mock_mcp_loader)
 
         await manager.execute_func_call('test_tool', {}, sample_query)
 
@@ -317,20 +303,30 @@ class TestToolManagerShutdown:
 
     @pytest.mark.asyncio
     async def test_shutdown_calls_loader_shutdown(self):
-        """Test that shutdown calls shutdown on both loaders."""
+        """Test that shutdown calls shutdown on every registered loader."""
         toolmgr = get_toolmgr_module()
 
         mock_app = Mock()
-        mock_plugin_loader = Mock()
-        mock_plugin_loader.shutdown = AsyncMock()
-        mock_mcp_loader = Mock()
-        mock_mcp_loader.shutdown = AsyncMock()
+
+        def _make_loader():
+            loader = Mock()
+            loader.shutdown = AsyncMock()
+            return loader
+
+        mock_native_loader = _make_loader()
+        mock_plugin_loader = _make_loader()
+        mock_mcp_loader = _make_loader()
+        mock_skill_loader = _make_loader()
 
         manager = toolmgr.ToolManager(mock_app)
+        manager.native_tool_loader = mock_native_loader
         manager.plugin_tool_loader = mock_plugin_loader
         manager.mcp_tool_loader = mock_mcp_loader
+        manager.skill_tool_loader = mock_skill_loader
 
         await manager.shutdown()
 
+        mock_native_loader.shutdown.assert_called_once()
         mock_plugin_loader.shutdown.assert_called_once()
         mock_mcp_loader.shutdown.assert_called_once()
+        mock_skill_loader.shutdown.assert_called_once()
