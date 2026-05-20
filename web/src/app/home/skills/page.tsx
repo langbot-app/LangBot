@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import SkillDetailContent from '@/app/home/skills/SkillDetailContent';
 import SkillForm from '@/app/home/skills/components/skill-form/SkillForm';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
+import { BoxUnavailableNotice } from '@/app/home/components/BoxUnavailableNotice';
+import { useBoxStatus } from '@/app/infra/hooks/useBoxStatus';
 
 export default function SkillsPage() {
   const { t } = useTranslation();
@@ -15,6 +17,7 @@ export default function SkillsPage() {
   const { refreshSkills } = useSidebarData();
 
   const isCreateView = actionParam === 'create';
+  const { available: boxAvailable, hint: boxHint } = useBoxStatus();
 
   useEffect(() => {
     if (!detailId && !isCreateView) {
@@ -54,11 +57,16 @@ export default function SkillsPage() {
           <Button variant="outline" onClick={handleCancel}>
             {t('common.cancel')}
           </Button>
-          <Button type="submit" form="skill-form">
+          <Button type="submit" form="skill-form" disabled={!boxAvailable}>
             {t('common.save')}
           </Button>
         </div>
       </div>
+      {!boxAvailable && (
+        <div className="pb-4 shrink-0">
+          <BoxUnavailableNotice hint={boxHint} />
+        </div>
+      )}
       <div className="min-h-0 flex-1">
         <SkillForm
           key="new-skill"

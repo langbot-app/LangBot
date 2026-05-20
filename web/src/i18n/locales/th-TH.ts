@@ -1282,6 +1282,12 @@ const thTH = {
     disabled: 'ปิดใช้งาน',
     statusDetail: 'สถานะ',
     pluginDisabled: 'ระบบปลั๊กอินถูกปิดใช้งาน',
+    boxDisabled:
+      'Sandbox Box ถูกปิดใช้งานในการตั้งค่า — เครื่องมือ sandbox, การเพิ่ม/แก้ไข skill และ stdio MCP ใช้งานไม่ได้',
+    boxUnavailable:
+      'Sandbox Box ไม่พร้อมใช้งาน — เครื่องมือ sandbox, การเพิ่ม/แก้ไข skill และ stdio MCP ใช้งานไม่ได้',
+    boxRequiredHint:
+      'ฟีเจอร์นี้ต้องใช้ Box runtime กรุณาเปิดใช้งานในการตั้งค่า (box.enabled = true) และตรวจสอบว่าการเชื่อมต่อปกติ',
     boxBackend: 'แบ็กเอนด์',
     boxProfile: 'โปรไฟล์',
     boxSandboxes: 'แซนด์บ็อกซ์',

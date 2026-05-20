@@ -21,6 +21,8 @@ import {
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import SkillForm from '@/app/home/skills/components/skill-form/SkillForm';
+import { BoxUnavailableNotice } from '@/app/home/components/BoxUnavailableNotice';
+import { useBoxStatus } from '@/app/infra/hooks/useBoxStatus';
 import { Sparkles, Trash2 } from 'lucide-react';
 
 export default function SkillDetailContent({ id }: { id: string }) {
@@ -30,6 +32,7 @@ export default function SkillDetailContent({ id }: { id: string }) {
   const { refreshSkills, skills, setDetailEntityName } = useSidebarData();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const skill = skills.find((item) => item.id === id);
+  const { available: boxAvailable, hint: boxHint } = useBoxStatus();
 
   useEffect(() => {
     if (isCreateMode) {
@@ -81,10 +84,21 @@ export default function SkillDetailContent({ id }: { id: string }) {
               </Badge>
             </div>
           </div>
-          <Button type="submit" form="skill-form" className="shrink-0">
+          <Button
+            type="submit"
+            form="skill-form"
+            className="shrink-0"
+            disabled={!boxAvailable}
+          >
             {t('common.save')}
           </Button>
         </div>
+
+        {!boxAvailable && (
+          <div className="pb-4 shrink-0">
+            <BoxUnavailableNotice hint={boxHint} />
+          </div>
+        )}
 
         <div className="min-h-0 flex-1">
           <SkillForm
@@ -150,10 +164,21 @@ export default function SkillDetailContent({ id }: { id: string }) {
               </p>
             )}
           </div>
-          <Button type="submit" form="skill-form" className="shrink-0">
+          <Button
+            type="submit"
+            form="skill-form"
+            className="shrink-0"
+            disabled={!boxAvailable}
+          >
             {t('common.save')}
           </Button>
         </div>
+
+        {!boxAvailable && (
+          <div className="pb-4 shrink-0">
+            <BoxUnavailableNotice hint={boxHint} />
+          </div>
+        )}
 
         <div className="min-h-0 flex-1">
           <SkillForm

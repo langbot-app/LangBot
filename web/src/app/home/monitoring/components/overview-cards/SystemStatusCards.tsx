@@ -36,14 +36,16 @@ import {
 } from '@/components/ui/tooltip';
 import { httpClient } from '@/app/infra/http/HttpClient';
 
-function StatusDot({ ok }: { ok: boolean | null }) {
-  if (ok === null)
+type StatusState = 'ok' | 'disabled' | 'failed' | null;
+
+function StatusDot({ state }: { state: StatusState }) {
+  if (state === null)
     return <span className="w-2 h-2 rounded-full bg-muted-foreground/40" />;
-  return ok ? (
-    <span className="w-2 h-2 rounded-full bg-green-500" />
-  ) : (
-    <span className="w-2 h-2 rounded-full bg-red-500" />
-  );
+  if (state === 'ok')
+    return <span className="w-2 h-2 rounded-full bg-green-500" />;
+  if (state === 'disabled')
+    return <span className="w-2 h-2 rounded-full bg-muted-foreground/60" />;
+  return <span className="w-2 h-2 rounded-full bg-red-500" />;
 }
 
 interface SystemStatusCardProps {
@@ -86,7 +88,25 @@ export default function SystemStatusCard({
   const pluginOk = pluginStatus
     ? pluginStatus.is_enable && pluginStatus.is_connected
     : null;
+  const pluginState: StatusState = pluginStatus
+    ? pluginStatus.is_enable && pluginStatus.is_connected
+      ? 'ok'
+      : !pluginStatus.is_enable
+        ? 'disabled'
+        : 'failed'
+    : null;
   const boxOk = boxStatus ? boxStatus.available : null;
+  // Box has three observable states: connected (ok), disabled by config
+  // (enabled = false → distinct gray dot + "disabled" hint), and configured
+  // but failed (red dot + connector_error). The dashboard must distinguish
+  // them so operators can tell intentional-off from misconfigured.
+  const boxState: StatusState = boxStatus
+    ? boxStatus.available
+      ? 'ok'
+      : boxStatus.enabled === false
+        ? 'disabled'
+        : 'failed'
+    : null;
 
   const handleOpenDialog = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -129,12 +149,12 @@ export default function SystemStatusCard({
         </CardHeader>
         <CardContent className="space-y-2">
           <div className="flex items-center gap-2">
-            <StatusDot ok={pluginOk} />
+            <StatusDot state={pluginState} />
             <Plug className="w-3.5 h-3.5 text-muted-foreground" />
             <span className="text-sm">{t('monitoring.pluginRuntime')}</span>
           </div>
           <div className="flex items-center gap-2">
-            <StatusDot ok={boxOk} />
+            <StatusDot state={boxState} />
             <Box className="w-3.5 h-3.5 text-muted-foreground" />
             <span className="text-sm">{t('monitoring.boxRuntime')}</span>
           </div>
@@ -207,24 +227,39 @@ export default function SystemStatusCard({
                 </div>
                 <div className="ml-6 text-sm space-y-1">
                   <div className="flex items-center gap-1.5">
-                    {boxOk ? (
+                    {boxState === 'ok' ? (
                       <CircleCheck className="w-4 h-4 text-green-600" />
                     ) : (
-                      <CircleX className="w-4 h-4 text-red-500" />
+                      <CircleX
+                        className={
+                          boxState === 'disabled'
+                            ? 'w-4 h-4 text-muted-foreground'
+                            : 'w-4 h-4 text-red-500'
+                        }
+                      />
                     )}
                     <span
                       className={
-                        boxOk
+                        boxState === 'ok'
                           ? 'text-green-600 font-medium'
-                          : 'text-red-500 font-medium'
+                          : boxState === 'disabled'
+                            ? 'text-muted-foreground font-medium'
+                            : 'text-red-500 font-medium'
                       }
                     >
-                      {boxOk
+                      {boxState === 'ok'
                         ? t('monitoring.connected')
-                        : t('monitoring.disconnected')}
+                        : boxState === 'disabled'
+                          ? t('monitoring.disabled')
+                          : t('monitoring.disconnected')}
                     </span>
                   </div>
-                  {boxStatus && !boxOk && boxStatus.connector_error && (
+                  {boxState === 'disabled' && (
+                    <p className="text-muted-foreground text-xs">
+                      {t('monitoring.boxDisabled')}
+                    </p>
+                  )}
+                  {boxState === 'failed' && boxStatus?.connector_error && (
                     <p className="text-red-400 text-xs break-all">
                       {boxStatus.connector_error}
                     </p>

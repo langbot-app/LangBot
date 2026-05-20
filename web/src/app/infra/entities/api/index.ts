@@ -362,6 +362,9 @@ export interface ApiRespPluginSystemStatus {
 
 export interface ApiRespBoxStatus {
   available: boolean;
+  /** Whether ``box.enabled`` is true in config. When false, the sandbox
+   * is deliberately disabled — distinct from "configured but failed". */
+  enabled?: boolean;
   profile: string;
   recent_error_count: number;
   connector_error?: string;

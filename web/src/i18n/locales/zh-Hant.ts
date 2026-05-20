@@ -1248,6 +1248,12 @@ const zhHant = {
     disabled: '已停用',
     statusDetail: '狀態',
     pluginDisabled: '外掛系統已停用',
+    boxDisabled:
+      'Box 沙箱已在設定中停用——沙箱工具、技能新增/編輯與 stdio MCP 均無法使用',
+    boxUnavailable:
+      'Box 沙箱無法使用——沙箱工具、技能新增/編輯與 stdio MCP 均無法使用',
+    boxRequiredHint:
+      '此功能需要 Box 執行時。請在設定中啟用（box.enabled = true）並確認執行時連線正常。',
     boxBackend: '後端',
     boxProfile: '設定檔',
     boxSandboxes: '沙箱數',

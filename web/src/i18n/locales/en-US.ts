@@ -1303,6 +1303,12 @@ const enUS = {
     disabled: 'Disabled',
     statusDetail: 'Status',
     pluginDisabled: 'Plugin system is disabled',
+    boxDisabled:
+      'Box sandbox is disabled in config — sandbox tools, skill add/edit, and stdio MCP are unavailable',
+    boxUnavailable:
+      'Box sandbox is unavailable — sandbox tools, skill add/edit, and stdio MCP are unavailable',
+    boxRequiredHint:
+      'This feature requires the Box runtime. Enable it in config (box.enabled = true) and ensure the runtime is healthy.',
     boxBackend: 'Backend',
     boxProfile: 'Profile',
     boxSandboxes: 'Sandboxes',

@@ -1249,6 +1249,12 @@ const zhHans = {
     disabled: '已禁用',
     statusDetail: '状态',
     pluginDisabled: '插件系统已禁用',
+    boxDisabled:
+      'Box 沙箱已在配置中禁用——沙箱工具、技能添加/编辑与 stdio MCP 均不可用',
+    boxUnavailable:
+      'Box 沙箱不可用——沙箱工具、技能添加/编辑与 stdio MCP 均不可用',
+    boxRequiredHint:
+      '此功能依赖 Box 运行时。请在配置中启用（box.enabled = true）并确认运行时连接正常。',
     boxBackend: '后端',
     boxProfile: '配置',
     boxSandboxes: '沙箱数',

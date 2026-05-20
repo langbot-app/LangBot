@@ -1336,6 +1336,12 @@ const esES = {
     disabled: 'Desactivado',
     statusDetail: 'Estado',
     pluginDisabled: 'El sistema de plugins está desactivado',
+    boxDisabled:
+      'El sandbox de Box está desactivado en la configuración — herramientas de sandbox, alta/edición de skills y MCP stdio no están disponibles',
+    boxUnavailable:
+      'El sandbox de Box no está disponible — herramientas de sandbox, alta/edición de skills y MCP stdio no están disponibles',
+    boxRequiredHint:
+      'Esta función requiere el runtime de Box. Actívelo en la configuración (box.enabled = true) y asegúrese de que el runtime está conectado.',
     boxBackend: 'Backend',
     boxProfile: 'Perfil',
     boxSandboxes: 'Sandboxes',

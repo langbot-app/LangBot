@@ -1308,6 +1308,12 @@ const jaJP = {
     disabled: '無効',
     statusDetail: 'ステータス',
     pluginDisabled: 'プラグインシステムが無効です',
+    boxDisabled:
+      'Box サンドボックスは設定で無効化されています — サンドボックスツール / スキルの追加・編集 / stdio MCP は利用できません',
+    boxUnavailable:
+      'Box サンドボックスは利用できません — サンドボックスツール / スキルの追加・編集 / stdio MCP は利用できません',
+    boxRequiredHint:
+      'この機能には Box ランタイムが必要です。設定で有効化（box.enabled = true）し、ランタイムが正常に接続できることを確認してください。',
     boxBackend: 'バックエンド',
     boxProfile: 'プロファイル',
     boxSandboxes: 'サンドボックス',

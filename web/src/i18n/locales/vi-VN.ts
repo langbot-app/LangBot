@@ -1305,6 +1305,12 @@ const viVN = {
     disabled: 'Đã tắt',
     statusDetail: 'Trạng thái',
     pluginDisabled: 'Hệ thống plugin đã tắt',
+    boxDisabled:
+      'Sandbox Box đã tắt trong cấu hình — công cụ sandbox, thêm/chỉnh sửa skill và stdio MCP đều không khả dụng',
+    boxUnavailable:
+      'Sandbox Box không khả dụng — công cụ sandbox, thêm/chỉnh sửa skill và stdio MCP đều không khả dụng',
+    boxRequiredHint:
+      'Tính năng này cần Box runtime. Hãy bật trong cấu hình (box.enabled = true) và đảm bảo runtime đang hoạt động.',
     boxBackend: 'Backend',
     boxProfile: 'Hồ sơ',
     boxSandboxes: 'Sandbox',
