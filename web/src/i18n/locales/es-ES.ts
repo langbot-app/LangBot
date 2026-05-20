@@ -752,6 +752,12 @@ const esES = {
     connectionSuccess: 'Conexión exitosa',
     connectionFailed: 'Error de conexión, por favor verifica la URL',
     connectionFailedStatus: 'Conexión fallida',
+    boxDisabledStdioRefused:
+      'Los servidores MCP en modo stdio requieren el sandbox de Box, desactivado en la configuración (box.enabled = false).',
+    boxUnavailableStdioRefused:
+      'Los servidores MCP en modo stdio requieren el sandbox de Box, actualmente no accesible.',
+    boxStdioRefusedSuggestion:
+      'Active Box (box.enabled = true) y asegúrese de que el runtime está conectado, o cambie este servidor a modo http/sse.',
     toolsFound: 'herramientas',
     unknownError: 'Error desconocido',
     noToolsFound: 'No se encontraron herramientas',

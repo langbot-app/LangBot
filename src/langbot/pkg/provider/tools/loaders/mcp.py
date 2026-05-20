@@ -94,19 +94,18 @@ class RuntimeMCPSession:
         # (disabled by config or connection failed). Refuse stdio MCP rather
         # than silently falling through to host-stdio — the operator asked
         # for the sandbox and the failure mode should be visible.
+        #
+        # Set ``error_phase = BOX_UNAVAILABLE`` BEFORE raising so the retry
+        # wrapper can short-circuit (retrying is pointless when Box is
+        # deliberately off) and the frontend can render a localized,
+        # actionable message instead of this raw RuntimeError. Keep the
+        # message itself short — the frontend ignores it for this phase.
         box_service = getattr(self.ap, 'box_service', None)
         if box_service is not None and not getattr(box_service, 'available', False):
-            connector_error = getattr(box_service, '_connector_error', '') or 'currently unavailable'
+            self.error_phase = MCPSessionErrorPhase.BOX_UNAVAILABLE
             if not getattr(box_service, 'enabled', True):
-                reason = 'disabled in config (box.enabled = false)'
-            else:
-                reason = f'unavailable: {connector_error}'
-            raise RuntimeError(
-                f'Stdio MCP server "{self.server_name}" requires the Box runtime, '
-                f'which is {reason}. Either enable Box in config.yaml '
-                f'(box.enabled = true) and ensure the runtime is healthy, '
-                f'or switch this MCP server to http/sse transport.'
-            )
+                raise RuntimeError('box_disabled_in_config')
+            raise RuntimeError('box_unavailable')
 
         # Legacy: no box_service installed at all (pre-Box dev mode). Fall
         # through to host-stdio for backward compatibility.
@@ -231,6 +230,14 @@ class RuntimeMCPSession:
                 self.retry_count = attempt + 1
                 if self._shutdown_event.is_set():
                     return  # Shutdown requested, don't retry
+                # BOX_UNAVAILABLE is a deliberate refusal, not a transient
+                # failure — retrying produces log spam and a misleading
+                # "Failed after N attempts" message. Surface it immediately.
+                if self.error_phase == MCPSessionErrorPhase.BOX_UNAVAILABLE:
+                    self.status = MCPSessionStatus.ERROR
+                    self.error_message = str(e)
+                    self._ready_event.set()
+                    return
                 if attempt >= self._MAX_RETRIES:
                     self.status = MCPSessionStatus.ERROR
                     self.error_message = f'Failed after {self._MAX_RETRIES + 1} attempts: {e}'

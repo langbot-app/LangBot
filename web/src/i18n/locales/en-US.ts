@@ -738,6 +738,12 @@ const enUS = {
     connectionSuccess: 'Connection successful',
     connectionFailed: 'Connection failed, please check URL',
     connectionFailedStatus: 'Connection Failed',
+    boxDisabledStdioRefused:
+      'Stdio MCP servers require the Box sandbox, which is disabled in config (box.enabled = false).',
+    boxUnavailableStdioRefused:
+      'Stdio MCP servers require the Box sandbox, which is currently unreachable.',
+    boxStdioRefusedSuggestion:
+      'Enable Box (box.enabled = true) and ensure the runtime is healthy, or switch this server to http/sse mode.',
     toolsFound: 'tools',
     unknownError: 'Unknown error',
     noToolsFound: 'No tools found',

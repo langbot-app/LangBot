@@ -529,8 +529,18 @@ export enum MCPSessionStatus {
 export interface MCPServerRuntimeInfo {
   status: MCPSessionStatus;
   error_message?: string;
+  /** Stage at which the session failed. Frontends key off this to render
+   *  a localized actionable message instead of the raw ``error_message``.
+   *  Notable values: ``box_unavailable`` (stdio MCP refused because Box is
+   *  disabled / unreachable). See ``MCPSessionErrorPhase`` (backend). */
+  error_phase?: string;
+  retry_count?: number;
   tool_count: number;
   tools: MCPTool[];
+  /** Optional ``box_session_id`` / ``box_enabled`` set when this stdio
+   *  server runs inside Box. Absent when Box is unavailable. */
+  box_session_id?: string;
+  box_enabled?: boolean;
 }
 
 export type MCPServer =

@@ -709,6 +709,12 @@ const zhHant = {
     connectionSuccess: '連接成功',
     connectionFailed: '連接失敗，請檢查URL',
     connectionFailedStatus: '連接失敗',
+    boxDisabledStdioRefused:
+      'Stdio 模式的 MCP 伺服器依賴 Box 沙箱，目前已在設定中停用（box.enabled = false）。',
+    boxUnavailableStdioRefused:
+      'Stdio 模式的 MCP 伺服器依賴 Box 沙箱，目前無法連線。',
+    boxStdioRefusedSuggestion:
+      '請啟用 Box（box.enabled = true）並確認執行時連線正常，或將此伺服器切換到 http/sse 模式。',
     toolsFound: '個工具',
     unknownError: '未知錯誤',
     noToolsFound: '未找到任何工具',

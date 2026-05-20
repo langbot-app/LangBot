@@ -77,6 +77,32 @@ function StatusDisplay({
     );
   }
 
+  // Stdio MCP refused because Box is disabled / unreachable. The backend
+  // marks the phase so we can show a localized, actionable message instead
+  // of the raw "box_disabled_in_config" / "box_unavailable" marker.
+  if (runtimeInfo.error_phase === 'box_unavailable') {
+    const isDisabledByConfig =
+      runtimeInfo.error_message === 'box_disabled_in_config';
+    return (
+      <div className="space-y-1">
+        <div className="flex items-center gap-2 text-red-600">
+          <XCircle className="w-5 h-5" />
+          <span className="font-medium">{t('mcp.connectionFailed')}</span>
+        </div>
+        <div className="text-sm text-red-500 pl-7 space-y-0.5">
+          <div>
+            {isDisabledByConfig
+              ? t('mcp.boxDisabledStdioRefused')
+              : t('mcp.boxUnavailableStdioRefused')}
+          </div>
+          <div className="text-muted-foreground">
+            {t('mcp.boxStdioRefusedSuggestion')}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // 连接失败
   return (
     <div className="space-y-1">

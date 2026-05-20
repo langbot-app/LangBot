@@ -34,6 +34,11 @@ class MCPSessionErrorPhase(enum.Enum):
     MCP_INIT = 'mcp_init'
     RUNTIME = 'runtime'
     TOOL_CALL = 'tool_call'
+    # Stdio MCP refused because Box is disabled in config or currently
+    # unavailable. Not transient — retries would be pointless. The frontend
+    # uses this phase to render a localized actionable message instead of
+    # the raw RuntimeError text.
+    BOX_UNAVAILABLE = 'box_unavailable'
 
 
 class MCPServerBoxConfig(pydantic.BaseModel):

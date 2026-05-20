@@ -728,6 +728,12 @@ const thTH = {
     connectionSuccess: 'เชื่อมต่อสำเร็จ',
     connectionFailed: 'เชื่อมต่อล้มเหลว กรุณาตรวจสอบ URL',
     connectionFailedStatus: 'เชื่อมต่อล้มเหลว',
+    boxDisabledStdioRefused:
+      'MCP server แบบ stdio ต้องใช้ Sandbox Box ซึ่งถูกปิดใช้งานในการตั้งค่า (box.enabled = false)',
+    boxUnavailableStdioRefused:
+      'MCP server แบบ stdio ต้องใช้ Sandbox Box ซึ่งขณะนี้เชื่อมต่อไม่ได้',
+    boxStdioRefusedSuggestion:
+      'กรุณาเปิดใช้งาน Box (box.enabled = true) และตรวจสอบว่ารันไทม์ทำงานปกติ หรือเปลี่ยน MCP server เป็นโหมด http/sse',
     toolsFound: 'เครื่องมือ',
     unknownError: 'ข้อผิดพลาดที่ไม่ทราบสาเหตุ',
     noToolsFound: 'ไม่พบเครื่องมือ',

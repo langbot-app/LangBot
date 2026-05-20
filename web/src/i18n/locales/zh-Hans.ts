@@ -710,6 +710,12 @@ const zhHans = {
     connectionSuccess: '连接成功',
     connectionFailed: '连接失败，请检查URL',
     connectionFailedStatus: '连接失败',
+    boxDisabledStdioRefused:
+      'Stdio 模式的 MCP 服务器依赖 Box 沙箱，目前已在配置中禁用（box.enabled = false）。',
+    boxUnavailableStdioRefused:
+      'Stdio 模式的 MCP 服务器依赖 Box 沙箱，目前无法连接。',
+    boxStdioRefusedSuggestion:
+      '请启用 Box（box.enabled = true）并确认运行时连接正常，或将此服务器切换到 http/sse 模式。',
     toolsFound: '个工具',
     unknownError: '未知错误',
     noToolsFound: '未找到任何工具',

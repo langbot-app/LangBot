@@ -748,6 +748,12 @@ const ruRU = {
     connectionSuccess: 'Подключение успешно',
     connectionFailed: 'Не удалось подключиться, проверьте URL',
     connectionFailedStatus: 'Ошибка подключения',
+    boxDisabledStdioRefused:
+      'MCP-серверы в режиме stdio требуют песочницу Box, которая отключена в конфигурации (box.enabled = false).',
+    boxUnavailableStdioRefused:
+      'MCP-серверы в режиме stdio требуют песочницу Box, которая сейчас недоступна.',
+    boxStdioRefusedSuggestion:
+      'Включите Box (box.enabled = true) и убедитесь, что среда работает, либо переключите этот сервер в режим http/sse.',
     toolsFound: 'инструментов',
     unknownError: 'Неизвестная ошибка',
     noToolsFound: 'Инструменты не найдены',

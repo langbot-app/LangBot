@@ -743,6 +743,12 @@ const jaJP = {
     connectionSuccess: '接続に成功しました',
     connectionFailed: '接続に失敗しました，URLを確認してください',
     connectionFailedStatus: '接続失敗',
+    boxDisabledStdioRefused:
+      'Stdio モードの MCP サーバーは Box サンドボックスを必要としますが、設定で無効化されています（box.enabled = false）。',
+    boxUnavailableStdioRefused:
+      'Stdio モードの MCP サーバーは Box サンドボックスを必要としますが、現在接続できません。',
+    boxStdioRefusedSuggestion:
+      'Box を有効化（box.enabled = true）してランタイムの接続を確認するか、このサーバーを http/sse モードに切り替えてください。',
     toolsFound: '個のツール',
     unknownError: '不明なエラー',
     noToolsFound: 'ツールが見つかりません',

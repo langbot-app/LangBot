@@ -742,6 +742,12 @@ const viVN = {
     connectionSuccess: 'Kết nối thành công',
     connectionFailed: 'Kết nối thất bại, vui lòng kiểm tra URL',
     connectionFailedStatus: 'Kết nối thất bại',
+    boxDisabledStdioRefused:
+      'MCP server ở chế độ stdio cần Sandbox Box, hiện đã bị tắt trong cấu hình (box.enabled = false).',
+    boxUnavailableStdioRefused:
+      'MCP server ở chế độ stdio cần Sandbox Box, hiện không thể kết nối.',
+    boxStdioRefusedSuggestion:
+      'Hãy bật Box (box.enabled = true) và đảm bảo runtime hoạt động, hoặc chuyển server này sang chế độ http/sse.',
     toolsFound: 'công cụ',
     unknownError: 'Lỗi không xác định',
     noToolsFound: 'Không tìm thấy công cụ nào',
