@@ -318,6 +318,70 @@ class AutoProcessToBitableListenerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fields["粉阻(粉末电阻)"], 34.5)
         self.assertEqual(fields["比表(麦克比表)"], 10.8)
 
+    async def test_parse_product_supports_feishu_ocr_table_sample_without_segment(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_product(
+            "A\nB\nE\n样品批号\nHp\n9.15\n2026.05.20\nS18-DA2605-085-CS",
+            "2026-05-20 10:00:00",
+        )
+
+        self.assertEqual(len(records), 1)
+        record = records[0]
+        self.assertEqual(record.route_key, "product.S18")
+        self.assertEqual(record.batch_id, "S18-CP-DA2605-085-CS")
+        self.assertEqual(record.fields["样品批号"], "S18-DA2605-085-CS")
+        self.assertEqual(record.fields["成品后缀"], "CS")
+        self.assertEqual(record.fields["产线"], "A")
+        self.assertEqual(record.fields["段位"], "")
+        self.assertEqual(record.fields["pH"], 9.15)
+        self.assertEqual(record.fields["检测日期"], "2026.05.20")
+
+    async def test_parse_product_extracts_ocr_table_metrics_by_header_order(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_product(
+            "样品批号\n"
+            "成品压实\n"
+            "0.1C充电\n"
+            "0.1C放电\n"
+            "首效\n"
+            "平台效率\n"
+            "残碱(Li+)\n"
+            "碳含量\n"
+            "粉阻\n"
+            "比表\n"
+            "Hp\n"
+            "S18-DA2605-085-CS\n"
+            "2.384\n"
+            "160.2\n"
+            "156.8\n"
+            "9688\n"
+            "82.1\n"
+            "316\n"
+            "1.22\n"
+            "34.5\n"
+            "10.8\n"
+            "9.15\n"
+            "2026.05.20",
+            "2026-05-20 10:00:00",
+        )
+
+        self.assertEqual(len(records), 1)
+        fields = records[0].fields
+        self.assertEqual(fields["样品批号"], "S18-DA2605-085-CS")
+        self.assertEqual(fields["成品压实"], 2.384)
+        self.assertEqual(fields["0.1C充电"], 160.2)
+        self.assertEqual(fields["0.1C放电"], 156.8)
+        self.assertEqual(fields["首效"], 96.88)
+        self.assertEqual(fields["平台效率"], 82.1)
+        self.assertEqual(fields["残碱(Li+)"], 316.0)
+        self.assertEqual(fields["碳含量"], 1.22)
+        self.assertEqual(fields["粉阻(粉末电阻)"], 34.5)
+        self.assertEqual(fields["比表(麦克比表)"], 10.8)
+        self.assertEqual(fields["pH"], 9.15)
+        self.assertEqual(fields["检测日期"], "2026.05.20")
+
     async def test_parse_records_with_text_priority_uses_ocr_for_product_images(self) -> None:
         listener = self._build_listener()
 

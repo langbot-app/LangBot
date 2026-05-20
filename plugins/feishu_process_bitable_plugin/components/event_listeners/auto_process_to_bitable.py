@@ -1310,11 +1310,17 @@ class AutoProcessToBitableListener(EventListener):
             ("碳含量", ("碳含量", "C含量")),
             ("粉阻(粉末电阻)", ("粉阻(粉末电阻)", "粉末电阻", "粉阻")),
             ("比表(麦克比表)", ("比表(麦克比表)", "麦克比表", "比表面积", "比表")),
+            ("pH", ("pH", "PH", "Hp")),
         ]
         all_aliases = [alias for _field_name, aliases in metric_aliases for alias in aliases]
 
+        def _normalize_metric_value(field_name: str, value: float) -> float:
+            if field_name == "首效" and value > 1000:
+                return value / 100.0
+            return value
+
         def _extract_alias_value(alias: str) -> float | None:
-            pattern = rf"{re.escape(alias)}(?:值|均值|结果)?\s*[:：=]?\s*(-?\d+(?:\.\d+)?)"
+            pattern = rf"{re.escape(alias)}(?:值|均值|结果)?\s*[:：=]?\s*(?<![\dA-Za-z])(-?\d+(?:\.\d+)?)(?![\dA-Za-z.])"
             match = re.search(pattern, text, flags=re.IGNORECASE)
             if match:
                 try:
@@ -1336,7 +1342,13 @@ class AutoProcessToBitableListener(EventListener):
                 if other_pos >= 0:
                     segment_end = min(segment_end, other_pos)
             segment = compact[segment_start:segment_end]
-            match = re.search(r"(?:值|均值|结果)?[:：=]?(-?\d+(?:\.\d+)?)", segment, flags=re.IGNORECASE)
+            if re.search(r"S\d+.*D[A-Z]\d{4}", segment, flags=re.IGNORECASE):
+                return None
+            match = re.search(
+                r"(?:值|均值|结果)?[:：=]?(?<![\dA-Za-z])(-?\d+(?:\.\d+)?)(?![\dA-Za-z.])",
+                segment,
+                flags=re.IGNORECASE,
+            )
             if not match:
                 return None
             try:
@@ -1344,17 +1356,78 @@ class AutoProcessToBitableListener(EventListener):
             except Exception:
                 return None
 
+        def _match_metric_field(cell_text: str) -> str | None:
+            compact_cell = re.sub(r"\s+", "", cell_text).lower()
+            if not compact_cell:
+                return None
+            for field_name, aliases in metric_aliases:
+                for alias in aliases:
+                    compact_alias = re.sub(r"\s+", "", alias).lower()
+                    if compact_alias and compact_alias in compact_cell:
+                        return field_name
+            return None
+
+        def _numeric_cell_value(cell_text: str) -> float | None:
+            stripped = cell_text.strip()
+            if re.fullmatch(r"\d{4}[./-]\d{1,2}[./-]\d{1,2}", stripped):
+                return None
+            if re.search(r"S\d+.*D[A-Z]\d{4}", stripped, flags=re.IGNORECASE):
+                return None
+            match = re.fullmatch(r"-?\d+(?:\.\d+)?%?", stripped)
+            if not match:
+                return None
+            try:
+                return float(stripped.rstrip("%"))
+            except Exception:
+                return None
+
+        def _extract_table_values_by_header_order() -> dict[str, float]:
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
+            header_positions: list[tuple[int, str]] = []
+            seen_fields: set[str] = set()
+            for idx, line in enumerate(lines):
+                field_name = _match_metric_field(line)
+                if not field_name or field_name in seen_fields:
+                    continue
+                header_positions.append((idx, field_name))
+                seen_fields.add(field_name)
+            if not header_positions:
+                return {}
+
+            first_value_idx = header_positions[-1][0] + 1
+            numeric_values: list[float] = []
+            for line in lines[first_value_idx:]:
+                value = _numeric_cell_value(line)
+                if value is not None:
+                    numeric_values.append(value)
+            if not numeric_values:
+                return {}
+
+            table_fields: dict[str, float] = {}
+            for (_idx, field_name), value in zip(header_positions, numeric_values):
+                table_fields[field_name] = _normalize_metric_value(field_name, value)
+            return table_fields
+
         for field_name, aliases in metric_aliases:
             for alias in aliases:
                 value = _extract_alias_value(alias)
                 if value is None:
                     continue
-                if field_name == "首效" and value > 1000:
-                    value = value / 100.0
-                fields[field_name] = value
+                fields[field_name] = _normalize_metric_value(field_name, value)
                 break
 
+        for field_name, value in _extract_table_values_by_header_order().items():
+            fields.setdefault(field_name, value)
+
         return fields
+
+    @staticmethod
+    def _extract_product_date_field(block_text: str) -> dict[str, Any]:
+        match = re.search(r"(\d{4})[./-](\d{1,2})[./-](\d{1,2})", block_text)
+        if not match:
+            return {}
+        year, month, day = match.groups()
+        return {"检测日期": f"{int(year):04d}.{int(month):02d}.{int(day):02d}"}
 
     def _parse_product(self, text: str, message_time: str) -> list[ParsedRecord]:
         if not self._process_switch("product", True):
@@ -1364,7 +1437,7 @@ class AutoProcessToBitableListener(EventListener):
         line_pattern = self._production_line_pattern()
         batch_regex = re.compile(
             rf"(S\d+)\s*(?:-\s*CP)?\s*-+\s*D([{line_pattern}])\s*(\d{{4}})\s*-\s*(\d+)"
-            rf"(?:\s*-\s*([A-Z]{{1,4}}))?\s*-\s*([{line_pattern}][12])",
+            rf"(?:\s*-\s*([A-Z]{{1,4}})\s*-\s*([{line_pattern}][12])|\s*-\s*([{line_pattern}][12])|\s*-\s*([A-Z]{{1,4}})(?!\d))?",
             re.IGNORECASE,
         )
         matches = list(batch_regex.finditer(normalized_text))
@@ -1378,18 +1451,34 @@ class AutoProcessToBitableListener(EventListener):
             date_code = str(match.group(3)).strip()
             seq = str(match.group(4)).strip()
             suffix = str(match.group(5) or "").upper().strip()
-            segment = str(match.group(6)).upper().strip()
+            segment = str(match.group(6) or match.group(7) or "").upper().strip()
+            suffix_only = str(match.group(8) or "").upper().strip()
+            if not suffix and suffix_only:
+                suffix = suffix_only
             if not self._is_supported_production_line(line):
                 continue
 
-            batch_id = f"{material_type}-CP-D{line}{date_code}-{seq}-{segment}"
+            sample_batch_id = f"{material_type}-D{line}{date_code}-{seq}"
+            if suffix:
+                sample_batch_id = f"{sample_batch_id}-{suffix}"
+            if segment:
+                sample_batch_id = f"{sample_batch_id}-{segment}"
+
+            batch_id = f"{material_type}-CP-D{line}{date_code}-{seq}"
+            if segment:
+                batch_id = f"{batch_id}-{segment}"
+            elif suffix:
+                batch_id = f"{batch_id}-{suffix}"
             start_pos = match.end()
             end_pos = matches[idx + 1].start() if idx + 1 < len(matches) else len(normalized_text)
             block_text = normalized_text[start_pos:end_pos]
+            if len(matches) == 1:
+                block_text = normalized_text
 
             fields: dict[str, Any] = {
                 "物料类型": material_type,
                 "成品批次": batch_id,
+                "样品批号": sample_batch_id,
                 "产线": line,
                 "段位": segment,
                 "消息时间": message_time,
@@ -1398,6 +1487,7 @@ class AutoProcessToBitableListener(EventListener):
                 fields["成品后缀"] = suffix
             fields.update(self._extract_product_status_fields(block_text))
             fields.update(self._extract_product_metric_fields(block_text))
+            fields.update(self._extract_product_date_field(block_text))
 
             records.append(
                 ParsedRecord(
