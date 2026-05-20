@@ -23,7 +23,10 @@ def run_pip(params: list):
     pipmain(params)
 
 
-def install_requirements(file, extra_params: list = []):
+def install_requirements(file, extra_params: list | None = None):
+    if extra_params is None:
+        extra_params = []
+
     pipmain(
         [
             'install',

@@ -63,6 +63,7 @@ class QueryPool:
             self.cached_queries[query_id] = query
             self.query_id_counter += 1
             self.condition.notify_all()
+            return query
 
     async def __aenter__(self):
         await self.pool_lock.acquire()

@@ -295,7 +295,7 @@ export default function ModelsDialog({
 
   async function handleScanModels(
     providerUuid: string,
-    modelType: ModelType,
+    modelType?: ModelType,
   ): Promise<ScanModelsResult> {
     try {
       const resp = await httpClient.scanProviderModels(providerUuid, modelType);
@@ -319,15 +319,22 @@ export default function ModelsDialog({
     setIsSubmitting(true);
     try {
       for (const item of models) {
-        if (modelType === 'llm') {
+        const effectiveType = item.model.type || modelType;
+        if (effectiveType === 'llm') {
           await httpClient.createProviderLLMModel({
             name: item.model.name,
             provider_uuid: providerUuid,
             abilities: item.abilities,
             extra_args: {},
           } as never);
-        } else {
+        } else if (effectiveType === 'embedding') {
           await httpClient.createProviderEmbeddingModel({
+            name: item.model.name,
+            provider_uuid: providerUuid,
+            extra_args: {},
+          } as never);
+        } else {
+          await httpClient.createProviderRerankModel({
             name: item.model.name,
             provider_uuid: providerUuid,
             extra_args: {},

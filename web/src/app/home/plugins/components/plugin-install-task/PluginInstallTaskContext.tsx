@@ -45,7 +45,11 @@ export interface PluginInstallTask {
   currentAction: string; // raw backend action string
 }
 
-type OnTaskCompleteCallback = (taskId: number, success: boolean) => void;
+type OnTaskCompleteCallback = (
+  taskId: number,
+  success: boolean,
+  error?: string,
+) => void;
 
 interface PluginInstallTaskContextValue {
   tasks: PluginInstallTask[];
@@ -224,13 +228,16 @@ export function PluginInstallTaskProvider({
     onTaskCompleteCallbacks.current.delete(cb);
   }, []);
 
-  const notifyTaskComplete = useCallback((taskId: number, success: boolean) => {
-    if (notifiedTaskIds.current.has(taskId)) return;
-    notifiedTaskIds.current.add(taskId);
-    onTaskCompleteCallbacks.current.forEach((cb) => {
-      cb(taskId, success);
-    });
-  }, []);
+  const notifyTaskComplete = useCallback(
+    (taskId: number, success: boolean, error?: string) => {
+      if (notifiedTaskIds.current.has(taskId)) return;
+      notifiedTaskIds.current.add(taskId);
+      onTaskCompleteCallbacks.current.forEach((cb) => {
+        cb(taskId, success, error);
+      });
+    },
+    [],
+  );
 
   const pollTask = useCallback(
     (taskKey: string, taskId: number) => {
@@ -289,7 +296,7 @@ export function PluginInstallTaskProvider({
                   }
 
                   if (exception) {
-                    notifyTaskComplete(taskId, false);
+                    notifyTaskComplete(taskId, false, exception);
                     return {
                       ...t,
                       stage: InstallStage.ERROR,

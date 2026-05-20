@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ipaddress
+import re
 from urllib.parse import urlparse
 
 
@@ -44,6 +46,40 @@ LOCAL_PATTERNS = [
     '172.31.',
 ]
 
+HOST_LABEL_PATTERN = re.compile(r'^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$')
+
+
+def _is_valid_hostname(host: str) -> bool:
+    if host == 'localhost':
+        return True
+
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        pass
+
+    if not host or len(host) > 253 or any(char.isspace() for char in host):
+        return False
+
+    host = host.rstrip('.')
+    if not host:
+        return False
+
+    return all(HOST_LABEL_PATTERN.match(label) for label in host.split('.'))
+
+
+def _is_local_host(host: str) -> bool:
+    if host == 'localhost':
+        return True
+
+    try:
+        ip_address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+
+    return ip_address.is_private or ip_address.is_loopback or ip_address.is_unspecified
+
 
 def get_runner_category(runner_name: str, runner_url: str) -> str:
     if not runner_url:
@@ -52,12 +88,15 @@ def get_runner_category(runner_name: str, runner_url: str) -> str:
     try:
         parsed_url = urlparse(runner_url)
         host = parsed_url.hostname.lower() if parsed_url.hostname else ''
+        _ = parsed_url.port
     except Exception:
         return RunnerCategory.UNKNOWN
 
-    for pattern in LOCAL_PATTERNS:
-        if host.startswith(pattern):
-            return RunnerCategory.LOCAL
+    if not parsed_url.scheme or not host or not _is_valid_hostname(host):
+        return RunnerCategory.UNKNOWN
+
+    if _is_local_host(host):
+        return RunnerCategory.LOCAL
 
     for domain in CLOUD_DOMAINS:
         if host.endswith(domain):

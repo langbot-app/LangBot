@@ -25,7 +25,7 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
 
     async def initialize(self):
         self.client = openai.AsyncClient(
-            api_key='',
+            api_key=self.init_api_key,
             base_url=self.requester_cfg['base_url'].replace(' ', ''),
             timeout=self.requester_cfg['timeout'],
             http_client=httpx.AsyncClient(trust_env=True, timeout=self.requester_cfg['timeout']),

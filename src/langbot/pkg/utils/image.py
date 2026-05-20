@@ -145,7 +145,8 @@ def get_qq_image_downloadable_url(image_url: str) -> tuple[str, dict]:
     """获取QQ图片的下载链接"""
     parsed = urlparse(image_url)
     query = parse_qs(parsed.query)
-    return f'http://{parsed.netloc}{parsed.path}', query
+    scheme = parsed.scheme or 'http'
+    return f'{scheme}://{parsed.netloc}{parsed.path}', query
 
 
 async def get_qq_image_bytes(image_url: str, query: dict = {}) -> tuple[bytes, str]:

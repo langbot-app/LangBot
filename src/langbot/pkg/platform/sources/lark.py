@@ -1025,7 +1025,90 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         return api_client
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
-        pass
+        text_elements, media_items = await self.message_converter.yiri2target(message, self.api_client)
+
+        # Map standard target_type to Feishu receive_id_type
+        if target_type == 'person':
+            receive_id_type = 'open_id'
+        elif target_type == 'group':
+            receive_id_type = 'chat_id'
+        else:
+            receive_id_type = target_type
+
+        # Send text message if there are text elements
+        if text_elements:
+            needs_post = any(ele['tag'] == 'at' for paragraph in text_elements for ele in paragraph)
+
+            if needs_post:
+                msg_type = 'post'
+                final_content = json.dumps(
+                    {
+                        'zh_Hans': {
+                            'title': '',
+                            'content': text_elements,
+                        },
+                    }
+                )
+            else:
+                msg_type = 'text'
+                parts = []
+                for paragraph in text_elements:
+                    para_text = ''.join(ele.get('text', '') for ele in paragraph)
+                    if para_text:
+                        parts.append(para_text)
+                final_content = json.dumps({'text': '\n\n'.join(parts)})
+
+            request: CreateMessageRequest = (
+                CreateMessageRequest.builder()
+                .receive_id_type(receive_id_type)
+                .request_body(
+                    CreateMessageRequestBody.builder()
+                    .receive_id(target_id)
+                    .content(final_content)
+                    .msg_type(msg_type)
+                    .uuid(str(uuid.uuid4()))
+                    .build()
+                )
+                .build()
+            )
+
+            app_access_token = self.get_app_access_token()
+            req_opt: RequestOption = (
+                RequestOption.builder().app_ticket(self.app_ticket).app_access_token(app_access_token).build()
+            )
+            response: CreateMessageResponse = self.api_client.im.v1.message.create(request, req_opt)
+
+            if not response.success():
+                raise Exception(
+                    f'client.im.v1.message.create failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
+                )
+
+        # Send media messages separately (image, audio, file, etc.)
+        for media in media_items:
+            request: CreateMessageRequest = (
+                CreateMessageRequest.builder()
+                .receive_id_type(receive_id_type)
+                .request_body(
+                    CreateMessageRequestBody.builder()
+                    .receive_id(target_id)
+                    .content(json.dumps(media['content']))
+                    .msg_type(media['msg_type'])
+                    .uuid(str(uuid.uuid4()))
+                    .build()
+                )
+                .build()
+            )
+
+            app_access_token = self.get_app_access_token()
+            req_opt: RequestOption = (
+                RequestOption.builder().app_ticket(self.app_ticket).app_access_token(app_access_token).build()
+            )
+            response: CreateMessageResponse = self.api_client.im.v1.message.create(request, req_opt)
+
+            if not response.success():
+                raise Exception(
+                    f'client.im.v1.message.create ({media["msg_type"]}) failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
+                )
 
     async def is_stream_output_supported(self) -> bool:
         is_stream = False

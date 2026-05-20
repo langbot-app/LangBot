@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import posixpath
-from typing import Any
-from langbot.pkg.core import app
+import re
+from typing import TYPE_CHECKING, Any
+from urllib.parse import unquote
+
+if TYPE_CHECKING:
+    from langbot.pkg.core import app
 
 
 class RAGRuntimeService:
@@ -109,8 +113,17 @@ class RAGRuntimeService:
         regardless of the underlying storage provider.
         """
         # Validate storage_path to prevent path traversal
-        normalized = posixpath.normpath(storage_path)
-        if normalized.startswith('/') or '..' in normalized.split('/'):
+        decoded_path = unquote(storage_path).replace('\\', '/')
+        decoded_segments = decoded_path.split('/')
+        normalized = posixpath.normpath(decoded_path)
+        if (
+            not storage_path
+            or '\x00' in decoded_path
+            or normalized.startswith('/')
+            or '..' in decoded_segments
+            or '..' in normalized.split('/')
+            or re.match(r'^[A-Za-z]:/', normalized)
+        ):
             raise ValueError('Invalid storage path')
         content_bytes = await self.ap.storage_mgr.storage_provider.load(normalized)
         return content_bytes if content_bytes else b''

@@ -21,6 +21,7 @@ export interface IDynamicFormItemSchema {
   /** when type is PLUGIN_SELECTOR, the scopes is the scopes of components(plugin contains), the default is all */
   scopes?: string[];
   accept?: string; // For file type: accepted MIME types
+  login_platform?: string; // For qr-code-login type: platform identifier (e.g. 'feishu', 'weixin')
 }
 
 export enum DynamicFormItemType {
@@ -48,6 +49,7 @@ export enum DynamicFormItemType {
   TOOLS_SELECTOR = 'tools-selector',
   WEBHOOK_URL = 'webhook-url',
   EMBED_CODE = 'embed-code',
+  QR_CODE_LOGIN = 'qr-code-login',
 }
 
 export interface IFileConfig {

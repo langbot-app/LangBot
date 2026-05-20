@@ -140,17 +140,6 @@ class SystemRouterGroup(group.RouterGroup):
         async def _() -> str:
             return self.success(data=await self.ap.maintenance_service.get_storage_analysis())
 
-        @self.route('/debug/exec', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
-        async def _() -> str:
-            if not constants.debug_mode:
-                return self.http_status(403, 403, 'Forbidden')
-
-            py_code = await quart.request.data
-
-            ap = self.ap
-
-            return self.success(data=exec(py_code, {'ap': ap}))
-
         @self.route(
             '/debug/plugin/action',
             methods=['POST'],

@@ -90,7 +90,7 @@ export interface ProviderCardProps {
     abilities: string[],
     extraArgs: ExtraArg[],
   ) => Promise<void>;
-  onScanModels: (modelType: ModelType) => Promise<ScanModelsResult>;
+  onScanModels: (modelType?: ModelType) => Promise<ScanModelsResult>;
   onAddScannedModels: (
     modelType: ModelType,
     models: SelectedScannedModel[],

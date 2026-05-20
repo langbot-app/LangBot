@@ -52,6 +52,9 @@ class ApiKeyService:
 
     async def verify_api_key(self, key: str) -> bool:
         """Verify if an API key is valid"""
+        if not isinstance(key, str) or not key.startswith('lbk_'):
+            return False
+
         result = await self.ap.persistence_mgr.execute_async(
             sqlalchemy.select(apikey.ApiKey).where(apikey.ApiKey.key == key)
         )

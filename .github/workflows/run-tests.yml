@@ -4,25 +4,29 @@ on:
   pull_request:
     types: [opened, ready_for_review, synchronize]
     paths:
-      - 'pkg/**'
+      - 'src/langbot/**'
       - 'tests/**'
       - '.github/workflows/run-tests.yml'
       - 'pyproject.toml'
+      - 'uv.lock'
       - 'run_tests.sh'
+      - 'scripts/test-*.sh'
   push:
     branches:
       - master
       - develop
     paths:
-      - 'pkg/**'
+      - 'src/langbot/**'
       - 'tests/**'
       - '.github/workflows/run-tests.yml'
       - 'pyproject.toml'
+      - 'uv.lock'
       - 'run_tests.sh'
+      - 'scripts/test-*.sh'
 
 jobs:
   test:
-    name: Run Unit Tests
+    name: Unit Tests
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -39,28 +43,13 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install uv
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+        uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
-        run: |
-          uv sync --dev
+        run: uv sync --dev
 
-      - name: Run unit tests
-        run: |
-          bash run_tests.sh
-
-      - name: Upload coverage to Codecov
-        if: matrix.python-version == '3.12'
-        uses: codecov/codecov-action@v5
-        with:
-          files: ./coverage.xml
-          flags: unit-tests
-          name: unit-tests-coverage
-          fail_ci_if_error: false
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      - name: Run unit + smoke tests
+        run: uv run pytest tests/unit_tests/ tests/smoke/ -q --tb=short
 
       - name: Test Summary
         if: always()
@@ -69,3 +58,79 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Python Version: ${{ matrix.python-version }}" >> $GITHUB_STEP_SUMMARY
           echo "Test Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+  integration:
+    name: Fast Integration Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run fast integration tests
+        run: uv run pytest tests/integration/ -m "not slow" -q --tb=short
+
+      - name: Integration Test Summary
+        if: always()
+        run: |
+          echo "## Integration Tests Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Test Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+  coverage:
+    name: Coverage Gate
+    runs-on: ubuntu-latest
+    needs: [test, integration]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run coverage (unit + smoke)
+        run: |
+          uv run pytest tests/unit_tests/ tests/smoke/ \
+            --cov=langbot \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --cov-fail-under=18 \
+            -q --tb=short
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.xml
+          flags: unit-tests
+          name: coverage-report
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Coverage Summary
+        if: always()
+        run: |
+          echo "## Coverage Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Threshold: 18%" >> $GITHUB_STEP_SUMMARY
+          echo "Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY

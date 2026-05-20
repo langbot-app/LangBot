@@ -7,7 +7,7 @@ import pytest
 @pytest.mark.asyncio
 async def test_plugin_list_filter_by_component_kinds():
     """Test that plugins can be filtered by component kinds."""
-    from src.langbot.pkg.plugin.connector import PluginRuntimeConnector
+    from langbot.pkg.plugin.connector import PluginRuntimeConnector
 
     # Mock the application
     mock_app = MagicMock()
@@ -113,7 +113,7 @@ async def test_plugin_list_filter_by_component_kinds():
 @pytest.mark.asyncio
 async def test_plugin_list_filter_no_filter():
     """Test that all plugins are returned when no filter is specified."""
-    from src.langbot.pkg.plugin.connector import PluginRuntimeConnector
+    from langbot.pkg.plugin.connector import PluginRuntimeConnector
 
     # Mock the application
     mock_app = MagicMock()
@@ -174,7 +174,7 @@ async def test_plugin_list_filter_no_filter():
 @pytest.mark.asyncio
 async def test_plugin_list_filter_empty_result():
     """Test that empty list is returned when no plugins match the filter."""
-    from src.langbot.pkg.plugin.connector import PluginRuntimeConnector
+    from langbot.pkg.plugin.connector import PluginRuntimeConnector
 
     # Mock the application
     mock_app = MagicMock()
@@ -220,7 +220,7 @@ async def test_plugin_list_filter_empty_result():
 @pytest.mark.asyncio
 async def test_plugin_list_filter_plugin_without_components():
     """Test that plugins without components are excluded when filtering."""
-    from src.langbot.pkg.plugin.connector import PluginRuntimeConnector
+    from langbot.pkg.plugin.connector import PluginRuntimeConnector
 
     # Mock the application
     mock_app = MagicMock()

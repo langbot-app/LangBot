@@ -7,8 +7,10 @@ import httpx
 import uuid
 import os
 import posixpath
+import sqlalchemy
 
 from .....core import taskmgr
+from .....entity.persistence import plugin as persistence_plugin
 from .. import group
 from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
 
@@ -37,6 +39,16 @@ def _normalize_plugin_asset_path(filepath: str) -> str | None:
         return normalized
 
     return f'assets/{normalized}'
+
+
+def _get_request_origin() -> str:
+    """Return the public request origin, respecting reverse-proxy headers."""
+    forwarded_proto = quart.request.headers.get('X-Forwarded-Proto', '').split(',')[0].strip()
+    forwarded_host = quart.request.headers.get('X-Forwarded-Host', '').split(',')[0].strip()
+
+    scheme = forwarded_proto or quart.request.scheme
+    host = forwarded_host or quart.request.host
+    return f'{scheme}://{host}'
 
 
 @group.group_class('plugins', '/api/v1/plugins')
@@ -138,7 +150,15 @@ class PluginsRouterGroup(group.RouterGroup):
                 return self.http_status(404, -1, 'plugin not found')
 
             if quart.request.method == 'GET':
-                return self.success(data={'config': plugin['plugin_config']})
+                result = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(persistence_plugin.PluginSetting.config)
+                    .where(persistence_plugin.PluginSetting.plugin_author == author)
+                    .where(persistence_plugin.PluginSetting.plugin_name == plugin_name)
+                )
+                persisted_config = result.scalar_one_or_none()
+
+                config = persisted_config if persisted_config is not None else plugin['plugin_config']
+                return self.success(data={'config': config})
             elif quart.request.method == 'PUT':
                 data = await quart.request.json
 
@@ -189,7 +209,7 @@ class PluginsRouterGroup(group.RouterGroup):
             # CSP for HTML pages served to sandboxed iframes (opaque origin).
             # 'self' doesn't work in sandboxed iframes — use actual server origin.
             if mime_type and mime_type.startswith('text/html'):
-                origin = f'{quart.request.scheme}://{quart.request.host}'
+                origin = _get_request_origin()
                 resp.headers['Content-Security-Policy'] = (
                     f'default-src {origin}; '
                     f"script-src {origin} 'unsafe-inline'; "
