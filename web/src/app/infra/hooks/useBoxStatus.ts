@@ -51,6 +51,14 @@ export function useBoxStatus(refreshMs = 30_000) {
       : status
         ? 'boxUnavailable'
         : null;
+  // Specific reason from the backend (e.g.
+  // ``Configured sandbox backend "nsjail" is unavailable`` or
+  // ``docker daemon not running``). Surface this in the failed-state
+  // banner so the user sees WHY instead of a generic "unavailable".
+  // For the disabled-by-config case the boxDisabled i18n string already
+  // carries the reason, so we suppress the duplicate.
+  const reason =
+    hint === 'boxUnavailable' ? status?.connector_error?.trim() || null : null;
 
-  return { status, loading, available, disabled, hint, refresh };
+  return { status, loading, available, disabled, hint, reason, refresh };
 }

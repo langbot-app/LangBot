@@ -28,7 +28,11 @@ export default function PipelineExtension({
   pipelineId: string;
 }) {
   const { t } = useTranslation();
-  const { available: boxAvailable, hint: boxHint } = useBoxStatus();
+  const {
+    available: boxAvailable,
+    hint: boxHint,
+    reason: boxReason,
+  } = useBoxStatus();
   const [loading, setLoading] = useState(true);
   const [enableAllPlugins, setEnableAllPlugins] = useState(true);
   const [enableAllMCPServers, setEnableAllMCPServers] = useState(true);
@@ -526,7 +530,9 @@ export default function PipelineExtension({
             />
           </div>
         </div>
-        {!boxAvailable && <BoxUnavailableNotice hint={boxHint} />}
+        {!boxAvailable && (
+          <BoxUnavailableNotice hint={boxHint} reason={boxReason} />
+        )}
         <div className="space-y-2">
           {enableAllSkills ? (
             <div className="flex h-32 items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted/30">

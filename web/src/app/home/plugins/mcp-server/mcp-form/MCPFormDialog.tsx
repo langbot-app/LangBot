@@ -239,7 +239,11 @@ export default function MCPFormDialog({
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const watchMode = form.watch('mode');
-  const { available: boxAvailable, hint: boxHint } = useBoxStatus();
+  const {
+    available: boxAvailable,
+    hint: boxHint,
+    reason: boxReason,
+  } = useBoxStatus();
   // stdio mode requires the Box sandbox at runtime. Block creation here
   // so users aren't surprised by a connection failure on the detail page.
   const stdioBlockedByBox = watchMode === 'stdio' && !boxAvailable;
@@ -676,7 +680,11 @@ export default function MCPFormDialog({
                       </SelectContent>
                     </Select>
                     {stdioBlockedByBox && (
-                      <BoxUnavailableNotice hint={boxHint} className="mt-2" />
+                      <BoxUnavailableNotice
+                        hint={boxHint}
+                        reason={boxReason}
+                        className="mt-2"
+                      />
                     )}
                     <FormMessage />
                   </FormItem>

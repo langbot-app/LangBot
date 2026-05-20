@@ -17,7 +17,11 @@ export default function SkillsPage() {
   const { refreshSkills } = useSidebarData();
 
   const isCreateView = actionParam === 'create';
-  const { available: boxAvailable, hint: boxHint } = useBoxStatus();
+  const {
+    available: boxAvailable,
+    hint: boxHint,
+    reason: boxReason,
+  } = useBoxStatus();
 
   useEffect(() => {
     if (!detailId && !isCreateView) {
@@ -64,7 +68,7 @@ export default function SkillsPage() {
       </div>
       {!boxAvailable && (
         <div className="pb-4 shrink-0">
-          <BoxUnavailableNotice hint={boxHint} />
+          <BoxUnavailableNotice hint={boxHint} reason={boxReason} />
         </div>
       )}
       <div className="min-h-0 flex-1">

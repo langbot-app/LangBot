@@ -421,7 +421,11 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
   );
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const watchMode = form.watch('mode');
-  const { available: boxAvailable, hint: boxHint } = useBoxStatus();
+  const {
+    available: boxAvailable,
+    hint: boxHint,
+    reason: boxReason,
+  } = useBoxStatus();
   // stdio mode requires the Box sandbox at runtime. If the user picks
   // stdio while Box is disabled / unreachable, the server would refuse
   // to start anyway — block creation upfront so they aren't surprised
@@ -868,7 +872,11 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
                 </SelectContent>
               </Select>
               {stdioBlockedByBox && (
-                <BoxUnavailableNotice hint={boxHint} className="mt-2" />
+                <BoxUnavailableNotice
+                  hint={boxHint}
+                  reason={boxReason}
+                  className="mt-2"
+                />
               )}
               <FormMessage />
             </FormItem>

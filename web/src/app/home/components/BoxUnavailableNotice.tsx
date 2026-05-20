@@ -13,16 +13,18 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
  */
 export interface BoxUnavailableNoticeProps {
   hint: 'boxDisabled' | 'boxUnavailable' | null;
-  /** Optional extra context line (e.g. the specific consumer name). */
-  context?: string;
-  /** When true, render as muted; default uses the destructive variant only
-   * for failed (boxUnavailable) state so a deliberate disable looks calm. */
+  /** Specific failure reason from the backend (``connector_error``). Shown
+   *  on a dedicated line so the user sees WHY (e.g. ``Configured sandbox
+   *  backend "nsjail" is unavailable``) instead of just the generic
+   *  "unavailable" wording. Ignored when ``hint === 'boxDisabled'``
+   *  because the disabled-by-config message already carries the reason. */
+  reason?: string | null;
   className?: string;
 }
 
 export function BoxUnavailableNotice({
   hint,
-  context,
+  reason,
   className,
 }: BoxUnavailableNoticeProps) {
   const { t } = useTranslation();
@@ -30,13 +32,16 @@ export function BoxUnavailableNotice({
 
   const variant = hint === 'boxDisabled' ? 'default' : 'destructive';
   const Icon = hint === 'boxDisabled' ? Info : ShieldAlert;
+  const showReason = hint === 'boxUnavailable' && reason;
 
   return (
     <Alert variant={variant} className={className}>
       <Icon className="h-4 w-4" />
       <AlertDescription className="space-y-1">
         <div>{t(`monitoring.${hint}`)}</div>
-        {context && <div className="text-xs opacity-80">{context}</div>}
+        {showReason && (
+          <div className="text-xs font-mono opacity-80 break-all">{reason}</div>
+        )}
         <div className="text-xs opacity-80">
           {t('monitoring.boxRequiredHint')}
         </div>

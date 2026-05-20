@@ -32,7 +32,11 @@ export default function SkillDetailContent({ id }: { id: string }) {
   const { refreshSkills, skills, setDetailEntityName } = useSidebarData();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const skill = skills.find((item) => item.id === id);
-  const { available: boxAvailable, hint: boxHint } = useBoxStatus();
+  const {
+    available: boxAvailable,
+    hint: boxHint,
+    reason: boxReason,
+  } = useBoxStatus();
 
   useEffect(() => {
     if (isCreateMode) {
@@ -96,7 +100,7 @@ export default function SkillDetailContent({ id }: { id: string }) {
 
         {!boxAvailable && (
           <div className="pb-4 shrink-0">
-            <BoxUnavailableNotice hint={boxHint} />
+            <BoxUnavailableNotice hint={boxHint} reason={boxReason} />
           </div>
         )}
 
@@ -176,7 +180,7 @@ export default function SkillDetailContent({ id }: { id: string }) {
 
         {!boxAvailable && (
           <div className="pb-4 shrink-0">
-            <BoxUnavailableNotice hint={boxHint} />
+            <BoxUnavailableNotice hint={boxHint} reason={boxReason} />
           </div>
         )}
 
