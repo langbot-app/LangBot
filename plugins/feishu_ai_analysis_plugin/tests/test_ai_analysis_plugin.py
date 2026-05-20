@@ -31,6 +31,20 @@ class CommandParserTest(unittest.TestCase):
         self.assertTrue(result.triggered)
         self.assertIn("批次号", result.error)
 
+    def test_parse_natural_feishu_request_requires_plugin_format(self) -> None:
+        result = parse_analysis_command("帮我分析飞书表格里的制程数据")
+        self.assertTrue(result.triggered)
+        self.assertIn("缺少批次号", result.error)
+        self.assertIn("异常分析 <批次号>", result.error)
+
+    def test_parse_natural_abnormal_request_with_batch(self) -> None:
+        result = parse_analysis_command("帮我分析 S99-DX9999-001 制程异常原因 压实偏低")
+        self.assertTrue(result.triggered)
+        assert result.value is not None
+        self.assertEqual(result.value.kind, "abnormal")
+        self.assertEqual(result.value.batch, "S99-DX9999-001")
+        self.assertIn("压实偏低", result.value.abnormal)
+
 
 class BatchTest(unittest.TestCase):
     def test_normalize_batch_variants(self) -> None:
