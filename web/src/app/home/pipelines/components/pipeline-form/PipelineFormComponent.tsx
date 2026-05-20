@@ -7,7 +7,6 @@ import {
 } from '@/app/infra/entities/pipeline';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import N8nAuthFormComponent from '@/app/home/components/dynamic-form/N8nAuthFormComponent';
-import { BoxUnavailableNotice } from '@/app/home/components/BoxUnavailableNotice';
 import { useBoxStatus } from '@/app/infra/hooks/useBoxStatus';
 import { Button } from '@/components/ui/button';
 import { useForm } from 'react-hook-form';
@@ -77,7 +76,7 @@ export default function PipelineFormComponent({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCopyConfirm, setShowCopyConfirm] = useState(false);
   const [isDefaultPipeline, setIsDefaultPipeline] = useState<boolean>(false);
-  const { available: boxAvailable, hint: boxHint } = useBoxStatus();
+  const { available: boxAvailable } = useBoxStatus();
 
   const formSchema = isEditMode
     ? z.object({
@@ -416,40 +415,40 @@ export default function PipelineFormComponent({
       }
     }
 
-    // The local-agent stage carries sandbox-bound fields (e.g.
-    // ``box-session-id-template``). When Box is disabled / unavailable, show
-    // a banner so operators know those fields will have no effect. We render
-    // the banner above the card rather than per-field because the field set
-    // is driven by yaml metadata and a single notice keeps the UI calm.
-    const showBoxNoticeForStage = stage.name === 'local-agent' && !boxAvailable;
+    // Box availability is exposed through ``systemContext.__system.box_available``
+    // so individual yaml-driven fields (e.g. ``box-session-id-template``) can
+    // opt-in via ``disable_if`` + ``disabled_tooltip`` rather than every page
+    // hard-coding a banner. Field-level gating keeps unrelated fields
+    // untouched.
+    const stageSystemContext =
+      stage.name === 'local-agent'
+        ? { box_available: boxAvailable }
+        : undefined;
 
     return (
-      <div key={stage.name} className="space-y-3">
-        {showBoxNoticeForStage && <BoxUnavailableNotice hint={boxHint} />}
-        <Card>
-          <CardHeader>
-            <CardTitle>{extractI18nObject(stage.label)}</CardTitle>
-            {stage.description && (
-              <CardDescription>
-                {extractI18nObject(stage.description)}
-              </CardDescription>
-            )}
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <DynamicFormComponent
-              itemConfigList={stage.config}
-              initialValues={
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (form.watch(formName) as Record<string, any>)?.[stage.name] ||
-                {}
-              }
-              onSubmit={(values) => {
-                handleDynamicFormEmit(formName, stage.name, values);
-              }}
-            />
-          </CardContent>
-        </Card>
-      </div>
+      <Card key={stage.name}>
+        <CardHeader>
+          <CardTitle>{extractI18nObject(stage.label)}</CardTitle>
+          {stage.description && (
+            <CardDescription>
+              {extractI18nObject(stage.description)}
+            </CardDescription>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <DynamicFormComponent
+            itemConfigList={stage.config}
+            initialValues={
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (form.watch(formName) as Record<string, any>)?.[stage.name] || {}
+            }
+            onSubmit={(values) => {
+              handleDynamicFormEmit(formName, stage.name, values);
+            }}
+            systemContext={stageSystemContext}
+          />
+        </CardContent>
+      </Card>
     );
   }
 

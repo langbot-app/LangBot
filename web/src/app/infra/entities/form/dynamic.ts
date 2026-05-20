@@ -16,7 +16,18 @@ export interface IDynamicFormItemSchema {
   type: DynamicFormItemType;
   description?: I18nObject;
   options?: IDynamicFormItemOption[];
+  /** When the condition matches, the field is rendered. Same evaluator as
+   *  ``disable_if`` — supports the ``__system.*`` namespace via
+   *  ``DynamicFormComponent.systemContext``. */
   show_if?: IShowIfCondition;
+  /** When the condition matches, the field is rendered as read-only/disabled
+   *  but stays visible. Use this when the operator needs to see that the
+   *  field exists but can't be edited under the current runtime state (e.g.
+   *  a sandbox-bound field when Box is disabled). Pair with
+   *  ``disabled_tooltip`` to explain why. */
+  disable_if?: IShowIfCondition;
+  /** Tooltip shown next to the field label when ``disable_if`` is active. */
+  disabled_tooltip?: I18nObject;
 
   /** when type is PLUGIN_SELECTOR, the scopes is the scopes of components(plugin contains), the default is all */
   scopes?: string[];

@@ -143,6 +143,22 @@ stages:
           th_TH: กำหนดวิธีแชร์สภาพแวดล้อม Sandbox ระหว่างข้อความ
           es_ES: Determina cómo se comparten los entornos sandbox entre mensajes.
           ru_RU: Определяет, как песочницы используются совместно между сообщениями.
+        disable_if:
+          field: __system.box_available
+          operator: eq
+          value: false
+        disabled_tooltip:
+          en_US: >-
+            Box sandbox is disabled or unavailable. Enable it in config.yaml
+            (box.enabled = true) and ensure the runtime is reachable to change
+            this setting.
+          zh_Hans: Box 沙箱已禁用或不可用。请在配置中启用（box.enabled = true）并确认运行时连接正常，才能修改此项。
+          zh_Hant: Box 沙箱已停用或無法使用。請在設定中啟用（box.enabled = true）並確認執行時連線正常，才能修改此項。
+          ja_JP: Box サンドボックスが無効または利用できません。設定で有効化（box.enabled = true）し、ランタイムが接続できることを確認してから変更してください。
+          vi_VN: Sandbox Box đã tắt hoặc không khả dụng. Hãy bật trong cấu hình (box.enabled = true) và đảm bảo runtime hoạt động để chỉnh sửa.
+          th_TH: Sandbox Box ถูกปิดใช้งานหรือไม่พร้อมใช้งาน กรุณาเปิดใช้งานในการตั้งค่า (box.enabled = true) และตรวจสอบว่ารันไทม์เชื่อมต่อปกติก่อนปรับค่า
+          es_ES: El sandbox de Box está desactivado o no disponible. Actívelo en la configuración (box.enabled = true) y asegúrese de que el runtime esté conectado para modificar este ajuste.
+          ru_RU: Песочница Box отключена или недоступна. Включите её в конфигурации (box.enabled = true) и убедитесь, что среда выполнения работает, чтобы изменить эту настройку.
         type: select
         required: false
         default: "{launcher_type}_{launcher_id}"
