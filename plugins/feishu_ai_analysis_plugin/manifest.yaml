@@ -4,7 +4,7 @@ metadata:
   author: local
   name: feishu_ai_analysis_plugin
   repository: "https://open.feishu.cn/"
-  version: 0.1.0
+  version: 0.1.1
   description:
     en_US: AI-assisted LFP process abnormal diagnosis, product data analysis, and recipe review for Feishu Base/Sheets.
     zh_Hans: 基于飞书多维表和电子表格的 LFP 制程异常分析、成品数据分析、配方复盘推荐插件。

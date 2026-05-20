@@ -57,6 +57,8 @@ plugins/*/dist/
 /plugins/feishu_ocr_plugin/
 !plugins/feishu_keyword_report_plugin/dist/
 !plugins/feishu_keyword_report_plugin/dist/*.lbpkg
+!plugins/feishu_ai_analysis_plugin/dist/
+!plugins/feishu_ai_analysis_plugin/dist/*.lbpkg
 !plugins/feishu_process_bitable_plugin/dist/
 !plugins/feishu_process_bitable_plugin/dist/*.lbpkg
 
