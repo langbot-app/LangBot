@@ -72,6 +72,90 @@ def test_scan_directory_errors_when_skill_is_deeper_than_two_levels(skill_servic
         skill_service.scan_directory(str(tmp_path))
 
 
+class TestRequireBoxForWrite:
+    """Writes must refuse when ``ap.box_service`` is installed but unavailable
+    (disabled in config OR connection failed). Legacy setups without
+    ``ap.box_service`` continue to use the local fallback."""
+
+    def _ap_with_disabled_box(self):
+        return SimpleNamespace(
+            skill_mgr=SimpleNamespace(reload_skills=AsyncMock()),
+            box_service=SimpleNamespace(
+                available=False,
+                enabled=False,
+                _connector_error='Box runtime is disabled in config (box.enabled = false)',
+            ),
+        )
+
+    def _ap_with_failed_box(self):
+        return SimpleNamespace(
+            skill_mgr=SimpleNamespace(reload_skills=AsyncMock()),
+            box_service=SimpleNamespace(
+                available=False,
+                enabled=True,
+                _connector_error='docker daemon not running',
+            ),
+        )
+
+    @pytest.mark.asyncio
+    async def test_create_skill_refused_when_box_disabled(self):
+        service = SkillService(self._ap_with_disabled_box())
+        with pytest.raises(ValueError, match='disabled in config'):
+            await service.create_skill({'name': 'x'})
+
+    @pytest.mark.asyncio
+    async def test_create_skill_refused_when_box_failed(self):
+        service = SkillService(self._ap_with_failed_box())
+        with pytest.raises(ValueError, match='docker daemon not running'):
+            await service.create_skill({'name': 'x'})
+
+    @pytest.mark.asyncio
+    async def test_update_skill_refused_when_box_disabled(self):
+        service = SkillService(self._ap_with_disabled_box())
+        with pytest.raises(ValueError, match='Editing a skill requires the Box runtime'):
+            await service.update_skill('x', {})
+
+    @pytest.mark.asyncio
+    async def test_write_skill_file_refused_when_box_disabled(self):
+        service = SkillService(self._ap_with_disabled_box())
+        with pytest.raises(ValueError, match='Editing skill files requires the Box runtime'):
+            await service.write_skill_file('x', 'a.txt', 'hi')
+
+    @pytest.mark.asyncio
+    async def test_install_from_github_refused_when_box_disabled(self):
+        service = SkillService(self._ap_with_disabled_box())
+        with pytest.raises(ValueError, match='Installing a skill from GitHub'):
+            await service.install_from_github({'owner': 'o', 'repo': 'r', 'asset_url': 'https://example/x.zip'})
+
+    @pytest.mark.asyncio
+    async def test_install_from_zip_upload_refused_when_box_disabled(self):
+        service = SkillService(self._ap_with_disabled_box())
+        with pytest.raises(ValueError, match='Installing a skill from upload'):
+            await service.install_from_zip_upload(file_bytes=b'', filename='x.zip')
+
+    @pytest.mark.asyncio
+    async def test_legacy_setup_without_box_service_still_allows_local_create(self, tmp_path, monkeypatch):
+        """Setups that never installed ap.box_service (pre-Box dev mode) keep
+        using the local-skills fallback path — that's the whole point of the
+        ``getattr`` distinguisher in _require_box_for_write."""
+        monkeypatch.setenv('LANGBOT_DATA_ROOT', str(tmp_path / 'data'))
+        service = SkillService(SimpleNamespace(skill_mgr=SimpleNamespace(reload_skills=AsyncMock())))
+        service.get_skill_by_name = AsyncMock(return_value=None)
+        service.get_skill = AsyncMock(
+            return_value={
+                'name': 'local-skill',
+                'package_root': str(tmp_path / 'data' / 'skills' / 'local-skill'),
+                'description': '',
+                'instructions': '',
+            }
+        )
+
+        # Does not raise — gate is a no-op without ap.box_service.
+        await service.create_skill(
+            {'name': 'local-skill', 'display_name': 'Local', 'description': '', 'instructions': 'hi'}
+        )
+
+
 @pytest.mark.asyncio
 async def test_create_skill_import_preserves_existing_skill_content_when_form_fields_blank(tmp_path, monkeypatch):
     source_dir = tmp_path / 'external-skills' / 'manual-skill'

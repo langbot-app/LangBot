@@ -90,6 +90,26 @@ class RuntimeMCPSession:
             await self._box_stdio_runtime.initialize()
             return
 
+        # Box is configured (ap.box_service exists) but currently unavailable
+        # (disabled by config or connection failed). Refuse stdio MCP rather
+        # than silently falling through to host-stdio — the operator asked
+        # for the sandbox and the failure mode should be visible.
+        box_service = getattr(self.ap, 'box_service', None)
+        if box_service is not None and not getattr(box_service, 'available', False):
+            connector_error = getattr(box_service, '_connector_error', '') or 'currently unavailable'
+            if not getattr(box_service, 'enabled', True):
+                reason = 'disabled in config (box.enabled = false)'
+            else:
+                reason = f'unavailable: {connector_error}'
+            raise RuntimeError(
+                f'Stdio MCP server "{self.server_name}" requires the Box runtime, '
+                f'which is {reason}. Either enable Box in config.yaml '
+                f'(box.enabled = true) and ensure the runtime is healthy, '
+                f'or switch this MCP server to http/sse transport.'
+            )
+
+        # Legacy: no box_service installed at all (pre-Box dev mode). Fall
+        # through to host-stdio for backward compatibility.
         server_params = StdioServerParameters(
             command=self.server_config['command'],
             args=self.server_config['args'],

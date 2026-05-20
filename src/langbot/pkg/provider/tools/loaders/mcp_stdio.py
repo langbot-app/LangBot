@@ -105,7 +105,14 @@ class BoxStdioSessionRuntime:
     def uses_box_stdio(self) -> bool:
         if self.server_config.get('mode') != 'stdio':
             return False
-        return getattr(self.ap, 'box_service', None) is not None
+        box_service = getattr(self.ap, 'box_service', None)
+        if box_service is None:
+            return False
+        # When Box is configured but currently unavailable (disabled or
+        # connection failed), do NOT silently fall through to host-stdio —
+        # that would bypass the sandbox the operator asked for. The caller
+        # is expected to refuse the stdio MCP server with a clear error.
+        return bool(getattr(box_service, 'available', False))
 
     async def initialize(self) -> None:
         await self._wait_for_box_runtime()

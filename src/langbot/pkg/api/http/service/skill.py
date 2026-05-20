@@ -74,6 +74,34 @@ class SkillService:
             return box_service
         return None
 
+    def _require_box_for_write(self, action: str) -> None:
+        """Refuse a write operation when Box is installed but unavailable.
+
+        Distinguishes three states:
+        - Box available → no-op (caller proceeds via the Box delegate path).
+        - Box installed but disabled by config or currently failed → raise
+          with a clear, actionable message. The frontend translates this to
+          a banner / disabled affordance.
+        - Box not installed at all (legacy / pre-Box dev mode, no
+          ``ap.box_service`` attribute) → also no-op so the local-skills
+          fallback still works for that minimal setup.
+        """
+        ap_box = getattr(self.ap, 'box_service', None)
+        if ap_box is None:
+            return  # legacy mode, allow local fallback
+        if getattr(ap_box, 'available', False):
+            return  # Box is up, delegate path will be used
+        if not getattr(ap_box, 'enabled', True):
+            reason = 'disabled in config (box.enabled = false)'
+        else:
+            connector_error = getattr(ap_box, '_connector_error', '') or 'currently unavailable'
+            reason = f'unavailable: {connector_error}'
+        raise ValueError(
+            f'{action} requires the Box runtime, which is {reason}. '
+            f'Enable Box in config.yaml (box.enabled = true) and ensure the '
+            f'runtime is reachable before retrying.'
+        )
+
     @staticmethod
     def _serialize_skill(skill: dict) -> dict:
         return {field: skill.get(field) for field in _PUBLIC_SKILL_FIELDS if field in skill}
@@ -100,6 +128,7 @@ class SkillService:
         return await self.get_skill(name)
 
     async def create_skill(self, data: dict) -> dict:
+        self._require_box_for_write('Creating a skill')
         box_service = self._box_service()
         if box_service is not None:
             created = await box_service.create_skill(data)
@@ -146,6 +175,7 @@ class SkillService:
         return created
 
     async def update_skill(self, skill_name: str, data: dict) -> dict:
+        self._require_box_for_write('Editing a skill')
         box_service = self._box_service()
         if box_service is not None:
             updated = await box_service.update_skill(skill_name, data)
@@ -266,6 +296,7 @@ class SkillService:
         }
 
     async def write_skill_file(self, skill_name: str, path: str, content: str) -> dict:
+        self._require_box_for_write('Editing skill files')
         box_service = self._box_service()
         if box_service is not None:
             result = await box_service.write_skill_file(skill_name, path, content)
@@ -294,6 +325,7 @@ class SkillService:
         }
 
     async def install_from_github(self, data: dict) -> list[dict]:
+        self._require_box_for_write('Installing a skill from GitHub')
         owner = str(data['owner']).strip()
         repo = str(data['repo']).strip()
         release_tag = str(data.get('release_tag', '')).strip()
@@ -375,6 +407,7 @@ class SkillService:
         source_paths: list[str] | None = None,
         source_path: str = '',
     ) -> list[dict]:
+        self._require_box_for_write('Installing a skill from upload')
         box_service = self._box_service()
         if box_service is not None:
             installed = await box_service.install_skill_zip(

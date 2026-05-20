@@ -46,8 +46,12 @@ class BoxService:
         output_limit_chars: int = 4000,
     ):
         self.ap = ap
+        self._enabled = self._load_enabled()
         self._runtime_connector: BoxRuntimeConnector | None = None
         if client is None:
+            # Always construct a connector — its __init__ is side-effect free
+            # (no I/O, no subprocess). When ``box.enabled = false`` we simply
+            # skip ``connector.initialize()`` so no connection is attempted.
             self._runtime_connector = BoxRuntimeConnector(ap, runtime_disconnect_callback=self._on_runtime_disconnect)
             client = self._runtime_connector.client
         self.client = client
@@ -64,8 +68,27 @@ class BoxService:
         self._connector_error: str = ''
         self._reconnecting = False
 
+    @property
+    def enabled(self) -> bool:
+        """Whether Box is enabled in config. False means the operator has
+        deliberately turned the sandbox off via ``box.enabled = false``.
+        Disabled and "enabled but unavailable" are reported as the same
+        ``available = False`` to consumers, but distinguished in get_status."""
+        return self._enabled
+
     async def initialize(self):
         self._ensure_default_workspace()
+        if not self._enabled:
+            # Disabled by config: do NOT connect to a remote runtime, do NOT
+            # fork a stdio subprocess. Every consumer of box_service should
+            # gate on ``available`` and degrade gracefully.
+            self._available = False
+            self._connector_error = 'Box runtime is disabled in config (box.enabled = false)'
+            self.ap.logger.info(
+                'Box runtime disabled by config; sandbox features (exec/read/write/edit, '
+                'skill add/edit, stdio MCP) will be unavailable.'
+            )
+            return
         try:
             if self._runtime_connector is not None:
                 await self._runtime_connector.initialize()
@@ -86,7 +109,11 @@ class BoxService:
         """Called by the connector when the Box runtime connection drops.
 
         Spawns a background reconnection loop so the caller is not blocked.
+        Skipped entirely when Box is disabled by config — that path should
+        never have connected in the first place.
         """
+        if not self._enabled:
+            return
         if self._reconnecting:
             return  # Another reconnect loop is already running
         self._reconnecting = True
@@ -523,6 +550,16 @@ class BoxService:
             skills_root = os.path.join(self.host_root, skills_root)
         return os.path.realpath(os.path.abspath(skills_root))
 
+    def _load_enabled(self) -> bool:
+        """Read ``box.enabled`` (top-level, not ``box.local.*``). Default True
+        — disabling is opt-in. Accepts bool, ``'true'``/``'false'`` strings,
+        and the standard env-overridden truthy values that
+        ``LoadConfigStage._apply_env_overrides_to_config`` produces."""
+        raw = _get_box_config(self.ap).get('enabled', True)
+        if isinstance(raw, bool):
+            return raw
+        return str(raw).strip().lower() not in ('false', '0', 'no', 'off', '')
+
     def _load_custom_image(self) -> str | None:
         raw = str(self._local_config().get('image', '') or '').strip()
         return raw or None
@@ -714,6 +751,7 @@ class BoxService:
         if not self._available:
             return {
                 'available': False,
+                'enabled': self._enabled,
                 'profile': self.profile.name,
                 'recent_error_count': len(self._recent_errors),
                 'connector_error': self._connector_error,
@@ -725,6 +763,7 @@ class BoxService:
             # heartbeat hasn't flipped _available yet.
             return {
                 'available': False,
+                'enabled': self._enabled,
                 'profile': self.profile.name,
                 'recent_error_count': len(self._recent_errors),
                 'connector_error': str(exc),
@@ -732,6 +771,7 @@ class BoxService:
         return {
             **runtime_status,
             'available': True,
+            'enabled': self._enabled,
             'profile': self.profile.name,
             'recent_error_count': len(self._recent_errors),
         }

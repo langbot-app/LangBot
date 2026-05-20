@@ -105,6 +105,13 @@ monitoring:
         # Number of expired rows to delete per table batch
         delete_batch_size: 1000
 box:
+    # Master switch for the Box sandbox runtime. When false, LangBot does NOT
+    # attempt to connect to a remote Box runtime nor start a local stdio Box
+    # subprocess. Disabling Box also disables every feature that depends on it:
+    # the native sandbox tools (exec/read/write/edit/glob/grep), the activate
+    # skill tool, skill add/edit, and stdio-mode MCP servers. Skills can still
+    # be listed read-only and http/sse MCP servers continue to work.
+    enabled: true
     backend: 'local'  # 'local' (Docker/nsjail), 'docker', 'nsjail', or 'e2b'. BOX_BACKEND env var takes precedence.
     runtime:
         endpoint: ''  # External Box Runtime base URL, e.g. 'ws://127.0.0.1:5410'. Leave empty for local auto-managed runtime.

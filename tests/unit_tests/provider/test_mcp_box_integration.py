@@ -561,7 +561,12 @@ class TestGetRuntimeInfoDict:
         assert info['box_session_id'] == 'mcp-shared'
         assert info['box_enabled'] is True
 
-    def test_stdio_session_waits_for_unavailable_box_runtime(self, mcp_module):
+    def test_stdio_session_refuses_when_box_unavailable(self, mcp_module):
+        """Policy: when Box is configured but unavailable (disabled in config
+        OR connection failed), stdio MCP servers are NOT treated as box-stdio.
+        ``_init_stdio_python_server`` will raise a clear refusal at start
+        time; until then, the runtime info simply omits box_session_id so the
+        UI can render the disabled state cleanly."""
         ap = _make_ap()
         ap.box_service.available = False
         s = _make_session(
@@ -576,8 +581,8 @@ class TestGetRuntimeInfoDict:
             ap=ap,
         )
         info = s.get_runtime_info_dict()
-        assert info['box_session_id'] == 'mcp-shared'
-        assert info['box_enabled'] is True
+        assert 'box_session_id' not in info
+        assert 'box_enabled' not in info
 
     def test_stdio_session_without_box_service_uses_local_stdio(self, mcp_module):
         ap = _make_ap()

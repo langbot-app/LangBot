@@ -152,8 +152,10 @@ def make_app(
     profile: str = 'default',
     host_root: str = '',
     workspace_quota_mb: int | None = None,
+    enabled: bool = True,
 ):
     box_config = {
+        'enabled': enabled,
         'backend': 'local',
         'runtime': {'endpoint': ''},
         'local': {
@@ -1223,6 +1225,65 @@ class TestBoxHostMountModeNone:
                 mount_path='/project',
                 workdir='/workspace',
             )
+
+
+class TestBoxDisabledByConfig:
+    """``box.enabled = false`` must keep the BoxService usable as a status
+    surface but skip every connection attempt and report unavailable."""
+
+    @pytest.mark.asyncio
+    async def test_initialize_skips_connector_when_disabled(self):
+        logger = Mock()
+        app = make_app(logger, enabled=False)
+        client = Mock(spec=BoxRuntimeClient)
+        client.initialize = AsyncMock()
+        service = BoxService(app, client=client)
+
+        await service.initialize()
+
+        # The client must not be touched; we did not even open a connection.
+        client.initialize.assert_not_awaited()
+        assert service.enabled is False
+        assert service.available is False
+        # The reason is captured so the dashboard / UI can show it.
+        assert 'disabled' in service._connector_error.lower()
+
+    @pytest.mark.asyncio
+    async def test_get_status_reports_disabled(self):
+        logger = Mock()
+        service = BoxService(make_app(logger, enabled=False), client=Mock(spec=BoxRuntimeClient))
+        await service.initialize()
+
+        status = await service.get_status()
+
+        assert status['available'] is False
+        assert status['enabled'] is False
+        assert 'disabled' in status['connector_error'].lower()
+
+    @pytest.mark.asyncio
+    async def test_get_status_distinguishes_enabled_but_unavailable(self):
+        logger = Mock()
+        client = Mock(spec=BoxRuntimeClient)
+        client.initialize = AsyncMock(side_effect=RuntimeError('docker daemon not running'))
+        service = BoxService(make_app(logger, enabled=True), client=client)
+
+        await service.initialize()
+
+        status = await service.get_status()
+        assert status['available'] is False
+        assert status['enabled'] is True
+        assert 'docker daemon' in status['connector_error']
+
+    @pytest.mark.asyncio
+    async def test_disconnect_callback_is_no_op_when_disabled(self):
+        logger = Mock()
+        service = BoxService(make_app(logger, enabled=False), client=Mock(spec=BoxRuntimeClient))
+
+        # Should be safe to fire; must not flip reconnect state on a disabled
+        # service. If it tried to schedule a reconnect, the test would hang.
+        await service._on_runtime_disconnect(connector=Mock())
+
+        assert service._reconnecting is False
 
 
 class TestBuildSkillExtraMounts:
