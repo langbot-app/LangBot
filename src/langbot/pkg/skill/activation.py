@@ -13,6 +13,7 @@ if typing.TYPE_CHECKING:
 # This file is kept for potential future extensions but the text marker
 # detection mechanism has been removed.
 
+
 def register_activated_skill(
     ap: app.Application,
     query: pipeline_query.Query,

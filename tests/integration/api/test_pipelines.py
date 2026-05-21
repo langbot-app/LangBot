@@ -20,6 +20,7 @@ pytestmark = pytest.mark.integration
 
 # ============== FIXTURE FOR SYS.MODULES ISOLATION ==============
 
+
 @pytest.fixture(scope='module')
 def mock_circular_import_chain():
     """Break circular import chain for API controller."""
@@ -53,10 +54,12 @@ def mock_circular_import_chain():
     ):
         # Import groups after mocking to populate preregistered_groups
         import langbot.pkg.api.http.controller.groups.pipelines.pipelines as _pipelines  # noqa: E402, F401
+
         yield
 
 
 # ============== FAKE APPLICATION WITH PIPELINE SERVICES ==============
+
 
 @pytest.fixture(scope='module')
 def fake_pipeline_app():
@@ -64,10 +67,12 @@ def fake_pipeline_app():
     app = FakeApp()
 
     # Pipeline config
-    app.instance_config.data.update({
-        'api': {'port': 5300},
-        'system': {'allow_modify_login_info': True, 'limitation': {}},
-    })
+    app.instance_config.data.update(
+        {
+            'api': {'port': 5300},
+            'system': {'allow_modify_login_info': True, 'limitation': {}},
+        }
+    )
 
     # Auth services
     app.user_service = Mock()
@@ -79,25 +84,31 @@ def fake_pipeline_app():
 
     # Pipeline service
     app.pipeline_service = Mock()
-    app.pipeline_service.get_pipeline_metadata = AsyncMock(return_value=[
-        {'name': 'trigger', 'stages': []},
-        {'name': 'ai', 'stages': []},
-    ])
-    app.pipeline_service.get_pipelines = AsyncMock(return_value=[
-        {
+    app.pipeline_service.get_pipeline_metadata = AsyncMock(
+        return_value=[
+            {'name': 'trigger', 'stages': []},
+            {'name': 'ai', 'stages': []},
+        ]
+    )
+    app.pipeline_service.get_pipelines = AsyncMock(
+        return_value=[
+            {
+                'uuid': 'test-pipeline-uuid',
+                'name': 'Test Pipeline',
+                'description': 'Test description',
+                'created_at': '2024-01-01T00:00:00',
+                'updated_at': '2024-01-01T00:00:00',
+                'is_default': False,
+            }
+        ]
+    )
+    app.pipeline_service.get_pipeline = AsyncMock(
+        return_value={
             'uuid': 'test-pipeline-uuid',
             'name': 'Test Pipeline',
-            'description': 'Test description',
-            'created_at': '2024-01-01T00:00:00',
-            'updated_at': '2024-01-01T00:00:00',
-            'is_default': False,
+            'config': {},
         }
-    ])
-    app.pipeline_service.get_pipeline = AsyncMock(return_value={
-        'uuid': 'test-pipeline-uuid',
-        'name': 'Test Pipeline',
-        'config': {},
-    })
+    )
     app.pipeline_service.create_pipeline = AsyncMock(return_value={'uuid': 'new-pipeline-uuid'})
     app.pipeline_service.update_pipeline = AsyncMock(return_value={})
     app.pipeline_service.delete_pipeline = AsyncMock()
@@ -111,6 +122,10 @@ def fake_pipeline_app():
     # MCP service (for extensions endpoint)
     app.mcp_service = Mock()
     app.mcp_service.get_mcp_servers = AsyncMock(return_value=[])
+
+    # Skill service (for extensions endpoint)
+    app.skill_service = Mock()
+    app.skill_service.list_skills = AsyncMock(return_value=[])
 
     # Plugin connector (for extensions endpoint)
     app.plugin_connector.list_plugins = AsyncMock(return_value=[])
@@ -130,6 +145,7 @@ async def quart_test_client(fake_pipeline_app, http_controller_cls):
 
 # ============== PIPELINE ENDPOINT TESTS ==============
 
+
 @pytest.mark.usefixtures('mock_circular_import_chain')
 class TestPipelineMetadataEndpoint:
     """Tests for /api/v1/pipelines/_/metadata endpoint."""
@@ -138,8 +154,7 @@ class TestPipelineMetadataEndpoint:
     async def test_get_pipeline_metadata_success(self, quart_test_client):
         """GET /api/v1/pipelines/_/metadata returns metadata list."""
         response = await quart_test_client.get(
-            '/api/v1/pipelines/_/metadata',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/pipelines/_/metadata', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -162,10 +177,7 @@ class TestPipelinesListEndpoint:
     @pytest.mark.asyncio
     async def test_get_pipelines_success(self, quart_test_client):
         """GET /api/v1/pipelines returns pipeline list."""
-        response = await quart_test_client.get(
-            '/api/v1/pipelines',
-            headers={'Authorization': 'Bearer test_token'}
-        )
+        response = await quart_test_client.get('/api/v1/pipelines', headers={'Authorization': 'Bearer test_token'})
 
         assert response.status_code == 200
         data = await response.get_json()
@@ -176,8 +188,7 @@ class TestPipelinesListEndpoint:
     async def test_get_pipelines_with_sort_param(self, quart_test_client):
         """GET pipelines with sort parameter."""
         response = await quart_test_client.get(
-            '/api/v1/pipelines?sort_by=created_at&sort_order=DESC',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/pipelines?sort_by=created_at&sort_order=DESC', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -193,8 +204,7 @@ class TestPipelinesCRUDEndpoints:
     async def test_get_single_pipeline_success(self, quart_test_client):
         """GET /api/v1/pipelines/{uuid} returns pipeline."""
         response = await quart_test_client.get(
-            '/api/v1/pipelines/test-pipeline-uuid',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/pipelines/test-pipeline-uuid', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -208,7 +218,7 @@ class TestPipelinesCRUDEndpoints:
         response = await quart_test_client.post(
             '/api/v1/pipelines',
             headers={'Authorization': 'Bearer test_token'},
-            json={'name': 'New Pipeline', 'config': {}}
+            json={'name': 'New Pipeline', 'config': {}},
         )
 
         assert response.status_code == 200
@@ -222,7 +232,7 @@ class TestPipelinesCRUDEndpoints:
         response = await quart_test_client.put(
             '/api/v1/pipelines/test-pipeline-uuid',
             headers={'Authorization': 'Bearer test_token'},
-            json={'name': 'Updated Pipeline'}
+            json={'name': 'Updated Pipeline'},
         )
 
         assert response.status_code == 200
@@ -233,8 +243,7 @@ class TestPipelinesCRUDEndpoints:
     async def test_delete_pipeline_success(self, quart_test_client):
         """DELETE /api/v1/pipelines/{uuid} deletes pipeline."""
         response = await quart_test_client.delete(
-            '/api/v1/pipelines/test-pipeline-uuid',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/pipelines/test-pipeline-uuid', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -245,8 +254,7 @@ class TestPipelinesCRUDEndpoints:
     async def test_copy_pipeline_success(self, quart_test_client):
         """POST /api/v1/pipelines/{uuid}/copy copies pipeline."""
         response = await quart_test_client.post(
-            '/api/v1/pipelines/test-pipeline-uuid/copy',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/pipelines/test-pipeline-uuid/copy', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -263,8 +271,7 @@ class TestPipelineExtensionsEndpoint:
     async def test_get_extensions(self, quart_test_client):
         """GET /api/v1/pipelines/{uuid}/extensions."""
         response = await quart_test_client.get(
-            '/api/v1/pipelines/test-pipeline-uuid/extensions',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/pipelines/test-pipeline-uuid/extensions', headers={'Authorization': 'Bearer test_token'}
         )
 
         # Should return 200 if pipeline found

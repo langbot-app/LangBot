@@ -24,7 +24,7 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
         @self.route(
             '/<knowledge_base_uuid>',
             methods=['GET', 'DELETE', 'PUT'],
-            auth_type=group.AuthType. USER_TOKEN_OR_API_KEY,
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
         )
         async def handle_specific_knowledge_base(knowledge_base_uuid: str) -> quart.Response:
             if quart.request.method == 'GET':

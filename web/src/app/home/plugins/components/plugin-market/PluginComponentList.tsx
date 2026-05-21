@@ -51,9 +51,7 @@ export default function PluginComponentList({
                 )}
 
                 {!useBadge && (
-                  <div
-                    className="flex flex-row items-center justify-start gap-[0.2rem]"
-                  >
+                  <div className="flex flex-row items-center justify-start gap-[0.2rem]">
                     {kindIconMap[kind]}
                     {responsive ? (
                       <span className="hidden md:inline">
