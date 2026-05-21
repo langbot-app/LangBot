@@ -181,7 +181,10 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
 
         ctrl = StdioClientController(
             command=python_path,
-            args=['-m', 'langbot_plugin.box.server', '--stdio-control', '--ws-control-port', str(self._relay_port)],
+            # Launched through the same CLI entry point as the plugin runtime
+            # (cli.__init__ <subcommand>); `-s` selects the stdio transport,
+            # mirroring `rt -s`.
+            args=['-m', 'langbot_plugin.cli.__init__', 'box', '-s', '--ws-control-port', str(self._relay_port)],
             env=env,
         )
         self._ctrl_task = asyncio.create_task(
@@ -207,10 +210,13 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
             env['LANGBOT_BOX_CONFIG'] = json.dumps(self._filtered_box_config)
 
         python_path = sys.executable
+        # Launched through the same CLI entry point as the plugin runtime
+        # (cli.__init__ <subcommand>); no flag => WebSocket transport.
         self.runtime_subprocess = await asyncio.create_subprocess_exec(
             python_path,
             '-m',
-            'langbot_plugin.box.server',
+            'langbot_plugin.cli.__init__',
+            'box',
             '--ws-control-port',
             str(self._relay_port),
             env=env,

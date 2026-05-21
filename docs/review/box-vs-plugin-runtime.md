@@ -75,7 +75,7 @@ else:
 ```
 connector._start_local_stdio()
   ├─ connected = asyncio.Event()
-  ├─ ctrl = StdioClientController(python, ['-m', 'langbot_plugin.box.server', '--port', N])
+  ├─ ctrl = StdioClientController(python, ['-m', 'langbot_plugin.cli.__init__', 'box', '-s', '--ws-control-port', N])
   ├─ _ctrl_task = create_task(ctrl.run(callback))
   │    callback:
   │      handler = Handler(connection)          ← 基础 Handler, 无 disconnect_callback

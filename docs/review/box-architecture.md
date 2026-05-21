@@ -142,7 +142,7 @@ BoxService
 
 管理与 Box Runtime 的通信连接：
 
-- **本地 stdio**: Unix/macOS 默认路径，fork `python -m langbot_plugin.box --port {port}` 子进程
+- **本地 stdio**: Unix/macOS 默认路径，fork `python -m langbot_plugin.cli.__init__ box -s --ws-control-port {port}` 子进程（与 plugin runtime 统一走 `lbp` CLI 入口）
 - **本地 subprocess + WS**: Windows 本地（asyncio ProactorEventLoop 不支持 stdio pipe）
 - **远程 WebSocket**: Docker 部署 / `box.runtime.endpoint` 显式配置时，连接 `ws://{host}:{port}/rpc/ws`
 - **同步等待**: `asyncio.Event` + `wait_for(timeout=30s)` 模式确认连接

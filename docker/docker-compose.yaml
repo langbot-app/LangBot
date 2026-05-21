@@ -43,7 +43,12 @@ services:
       # The Box runtime does NOT read box.local.* from config.yaml or env; it
       # receives its configuration from LangBot via the INIT RPC action.
       # Do not add LANGBOT_BOX_* / BOX__* here — they would be silently ignored.
-    command: ["uv", "run", "--no-sync", "-m", "langbot_plugin.box", "--mode", "ws"]
+    # Launched through the same CLI entry point as the plugin runtime
+    # (`langbot_plugin.cli.__init__ <subcommand>`). WebSocket is the default
+    # control transport — mirrors `rt`, which also runs with no flag. Pass
+    # `-s` / `--stdio-control` only for the stdio mode LangBot uses outside
+    # containers.
+    command: ["uv", "run", "--no-sync", "-m", "langbot_plugin.cli.__init__", "box"]
     networks:
       - langbot_network
 
