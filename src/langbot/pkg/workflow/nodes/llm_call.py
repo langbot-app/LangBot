@@ -10,7 +10,7 @@ from typing import Any, AsyncGenerator
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 
-from ..entities import ExecutionContext
+from langbot_plugin.api.entities.builtin.workflow import ExecutionContext
 from ..node import WorkflowNode, workflow_node
 
 logger = logging.getLogger(__name__)
@@ -181,7 +181,6 @@ class LLMCallNode(WorkflowNode):
         # Get error handling config
         exception_handling = self.get_config('exception_handling', 'show-error')
         failure_hint = self.get_config('failure_hint', 'Request failed.')
-        remove_think = self.get_config('remove_think', False)
         track_function_calls = self.get_config('track_function_calls', False)
 
         # Get output format and json_schema config
@@ -192,11 +191,10 @@ class LLMCallNode(WorkflowNode):
         enable_tools = self.get_config('enable_tools', False)
         tools_config = self.get_config('tools', [])
 
-        # Resolve prompts - handle null user_prompt_template
+        # Resolve prompts
         system_prompt = self._resolve_template(self.get_config('system_prompt') or '', inputs, context)
         user_prompt_template = self.get_config('user_prompt_template')
         if user_prompt_template is None:
-            # Default to input if not set
             user_prompt_template = '{{input}}'
         user_prompt = self._resolve_template(user_prompt_template, inputs, context)
 
@@ -229,14 +227,11 @@ class LLMCallNode(WorkflowNode):
                 if tool_names:
                     all_tools = await self.ap.tool_mgr.get_tools()
                     funcs = [t for t in all_tools if t.name in tool_names]
-                    if funcs:
-                        logger.info(f'LLM call node {self.node_id}: using tools: {[t.name for t in funcs]}')
             except Exception as e:
-                logger.warning(f'LLM call node {self.node_id}: failed to load tools - {e}')
+                logger.warning(f'[LLM:{self.node_id}] Failed to load tools: {e}')
                 funcs = None
 
-        # Invoke LLM with error handling
-        logger.info(f'LLM call node {self.node_id}: invoking model {model_uuid}')
+        # Invoke LLM
         try:
             result_message = await runtime_model.provider.invoke_llm(
                 query=None,
@@ -246,7 +241,7 @@ class LLMCallNode(WorkflowNode):
                 extra_args=extra_args,
             )
         except Exception as e:
-            logger.warning(f'LLM call node {self.node_id}: request failed - {e}')
+            logger.warning(f'[LLM:{self.node_id}] LLM call failed: {e}')
 
             # Handle based on exception handling strategy
             if exception_handling == 'show-error':
@@ -284,21 +279,20 @@ class LLMCallNode(WorkflowNode):
                 elif isinstance(elem, str):
                     response_text += elem
 
-        # Remove CoT (Chain of Thought) content if configured
-        if remove_think:
-            response_text = self._remove_think_content(response_text)
+        # Remove CoT content (always remove to avoid leaking internal reasoning)
+        response_text = self._remove_think_content(response_text)
 
         # Apply content safety filter
         response_text, is_blocked, filter_notice = self._apply_content_filter(response_text)
         if is_blocked:
-            logger.warning(f'LLM call node {self.node_id}: response blocked by content filter - {filter_notice}')
+            logger.warning(f'[LLM:{self.node_id}] Response blocked by content filter: {filter_notice}')
             return {
                 'response': filter_notice,
                 'usage': usage,
                 'blocked_by_filter': True,
             }
 
-        # Extract usage info if available
+        # Extract usage info
         usage = {
             'prompt_tokens': 0,
             'completion_tokens': 0,
@@ -319,6 +313,7 @@ class LLMCallNode(WorkflowNode):
                 'total_tokens': getattr(u, 'total_tokens', 0) or 0,
             }
 
+        # Build result
         result: dict[str, Any] = {
             'response': response_text,
             'usage': usage,
@@ -329,7 +324,7 @@ class LLMCallNode(WorkflowNode):
             try:
                 result['parsed'] = json.loads(response_text)
             except json.JSONDecodeError as e:
-                logger.warning(f'LLM call node {self.node_id}: failed to parse JSON response - {e}')
+                logger.warning(f'[LLM:{self.node_id}] Failed to parse JSON: {e}')
                 result['parsed'] = None
                 result['parse_error'] = str(e)
 
@@ -354,7 +349,6 @@ class LLMCallNode(WorkflowNode):
         if not self.ap:
             raise RuntimeError('Application instance not available - cannot call LLM')
 
-        remove_think = self.get_config('remove_think', False)
         exception_handling = self.get_config('exception_handling', 'show-error')
         failure_hint = self.get_config('failure_hint', 'Request failed.')
 
@@ -383,7 +377,7 @@ class LLMCallNode(WorkflowNode):
         if max_tokens and int(max_tokens) > 0:
             extra_args['max_tokens'] = int(max_tokens)
 
-        logger.info(f'LLM call node {self.node_id}: streaming model {model_uuid}')
+        logger.info(f'[LLM:{self.node_id}] Streaming model {model_uuid}')
 
         try:
             # Try streaming first
@@ -396,6 +390,7 @@ class LLMCallNode(WorkflowNode):
             )
 
             full_response = ''
+            in_think_block = False
             async for chunk in stream:
                 chunk_text = ''
                 if hasattr(chunk, 'content'):
@@ -409,16 +404,25 @@ class LLMCallNode(WorkflowNode):
                                 chunk_text += elem
 
                 if chunk_text:
-                    if remove_think:
-                        chunk_text = self._remove_think_content(chunk_text)
-                    full_response += chunk_text
-                    yield chunk_text
+                    # Filter <think> blocks in streaming mode
+                    if '<think>' in chunk_text or '<thought>' in chunk_text:
+                        in_think_block = True
+                    if in_think_block:
+                        if '</think>' in chunk_text or '</thought>' in chunk_text:
+                            in_think_block = False
+                            chunk_text = chunk_text.split('</think>')[-1].split('</thought>')[-1]
+                        else:
+                            chunk_text = ''
+                    
+                    if chunk_text:
+                        full_response += chunk_text
+                        yield chunk_text
 
             # Store in context for downstream nodes
             context.variables['_last_llm_response'] = full_response
 
         except Exception as e:
-            logger.warning(f'LLM call node {self.node_id}: streaming failed, falling back - {e}')
+            logger.warning(f'[LLM:{self.node_id}] Streaming failed, falling back - {e}')
             # Fallback to non-streaming
             try:
                 result_message = await runtime_model.provider.invoke_llm(
@@ -429,12 +433,12 @@ class LLMCallNode(WorkflowNode):
                     extra_args=extra_args,
                 )
                 response_text = self._extract_response_text(result_message)
-                if remove_think:
-                    response_text = self._remove_think_content(response_text)
+                # Always remove <think> content in fallback
+                response_text = self._remove_think_content(response_text)
                 yield response_text
                 context.variables['_last_llm_response'] = response_text
             except Exception as e2:
-                logger.error(f'LLM call node {self.node_id}: fallback also failed - {e2}')
+                logger.error(f'[LLM:{self.node_id}] Fallback also failed - {e2}')
                 if exception_handling == 'show-hint':
                     yield failure_hint
                 elif exception_handling != 'hide':

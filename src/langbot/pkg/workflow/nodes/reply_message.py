@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from ..entities import ExecutionContext
+from langbot_plugin.api.entities.builtin.workflow import ExecutionContext
 from ..node import WorkflowNode, workflow_node
 
 logger = logging.getLogger(__name__)
@@ -20,13 +20,14 @@ class ReplyMessageNode(WorkflowNode):
     category = 'action'
 
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
-        message = inputs.get('message')
-        if message in (None, ''):
-            message = inputs.get('input')
+        # Priority: content/response (from upstream nodes) > message (original input) > context
+        message = inputs.get('content')
         if message in (None, ''):
             message = inputs.get('response')
         if message in (None, ''):
-            message = inputs.get('content')
+            message = inputs.get('input')
+        if message in (None, ''):
+            message = inputs.get('message')
         if message in (None, '') and context.message_context:
             message = context.message_context.message_content
         if message is None:

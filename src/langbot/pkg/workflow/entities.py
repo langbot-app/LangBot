@@ -1,11 +1,26 @@
-"""Workflow entities and data models"""
+"""Workflow entities and data models
+
+This module defines workflow entities using SDK standard entities where available,
+and local-specific entities for LangBot_copy-specific functionality.
+"""
 
 from __future__ import annotations
 
-import enum
 from datetime import datetime
 from typing import Any, Optional
 import pydantic
+
+# Import SDK entities for standard workflow protocol types
+from langbot_plugin.api.entities.builtin.workflow import (
+    ExecutionContext,
+    ExecutionStep,
+    ExecutionStatus,
+    MessageContext,
+    NodeDefinition,
+    NodeState,
+    NodeStatus,
+    PortDefinition,
+)
 
 
 class Position(pydantic.BaseModel):
@@ -13,31 +28,6 @@ class Position(pydantic.BaseModel):
 
     x: float = 0
     y: float = 0
-
-
-class PortDefinition(pydantic.BaseModel):
-    """Node port definition"""
-
-    name: str
-    type: str = 'any'  # any, string, number, boolean, object, array
-    description: str = ''
-    required: bool = True
-
-
-class NodeDefinition(pydantic.BaseModel):
-    """Workflow node definition"""
-
-    id: str
-    type: str
-    name: str = ''
-    position: Position = Position()
-    config: dict[str, Any] = {}
-    inputs: list[PortDefinition] = []
-    outputs: list[PortDefinition] = []
-
-    # UI metadata
-    description: str = ''
-    comment: str = ''  # User comment/annotation
 
 
 class EdgeDefinition(pydantic.BaseModel):
@@ -161,125 +151,3 @@ class WorkflowDefinition(pydantic.BaseModel):
     # Source tracking (for imported workflows)
     source: Optional[str] = None  # dify, n8n, langflow, etc.
     source_id: Optional[str] = None
-
-
-class ExecutionStatus(enum.Enum):
-    """Workflow execution status"""
-
-    PENDING = 'pending'
-    RUNNING = 'running'
-    WAITING = 'waiting'
-    COMPLETED = 'completed'
-    FAILED = 'failed'
-    CANCELLED = 'cancelled'
-
-
-class NodeStatus(enum.Enum):
-    """Node execution status"""
-
-    PENDING = 'pending'
-    RUNNING = 'running'
-    COMPLETED = 'completed'
-    FAILED = 'failed'
-    SKIPPED = 'skipped'
-
-
-class NodeState(pydantic.BaseModel):
-    """Runtime state of a node during execution"""
-
-    node_id: str
-    status: NodeStatus = NodeStatus.PENDING
-    inputs: dict[str, Any] = {}
-    outputs: dict[str, Any] = {}
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
-    error: Optional[str] = None
-    retry_count: int = 0
-
-
-class MessageContext(pydantic.BaseModel):
-    """Message context for message-triggered workflows"""
-
-    message_id: str
-    message_content: str
-    sender_id: str
-    sender_name: str = ''
-    platform: str = ''
-    conversation_id: str = ''
-    is_group: bool = False
-    group_id: Optional[str] = None
-    mentions: list[str] = []
-    reply_to: Optional[str] = None
-    raw_message: dict[str, Any] = {}
-
-
-class ExecutionStep(pydantic.BaseModel):
-    """Execution history step"""
-
-    timestamp: datetime
-    node_id: str
-    node_type: str
-    status: str
-    inputs: dict[str, Any] = {}
-    outputs: dict[str, Any] = {}
-    duration_ms: int = 0
-    error: Optional[str] = None
-
-
-class ExecutionContext(pydantic.BaseModel):
-    """Workflow execution context"""
-
-    execution_id: str
-    workflow_id: str
-    workflow_version: int = 1
-    status: ExecutionStatus = ExecutionStatus.PENDING
-
-    # Runtime data
-    variables: dict[str, Any] = {}
-    conversation_variables: dict[str, Any] = {}  # Session-level persistent variables
-    node_states: dict[str, NodeState] = {}
-    memory: dict[str, Any] = {}  # Workflow memory for storing/retrieving data
-
-    # Timing
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
-
-    # Error
-    error: Optional[str] = None
-
-    # Message context (if triggered by message)
-    message_context: Optional[MessageContext] = None
-
-    # Trigger info
-    trigger_type: Optional[str] = None
-    trigger_data: dict[str, Any] = {}
-
-    # Execution history
-    history: list[ExecutionStep] = []
-
-    # Session info
-    session_id: Optional[str] = None
-    user_id: Optional[str] = None
-    bot_id: Optional[str] = None
-
-    def get_node_output(self, node_id: str, output_name: str = 'output') -> Any:
-        """Get output from a specific node"""
-        if node_id in self.node_states:
-            return self.node_states[node_id].outputs.get(output_name)
-        return None
-
-    def set_variable(self, name: str, value: Any):
-        """Set a workflow variable"""
-        self.variables[name] = value
-
-    def get_variable(self, name: str, default: Any = None) -> Any:
-        """Get a workflow variable"""
-        return self.variables.get(name, default)
-
-    def set_conversation_variable(self, name: str, value: Any):
-        """Set a conversation-level variable (persisted across executions)"""
-        self.conversation_variables[name] = value
-
-    def get_conversation_variable(self, name: str, default: Any = None) -> Any:
-        """Get a conversation-level variable"""
-        return self.conversation_variables.get(name, default)

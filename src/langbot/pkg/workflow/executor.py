@@ -178,7 +178,7 @@ class WorkflowExecutor:
             # Initialize node states
             for node in workflow.nodes:
                 if node.id not in context.node_states:
-                    context.node_states[node.id] = NodeState(node_id=node.id)
+                    context.node_states[node.id] = NodeState(node_id=node.id, node_type=node.type, status=NodeStatus.PENDING)
 
             # Find start node(s)
             if start_node_id:
@@ -662,14 +662,15 @@ class WorkflowExecutor:
             duration_ms = int((node_state.end_time - node_state.start_time).total_seconds() * 1000)
 
         step = ExecutionStep(
+            step_id=f"step_{uuid.uuid4().hex[:8]}",
             timestamp=datetime.now(),
             node_id=node.id,
             node_type=node.type,
-            status=node_state.status.value,
-            inputs=node_state.inputs,
-            outputs=node_state.outputs,
+            status=node_state.status,
             duration_ms=duration_ms,
             error=node_state.error,
+            inputs=node_state.inputs,
+            outputs=node_state.outputs,
         )
         context.history.append(step)
 
@@ -801,7 +802,7 @@ class LoopExecutor:
 
             for node in loop_body:
                 # Reset node state for this iteration
-                context.node_states[node.id] = NodeState(node_id=node.id)
+                context.node_states[node.id] = NodeState(node_id=node.id, node_type=node.type, status=NodeStatus.PENDING)
 
                 await self.executor._execute_node(node, context, max_retries=3)
 
@@ -823,5 +824,3 @@ class LoopExecutor:
         context.variables.pop('loop_is_last', None)
 
         return results
-
-

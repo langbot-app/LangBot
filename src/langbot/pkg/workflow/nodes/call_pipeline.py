@@ -5,17 +5,60 @@ Node metadata is loaded from: ../../templates/metadata/nodes/call_pipeline.yaml
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
+
+import pydantic
 
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
+import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_event_logger
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 
-from ..entities import ExecutionContext
+from langbot_plugin.api.entities.builtin.workflow import ExecutionContext
 from ..node import WorkflowNode, workflow_node
+
+
+class _NoOpEventLogger(abstract_event_logger.AbstractEventLogger):
+    """No-op event logger for workflow pipeline adapter."""
+
+    async def info(
+        self,
+        text: str,
+        images: Optional[list[platform_message.Image]] = None,
+        message_session_id: Optional[str] = None,
+        no_throw: bool = True,
+    ):
+        pass
+
+    async def debug(
+        self,
+        text: str,
+        images: Optional[list[platform_message.Image]] = None,
+        message_session_id: Optional[str] = None,
+        no_throw: bool = True,
+    ):
+        pass
+
+    async def warning(
+        self,
+        text: str,
+        images: Optional[list[platform_message.Image]] = None,
+        message_session_id: Optional[str] = None,
+        no_throw: bool = True,
+    ):
+        pass
+
+    async def error(
+        self,
+        text: str,
+        images: Optional[list[platform_message.Image]] = None,
+        message_session_id: Optional[str] = None,
+        no_throw: bool = True,
+    ):
+        pass
 
 @workflow_node('call_pipeline')
 class CallPipelineNode(WorkflowNode):
@@ -139,10 +182,16 @@ class CallPipelineNode(WorkflowNode):
         )
 
 class _WorkflowPipelineCaptureAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
+    """Adapter to capture pipeline responses for workflow execution."""
+
+    class Config:
+        arbitrary_types_allowed = True
+
     responses: list[dict[str, Any]] = []
+    context: ExecutionContext = pydantic.Field(exclude=True)
 
     def __init__(self, context: ExecutionContext):
-        super().__init__(config={}, logger=None)
+        super().__init__(config={}, logger=_NoOpEventLogger())
         self.context = context
         self.responses = []
 

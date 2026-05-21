@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..entities import ExecutionContext
+from langbot_plugin.api.entities.builtin.workflow import ExecutionContext
 from ..node import WorkflowNode, workflow_node
 
 @workflow_node('redis_operation')

@@ -312,6 +312,164 @@ class WorkflowsRouterGroup(group.RouterGroup):
             except ValueError as e:
                 return self.http_status(404, -1, str(e))
 
+        # LLM Node Performance Test Endpoint
+        # Tests each step of LLM node execution with detailed timing
+        @self.route('/_/test/llm-node', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
+        async def _() -> str:
+            """Test LLM node performance with detailed step-by-step timing.
+            
+            Request body:
+            {
+                "model_uuid": "uuid-of-model",
+                "system_prompt": "optional system prompt",
+                "user_prompt": "test message",
+                "enable_tools": false,
+                "tools": [],
+                "temperature": 0.7,
+                "max_tokens": 100
+            }
+            
+            Response includes timing for each step:
+            - model_fetch: Time to get model from model_mgr
+            - tool_fetch: Time to load tools (if enabled)
+            - prompt_build: Time to build messages
+            - llm_call: Time for actual LLM invocation
+            - total: Total time
+            """
+            import time
+            
+            json_data = await quart.request.json
+            if not json_data:
+                return self.http_status(400, -1, 'Request body is required')
+            
+            model_uuid = json_data.get('model_uuid', '')
+            if not model_uuid:
+                return self.http_status(400, -1, 'model_uuid is required')
+            
+            user_prompt = json_data.get('user_prompt', 'test')
+            system_prompt = json_data.get('system_prompt', '')
+            enable_tools = json_data.get('enable_tools', False)
+            tools_config = json_data.get('tools', [])
+            temperature = json_data.get('temperature')
+            max_tokens = json_data.get('max_tokens', 0)
+            
+            timings = {}
+            errors = []
+            
+            # Step 1: Model fetch
+            t_start = time.perf_counter()
+            try:
+                runtime_model = await self.ap.model_mgr.get_model_by_uuid(model_uuid)
+                timings['model_fetch_ms'] = round((time.perf_counter() - t_start) * 1000, 2)
+                timings['model_found'] = True
+                timings['model_name'] = runtime_model.model_entity.name if runtime_model else None
+            except Exception as e:
+                timings['model_fetch_ms'] = round((time.perf_counter() - t_start) * 1000, 2)
+                timings['model_found'] = False
+                errors.append(f'Model fetch failed: {str(e)}')
+                return self.http_status(400, -1, {
+                    'error': errors[0],
+                    'timings': timings,
+                })
+            
+            # Step 2: Tool fetch (if enabled)
+            timings['tool_fetch_ms'] = 0
+            timings['tools_loaded'] = 0
+            if enable_tools and tools_config:
+                t_start = time.perf_counter()
+                try:
+                    import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
+                    all_tools = await self.ap.tool_mgr.get_tools()
+                    tool_names = tools_config if isinstance(tools_config, list) else []
+                    funcs = [t for t in all_tools if t.name in tool_names]
+                    timings['tool_fetch_ms'] = round((time.perf_counter() - t_start) * 1000, 2)
+                    timings['tools_loaded'] = len(funcs)
+                    timings['tool_names'] = [t.name for t in funcs]
+                except Exception as e:
+                    timings['tool_fetch_ms'] = round((time.perf_counter() - t_start) * 1000, 2)
+                    errors.append(f'Tool fetch failed: {str(e)}')
+            
+            # Step 3: Build messages
+            t_start = time.perf_counter()
+            import langbot_plugin.api.entities.builtin.provider.message as provider_message
+            messages = []
+            if system_prompt:
+                messages.append(provider_message.Message(role='system', content=system_prompt))
+            messages.append(provider_message.Message(role='user', content=user_prompt))
+            timings['prompt_build_ms'] = round((time.perf_counter() - t_start) * 1000, 2)
+            
+            # Step 4: Build extra args
+            extra_args = {}
+            if temperature is not None:
+                extra_args['temperature'] = float(temperature)
+            if max_tokens and int(max_tokens) > 0:
+                extra_args['max_tokens'] = int(max_tokens)
+            
+            # Step 5: LLM call
+            t_start = time.perf_counter()
+            try:
+                result_message = await runtime_model.provider.invoke_llm(
+                    query=None,
+                    model=runtime_model,
+                    messages=messages,
+                    funcs=funcs if enable_tools else None,
+                    extra_args=extra_args,
+                )
+                timings['llm_call_ms'] = round((time.perf_counter() - t_start) * 1000, 2)
+                timings['llm_call_success'] = True
+                
+                # Extract response text
+                response_text = ''
+                if isinstance(result_message.content, str):
+                    response_text = result_message.content
+                elif isinstance(result_message.content, list):
+                    for elem in result_message.content:
+                        if hasattr(elem, 'text') and elem.text:
+                            response_text += elem.text
+                        elif isinstance(elem, str):
+                            response_text += elem
+                
+                timings['response_length'] = len(response_text)
+                timings['response_preview'] = response_text[:200]
+                
+                # Extract usage
+                usage = {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}
+                if hasattr(result_message, 'usage') and result_message.usage:
+                    u = result_message.usage
+                    usage = {
+                        'prompt_tokens': getattr(u, 'prompt_tokens', 0) or 0,
+                        'completion_tokens': getattr(u, 'completion_tokens', 0) or 0,
+                        'total_tokens': getattr(u, 'total_tokens', 0) or 0,
+                    }
+                timings['usage'] = usage
+                
+            except Exception as e:
+                timings['llm_call_ms'] = round((time.perf_counter() - t_start) * 1000, 2)
+                timings['llm_call_success'] = False
+                errors.append(f'LLM call failed: {str(e)}')
+            
+            # Calculate total
+            timings['total_ms'] = round(sum([
+                timings.get('model_fetch_ms', 0),
+                timings.get('tool_fetch_ms', 0),
+                timings.get('prompt_build_ms', 0),
+                timings.get('llm_call_ms', 0),
+            ]), 2)
+            
+            # Add breakdown percentage
+            if timings['total_ms'] > 0:
+                timings['breakdown'] = {
+                    'model_fetch_pct': round(timings.get('model_fetch_ms', 0) / timings['total_ms'] * 100, 1),
+                    'tool_fetch_pct': round(timings.get('tool_fetch_ms', 0) / timings['total_ms'] * 100, 1),
+                    'prompt_build_pct': round(timings.get('prompt_build_ms', 0) / timings['total_ms'] * 100, 1),
+                    'llm_call_pct': round(timings.get('llm_call_ms', 0) / timings['total_ms'] * 100, 1),
+                }
+            
+            if errors:
+                timings['errors'] = errors
+            
+            return self.success(data={'test_result': timings})
+
 
 @group.group_class('executions', '/api/v1/executions')
 class ExecutionsRouterGroup(group.RouterGroup):
