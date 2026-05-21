@@ -650,12 +650,16 @@ class AutoProcessToBitableListenerTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(len(records), 4)
         by_batch = {record.batch_id: record for record in records}
-        self.assertEqual(by_batch["S18-CP-DA2605-103-A2"].fields["pH"], 9.26)
+        self.assertEqual(by_batch["S18-CP-DA2605-103-A2-1"].fields["pH"], 9.26)
         self.assertEqual(
-            by_batch["S18-CP-DA2605-103-A2"].fields["检测日期"],
+            by_batch["S18-CP-DA2605-103-A2-1"].fields["检测日期"],
             "2025.05.19",
         )
-        self.assertEqual(by_batch["S18-CP-DA2605-102-A1"].fields["pH"], 8.92)
+        self.assertEqual(
+            by_batch["S18-CP-DA2605-103-A2-1"].fields["成品批次"],
+            "S18-CP-DA2605-103-A2",
+        )
+        self.assertEqual(by_batch["S18-CP-DA2605-102-A1-1"].fields["pH"], 8.92)
 
     async def test_parse_product_does_not_treat_element_li_as_residual_lithium(self) -> None:
         listener = self._build_listener()
@@ -676,6 +680,83 @@ class AutoProcessToBitableListenerTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(len(records), 1)
         self.assertNotIn("残碱(Li+)", records[0].fields)
+
+    async def test_parse_product_extracts_element_and_iron_dissolution_table(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_product(
+            "Li含量\n"
+            "Fe含量\n"
+            "P含量\n"
+            "Na+K含量\n"
+            "杂质含量\n"
+            "铁溶出\n"
+            "检测时间\n"
+            "班次\n"
+            "供应商内部批次号\n"
+            "2025.05.19\n"
+            "夜班\n"
+            "4.45\n"
+            "34.64\n"
+            "19.63\n"
+            "0.012630\n"
+            "0.001423\n"
+            "13.921\n"
+            "S18-CP-DA2605-103-A2-1\n"
+            "夜班\n"
+            "4.43\n"
+            "34.60\n"
+            "19.60\n"
+            "2025.05.19\n"
+            "S18-CP-DA2605-103-A2-2\n"
+            "0.012909\n"
+            "0.001452\n"
+            "14.572\n"
+            "夜班\n"
+            "4.46\n"
+            "2025.05.19\n"
+            "S18-CP-DA2605-102-A1-1\n"
+            "34.66\n"
+            "19.66\n"
+            "0.009744\n"
+            "0.001576\n"
+            "44.648",
+            "2026-05-20 16:46:00",
+        )
+
+        self.assertEqual(len(records), 3)
+        by_batch = {record.batch_id: record for record in records}
+        fields = by_batch["S18-CP-DA2605-103-A2-1"].fields
+        self.assertEqual(fields["成品批次"], "S18-CP-DA2605-103-A2")
+        self.assertEqual(fields["样品批号"], "S18-CP-DA2605-103-A2-1")
+        self.assertAlmostEqual(fields["Li含量"], 4.45)
+        self.assertAlmostEqual(fields["Fe含量"], 34.64)
+        self.assertAlmostEqual(fields["P含量"], 19.63)
+        self.assertAlmostEqual(fields["Na+K含量"], 0.012630)
+        self.assertAlmostEqual(fields["杂质含量"], 0.001423)
+        self.assertAlmostEqual(fields["铁溶出"], 13.921)
+        self.assertEqual(fields["检测日期"], "2025.05.19")
+        self.assertNotIn("残碱(Li+)", fields)
+
+        fields = by_batch["S18-CP-DA2605-103-A2-2"].fields
+        self.assertEqual(fields["成品批次"], "S18-CP-DA2605-103-A2")
+        self.assertEqual(fields["样品批号"], "S18-CP-DA2605-103-A2-2")
+        self.assertAlmostEqual(fields["Li含量"], 4.43)
+        self.assertAlmostEqual(fields["Fe含量"], 34.60)
+        self.assertAlmostEqual(fields["P含量"], 19.60)
+        self.assertAlmostEqual(fields["Na+K含量"], 0.012909)
+        self.assertAlmostEqual(fields["杂质含量"], 0.001452)
+        self.assertAlmostEqual(fields["铁溶出"], 14.572)
+
+        fields = by_batch["S18-CP-DA2605-102-A1-1"].fields
+        self.assertEqual(fields["成品批次"], "S18-CP-DA2605-102-A1")
+        self.assertEqual(fields["样品批号"], "S18-CP-DA2605-102-A1-1")
+        self.assertAlmostEqual(fields["Li含量"], 4.46)
+        self.assertAlmostEqual(fields["Fe含量"], 34.66)
+        self.assertAlmostEqual(fields["P含量"], 19.66)
+        self.assertAlmostEqual(fields["Na+K含量"], 0.009744)
+        self.assertAlmostEqual(fields["杂质含量"], 0.001576)
+        self.assertAlmostEqual(fields["铁溶出"], 44.648)
 
     async def test_parse_records_with_text_priority_uses_ocr_for_product_images(self) -> None:
         listener = self._build_listener()

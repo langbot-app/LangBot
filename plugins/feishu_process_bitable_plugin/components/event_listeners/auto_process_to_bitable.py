@@ -1599,6 +1599,104 @@ class AutoProcessToBitableListener(EventListener):
 
         return ph_table
 
+    @classmethod
+    def _extract_product_element_table_fields(cls, block_text: str) -> dict[str, dict[str, Any]]:
+        text = cls._normalize_message_text(block_text)
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        required_headers = {"Li含量", "Fe含量", "P含量", "铁溶出"}
+        if not required_headers.issubset(set(lines)):
+            return {}
+
+        line_pattern = cls._production_line_pattern()
+        batch_regex = re.compile(
+            rf"S\d+-CP-D[{line_pattern}]\d{{4}}-\d+(?:-[A-Z0-9]+)*",
+            re.IGNORECASE,
+        )
+        date_regex = re.compile(r"\d{4}[./-]\d{1,2}[./-]\d{1,2}")
+        field_names = ("Li含量", "Fe含量", "P含量", "Na+K含量", "杂质含量", "铁溶出")
+        def _numeric_cells(cells: list[str]) -> list[float]:
+            values: list[float] = []
+            for cell in cells:
+                if not re.fullmatch(r"-?\d+(?:\.\d+)?", cell):
+                    continue
+                value = float(cell)
+                if value > 1000:
+                    continue
+                values.append(value)
+            return values
+
+        def _element_score(values: list[float]) -> float:
+            ranges = (
+                (3.0, 6.0),
+                (30.0, 40.0),
+                (15.0, 25.0),
+                (0.0, 0.05),
+                (0.0, 0.05),
+                (0.0, 200.0),
+            )
+            score = 0.0
+            for value, (low, high) in zip(values, ranges):
+                if low <= value <= high:
+                    continue
+                score += min(abs(value - low), abs(value - high)) + 1000.0
+            return score
+
+        element_fields_by_sample: dict[str, dict[str, Any]] = {}
+        for idx, line in enumerate(lines):
+            if not batch_regex.fullmatch(line.upper()):
+                continue
+
+            sample_batch_id = cls._normalize_product_batch_id(line.upper())
+            product_batch_id = re.sub(r"-\d+$", "", sample_batch_id)
+
+            previous_boundary = max(
+                [
+                    pos
+                    for pos in range(0, idx)
+                    if batch_regex.fullmatch(lines[pos].upper())
+                ],
+                default=-1,
+            )
+            next_boundary = min(
+                [
+                    pos
+                    for pos in range(idx + 1, len(lines))
+                    if batch_regex.fullmatch(lines[pos].upper())
+                ],
+                default=len(lines),
+            )
+            before_numbers = _numeric_cells(lines[previous_boundary + 1:idx])
+            after_numbers = _numeric_cells(lines[idx + 1:next_boundary])
+            candidates: list[list[float]] = []
+            for before_count in range(0, 7):
+                if len(before_numbers) < before_count:
+                    continue
+                after_count = 6 - before_count
+                if len(after_numbers) < after_count:
+                    continue
+                candidates.append(before_numbers[-before_count:] + after_numbers[:after_count])
+            if not candidates:
+                continue
+
+            values = min(candidates, key=_element_score)
+            fields: dict[str, Any] = {
+                "成品批次": product_batch_id,
+                "样品批号": sample_batch_id,
+            }
+            for field_name, value in zip(field_names, values):
+                fields[field_name] = value
+
+            nearby = lines[max(0, idx - 12):idx] + lines[idx + 1:idx + 12]
+            for cell in nearby:
+                if date_regex.fullmatch(cell):
+                    year, month, day = re.split(r"[./-]", cell)
+                    fields["检测日期"] = f"{int(year):04d}.{int(month):02d}.{int(day):02d}"
+                    break
+
+            element_fields_by_sample[sample_batch_id] = fields
+
+        return element_fields_by_sample
+
     @staticmethod
     def _extract_product_date_field(block_text: str) -> dict[str, Any]:
         match = re.search(r"(\d{4})[./-](\d{1,2})[./-](\d{1,2})", block_text)
@@ -1615,7 +1713,8 @@ class AutoProcessToBitableListener(EventListener):
         line_pattern = self._production_line_pattern()
         batch_regex = re.compile(
             rf"(S\d+)\s*(?:-\s*CP)?\s*-+\s*D([{line_pattern}])\s*(\d{{4}})\s*-\s*(\d+)"
-            rf"(?:\s*-\s*([A-Z]{{1,4}})\s*-\s*([{line_pattern}][12])|\s*-\s*([{line_pattern}][12])|\s*-\s*([A-Z]{{1,4}})(?!\d))?",
+            rf"(?:\s*-\s*([A-Z]{{1,4}})\s*-\s*([{line_pattern}][12])|\s*-\s*([{line_pattern}][12])|\s*-\s*([A-Z]{{1,4}})(?!\d))?"
+            rf"(?:\s*-\s*(\d+))?",
             re.IGNORECASE,
         )
         matches = list(batch_regex.finditer(normalized_text))
@@ -1624,6 +1723,7 @@ class AutoProcessToBitableListener(EventListener):
 
         battery_fields_by_batch = self._extract_product_battery_table_fields(normalized_text)
         ph_fields_by_batch = self._extract_product_ph_table_fields(normalized_text)
+        element_fields_by_batch = self._extract_product_element_table_fields(normalized_text)
         records: list[ParsedRecord] = []
         for idx, match in enumerate(matches):
             material_type = str(match.group(1)).upper().strip()
@@ -1633,6 +1733,7 @@ class AutoProcessToBitableListener(EventListener):
             suffix = str(match.group(5) or "").upper().strip()
             segment = str(match.group(6) or match.group(7) or "").upper().strip()
             suffix_only = str(match.group(8) or "").upper().strip()
+            sample_index = str(match.group(9) or "").strip()
             if not suffix and suffix_only:
                 suffix = suffix_only
             if not self._is_supported_production_line(line):
@@ -1643,12 +1744,15 @@ class AutoProcessToBitableListener(EventListener):
                 sample_batch_id = f"{sample_batch_id}-{suffix}"
             if segment:
                 sample_batch_id = f"{sample_batch_id}-{segment}"
+            if sample_index:
+                sample_batch_id = f"{sample_batch_id}-{sample_index}"
 
             batch_id = f"{material_type}-CP-D{line}{date_code}-{seq}"
             if segment:
                 batch_id = f"{batch_id}-{segment}"
             elif suffix:
                 batch_id = f"{batch_id}-{suffix}"
+            write_batch_id = f"{batch_id}-{sample_index}" if sample_index else batch_id
             start_pos = match.end()
             end_pos = matches[idx + 1].start() if idx + 1 < len(matches) else len(normalized_text)
             block_text = normalized_text[start_pos:end_pos]
@@ -1670,13 +1774,14 @@ class AutoProcessToBitableListener(EventListener):
             fields.update(battery_fields_by_batch.get(batch_id, {}))
             fields.update(ph_fields_by_batch.get(sample_batch_id, {}))
             fields.update(ph_fields_by_batch.get(batch_id, {}))
+            fields.update(element_fields_by_batch.get(write_batch_id, {}))
             fields.update(self._extract_product_date_field(block_text))
 
             records.append(
                 ParsedRecord(
                     scenario="product",
                     line=line,
-                    batch_id=batch_id,
+                    batch_id=write_batch_id,
                     route_key=f"product.{material_type}",
                     fields=fields,
                 )
