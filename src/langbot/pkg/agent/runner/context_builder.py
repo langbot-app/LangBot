@@ -1,4 +1,4 @@
-"""Agent run context builder for converting Query to AgentRunContext."""
+"""Agent run context builder for provisioning AgentRunContext envelopes."""
 from __future__ import annotations
 
 import uuid
@@ -11,6 +11,7 @@ from langbot_plugin.api.entities.builtin.platform import message as platform_mes
 from ...core import app
 from .descriptor import AgentRunnerDescriptor
 from .config_migration import ConfigMigration
+from .context_packager import AgentContextPackager
 from .state_store import get_state_store
 from . import events as runner_events
 
@@ -136,13 +137,13 @@ class AgentRunContextPayload(typing.TypedDict):
 
 
 class AgentRunContextBuilder:
-    """Builder for converting Query to AgentRunContext.
+    """Builder for provisioning AgentRunContext from a Pipeline Query.
 
     Responsibilities:
     - Generate new run_id (UUID, not query id)
     - Set trigger type to 'message.received' for pipeline
     - Build conversation context from session
-    - Convert messages to SDK format
+    - Package and convert messages to SDK format
     - Build input from user_message and message_chain
     - Build params from query.variables with filtering
     - Build state snapshot from state_store
@@ -165,6 +166,7 @@ class AgentRunContextBuilder:
 
     def __init__(self, ap: app.Application):
         self.ap = ap
+        self.context_packager = AgentContextPackager()
 
     async def build_context(
         self,
@@ -172,7 +174,7 @@ class AgentRunContextBuilder:
         descriptor: AgentRunnerDescriptor,
         resources: AgentResources,
     ) -> AgentRunContextPayload:
-        """Build AgentRunContext from Query.
+        """Build AgentRunContext envelope from Query.
 
         Args:
             query: Pipeline query
@@ -205,19 +207,6 @@ class AgentRunContextBuilder:
                 'pipeline_uuid': query.pipeline_uuid,
             }
 
-        # Build input
-        input: AgentInput = self._build_input(query)
-
-        # Build messages
-        messages = self._build_messages(query)
-
-        # Build params from query.variables with filtering
-        params = self._build_params(query)
-
-        # Build state snapshot from state_store
-        state_store = get_state_store()
-        state: AgentRunState = state_store.build_snapshot(query, descriptor)
-
         # Get runner binding config from ai.runner_config[runner_id]
         # This is Pipeline's configuration for this specific runner binding,
         # passed through AgentRunContext.config to the runner
@@ -225,6 +214,20 @@ class AgentRunContextBuilder:
             query.pipeline_config,
             descriptor.id,
         )
+
+        # Build input
+        input: AgentInput = self._build_input(query)
+
+        # Build bounded working context window for the runner.
+        packaged_context = self.context_packager.package_messages(query, runner_config)
+        messages = self._build_messages(packaged_context.messages)
+
+        # Build params from query.variables with filtering
+        params = self._build_params(query)
+
+        # Build state snapshot from state_store
+        state_store = get_state_store()
+        state: AgentRunState = state_store.build_snapshot(query, descriptor)
 
         streaming_supported = await self._is_stream_output_supported(query)
         remove_think = query.pipeline_config.get('output', {}).get('misc', {}).get('remove-think', False)
@@ -241,6 +244,10 @@ class AgentRunContextBuilder:
                 'pipeline_name': query.variables.get('_monitoring_pipeline_name', 'Unknown'),
                 'streaming_supported': streaming_supported,
                 'remove_think': remove_think,
+                'context_packaging': {
+                    'policy': packaged_context.policy,
+                    'history': packaged_context.history,
+                },
             },
         }
 
@@ -526,13 +533,12 @@ class AgentRunContextBuilder:
 
         return prompt_messages
 
-    def _build_messages(self, query: pipeline_query.Query) -> list[dict[str, typing.Any]]:
-        """Build messages list from query."""
+    def _build_messages(self, source_messages: list[typing.Any]) -> list[dict[str, typing.Any]]:
+        """Build messages list from packaged source messages."""
         messages: list[dict[str, typing.Any]] = []
 
-        if query.messages:
-            for msg in query.messages:
-                messages.append(msg.model_dump(mode='json'))
+        for msg in source_messages:
+            messages.append(msg.model_dump(mode='json'))
 
         return messages
 

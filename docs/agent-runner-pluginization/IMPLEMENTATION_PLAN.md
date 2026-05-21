@@ -70,6 +70,7 @@ SDK Runtime RUN_AGENT -> plugin AgentRunner.run()
 - `ChatMessageHandler` 不解析 `plugin:*`，不实例化 wrapper，不知道 runner 组件细节。
 - `PipelineService.get_pipeline_metadata()` 不直接访问插件 runtime，而是读取 registry。
 - 旧 `RequestRunner` 只作为迁移参考，不作为最终运行路径。
+- `AgentRunOrchestrator` 是 LangBot 侧运行编排层：负责 runner 绑定解析、资源授权、context envelope provisioning、run scope 注册、插件调用和结果归一化；不负责决定 Agent 的最终 prompt/window/压缩策略。
 - 插件是无状态执行单元：多个 Pipeline 可以绑定同一个 runner id，并分别保存自己的 `ai.runner_config[id]`；运行时 LangBot 只把当前绑定配置放入 `ctx.config` 转发给同一个插件 runner。
 - 禁止按 Pipeline 或 runner config 创建多个插件实例。需要跨请求持久化的状态必须走明确授权的 plugin storage / workspace storage / 外部服务，不能隐式保存在 per-pipeline 插件对象里。
 - EBA 只做字段预留，不在本轮实现 EventBus、EventRouter、平台动作执行。
@@ -151,7 +152,7 @@ class AgentRunnerDescriptor(BaseModel):
 
 ### 3.4 context_builder.py
 
-把当前 Pipeline query 直接转换成 SDK v1 `AgentRunContext`。
+把当前 Pipeline query 转换成 SDK v1 `AgentRunContext` envelope。这里做协议字段组装、Host-owned 状态快照、授权资源挂载和默认工作窗口 provisioning，不承担 Agent 的最终 prompt 组装或长期记忆/压缩策略。
 
 当前消息 Pipeline 的最小字段：
 
@@ -162,7 +163,8 @@ class AgentRunnerDescriptor(BaseModel):
 - `actor`: sender
 - `subject`: 当前消息或 launcher
 - `prompt`: 宿主已处理的有效 prompt，即 `query.prompt.messages`
-- `messages`: `query.messages`
+- `messages`: `query.messages` 进入 AgentRunner context packaging 后的历史窗口。插件化 AgentRunner 路径不再由 Pipeline `msgtrun` 截断
+- `runtime.metadata.context_packaging`: Host 本次实际下发的历史窗口元数据，例如来源、策略、下发消息数、完整性；未来可扩展 cursor 和 host-side history API
 - `input`: 从 `query.user_message` 和 `query.message_chain` 构造
 - `params`: 过滤后的公开业务变量
 - `resources`: 由 `resource_builder` 注入
@@ -183,6 +185,99 @@ query.prompt.messages + query.messages + [query.user_message]
 ```python
 ctx.prompt + ctx.messages + [current_user_message_from_ctx.input]
 ```
+
+现阶段不要优化裁剪算法，也不要把新的压缩或 token-budget 裁剪塞回 Pipeline stage。
+插件化 AgentRunner 路径应跳过 Pipeline `msgtrun` 的破坏性截断，然后由
+`AgentContextPackager` 在 AgentRunner 边界执行同一套 legacy max-round user-round 规则。
+当前 SDK v1 还没有顶层 context packaging 字段，LangBot 先把本次 packaging
+元数据放在 `ctx.runtime.metadata.context_packaging`。这是实际下发结果说明，不是 LangBot 侧的长期策略控制面。
+后续 LiteLLM 接入后再把真实 context window、token 预算和摘要策略接到这个边界上。
+
+### 3.4.1 Agentic context plan
+
+本轮只落地 `AgentContextPackager` 的 `legacy_max_round` working window，不改变旧裁剪算法。
+下面的 `ConversationStore` / `EventLog`、`ContextCompressor` 和 host history API 仍是设计预留。
+目标是让 Pipeline 逐步退化为 legacy 入口，让 AgentRunner 层拥有上下文打包职责。
+
+建议最终拆成四个 host-side 服务：
+
+```text
+ConversationStore / EventLog
+  -> durable append-only raw messages, events, tool results, artifact refs
+ConversationProjection
+  -> converts events into agent-readable conversation history
+AgentContextPackager
+  -> builds the bounded working context for one run
+ContextCompressor
+  -> creates and updates summaries/checkpoints when thresholds are exceeded
+```
+
+关键原则：
+
+- 完整历史属于 LangBot host，不属于插件实例。插件仍是 singleton/stateless。
+- `ctx.messages` 是 working context window，不是完整 conversation dump。
+- 每轮不能全量复制/序列化完整历史给插件 runtime；否则长会话会产生 O(n) 成本和跨进程 payload 膨胀。
+- `max-round` 的旧 user-round 规则可以先搬到 `AgentContextPackager`，作为 `legacy_max_round` 策略。
+- LiteLLM 接入后，`AgentContextPackager` 再读取模型 context window，升级为 token budget 策略。
+- `ContextCompressor` 生成的是派生 summary/checkpoint，不能覆盖或删除 raw history。
+- 重启恢复依赖持久化 store 和 summary checkpoint，不依赖 `SessionManager` 里的进程内 conversation list。
+
+后续 `AgentRunContext` 可增加：
+
+```python
+context_request: AgentContextRequest | None
+context_packaging: ContextPackagingMetadata
+```
+
+建议语义：
+
+- `context_request.mode`: AgentRunner manifest / binding config 请求的 `legacy_max_round`、`token_budget`、`summary_hybrid`、`external_session`
+- `context_request.budget`: 模型窗口、预留输出 token、工具/RAG 预算等偏好
+- `context_packaging.policy`: Host 本次实际采用的打包策略
+- `context_packaging.delivered_count`: 本次下发的历史消息数
+- `context_packaging.source_total_count`: packager 可见的原始历史消息数
+- `context_packaging.messages_complete`: 本窗口是否已经包含完整历史
+- `context_packaging.cursor_before`: 未来通过 host API 读取更早历史的 cursor
+
+未来需要的受限 API：
+
+```python
+api.get_conversation_messages(cursor: str | None, limit: int) -> HistoryPage
+api.get_context_summary(scope: str = "conversation") -> ContextSummary | None
+api.request_context_compaction(policy: dict) -> CompactionResult
+```
+
+这些 API 必须绑定 `run_id`、runner id、actor/subject scope 和资源权限；Host 需要限制
+page size、总字节数、deadline 和可访问 conversation。
+
+### 3.4.2 Large artifacts and tool collaboration
+
+大文件、多模态输入和工具产物不要内联进 `ctx.messages` 或 tool result。后续统一用
+artifact/resource ref 协作：
+
+- message/content 里只放小文本和必要摘要。
+- 大文件、图片、音频、长工具输出返回 `artifact_id`、`mime_type`、`size`、`digest`、
+  `summary`、`expires_at`、`permissions`。
+- `/tmp` 只能作为单次 run 的临时 staging，用于插件或工具短时间读写；它不是 durable store，
+  也不能作为重启恢复依据。
+- box/object storage 是长期 artifact 的目标位置。当前分支尚未合并 box 能力，因此本轮只写文档预留，不实现 API。
+- 工具之间传递大结果时应传 artifact ref，不传完整 blob。Agent 需要读取时走受限 proxy。
+
+未来建议 API：
+
+```python
+api.get_artifact_metadata(artifact_id: str) -> ArtifactMetadata
+api.open_artifact_stream(artifact_id: str) -> AsyncIterator[bytes]
+api.read_artifact_range(artifact_id: str, offset: int, length: int) -> bytes
+api.create_temp_artifact(name: str, content_type: str, ttl_seconds: int) -> ArtifactWriter
+```
+
+安全约束：
+
+- Host 校验 artifact 是否属于当前 run、conversation、actor/subject scope 或授权资源。
+- 默认不允许插件直接读任意本地路径，包括 `/tmp` 任意路径。
+- 临时文件应有 TTL 和清理机制；box artifact 应有 retention policy。
+- 多模态文件进入模型前，由 runner/context packager 决定传引用、摘要、缩略图还是实际 bytes。
 
 ### 3.5 resource_builder.py
 
@@ -218,6 +313,20 @@ ctx.prompt + ctx.messages + [current_user_message_from_ctx.input]
 ```text
 EventRouter -> AgentRunOrchestrator.run_from_event(event_request)
 ```
+
+EBA 落地后，`ConversationStore` 不应只保存聊天消息，而应从 `EventLog` 投影生成：
+
+```text
+Platform Adapter
+  -> EventLog append raw event
+  -> ConversationProjection update message/history view when applicable
+  -> EventRouter resolve binding
+  -> AgentRunOrchestrator.run_from_event(event_request)
+  -> AgentContextPackager build working context from projection + state + artifacts
+```
+
+这样消息事件、工具事件、群成员事件、好友申请事件可以共用同一套 run/session/state/resource
+边界；非消息事件也不需要伪造成一条用户文本消息。
 
 `event_request` 至少需要包含：
 

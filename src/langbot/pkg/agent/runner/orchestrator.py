@@ -31,7 +31,7 @@ class AgentRunOrchestrator:
     Responsibilities:
     - Resolve runner ID from pipeline config (new or old format)
     - Get runner descriptor from registry
-    - Build AgentRunContext from Query
+    - Provision AgentRunContext envelope from Query
     - Build AgentResources with permission filtering
     - Invoke plugin runtime RUN_AGENT action
     - Normalize AgentRunResult to Pipeline messages

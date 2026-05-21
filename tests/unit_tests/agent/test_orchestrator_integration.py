@@ -310,6 +310,62 @@ async def test_orchestrator_runs_fake_plugin_with_authorized_context():
 
 
 @pytest.mark.asyncio
+async def test_orchestrator_packages_legacy_max_round_without_mutating_query():
+    descriptor = make_descriptor()
+    plugin_connector = FakePluginConnector(
+        results=[
+            {
+                "type": "message.completed",
+                "data": {"message": {"role": "assistant", "content": "fake response"}},
+            }
+        ]
+    )
+    ap = FakeApplication(plugin_connector)
+    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+    query = make_query()
+    query.pipeline_config["ai"]["runner_config"][RUNNER_ID]["max-round"] = 2
+    query.messages = [
+        provider_message.Message(role="user", content="message 1"),
+        provider_message.Message(role="assistant", content="response 1"),
+        provider_message.Message(role="user", content="message 2"),
+        provider_message.Message(role="assistant", content="response 2"),
+        provider_message.Message(role="user", content="message 3"),
+        provider_message.Message(role="assistant", content="response 3"),
+    ]
+
+    messages = [message async for message in orchestrator.run_from_query(query)]
+
+    assert len(messages) == 1
+    context = plugin_connector.contexts[0]
+    assert [message["content"] for message in context["messages"]] == [
+        "message 2",
+        "response 2",
+        "message 3",
+        "response 3",
+    ]
+    assert [message.content for message in query.messages] == [
+        "message 1",
+        "response 1",
+        "message 2",
+        "response 2",
+        "message 3",
+        "response 3",
+    ]
+    assert context["runtime"]["metadata"]["context_packaging"] == {
+        "policy": {
+            "mode": "legacy_max_round",
+            "max_round": 2,
+        },
+        "history": {
+            "source": "query.messages",
+            "source_total_count": 6,
+            "delivered_count": 4,
+            "messages_complete": False,
+        },
+    }
+
+
+@pytest.mark.asyncio
 async def test_orchestrator_streams_fake_plugin_deltas():
     descriptor = make_descriptor()
     plugin_connector = FakePluginConnector(

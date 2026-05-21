@@ -3,6 +3,7 @@ from __future__ import annotations
 from .. import stage, entities
 from . import truncator
 from ...utils import importutil
+from ...agent.runner.config_migration import ConfigMigration
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 from . import truncators
 
@@ -30,6 +31,9 @@ class ConversationMessageTruncator(stage.PipelineStage):
 
     async def process(self, query: pipeline_query.Query, stage_inst_name: str) -> entities.StageProcessResult:
         """处理"""
+        if ConfigMigration.resolve_runner_id(query.pipeline_config):
+            return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
+
         query = await self.trun.truncate(query)
 
         return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)

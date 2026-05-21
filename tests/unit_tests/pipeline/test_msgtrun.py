@@ -49,6 +49,18 @@ def get_round_truncator_module():
 def make_truncate_config(max_round: int = 5):
     """Create a pipeline config with max-round setting."""
     return {
+        'msg-truncate': {
+            'method': 'round',
+            'round': {
+                'max-round': max_round,
+            },
+        },
+    }
+
+
+def make_agent_runner_config(max_round: int = 5):
+    """Create an AgentRunner pipeline config with max-round binding config."""
+    return {
         'ai': {
             'runner': {'id': RUNNER_ID},
             'runner_config': {
@@ -136,6 +148,36 @@ class TestRoundTruncatorProcess:
         assert result.result_type == entities.ResultType.CONTINUE
         # All messages should be preserved
         assert len(result.new_query.messages) == 5
+
+    @pytest.mark.asyncio
+    async def test_agent_runner_path_skips_pipeline_truncation(self):
+        """AgentRunner path should leave query.messages intact at pipeline stage."""
+        msgtrun = get_msgtrun_module()
+        entities = get_entities_module()
+
+        app = FakeApp()
+        stage = msgtrun.ConversationMessageTruncator(app)
+
+        pipeline_config = make_agent_runner_config(max_round=1)
+
+        await stage.initialize(pipeline_config)
+
+        query = text_query("current")
+        query.pipeline_config = pipeline_config
+        query.messages = [
+            provider_message.Message(role='user', content='old1'),
+            provider_message.Message(role='assistant', content='old1_resp'),
+            provider_message.Message(role='user', content='current'),
+        ]
+
+        result = await stage.process(query, 'ConversationMessageTruncator')
+
+        assert result.result_type == entities.ResultType.CONTINUE
+        assert [(msg.role, msg.content) for msg in result.new_query.messages] == [
+            ('user', 'old1'),
+            ('assistant', 'old1_resp'),
+            ('user', 'current'),
+        ]
 
     @pytest.mark.asyncio
     async def test_truncate_exceeds_limit(self):

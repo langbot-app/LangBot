@@ -64,7 +64,7 @@ AgentRunnerRegistry
         | discovers built-in runners and plugin runners
         v
 AgentRunOrchestrator
-        | builds context, validates permissions, invokes runner
+        | resolves binding, provisions context/resources/state, invokes runner
         v
 Built-in RequestRunner adapter / Plugin AgentRunner component
         |
@@ -100,12 +100,13 @@ class AgentRunnerDescriptor(BaseModel):
 职责：
 
 - 根据 pipeline 配置选择 runner。
-- 将当前 query 或未来事件输入转换为 `AgentRunRequest`。
-- 注入可用工具、模型、知识库、会话、权限、平台能力摘要。
+- 编排 `ContextBuilder` / `ResourceBuilder` 生成 SDK `AgentRunContext` envelope 与已授权资源。
+- 注册本次运行的 `run_id` / runner / resource scope，供后续 `AgentRunAPIProxy` 做权限校验。
 - 统一处理超时、异常、流式返回、取消、中断和 telemetry。
 - 将插件返回的 `AgentRunResult` 转换回当前 Pipeline 能消费的 `Message` / `MessageChunk`。
 
 LangBot 当前 `ChatMessageHandler` 里的插件 wrapper 应下沉到 orchestrator，避免消息处理器知道插件 runner 的细节。
+这里的 “context” 指 Host 提供的协议 envelope、运行身份、资源、状态快照和默认工作窗口，不是 Agent 的最终 prompt 组装或长期记忆策略。最终模型上下文如何压缩、摘要、召回，应由 AgentRunner 声明策略并在 AgentRunner 边界执行；LangBot 负责提供受限的基础设施和 guardrail。
 
 ## 5. SDK 设计
 
@@ -159,6 +160,8 @@ class AgentRunContext(BaseModel):
     subject: SubjectContext | None = None
     prompt: list[Message] = []
     messages: list[Message] = []
+    context_request: AgentContextRequest | None = None
+    context_packaging: ContextPackagingMetadata = ContextPackagingMetadata()
     input: AgentInput
     params: dict[str, Any] = {}
     resources: AgentResources
@@ -174,7 +177,9 @@ class AgentRunContext(BaseModel):
 - `event` 是未来 EBA 的预留封装，本阶段可以由 query 生成一个最小 message event。
 - `actor` 表示触发者，`subject` 表示事件作用对象，例如被邀请用户、被撤回消息、被操作群组。
 - `prompt` 是宿主处理后的有效 prompt。它来自 LangBot 当前 conversation prompt，并且已经过 `PromptPreProcessing` 等插件事件处理；runner 调模型时应优先使用它，而不是重新读取静态 `config["prompt"]`。
-- `messages` 是历史消息，也已经过宿主 pipeline preprocessing。
+- `messages` 是历史消息，也已经过宿主 pipeline preprocessing。插件化 AgentRunner 路径不再由 Pipeline `msgtrun` 截断，而是在 AgentRunner context packaging 边界按 legacy max-round 语义裁剪。
+- `context_request` 是未来 AgentRunner manifest / binding config 提出的上下文偏好，例如 token budget、summary hybrid、external session；它不是 LangBot 单方面的策略开关。
+- `context_packaging` 描述 Host 本次实际下发的历史窗口，例如使用的策略、来源、已下发消息数、是否确认完整、未来 cursor 等。本阶段只标注 AgentRunner legacy 窗口。
 - `input` 是 runner 的主输入，不再强制等同于纯文本消息；`input.contents` 必须保留图片、文件等结构化内容。
 - `params` 是单次运行的公开业务变量，宿主过滤内部变量和敏感变量后提供。
 - `resources` 列出 LangBot 已授权给 runner 的工具、知识库、模型、文件等。
@@ -189,6 +194,55 @@ ctx.input.to_text()
 ctx.conversation.to_legacy_session()
 ctx.to_legacy_query_context()
 ```
+
+当前代码不改 SDK v1 schema，Host 实际下发结果先作为
+`ctx.runtime.metadata.context_packaging` 下发；它是 packaging receipt，不是 LangBot 侧的长期策略控制面。
+
+### 5.2.1 Agentic 上下文与文件协作方向
+
+本节主要记录后续设计。本轮已把 legacy `max-round` working window 搬到
+`AgentContextPackager`；LangBot 的完整会话历史仍主要来自进程内 `Conversation.messages`，
+长期仍需要持久化 store 和压缩机制。
+
+长期方向应区分三类数据：
+
+- `ConversationStore` / `EventLog`: LangBot 持久保存完整原始消息、事件、工具调用和结果引用，作为审计、重放、重新压缩和历史检索的事实来源。
+- `working context`: 每次 `AgentRunner.run()` 收到的受控上下文窗口。它不应是完整历史全文，而应由 `AgentContextPackager` 组装，例如 effective prompt、压缩摘要、最近若干轮、相关历史片段、RAG/tool context 和当前输入。
+- `context state`: 压缩摘要、`last_compacted_seq`、外部 conversation id、用户偏好等跨轮状态。它由 host-owned state 或授权 storage 持久化，不能放在插件实例内存里。
+
+因此不要把完整历史全部塞给插件 runner。正确边界是 LangBot host 保留完整历史，
+AgentRunner 边界下发默认安全窗口；如果 runner 需要更多历史，应通过受限
+`AgentRunAPIProxy` 按 cursor/page size 请求片段。这样可以避免每轮 O(n) 复制和跨进程
+序列化，也避免插件 runtime 收到无限膨胀的上下文。
+
+上下文压缩应在后续 LiteLLM 接入、能够获得模型 context window 后再实现。建议策略是：
+
+- 每轮 run 前估算 `prompt + summary + recent turns + tool/RAG context + current input` 的 token。
+- 超过阈值时，对较旧的历史窗口做 compression，生成 summary/checkpoint。
+- 原始消息不删除；summary 是派生记忆，可以重算和审计。
+- 下一轮使用 `summary + recent turns + relevant recalled history` 继续工作。
+- 重启后从持久化 `ConversationStore/EventLog` 和 summary checkpoint 恢复 working context，而不是依赖进程内窗口。
+
+大文件、多模态和工具产物不应内联进 `ctx.messages`。后续建议统一成 artifact/resource
+引用：
+
+- 小文本可以直接进入 message/content；大文件、图片、音频、工具输出文件只在 context 中放
+  `artifact_id`、`mime_type`、`size`、`digest`、摘要和访问权限。
+- `/tmp` 只适合作为单次 run 的本地临时 staging；不能作为重启后的事实来源。
+- 长期可复用或跨工具协作的文件应放到 box/object storage。当前分支还没有合并 box 能力，
+  因此本阶段只预留协议，不实现存取。
+- AgentRunner 通过受限 API 读取 artifact，例如后续的 `get_artifact_metadata()`、
+  `open_artifact_stream()`、`read_artifact_range()`。Host 必须校验 run_id、runner 权限、
+  文件大小、MIME、过期时间和可访问范围。
+- 工具返回大结果时也应返回 artifact ref + 摘要，而不是把完整结果塞回消息历史。
+
+EBA 接入后，完整事实来源更适合建成 `EventLog + Projection`：
+
+- `EventLog` 保存 `message.received`、`tool.call.completed`、`message.recalled`、
+  `group.member_joined` 等原始事件。
+- `ConversationProjection` 把与对话相关的事件投影成 agent 可读 history。
+- 非消息事件不必伪造成用户消息；它可以带 `actor`、`subject`、`event_data`，再由
+  `AgentContextPackager` 决定是否纳入 working context。
 
 ### 5.3 返回协议
 
