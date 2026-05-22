@@ -17,11 +17,17 @@ class WebhookTriggerNode(WorkflowNode):
     category = 'trigger'
 
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
-        trigger_data = context.trigger_data
+        # Safe access to trigger_data which may be None
+        trigger_data = context.trigger_data or {}
+
+        # Filter sensitive headers (Authorization, Cookie, etc.)
+        headers = trigger_data.get('headers', {})
+        safe_headers = {k: v for k, v in headers.items()
+                       if k.lower() not in ('authorization', 'cookie', 'x-api-key', 'x-secret')}
 
         return {
             'body': trigger_data.get('body', {}),
-            'headers': trigger_data.get('headers', {}),
+            'headers': safe_headers,
             'query': trigger_data.get('query', {}),
             'method': trigger_data.get('method', 'POST'),
         }

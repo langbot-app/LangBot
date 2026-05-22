@@ -23,13 +23,16 @@ class DifyWorkflowNode(WorkflowNode):
         query = inputs.get('query', '')
         conversation_id = inputs.get('conversation_id')
 
+        # Safe API key truncation
+        masked_key = f'{api_key[:4]}...{api_key[-4:]}' if len(api_key) > 8 else '***' if api_key else ''
+
         return {
             'answer': '',
             'conversation_id': conversation_id,
             'success': False,
             '_debug': {
                 'base_url': base_url,
-                'api_key': api_key[:8] + '...' if api_key else '',
+                'api_key': masked_key,
                 'app_type': app_type,
                 'query': query,
             },

@@ -22,12 +22,15 @@ class LangflowFlowNode(WorkflowNode):
         flow_id = self.get_config('flow_id', '')
         input_value = inputs.get('input_value', '')
 
+        # Safe API key truncation
+        masked_key = f'{api_key[:4]}...{api_key[-4:]}' if len(api_key) > 8 else '***' if api_key else ''
+
         return {
             'result': None,
             'success': False,
             '_debug': {
                 'base_url': base_url,
-                'api_key': api_key[:8] + '...' if api_key else '',
+                'api_key': masked_key,
                 'flow_id': flow_id,
                 'input_value': input_value,
             },

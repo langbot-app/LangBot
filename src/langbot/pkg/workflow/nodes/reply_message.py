@@ -38,9 +38,17 @@ class ReplyMessageNode(WorkflowNode):
         if template:
             message = template
             for key, value in inputs.items():
-                message = message.replace(f'{{{{{key}}}}}', str(value))
+                try:
+                    message = message.replace(f'{{{{{key}}}}}', str(value) if value is not None else '')
+                except Exception:
+                    pass
             for key, value in context.variables.items():
-                message = message.replace(f'{{{{variables.{key}}}}}', str(value))
+                try:
+                    message = message.replace(f'{{{{variables.{key}}}}}', str(value) if value is not None else '')
+                except Exception:
+                    pass
+
+        message_str = str(message) if message is not None else ''
 
         logger.info(
             'ReplyMessageNode resolved message',
@@ -48,13 +56,13 @@ class ReplyMessageNode(WorkflowNode):
                 'node_id': self.node_id,
                 'execution_id': context.execution_id,
                 'input_keys': list(inputs.keys()),
-                'message_preview': str(message)[:200],
+                'message_preview': message_str[:200],
                 'has_template': bool(template),
                 'session_id': context.session_id,
             },
         )
 
-        if not str(message).strip():
+        if not message_str.strip():
             logger.warning(
                 'ReplyMessageNode has empty message after resolution',
                 extra={
@@ -65,16 +73,28 @@ class ReplyMessageNode(WorkflowNode):
             )
 
         # 实际发送消息
+        send_success = False
+        send_error = None
         if self.ap:
-            from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
+            try:
+                from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
 
-            message_chain = MessageChain([Plain(text=str(message))])
-            await self.ap.platform_mgr.websocket_proxy_bot.adapter.send_message(
-                target_type='person',
-                target_id=f'websocket_{context.session_id}',
-                message=message_chain,
-            )
+                message_chain = MessageChain([Plain(text=message_str)])
+                target_type = getattr(context, 'target_type', 'person') or 'person'
+                session_id = context.session_id or 'unknown'
+                target_id = f'websocket_{session_id}'
+
+                await self.ap.platform_mgr.websocket_proxy_bot.adapter.send_message(
+                    target_type=target_type,
+                    target_id=target_id,
+                    message=message_chain,
+                )
+                send_success = True
+            except Exception as e:
+                send_error = str(e)
+                logger.error('ReplyMessageNode send message failed: %s', e, exc_info=True)
         else:
+            send_error = 'Missing application instance'
             logger.warning(
                 'ReplyMessageNode missing application instance',
                 extra={
@@ -83,4 +103,8 @@ class ReplyMessageNode(WorkflowNode):
                 },
             )
 
-        return {'status': 'sent', 'message_id': f'reply_{context.execution_id}'}
+        return {
+            'status': 'sent' if send_success else 'failed',
+            'message_preview': message_str[:200],
+            'error': send_error,
+        }

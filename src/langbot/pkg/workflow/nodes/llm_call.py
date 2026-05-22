@@ -282,6 +282,13 @@ class LLMCallNode(WorkflowNode):
         # Remove CoT content (always remove to avoid leaking internal reasoning)
         response_text = self._remove_think_content(response_text)
 
+        # Initialize usage default
+        usage = {
+            'prompt_tokens': 0,
+            'completion_tokens': 0,
+            'total_tokens': 0,
+        }
+
         # Apply content safety filter
         response_text, is_blocked, filter_notice = self._apply_content_filter(response_text)
         if is_blocked:

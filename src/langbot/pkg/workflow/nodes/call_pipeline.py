@@ -188,11 +188,10 @@ class _WorkflowPipelineCaptureAdapter(abstract_platform_adapter.AbstractMessageP
         arbitrary_types_allowed = True
 
     responses: list[dict[str, Any]] = []
-    context: ExecutionContext = pydantic.Field(exclude=True)
+    context: Optional[ExecutionContext] = pydantic.Field(default=None, exclude=True)
 
     def __init__(self, context: ExecutionContext):
-        super().__init__(config={}, logger=_NoOpEventLogger())
-        self.context = context
+        super().__init__(config={}, logger=_NoOpEventLogger(), context=context)
         self.responses = []
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):

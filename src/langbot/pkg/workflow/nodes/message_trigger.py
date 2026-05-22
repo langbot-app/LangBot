@@ -32,12 +32,13 @@ class MessageTriggerNode(WorkflowNode):
                 'context': msg_ctx.model_dump(),
             }
 
+        # Use safe variable access with fallback
         return {
-            'message': context.get_variable('message', ''),
-            'sender_id': context.get_variable('sender_id', ''),
-            'sender_name': context.get_variable('sender_name', ''),
-            'platform': context.get_variable('platform', ''),
-            'conversation_id': context.get_variable('conversation_id', ''),
-            'is_group': context.get_variable('is_group', False),
-            'context': context.trigger_data,
+            'message': context.get_variable('message') or '',
+            'sender_id': context.get_variable('sender_id') or '',
+            'sender_name': context.get_variable('sender_name') or '',
+            'platform': context.get_variable('platform') or '',
+            'conversation_id': context.get_variable('conversation_id') or '',
+            'is_group': context.get_variable('is_group') or False,
+            'context': context.trigger_data or {},
         }

@@ -384,7 +384,8 @@ class RuntimePipeline:
 
         finally:
             self.ap.logger.debug(f'Query {query.query_id} processed')
-            del self.ap.query_pool.cached_queries[query.query_id]
+            # Use pop with default to avoid KeyError if query was never cached
+            self.ap.query_pool.cached_queries.pop(query.query_id, None)
 
 
 class PipelineManager:
