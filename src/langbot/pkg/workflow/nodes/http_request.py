@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import ipaddress
 import logging
-import re
 from typing import Any
 from urllib.parse import urlparse
 

@@ -323,18 +323,16 @@ class WorkflowsRouterGroup(group.RouterGroup):
                 "model_uuid": "uuid-of-model",
                 "system_prompt": "optional system prompt",
                 "user_prompt": "test message",
-                "enable_tools": false,
-                "tools": [],
                 "temperature": 0.7,
                 "max_tokens": 100
             }
             
             Response includes timing for each step:
             - model_fetch: Time to get model from model_mgr
-            - tool_fetch: Time to load tools (if enabled)
             - prompt_build: Time to build messages
             - llm_call: Time for actual LLM invocation
             - total: Total time
+            - usage: Token usage information
             """
             import time
             
@@ -348,8 +346,6 @@ class WorkflowsRouterGroup(group.RouterGroup):
             
             user_prompt = json_data.get('user_prompt', 'test')
             system_prompt = json_data.get('system_prompt', '')
-            enable_tools = json_data.get('enable_tools', False)
-            tools_config = json_data.get('tools', [])
             temperature = json_data.get('temperature')
             max_tokens = json_data.get('max_tokens', 0)
             
@@ -372,24 +368,7 @@ class WorkflowsRouterGroup(group.RouterGroup):
                     'timings': timings,
                 })
             
-            # Step 2: Tool fetch (if enabled)
-            timings['tool_fetch_ms'] = 0
-            timings['tools_loaded'] = 0
-            if enable_tools and tools_config:
-                t_start = time.perf_counter()
-                try:
-                    import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
-                    all_tools = await self.ap.tool_mgr.get_tools()
-                    tool_names = tools_config if isinstance(tools_config, list) else []
-                    funcs = [t for t in all_tools if t.name in tool_names]
-                    timings['tool_fetch_ms'] = round((time.perf_counter() - t_start) * 1000, 2)
-                    timings['tools_loaded'] = len(funcs)
-                    timings['tool_names'] = [t.name for t in funcs]
-                except Exception as e:
-                    timings['tool_fetch_ms'] = round((time.perf_counter() - t_start) * 1000, 2)
-                    errors.append(f'Tool fetch failed: {str(e)}')
-            
-            # Step 3: Build messages
+            # Step 2: Build messages
             t_start = time.perf_counter()
             import langbot_plugin.api.entities.builtin.provider.message as provider_message
             messages = []
@@ -398,21 +377,21 @@ class WorkflowsRouterGroup(group.RouterGroup):
             messages.append(provider_message.Message(role='user', content=user_prompt))
             timings['prompt_build_ms'] = round((time.perf_counter() - t_start) * 1000, 2)
             
-            # Step 4: Build extra args
+            # Step 3: Build extra args
             extra_args = {}
             if temperature is not None:
                 extra_args['temperature'] = float(temperature)
             if max_tokens and int(max_tokens) > 0:
                 extra_args['max_tokens'] = int(max_tokens)
             
-            # Step 5: LLM call
+            # Step 4: LLM call
             t_start = time.perf_counter()
             try:
                 result_message = await runtime_model.provider.invoke_llm(
                     query=None,
                     model=runtime_model,
                     messages=messages,
-                    funcs=funcs if enable_tools else None,
+                    funcs=None,
                     extra_args=extra_args,
                 )
                 timings['llm_call_ms'] = round((time.perf_counter() - t_start) * 1000, 2)
@@ -451,7 +430,6 @@ class WorkflowsRouterGroup(group.RouterGroup):
             # Calculate total
             timings['total_ms'] = round(sum([
                 timings.get('model_fetch_ms', 0),
-                timings.get('tool_fetch_ms', 0),
                 timings.get('prompt_build_ms', 0),
                 timings.get('llm_call_ms', 0),
             ]), 2)
@@ -460,7 +438,6 @@ class WorkflowsRouterGroup(group.RouterGroup):
             if timings['total_ms'] > 0:
                 timings['breakdown'] = {
                     'model_fetch_pct': round(timings.get('model_fetch_ms', 0) / timings['total_ms'] * 100, 1),
-                    'tool_fetch_pct': round(timings.get('tool_fetch_ms', 0) / timings['total_ms'] * 100, 1),
                     'prompt_build_pct': round(timings.get('prompt_build_ms', 0) / timings['total_ms'] * 100, 1),
                     'llm_call_pct': round(timings.get('llm_call_ms', 0) / timings['total_ms'] * 100, 1),
                 }

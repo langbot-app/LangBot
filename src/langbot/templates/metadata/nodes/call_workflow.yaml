@@ -1,0 +1,79 @@
+# Call Workflow Node Configuration
+name: call_workflow
+label:
+  en_US: Call Workflow
+  zh_Hans: 调用工作流
+category: action
+icon: Workflow
+color: '#8b5cf6'
+description:
+  en_US: Invoke an existing Workflow for processing
+  zh_Hans: 调用现有的工作流进行处理
+
+inputs:
+  - name: variables
+    type: object
+    label:
+      en_US: Variables
+      zh_Hans: 变量
+    description:
+      en_US: Variables to pass to the called workflow
+      zh_Hans: 传递给被调用工作流的变量
+    required: false
+
+outputs:
+  - name: result
+    type: object
+    label:
+      en_US: Result
+      zh_Hans: 结果
+    description:
+      en_US: Workflow execution result (ExecutionContext)
+      zh_Hans: 工作流执行结果（执行上下文）
+  - name: status
+    type: string
+    label:
+      en_US: Status
+      zh_Hans: 状态
+    description:
+      en_US: Workflow execution status
+      zh_Hans: 工作流执行状态
+  - name: error
+    type: string
+    label:
+      en_US: Error
+      zh_Hans: 错误
+    description:
+      en_US: Error message if execution failed
+      zh_Hans: 执行失败时的错误信息
+
+config:
+  - name: workflow_uuid
+    type: workflow-selector
+    required: true
+    label:
+      en_US: Workflow
+      zh_Hans: 工作流
+    description:
+      en_US: Workflow to call
+      zh_Hans: 要调用的工作流
+
+  - name: inherit_variables
+    type: boolean
+    default: true
+    label:
+      en_US: Inherit Variables
+      zh_Hans: 继承变量
+    description:
+      en_US: Whether to inherit current workflow variables
+      zh_Hans: 是否继承当前工作流的变量
+
+  - name: timeout
+    type: integer
+    default: 300
+    label:
+      en_US: Timeout (seconds)
+      zh_Hans: 超时时间（秒）
+    description:
+      en_US: Timeout in seconds
+      zh_Hans: 超时时间（秒）

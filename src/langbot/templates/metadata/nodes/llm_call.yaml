@@ -70,25 +70,73 @@ config:
       en_US: Select the LLM model to use
       zh_Hans: 选择要使用的 LLM 模型
 
-  - name: system_prompt
-    type: textarea
+  - name: fallback_models
+    type: model-fallback-selector
+    required: false
+    default: []
     label:
-      en_US: System Prompt
-      zh_Hans: 系统提示词
+      en_US: Fallback Models
+      zh_Hans: 备用模型
     description:
-      en_US: System prompt to set the model behavior
-      zh_Hans: 设置模型行为的系统提示词
+      en_US: List of fallback models to try if the primary model fails
+      zh_Hans: 主模型失败时尝试的备用模型列表
 
-  - name: user_prompt_template
-    type: textarea
-    required: true
-    default: "{{input}}"
+  - name: prompt
     label:
-      en_US: User Prompt Template
-      zh_Hans: 用户提示词模板
+      en_US: Prompt
+      zh_Hans: 提示词
     description:
-      en_US: User prompt template with variable placeholders
-      zh_Hans: 带有变量占位符的用户提示词模板
+      en_US: Unless you understand the message structure, please only use a single system prompt
+      zh_Hans: 除非您了解消息结构，否则请只使用 system 单提示词
+    type: prompt-editor
+    required: true
+    default:
+      - role: system
+        content: "You are a helpful assistant."
+
+  - name: max_round
+    type: integer
+    required: false
+    default: 10
+    label:
+      en_US: Max Round
+      zh_Hans: 最大回合数
+    description:
+      en_US: The maximum number of previous messages that the agent can remember
+      zh_Hans: 最大前文消息回合数
+
+  - name: knowledge_bases
+    type: knowledge-base-multi-selector
+    required: false
+    default: []
+    label:
+      en_US: Knowledge Bases
+      zh_Hans: 知识库
+    description:
+      en_US: Configure the knowledge bases to use for the agent, if not selected, the agent will directly use the LLM to reply
+      zh_Hans: 配置用于提升回复质量的知识库，若不选择，则直接使用大模型回复
+
+  - name: rerank_model
+    type: rerank-model-selector
+    required: false
+    default: ''
+    label:
+      en_US: Rerank Model
+      zh_Hans: 重排序模型
+    description:
+      en_US: Optional rerank model to improve retrieval quality by re-scoring retrieved chunks
+      zh_Hans: 可选的重排序模型，通过重新评分检索结果来提升检索质量
+
+  - name: rerank_top_k
+    type: integer
+    required: false
+    default: 5
+    label:
+      en_US: Rerank Top K
+      zh_Hans: 重排序保留数量
+    description:
+      en_US: Number of top results to keep after reranking
+      zh_Hans: 重排序后保留的最相关结果数量
 
   - name: temperature
     type: number
@@ -133,26 +181,6 @@ config:
     description:
       en_US: JSON schema for structured output validation
       zh_Hans: 用于结构化输出验证的 JSON Schema
-
-  - name: enable_tools
-    type: boolean
-    default: false
-    label:
-      en_US: Enable Tools
-      zh_Hans: 启用工具
-    description:
-      en_US: Allow the model to use function calling tools
-      zh_Hans: 允许模型使用函数调用工具
-
-  - name: tools
-    type: json
-    default: []
-    label:
-      en_US: Tools
-      zh_Hans: 工具
-    description:
-      en_US: Select tools that the model can use
-      zh_Hans: 选择模型可以使用的工具
 
   - name: exception_handling
     type: select

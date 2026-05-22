@@ -55,7 +55,6 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
 
   const [activeTab, setActiveTab] = useState('editor');
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
-  const [createStep, setCreateStep] = useState<'basic' | 'editor'>('basic');
   const [basicInfo, setBasicInfo] = useState<{
     name: string;
     description: string;
@@ -63,7 +62,7 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
   }>({
     name: '',
     description: '',
-    emoji: '🔄',
+    emoji: '💼',
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
@@ -136,8 +135,8 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
           name: basicInfo.name || t('workflows.newWorkflow'),
           description: basicInfo.description,
           emoji: basicInfo.emoji,
-          nodes,
-          edges,
+          nodes: [],
+          edges: [],
         });
         refreshWorkflows();
         navigate(`/home/workflows?id=${encodeURIComponent(resp.uuid)}`);
@@ -330,7 +329,7 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
   }, [workflow, refreshWorkflows, navigate, t]);
 
   // ==================== Create Mode ====================
-  if (isCreateMode && createStep === 'basic') {
+  if (isCreateMode) {
     return (
       <div className="flex h-full flex-col">
         <div className="flex items-center justify-between pb-4 shrink-0">
@@ -352,11 +351,8 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
               <Upload className="size-4 mr-1" />
               {t('workflows.import')}
             </Button>
-            <Button
-              onClick={() => setCreateStep('editor')}
-              disabled={!basicInfo.name.trim()}
-            >
-              {t('common.next')}
+            <Button onClick={handleSave} disabled={isSaving || !basicInfo.name.trim()}>
+              {isSaving ? t('common.saving') : t('common.create')}
             </Button>
           </div>
         </div>
@@ -412,30 +408,6 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
               </CardContent>
             </Card>
           </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (isCreateMode) {
-    return (
-      <div className="flex h-full flex-col">
-        <div className="flex items-center justify-between pb-4 shrink-0">
-          <h1 className="text-xl font-semibold">
-            {t('workflows.createWorkflow')}
-          </h1>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setCreateStep('basic')}>
-              {t('common.back')}
-            </Button>
-            <Button onClick={handleSave} disabled={isSaving}>
-              {isSaving ? t('common.saving') : t('common.create')}
-            </Button>
-          </div>
-        </div>
-
-        <div className="flex-1 min-h-0">
-          <WorkflowEditorComponent />
         </div>
       </div>
     );

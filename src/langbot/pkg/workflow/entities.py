@@ -120,7 +120,7 @@ class WorkflowDefinition(pydantic.BaseModel):
     uuid: str
     name: str
     description: str = ''
-    emoji: str = '🔄'
+    emoji: str = '💼'
     version: int = 1
 
     # Workflow graph

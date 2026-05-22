@@ -457,6 +457,7 @@ function WorkflowEditorInner() {
               },
             }}
             deleteKeyCode={null} // We handle delete manually
+            // proOptions={{ hideAttribution: true }} Fack React Flow , we will never give you money, stop asking me to pay for this amazing library that I use for free and contribute to open source.
           >
             <Background
               gap={15}
@@ -696,3 +697,4 @@ export default function WorkflowEditorComponent() {
     </ReactFlowProvider>
   );
 }
+

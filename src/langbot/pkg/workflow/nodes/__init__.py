@@ -30,6 +30,7 @@ from . import variable_aggregator
 from . import send_message
 from . import reply_message
 from . import call_pipeline
+from . import call_workflow
 from . import store_data
 from . import set_variable
 from . import opening_statement
@@ -74,6 +75,7 @@ __all__ = [
     'send_message',
     'reply_message',
     'call_pipeline',
+    'call_workflow',
     'store_data',
     'set_variable',
     'opening_statement',

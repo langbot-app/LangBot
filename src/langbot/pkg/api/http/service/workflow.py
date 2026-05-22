@@ -117,7 +117,7 @@ class WorkflowService:
             'uuid': workflow_uuid,
             'name': workflow_data.get('name', 'New Workflow'),
             'description': workflow_data.get('description', ''),
-            'emoji': workflow_data.get('emoji', '🔄'),
+            'emoji': workflow_data.get('emoji', '💼'),
             'version': 1,
             'is_enabled': workflow_data.get('is_enabled', True),
             'definition': workflow_data.get(
