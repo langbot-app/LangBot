@@ -512,7 +512,7 @@ box:
                           #  - skill 列表/读取保持只读可用
                           # BOX__ENABLED 环境变量可覆盖（统一约定）
     backend: 'local'      # 'local' (探测) / 'docker' / 'nsjail' / 'e2b'
-                          # BOX_BACKEND 环境变量优先级更高
+                          # 由 box.backend / BOX__BACKEND 选择后端
     runtime:
         endpoint: ''      # 外部 Runtime 的 WS 基地址 'ws://host:5410'
                           # 留空 = 本地自管 Runtime
