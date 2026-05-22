@@ -39,6 +39,7 @@ export enum DynamicFormItemType {
   EMBEDDING_MODEL_SELECTOR = 'embedding-model-selector',
   RERANK_MODEL_SELECTOR = 'rerank-model-selector',
   PIPELINE_SELECTOR = 'pipeline-selector',
+  WORKFLOW_SELECTOR = 'workflow-selector',
   MODEL_FALLBACK_SELECTOR = 'model-fallback-selector',
   PROMPT_EDITOR = 'prompt-editor',
   UNKNOWN = 'unknown',

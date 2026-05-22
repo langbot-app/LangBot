@@ -27,6 +27,7 @@ import {
   RerankModel,
   Pipeline,
   PluginTool,
+  Workflow,
 } from '@/app/infra/entities/api';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -114,6 +115,7 @@ export default function DynamicFormItemComponent({
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [bots, setBots] = useState<Bot[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [tools, setTools] = useState<PluginTool[]>([]);
   const [uploading, setUploading] = useState<boolean>(false);
   const [kbDialogOpen, setKbDialogOpen] = useState(false);
@@ -291,6 +293,19 @@ export default function DynamicFormItemComponent({
           toast.error(
             t('tools.getToolListError', 'Failed to get tools: ') + err.msg,
           );
+        });
+    }
+  }, [config.type]);
+
+  useEffect(() => {
+    if (config.type === DynamicFormItemType.WORKFLOW_SELECTOR) {
+      httpClient
+        .getWorkflows()
+        .then((resp) => {
+          setWorkflows(resp.workflows);
+        })
+        .catch((err) => {
+          toast.error(t('workflows.loadWorkflowsFailed') + err.msg);
         });
     }
   }, [config.type]);
@@ -1389,6 +1404,43 @@ export default function DynamicFormItemComponent({
                 pipelines.map((pipeline) => (
                   <SelectItem key={pipeline.uuid} value={pipeline.uuid ?? ''}>
                     {pipeline.name}
+                  </SelectItem>
+                ))
+              )}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      );
+
+    case DynamicFormItemType.WORKFLOW_SELECTOR:
+      return (
+        <Select value={field.value ?? ''} onValueChange={field.onChange}>
+          <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
+            {field.value ? (
+              (() => {
+                const selectedWorkflow = workflows.find(
+                  (workflow) => workflow.uuid === field.value,
+                );
+                return (
+                  <span className="truncate">
+                    {selectedWorkflow?.name ?? field.value}
+                  </span>
+                );
+              })()
+            ) : (
+              <SelectValue placeholder={t('workflows.selectWorkflow')} />
+            )}
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {workflows.length === 0 ? (
+                <div className="px-2 py-3 text-sm text-muted-foreground">
+                  {t('workflows.noWorkflowsFound')}
+                </div>
+              ) : (
+                workflows.map((workflow) => (
+                  <SelectItem key={workflow.uuid} value={workflow.uuid ?? ''}>
+                    {workflow.name}
                   </SelectItem>
                 ))
               )}

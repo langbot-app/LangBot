@@ -64,6 +64,7 @@ class NodeMetadataValidator:
         'plugin-selector',
         'webhook-url',
         'embed-code',
+        'workflow-selector',
     }
 
     def validate(self, metadata: dict[str, Any]) -> list[str]:

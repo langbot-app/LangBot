@@ -2181,6 +2181,10 @@ const enUS = {
       intent: 'Intent',
       entities: 'Entities',
     },
+    // Workflow selector for dynamic forms
+    selectWorkflow: 'Select Workflow',
+    noWorkflowsFound: 'No workflows found',
+    loadWorkflowsFailed: 'Failed to load workflows: ',
   },
   unifiedBinding: {
     bindingType: 'Binding Type',

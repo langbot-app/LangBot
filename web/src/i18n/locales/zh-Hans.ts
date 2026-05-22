@@ -2131,6 +2131,10 @@ const zhHans = {
       coze_bot_id: '机器人ID',
       coze_api_base: 'API基础URL',
     },
+    // Workflow selector for dynamic forms
+    selectWorkflow: '选择工作流',
+    noWorkflowsFound: '暂无工作流',
+    loadWorkflowsFailed: '加载工作流列表失败：',
   },
   unifiedBinding: {
     bindingType: '绑定类型',
