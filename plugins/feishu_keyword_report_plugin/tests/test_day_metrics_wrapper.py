@@ -262,6 +262,91 @@ class DayMetricsWrapperTest(unittest.TestCase):
         process_metrics = out["line_reports"][0]["metrics"]["制程"]
         self.assertAlmostEqual(process_metrics["烧结压实"]["min"], 2.31, places=3)
 
+    def test_build_report_supports_bitable_product_metric_fields(self) -> None:
+        matrix = [
+            [
+                "",
+                "批次",
+                "投料日期",
+                "成品压实",
+                "残碱(Li+)",
+                "碳含量",
+                "粉阻(粉末电阻)",
+                "比表(麦克比表)",
+                "pH",
+                "Li含量",
+                "Fe含量",
+                "P含量",
+                "Na+K含量",
+                "杂质含量",
+                "铁溶出",
+            ],
+            ["", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+            ["", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+            [
+                "2026-05-20",
+                "S18-CP-DA2605-103-A2-1",
+                "2026-05-20",
+                2.384,
+                316,
+                1.22,
+                34.5,
+                10.8,
+                9.26,
+                4.45,
+                34.64,
+                19.63,
+                0.012630,
+                0.001423,
+                13.921,
+            ],
+            [
+                "2026-05-20",
+                "S18-CP-DA2605-103-A2-2",
+                "2026-05-20",
+                2.380,
+                304,
+                1.20,
+                35.1,
+                10.6,
+                9.32,
+                4.43,
+                34.60,
+                19.60,
+                0.012909,
+                0.001452,
+                14.572,
+            ],
+        ]
+
+        out = day_metrics.build_standard_report_from_matrices(
+            sheet_matrices={"S18-A线": matrix},
+            selected_sheets=["S18-A线"],
+            date_arg="2026-05-20",
+            date_mode="global",
+            lookback_days=7,
+            trend_days=3,
+            stale_threshold_process=2,
+            stale_threshold_product=3,
+            stale_threshold_electrochem=5,
+            report_show_placeholder_sections=False,
+            spec_registry_json="",
+        )
+
+        product_metrics = out["line_reports"][0]["metrics"]["成品"]
+        self.assertAlmostEqual(product_metrics["残碱(Li+)"]["min"], 304.0, places=3)
+        self.assertAlmostEqual(product_metrics["残碱(Li+)"]["max"], 316.0, places=3)
+        self.assertAlmostEqual(product_metrics["粉阻(粉末电阻)"]["max"], 35.1, places=3)
+        self.assertAlmostEqual(product_metrics["比表(麦克比表)"]["max"], 10.8, places=3)
+        self.assertAlmostEqual(product_metrics["pH"]["max"], 9.32, places=3)
+        self.assertAlmostEqual(product_metrics["Li含量"]["min"], 4.43, places=3)
+        self.assertAlmostEqual(product_metrics["Fe含量"]["max"], 34.64, places=3)
+        self.assertAlmostEqual(product_metrics["P含量"]["min"], 19.60, places=3)
+        self.assertAlmostEqual(product_metrics["Na+K含量"]["max"], 0.012909, places=6)
+        self.assertAlmostEqual(product_metrics["杂质含量"]["max"], 0.001452, places=6)
+        self.assertAlmostEqual(product_metrics["铁溶出"]["max"], 14.572, places=3)
+        self.assertNotIn("3160000", out["text"])
+
     def test_build_report_uses_spec_limits_from_config(self) -> None:
         out = day_metrics.build_standard_report_from_matrices(
             sheet_matrices={"S18-A线": self._sample_matrix()},

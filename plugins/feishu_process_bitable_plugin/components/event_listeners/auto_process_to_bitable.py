@@ -1257,6 +1257,41 @@ class AutoProcessToBitableListener(EventListener):
         return batch
 
     @staticmethod
+    def _product_metric_aliases() -> list[tuple[str, tuple[str, ...]]]:
+        return [
+            ("成品压实", ("成品压实", "压实密度", "压实")),
+            ("0.1C充电", ("0.1C充电", "0.1C充", "0.1C充容", "0.1C充电容量")),
+            ("0.1C放电", ("0.1C放电", "0.1C放", "0.1C放容", "0.1C放电容量")),
+            ("首效", ("0.1C首效", "首效", "首次效率")),
+            ("平台效率", ("3.2V容量占比", "3.2V平台效率", "2.95V容量占比", "平台效率")),
+            ("残碱(Li+)", ("残碱(Li+)", "Li+含量", "Li+", "残碱锂", "残锂")),
+            ("碳含量", ("碳含量", "C含量")),
+            ("粉阻(粉末电阻)", ("粉阻(粉末电阻)", "粉末电阻", "粉阻")),
+            ("比表(麦克比表)", ("比表(麦克比表)", "麦克比表", "比表面积", "比表")),
+            ("pH", ("pH", "PH", "Hp")),
+        ]
+
+    @staticmethod
+    def _normalize_product_metric_value(field_name: str, value: float) -> float:
+        if field_name == "首效" and value > 1000:
+            return value / 100.0
+        if field_name == "残碱(Li+)" and 0 < value < 1:
+            return value * 10000.0
+        return value
+
+    @classmethod
+    def _match_product_metric_field(cls, cell_text: str) -> str | None:
+        compact_cell = re.sub(r"\s+", "", cell_text).lower()
+        if not compact_cell:
+            return None
+        for field_name, aliases in cls._product_metric_aliases():
+            for alias in aliases:
+                compact_alias = re.sub(r"\s+", "", alias).lower()
+                if compact_alias and compact_alias in compact_cell:
+                    return field_name
+        return None
+
+    @staticmethod
     def _extract_product_status_fields(block_text: str) -> dict[str, Any]:
         text = re.sub(r"\s+", "", block_text.strip())
         fields: dict[str, Any] = {}
@@ -1300,24 +1335,8 @@ class AutoProcessToBitableListener(EventListener):
         compact = re.sub(r"\s+", "", text)
         fields: dict[str, Any] = {}
 
-        metric_aliases: list[tuple[str, tuple[str, ...]]] = [
-            ("成品压实", ("成品压实", "压实密度", "压实")),
-            ("0.1C充电", ("0.1C充电", "0.1C充", "0.1C充容", "0.1C充电容量")),
-            ("0.1C放电", ("0.1C放电", "0.1C放", "0.1C放容", "0.1C放电容量")),
-            ("首效", ("0.1C首效", "首效", "首次效率")),
-            ("平台效率", ("3.2V容量占比", "3.2V平台效率", "2.95V容量占比", "平台效率")),
-            ("残碱(Li+)", ("残碱(Li+)", "Li+含量", "Li+", "残碱锂", "残锂")),
-            ("碳含量", ("碳含量", "C含量")),
-            ("粉阻(粉末电阻)", ("粉阻(粉末电阻)", "粉末电阻", "粉阻")),
-            ("比表(麦克比表)", ("比表(麦克比表)", "麦克比表", "比表面积", "比表")),
-            ("pH", ("pH", "PH", "Hp")),
-        ]
+        metric_aliases = cls._product_metric_aliases()
         all_aliases = [alias for _field_name, aliases in metric_aliases for alias in aliases]
-
-        def _normalize_metric_value(field_name: str, value: float) -> float:
-            if field_name == "首效" and value > 1000:
-                return value / 100.0
-            return value
 
         def _extract_alias_value(alias: str) -> float | None:
             pattern = rf"{re.escape(alias)}(?:值|均值|结果)?\s*[:：=]?\s*(?<![\dA-Za-z])(-?\d+(?:\.\d+)?)(?![\dA-Za-z.])"
@@ -1356,17 +1375,6 @@ class AutoProcessToBitableListener(EventListener):
             except Exception:
                 return None
 
-        def _match_metric_field(cell_text: str) -> str | None:
-            compact_cell = re.sub(r"\s+", "", cell_text).lower()
-            if not compact_cell:
-                return None
-            for field_name, aliases in metric_aliases:
-                for alias in aliases:
-                    compact_alias = re.sub(r"\s+", "", alias).lower()
-                    if compact_alias and compact_alias in compact_cell:
-                        return field_name
-            return None
-
         def _numeric_cell_value(cell_text: str) -> float | None:
             stripped = cell_text.strip()
             if re.fullmatch(r"\d{4}[./-]\d{1,2}[./-]\d{1,2}", stripped):
@@ -1386,7 +1394,7 @@ class AutoProcessToBitableListener(EventListener):
             header_positions: list[tuple[int, str]] = []
             seen_fields: set[str] = set()
             for idx, line in enumerate(lines):
-                field_name = _match_metric_field(line)
+                field_name = cls._match_product_metric_field(line)
                 if not field_name or field_name in seen_fields:
                     continue
                 header_positions.append((idx, field_name))
@@ -1405,7 +1413,7 @@ class AutoProcessToBitableListener(EventListener):
 
             table_fields: dict[str, float] = {}
             for (_idx, field_name), value in zip(header_positions, numeric_values):
-                table_fields[field_name] = _normalize_metric_value(field_name, value)
+                table_fields[field_name] = cls._normalize_product_metric_value(field_name, value)
             return table_fields
 
         for field_name, aliases in metric_aliases:
@@ -1413,13 +1421,105 @@ class AutoProcessToBitableListener(EventListener):
                 value = _extract_alias_value(alias)
                 if value is None:
                     continue
-                fields[field_name] = _normalize_metric_value(field_name, value)
+                fields[field_name] = cls._normalize_product_metric_value(field_name, value)
                 break
 
         for field_name, value in _extract_table_values_by_header_order().items():
             fields.setdefault(field_name, value)
 
         return fields
+
+    @classmethod
+    def _extract_product_single_metric_table_fields(cls, block_text: str) -> dict[str, dict[str, Any]]:
+        text = cls._normalize_message_text(block_text)
+        if "充放电制度" in text:
+            return {}
+
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        if not lines:
+            return {}
+
+        metric_headers = [
+            (idx, field_name)
+            for idx, line in enumerate(lines)
+            if (field_name := cls._match_product_metric_field(line))
+        ]
+        unique_fields = {field_name for _idx, field_name in metric_headers}
+        if len(unique_fields) != 1:
+            return {}
+
+        field_name = next(iter(unique_fields))
+        if field_name == "pH":
+            return {}
+
+        line_pattern = cls._production_line_pattern()
+        batch_regex = re.compile(
+            rf"S\d+(?:-CP)?-D[{line_pattern}]\d{{4}}-\d+(?:-[A-Z0-9]+)*",
+            re.IGNORECASE,
+        )
+        batch_positions = [
+            (idx, cls._normalize_product_batch_id(lines[idx]))
+            for idx in range(len(lines))
+            if batch_regex.fullmatch(lines[idx].upper())
+        ]
+        if not batch_positions:
+            return {}
+
+        header_idx = metric_headers[0][0]
+        date_regex = re.compile(r"\d{4}[./-]\d{1,2}[./-]\d{1,2}")
+
+        def _numeric_value(cell_text: str) -> float | None:
+            stripped = cell_text.strip()
+            if date_regex.fullmatch(stripped):
+                return None
+            if re.search(r"S\d+.*D[A-Z]\d{4}", stripped, flags=re.IGNORECASE):
+                return None
+            if re.fullmatch(r"\d+(?:\.\d+)?\s*-\s*\d+(?:\.\d+)?", stripped):
+                return None
+            if not re.fullmatch(r"-?\d+(?:\.\d+)?%?", stripped):
+                return None
+            try:
+                return float(stripped.rstrip("%"))
+            except Exception:
+                return None
+
+        def _nearest_date(cells: list[str]) -> str | None:
+            for cell in cells:
+                if not date_regex.fullmatch(cell):
+                    continue
+                year, month, day = re.split(r"[./-]", cell)
+                return f"{int(year):04d}.{int(month):02d}.{int(day):02d}"
+            return None
+
+        fields_by_batch: dict[str, dict[str, Any]] = {}
+        for pos, (batch_idx, batch_id) in enumerate(batch_positions):
+            previous_batch_idx = batch_positions[pos - 1][0] if pos > 0 else header_idx
+            next_batch_idx = batch_positions[pos + 1][0] if pos + 1 < len(batch_positions) else len(lines)
+            before_cells = lines[max(header_idx + 1, previous_batch_idx + 1):batch_idx]
+            after_cells = lines[batch_idx + 1:next_batch_idx]
+
+            value: float | None = None
+            for cell in reversed(before_cells):
+                value = _numeric_value(cell)
+                if value is not None:
+                    break
+            if value is None:
+                for cell in after_cells:
+                    value = _numeric_value(cell)
+                    if value is not None:
+                        break
+            if value is None:
+                continue
+
+            fields: dict[str, Any] = {
+                field_name: cls._normalize_product_metric_value(field_name, value),
+            }
+            nearby_date = _nearest_date(before_cells + after_cells)
+            if nearby_date:
+                fields["检测日期"] = nearby_date
+            fields_by_batch[batch_id] = fields
+
+        return fields_by_batch
 
     @classmethod
     def _extract_product_battery_table_fields(cls, block_text: str) -> dict[str, dict[str, Any]]:
@@ -1586,16 +1686,20 @@ class AutoProcessToBitableListener(EventListener):
             if ph_value is None:
                 continue
 
-            fields: dict[str, Any] = {"pH": ph_value}
+            sample_batch_id = cls._normalize_product_batch_id(line.upper())
+            product_batch_id = re.sub(r"-\d+$", "", sample_batch_id)
+            fields: dict[str, Any] = {
+                "pH": ph_value,
+                "成品批次": product_batch_id,
+                "样品批号": sample_batch_id,
+            }
             for cell in nearby:
                 if date_regex.fullmatch(cell):
                     year, month, day = re.split(r"[./-]", cell)
                     fields["检测日期"] = f"{int(year):04d}.{int(month):02d}.{int(day):02d}"
                     break
-            normalized_batch = cls._normalize_product_batch_id(line.upper())
-            normalized_batch = re.sub(r"-\d+$", "", normalized_batch)
-            ph_table[line.upper()] = fields
-            ph_table[normalized_batch] = fields
+            ph_table[sample_batch_id] = fields
+            ph_table[product_batch_id] = fields
 
         return ph_table
 
@@ -1722,6 +1826,7 @@ class AutoProcessToBitableListener(EventListener):
             return []
 
         battery_fields_by_batch = self._extract_product_battery_table_fields(normalized_text)
+        single_metric_fields_by_batch = self._extract_product_single_metric_table_fields(normalized_text)
         ph_fields_by_batch = self._extract_product_ph_table_fields(normalized_text)
         element_fields_by_batch = self._extract_product_element_table_fields(normalized_text)
         records: list[ParsedRecord] = []
@@ -1772,8 +1877,14 @@ class AutoProcessToBitableListener(EventListener):
             fields.update(self._extract_product_status_fields(block_text))
             fields.update(self._extract_product_metric_fields(block_text))
             fields.update(battery_fields_by_batch.get(batch_id, {}))
-            fields.update(ph_fields_by_batch.get(sample_batch_id, {}))
-            fields.update(ph_fields_by_batch.get(batch_id, {}))
+            fields.update(single_metric_fields_by_batch.get(write_batch_id, {}))
+            if not sample_index:
+                fields.update(single_metric_fields_by_batch.get(batch_id, {}))
+            ph_fields = ph_fields_by_batch.get(write_batch_id, {}) or ph_fields_by_batch.get(sample_batch_id, {})
+            if ph_fields:
+                fields.update(ph_fields)
+            elif not sample_index:
+                fields.update(ph_fields_by_batch.get(batch_id, {}))
             fields.update(element_fields_by_batch.get(write_batch_id, {}))
             fields.update(self._extract_product_date_field(block_text))
 

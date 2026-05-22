@@ -382,6 +382,107 @@ class AutoProcessToBitableListenerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fields["pH"], 9.15)
         self.assertEqual(fields["检测日期"], "2026.05.20")
 
+    async def test_parse_product_extracts_single_metric_table_with_values_before_batches(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_product(
+            "C\n"
+            "1.18-1.48\n"
+            "%w/w\n"
+            "1.440\n"
+            "标准\n"
+            "1.200\n"
+            "供应商内部批次号\n"
+            "碳含量\n"
+            "1.337\n"
+            "S18-CP-DA2605-102-A1-3\n"
+            "1.337\n"
+            "S18-CP-DA2605-105-A2\n"
+            "1.349\n"
+            "S18-CP-DA2605-104-A1\n"
+            "1.338\n"
+            "S18-CP-DA2605-106-A1\n"
+            "1.329\n"
+            "S18-CP-DA2605-107-A1",
+            "2026-05-20 10:30:00",
+        )
+
+        self.assertEqual(len(records), 5)
+        by_batch = {record.batch_id: record for record in records}
+        self.assertEqual(by_batch["S18-CP-DA2605-102-A1-3"].fields["碳含量"], 1.337)
+        self.assertEqual(by_batch["S18-CP-DA2605-105-A2"].fields["碳含量"], 1.337)
+        self.assertEqual(by_batch["S18-CP-DA2605-104-A1"].fields["碳含量"], 1.349)
+        self.assertEqual(by_batch["S18-CP-DA2605-106-A1"].fields["碳含量"], 1.338)
+        self.assertEqual(by_batch["S18-CP-DA2605-107-A1"].fields["碳含量"], 1.329)
+
+    async def test_parse_product_extracts_single_metric_table_with_value_after_batch(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_product(
+            "C\n"
+            "W\n"
+            "1.18-1.48\n"
+            "户标准\n"
+            "%w/w\n"
+            "1.440\n"
+            "控标准\n"
+            "1.200\n"
+            "供应商内部批次号\n"
+            "碳含量\n"
+            "S18-CP-DB2605-103-B1\n"
+            "1.299",
+            "2026-05-20 10:35:00",
+        )
+
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].batch_id, "S18-CP-DB2605-103-B1")
+        self.assertEqual(records[0].fields["碳含量"], 1.299)
+
+    async def test_parse_product_extracts_single_metric_table_powder_resistance(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_product(
+            "A\n"
+            "B\n"
+            "C\n"
+            "E\n"
+            "单位\n"
+            "USL\n"
+            "山东锂源\n"
+            "SL\n"
+            "LSL\n"
+            "班次\n"
+            "批号\n"
+            "检测时间\n"
+            "粉末电阻\n"
+            "白班\n"
+            "2026.05.20\n"
+            "9.33\n"
+            "S20-CP-DA2605-101-A1",
+            "2026-05-20 10:40:00",
+        )
+
+        self.assertEqual(len(records), 1)
+        fields = records[0].fields
+        self.assertEqual(records[0].batch_id, "S20-CP-DA2605-101-A1")
+        self.assertEqual(fields["粉阻(粉末电阻)"], 9.33)
+        self.assertEqual(fields["检测日期"], "2026.05.20")
+
+    async def test_parse_product_extracts_single_metric_table_residual_lithium_ppm(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_product(
+            "批号\n"
+            "Li+含量\n"
+            "0.0271\n"
+            "S20-CP-DA2605-100-A2",
+            "2026-05-20 10:45:00",
+        )
+
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].batch_id, "S20-CP-DA2605-100-A2")
+        self.assertEqual(records[0].fields["残碱(Li+)"], 271.0)
+
     async def test_parse_product_extracts_feishu_ocr_battery_table(self) -> None:
         listener = self._build_listener()
 
@@ -657,6 +758,20 @@ class AutoProcessToBitableListenerTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             by_batch["S18-CP-DA2605-103-A2-1"].fields["成品批次"],
+            "S18-CP-DA2605-103-A2",
+        )
+        self.assertEqual(
+            by_batch["S18-CP-DA2605-103-A2-1"].fields["样品批号"],
+            "S18-CP-DA2605-103-A2-1",
+        )
+        self.assertEqual(by_batch["S18-CP-DA2605-103-A2-2"].fields["pH"], 9.32)
+        self.assertEqual(
+            by_batch["S18-CP-DA2605-103-A2-2"].fields["样品批号"],
+            "S18-CP-DA2605-103-A2-2",
+        )
+        self.assertEqual(by_batch["S18-CP-DA2605-103-A2-3"].fields["pH"], 9.26)
+        self.assertEqual(
+            by_batch["S18-CP-DA2605-103-A2-3"].fields["成品批次"],
             "S18-CP-DA2605-103-A2",
         )
         self.assertEqual(by_batch["S18-CP-DA2605-102-A1-1"].fields["pH"], 8.92)

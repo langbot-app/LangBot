@@ -373,6 +373,41 @@ def _flatten_numeric_values(df: pd.DataFrame, cols: list[str]) -> pd.Series:
     return values
 
 
+def _metric_col_scale(col: str, metric_key: str, default_scale: float = 1.0) -> float:
+    if metric_key == "残碱(Li+)":
+        if _col_contains(col, "残碱") or _col_contains(col, "ppm"):
+            return 1.0
+        if _col_contains(col, "Li+含量"):
+            return 10000.0
+    return float(default_scale if default_scale is not None else 1.0)
+
+
+def _flatten_metric_values(
+    df: pd.DataFrame,
+    cols: list[str],
+    metric_key: str = "",
+    scale: float = 1.0,
+) -> pd.Series:
+    if not cols:
+        return pd.Series(dtype=float)
+    series_list: list[pd.Series] = []
+    for c in cols:
+        if c not in df.columns:
+            continue
+        values = _to_num_series(df[c])
+        col_scale = _metric_col_scale(c, metric_key, scale)
+        if col_scale != 1.0:
+            values = values * col_scale
+        series_list.append(values)
+    if not series_list:
+        return pd.Series(dtype=float)
+    return pd.concat(series_list, axis=0).dropna()
+
+
+def _metric_spec_for_col(col: str, metric_key: str, default_scale: float = 1.0) -> Optional[Spec]:
+    return _normalized_spec_for_metric(col, scale=_metric_col_scale(col, metric_key, default_scale))
+
+
 @dataclass(frozen=True)
 class RangeStat:
     min: float
@@ -644,6 +679,7 @@ def _compute_spec_health_for_metric(
     window_days: int,
     abnormal_ratio_threshold: float,
     min_consecutive_days: int,
+    metric_key: str = "",
 ) -> Optional[dict[str, Any]]:
     if not enable_spec or spec is None or not cols or "投料日期" not in df.columns:
         return None
@@ -655,7 +691,14 @@ def _compute_spec_health_for_metric(
     for delta in range(0, scan_limit + 1):
         d = report_date - dt.timedelta(days=delta)
         day = df[df["投料日期"] == d]
-        st = _stat_for_cols(day, cols, scale=scale, enable_spec=enable_spec, explicit_spec=spec)
+        st = _stat_for_cols(
+            day,
+            cols,
+            scale=scale,
+            enable_spec=enable_spec,
+            metric_key=metric_key,
+            explicit_spec=spec,
+        )
         if not st.get("有数据"):
             continue
         judge = st.get("判异")
@@ -826,9 +869,7 @@ def _stat_for_cols(
     spec_registry: Optional[list[SpecRule]] = None,
     explicit_spec: Optional[Spec] = None,
 ) -> dict[str, Any]:
-    values = _flatten_numeric_values(day, cols)
-    if scale != 1.0:
-        values = values * scale
+    values = _flatten_metric_values(day, cols, metric_key=metric_key, scale=scale)
     st = _range_stat(values)
     if st is None:
         return {"有数据": False, "状态": STAT_NO_DATA, "quality_flags": []}
@@ -841,7 +882,14 @@ def _stat_for_cols(
         model=model,
         spec_registry=spec_registry,
     )
-    batch_judge = _batch_out_of_spec_summary(day, cols, scale=scale, enable_spec=enable_spec, explicit_spec=spec)
+    batch_judge = _batch_out_of_spec_summary(
+        day,
+        cols,
+        scale=scale,
+        enable_spec=enable_spec,
+        explicit_spec=spec,
+        metric_key=metric_key,
+    )
     judge = judge_out_of_spec(values, spec)
     if isinstance(batch_judge, dict):
         abnormal_batches = int(batch_judge.get("异常批次", 0))
@@ -967,6 +1015,7 @@ def _batch_out_of_spec_summary(
     scale: float = 1.0,
     enable_spec: bool = True,
     explicit_spec: Optional[Spec] = None,
+    metric_key: str = "",
 ) -> Optional[dict[str, int]]:
     if day.empty or "批次" not in day.columns or not enable_spec:
         return None
@@ -988,15 +1037,16 @@ def _batch_out_of_spec_summary(
     spec_cols = 0 if explicit_spec is None else 1
 
     for c in metric_cols:
-        spec = explicit_spec if explicit_spec is not None else _normalized_spec_for_metric(c, scale=scale)
+        spec = explicit_spec if explicit_spec is not None else _metric_spec_for_col(c, metric_key, scale)
         if spec is None:
             continue
         if explicit_spec is None:
             spec_cols += 1
 
         values = _to_num_series(day[c])
-        if scale != 1.0:
-            values = values * scale
+        col_scale = _metric_col_scale(c, metric_key, scale)
+        if col_scale != 1.0:
+            values = values * col_scale
         valid_value_mask = values.notna() & valid_batch_mask
         if not valid_value_mask.any():
             continue
@@ -1072,6 +1122,7 @@ def _latest_stat_within_days(
             window_days=max(1, int(spec_health.window_days)),
             abnormal_ratio_threshold=float(spec_health.abnormal_ratio_threshold),
             min_consecutive_days=max(1, int(spec_health.min_consecutive_days)),
+            metric_key=metric_key,
         )
 
     for delta in range(0, max(0, lookback_days) + 1):
@@ -1191,13 +1242,20 @@ DEFAULT_METRIC_ALIASES: dict[str, list[str]] = {
     "烧结压实": ["烧结压实"],
     "粉碎压实": ["粉碎压实"],
     "成品压实": ["成品压实"],
-    "粉阻(粉末电阻)": ["粉末电阻"],
-    "残碱(Li+)": ["Li+含量"],
+    "粉阻(粉末电阻)": ["粉阻(粉末电阻)", "粉末电阻", "粉阻"],
+    "残碱(Li+)": ["残碱(Li+)", "残碱", "Li+含量"],
     "碳含量": ["碳含量"],
-    "比表(麦克比表)": ["麦克比表"],
-    "0.1C充电": ["0.1C充"],
-    "0.1C放电": ["0.1C放"],
-    "首效": ["0.1C首效"],
+    "比表(麦克比表)": ["比表(麦克比表)", "麦克比表", "比表"],
+    "pH": ["pH", "Hp"],
+    "Li含量": ["Li含量"],
+    "Fe含量": ["Fe含量"],
+    "P含量": ["P含量"],
+    "Na+K含量": ["Na+K含量"],
+    "杂质含量": ["杂质含量"],
+    "铁溶出": ["铁溶出"],
+    "0.1C充电": ["0.1C充电", "0.1C充"],
+    "0.1C放电": ["0.1C放电", "0.1C放"],
+    "首效": ["首效", "0.1C首效"],
     "平台效率": ["3.2V容量占比", "3.2V平台效率", "2.95V容量占比"],
 }
 
@@ -1320,6 +1378,13 @@ def extract_metrics(
     li_cols = _metric_cols(df, aliases, "残碱(Li+)")
     carbon_cols = _metric_cols(df, aliases, "碳含量", exclude_aliases=["粉碎碳含量"])
     bet_cols = _metric_cols(df, aliases, "比表(麦克比表)")
+    ph_cols = _metric_cols(df, aliases, "pH")
+    li_element_cols = _metric_cols(df, aliases, "Li含量")
+    fe_element_cols = _metric_cols(df, aliases, "Fe含量")
+    p_element_cols = _metric_cols(df, aliases, "P含量")
+    na_k_cols = _metric_cols(df, aliases, "Na+K含量")
+    impurity_cols = _metric_cols(df, aliases, "杂质含量")
+    iron_dissolution_cols = _metric_cols(df, aliases, "铁溶出")
 
     charge_cols = _metric_cols(df, aliases, "0.1C充电")
     discharge_cols = _metric_cols(df, aliases, "0.1C放电")
@@ -1380,6 +1445,13 @@ def extract_metrics(
     powder_res_configured = bool(powder_res_cols)
     carbon_configured = bool(carbon_cols)
     bet_configured = bool(bet_cols)
+    ph_configured = bool(ph_cols)
+    li_element_configured = bool(li_element_cols)
+    fe_element_configured = bool(fe_element_cols)
+    p_element_configured = bool(p_element_cols)
+    na_k_configured = bool(na_k_cols)
+    impurity_configured = bool(impurity_cols)
+    iron_dissolution_configured = bool(iron_dissolution_cols)
     charge_configured = bool(charge_cols)
     discharge_configured = bool(discharge_cols)
     eff_configured = bool(eff_cols)
@@ -1392,6 +1464,13 @@ def extract_metrics(
     powder_res_trend = _trend("成品", "粉阻(粉末电阻)", powder_res_cols, configured=powder_res_configured)
     carbon_trend = _trend("成品", "碳含量", carbon_cols, configured=carbon_configured)
     bet_trend = _trend("成品", "比表(麦克比表)", bet_cols, configured=bet_configured)
+    ph_trend = _trend("成品", "pH", ph_cols, configured=ph_configured)
+    li_element_trend = _trend("成品", "Li含量", li_element_cols, configured=li_element_configured)
+    fe_element_trend = _trend("成品", "Fe含量", fe_element_cols, configured=fe_element_configured)
+    p_element_trend = _trend("成品", "P含量", p_element_cols, configured=p_element_configured)
+    na_k_trend = _trend("成品", "Na+K含量", na_k_cols, configured=na_k_configured)
+    impurity_trend = _trend("成品", "杂质含量", impurity_cols, configured=impurity_configured)
+    iron_dissolution_trend = _trend("成品", "铁溶出", iron_dissolution_cols, configured=iron_dissolution_configured)
     charge_trend = _trend("成品", "0.1C充电", charge_cols, configured=charge_configured)
     discharge_trend = _trend("成品", "0.1C放电", discharge_cols, configured=discharge_configured)
     eff_trend = _trend("成品", "首效", eff_cols, configured=eff_configured)
@@ -1414,6 +1493,13 @@ def extract_metrics(
             "碳含量": _latest("成品", "碳含量", carbon_cols, configured=carbon_configured),
             "粉阻(粉末电阻)": _latest("成品", "粉阻(粉末电阻)", powder_res_cols, configured=powder_res_configured),
             "比表(麦克比表)": _latest("成品", "比表(麦克比表)", bet_cols, configured=bet_configured),
+            "pH": _latest("成品", "pH", ph_cols, configured=ph_configured),
+            "Li含量": _latest("成品", "Li含量", li_element_cols, configured=li_element_configured),
+            "Fe含量": _latest("成品", "Fe含量", fe_element_cols, configured=fe_element_configured),
+            "P含量": _latest("成品", "P含量", p_element_cols, configured=p_element_configured),
+            "Na+K含量": _latest("成品", "Na+K含量", na_k_cols, configured=na_k_configured),
+            "杂质含量": _latest("成品", "杂质含量", impurity_cols, configured=impurity_configured),
+            "铁溶出": _latest("成品", "铁溶出", iron_dissolution_cols, configured=iron_dissolution_configured),
             "残碱(Li+)趋势": li_trend,
             "成品压实趋势": prod_density_trend,
             "0.1C充电趋势": charge_trend,
@@ -1423,6 +1509,13 @@ def extract_metrics(
             "碳含量趋势": carbon_trend,
             "粉阻(粉末电阻)趋势": powder_res_trend,
             "比表(麦克比表)趋势": bet_trend,
+            "pH趋势": ph_trend,
+            "Li含量趋势": li_element_trend,
+            "Fe含量趋势": fe_element_trend,
+            "P含量趋势": p_element_trend,
+            "Na+K含量趋势": na_k_trend,
+            "杂质含量趋势": impurity_trend,
+            "铁溶出趋势": iron_dissolution_trend,
         },
         "当日行数": int(day.shape[0]),
     }
