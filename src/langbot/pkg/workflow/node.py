@@ -118,6 +118,28 @@ class WorkflowNode(abc.ABC):
         registry = NodeTypeRegistry.instance()
         return registry.get_metadata(self.type_name)
 
+    @classmethod
+    def to_schema(cls) -> dict[str, Any]:
+        """Return a schema dict for this node type.
+
+        This is used by tests and tooling to inspect node capabilities.
+        """
+        from .registry import NodeTypeRegistry
+        registry = NodeTypeRegistry.instance()
+        metadata = registry.get_metadata(cls.type_name)
+        if metadata:
+            return registry._metadata_to_schema(metadata)
+        # Fallback: build a minimal schema from class attributes
+        return {
+            'type': f'{cls.category}.{cls.type_name}' if cls.type_name else cls.type_name,
+            'category': cls.category,
+            'label': getattr(cls, 'name', cls.type_name),
+            'description': getattr(cls, 'description', ''),
+            'inputs': [],
+            'outputs': [],
+            'config_schema': [],
+        }
+
 
 # ------------------------------------------------------------------
 # Decorator and pending registration helpers
