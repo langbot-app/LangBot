@@ -25,6 +25,7 @@ class AgentRunSession(typing.TypedDict):
         runner_id: Runner descriptor ID (plugin:author/name/runner)
         query_id: Pipeline query ID
         plugin_identity: Plugin identifier (author/name) of the runner
+        conversation_id: Conversation ID for history/event access
         resources: Authorized resources for this run (from AgentResources)
         status: Session status tracking
         _authorized_ids: Pre-computed authorized resource IDs for O(1) lookup
@@ -33,6 +34,7 @@ class AgentRunSession(typing.TypedDict):
     runner_id: str
     query_id: int | None
     plugin_identity: str  # author/name
+    conversation_id: str | None
     resources: AgentResources
     status: AgentRunSessionStatus
     _authorized_ids: dict[str, set[str]]  # Pre-computed sets for O(1) lookup
@@ -64,6 +66,7 @@ class AgentRunSessionRegistry:
         query_id: int | None,
         plugin_identity: str,
         resources: AgentResources,
+        conversation_id: str | None = None,
     ) -> None:
         """Register a new agent run session.
 
@@ -73,6 +76,7 @@ class AgentRunSessionRegistry:
             query_id: Pipeline query ID
             plugin_identity: Plugin identifier (author/name)
             resources: Authorized resources for this run
+            conversation_id: Conversation ID for history/event access
         """
         now = int(time.time())
 
@@ -89,6 +93,7 @@ class AgentRunSessionRegistry:
             'runner_id': runner_id,
             'query_id': query_id,
             'plugin_identity': plugin_identity,
+            'conversation_id': conversation_id,
             'resources': resources,
             'status': {
                 'started_at': now,

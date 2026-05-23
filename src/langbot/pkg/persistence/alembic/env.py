@@ -13,6 +13,26 @@ from sqlalchemy.engine import Connection
 
 from langbot.pkg.entity.persistence.base import Base
 
+# Import all ORM models so they are registered with Base.metadata
+# This is required for autogenerate to detect model changes
+from langbot.pkg.entity.persistence import (
+    apikey,
+    bot,
+    bstorage,
+    event_log,
+    mcp,
+    metadata,
+    model,
+    monitoring,
+    pipeline,
+    plugin,
+    rag,
+    transcript,
+    user,
+    vector,
+    webhook,
+)
+
 target_metadata = Base.metadata
 
 

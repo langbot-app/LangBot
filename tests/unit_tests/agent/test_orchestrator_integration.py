@@ -288,7 +288,8 @@ async def test_orchestrator_runs_fake_plugin_with_authorized_context():
     context = plugin_connector.contexts[0]
     assert context["config"]["timeout"] == 30
     assert context["runtime"]["deadline_at"] is not None
-    assert context["params"] == {"public_param": "visible"}
+    # Protocol v1: params is in compatibility.extra
+    assert context["compatibility"]["extra"]["params"] == {"public_param": "visible"}
     assert context["event"]["event_type"] == "message.received"
     assert context["event"]["event_data"]["source_event_type"] == "FriendMessage"
     assert context["actor"]["actor_id"] == "user_001"
@@ -337,7 +338,16 @@ async def test_orchestrator_packages_legacy_max_round_without_mutating_query():
 
     assert len(messages) == 1
     context = plugin_connector.contexts[0]
-    assert [message["content"] for message in context["messages"]] == [
+    # Protocol v1: legacy messages are in bootstrap.messages
+    assert context["bootstrap"] is not None
+    assert [message["content"] for message in context["bootstrap"]["messages"]] == [
+        "message 2",
+        "response 2",
+        "message 3",
+        "response 3",
+    ]
+    # Also in compatibility.legacy_messages for legacy runners
+    assert [message["content"] for message in context["compatibility"]["legacy_messages"]] == [
         "message 2",
         "response 2",
         "message 3",

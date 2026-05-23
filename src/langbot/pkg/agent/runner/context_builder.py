@@ -14,6 +14,8 @@ from .config_migration import ConfigMigration
 from .context_packager import AgentContextPackager
 from .state_store import get_state_store
 from . import events as runner_events
+from .host_models import AgentEventEnvelope, AgentBinding
+from .pipeline_compat_adapter import PipelineCompatAdapter
 
 
 DEFAULT_RUNNER_TIMEOUT_SECONDS = 300
@@ -117,39 +119,45 @@ class AgentRuntimeContext(typing.TypedDict):
 class AgentRunContextPayload(typing.TypedDict):
     """AgentRunContext payload passed to an agent runner.
 
+    Protocol v1 structure - matches SDK AgentRunContext.
+
     Note: The 'config' field contains the binding config from ai.runner_config[runner_id],
     which is Pipeline's configuration for this specific runner binding (not plugin instance config).
     """
     run_id: str
     trigger: AgentTrigger
     conversation: ConversationContext | None
-    event: dict[str, typing.Any] | None
+    event: dict[str, typing.Any]  # REQUIRED for Protocol v1
     actor: dict[str, typing.Any] | None
     subject: dict[str, typing.Any] | None
-    messages: list[dict[str, typing.Any]]
-    prompt: list[dict[str, typing.Any]]
     input: AgentInput
-    params: dict[str, typing.Any]
+    delivery: dict[str, typing.Any]  # REQUIRED for Protocol v1
     resources: AgentResources
+    context: dict[str, typing.Any]  # ContextAccess - REQUIRED for Protocol v1
     state: AgentRunState
     runtime: AgentRuntimeContext
     config: dict[str, typing.Any]  # Binding config from ai.runner_config[runner_id]
+    bootstrap: dict[str, typing.Any] | None  # Optional bootstrap context
+    compatibility: dict[str, typing.Any] | None  # Legacy compatibility context
+    metadata: dict[str, typing.Any]  # Additional metadata
 
 
 class AgentRunContextBuilder:
-    """Builder for provisioning AgentRunContext from a Pipeline Query.
+    """Builder for provisioning AgentRunContext.
+
+    Two entry points:
+    - build_context_from_event(event, binding): Event-first Protocol v1
+    - build_context(query, descriptor, resources): Legacy Query-based (calls event-based internally)
 
     Responsibilities:
     - Generate new run_id (UUID, not query id)
-    - Set trigger type to 'message.received' for pipeline
-    - Build conversation context from session
-    - Package and convert messages to SDK format
-    - Build input from user_message and message_chain
-    - Build params from query.variables with filtering
+    - Set trigger type based on source
+    - Build conversation context from session/event
+    - Build input from user_message/event
+    - Build params with filtering
     - Build state snapshot from state_store
-    - Set resources from AgentResourceBuilder result
     - Build runtime context with host info, trace_id, deadline
-    - Set config from runner binding configuration (ai.runner_config[runner_id])
+    - Set config from runner binding configuration
     """
 
     ap: app.Application
@@ -168,6 +176,156 @@ class AgentRunContextBuilder:
         self.ap = ap
         self.context_packager = AgentContextPackager()
 
+    async def build_context_from_event(
+        self,
+        event: AgentEventEnvelope,
+        binding: AgentBinding,
+        descriptor: AgentRunnerDescriptor,
+        resources: AgentResources,
+    ) -> AgentRunContextPayload:
+        """Build AgentRunContext from event-first envelope.
+
+        This is the main entry point for Protocol v1.
+        Does NOT inline full history by default.
+
+        Args:
+            event: Event envelope
+            binding: Agent binding configuration
+            descriptor: Runner descriptor
+            resources: Built resources
+
+        Returns:
+            AgentRunContextPayload for the runner
+        """
+        # Generate new run_id
+        run_id = str(uuid.uuid4())
+
+        # Build trigger from event
+        trigger: AgentTrigger = {
+            'type': event.event_type,
+            'source': event.source,
+            'timestamp': event.event_time or int(time.time()),
+        }
+
+        # Build conversation context from event
+        conversation: ConversationContext | None = None
+        if event.conversation_id:
+            conversation = {
+                'session_id': None,  # Legacy field
+                'conversation_id': event.conversation_id,
+                'thread_id': event.thread_id,
+                'launcher_type': None,  # Will be filled from actor/subject if needed
+                'launcher_id': None,
+                'sender_id': event.actor.actor_id if event.actor else None,
+                'bot_uuid': event.bot_id,
+                'pipeline_uuid': binding.pipeline_uuid,  # Legacy
+            }
+
+        # Build event context (Protocol v1 event-first)
+        event_context = {
+            'event_id': event.event_id,
+            'event_type': event.event_type,
+            'event_time': event.event_time,
+            'source': event.source,
+            'source_event_type': None,
+            'data': {},
+        }
+
+        # Build actor context
+        actor_context = None
+        if event.actor:
+            actor_context = {
+                'actor_type': event.actor.actor_type,
+                'actor_id': event.actor.actor_id,
+                'actor_name': event.actor.actor_name,
+            }
+
+        # Build subject context
+        subject_context = None
+        if event.subject:
+            subject_context = {
+                'subject_type': event.subject.subject_type,
+                'subject_id': event.subject.subject_id,
+                'subject_data': event.subject.data,
+            }
+
+        # Build input from event
+        input: AgentInput = {
+            'text': event.input.text,
+            'contents': [c.model_dump(mode='json') if hasattr(c, 'model_dump') else c for c in event.input.contents],
+            'message_chain': event.input.message_chain,
+            'attachments': [a.model_dump(mode='json') if hasattr(a, 'model_dump') else a for a in event.input.attachments],
+        }
+
+        # Build context access (no history inlined by default for Protocol v1)
+        # Populate with actual values from stores
+        context_access = await self._build_context_access(event, descriptor)
+
+        # Build state snapshot (for event-first, we need event-based scope key)
+        # For now, return empty state - will be implemented with state_store migration
+        state: AgentRunState = {
+            'conversation': {},
+            'actor': {},
+            'subject': {},
+            'runner': {},
+        }
+
+        # Build runtime context
+        runtime: AgentRuntimeContext = {
+            'langbot_version': self.ap.ver_mgr.get_current_version(),
+            'sdk_protocol_version': descriptor.protocol_version,
+            'query_id': None,  # No query_id in event-first mode
+            'trace_id': run_id,
+            'deadline_at': self._build_deadline_from_binding(binding),
+            'metadata': {
+                'bot_id': event.bot_id,
+                'workspace_id': event.workspace_id,
+                'streaming_supported': event.delivery.supports_streaming,
+            },
+        }
+
+        # Build delivery context
+        delivery_context = {
+            'surface': event.delivery.surface,
+            'reply_target': event.delivery.reply_target,
+            'supports_streaming': event.delivery.supports_streaming,
+            'supports_edit': event.delivery.supports_edit,
+            'supports_reaction': event.delivery.supports_reaction,
+            'max_message_size': event.delivery.max_message_size,
+            'platform_capabilities': event.delivery.platform_capabilities,
+        }
+
+        # Build compatibility context (empty for event-first)
+        compatibility_context = {
+            'query_id': None,
+            'pipeline_uuid': binding.pipeline_uuid,
+            'max_round': binding.max_round,  # For reference only
+            'legacy_messages': [],
+            'extra': {},
+        }
+
+        # Build full context - Protocol v1 structure
+        context: AgentRunContextPayload = {
+            'run_id': run_id,
+            'trigger': trigger,
+            'conversation': conversation,
+            'event': event_context,  # REQUIRED
+            'actor': actor_context,
+            'subject': subject_context,
+            'input': input,
+            'delivery': delivery_context,  # REQUIRED
+            'resources': resources,
+            'context': context_access,  # ContextAccess - REQUIRED
+            'state': state,
+            'runtime': runtime,
+            'config': binding.runner_config,
+            'bootstrap': None,  # Optional - no messages inlined by default
+            'compatibility': compatibility_context,
+            'metadata': {},  # Additional metadata
+        }
+
+        return context
+
     async def build_context(
         self,
         query: pipeline_query.Query,
@@ -175,6 +333,13 @@ class AgentRunContextBuilder:
         resources: AgentResources,
     ) -> AgentRunContextPayload:
         """Build AgentRunContext envelope from Query.
+
+        This is a compatibility wrapper that converts Query to event + binding
+        and delegates to build_context_from_event().
+
+        For Protocol v1, messages are NOT inlined by default.
+        Legacy max-round only affects bootstrap (via compatibility adapter),
+        NOT Protocol v1 entities.
 
         Args:
             query: Pipeline query
@@ -184,8 +349,19 @@ class AgentRunContextBuilder:
         Returns:
             AgentRunContext payload for the plugin runner
         """
-        # Generate new run_id
-        run_id = str(uuid.uuid4())
+        # Resolve runner config for binding
+        runner_id = descriptor.id
+        runner_config = ConfigMigration.resolve_runner_config(
+            query.pipeline_config,
+            runner_id,
+        )
+
+        # Extract max_round for compatibility (NOT Protocol v1)
+        # Note: config uses 'max-round' with hyphen, not 'max_round'
+        max_round = runner_config.get('max-round')
+        if max_round is None:
+            ai_config = query.pipeline_config.get('ai', {}) if query.pipeline_config else {}
+            max_round = ai_config.get('max-round')
 
         # Build trigger
         trigger: AgentTrigger = {
@@ -196,31 +372,20 @@ class AgentRunContextBuilder:
 
         # Build conversation context
         conversation: ConversationContext | None = None
-        if query.session:
+        session = getattr(query, 'session', None)
+        if session:
             conversation = {
-                'session_id': f'{query.session.launcher_type.value}_{query.session.launcher_id}',
-                'conversation_id': getattr(query.session.using_conversation, 'uuid', None),
-                'launcher_type': query.session.launcher_type.value,
-                'launcher_id': query.session.launcher_id,
-                'sender_id': str(query.sender_id),
-                'bot_uuid': query.bot_uuid,
-                'pipeline_uuid': query.pipeline_uuid,
+                'session_id': f'{getattr(session, "launcher_type", "").value if hasattr(getattr(session, "launcher_type", ""), "value") else getattr(session, "launcher_type", "")}_{getattr(session, "launcher_id", "")}',
+                'conversation_id': getattr(getattr(session, 'using_conversation', None), 'uuid', None),
+                'launcher_type': getattr(session, 'launcher_type', None).value if hasattr(getattr(session, 'launcher_type', None), 'value') else getattr(session, 'launcher_type', None),
+                'launcher_id': getattr(session, 'launcher_id', None),
+                'sender_id': str(getattr(query, 'sender_id', '')) if getattr(query, 'sender_id', None) else None,
+                'bot_uuid': getattr(query, 'bot_uuid', None),
+                'pipeline_uuid': getattr(query, 'pipeline_uuid', None),
             }
-
-        # Get runner binding config from ai.runner_config[runner_id]
-        # This is Pipeline's configuration for this specific runner binding,
-        # passed through AgentRunContext.config to the runner
-        runner_config = ConfigMigration.resolve_runner_config(
-            query.pipeline_config,
-            descriptor.id,
-        )
 
         # Build input
         input: AgentInput = self._build_input(query)
-
-        # Build bounded working context window for the runner.
-        packaged_context = self.context_packager.package_messages(query, runner_config)
-        messages = self._build_messages(packaged_context.messages)
 
         # Build params from query.variables with filtering
         params = self._build_params(query)
@@ -230,9 +395,10 @@ class AgentRunContextBuilder:
         state: AgentRunState = state_store.build_snapshot(query, descriptor)
 
         streaming_supported = await self._is_stream_output_supported(query)
-        remove_think = query.pipeline_config.get('output', {}).get('misc', {}).get('remove-think', False)
+        remove_think = query.pipeline_config.get('output', {}).get('misc', {}).get('remove-think', False) if query.pipeline_config else False
 
         # Build runtime context
+        run_id = str(uuid.uuid4())
         runtime: AgentRuntimeContext = {
             'langbot_version': self.ap.ver_mgr.get_current_version(),
             'sdk_protocol_version': descriptor.protocol_version,
@@ -240,33 +406,104 @@ class AgentRunContextBuilder:
             'trace_id': run_id,  # Use run_id as trace_id for now
             'deadline_at': self._build_deadline(runner_config),
             'metadata': {
-                'bot_name': query.variables.get('_monitoring_bot_name', 'Unknown'),
-                'pipeline_name': query.variables.get('_monitoring_pipeline_name', 'Unknown'),
+                'bot_name': query.variables.get('_monitoring_bot_name', 'Unknown') if query.variables else 'Unknown',
+                'pipeline_name': query.variables.get('_monitoring_pipeline_name', 'Unknown') if query.variables else 'Unknown',
                 'streaming_supported': streaming_supported,
                 'remove_think': remove_think,
-                'context_packaging': {
-                    'policy': packaged_context.policy,
-                    'history': packaged_context.history,
-                },
             },
         }
 
-        # Build full context
+        # Build delivery context from query adapter capabilities
+        delivery_context = {
+            'surface': 'pipeline',  # Legacy pipeline surface
+            'reply_target': None,
+            'supports_streaming': streaming_supported,
+            'supports_edit': False,
+            'supports_reaction': False,
+            'max_message_size': None,
+            'platform_capabilities': {},
+        }
+
+        # Build context access (for legacy, minimal API availability)
+        context_access = {
+            'conversation_id': conversation.get('conversation_id') if conversation else None,
+            'thread_id': None,
+            'latest_cursor': None,
+            'event_seq': None,
+            'transcript_seq': None,
+            'has_history_before': False,
+            'inline_policy': {
+                'mode': 'current_event',
+                'delivered_count': 0,
+                'source_total_count': None,
+                'messages_complete': False,
+                'reason': 'legacy_pipeline',
+            },
+            'available_apis': {
+                'history_page': False,
+                'history_search': False,
+                'event_get': False,
+                'event_page': False,
+                'artifact_metadata': False,
+                'artifact_read': False,
+                'state': True,
+                'storage': True,
+            },
+        }
+
+        # Build compatibility context (for legacy Query/Pipeline fields)
+        compatibility_context = {
+            'query_id': query.query_id,
+            'pipeline_uuid': getattr(query, 'pipeline_uuid', None),
+            'max_round': max_round,  # For reference only
+            'legacy_messages': [],  # Will be filled if max_round is set
+            'extra': {
+                'params': params,  # Put params in compatibility.extra
+                'prompt': self._build_prompt(query),  # Put prompt in compatibility.extra
+            },
+        }
+
+        # Build bootstrap context (optional, for legacy max-round)
+        bootstrap_context = None
+
+        # For legacy compatibility: add bootstrap messages if max_round is set
+        # This goes into bootstrap.messages, NOT top-level messages
+        if max_round and max_round > 0:
+            packaged_context = self.context_packager.package_messages(query, runner_config)
+            legacy_messages = self._build_messages(packaged_context.messages)
+            # Put in bootstrap for Protocol v1
+            bootstrap_context = {
+                'messages': legacy_messages,
+                'summary': None,
+                'artifacts': [],
+                'metadata': {},
+            }
+            # Also update compatibility for legacy runners
+            compatibility_context['legacy_messages'] = legacy_messages
+            # Update runtime metadata
+            runtime['metadata']['context_packaging'] = {
+                'policy': packaged_context.policy,
+                'history': packaged_context.history,
+            }
+
+        # Build full context - Protocol v1 structure
         context: AgentRunContextPayload = {
             'run_id': run_id,
             'trigger': trigger,
             'conversation': conversation,
-            'event': self._build_event(query),
+            'event': self._build_event(query),  # REQUIRED
             'actor': self._build_actor(query),
             'subject': self._build_subject(query),
-            'messages': messages,
-            'prompt': self._build_prompt(query),
             'input': input,
-            'params': params,
+            'delivery': delivery_context,  # REQUIRED
             'resources': resources,
+            'context': context_access,  # ContextAccess - REQUIRED
             'state': state,
             'runtime': runtime,
             'config': runner_config,
+            'bootstrap': bootstrap_context,  # Optional bootstrap
+            'compatibility': compatibility_context,  # Legacy compatibility
+            'metadata': {},  # Additional metadata
         }
 
         return context
@@ -510,6 +747,29 @@ class AgentRunContextBuilder:
 
         return time.time() + timeout_seconds
 
+    def _build_deadline_from_binding(self, binding: AgentBinding) -> float | None:
+        """Build deadline timestamp from binding timeout config.
+
+        Args:
+            binding: Agent binding with runner_config
+
+        Returns:
+            Deadline timestamp or None
+        """
+        timeout = binding.runner_config.get('timeout', DEFAULT_RUNNER_TIMEOUT_SECONDS)
+        if timeout is None:
+            return None
+
+        try:
+            timeout_seconds = float(timeout)
+        except (TypeError, ValueError):
+            return None
+
+        if timeout_seconds <= 0:
+            return None
+
+        return time.time() + timeout_seconds
+
     async def _is_stream_output_supported(self, query: pipeline_query.Query) -> bool:
         """Check whether the current adapter can consume streaming chunks."""
         try:
@@ -609,3 +869,71 @@ class AgentRunContextBuilder:
         # Pydantic models and other complex types are not directly serializable
         # as params (they may have internal structure not meant for runners)
         return False
+
+    async def _build_context_access(
+        self,
+        event: AgentEventEnvelope,
+        descriptor: AgentRunnerDescriptor,
+    ) -> dict[str, typing.Any]:
+        """Build ContextAccess with actual values from stores.
+
+        Args:
+            event: Event envelope
+            descriptor: Runner descriptor
+
+        Returns:
+            ContextAccess dict
+        """
+        conversation_id = event.conversation_id
+
+        # Check if history APIs are available for this runner
+        # Based on runner permissions
+        permissions = descriptor.permissions or {}
+        history_permissions = permissions.get('history', [])
+        event_permissions = permissions.get('events', [])
+
+        history_page_enabled = 'page' in history_permissions and conversation_id is not None
+        history_search_enabled = 'search' in history_permissions and conversation_id is not None
+        event_get_enabled = 'get' in event_permissions
+        event_page_enabled = 'page' in event_permissions and conversation_id is not None
+
+        # Get latest cursor and has_history_before if conversation exists
+        latest_cursor = None
+        has_history_before = False
+
+        if conversation_id:
+            try:
+                from .transcript_store import TranscriptStore
+                store = TranscriptStore(self.ap.persistence_mgr.get_db_engine())
+
+                latest_cursor = await store.get_latest_cursor(conversation_id)
+                if latest_cursor:
+                    has_history_before = True
+            except Exception as e:
+                self.ap.logger.warning(f'Failed to get transcript cursor: {e}')
+
+        return {
+            'conversation_id': conversation_id,
+            'thread_id': event.thread_id,
+            'latest_cursor': latest_cursor,
+            'event_seq': None,  # Will be populated when EventLog is written
+            'transcript_seq': int(latest_cursor) if latest_cursor else None,
+            'has_history_before': has_history_before,
+            'inline_policy': {
+                'mode': 'current_event',
+                'delivered_count': 0,
+                'source_total_count': None,
+                'messages_complete': False,
+                'reason': 'self_managed_context',
+            },
+            'available_apis': {
+                'history_page': history_page_enabled,
+                'history_search': history_search_enabled,
+                'event_get': event_get_enabled,
+                'event_page': event_page_enabled,
+                'artifact_metadata': False,  # TODO: Implement artifact store
+                'artifact_read': False,
+                'state': True,
+                'storage': True,
+            },
+        }
