@@ -17,6 +17,7 @@ from .context_builder import AgentRunContextBuilder, AgentRunContextPayload
 from .resource_builder import AgentResourceBuilder
 from .result_normalizer import AgentResultNormalizer
 from .state_store import get_state_store, RunnerScopedStateStore
+from .persistent_state_store import get_persistent_state_store, PersistentStateStore
 from .session_registry import get_session_registry, AgentRunSessionRegistry
 from .config_migration import ConfigMigration
 from .host_models import AgentEventEnvelope, AgentBinding
@@ -63,6 +64,7 @@ class AgentRunOrchestrator:
     # Cached singleton references (set in __init__)
     _session_registry: AgentRunSessionRegistry
     _state_store: RunnerScopedStateStore
+    _persistent_state_store: PersistentStateStore | None
 
     def __init__(
         self,
@@ -77,6 +79,7 @@ class AgentRunOrchestrator:
         # Cache singleton references to avoid per-request getter calls
         self._session_registry = get_session_registry()
         self._state_store = get_state_store()
+        self._persistent_state_store = None  # Lazy init on first use
 
     async def run(
         self,
@@ -122,6 +125,9 @@ class AgentRunOrchestrator:
             resources=resources,
         )
 
+        # Build state context for State API handlers
+        state_context = self._build_state_context(event, binding, descriptor)
+
         # Register session for proxy action permission validation
         run_id = context['run_id']
         await self._session_registry.register(
@@ -132,6 +138,11 @@ class AgentRunOrchestrator:
             resources=resources,
             permissions=descriptor.permissions or {},
             conversation_id=event.conversation_id,
+            state_policy={
+                'enable_state': binding.state_policy.enable_state,
+                'state_scopes': list(binding.state_policy.state_scopes),
+            },
+            state_context=state_context,
         )
 
         # Write incoming event to EventLog
@@ -170,7 +181,7 @@ class AgentRunOrchestrator:
 
                 # Handle state.updated first - consume before normalizer
                 if result_dict.get('type') == 'state.updated':
-                    self._handle_state_updated_event(result_dict, event, binding, descriptor)
+                    await self._handle_state_updated_event(result_dict, event, binding, descriptor)
                     # Pass to normalizer for logging, but don't yield to pipeline
                     await self.result_normalizer.normalize(result_dict, descriptor)
                     continue
@@ -555,7 +566,7 @@ class AgentRunOrchestrator:
                 f'artifact.created failed to register artifact: {e}',
             )
 
-    def _handle_state_updated_event(
+    async def _handle_state_updated_event(
         self,
         result_dict: dict[str, typing.Any],
         event: AgentEventEnvelope,
@@ -563,6 +574,8 @@ class AgentRunOrchestrator:
         descriptor: AgentRunnerDescriptor,
     ) -> None:
         """Handle state.updated result in event-first mode.
+
+        Persists state to database via PersistentStateStore.
 
         Args:
             result_dict: Raw result dict with type='state.updated'
@@ -585,8 +598,14 @@ class AgentRunOrchestrator:
             )
             return
 
-        # Apply update to state store using event context
-        success = self._state_store.apply_update_from_event(
+        # Lazy init persistent state store
+        if self._persistent_state_store is None:
+            self._persistent_state_store = get_persistent_state_store(
+                self.ap.persistence_mgr.get_db_engine()
+            )
+
+        # Apply update to persistent state store
+        success, error = await self._persistent_state_store.apply_update_from_event(
             event=event,
             binding=binding,
             descriptor=descriptor,
@@ -600,7 +619,79 @@ class AgentRunOrchestrator:
             self.ap.logger.debug(
                 f'Runner {descriptor.id} state.updated (event mode): scope={scope}, key={key}'
             )
-        # Invalid scope or missing identity is already logged by apply_update_from_event
+        elif error:
+            self.ap.logger.warning(
+                f'Runner {descriptor.id} state.updated rejected: {error}'
+            )
+
+    def _build_state_context(
+        self,
+        event: AgentEventEnvelope,
+        binding: AgentBinding,
+        descriptor: AgentRunnerDescriptor,
+    ) -> dict[str, typing.Any]:
+        """Build state context for State API handlers.
+
+        Returns context with:
+        - scope_keys: Dict mapping scope name to scope_key
+        - binding_identity: Binding identity for state isolation
+        - Additional context fields for DB insert
+        """
+        # Get binding identity
+        binding_identity = binding.binding_id
+        if not binding_identity:
+            scope = binding.scope
+            if scope.scope_type and scope.scope_id:
+                binding_identity = f"{scope.scope_type}:{scope.scope_id}"
+            else:
+                binding_identity = "unknown_binding"
+
+        # Build scope keys for each scope
+        scope_keys: dict[str, str] = {}
+
+        # Conversation scope
+        if event.conversation_id:
+            parts = [descriptor.id, binding_identity, event.conversation_id]
+            if event.thread_id:
+                parts.append(event.thread_id)
+            scope_keys['conversation'] = f'conversation:{":".join(parts)}'
+
+        # Actor scope
+        if event.actor and event.actor.actor_id:
+            parts = [
+                descriptor.id,
+                binding_identity,
+                event.actor.actor_type or 'user',
+                event.actor.actor_id,
+            ]
+            scope_keys['actor'] = f'actor:{":".join(parts)}'
+
+        # Subject scope
+        if event.subject and event.subject.subject_id:
+            parts = [
+                descriptor.id,
+                binding_identity,
+                event.subject.subject_type or 'unknown',
+                event.subject.subject_id,
+            ]
+            scope_keys['subject'] = f'subject:{":".join(parts)}'
+
+        # Runner scope (always available)
+        parts = [descriptor.id, binding_identity]
+        scope_keys['runner'] = f'runner:{":".join(parts)}'
+
+        return {
+            'scope_keys': scope_keys,
+            'binding_identity': binding_identity,
+            'bot_id': event.bot_id,
+            'workspace_id': event.workspace_id,
+            'conversation_id': event.conversation_id,
+            'thread_id': event.thread_id,
+            'actor_type': event.actor.actor_type if event.actor else None,
+            'actor_id': event.actor.actor_id if event.actor else None,
+            'subject_type': event.subject.subject_type if event.subject else None,
+            'subject_id': event.subject.subject_id if event.subject else None,
+        }
 
     async def _write_event_log(
         self,

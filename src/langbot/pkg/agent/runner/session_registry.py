@@ -28,6 +28,8 @@ class AgentRunSession(typing.TypedDict):
         conversation_id: Conversation ID for history/event access
         resources: Authorized resources for this run (from AgentResources)
         permissions: Runner permissions from descriptor (artifacts, history, events, etc.)
+        state_policy: State policy from binding (enable_state, state_scopes)
+        state_context: Context for state API (scope_keys, binding_identity, etc.)
         status: Session status tracking
         _authorized_ids: Pre-computed authorized resource IDs for O(1) lookup
     """
@@ -38,6 +40,8 @@ class AgentRunSession(typing.TypedDict):
     conversation_id: str | None
     resources: AgentResources
     permissions: dict[str, list[str]]
+    state_policy: dict[str, typing.Any]  # {enable_state: bool, state_scopes: list}
+    state_context: dict[str, typing.Any]  # {scope_keys: dict, binding_identity: str, ...}
     status: AgentRunSessionStatus
     _authorized_ids: dict[str, set[str]]  # Pre-computed sets for O(1) lookup
 
@@ -70,6 +74,8 @@ class AgentRunSessionRegistry:
         resources: AgentResources,
         conversation_id: str | None = None,
         permissions: dict[str, list[str]] | None = None,
+        state_policy: dict[str, typing.Any] | None = None,
+        state_context: dict[str, typing.Any] | None = None,
     ) -> None:
         """Register a new agent run session.
 
@@ -81,11 +87,20 @@ class AgentRunSessionRegistry:
             resources: Authorized resources for this run
             conversation_id: Conversation ID for history/event access
             permissions: Runner permissions from descriptor (artifacts, history, events, etc.)
+            state_policy: State policy from binding (enable_state, state_scopes)
+            state_context: Context for state API (scope_keys, binding_identity, etc.)
         """
         now = int(time.time())
 
         # Normalize permissions to empty dict if None
         permissions = permissions or {}
+
+        # Normalize state_policy to defaults if None
+        if state_policy is None:
+            state_policy = {'enable_state': True, 'state_scopes': ['conversation', 'actor']}
+
+        # Normalize state_context to empty dict if None
+        state_context = state_context or {}
 
         # Pre-compute authorized resource IDs for O(1) lookup
         authorized_ids: dict[str, set[str]] = {
@@ -95,14 +110,18 @@ class AgentRunSessionRegistry:
             'file': {f.get('file_id') for f in resources.get('files', [])},
         }
 
+        # NOTE: state_policy and state_context are stored at session top-level,
+        # NOT in resources. Resources should only contain resource authorization info.
         session: AgentRunSession = {
             'run_id': run_id,
             'runner_id': runner_id,
             'query_id': query_id,
             'plugin_identity': plugin_identity,
             'conversation_id': conversation_id,
-            'resources': resources,
+            'resources': resources,  # Original AgentResources, no state metadata mixed in
             'permissions': permissions,
+            'state_policy': state_policy,
+            'state_context': state_context,
             'status': {
                 'started_at': now,
                 'last_activity_at': now,

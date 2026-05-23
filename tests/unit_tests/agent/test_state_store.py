@@ -1138,3 +1138,237 @@ class TestStateStorePolicyEnforcement:
 
         assert result is False
         assert any('not enabled' in w for w in logger.warnings)
+
+
+# ========== Persistent State Store Tests ==========
+
+
+import pytest
+import asyncio
+import tempfile
+import os
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine
+
+
+class TestPersistentStateStore:
+    """Tests for persistent database-backed state store."""
+
+    @pytest.fixture
+    async def db_engine(self):
+        """Create a temporary async SQLite database for testing."""
+        with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as f:
+            db_path = f.name
+
+        engine = create_async_engine(f'sqlite+aiosqlite:///{db_path}', echo=False)
+
+        # Create tables
+        from langbot.pkg.entity.persistence.base import Base
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        yield engine
+
+        # Cleanup
+        await engine.dispose()
+        os.unlink(db_path)
+
+    @pytest.fixture
+    async def persistent_store(self, db_engine):
+        """Create a persistent state store for testing."""
+        from langbot.pkg.agent.runner.persistent_state_store import PersistentStateStore
+        store = PersistentStateStore(db_engine)
+        yield store
+        await store.clear_all()
+
+    @pytest.mark.asyncio
+    async def test_build_snapshot_empty(self, persistent_store):
+        """Building snapshot from empty store returns empty scopes."""
+        descriptor = make_descriptor()
+        event = FakeEventEnvelope(conversation_id='conv_001')
+        binding = FakeBinding()
+
+        snapshot = await persistent_store.build_snapshot_from_event(event, binding, descriptor)
+
+        assert snapshot['conversation'] == {'external.conversation_id': 'conv_001'}
+        assert snapshot['actor'] == {}
+        assert snapshot['subject'] == {}
+        assert snapshot['runner'] == {}
+
+    @pytest.mark.asyncio
+    async def test_state_set_and_get(self, persistent_store):
+        """State set/get round trip."""
+        descriptor = make_descriptor()
+        event = FakeEventEnvelope(conversation_id='conv_001')
+        binding = FakeBinding()
+
+        # Set state
+        success, error = await persistent_store.apply_update_from_event(
+            event, binding, descriptor, 'conversation', 'test_key', {'nested': 'value'}, None
+        )
+        assert success is True
+        assert error is None
+
+        # Get via snapshot
+        snapshot = await persistent_store.build_snapshot_from_event(event, binding, descriptor)
+        assert snapshot['conversation']['test_key'] == {'nested': 'value'}
+
+    @pytest.mark.asyncio
+    async def test_binding_isolation(self, persistent_store):
+        """Different binding_id should have isolated state."""
+        descriptor = make_descriptor()
+        event = FakeEventEnvelope(conversation_id='conv_001')
+        binding_a = FakeBinding(binding_id='binding_a')
+        binding_b = FakeBinding(binding_id='binding_b')
+
+        # Set for binding_a
+        await persistent_store.apply_update_from_event(
+            event, binding_a, descriptor, 'conversation', 'key', 'value_a', None
+        )
+
+        # binding_b should not see binding_a's state
+        snapshot_b = await persistent_store.build_snapshot_from_event(event, binding_b, descriptor)
+        assert snapshot_b['conversation'] == {'external.conversation_id': 'conv_001'}
+
+        # binding_a should see its own state
+        snapshot_a = await persistent_store.build_snapshot_from_event(event, binding_a, descriptor)
+        assert snapshot_a['conversation']['key'] == 'value_a'
+
+    @pytest.mark.asyncio
+    async def test_policy_disable_state(self, persistent_store):
+        """enable_state=False should return empty snapshot and reject updates."""
+        descriptor = make_descriptor()
+        event = FakeEventEnvelope(conversation_id='conv_001')
+        policy = StatePolicy(enable_state=False)
+        binding = FakeBinding(state_policy=policy)
+
+        # Snapshot should be empty
+        snapshot = await persistent_store.build_snapshot_from_event(event, binding, descriptor)
+        assert snapshot == {'conversation': {}, 'actor': {}, 'subject': {}, 'runner': {}}
+
+        # Update should be rejected
+        success, error = await persistent_store.apply_update_from_event(
+            event, binding, descriptor, 'conversation', 'key', 'value', None
+        )
+        assert success is False
+        assert 'disabled' in error.lower()
+
+    @pytest.mark.asyncio
+    async def test_policy_scope_restriction(self, persistent_store):
+        """state_scopes should restrict which scopes are accessible."""
+        descriptor = make_descriptor()
+        event = FakeEventEnvelope(
+            conversation_id='conv_001',
+            actor=FakeActorContext(actor_id='user_001'),
+        )
+        policy = StatePolicy(state_scopes=['conversation'])  # Only conversation
+        binding = FakeBinding(state_policy=policy)
+
+        # Conversation should work
+        success_conv, _ = await persistent_store.apply_update_from_event(
+            event, binding, descriptor, 'conversation', 'key', 'value_conv', None
+        )
+        assert success_conv is True
+
+        # Actor should be rejected
+        success_actor, error_actor = await persistent_store.apply_update_from_event(
+            event, binding, descriptor, 'actor', 'key', 'value_actor', None
+        )
+        assert success_actor is False
+        assert 'not enabled' in error_actor.lower()
+
+    @pytest.mark.asyncio
+    async def test_value_json_size_limit(self, persistent_store):
+        """Value exceeding size limit should be rejected."""
+        descriptor = make_descriptor()
+        event = FakeEventEnvelope(conversation_id='conv_001')
+        binding = FakeBinding()
+
+        # Create a large value (> 256KB)
+        large_value = 'x' * (300 * 1024)
+
+        success, error = await persistent_store.apply_update_from_event(
+            event, binding, descriptor, 'conversation', 'key', large_value, None
+        )
+        assert success is False
+        assert 'exceeds limit' in error.lower()
+
+    @pytest.mark.asyncio
+    async def test_value_not_json_serializable(self, persistent_store):
+        """Non-JSON-serializable value should be rejected."""
+        descriptor = make_descriptor()
+        event = FakeEventEnvelope(conversation_id='conv_001')
+        binding = FakeBinding()
+
+        # Create a non-serializable value (set is not JSON-serializable)
+        non_serializable = {'key': {1, 2, 3}}
+
+        success, error = await persistent_store.apply_update_from_event(
+            event, binding, descriptor, 'conversation', 'key', non_serializable, None
+        )
+        assert success is False
+        assert 'json' in error.lower()
+
+    @pytest.mark.asyncio
+    async def test_state_list(self, persistent_store):
+        """State list should return keys with optional prefix filter."""
+        descriptor = make_descriptor()
+        event = FakeEventEnvelope(conversation_id='conv_001')
+        binding = FakeBinding()
+
+        # Set multiple keys
+        await persistent_store.apply_update_from_event(
+            event, binding, descriptor, 'conversation', 'external.id', '123', None
+        )
+        await persistent_store.apply_update_from_event(
+            event, binding, descriptor, 'conversation', 'external.name', 'test', None
+        )
+        await persistent_store.apply_update_from_event(
+            event, binding, descriptor, 'conversation', 'memory.key', 'value', None
+        )
+
+        # Build scope key for list
+        from langbot.pkg.agent.runner.persistent_state_store import PersistentStateStore
+        temp_store = PersistentStateStore(None)
+        scope_key = temp_store._make_conversation_scope_key(event, binding, descriptor)
+
+        # List all keys
+        keys, has_more = await persistent_store.state_list(scope_key)
+        assert len(keys) == 3
+        assert has_more is False
+
+        # List with prefix
+        keys_ext, _ = await persistent_store.state_list(scope_key, prefix='external.')
+        assert len(keys_ext) == 2
+        assert 'external.id' in keys_ext
+        assert 'external.name' in keys_ext
+
+    @pytest.mark.asyncio
+    async def test_state_delete(self, persistent_store):
+        """State delete should remove key."""
+        descriptor = make_descriptor()
+        event = FakeEventEnvelope(conversation_id='conv_001')
+        binding = FakeBinding()
+
+        # Set and verify
+        await persistent_store.apply_update_from_event(
+            event, binding, descriptor, 'conversation', 'key', 'value', None
+        )
+        snapshot = await persistent_store.build_snapshot_from_event(event, binding, descriptor)
+        assert snapshot['conversation']['key'] == 'value'
+
+        # Build scope key for delete
+        from langbot.pkg.agent.runner.persistent_state_store import PersistentStateStore
+        temp_store = PersistentStateStore(None)
+        scope_key = temp_store._make_conversation_scope_key(event, binding, descriptor)
+
+        # Delete
+        deleted = await persistent_store.state_delete(scope_key, 'key')
+        assert deleted is True
+
+        # Verify deleted
+        snapshot = await persistent_store.build_snapshot_from_event(event, binding, descriptor)
+        assert 'key' not in snapshot['conversation']
+
+        # Delete non-existent should return False
+        deleted_again = await persistent_store.state_delete(scope_key, 'key')
+        assert deleted_again is False

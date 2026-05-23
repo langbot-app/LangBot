@@ -1348,10 +1348,14 @@ class RuntimeConnectionHandler(handler.Handler):
                     message=f'Run session {run_id} not found or expired'
                 )
 
-            # Validate caller plugin identity
-            if caller_plugin_identity:
-                session_plugin_identity = session.get('plugin_identity')
-                if session_plugin_identity and caller_plugin_identity != session_plugin_identity:
+            # Validate caller plugin identity (strict: required when session has plugin_identity)
+            session_plugin_identity = session.get('plugin_identity')
+            if session_plugin_identity:
+                if not caller_plugin_identity:
+                    return handler.ActionResponse.error(
+                        message=f'caller_plugin_identity is required for run_id {run_id}'
+                    )
+                if caller_plugin_identity != session_plugin_identity:
                     return handler.ActionResponse.error(
                         message=f'Plugin identity mismatch for run_id {run_id}'
                     )
@@ -1420,10 +1424,14 @@ class RuntimeConnectionHandler(handler.Handler):
                     message=f'Run session {run_id} not found or expired'
                 )
 
-            # Validate caller plugin identity
-            if caller_plugin_identity:
-                session_plugin_identity = session.get('plugin_identity')
-                if session_plugin_identity and caller_plugin_identity != session_plugin_identity:
+            # Validate caller plugin identity (strict: required when session has plugin_identity)
+            session_plugin_identity = session.get('plugin_identity')
+            if session_plugin_identity:
+                if not caller_plugin_identity:
+                    return handler.ActionResponse.error(
+                        message=f'caller_plugin_identity is required for run_id {run_id}'
+                    )
+                if caller_plugin_identity != session_plugin_identity:
                     return handler.ActionResponse.error(
                         message=f'Plugin identity mismatch for run_id {run_id}'
                     )
@@ -1483,10 +1491,14 @@ class RuntimeConnectionHandler(handler.Handler):
                     message=f'Run session {run_id} not found or expired'
                 )
 
-            # Validate caller plugin identity
-            if caller_plugin_identity:
-                session_plugin_identity = session.get('plugin_identity')
-                if session_plugin_identity and caller_plugin_identity != session_plugin_identity:
+            # Validate caller plugin identity (strict: required when session has plugin_identity)
+            session_plugin_identity = session.get('plugin_identity')
+            if session_plugin_identity:
+                if not caller_plugin_identity:
+                    return handler.ActionResponse.error(
+                        message=f'caller_plugin_identity is required for run_id {run_id}'
+                    )
+                if caller_plugin_identity != session_plugin_identity:
                     return handler.ActionResponse.error(
                         message=f'Plugin identity mismatch for run_id {run_id}'
                     )
@@ -1538,10 +1550,14 @@ class RuntimeConnectionHandler(handler.Handler):
                     message=f'Run session {run_id} not found or expired'
                 )
 
-            # Validate caller plugin identity
-            if caller_plugin_identity:
-                session_plugin_identity = session.get('plugin_identity')
-                if session_plugin_identity and caller_plugin_identity != session_plugin_identity:
+            # Validate caller plugin identity (strict: required when session has plugin_identity)
+            session_plugin_identity = session.get('plugin_identity')
+            if session_plugin_identity:
+                if not caller_plugin_identity:
+                    return handler.ActionResponse.error(
+                        message=f'caller_plugin_identity is required for run_id {run_id}'
+                    )
+                if caller_plugin_identity != session_plugin_identity:
                     return handler.ActionResponse.error(
                         message=f'Plugin identity mismatch for run_id {run_id}'
                     )
@@ -1610,10 +1626,14 @@ class RuntimeConnectionHandler(handler.Handler):
                     message=f'Run session {run_id} not found or expired'
                 )
 
-            # Validate caller plugin identity
-            if caller_plugin_identity:
-                session_plugin_identity = session.get('plugin_identity')
-                if session_plugin_identity and caller_plugin_identity != session_plugin_identity:
+            # Validate caller plugin identity (strict: required when session has plugin_identity)
+            session_plugin_identity = session.get('plugin_identity')
+            if session_plugin_identity:
+                if not caller_plugin_identity:
+                    return handler.ActionResponse.error(
+                        message=f'caller_plugin_identity is required for run_id {run_id}'
+                    )
+                if caller_plugin_identity != session_plugin_identity:
                     return handler.ActionResponse.error(
                         message=f'Plugin identity mismatch for run_id {run_id}'
                     )
@@ -1694,10 +1714,14 @@ class RuntimeConnectionHandler(handler.Handler):
                     message=f'Run session {run_id} not found or expired'
                 )
 
-            # Validate caller plugin identity
-            if caller_plugin_identity:
-                session_plugin_identity = session.get('plugin_identity')
-                if session_plugin_identity and caller_plugin_identity != session_plugin_identity:
+            # Validate caller plugin identity (strict: required when session has plugin_identity)
+            session_plugin_identity = session.get('plugin_identity')
+            if session_plugin_identity:
+                if not caller_plugin_identity:
+                    return handler.ActionResponse.error(
+                        message=f'caller_plugin_identity is required for run_id {run_id}'
+                    )
+                if caller_plugin_identity != session_plugin_identity:
                     return handler.ActionResponse.error(
                         message=f'Plugin identity mismatch for run_id {run_id}'
                     )
@@ -1745,6 +1769,346 @@ class RuntimeConnectionHandler(handler.Handler):
             except Exception as e:
                 self.ap.logger.error(f'ARTIFACT_READ error: {e}', exc_info=True)
                 return handler.ActionResponse.error(message=f'Artifact read error: {e}')
+
+        # ================= State APIs (run-scoped, policy-enforced) =================
+
+        @self.action(PluginToRuntimeAction.STATE_GET)
+        async def state_get(data: dict[str, Any]) -> handler.ActionResponse:
+            """Get a state value from host-owned state store.
+
+            Requires run_id authorization and scope enabled by state_policy.
+            """
+            run_id = data.get('run_id')
+            scope = data.get('scope')
+            key = data.get('key')
+            caller_plugin_identity = data.get('caller_plugin_identity')
+
+            if not run_id:
+                return handler.ActionResponse.error(message='run_id is required')
+
+            if not scope:
+                return handler.ActionResponse.error(message='scope is required')
+
+            if not key:
+                return handler.ActionResponse.error(message='key is required')
+
+            # Validate run session
+            session_registry = get_session_registry()
+            session = await session_registry.get(run_id)
+            if not session:
+                return handler.ActionResponse.error(
+                    message=f'Run session {run_id} not found or expired'
+                )
+
+            # Validate caller plugin identity (strict: required when session has plugin_identity)
+            session_plugin_identity = session.get('plugin_identity')
+            if session_plugin_identity:
+                if not caller_plugin_identity:
+                    return handler.ActionResponse.error(
+                        message=f'caller_plugin_identity is required for run_id {run_id}'
+                    )
+                if caller_plugin_identity != session_plugin_identity:
+                    return handler.ActionResponse.error(
+                        message=f'Plugin identity mismatch for run_id {run_id}'
+                    )
+
+            # Get state policy from session (stored in state_policy field, not in resources)
+            state_policy = session.get('state_policy', {})
+            if not state_policy:
+                # Default state policy
+                state_policy = {'enable_state': True, 'state_scopes': ['conversation', 'actor']}
+
+            # Check if state is enabled
+            if not state_policy.get('enable_state', True):
+                return handler.ActionResponse.error(
+                    message='State access is disabled by binding policy'
+                )
+
+            # Check if scope is enabled
+            state_scopes = state_policy.get('state_scopes', ['conversation', 'actor'])
+            if scope not in state_scopes:
+                return handler.ActionResponse.error(
+                    message=f'Scope "{scope}" is not enabled by binding policy'
+                )
+
+            # Build scope key using state_context from session (stored in state_context field, not in resources)
+            state_context = session.get('state_context', {})
+            scope_key = state_context.get('scope_keys', {}).get(scope)
+
+            if not scope_key:
+                return handler.ActionResponse.error(
+                    message=f'Scope key not available for scope "{scope}"'
+                )
+
+            # Get state from persistent store
+            from ..agent.runner.persistent_state_store import get_persistent_state_store
+            store = get_persistent_state_store(self.ap.persistence_mgr.get_db_engine())
+
+            try:
+                value = await store.state_get(scope_key, key)
+                return handler.ActionResponse.success(data={'value': value})
+            except Exception as e:
+                self.ap.logger.error(f'STATE_GET error: {e}', exc_info=True)
+                return handler.ActionResponse.error(message=f'State get error: {e}')
+
+        @self.action(PluginToRuntimeAction.STATE_SET)
+        async def state_set(data: dict[str, Any]) -> handler.ActionResponse:
+            """Set a state value in host-owned state store.
+
+            Requires run_id authorization and scope enabled by state_policy.
+            Value must be JSON-serializable and size-limited.
+            """
+            run_id = data.get('run_id')
+            scope = data.get('scope')
+            key = data.get('key')
+            value = data.get('value')
+            caller_plugin_identity = data.get('caller_plugin_identity')
+
+            if not run_id:
+                return handler.ActionResponse.error(message='run_id is required')
+
+            if not scope:
+                return handler.ActionResponse.error(message='scope is required')
+
+            if not key:
+                return handler.ActionResponse.error(message='key is required')
+
+            # Validate run session
+            session_registry = get_session_registry()
+            session = await session_registry.get(run_id)
+            if not session:
+                return handler.ActionResponse.error(
+                    message=f'Run session {run_id} not found or expired'
+                )
+
+            # Validate caller plugin identity (strict: required when session has plugin_identity)
+            session_plugin_identity = session.get('plugin_identity')
+            if session_plugin_identity:
+                if not caller_plugin_identity:
+                    return handler.ActionResponse.error(
+                        message=f'caller_plugin_identity is required for run_id {run_id}'
+                    )
+                if caller_plugin_identity != session_plugin_identity:
+                    return handler.ActionResponse.error(
+                        message=f'Plugin identity mismatch for run_id {run_id}'
+                    )
+
+            # Get state policy from session (stored in state_policy field, not in resources)
+            state_policy = session.get('state_policy', {})
+            if not state_policy:
+                state_policy = {'enable_state': True, 'state_scopes': ['conversation', 'actor']}
+
+            # Check if state is enabled
+            if not state_policy.get('enable_state', True):
+                return handler.ActionResponse.error(
+                    message='State access is disabled by binding policy'
+                )
+
+            # Check if scope is enabled
+            state_scopes = state_policy.get('state_scopes', ['conversation', 'actor'])
+            if scope not in state_scopes:
+                return handler.ActionResponse.error(
+                    message=f'Scope "{scope}" is not enabled by binding policy'
+                )
+
+            # Build scope key using state_context from session (stored in state_context field, not in resources)
+            state_context = session.get('state_context', {})
+            scope_key = state_context.get('scope_keys', {}).get(scope)
+
+            if not scope_key:
+                return handler.ActionResponse.error(
+                    message=f'Scope key not available for scope "{scope}"'
+                )
+
+            # Get additional context for DB insert
+            runner_id = session.get('runner_id', '')
+            binding_identity = state_context.get('binding_identity', 'unknown')
+
+            # Set state in persistent store
+            from ..agent.runner.persistent_state_store import get_persistent_state_store
+            store = get_persistent_state_store(self.ap.persistence_mgr.get_db_engine())
+
+            try:
+                success, error = await store.state_set(
+                    scope_key=scope_key,
+                    state_key=key,
+                    value=value,
+                    runner_id=runner_id,
+                    binding_identity=binding_identity,
+                    scope=scope,
+                    context=state_context,
+                    logger=self.ap.logger,
+                )
+
+                if not success:
+                    return handler.ActionResponse.error(message=error or 'Failed to set state')
+
+                return handler.ActionResponse.success(data={'success': True})
+            except Exception as e:
+                self.ap.logger.error(f'STATE_SET error: {e}', exc_info=True)
+                return handler.ActionResponse.error(message=f'State set error: {e}')
+
+        @self.action(PluginToRuntimeAction.STATE_DELETE)
+        async def state_delete(data: dict[str, Any]) -> handler.ActionResponse:
+            """Delete a state value from host-owned state store.
+
+            Requires run_id authorization and scope enabled by state_policy.
+            """
+            run_id = data.get('run_id')
+            scope = data.get('scope')
+            key = data.get('key')
+            caller_plugin_identity = data.get('caller_plugin_identity')
+
+            if not run_id:
+                return handler.ActionResponse.error(message='run_id is required')
+
+            if not scope:
+                return handler.ActionResponse.error(message='scope is required')
+
+            if not key:
+                return handler.ActionResponse.error(message='key is required')
+
+            # Validate run session
+            session_registry = get_session_registry()
+            session = await session_registry.get(run_id)
+            if not session:
+                return handler.ActionResponse.error(
+                    message=f'Run session {run_id} not found or expired'
+                )
+
+            # Validate caller plugin identity (strict: required when session has plugin_identity)
+            session_plugin_identity = session.get('plugin_identity')
+            if session_plugin_identity:
+                if not caller_plugin_identity:
+                    return handler.ActionResponse.error(
+                        message=f'caller_plugin_identity is required for run_id {run_id}'
+                    )
+                if caller_plugin_identity != session_plugin_identity:
+                    return handler.ActionResponse.error(
+                        message=f'Plugin identity mismatch for run_id {run_id}'
+                    )
+
+            # Get state policy from session (stored in state_policy field, not in resources)
+            state_policy = session.get('state_policy', {})
+            if not state_policy:
+                state_policy = {'enable_state': True, 'state_scopes': ['conversation', 'actor']}
+
+            # Check if state is enabled
+            if not state_policy.get('enable_state', True):
+                return handler.ActionResponse.error(
+                    message='State access is disabled by binding policy'
+                )
+
+            # Check if scope is enabled
+            state_scopes = state_policy.get('state_scopes', ['conversation', 'actor'])
+            if scope not in state_scopes:
+                return handler.ActionResponse.error(
+                    message=f'Scope "{scope}" is not enabled by binding policy'
+                )
+
+            # Build scope key using state_context from session (stored in state_context field, not in resources)
+            state_context = session.get('state_context', {})
+            scope_key = state_context.get('scope_keys', {}).get(scope)
+
+            if not scope_key:
+                return handler.ActionResponse.error(
+                    message=f'Scope key not available for scope "{scope}"'
+                )
+
+            # Delete state from persistent store
+            from ..agent.runner.persistent_state_store import get_persistent_state_store
+            store = get_persistent_state_store(self.ap.persistence_mgr.get_db_engine())
+
+            try:
+                deleted = await store.state_delete(scope_key, key)
+                return handler.ActionResponse.success(data={'success': deleted})
+            except Exception as e:
+                self.ap.logger.error(f'STATE_DELETE error: {e}', exc_info=True)
+                return handler.ActionResponse.error(message=f'State delete error: {e}')
+
+        @self.action(PluginToRuntimeAction.STATE_LIST)
+        async def state_list(data: dict[str, Any]) -> handler.ActionResponse:
+            """List state keys in a scope.
+
+            Requires run_id authorization and scope enabled by state_policy.
+            """
+            run_id = data.get('run_id')
+            scope = data.get('scope')
+            prefix = data.get('prefix')
+            limit = data.get('limit', 100)
+            caller_plugin_identity = data.get('caller_plugin_identity')
+
+            if not run_id:
+                return handler.ActionResponse.error(message='run_id is required')
+
+            if not scope:
+                return handler.ActionResponse.error(message='scope is required')
+
+            # Validate limit
+            if not isinstance(limit, int) or limit <= 0:
+                limit = 100
+            limit = min(limit, 100)  # Cap at 100
+
+            # Validate run session
+            session_registry = get_session_registry()
+            session = await session_registry.get(run_id)
+            if not session:
+                return handler.ActionResponse.error(
+                    message=f'Run session {run_id} not found or expired'
+                )
+
+            # Validate caller plugin identity (strict: required when session has plugin_identity)
+            session_plugin_identity = session.get('plugin_identity')
+            if session_plugin_identity:
+                if not caller_plugin_identity:
+                    return handler.ActionResponse.error(
+                        message=f'caller_plugin_identity is required for run_id {run_id}'
+                    )
+                if caller_plugin_identity != session_plugin_identity:
+                    return handler.ActionResponse.error(
+                        message=f'Plugin identity mismatch for run_id {run_id}'
+                    )
+
+            # Get state policy from session (stored in state_policy field, not in resources)
+            state_policy = session.get('state_policy', {})
+            if not state_policy:
+                state_policy = {'enable_state': True, 'state_scopes': ['conversation', 'actor']}
+
+            # Check if state is enabled
+            if not state_policy.get('enable_state', True):
+                return handler.ActionResponse.error(
+                    message='State access is disabled by binding policy'
+                )
+
+            # Check if scope is enabled
+            state_scopes = state_policy.get('state_scopes', ['conversation', 'actor'])
+            if scope not in state_scopes:
+                return handler.ActionResponse.error(
+                    message=f'Scope "{scope}" is not enabled by binding policy'
+                )
+
+            # Build scope key using state_context from session (stored in state_context field, not in resources)
+            state_context = session.get('state_context', {})
+            scope_key = state_context.get('scope_keys', {}).get(scope)
+
+            if not scope_key:
+                return handler.ActionResponse.error(
+                    message=f'Scope key not available for scope "{scope}"'
+                )
+
+            # List state keys from persistent store
+            from ..agent.runner.persistent_state_store import get_persistent_state_store
+            store = get_persistent_state_store(self.ap.persistence_mgr.get_db_engine())
+
+            try:
+                keys, has_more = await store.state_list(scope_key, prefix, limit)
+                return handler.ActionResponse.success(data={
+                    'keys': keys,
+                    'has_more': has_more,
+                })
+            except Exception as e:
+                self.ap.logger.error(f'STATE_LIST error: {e}', exc_info=True)
+                return handler.ActionResponse.error(message=f'State list error: {e}')
 
         @self.action(CommonAction.PING)
         async def ping(data: dict[str, Any]) -> handler.ActionResponse:

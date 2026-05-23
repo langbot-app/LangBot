@@ -113,13 +113,24 @@ class TestContextValidation:
         resources = self._make_resources()
         descriptor = self._make_descriptor()
 
-        # Build context
-        context_dict = await builder.build_context_from_event(
-            event=event,
-            binding=binding,
-            descriptor=descriptor,
-            resources=resources,
-        )
+        # Mock persistent state store to return empty state snapshot
+        with patch('langbot.pkg.agent.runner.context_builder.get_persistent_state_store') as mock_get_store:
+            mock_store = AsyncMock()
+            mock_store.build_snapshot_from_event = AsyncMock(return_value={
+                'conversation': {},
+                'actor': {},
+                'subject': {},
+                'runner': {},
+            })
+            mock_get_store.return_value = mock_store
+
+            # Build context
+            context_dict = await builder.build_context_from_event(
+                event=event,
+                binding=binding,
+                descriptor=descriptor,
+                resources=resources,
+            )
 
         # Validate it can be parsed by SDK AgentRunContext
         # This will raise ValidationError if invalid
@@ -162,12 +173,23 @@ class TestContextValidation:
         resources = self._make_resources()
         descriptor = self._make_descriptor()
 
-        context_dict = await builder.build_context_from_event(
-            event=event,
-            binding=binding,
-            descriptor=descriptor,
-            resources=resources,
-        )
+        # Mock persistent state store to return empty state snapshot
+        with patch('langbot.pkg.agent.runner.context_builder.get_persistent_state_store') as mock_get_store:
+            mock_store = AsyncMock()
+            mock_store.build_snapshot_from_event = AsyncMock(return_value={
+                'conversation': {},
+                'actor': {},
+                'subject': {},
+                'runner': {},
+            })
+            mock_get_store.return_value = mock_store
+
+            context_dict = await builder.build_context_from_event(
+                event=event,
+                binding=binding,
+                descriptor=descriptor,
+                resources=resources,
+            )
 
         # Protocol v1 does NOT have these as core fields
         assert 'messages' not in context_dict, "messages should not be top-level in Protocol v1"
@@ -192,12 +214,23 @@ class TestContextValidation:
         resources = self._make_resources()
         descriptor = self._make_descriptor()
 
-        context_dict = await builder.build_context_from_event(
-            event=event,
-            binding=binding,
-            descriptor=descriptor,
-            resources=resources,
-        )
+        # Mock persistent state store to return empty state snapshot
+        with patch('langbot.pkg.agent.runner.context_builder.get_persistent_state_store') as mock_get_store:
+            mock_store = AsyncMock()
+            mock_store.build_snapshot_from_event = AsyncMock(return_value={
+                'conversation': {},
+                'actor': {},
+                'subject': {},
+                'runner': {},
+            })
+            mock_get_store.return_value = mock_store
+
+            context_dict = await builder.build_context_from_event(
+                event=event,
+                binding=binding,
+                descriptor=descriptor,
+                resources=resources,
+            )
 
         # event is REQUIRED in Protocol v1
         assert context_dict.get('event') is not None, "event is REQUIRED for Protocol v1"
@@ -217,12 +250,23 @@ class TestContextValidation:
         resources = self._make_resources()
         descriptor = self._make_descriptor()
 
-        context_dict = await builder.build_context_from_event(
-            event=event,
-            binding=binding,
-            descriptor=descriptor,
-            resources=resources,
-        )
+        # Mock persistent state store to return empty state snapshot
+        with patch('langbot.pkg.agent.runner.context_builder.get_persistent_state_store') as mock_get_store:
+            mock_store = AsyncMock()
+            mock_store.build_snapshot_from_event = AsyncMock(return_value={
+                'conversation': {},
+                'actor': {},
+                'subject': {},
+                'runner': {},
+            })
+            mock_get_store.return_value = mock_store
+
+            context_dict = await builder.build_context_from_event(
+                event=event,
+                binding=binding,
+                descriptor=descriptor,
+                resources=resources,
+            )
 
         # delivery is REQUIRED in Protocol v1
         assert context_dict.get('delivery') is not None, "delivery is REQUIRED for Protocol v1"

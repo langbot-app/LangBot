@@ -13,6 +13,7 @@ from .descriptor import AgentRunnerDescriptor
 from .config_migration import ConfigMigration
 from .context_packager import AgentContextPackager
 from .state_store import get_state_store
+from .persistent_state_store import get_persistent_state_store
 from . import events as runner_events
 from .host_models import AgentEventEnvelope, AgentBinding
 from .pipeline_compat_adapter import PipelineCompatAdapter
@@ -259,11 +260,13 @@ class AgentRunContextBuilder:
 
         # Build context access (no history inlined by default for Protocol v1)
         # Populate with actual values from stores
-        context_access = await self._build_context_access(event, descriptor)
+        context_access = await self._build_context_access(event, descriptor, binding)
 
-        # Build state snapshot from event context
-        state_store = get_state_store()
-        state: AgentRunState = state_store.build_snapshot_from_event(event, binding, descriptor)
+        # Build state snapshot from persistent state store (event-first Protocol v1)
+        persistent_state_store = get_persistent_state_store(
+            self.ap.persistence_mgr.get_db_engine()
+        )
+        state: AgentRunState = await persistent_state_store.build_snapshot_from_event(event, binding, descriptor)
 
         # Build runtime context
         runtime: AgentRuntimeContext = {
@@ -420,6 +423,7 @@ class AgentRunContextBuilder:
         }
 
         # Build context access (for legacy, minimal API availability)
+        # Legacy Query-based mode does NOT have persistent state API
         context_access = {
             'conversation_id': conversation.get('conversation_id') if conversation else None,
             'thread_id': None,
@@ -441,7 +445,7 @@ class AgentRunContextBuilder:
                 'event_page': False,
                 'artifact_metadata': False,
                 'artifact_read': False,
-                'state': True,
+                'state': False,  # Legacy Query mode does not have persistent state API
                 'storage': True,
             },
         }
@@ -869,12 +873,14 @@ class AgentRunContextBuilder:
         self,
         event: AgentEventEnvelope,
         descriptor: AgentRunnerDescriptor,
+        binding: AgentBinding | None = None,
     ) -> dict[str, typing.Any]:
         """Build ContextAccess with actual values from stores.
 
         Args:
             event: Event envelope
             descriptor: Runner descriptor
+            binding: Agent binding (required for state_policy in event-first mode)
 
         Returns:
             ContextAccess dict
@@ -894,6 +900,14 @@ class AgentRunContextBuilder:
         event_page_enabled = 'page' in event_permissions and conversation_id is not None
         artifact_metadata_enabled = 'metadata' in artifact_permissions
         artifact_read_enabled = 'read' in artifact_permissions
+
+        # Determine state API availability based on binding state_policy (event-first mode)
+        # For legacy Query-based mode, state is NOT available (no persistent state API)
+        state_enabled = False
+        if binding is not None:
+            state_policy = binding.state_policy
+            if state_policy.enable_state and state_policy.state_scopes:
+                state_enabled = True
 
         # Get latest cursor and has_history_before if conversation exists
         latest_cursor = None
@@ -931,7 +945,7 @@ class AgentRunContextBuilder:
                 'event_page': event_page_enabled,
                 'artifact_metadata': artifact_metadata_enabled,
                 'artifact_read': artifact_read_enabled,
-                'state': True,
+                'state': state_enabled,
                 'storage': True,
             },
         }
