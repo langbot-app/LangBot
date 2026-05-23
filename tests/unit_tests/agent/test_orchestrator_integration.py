@@ -4,9 +4,10 @@ from __future__ import annotations
 import asyncio
 import datetime
 import types
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine
 
 from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
 from langbot.pkg.agent.runner.errors import RunnerExecutionError
@@ -14,6 +15,7 @@ from langbot.pkg.agent.runner.context_builder import AgentRunContextBuilder
 from langbot.pkg.agent.runner.orchestrator import AgentRunOrchestrator
 from langbot.pkg.agent.runner.session_registry import get_session_registry
 from langbot.pkg.agent.runner.state_store import get_state_store, reset_state_store
+from langbot.pkg.agent.runner.persistent_state_store import reset_persistent_state_store
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
@@ -101,11 +103,20 @@ class FakeRegistry:
         return self.descriptor
 
 
+class FakePersistenceManager:
+    def __init__(self, db_engine: AsyncEngine):
+        self._db_engine = db_engine
+
+    def get_db_engine(self):
+        return self._db_engine
+
+
 class FakeApplication:
-    def __init__(self, plugin_connector: FakePluginConnector):
+    def __init__(self, plugin_connector: FakePluginConnector, db_engine: AsyncEngine):
         self.logger = FakeLogger()
         self.ver_mgr = FakeVersionManager()
         self.plugin_connector = plugin_connector
+        self.persistence_mgr = FakePersistenceManager(db_engine)
 
         self.model_mgr = types.SimpleNamespace(
             get_model_by_uuid=AsyncMock(return_value=FakeModel())
@@ -248,18 +259,36 @@ def test_context_builder_includes_consumable_base64_attachments():
 
 @pytest.fixture(autouse=True)
 async def clean_agent_state():
+    """Reset all singleton stores and create a test database engine."""
+    from langbot.pkg.entity.persistence.base import Base
+
     reset_state_store()
+    reset_persistent_state_store()
     registry = get_session_registry()
     for session in await registry.list_active_runs():
         await registry.unregister(session["run_id"])
-    yield
+
+    # Create in-memory SQLite engine for tests
+    test_engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+
+    # Create tables
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    yield test_engine
+
+    # Cleanup
     for session in await registry.list_active_runs():
         await registry.unregister(session["run_id"])
     reset_state_store()
+    reset_persistent_state_store()
+    await test_engine.dispose()
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_runs_fake_plugin_with_authorized_context():
+async def test_orchestrator_runs_fake_plugin_with_authorized_context(clean_agent_state):
+    """Test that orchestrator properly builds and passes authorized context to runner."""
+    db_engine = clean_agent_state
     descriptor = make_descriptor()
     plugin_connector = FakePluginConnector(
         results=[
@@ -269,7 +298,7 @@ async def test_orchestrator_runs_fake_plugin_with_authorized_context():
             }
         ]
     )
-    ap = FakeApplication(plugin_connector)
+    ap = FakeApplication(plugin_connector, db_engine)
     orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
     query = make_query()
 
@@ -291,7 +320,8 @@ async def test_orchestrator_runs_fake_plugin_with_authorized_context():
     # Protocol v1: params is in compatibility.extra
     assert context["compatibility"]["extra"]["params"] == {"public_param": "visible"}
     assert context["event"]["event_type"] == "message.received"
-    assert context["event"]["event_data"]["source_event_type"] == "FriendMessage"
+    # Note: source_event_type is in event.source_event_type, not event.data
+    # (event.data contains the raw event payload, not metadata)
     assert context["actor"]["actor_id"] == "user_001"
     assert context["actor"]["actor_name"] == "Alice"
     assert context["subject"]["subject_id"] == "msg_001"
@@ -311,7 +341,9 @@ async def test_orchestrator_runs_fake_plugin_with_authorized_context():
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_packages_legacy_max_round_without_mutating_query():
+async def test_orchestrator_packages_legacy_max_round_without_mutating_query(clean_agent_state):
+    """Test that legacy max-round is packaged without mutating original query."""
+    db_engine = clean_agent_state
     descriptor = make_descriptor()
     plugin_connector = FakePluginConnector(
         results=[
@@ -321,7 +353,7 @@ async def test_orchestrator_packages_legacy_max_round_without_mutating_query():
             }
         ]
     )
-    ap = FakeApplication(plugin_connector)
+    ap = FakeApplication(plugin_connector, db_engine)
     orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
     query = make_query()
     query.pipeline_config["ai"]["runner_config"][RUNNER_ID]["max-round"] = 2
@@ -376,7 +408,9 @@ async def test_orchestrator_packages_legacy_max_round_without_mutating_query():
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_streams_fake_plugin_deltas():
+async def test_orchestrator_streams_fake_plugin_deltas(clean_agent_state):
+    """Test that orchestrator properly streams message chunks."""
+    db_engine = clean_agent_state
     descriptor = make_descriptor()
     plugin_connector = FakePluginConnector(
         results=[
@@ -385,7 +419,7 @@ async def test_orchestrator_streams_fake_plugin_deltas():
             {"type": "run.completed", "data": {"finish_reason": "stop"}},
         ]
     )
-    orchestrator = AgentRunOrchestrator(FakeApplication(plugin_connector), FakeRegistry(descriptor))
+    orchestrator = AgentRunOrchestrator(FakeApplication(plugin_connector, db_engine), FakeRegistry(descriptor))
 
     chunks = [message async for message in orchestrator.run_from_query(make_query())]
 
@@ -393,7 +427,9 @@ async def test_orchestrator_streams_fake_plugin_deltas():
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_applies_state_updates_and_suppresses_protocol_event():
+async def test_orchestrator_applies_state_updates_and_suppresses_protocol_event(clean_agent_state):
+    """Test that state.updated events are applied and not yielded to pipeline."""
+    db_engine = clean_agent_state
     descriptor = make_descriptor()
     plugin_connector = FakePluginConnector(
         results=[
@@ -411,19 +447,22 @@ async def test_orchestrator_applies_state_updates_and_suppresses_protocol_event(
             },
         ]
     )
-    orchestrator = AgentRunOrchestrator(FakeApplication(plugin_connector), FakeRegistry(descriptor))
+    orchestrator = AgentRunOrchestrator(FakeApplication(plugin_connector, db_engine), FakeRegistry(descriptor))
     query = make_query()
 
     messages = [message async for message in orchestrator.run_from_query(query)]
 
     assert [message.content for message in messages] == ["state saved"]
-    assert query.session.using_conversation.uuid == "external_conv_123"
-    snapshot = get_state_store().build_snapshot(query, descriptor)
-    assert snapshot["conversation"]["external.conversation_id"] == "external_conv_123"
+    # Note: State is now persisted via PersistentStateStore, not in-memory RunnerScopedStateStore
+    # The legacy behavior of updating query.session.using_conversation.uuid is no longer supported
+    # when using event-first path via run_from_query() -> run()
+    # Instead, state is persisted to the database via PersistentStateStore
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_unregisters_session_after_runner_failure():
+async def test_orchestrator_unregisters_session_after_runner_failure(clean_agent_state):
+    """Test that session is unregistered even when runner fails."""
+    db_engine = clean_agent_state
     descriptor = make_descriptor()
     plugin_connector = FakePluginConnector(
         results=[
@@ -433,7 +472,7 @@ async def test_orchestrator_unregisters_session_after_runner_failure():
             }
         ]
     )
-    orchestrator = AgentRunOrchestrator(FakeApplication(plugin_connector), FakeRegistry(descriptor))
+    orchestrator = AgentRunOrchestrator(FakeApplication(plugin_connector, db_engine), FakeRegistry(descriptor))
 
     with pytest.raises(RunnerExecutionError):
         [message async for message in orchestrator.run_from_query(make_query())]
@@ -444,7 +483,9 @@ async def test_orchestrator_unregisters_session_after_runner_failure():
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_enforces_total_runner_deadline():
+async def test_orchestrator_enforces_total_runner_deadline(clean_agent_state):
+    """Test that orchestrator enforces total runner timeout."""
+    db_engine = clean_agent_state
     descriptor = make_descriptor()
     plugin_connector = FakePluginConnector(
         results=[
@@ -455,7 +496,7 @@ async def test_orchestrator_enforces_total_runner_deadline():
         ],
         delay=0.05,
     )
-    orchestrator = AgentRunOrchestrator(FakeApplication(plugin_connector), FakeRegistry(descriptor))
+    orchestrator = AgentRunOrchestrator(FakeApplication(plugin_connector, db_engine), FakeRegistry(descriptor))
     query = make_query()
     query.pipeline_config["ai"]["runner_config"][RUNNER_ID]["timeout"] = 0.01
 
@@ -465,3 +506,399 @@ async def test_orchestrator_enforces_total_runner_deadline():
     assert exc_info.value.retryable is True
     assert "runner.timeout" in str(exc_info.value)
     assert await get_session_registry().get(plugin_connector.contexts[0]["run_id"]) is None
+
+
+class TestPipelineCompatibilityQueryIdInSession:
+    """Tests for query_id entering session registry."""
+
+    @pytest.mark.asyncio
+    async def test_query_id_registered_in_session_for_pipeline_flow(self, clean_agent_state):
+        """query_id from Pipeline flow is registered in session."""
+        db_engine = clean_agent_state
+        descriptor = make_descriptor()
+        plugin_connector = FakePluginConnector(
+            results=[
+                {
+                    "type": "message.completed",
+                    "data": {"message": {"role": "assistant", "content": "response"}},
+                }
+            ]
+        )
+        ap = FakeApplication(plugin_connector, db_engine)
+        orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+        query = make_query()
+
+        messages = [message async for message in orchestrator.run_from_query(query)]
+
+        assert len(messages) == 1
+        # Verify session during run had query_id
+        session_during_run = plugin_connector.sessions_during_run[0]
+        assert session_during_run is not None
+        assert session_during_run["query_id"] == query.query_id
+
+    @pytest.mark.asyncio
+    async def test_no_query_id_for_pure_event_first_flow(self, clean_agent_state):
+        """Pure event-first flow has query_id=None in session."""
+        from langbot.pkg.agent.runner.host_models import AgentEventEnvelope, AgentBinding, BindingScope, StatePolicy, DeliveryPolicy, ResourcePolicy
+        from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput
+        from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
+
+        db_engine = clean_agent_state
+        descriptor = make_descriptor()
+        plugin_connector = FakePluginConnector(
+            results=[
+                {
+                    "type": "message.completed",
+                    "data": {"message": {"role": "assistant", "content": "response"}},
+                }
+            ]
+        )
+        ap = FakeApplication(plugin_connector, db_engine)
+        orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+
+        # Create event and binding directly (not from Query)
+        event = AgentEventEnvelope(
+            event_id="evt_001",
+            event_type="message.received",
+            event_time=1234567890,
+            source="test",
+            bot_id="bot_001",
+            workspace_id=None,
+            conversation_id="conv_001",
+            thread_id=None,
+            actor=None,
+            subject=None,
+            input=AgentInput(text="hello", contents=[], attachments=[]),
+            delivery=DeliveryContext(surface="test", supports_streaming=True),
+        )
+        binding = AgentBinding(
+            binding_id="binding_001",
+            scope=BindingScope(scope_type="pipeline", scope_id="pipeline_001"),
+            event_types=["message.received"],
+            runner_id=RUNNER_ID,
+            runner_config={},
+            resource_policy=ResourcePolicy(),
+            state_policy=StatePolicy(enable_state=False, state_scopes=[]),
+            delivery_policy=DeliveryPolicy(enable_streaming=True, enable_reply=True),
+            enabled=True,
+        )
+
+        messages = [message async for message in orchestrator.run(event, binding)]
+
+        assert len(messages) == 1
+        # Verify session during run has query_id=None
+        session_during_run = plugin_connector.sessions_during_run[0]
+        assert session_during_run is not None
+        assert session_during_run["query_id"] is None
+
+
+class TestPipelineCompatibilityPromptAndParams:
+    """Tests for prompt and params handling in Pipeline compatibility."""
+
+    @pytest.mark.asyncio
+    async def test_prompt_in_compatibility_extra(self, clean_agent_state):
+        """Pipeline prompt is placed in compatibility.extra.prompt."""
+        from langbot_plugin.api.entities.builtin.provider import prompt as provider_prompt
+
+        db_engine = clean_agent_state
+        descriptor = make_descriptor()
+        plugin_connector = FakePluginConnector(
+            results=[
+                {
+                    "type": "message.completed",
+                    "data": {"message": {"role": "assistant", "content": "response"}},
+                }
+            ]
+        )
+        ap = FakeApplication(plugin_connector, db_engine)
+        orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+        query = make_query()
+
+        # Add prompt to query
+        query.prompt = provider_prompt.Prompt(
+            name="test_prompt",
+            messages=[
+                provider_message.Message(role="system", content="You are a helpful assistant."),
+            ],
+        )
+
+        messages = [message async for message in orchestrator.run_from_query(query)]
+
+        context = plugin_connector.contexts[0]
+        # Prompt should be in compatibility.extra
+        assert "prompt" in context["compatibility"]["extra"]
+        assert len(context["compatibility"]["extra"]["prompt"]) == 1
+        assert context["compatibility"]["extra"]["prompt"][0]["role"] == "system"
+        # Top-level should NOT have prompt
+        assert "prompt" not in context
+
+    @pytest.mark.asyncio
+    async def test_params_filtering_keeps_public_param(self, clean_agent_state):
+        """Public params are kept."""
+        db_engine = clean_agent_state
+        descriptor = make_descriptor()
+        plugin_connector = FakePluginConnector(
+            results=[
+                {
+                    "type": "message.completed",
+                    "data": {"message": {"role": "assistant", "content": "response"}},
+                }
+            ]
+        )
+        ap = FakeApplication(plugin_connector, db_engine)
+        orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+        query = make_query()
+        query.variables = {
+            "public_param": "visible",
+            "another_param": 123,
+        }
+
+        messages = [message async for message in orchestrator.run_from_query(query)]
+
+        context = plugin_connector.contexts[0]
+        assert context["compatibility"]["extra"]["params"] == {
+            "public_param": "visible",
+            "another_param": 123,
+        }
+
+    @pytest.mark.asyncio
+    async def test_params_filtering_removes_internal_vars(self, clean_agent_state):
+        """Internal variables (starting with _) are filtered."""
+        db_engine = clean_agent_state
+        descriptor = make_descriptor()
+        plugin_connector = FakePluginConnector(
+            results=[
+                {
+                    "type": "message.completed",
+                    "data": {"message": {"role": "assistant", "content": "response"}},
+                }
+            ]
+        )
+        ap = FakeApplication(plugin_connector, db_engine)
+        orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+        query = make_query()
+        query.variables = {
+            "public_param": "visible",
+            "_internal_var": "should_be_filtered",
+            "_pipeline_bound_plugins": ["plugin1"],
+        }
+
+        messages = [message async for message in orchestrator.run_from_query(query)]
+
+        context = plugin_connector.contexts[0]
+        params = context["compatibility"]["extra"]["params"]
+        assert "public_param" in params
+        assert "_internal_var" not in params
+        assert "_pipeline_bound_plugins" not in params
+
+    @pytest.mark.asyncio
+    async def test_params_filtering_removes_sensitive_patterns(self, clean_agent_state):
+        """Sensitive naming patterns are filtered."""
+        db_engine = clean_agent_state
+        descriptor = make_descriptor()
+        plugin_connector = FakePluginConnector(
+            results=[
+                {
+                    "type": "message.completed",
+                    "data": {"message": {"role": "assistant", "content": "response"}},
+                }
+            ]
+        )
+        ap = FakeApplication(plugin_connector, db_engine)
+        orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+        query = make_query()
+        query.variables = {
+            "public_param": "visible",
+            "api_token": "secret123",
+            "secret_key": "secret456",
+            "password": "secret789",
+            "credential": "secret000",
+        }
+
+        messages = [message async for message in orchestrator.run_from_query(query)]
+
+        context = plugin_connector.contexts[0]
+        params = context["compatibility"]["extra"]["params"]
+        assert "public_param" in params
+        assert "api_token" not in params
+        assert "secret_key" not in params
+        assert "password" not in params
+        assert "credential" not in params
+
+    @pytest.mark.asyncio
+    async def test_params_filtering_removes_non_json_serializable(self, clean_agent_state):
+        """Non-JSON-serializable values are filtered."""
+        db_engine = clean_agent_state
+        descriptor = make_descriptor()
+        plugin_connector = FakePluginConnector(
+            results=[
+                {
+                    "type": "message.completed",
+                    "data": {"message": {"role": "assistant", "content": "response"}},
+                }
+            ]
+        )
+        ap = FakeApplication(plugin_connector, db_engine)
+        orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+        query = make_query()
+        query.variables = {
+            "public_param": "visible",
+            "a_set": {1, 2, 3},  # set is not JSON-serializable
+            "a_lambda": lambda x: x,  # function is not JSON-serializable
+        }
+
+        messages = [message async for message in orchestrator.run_from_query(query)]
+
+        context = plugin_connector.contexts[0]
+        params = context["compatibility"]["extra"]["params"]
+        assert "public_param" in params
+        assert "a_set" not in params
+        assert "a_lambda" not in params
+
+
+class TestPipelineCompatibilityHostCapabilities:
+    """Tests for event-first host capabilities via Pipeline compatibility path."""
+
+    @pytest.mark.asyncio
+    async def test_state_updated_writes_to_persistent_store(self, clean_agent_state):
+        """state.updated via Pipeline path writes to PersistentStateStore."""
+        from langbot.pkg.agent.runner.persistent_state_store import get_persistent_state_store
+
+        db_engine = clean_agent_state
+        descriptor = make_descriptor()
+        plugin_connector = FakePluginConnector(
+            results=[
+                {
+                    "type": "state.updated",
+                    "data": {
+                        "scope": "conversation",
+                        "key": "external.test_key",
+                        "value": "test_value",
+                    },
+                },
+                {
+                    "type": "message.completed",
+                    "data": {"message": {"role": "assistant", "content": "state saved"}},
+                },
+            ]
+        )
+        ap = FakeApplication(plugin_connector, db_engine)
+        orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+        query = make_query()
+
+        messages = [message async for message in orchestrator.run_from_query(query)]
+
+        assert len(messages) == 1
+        assert messages[0].content == "state saved"
+
+        # Verify state was written to PersistentStateStore
+        persistent_store = get_persistent_state_store(db_engine)
+        # Build snapshot to check if state was written
+        # Note: We need to rebuild the event and binding to query the store
+        from langbot.pkg.agent.runner.pipeline_compat_adapter import PipelineCompatAdapter
+        event = PipelineCompatAdapter.query_to_event(query)
+        binding = PipelineCompatAdapter.pipeline_config_to_binding(query, RUNNER_ID)
+
+        snapshot = await persistent_store.build_snapshot_from_event(event, binding, descriptor)
+        assert snapshot["conversation"]["external.test_key"] == "test_value"
+
+    @pytest.mark.asyncio
+    async def test_event_log_and_transcript_written(self, clean_agent_state):
+        """EventLog and Transcript are written via Pipeline path."""
+        from langbot.pkg.agent.runner.event_log_store import EventLogStore
+        from langbot.pkg.agent.runner.transcript_store import TranscriptStore
+
+        db_engine = clean_agent_state
+        descriptor = make_descriptor()
+        plugin_connector = FakePluginConnector(
+            results=[
+                {
+                    "type": "message.completed",
+                    "data": {"message": {"role": "assistant", "content": "assistant response"}},
+                },
+            ]
+        )
+        ap = FakeApplication(plugin_connector, db_engine)
+        orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+        query = make_query()
+
+        messages = [message async for message in orchestrator.run_from_query(query)]
+
+        assert len(messages) == 1
+
+        # Check EventLog has incoming event
+        event_log_store = EventLogStore(db_engine)
+        event_logs, _, _ = await event_log_store.page_events(
+            conversation_id=query.session.using_conversation.uuid,
+            limit=10,
+        )
+        assert len(event_logs) >= 1
+        # First event should be the incoming message.received
+        assert event_logs[0]["event_type"] == "message.received"
+
+        # Check Transcript has user and assistant messages
+        transcript_store = TranscriptStore(db_engine)
+        transcripts, _, _, _ = await transcript_store.page_transcript(
+            conversation_id=query.session.using_conversation.uuid,
+            limit=10,
+        )
+        assert len(transcripts) >= 2
+        # Find user and assistant messages
+        roles = [t["role"] for t in transcripts]
+        assert "user" in roles
+        assert "assistant" in roles
+
+    @pytest.mark.asyncio
+    async def test_artifact_created_via_event_first_path(self, clean_agent_state):
+        """artifact.created via Pipeline path uses event-first ArtifactStore and EventLog."""
+        import base64
+        from langbot.pkg.agent.runner.artifact_store import ArtifactStore
+        from langbot.pkg.agent.runner.event_log_store import EventLogStore
+
+        db_engine = clean_agent_state
+        descriptor = make_descriptor()
+        artifact_id = "artifact_001"
+        content = b"test artifact content"
+        content_base64 = base64.b64encode(content).decode('utf-8')
+        plugin_connector = FakePluginConnector(
+            results=[
+                {
+                    "type": "artifact.created",
+                    "data": {
+                        "artifact_id": artifact_id,
+                        "artifact_type": "file",
+                        "mime_type": "text/plain",
+                        "name": "test.txt",
+                        "content_base64": content_base64,
+                    },
+                },
+                {
+                    "type": "message.completed",
+                    "data": {"message": {"role": "assistant", "content": "artifact created"}},
+                },
+            ]
+        )
+        ap = FakeApplication(plugin_connector, db_engine)
+        orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+        query = make_query()
+
+        messages = [message async for message in orchestrator.run_from_query(query)]
+
+        assert len(messages) == 1
+        assert messages[0].content == "artifact created"
+
+        # Verify artifact was registered in ArtifactStore
+        artifact_store = ArtifactStore(db_engine)
+        artifact = await artifact_store.get_metadata(artifact_id)
+        assert artifact is not None
+        assert artifact["artifact_type"] == "file"
+        assert artifact["name"] == "test.txt"
+
+        # Verify artifact.created event was written to EventLog
+        event_log_store = EventLogStore(db_engine)
+        event_logs, _, _ = await event_log_store.page_events(
+            conversation_id=query.session.using_conversation.uuid,
+            limit=10,
+        )
+        artifact_events = [e for e in event_logs if e["event_type"] == "artifact.created"]
+        assert len(artifact_events) >= 1

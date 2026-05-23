@@ -112,7 +112,8 @@ class PipelineCompatAdapter:
         runner_config = ai_config.get('runner_config', {}).get(runner_id, {})
 
         # Extract max_round for compatibility (used in bootstrap, not Protocol v1)
-        max_round = runner_config.get('max_round') or ai_config.get('max-round')
+        # Note: config uses 'max-round' with hyphen, not 'max_round' with underscore
+        max_round = runner_config.get('max-round') or ai_config.get('max-round')
 
         # Build scope
         scope = BindingScope(
@@ -560,7 +561,17 @@ class PipelineCompatAdapter:
         if not use_funcs:
             return None
         try:
-            return [func.get('name') for func in use_funcs if isinstance(func, dict) and func.get('name')]
+            tool_names = []
+            for func in use_funcs:
+                if isinstance(func, dict):
+                    name = func.get('name')
+                elif hasattr(func, 'name'):
+                    name = func.name
+                else:
+                    continue
+                if name:
+                    tool_names.append(name)
+            return tool_names if tool_names else None
         except (TypeError, AttributeError):
             return None
 
