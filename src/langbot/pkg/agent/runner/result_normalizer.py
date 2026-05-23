@@ -143,6 +143,15 @@ class AgentResultNormalizer:
             )
             return None
 
+        elif result_type == 'artifact.created':
+            # Log for telemetry, consumed by orchestrator
+            artifact_id = data.get('artifact_id', 'unknown')
+            artifact_type = data.get('artifact_type', 'unknown')
+            self.ap.logger.debug(
+                f'Runner {descriptor.id} artifact.created logged: artifact_id={artifact_id}, type={artifact_type}'
+            )
+            return None
+
         else:
             # Unknown type - warn and ignore.
             self.ap.logger.warning(
