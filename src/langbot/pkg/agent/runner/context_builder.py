@@ -261,14 +261,9 @@ class AgentRunContextBuilder:
         # Populate with actual values from stores
         context_access = await self._build_context_access(event, descriptor)
 
-        # Build state snapshot (for event-first, we need event-based scope key)
-        # For now, return empty state - will be implemented with state_store migration
-        state: AgentRunState = {
-            'conversation': {},
-            'actor': {},
-            'subject': {},
-            'runner': {},
-        }
+        # Build state snapshot from event context
+        state_store = get_state_store()
+        state: AgentRunState = state_store.build_snapshot_from_event(event, binding, descriptor)
 
         # Build runtime context
         runtime: AgentRuntimeContext = {

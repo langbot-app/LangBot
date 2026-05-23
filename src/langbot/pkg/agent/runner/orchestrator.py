@@ -170,7 +170,7 @@ class AgentRunOrchestrator:
 
                 # Handle state.updated first - consume before normalizer
                 if result_dict.get('type') == 'state.updated':
-                    self._handle_state_updated_event(result_dict, event, descriptor)
+                    self._handle_state_updated_event(result_dict, event, binding, descriptor)
                     # Pass to normalizer for logging, but don't yield to pipeline
                     await self.result_normalizer.normalize(result_dict, descriptor)
                     continue
@@ -559,6 +559,7 @@ class AgentRunOrchestrator:
         self,
         result_dict: dict[str, typing.Any],
         event: AgentEventEnvelope,
+        binding: AgentBinding,
         descriptor: AgentRunnerDescriptor,
     ) -> None:
         """Handle state.updated result in event-first mode.
@@ -566,6 +567,7 @@ class AgentRunOrchestrator:
         Args:
             result_dict: Raw result dict with type='state.updated'
             event: Event envelope
+            binding: Agent binding configuration
             descriptor: Runner descriptor
         """
         data = result_dict.get('data', {})
@@ -584,12 +586,21 @@ class AgentRunOrchestrator:
             return
 
         # Apply update to state store using event context
-        # Note: state_store needs to support event-based scope key calculation
-        # For now, we log and skip actual persistence in event-first mode
-        # This will be implemented when state_store is migrated to support events
-        self.ap.logger.debug(
-            f'Runner {descriptor.id} state.updated (event mode): scope={scope}, key={key}, value={value}'
+        success = self._state_store.apply_update_from_event(
+            event=event,
+            binding=binding,
+            descriptor=descriptor,
+            scope=scope,
+            key=key,
+            value=value,
+            logger=self.ap.logger,
         )
+
+        if success:
+            self.ap.logger.debug(
+                f'Runner {descriptor.id} state.updated (event mode): scope={scope}, key={key}'
+            )
+        # Invalid scope or missing identity is already logged by apply_update_from_event
 
     async def _write_event_log(
         self,
