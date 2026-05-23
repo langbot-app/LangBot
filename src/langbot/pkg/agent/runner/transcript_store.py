@@ -7,7 +7,8 @@ import typing
 import uuid
 
 import sqlalchemy
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+from sqlalchemy.orm import sessionmaker
 
 from ...entity.persistence.transcript import Transcript
 
@@ -27,6 +28,9 @@ class TranscriptStore:
 
     def __init__(self, engine: AsyncEngine):
         self.engine = engine
+        self._session_factory = sessionmaker(
+            engine, class_=AsyncSession, expire_on_commit=False
+        )
 
     async def append_transcript(
         self,
@@ -72,26 +76,25 @@ class TranscriptStore:
         # Get next sequence number for this conversation
         seq = await self._get_next_seq(conversation_id)
 
-        async with self.engine.connect() as conn:
-            await conn.execute(
-                sqlalchemy.insert(Transcript).values(
-                    transcript_id=transcript_id,
-                    event_id=event_id,
-                    conversation_id=conversation_id,
-                    thread_id=thread_id,
-                    role=role,
-                    item_type=item_type,
-                    content=content,
-                    content_json=json.dumps(content_json) if content_json else None,
-                    artifact_refs_json=json.dumps(artifact_refs) if artifact_refs else None,
-                    seq=seq,
-                    run_id=run_id,
-                    runner_id=runner_id,
-                    created_at=datetime.datetime.utcnow(),
-                    metadata_json=json.dumps(metadata) if metadata else None,
-                )
+        async with self._session_factory() as session:
+            item = Transcript(
+                transcript_id=transcript_id,
+                event_id=event_id,
+                conversation_id=conversation_id,
+                thread_id=thread_id,
+                role=role,
+                item_type=item_type,
+                content=content,
+                content_json=json.dumps(content_json) if content_json else None,
+                artifact_refs_json=json.dumps(artifact_refs) if artifact_refs else None,
+                seq=seq,
+                run_id=run_id,
+                runner_id=runner_id,
+                created_at=datetime.datetime.utcnow(),
+                metadata_json=json.dumps(metadata) if metadata else None,
             )
-            await conn.commit()
+            session.add(item)
+            await session.commit()
 
         return transcript_id
 
@@ -119,7 +122,7 @@ class TranscriptStore:
         """
         limit = min(limit, self.HARD_LIMIT)
 
-        async with self.engine.connect() as conn:
+        async with self._session_factory() as session:
             query = sqlalchemy.select(Transcript).where(
                 Transcript.conversation_id == conversation_id
             )
@@ -136,10 +139,10 @@ class TranscriptStore:
 
             query = query.limit(limit + 1)
 
-            result = await conn.execute(query)
-            rows = result.fetchall()
+            result = await session.execute(query)
+            rows = result.scalars().all()
 
-            items = [self._row_to_dict(row[0], include_artifacts) for row in rows[:limit]]
+            items = [self._row_to_dict(row, include_artifacts) for row in rows[:limit]]
             has_more = len(rows) > limit
 
             # Calculate cursors
@@ -179,7 +182,7 @@ class TranscriptStore:
         Returns:
             List of matching items
         """
-        async with self.engine.connect() as conn:
+        async with self._session_factory() as session:
             query = sqlalchemy.select(Transcript).where(
                 Transcript.conversation_id == conversation_id,
                 Transcript.content.ilike(f"%{query_text}%"),
@@ -194,10 +197,10 @@ class TranscriptStore:
 
             query = query.order_by(Transcript.seq.desc()).limit(top_k)
 
-            result = await conn.execute(query)
-            rows = result.fetchall()
+            result = await session.execute(query)
+            rows = result.scalars().all()
 
-            return [self._row_to_dict(row[0], include_artifacts=True) for row in rows]
+            return [self._row_to_dict(row, include_artifacts=True) for row in rows]
 
     async def get_latest_cursor(
         self,
@@ -211,17 +214,17 @@ class TranscriptStore:
         Returns:
             Cursor string (seq number), or None if no items
         """
-        async with self.engine.connect() as conn:
-            result = await conn.execute(
+        async with self._session_factory() as session:
+            result = await session.execute(
                 sqlalchemy.select(Transcript.seq)
                 .where(Transcript.conversation_id == conversation_id)
                 .order_by(Transcript.seq.desc())
                 .limit(1)
             )
-            row = result.fetchone()
+            row = result.scalars().first()
             if row is None:
                 return None
-            return str(row[0])
+            return str(row)
 
     async def has_history_before(
         self,
@@ -237,8 +240,8 @@ class TranscriptStore:
         Returns:
             True if there are items before
         """
-        async with self.engine.connect() as conn:
-            result = await conn.execute(
+        async with self._session_factory() as session:
+            result = await session.execute(
                 sqlalchemy.select(sqlalchemy.func.count())
                 .select_from(Transcript)
                 .where(
@@ -251,8 +254,8 @@ class TranscriptStore:
 
     async def _get_next_seq(self, conversation_id: str) -> int:
         """Get the next sequence number for a conversation."""
-        async with self.engine.connect() as conn:
-            result = await conn.execute(
+        async with self._session_factory() as session:
+            result = await session.execute(
                 sqlalchemy.select(sqlalchemy.func.max(Transcript.seq))
                 .where(Transcript.conversation_id == conversation_id)
             )

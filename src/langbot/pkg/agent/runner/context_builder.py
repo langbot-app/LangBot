@@ -891,11 +891,14 @@ class AgentRunContextBuilder:
         permissions = descriptor.permissions or {}
         history_permissions = permissions.get('history', [])
         event_permissions = permissions.get('events', [])
+        artifact_permissions = permissions.get('artifacts', [])
 
         history_page_enabled = 'page' in history_permissions and conversation_id is not None
         history_search_enabled = 'search' in history_permissions and conversation_id is not None
         event_get_enabled = 'get' in event_permissions
         event_page_enabled = 'page' in event_permissions and conversation_id is not None
+        artifact_metadata_enabled = 'metadata' in artifact_permissions
+        artifact_read_enabled = 'read' in artifact_permissions
 
         # Get latest cursor and has_history_before if conversation exists
         latest_cursor = None
@@ -931,8 +934,8 @@ class AgentRunContextBuilder:
                 'history_search': history_search_enabled,
                 'event_get': event_get_enabled,
                 'event_page': event_page_enabled,
-                'artifact_metadata': False,  # TODO: Implement artifact store
-                'artifact_read': False,
+                'artifact_metadata': artifact_metadata_enabled,
+                'artifact_read': artifact_read_enabled,
                 'state': True,
                 'storage': True,
             },

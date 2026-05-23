@@ -27,6 +27,7 @@ class AgentRunSession(typing.TypedDict):
         plugin_identity: Plugin identifier (author/name) of the runner
         conversation_id: Conversation ID for history/event access
         resources: Authorized resources for this run (from AgentResources)
+        permissions: Runner permissions from descriptor (artifacts, history, events, etc.)
         status: Session status tracking
         _authorized_ids: Pre-computed authorized resource IDs for O(1) lookup
     """
@@ -36,6 +37,7 @@ class AgentRunSession(typing.TypedDict):
     plugin_identity: str  # author/name
     conversation_id: str | None
     resources: AgentResources
+    permissions: dict[str, list[str]]
     status: AgentRunSessionStatus
     _authorized_ids: dict[str, set[str]]  # Pre-computed sets for O(1) lookup
 
@@ -67,6 +69,7 @@ class AgentRunSessionRegistry:
         plugin_identity: str,
         resources: AgentResources,
         conversation_id: str | None = None,
+        permissions: dict[str, list[str]] | None = None,
     ) -> None:
         """Register a new agent run session.
 
@@ -77,8 +80,12 @@ class AgentRunSessionRegistry:
             plugin_identity: Plugin identifier (author/name)
             resources: Authorized resources for this run
             conversation_id: Conversation ID for history/event access
+            permissions: Runner permissions from descriptor (artifacts, history, events, etc.)
         """
         now = int(time.time())
+
+        # Normalize permissions to empty dict if None
+        permissions = permissions or {}
 
         # Pre-compute authorized resource IDs for O(1) lookup
         authorized_ids: dict[str, set[str]] = {
@@ -95,6 +102,7 @@ class AgentRunSessionRegistry:
             'plugin_identity': plugin_identity,
             'conversation_id': conversation_id,
             'resources': resources,
+            'permissions': permissions,
             'status': {
                 'started_at': now,
                 'last_activity_at': now,

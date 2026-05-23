@@ -125,6 +125,7 @@ class AgentRunOrchestrator:
             query_id=None,  # No query_id in event-first mode
             plugin_identity=descriptor.get_plugin_id(),
             resources=resources,
+            permissions=descriptor.permissions or {},
             conversation_id=event.conversation_id,
         )
 
@@ -222,6 +223,7 @@ class AgentRunOrchestrator:
             query_id=query.query_id,
             plugin_identity=descriptor.get_plugin_id(),
             resources=resources,
+            permissions=descriptor.permissions or {},
             conversation_id=conversation_id,
         )
 

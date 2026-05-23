@@ -17,6 +17,7 @@ from langbot.pkg.entity.persistence.base import Base
 # This is required for autogenerate to detect model changes
 from langbot.pkg.entity.persistence import (
     apikey,
+    artifact,
     bot,
     bstorage,
     event_log,
