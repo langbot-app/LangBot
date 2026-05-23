@@ -4,6 +4,8 @@
 
 Phase 1 的目标是让当前聊天 Pipeline 在选择插件化 AgentRunner 后，用户可感知行为与旧内置 runner 保持一致。Phase 2/EBA 不纳入本轮验收。
 
+本文档是当前分支兼容性验收矩阵，不代表目标架构边界。目标协议以 [PROTOCOL_V1.md](./PROTOCOL_V1.md) 为准：Pipeline 是兼容入口，`messages` 只是 optional bootstrap，LangBot 不默认 inline 全量历史。
+
 ## 1. 验收边界
 
 本轮必须验收：
@@ -87,7 +89,7 @@ Host 侧 agent runner 单测不通过时，不应进入 UI parity QA。
 | --- | --- | --- | --- |
 | P1-LA-01 | 普通文本对话 | 绑定 `plugin:langbot/local-agent/default`，发送普通文本。 | 回复正常生成；conversation history 写入用户消息和助手消息。 |
 | P1-LA-02 | 有效 prompt | 配置 system prompt，并通过 PromptPreProcessing 插件或现有预处理改变 prompt。 | runner 使用 host 处理后的 `ctx.prompt`，不是只读取静态 `ctx.config.prompt`；回复体现有效 prompt。 |
-| P1-LA-03 | 历史消息 | 连续多轮对话，第二轮引用第一轮内容。 | runner 可读到历史 `ctx.messages`；第二轮能基于上下文回答。 |
+| P1-LA-03 | 历史消息 | 连续多轮对话，第二轮引用第一轮内容。 | 当前兼容路径下 runner 能读到 host 下发的 bootstrap/history；目标协议下应通过 history API 或插件自管上下文实现。第二轮能基于上下文回答。 |
 | P1-LA-04 | 流式输出 | 使用支持流式的 adapter/WebUI，开启流式模型或流式 runner。 | UI 逐步更新；后端接收 `message.delta`；最终没有重复消息或空白卡片。 |
 | P1-LA-05 | 非流式输出 | 使用不支持流式或关闭流式的路径。 | 只输出最终消息；不会创建异常流式卡片。 |
 | P1-LA-06 | 工具调用 | 绑定一个可调用工具，提问触发工具。 | `ctx.resources.tools` 只包含授权工具；runner 能获取工具详情并调用；最终回复包含工具结果。 |

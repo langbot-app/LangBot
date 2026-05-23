@@ -1,6 +1,14 @@
 # 官方 AgentRunner 插件迁移计划
 
 本文档描述内置 `RequestRunner` 迁出 LangBot 后，官方 runner 插件如何组织、迁移和验收。
+它是 [HOST_SDK_INFRASTRUCTURE.md](./HOST_SDK_INFRASTRUCTURE.md) 和
+[AGENT_CONTEXT_PROTOCOL.md](./AGENT_CONTEXT_PROTOCOL.md) 的下游落地计划，不是 LangBot
+宿主协议的设计前提。
+
+官方 `local-agent` 可以外移，也可以重写。设计重点不是保留旧内置 runner 的内部结构，
+而是验证一个依附 LangBot host 基础设施的官方 agent 能否完整工作。同时，LangBot 的
+host 协议必须服务 Claude Code SDK、Codex、Pi Agent SDK、外部 Agent 平台等自管
+context/runtime 的 runner，不能被官方插件的实现细节绑死。
 
 当前实现已经进入过渡阶段：
 
@@ -18,8 +26,9 @@
 
 不要把官方 runner 插件重新绑死在 LangBot 主仓库内。允许开发期使用本地路径插件，但运行边界必须保持为：
 
-- LangBot 提供通用宿主能力：上下文、资源授权、模型/工具/知识库调用代理、结果归一。
-- 插件消费这些能力，实现具体 runner 行为。
+- LangBot 提供通用宿主能力：当前事件、context handles、资源授权、状态/存储、历史、artifact、模型/工具/知识库调用代理、结果归一。
+- 插件消费这些公开能力，实现具体 runner 行为。
+- LangBot 默认不把全量历史消息 inline 给 runner；runner 按需通过授权 API 拉取历史和 artifact。
 - 旧内置 runner 只作为行为对齐的基准，不作为长期运行路径。
 
 ## 2. 仓库结构
@@ -102,7 +111,6 @@ metadata:
     en_US: Run a Dify application as a LangBot AgentRunner.
     zh_Hans: 将 Dify 应用作为 LangBot AgentRunner 运行。
 spec:
-  protocol_version: "1"
   config: []
   capabilities:
     streaming: true
@@ -126,13 +134,19 @@ execution:
     attr: DefaultAgentRunner
 ```
 
-## 6. local-agent 插件要求
+## 6. local-agent 插件方向
 
-`local-agent` 是最关键的官方插件，应等价迁移当前：
+`local-agent` 是官方插件中的重要消费者，但不是宿主协议的设计中心。它可以选择复用
+旧实现，也可以完全重写。它需要证明：一个主要依附 LangBot host 能力的 agent runner
+可以通过公开协议完成模型、工具、知识库、状态、history、artifact、上下文压缩和消息投递。
+
+LangBot core 不应为了 local-agent 保留业务编排逻辑。local-agent 的 prompt 组装、history
+拉取、summary/checkpoint、tool loop、RAG 编排、fallback、多模态处理都应在插件内完成。
+
+迁移或重写时需要覆盖旧内置 runner 的用户可见能力：
 
 - model primary/fallback 选择
 - prompt
-- max-round
 - knowledge-bases
 - rerank-model
 - rerank-top-k
@@ -144,17 +158,43 @@ execution:
 
 与 LangBot 主仓库的责任边界：
 
-- LangBot 构造 `ctx.prompt`、`ctx.messages`、`ctx.input`、`ctx.resources`
+- LangBot 构造当前事件、结构化输入、资源授权、context handles、state/storage 能力和 delivery 能力
+- LangBot 不默认 inline 全量历史，不替插件组装最终模型上下文
 - 插件负责选择模型、拼请求、调用 LLM、处理 tool call loop、输出 result stream
 - 插件不能绕过 `ctx.resources` 调用未授权模型、工具或知识库
 
-为了保持旧内置 runner 行为，`local-agent` 插件必须优先消费宿主处理后的有效上下文：
+为了保持旧内置 runner 的用户可见行为，`local-agent` 插件应消费宿主处理后的有效输入和
+受限 API，而不是读取宿主内部私有结构：
 
-- `ctx.prompt`：PreProcessor 和 `PromptPreProcessing` 插件事件处理后的有效 prompt；不是静态 `ctx.config["prompt"]` 的同义词。
-- `ctx.messages`：已由宿主加载并经过 prompt preprocessing 的历史消息。
-- `ctx.input.contents`：当前结构化输入，必须保留图片、文件等多模态内容。
+- `ctx.event` / `ctx.input`：当前结构化输入，必须保留图片、文件等多模态内容。
+- `ctx.context`：history cursor、inline policy、可用 context API。
+- `AgentRunAPIProxy.history`：按需读取 transcript，而不是依赖 host 每轮强塞历史窗口。
+- `AgentRunAPIProxy.artifacts`：按需读取图片、文件、工具大结果。
+- `AgentRunAPIProxy.state` / storage：保存 summary、外部 conversation id、用户偏好等可选状态。
+- `ctx.resources`：已授权模型、工具、知识库、文件和 storage。
 - `ctx.runtime.metadata.streaming_supported`：当前 adapter 是否能消费流式输出。
-- 宿主代理 action：模型、工具、知识库、rerank 调用应通过 `run_id/query_id` 找回当前 Query，以复用旧 runner 拥有的上下文能力。
+- 宿主代理 action：模型、工具、知识库、rerank 调用必须通过 `run_id` 校验资源权限。
+
+旧 `max-round` 只能作为历史配置迁移输入。如果需要兼容旧 Pipeline 行为，可以把它转成
+local-agent 插件自己的 bootstrap/history policy；不要把它继续提升为 LangBot host 的目标协议。
+
+建议 local-agent manifest 使用 hybrid 或 self-managed context：
+
+```yaml
+context:
+  ownership: hybrid
+  bootstrap: current_event
+  max_inline_events: 0
+  max_inline_bytes: 0
+  supports_history_pull: true
+  supports_history_search: true
+  supports_artifact_pull: true
+  owns_compaction: true
+  wants_static_context_refs: true
+```
+
+这表示：LangBot 只给当前事件和 context handles；local-agent 自己决定是否拉取历史、是否搜索、
+何时摘要、如何构造最终 prompt。
 
 ## 7. 外部 runner 插件要求
 
