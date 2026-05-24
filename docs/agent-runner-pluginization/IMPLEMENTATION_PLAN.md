@@ -188,16 +188,16 @@ ctx.prompt + ctx.messages + [current_user_message_from_ctx.input]
 
 现阶段不要优化裁剪算法，也不要把新的压缩或 token-budget 裁剪塞回 Pipeline stage。
 插件化 AgentRunner 路径应跳过 Pipeline `msgtrun` 的破坏性截断，然后由
-`AgentContextPackager` 在 AgentRunner 边界执行同一套 legacy max-round user-round 规则。
+`AgentContextPackager` 在 AgentRunner 边界执行同一套 max-round user-round 规则。
 当前 SDK v1 还没有顶层 context packaging 字段，LangBot 先把本次 packaging
 元数据放在 `ctx.runtime.metadata.context_packaging`。这是实际下发结果说明，不是 LangBot 侧的长期策略控制面。
 后续 LiteLLM 接入后再把真实 context window、token 预算和摘要策略接到这个边界上。
 
 ### 3.4.1 Agentic context plan
 
-本轮只落地 `AgentContextPackager` 的 `legacy_max_round` working window，不改变旧裁剪算法。
+本轮只落地 `AgentContextPackager` 的 `max_round` working window，不改变 user-round 选择规则。
 下面的 `ConversationStore` / `EventLog`、`ContextCompressor` 和 host history API 仍是设计预留。
-目标是让 Pipeline 逐步退化为 legacy 入口，让 AgentRunner 层拥有上下文打包职责。
+目标是让 Pipeline 逐步退化为入口 adapter，让 AgentRunner 层拥有上下文打包职责。
 
 建议最终拆成四个 host-side 服务：
 
@@ -217,7 +217,7 @@ ContextCompressor
 - 完整历史属于 LangBot host，不属于插件实例。插件仍是 singleton/stateless。
 - `ctx.messages` 是 working context window，不是完整 conversation dump。
 - 每轮不能全量复制/序列化完整历史给插件 runtime；否则长会话会产生 O(n) 成本和跨进程 payload 膨胀。
-- `max-round` 的旧 user-round 规则可以先搬到 `AgentContextPackager`，作为 `legacy_max_round` 策略。
+- `max-round` 的 user-round 规则可以先搬到 `AgentContextPackager`，作为 `max_round` adapter 策略。
 - LiteLLM 接入后，`AgentContextPackager` 再读取模型 context window，升级为 token budget 策略。
 - `ContextCompressor` 生成的是派生 summary/checkpoint，不能覆盖或删除 raw history。
 - 重启恢复依赖持久化 store 和 summary checkpoint，不依赖 `SessionManager` 里的进程内 conversation list。
@@ -231,7 +231,7 @@ context_packaging: ContextPackagingMetadata
 
 建议语义：
 
-- `context_request.mode`: AgentRunner manifest / binding config 请求的 `legacy_max_round`、`token_budget`、`summary_hybrid`、`external_session`
+- `context_request.mode`: AgentRunner manifest / binding config 请求的 `max_round`、`token_budget`、`summary_hybrid`、`external_session`
 - `context_request.budget`: 模型窗口、预留输出 token、工具/RAG 预算等偏好
 - `context_packaging.policy`: Host 本次实际采用的打包策略
 - `context_packaging.delivered_count`: 本次下发的历史消息数

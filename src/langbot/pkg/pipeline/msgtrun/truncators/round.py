@@ -4,8 +4,8 @@ from .. import truncator
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 from ....agent.runner.config_migration import ConfigMigration
 from ....agent.runner.context_packager import (
-    get_legacy_max_round,
-    select_legacy_max_round_messages,
+    get_max_round,
+    select_max_round_messages,
 )
 
 
@@ -21,9 +21,9 @@ class RoundTruncator(truncator.Truncator):
         else:
             runner_config = query.pipeline_config.get('msg-truncate', {}).get('round', {})
 
-        query.messages = select_legacy_max_round_messages(
+        query.messages = select_max_round_messages(
             query.messages,
-            get_legacy_max_round(runner_config),
+            get_max_round(runner_config),
         )
 
         return query

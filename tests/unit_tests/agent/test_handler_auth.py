@@ -8,7 +8,7 @@ Tests focus on:
 
 Authorization paths:
 1. AgentRunner calls: has run_id, validates against session_registry
-2. Regular plugin calls: no run_id, unrestricted (backward compatibility)
+2. Regular plugin calls: no run_id, unscoped plugin action path
 """
 from __future__ import annotations
 
@@ -220,7 +220,7 @@ class TestInvokeLLMAuthorization:
     async def test_invoke_llm_no_run_id_unrestricted(self):
         """INVOKE_LLM: no run_id should be unrestricted (backward compat)."""
         # When no run_id is provided, the authorization check is skipped
-        # This is the backward compatibility path for regular plugin calls
+        # This is the unscoped path for regular plugin calls
 
         # Simulate: if not run_id, skip authorization
         run_id = None
@@ -404,7 +404,7 @@ class TestRetrieveKnowledgeBaseAuthorization:
     async def test_retrieve_knowledge_base_no_run_id_pipeline_check(self):
         """RETRIEVE_KNOWLEDGE_BASE: no run_id checks pipeline config."""
         # When no run_id, the handler checks against pipeline's configured KBs
-        # This is the backward compatibility path for regular plugin calls
+        # This is the unscoped path for regular plugin calls
 
         from langbot.pkg.agent.runner.config_migration import ConfigMigration
 
@@ -899,7 +899,7 @@ class TestSDKAgentRunAPIProxyFieldConsistency:
 
 
 class TestNoRunIdBackwardCompatPath:
-    """Tests for backward compatibility path when no run_id is provided.
+    """Tests for unscoped plugin action path when no run_id is provided.
 
     Regular plugins (non-AgentRunner) don't have run_id and should
     have unrestricted access to certain APIs.
@@ -1965,7 +1965,7 @@ class TestCallerPluginIdentityValidation:
     @pytest.mark.asyncio
     async def test_no_caller_identity_allowed(self):
         """_validate_run_authorization allows when caller_plugin_identity not provided."""
-        # Backward compatibility: if caller_plugin_identity is None, skip identity check
+        # Unscoped plugin path: if caller_plugin_identity is None, skip identity check
         from langbot.pkg.agent.runner.session_registry import get_session_registry
         registry = get_session_registry()
         resources = make_resources(models=[{'model_id': 'model_001'}])
@@ -2000,7 +2000,7 @@ class TestCallerPluginIdentityValidation:
 
 
 class TestBackwardCompatStorageNoRunId:
-    """Tests for backward compatibility: storage actions without run_id.
+    """Tests for unscoped storage actions without run_id.
 
     Regular plugins (non-AgentRunner) don't have run_id and should
     have unrestricted access to storage APIs.

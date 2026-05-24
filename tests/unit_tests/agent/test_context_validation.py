@@ -200,7 +200,7 @@ class TestContextValidation:
         assert 'delivery' in context_dict, "delivery is REQUIRED in Protocol v1"
         assert 'context' in context_dict, "context (ContextAccess) is REQUIRED in Protocol v1"
         assert 'bootstrap' in context_dict, "bootstrap should exist (can be None)"
-        assert 'compatibility' in context_dict, "compatibility should exist"
+        assert 'adapter' in context_dict, "adapter should exist"
         assert 'metadata' in context_dict, "metadata should exist"
 
     @pytest.mark.asyncio

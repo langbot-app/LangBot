@@ -7,7 +7,7 @@ import typing
 from langbot_plugin.api.entities.builtin.pipeline import query as pipeline_query
 
 
-DEFAULT_LEGACY_MAX_ROUND = 10
+DEFAULT_MAX_ROUND = 10
 
 
 @dataclasses.dataclass(frozen=True)
@@ -19,21 +19,16 @@ class ContextPackagingResult:
     history: dict[str, typing.Any]
 
 
-def get_legacy_max_round(runner_config: dict[str, typing.Any]) -> typing.Any:
-    """Return the configured legacy max-round value.
-
-    Keep the existing config semantics intact: callers are expected to pass the
-    already-resolved runner binding config, and invalid values fail the same way
-    the old truncator failed when comparing them with an integer round count.
-    """
-    return runner_config.get('max-round', DEFAULT_LEGACY_MAX_ROUND)
+def get_max_round(runner_config: dict[str, typing.Any]) -> typing.Any:
+    """Return the configured Pipeline adapter max-round value."""
+    return runner_config.get('max-round', DEFAULT_MAX_ROUND)
 
 
-def select_legacy_max_round_messages(
+def select_max_round_messages(
     messages: list[typing.Any] | None,
     max_round: typing.Any,
 ) -> list[typing.Any]:
-    """Select the same message window as the legacy round truncator."""
+    """Select a bounded recent message window by user-round count."""
     if not messages:
         return []
 
@@ -59,15 +54,15 @@ class AgentContextPackager:
         query: pipeline_query.Query,
         runner_config: dict[str, typing.Any],
     ) -> ContextPackagingResult:
-        """Package query messages using the current legacy max-round policy."""
+        """Package query messages using the Pipeline adapter max-round policy."""
         source_messages = query.messages or []
-        max_round = get_legacy_max_round(runner_config)
-        packaged_messages = select_legacy_max_round_messages(source_messages, max_round)
+        max_round = get_max_round(runner_config)
+        packaged_messages = select_max_round_messages(source_messages, max_round)
 
         return ContextPackagingResult(
             messages=packaged_messages,
             policy={
-                'mode': 'legacy_max_round',
+                'mode': 'max_round',
                 'max_round': max_round,
             },
             history={

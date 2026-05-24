@@ -27,16 +27,17 @@ SDK 要提供稳定协议：
 - 不要求官方 local-agent 的旧行为反向塑造 host 协议。
 - 不在 host 中实现通用 agentic prompt assembler。
 - 不强制 runner 使用 LangBot state / storage；LangBot 只提供可选、受控的寄宿能力。
+- **不实现 EventGateway**：EventGateway 是 future integration point，由外部 event branch 提供。本分支只定义 host-side envelope/binding models 和 `run(event, binding)` 入口。
 
 ## 3. 分层架构
 
 目标结构：
 
 ```text
-IM / WebUI / API / EventRouter
+IM / WebUI / API / EventRouter (future)
         |
         v
-Event Gateway
+Event Gateway (future - external event branch)
         |
         v
 AgentBindingResolver
@@ -47,7 +48,7 @@ AgentRunOrchestrator
         |-- AgentResourceBuilder
         |-- AgentContextBuilder
         |-- AgentRunSessionRegistry
-        |-- AgentStateStore / Storage / EventLog / ArtifactStore
+        |-- PersistentStateStore / EventLogStore / TranscriptStore / ArtifactStore
         v
 Plugin Runtime / AgentRunner
         |
@@ -58,13 +59,21 @@ AgentRunResult stream
 Delivery / Renderer / Platform API
 ```
 
-当前 Pipeline 只应接入在 `Event Gateway` 或兼容 adapter 位置。它可以继续产生 `message.received`，但不应继续拥有 runner 选择、上下文裁剪和业务 agent 执行的核心语义。
+**当前状态**：
+- `PipelineAdapter` 作为当前 transition adapter，将 Pipeline Query 转换为 `AgentEventEnvelope` + `AgentBinding`
+- `run_from_query()` 内部委托到 `run(event, binding)`
+- EventLog / Transcript / ArtifactStore / PersistentStateStore 已落地
+- EventGateway 由外部 event branch 实现
+
+当前 Pipeline 只应接入在 Pipeline adapter 位置。它可以继续产生 `message.received`，但不应继续拥有 runner 选择、上下文裁剪和业务 agent 执行的核心语义。
 
 ## 4. LangBot 侧能力
 
-### 4.1 Event Gateway
+### 4.1 Event Gateway（Future Integration Point）
 
-Event Gateway 负责把入口统一成 host event：
+> **注意**：EventGateway 由外部 event branch 实现，不在本分支范围。本分支只预留 event-first 入口和 envelope/binding models。
+
+Event Gateway 将负责把入口统一成 host event：
 
 - IM 平台消息。
 - WebUI debug chat 消息。
@@ -90,11 +99,13 @@ class AgentEventEnvelope(BaseModel):
     raw_ref: RawEventRef | None
 ```
 
+**当前 transition source**：`PipelineAdapter.query_to_event(query)` 从 Pipeline Query 生成 `AgentEventEnvelope`。
+
 原始平台 payload 可以存为 raw event 或 artifact ref；不要把平台私有字段直接扩散到 AgentRunner 顶层协议。
 
 ### 4.2 Agent Binding
 
-Agent binding 是“什么事件调用哪个 runner、带什么绑定配置”的持久配置。它替代长期依赖 Pipeline runner config 的角色。
+Agent binding 是”什么事件调用哪个 runner、带什么绑定配置”的持久配置。它替代长期依赖 Pipeline runner config 的角色。
 
 建议模型：
 
@@ -111,11 +122,13 @@ class AgentBinding(BaseModel):
     enabled: bool
 ```
 
+**当前 transition source**：`PipelineAdapter.pipeline_config_to_binding(query, runner_id)` 从 Pipeline config 生成临时 `AgentBinding`。
+
 Pipeline 当前可以被迁移为一种 binding source：
 
-- 旧 Pipeline AI runner config -> `AgentBinding`
-- 旧 Pipeline extension preference -> `resource_policy`
-- 旧 Pipeline output settings -> `delivery_policy`
+- Pipeline AI runner config -> `AgentBinding`
+- Pipeline extension preference -> `resource_policy`
+- Pipeline output settings -> `delivery_policy`
 
 但新设计不应再把这些字段命名为 Pipeline 专属概念。
 
@@ -168,7 +181,7 @@ run(event, binding)
 - state.updated 处理。
 - delivery backpressure 和 telemetry。
 
-`run_from_query()` 这类 API 可以保留为兼容 adapter，但内部应转换成 event + binding 后走统一 `run()`。
+`run_from_query()` 这类 API 可以保留为 Pipeline adapter 入口，但内部应转换成 event + binding 后走统一 `run()`。
 
 ### 4.5 Resource Authorization
 
@@ -335,30 +348,43 @@ Proxy 是 runner 访问 host 能力的唯一入口：
 
 ## 6. 当前实现与目标差距
 
-已落地：
+**已落地（当前分支）**：
 
-- `AgentRunnerRegistry`
-- `AgentRunOrchestrator`
-- `AgentRunContextBuilder`
-- `AgentResourceBuilder`
-- `AgentRunSessionRegistry`
-- `AgentRunAPIProxy` 基础模型 / 工具 / 知识库授权路径
+- ✅ `AgentRunnerRegistry`
+- ✅ `AgentRunOrchestrator` — event-first `run(event, binding)`
+- ✅ `AgentRunContextBuilder` — event-first context
+- ✅ `AgentResourceBuilder`
+- ✅ `AgentRunSessionRegistry`
+- ✅ `AgentRunAPIProxy` — model / tool / knowledge / history / event / artifact / state APIs
+- ✅ `PipelineAdapter` — Query → Event + Binding
+- ✅ `AgentBinding` 抽象
+- ✅ `AgentEventEnvelope` 抽象
+- ✅ `max-round` 从目标设计中移除，只在 Pipeline adapter 中处理
+- ✅ `PersistentStateStore` — 持久化状态存储
+- ✅ `EventLogStore` / `TranscriptStore` / `ArtifactStore`
+- ✅ history / artifact / event 的受限拉取 API
 
-需要调整：
+**其他分支负责（非本分支范围）**：
 
-- 把 `pipeline_config` 语义抽象为 `AgentBinding`。
-- 把 `Query` 输入抽象为 `AgentEventEnvelope`。
-- 把 legacy `max-round` 从目标设计中移除，只作为旧配置兼容处理。
-- 把 state store 改为持久 host storage backend。
-- 增加 EventLog / Transcript / ArtifactStore。
-- 增加 history / artifact / event 的受限拉取 API。
+- EventGateway 实现
+- EventRouter 实现
+- AgentBinding 持久化 UI
+- platform API 动作执行
 
 ## 7. 落地顺序
 
-1. 固化 README 路由和专题文档边界。
-2. 在 Host 中抽象 `AgentBinding`，先由 Pipeline adapter 生成。
-3. 将 `AgentRunContextBuilder` 改为 event-first。
-4. 增加持久 transcript/event log 的最小存储模型。
-5. 扩展 `AgentRunAPIProxy` 的 history / artifact / state API。
-6. 将 Pipeline-only 字段逐步下沉到兼容 adapter。
-7. 再设计官方 local-agent 插件如何消费这些基础设施。
+**已完成**：
+
+1. ✅ 固化 README 路由和专题文档边界。
+2. ✅ 在 Host 中抽象 `AgentBinding`，由 Pipeline adapter 生成。
+3. ✅ 将 `AgentRunContextBuilder` 改为 event-first。
+4. ✅ 增加持久 transcript/event log/artifact/state 存储模型。
+5. ✅ 扩展 `AgentRunAPIProxy` 的 history / artifact / state API。
+6. ✅ 将 Pipeline-only 字段下沉到 Pipeline adapter。
+7. ✅ 官方 runner 插件迁移完成（7 个插件）。
+
+**后续工作（其他分支）**：
+
+- EventGateway 实现
+- EventRouter 与 BindingResolver 集成
+- 平台动作执行器

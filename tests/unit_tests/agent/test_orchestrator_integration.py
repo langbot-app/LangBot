@@ -317,8 +317,8 @@ async def test_orchestrator_runs_fake_plugin_with_authorized_context(clean_agent
     context = plugin_connector.contexts[0]
     assert context["config"]["timeout"] == 30
     assert context["runtime"]["deadline_at"] is not None
-    # Protocol v1: params is in compatibility.extra
-    assert context["compatibility"]["extra"]["params"] == {"public_param": "visible"}
+    # Protocol v1: params is in adapter.extra
+    assert context["adapter"]["extra"]["params"] == {"public_param": "visible"}
     assert context["event"]["event_type"] == "message.received"
     # Note: source_event_type is in event.source_event_type, not event.data
     # (event.data contains the raw event payload, not metadata)
@@ -341,8 +341,8 @@ async def test_orchestrator_runs_fake_plugin_with_authorized_context(clean_agent
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_packages_legacy_max_round_without_mutating_query(clean_agent_state):
-    """Test that legacy max-round is packaged without mutating original query."""
+async def test_orchestrator_packages_max_round_without_mutating_query(clean_agent_state):
+    """Test that max-round is packaged without mutating original query."""
     db_engine = clean_agent_state
     descriptor = make_descriptor()
     plugin_connector = FakePluginConnector(
@@ -370,7 +370,7 @@ async def test_orchestrator_packages_legacy_max_round_without_mutating_query(cle
 
     assert len(messages) == 1
     context = plugin_connector.contexts[0]
-    # Protocol v1: legacy messages are in bootstrap.messages
+    # Protocol v1: messages are in bootstrap.messages
     assert context["bootstrap"] is not None
     assert [message["content"] for message in context["bootstrap"]["messages"]] == [
         "message 2",
@@ -378,8 +378,8 @@ async def test_orchestrator_packages_legacy_max_round_without_mutating_query(cle
         "message 3",
         "response 3",
     ]
-    # Also in compatibility.legacy_messages for legacy runners
-    assert [message["content"] for message in context["compatibility"]["legacy_messages"]] == [
+    # Also in adapter.adapter_messages for transition runners
+    assert [message["content"] for message in context["adapter"]["adapter_messages"]] == [
         "message 2",
         "response 2",
         "message 3",
@@ -395,7 +395,7 @@ async def test_orchestrator_packages_legacy_max_round_without_mutating_query(cle
     ]
     assert context["runtime"]["metadata"]["context_packaging"] == {
         "policy": {
-            "mode": "legacy_max_round",
+            "mode": "max_round",
             "max_round": 2,
         },
         "history": {
@@ -592,12 +592,12 @@ class TestPipelineCompatibilityQueryIdInSession:
         assert session_during_run["query_id"] is None
 
 
-class TestPipelineCompatibilityPromptAndParams:
-    """Tests for prompt and params handling in Pipeline compatibility."""
+class TestPipelineAdapterPromptAndParams:
+    """Tests for prompt and params handling in Pipeline adapter."""
 
     @pytest.mark.asyncio
-    async def test_prompt_in_compatibility_extra(self, clean_agent_state):
-        """Pipeline prompt is placed in compatibility.extra.prompt."""
+    async def test_prompt_in_adapter_extra(self, clean_agent_state):
+        """Pipeline prompt is placed in adapter.extra.prompt."""
         from langbot_plugin.api.entities.builtin.provider import prompt as provider_prompt
 
         db_engine = clean_agent_state
@@ -625,10 +625,10 @@ class TestPipelineCompatibilityPromptAndParams:
         messages = [message async for message in orchestrator.run_from_query(query)]
 
         context = plugin_connector.contexts[0]
-        # Prompt should be in compatibility.extra
-        assert "prompt" in context["compatibility"]["extra"]
-        assert len(context["compatibility"]["extra"]["prompt"]) == 1
-        assert context["compatibility"]["extra"]["prompt"][0]["role"] == "system"
+        # Prompt should be in adapter.extra
+        assert "prompt" in context["adapter"]["extra"]
+        assert len(context["adapter"]["extra"]["prompt"]) == 1
+        assert context["adapter"]["extra"]["prompt"][0]["role"] == "system"
         # Top-level should NOT have prompt
         assert "prompt" not in context
 
@@ -656,7 +656,7 @@ class TestPipelineCompatibilityPromptAndParams:
         messages = [message async for message in orchestrator.run_from_query(query)]
 
         context = plugin_connector.contexts[0]
-        assert context["compatibility"]["extra"]["params"] == {
+        assert context["adapter"]["extra"]["params"] == {
             "public_param": "visible",
             "another_param": 123,
         }
@@ -686,7 +686,7 @@ class TestPipelineCompatibilityPromptAndParams:
         messages = [message async for message in orchestrator.run_from_query(query)]
 
         context = plugin_connector.contexts[0]
-        params = context["compatibility"]["extra"]["params"]
+        params = context["adapter"]["extra"]["params"]
         assert "public_param" in params
         assert "_internal_var" not in params
         assert "_pipeline_bound_plugins" not in params
@@ -718,7 +718,7 @@ class TestPipelineCompatibilityPromptAndParams:
         messages = [message async for message in orchestrator.run_from_query(query)]
 
         context = plugin_connector.contexts[0]
-        params = context["compatibility"]["extra"]["params"]
+        params = context["adapter"]["extra"]["params"]
         assert "public_param" in params
         assert "api_token" not in params
         assert "secret_key" not in params
@@ -750,14 +750,14 @@ class TestPipelineCompatibilityPromptAndParams:
         messages = [message async for message in orchestrator.run_from_query(query)]
 
         context = plugin_connector.contexts[0]
-        params = context["compatibility"]["extra"]["params"]
+        params = context["adapter"]["extra"]["params"]
         assert "public_param" in params
         assert "a_set" not in params
         assert "a_lambda" not in params
 
 
-class TestPipelineCompatibilityHostCapabilities:
-    """Tests for event-first host capabilities via Pipeline compatibility path."""
+class TestPipelineAdapterHostCapabilities:
+    """Tests for event-first host capabilities via Pipeline adapter path."""
 
     @pytest.mark.asyncio
     async def test_state_updated_writes_to_persistent_store(self, clean_agent_state):
@@ -795,9 +795,9 @@ class TestPipelineCompatibilityHostCapabilities:
         persistent_store = get_persistent_state_store(db_engine)
         # Build snapshot to check if state was written
         # Note: We need to rebuild the event and binding to query the store
-        from langbot.pkg.agent.runner.pipeline_compat_adapter import PipelineCompatAdapter
-        event = PipelineCompatAdapter.query_to_event(query)
-        binding = PipelineCompatAdapter.pipeline_config_to_binding(query, RUNNER_ID)
+        from langbot.pkg.agent.runner.pipeline_adapter import PipelineAdapter
+        event = PipelineAdapter.query_to_event(query)
+        binding = PipelineAdapter.pipeline_config_to_binding(query, RUNNER_ID)
 
         snapshot = await persistent_store.build_snapshot_from_event(event, binding, descriptor)
         assert snapshot["conversation"]["external.test_key"] == "test_value"

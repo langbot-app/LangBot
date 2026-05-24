@@ -1,7 +1,7 @@
-"""Pipeline compatibility adapter for converting Query to event-first envelope.
+"""Pipeline adapter for converting Query to event-first envelope.
 
-This adapter bridges the legacy Query/Pipeline approach with the new
-event-first Protocol v1 architecture. It is a compatibility layer only.
+This adapter bridges the Query/Pipeline entry point with the event-first
+Protocol v1 architecture.
 """
 from __future__ import annotations
 
@@ -32,14 +32,14 @@ from .host_models import (
 from . import events as runner_events
 
 
-class PipelineCompatAdapter:
+class PipelineAdapter:
     """Adapter for converting Pipeline Query to event-first envelope.
 
     This adapter is responsible for:
     - Converting Query to AgentEventEnvelope
     - Converting Pipeline config to temporary AgentBinding
-    - Handling legacy max-round as bootstrap policy
-    - Putting Query-only fields into compatibility context
+    - Handling max-round as bootstrap policy
+    - Putting Query-only fields into adapter context
     """
 
     @classmethod
@@ -80,7 +80,7 @@ class PipelineCompatAdapter:
             event_id=event.event_id or str(query.query_id),
             event_type=event.event_type or runner_events.MESSAGE_RECEIVED,
             event_time=event.event_time,
-            source="pipeline_compat",
+            source="pipeline_adapter",
             bot_id=query.bot_uuid,
             workspace_id=None,  # Not available in Query
             conversation_id=conversation.conversation_id,
@@ -111,7 +111,7 @@ class PipelineCompatAdapter:
         ai_config = pipeline_config.get('ai', {})
         runner_config = ai_config.get('runner_config', {}).get(runner_id, {})
 
-        # Extract max_round for compatibility (used in bootstrap, not Protocol v1)
+        # Extract max_round for adapter (used in bootstrap, not Protocol v1)
         # Note: config uses 'max-round' with hyphen, not 'max_round' with underscore
         max_round = runner_config.get('max-round') or ai_config.get('max-round')
 
@@ -135,7 +135,6 @@ class PipelineCompatAdapter:
         )
 
         # Build delivery policy
-        output_config = pipeline_config.get('output', {})
         delivery_policy = DeliveryPolicy(
             enable_streaming=True,
             enable_reply=True,
@@ -161,10 +160,10 @@ class PipelineCompatAdapter:
         query: pipeline_query.Query,
         binding: AgentBinding,
     ) -> dict[str, typing.Any]:
-        """Build bootstrap context from binding for legacy max-round.
+        """Build bootstrap context from binding for max-round.
 
-        This method handles the legacy max-round -> bootstrap conversion.
-        max-round is NOT part of Protocol v1, only used by compatibility adapter.
+        This method handles the max-round -> bootstrap conversion.
+        max-round is NOT part of Protocol v1, only used by Pipeline adapter.
 
         Args:
             query: Pipeline query
@@ -183,42 +182,42 @@ class PipelineCompatAdapter:
                 "artifacts": [],
                 "metadata": {
                     "policy": "self_managed",
-                    "legacy_max_round": None,
+                    "max_round": None,
                 },
             }
 
-        # Legacy max-round packaging (will be handled by context_packager)
+        # max-round packaging (will be handled by context_packager)
         return {
             "messages": [],  # Will be filled by context_packager
             "summary": None,
             "artifacts": [],
             "metadata": {
-                "policy": "legacy_max_round",
-                "legacy_max_round": max_round,
+                "policy": "max_round",
+                "max_round": max_round,
             },
         }
 
     @classmethod
-    def build_compatibility_context(
+    def build_adapter_context(
         cls,
         query: pipeline_query.Query,
     ) -> dict[str, typing.Any]:
-        """Build compatibility context for legacy Query/Pipeline fields.
+        """Build adapter context for Pipeline adapter fields.
 
-        These fields are for migration purposes only.
+        These fields are for transition purposes only.
         Runners should NOT depend on them for long-term capabilities.
 
         Args:
             query: Pipeline query
 
         Returns:
-            Compatibility context data
+            Adapter context data
         """
         return {
             "query_id": query.query_id,
             "pipeline_uuid": query.pipeline_uuid,
             "max_round": None,  # Moved to binding, not here
-            "legacy_messages": [],  # Will be filled by context_packager
+            "adapter_messages": [],  # Will be filled by context_packager
             "extra": {
                 "bot_uuid": query.bot_uuid,
                 "sender_id": str(query.sender_id) if query.sender_id else None,
@@ -266,7 +265,7 @@ class PipelineCompatAdapter:
             event_id=str(message_id or query.query_id),
             event_type=runner_events.MESSAGE_RECEIVED,
             event_time=event_time,
-            source="pipeline_compat",
+            source="pipeline_adapter",
             source_event_type=source_event_type,
             data=event_data,
         )

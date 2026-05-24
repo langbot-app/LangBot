@@ -175,8 +175,7 @@ LangBot core 不应为了 local-agent 保留业务编排逻辑。local-agent 的
 - `ctx.runtime.metadata.streaming_supported`：当前 adapter 是否能消费流式输出。
 - 宿主代理 action：模型、工具、知识库、rerank 调用必须通过 `run_id` 校验资源权限。
 
-旧 `max-round` 只能作为历史配置迁移输入。如果需要兼容旧 Pipeline 行为，可以把它转成
-local-agent 插件自己的 bootstrap/history policy；不要把它继续提升为 LangBot host 的目标协议。
+`max-round` 可作为 Pipeline adapter 的历史配置输入。如需适配 Pipeline 行为，可以把 `max-round` 转成 local-agent 插件自己的 bootstrap/history policy；不要把它提升为 LangBot host 的目标协议字段。
 
 建议 local-agent manifest 使用 hybrid 或 self-managed context：
 

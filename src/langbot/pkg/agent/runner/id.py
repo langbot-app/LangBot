@@ -49,8 +49,7 @@ def parse_runner_id(runner_id: str) -> RunnerIdParts:
             runner_name=runner_name,
         )
     else:
-        # For backward compatibility with old built-in runner names
-        # This should eventually be removed after migration
+        # Only plugin runner IDs are valid at the protocol boundary.
         raise ValueError(
             f'Invalid runner ID format: {runner_id}. '
             f'Expected: plugin:author/plugin_name/runner_name'

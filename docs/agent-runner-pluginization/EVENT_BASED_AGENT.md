@@ -1,5 +1,10 @@
 # Event Based Agent 预留设计
 
+> **注意**：本文档是 future design note，不是当前分支实现范围。
+>
+> EventGateway、EventRouter、Event subscription/notification 由其他分支实现。
+> 本分支只预留 event-first 入口和 envelope/binding models。
+
 本文档描述未来 EBA 接入时，事件如何进入 LangBot、如何触发 AgentRunner，以及如何复用插件化 agent 基础设施。
 
 本阶段不实现完整 EventBus / EventRouter / Platform API。本阶段要做的是把协议边界设计对，避免当前消息入口继续绑死 Pipeline 和用户文本消息。
@@ -188,22 +193,36 @@ EBA 事件进入 AgentRunner 时仍使用 [AGENT_CONTEXT_PROTOCOL.md](./AGENT_CO
 
 ## 10. 当前实现与目标差距
 
-当前已有：
+**当前分支已落地（Event-first 基础设施）**：
 
-- `AgentRunOrchestrator`
-- `AgentRunContextBuilder`
-- `AgentRunResult` 基础消息流
-- `ctx.event` 的最小消息事件封装
+- ✅ `AgentRunOrchestrator` — event-first `run(event, binding)` 入口
+- ✅ `AgentRunContextBuilder` — event-first context 构建
+- ✅ `AgentEventEnvelope` 模型
+- ✅ `AgentBinding` 模型
+- ✅ `AgentRunResult` 基础消息流
+- ✅ `ctx.event` 的最小消息事件封装
+- ✅ `PipelineAdapter` — Query → Event + Binding 转换
+- ✅ `run_from_query()` → `run(event, binding)` 委托
+- ✅ EventLog / Transcript / ArtifactStore
+- ✅ History / Event / Artifact / State pull APIs
 
-仍需要：
+**其他分支负责（非本分支范围）**：
 
-- `AgentEventEnvelope` 独立模型。
-- EventLog 持久化。
-- AgentBinding 持久模型。
-- EventRouter。
-- DeliveryContext。
-- platform action permission model。
-- `run_from_query()` 到 `run(event, binding)` 的迁移。
+- EventGateway 实现
+- EventRouter 实现
+- Event subscription / notification
+- EventLog 持久化管理 UI
+- AgentBinding 持久化 UI
+- 平台动作执行 (`action.requested` 执行器)
+
+**未来 EBA 完整落地需要**：
+
+- EventGateway 完整实现
+- EventRouter 与 BindingResolver 集成
+- AgentBinding 持久模型和 UI
+- DeliveryContext 完整实现
+- platform action permission model 和执行器
+- 真实平台事件接入
 
 ## 11. 落地顺序
 

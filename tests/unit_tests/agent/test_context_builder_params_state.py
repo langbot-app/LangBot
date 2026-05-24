@@ -420,12 +420,12 @@ class TestBuildParamsInContext:
 
         context = await builder.build_context(query, descriptor, resources)
 
-        # Protocol v1: params is in compatibility.extra
-        assert 'compatibility' in context
-        assert 'extra' in context['compatibility']
-        assert 'params' in context['compatibility']['extra']
-        assert context['compatibility']['extra']['params']['public_param'] == 'value'
-        assert '_private' not in context['compatibility']['extra']['params']
+        # Protocol v1: params is in adapter.extra
+        assert 'adapter' in context
+        assert 'extra' in context['adapter']
+        assert 'params' in context['adapter']['extra']
+        assert context['adapter']['extra']['params']['public_param'] == 'value'
+        assert '_private' not in context['adapter']['extra']['params']
 
     @pytest.mark.asyncio
     async def test_params_and_state_both_present(self):
@@ -457,12 +457,12 @@ class TestBuildParamsInContext:
 
         context = await builder.build_context(query, descriptor, resources)
 
-        # Protocol v1: params is in compatibility.extra
-        assert 'compatibility' in context
-        assert 'extra' in context['compatibility']
-        assert 'params' in context['compatibility']['extra']
-        assert context['compatibility']['extra']['params']['workflow_input'] == 'user_question'
-        assert context['compatibility']['extra']['params']['sender_name'] == 'John'
+        # Protocol v1: params is in adapter.extra
+        assert 'adapter' in context
+        assert 'extra' in context['adapter']
+        assert 'params' in context['adapter']['extra']
+        assert context['adapter']['extra']['params']['workflow_input'] == 'user_question'
+        assert context['adapter']['extra']['params']['sender_name'] == 'John'
 
         # state should have seeded conversation_id
         assert 'state' in context
@@ -495,10 +495,10 @@ class TestBuildParamsInContext:
 
         context = await builder.build_context(query, descriptor, resources)
 
-        # Protocol v1: prompt is in compatibility.extra
-        assert 'compatibility' in context
-        assert 'extra' in context['compatibility']
-        assert 'prompt' in context['compatibility']['extra']
-        assert context['compatibility']['extra']['prompt'][0]['content'] == 'Effective prompt'
+        # Protocol v1: prompt is in adapter.extra
+        assert 'adapter' in context
+        assert 'extra' in context['adapter']
+        assert 'prompt' in context['adapter']['extra']
+        assert context['adapter']['extra']['prompt'][0]['content'] == 'Effective prompt'
         assert context['runtime']['metadata']['streaming_supported'] is True
         assert context['runtime']['metadata']['remove_think'] is True

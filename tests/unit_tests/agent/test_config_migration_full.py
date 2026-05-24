@@ -182,8 +182,8 @@ class TestDefaultPipelineConfig:
         assert config['ai']['runner_config'] == {}
 
 
-class TestResolveRunnerIdBackwardCompat:
-    """Tests for backward compatibility in resolve_runner_id."""
+class TestResolveRunnerIdAliases:
+    """Tests for runner id alias resolution."""
 
     def test_resolve_new_format_id(self):
         """resolve_runner_id should work with new format."""

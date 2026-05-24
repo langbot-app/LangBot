@@ -32,7 +32,7 @@ class AgentResourceBuilder:
 
     Entry points:
     - build_resources_from_binding(event, binding, descriptor): Event-first Protocol v1
-    - build_resources(query, descriptor): Legacy Query-based
+    - build_resources(query, descriptor): Pipeline adapter Query-based
 
     Note: This only builds the resource declaration. The actual proxy actions
     in handler.py must still validate against ctx.resources at runtime.
@@ -216,7 +216,7 @@ class AgentResourceBuilder:
     ) -> AgentResources:
         """Build AgentResources from query and runner descriptor.
 
-        This is a compatibility wrapper for Query-based flow.
+        This is a Pipeline adapter wrapper for Query-based flow.
 
         Args:
             query: Pipeline query with pipeline_config and variables

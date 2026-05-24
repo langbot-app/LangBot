@@ -6,7 +6,7 @@ from langbot.pkg.agent.runner.state_store import (
     get_state_store,
     reset_state_store,
     VALID_STATE_SCOPES,
-    LEGACY_KEY_MAPPING,
+    STATE_KEY_ALIASES,
 )
 from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
 from langbot.pkg.agent.runner.host_models import AgentBinding, BindingScope, StatePolicy
@@ -219,8 +219,8 @@ class TestStateStoreApplyUpdate:
         assert len(logger.warnings) == 1
         assert 'invalid scope' in logger.warnings[0]
 
-    def test_apply_update_legacy_key_mapping(self):
-        """Legacy key conversation_id should be mapped to external.conversation_id."""
+    def test_apply_update_state_key_alias(self):
+        """Alias key conversation_id should be mapped to external.conversation_id."""
         store = RunnerScopedStateStore()
         descriptor = make_descriptor()
         query = FakeQuery()
@@ -481,9 +481,9 @@ class TestConstants:
         """VALID_STATE_SCOPES should have four scopes."""
         assert VALID_STATE_SCOPES == ('conversation', 'actor', 'subject', 'runner')
 
-    def test_legacy_key_mapping(self):
-        """LEGACY_KEY_MAPPING should map conversation_id."""
-        assert LEGACY_KEY_MAPPING == {'conversation_id': 'external.conversation_id'}
+    def test_state_key_aliases(self):
+        """STATE_KEY_ALIASES should map conversation_id."""
+        assert STATE_KEY_ALIASES == {'conversation_id': 'external.conversation_id'}
 
 
 # ========== Event-first Protocol v1 tests ==========
@@ -781,8 +781,8 @@ class TestStateStoreEventFirstApplyUpdate:
         assert len(logger.warnings) == 1
         assert 'missing identity' in logger.warnings[0]
 
-    def test_apply_update_legacy_key_mapping(self):
-        """Legacy key conversation_id should be mapped to external.conversation_id."""
+    def test_apply_update_state_key_alias(self):
+        """Alias key conversation_id should be mapped to external.conversation_id."""
         store = RunnerScopedStateStore()
         descriptor = make_descriptor()
         event = FakeEventEnvelope(conversation_id='conv_001')

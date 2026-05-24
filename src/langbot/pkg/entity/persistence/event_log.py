@@ -30,7 +30,7 @@ class EventLog(Base):
     """When the event occurred."""
 
     source = sqlalchemy.Column(sqlalchemy.String(50), nullable=False)
-    """Event source (platform, webui, api, scheduler, system, pipeline_compat)."""
+    """Event source (platform, webui, api, scheduler, system, pipeline_adapter)."""
 
     bot_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
     """Bot UUID that handled this event."""

@@ -2,6 +2,20 @@
 
 本文档描述插件化 AgentRunner 场景下的上下文边界。结论先行：LangBot 不应成为最终 agentic context manager；LangBot 应提供 context substrate，AgentRunner 或其背后的 agent runtime 自己决定如何管理历史、压缩、召回和 KV cache。
 
+## 当前状态
+
+**当前分支已落地**：
+
+- ✅ `AgentRunContext` — event-first context 模型
+- ✅ `ContextAccess` — cursor、inline policy、available APIs
+- ✅ `AgentRunAPIProxy.history` — page/search API
+- ✅ `AgentRunAPIProxy.events` — get/page API
+- ✅ `AgentRunAPIProxy.artifacts` — metadata/read_range API
+- ✅ `AgentRunAPIProxy.state` — get/set/delete API
+- ✅ EventLog / Transcript / ArtifactStore — host 事实源
+- ✅ PersistentStateStore — 持久化状态存储
+- ✅ `max-round` 已从协议实体中移除，只在 Pipeline adapter 中处理
+
 ## 1. 设计原则
 
 ### 1.1 Agent 拥有上下文策略
@@ -21,7 +35,7 @@
 
 ### 1.2 不再把 `max-round` 作为目标设计
 
-旧 `max-round` 是 Pipeline local-agent 时代的兼容配置。它可以在迁移期被读取并转换为某种默认 bootstrap policy，但不应继续作为 AgentRunner 协议的核心概念。
+Pipeline adapter 的 `max-round` 配置可以在运行时被读取并转换为某种默认 bootstrap policy，但不应继续作为 AgentRunner 协议的核心概念。
 
 新协议不应该问“LangBot 每轮裁几轮历史给 agent”，而应该问：
 
@@ -112,7 +126,7 @@ context:
 
 - 自管 runtime：`bootstrap: current_event`
 - 简单 HTTP runner：`bootstrap: recent_tail`
-- 兼容旧 local-agent：迁移期可以把旧 `max-round` 映射为 `recent_tail` 的配置，但不再作为协议字段扩展。
+- Pipeline adapter 的 `max-round` 可映射为 `recent_tail` 配置，但不再作为协议字段扩展。
 
 ## 3. ContextAccess
 
@@ -296,13 +310,13 @@ LangBot core 不应内置官方 agent 的业务流程：
 
 ## 9. 当前实现需要调整
 
-当前代码已有 `AgentContextPackager`，它按 legacy `max-round` 裁剪 `query.messages`。目标方向不是继续增强它，而是把它降级为兼容 adapter：
+**已完成（当前分支）**：
 
-- `max-round` 迁移为旧 binding 的 bootstrap 配置。
-- 新 runner 默认不收到历史窗口。
-- `AgentRunContext` 增加 `context` / cursor / access capabilities。
-- `AgentRunAPIProxy` 增加 history / events / artifacts API。
-- Host 增加持久 EventLog / Transcript / ArtifactStore。
-- local-agent 插件再基于这些 API 决定是否拉历史、怎么压缩、怎么组 prompt。
+- ✅ `max-round` 在 Pipeline adapter 中处理（不影响协议实体）
+- ✅ 新 runner 默认不收到历史窗口
+- ✅ `AgentRunContext` 增加 `context` / cursor / access capabilities
+- ✅ `AgentRunAPIProxy` 增加 history / events / artifacts / state API
+- ✅ Host 增加持久 EventLog / Transcript / ArtifactStore / PersistentStateStore
+- ✅ `run_from_query()` 委托到 event-first `run(event, binding)`
 
 这样 LangBot 既能服务依附 host 基础设施的官方 runner，也能服务自带 memory/session/cache 的外部 agent runtime。

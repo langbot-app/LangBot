@@ -1,8 +1,20 @@
 # LangBot AgentRunner Protocol v1
 
-本文档定义 LangBot Host 与插件 SDK / Runtime / AgentRunner 之间的协议合同。它优先描述“稳定接口应是什么”，不描述具体落地任务。
+本文档定义 LangBot Host 与插件 SDK / Runtime / AgentRunner 之间的协议合同。它优先描述”稳定接口应是什么”，不描述具体落地任务。
 
-当前分支已有 Protocol v1 的早期实现，但仍带有 Query、Pipeline、`max-round` 等兼容语义。本文档定义的是目标 v1 合同，用于后续同步改造 LangBot 和 SDK。
+## 当前状态
+
+**Protocol v1 已在当前分支落地**：
+
+- ✅ SDK 定义 `AgentRunnerManifest`、`AgentRunContext`、`AgentRunResult`、`AgentRunAPIProxy`
+- ✅ Runtime 支持 `LIST_AGENT_RUNNERS` 和 `RUN_AGENT`
+- ✅ Host 支持 `run_id` session authorization
+- ✅ Host 能从当前 Pipeline 入口生成 event-first context
+- ✅ `messages` 降级为 optional bootstrap
+- ✅ `max-round` 不出现在协议实体中（只在 Pipeline adapter 中处理）
+- ✅ Proxy 覆盖 model、tool、knowledge、state/storage
+- ✅ History / Event / Artifact / State API 已落地
+- ✅ EventLog / Transcript / ArtifactStore / PersistentStateStore 已落地
 
 ## 1. 协议目标
 
@@ -168,7 +180,7 @@ class AgentRunContext(BaseModel):
     runtime: AgentRuntimeContext
     config: dict[str, Any] = {}
     bootstrap: BootstrapContext | None = None
-    compatibility: CompatibilityContext | None = None
+    adapter: AdapterContext | None = None
     metadata: dict[str, Any] = {}
 ```
 
@@ -177,7 +189,7 @@ class AgentRunContext(BaseModel):
 - `event` 是必选字段，Protocol v1 是 event-first。
 - `input` 表示当前事件的主输入，不等于历史消息。
 - `bootstrap` 是可选字段，不是完整 history。
-- `compatibility` 只放旧 Query / Pipeline 迁移字段，runner 不应依赖它做长期能力。
+- `adapter` 只放 Pipeline adapter 字段，runner 不应依赖它做长期能力。
 - `config` 是 Host binding config，不是插件实例状态。
 
 ### 4.3 AgentTrigger
@@ -185,7 +197,7 @@ class AgentRunContext(BaseModel):
 ```python
 class AgentTrigger(BaseModel):
     type: str
-    source: Literal["platform", "webui", "api", "scheduler", "system", "pipeline_compat"]
+    source: Literal["platform", "webui", "api", "scheduler", "system", "pipeline_adapter"]
     timestamp: int | None = None
 ```
 
@@ -194,7 +206,7 @@ class AgentTrigger(BaseModel):
 ```json
 {
   "type": "message.received",
-  "source": "pipeline_compat"
+  "source": "pipeline_adapter"
 }
 ```
 
@@ -327,8 +339,8 @@ class BootstrapContext(BaseModel):
 
 - `bootstrap.messages` 是 host convenience，不是协议核心。
 - 自管 context runner 默认应收到空 bootstrap 或只收到当前 event。
-- Host 不应为了“帮 agent 更聪明”而自动拼接完整 transcript。
-- 旧 `max-round` 只能影响兼容 adapter 如何生成 `bootstrap.messages`，不能成为 Protocol v1 字段。
+- Host 不应为了”帮 agent 更聪明”而自动拼接完整 transcript。
+- Pipeline adapter 的 `max-round` 配置只影响 adapter 如何生成 `bootstrap.messages`，不能成为 Protocol v1 字段。
 
 ### 4.10 RuntimeContext
 
@@ -628,32 +640,41 @@ Host 不负责业务编排：
 
 这些能力可以由官方或第三方 AgentRunner 插件实现，并通过公开 Host APIs 消费 LangBot 的状态、历史、存储、artifact、模型、工具和知识库能力。
 
-## 11. Pipeline 兼容
+## 11. Pipeline Adapter
 
-Pipeline 是兼容入口，不是协议中心。
+Pipeline 是当前入口 adapter，不是协议中心。
 
-兼容 adapter 应负责：
+**当前分支已实现**：
+
+- ✅ `PipelineAdapter.query_to_event(query)` — 从 `Query` 构造 `AgentEventEnvelope`
+- ✅ `PipelineAdapter.pipeline_config_to_binding(query, runner_id)` — 从 Pipeline config 构造临时 AgentBinding
+- ✅ `run_from_query()` 委托到 `run(event, binding)`
+- ✅ `max-round` 在 Pipeline adapter 中处理，不进入协议实体
+- ✅ Query-only 字段放入 `adapter` context
+
+Pipeline adapter 负责：
 
 - 从 `Query` 构造 `AgentEventContext`。
 - 从 Pipeline config 构造临时 AgentBinding。
 - 从旧 runner config 构造 `ctx.config`。
-- 将旧 `max-round` 转换为 `bootstrap` policy。
-- 将旧 Query-only 字段放入 `compatibility`。
+- 将 `max-round` 转换为 `bootstrap` policy。
+- 将 Query-only 字段放入 `adapter`。
 
-Runner 不应长期依赖 `compatibility`。新 runner 应只依赖 event-first context 和 Host APIs。
+Runner 不应长期依赖 `adapter`。新 runner 应只依赖 event-first context 和 Host APIs。
 
 ## 12. 最小 v1 完成标准
 
-Protocol v1 可认为稳定，至少需要：
+Protocol v1 已在当前分支完成：
 
-- SDK 定义 `AgentRunnerManifest`、`AgentRunContext`、`AgentRunResult`、`AgentRunAPIProxy`。
-- Runtime 支持 `LIST_AGENT_RUNNERS` 和 `RUN_AGENT`。
-- Host 支持 `run_id` session authorization。
-- Host 能从当前 Pipeline 入口生成 event-first context。
-- `messages` 降级为 optional bootstrap。
-- `max-round` 不出现在协议实体中。
-- Proxy 至少覆盖 model、tool、knowledge、state/storage。
-- History / event / artifact API 的方法签名确定，即使实现可以分阶段落地。
+- ✅ SDK 定义 `AgentRunnerManifest`、`AgentRunContext`、`AgentRunResult`、`AgentRunAPIProxy`
+- ✅ Runtime 支持 `LIST_AGENT_RUNNERS` 和 `RUN_AGENT`
+- ✅ Host 支持 `run_id` session authorization
+- ✅ Host 能从当前 Pipeline 入口生成 event-first context
+- ✅ `messages` 降级为 optional bootstrap
+- ✅ `max-round` 不出现在协议实体中
+- ✅ Proxy 至少覆盖 model、tool、knowledge、state/storage
+- ✅ History / event / artifact API 已落地
+- ✅ EventLog / Transcript / ArtifactStore / PersistentStateStore 已落地
 
 ## 13. 开放问题
 

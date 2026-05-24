@@ -13,8 +13,8 @@ from .host_models import AgentEventEnvelope
 # Valid state scopes for agent runner state updates.
 VALID_STATE_SCOPES = ('conversation', 'actor', 'subject', 'runner')
 
-# Key mapping for backward compatibility
-LEGACY_KEY_MAPPING = {
+# External-facing key aliases accepted from runners.
+STATE_KEY_ALIASES = {
     'conversation_id': 'external.conversation_id',
 }
 
@@ -226,12 +226,12 @@ class RunnerScopedStateStore:
                 )
             return False
 
-        # Map legacy key names
-        if key in LEGACY_KEY_MAPPING:
-            mapped_key = LEGACY_KEY_MAPPING[key]
+        # Map accepted key aliases
+        if key in STATE_KEY_ALIASES:
+            mapped_key = STATE_KEY_ALIASES[key]
             if logger:
                 logger.debug(
-                    f'Runner {descriptor.id} state.updated legacy key "{key}" mapped to "{mapped_key}"'
+                    f'Runner {descriptor.id} state.updated key alias "{key}" mapped to "{mapped_key}"'
                 )
             key = mapped_key
 
@@ -245,8 +245,7 @@ class RunnerScopedStateStore:
         # Sync external.conversation_id to query.session.using_conversation.uuid
         if scope == 'conversation' and key == 'external.conversation_id':
             if query.session and query.session.using_conversation:
-                # Update conversation uuid for backward compatibility
-                # This ensures old conversation continuation behavior works
+                # Keep the active conversation UUID aligned with runner-owned state.
                 setattr(query.session.using_conversation, 'uuid', value)
                 if logger:
                     logger.debug(
@@ -564,12 +563,12 @@ class RunnerScopedStateStore:
                 )
             return False
 
-        # Map legacy key names
-        if key in LEGACY_KEY_MAPPING:
-            mapped_key = LEGACY_KEY_MAPPING[key]
+        # Map accepted key aliases
+        if key in STATE_KEY_ALIASES:
+            mapped_key = STATE_KEY_ALIASES[key]
             if logger:
                 logger.debug(
-                    f'Runner {descriptor.id} state.updated legacy key "{key}" mapped to "{mapped_key}"'
+                    f'Runner {descriptor.id} state.updated key alias "{key}" mapped to "{mapped_key}"'
                 )
             key = mapped_key
 

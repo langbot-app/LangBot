@@ -16,7 +16,6 @@ from .state_store import get_state_store
 from .persistent_state_store import get_persistent_state_store
 from . import events as runner_events
 from .host_models import AgentEventEnvelope, AgentBinding
-from .pipeline_compat_adapter import PipelineCompatAdapter
 
 
 DEFAULT_RUNNER_TIMEOUT_SECONDS = 300
@@ -139,7 +138,7 @@ class AgentRunContextPayload(typing.TypedDict):
     runtime: AgentRuntimeContext
     config: dict[str, typing.Any]  # Binding config from ai.runner_config[runner_id]
     bootstrap: dict[str, typing.Any] | None  # Optional bootstrap context
-    compatibility: dict[str, typing.Any] | None  # Legacy compatibility context
+    adapter: dict[str, typing.Any] | None  # Pipeline adapter context
     metadata: dict[str, typing.Any]  # Additional metadata
 
 
@@ -148,7 +147,7 @@ class AgentRunContextBuilder:
 
     Two entry points:
     - build_context_from_event(event, binding): Event-first Protocol v1
-    - build_context(query, descriptor, resources): Legacy Query-based (calls event-based internally)
+    - build_context(query, descriptor, resources): Pipeline adapter Query-based entry
 
     Responsibilities:
     - Generate new run_id (UUID, not query id)
@@ -212,14 +211,14 @@ class AgentRunContextBuilder:
         conversation: ConversationContext | None = None
         if event.conversation_id:
             conversation = {
-                'session_id': None,  # Legacy field
+                'session_id': None,  # Pipeline adapter field
                 'conversation_id': event.conversation_id,
                 'thread_id': event.thread_id,
                 'launcher_type': None,  # Will be filled from actor/subject if needed
                 'launcher_id': None,
                 'sender_id': event.actor.actor_id if event.actor else None,
                 'bot_uuid': event.bot_id,
-                'pipeline_uuid': binding.pipeline_uuid,  # Legacy
+                'pipeline_uuid': binding.pipeline_uuid,  # Pipeline adapter field
             }
 
         # Build event context (Protocol v1 event-first)
@@ -293,12 +292,12 @@ class AgentRunContextBuilder:
             'platform_capabilities': event.delivery.platform_capabilities,
         }
 
-        # Build compatibility context (empty for event-first)
-        compatibility_context = {
+        # Build adapter context (empty for event-first)
+        adapter_context = {
             'query_id': None,
             'pipeline_uuid': binding.pipeline_uuid,
             'max_round': binding.max_round,  # For reference only
-            'legacy_messages': [],
+            'adapter_messages': [],
             'extra': {},
         }
 
@@ -318,7 +317,7 @@ class AgentRunContextBuilder:
             'runtime': runtime,
             'config': binding.runner_config,
             'bootstrap': None,  # Optional - no messages inlined by default
-            'compatibility': compatibility_context,
+            'adapter': adapter_context,
             'metadata': {},  # Additional metadata
         }
 
@@ -332,12 +331,11 @@ class AgentRunContextBuilder:
     ) -> AgentRunContextPayload:
         """Build AgentRunContext envelope from Query.
 
-        This is a compatibility wrapper that converts Query to event + binding
+        This is a Pipeline adapter wrapper that converts Query to event + binding
         and delegates to build_context_from_event().
 
         For Protocol v1, messages are NOT inlined by default.
-        Legacy max-round only affects bootstrap (via compatibility adapter),
-        NOT Protocol v1 entities.
+        Pipeline max-round only affects bootstrap, NOT Protocol v1 entities.
 
         Args:
             query: Pipeline query
@@ -354,7 +352,7 @@ class AgentRunContextBuilder:
             runner_id,
         )
 
-        # Extract max_round for compatibility (NOT Protocol v1)
+        # Extract max_round for Pipeline adapter bootstrap (NOT Protocol v1)
         # Note: config uses 'max-round' with hyphen, not 'max_round'
         max_round = runner_config.get('max-round')
         if max_round is None:
@@ -413,7 +411,7 @@ class AgentRunContextBuilder:
 
         # Build delivery context from query adapter capabilities
         delivery_context = {
-            'surface': 'pipeline',  # Legacy pipeline surface
+            'surface': 'pipeline',
             'reply_target': None,
             'supports_streaming': streaming_supported,
             'supports_edit': False,
@@ -422,8 +420,8 @@ class AgentRunContextBuilder:
             'platform_capabilities': {},
         }
 
-        # Build context access (for legacy, minimal API availability)
-        # Legacy Query-based mode does NOT have persistent state API
+        # Build context access for the direct Query adapter helper.
+        # The event-first run_from_query path uses build_context_from_event().
         context_access = {
             'conversation_id': conversation.get('conversation_id') if conversation else None,
             'thread_id': None,
@@ -436,7 +434,7 @@ class AgentRunContextBuilder:
                 'delivered_count': 0,
                 'source_total_count': None,
                 'messages_complete': False,
-                'reason': 'legacy_pipeline',
+                'reason': 'pipeline_adapter',
             },
             'available_apis': {
                 'history_page': False,
@@ -445,40 +443,40 @@ class AgentRunContextBuilder:
                 'event_page': False,
                 'artifact_metadata': False,
                 'artifact_read': False,
-                'state': False,  # Legacy Query mode does not have persistent state API
+                'state': False,
                 'storage': True,
             },
         }
 
-        # Build compatibility context (for legacy Query/Pipeline fields)
-        compatibility_context = {
+        # Build adapter context (for Pipeline adapter fields)
+        adapter_context = {
             'query_id': query.query_id,
             'pipeline_uuid': getattr(query, 'pipeline_uuid', None),
             'max_round': max_round,  # For reference only
-            'legacy_messages': [],  # Will be filled if max_round is set
+            'adapter_messages': [],  # Will be filled if max_round is set
             'extra': {
-                'params': params,  # Put params in compatibility.extra
-                'prompt': self._build_prompt(query),  # Put prompt in compatibility.extra
+                'params': params,  # Put params in adapter.extra
+                'prompt': self._build_prompt(query),  # Put prompt in adapter.extra
             },
         }
 
-        # Build bootstrap context (optional, for legacy max-round)
+        # Build bootstrap context (optional, for Pipeline adapter max-round)
         bootstrap_context = None
 
-        # For legacy compatibility: add bootstrap messages if max_round is set
+        # For Pipeline adapter: add bootstrap messages if max_round is set
         # This goes into bootstrap.messages, NOT top-level messages
         if max_round and max_round > 0:
             packaged_context = self.context_packager.package_messages(query, runner_config)
-            legacy_messages = self._build_messages(packaged_context.messages)
+            adapter_messages = self._build_messages(packaged_context.messages)
             # Put in bootstrap for Protocol v1
             bootstrap_context = {
-                'messages': legacy_messages,
+                'messages': adapter_messages,
                 'summary': None,
                 'artifacts': [],
                 'metadata': {},
             }
-            # Also update compatibility for legacy runners
-            compatibility_context['legacy_messages'] = legacy_messages
+            # Also update adapter for transition runners
+            adapter_context['adapter_messages'] = adapter_messages
             # Update runtime metadata
             runtime['metadata']['context_packaging'] = {
                 'policy': packaged_context.policy,
@@ -501,7 +499,7 @@ class AgentRunContextBuilder:
             'runtime': runtime,
             'config': runner_config,
             'bootstrap': bootstrap_context,  # Optional bootstrap
-            'compatibility': compatibility_context,  # Legacy compatibility
+            'adapter': adapter_context,  # Pipeline adapter context
             'metadata': {},  # Additional metadata
         }
 
@@ -902,7 +900,7 @@ class AgentRunContextBuilder:
         artifact_read_enabled = 'read' in artifact_permissions
 
         # Determine state API availability based on binding state_policy (event-first mode)
-        # For legacy Query-based mode, state is NOT available (no persistent state API)
+        # Direct Query context builder does not expose persistent state API.
         state_enabled = False
         if binding is not None:
             state_policy = binding.state_policy

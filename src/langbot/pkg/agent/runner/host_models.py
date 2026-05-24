@@ -163,9 +163,9 @@ class AgentBinding(pydantic.BaseModel):
     enabled: bool = True
     """Whether binding is enabled."""
 
-    # Legacy fields for compatibility adapter
+    # Fields for Pipeline adapter
     pipeline_uuid: str | None = None
-    """Legacy pipeline UUID (for compatibility)."""
+    """Pipeline UUID (for Pipeline adapter)."""
 
     max_round: int | None = None
-    """Legacy max-round (for compatibility adapter, not Protocol v1)."""
+    """max-round (for Pipeline adapter bootstrap, not Protocol v1)."""

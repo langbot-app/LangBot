@@ -1,7 +1,6 @@
 """Persistent state store for AgentRunner protocol state.
 
-This module provides a database-backed state store for event-first Protocol v1,
-while preserving in-memory state store for legacy Query-based flow.
+This module provides a database-backed state store for event-first Protocol v1.
 """
 from __future__ import annotations
 
@@ -25,8 +24,8 @@ from ...entity.persistence.agent_runner_state import AgentRunnerState
 # Valid state scopes for agent runner state updates.
 VALID_STATE_SCOPES = ('conversation', 'actor', 'subject', 'runner')
 
-# Key mapping for backward compatibility
-LEGACY_KEY_MAPPING = {
+# External-facing key aliases accepted from runners.
+STATE_KEY_ALIASES = {
     'conversation_id': 'external.conversation_id',
 }
 
@@ -276,9 +275,9 @@ class PersistentStateStore:
         if not self._check_scope_enabled(scope, binding):
             return False, f'Scope "{scope}" not enabled by binding policy'
 
-        # Map legacy key names
-        if key in LEGACY_KEY_MAPPING:
-            key = LEGACY_KEY_MAPPING[key]
+        # Map accepted key aliases
+        if key in STATE_KEY_ALIASES:
+            key = STATE_KEY_ALIASES[key]
 
         # Get scope key
         scope_key = self._get_scope_key(scope, event, binding, descriptor)
