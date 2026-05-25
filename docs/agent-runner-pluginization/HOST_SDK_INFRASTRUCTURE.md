@@ -60,7 +60,7 @@ Delivery / Renderer / Platform API
 ```
 
 **当前状态**：
-- `PipelineAdapter` 作为当前 transition adapter，将 Pipeline Query 转换为 `AgentEventEnvelope` + `AgentBinding`
+- `PipelineAdapter` 作为当前入口 adapter，将 Pipeline Query 转换为 `AgentEventEnvelope` + `AgentBinding`
 - `run_from_query()` 内部委托到 `run(event, binding)`
 - EventLog / Transcript / ArtifactStore / PersistentStateStore 已落地
 - EventGateway 由外部 event branch 实现
@@ -99,7 +99,7 @@ class AgentEventEnvelope(BaseModel):
     raw_ref: RawEventRef | None
 ```
 
-**当前 transition source**：`PipelineAdapter.query_to_event(query)` 从 Pipeline Query 生成 `AgentEventEnvelope`。
+**当前 adapter source**：`PipelineAdapter.query_to_event(query)` 从 Pipeline Query 生成 `AgentEventEnvelope`。
 
 原始平台 payload 可以存为 raw event 或 artifact ref；不要把平台私有字段直接扩散到 AgentRunner 顶层协议。
 
@@ -122,7 +122,7 @@ class AgentBinding(BaseModel):
     enabled: bool
 ```
 
-**当前 transition source**：`PipelineAdapter.pipeline_config_to_binding(query, runner_id)` 从 Pipeline config 生成临时 `AgentBinding`。
+**当前 adapter source**：`PipelineAdapter.pipeline_config_to_binding(query, runner_id)` 从 Pipeline config 生成临时 `AgentBinding`。
 
 Pipeline 当前可以被迁移为一种 binding source：
 

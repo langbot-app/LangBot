@@ -242,6 +242,7 @@ class TestNormalizeNonMessageResults:
         result_dict = {
             'type': 'state.updated',
             'data': {
+                'scope': 'conversation',
                 'key': 'external_conversation_id',
                 'value': 'abc123',
             },

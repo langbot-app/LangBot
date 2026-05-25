@@ -30,6 +30,7 @@ from .host_models import (
     DeliveryPolicy,
 )
 from . import events as runner_events
+from ...pipeline.msgtrun.round_policy import select_max_round_messages
 
 
 class PipelineAdapter:
@@ -41,6 +42,10 @@ class PipelineAdapter:
     - Handling max-round as bootstrap policy
     - Putting Query-only fields into adapter context
     """
+
+    INTERNAL_PREFIX = '_'
+    SENSITIVE_PATTERNS = ('secret', 'token', 'key', 'password', 'credential', 'api_key', 'apikey')
+    PERMISSION_VARS = ('_pipeline_bound_plugins', '_authorized', '_permission')
 
     @classmethod
     def query_to_event(
@@ -81,6 +86,7 @@ class PipelineAdapter:
             event_type=event.event_type or runner_events.MESSAGE_RECEIVED,
             event_time=event.event_time,
             source="pipeline_adapter",
+            source_event_type=event.source_event_type,
             bot_id=query.bot_uuid,
             workspace_id=None,  # Not available in Query
             conversation_id=conversation.conversation_id,
@@ -90,6 +96,7 @@ class PipelineAdapter:
             input=input,
             delivery=delivery,
             raw_ref=raw_ref,
+            data=event.data,
         )
 
     @classmethod
@@ -110,6 +117,7 @@ class PipelineAdapter:
         pipeline_config = query.pipeline_config or {}
         ai_config = pipeline_config.get('ai', {})
         runner_config = ai_config.get('runner_config', {}).get(runner_id, {})
+        pipeline_uuid = getattr(query, 'pipeline_uuid', None)
 
         # Extract max_round for adapter (used in bootstrap, not Protocol v1)
         # Note: config uses 'max-round' with hyphen, not 'max_round' with underscore
@@ -118,7 +126,7 @@ class PipelineAdapter:
         # Build scope
         scope = BindingScope(
             scope_type="pipeline",
-            scope_id=query.pipeline_uuid,
+            scope_id=pipeline_uuid,
         )
 
         # Build resource policy from pipeline config
@@ -141,7 +149,7 @@ class PipelineAdapter:
         )
 
         return AgentBinding(
-            binding_id=f"pipeline_{query.pipeline_uuid or 'default'}_{runner_id}",
+            binding_id=f"pipeline_{pipeline_uuid or 'default'}_{runner_id}",
             scope=scope,
             event_types=[runner_events.MESSAGE_RECEIVED],
             runner_id=runner_id,
@@ -150,80 +158,116 @@ class PipelineAdapter:
             state_policy=state_policy,
             delivery_policy=delivery_policy,
             enabled=True,
-            pipeline_uuid=query.pipeline_uuid,
+            pipeline_uuid=pipeline_uuid,
             max_round=max_round,
         )
 
     @classmethod
-    def build_bootstrap_from_binding(
+    def build_bootstrap_context(
         cls,
         query: pipeline_query.Query,
         binding: AgentBinding,
-    ) -> dict[str, typing.Any]:
-        """Build bootstrap context from binding for max-round.
-
-        This method handles the max-round -> bootstrap conversion.
-        max-round is NOT part of Protocol v1, only used by Pipeline adapter.
-
-        Args:
-            query: Pipeline query
-            binding: Agent binding with max_round
-
-        Returns:
-            Bootstrap context data
-        """
+    ) -> tuple[dict[str, typing.Any] | None, dict[str, typing.Any]]:
+        """Build bootstrap messages and runtime metadata for Pipeline max-round."""
         max_round = binding.max_round
+        source_messages = query.messages or []
+        if not max_round or max_round <= 0 or not source_messages:
+            return None, {}
 
-        # If no max_round or self_managed_context, return empty bootstrap
-        if max_round is None or max_round <= 0:
-            return {
-                "messages": [],
-                "summary": None,
-                "artifacts": [],
-                "metadata": {
-                    "policy": "self_managed",
-                    "max_round": None,
-                },
-            }
-
-        # max-round packaging (will be handled by context_packager)
-        return {
-            "messages": [],  # Will be filled by context_packager
+        packaged_messages = select_max_round_messages(source_messages, max_round)
+        bootstrap_messages = [cls._dump_message(msg) for msg in packaged_messages]
+        bootstrap = {
+            "messages": bootstrap_messages,
             "summary": None,
             "artifacts": [],
-            "metadata": {
-                "policy": "max_round",
-                "max_round": max_round,
+            "metadata": {},
+        }
+        runtime_metadata = {
+            'context_packaging': {
+                'policy': {
+                    'mode': 'max_round',
+                    'max_round': max_round,
+                },
+                'history': {
+                    'source': 'query.messages',
+                    'source_total_count': len(source_messages),
+                    'delivered_count': len(packaged_messages),
+                    'messages_complete': len(packaged_messages) == len(source_messages),
+                },
             },
         }
+        return bootstrap, runtime_metadata
 
     @classmethod
     def build_adapter_context(
         cls,
         query: pipeline_query.Query,
+        binding: AgentBinding,
     ) -> dict[str, typing.Any]:
-        """Build adapter context for Pipeline adapter fields.
-
-        These fields are for transition purposes only.
-        Runners should NOT depend on them for long-term capabilities.
-
-        Args:
-            query: Pipeline query
-
-        Returns:
-            Adapter context data
-        """
+        """Build Query-derived fields for the Pipeline adapter entry."""
+        bootstrap, runtime_metadata = cls.build_bootstrap_context(query, binding)
         return {
-            "query_id": query.query_id,
-            "pipeline_uuid": query.pipeline_uuid,
-            "max_round": None,  # Moved to binding, not here
-            "adapter_messages": [],  # Will be filled by context_packager
-            "extra": {
-                "bot_uuid": query.bot_uuid,
-                "sender_id": str(query.sender_id) if query.sender_id else None,
-                "launcher_type": query.launcher_type.value if query.launcher_type else None,
-                "launcher_id": query.launcher_id,
-            },
+            'params': cls.build_params(query),
+            'prompt': cls.build_prompt(query),
+            'bootstrap': bootstrap,
+            'query_id': getattr(query, 'query_id', None),
+            'runtime_metadata': runtime_metadata,
+        }
+
+    @classmethod
+    def build_params(cls, query: pipeline_query.Query) -> dict[str, typing.Any]:
+        """Build adapter params from Pipeline variables with host filtering."""
+        params: dict[str, typing.Any] = {}
+        variables = getattr(query, 'variables', None)
+        if not variables:
+            return params
+
+        for key, value in variables.items():
+            if key.startswith(cls.INTERNAL_PREFIX):
+                continue
+            key_lower = key.lower()
+            if any(pattern in key_lower for pattern in cls.SENSITIVE_PATTERNS):
+                continue
+            if any(key == perm_var or key.startswith(perm_var) for perm_var in cls.PERMISSION_VARS):
+                continue
+            if cls.is_json_serializable(value):
+                params[key] = value
+
+        return params
+
+    @classmethod
+    def build_prompt(cls, query: pipeline_query.Query) -> list[dict[str, typing.Any]]:
+        """Build effective prompt messages from Pipeline preprocessing output."""
+        prompt = getattr(query, 'prompt', None)
+        messages = getattr(prompt, 'messages', None)
+        if not messages:
+            return []
+        return [cls._dump_message(msg) for msg in messages]
+
+    @classmethod
+    def is_json_serializable(cls, value: typing.Any) -> bool:
+        """Return whether a value can safely cross the adapter boundary as JSON."""
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return True
+        if isinstance(value, (list, tuple)):
+            return all(cls.is_json_serializable(item) for item in value)
+        if isinstance(value, dict):
+            return all(
+                isinstance(k, str) and cls.is_json_serializable(v)
+                for k, v in value.items()
+            )
+        return False
+
+    @staticmethod
+    def _dump_message(message: typing.Any) -> dict[str, typing.Any]:
+        """Serialize a provider message-like object."""
+        if hasattr(message, 'model_dump'):
+            return message.model_dump(mode='json')
+        if isinstance(message, dict):
+            return message
+        return {
+            'role': getattr(message, 'role', None),
+            'content': getattr(message, 'content', None),
         }
 
     # Private helper methods
@@ -519,10 +563,11 @@ class PipelineAdapter:
         query: pipeline_query.Query,
     ) -> DeliveryContext:
         """Build DeliveryContext from Query."""
+        message_chain = getattr(query, 'message_chain', None)
         return DeliveryContext(
             surface="platform",
             reply_target={
-                "message_id": getattr(query.message_chain, 'message_id', None),
+                "message_id": getattr(message_chain, 'message_id', None),
             },
             supports_streaming=True,
             supports_edit=False,
@@ -545,10 +590,17 @@ class PipelineAdapter:
         query: pipeline_query.Query,
     ) -> list[str] | None:
         """Extract allowed model UUIDs from query."""
+        model_uuids: list[str] = []
         model_uuid = getattr(query, 'use_llm_model_uuid', None)
         if model_uuid:
-            return [model_uuid]
-        return None
+            model_uuids.append(model_uuid)
+
+        variables = getattr(query, 'variables', None) or {}
+        for fallback_uuid in variables.get('_fallback_model_uuids', []) or []:
+            if fallback_uuid and fallback_uuid not in model_uuids:
+                model_uuids.append(fallback_uuid)
+
+        return model_uuids or None
 
     @classmethod
     def _extract_allowed_tools(

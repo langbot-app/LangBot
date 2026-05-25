@@ -37,6 +37,9 @@ class AgentEventEnvelope(pydantic.BaseModel):
     source: str
     """Event source (platform, webui, api, scheduler, system)."""
 
+    source_event_type: str | None = None
+    """Original source event type, when available."""
+
     bot_id: str | None = None
     """Bot UUID handling this event."""
 
@@ -63,6 +66,9 @@ class AgentEventEnvelope(pydantic.BaseModel):
 
     raw_ref: RawEventRef | None = None
     """Reference to raw event payload."""
+
+    data: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
+    """Small structured event payload. Large payloads should be referenced via raw_ref/artifacts."""
 
 
 # Binding scope types

@@ -88,6 +88,36 @@ class TestPipelineQueryToEventEnvelope:
         assert event.delivery.surface == "platform"
         assert isinstance(event.delivery.supports_streaming, bool)
 
+    def test_query_to_event_preserves_source_event_data(self, mock_query):
+        """Test source event metadata survives the adapter boundary."""
+        source_event = Mock()
+        source_event.type = "platform.message.created"
+        source_event.time = 1700000000
+        source_event.sender = None
+        source_event.model_dump = Mock(return_value={
+            "type": "platform.message.created",
+            "message_id": "source-message-1",
+            "source_platform_object": {"large": "payload"},
+        })
+        mock_query.message_event = source_event
+
+        event = PipelineAdapter.query_to_event(mock_query)
+
+        assert event.source_event_type == "platform.message.created"
+        assert event.event_time == 1700000000
+        assert event.data == {
+            "type": "platform.message.created",
+            "message_id": "source-message-1",
+        }
+
+    def test_query_to_event_handles_missing_message_chain(self, mock_query):
+        """Test delivery context building when Query has no message_chain."""
+        delattr(mock_query, "message_chain")
+
+        event = PipelineAdapter.query_to_event(mock_query)
+
+        assert event.delivery.reply_target == {"message_id": None}
+
 
 class TestPipelineConfigToBinding:
     """Test Pipeline config -> AgentBinding conversion."""

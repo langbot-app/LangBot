@@ -109,8 +109,8 @@ class AgentResultNormalizer:
 
         elif result_type == 'state.updated':
             # Log for telemetry, don't yield to pipeline
-            # Orchestrator already handles the actual state_store.apply_update
-            scope = data.get('scope', 'conversation')  # Default for backward compat
+            # Orchestrator already handles the actual PersistentStateStore update.
+            scope = data.get('scope', 'unknown')
             key = data.get('key', 'unknown')
             value_repr = repr(data.get('value', '...'))[:100]  # Truncate for log
             self.ap.logger.debug(

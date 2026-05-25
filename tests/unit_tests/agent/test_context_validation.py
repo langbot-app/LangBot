@@ -54,8 +54,9 @@ class TestContextValidation:
             event_type="message.received",
             event_time=1700000000,
             source="platform",
+            source_event_type="platform.message",
             bot_id="bot_1",
-            workspace_id=None,
+            workspace_id="workspace_1",
             conversation_id="conv_1",
             thread_id=None,
             actor=ActorContext(
@@ -66,6 +67,7 @@ class TestContextValidation:
             subject=None,
             input=EventInput(text="Hello world"),
             delivery=DeliveryContext(surface="test"),
+            data={"platform_event_id": "source_evt_1"},
         )
 
     def _make_binding(self) -> AgentBinding:
@@ -155,6 +157,13 @@ class TestContextValidation:
         assert validated.event.event_id == "evt_1"
         assert validated.event.event_type == "message.received"
         assert validated.event.source == "platform"
+        assert validated.event.source_event_type == "platform.message"
+        assert validated.event.data == {"platform_event_id": "source_evt_1"}
+
+        # Verify conversation context uses SDK field names
+        assert validated.conversation is not None
+        assert validated.conversation.bot_id == "bot_1"
+        assert validated.conversation.workspace_id == "workspace_1"
 
         # Verify delivery context
         assert validated.delivery.surface == "test"

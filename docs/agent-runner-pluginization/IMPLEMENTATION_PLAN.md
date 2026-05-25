@@ -150,53 +150,52 @@ class AgentRunnerDescriptor(BaseModel):
 - Pipeline metadata 请求时发现缓存为空
 - 可选 TTL，优先保证正确性
 
-### 3.4 context_builder.py
+### 3.4 context_builder.py / pipeline_adapter.py
 
-把当前 Pipeline query 转换成 SDK v1 `AgentRunContext` envelope。这里做协议字段组装、Host-owned 状态快照、授权资源挂载和默认工作窗口 provisioning，不承担 Agent 的最终 prompt 组装或长期记忆/压缩策略。
+`context_builder.py` 只负责从 `AgentEventEnvelope + AgentBinding` 构造 SDK v1 `AgentRunContext`。Pipeline Query 的读取、参数过滤、prompt 提取和 `max-round` bootstrap 映射都属于 `PipelineAdapter`，不再放进 context builder。
 
-当前消息 Pipeline 的最小字段：
+当前消息 Pipeline 进入 agent runner 的路径：
+
+```text
+Query
+  -> PipelineAdapter.query_to_event(query)
+  -> PipelineAdapter.pipeline_config_to_binding(query, runner_id)
+  -> PipelineAdapter.build_adapter_context(query, binding)
+  -> AgentRunOrchestrator.run(event, binding, adapter_context=...)
+  -> AgentRunContextBuilder.build_context_from_event(...)
+```
+
+Protocol v1 context 的稳定字段：
 
 - `run_id`: 新 UUID，不使用 query id 作为全局 run id
-- `trigger.type`: `message.received`
-- `conversation`: launcher、sender、bot、pipeline、历史消息
-- `event`: message event envelope 子集，`event_type` 使用稳定协议名，平台/SDK 原始事件名放入 `event_data.source_event_type`
-- `actor`: sender
-- `subject`: 当前消息或 launcher
-- `prompt`: 宿主已处理的有效 prompt，即 `query.prompt.messages`
-- `messages`: `query.messages` 进入 AgentRunner context packaging 后的历史窗口。插件化 AgentRunner 路径不再由 Pipeline `msgtrun` 截断
-- `runtime.metadata.context_packaging`: Host 本次实际下发的历史窗口元数据，例如来源、策略、下发消息数、完整性；未来可扩展 cursor 和 host-side history API
-- `input`: 从 `query.user_message` 和 `query.message_chain` 构造
-- `params`: 过滤后的公开业务变量
-- `resources`: 由 `resource_builder` 注入
-- `state`: host-managed scoped state snapshot
-- `runtime`: host/version/workspace/bot/pipeline/query/trace/deadline
-- `config`: 当前 Pipeline 对该 runner id 的绑定配置，即 `ai.runner_config[runner_id]`
+- `trigger.type`: 事件触发类型，例如 `message.received`
+- `conversation`: conversation/thread/launcher/sender/bot/pipeline 投影
+- `event`: 稳定事件上下文
+- `actor`: 触发者
+- `subject`: 当前消息、群、频道或其它事件主体
+- `input`: 当前事件输入，不是历史消息窗口
+- `delivery`: 输出 surface 和平台投递能力
+- `resources`: 由 `resource_builder` 基于 binding policy 注入
+- `state`: `PersistentStateStore` 读取的 host-managed scoped state snapshot
+- `runtime`: host/version/workspace/bot/query/trace/deadline
+- `config`: 当前 binding 对该 runner id 的配置，即 `runner_config`
+- `bootstrap`: 可选小窗口，不是完整历史
+- `adapter`: Pipeline 或其它入口 adapter 的元数据
 
-保留 SDK legacy helper 是 SDK 的责任，LangBot 不再构造 PoC 的 `query_id/session/messages/user_message/extra_config` 上下文。
+Pipeline adapter 的 `prompt` 和公开业务变量不进入顶层协议字段：
 
-`prompt` 的语义必须明确：它不是静态配置 `config["prompt"]`，而是 LangBot PreProcessor 和 `PromptPreProcessing` 插件事件之后的有效 prompt。旧内置 local-agent 请求模型时使用：
+- effective prompt -> `ctx.adapter.extra["prompt"]`
+- filtered params -> `ctx.adapter.extra["params"]`
+- `max-round` working window -> `ctx.bootstrap.messages`
+- 同一窗口也可出现在 `ctx.adapter.adapter_messages`，供 adapter 消费方读取
+- packaging 元数据 -> `ctx.runtime.metadata.context_packaging`
 
-```python
-query.prompt.messages + query.messages + [query.user_message]
-```
-
-插件化 runner 要保持行为一致，应消费：
-
-```python
-ctx.prompt + ctx.messages + [current_user_message_from_ctx.input]
-```
-
-现阶段不要优化裁剪算法，也不要把新的压缩或 token-budget 裁剪塞回 Pipeline stage。
-插件化 AgentRunner 路径应跳过 Pipeline `msgtrun` 的破坏性截断，然后由
-`AgentContextPackager` 在 AgentRunner 边界执行同一套 max-round user-round 规则。
-当前 SDK v1 还没有顶层 context packaging 字段，LangBot 先把本次 packaging
-元数据放在 `ctx.runtime.metadata.context_packaging`。这是实际下发结果说明，不是 LangBot 侧的长期策略控制面。
-后续 LiteLLM 接入后再把真实 context window、token 预算和摘要策略接到这个边界上。
+现阶段不要把新的压缩或 token-budget 裁剪塞回 Pipeline stage。Pipeline 只负责入口适配；完整历史和长期上下文由 EventLog / Transcript / pull APIs / future ContextCompressor 支撑。
 
 ### 3.4.1 Agentic context plan
 
-本轮只落地 `AgentContextPackager` 的 `max_round` working window，不改变 user-round 选择规则。
-下面的 `ConversationStore` / `EventLog`、`ContextCompressor` 和 host history API 仍是设计预留。
+本轮只在 `PipelineAdapter` 中保留 `max-round` working window，不改变 user-round 选择规则。
+EventLog / Transcript / Host pull APIs 已落地，`ContextCompressor` 仍是设计预留。
 目标是让 Pipeline 逐步退化为入口 adapter，让 AgentRunner 层拥有上下文打包职责。
 
 建议最终拆成四个 host-side 服务：
@@ -206,7 +205,7 @@ ConversationStore / EventLog
   -> durable append-only raw messages, events, tool results, artifact refs
 ConversationProjection
   -> converts events into agent-readable conversation history
-AgentContextPackager
+PipelineAdapter bootstrap policy
   -> builds the bounded working context for one run
 ContextCompressor
   -> creates and updates summaries/checkpoints when thresholds are exceeded
@@ -215,10 +214,10 @@ ContextCompressor
 关键原则：
 
 - 完整历史属于 LangBot host，不属于插件实例。插件仍是 singleton/stateless。
-- `ctx.messages` 是 working context window，不是完整 conversation dump。
+- `ctx.bootstrap.messages` 是 optional working context window，不是完整 conversation dump。
 - 每轮不能全量复制/序列化完整历史给插件 runtime；否则长会话会产生 O(n) 成本和跨进程 payload 膨胀。
-- `max-round` 的 user-round 规则可以先搬到 `AgentContextPackager`，作为 `max_round` adapter 策略。
-- LiteLLM 接入后，`AgentContextPackager` 再读取模型 context window，升级为 token budget 策略。
+- `max-round` 的 user-round 规则只属于 Pipeline adapter 的 bootstrap 策略。
+- LiteLLM 接入后，context packaging 应升级为 token budget / summary / pull API 协作策略。
 - `ContextCompressor` 生成的是派生 summary/checkpoint，不能覆盖或删除 raw history。
 - 重启恢复依赖持久化 store 和 summary checkpoint，不依赖 `SessionManager` 里的进程内 conversation list。
 
@@ -252,7 +251,7 @@ page size、总字节数、deadline 和可访问 conversation。
 
 ### 3.4.2 Large artifacts and tool collaboration
 
-大文件、多模态输入和工具产物不要内联进 `ctx.messages` 或 tool result。后续统一用
+大文件、多模态输入和工具产物不要内联进 bootstrap messages 或 tool result。后续统一用
 artifact/resource ref 协作：
 
 - message/content 里只放小文本和必要摘要。
@@ -322,7 +321,7 @@ Platform Adapter
   -> ConversationProjection update message/history view when applicable
   -> EventRouter resolve binding
   -> AgentRunOrchestrator.run_from_event(event_request)
-  -> AgentContextPackager build working context from projection + state + artifacts
+  -> Context packager builds working context from projection + state + artifacts
 ```
 
 这样消息事件、工具事件、群成员事件、好友申请事件可以共用同一套 run/session/state/resource
@@ -481,8 +480,9 @@ async def run_from_query(query: pipeline_query.Query) -> AsyncGenerator[Message 
 
 ### Step 1：补齐宿主上下文
 
-- SDK `AgentRunContext` 增加 `prompt`，并保持向后兼容默认空列表。
-- LangBot context builder 写入 `ctx.prompt`、`ctx.input.contents`、`ctx.runtime.metadata.streaming_supported`、`ctx.runtime.metadata.remove_think`。
+- SDK `AgentRunContext` 保持 event-first：`event/input/delivery/resources/context/state/runtime/config/bootstrap/adapter`。
+- LangBot context builder 只从 `AgentEventEnvelope + AgentBinding` 写入稳定协议字段。
+- Pipeline adapter 把 effective prompt 写入 `ctx.adapter.extra["prompt"]`，把公开业务变量写入 `ctx.adapter.extra["params"]`。
 - 保持 `ctx.config` 只表达静态绑定配置。
 
 ### Step 2：增强宿主 AgentRun proxy action
@@ -502,7 +502,7 @@ async def run_from_query(query: pipeline_query.Query) -> AsyncGenerator[Message 
 
 ### Step 4：local-agent parity
 
-- 使用 `ctx.prompt` 而不是重新读取 `ctx.config["prompt"]`。
+- 使用 `ctx.adapter.extra["prompt"]` 而不是重新读取 `ctx.config["prompt"]`。
 - 当前 user message 从 `ctx.input.contents` 构造，保留多模态内容。
 - RAG 只替换/插入文本部分，不丢图片/文件。
 - streaming/non-streaming 默认跟随 `runtime.metadata.streaming_supported`。

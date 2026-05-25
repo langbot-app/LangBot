@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
+from langbot.pkg.agent.runner.pipeline_adapter import PipelineAdapter
 from langbot.pkg.agent.runner.resource_builder import AgentResourceBuilder
 
 
@@ -47,6 +48,16 @@ def make_query(runner_config: dict, *, variables: dict | None = None, use_llm_mo
         },
         variables=variables or {},
         use_llm_model_uuid=use_llm_model_uuid,
+        pipeline_uuid='pipeline_001',
+    )
+
+
+async def build_resources(app, query, descriptor):
+    binding = PipelineAdapter.pipeline_config_to_binding(query, descriptor.id)
+    return await AgentResourceBuilder(app).build_resources_from_binding(
+        event=Mock(),
+        binding=binding,
+        descriptor=descriptor,
     )
 
 
@@ -93,7 +104,7 @@ async def test_build_models_authorizes_config_declared_llm_and_rerank_models(app
         'rerank-model': 'rerank',
     })
 
-    resources = await AgentResourceBuilder(app).build_resources(query, descriptor)
+    resources = await build_resources(app, query, descriptor)
 
     assert resources['models'] == [
         {'model_id': 'primary', 'model_type': 'llm', 'provider': 'test-provider'},
@@ -120,7 +131,7 @@ async def test_build_models_still_honors_manifest_permissions(app):
         'rerank-model': 'rerank',
     })
 
-    resources = await AgentResourceBuilder(app).build_resources(query, descriptor)
+    resources = await build_resources(app, query, descriptor)
 
     assert resources['models'] == []
     app.model_mgr.get_model_by_uuid.assert_not_awaited()
@@ -143,6 +154,6 @@ async def test_build_models_deduplicates_query_and_config_models(app):
         use_llm_model_uuid='primary',
     )
 
-    resources = await AgentResourceBuilder(app).build_resources(query, descriptor)
+    resources = await build_resources(app, query, descriptor)
 
     assert [model['model_id'] for model in resources['models']] == ['primary', 'fallback']

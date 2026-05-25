@@ -29,7 +29,7 @@ EventGateway 在本文档中描述为 **future integration point**，由外部 e
 
 ## 当前状态
 
-**当前 Pipeline 是 transition adapter，不再是 agent runner 设计核心。**
+**当前 Pipeline 是入口 adapter，不再是 agent runner 设计核心。**
 
 当前主入口仍可由 Pipeline 触发，但内部已转换成 event-first path：
 

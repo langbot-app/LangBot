@@ -126,7 +126,7 @@ class TestContextAccessStateDetermination:
 
     @pytest.mark.asyncio
     async def test_no_binding_sets_state_false(self, mock_app, mock_event, mock_descriptor):
-        """ContextAccess.state=False when binding is None (legacy mode)."""
+        """ContextAccess.state=False when no binding is provided."""
         builder = AgentRunContextBuilder(mock_app)
 
         # Real call without binding

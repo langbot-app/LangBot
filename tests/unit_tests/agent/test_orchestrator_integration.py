@@ -11,10 +11,9 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine
 
 from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
 from langbot.pkg.agent.runner.errors import RunnerExecutionError
-from langbot.pkg.agent.runner.context_builder import AgentRunContextBuilder
 from langbot.pkg.agent.runner.orchestrator import AgentRunOrchestrator
+from langbot.pkg.agent.runner.pipeline_adapter import PipelineAdapter
 from langbot.pkg.agent.runner.session_registry import get_session_registry
-from langbot.pkg.agent.runner.state_store import get_state_store, reset_state_store
 from langbot.pkg.agent.runner.persistent_state_store import reset_persistent_state_store
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
@@ -227,7 +226,6 @@ def make_query():
 
 
 def test_context_builder_includes_consumable_base64_attachments():
-    builder = AgentRunContextBuilder(ap=types.SimpleNamespace())
     query = make_query()
     query.user_message = provider_message.Message(
         role="user",
@@ -241,20 +239,15 @@ def test_context_builder_includes_consumable_base64_attachments():
         [platform_message.Image(base64="data:image/jpeg;base64,aGVsbG8=")]
     )
 
-    input_data = builder._build_input(query)
-    attachments = input_data["attachments"]
+    input_data = PipelineAdapter._build_input(query)
 
-    image_attachment = next(item for item in attachments if item["type"] == "image" and item["source"] == "base64")
-    file_attachment = next(item for item in attachments if item["type"] == "file" and item["source"] == "base64")
-    chain_attachment = next(item for item in attachments if item["source"] == "message_chain")
+    assert input_data.contents[0].text == "see attached"
+    assert input_data.contents[1].image_base64 == "data:image/png;base64,aGVsbG8="
+    assert input_data.contents[2].file_base64 == "data:text/plain;base64,aGVsbG8="
 
-    assert image_attachment["content"] == "data:image/png;base64,aGVsbG8="
-    assert image_attachment["content_type"] == "image/png"
-    assert file_attachment["content"] == "data:text/plain;base64,aGVsbG8="
-    assert file_attachment["content_type"] == "text/plain"
-    assert file_attachment["name"] == "hello.txt"
-    assert chain_attachment["content"] == "data:image/jpeg;base64,aGVsbG8="
-    assert chain_attachment["content_type"] == "image/jpeg"
+    artifact_types = [attachment.artifact_type for attachment in input_data.attachments]
+    assert artifact_types == ["image", "file", "image"]
+    assert input_data.attachments[1].name == "hello.txt"
 
 
 @pytest.fixture(autouse=True)
@@ -262,7 +255,6 @@ async def clean_agent_state():
     """Reset all singleton stores and create a test database engine."""
     from langbot.pkg.entity.persistence.base import Base
 
-    reset_state_store()
     reset_persistent_state_store()
     registry = get_session_registry()
     for session in await registry.list_active_runs():
@@ -280,7 +272,6 @@ async def clean_agent_state():
     # Cleanup
     for session in await registry.list_active_runs():
         await registry.unregister(session["run_id"])
-    reset_state_store()
     reset_persistent_state_store()
     await test_engine.dispose()
 
@@ -378,7 +369,7 @@ async def test_orchestrator_packages_max_round_without_mutating_query(clean_agen
         "message 3",
         "response 3",
     ]
-    # Also in adapter.adapter_messages for transition runners
+    # Also exposed in adapter.adapter_messages for runners that consume adapter bootstrap.
     assert [message["content"] for message in context["adapter"]["adapter_messages"]] == [
         "message 2",
         "response 2",
@@ -453,10 +444,7 @@ async def test_orchestrator_applies_state_updates_and_suppresses_protocol_event(
     messages = [message async for message in orchestrator.run_from_query(query)]
 
     assert [message.content for message in messages] == ["state saved"]
-    # Note: State is now persisted via PersistentStateStore, not in-memory RunnerScopedStateStore
-    # The legacy behavior of updating query.session.using_conversation.uuid is no longer supported
-    # when using event-first path via run_from_query() -> run()
-    # Instead, state is persisted to the database via PersistentStateStore
+    # State is persisted to the database via PersistentStateStore.
 
 
 @pytest.mark.asyncio

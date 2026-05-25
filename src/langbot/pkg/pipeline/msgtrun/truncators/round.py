@@ -3,7 +3,7 @@ from __future__ import annotations
 from .. import truncator
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 from ....agent.runner.config_migration import ConfigMigration
-from ....agent.runner.context_packager import (
+from ..round_policy import (
     get_max_round,
     select_max_round_messages,
 )

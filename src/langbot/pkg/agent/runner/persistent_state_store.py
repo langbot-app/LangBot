@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import typing
 import json
-import asyncio
 import threading
 from datetime import datetime
 
@@ -14,20 +13,16 @@ import sqlalchemy
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy import select, delete, update
 
-from langbot_plugin.api.entities.builtin.pipeline import query as pipeline_query
-
 from .descriptor import AgentRunnerDescriptor
 from .host_models import AgentEventEnvelope, AgentBinding
+from .state_scope import (
+    VALID_STATE_SCOPES,
+    build_state_scope_key,
+    get_binding_identity,
+    normalize_state_key,
+)
 from ...entity.persistence.agent_runner_state import AgentRunnerState
 
-
-# Valid state scopes for agent runner state updates.
-VALID_STATE_SCOPES = ('conversation', 'actor', 'subject', 'runner')
-
-# External-facing key aliases accepted from runners.
-STATE_KEY_ALIASES = {
-    'conversation_id': 'external.conversation_id',
-}
 
 # Maximum value_json size (256KB)
 MAX_VALUE_JSON_BYTES = 256 * 1024
@@ -52,89 +47,6 @@ class PersistentStateStore:
     def __init__(self, db_engine: AsyncEngine):
         self._db_engine = db_engine
 
-    # ========== Scope Key Building (shared with in-memory store) ==========
-
-    def _get_binding_identity(self, binding: AgentBinding) -> str:
-        """Get stable binding identity for scope key."""
-        if binding.binding_id:
-            return binding.binding_id
-        scope = binding.scope
-        if scope.scope_type and scope.scope_id:
-            return f"{scope.scope_type}:{scope.scope_id}"
-        return "unknown_binding"
-
-    def _make_conversation_scope_key(
-        self,
-        event: AgentEventEnvelope,
-        binding: AgentBinding,
-        descriptor: AgentRunnerDescriptor,
-    ) -> str | None:
-        """Build conversation scope key from event and binding."""
-        if not event.conversation_id:
-            return None
-
-        binding_identity = self._get_binding_identity(binding)
-        parts = [
-            descriptor.id,
-            binding_identity,
-            event.conversation_id,
-        ]
-        if event.thread_id:
-            parts.append(event.thread_id)
-        return f'conversation:{":".join(parts)}'
-
-    def _make_actor_scope_key(
-        self,
-        event: AgentEventEnvelope,
-        binding: AgentBinding,
-        descriptor: AgentRunnerDescriptor,
-    ) -> str | None:
-        """Build actor scope key from event and binding."""
-        if not event.actor or not event.actor.actor_id:
-            return None
-
-        binding_identity = self._get_binding_identity(binding)
-        parts = [
-            descriptor.id,
-            binding_identity,
-            event.actor.actor_type or 'user',
-            event.actor.actor_id,
-        ]
-        return f'actor:{":".join(parts)}'
-
-    def _make_subject_scope_key(
-        self,
-        event: AgentEventEnvelope,
-        binding: AgentBinding,
-        descriptor: AgentRunnerDescriptor,
-    ) -> str | None:
-        """Build subject scope key from event and binding."""
-        if not event.subject or not event.subject.subject_id:
-            return None
-
-        binding_identity = self._get_binding_identity(binding)
-        parts = [
-            descriptor.id,
-            binding_identity,
-            event.subject.subject_type or 'unknown',
-            event.subject.subject_id,
-        ]
-        return f'subject:{":".join(parts)}'
-
-    def _make_runner_scope_key(
-        self,
-        event: AgentEventEnvelope,
-        binding: AgentBinding,
-        descriptor: AgentRunnerDescriptor,
-    ) -> str:
-        """Build runner scope key from event and binding."""
-        binding_identity = self._get_binding_identity(binding)
-        parts = [
-            descriptor.id,
-            binding_identity,
-        ]
-        return f'runner:{":".join(parts)}'
-
     def _get_scope_key(
         self,
         scope: str,
@@ -143,15 +55,7 @@ class PersistentStateStore:
         descriptor: AgentRunnerDescriptor,
     ) -> str | None:
         """Get scope key for given scope."""
-        if scope == 'conversation':
-            return self._make_conversation_scope_key(event, binding, descriptor)
-        elif scope == 'actor':
-            return self._make_actor_scope_key(event, binding, descriptor)
-        elif scope == 'subject':
-            return self._make_subject_scope_key(event, binding, descriptor)
-        elif scope == 'runner':
-            return self._make_runner_scope_key(event, binding, descriptor)
-        return None
+        return build_state_scope_key(scope, event, binding, descriptor)
 
     def _check_scope_enabled(self, scope: str, binding: AgentBinding) -> bool:
         """Check if scope is enabled by binding's state_policy."""
@@ -276,8 +180,7 @@ class PersistentStateStore:
             return False, f'Scope "{scope}" not enabled by binding policy'
 
         # Map accepted key aliases
-        if key in STATE_KEY_ALIASES:
-            key = STATE_KEY_ALIASES[key]
+        key = normalize_state_key(key)
 
         # Get scope key
         scope_key = self._get_scope_key(scope, event, binding, descriptor)
@@ -290,7 +193,7 @@ class PersistentStateStore:
             return False, error
 
         # Build context fields
-        binding_identity = self._get_binding_identity(binding)
+        binding_identity = get_binding_identity(binding)
 
         async with self._db_engine.begin() as conn:
             # Check if entry exists

@@ -21,8 +21,7 @@ class AgentRunnerState(Base):
     - subject: runner_id + binding_id + subject_type + subject_id
     - runner: runner_id + binding_id
 
-    This table persists state across runs, replacing the in-memory
-    RunnerScopedStateStore._store dict.
+    This table is the production store for AgentRunner state.
     """
 
     __tablename__ = 'agent_runner_state'
