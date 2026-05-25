@@ -142,34 +142,23 @@ class WorkflowNode(abc.ABC):
 
 
 # ------------------------------------------------------------------
-# Decorator and pending registration helpers
+# Decorator for setting type_name attribute
 # ------------------------------------------------------------------
-
-_pending_registrations: list[tuple[str, type[WorkflowNode]]] = []
 
 
 def workflow_node(type_name: str) -> Callable[[type[WorkflowNode]], type[WorkflowNode]]:
-    """Decorator to register a workflow node type.
+    """Decorator to set the type_name attribute on a workflow node class.
 
     Usage:
         @workflow_node('llm_call')
         class LLMCallNode(WorkflowNode):
             ...
+
+    The actual registration is now handled by the discovery engine.
     """
 
     def decorator(cls: type[WorkflowNode]) -> type[WorkflowNode]:
         cls.type_name = type_name
-        _pending_registrations.append((type_name, cls))
         return cls
 
     return decorator
-
-
-def get_pending_registrations() -> list[tuple[str, type[WorkflowNode]]]:
-    """Get pending node registrations"""
-    return _pending_registrations.copy()
-
-
-def clear_pending_registrations():
-    """Clear pending registrations after they're processed"""
-    _pending_registrations.clear()

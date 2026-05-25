@@ -11,15 +11,17 @@ from typing import Any, Optional
 import pydantic
 
 # Import SDK entities for standard workflow protocol types
-from langbot_plugin.api.entities.builtin.workflow import (
+from langbot_plugin.api.entities.builtin.workflow.entities import (
     ExecutionContext,
     ExecutionStep,
-    ExecutionStatus,
     MessageContext,
     NodeDefinition,
     NodeState,
-    NodeStatus,
     PortDefinition,
+)
+from langbot_plugin.api.entities.builtin.workflow.enums import (
+    ExecutionStatus,
+    NodeStatus,
 )
 
 

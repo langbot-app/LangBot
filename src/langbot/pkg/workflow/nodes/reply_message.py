@@ -8,8 +8,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from langbot_plugin.api.entities.builtin.workflow import ExecutionContext
+from langbot_plugin.api.entities.builtin.workflow.entities import ExecutionContext
 from ..node import WorkflowNode, workflow_node
+from .. import monitoring_helper
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,10 @@ class ReplyMessageNode(WorkflowNode):
                 from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
 
                 message_chain = MessageChain([Plain(text=message_str)])
-                target_type = getattr(context, 'target_type', 'person') or 'person'
+                # 从 trigger_data 中获取 session_type，而不是从未设置的 context.target_type
+                target_type = 'person'
+                if context.trigger_data:
+                    target_type = context.trigger_data.get('session_type', 'person') or 'person'
                 session_id = context.session_id or 'unknown'
                 target_id = f'websocket_{session_id}'
 
@@ -103,8 +107,26 @@ class ReplyMessageNode(WorkflowNode):
                 },
             )
 
+        # Record reply log
+        try:
+            if self.ap and context.query and send_success:
+                workflow_id = context.workflow_id or ''
+                workflow_name = context.variables.get('_workflow_name', 'Workflow')
+                node_name = self.get_config('name', self.node_id)
+                await monitoring_helper.WorkflowMonitoringHelper.record_reply_log(
+                    ap=self.ap,
+                    query=context.query,
+                    workflow_id=workflow_id,
+                    workflow_name=workflow_name,
+                    node_name=node_name,
+                    reply_content=message_str,
+                )
+        except Exception as e:
+            logger.warning(f'[ReplyMessage:{self.node_id}] Failed to record reply log: {e}')
+
         return {
             'status': 'sent' if send_success else 'failed',
+            'message_content': message_str,
             'message_preview': message_str[:200],
             'error': send_error,
         }

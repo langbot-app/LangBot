@@ -10,7 +10,7 @@ import re
 import signal
 from typing import Any
 
-from langbot_plugin.api.entities.builtin.workflow import ExecutionContext
+from langbot_plugin.api.entities.builtin.workflow.entities import ExecutionContext
 from ..node import WorkflowNode, workflow_node
 from ..safe_eval import safe_eval_with_vars
 

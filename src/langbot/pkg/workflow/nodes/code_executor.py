@@ -12,7 +12,7 @@ import sys
 import threading
 from typing import Any
 
-from langbot_plugin.api.entities.builtin.workflow import ExecutionContext
+from langbot_plugin.api.entities.builtin.workflow.entities import ExecutionContext
 from ..node import WorkflowNode, workflow_node
 
 logger = logging.getLogger(__name__)

@@ -60,26 +60,18 @@ outputs:
       zh_Hans: 解析后的输出（如果输出格式为 JSON）
 
 config:
-  - name: model
-    type: llm-model-selector
-    required: true
-    label:
-      en_US: Model
-      zh_Hans: 模型
-    description:
-      en_US: Select the LLM model to use
-      zh_Hans: 选择要使用的 LLM 模型
-
-  - name: fallback_models
+  - name: model_config
     type: model-fallback-selector
-    required: false
-    default: []
+    required: true
+    default:
+      primary: ''
+      fallbacks: []
     label:
-      en_US: Fallback Models
-      zh_Hans: 备用模型
+      en_US: Model Configuration
+      zh_Hans: 模型配置
     description:
-      en_US: List of fallback models to try if the primary model fails
-      zh_Hans: 主模型失败时尝试的备用模型列表
+      en_US: Configure the primary model and optional fallback models
+      zh_Hans: 配置主模型和可选的备用模型
 
   - name: prompt
     label:

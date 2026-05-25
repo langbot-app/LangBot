@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import copy
 import logging
-from typing import Any, Optional
+from typing import Any, Optional, TYPE_CHECKING
 
 from .metadata import build_node_type
-from .node import WorkflowNode, clear_pending_registrations, get_pending_registrations
+from .node import WorkflowNode
+
+if TYPE_CHECKING:
+    from langbot.pkg.discover.engine import ComponentDiscoveryEngine
 
 logger = logging.getLogger(__name__)
 
@@ -116,13 +119,6 @@ class NodeTypeRegistry:
         canonical_type = self._resolve_registered_node_key(node_type)
         if canonical_type:
             return self._nodes[canonical_type]
-
-        if get_pending_registrations():
-            self.process_pending_registrations()
-            canonical_type = self._resolve_registered_node_key(node_type)
-            if canonical_type:
-                return self._nodes[canonical_type]
-
         return None
 
     def get_metadata(self, node_type: str) -> Optional[dict[str, Any]]:
@@ -203,11 +199,25 @@ class NodeTypeRegistry:
         """Check whether a node has metadata or an implementation registered."""
         return self.get_metadata(node_type) is not None or self.get(node_type) is not None
 
-    def process_pending_registrations(self):
-        """Process all pending node registrations from decorators."""
-        for node_type, node_class in get_pending_registrations():
-            self.register(node_type, node_class)
-        clear_pending_registrations()
+    def discover_nodes(self, discover_engine: 'ComponentDiscoveryEngine', nodes_dir: str = 'pkg/workflow/nodes/'):
+        """Discover and register workflow nodes from the discovery engine.
+        
+        This method uses the ComponentDiscoveryEngine to find all WorkflowNode
+        subclasses in the specified directory and registers them automatically,
+        replacing the old decorator-based registration mechanism.
+        
+        Args:
+            discover_engine: The ComponentDiscoveryEngine instance
+            nodes_dir: Directory path to scan for workflow nodes
+        """
+        node_classes = discover_engine.discover_workflow_nodes(nodes_dir)
+        for node_class in node_classes:
+            type_name = getattr(node_class, 'type_name', '')
+            if type_name:
+                self.register(type_name, node_class)
+                logger.debug(f'Auto-registered workflow node: {type_name}')
+            else:
+                logger.warning(f'Workflow node class {node_class.__name__} missing type_name attribute')
 
     def count(self) -> int:
         """Get total number of node types exposed by metadata or implementation."""

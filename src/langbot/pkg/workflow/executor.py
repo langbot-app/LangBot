@@ -32,6 +32,7 @@ from .entities import (
 )
 from ..entity.persistence import workflow as persistence_workflow
 from .registry import NodeTypeRegistry
+from . import monitor
 
 if TYPE_CHECKING:
     from ..core import app
@@ -169,6 +170,10 @@ class WorkflowExecutor:
         context.status = ExecutionStatus.RUNNING
         context.start_time = datetime.now()
 
+        # Note: Frontend panel logging has been removed.
+        # A new solution will be implemented separately.
+        monitoring_message_id = ''
+
         try:
             # Build execution graph
             node_map = {node.id: node for node in workflow.nodes}
@@ -227,8 +232,14 @@ class WorkflowExecutor:
                 },
             )
 
+            # Note: Frontend panel logging has been removed.
+            # A new solution will be implemented separately.
+
         finally:
             context.end_time = datetime.now()
+
+            # Note: Frontend panel logging has been removed.
+            # A new solution will be implemented separately.
 
         return context
 

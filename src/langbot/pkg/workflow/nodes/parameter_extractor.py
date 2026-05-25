@@ -9,7 +9,7 @@ import json
 import logging
 from typing import Any
 
-from langbot_plugin.api.entities.builtin.workflow import ExecutionContext
+from langbot_plugin.api.entities.builtin.workflow.entities import ExecutionContext
 from ..node import WorkflowNode, workflow_node
 
 logger = logging.getLogger(__name__)
@@ -87,6 +87,22 @@ class ParameterExtractorNode(WorkflowNode):
                     funcs=None,
                     extra_args={},
                 )
+
+                # Log successful response (matching Pipeline's cut_str behavior)
+                response_preview = ''
+                if isinstance(result_message.content, str):
+                    response_preview = result_message.content
+                elif isinstance(result_message.content, list):
+                    for elem in result_message.content:
+                        if hasattr(elem, 'text') and elem.text:
+                            response_preview += elem.text
+                response_preview = response_preview.strip()
+                def _cut_str(s: str) -> str:
+                    s0 = s.split('\n')[0]
+                    if len(s0) > 20 or '\n' in s:
+                        s0 = s0[:20] + '...'
+                    return s0
+                logger.info(f'[ParameterExtractor:{self.node_id}] Response: {_cut_str(response_preview)}')
 
                 # Extract response text
                 response_text = ''

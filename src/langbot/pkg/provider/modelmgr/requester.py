@@ -84,7 +84,7 @@ class RuntimeProvider:
 
                 # Import monitoring helper
                 try:
-                    from ...pipeline import monitoring_helper
+                    from ...pipeline import monitor
 
                     # Get monitoring metadata from query variables
                     if query.variables:
@@ -96,7 +96,7 @@ class RuntimeProvider:
                         pipeline_name = 'Unknown'
                         message_id = None
 
-                    await monitoring_helper.MonitoringHelper.record_llm_call(
+                    await monitor.MonitoringHelper.record_llm_call(
                         ap=self.requester.ap,
                         query=query,
                         bot_id=query.bot_uuid or 'unknown',
@@ -154,7 +154,7 @@ class RuntimeProvider:
 
                 # Import monitoring helper
                 try:
-                    from ...pipeline import monitoring_helper
+                    from ...pipeline import monitor
 
                     # Get monitoring metadata from query variables
                     if query.variables:
@@ -166,7 +166,7 @@ class RuntimeProvider:
                         pipeline_name = 'Unknown'
                         message_id = None
 
-                    await monitoring_helper.MonitoringHelper.record_llm_call(
+                    await monitor.MonitoringHelper.record_llm_call(
                         ap=self.requester.ap,
                         query=query,
                         bot_id=query.bot_uuid or 'unknown',

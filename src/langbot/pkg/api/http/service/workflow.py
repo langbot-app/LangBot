@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from datetime import datetime, timedelta
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 import sqlalchemy
 
@@ -14,13 +17,12 @@ from ....entity.persistence import workflow as persistence_workflow
 from ....workflow.entities import (
     WorkflowDefinition,
     ExecutionContext,
-    ExecutionStatus,
     NodeDefinition,
     EdgeDefinition,
     Position,
     MessageContext,
-    NodeStatus,
 )
+from langbot_plugin.api.entities.builtin.workflow.enums import ExecutionStatus, NodeStatus
 from ....workflow.executor import WorkflowExecutor
 from ....workflow.registry import NodeTypeRegistry
 
@@ -54,8 +56,9 @@ class WorkflowService:
         self.executor = WorkflowExecutor(ap)
         self.registry = NodeTypeRegistry.instance()
 
-        # Import workflow nodes to trigger registration
-        from ....workflow import nodes  # noqa: F401
+        # Auto-discover and register workflow nodes using discovery engine
+        if hasattr(ap, 'discover') and ap.discover is not None:
+            self.registry.discover_nodes(ap.discover)
 
     async def get_workflows(
         self, sort_by: str = 'created_at', sort_order: str = 'DESC', enabled_only: bool = False
@@ -328,6 +331,17 @@ class WorkflowService:
 
         raw_trigger_data = trigger_data or {}
 
+        # Get bot name and workflow name for monitoring
+        bot_name = 'WebChat'
+        workflow_name = workflow_dict.get('name', 'Unknown')
+        if bot_id:
+            try:
+                bot = await self.ap.bot_service.get_bot(bot_id, include_secret=False)
+                if bot:
+                    bot_name = bot.get('name', 'WebChat')
+            except Exception:
+                pass
+
         # Create execution context
         context = ExecutionContext(
             execution_id=execution_uuid,
@@ -381,6 +395,15 @@ class WorkflowService:
                     ),
                     raw_message=message_context_data.get('raw_message', {}),
                 )
+
+            # Note: Frontend panel logging has been removed.
+            # A new solution will be implemented separately.
+            # Store workflow info in context for child nodes to reference
+            context.variables['_workflow_name'] = workflow_name
+            context.variables['_bot_name'] = bot_name
+            context.variables['_bot_id'] = bot_id or ''
+            context.variables['_session_id'] = session_id or ''
+            context.variables['_user_id'] = user_id
 
         max_execution_time = self.DEFAULT_MAX_EXECUTION_TIME
         workflow_settings = definition.get('settings', {}) if isinstance(definition, dict) else {}
@@ -459,6 +482,8 @@ class WorkflowService:
                     error=str(e),
                 )
             )
+            
+            
             raise WorkflowExecutionFailedError(
                 execution_uuid,
                 str(e),
@@ -528,8 +553,6 @@ class WorkflowService:
 
     async def get_node_types(self) -> list[dict]:
         """Get all available node types"""
-        # Process pending registrations
-        self.registry.process_pending_registrations()
         node_types = self.registry.list_all()
 
         # Enrich node schemas with pipeline config metadata
@@ -537,7 +560,6 @@ class WorkflowService:
 
     async def get_node_types_by_category(self) -> dict[str, list[dict]]:
         """Get node types organized by category"""
-        self.registry.process_pending_registrations()
         categories = self.registry.get_categories()
 
         # Enrich node schemas with pipeline config metadata
@@ -548,7 +570,6 @@ class WorkflowService:
 
     async def get_node_types_by_category_meta(self) -> list[dict]:
         """Get workflow node category metadata for the editor UI."""
-        self.registry.process_pending_registrations()
         categories = self.registry.get_categories()
 
         ordered_categories = ['trigger', 'process', 'control', 'action', 'integration', 'misc']
@@ -1094,43 +1115,42 @@ class WorkflowService:
     async def get_execution_logs(
         self, workflow_uuid: str, execution_uuid: str, limit: int = 100, offset: int = 0
     ) -> dict:
-        """Get execution logs for a workflow execution"""
+        """Get execution logs for a workflow execution from monitoring_messages table"""
         execution = await self.get_execution(execution_uuid)
         if execution is None:
             raise ValueError(f'Execution {execution_uuid} not found')
         if execution.get('workflow_uuid') != workflow_uuid:
             raise ValueError(f'Execution {execution_uuid} not found in workflow {workflow_uuid}')
 
+        # Get logs from monitoring_messages table
+        from ....entity.persistence import monitoring as persistence_monitoring
+
         query = (
-            sqlalchemy.select(persistence_workflow.WorkflowNodeExecution)
-            .where(persistence_workflow.WorkflowNodeExecution.execution_uuid == execution_uuid)
-            .order_by(persistence_workflow.WorkflowNodeExecution.id.asc())
+            sqlalchemy.select(persistence_monitoring.MonitoringMessage)
+            .where(persistence_monitoring.MonitoringMessage.pipeline_id == workflow_uuid)
+            .order_by(persistence_monitoring.MonitoringMessage.timestamp.asc())
             .limit(limit)
             .offset(offset)
         )
 
         result = await self.ap.persistence_mgr.execute_async(query)
-        node_executions = result.all()
+        messages = result.all()
 
         logs = []
-        for node_exec in node_executions:
-            serialized = self._serialize_node_execution(node_exec)
-            timestamp = serialized.get('completed_at') or serialized.get('started_at') or execution.get('started_at')
-            level = 'error' if serialized.get('status') == 'failed' else 'info'
-            message = f'{serialized.get("node_type")}::{serialized.get("node_id")} - {serialized.get("status")}'
-            if serialized.get('error'):
-                message = f'{message} - {serialized.get("error")}'
+        for msg in messages:
+            serialized = self.ap.persistence_mgr.serialize_model(persistence_monitoring.MonitoringMessage, msg)
             logs.append(
                 {
-                    'id': str(serialized.get('id', serialized.get('node_id'))),
-                    'timestamp': timestamp,
-                    'level': level,
-                    'node_id': serialized.get('node_id'),
-                    'message': message,
+                    'id': serialized.get('id', ''),
+                    'timestamp': serialized.get('timestamp'),
+                    'level': serialized.get('level', 'info'),
+                    'node_id': serialized.get('runner_name', ''),
+                    'message': serialized.get('message_content', ''),
                     'data': {
-                        'inputs': serialized.get('inputs'),
-                        'outputs': serialized.get('outputs'),
-                        'retry_count': serialized.get('retry_count'),
+                        'role': serialized.get('role'),
+                        'platform': serialized.get('platform'),
+                        'user_id': serialized.get('user_id'),
+                        'user_name': serialized.get('user_name'),
                     },
                 }
             )

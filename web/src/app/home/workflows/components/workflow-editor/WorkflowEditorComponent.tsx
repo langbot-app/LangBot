@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, useEffect } from 'react';
 import {
   ReactFlow,
   Background,
@@ -425,7 +425,16 @@ function WorkflowEditorInner() {
         </div>
 
         {/* Center: Flow Canvas */}
-        <div className="flex-1 relative">
+        <div
+          className="flex-1 relative"
+          style={{
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
+            touchAction: 'none',
+            overflow: 'hidden',
+          }}
+          onContextMenu={(e) => e.preventDefault()}
+        >
           <ReactFlow
             nodes={displayNodes}
             edges={edges}
@@ -444,7 +453,7 @@ function WorkflowEditorInner() {
             snapGrid={[15, 15]}
             selectionMode={SelectionMode.Partial}
             selectionOnDrag
-            panOnDrag={[1, 2]} // Middle click and right click to pan
+            panOnDrag={[2]} // Right click to pan (left click is for node selection)
             selectNodesOnDrag={false}
             defaultEdgeOptions={{
               type: 'default',
@@ -453,7 +462,7 @@ function WorkflowEditorInner() {
                 type: MarkerType.ArrowClosed,
                 width: 20,
                 height: 20,
-                color: 'hsl(var(--muted-foreground))',
+                color: 'oklch(from var(--muted-foreground) l c h / 1)',
               },
             }}
             deleteKeyCode={null} // We handle delete manually
@@ -463,7 +472,7 @@ function WorkflowEditorInner() {
               gap={15}
               size={1}
               variant={BackgroundVariant.Dots}
-              color="hsl(var(--muted-foreground) / 0.3)"
+              color="oklch(from var(--muted-foreground) l c h / 0.9)"
             />
             <Controls
               showInteractive={false}
@@ -571,7 +580,6 @@ function WorkflowEditorInner() {
                 </TooltipContent>
               </Tooltip>
 
-              <div className="w-px bg-border mx-0.5" />
 
               {/* Zoom controls */}
               <Tooltip>

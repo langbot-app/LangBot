@@ -17,7 +17,7 @@ import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 
-from langbot_plugin.api.entities.builtin.workflow import ExecutionContext
+from langbot_plugin.api.entities.builtin.workflow.entities import ExecutionContext
 from ..node import WorkflowNode, workflow_node
 
 
@@ -154,6 +154,7 @@ class CallPipelineNode(WorkflowNode):
         if context.message_context and context.message_context.is_group:
             group = platform_entities.Group(
                 id=context.message_context.group_id or context.session_id or 'workflow_group',
+                name=context.message_context.raw_message.get('group_name', 'Workflow Group') if context.message_context.raw_message else 'Workflow Group',
                 permission=platform_entities.Permission.Member,
             )
             sender = platform_entities.GroupMember(

@@ -1427,6 +1427,8 @@ const zhHans = {
     inputOutputVariables: '输入/输出变量',
     inputs: '输入',
     outputs: '输出',
+    autoLayout: '自动整理',
+    autoLayoutSuccess: '节点已自动整理',
     availableVariables: '可用变量',
     globalVariables: '全局变量',
     messageContent: '消息内容',

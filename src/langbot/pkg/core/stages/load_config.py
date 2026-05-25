@@ -237,11 +237,9 @@ class LoadConfigStage(stage.BootingStage):
         for node_config in ap.workflow_node_configs.values():
             workflow_registry.register_metadata(node_config, source=node_config.get('_source', 'core'))
 
-        # Import node modules after metadata registration so decorators can bind
-        # implementations to YAML-defined canonical node types.
-        from langbot.pkg.workflow import nodes as workflow_nodes  # noqa: F401
-
-        workflow_registry.process_pending_registrations()
+        # Auto-discover and register workflow nodes using discovery engine
+        if hasattr(ap, 'discover') and ap.discover is not None:
+            workflow_registry.discover_nodes(ap.discover)
 
         workflow_load_errors = workflow_metadata_loader.get_load_errors()
         if workflow_load_errors:

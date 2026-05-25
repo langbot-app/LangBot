@@ -12,13 +12,15 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from typing import Any, AsyncGenerator
 
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.builtin.rag.context as rag_context
 
-from langbot_plugin.api.entities.builtin.workflow import ExecutionContext
+from langbot_plugin.api.entities.builtin.workflow.entities import ExecutionContext
 from ..node import WorkflowNode, workflow_node
+from .. import monitoring_helper
 
 logger = logging.getLogger(__name__)
 
@@ -383,7 +385,17 @@ Respond in the same language as the user's input.
         context.variables['_conversation_history'] = history
 
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
-        model_uuid = self.get_config('model', '')
+        # Support both new model_config format and legacy model + fallback_models format
+        model_config = self.get_config('model_config', None)
+        if model_config and isinstance(model_config, dict):
+            # New format: {primary: uuid, fallbacks: [uuid1, uuid2, ...]}
+            model_uuid = model_config.get('primary', '')
+            fallback_models = model_config.get('fallbacks', [])
+        else:
+            # Legacy format: separate model and fallback_models
+            model_uuid = self.get_config('model', '')
+            fallback_models = self.get_config('fallback_models', [])
+        
         if not model_uuid:
             raise ValueError('No model configured for LLM call node')
 
@@ -399,8 +411,8 @@ Respond in the same language as the user's input.
         output_format = self.get_config('output_format', 'text')
         json_schema = self.get_config('json_schema', '')
 
-        # Agent config: fallback models, knowledge bases, rerank, max_round
-        fallback_models = self.get_config('fallback_models', [])
+        # Agent config: knowledge bases, rerank, max_round
+        # (fallback_models already resolved above from model_config or fallback_models)
         knowledge_bases = self.get_config('knowledge_bases', [])
         rerank_model = self.get_config('rerank_model', '')
         rerank_top_k = self.get_config('rerank_top_k', 5)
@@ -493,6 +505,9 @@ Respond in the same language as the user's input.
         if max_tokens and int(max_tokens) > 0:
             extra_args['max_tokens'] = int(max_tokens)
 
+        # Track start time for duration calculation
+        self._llm_start_time = time.time()
+
         # Invoke LLM with fallback
         try:
             result_message, used_model = await self._invoke_with_fallback(
@@ -563,18 +578,81 @@ Respond in the same language as the user's input.
         # Extract usage info
         if hasattr(result_message, 'usage') and result_message.usage:
             u = result_message.usage
-            usage = {
-                'prompt_tokens': getattr(u, 'prompt_tokens', 0) or 0,
-                'completion_tokens': getattr(u, 'completion_tokens', 0) or 0,
-                'total_tokens': getattr(u, 'total_tokens', 0) or 0,
-            }
+            # Handle both object and dict usage
+            if isinstance(u, dict):
+                usage = {
+                    'prompt_tokens': u.get('prompt_tokens', 0) or 0,
+                    'completion_tokens': u.get('completion_tokens', 0) or 0,
+                    'total_tokens': u.get('total_tokens', 0) or 0,
+                }
+            else:
+                usage = {
+                    'prompt_tokens': getattr(u, 'prompt_tokens', 0) or 0,
+                    'completion_tokens': getattr(u, 'completion_tokens', 0) or 0,
+                    'total_tokens': getattr(u, 'total_tokens', 0) or 0,
+                }
         elif hasattr(result_message, 'token_usage') and result_message.token_usage:
             u = result_message.token_usage
-            usage = {
-                'prompt_tokens': getattr(u, 'prompt_tokens', 0) or 0,
-                'completion_tokens': getattr(u, 'completion_tokens', 0) or 0,
-                'total_tokens': getattr(u, 'total_tokens', 0) or 0,
-            }
+            # Handle both object and dict token_usage
+            if isinstance(u, dict):
+                usage = {
+                    'prompt_tokens': u.get('prompt_tokens', 0) or 0,
+                    'completion_tokens': u.get('completion_tokens', 0) or 0,
+                    'total_tokens': u.get('total_tokens', 0) or 0,
+                }
+            else:
+                usage = {
+                    'prompt_tokens': getattr(u, 'prompt_tokens', 0) or 0,
+                    'completion_tokens': getattr(u, 'completion_tokens', 0) or 0,
+                    'total_tokens': getattr(u, 'total_tokens', 0) or 0,
+                }
+
+        # Log successful response (matching Pipeline's cut_str behavior)
+        def _cut_str(s: str) -> str:
+            s0 = s.split('\n')[0]
+            if len(s0) > 20 or '\n' in s:
+                s0 = s0[:20] + '...'
+            return s0
+        logger.info(f'[LLM:{self.node_id}] Response: {_cut_str(response_text)}')
+
+        # Record LLM call log and response log
+        try:
+            if self.ap and context.query:
+                workflow_id = context.workflow_id or ''
+                workflow_name = context.variables.get('_workflow_name', 'Workflow')
+                node_name = self.get_config('name', self.node_id)
+                model_name = used_model.model_entity.name if used_model else 'unknown'
+                
+                # Calculate duration
+                duration_ms = 0
+                if hasattr(self, '_llm_start_time'):
+                    duration_ms = int((time.time() - self._llm_start_time) * 1000)
+                
+                # Record LLM call log (with LLM info)
+                await monitoring_helper.WorkflowMonitoringHelper.record_llm_call_log(
+                    ap=self.ap,
+                    query=context.query,
+                    workflow_id=workflow_id,
+                    workflow_name=workflow_name,
+                    node_name=node_name,
+                    model_name=model_name,
+                    input_tokens=usage.get('prompt_tokens', 0),
+                    output_tokens=usage.get('completion_tokens', 0),
+                    duration_ms=duration_ms,
+                    status='success',
+                )
+                
+                # Record LLM response log (with response message)
+                await monitoring_helper.WorkflowMonitoringHelper.record_llm_response_log(
+                    ap=self.ap,
+                    query=context.query,
+                    workflow_id=workflow_id,
+                    workflow_name=workflow_name,
+                    node_name=node_name,
+                    response_content=response_text,
+                )
+        except Exception as e:
+            logger.warning(f'[LLM:{self.node_id}] Failed to record LLM logs: {e}')
 
         # Save to conversation history
         self._save_to_conversation_history(
@@ -615,7 +693,13 @@ Respond in the same language as the user's input.
         Yields chunks of response text as they arrive.
         Falls back to non-streaming if streaming is not available.
         """
-        model_uuid = self.get_config('model', '')
+        # Support both new model_config format and legacy model + fallback_models format
+        model_config = self.get_config('model_config', None)
+        if model_config and isinstance(model_config, dict):
+            model_uuid = model_config.get('primary', '')
+        else:
+            model_uuid = self.get_config('model', '')
+        
         if not model_uuid:
             raise ValueError('No model configured for LLM call node')
 

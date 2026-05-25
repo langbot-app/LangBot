@@ -304,3 +304,65 @@ class ComponentDiscoveryEngine:
             if component.kind == kind:
                 result.append(component)
         return result
+
+    def discover_workflow_nodes(self, nodes_dir: str) -> typing.List[typing.Type]:
+        """Discover workflow node classes from a directory of Python modules.
+        
+        Scans all .py files in the given directory, imports them, and collects
+        classes that are subclasses of WorkflowNode.
+        
+        Args:
+            nodes_dir: Directory path like 'pkg/workflow/nodes/'
+            
+        Returns:
+            List of WorkflowNode subclasses found
+        """
+        from langbot.pkg.workflow.node import WorkflowNode
+        
+        node_classes: typing.List[typing.Type[WorkflowNode]] = []
+        
+        # Normalize path
+        if nodes_dir.endswith('/'):
+            nodes_dir = nodes_dir[:-1]
+        
+        # Import the nodes package to trigger all module imports
+        module_path = nodes_dir.replace('/', '.').replace('\\', '.')
+        package_path = module_path
+        
+        try:
+            # Import the package __init__ to trigger submodule imports
+            importlib.import_module(f'langbot.{package_path}')
+        except ImportError:
+            self.ap.logger.warning(f'Failed to import workflow nodes package: langbot.{package_path}')
+        
+        # Since workflow/__init__.py is empty, explicitly import all .py files in the nodes directory
+        import os
+        # engine.py is in langbot/pkg/discover/, nodes are in langbot/pkg/workflow/nodes/
+        nodes_abs_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'workflow', 'nodes'))
+        if os.path.isdir(nodes_abs_path):
+            for filename in os.listdir(nodes_abs_path):
+                if filename.endswith('.py') and not filename.startswith('_'):
+                    module_name = filename[:-3]
+                    try:
+                        importlib.import_module(f'langbot.{package_path}.{module_name}')
+                    except ImportError as e:
+                        self.ap.logger.warning(f'Failed to import workflow node module: {module_name}: {e}')
+        
+        # Now collect all WorkflowNode subclasses from sys.modules
+        import sys
+        prefix = f'langbot.{package_path}.'
+        for mod_name, mod in sys.modules.items():
+            if mod_name.startswith(prefix) and mod is not None:
+                for attr_name in dir(mod):
+                    attr = getattr(mod, attr_name)
+                    if (
+                        isinstance(attr, type)
+                        and issubclass(attr, WorkflowNode)
+                        and attr is not WorkflowNode
+                        and hasattr(attr, 'type_name')
+                        and attr.type_name
+                    ):
+                        if attr not in node_classes:
+                            node_classes.append(attr)
+        
+        return node_classes

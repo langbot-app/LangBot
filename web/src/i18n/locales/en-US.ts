@@ -1489,6 +1489,8 @@ const enUS = {
     inputOutputVariables: 'Input/Output Variables',
     inputs: 'Inputs',
     outputs: 'Outputs',
+    autoLayout: 'Auto Layout',
+    autoLayoutSuccess: 'Nodes auto-layout complete',
     availableVariables: 'Available Variables',
     globalVariables: 'Global Variables',
     messageContent: 'Message Content',

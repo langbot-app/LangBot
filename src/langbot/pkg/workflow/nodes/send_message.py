@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from langbot_plugin.api.entities.builtin.workflow import ExecutionContext
+from langbot_plugin.api.entities.builtin.workflow.entities import ExecutionContext
 from ..node import WorkflowNode, workflow_node
 
 logger = logging.getLogger(__name__)
@@ -24,8 +24,15 @@ class SendMessageNode(WorkflowNode):
         message = inputs.get('message') or inputs.get('content') or inputs.get('input') or ''
         message = str(message) if message is not None else ''
 
-        # Get target configuration
-        target_type = self.get_config('target_type', 'person')
+        # Get target configuration - fallback to session_type from context if not configured
+        target_type = self.get_config('target_type', '')
+        if not target_type:
+            # Inherit from current session context
+            if context.trigger_data:
+                target_type = context.trigger_data.get('session_type', 'person') or 'person'
+            else:
+                target_type = 'person'
+        
         target_id = self.get_config('target_id', '')
         
         # If no target_id configured, use session_id from context
@@ -64,6 +71,7 @@ class SendMessageNode(WorkflowNode):
 
         return {
             'status': 'sent' if send_success else 'failed',
+            'message_content': message,
             'message_preview': message[:200],
             'target_type': target_type,
             'target_id': target_id,
