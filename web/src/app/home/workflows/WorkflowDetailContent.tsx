@@ -32,6 +32,7 @@ import { Workflow } from '@/app/infra/entities/api';
 import { useWorkflowStore } from './store/useWorkflowStore';
 import { toast } from 'sonner';
 import EmojiPicker from '@/components/ui/emoji-picker';
+import yaml from 'js-yaml';
 
 export default function WorkflowDetailContent({ id }: { id: string }) {
   const isCreateMode = id === 'new';
@@ -174,7 +175,7 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
     basicInfo,
   ]);
 
-  // Export workflow handler
+  // Export workflow handler - exports as YAML
   const handleExport = useCallback(() => {
     const { nodes, edges } = toWorkflowDefinition();
 
@@ -190,13 +191,12 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
       exportedAt: new Date().toISOString(),
     };
 
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
-      type: 'application/json',
-    });
+    const yamlStr = yaml.dump(exportData, { indent: 2, lineWidth: -1 });
+    const blob = new Blob([yamlStr], { type: 'text/yaml' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${workflow?.name || 'workflow'}.json`;
+    a.download = `${workflow?.name || 'workflow'}.yaml`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -205,13 +205,21 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
     toast.success(t('workflows.exportSuccess'));
   }, [workflow, toWorkflowDefinition, t]);
 
-  // Import workflow handler
+  // Import workflow handler - supports both JSON and YAML
   const handleImport = useCallback(
     (file: File) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         try {
-          const importData = JSON.parse(e.target?.result as string);
+          const content = e.target?.result as string;
+          let importData: any;
+
+          // Try YAML first, then JSON
+          try {
+            importData = yaml.load(content);
+          } catch {
+            importData = JSON.parse(content);
+          }
 
           // Validate imported data structure
           if (!importData.nodes || !Array.isArray(importData.nodes)) {
@@ -339,7 +347,7 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
           <div className="flex gap-2">
             <input
               type="file"
-              accept=".json"
+              accept=".yaml,.yml,.json"
               onChange={handleFileChange}
               style={{ display: 'none' }}
               ref={fileInputRef}
@@ -419,7 +427,7 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
       {/* Hidden file input for import */}
       <input
         type="file"
-        accept=".json"
+        accept=".yaml,.yml,.json"
         onChange={handleFileChange}
         style={{ display: 'none' }}
         ref={fileInputRef}
