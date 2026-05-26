@@ -23,6 +23,57 @@ spec:
     en: https://link.langbot.app/en/platforms/lark
     ja: https://link.langbot.app/ja/platforms/lark
   config:
+    - name: domain
+      label:
+        en_US: Platform Domain
+        zh_Hans: 平台域名
+        zh_Hant: 平台域名
+        ja_JP: プラットフォームドメイン
+      description:
+        en_US: Select the open platform domain. Use Feishu for Chinese mainland, Lark for international
+        zh_Hans: 选择开放平台域名，国内使用飞书，海外使用 Lark
+        zh_Hant: 選擇開放平台域名，國內使用飛書，海外使用 Lark
+        ja_JP: オープンプラットフォームのドメインを選択。中国国内は飛書、海外は Lark を使用
+      type: select
+      options:
+        - name: https://open.feishu.cn
+          label:
+            en_US: Feishu (open.feishu.cn)
+            zh_Hans: 飞书 (open.feishu.cn)
+            zh_Hant: 飛書 (open.feishu.cn)
+            ja_JP: 飛書 (open.feishu.cn)
+        - name: https://open.larksuite.com
+          label:
+            en_US: Lark (open.larksuite.com)
+            zh_Hans: Lark (open.larksuite.com)
+            zh_Hant: Lark (open.larksuite.com)
+            ja_JP: Lark (open.larksuite.com)
+        - name: custom
+          label:
+            en_US: Custom
+            zh_Hans: 自定义
+            zh_Hant: 自定義
+            ja_JP: カスタム
+      required: false
+      default: https://open.feishu.cn
+    - name: custom_domain
+      label:
+        en_US: Custom Domain
+        zh_Hans: 自定义域名
+        zh_Hant: 自定義域名
+        ja_JP: カスタムドメイン
+      description:
+        en_US: "Enter the full domain URL, e.g. https://open.example.com"
+        zh_Hans: "输入完整的域名 URL，例如 https://open.example.com"
+        zh_Hant: "輸入完整的域名 URL，例如 https://open.example.com"
+        ja_JP: "完全なドメイン URL を入力（例: https://open.example.com）"
+      type: string
+      required: false
+      default: ""
+      show_if:
+        field: domain
+        operator: eq
+        value: custom
     - name: one-click-create
       label:
         en_US: One-Click Create App
@@ -140,10 +191,10 @@ spec:
         zh_Hant: 應用類型
         ja_JP: アプリタイプ
       description:
-        en_US: Default to self-built application, refer to https://open.feishu.cn/document/platform-overveiw/overview
-        zh_Hans: 默认为企业自建应用，参考 https://open.feishu.cn/document/platform-overveiw/overview
-        zh_Hant: 預設為企業自建應用，參考 https://open.feishu.cn/document/platform-overveiw/overview
-        ja_JP: デフォルトはカスタムアプリです。詳細は https://open.feishu.cn/document/platform-overveiw/overview を参照してください
+        en_US: "Default to self-built application, refer to https://open.feishu.cn/document/platform-overveiw/overview"
+        zh_Hans: "默认为企业自建应用，参考 https://open.feishu.cn/document/platform-overveiw/overview"
+        zh_Hant: "預設為企業自建應用，參考 https://open.feishu.cn/document/platform-overveiw/overview"
+        ja_JP: "デフォルトはカスタムアプリです。詳細は https://open.feishu.cn/document/platform-overveiw/overview を参照してください"
       type: select
       options:
         - name: self
