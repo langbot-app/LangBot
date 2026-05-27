@@ -163,13 +163,21 @@ class PreProcessor(stage.PipelineStage):
 
         plain_text = ''
         quote_msg = query.pipeline_config['trigger'].get('misc', '').get('combine-quote-message')
+        local_agent_without_vision = (
+            selected_runner == 'local-agent'
+            and llm_model
+            and not llm_model.model_entity.abilities.__contains__('vision')
+        )
 
         for me in query.message_chain:
             if isinstance(me, platform_message.Plain):
                 content_list.append(provider_message.ContentElement.from_text(me.text))
                 plain_text += me.text
             elif isinstance(me, platform_message.Image):
-                if selected_runner != 'local-agent' or (
+                if local_agent_without_vision:
+                    content_list.append(provider_message.ContentElement.from_text('[Image]'))
+                    plain_text += '[Image]'
+                elif selected_runner != 'local-agent' or (
                     llm_model and llm_model.model_entity.abilities.__contains__('vision')
                 ):
                     if me.base64 is not None:
@@ -190,7 +198,10 @@ class PreProcessor(stage.PipelineStage):
                     if isinstance(msg, platform_message.Plain):
                         content_list.append(provider_message.ContentElement.from_text(msg.text))
                     elif isinstance(msg, platform_message.Image):
-                        if selected_runner != 'local-agent' or (
+                        if local_agent_without_vision:
+                            content_list.append(provider_message.ContentElement.from_text('[Image]'))
+                            plain_text += '[Image]'
+                        elif selected_runner != 'local-agent' or (
                             llm_model and llm_model.model_entity.abilities.__contains__('vision')
                         ):
                             if msg.base64 is not None:

@@ -5,6 +5,7 @@ import sqlalchemy
 import typing
 
 from ....core import app
+from ....discover import engine
 from ....entity.persistence import bot as persistence_bot
 from ....entity.persistence import pipeline as persistence_pipeline
 
@@ -16,6 +17,24 @@ class BotService:
 
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
+
+    def _get_adapter_component(self, adapter_name: str) -> engine.Component | None:
+        """Return the discovered platform adapter component for an adapter name."""
+        for component in self.ap.discover.get_components_by_kind('MessagePlatformAdapter'):
+            if component.metadata.name == adapter_name:
+                return component
+        return None
+
+    def _adapter_declares_webhook_url(self, adapter_name: str) -> bool:
+        """Whether the adapter manifest declares a generated webhook URL config item."""
+        component = self._get_adapter_component(adapter_name)
+        if component is None:
+            return False
+
+        for config_item in component.spec.get('config', []):
+            if config_item.get('type') == 'webhook-url':
+                return True
+        return False
 
     async def get_bots(self, include_secret: bool = True) -> list[dict]:
         """获取所有机器人"""
@@ -58,17 +77,10 @@ class BotService:
         if runtime_bot is not None:
             adapter_runtime_values['bot_account_id'] = runtime_bot.adapter.bot_account_id
 
-        # Webhook URL for unified webhook adapters (independent of bot running state)
-        if persistence_bot['adapter'] in [
-            'wecom',
-            'wecombot',
-            'officialaccount',
-            'qqofficial',
-            'slack',
-            'wecomcs',
-            'LINE',
-            'lark',
-        ]:
+        # Webhook URL for adapters that declare a generated webhook config item.
+        # This is manifest-driven so EBA adapters do not need to be mirrored in a
+        # second hard-coded list.
+        if self._adapter_declares_webhook_url(persistence_bot['adapter']):
             webhook_prefix = self.ap.instance_config.data['api'].get('webhook_prefix', 'http://127.0.0.1:5300')
             extra_webhook_prefix = self.ap.instance_config.data['api'].get('extra_webhook_prefix', '')
             webhook_url = f'/bots/{bot_uuid}'
