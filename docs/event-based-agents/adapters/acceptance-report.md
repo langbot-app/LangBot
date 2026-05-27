@@ -9,6 +9,8 @@ Scope:
 - `aiocqhttp-eba`
 - `dingtalk-eba`
 - `lark-eba`
+- `wecom-eba`
+- `wecombot-eba`
 
 This report follows `acceptance-checklist.md`. Evidence levels are intentionally strict:
 
@@ -28,6 +30,8 @@ This report follows `acceptance-checklist.md`. Evidence levels are intentionally
 | OneBot v11 / aiocqhttp | Partial EBA acceptance | Matcha UI covered real group text and outbound supported components/APIs. Multi-component inbound `Source/Plain/At/Face/Image/Voice/File/Quote` was verified through the real OneBot reverse WebSocket adapter endpoint, but not through Matcha UI upload/send. Matcha blocks file-send and merged-forward APIs. |
 | DingTalk | Partial EBA acceptance | Real DingTalk UI covered private text, emoji-as-text inbound, private inbound image/file, outbound image/file/quote/mention fallback components, safe SDK APIs, and safe DingTalk platform APIs. Real UI inbound voice/quote and group trigger were not completed. |
 | Lark / Feishu | Partial EBA acceptance | EBA adapter structure, self-built/store app config, WebSocket/Webhook mode handling, converters, common APIs, platform APIs, and unit tests are in place. One real LangBot organization WebSocket private text event reached `EBAEventProbe`; outbound component sweep was visible in Feishu. Latest real UI image/file sends did not reach local plugin evidence, so media receive remains blocked. |
+| WeCom | Partial EBA acceptance | Regular WeCom application-message adapter is split into the EBA directory with manifest, converters, API mixin, platform API map, and unit tests. Private text reached `EBAEventProbe` through standalone runtime and the real WeCom client; safe plugin APIs passed. Real inbound media and broader event coverage remain pending. |
+| WeComBot | Partial EBA acceptance | WeCom AI Bot is split into the EBA directory with WebSocket long connection mode and optional webhook mode, EBA message/feedback/platform-specific conversion, cache-backed common APIs, platform API map, unit tests, and a direct live probe. Private text, outbound component sweep, safe common APIs, and all declared WeComBot platform APIs reached `EBAEventProbe`; group, real inbound media, and feedback callback evidence remain pending. |
 
 Telegram and DingTalk now have real user-side UI image/file upload evidence in plugin JSONL. Discord and aiocqhttp do not yet have real UI inbound image/file evidence.
 

@@ -1,0 +1,158 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+
+metadata:
+  name: wecombot-eba
+  label:
+    en_US: WeComBot (EBA)
+    zh_Hans: 企业微信智能机器人 (EBA)
+    zh_Hant: 企業微信智慧機器人 (EBA)
+  description:
+    en_US: WeCom AI Bot adapter with Event-Based Agents support
+    zh_Hans: 企业微信智能机器人适配器（EBA 架构版本），支持长连接和 Webhook 两种接入方式
+    zh_Hant: 企業微信智慧機器人適配器（EBA 架構版本），支援長連線和 Webhook 兩種接入方式
+  icon: wecombot.png
+
+spec:
+  categories:
+    - china
+  help_links:
+    zh: https://link.langbot.app/zh/platforms/wecombot
+    en: https://link.langbot.app/en/platforms/wecombot
+    ja: https://link.langbot.app/ja/platforms/wecombot
+  config:
+    - name: BotId
+      label:
+        en_US: BotId
+        zh_Hans: 机器人ID (BotId)
+        zh_Hant: 機器人ID (BotId)
+      type: string
+      required: true
+      default: ""
+    - name: robot_name
+      label:
+        en_US: Robot Name
+        zh_Hans: 机器人名称
+        zh_Hant: 機器人名稱
+      type: string
+      required: true
+      default: ""
+    - name: enable-webhook
+      label:
+        en_US: Enable Webhook Mode
+        zh_Hans: 启用 Webhook 模式
+        zh_Hant: 啟用 Webhook 模式
+      description:
+        en_US: If enabled, the bot will use webhook mode. Otherwise it uses WebSocket long connection mode and does not need a webhook URL.
+        zh_Hans: 如果启用，机器人将使用 Webhook 模式；否则使用 WebSocket 长连接模式，不需要配置 webhook URL。
+        zh_Hant: 如果啟用，機器人將使用 Webhook 模式；否則使用 WebSocket 長連線模式，不需要設定 webhook URL。
+      type: boolean
+      required: true
+      default: false
+    - name: webhook_url
+      label:
+        en_US: Webhook Callback URL
+        zh_Hans: Webhook 回调地址
+        zh_Hant: Webhook 回調地址
+      description:
+        en_US: Copy this URL into WeComBot callback settings only when webhook mode is enabled.
+        zh_Hans: 仅在启用 Webhook 模式时复制此地址到企业微信智能机器人回调配置中。
+        zh_Hant: 僅在啟用 Webhook 模式時複製此地址到企業微信智慧機器人回調設定中。
+      type: webhook-url
+      required: false
+      default: ""
+      show_if:
+        field: enable-webhook
+        operator: eq
+        value: true
+    - name: Secret
+      label:
+        en_US: Secret
+        zh_Hans: 机器人密钥 (Secret)
+        zh_Hant: 機器人密鑰 (Secret)
+      description:
+        en_US: Required for WebSocket long connection mode.
+        zh_Hans: 使用 WebSocket 长连接模式时必填。
+        zh_Hant: 使用 WebSocket 長連線模式時必填。
+      type: string
+      required: false
+      default: ""
+    - name: Corpid
+      label:
+        en_US: Corpid
+        zh_Hans: 企业ID
+        zh_Hant: 企業ID
+      description:
+        en_US: Required for webhook mode.
+        zh_Hans: 使用 Webhook 模式时必填。
+        zh_Hant: 使用 Webhook 模式時必填。
+      type: string
+      required: false
+      default: ""
+    - name: Token
+      label:
+        en_US: Token
+        zh_Hans: 令牌 (Token)
+        zh_Hant: 令牌 (Token)
+      description:
+        en_US: Required for webhook mode.
+        zh_Hans: 使用 Webhook 模式时必填。
+        zh_Hant: 使用 Webhook 模式時必填。
+      type: string
+      required: false
+      default: ""
+    - name: EncodingAESKey
+      label:
+        en_US: EncodingAESKey
+        zh_Hans: 消息加解密密钥 (EncodingAESKey)
+        zh_Hant: 訊息加解密密鑰 (EncodingAESKey)
+      description:
+        en_US: Required for webhook mode. Optional for WebSocket mode when encrypted files need to be decrypted.
+        zh_Hans: Webhook 模式必填。WebSocket 模式下如需解密文件则填写。
+        zh_Hant: Webhook 模式必填。WebSocket 模式下如需解密檔案則填寫。
+      type: string
+      required: false
+      default: ""
+    - name: enable-stream-reply
+      label:
+        en_US: Enable Stream Reply
+        zh_Hans: 启用流式回复
+        zh_Hant: 啟用串流回覆
+      description:
+        en_US: If enabled, the bot will use WeComBot streaming replies.
+        zh_Hans: 如果启用，机器人将使用企业微信智能机器人流式回复。
+        zh_Hant: 如果啟用，機器人將使用企業微信智慧機器人串流回覆。
+      type: boolean
+      required: false
+      default: true
+
+  supported_events:
+    - message.received
+    - feedback.received
+    - platform.specific
+
+  supported_apis:
+    required:
+      - send_message
+      - reply_message
+    optional:
+      - get_message
+      - get_user_info
+      - get_friend_list
+      - get_group_info
+      - get_group_member_info
+      - get_group_member_list
+      - call_platform_api
+
+  platform_specific_apis:
+    - action: is_websocket_mode
+      description: { en_US: "Return whether the adapter is using WebSocket long connection mode", zh_Hans: "返回当前适配器是否使用 WebSocket 长连接模式" }
+    - action: get_stream_session_status
+      description: { en_US: "Inspect stream session state for a received message ID", zh_Hans: "按接收消息 ID 查看流式会话状态" }
+    - action: send_markdown
+      description: { en_US: "Send markdown text proactively in WebSocket mode", zh_Hans: "在 WebSocket 模式下主动发送 Markdown 文本" }
+
+execution:
+  python:
+    path: ./adapter.py
+    attr: WecomBotAdapter
