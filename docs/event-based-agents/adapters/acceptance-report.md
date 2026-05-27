@@ -11,6 +11,7 @@ Scope:
 - `lark-eba`
 - `wecom-eba`
 - `wecombot-eba`
+- `wecomcs-eba`
 
 This report follows `acceptance-checklist.md`. Evidence levels are intentionally strict:
 
@@ -32,6 +33,7 @@ This report follows `acceptance-checklist.md`. Evidence levels are intentionally
 | Lark / Feishu | Partial EBA acceptance | EBA adapter structure, self-built/store app config, WebSocket/Webhook mode handling, converters, common APIs, platform APIs, and unit tests are in place. One real LangBot organization WebSocket private text event reached `EBAEventProbe`; outbound component sweep was visible in Feishu. Latest real UI image/file sends did not reach local plugin evidence, so media receive remains blocked. |
 | WeCom | Partial EBA acceptance | Regular WeCom application-message adapter is split into the EBA directory with manifest, converters, API mixin, platform API map, and unit tests. Private text reached `EBAEventProbe` through standalone runtime and the real WeCom client; safe plugin APIs passed. Real inbound media and broader event coverage remain pending. |
 | WeComBot | Partial EBA acceptance | WeCom AI Bot is split into the EBA directory with WebSocket long connection mode and optional webhook mode, EBA message/feedback/platform-specific conversion, cache-backed common APIs, platform API map, unit tests, and a direct live probe. Private text, outbound component sweep, safe common APIs, and all declared WeComBot platform APIs reached `EBAEventProbe`; group, real inbound media, and feedback callback evidence remain pending. |
+| WeCom Customer Service | Partial EBA acceptance | WeCom Customer Service is split into the EBA directory with manifest, converters, API mixin, platform API map, unit tests, docs, and a direct live probe scaffold. Real WeChat customer-side UI text reached `EBAEventProbe`; plugin outbound text/image and safe cache-backed common APIs passed. Inbound media and platform-specific API live coverage remain pending; later fallback text sends were blocked by WeCom `95001 send msg count limit`. |
 
 Telegram and DingTalk now have real user-side UI image/file upload evidence in plugin JSONL. Discord and aiocqhttp do not yet have real UI inbound image/file evidence.
 
@@ -49,6 +51,7 @@ Telegram and DingTalk now have real user-side UI image/file upload evidence in p
 | DingTalk private media | DingTalk Mac, `LangBot Team` org private chat | `data/temp/dingtalk-plugin-e2e-media-ui.jsonl` |
 | Lark / Feishu unit | local mocked Feishu SDK/client paths | `tests/unit_tests/platform/test_lark_eba_adapter.py` |
 | Lark / Feishu partial live | Feishu Mac, LangBot organization `LangBotDev` private chat | `data/temp/lark-plugin-e2e-ws.jsonl` |
+| WeCom Customer Service | WeChat customer-side UI, `客服消息 -> 浪波智能客服` on `dev.rockchin.top` | `/home/wgc/LangBotxg/LangBotEbaTest/data/temp/wecomcs_eba_plugin_probe.jsonl` |
 
 All plugin runs used SDK standalone runtime ports `5400/5401`, LangBot `--standalone-runtime`, and the real plugin at `langbot-plugin-demo/EBAEventProbe`.
 
