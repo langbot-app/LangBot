@@ -22,6 +22,7 @@ Current acceptance report: [EBA Adapter Acceptance Report](./acceptance-report.m
 | Lark / Feishu | Migrated; partial live text E2E, media-inbound gap remains | [Lark / Feishu](./lark.md) |
 | WeCom | Migrated; private text plugin E2E verified, media/group gaps remain | [WeCom](./wecom.md) |
 | WeComBot | Migrated; private text and outbound/API plugin E2E verified, feedback/group gaps remain | [WeComBot](./wecombot.md) |
+| Official Account | Migrated; private text plugin E2E verified, proactive outbound not supported | [Official Account](./officialaccount.md) |
 
 ## Documentation Checklist
 
