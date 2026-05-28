@@ -501,6 +501,8 @@ class PlatformManager:
             bot_entity.adapter_config,
             logger,
         )
+        if hasattr(adapter_inst, 'ap'):
+            adapter_inst.ap = self.ap
 
         # 如果 adapter 支持 set_bot_uuid 方法，设置 bot_uuid（用于统一 webhook）
         if hasattr(adapter_inst, 'set_bot_uuid'):

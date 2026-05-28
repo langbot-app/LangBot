@@ -4,11 +4,12 @@ import time
 
 import telegram
 import telegram.ext
-from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CallbackQueryHandler, filters
 import telegramify_markdown
 import typing
 import traceback
+import json
 import base64
 import pydantic
 
@@ -189,6 +190,7 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
 class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     bot: telegram.Bot = pydantic.Field(exclude=True)
     application: telegram.ext.Application = pydantic.Field(exclude=True)
+    ap: typing.Any = pydantic.Field(exclude=True, default=None)
 
     message_converter: TelegramMessageConverter = TelegramMessageConverter()
     event_converter: TelegramEventConverter = TelegramEventConverter()
@@ -224,6 +226,95 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 telegram_callback,
             )
         )
+
+        async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            query = update.callback_query
+            await query.answer()
+            try:
+                data = json.loads(query.data)
+                if data.get('form_action') or data.get('f'):
+                    import langbot_plugin.api.entities.builtin.provider.session as provider_session
+
+                    workflow_run_id = data.get('workflow_run_id') or data.get('w', '')
+                    action_id = data.get('action_id') or data.get('a', '')
+                    session_key = data.get('session_key') or data.get('s', '')
+
+                    if session_key.startswith('group_') or session_key.startswith('g:'):
+                        launcher_type = provider_session.LauncherTypes.GROUP
+                        launcher_id = (
+                            session_key.split(':', 1)[1]
+                            if session_key.startswith('g:')
+                            else session_key[len('group_') :]
+                        )
+                    else:
+                        launcher_type = provider_session.LauncherTypes.PERSON
+                        launcher_id = (
+                            session_key.split(':', 1)[1]
+                            if session_key.startswith('p:')
+                            else session_key[len('person_') :]
+                        )
+
+                    user_id = str(query.from_user.id)
+
+                    # Find bot_uuid and pipeline_uuid
+                    bot_uuid = ''
+                    pipeline_uuid = None
+                    for b in self.ap.platform_mgr.bots:
+                        if b.adapter is self:
+                            bot_uuid = b.bot_entity.uuid
+                            pipeline_uuid = b.bot_entity.use_pipeline_uuid
+                            break
+
+                    form_action_data = {
+                        'workflow_run_id': workflow_run_id,
+                        'action_id': action_id,
+                        'user': f'{launcher_type.value}_{launcher_id}',
+                        'inputs': {},
+                    }
+
+                    message_chain = platform_message.MessageChain(
+                        [platform_message.Plain(text=f'[Form Action: {action_id}]')]
+                    )
+
+                    if launcher_type == provider_session.LauncherTypes.GROUP:
+                        synthetic_event = platform_events.GroupMessage(
+                            sender=platform_entities.GroupMember(
+                                id=user_id,
+                                member_name='',
+                                permission=platform_entities.Permission.Member,
+                                group=platform_entities.Group(
+                                    id=launcher_id,
+                                    name='',
+                                    permission=platform_entities.Permission.Member,
+                                ),
+                            ),
+                            message_chain=message_chain,
+                        )
+                    else:
+                        synthetic_event = platform_events.FriendMessage(
+                            sender=platform_entities.Friend(
+                                id=user_id,
+                                nickname='',
+                                remark='',
+                            ),
+                            message_chain=message_chain,
+                        )
+
+                    await self.ap.query_pool.add_query(
+                        bot_uuid=bot_uuid,
+                        launcher_type=launcher_type,
+                        launcher_id=launcher_id,
+                        sender_id=user_id,
+                        message_event=synthetic_event,
+                        message_chain=message_chain,
+                        adapter=self,
+                        pipeline_uuid=pipeline_uuid,
+                        variables={'_dify_form_action': form_action_data},
+                    )
+            except Exception:
+                await self.logger.error(f'Error in telegram callback query: {traceback.format_exc()}')
+
+        application.add_handler(CallbackQueryHandler(callback_query_handler))
         super().__init__(
             config=config,
             logger=logger,
@@ -369,6 +460,11 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 del args['draft_id']
                 await self.bot.send_message(**args)
                 self.msg_stream_id.pop(message_id)
+
+                # Send form action buttons if form data is present
+                form_data = getattr(bot_message, '_form_data', None)
+                if form_data:
+                    await self._send_form_action_buttons(message_source, form_data)
         else:
             stream_id = draft_id
             if (msg_seq - 1) % 8 == 0 or is_final:
@@ -383,6 +479,51 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
             if is_final and bot_message.tool_calls is None:
                 self.msg_stream_id.pop(message_id)
+
+                # Send form action buttons if form data is present
+                form_data = getattr(bot_message, '_form_data', None)
+                if form_data:
+                    await self._send_form_action_buttons(message_source, form_data)
+
+    async def _send_form_action_buttons(
+        self,
+        message_source: platform_events.MessageEvent,
+        form_data: dict,
+    ):
+        """Send inline keyboard buttons for Dify human_input_required form actions."""
+        actions = form_data.get('actions', [])
+        node_title = form_data.get('node_title', '')
+
+        if isinstance(message_source, platform_events.GroupMessage):
+            session_key = f'g:{message_source.group.id}'
+        else:
+            session_key = f'p:{message_source.sender.id}'
+
+        keyboard = []
+        for action in actions:
+            action_id = action.get('id', '')
+            action_title = action.get('title', action_id)
+            callback_data = json.dumps(
+                {'f': 1, 'a': action_id, 's': session_key},
+                separators=(',', ':'),
+            )
+            keyboard.append([InlineKeyboardButton(action_title, callback_data=callback_data)])
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        update = message_source.source_platform_object
+        chat_id = update.effective_chat.id
+        message_thread_id = update.message.message_thread_id
+
+        args = {
+            'chat_id': chat_id,
+            'text': f'[{node_title}] Please select an action:',
+            'reply_markup': reply_markup,
+        }
+        if message_thread_id:
+            args['message_thread_id'] = message_thread_id
+
+        await self.bot.send_message(**args)
 
     def get_launcher_id(self, event: platform_events.MessageEvent) -> str | None:
         if not isinstance(event.source_platform_object, Update):
