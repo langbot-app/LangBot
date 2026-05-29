@@ -11,16 +11,17 @@
 - `claude-code-agent` 可以作为外部 harness runner 通过同一条 `run(event, binding)` 路径执行。
 - Claude Code runner 可以接收 LangBot event-first context，并把 context / skill / MCP 配置投影给本地 Claude Code CLI。
 - Claude Code runner 可以把外部 session id 和 working directory 写回 LangBot host-owned state，用于后续 resume。
+- `codex-agent` 可以作为外部 harness runner 通过同一条 `run(event, binding)` 路径执行，并把 Codex `thread_id` 写回 host-owned state。
 
-这表示当前架构足以支撑 `local-agent` 与一个最小 Claude Code runner 的联调；不表示安全发布级 hardening 已完成。
+这表示当前架构足以支撑 `local-agent`、最小 Claude Code runner 与最小 Codex runner 的联调；不表示安全发布级 hardening 已完成。
 
 ## 2. 环境
 
 | 项 | 值 |
 | --- | --- |
-| LangBot commit | `9330a684` |
-| `langbot-agent-runner` commit | `07e235b`，本地存在未提交的 `claude-code-agent/` |
-| `langbot-local-agent` commit | `ce1fe46` |
+| LangBot commit | `58e4b357` |
+| `langbot-agent-runner` commit | `d681dda` |
+| `langbot-local-agent` commit | `573cc00` |
 | Claude Code CLI | `2.1.137 (Claude Code)` |
 | Frontend | `http://127.0.0.1:3000` |
 | Backend | `http://127.0.0.1:5300` |
@@ -31,6 +32,7 @@
 | --- | --- | --- | --- |
 | local-agent | `dc75c543-70f9-4d2a-9467-968628e6ca01` | `plugin:langbot/local-agent/default` | PASS |
 | Claude Code | `f5c6d8e0-0c5a-4f3f-b7d4-0c1a0dec0de1` | `plugin:langbot/claude-code-agent/default` | PASS |
+| Codex | `57eb0cc8-5a5a-4865-9f3e-8b3ad070fbc2` | `plugin:langbot/codex-agent/default` | PASS |
 
 ## 4. 证据
 
@@ -67,6 +69,23 @@
   - `agent_runner_state` 中记录了 `external.working_directory`。
   - 使用保存的 session id 在对应工作目录执行 Claude Code resume 成功。
 
+### 4.5 Codex runner UI E2E
+
+- 报告：`/home/glwuy/langbot-app/langbot-skills/reports/codex-agent-real-20260529-fifth.md`
+- 截图：`/home/glwuy/langbot-app/langbot-skills/reports/evidence/codex-agent-real-20260529-fifth/screenshot.png`
+- 后端日志成功信号：
+  - `Processing request from person_websocket`
+  - `Conversation(0) Streaming completed: 1 chunks, 21 chars`
+- Codex JSONL 事件：
+  - `thread.started`
+  - `item.completed` with `agent_message`
+  - `turn.completed`
+- 通过点：
+  - Debug Chat 用户可见回复 `LANGBOT_CODEX_E2E_OK5`。
+  - `agent_runner_state` 中记录了 `external.session_id` 和 `external.working_directory`。
+  - `environment-json` 可以显式传入代理环境，避免插件 worker 环境缺失导致本地 Codex CLI 卡住。
+  - timeout/cancel 路径会清理 Codex 子进程，避免 orphan `codex exec`。
+
 ## 5. 当前未关闭项
 
 以下不应作为当前协议闭环的阻塞项：
@@ -74,11 +93,11 @@
 - 发布级安全 hardening：见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
 - 完整 EBA 分支联调和 EventGateway 迁移。
 - 完整异步队列、issue-centric 产品模型和复杂 workflow engine。
-- Codex / Kimi runner 全量接入。
+- Codex 发布级能力 / Kimi runner 全量接入。
 
 ## 6. 建议状态
 
 - 本地 `local-agent` 协议闭环：PASS。
 - 本地 Claude Code external harness smoke：PASS。
+- 本地 Codex external harness smoke：PASS。
 - Phase 1 是否整体关闭：可以关闭本地协议闭环；若定义为所有官方外部服务 runner 都必须有真实凭据，则外部服务 runner 仍按凭据可用性分别 PASS / BLOCKED。
-

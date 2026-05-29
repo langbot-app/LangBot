@@ -141,6 +141,7 @@ Host 侧 agent runner 单测不通过时，不应进入 UI parity QA。
 | P2-EXT-05 | `langflow-agent` | 配置 flow endpoint 并发送消息。 | 普通或 SSE 流式响应能归一为 LangBot 消息。 |
 | P2-EXT-06 | `tbox-agent` | 配置 Tbox 应用并发送消息。 | 回复正常；多模态输入按插件能力处理。 |
 | P2-EXT-07 | `claude-code-agent` | 配置本地 Claude Code CLI，使用保守权限模式发送确定性 Debug Chat prompt。 | runner 可选、配置可保存、CLI 成功返回；LangBot context 文件可被 Claude Code 读取；`external.session_id` / `external.working_directory` 可写入 host-owned state；CLI 错误、timeout、空输出能被转成受控 `run.failed`。 |
+| P2-EXT-08 | `codex-agent` | 配置本地 Codex CLI，使用 Debug Chat 发送确定性 prompt。 | runner 可选、配置可保存、CLI 成功返回；LangBot context 文件可被 Codex 读取；`external.session_id` / `external.working_directory` 可写入 host-owned state；代理等 runtime-local 环境可通过 binding config 显式传入；CLI 错误、timeout、空输出能被转成受控 `run.failed`。 |
 
 ### 9.1 外部 harness runner 追加检查
 

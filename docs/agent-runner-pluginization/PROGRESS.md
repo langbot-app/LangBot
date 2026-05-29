@@ -96,7 +96,7 @@
 
 以下项目属于本分支收尾工作：
 
-- [x] Smoke / manual validation — `local-agent` 与 Claude Code MVP 已通过本地 WebUI smoke
+- [x] Smoke / manual validation — `local-agent`、Claude Code MVP、Codex MVP 已通过本地 WebUI smoke
 - [ ] Docs final QA
 - [ ] Claude Code runner 文档、安装和 marketplace 发布准备
 
@@ -114,7 +114,7 @@
 | Event router integration | event branch | 与 BindingResolver 集成 |
 | Scheduler / background event source | 其他模块 | 定时任务、后台事件源 |
 | Security release hardening | 后续 release gate | 路径隔离、权限边界、secret、MCP/skill 投影策略、资源配额、审计 |
-| Codex / Kimi runner 全量接入 | 后续 runner 插件工作 | 当前只验证 Claude Code MVP 形态，不扩大 scope |
+| Codex / Kimi runner 全量接入 | 后续 runner 插件工作 | Codex MVP 已打通；Codex 发布级能力、Kimi runner 和全量 hardening 仍不扩大到当前协议闭环 |
 | Issue-centric 产品模型 / 异步队列 / workflow engine | 后续产品架构 | 不属于当前 agent-runner plugin 协议闭环 |
 
 ---

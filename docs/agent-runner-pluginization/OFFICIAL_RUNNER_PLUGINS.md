@@ -15,7 +15,7 @@ context/runtime 的 runner，不能被官方插件的实现细节绑死。
 - LangBot 主聊天路径通过 `AgentRunOrchestrator` 调用插件化 `AgentRunner`。
 - 旧 `src/langbot/pkg/provider/runners/*` 仍保留，作为迁移参考和回退分析材料；在官方插件迁移完成前不要求删除。
 - 官方 runner 当前以独立插件目录/仓库推进，例如 `langbot-local-agent/` 和 `langbot-agent-runner/*-agent/`。不再要求先落地单一 monorepo。
-- `claude-code-agent` 已作为外部 harness runner MVP 接入，用来验证 Claude Code / Codex / Kimi Code 这类自管 runtime 的边界。
+- `claude-code-agent` 与 `codex-agent` 已作为外部 harness runner MVP 接入，用来验证 Claude Code / Codex / Kimi Code 这类自管 runtime 的边界。
 
 ## 1. 为什么新仓库
 
@@ -46,6 +46,7 @@ langbot-app/
     tests/
   langbot-agent-runner/
     claude-code-agent/
+    codex-agent/
     n8n-agent/
     ...
 ```
@@ -65,6 +66,7 @@ langbot-app/
 | `n8n-service-api` | `langbot/n8n-agent` | `plugin:langbot/n8n-agent/default` |
 | `coze-api` | `langbot/coze-agent` | `plugin:langbot/coze-agent/default` |
 | - | `langbot/claude-code-agent` | `plugin:langbot/claude-code-agent/default` |
+| - | `langbot/codex-agent` | `plugin:langbot/codex-agent/default` |
 | `dashscope-app-api` | `langbot/dashscope-agent` | `plugin:langbot/dashscope-agent/default` |
 | `langflow-api` | `langbot/langflow-agent` | `plugin:langbot/langflow-agent/default` |
 | `tbox-app-api` | `langbot/tbox-agent` | `plugin:langbot/tbox-agent/default` |
@@ -77,12 +79,13 @@ langbot-app/
 
 1. `local-agent`
 2. `claude-code-agent`
-3. `dify-agent`
+3. `codex-agent`
+4. `dify-agent`
 
 原因：
 
 - `local-agent` 覆盖模型、工具、知识库、流式、会话历史，是能力最完整的基准。
-- `claude-code-agent` 代表 Claude Code / Codex / Kimi Code 这类本地或外部 code-agent harness：它们通常自带 session、tool loop、上下文压缩和权限模型，LangBot 主要提供 IM 事件、资源投影、审计和状态指针。
+- `claude-code-agent` / `codex-agent` 代表 Claude Code / Codex / Kimi Code 这类本地或外部 code-agent harness：它们通常自带 session、tool loop、上下文压缩和权限模型，LangBot 主要提供 IM 事件、资源投影、审计和状态指针。
 - `dify-agent` 代表外部 Agent 平台调用，配置和错误处理能验证传统 service API runner 的迁移方式。
 
 ### Batch 2：迁移外部 workflow runner
@@ -254,6 +257,8 @@ Claude Code runner 当前把 LangBot event-first context 投影给外部 harness
 - Skill 文件可以投影到 `.claude/skills/`
 - MCP config 可以通过 binding config 投影为 Claude Code CLI 参数
 - `external.session_id` 与 `external.working_directory` 可以写入 host-owned state，用于后续 resume
+- `codex-agent` 可通过 WebUI Debug Chat 调用本机 Codex CLI，读取 LangBot event context，并把 Codex `thread_id` 写入 host-owned state
+- 对需要代理的本地运行环境，`codex-agent` 可通过 binding config 的 `environment-json` 显式传递非 secret 环境变量
 
 详见 [PHASE1_QA_REPORT_2026-05-29.md](./PHASE1_QA_REPORT_2026-05-29.md)。
 
@@ -262,7 +267,7 @@ Claude Code runner 当前把 LangBot event-first context 投影给外部 harness
 - 不是发布级安全边界实现。
 - 默认只做本地 CLI 调用，不实现完整 sandbox/workspace 生命周期。
 - 不实现 issue-centric 队列、复杂 workflow engine 或长期任务调度。
-- 不代表 Codex / Kimi runner 已完成；它只验证外部 harness runner 的协议形态。
+- 不代表 Codex 发布级能力或 Kimi runner 已完成；当前只验证外部 harness runner 的协议形态。
 
 ## 9. 发布和安装策略
 
