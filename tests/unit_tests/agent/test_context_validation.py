@@ -3,28 +3,20 @@ from __future__ import annotations
 
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
-import uuid
 
 # SDK imports for validation
 from langbot_plugin.api.entities.builtin.agent_runner.context import AgentRunContext
 from langbot_plugin.api.entities.builtin.agent_runner.event import AgentEventContext
 from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
 from langbot_plugin.api.entities.builtin.agent_runner.context_access import ContextAccess
-from langbot_plugin.api.entities.builtin.agent_runner.trigger import AgentTrigger
 from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput
 from langbot_plugin.api.entities.builtin.agent_runner.resources import AgentResources
 from langbot_plugin.api.entities.builtin.agent_runner.runtime import AgentRuntimeContext
-from langbot_plugin.api.entities.builtin.agent_runner.state import AgentRunState
 
 # LangBot imports
 from langbot.pkg.agent.runner.context_builder import (
     AgentRunContextBuilder,
-    AgentTrigger as BuilderTrigger,
-    ConversationContext as BuilderConversation,
-    AgentInput as BuilderInput,
-    AgentRunState as BuilderState,
     AgentResources as BuilderResources,
-    AgentRuntimeContext as BuilderRuntime,
 )
 from langbot.pkg.agent.runner.host_models import AgentEventEnvelope, AgentBinding, BindingScope
 from langbot.pkg.core import app
@@ -170,6 +162,65 @@ class TestContextValidation:
 
         # Verify input
         assert validated.input.text == "Hello world"
+
+    @pytest.mark.asyncio
+    async def test_build_context_preserves_subject_data_for_non_message_events(self):
+        """Non-message EBA events keep subject.data instead of relying on message text."""
+        from langbot_plugin.api.entities.builtin.agent_runner.event import ActorContext, SubjectContext
+        from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput as EventInput
+        from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
+
+        mock_app = self._make_mock_app()
+        builder = AgentRunContextBuilder(mock_app)
+        event = AgentEventEnvelope(
+            event_id="evt_recall_1",
+            event_type="message.recalled",
+            event_time=1700000001,
+            source="platform",
+            source_event_type="platform.message.recall",
+            bot_id="bot_1",
+            workspace_id="workspace_1",
+            conversation_id="conv_1",
+            actor=ActorContext(actor_type="user", actor_id="user_1"),
+            subject=SubjectContext(
+                subject_type="message",
+                subject_id="message_1",
+                data={"recalled_message_id": "message_1", "reason": "user_recall"},
+            ),
+            input=EventInput(text=None),
+            delivery=DeliveryContext(surface="test"),
+            data={"source_event_id": "source_recall_1"},
+        )
+        binding = self._make_binding()
+        binding.event_types = ["message.recalled"]
+        resources = self._make_resources()
+        descriptor = self._make_descriptor()
+
+        with patch('langbot.pkg.agent.runner.context_builder.get_persistent_state_store') as mock_get_store:
+            mock_store = AsyncMock()
+            mock_store.build_snapshot_from_event = AsyncMock(return_value={
+                'conversation': {},
+                'actor': {},
+                'subject': {},
+                'runner': {},
+            })
+            mock_get_store.return_value = mock_store
+
+            context_dict = await builder.build_context_from_event(
+                event=event,
+                binding=binding,
+                descriptor=descriptor,
+                resources=resources,
+            )
+
+        validated = AgentRunContext.model_validate(context_dict)
+
+        assert validated.event.event_type == "message.recalled"
+        assert validated.input.text is None
+        assert validated.subject is not None
+        assert validated.subject.subject_type == "message"
+        assert validated.subject.subject_id == "message_1"
+        assert validated.subject.data == {"recalled_message_id": "message_1", "reason": "user_recall"}
 
     @pytest.mark.asyncio
     async def test_build_context_from_event_has_no_legacy_top_level_fields(self):

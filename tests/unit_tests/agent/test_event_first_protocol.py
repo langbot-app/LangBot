@@ -10,15 +10,11 @@ Tests cover:
 from __future__ import annotations
 
 import pytest
-from unittest.mock import Mock, MagicMock, patch
-import typing
+from unittest.mock import Mock
 
 # Import SDK entities
 from langbot_plugin.api.entities.builtin.agent_runner.event import (
     AgentEventContext,
-    ConversationContext,
-    ActorContext,
-    SubjectContext,
 )
 from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput
 from langbot_plugin.api.entities.builtin.agent_runner.trigger import AgentTrigger
@@ -33,22 +29,8 @@ from langbot_plugin.api.entities.builtin.agent_runner.capabilities import (
 from langbot_plugin.api.entities.builtin.agent_runner.permissions import (
     AgentRunnerPermissions,
 )
-from langbot_plugin.api.entities.builtin.agent_runner.context_policy import (
-    AgentRunnerContextPolicy,
-)
-from langbot_plugin.api.entities.builtin.agent_runner.manifest import (
-    AgentRunnerManifest,
-)
 
 # Import LangBot host models
-from langbot.pkg.agent.runner.host_models import (
-    AgentEventEnvelope,
-    AgentBinding,
-    BindingScope,
-    ResourcePolicy,
-    StatePolicy,
-    DeliveryPolicy,
-)
 from langbot.pkg.agent.runner.pipeline_adapter import PipelineAdapter
 
 
@@ -76,9 +58,24 @@ class TestPipelineQueryToEventEnvelope:
         """Test conversation context extraction."""
         event = PipelineAdapter.query_to_event(mock_query)
 
-        # Conversation may be None if no session
-        if event.conversation_id:
-            assert event.conversation_id is not None
+        assert event.conversation_id == "conv-uuid-123"
+
+    def test_query_to_event_prefers_variable_conversation_id_when_conversation_uuid_missing(self, mock_query):
+        """Pipeline variables can provide the conversation identity for state scope."""
+        mock_query.session.using_conversation.uuid = None
+        mock_query.variables["conversation_id"] = "conv-from-vars"
+
+        event = PipelineAdapter.query_to_event(mock_query)
+
+        assert event.conversation_id == "conv-from-vars"
+
+    def test_query_to_event_falls_back_to_launcher_session_for_state_scope(self, mock_query):
+        """Debug Chat and legacy pipeline runs may not have a conversation UUID."""
+        mock_query.session.using_conversation.uuid = None
+
+        event = PipelineAdapter.query_to_event(mock_query)
+
+        assert event.conversation_id == "person_launcher-123"
 
     def test_query_to_event_delivery_context(self, mock_query):
         """Test delivery context extraction."""
@@ -117,6 +114,17 @@ class TestPipelineQueryToEventEnvelope:
         event = PipelineAdapter.query_to_event(mock_query)
 
         assert event.delivery.reply_target == {"message_id": None}
+
+    def test_query_to_event_scopes_pipeline_local_event_ids(self, mock_query):
+        """Pipeline-local message IDs must not become global audit IDs."""
+        first = PipelineAdapter.query_to_event(mock_query)
+
+        mock_query.launcher_id = "launcher-456"
+        second = PipelineAdapter.query_to_event(mock_query)
+
+        assert first.event_id.startswith("pipeline:")
+        assert first.event_id != "789"
+        assert second.event_id != first.event_id
 
 
 class TestPipelineConfigToBinding:

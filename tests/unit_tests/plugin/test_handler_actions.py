@@ -512,6 +512,53 @@ class TestAgentRunProxyActions:
         assert provider.kwargs['funcs'] == []
 
     @pytest.mark.asyncio
+    async def test_invoke_llm_stream_skips_none_chunks(self, app):
+        """INVOKE_LLM_STREAM tolerates provider heartbeat/no-op chunks."""
+        from langbot.pkg.agent.runner.session_registry import get_session_registry
+
+        class StreamProvider:
+            async def invoke_llm_stream(self, **kwargs):
+                yield provider_message.MessageChunk(role='assistant', content='ok')
+                yield None
+                yield provider_message.MessageChunk(role='assistant', content=' done', is_final=True)
+
+        run_id = 'run_proxy_invoke_llm_stream_none_chunks'
+        query = self.query()
+        app.query_pool.cached_queries[904] = query
+
+        registry = get_session_registry()
+        await registry.unregister(run_id)
+        await registry.register(
+            run_id=run_id,
+            runner_id='plugin:test/runner/default',
+            query_id=904,
+            plugin_identity='test/runner',
+            resources=make_agent_resources(models=[{'model_id': 'llm_stream_002'}]),
+        )
+
+        model = SimpleNamespace(
+            model_entity=SimpleNamespace(abilities=[], extra_args={}),
+            provider=StreamProvider(),
+        )
+        app.model_mgr.get_model_by_uuid.return_value = model
+        runtime_handler = make_handler(app)
+
+        responses = []
+        try:
+            stream = runtime_handler.actions[PluginToRuntimeAction.INVOKE_LLM_STREAM.value]({
+                'run_id': run_id,
+                'llm_model_uuid': 'llm_stream_002',
+                'messages': [{'role': 'user', 'content': 'hello'}],
+            })
+            async for response in stream:
+                responses.append(response)
+        finally:
+            await registry.unregister(run_id)
+
+        assert [response.code for response in responses] == [0, 0]
+        assert [response.data['chunk']['content'] for response in responses] == ['ok', ' done']
+
+    @pytest.mark.asyncio
     async def test_call_tool_passes_current_query(self, app):
         """CALL_TOOL passes the current Query back into tool execution."""
         from langbot.pkg.agent.runner.session_registry import get_session_registry

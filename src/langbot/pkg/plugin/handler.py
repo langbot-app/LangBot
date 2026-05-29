@@ -674,6 +674,8 @@ class RuntimeConnectionHandler(handler.Handler):
                 extra_args=effective_extra_args,
                 remove_think=remove_think,
             ):
+                if chunk is None:
+                    continue
                 yield handler.ActionResponse.success(
                     data={
                         'chunk': chunk.model_dump(),

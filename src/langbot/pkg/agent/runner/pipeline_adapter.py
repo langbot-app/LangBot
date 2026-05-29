@@ -5,8 +5,8 @@ Protocol v1 architecture.
 """
 from __future__ import annotations
 
+import hashlib
 import typing
-import time
 
 from langbot_plugin.api.entities.builtin.pipeline import query as pipeline_query
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
@@ -19,7 +19,6 @@ from langbot_plugin.api.entities.builtin.agent_runner.event import (
 )
 from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput
 from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
-from langbot_plugin.api.entities.builtin.agent_runner.trigger import AgentTrigger
 
 from .host_models import (
     AgentEventEnvelope,
@@ -305,8 +304,9 @@ class PipelineAdapter:
         if isinstance(event_time, (int, float)):
             event_time = int(event_time)
 
+        source_event_id = str(message_id or query.query_id)
         return AgentEventContext(
-            event_id=str(message_id or query.query_id),
+            event_id=cls._build_scoped_event_id(query, source_event_id, event_time),
             event_type=runner_events.MESSAGE_RECEIVED,
             event_time=event_time,
             source="pipeline_adapter",
@@ -315,19 +315,35 @@ class PipelineAdapter:
         )
 
     @classmethod
+    def _build_scoped_event_id(
+        cls,
+        query: pipeline_query.Query,
+        source_event_id: str,
+        event_time: int | None,
+    ) -> str:
+        """Build a globally unique host event id from pipeline-local ids."""
+        launcher_type = getattr(query, 'launcher_type', None)
+        launcher_type_value = getattr(launcher_type, 'value', launcher_type) if launcher_type is not None else None
+        scope_parts = [
+            'pipeline_adapter',
+            getattr(query, 'pipeline_uuid', None),
+            getattr(query, 'bot_uuid', None),
+            launcher_type_value,
+            getattr(query, 'launcher_id', None),
+            getattr(query, 'sender_id', None),
+            source_event_id,
+            event_time,
+        ]
+        scoped = '|'.join('' if part is None else str(part) for part in scope_parts)
+        digest = hashlib.sha256(scoped.encode('utf-8')).hexdigest()[:32]
+        return f'pipeline:{digest}'
+
+    @classmethod
     def _build_conversation_context(
         cls,
         query: pipeline_query.Query,
     ) -> ConversationContext:
         """Build ConversationContext from Query."""
-        # Handle session and conversation_id
-        conversation_id = None
-        session = getattr(query, 'session', None)
-        if session:
-            conversation = getattr(session, 'using_conversation', None)
-            if conversation:
-                conversation_id = getattr(conversation, 'uuid', None)
-
         # Handle launcher_type safely
         launcher_type = getattr(query, 'launcher_type', None)
         launcher_type_value = None
@@ -336,6 +352,26 @@ class PipelineAdapter:
 
         # Handle launcher_id
         launcher_id = getattr(query, 'launcher_id', None)
+
+        # Build session_id from launcher info if available
+        session_id = None
+        if launcher_type_value and launcher_id:
+            session_id = f'{launcher_type_value}_{launcher_id}'
+
+        # Handle session and conversation_id
+        conversation_id = None
+        session = getattr(query, 'session', None)
+        if session:
+            conversation = getattr(session, 'using_conversation', None)
+            if conversation:
+                conversation_id = getattr(conversation, 'uuid', None)
+
+        if not conversation_id:
+            variables = getattr(query, 'variables', None) or {}
+            conversation_id = variables.get('conversation_id') or None
+
+        if not conversation_id:
+            conversation_id = session_id
 
         # Handle sender_id
         sender_id = getattr(query, 'sender_id', None)
@@ -348,13 +384,8 @@ class PipelineAdapter:
         # Handle pipeline_uuid
         pipeline_uuid = getattr(query, 'pipeline_uuid', None)
 
-        # Build session_id from launcher info if available
-        session_id = None
-        if launcher_type_value and launcher_id:
-            session_id = f'{launcher_type_value}_{launcher_id}'
-
         return ConversationContext(
-            conversation_id=conversation_id,
+            conversation_id=str(conversation_id) if conversation_id is not None else None,
             thread_id=None,
             launcher_type=launcher_type_value,
             launcher_id=launcher_id,

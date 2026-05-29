@@ -229,7 +229,7 @@ class AgentRunContextBuilder:
             subject_context = {
                 'subject_type': event.subject.subject_type,
                 'subject_id': event.subject.subject_id,
-                'subject_data': event.subject.data,
+                'data': event.subject.data,
             }
 
         # Build input from event
