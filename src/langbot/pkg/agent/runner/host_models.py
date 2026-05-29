@@ -155,7 +155,7 @@ class AgentBinding(pydantic.BaseModel):
     """Runner ID to invoke."""
 
     runner_config: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
-    """Runner instance configuration."""
+    """Runner binding configuration."""
 
     resource_policy: ResourcePolicy = pydantic.Field(default_factory=ResourcePolicy)
     """Resource policy."""

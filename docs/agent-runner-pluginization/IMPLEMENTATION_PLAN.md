@@ -1,6 +1,6 @@
 # Agent Runner 插件化当前实现与收尾计划
 
-> 2026-05-29 状态说明：本文档是实现推进计划和历史上下文，不是最新验收结论的唯一来源。当前设计入口见 [README.md](./README.md)，协议边界见 [PROTOCOL_V1.md](./PROTOCOL_V1.md)，进度见 [PROGRESS.md](./PROGRESS.md)，最新本地 smoke 见 [PHASE1_QA_REPORT_2026-05-29.md](./PHASE1_QA_REPORT_2026-05-29.md)。
+> 2026-05-29 状态说明：本文档是实现推进计划和历史上下文，不是最新验收结论的唯一来源。当前设计入口见 [README.md](./README.md)，协议边界见 [PROTOCOL_V1.md](./PROTOCOL_V1.md)，进度见 [PROGRESS.md](./PROGRESS.md)，下一轮测试入口见 [PHASE1_QA_ACCEPTANCE_MATRIX.md](./PHASE1_QA_ACCEPTANCE_MATRIX.md)。
 
 本文档面向实现 agent，用来把当前 AgentRunner 插件化实现推进到可迁移状态。
 
@@ -188,10 +188,11 @@ Protocol v1 context 的稳定字段：
 
 Pipeline adapter 的 `prompt` 和公开业务变量不进入顶层协议字段：
 
-- effective prompt -> `ctx.adapter.extra["prompt"]`
 - filtered params -> `ctx.adapter.extra["params"]`
-- `max-round` working window -> `ctx.bootstrap.messages`
-- 同一窗口也可出现在 `ctx.adapter.adapter_messages`，供 adapter 消费方读取
+- legacy/effective prompt 可以暂存到 `ctx.adapter.extra["prompt"]`，但 official
+  runner 不应把它当作行为契约
+- `max-round` working window 可以保留在 Pipeline adapter 兼容层，但 official
+  `local-agent` 不消费该 bootstrap/window
 - packaging 元数据 -> `ctx.runtime.metadata.context_packaging`
 
 现阶段不要把新的压缩或 token-budget 裁剪塞回 Pipeline stage。Pipeline 只负责入口适配；完整历史和长期上下文由 EventLog / Transcript / pull APIs / future ContextCompressor 支撑。
@@ -300,6 +301,10 @@ api.create_temp_artifact(name: str, content_type: str, ttl_seconds: int) -> Arti
 - platform_capabilities：本阶段只声明，不执行平台动作
 
 注意：旧的 unrestricted proxy action 必须二次校验，不能只靠 context 声明。AgentRunner 可用资源应来自 `ctx.resources`，不是插件 runtime 的全局能力。
+
+本阶段不接入 sandbox/skills，也不预留 runner 可见字段。后续相关分支合并后，
+执行、文件、skill、MCP 等能力应先由 Host 侧封装成普通 tool，再通过
+`ctx.resources.tools` 进入 runner；runner 不应识别或硬编码执行环境 provider。
 
 资源裁剪要尽量通用，不应只写死 local-agent：
 
@@ -486,7 +491,7 @@ async def run_from_query(query: pipeline_query.Query) -> AsyncGenerator[Message 
 
 - SDK `AgentRunContext` 保持 event-first：`event/input/delivery/resources/context/state/runtime/config/bootstrap/adapter`。
 - LangBot context builder 只从 `AgentEventEnvelope + AgentBinding` 写入稳定协议字段。
-- Pipeline adapter 把 effective prompt 写入 `ctx.adapter.extra["prompt"]`，把公开业务变量写入 `ctx.adapter.extra["params"]`。
+- Pipeline adapter 可以把公开业务变量写入 `ctx.adapter.extra["params"]`；legacy/effective prompt 若保留在 `ctx.adapter.extra["prompt"]`，也只属于 adapter metadata。
 - 保持 `ctx.config` 只表达静态绑定配置。
 
 ### Step 2：增强宿主 AgentRun proxy action
@@ -506,7 +511,8 @@ async def run_from_query(query: pipeline_query.Query) -> AsyncGenerator[Message 
 
 ### Step 4：local-agent parity
 
-- 使用 `ctx.adapter.extra["prompt"]` 而不是重新读取 `ctx.config["prompt"]`。
+- 使用静态绑定配置 `ctx.config["prompt"]`，不读取 `ctx.adapter.extra["prompt"]`。
+- 通过 Host history API 拉取 transcript，不读取 `ctx.bootstrap.messages` 或 `ctx.adapter.adapter_messages`。
 - 当前 user message 从 `ctx.input.contents` 构造，保留多模态内容。
 - RAG 只替换/插入文本部分，不丢图片/文件。
 - streaming/non-streaming 默认跟随 `runtime.metadata.streaming_supported`。
@@ -519,7 +525,7 @@ async def run_from_query(query: pipeline_query.Query) -> AsyncGenerator[Message 
 - 插件无输出时按 runner failed 处理。
 - timeout/deadline 覆盖 plugin runtime、模型调用和外部 runner 调用。
 - runner 协议错误转受控错误。
-- 覆盖旧 local-agent 行为 parity：普通回复、流式、工具、多步工具、KB、rerank、多模态、PromptPreProcessing。
+- 覆盖 local-agent 用户可见行为：普通回复、流式、工具、多步工具、KB、rerank、多模态、绑定 prompt、history API。
 
 ### Step 6：官方 runner 迁移
 

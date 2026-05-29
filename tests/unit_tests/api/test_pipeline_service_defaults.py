@@ -42,7 +42,6 @@ async def test_default_pipeline_config_uses_installed_local_agent_schema():
         'plugin:langbot/local-agent/default',
         [
             {'name': 'model', 'type': 'model-fallback-selector', 'default': {'primary': '', 'fallbacks': []}},
-            {'name': 'max-round', 'type': 'integer', 'default': 10},
             {'name': 'prompt', 'type': 'prompt-editor', 'default': [{'role': 'system', 'content': 'Hello'}]},
         ],
     )
@@ -61,7 +60,6 @@ async def test_default_pipeline_config_uses_installed_local_agent_schema():
     assert config['ai']['runner_config'] == {
         'plugin:langbot/local-agent/default': {
             'model': {'primary': '', 'fallbacks': []},
-            'max-round': 10,
             'prompt': [{'role': 'system', 'content': 'Hello'}],
         },
     }

@@ -24,6 +24,7 @@
 - **Event subscription / Event notification**：事件订阅、推送通知
 - **BindingResolver persistence UI**：绑定配置的持久化 UI 和 event router 集成（如由其他模块负责）
 - **Scheduler / Background event source**：定时任务、后台事件源
+- **Runtime control plane v2**：runtime registry、heartbeat、task queue、daemon claim、progress/cancel 和 runtime audit
 
 EventGateway 在本文档中描述为 **future integration point**，由外部 event branch 提供。本分支只定义 host-side envelope/binding models 和 `run(event, binding)` orchestrator 入口。
 
@@ -51,11 +52,11 @@ Pipeline path 已获得 event-first host capabilities：
 | [HOST_SDK_INFRASTRUCTURE.md](./HOST_SDK_INFRASTRUCTURE.md) | LangBot 宿主能力、SDK 协议、runner 发现、绑定、权限、状态、存储、生命周期和调用链。 |
 | [AGENT_CONTEXT_PROTOCOL.md](./AGENT_CONTEXT_PROTOCOL.md) | Agent-owned context 方向：事件到来时 LangBot 传什么，agent 如何按需拉取更多历史 / artifact / state，以及如何支持 KV cache 友好的上下文管理。 |
 | [EVENT_BASED_AGENT.md](./EVENT_BASED_AGENT.md) | EBA 预留：事件模型、事件来源、触发绑定、非消息事件如何复用 AgentRunner 调度。**标注为 future design note**。 |
+| [RUNTIME_CONTROL_PLANE_V2.md](./RUNTIME_CONTROL_PLANE_V2.md) | Agent Platform v2 / runtime 管控面预留：Host 新增 runtime registry、heartbeat、task queue、daemon 执行和 audit；管理插件构建在这些 Host 能力之上。**标注为 future design note**。 |
 | [OFFICIAL_RUNNER_PLUGINS.md](./OFFICIAL_RUNNER_PLUGINS.md) | 官方 runner 插件迁移，包括 local-agent 和外部 runner。它是下游落地计划，不是 LangBot 基础能力设计的前置约束。 |
-| [PHASE1_QA_ACCEPTANCE_MATRIX.md](./PHASE1_QA_ACCEPTANCE_MATRIX.md) | 当前阶段的 QA 验收矩阵。它验证现有分支的兼容性，不代表最终架构边界。 |
+| [PHASE1_QA_ACCEPTANCE_MATRIX.md](./PHASE1_QA_ACCEPTANCE_MATRIX.md) | Agent Runner QA 指南：保留最高价值测试路径，指导 agent 开展下一轮 WebUI / runner smoke 验证。 |
 | [SECURITY_HARDENING.md](./SECURITY_HARDENING.md) | 安全发布级 hardening 的后续发布门槛：路径隔离、权限边界、secret、资源配额、MCP / skill 投影和审计。 |
 | [PROGRESS.md](./PROGRESS.md) | 当前实现进度、已验收能力、未完成收尾和非本分支范围。 |
-| [PHASE1_QA_REPORT_2026-05-29.md](./PHASE1_QA_REPORT_2026-05-29.md) | 2026-05-29 本地 local-agent 与 Claude Code runner 的 UI E2E / smoke 验收记录。 |
 
 ## 工作拆分
 
@@ -79,7 +80,7 @@ Pipeline path 已获得 event-first host capabilities：
 
 LangBot 不应成为最终 agentic context manager。它应提供事实源、默认上下文引用和按需读取 API；agent 或其背后的 runtime 负责历史剪裁、摘要、召回和 KV cache 策略。
 
-当前代码中的 `max-round` 是 Pipeline adapter 配置，不应作为目标协议继续扩展。
+`max-round` 这类历史窗口参数不应作为目标协议继续扩展；如果某个 runner 仍需要类似策略，应由该 runner 的 manifest/config schema 暴露为 binding config。
 
 详见 [AGENT_CONTEXT_PROTOCOL.md](./AGENT_CONTEXT_PROTOCOL.md)。
 
@@ -103,6 +104,15 @@ LangBot 不应成为最终 agentic context manager。它应提供事实源、默
 
 详见 [OFFICIAL_RUNNER_PLUGINS.md](./OFFICIAL_RUNNER_PLUGINS.md)。
 
+### 5. Runtime Control Plane v2（Future）
+
+当前 AgentRunner v1 主线只负责 `event -> binding -> runner.run(ctx) -> result stream`。
+后续 Agent Platform v2 可以在 Host 侧新增 runtime registry、heartbeat、task queue、daemon claim、progress/cancel 和 runtime audit。
+
+在这些 Host 能力之上，可以构建独立 agent 管控面插件；插件负责 UI、策略和编排体验，runtime/task 的事实源仍由 Host 持有。
+
+详见 [RUNTIME_CONTROL_PLANE_V2.md](./RUNTIME_CONTROL_PLANE_V2.md)。
+
 ## 已确认决策
 
 - 一个插件可以声明多个 `AgentRunner` 组件，每个组件独立暴露 manifest、配置 schema、能力和权限。
@@ -112,3 +122,4 @@ LangBot 不应成为最终 agentic context manager。它应提供事实源、默
 - 官方 runner 插件是协议消费者，不是协议设计的优先约束。
 - Pipeline 是当前入口 adapter，不是未来架构中心。
 - EventGateway 是 future integration point，由外部 event branch 提供。
+- Runtime control plane 是 v2 Host capability layer，不阻塞当前 AgentRunner v1 主线；agent 管控面插件应构建在该 Host 能力层之上。

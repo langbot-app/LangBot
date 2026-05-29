@@ -23,7 +23,7 @@ class AgentResourceBuilder:
     - Apply 3-layer permission filtering:
         1. Runner manifest declared permissions
         2. Pipeline extensions_preference (bound plugins/MCP servers)
-        3. Runner instance config selected resources
+        3. Runner binding config selected resources
     - Build models list from authorized models
     - Build tools list from bound plugins/MCP servers
     - Build knowledge_bases list from config
@@ -68,7 +68,7 @@ class AgentResourceBuilder:
         # Layer 2: Binding resource policy
         resource_policy = binding.resource_policy
 
-        # Layer 3: Runner instance config
+        # Layer 3: Runner binding config
         runner_config = binding.runner_config
 
         # Build each resource category

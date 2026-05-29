@@ -1,194 +1,245 @@
-# Agent Runner 插件化 Phase 1 QA 验收矩阵
+# Agent Runner QA 指南
 
-本文档用于指导测试 agent 验收 Phase 1：Agent Runner 插件化是否已经达到旧内置 runner 的对外效果。
+本文档是 agent-runner 插件化下一轮测试的唯一 QA 入口。它合并并取代旧的 Phase 1 验收矩阵与 2026-05-18 / 2026-05-29 两份本地 QA 报告。
 
-Phase 1 的目标是让当前聊天 Pipeline 在选择插件化 AgentRunner 后，用户可感知行为与旧内置 runner 保持一致。Phase 2/EBA 不纳入本轮验收。
+目标不是保留完整历史流水账，而是指导测试 agent 用最小但高价值的路径判断当前分支是否仍然健康。
 
-本文档是当前分支兼容性验收矩阵，不代表目标架构边界。目标协议以 [PROTOCOL_V1.md](./PROTOCOL_V1.md) 为准：Pipeline 是兼容入口，`messages` 只是 optional bootstrap，LangBot 不默认 inline 全量历史。
+## 1. 测试边界
 
-## 1. 验收边界
+当前主线验证的是 AgentRunner Protocol v1：
 
-本轮必须验收：
+```text
+event -> binding -> runner.run(ctx) -> result stream
+```
 
-- Pipeline 仍按现有消息入口运行。
-- Runner 由插件提供，并通过 `AgentRunOrchestrator` 调用。
-- `local-agent` 插件达到旧内置 local-agent 的主要行为 parity。
-- 官方外部 runner 插件至少完成 smoke 验收。
-- 外部 harness runner（当前以 Claude Code MVP 为代表）至少完成一次 WebUI smoke，验证 event-first context、资源投影和 state handoff。
-- 旧 Pipeline 配置兼容，新配置可保存并生效。
-- 权限裁剪、错误隔离、运行状态更新不破坏主流程。
+本指南验证：
 
-本轮不验收：
+- Host 能通过当前 Pipeline adapter 进入 event-first `run(event, binding)` 主链路。
+- Runner 来自插件 registry，而不是旧内置 runner 分支。
+- `local-agent` 能消费 Host 模型、工具、知识库、history、state、artifact 等基础设施。
+- 外部 harness runner（Claude Code / Codex）能消费 event-first context，并把 session / working directory 等指针写回 host-owned state。
+- 错误、权限裁剪、无输出、timeout 等路径不会破坏主聊天流程。
 
-- EBA EventBus。
-- EBA EventRouter。
-- 消息撤回、群成员加入、好友申请等非消息事件的真实接入。
-- `action.requested` 平台动作执行。
-- 新平台 API 权限模型。
+本指南不验证：
 
-上述非目标只允许检查协议预留是否存在，不允许作为 Phase 1 阻塞项。
+- Runtime Control Plane v2。
+- EventGateway / EventRouter 完整落地。
+- 发布级 path isolation、secret filtering、MCP allowlist、资源配额和 workspace cleanup。
+- 所有外部服务 runner 的真实凭据联调。
+
+这些属于后续能力或发布门槛，分别见 [RUNTIME_CONTROL_PLANE_V2.md](./RUNTIME_CONTROL_PLANE_V2.md) 与 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
 
 ## 2. 状态定义
 
-测试 agent 只能使用以下状态：
+测试报告只使用以下状态：
 
 | 状态 | 含义 |
 | --- | --- |
-| PASS | 按本矩阵步骤执行，所有通过条件满足，并记录证据。 |
-| FAIL | 环境可用，但功能行为不满足通过条件。 |
-| BLOCKED | 因缺少密钥、外部服务不可用、账号/OAuth 未完成、测试数据缺失等环境问题无法执行。必须写清阻塞原因。 |
-| N/A | 当前插件或平台明确不支持该能力。必须引用 manifest capability、文档或配置说明。 |
+| PASS | 按步骤执行，用户可见行为和日志证据都满足通过条件。 |
+| FAIL | 环境可用，但行为不满足通过条件。 |
+| BLOCKED | 凭据、CLI、外部服务、测试数据或本地配置缺失导致无法执行。必须写清阻塞原因。 |
+| N/A | 当前 runner 或平台明确不支持该能力。必须引用 manifest、文档或配置说明。 |
 
-不能使用“看起来正常”“大概通过”“未完全测试”等模糊状态。
+不能使用“看起来正常”“大概通过”“基本没问题”等模糊状态。
 
-## 3. 总体验收条件
+## 3. 执行顺序
 
-Phase 1 可以关闭的最低条件：
+推荐按以下顺序执行，前一层失败时不要继续扩大测试面：
 
-- 所有 P0 case 必须 PASS。
-- `local-agent` 的 P1 parity case 必须 PASS，除非该能力旧内置 runner 也不支持，此时可标 N/A。
-- 官方外部 runner smoke case 至少对已具备凭据和服务的插件 PASS；缺凭据的插件可标 BLOCKED，但必须保留配置页面截图或日志说明。
-- 没有会导致主聊天路径不可用、插件 runtime 崩溃、Pipeline 配置丢失、权限绕过的未解决 FAIL。
-- 所有 FAIL/BLOCKED 都必须记录复现步骤、日志位置、截图或请求/响应摘要。
+1. Host / SDK / runner 单测。
+2. WebUI 登录与 Pipeline Debug Chat 基础 smoke。
+3. `local-agent` 高价值场景。
+4. Claude Code / Codex 外部 harness smoke。
+5. 权限和错误路径补充检查。
+6. 汇总 PASS / FAIL / BLOCKED，并给出下一步建议。
 
-推荐测试前先运行：
+用户可见流程必须通过 WebUI 或真实消息平台验证。API / curl 只能作为诊断证据，不能单独让 UI case PASS。
+
+## 4. 必跑基线
+
+### 4.1 单测基线
+
+在 LangBot 仓库运行：
 
 ```bash
 uv run --frozen pytest tests/unit_tests/agent
 ```
 
-Host 侧 agent runner 单测不通过时，不应进入 UI parity QA。
+如果本次改动只触及默认配置或 API service，也至少补跑相关目标测试，例如：
 
-## 4. 证据要求
+```bash
+uv run pytest tests/unit_tests/api/test_pipeline_service_defaults.py
+```
 
-每个 case 至少记录：
+通过条件：
+
+- agent 单测全 PASS，或失败项已确认与本次 agent-runner 路径无关。
+- 若失败来自 `context_builder`、`orchestrator`、`session_registry`、`resource_builder`、`plugin/handler.py` 的 run action 权限路径，不应进入 UI smoke。
+
+### 4.2 环境基线
+
+用 `langbot-skills` 做环境检查：
+
+```bash
+cd "$LANGBOT_SKILLS_REPO"
+bin/lbs env doctor
+bin/lbs case list
+```
+
+`LANGBOT_SKILLS_REPO` 指向当前工作区里的 `langbot-skills` 仓库。优先使用已有 case，而不是临时发明测试路径。
+
+推荐首批 case：
+
+- `webui-login-state`
+- `pipeline-debug-chat`
+- `local-agent-basic-debug-chat`
+- `local-agent-rag-debug-chat`（改动涉及 RAG / knowledge）
+- `local-agent-plugin-tool-call-debug-chat`（改动涉及 tool / resource policy）
+
+## 5. WebUI 主链路 Smoke
+
+### 5.1 Runner registry
+
+步骤：
+
+1. 打开 WebUI Pipeline 配置页。
+2. 查看 AI runner 下拉列表。
+3. 选择 `plugin:langbot/local-agent/default`。
+4. 保存并刷新页面。
+
+通过条件：
+
+- runner 选项来自插件 registry。
+- 保存后配置仍为 `ai.runner.id` + `ai.runner_config[id]`。
+- `runner_config` 表示 binding config，不表示插件实例状态。
+- 插件没有循环重启或 metadata 加载失败。
+
+### 5.2 主聊天路径
+
+步骤：
+
+1. 使用绑定 `plugin:langbot/local-agent/default` 的 Pipeline。
+2. 在 Debug Chat 发送确定性普通文本。
+3. 查看 WebUI 回复和后端日志。
+
+通过条件：
+
+- 用户可见回复正常。
+- 后端日志显示走 `AgentRunOrchestrator` / `RUN_AGENT`。
+- 不走旧内置 local-agent 主执行分支。
+- conversation transcript 写入用户消息和助手消息。
+
+## 6. `local-agent` 高价值测试
+
+只保留最能覆盖架构边界的场景。
+
+| ID | 场景 | 操作 | 通过条件 |
+| --- | --- | --- | --- |
+| LA-01 | 绑定 prompt | 配置 system prompt 后发送文本。 | runner 使用 `ctx.config.prompt`，不读取 `ctx.adapter.extra["prompt"]`；回复体现绑定 prompt。 |
+| LA-02 | history API | 连续两轮对话，第二轮引用第一轮 marker。 | runner 通过 Host history API 或自管上下文读取历史，不依赖 bootstrap window。 |
+| LA-03 | 流式 / 非流式 | 分别用支持流式和关闭流式的路径发送文本。 | 流式 UI 不重复、不空白；非流式只输出最终消息。 |
+| LA-04 | 工具调用 | 绑定测试工具，发送会触发工具的 prompt。 | `ctx.resources.tools` 只包含授权工具；工具调用 started/completed；最终回复包含工具结果。 |
+| LA-05 | RAG | 绑定测试知识库，发送命中文档的 prompt。 | `ctx.resources.knowledge_bases` 包含所选知识库；runner 通过授权 API 检索；回复使用检索内容。 |
+| LA-06 | 多模态 | 发送图片输入。 | `ctx.input.contents` 保留图片；支持视觉模型时正常处理，不支持时受控失败。 |
+| LA-07 | fallback / 错误 | 模拟 primary 模型失败或 runner 抛错。 | fallback 或 `run.failed` 行为受控；后续请求不受影响。 |
+| LA-08 | 无输出保护 | 测试 runner 完成但不产出消息。 | 不产生空白成功回复；按受控失败或明确缺陷处理。 |
+
+Rerank、remove-think、文件输入等场景只在本次改动直接涉及时补测，不作为每轮必跑项。
+
+## 7. 外部 Harness Runner Smoke
+
+这些测试用于验证 Claude Code / Codex 这类自管 runtime 能走同一条 Host 协议路径。若本机没有 CLI、登录态或代理配置，标记 BLOCKED，不要伪造 PASS。
+
+### 7.1 Claude Code runner
+
+步骤：
+
+1. 确认 `claude` CLI 在 LangBot runtime host 上可执行。
+2. 绑定 `plugin:langbot/claude-code-agent/default`。
+3. 使用保守权限模式和确定性 prompt。
+4. 在 Debug Chat 执行一次真实 smoke。
+5. 检查 context / skill / MCP projection 和 host-owned state。
+
+通过条件：
+
+- WebUI 可见回复包含预期 sentinel。
+- context JSON schema 为 `langbot.agent_runner.external_harness_context.v1` 或当前文档声明的等价 schema。
+- context 包含 event、input、delivery、resources、context、state。
+- 如启用 skills / MCP，投影路径和配置可被 Claude Code 读取。
+- `external.session_id` / `external.working_directory` 写入 host-owned state。
+- CLI missing、nonzero exit、timeout、empty output 都转成受控 `run.failed`。
+
+### 7.2 Codex runner
+
+步骤：
+
+1. 确认 `codex` CLI 在 LangBot runtime host 上可执行。
+2. 绑定 `plugin:langbot/codex-agent/default`。
+3. 如需要代理，使用 binding config 的 `environment-json` 显式传入。
+4. 在 Debug Chat 执行一次真实 smoke。
+5. 检查 JSONL 事件、last message、host-owned state。
+
+通过条件：
+
+- WebUI 可见回复包含预期 sentinel。
+- Codex JSONL 至少包含 thread/session 起始事件、agent message、turn completed。
+- `external.session_id` / `external.working_directory` 写入 host-owned state。
+- timeout/cancel 不遗留 orphan CLI 子进程。
+- CLI missing、nonzero exit、timeout、empty output 都转成受控 `run.failed`。
+
+### 7.3 API 型外部 runner
+
+Dify、n8n、Coze、DashScope、Langflow、Tbox 等外部服务 runner 不作为每轮必跑项。只有在本次改动触及对应 runner 或凭据已经可用时执行 smoke。
+
+通过条件：
+
+- runner 可选，配置可保存。
+- 请求成功，或外部服务错误被清晰返回。
+- 外部服务凭据缺失时标记 BLOCKED，并记录缺失项。
+
+## 8. 权限与隔离补充
+
+以下优先用单测 / targeted fixture 覆盖，不要求每次通过 UI 人工构造恶意 runner。
+
+| 场景 | 推荐证据 |
+| --- | --- |
+| 未授权模型调用被拒绝 | `plugin/handler.py` run action 权限测试或目标单测。 |
+| 未授权工具调用被拒绝 | `ctx.resources.tools` 与 host action 拒绝日志。 |
+| 未授权知识库检索被拒绝 | `ctx.resources.knowledge_bases` 与 host action 拒绝日志。 |
+| run_id 结束后复用被拒绝 | session registry 注销测试。 |
+| 插件身份不匹配被拒绝 | `caller_plugin_identity` mismatch 测试。 |
+| storage/state scope 越权被拒绝 | state/storage proxy 单测。 |
+
+如果这些单测失败，不能用 WebUI 正常回复替代。
+
+## 9. 证据要求
+
+每轮测试报告至少记录：
 
 - LangBot commit、SDK commit、相关 runner 插件 commit。
-- Pipeline UUID/name、runner id、runner config 摘要。
-- WebUI 截图或浏览器操作记录。
-- 后端日志中对应 query id/run id 的关键行。
-- 对外部 runner，记录外部服务响应摘要或错误码。
-- 对外部 harness runner，记录 context 文件、MCP/skill 投影、外部 session id / working directory state 和 CLI 错误摘要。
+- Pipeline UUID/name、runner id、关键 runner config 摘要。
+- WebUI 截图或 Playwright 操作记录。
+- 后端日志中对应 query id / run id 的关键行。
+- `langbot-skills` case/report 路径。
+- 外部 harness runner 的 context 文件、session id、working directory、CLI 错误摘要。
+- FAIL/BLOCKED 的复现步骤和归属仓库建议。
 
-用户可见流程必须通过 WebUI 或真实消息平台验证。API/curl 只能作为诊断证据，不能单独让 UI case PASS。
+报告结论必须回答：
 
-## 5. P0 环境与主链路
+- 是否建议继续进入下一阶段测试。
+- 是否存在主聊天路径阻塞。
+- 是否只是凭据 / 外部服务 / 本机 CLI 缺失导致 BLOCKED。
+- 是否需要进入 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md) 的发布级验收。
 
-| ID | 场景 | 步骤 | 通过条件 |
-| --- | --- | --- | --- |
-| P0-ENV-01 | LangBot 服务可用 | 启动后端和前端，打开 WebUI。 | WebUI 可登录/访问；后端无启动异常；插件系统按配置启用。 |
-| P0-ENV-02 | 插件 runtime 可用 | 查看插件列表或后端日志。 | runtime 已启动；官方 runner 插件处于可用状态；无循环重启。 |
-| P0-ENV-03 | Runner registry 可发现插件 runner | 打开 Pipeline AI runner 配置。 | runner 下拉列表来自插件 registry；至少能看到 `plugin:langbot/local-agent/default`；若安装了 Claude Code runner，还应看到 `plugin:langbot/claude-code-agent/default`。 |
-| P0-ENV-04 | 默认 Pipeline 可创建 | 新建 Pipeline 或读取默认 Pipeline。 | 默认配置使用 `ai.runner.id` 与 `ai.runner_config`；默认 runner 可保存。 |
-| P0-ENV-05 | 主聊天路径调用插件 runner | 使用默认 `local-agent` Pipeline 发送一条普通消息。 | 后端日志显示走 `AgentRunOrchestrator` / `RUN_AGENT`；用户收到正常回复；旧内置 runner 不应作为主路径执行。 |
-| P0-ENV-06 | 单测基线 | 运行 `uv run --frozen pytest tests/unit_tests/agent`。 | 全部通过；若失败，必须先修复或记录为 P0 FAIL。 |
+## 10. 历史高价值记录
 
-## 6. P1 local-agent parity
+历史报告已合并为本指南，不再保留单独文档。后续若需要追溯，优先查看 `langbot-skills/reports/` 下的原始执行报告。
 
-`local-agent` 是 Phase 1 的主验收对象。以下 case 需要和旧内置 local-agent 的用户可见行为对齐。
+截至 2026-05-29，已有本地 smoke 证明：
 
-| ID | 场景 | 步骤 | 通过条件 |
-| --- | --- | --- | --- |
-| P1-LA-01 | 普通文本对话 | 绑定 `plugin:langbot/local-agent/default`，发送普通文本。 | 回复正常生成；conversation history 写入用户消息和助手消息。 |
-| P1-LA-02 | 有效 prompt | 配置 system prompt，并通过 PromptPreProcessing 插件或现有预处理改变 prompt。 | runner 使用 host 处理后的 `ctx.adapter.extra["prompt"]`，不是只读取静态 `ctx.config.prompt`；回复体现有效 prompt。 |
-| P1-LA-03 | 历史消息 | 连续多轮对话，第二轮引用第一轮内容。 | 当前兼容路径下 runner 能读到 host 下发的 bootstrap/history；目标协议下应通过 history API 或插件自管上下文实现。第二轮能基于上下文回答。 |
-| P1-LA-04 | 流式输出 | 使用支持流式的 adapter/WebUI，开启流式模型或流式 runner。 | UI 逐步更新；后端接收 `message.delta`；最终没有重复消息或空白卡片。 |
-| P1-LA-05 | 非流式输出 | 使用不支持流式或关闭流式的路径。 | 只输出最终消息；不会创建异常流式卡片。 |
-| P1-LA-06 | 工具调用 | 绑定一个可调用工具，提问触发工具。 | `ctx.resources.tools` 只包含授权工具；runner 能获取工具详情并调用；最终回复包含工具结果。 |
-| P1-LA-07 | 工具权限裁剪 | 不绑定某工具，但让 runner 尝试调用。 | 调用被拒绝；错误不泄露未授权工具详情；Pipeline 不崩溃。 |
-| P1-LA-08 | RAG 检索 | 绑定知识库并提问命中文档。 | `ctx.resources.knowledge_bases` 包含所选知识库；runner 可检索；回复引用或使用检索内容。 |
-| P1-LA-09 | RAG 权限裁剪 | 不绑定知识库或绑定另一个知识库。 | 未授权知识库不可检索；错误可控。 |
-| P1-LA-10 | rerank | 绑定 rerank 模型并启用知识库检索排序。 | runner 可通过授权 rerank 模型排序；无权限时不允许调用。 |
-| P1-LA-11 | fallback model | 配置 primary 和 fallback，模拟 primary 失败。 | fallback 被调用；用户得到可用回复或明确失败提示；日志能区分 primary/fallback。 |
-| P1-LA-12 | remove-think | 开启输出 `remove-think`，使用会产生 think 内容的模型。 | 用户最终回复不包含被移除的 think 内容；插件 runner 走 runtime metadata 或 API 参数保持旧行为。 |
-| P1-LA-13 | 多模态图片 | 发送图片输入。 | `ctx.input.contents` / `ctx.input.attachments` 保留图片；支持视觉模型时可正常处理；不支持时错误提示可控。 |
-| P1-LA-14 | 文件输入 | 发送文件或文件 URL。 | runner 可看到文件 attachment 摘要；支持文件处理时正常处理；不支持时不崩溃。 |
-| P1-LA-15 | 会话状态 | runner 返回 `state.updated`，下一轮继续对话。 | state 被 host 接收并作用于下一轮；conversation id 等兼容旧行为。 |
-| P1-LA-16 | 异常处理 | 让 runner 返回 `run.failed` 或抛异常。 | ChatMessageHandler 使用 Pipeline 的异常策略；用户提示符合配置；runtime 和后续请求不受影响。 |
-| P1-LA-17 | 无输出保护 | runner 完成但不返回消息。 | 不产生空白成功回复；应按受控失败处理或明确记录缺陷。 |
+- `local-agent` 可以通过 Pipeline Debug Chat 走插件化 `AgentRunOrchestrator` 主链路。
+- Claude Code runner 可以通过同一条 `run(event, binding)` 路径执行。
+- Claude Code runner 可以读取 LangBot event-first context / skill / MCP 投影，并写回 `external.session_id` / `external.working_directory`。
+- Codex runner 可以通过同一条路径执行，并把 Codex `thread_id` 写回 host-owned state。
 
-## 7. P1 配置兼容与迁移
-
-| ID | 场景 | 步骤 | 通过条件 |
-| --- | --- | --- | --- |
-| P1-CFG-01 | 读取旧配置 | 使用只包含 `ai.runner.runner = local-agent` 和旧 `ai.local-agent` 配置的 Pipeline。 | 能解析为 `plugin:langbot/local-agent/default`；旧配置值生效。 |
-| P1-CFG-02 | 保存新配置 | 在 WebUI 修改 runner 和 runner config 后保存。 | 数据库存储 `ai.runner.id` 和 `ai.runner_config[id]`；刷新页面后不丢失。 |
-| P1-CFG-03 | runner 切换 | 同一 Pipeline 从 local-agent 切到另一个官方 runner，再切回。 | 每个 runner 的绑定配置独立保存；切换不污染其它 runner config。 |
-| P1-CFG-04 | 插件缺失 | 配置引用一个未安装或未启动的 runner。 | WebUI/后端给出可理解错误；Pipeline 不因 metadata 加载失败整体不可用。 |
-| P1-CFG-05 | bound plugin 授权 | Pipeline 只绑定部分插件。 | 未绑定插件的 runner 不能执行；已绑定插件正常执行。 |
-
-## 8. P1 权限与隔离
-
-| ID | 场景 | 步骤 | 通过条件 |
-| --- | --- | --- | --- |
-| P1-AUTH-01 | 模型权限 | runner 尝试调用不在 `ctx.resources.models` 的模型。 | Host action 拒绝；错误包含 run/session 维度信息；不会调用实际模型。 |
-| P1-AUTH-02 | 工具权限 | runner 尝试调用不在 `ctx.resources.tools` 的工具。 | Host action 拒绝；不会越权执行工具。 |
-| P1-AUTH-03 | 知识库权限 | runner 尝试检索不在 `ctx.resources.knowledge_bases` 的知识库。 | Host action 拒绝；不会返回未授权知识库内容。 |
-| P1-AUTH-04 | 存储权限 | manifest 未声明 storage 权限时访问 plugin/workspace storage。 | 访问被拒绝；普通插件非 AgentRunner 的兼容路径不受影响。 |
-| P1-AUTH-05 | run_id 生命周期 | runner 结束后继续使用旧 run_id 调 host action。 | session 已注销；请求被拒绝。 |
-| P1-AUTH-06 | 插件身份隔离 | A 插件 runner 的 run_id 被 B 插件使用。 | Host 拒绝 identity mismatch。 |
-
-## 9. P2 官方外部 runner smoke
-
-以下 case 是 smoke，不要求和 local-agent 一样覆盖全部能力。若缺少外部服务凭据，状态标 BLOCKED，并记录缺失项。
-
-| ID | Runner | 步骤 | 通过条件 |
-| --- | --- | --- | --- |
-| P2-EXT-01 | `dify-agent` | 配置 chat/agent/workflow 中至少一种可用应用并发送消息。 | runner 可选、配置可保存、请求成功或外部服务错误被清晰返回。 |
-| P2-EXT-02 | `n8n-agent` | 配置 webhook 和认证方式并发送消息。 | webhook 被调用；返回内容进入 LangBot 回复；认证失败时提示明确。 |
-| P2-EXT-03 | `coze-agent` | 配置 Coze 应用并发送文本，若可用再测图片。 | 文本回复正常；多模态能力按 manifest/配置表现；思维链处理不污染最终回复。 |
-| P2-EXT-04 | `dashscope-agent` | 配置 agent 或 workflow 并发送消息。 | 调用成功；失败时错误可控且不影响后续请求。 |
-| P2-EXT-05 | `langflow-agent` | 配置 flow endpoint 并发送消息。 | 普通或 SSE 流式响应能归一为 LangBot 消息。 |
-| P2-EXT-06 | `tbox-agent` | 配置 Tbox 应用并发送消息。 | 回复正常；多模态输入按插件能力处理。 |
-| P2-EXT-07 | `claude-code-agent` | 配置本地 Claude Code CLI，使用保守权限模式发送确定性 Debug Chat prompt。 | runner 可选、配置可保存、CLI 成功返回；LangBot context 文件可被 Claude Code 读取；`external.session_id` / `external.working_directory` 可写入 host-owned state；CLI 错误、timeout、空输出能被转成受控 `run.failed`。 |
-| P2-EXT-08 | `codex-agent` | 配置本地 Codex CLI，使用 Debug Chat 发送确定性 prompt。 | runner 可选、配置可保存、CLI 成功返回；LangBot context 文件可被 Codex 读取；`external.session_id` / `external.working_directory` 可写入 host-owned state；代理等 runtime-local 环境可通过 binding config 显式传入；CLI 错误、timeout、空输出能被转成受控 `run.failed`。 |
-
-### 9.1 外部 harness runner 追加检查
-
-对 Claude Code / Codex / Kimi Code 这类 runner，P2 smoke 还需要检查：
-
-- 默认不要求 LangBot 调用自己的模型/工具 loop；runner 可以依赖自身 harness。
-- LangBot 仍要把当前 event、input、delivery、resources、context 和 state 作为 scoped context 传给 runner。
-- skill / MCP / workspace projection 必须来自 binding 或 Host 授权后的资源，不应让 runner 自行读取全局未授权配置。
-- session id、working directory、checkpoint 等跨轮次状态必须进入 Host state 或 plugin storage，不能保存在插件实例内存中。
-- 发布级 path isolation、secret filtering、MCP allowlist、资源配额和 workspace cleanup 只作为 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md) 的后续 release gate，不阻塞当前 smoke。
-
-## 10. P2 事件预留检查
-
-这些只检查协议预留，不要求真实平台事件接入。
-
-| ID | 场景 | 步骤 | 通过条件 |
-| --- | --- | --- | --- |
-| P2-EVT-01 | 消息事件名稳定 | 触发普通消息 runner。 | `ctx.trigger.type` 和 `ctx.event.event_type` 为 `message.received`；平台原始类型保存在 `ctx.event.event_data.source_event_type`。 |
-| P2-EVT-02 | 非消息事件名预留 | 检查 host 侧保留事件名。 | `message.recalled`、`group.member_joined`、`friend.request_received` 作为稳定协议名存在。 |
-| P2-EVT-03 | action.requested 预留 | 让测试 runner 返回 `action.requested`。 | Host 只记录日志，不执行平台动作，不影响主流程。 |
-
-## 11. 退出标准
-
-QA agent 完成后应输出一份报告，至少包含：
-
-- 总状态：PASS / FAIL / BLOCKED。
-- 每个 case 的状态表。
-- 所有 FAIL 的复现步骤和建议归属仓库。
-- 所有 BLOCKED 的环境缺口。
-- 是否建议关闭 Phase 1，进入 Phase 2/EBA。
-
-建议关闭 Phase 1 的条件：
-
-- P0 全 PASS。
-- P1 全 PASS，或只有旧内置 runner 同样不支持的 N/A。
-- P2 外部 runner smoke 对可用凭据全部 PASS；本地 Claude Code runner 若作为当前 external harness 代表，应至少 PASS 一次 WebUI smoke。
-- 剩余问题均为 EBA 预留、外部服务凭据、或非阻塞体验问题。
-
-## 12. 当前已知验收记录
-
-2026-05-29 本地记录：
-
-| 范围 | 状态 | 证据 |
-| --- | --- | --- |
-| `local-agent` WebUI Debug Chat | PASS | `langbot-skills/reports/2026-05-29-17-59-00-462-08-00-pipeline-debug-chat.md` |
-| `claude-code-agent` WebUI Debug Chat | PASS | `langbot-skills/reports/2026-05-29-18-03-31-169-08-00-pipeline-debug-chat.md` |
-| Claude Code context / skill / MCP projection | PASS | `langbot-skills/reports/claude-code-agent-resource-context-20260529.md` |
-| Claude Code resume state | PASS | `langbot-skills/reports/claude-code-agent-real-workdir-20260529.md` |
-
-完整汇总见 [PHASE1_QA_REPORT_2026-05-29.md](./PHASE1_QA_REPORT_2026-05-29.md)。
+这些记录只证明本地协议闭环可用，不代表发布级 security hardening 已完成。

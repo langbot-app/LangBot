@@ -183,7 +183,10 @@ LangBot core 不应为了 local-agent 保留业务编排逻辑。local-agent 的
 - `ctx.runtime.metadata.streaming_supported`：当前 adapter 是否能消费流式输出。
 - 宿主代理 action：模型、工具、知识库、rerank 调用必须通过 `run_id` 校验资源权限。
 
-`max-round` 可作为 Pipeline adapter 的历史配置输入。如需适配 Pipeline 行为，可以把 `max-round` 转成 local-agent 插件自己的 bootstrap/history policy；不要把它提升为 LangBot host 的目标协议字段。
+`local-agent` 不应消费 Pipeline adapter 生成的 `max-round` / `bootstrap`
+窗口，也不应读取 `ctx.adapter.extra.prompt`。它应从绑定配置读取静态
+`prompt`，并通过 Host history API 拉取 transcript。Pipeline adapter 可以继续为旧入口
+保留 `max-round` 兼容逻辑，但这不是 official local-agent 的行为契约。
 
 建议 local-agent manifest 使用 hybrid 或 self-managed context：
 
@@ -203,6 +206,17 @@ context:
 这表示：LangBot 只给当前事件和 context handles；local-agent 自己决定是否拉取历史、是否搜索、
 何时摘要、如何构造最终 prompt。
 
+### 6.1 Native Execution / Skills 后续接入
+
+本阶段不把 sandbox/skills 做成 AgentRunner 协议字段，也不预留 runner 可见字段。
+后续 sandbox/skills 分支合并后，命令执行、文件操作、skill、MCP managed process
+等能力应先由 LangBot Host 封装成 scoped tools，再通过 `ctx.resources.tools`
+暴露给 runner。
+
+这让 local-agent 只消费授权后的 Host 基础设施，而不是直接持有宿主机执行能力。
+Claude Code / Codex 这类外部 harness runner 仍可先保留自己的执行模型，但要在文档和
+配置中明确它们是否使用 LangBot 提供的工具投影。
+
 ## 7. 外部 runner 插件要求
 
 外部平台 runner 迁移时遵循：
@@ -221,6 +235,9 @@ Claude Code、Codex、Kimi Code 这类 runner 不一定通过 LangBot 的模型/
 - LangBot 授权后的资源应被投影为 harness 可读的 context 文件、MCP 配置、skill 目录、环境变量或 CLI 参数。
 - 外部 session id、workspace、checkpoint 等跨轮次指针应写入 Host state 或 plugin storage；插件实例本身保持无状态。
 - CLI / subprocess runner 必须处理 timeout、取消、空输出、非零退出和 stderr 映射。
+- 如果外部 harness 选择使用 LangBot 托管执行能力，它应通过 scoped MCP/tool
+  投影消费 Host 授权资源；否则它属于 external harness mode，不能声称具备
+  LangBot-managed 执行隔离。
 - 外部 harness 的 permission mode、allowed/disallowed tools、MCP 配置只是一层执行约束；LangBot 仍负责调用前的资源授权、路径策略、secret 过滤和审计。发布级要求见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
 
 ## 8. Claude Code runner 当前形态
@@ -260,12 +277,12 @@ Claude Code runner 当前把 LangBot event-first context 投影给外部 harness
 - `codex-agent` 可通过 WebUI Debug Chat 调用本机 Codex CLI，读取 LangBot event context，并把 Codex `thread_id` 写入 host-owned state
 - 对需要代理的本地运行环境，`codex-agent` 可通过 binding config 的 `environment-json` 显式传递非 secret 环境变量
 
-详见 [PHASE1_QA_REPORT_2026-05-29.md](./PHASE1_QA_REPORT_2026-05-29.md)。
+下一轮测试入口见 [PHASE1_QA_ACCEPTANCE_MATRIX.md](./PHASE1_QA_ACCEPTANCE_MATRIX.md)。
 
 ### 8.4 当前限制
 
 - 不是发布级安全边界实现。
-- 默认只做本地 CLI 调用，不实现完整 sandbox/workspace 生命周期。
+- 默认只做本地 CLI 调用，不实现完整执行隔离或 workspace 生命周期。
 - 不实现 issue-centric 队列、复杂 workflow engine 或长期任务调度。
 - 不代表 Codex 发布级能力或 Kimi runner 已完成；当前只验证外部 harness runner 的协议形态。
 
@@ -290,6 +307,6 @@ Claude Code runner 当前把 LangBot event-first context 投影给外部 harness
 - 旧 runner 配置能无损复制到新 `runner_config[id]`。
 - LangBot 主聊天路径不再通过 `RequestRunner` 执行业务 runner。
 - 官方插件测试覆盖非流式、流式、错误、timeout、配置缺失。
-- `local-agent` 插件能完成模型 fallback、tool calling、知识库检索、多模态输入、prompt preprocessing 后的有效 prompt 消费、rerank。
+- `local-agent` 插件能完成模型 fallback、tool calling、知识库检索、多模态输入、静态绑定 prompt 消费、history API 拉取、rerank。
 - `claude-code-agent` 或同类 code-agent harness runner 能消费 event-first context、投影 scoped resources、保存 external session state，并通过 WebUI Debug Chat smoke。
 - 对外行为与旧内置 local-agent runner 保持一致；代码结构不需要相同。

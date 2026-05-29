@@ -14,7 +14,7 @@
 - ✅ `AgentRunAPIProxy.state` — get/set/delete API
 - ✅ EventLog / Transcript / ArtifactStore — host 事实源
 - ✅ PersistentStateStore — 持久化状态存储
-- ✅ `max-round` 已从协议实体中移除，只在 Pipeline adapter 中处理
+- ✅ `max-round` 已从协议实体中移除；如某 runner 仍需要类似历史窗口参数，应作为 runner binding config 由插件 manifest 暴露，而不是 Host / Pipeline 协议字段
 - ✅ 外部 harness context projection 已用 Claude Code runner 做 MVP 验证：context 文件、skill 投影、MCP 配置和 host-owned resume state
 
 ## 1. 设计原则
@@ -37,7 +37,11 @@
 
 ### 1.2 不再把 `max-round` 作为目标设计
 
-Pipeline adapter 的 `max-round` 配置可以在运行时被读取并转换为某种默认 bootstrap policy，但不应继续作为 AgentRunner 协议的核心概念。
+`max-round` 这类历史窗口参数不应继续作为 AgentRunner 协议或 Pipeline adapter 的核心概念。
+
+如果某个 runner 仍需要“最多读取多少轮历史”这样的策略参数，应由该 runner 在自己的 manifest/config schema 中声明，并作为 binding config 存到 `ctx.config` / `runner_config`。Host 只提供 history pull API、cursor、hard cap 和权限边界；runner 自己决定是否读取、读取多少、如何截断和压缩。
+
+当前 official local-agent 方向是通过 Host history API 拉取 transcript，并由 runner 自己管理模型上下文。它不依赖 Pipeline adapter 下发的 `max-round` / bootstrap 窗口。
 
 新协议不应该问“LangBot 每轮裁几轮历史给 agent”，而应该问：
 
@@ -128,7 +132,7 @@ context:
 
 - 自管 runtime：`bootstrap: current_event`
 - 简单 HTTP runner：`bootstrap: recent_tail`
-- Pipeline adapter 的 `max-round` 可映射为 `recent_tail` 配置，但不再作为协议字段扩展。
+- runner 如果需要 `recent_tail` 策略，应通过自己的 binding config 声明窗口大小；Host 不把 `max-round` 作为通用协议字段扩展。
 
 ## 3. ContextAccess
 
@@ -331,7 +335,7 @@ LangBot core 不应内置官方 agent 的业务流程：
 
 **已完成（当前分支）**：
 
-- ✅ `max-round` 在 Pipeline adapter 中处理（不影响协议实体）
+- ✅ `max-round` 不再是协议字段；类似历史窗口策略属于 runner binding config，而不是 Host / Pipeline 通用语义
 - ✅ 新 runner 默认不收到历史窗口
 - ✅ `AgentRunContext` 增加 `context` / cursor / access capabilities
 - ✅ `AgentRunAPIProxy` 增加 history / events / artifacts / state API
