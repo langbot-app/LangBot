@@ -15,6 +15,7 @@
 - ✅ Proxy 覆盖 model、tool、knowledge、state/storage
 - ✅ History / Event / Artifact / State API 已落地
 - ✅ EventLog / Transcript / ArtifactStore / PersistentStateStore 已落地
+- ✅ `local-agent` 与 Claude Code runner 已通过本地 WebUI smoke，验证 host-infra runner 与外部 harness runner 共享同一协议路径
 
 ## 1. 协议目标
 
@@ -31,6 +32,7 @@ Protocol v1 不定义：
 - AgentRunner 内部如何组装 prompt、压缩历史、管理 memory。
 - 官方 local-agent 的具体实现。
 - Pipeline 的长期配置模型。
+- 发布级安全 hardening 的完整实现；当前只定义 Host 侧资源、权限、状态和审计边界，release gate 见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
 
 ## 2. 参与方
 
@@ -43,6 +45,8 @@ Protocol v1 不定义：
 | AgentBinding | Host 内部的事件到 runner 绑定配置，不直接暴露给 SDK。 |
 
 `AgentBinding` 只影响 Host 构造出的 `ctx.config`、`ctx.resources`、`ctx.context` 和 `ctx.delivery`。SDK 不需要知道 binding 的持久化形态。
+
+外部 harness runner（Claude Code、Codex、Kimi Code 等）仍然是 `AgentRunner`。Protocol v1 只要求它们消费 event-first `AgentRunContext`、返回 `AgentRunResult`，并通过 Host 授权的 state/storage/artifact APIs 保存跨轮次指针。它们内部可以继续使用自己的 session、tool loop、MCP、上下文压缩和权限模型。
 
 ## 3. Discovery 协议
 
@@ -630,6 +634,15 @@ Protocol v1 的安全边界在 Host：
 - 大 payload 必须 artifact 化。
 - Host 必须记录 run_id、runner_id、action、resource、scope、result。
 
+对外部 harness runner，边界进一步拆分为：
+
+- Host 在调用前完成 binding/resource policy 裁剪、路径策略、secret 过滤和审计记录。
+- Runner plugin 把授权后的 context/resource projection 适配为目标 harness 的 context 文件、MCP 配置、skill 目录、环境变量或 CLI 参数。
+- Claude Code / Codex / Kimi Code 等外部 harness 的 native permission mode、allowed/disallowed tools 和 sandbox 只是额外执行约束，不能替代 Host 侧授权。
+- 外部 session id、working directory、checkpoint 等跨轮次指针应作为小型 JSON state 保存，例如 `external.session_id`、`external.working_directory`。
+
+完整路径隔离、MCP allowlist、secret redaction、配额、workspace 清理和发布级安全测试不属于当前 Protocol v1 smoke 闭环，详见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
+
 Host 不负责业务编排：
 
 - 不拼接全量历史。
@@ -675,6 +688,7 @@ Protocol v1 已在当前分支完成：
 - ✅ Proxy 至少覆盖 model、tool、knowledge、state/storage
 - ✅ History / event / artifact API 已落地
 - ✅ EventLog / Transcript / ArtifactStore / PersistentStateStore 已落地
+- ✅ 外部 harness runner 最小 smoke 已落地：Claude Code runner 能消费 event-first context、返回消息、写回 `external.session_id` / `external.working_directory`
 
 ## 13. 开放问题
 
@@ -684,3 +698,4 @@ Protocol v1 已在当前分支完成：
 - State 与 Storage 的边界是否需要更强类型。
 - `platform_api` action 的审批模型如何表达。
 - 多 runner 并发处理同一 event 时，result delivery 的冲突策略如何定义。
+- Host 侧 scoped MCP / skill / workspace projection 是否需要从 runner config 上移为一等 resource projection API。

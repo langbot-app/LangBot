@@ -15,6 +15,7 @@
 - ✅ EventLog / Transcript / ArtifactStore — host 事实源
 - ✅ PersistentStateStore — 持久化状态存储
 - ✅ `max-round` 已从协议实体中移除，只在 Pipeline adapter 中处理
+- ✅ 外部 harness context projection 已用 Claude Code runner 做 MVP 验证：context 文件、skill 投影、MCP 配置和 host-owned resume state
 
 ## 1. 设计原则
 
@@ -31,6 +32,7 @@
 - 当前事件的完整结构化信息。
 - 稳定身份和会话引用。
 - 可授权读取的 history / event / artifact / state API。
+- 可投影给外部 harness 的 scoped context、MCP、skill 和 resource refs。
 - payload hard cap 和权限 guardrail。
 
 ### 1.2 不再把 `max-round` 作为目标设计
@@ -232,6 +234,23 @@ await api.state.set(scope="conversation", key="summary.checkpoint", value=...)
 
 State 是可选寄宿能力。自管 runtime 可以完全不用；依附 LangBot 的官方 runner 可以使用。
 
+### 4.6 External harness context projection
+
+Claude Code、Codex、Kimi Code 这类 runtime 通常已经有自己的 session、工具 loop、MCP 加载、上下文压缩和工作目录。LangBot 不应把这类 runner 强行改造成“host prompt assembler”，而应提供可审计的事件和资源投影。
+
+推荐 projection 形态：
+
+- `agent-context.json`：结构化 JSON，包含 `run_id`、`event`、`actor`、`subject`、`input`、`delivery`、`resources`、`context`、`state`、`runtime`。
+- `LANGBOT_CONTEXT.md`：人类可读摘要，用于 code-agent harness 快速理解当前 IM 事件。
+- `resources`：只包含本次 run 授权后的模型、工具、知识库、artifact、state/storage 句柄，不暴露 Host 内部私有对象。
+- `skills`：Host 或 binding 把已授权 skill 投影为目标 harness 可读目录，例如 Claude Code 的 `.claude/skills/<name>/SKILL.md`。
+- `MCP config`：Host 或 binding 提供 scoped MCP 配置，runner adapter 转成目标 harness 的配置文件或 CLI 参数。
+- `state pointers`：外部 session id、working directory、checkpoint 等小型 JSON 状态通过 Host state API 保存，例如 `external.session_id`、`external.working_directory`。
+
+当前 Claude Code runner MVP 使用 schema `langbot.agent_runner.external_harness_context.v1`，并已通过 WebUI Debug Chat 验证 context 文件、skill 文件、MCP config 和 resume state 的基本链路。
+
+这类 projection 是“把 LangBot 事实源和授权资源交给 harness”，不是“由 LangBot 决定最终模型上下文”。外部 harness 可以继续使用自己的 transcript、工具权限和压缩策略。
+
 ## 5. Runner manifest 中的上下文声明
 
 建议增加：
@@ -318,5 +337,6 @@ LangBot core 不应内置官方 agent 的业务流程：
 - ✅ `AgentRunAPIProxy` 增加 history / events / artifacts / state API
 - ✅ Host 增加持久 EventLog / Transcript / ArtifactStore / PersistentStateStore
 - ✅ `run_from_query()` 委托到 event-first `run(event, binding)`
+- ✅ Claude Code external harness smoke：context JSON / Markdown、skill、MCP config、`external.session_id` / `external.working_directory`
 
 这样 LangBot 既能服务依附 host 基础设施的官方 runner，也能服务自带 memory/session/cache 的外部 agent runtime。

@@ -1,5 +1,7 @@
 # Agent Runner 插件化当前实现与收尾计划
 
+> 2026-05-29 状态说明：本文档是实现推进计划和历史上下文，不是最新验收结论的唯一来源。当前设计入口见 [README.md](./README.md)，协议边界见 [PROTOCOL_V1.md](./PROTOCOL_V1.md)，进度见 [PROGRESS.md](./PROGRESS.md)，最新本地 smoke 见 [PHASE1_QA_REPORT_2026-05-29.md](./PHASE1_QA_REPORT_2026-05-29.md)。
+
 本文档面向实现 agent，用来把当前 AgentRunner 插件化实现推进到可迁移状态。
 
 当前代码已经不是从零开始的 PoC。LangBot 已经具备 registry、orchestrator、context/resource builder、result normalizer 和插件 runtime action。本计划重点描述剩余工作：补齐宿主通用能力、对齐旧内置 runner 行为、完成官方 runner 插件迁移验收。
@@ -32,15 +34,17 @@ LangBot 不再长期维护内置业务 runner 分支。`local-agent`、Dify、n8
 - `ai.runner.id` + `ai.runner_config[id]` 的读取与旧配置映射。
 - AgentRunner runtime action：`LIST_AGENT_RUNNERS`、`RUN_AGENT`。
 - run-scoped proxy authorization：模型、工具、知识库、存储、文件。
+- EventLog / Transcript / ArtifactStore / PersistentStateStore。
+- Pipeline adapter 已委托到 event-first `run(event, binding)`。
+- `local-agent` 与 Claude Code runner 已通过本地 WebUI smoke。
 
 仍需收尾：
 
-- `AgentRunContext` 暴露宿主处理后的有效 prompt、结构化输入和 runtime metadata。
-- AgentRun proxy action 通过 `run_id/query_id` 找回当前 Query，保留旧 runner 行为所需上下文。
-- `AgentResourceBuilder` 按 DynamicForm schema 泛化模型/rerank/知识库/文件授权。
-- 官方 `local-agent` 插件完成旧内置 local-agent parity。
+- Docs final QA 与安装/发布文档整理。
 - timeout/deadline、取消、插件无输出、协议错误的端到端保护。
 - 官方 runner 插件安装/预装/迁移缺失处理。
+- 安全发布级 hardening：路径隔离、权限边界、secret、MCP/skill 投影策略、资源配额、审计。此项不阻塞当前协议闭环，详见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
+- Codex / Kimi runner 全量接入、issue-centric 队列、复杂 workflow engine 和 EBA 分支完整联调。
 
 ## 2. 高层架构
 

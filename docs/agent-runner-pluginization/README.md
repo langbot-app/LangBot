@@ -53,6 +53,9 @@ Pipeline path 已获得 event-first host capabilities：
 | [EVENT_BASED_AGENT.md](./EVENT_BASED_AGENT.md) | EBA 预留：事件模型、事件来源、触发绑定、非消息事件如何复用 AgentRunner 调度。**标注为 future design note**。 |
 | [OFFICIAL_RUNNER_PLUGINS.md](./OFFICIAL_RUNNER_PLUGINS.md) | 官方 runner 插件迁移，包括 local-agent 和外部 runner。它是下游落地计划，不是 LangBot 基础能力设计的前置约束。 |
 | [PHASE1_QA_ACCEPTANCE_MATRIX.md](./PHASE1_QA_ACCEPTANCE_MATRIX.md) | 当前阶段的 QA 验收矩阵。它验证现有分支的兼容性，不代表最终架构边界。 |
+| [SECURITY_HARDENING.md](./SECURITY_HARDENING.md) | 安全发布级 hardening 的后续发布门槛：路径隔离、权限边界、secret、资源配额、MCP / skill 投影和审计。 |
+| [PROGRESS.md](./PROGRESS.md) | 当前实现进度、已验收能力、未完成收尾和非本分支范围。 |
+| [PHASE1_QA_REPORT_2026-05-29.md](./PHASE1_QA_REPORT_2026-05-29.md) | 2026-05-29 本地 local-agent 与 Claude Code runner 的 UI E2E / smoke 验收记录。 |
 
 ## 工作拆分
 

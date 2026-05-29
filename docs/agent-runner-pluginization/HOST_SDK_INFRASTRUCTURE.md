@@ -63,6 +63,7 @@ Delivery / Renderer / Platform API
 - `PipelineAdapter` 作为当前入口 adapter，将 Pipeline Query 转换为 `AgentEventEnvelope` + `AgentBinding`
 - `run_from_query()` 内部委托到 `run(event, binding)`
 - EventLog / Transcript / ArtifactStore / PersistentStateStore 已落地
+- `local-agent` 与 Claude Code runner 已通过本地 WebUI smoke，验证同一条 `run(event, binding)` path 可服务 host-infra runner 与外部 harness runner
 - EventGateway 由外部 event branch 实现
 
 当前 Pipeline 只应接入在 Pipeline adapter 位置。它可以继续产生 `message.received`，但不应继续拥有 runner 选择、上下文裁剪和业务 agent 执行的核心语义。
@@ -233,6 +234,23 @@ LangBot 应提供事实源能力：
 
 AgentRunner 可以读取这些能力，但不能被迫使用 LangBot 作为唯一记忆系统。
 
+### 4.8 External harness resource projection
+
+Claude Code、Codex、Kimi Code 等外部 harness runner 可能不会直接调用 LangBot 的 model/tool loop，而是把 LangBot 事件和授权资源投影到自己的 harness 中执行。Host 侧仍要保持统一边界：
+
+- Host 负责构造 event-first context、资源授权、state/storage、EventLog/Transcript/ArtifactStore 和审计。
+- Host 或 binding policy 负责决定哪些 MCP server、skill、artifact、history/state 句柄可以投影给 runner。
+- Runner plugin 负责把 scoped projection 转成目标 harness 可消费的形式，例如 context JSON/Markdown、MCP config、skill 目录、环境变量或 CLI 参数。
+- 外部 harness 负责自己的 native session、tool loop、压缩、权限模式和 resume 机制。
+
+当前 Claude Code runner MVP 已验证：
+
+- LangBot event-first context 可以写入 `agent-context.json` / `LANGBOT_CONTEXT.md`。
+- binding 中的 skill / MCP 配置可以投影到 Claude Code 原生目录和 CLI 参数。
+- `external.session_id` 与 `external.working_directory` 可以通过 Host state 保存并用于 resume。
+
+发布级路径隔离、secret 过滤、MCP allowlist、工具白名单、资源配额和 workspace 清理不属于当前协议闭环，详见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
+
 ## 5. SDK 侧协议
 
 ### 5.1 AgentRunner 组件
@@ -363,6 +381,7 @@ Proxy 是 runner 访问 host 能力的唯一入口：
 - ✅ `PersistentStateStore` — 持久化状态存储
 - ✅ `EventLogStore` / `TranscriptStore` / `ArtifactStore`
 - ✅ history / artifact / event 的受限拉取 API
+- ✅ Claude Code external harness MVP：context/resource projection 与 host-owned resume state smoke
 
 **其他分支负责（非本分支范围）**：
 
@@ -370,6 +389,7 @@ Proxy 是 runner 访问 host 能力的唯一入口：
 - EventRouter 实现
 - AgentBinding 持久化 UI
 - platform API 动作执行
+- 发布级 security hardening
 
 ## 7. 落地顺序
 
@@ -382,6 +402,7 @@ Proxy 是 runner 访问 host 能力的唯一入口：
 5. ✅ 扩展 `AgentRunAPIProxy` 的 history / artifact / state API。
 6. ✅ 将 Pipeline-only 字段下沉到 Pipeline adapter。
 7. ✅ 官方 runner 插件迁移完成（7 个插件）。
+8. ✅ Claude Code runner MVP smoke：外部 harness context 投影和 state handoff。
 
 **后续工作（其他分支）**：
 

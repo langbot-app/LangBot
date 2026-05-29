@@ -4,6 +4,7 @@
 >
 > EventGateway、EventRouter、Event subscription/notification 由其他分支实现。
 > 本分支只预留 event-first 入口和 envelope/binding models。
+> 2026-05-29 的 local-agent / Claude Code runner smoke 只验证本分支的 `run(event, binding)` 调度边界，不表示 EBA 分支已经完成联调。
 
 本文档描述未来 EBA 接入时，事件如何进入 LangBot、如何触发 AgentRunner，以及如何复用插件化 agent 基础设施。
 
@@ -124,6 +125,7 @@ Platform Adapter / WebUI / API
 - 不能为 EBA 单独实现另一套 plugin runner 调用协议。
 - 不能让非消息事件绕过 resource authorization。
 - Delivery 和 platform action 要走统一权限模型。
+- 外部 harness runner 也应通过同一套 envelope/binding/context/result 协议接入；EBA 不应为 Claude Code / Codex / Kimi Code 单独发明队列协议。
 
 ## 7. Delivery Context
 
@@ -205,6 +207,7 @@ EBA 事件进入 AgentRunner 时仍使用 [AGENT_CONTEXT_PROTOCOL.md](./AGENT_CO
 - ✅ `run_from_query()` → `run(event, binding)` 委托
 - ✅ EventLog / Transcript / ArtifactStore
 - ✅ History / Event / Artifact / State pull APIs
+- ✅ 当前消息事件 path 已用 `local-agent` 与 Claude Code external harness runner 做本地 smoke
 
 **其他分支负责（非本分支范围）**：
 
