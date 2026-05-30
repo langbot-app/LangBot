@@ -214,6 +214,30 @@ class TestPersistentStateStore:
         assert snapshot['conversation']['test_key'] == {'nested': 'value'}
 
     @pytest.mark.asyncio
+    async def test_state_api_methods_normalize_public_key_aliases(self, persistent_store):
+        scope_key = 'conversation:runner:binding:conv_001'
+
+        success, error = await persistent_store.state_set(
+            scope_key=scope_key,
+            state_key='conversation_id',
+            value='conv_001',
+            runner_id='plugin:test/my-runner/default',
+            binding_identity='binding_001',
+            scope='conversation',
+        )
+
+        assert success is True
+        assert error is None
+        assert await persistent_store.state_get(scope_key, 'external.conversation_id') == 'conv_001'
+        assert await persistent_store.state_get(scope_key, 'conversation_id') == 'conv_001'
+
+        keys, _ = await persistent_store.state_list(scope_key, prefix='conversation_id')
+        assert keys == ['external.conversation_id']
+
+        assert await persistent_store.state_delete(scope_key, 'conversation_id') is True
+        assert await persistent_store.state_get(scope_key, 'external.conversation_id') is None
+
+    @pytest.mark.asyncio
     async def test_binding_isolation(self, persistent_store):
         descriptor = make_descriptor()
         event = FakeEventEnvelope(conversation_id='conv_001')

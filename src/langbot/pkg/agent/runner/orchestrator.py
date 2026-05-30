@@ -176,6 +176,13 @@ class AgentRunOrchestrator:
             runner_id=descriptor.id,
         )
 
+        # Register incoming attachments so input/transcript artifact_refs are resolvable.
+        await self._register_input_artifacts(
+            event=event,
+            run_id=run_id,
+            runner_id=descriptor.id,
+        )
+
         # Write user message to Transcript if message.received
         if event.event_type == 'message.received' and event.conversation_id:
             await self._write_user_transcript(
@@ -525,6 +532,97 @@ class AgentRunOrchestrator:
             runner_id=runner_id,
             event_time=datetime.datetime.fromtimestamp(event.event_time) if event.event_time else None,
         )
+
+    async def _register_input_artifacts(
+        self,
+        event: AgentEventEnvelope,
+        run_id: str,
+        runner_id: str,
+    ) -> None:
+        """Register current-event attachments referenced by AgentInput."""
+        if not event.input or not event.input.attachments:
+            return
+
+        from .artifact_store import ArtifactStore
+        store = ArtifactStore(self.ap.persistence_mgr.get_db_engine())
+
+        for attachment in event.input.attachments:
+            data = attachment.model_dump(mode='json') if hasattr(attachment, 'model_dump') else attachment
+            if not isinstance(data, dict):
+                continue
+
+            artifact_id = data.get('artifact_id')
+            artifact_type = data.get('artifact_type') or 'file'
+            if not artifact_id:
+                continue
+
+            content, parsed_mime_type = self._decode_attachment_content(data.get('content'))
+            url = data.get('url')
+            platform_ref_id = data.get('id')
+            storage_key = None
+            storage_type = 'metadata_only'
+            if content is None:
+                if url:
+                    storage_key = url
+                    storage_type = 'url'
+                elif platform_ref_id:
+                    storage_key = platform_ref_id
+                    storage_type = 'platform_ref'
+
+            metadata = {
+                'input_attachment': True,
+                'input_source': data.get('source') or 'platform',
+            }
+            if url:
+                metadata['url'] = url
+            if platform_ref_id:
+                metadata['platform_ref_id'] = platform_ref_id
+
+            try:
+                await store.register_artifact(
+                    artifact_id=artifact_id,
+                    artifact_type=artifact_type,
+                    source='platform',
+                    storage_key=storage_key,
+                    storage_type=storage_type,
+                    mime_type=data.get('mime_type') or parsed_mime_type,
+                    name=data.get('name'),
+                    size_bytes=data.get('size') or (len(content) if content is not None else None),
+                    conversation_id=event.conversation_id,
+                    run_id=run_id,
+                    runner_id=runner_id,
+                    bot_id=event.bot_id,
+                    workspace_id=event.workspace_id,
+                    metadata=metadata,
+                    content=content,
+                )
+            except Exception as e:
+                self.ap.logger.warning(
+                    f'Failed to register input artifact {artifact_id}: {e}'
+                )
+
+    def _decode_attachment_content(
+        self,
+        content: typing.Any,
+    ) -> tuple[bytes | None, str | None]:
+        """Decode base64 attachment content, including data URLs."""
+        if not isinstance(content, str) or not content:
+            return None, None
+
+        import base64
+        import binascii
+
+        mime_type = None
+        payload = content
+        if content.startswith('data:') and ',' in content:
+            header, payload = content.split(',', 1)
+            if ';base64' in header:
+                mime_type = header[5:].split(';', 1)[0] or None
+
+        try:
+            return base64.b64decode(payload, validate=False), mime_type
+        except (binascii.Error, ValueError):
+            return None, mime_type
 
     async def _write_user_transcript(
         self,

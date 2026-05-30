@@ -299,8 +299,10 @@ permissions:
   tools: ["detail", "call"]
   knowledge_bases: ["list", "retrieve"]
   history: ["page", "search"]
+  events: ["get", "page"]
   artifacts: ["metadata", "read"]
   storage: ["plugin", "workspace", "binding"]
+  files: ["config", "knowledge"]
   platform_api: []
 ```
 

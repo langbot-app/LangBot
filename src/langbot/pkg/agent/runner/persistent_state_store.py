@@ -250,6 +250,8 @@ class PersistentStateStore:
 
         Used by State API handlers.
         """
+        state_key = normalize_state_key(state_key)
+
         async with self._db_engine.connect() as conn:
             result = await conn.execute(
                 select(AgentRunnerState.value_json)
@@ -282,6 +284,8 @@ class PersistentStateStore:
         Used by State API handlers.
         Context contains optional fields like bot_id, conversation_id, etc.
         """
+        state_key = normalize_state_key(state_key)
+
         # Validate and serialize value
         value_json, error = self._validate_json_value(value, logger)
         if error:
@@ -344,6 +348,8 @@ class PersistentStateStore:
 
         Returns True if deleted, False if not found.
         """
+        state_key = normalize_state_key(state_key)
+
         async with self._db_engine.begin() as conn:
             result = await conn.execute(
                 delete(AgentRunnerState)
@@ -376,6 +382,7 @@ class PersistentStateStore:
             )
 
             if prefix:
+                prefix = normalize_state_key(prefix)
                 query = query.where(
                     AgentRunnerState.state_key.like(f'{prefix}%')
                 )

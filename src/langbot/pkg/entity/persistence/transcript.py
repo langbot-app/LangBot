@@ -50,7 +50,7 @@ class Transcript(Base):
 
     # Sequence for cursor-based pagination
     seq = sqlalchemy.Column(sqlalchemy.Integer, nullable=False, index=True)
-    """Sequence number within conversation (auto-increment per conversation)."""
+    """Monotonic cursor sequence for pagination."""
 
     # Context
     run_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)

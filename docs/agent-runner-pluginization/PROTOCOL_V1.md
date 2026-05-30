@@ -121,6 +121,7 @@ class AgentRunnerPermissions(BaseModel):
     events: list[Literal["get", "page"]] = []
     artifacts: list[Literal["metadata", "read"]] = []
     storage: list[Literal["plugin", "workspace", "binding"]] = []
+    files: list[Literal["config", "knowledge"]] = []
     platform_api: list[str] = []
 ```
 
@@ -370,7 +371,6 @@ class AgentRunState(BaseModel):
     actor: dict[str, Any] = {}
     subject: dict[str, Any] = {}
     runner: dict[str, Any] = {}
-    binding: dict[str, Any] = {}
 ```
 
 State 是可选 host-owned snapshot。Runner 也可以完全自管状态。
@@ -382,13 +382,12 @@ class AgentResources(BaseModel):
     models: list[ModelResource] = []
     tools: list[ToolResource] = []
     knowledge_bases: list[KnowledgeBaseResource] = []
-    artifacts: list[ArtifactResource] = []
+    files: list[FileResource] = []
     storage: StorageResource = StorageResource()
-    history: HistoryResource = HistoryResource()
     platform_capabilities: dict[str, Any] = {}
 ```
 
-资源列表是本次 run 的授权结果。Runner 只能通过 `AgentRunAPIProxy` 访问这些资源。
+资源列表是本次 run 的授权结果。History / Event / Artifact 访问通过 permissions、`ctx.context.available_apis` 和 Host 侧 run session 校验控制，不作为可枚举 resource list 暴露。Runner 只能通过 `AgentRunAPIProxy` 访问这些能力。
 
 ## 6. Result Stream
 

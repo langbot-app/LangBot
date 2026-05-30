@@ -73,9 +73,6 @@ class TranscriptStore:
         if content and len(content) > self.MAX_CONTENT_LENGTH:
             content = content[:self.MAX_CONTENT_LENGTH - 3] + "..."
 
-        # Get next sequence number for this conversation
-        seq = await self._get_next_seq(conversation_id)
-
         async with self._session_factory() as session:
             item = Transcript(
                 transcript_id=transcript_id,
@@ -87,13 +84,15 @@ class TranscriptStore:
                 content=content,
                 content_json=json.dumps(content_json) if content_json else None,
                 artifact_refs_json=json.dumps(artifact_refs) if artifact_refs else None,
-                seq=seq,
+                seq=0,
                 run_id=run_id,
                 runner_id=runner_id,
                 created_at=datetime.datetime.utcnow(),
                 metadata_json=json.dumps(metadata) if metadata else None,
             )
             session.add(item)
+            await session.flush()
+            item.seq = item.id or await self._get_next_seq(conversation_id)
             await session.commit()
 
         return transcript_id
@@ -253,7 +252,7 @@ class TranscriptStore:
             return count > 0
 
     async def _get_next_seq(self, conversation_id: str) -> int:
-        """Get the next sequence number for a conversation."""
+        """Fallback next sequence number for stores that cannot expose autoincrement IDs."""
         async with self._session_factory() as session:
             result = await session.execute(
                 sqlalchemy.select(sqlalchemy.func.max(Transcript.seq))

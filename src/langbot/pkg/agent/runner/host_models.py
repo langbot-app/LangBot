@@ -89,13 +89,13 @@ class ResourcePolicy(pydantic.BaseModel):
     """
 
     allowed_model_uuids: list[str] | None = None
-    """Allowed model UUIDs. None means all authorized."""
+    """Additional model UUID grants. None means no additional model grants."""
 
     allowed_tool_names: list[str] | None = None
-    """Allowed tool names. None means all authorized."""
+    """Additional tool name grants. None means no additional tool grants."""
 
     allowed_kb_uuids: list[str] | None = None
-    """Allowed knowledge base UUIDs. None means all authorized."""
+    """Additional knowledge base UUID grants. None means no additional KB grants."""
 
     allow_plugin_storage: bool = True
     """Whether plugin storage is allowed."""

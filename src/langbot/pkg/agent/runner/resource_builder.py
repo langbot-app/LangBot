@@ -103,12 +103,13 @@ class AgentResourceBuilder:
         models: list[ModelResource] = []
         seen_model_ids: set[str] = set()
 
-        # Check manifest permission
         model_perms = manifest_perms.get('models', [])
-        if 'invoke' not in model_perms and 'stream' not in model_perms:
+        allow_llm = 'invoke' in model_perms or 'stream' in model_perms
+        allow_rerank = 'rerank' in model_perms
+        if not allow_llm and not allow_rerank:
             return models
 
-        # Get model UUIDs from resource policy
+        # Get additional model UUID grants from resource policy.
         allowed_uuids = resource_policy.allowed_model_uuids
 
         # Add model resources from binding config schema
@@ -117,10 +118,12 @@ class AgentResourceBuilder:
             seen_model_ids=seen_model_ids,
             descriptor=descriptor,
             runner_config=runner_config,
+            include_llm=allow_llm,
+            include_rerank=allow_rerank,
         )
 
         # Add explicitly allowed models
-        if allowed_uuids:
+        if allowed_uuids and allow_llm:
             for model_uuid in allowed_uuids:
                 await self._append_llm_model_resource(models, seen_model_ids, model_uuid)
 
@@ -168,13 +171,13 @@ class AgentResourceBuilder:
         if 'list' not in kb_perms and 'retrieve' not in kb_perms:
             return kb_resources
 
-        # Get KB UUIDs from schema-defined config fields
+        # Get KB UUID grants from schema-defined config fields.
         kb_uuids = config_schema.extract_knowledge_base_uuids(descriptor, runner_config)
 
-        # Also check resource policy
+        # Also include resource policy grants.
         allowed_uuids = resource_policy.allowed_kb_uuids
         if allowed_uuids:
-            kb_uuids = allowed_uuids
+            kb_uuids = list(dict.fromkeys([*kb_uuids, *allowed_uuids]))
 
         for kb_uuid in kb_uuids:
             try:
@@ -210,12 +213,14 @@ class AgentResourceBuilder:
         seen_model_ids: set[str],
         descriptor: AgentRunnerDescriptor,
         runner_config: dict[str, typing.Any],
+        include_llm: bool,
+        include_rerank: bool,
     ) -> None:
         """Authorize model-like values selected through DynamicForm fields."""
         for model_type, model_uuid in config_schema.iter_config_model_refs(descriptor, runner_config):
-            if model_type == 'llm':
+            if model_type == 'llm' and include_llm:
                 await self._append_llm_model_resource(models, seen_model_ids, model_uuid)
-            elif model_type == 'rerank':
+            elif model_type == 'rerank' and include_rerank:
                 await self._append_rerank_model_resource(models, seen_model_ids, model_uuid)
 
     async def _append_llm_model_resource(
