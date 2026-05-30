@@ -197,6 +197,16 @@ class PreProcessor(stage.PipelineStage):
                     bound_mcp_servers,
                     include_skill_authoring=include_skill_authoring,
                 )
+        elif uses_host_tools:
+            query.use_funcs = await self.ap.tool_mgr.get_all_tools(
+                bound_plugins,
+                bound_mcp_servers,
+                include_skill_authoring=include_skill_authoring,
+            )
+
+            self.ap.logger.debug(f'Bound plugins: {bound_plugins}')
+            self.ap.logger.debug(f'Bound MCP servers: {bound_mcp_servers}')
+            self.ap.logger.debug(f'Use funcs: {query.use_funcs}')
 
         sender_name = ''
 

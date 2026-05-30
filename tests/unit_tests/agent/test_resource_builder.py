@@ -38,7 +38,13 @@ def make_model(model_type='llm', provider='test-provider'):
     )
 
 
-def make_query(runner_config: dict, *, variables: dict | None = None, use_llm_model_uuid=None):
+def make_query(
+    runner_config: dict,
+    *,
+    variables: dict | None = None,
+    use_llm_model_uuid=None,
+    use_funcs: list | None = None,
+):
     return SimpleNamespace(
         pipeline_config={
             'ai': {
@@ -48,6 +54,7 @@ def make_query(runner_config: dict, *, variables: dict | None = None, use_llm_mo
         },
         variables=variables or {},
         use_llm_model_uuid=use_llm_model_uuid,
+        use_funcs=use_funcs or [],
         pipeline_uuid='pipeline_001',
     )
 
@@ -157,3 +164,36 @@ async def test_build_models_deduplicates_query_and_config_models(app):
     resources = await build_resources(app, query, descriptor)
 
     assert [model['model_id'] for model in resources['models']] == ['primary', 'fallback']
+
+
+@pytest.mark.asyncio
+async def test_build_tools_authorizes_query_declared_tools(app):
+    """Tools discovered by Pipeline preprocessing become run-scoped authorized resources."""
+    descriptor = make_descriptor(
+        permissions={
+            'models': [],
+            'tools': ['detail', 'call'],
+        },
+    )
+    query = make_query(
+        {},
+        use_funcs=[
+            {'name': 'qa_plugin_echo', 'description': 'Echo test tool'},
+            SimpleNamespace(name='qa_mcp_echo'),
+        ],
+    )
+
+    resources = await build_resources(app, query, descriptor)
+
+    assert resources['tools'] == [
+        {
+            'tool_name': 'qa_plugin_echo',
+            'tool_type': None,
+            'description': None,
+        },
+        {
+            'tool_name': 'qa_mcp_echo',
+            'tool_type': None,
+            'description': None,
+        },
+    ]
