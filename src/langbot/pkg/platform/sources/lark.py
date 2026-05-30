@@ -940,7 +940,10 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                             message_chain=message_chain,
                             adapter=self,
                             pipeline_uuid=pipeline_uuid,
-                            variables={'_dify_form_action': form_action_data},
+                            variables={
+                                '_dify_form_action': form_action_data,
+                                '_routed_by_rule': True,
+                            },
                         )
 
                     schedule_on_app_loop(add_form_action_query())

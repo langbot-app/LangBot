@@ -309,7 +309,10 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                         message_chain=message_chain,
                         adapter=self,
                         pipeline_uuid=pipeline_uuid,
-                        variables={'_dify_form_action': form_action_data},
+                        variables={
+                            '_dify_form_action': form_action_data,
+                            '_routed_by_rule': True,
+                        },
                     )
             except Exception:
                 await self.logger.error(f'Error in telegram callback query: {traceback.format_exc()}')
