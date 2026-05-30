@@ -240,6 +240,21 @@ Claude Code、Codex、Kimi Code 这类 runner 不一定通过 LangBot 的模型/
   LangBot-managed 执行隔离。
 - 外部 harness 的 permission mode、allowed/disallowed tools、MCP 配置只是一层执行约束；LangBot 仍负责调用前的资源授权、路径策略、secret 过滤和审计。发布级要求见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
 
+### 7.2 SDK-owned LangBot MCP bridge
+
+Claude Code / Codex 这类外部 harness 不能直接持有 Python 进程内的
+`plugin_runtime_handler`，因此不能像 `local-agent` 一样直接调用
+`AgentRunAPIProxy`。当前轻量方案是由 SDK 提供一层 per-run MCP bridge：
+
+- `AgentRunner.create_external_mcp_bridge(ctx)` 是 runner 父类入口。
+- Bridge 由 `AgentRunAPIProxy` 和 `AgentRunContext` 构造，生命周期只覆盖当前 run。
+- Bridge 暴露 SDK 中显式注解的 `AgentRunExternalTools`，而不是扫描或导出全部 SDK action。
+- MCP tool schema 由注解和 Pydantic args model 生成；runner 插件不各自手写 LangBot tool schema。
+- stdio MCP proxy 只把外部 harness 的 MCP 调用转发回当前 run 的本地 bridge。
+- run 结束后 bridge 关闭；这不是 LangBot 主程序全局 MCP server。
+
+第一批工具保持很小：当前事件快照、history page、knowledge retrieve、authorized tool call。后续新增工具必须先进入 SDK-owned annotated surface，再由 MCP adapter 自动投影。
+
 ## 8. Claude Code runner 当前形态
 
 当前 `claude-code-agent` 是最小可运行 MVP，用来证明外部 harness runner 可以接入同一套 AgentRunner 协议。
@@ -262,6 +277,7 @@ Claude Code runner 当前把 LangBot event-first context 投影给外部 harness
 - 将 prompt prefix 指向 context 文件路径
 - 可把 binding 提供的 `skills-json` 写入 Claude Code 原生 `.claude/skills/<name>/SKILL.md`
 - 可把 binding 提供的 `mcp-config-json` 写成每次 run 的 MCP config，并通过 `--mcp-config` / `--strict-mcp-config` 传给 Claude Code
+- 可通过 `enable-langbot-mcp=true` 启用 SDK-owned per-run LangBot MCP bridge，使 Claude Code 通过 MCP 调用受限的 `AgentRunAPIProxy` 能力
 
 这些投影目前由 runner adapter 完成；长期更理想的形态是 LangBot Host 负责生成 scoped resource projection，runner 只负责适配 Claude Code 的原生目录和 CLI 参数。
 
@@ -273,8 +289,10 @@ Claude Code runner 当前把 LangBot event-first context 投影给外部 harness
 - Claude Code 能读取 LangBot context 文件并按指令输出 sentinel
 - Skill 文件可以投影到 `.claude/skills/`
 - MCP config 可以通过 binding config 投影为 Claude Code CLI 参数
+- SDK-owned per-run LangBot MCP bridge 可以被真实 Claude Code CLI 调用，并通过 `langbot_get_current_event` 读取当前 run_id
 - `external.session_id` 与 `external.working_directory` 可以写入 host-owned state，用于后续 resume
 - `codex-agent` 可通过 WebUI Debug Chat 调用本机 Codex CLI，读取 LangBot event context，并把 Codex `thread_id` 写入 host-owned state
+- SDK-owned per-run LangBot MCP bridge 可以被真实 Codex CLI 调用，并通过 `langbot_get_current_event` 读取当前 run_id
 - 对需要代理的本地运行环境，`codex-agent` 可通过 binding config 的 `environment-json` 显式传递非 secret 环境变量
 
 下一轮测试入口见 [PHASE1_QA_ACCEPTANCE_MATRIX.md](./PHASE1_QA_ACCEPTANCE_MATRIX.md)。
