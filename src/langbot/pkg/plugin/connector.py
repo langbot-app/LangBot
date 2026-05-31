@@ -224,29 +224,22 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         mcp_data: dict[str, Any],
         task_context: taskmgr.TaskContext | None = None,
     ):
-        """Install an MCP server from marketplace data."""
+        """Install an MCP server from marketplace data.
+
+        Marketplace MCP records carry the runtime-ready ``mode`` and
+        ``extra_args`` directly (the same shape LangBot stores in
+        ``mcp_servers``), so they are used as-is rather than reconstructed.
+        For ``stdio`` this preserves ``command``/``args``/``env``/``box``;
+        for ``http``/``sse`` it preserves ``url``/``headers``/``timeout``/
+        ``ssereadtimeout``.
+        """
         from ..entity.persistence import mcp as persistence_mcp
         import uuid
 
-        config = mcp_data.get('config', {})
-        url = config.get('url', '')
+        mode = mcp_data.get('mode') or 'stdio'
+        extra_args = mcp_data.get('extra_args') or {}
         # Use __ instead of / to avoid URL routing issues with slashes
         name = f'{mcp_data.get("author", "")}__{mcp_data.get("name", "")}'
-
-        # Determine mode from URL
-        if 'sse' in url.lower():
-            mode = 'sse'
-        elif url.startswith('http'):
-            mode = 'http'
-        else:
-            mode = 'stdio'
-
-        # Build extra_args from config
-        extra_args = {
-            'url': url,
-            'timeout': config.get('timeout', 30),
-            'sse_read_timeout': config.get('sse_read_timeout', 300),
-        }
 
         # Check if MCP server already exists
         existing = await self.ap.persistence_mgr.execute_async(
@@ -376,15 +369,22 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 mcp_resp = await client.get(f'{space_url}/api/v1/marketplace/mcps/{plugin_author}/{plugin_name}')
                 if mcp_resp.status_code == 200:
                     mcp_data = mcp_resp.json().get('data', {}).get('mcp', {})
-                    if mcp_data.get('config'):
+                    if mcp_data.get('mode'):
                         # It's an MCP - create server locally
                         self.ap.logger.info(f'Installing MCP from marketplace: {plugin_author}/{plugin_name}')
                         if task_context:
                             task_context.set_current_action('installing mcp server')
                         await self._install_mcp_from_marketplace(mcp_data, task_context)
+                        # Best-effort install report (bumps marketplace install_count).
+                        try:
+                            await client.post(
+                                f'{space_url}/api/v1/marketplace/mcps/{plugin_author}/{plugin_name}/install'
+                            )
+                        except Exception as report_err:
+                            self.ap.logger.debug(f'Failed to report MCP install: {report_err}')
                         return
                     else:
-                        raise Exception(f'MCP {plugin_author}/{plugin_name} has no config')
+                        raise Exception(f'MCP {plugin_author}/{plugin_name} has no mode')
                 elif mcp_resp.status_code == 404:
                     # Try skill endpoint - download ZIP and install
                     self.ap.logger.info(f'Trying skill endpoint for: {plugin_author}/{plugin_name}')
