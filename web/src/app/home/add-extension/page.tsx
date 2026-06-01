@@ -162,19 +162,6 @@ function AddExtensionContent() {
       : type === 'skill'
         ? t('market.typeSkill')
         : t('market.typePlugin');
-
-  // Marketplace icon URL for the extension being installed, by type.
-  const buildInstallIconURL = () => {
-    const cloud = getCloudServiceClientSync();
-    const a = installInfo.plugin_author || '';
-    const n = installInfo.plugin_name || '';
-    if (installExtensionType === 'mcp')
-      return cloud.getMCPMarketplaceIconURL(a, n);
-    if (installExtensionType === 'skill')
-      return cloud.getSkillMarketplaceIconURL(a, n);
-    return cloud.getPluginIconURL(a, n);
-  };
-  const installIconURL = buildInstallIconURL();
   const {
     addTask,
     setSelectedTaskId,
@@ -191,6 +178,19 @@ function AddExtensionContent() {
     useState<PluginInstallStatus>(PluginInstallStatus.ASK_CONFIRM);
   const [installError, setInstallError] = useState<string | null>(null);
   const [installIconFailed, setInstallIconFailed] = useState(false);
+
+  // Marketplace icon URL for the extension being installed, by type.
+  const installIconURL = (() => {
+    const cloud = getCloudServiceClientSync();
+    const a = installInfo.plugin_author || '';
+    const n = installInfo.plugin_name || '';
+    if (installExtensionType === 'mcp')
+      return cloud.getMCPMarketplaceIconURL(a, n);
+    if (installExtensionType === 'skill')
+      return cloud.getSkillMarketplaceIconURL(a, n);
+    return cloud.getPluginIconURL(a, n);
+  })();
+
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [popoverView, setPopoverView] = useState<PopoverView>('menu');
   const [isDragOver, setIsDragOver] = useState(false);
