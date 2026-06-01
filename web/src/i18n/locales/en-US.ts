@@ -1537,6 +1537,11 @@ const enUS = {
     installInfoId: 'ID',
     installInfoVersion: 'Version',
     installSuccess: 'Installed successfully',
+    installStage: {
+      mcpInstalling: 'Adding and connecting the MCP server…',
+      skillInstalling: 'Installing the skill…',
+      installed: 'Done',
+    },
     manualAdd: 'Manual Add',
     uploadExtension: 'Drag & drop or click to upload',
     uploadHint: 'Supports .zip (skills) and .lbpkg (plugins) files',

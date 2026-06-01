@@ -1473,6 +1473,11 @@ const zhHans = {
     installInfoId: '标识',
     installInfoVersion: '版本',
     installSuccess: '安装成功',
+    installStage: {
+      mcpInstalling: '正在添加并连接 MCP 服务器…',
+      skillInstalling: '正在安装技能…',
+      installed: '已完成',
+    },
     manualAdd: '手动添加',
     uploadExtension: '拖拽或点击上传扩展包',
     uploadHint: '支持 .zip（技能）和 .lbpkg（插件）文件',
