@@ -224,6 +224,50 @@ function AddExtensionContent() {
     );
   }, [searchParams, setSearchParams]);
 
+  // One-click install deep link from LangBot Space:
+  // /home/add-extension?install=1&extension_type=mcp&author=X&name=Y&version=Z
+  // Opens the install confirm dialog directly, then strips the params.
+  useEffect(() => {
+    if (searchParams.get('install') !== '1') return;
+    const author = searchParams.get('author');
+    const name = searchParams.get('name');
+    if (!author || !name) return;
+    const rawType =
+      searchParams.get('extension_type') ||
+      searchParams.get('type') ||
+      'plugin';
+    const extType = (
+      ['plugin', 'mcp', 'skill'].includes(rawType) ? rawType : 'plugin'
+    ) as 'plugin' | 'mcp' | 'skill';
+    const version = searchParams.get('version') || '';
+
+    setInstallInfo({
+      plugin_author: author,
+      plugin_name: name,
+      plugin_version: version,
+    });
+    setInstallExtensionType(extType);
+    setPluginInstallStatus(PluginInstallStatus.ASK_CONFIRM);
+    setInstallError(null);
+    setModalOpen(true);
+
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        [
+          'install',
+          'extension_type',
+          'type',
+          'author',
+          'name',
+          'version',
+        ].forEach((k) => next.delete(k));
+        return next;
+      },
+      { replace: true },
+    );
+  }, [searchParams, setSearchParams]);
+
   useEffect(() => {
     const onComplete = (_taskId: number, success: boolean) => {
       if (success) {
