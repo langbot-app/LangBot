@@ -17,6 +17,7 @@ from .groups import platform as groups_platform
 from .groups import pipelines as groups_pipelines
 from .groups import knowledge as groups_knowledge
 from .groups import resources as groups_resources
+from .groups import workflows as groups_workflows
 
 importutil.import_modules_in_pkg(groups)
 importutil.import_modules_in_pkg(groups_provider)
@@ -24,6 +25,7 @@ importutil.import_modules_in_pkg(groups_platform)
 importutil.import_modules_in_pkg(groups_pipelines)
 importutil.import_modules_in_pkg(groups_knowledge)
 importutil.import_modules_in_pkg(groups_resources)
+importutil.import_modules_in_pkg(groups_workflows)
 
 
 class HTTPController:

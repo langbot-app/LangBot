@@ -13,7 +13,7 @@ import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.events as events
 from ..utils import importutil
-from .config_coercion import coerce_pipeline_config
+from .config import coerce_pipeline_config
 
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -284,9 +284,9 @@ class RuntimePipeline:
         # Record query start and store message_id
         message_id = ''
         try:
-            from . import monitoring_helper
+            from . import monitor
 
-            message_id = await monitoring_helper.MonitoringHelper.record_query_start(
+            message_id = await monitor.MonitoringHelper.record_query_start(
                 ap=self.ap,
                 query=query,
                 bot_id=query.bot_uuid or 'unknown',
@@ -338,7 +338,7 @@ class RuntimePipeline:
             # Record query success only if no error occurred during processing
             if not query.variables.get('_monitoring_has_error', False):
                 try:
-                    await monitoring_helper.MonitoringHelper.record_query_success(
+                    await monitor.MonitoringHelper.record_query_success(
                         ap=self.ap,
                         message_id=message_id,
                         query=query,
@@ -348,7 +348,7 @@ class RuntimePipeline:
 
                 # Record bot response message
                 try:
-                    await monitoring_helper.MonitoringHelper.record_query_response(
+                    await monitor.MonitoringHelper.record_query_response(
                         ap=self.ap,
                         query=query,
                         bot_id=query.bot_uuid or 'unknown',
@@ -367,9 +367,9 @@ class RuntimePipeline:
 
             # Record query error
             try:
-                from . import monitoring_helper
+                from . import monitor
 
-                await monitoring_helper.MonitoringHelper.record_query_error(
+                await monitor.MonitoringHelper.record_query_error(
                     ap=self.ap,
                     query=query,
                     bot_id=query.bot_uuid or 'unknown',
@@ -384,7 +384,8 @@ class RuntimePipeline:
 
         finally:
             self.ap.logger.debug(f'Query {query.query_id} processed')
-            del self.ap.query_pool.cached_queries[query.query_id]
+            # Use pop with default to avoid KeyError if query was never cached
+            self.ap.query_pool.cached_queries.pop(query.query_id, None)
 
 
 class PipelineManager:

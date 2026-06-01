@@ -96,6 +96,27 @@ export const sidebarConfigList = [
     section: 'home',
   }),
   new SidebarChildVO({
+    id: 'workflows',
+    name: t('workflows.title'),
+    icon: (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="currentColor"
+        className="text-blue-500"
+      >
+        <path d="M2 3C2 2.44772 2.44772 2 3 2H7C7.55228 2 8 2.44772 8 3V7C8 7.55228 7.55228 8 7 8H5V11H11V9C11 8.44772 11.4477 8 12 8H21C21.5523 8 22 8.44772 22 9V13C22 13.5523 21.5523 14 21 14H12C11.4477 14 11 13.5523 11 13V12H5V17H11V15C11 14.4477 11.4477 14 12 14H21C21.5523 14 22 14.4477 22 15V19C22 19.5523 21.5523 20 21 20H12C11.4477 20 11 19.5523 11 19V18H4C3.44772 18 3 17.5523 3 17V8H3C2.44772 8 2 7.55228 2 7V3ZM4 4V6H6V4H4ZM13 10V12H20V10H13ZM13 16V18H20V16H13Z"></path>
+      </svg>
+    ),
+    route: '/home/workflows',
+    description: t('workflows.description'),
+    helpLink: {
+      en_US: '',
+      zh_Hans: '',
+    },
+    section: 'home',
+  }),
+  new SidebarChildVO({
     id: 'knowledge',
     name: t('knowledge.title'),
     icon: (

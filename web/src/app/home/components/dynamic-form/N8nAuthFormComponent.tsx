@@ -13,6 +13,7 @@ import {
 import { IDynamicFormItemSchema } from '@/app/infra/entities/form/dynamic';
 import DynamicFormItemComponent from '@/app/home/components/dynamic-form/DynamicFormItemComponent';
 import { extractI18nObject } from '@/i18n/I18nProvider';
+import { maybeTranslateKey } from '@/app/home/workflows/components/workflow-editor/workflow-i18n';
 
 /**
  * N8n认证表单组件
@@ -179,23 +180,34 @@ export default function N8nAuthFormComponent({
             key={config.id}
             control={form.control}
             name={config.name as keyof FormValues}
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  {extractI18nObject(config.label)}{' '}
-                  {config.required && <span className="text-red-500">*</span>}
-                </FormLabel>
-                <FormControl>
-                  <DynamicFormItemComponent config={config} field={field} />
-                </FormControl>
-                {config.description && (
-                  <p className="text-sm text-muted-foreground">
-                    {extractI18nObject(config.description)}
-                  </p>
-                )}
-                <FormMessage />
-              </FormItem>
-            )}
+            render={({ field }) => {
+              const labelText =
+                typeof config.label === 'string'
+                  ? maybeTranslateKey(config.label) || config.label
+                  : extractI18nObject(config.label);
+              const descriptionText =
+                typeof config.description === 'string'
+                  ? maybeTranslateKey(config.description) || config.description
+                  : extractI18nObject(config.description);
+
+              return (
+                <FormItem>
+                  <FormLabel>
+                    {labelText || config.name}{' '}
+                    {config.required && <span className="text-red-500">*</span>}
+                  </FormLabel>
+                  <FormControl>
+                    <DynamicFormItemComponent config={config} field={field} />
+                  </FormControl>
+                  {descriptionText && (
+                    <p className="text-sm text-muted-foreground">
+                      {descriptionText}
+                    </p>
+                  )}
+                  <FormMessage />
+                </FormItem>
+              );
+            }}
           />
         ))}
       </div>

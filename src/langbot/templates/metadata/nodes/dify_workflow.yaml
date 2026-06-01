@@ -1,0 +1,120 @@
+# Dify Workflow Node Configuration
+name: dify_workflow
+label:
+  en_US: Dify Workflow
+  zh_Hans: Dify 工作流
+description:
+  en_US: Call Dify service API
+  zh_Hans: 调用 Dify 服务 API
+category: integration
+icon: Bot
+color: '#3b82f6'
+
+inputs:
+  - name: query
+    type: string
+    label:
+      en_US: Query
+      zh_Hans: 查询
+    description:
+      en_US: User input/query
+      zh_Hans: 用户输入/查询
+    required: true
+  - name: conversation_id
+    type: string
+    label:
+      en_US: Conversation ID
+      zh_Hans: 会话 ID
+    description:
+      en_US: Conversation ID for multi-turn dialogue
+      zh_Hans: 多轮对话的会话 ID
+    required: false
+
+outputs:
+  - name: answer
+    type: string
+    label:
+      en_US: Answer
+      zh_Hans: 答案
+    description:
+      en_US: Answer from Dify
+      zh_Hans: Dify 返回的答案
+  - name: conversation_id
+    type: string
+    label:
+      en_US: Conversation ID
+      zh_Hans: 会话 ID
+    description:
+      en_US: Conversation ID
+      zh_Hans: 会话 ID
+  - name: success
+    type: boolean
+    label:
+      en_US: Success
+      zh_Hans: 成功
+    description:
+      en_US: Whether the call was successful
+      zh_Hans: 调用是否成功
+
+config:
+  - name: base-url
+    label:
+      en_US: Base URL
+      zh_Hans: 基础 URL
+    description:
+      en_US: Dify service base URL
+      zh_Hans: Dify 服务基础 URL
+    type: string
+    required: true
+    default: 'https://api.dify.ai/v1'
+    options:
+      - name: 'https://api.dify.ai/v1'
+        label:
+          en_US: Dify Cloud
+          zh_Hans: Dify 云服务
+
+  - name: base-prompt
+    label:
+      en_US: Base PROMPT
+      zh_Hans: 基础提示词
+    description:
+      en_US: When Dify receives a message with empty input (only images), it will pass this default prompt into it.
+      zh_Hans: 当 Dify 接收到输入文字为空（仅图片）的消息时，传入该默认提示词
+    type: string
+    required: true
+    default: "When the file content is readable, please read the content of this file. When the file is an image, describe the content of this image."
+
+  - name: app-type
+    label:
+      en_US: App Type
+      zh_Hans: 应用类型
+    description:
+      en_US: Application type
+      zh_Hans: 应用类型
+    type: select
+    required: true
+    default: chat
+    options:
+      - name: chat
+        label:
+          en_US: Chat (including Chatflow)
+          zh_Hans: 聊天（包括Chatflow）
+      - name: agent
+        label:
+          en_US: Agent
+          zh_Hans: Agent
+      - name: workflow
+        label:
+          en_US: Workflow
+          zh_Hans: 工作流
+
+  - name: api-key
+    label:
+      en_US: API Key
+      zh_Hans: API 密钥
+    description:
+      en_US: Dify API key
+      zh_Hans: Dify API 密钥
+    type: string
+    required: true
+    default: ''

@@ -13,3 +13,6 @@ spec:
     LLMAPIRequester:
       fromDirs:
         - path: pkg/provider/modelmgr/requesters/
+    WorkflowNode:
+      fromDirs:
+        - path: pkg/workflow/nodes/

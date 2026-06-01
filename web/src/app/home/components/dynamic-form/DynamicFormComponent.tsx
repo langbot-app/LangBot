@@ -11,16 +11,33 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import DynamicFormItemComponent from '@/app/home/components/dynamic-form/DynamicFormItemComponent';
-import QrCodeLoginDialog, {
-  QrLoginPlatform,
-} from '@/app/home/components/qrcode-login/QrCodeLoginDialog';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { extractI18nObject } from '@/i18n/I18nProvider';
 import { useTranslation } from 'react-i18next';
+import {
+  resolveI18nLabel,
+  maybeTranslateKey,
+} from '@/app/home/workflows/components/workflow-editor/workflow-i18n';
+import { extractI18nObject } from '@/i18n/I18nProvider';
+
+// Helper function to translate i18n key if the value is an i18n key string
+const translateIfKey = (value: string | undefined): string | undefined => {
+  if (!value) return value;
+  const translated = maybeTranslateKey(value);
+  return translated || value;
+};
+
+// Helper to extract i18n label and translate if it's an i18n key
+const extractAndTranslateI18n = (label: any): string => {
+  if (!label) return '';
+  if (typeof label === 'string') {
+    return translateIfKey(label) || label;
+  }
+  return resolveI18nLabel(label) || '';
+};
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Copy, Check, Globe, QrCode } from 'lucide-react';
+import { Copy, Check, Globe } from 'lucide-react';
 import { copyToClipboard } from '@/app/utils/clipboard';
 import { systemInfo } from '@/app/infra/http';
 
@@ -38,6 +55,9 @@ function resolveShowIfValue(
   externalDependentValues?: Record<string, unknown>,
   systemContext?: Record<string, unknown>,
 ): unknown {
+  if (!field || typeof field !== 'string') {
+    return undefined;
+  }
   if (field.startsWith('__system.')) {
     const key = field.slice('__system.'.length);
     return systemContext?.[key];
@@ -198,7 +218,6 @@ export default function DynamicFormComponent({
   isEditing,
   externalDependentValues,
   systemContext,
-  onValidate,
 }: {
   itemConfigList: IDynamicFormItemSchema[];
   onSubmit?: (val: object) => unknown;
@@ -209,9 +228,6 @@ export default function DynamicFormComponent({
   /** Extra variables accessible via the `__system.*` namespace in show_if conditions.
    *  e.g. `{ is_wizard: true }` makes `show_if: { field: "__system.is_wizard", ... }` work. */
   systemContext?: Record<string, unknown>;
-  /** Callback to expose validation function to parent component.
-   *  Parent can call this function to trigger validation and get validity state. */
-  onValidate?: (validateFn: () => Promise<boolean>) => void;
 }) {
   const isInitialMount = useRef(true);
   const previousInitialValues = useRef(initialValues);
@@ -250,6 +266,39 @@ export default function DynamicFormComponent({
       // Default to a single empty system prompt entry
       return [{ role: 'system', content: '' }];
     }
+    if (
+      item.type === 'string' ||
+      item.type === 'text' ||
+      item.type === 'secret' ||
+      item.type === 'select' ||
+      item.type === 'llm-model-selector' ||
+      item.type === 'embedding-model-selector' ||
+      item.type === 'rerank-model-selector' ||
+      item.type === 'pipeline-selector' ||
+      item.type === 'knowledge-base-selector' ||
+      item.type === 'bot-selector'
+    ) {
+      return typeof value === 'string' ? value : '';
+    }
+    if (
+      item.type === 'array[string]' ||
+      item.type === 'knowledge-base-multi-selector' ||
+      item.type === 'tools-selector'
+    ) {
+      return Array.isArray(value)
+        ? value.filter((item): item is string => typeof item === 'string')
+        : [];
+    }
+    if (item.type === 'boolean') {
+      return typeof value === 'boolean' ? value : Boolean(value);
+    }
+    if (item.type === 'integer' || item.type === 'float') {
+      return typeof value === 'number' && !Number.isNaN(value)
+        ? value
+        : typeof item.default === 'number'
+          ? item.default
+          : 0;
+    }
     return value;
   };
 
@@ -258,10 +307,7 @@ export default function DynamicFormComponent({
   const editableItems = useMemo(
     () =>
       itemConfigList.filter(
-        (item) =>
-          item.type !== 'webhook-url' &&
-          item.type !== 'embed-code' &&
-          item.type !== 'qr-code-login',
+        (item) => item.type !== 'webhook-url' && item.type !== 'embed-code',
       ),
     [itemConfigList],
   );
@@ -288,6 +334,9 @@ export default function DynamicFormComponent({
             fieldSchema = z.array(z.string());
             break;
           case 'select':
+            fieldSchema = z.string();
+            break;
+          case 'pipeline-selector':
             fieldSchema = z.string();
             break;
           case 'llm-model-selector':
@@ -361,17 +410,6 @@ export default function DynamicFormComponent({
       };
     }, {} as FormValues),
   });
-
-  // Expose validation function to parent component
-  const validate = async (): Promise<boolean> => {
-    // Trigger validation for all fields
-    const result = await form.trigger();
-    return result;
-  };
-
-  useEffect(() => {
-    onValidate?.(validate);
-  }, [onValidate]);
 
   // 当 initialValues 变化时更新表单值
   // 但要避免因为内部表单更新触发的 onSubmit 导致的 initialValues 变化而重新设置表单
@@ -455,28 +493,9 @@ export default function DynamicFormComponent({
     return () => subscription.unsubscribe();
   }, [form, editableItems]);
 
-  // State for QR code login dialog
-  const [qrDialogOpen, setQrDialogOpen] = useState(false);
-  const [qrDialogPlatform, setQrDialogPlatform] =
-    useState<QrLoginPlatform>('feishu');
-
   return (
     <Form {...form}>
-      <div className="space-y-4">
-        {/* QR code login dialog */}
-        <QrCodeLoginDialog
-          open={qrDialogOpen}
-          onOpenChange={setQrDialogOpen}
-          platform={qrDialogPlatform}
-          onSuccess={(credentials) => {
-            for (const [key, value] of Object.entries(credentials)) {
-              if (value) {
-                form.setValue(key as keyof FormValues, value as never);
-              }
-            }
-          }}
-        />
-
+      <div className="space-y-4 w-full overflow-x-hidden">
         {itemConfigList.map((config) => {
           if (config.show_if) {
             const dependValue = resolveShowIfValue(
@@ -520,11 +539,15 @@ export default function DynamicFormComponent({
 
             return (
               <WebhookUrlField
-                key={config.id}
-                label={extractI18nObject(config.label)}
+                key={`${config.id}-${config.name}`}
+                label={extractAndTranslateI18n(config.label)}
                 description={
                   config.description
-                    ? extractI18nObject(config.description)
+                    ? typeof config.description === 'string'
+                      ? config.description.startsWith('workflows.')
+                        ? String(t(config.description))
+                        : config.description
+                      : extractAndTranslateI18n(config.description)
                     : undefined
                 }
                 url={webhookUrl}
@@ -552,10 +575,12 @@ export default function DynamicFormComponent({
             return (
               <EmbedCodeField
                 key={config.id}
-                label={extractI18nObject(config.label)}
+                label={extractAndTranslateI18n(config.label)}
                 description={
                   config.description
-                    ? extractI18nObject(config.description)
+                    ? typeof config.description === 'string'
+                      ? translateIfKey(config.description) || config.description
+                      : extractI18nObject(config.description)
                     : undefined
                 }
                 snippet={embedSnippet}
@@ -563,88 +588,32 @@ export default function DynamicFormComponent({
             );
           }
 
-          // QR code login button (e.g. Feishu one-click create, WeChat scan login)
-          if (config.type === 'qr-code-login') {
-            return (
-              <FormItem key={config.id}>
-                <div
-                  className="relative flex items-center gap-4 p-4 rounded-xl border-2 border-dashed cursor-pointer transition-all hover:border-solid hover:shadow-md group"
-                  style={{
-                    borderColor:
-                      'color-mix(in srgb, var(--primary) 25%, transparent)',
-                    background:
-                      'color-mix(in srgb, var(--primary) 3%, transparent)',
-                  }}
-                  onClick={() => {
-                    if (!isEditing) {
-                      setQrDialogPlatform(
-                        (config.login_platform as QrLoginPlatform) || 'feishu',
-                      );
-                      setQrDialogOpen(true);
-                    }
-                  }}
-                >
-                  <div className="flex items-center justify-center h-12 w-12 rounded-lg bg-primary/10 shrink-0">
-                    <QrCode className="h-6 w-6 text-primary" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-foreground">
-                        {extractI18nObject(config.label)}
-                      </span>
-                      <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-primary text-primary-foreground">
-                        {t('common.recommend')}
-                      </span>
-                    </div>
-                    {config.description && (
-                      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                        {extractI18nObject(config.description)}
-                      </p>
-                    )}
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={!!isEditing}
-                    className="shrink-0"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setQrDialogPlatform(
-                        (config.login_platform as QrLoginPlatform) || 'feishu',
-                      );
-                      setQrDialogOpen(true);
-                    }}
-                  >
-                    <QrCode className="h-3.5 w-3.5 mr-1" />
-                    {t('common.start')}
-                  </Button>
-                </div>
-              </FormItem>
-            );
-          }
-
           // Boolean fields use a special inline layout
           if (config.type === 'boolean') {
             return (
               <FormField
-                key={config.id}
+                key={`${config.id}-${config.name}`}
                 control={form.control}
                 name={config.name as keyof FormValues}
                 render={({ field }) => (
                   <FormItem>
                     <div
                       className={cn(
-                        'flex flex-row items-center justify-between rounded-lg border p-4 max-w-2xl',
+                        'flex flex-row items-center justify-between rounded-lg border p-4 w-full max-w-full overflow-hidden',
                         isFieldDisabled && 'pointer-events-none opacity-60',
                       )}
                     >
                       <div className="space-y-0.5">
                         <FormLabel className="text-base">
-                          {extractI18nObject(config.label)}
+                          {extractAndTranslateI18n(config.label)}
                         </FormLabel>
                         {config.description && (
                           <p className="text-sm text-muted-foreground">
-                            {extractI18nObject(config.description)}
+                            {typeof config.description === 'string'
+                              ? config.description.startsWith('workflows.')
+                                ? String(t(config.description))
+                                : translateIfKey(config.description)
+                              : extractAndTranslateI18n(config.description)}
                           </p>
                         )}
                       </div>
@@ -665,36 +634,64 @@ export default function DynamicFormComponent({
 
           return (
             <FormField
-              key={config.id}
+              key={`${config.id}-${config.name}`}
               control={form.control}
               name={config.name as keyof FormValues}
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    {extractI18nObject(config.label)}{' '}
-                    {config.required && <span className="text-red-500">*</span>}
-                  </FormLabel>
-                  <FormControl>
-                    <div
-                      className={
-                        isFieldDisabled ? 'pointer-events-none opacity-60' : ''
-                      }
-                    >
-                      <DynamicFormItemComponent
-                        config={config}
-                        field={field}
-                        onFileUploaded={onFileUploaded}
-                      />
-                    </div>
-                  </FormControl>
-                  {config.description && (
-                    <p className="text-sm text-muted-foreground">
-                      {extractI18nObject(config.description)}
-                    </p>
-                  )}
-                  <FormMessage />
-                </FormItem>
-              )}
+              render={({ field }) => {
+                // Use the i18n label from config.label (I18nObject), falling back to config.name
+                const i18nLabel = config.label
+                  ? extractAndTranslateI18n(config.label)
+                  : config.name;
+                return (
+                  <FormItem>
+                    <FormLabel>
+                      {i18nLabel}{' '}
+                      {config.required && (
+                        <span className="text-red-500">*</span>
+                      )}
+                    </FormLabel>
+                    <FormControl>
+                      <div
+                        className={
+                          isFieldDisabled
+                            ? 'pointer-events-none opacity-60'
+                            : ''
+                        }
+                      >
+                        <DynamicFormItemComponent
+                          config={config}
+                          field={field}
+                          onFileUploaded={onFileUploaded}
+                        />
+                      </div>
+                    </FormControl>
+                    {config.description &&
+                      (() => {
+                        const desc = config.description;
+                        if (typeof desc === 'string') {
+                          if (desc.startsWith('workflows.')) {
+                            return (
+                              <p className="text-sm text-muted-foreground">
+                                {String(t(desc))}
+                              </p>
+                            );
+                          }
+                          return (
+                            <p className="text-sm text-muted-foreground">
+                              {translateIfKey(desc) || desc}
+                            </p>
+                          );
+                        }
+                        return (
+                          <p className="text-sm text-muted-foreground">
+                            {extractAndTranslateI18n(desc)}
+                          </p>
+                        );
+                      })()}
+                    <FormMessage />
+                  </FormItem>
+                );
+              }}
             />
           );
         })}
