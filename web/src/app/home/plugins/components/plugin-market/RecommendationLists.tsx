@@ -22,6 +22,15 @@ function pluginToVO(
   plugin: PluginV4,
   t: (key: string) => string,
 ): PluginMarketCardVO {
+  const cloudClient = getCloudServiceClientSync();
+  // Recommendation lists are mixed-type; resolve the icon per extension type.
+  const iconURL =
+    plugin.type === 'mcp'
+      ? cloudClient.getMCPMarketplaceIconURL(plugin.author, plugin.name)
+      : plugin.type === 'skill'
+        ? cloudClient.getSkillMarketplaceIconURL(plugin.author, plugin.name)
+        : cloudClient.getPluginIconURL(plugin.author, plugin.name);
+
   return new PluginMarketCardVO({
     pluginId: plugin.author + ' / ' + plugin.name,
     author: plugin.author,
@@ -30,10 +39,7 @@ function pluginToVO(
     description:
       extractI18nObject(plugin.description) || t('market.noDescription'),
     installCount: plugin.install_count,
-    iconURL: getCloudServiceClientSync().getPluginIconURL(
-      plugin.author,
-      plugin.name,
-    ),
+    iconURL,
     githubURL: plugin.repository,
     version: plugin.latest_version,
     components: plugin.components,

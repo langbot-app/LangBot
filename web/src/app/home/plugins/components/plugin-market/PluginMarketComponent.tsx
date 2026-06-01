@@ -27,6 +27,8 @@ import {
 } from 'lucide-react';
 import PluginMarketCardComponent from './plugin-market-card/PluginMarketCardComponent';
 import { PluginMarketCardVO } from './plugin-market-card/PluginMarketCardVO';
+import { RecommendationLists } from './RecommendationLists';
+import type { RecommendationList } from './RecommendationLists';
 import { getCloudServiceClientSync } from '@/app/infra/http';
 import { useTranslation } from 'react-i18next';
 import { PluginV4, PluginV4Status } from '@/app/infra/entities/plugin';
@@ -78,6 +80,9 @@ function MarketPageContent({
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [availableTags, setAvailableTags] = useState<PluginTag[]>([]);
   const [tagNames, setTagNames] = useState<Record<string, string>>({});
+  const [recommendationLists, setRecommendationLists] = useState<
+    RecommendationList[]
+  >([]);
   const [plugins, setPlugins] = useState<PluginMarketCardVO[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -250,8 +255,20 @@ function MarketPageContent({
   useEffect(() => {
     fetchPlugins(1, false, true);
     fetchAvailableTags();
+    fetchRecommendationLists();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 获取推荐列表（精选，混合插件/MCP/Skill）
+  const fetchRecommendationLists = async () => {
+    try {
+      const { lists } =
+        await getCloudServiceClientSync().getRecommendationLists();
+      setRecommendationLists(lists || []);
+    } catch (error) {
+      console.error('Failed to fetch recommendation lists:', error);
+    }
+  };
 
   // 获取可用标签
   const fetchAvailableTags = async () => {
@@ -701,6 +718,18 @@ function MarketPageContent({
         ref={scrollContainerRef}
         className="flex-1 overflow-y-auto px-3 sm:px-4 pb-6 container mx-auto"
       >
+        {/* 推荐列表（仅在无搜索/筛选时展示，混合插件/MCP/Skill） */}
+        {!searchQuery &&
+          typeFilter === 'all' &&
+          componentFilter === 'all' &&
+          selectedTags.length === 0 && (
+            <RecommendationLists
+              lists={recommendationLists}
+              tagNames={tagNames}
+              onInstall={handleInstallPlugin}
+            />
+          )}
+
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <LoadingSpinner text={t('market.loading')} />
