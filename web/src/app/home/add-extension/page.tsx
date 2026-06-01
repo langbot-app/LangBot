@@ -23,6 +23,7 @@ import {
   FileArchive,
   Loader2,
   CircleHelp,
+  Package,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import {
@@ -33,6 +34,8 @@ import {
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { httpClient, systemInfo } from '@/app/infra/http/HttpClient';
+import { getCloudServiceClientSync } from '@/app/infra/http';
+import { extractI18nObject } from '@/i18n/I18nProvider';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { PluginV4 } from '@/app/infra/entities/plugin';
@@ -159,6 +162,19 @@ function AddExtensionContent() {
       : type === 'skill'
         ? t('market.typeSkill')
         : t('market.typePlugin');
+
+  // Marketplace icon URL for the extension being installed, by type.
+  const buildInstallIconURL = () => {
+    const cloud = getCloudServiceClientSync();
+    const a = installInfo.plugin_author || '';
+    const n = installInfo.plugin_name || '';
+    if (installExtensionType === 'mcp')
+      return cloud.getMCPMarketplaceIconURL(a, n);
+    if (installExtensionType === 'skill')
+      return cloud.getSkillMarketplaceIconURL(a, n);
+    return cloud.getPluginIconURL(a, n);
+  };
+  const installIconURL = buildInstallIconURL();
   const {
     addTask,
     setSelectedTaskId,
@@ -174,6 +190,7 @@ function AddExtensionContent() {
   const [pluginInstallStatus, setPluginInstallStatus] =
     useState<PluginInstallStatus>(PluginInstallStatus.ASK_CONFIRM);
   const [installError, setInstallError] = useState<string | null>(null);
+  const [installIconFailed, setInstallIconFailed] = useState(false);
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [popoverView, setPopoverView] = useState<PopoverView>('menu');
   const [isDragOver, setIsDragOver] = useState(false);
@@ -253,10 +270,12 @@ function AddExtensionContent() {
       plugin_author: author,
       plugin_name: name,
       plugin_version: version,
+      plugin_label: name,
     });
     setInstallExtensionType(extType);
     setPluginInstallStatus(PluginInstallStatus.ASK_CONFIRM);
     setInstallError(null);
+    setInstallIconFailed(false);
     setModalOpen(true);
 
     setSearchParams(
@@ -305,10 +324,13 @@ function AddExtensionContent() {
       plugin_author: plugin.author,
       plugin_name: plugin.name,
       plugin_version: plugin.latest_version,
+      plugin_label: extractI18nObject(plugin.label) || plugin.name,
+      plugin_description: extractI18nObject(plugin.description) || '',
     });
     setInstallExtensionType(plugin.type || 'plugin');
     setPluginInstallStatus(PluginInstallStatus.ASK_CONFIRM);
     setInstallError(null);
+    setInstallIconFailed(false);
     setModalOpen(true);
   }, []);
 
@@ -1221,36 +1243,38 @@ function AddExtensionContent() {
               <p>
                 {t('addExtension.installConfirm', {
                   type: extensionTypeLabel(installExtensionType),
-                  name: installInfo.plugin_name,
+                  name: installInfo.plugin_label || installInfo.plugin_name,
                 })}
               </p>
-              <div className="space-y-1.5 rounded-md bg-muted/40 p-3 text-sm">
-                <div className="flex items-center gap-2">
-                  <span className="w-12 shrink-0 text-muted-foreground">
-                    {t('addExtension.installInfoType')}
-                  </span>
-                  <span className="rounded bg-background px-1.5 py-0.5 text-xs font-medium">
-                    {extensionTypeLabel(installExtensionType)}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="w-12 shrink-0 text-muted-foreground">
-                    {t('addExtension.installInfoId')}
-                  </span>
-                  <span className="break-all font-medium">
-                    {installInfo.plugin_author}/{installInfo.plugin_name}
-                  </span>
-                </div>
-                {installInfo.plugin_version && (
-                  <div className="flex items-center gap-2">
-                    <span className="w-12 shrink-0 text-muted-foreground">
-                      {t('addExtension.installInfoVersion')}
-                    </span>
-                    <span className="font-medium">
-                      v{installInfo.plugin_version}
-                    </span>
+              <div className="flex gap-3 rounded-md bg-muted/40 p-3">
+                {installIconFailed ? (
+                  <div className="flex size-12 shrink-0 items-center justify-center rounded-lg border bg-background text-muted-foreground">
+                    <Package className="size-6" />
                   </div>
+                ) : (
+                  <img
+                    src={installIconURL}
+                    alt={installInfo.plugin_name}
+                    className="size-12 shrink-0 rounded-lg border bg-background object-cover"
+                    onError={() => setInstallIconFailed(true)}
+                  />
                 )}
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <div className="truncate font-medium">
+                    {installInfo.plugin_label || installInfo.plugin_name}
+                  </div>
+                  <div className="truncate text-xs text-muted-foreground">
+                    {installInfo.plugin_author}/{installInfo.plugin_name}
+                    {installInfo.plugin_version
+                      ? ` · v${installInfo.plugin_version}`
+                      : ''}
+                  </div>
+                  {installInfo.plugin_description && (
+                    <div className="line-clamp-3 pt-0.5 text-xs text-muted-foreground">
+                      {installInfo.plugin_description}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
