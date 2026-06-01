@@ -454,7 +454,7 @@ const enUS = {
     noPluginInstalled: 'No plugins installed',
     noExtensionInstalled: 'No extensions installed',
     loadingExtensions: 'Loading extensions...',
-    groupByType: 'Group by type',
+    groupByType: 'Group by format',
     pluginConfig: 'Plugin Configuration',
     pluginSort: 'Plugin Sort',
     pluginSortDescription:

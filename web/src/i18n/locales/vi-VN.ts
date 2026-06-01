@@ -460,7 +460,7 @@ const viVN = {
     noPluginInstalled: 'Chưa cài đặt plugin nào',
     noExtensionInstalled: 'Chưa cài đặt tiện ích mở rộng nào',
     loadingExtensions: 'Đang tải tiện ích mở rộng...',
-    groupByType: 'Nhóm theo loại',
+    groupByType: 'Nhóm theo định dạng',
     pluginConfig: 'Cấu hình Plugin',
     pluginSort: 'Sắp xếp Plugin',
     pluginSortDescription:

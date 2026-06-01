@@ -459,7 +459,7 @@ const jaJP = {
     noPluginInstalled: 'プラグインがインストールされていません',
     noExtensionInstalled: '拡張機能がインストールされていません',
     loadingExtensions: '拡張機能を読み込み中...',
-    groupByType: '種類でグループ化',
+    groupByType: '形式でグループ化',
     pluginConfig: 'プラグイン設定',
     pluginSort: 'プラグインの並び替え',
     pluginSortDescription:

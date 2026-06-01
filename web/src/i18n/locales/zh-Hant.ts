@@ -439,7 +439,7 @@ const zhHant = {
     noPluginInstalled: '暫未安裝任何外掛',
     noExtensionInstalled: '暫未安裝任何擴充功能',
     loadingExtensions: '正在載入擴充功能...',
-    groupByType: '依類型分組',
+    groupByType: '依格式分組',
     pluginSort: '外掛排序',
     pluginSortDescription:
       '外掛順序會影響同一事件內的處理順序，請拖曳外掛卡片排序',

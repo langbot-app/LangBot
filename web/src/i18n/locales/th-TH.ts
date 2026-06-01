@@ -450,7 +450,7 @@ const thTH = {
     noPluginInstalled: 'ยังไม่มีปลั๊กอินที่ติดตั้ง',
     noExtensionInstalled: 'ยังไม่มีส่วนขยายที่ติดตั้ง',
     loadingExtensions: 'กำลังโหลดส่วนขยาย...',
-    groupByType: 'จัดกลุ่มตามประเภท',
+    groupByType: 'จัดกลุ่มตามรูปแบบ',
     pluginConfig: 'การกำหนดค่าปลั๊กอิน',
     pluginSort: 'เรียงลำดับปลั๊กอิน',
     pluginSortDescription:

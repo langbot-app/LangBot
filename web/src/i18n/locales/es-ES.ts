@@ -466,7 +466,7 @@ const esES = {
     noPluginInstalled: 'No hay plugins instalados',
     noExtensionInstalled: 'No hay extensiones instaladas',
     loadingExtensions: 'Cargando extensiones...',
-    groupByType: 'Agrupar por tipo',
+    groupByType: 'Agrupar por formato',
     pluginConfig: 'Configuración del plugin',
     pluginSort: 'Orden de plugins',
     pluginSortDescription:

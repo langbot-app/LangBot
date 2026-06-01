@@ -438,7 +438,7 @@ const zhHans = {
     noPluginInstalled: '暂未安装任何插件',
     noExtensionInstalled: '暂未安装任何扩展',
     loadingExtensions: '正在加载扩展...',
-    groupByType: '按类型分组',
+    groupByType: '按格式分组',
     pluginSort: '插件排序',
     pluginSortDescription:
       '插件顺序会影响同一事件内的处理顺序，请拖动插件卡片排序',
