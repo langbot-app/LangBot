@@ -670,7 +670,9 @@ const enUS = {
     markAsRead: 'Mark as Read',
     markAsReadSuccess: 'Marked as read',
     markAsReadFailed: 'Mark as read failed',
-    filterByComponent: 'Component',
+    filterByComponent: 'Plugin Component',
+    filterByComponentHint:
+      'Plugin components are the capability types a plugin provides — Tool, Command, EventListener, etc. Filter by component to show only plugins offering that capability.',
     allComponents: 'All Components',
     componentName: {
       Tool: 'Tool',

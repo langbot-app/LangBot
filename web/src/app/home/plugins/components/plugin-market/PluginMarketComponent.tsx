@@ -24,7 +24,13 @@ import {
   FileText,
   SlidersHorizontal,
   X,
+  Info,
 } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import PluginMarketCardComponent from './plugin-market-card/PluginMarketCardComponent';
 import { PluginMarketCardVO } from './plugin-market-card/PluginMarketCardVO';
 import { RecommendationLists } from './RecommendationLists';
@@ -49,6 +55,23 @@ interface SortOption {
   sortOrder: string;
 }
 
+// Persist the market filter conditions (type / component / tags / sort) across
+// visits via localStorage.
+const MARKET_FILTERS_KEY = 'langbot_market_filters';
+interface MarketFilters {
+  typeFilter?: string;
+  componentFilter?: string;
+  selectedTags?: string[];
+  sortOption?: string;
+}
+function loadMarketFilters(): MarketFilters {
+  try {
+    return JSON.parse(localStorage.getItem(MARKET_FILTERS_KEY) || '{}');
+  } catch {
+    return {};
+  }
+}
+
 // 内部组件，用于处理搜索参数
 function MarketPageContent({
   installPlugin,
@@ -70,17 +93,22 @@ function MarketPageContent({
   ];
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [componentFilter, setComponentFilter] = useState('all');
+  const [componentFilter, setComponentFilter] = useState<string>(
+    () => loadMarketFilters().componentFilter ?? 'all',
+  );
   const [typeFilter, setTypeFilter] = useState<string>(() => {
     const type = searchParams.get('type');
     if (type && validTypes.includes(type)) {
       return type;
     }
-    return 'all';
+    const saved = loadMarketFilters().typeFilter;
+    return saved && validTypes.includes(saved) ? saved : 'all';
   });
   const activeAdvancedFilters =
     (typeFilter === 'all' ? 0 : 1) + (componentFilter === 'all' ? 0 : 1);
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>(
+    () => loadMarketFilters().selectedTags ?? [],
+  );
   const [availableTags, setAvailableTags] = useState<PluginTag[]>([]);
   const [tagNames, setTagNames] = useState<Record<string, string>>({});
   const [recommendationLists, setRecommendationLists] = useState<
@@ -92,7 +120,26 @@ function MarketPageContent({
   const [hasMore, setHasMore] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [total, setTotal] = useState(0);
-  const [sortOption, setSortOption] = useState('install_count_desc');
+  const [sortOption, setSortOption] = useState<string>(
+    () => loadMarketFilters().sortOption ?? 'install_count_desc',
+  );
+
+  // Persist filter conditions so they survive navigation / reload.
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        MARKET_FILTERS_KEY,
+        JSON.stringify({
+          typeFilter,
+          componentFilter,
+          selectedTags,
+          sortOption,
+        }),
+      );
+    } catch {
+      // ignore storage errors
+    }
+  }, [typeFilter, componentFilter, selectedTags, sortOption]);
 
   const pageSize = 12; // 每页12个
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -642,8 +689,22 @@ function MarketPageContent({
                 </div>
                 <Separator />
                 <div className="space-y-2">
-                  <div className="text-xs font-medium text-muted-foreground">
+                  <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
                     {t('market.filterByComponent')}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          className="inline-flex text-muted-foreground/70 hover:text-foreground"
+                          aria-label={t('market.filterByComponentHint')}
+                        >
+                          <Info className="size-3.5" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-64">
+                        {t('market.filterByComponentHint')}
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
                   <ToggleGroup
                     type="single"
