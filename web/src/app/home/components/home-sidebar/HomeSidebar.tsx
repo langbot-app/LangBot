@@ -31,6 +31,7 @@ import {
   HardDrive,
   Server,
   Puzzle,
+  RefreshCcw,
 } from 'lucide-react';
 import { useTheme } from '@/components/providers/theme-provider';
 
@@ -325,6 +326,23 @@ function NavItems({
   );
   // Track popover open state for collapsed sidebar entity categories
   const [popoverOpen, setPopoverOpen] = useState<Record<string, boolean>>({});
+  // Spin state for the installed-extensions refresh button
+  const [extRefreshing, setExtRefreshing] = useState(false);
+
+  const handleRefreshExtensions = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (extRefreshing) return;
+    setExtRefreshing(true);
+    try {
+      await Promise.all([
+        sidebarData.refreshPlugins(),
+        sidebarData.refreshMCPServers(),
+        sidebarData.refreshSkills(),
+      ]);
+    } finally {
+      setExtRefreshing(false);
+    }
+  };
 
   // Plugin operation state
   const [showPluginOpModal, setShowPluginOpModal] = useState(false);
@@ -694,17 +712,21 @@ function NavItems({
                       </a>
                     </SidebarMenuSubButton>
                   </TooltipTrigger>
-                  {item.description && (
-                    <TooltipContent
-                      side="right"
-                      align="center"
-                      className="max-w-64"
-                    >
-                      {item.description.length > 80
-                        ? item.description.slice(0, 80) + '…'
-                        : item.description}
-                    </TooltipContent>
-                  )}
+                  <TooltipContent
+                    side="right"
+                    align="center"
+                    className="max-w-64"
+                  >
+                    {/* Full name — so truncated sidebar items are readable on hover */}
+                    <div className="break-words font-medium">{item.name}</div>
+                    {item.description && (
+                      <div className="mt-0.5 break-words text-xs text-muted-foreground">
+                        {item.description.length > 80
+                          ? item.description.slice(0, 80) + '…'
+                          : item.description}
+                      </div>
+                    )}
+                  </TooltipContent>
                 </Tooltip>
                 {/* Plugin context menu - shown on hover (not for debug plugins) */}
                 {itemIsPluginType && !item.debug && (
@@ -973,6 +995,21 @@ function NavItems({
                     {config.name}
                   </span>
                   <div className="ml-auto flex items-center gap-0.5 -mr-1">
+                    {isExtensionsCategory && (
+                      <button
+                        type="button"
+                        title={t('common.refresh', '刷新')}
+                        className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all"
+                        onClick={handleRefreshExtensions}
+                      >
+                        <RefreshCcw
+                          className={cn(
+                            'size-3.5',
+                            extRefreshing && 'animate-spin',
+                          )}
+                        />
+                      </button>
+                    )}
                     {canCreate &&
                       (isPlugin ? (
                         <DropdownMenu>
