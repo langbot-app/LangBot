@@ -291,6 +291,7 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                                 ),
                             ),
                             message_chain=message_chain,
+                            source_platform_object=update,
                         )
                     else:
                         synthetic_event = platform_events.FriendMessage(
@@ -300,6 +301,7 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                                 remark='',
                             ),
                             message_chain=message_chain,
+                            source_platform_object=update,
                         )
 
                     await self.ap.query_pool.add_query(
@@ -415,7 +417,8 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         update = event.source_platform_object
         chat_id = update.effective_chat.id
         chat_type = update.effective_chat.type
-        message_thread_id = update.message.message_thread_id
+        effective_message = update.effective_message
+        message_thread_id = getattr(effective_message, 'message_thread_id', None) if effective_message else None
 
         if chat_type == 'private':
             draft_id = int(time.time() * 1000)
@@ -443,7 +446,8 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         assert isinstance(message_source.source_platform_object, Update)
         update = message_source.source_platform_object
         chat_id = update.effective_chat.id
-        message_thread_id = update.message.message_thread_id
+        effective_message = update.effective_message
+        message_thread_id = getattr(effective_message, 'message_thread_id', None) if effective_message else None
 
         if message_id not in self.msg_stream_id:
             return
@@ -457,21 +461,32 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             return
 
         content = components[0]['text']
+        form_data = getattr(bot_message, '_form_data', None)
 
         if chat_mode == 'private':
+            if form_data and is_final:
+                # Suppress the streaming-text materialisation: this chunk's
+                # content is just a placeholder (e.g. zero-width space, or
+                # the display_text used to keep ResponseWrapper from dropping
+                # the chunk). The button card below carries the real prompt.
+                self.msg_stream_id.pop(message_id, None)
+                await self._send_form_action_buttons(message_source, form_data)
+                return
             args = self._build_message_args(chat_id, content, message_thread_id, draft_id=draft_id)
             await self.bot.send_message_draft(**args)
             if is_final and bot_message.tool_calls is None:
                 del args['draft_id']
                 await self.bot.send_message(**args)
                 self.msg_stream_id.pop(message_id)
-
-                # Send form action buttons if form data is present
-                form_data = getattr(bot_message, '_form_data', None)
-                if form_data:
-                    await self._send_form_action_buttons(message_source, form_data)
         else:
             stream_id = draft_id
+            if form_data and is_final:
+                # Same suppression as the private branch — don't push the
+                # placeholder text into the streaming message; render the
+                # button card instead.
+                self.msg_stream_id.pop(message_id, None)
+                await self._send_form_action_buttons(message_source, form_data)
+                return
             if (msg_seq - 1) % 8 == 0 or is_final:
                 args = {
                     'message_id': stream_id,
@@ -485,11 +500,6 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             if is_final and bot_message.tool_calls is None:
                 self.msg_stream_id.pop(message_id)
 
-                # Send form action buttons if form data is present
-                form_data = getattr(bot_message, '_form_data', None)
-                if form_data:
-                    await self._send_form_action_buttons(message_source, form_data)
-
     async def _send_form_action_buttons(
         self,
         message_source: platform_events.MessageEvent,
@@ -498,6 +508,7 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         """Send inline keyboard buttons for Dify human_input_required form actions."""
         actions = form_data.get('actions', [])
         node_title = form_data.get('node_title', '')
+        form_content = form_data.get('form_content', '')
         workflow_run_id = form_data.get('workflow_run_id', '')
         # Telegram callback_data is capped at 64 bytes, so we identify the
         # paused workflow by the last 8 chars of workflow_run_id (unique
@@ -523,11 +534,15 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         update = message_source.source_platform_object
         chat_id = update.effective_chat.id
-        message_thread_id = update.message.message_thread_id
+        effective_message = update.effective_message
+        message_thread_id = getattr(effective_message, 'message_thread_id', None) if effective_message else None
 
+        text_lines = [f'[{node_title}] Please select an action:']
+        if form_content:
+            text_lines.insert(0, form_content)
         args = {
             'chat_id': chat_id,
-            'text': f'[{node_title}] Please select an action:',
+            'text': '\n\n'.join(text_lines),
             'reply_markup': reply_markup,
         }
         if message_thread_id:
