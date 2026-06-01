@@ -235,7 +235,8 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 if data.get('form_action') or data.get('f'):
                     import langbot_plugin.api.entities.builtin.provider.session as provider_session
 
-                    workflow_run_id = data.get('workflow_run_id') or data.get('w', '')
+                    workflow_run_id = data.get('workflow_run_id', '')
+                    w_suffix = data.get('w', '')
                     action_id = data.get('action_id') or data.get('a', '')
                     session_key = data.get('session_key') or data.get('s', '')
 
@@ -267,6 +268,7 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
                     form_action_data = {
                         'workflow_run_id': workflow_run_id,
+                        'w_suffix': w_suffix,
                         'action_id': action_id,
                         'user': f'{launcher_type.value}_{launcher_id}',
                         'inputs': {},
@@ -496,6 +498,11 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         """Send inline keyboard buttons for Dify human_input_required form actions."""
         actions = form_data.get('actions', [])
         node_title = form_data.get('node_title', '')
+        workflow_run_id = form_data.get('workflow_run_id', '')
+        # Telegram callback_data is capped at 64 bytes, so we identify the
+        # paused workflow by the last 8 chars of workflow_run_id (unique
+        # within a session with overwhelming probability).
+        w_suffix = workflow_run_id[-8:] if workflow_run_id else ''
 
         if isinstance(message_source, platform_events.GroupMessage):
             session_key = f'g:{message_source.group.id}'
@@ -506,10 +513,10 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         for action in actions:
             action_id = action.get('id', '')
             action_title = action.get('title', action_id)
-            callback_data = json.dumps(
-                {'f': 1, 'a': action_id, 's': session_key},
-                separators=(',', ':'),
-            )
+            callback_payload = {'f': 1, 'a': action_id, 's': session_key}
+            if w_suffix:
+                callback_payload['w'] = w_suffix
+            callback_data = json.dumps(callback_payload, separators=(',', ':'))
             keyboard.append([InlineKeyboardButton(action_title, callback_data=callback_data)])
 
         reply_markup = InlineKeyboardMarkup(keyboard)

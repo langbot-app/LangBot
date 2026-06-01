@@ -1567,6 +1567,93 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         return True
 
+    async def _open_new_form_card(
+        self,
+        message_id: str,
+        message_source: platform_events.MessageEvent,
+        form_data: dict,
+    ) -> str | None:
+        """Spawn a fresh card to host a re-paused human-input prompt.
+
+        Creates a new card_id (rebinding ``self.card_id_dict[message_id]``),
+        replies it to the current incoming message so it appears as the next
+        step in the chat, registers the new reply_msg_id so subsequent button
+        callbacks resolve back to it, and renders the prompt + buttons on it.
+
+        Returns the new card_id, or ``None`` if creation failed (caller is
+        responsible for falling back to in-place update so the workflow
+        remains continuable).
+        """
+        source_message_id = getattr(message_source.message_chain, 'message_id', None)
+        if not source_message_id:
+            await self.logger.error('Cannot open new form card: source message_id missing')
+            return None
+
+        try:
+            new_card_id = await self.create_card_id(message_id)
+        except Exception:
+            await self.logger.error(f'Failed to create new form card: {traceback.format_exc()}')
+            return None
+
+        tenant_key = (
+            message_source.source_platform_object.header.tenant_key if message_source.source_platform_object else None
+        )
+        app_access_token = self.get_app_access_token()
+        tenant_access_token = self.get_tenant_access_token(tenant_key)
+        req_opt: RequestOption = (
+            RequestOption.builder()
+            .app_ticket(self.app_ticket)
+            .tenant_key(tenant_key)
+            .app_access_token(app_access_token)
+            .tenant_access_token(tenant_access_token)
+            .build()
+        )
+
+        content = {
+            'type': 'card',
+            'data': {'card_id': new_card_id, 'template_variable': {'content': ''}},
+        }
+        request: ReplyMessageRequest = (
+            ReplyMessageRequest.builder()
+            .message_id(str(source_message_id))
+            .request_body(
+                ReplyMessageRequestBody.builder()
+                .content(json.dumps(content))
+                .msg_type('interactive')
+                .uuid(str(uuid.uuid4()))
+                .build()
+            )
+            .build()
+        )
+
+        try:
+            response: ReplyMessageResponse = await self.api_client.im.v1.message.areply(request, req_opt)
+        except Exception:
+            await self.logger.error(f'Failed to send new form card: {traceback.format_exc()}')
+            return None
+
+        if not response.success():
+            await self.logger.error(
+                f'Failed to send new form card: code={response.code}, msg={response.msg}, '
+                f'log_id={response.get_log_id()}'
+            )
+            return None
+
+        reply_msg_id = getattr(response.data, 'message_id', None)
+        if reply_msg_id:
+            self._register_card_for_source(new_card_id, str(source_message_id), str(reply_msg_id))
+
+        sequence = self._next_card_sequence(new_card_id, 1)
+        await self._update_card_layout(
+            card_id=new_card_id,
+            message_source=message_source,
+            text_message='',
+            sequence=sequence,
+            form_data=form_data,
+            show_form_prompt=True,
+        )
+        return new_card_id
+
     async def reply_message(
         self,
         message_source: platform_events.MessageEvent,
@@ -1702,8 +1789,15 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         form_data = getattr(bot_message, '_form_data', None)
         resume_from = getattr(bot_message, '_resume_from_form', False)
         action_title = getattr(bot_message, '_resume_action_title', '')
+        resume_node_title = getattr(bot_message, '_resume_node_title', '')
         open_new_card = getattr(bot_message, '_open_new_card', False)
-        selected_notice = f'> **已选择**：{action_title}' if action_title else ''
+        if action_title:
+            if resume_node_title:
+                selected_notice = f'**{resume_node_title}**\n已选择：{action_title}'
+            else:
+                selected_notice = f'**已选择**：{action_title}'
+        else:
+            selected_notice = ''
 
         # ── decide whether this chunk needs a card update ────────────────────
         card_id = self.card_id_dict.get(message_id)
@@ -1809,25 +1903,48 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             pre_pause = self.card_pre_pause_text.get(card_id, text_message)
             resume_cached = self.card_streaming_text.get(card_id, '')
             if form_data:
-                # Keep the current card and render the human-input action area.
-                # Initial pause uses the latest stream text, while re-pause after
-                # a button click preserves the pre-pause text and keeps the resume
-                # stream content in the extra placeholder area.
-                final_text = pre_pause if open_new_card else text_message
-                final_resume_placeholder = resume_cached if open_new_card else ''
-                await self._update_card_layout(
-                    card_id=card_id,
-                    message_source=message_source,
-                    text_message=final_text,
-                    sequence=final_seq,
-                    form_data=form_data,
-                    resume_placeholder_text=final_resume_placeholder,
-                    show_form_prompt=not open_new_card,
-                )
                 if open_new_card:
-                    self.card_streaming_text.pop(card_id, None)
-                    self.card_pre_pause_text.pop(card_id, None)
+                    # The old card has already been laid out into resume mode
+                    # by the resume-transition block above (notice + resume
+                    # placeholder). Finalise it as a frozen step snapshot and
+                    # spawn a brand-new card to host the next human-input
+                    # prompt — each step stays visible as its own card in the
+                    # chat history.
+                    new_card_id = await self._open_new_form_card(message_id, message_source, form_data)
+                    if new_card_id is None:
+                        # Fallback: keep the existing in-place behaviour so the
+                        # workflow remains continuable even if creating the
+                        # new card failed.
+                        await self._update_card_layout(
+                            card_id=card_id,
+                            message_source=message_source,
+                            text_message=pre_pause,
+                            sequence=final_seq,
+                            form_data=form_data,
+                            resume_placeholder_text=resume_cached,
+                            show_form_prompt=True,
+                        )
+                        self.card_streaming_text.pop(card_id, None)
+                        self.card_pre_pause_text.pop(card_id, None)
+                    else:
+                        # The old card is now a frozen snapshot; let go of its
+                        # streaming-side state but keep its source registrations
+                        # intact (no _drop_card_state) so historical button
+                        # callbacks aimed at it can still be matched if needed.
+                        self.card_streaming_text.pop(card_id, None)
+                        self.card_pre_pause_text.pop(card_id, None)
+                        self.card_resume_transitioned.discard(card_id)
                 else:
+                    # Initial pause path: render prompt + buttons in place on
+                    # the current card.
+                    await self._update_card_layout(
+                        card_id=card_id,
+                        message_source=message_source,
+                        text_message=text_message,
+                        sequence=final_seq,
+                        form_data=form_data,
+                        show_form_prompt=True,
+                    )
                     # The human-input prompt itself is rendered as buttons only
                     # on Lark, so do not keep the hidden fallback text around;
                     # otherwise it will resurface after the button click.
