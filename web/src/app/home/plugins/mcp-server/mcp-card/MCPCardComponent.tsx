@@ -129,20 +129,20 @@ export default function MCPCardComponent({
                   {t('mcp.toolCount', { count: toolsCount })}
                 </div>
               </div>
-            ) : status === MCPSessionStatus.CONNECTING ? (
-              // 连接中 - 蓝色加载
-              <div className="flex flex-row items-center gap-[0.4rem]">
-                <Loader2 className="w-4 h-4 text-blue-500 dark:text-blue-400 animate-spin" />
-                <div className="text-sm text-blue-500 dark:text-blue-400 font-medium">
-                  {t('mcp.connecting')}
-                </div>
-              </div>
-            ) : (
-              // 连接失败 - 红色
+            ) : status === MCPSessionStatus.ERROR ? (
+              // 连接失败 - 红色（仅在明确报错时）
               <div className="flex flex-row items-center gap-[0.4rem]">
                 <AlertCircle className="w-4 h-4 text-red-500 dark:text-red-400" />
                 <div className="text-sm text-red-500 dark:text-red-400 font-medium">
                   {t('mcp.connectionFailedStatus')}
+                </div>
+              </div>
+            ) : (
+              // 连接中 - 蓝色加载（CONNECTING 或初始/未知状态，避免误报失败）
+              <div className="flex flex-row items-center gap-[0.4rem]">
+                <Loader2 className="w-4 h-4 text-blue-500 dark:text-blue-400 animate-spin" />
+                <div className="text-sm text-blue-500 dark:text-blue-400 font-medium">
+                  {t('mcp.connecting')}
                 </div>
               </div>
             )}

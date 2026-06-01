@@ -71,7 +71,13 @@ function StatusDisplay({
     );
   }
 
-  if (runtimeInfo.status === MCPSessionStatus.CONNECTING) {
+  // CONNECTING, or any not-yet-resolved status (initial/null while the box is
+  // still bringing the session up) — show "connecting" rather than failing.
+  if (
+    runtimeInfo.status === MCPSessionStatus.CONNECTING ||
+    (runtimeInfo.status !== MCPSessionStatus.ERROR &&
+      runtimeInfo.error_phase !== 'box_unavailable')
+  ) {
     return (
       <div className="flex items-center gap-2 text-blue-600">
         <Loader2 className="size-5 animate-spin" />
@@ -258,6 +264,13 @@ function RuntimePanel({
 
   const isConnected =
     !mcpTesting && runtimeInfo.status === MCPSessionStatus.CONNECTED;
+  // Only treat an explicit error (or box-unavailable) as failed; while testing,
+  // connecting, or in an initial/unresolved state, show "connecting" so we
+  // don't flash "connection failed" during a normal connection attempt.
+  const isFailed =
+    !mcpTesting &&
+    (runtimeInfo.status === MCPSessionStatus.ERROR ||
+      runtimeInfo.error_phase === 'box_unavailable');
   const tools = runtimeInfo.tools || [];
 
   return (
@@ -268,7 +281,9 @@ function RuntimePanel({
           <p className="text-sm text-muted-foreground">
             {isConnected
               ? t('mcp.toolCount', { count: tools.length })
-              : t('mcp.connectionFailedStatus')}
+              : isFailed
+                ? t('mcp.connectionFailedStatus')
+                : t('mcp.connecting')}
           </p>
         </div>
         {isConnected && (
