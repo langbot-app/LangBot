@@ -1,5 +1,4 @@
 from __future__ import annotations
-import time
 
 
 import telegram
@@ -421,11 +420,15 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         message_thread_id = getattr(effective_message, 'message_thread_id', None) if effective_message else None
 
         if chat_type == 'private':
-            draft_id = int(time.time() * 1000)
-            self.msg_stream_id[message_id] = ('private', draft_id)
+            import time as _time
 
+            draft_id = int(_time.time() * 1000)
+            self.msg_stream_id[message_id] = ('private', draft_id)
             args = self._build_message_args(chat_id, 'Thinking...', message_thread_id, draft_id=draft_id)
-            await self.bot.send_message_draft(**args)
+            try:
+                await self.bot.send_message_draft(**args)
+            except (telegram.error.RetryAfter, telegram.error.BadRequest):
+                pass
         else:
             args = self._build_message_args(chat_id, 'Thinking...', message_thread_id)
             send_msg = await self.bot.send_message(**args)
@@ -452,7 +455,7 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if message_id not in self.msg_stream_id:
             return
 
-        chat_mode, draft_id = self.msg_stream_id[message_id]
+        chat_mode, stream_id = self.msg_stream_id[message_id]
         components = await TelegramMessageConverter.yiri2target(message, self.bot)
 
         if not components or components[0]['type'] != 'text':
@@ -463,30 +466,40 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         content = components[0]['text']
         form_data = getattr(bot_message, '_form_data', None)
 
+        if form_data and is_final:
+            self.msg_stream_id.pop(message_id, None)
+            await self._send_form_action_buttons(message_source, form_data)
+            return
+
         if chat_mode == 'private':
-            if form_data and is_final:
-                # Suppress the streaming-text materialisation: this chunk's
-                # content is just a placeholder (e.g. zero-width space, or
-                # the display_text used to keep ResponseWrapper from dropping
-                # the chunk). The button card below carries the real prompt.
-                self.msg_stream_id.pop(message_id, None)
-                await self._send_form_action_buttons(message_source, form_data)
-                return
-            args = self._build_message_args(chat_id, content, message_thread_id, draft_id=draft_id)
-            await self.bot.send_message_draft(**args)
+            # Streaming via draft (ephemeral preview in the chat input area)
+            if (msg_seq - 1) % 8 == 0 or is_final:
+                args = self._build_message_args(chat_id, content, message_thread_id, draft_id=stream_id)
+                try:
+                    await self.bot.send_message_draft(**args)
+                except telegram.error.BadRequest as exc:
+                    if 'Message_too_long' in str(exc):
+                        args['text'] = content[:4000] + '\n\n… (truncated)'
+                        try:
+                            await self.bot.send_message_draft(**args)
+                        except telegram.error.RetryAfter:
+                            pass
+                    else:
+                        pass  # Ignore other draft errors (cosmetic)
             if is_final and bot_message.tool_calls is None:
-                del args['draft_id']
-                await self.bot.send_message(**args)
+                # Finalise: send the real message, discard the draft
+                args = self._build_message_args(chat_id, content, message_thread_id)
+                try:
+                    await self.bot.send_message(**args)
+                except telegram.error.BadRequest as exc:
+                    if 'Message_too_long' in str(exc):
+                        args['text'] = content[:4000] + '\n\n… (truncated)'
+                        await self.bot.send_message(**args)
+                    else:
+                        raise
                 self.msg_stream_id.pop(message_id)
         else:
-            stream_id = draft_id
-            if form_data and is_final:
-                # Same suppression as the private branch — don't push the
-                # placeholder text into the streaming message; render the
-                # button card instead.
-                self.msg_stream_id.pop(message_id, None)
-                await self._send_form_action_buttons(message_source, form_data)
-                return
+            # Streaming via edit_message_text (persistent message)
             if (msg_seq - 1) % 8 == 0 or is_final:
                 args = {
                     'message_id': stream_id,
@@ -495,7 +508,14 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 }
                 if self.config.get('markdown_card', False):
                     args['parse_mode'] = 'MarkdownV2'
-                await self.bot.edit_message_text(**args)
+                try:
+                    await self.bot.edit_message_text(**args)
+                except telegram.error.BadRequest as exc:
+                    if 'Message_too_long' in str(exc):
+                        args['text'] = self._process_markdown(content[:4000] + '\n\n… (truncated)')
+                        await self.bot.edit_message_text(**args)
+                    else:
+                        raise
 
             if is_final and bot_message.tool_calls is None:
                 self.msg_stream_id.pop(message_id)
