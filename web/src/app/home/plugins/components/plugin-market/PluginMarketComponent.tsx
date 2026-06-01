@@ -22,6 +22,7 @@ import {
   Hash,
   Book,
   FileText,
+  AppWindow,
   SlidersHorizontal,
   X,
   Info,
@@ -192,6 +193,11 @@ function MarketPageContent({
       value: 'Parser',
       label: t('market.componentName.Parser'),
       icon: FileText,
+    },
+    {
+      value: 'Page',
+      label: t('market.componentName.Page'),
+      icon: AppWindow,
     },
   ];
 
