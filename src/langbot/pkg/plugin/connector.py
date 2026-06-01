@@ -103,6 +103,16 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
 
             self.handler_task = asyncio.create_task(self.handler.run())
             _ = await self.handler.ping()
+            # Push the configured marketplace (Space) URL to the runtime so it
+            # downloads plugins from the same Space LangBot is bound to, rather
+            # than relying on the runtime's own env/default.
+            space_url = self.ap.instance_config.data.get('space', {}).get('url', '').rstrip('/')
+            if space_url:
+                try:
+                    await self.handler.set_runtime_config(cloud_service_url=space_url)
+                    self.ap.logger.info(f'Pushed marketplace URL to plugin runtime: {space_url}')
+                except Exception as e:
+                    self.ap.logger.warning(f'Failed to push runtime config: {e}')
             self.ap.logger.info('Connected to plugin runtime.')
             await self.handler_task
 

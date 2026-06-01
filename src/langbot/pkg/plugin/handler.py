@@ -779,6 +779,16 @@ class RuntimeConnectionHandler(handler.Handler):
             timeout=10,
         )
 
+    async def set_runtime_config(self, cloud_service_url: str) -> dict[str, Any]:
+        """Push runtime configuration (e.g. marketplace URL) to the runtime."""
+        return await self.call_action(
+            LangBotToRuntimeAction.SET_RUNTIME_CONFIG,
+            {
+                'cloud_service_url': cloud_service_url,
+            },
+            timeout=10,
+        )
+
     async def install_plugin(
         self, install_source: str, install_info: dict[str, Any]
     ) -> typing.AsyncGenerator[dict[str, Any], None]:

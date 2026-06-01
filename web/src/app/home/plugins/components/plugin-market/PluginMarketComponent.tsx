@@ -29,7 +29,10 @@ import PluginMarketCardComponent from './plugin-market-card/PluginMarketCardComp
 import { PluginMarketCardVO } from './plugin-market-card/PluginMarketCardVO';
 import { RecommendationLists } from './RecommendationLists';
 import type { RecommendationList } from './RecommendationLists';
-import { getCloudServiceClientSync } from '@/app/infra/http';
+import {
+  getCloudServiceClient,
+  getCloudServiceClientSync,
+} from '@/app/infra/http';
 import { useTranslation } from 'react-i18next';
 import { PluginV4, PluginV4Status } from '@/app/infra/entities/plugin';
 import { extractI18nObject } from '@/i18n/I18nProvider';
@@ -253,17 +256,23 @@ function MarketPageContent({
 
   // 初始加载
   useEffect(() => {
-    fetchPlugins(1, false, true);
-    fetchAvailableTags();
-    fetchRecommendationLists();
+    // Resolve the cloud service base URL (from system info) before any
+    // marketplace fetch — otherwise the sync client may still hold the default
+    // URL and hit space.langbot.app instead of the configured instance.
+    (async () => {
+      await getCloudServiceClient();
+      fetchPlugins(1, false, true);
+      fetchAvailableTags();
+      fetchRecommendationLists();
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 获取推荐列表（精选，混合插件/MCP/Skill）
   const fetchRecommendationLists = async () => {
     try {
-      const { lists } =
-        await getCloudServiceClientSync().getRecommendationLists();
+      const client = await getCloudServiceClient();
+      const { lists } = await client.getRecommendationLists();
       setRecommendationLists(lists || []);
     } catch (error) {
       console.error('Failed to fetch recommendation lists:', error);
