@@ -50,7 +50,6 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
     setSaving,
     setLoading,
     reset,
-    nodeTypes,
     setNodeTypes,
   } = useWorkflowStore();
 

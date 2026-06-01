@@ -106,8 +106,9 @@ class LLMCallNode(WorkflowNode):
         try:
             if hasattr(self.ap, 'sensitive_meta') and hasattr(self.ap.sensitive_meta, 'data'):
                 sensitive_words = self.ap.sensitive_meta.data.get('words', [])
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to load sensitive words from sensitive_meta: %s", e)
+            sensitive_words = []
 
         if not sensitive_words:
             return text, False, ''
@@ -125,8 +126,11 @@ class LLMCallNode(WorkflowNode):
                         if hasattr(self.ap, 'sensitive_meta') and hasattr(self.ap.sensitive_meta, 'data'):
                             mask_word = self.ap.sensitive_meta.data.get('mask_word', '')
                             mask = self.ap.sensitive_meta.data.get('mask', '*')
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        # Keep default mask settings when sensitive metadata is unavailable or malformed.
+                        logger.debug(
+                            f'LLM call node {self.node_id}: failed to read sensitive mask config, using defaults: {e}'
+                        )
 
                     for m in matches:
                         if mask_word:

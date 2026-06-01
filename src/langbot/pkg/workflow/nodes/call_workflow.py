@@ -5,7 +5,7 @@ Node metadata is loaded from: ../../templates/metadata/nodes/call_workflow.yaml
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from langbot_plugin.api.entities.builtin.workflow.entities import ExecutionContext
 

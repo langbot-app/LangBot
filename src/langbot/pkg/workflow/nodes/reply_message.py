@@ -41,13 +41,19 @@ class ReplyMessageNode(WorkflowNode):
             for key, value in inputs.items():
                 try:
                     message = message.replace(f'{{{{{key}}}}}', str(value) if value is not None else '')
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(
+                        'ReplyMessageNode failed to replace input template variable',
+                        extra={'node_id': self.node_id, 'key': str(key), 'error': str(e)},
+                    )
             for key, value in context.variables.items():
                 try:
                     message = message.replace(f'{{{{variables.{key}}}}}', str(value) if value is not None else '')
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(
+                        'ReplyMessageNode failed to replace context template variable',
+                        extra={'node_id': self.node_id, 'key': str(key), 'error': str(e)},
+                    )
 
         message_str = str(message) if message is not None else ''
 

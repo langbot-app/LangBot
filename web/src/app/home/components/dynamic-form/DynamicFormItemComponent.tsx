@@ -69,7 +69,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import ModelsDialog from '@/app/home/components/models-dialog/ModelsDialog';
-import PromptEditorComponent from '@/app/home/components/dynamic-form/PromptEditorComponent';
 
 const resolveOptionLabel = (label: unknown, fallback: string): string => {
   if (!label || typeof label !== 'object') return fallback;

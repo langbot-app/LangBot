@@ -340,7 +340,11 @@ class WorkflowService:
                 if bot:
                     bot_name = bot.get('name', 'WebChat')
             except Exception:
-                pass
+                logger.warning(
+                    "Failed to fetch bot info for bot_id=%s; using default bot name.",
+                    bot_id,
+                    exc_info=True,
+                )
 
         # Create execution context
         context = ExecutionContext(

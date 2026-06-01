@@ -109,8 +109,15 @@ class WorkflowWebSocketChatRouterGroup(group.RouterGroup):
                 )
                 try:
                     await quart.websocket.send(json.dumps({'type': 'error', 'message': str(e)}))
-                except:
-                    pass
+                except Exception as send_error:
+                    logger.debug(
+                        'Failed to send error message to workflow websocket client',
+                        exc_info=True,
+                        extra={
+                            'workflow_uuid': workflow_uuid,
+                            'send_error': str(send_error),
+                        },
+                    )
 
         @self.route('/messages/<session_type>', methods=['GET'])
         async def get_messages(workflow_uuid: str, session_type: str) -> str:
