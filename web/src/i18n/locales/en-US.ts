@@ -1531,6 +1531,12 @@ const enUS = {
     },
   },
   addExtension: {
+    installTitle: 'Install {{type}}',
+    installConfirm: 'Install {{type}} "{{name}}"?',
+    installInfoType: 'Type',
+    installInfoId: 'ID',
+    installInfoVersion: 'Version',
+    installSuccess: 'Installed successfully',
     manualAdd: 'Manual Add',
     uploadExtension: 'Drag & drop or click to upload',
     uploadHint: 'Supports .zip (skills) and .lbpkg (plugins) files',

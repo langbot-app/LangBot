@@ -151,6 +151,14 @@ function AddExtensionContent() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { refreshPlugins, refreshMCPServers, refreshSkills } = useSidebarData();
+
+  // Localized label for an extension type, used in the install dialog.
+  const extensionTypeLabel = (type: string) =>
+    type === 'mcp'
+      ? t('market.typeMCP')
+      : type === 'skill'
+        ? t('market.typeSkill')
+        : t('market.typePlugin');
   const {
     addTask,
     setSelectedTaskId,
@@ -271,15 +279,26 @@ function AddExtensionContent() {
   useEffect(() => {
     const onComplete = (_taskId: number, success: boolean) => {
       if (success) {
-        toast.success(t('plugins.installSuccess'));
+        toast.success(t('addExtension.installSuccess'));
+        // Refresh every sidebar extension list so the newly-installed
+        // plugin / MCP / skill shows up immediately, regardless of type.
         refreshPlugins();
+        refreshMCPServers();
+        refreshSkills();
       }
     };
     registerOnTaskComplete(onComplete);
     return () => {
       unregisterOnTaskComplete(onComplete);
     };
-  }, [registerOnTaskComplete, unregisterOnTaskComplete, refreshPlugins, t]);
+  }, [
+    registerOnTaskComplete,
+    unregisterOnTaskComplete,
+    refreshPlugins,
+    refreshMCPServers,
+    refreshSkills,
+    t,
+  ]);
 
   const handleInstallPlugin = useCallback(async (plugin: PluginV4) => {
     setInstallInfo({
@@ -1189,22 +1208,50 @@ function AddExtensionContent() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-4">
               <Download className="size-6" />
-              <span>{t('plugins.installPlugin')}</span>
+              <span>
+                {t('addExtension.installTitle', {
+                  type: extensionTypeLabel(installExtensionType),
+                })}
+              </span>
             </DialogTitle>
           </DialogHeader>
 
           {pluginInstallStatus === PluginInstallStatus.ASK_CONFIRM && (
-            <div className="mt-4">
-              <p className="mb-2">
-                {installInfo.plugin_version
-                  ? t('plugins.askConfirm', {
-                      name: installInfo.plugin_name,
-                      version: installInfo.plugin_version,
-                    })
-                  : t('plugins.askConfirmNoVersion', {
-                      name: installInfo.plugin_name,
-                    })}
+            <div className="mt-4 space-y-3">
+              <p>
+                {t('addExtension.installConfirm', {
+                  type: extensionTypeLabel(installExtensionType),
+                  name: installInfo.plugin_name,
+                })}
               </p>
+              <div className="space-y-1.5 rounded-md bg-muted/40 p-3 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="w-12 shrink-0 text-muted-foreground">
+                    {t('addExtension.installInfoType')}
+                  </span>
+                  <span className="rounded bg-background px-1.5 py-0.5 text-xs font-medium">
+                    {extensionTypeLabel(installExtensionType)}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-12 shrink-0 text-muted-foreground">
+                    {t('addExtension.installInfoId')}
+                  </span>
+                  <span className="break-all font-medium">
+                    {installInfo.plugin_author}/{installInfo.plugin_name}
+                  </span>
+                </div>
+                {installInfo.plugin_version && (
+                  <div className="flex items-center gap-2">
+                    <span className="w-12 shrink-0 text-muted-foreground">
+                      {t('addExtension.installInfoVersion')}
+                    </span>
+                    <span className="font-medium">
+                      v{installInfo.plugin_version}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

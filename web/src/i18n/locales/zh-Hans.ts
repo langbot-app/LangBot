@@ -1467,6 +1467,12 @@ const zhHans = {
     },
   },
   addExtension: {
+    installTitle: '安装{{type}}',
+    installConfirm: '确定要安装{{type}} "{{name}}" 吗？',
+    installInfoType: '类型',
+    installInfoId: '标识',
+    installInfoVersion: '版本',
+    installSuccess: '安装成功',
     manualAdd: '手动添加',
     uploadExtension: '拖拽或点击上传扩展包',
     uploadHint: '支持 .zip（技能）和 .lbpkg（插件）文件',
