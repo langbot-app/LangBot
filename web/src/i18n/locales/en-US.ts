@@ -672,7 +672,7 @@ const enUS = {
     markAsReadFailed: 'Mark as read failed',
     filterByComponent: 'Plugin Component',
     filterByComponentHint:
-      'Plugin components are the capability types a plugin provides — Tool, Command, EventListener, etc. Filter by component to show only plugins offering that capability.',
+      'The capability types a plugin provides — Tool, Command, EventListener, etc. — used to extend LangBot in various ways. Filter by component to show only plugins offering that capability.',
     allComponents: 'All Components',
     componentName: {
       Tool: 'Tool',

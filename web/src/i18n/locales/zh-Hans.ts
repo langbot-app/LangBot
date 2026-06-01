@@ -645,7 +645,7 @@ const zhHans = {
     markAsReadFailed: '标记为已读失败',
     filterByComponent: '插件组件',
     filterByComponentHint:
-      '插件组件是插件提供的能力类型，如工具（Tool）、命令（Command）、事件监听器（EventListener）等。按组件筛选可只看提供对应能力的插件。',
+      '插件提供的能力类型，如工具（Tool）、命令（Command）、事件监听器（EventListener）等，用于扩展 LangBot 的各项能力。按组件筛选可只看提供对应能力的插件。',
     allComponents: '全部组件',
     componentName: {
       Tool: '工具',
