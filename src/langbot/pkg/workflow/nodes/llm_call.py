@@ -615,11 +615,12 @@ Respond in the same language as the user's input.
             return s0
         logger.info(f'[LLM:{self.node_id}] Response: {_cut_str(response_text)}')
 
-        # Record LLM call log and response log
+        # Record LLM call log only (response log is redundant)
         try:
             if self.ap and context.query:
                 workflow_id = context.workflow_id or ''
                 workflow_name = context.variables.get('_workflow_name', 'Workflow')
+                bot_name = context.variables.get('_bot_name', 'Workflow')
                 node_name = self.get_config('name', self.node_id)
                 model_name = used_model.model_entity.name if used_model else 'unknown'
                 
@@ -628,7 +629,10 @@ Respond in the same language as the user's input.
                 if hasattr(self, '_llm_start_time'):
                     duration_ms = int((time.time() - self._llm_start_time) * 1000)
                 
-                # Record LLM call log (with LLM info)
+                # Get message_id for LLM call association
+                message_id = context.variables.get('_monitoring_message_id')
+                
+                # Record LLM call log with message_id association
                 await monitoring_helper.WorkflowMonitoringHelper.record_llm_call_log(
                     ap=self.ap,
                     query=context.query,
@@ -640,16 +644,9 @@ Respond in the same language as the user's input.
                     output_tokens=usage.get('completion_tokens', 0),
                     duration_ms=duration_ms,
                     status='success',
-                )
-                
-                # Record LLM response log (with response message)
-                await monitoring_helper.WorkflowMonitoringHelper.record_llm_response_log(
-                    ap=self.ap,
-                    query=context.query,
-                    workflow_id=workflow_id,
-                    workflow_name=workflow_name,
-                    node_name=node_name,
-                    response_content=response_text,
+                    bot_name=bot_name,
+                    context_vars=context.variables,
+                    message_id=message_id,
                 )
         except Exception as e:
             logger.warning(f'[LLM:{self.node_id}] Failed to record LLM logs: {e}')

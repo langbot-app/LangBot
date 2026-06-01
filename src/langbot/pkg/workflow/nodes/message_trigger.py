@@ -26,17 +26,23 @@ class MessageTriggerNode(WorkflowNode):
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         msg_ctx = context.message_context
 
-        # Record trigger log
+        # Record trigger log and store message_id for LLM call association
         try:
             if self.ap and context.query:
                 workflow_id = context.workflow_id or ''
                 workflow_name = context.variables.get('_workflow_name', 'Workflow')
-                await monitoring_helper.WorkflowMonitoringHelper.record_trigger_log(
+                bot_name = context.variables.get('_bot_name', 'Workflow')
+                message_id = await monitoring_helper.WorkflowMonitoringHelper.record_trigger_log(
                     ap=self.ap,
                     query=context.query,
                     workflow_id=workflow_id,
                     workflow_name=workflow_name,
+                    bot_name=bot_name,
+                    context_vars=context.variables,
                 )
+                # Store message_id for LLM call monitoring association
+                if message_id:
+                    context.variables['_monitoring_message_id'] = message_id
         except Exception as e:
             logger.warning(f'[MessageTrigger:{self.node_id}] Failed to record trigger log: {e}')
 

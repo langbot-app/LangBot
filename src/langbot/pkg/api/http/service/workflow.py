@@ -395,6 +395,8 @@ class WorkflowService:
                     ),
                     raw_message=message_context_data.get('raw_message', {}),
                 )
+                # Set query from message_content for logging purposes
+                context.query = context.message_context.message_content
 
             # Note: Frontend panel logging has been removed.
             # A new solution will be implemented separately.
@@ -404,6 +406,17 @@ class WorkflowService:
             context.variables['_bot_id'] = bot_id or ''
             context.variables['_session_id'] = session_id or ''
             context.variables['_user_id'] = user_id
+            
+            # Store launcher info for monitoring (used when query is a string)
+            if message_context_data:
+                context.variables['_launcher_type'] = 'websocket'
+                context.variables['_launcher_id'] = message_context_data.get('sender_id', '')
+                context.variables['_sender_name'] = message_context_data.get('sender_name', 'User')
+
+        # Ensure query is always set for logging purposes
+        # For non-message triggers, use trigger_type as fallback
+        if not context.query:
+            context.query = f'[{trigger_type}]'
 
         max_execution_time = self.DEFAULT_MAX_EXECUTION_TIME
         workflow_settings = definition.get('settings', {}) if isinstance(definition, dict) else {}

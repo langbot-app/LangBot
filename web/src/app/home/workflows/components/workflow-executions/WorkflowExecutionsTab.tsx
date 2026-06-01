@@ -247,7 +247,7 @@ export default function WorkflowExecutionsTab({
       await backendClient.executeWorkflow(workflowId, {
         trigger_type: 'manual',
       });
-      toast.success(t('workflows.manualTrigger') + ' ✓');
+      // Removed success toast - only show error toast on failure
       loadExecutions();
       loadStats();
     } catch (err: unknown) {
@@ -560,16 +560,12 @@ export default function WorkflowExecutionsTab({
               onValueChange={setSelectedTab}
               className="flex-1 flex flex-col overflow-hidden"
             >
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="details">
                   {t('workflows.details')}
                 </TabsTrigger>
                 <TabsTrigger value="nodes">
                   {t('workflows.nodeExecutions')}
-                </TabsTrigger>
-                <TabsTrigger value="logs">
-                  <FileText className="size-3 mr-1" />
-                  {t('workflows.logs')}
                 </TabsTrigger>
               </TabsList>
 
@@ -763,54 +759,6 @@ export default function WorkflowExecutionsTab({
                 )}
               </TabsContent>
 
-              <TabsContent value="logs" className="flex-1 overflow-hidden mt-4">
-                {logsLoading ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="size-6 animate-spin text-muted-foreground" />
-                  </div>
-                ) : executionLogs.length > 0 ? (
-                  <ScrollArea className="h-[400px] border rounded">
-                    <div className="p-3 space-y-3 text-xs">
-                      {executionLogs.map((log) => (
-                        <div
-                          key={log.id}
-                          className="rounded-md border border-border/60 bg-muted/20 p-3"
-                        >
-                          <div className="flex flex-wrap items-center gap-2 font-mono">
-                            <span className="text-muted-foreground shrink-0">
-                              {log.timestamp
-                                ? new Date(log.timestamp).toLocaleTimeString()
-                                : '-'}
-                            </span>
-                            <span
-                              className={`uppercase font-semibold ${logLevelColors[log.level]}`}
-                            >
-                              [{log.level}]
-                            </span>
-                            {log.node_id && (
-                              <span className="text-muted-foreground break-all">
-                                [{log.node_id}]
-                              </span>
-                            )}
-                          </div>
-                          <div className="mt-2 whitespace-pre-wrap break-words text-foreground font-mono">
-                            {log.message}
-                          </div>
-                          {log.data && Object.keys(log.data).length > 0 && (
-                            <pre className="mt-3 overflow-x-auto rounded bg-background/80 p-2 text-[11px] text-muted-foreground whitespace-pre-wrap break-words font-mono">
-                              {JSON.stringify(log.data, null, 2)}
-                            </pre>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                ) : (
-                  <div className="text-center py-8 text-muted-foreground">
-                    {t('workflows.noLogs')}
-                  </div>
-                )}
-              </TabsContent>
             </Tabs>
           )}
         </DialogContent>

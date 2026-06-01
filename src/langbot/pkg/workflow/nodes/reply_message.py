@@ -112,6 +112,7 @@ class ReplyMessageNode(WorkflowNode):
             if self.ap and context.query and send_success:
                 workflow_id = context.workflow_id or ''
                 workflow_name = context.variables.get('_workflow_name', 'Workflow')
+                bot_name = context.variables.get('_bot_name', 'Workflow')
                 node_name = self.get_config('name', self.node_id)
                 await monitoring_helper.WorkflowMonitoringHelper.record_reply_log(
                     ap=self.ap,
@@ -120,6 +121,8 @@ class ReplyMessageNode(WorkflowNode):
                     workflow_name=workflow_name,
                     node_name=node_name,
                     reply_content=message_str,
+                    bot_name=bot_name,
+                    context_vars=context.variables,
                 )
         except Exception as e:
             logger.warning(f'[ReplyMessage:{self.node_id}] Failed to record reply log: {e}')

@@ -449,20 +449,19 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             try:
                 from ...api.http.service.workflow import WorkflowExecutionFailedError
 
+                # Log workflow execution start (matching pipeline logging)
+                session_id = f'{session_type}_{connection.connection_id}'
+                logger.info(f'Processing request from {session_id} (0): {message_content}')
+
                 execution_id = await self.ap.workflow_service.execute_workflow(
                     pipeline_uuid,
                     trigger_type='message',
                     trigger_data=trigger_data,
-                    session_id=f'{session_type}_{connection.connection_id}',
+                    session_id=session_id,
                     user_id=message_context['sender_id'],
                     bot_id=self.ap.platform_mgr.websocket_proxy_bot.bot_entity.uuid,
                 )
-                await connection.send_queue.put(
-                    {
-                        'type': 'broadcast',
-                        'message': f'Workflow execution started: {execution_id}',
-                    }
-                )
+                # Removed success broadcast - only show error on failure
             except WorkflowExecutionFailedError as e:
                 await connection.send_queue.put({'type': 'error', 'message': e.message})
             except Exception as e:
