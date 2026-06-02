@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+
+metadata:
+  name: slack-eba
+  label:
+    en_US: Slack (EBA)
+    zh_Hans: Slack (EBA)
+    zh_Hant: Slack (EBA)
+  description:
+    en_US: Slack adapter with Event-Based Agents support, using LangBot's unified webhook endpoint.
+    zh_Hans: Slack 适配器（EBA 架构版本），通过 LangBot 统一 Webhook 接收 Slack 事件订阅消息。
+    zh_Hant: Slack 適配器（EBA 架構版本），透過 LangBot 統一 Webhook 接收 Slack 事件訂閱訊息。
+  icon: slack.png
+
+spec:
+  categories:
+    - popular
+    - global
+  help_links:
+    zh: https://link.langbot.app/zh/platforms/slack
+    en: https://link.langbot.app/en/platforms/slack
+    ja: https://link.langbot.app/ja/platforms/slack
+  config:
+    - name: webhook_url
+      label:
+        en_US: Webhook Callback URL
+        zh_Hans: Webhook 回调地址
+        zh_Hant: Webhook 回調地址
+      description:
+        en_US: Copy this URL and paste it into your Slack app's event subscription configuration.
+        zh_Hans: 复制此地址并粘贴到 Slack 应用的事件订阅配置中。
+        zh_Hant: 複製此地址並貼到 Slack 應用的事件訂閱設定中。
+      type: webhook-url
+      required: false
+      default: ""
+    - name: bot_token
+      label:
+        en_US: Bot Token
+        zh_Hans: 机器人令牌
+        zh_Hant: 機器人令牌
+      type: string
+      required: true
+      default: ""
+    - name: signing_secret
+      label:
+        en_US: Signing Secret
+        zh_Hans: 签名密钥
+        zh_Hant: 簽名密鑰
+      type: string
+      required: true
+      default: ""
+
+  supported_events:
+    - message.received
+    - platform.specific
+
+  supported_apis:
+    required:
+      - send_message
+      - reply_message
+    optional:
+      - get_message
+      - get_user_info
+      - get_friend_list
+      - get_group_info
+      - get_group_list
+      - get_group_member_list
+      - get_group_member_info
+      - call_platform_api
+
+  platform_specific_apis:
+    - action: get_mode
+      description: { en_US: "Return adapter webhook mode", zh_Hans: "返回适配器 Webhook 模式" }
+    - action: auth_test
+      description: { en_US: "Call Slack auth.test with the configured bot token", zh_Hans: "使用配置的机器人令牌调用 Slack auth.test" }
+
+execution:
+  python:
+    path: ./adapter.py
+    attr: SlackAdapter

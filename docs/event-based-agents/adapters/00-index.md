@@ -24,6 +24,7 @@ Current acceptance report: [EBA Adapter Acceptance Report](./acceptance-report.m
 | WeComBot | Migrated; private text and outbound/API plugin E2E verified, feedback/group gaps remain | [WeComBot](./wecombot.md) |
 | Official Account | Migrated; private text plugin E2E verified, proactive outbound not supported | [Official Account](./officialaccount.md) |
 | QQ Official API | Migrated; WebSocket inbound reached LangBot, model config blocked reply | [QQ Official API](./qqofficial.md) |
+| Slack | Migrated; private text and outbound/API plugin E2E verified | [Slack](./slack.md) |
 
 ## Documentation Checklist
 
