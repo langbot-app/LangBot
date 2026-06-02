@@ -168,7 +168,7 @@ class BoxService:
             f'spec={json.dumps(self._summarize_spec(spec), ensure_ascii=False)}'
         )
         try:
-            self._enforce_workspace_quota(spec, phase='before execution')
+            await self._enforce_workspace_quota(spec, phase='before execution')
         except BoxError as exc:
             self._record_error(exc, query)
             raise
@@ -178,7 +178,7 @@ class BoxService:
             self._record_error(exc, query)
             raise
         try:
-            self._enforce_workspace_quota(spec, phase='after execution')
+            await self._enforce_workspace_quota(spec, phase='after execution')
         except BoxError as exc:
             await self._cleanup_exceeded_session(spec)
             self._record_error(exc, query)
@@ -683,7 +683,7 @@ class BoxService:
         _walk(root)
         return total
 
-    def _enforce_workspace_quota(self, spec: BoxSpec, *, phase: str) -> None:
+    async def _enforce_workspace_quota(self, spec: BoxSpec, *, phase: str) -> None:
         if spec.host_path is None or spec.workspace_quota_mb <= 0:
             return
 
@@ -691,7 +691,10 @@ class BoxService:
         if not os.path.isdir(host_path):
             return
 
-        used_bytes = self._get_workspace_size_bytes(host_path)
+        # Walk the workspace off the event loop — this runs on every
+        # quota-enforced exec, and a large tree would otherwise block the whole
+        # asyncio runtime (all bots/pipelines) for the duration of the scan.
+        used_bytes = await asyncio.to_thread(self._get_workspace_size_bytes, host_path)
         limit_bytes = spec.workspace_quota_mb * _MIB
         if used_bytes <= limit_bytes:
             return

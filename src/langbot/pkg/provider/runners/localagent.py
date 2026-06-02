@@ -34,6 +34,13 @@ SANDBOX_EXEC_SYSTEM_GUIDANCE = (
 )
 
 
+# Hard cap on tool-call rounds within a single agent turn. A looping or
+# adversarial model can otherwise emit tool calls indefinitely (each potentially
+# a sandbox exec), yielding a non-terminating request and runaway cost. Set
+# generously so it never interrupts legitimate multi-step agentic workflows.
+MAX_TOOL_CALL_ROUNDS = 128
+
+
 @runner.runner_class('local-agent')
 class LocalAgentRunner(runner.RequestRunner):
     """Local agent request runner"""
@@ -363,7 +370,15 @@ class LocalAgentRunner(runner.RequestRunner):
 
         # Once a model succeeds, commit to it for the tool call loop
         # (no fallback mid-conversation — different models may interpret tool results differently)
+        tool_call_round = 0
         while pending_tool_calls:
+            tool_call_round += 1
+            if tool_call_round > MAX_TOOL_CALL_ROUNDS:
+                self.ap.logger.warning(
+                    f'Tool-call loop reached the {MAX_TOOL_CALL_ROUNDS}-round cap '
+                    f'(query_id={query.query_id}); stopping to avoid a non-terminating request.'
+                )
+                break
             for tool_call in pending_tool_calls:
                 try:
                     func = tool_call.function
