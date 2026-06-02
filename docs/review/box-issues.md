@@ -1,157 +1,76 @@
-# Box 系统架构问题清单
+# Box 系统 — SaaS 发布前阻塞项
 
-> 更新日期: 2026-05-19
+> 更新日期: 2026-06-02
 > 分支: `feat/sandbox` (LangBot + langbot-plugin-sdk)
+> 相关文档: [架构分析](./box-architecture.md) | [Session 作用域](./box-session-scope.md) | [Runtime 对比](./box-vs-plugin-runtime.md) | [测试覆盖](./box-test-coverage.md) | [toB 分析](./box-tob-analysis.md)
+
+## 范围说明
+
+**自部署社区版已具备发布条件**：默认 stdio 模式、box 为可选项；box 关闭 / 不可用时后端、前端、工具、skill、stdio-MCP 均能干净降级（清晰报错、不崩溃）；配置向后兼容（旧 `data/config.yaml` 可直接启动）；无新增 ORM 模型、无迁移欠债；市场安装失败不会破坏实例。CI 全绿。
+
+本清单**只保留发布 SaaS / 多租户 / 公网暴露前必须处理的阻塞项**。社区版（可信、单运营者、内网）不受这些项阻塞——它们的风险面在"不可信调用方能直接触达 Box 控制面"或"多租户共享资源"的场景才成立。
+
+## 已解决（社区版发布前）
+
+| 项 | 处理 |
+|----|------|
+| 工具调用循环无上限 (原 #13) | `localagent.py` 增加 `MAX_TOOL_CALL_ROUNDS=128`，超限优雅终止（`cafef1a3`） |
+| 配额校验同步遍历阻塞事件循环 (原 #10) | `_enforce_workspace_quota` 改 async，工作区遍历走 `asyncio.to_thread`（`cafef1a3`） |
+| `host_path` 挂载白名单 (原 #3 的 LangBot 侧) | `pkg/box/service.py` `allowed_mount_roots` 白名单，空列表时拒绝一切宿主挂载 |
+| 重复的 `_is_path_under` (原 #12) | 已去重，仅保留一处定义 |
+| 重连 / 心跳 / Windows 兼容 / nsjail image 字段 / 前端 Box 状态接入 | 见上一轮 review 记录，均已合入 |
 
 ---
 
-## 已解决（自上一轮 review）
+## SaaS 阻塞项
 
-下列原 P0/P1 项在最新分支已被修复，仅作记录：
+### S1. Box 控制面无认证 — Critical
 
-| 原编号 | 问题 | 处理 commit / 说明 |
-|--------|------|---------------------|
-| #3 | Box 无重连机制 | `_make_connection_callback` 已接入 `runtime_disconnect_callback`；`BoxService._reconnect_loop()` 实现指数退避重连 (`2dfd9d5d`、`c6882cf`) |
-| #4 | Box 无心跳 | `BoxRuntimeConnector._heartbeat_loop()`，间隔 20s（沿用 Plugin 模式） |
-| #10 | Windows 兼容 | connector 增加 Windows 分支 (subprocess + WS)，backend 适配 Windows Docker (`120817a`、`fafb7a4`) |
-| #12 | nsjail image 字段冲突 | `_assert_session_compatible()` 在不支持自定义镜像的 backend 跳过 image 字段 |
-| #22 | 前端无 Box UI | 监控页 `SystemStatusCards.tsx` 已接入 `/api/v1/box/status`；Skill 管理页接入了全部 skill API（sessions/errors API 仍未接入） |
+- **位置**: SDK `box/server.py` — Action RPC WS (`/rpc/ws`) 与 managed-process relay (`/v1/sessions/{id}/managed-process/{pid}/ws`)
+- **现状**: 两个 WS handler 在 `ws.prepare` 后直接服务，无任何 token / 鉴权；box 默认绑定 `0.0.0.0:5410`。任何能触达该端口者可发起 `EXEC`、创建 session、attach 任意 session 的 managed-process stdin/stdout、甚至 `SHUTDOWN`。LangBot→box 的 INIT 也未下发任何凭证。
+- **缓解现状**: 默认 `docker-compose.yaml` 的 `langbot_box` 未把 5410 发布到宿主（爆炸半径限于内网 bridge）；但 box 挂载了 `/var/run/docker.sock`，同网络的任意服务（含被攻破的插件）→ 宿主 root。若运营者把 5410 发布到宿主或独立以 `0.0.0.0` 起 box，则完全裸奔。
+- **要求**: INIT 时下发 token，两个 WS 路由按连接校验（query/header）。这是 SaaS 的**头号**阻塞项。
 
----
+### S2. 无 exec 授权模型（policy.py 死代码） — High
 
-## P0 — 合并前建议修复
+- **位置**: LangBot `pkg/box/policy.py`（`SandboxPolicy` / `ToolPolicy` / `ElevatedPolicy` 全项目无引用）；`pkg/provider/tools/loaders/native.py`；`pkg/provider/tools/toolmgr.py`
+- **现状**: 原生工具（`exec/read/write/edit/glob/grep`）按"box 是否可用"全有或全无地暴露，**无 per-pipeline 的 exec 网关 / 工具白名单 / 沙箱模式 / 权限提升控制**。只要 box 可用，任何使用 local-agent + 函数调用模型的 pipeline 都能跑任意 shell。
+- **要求**: 接入 policy.py（或等价机制），按 pipeline 控制是否暴露 `exec`、可用工具白名单、沙箱网络/只读模式。
 
-### 1. policy.py 是死代码
+### S3. 会话资源无界（DoS） — High
 
-- **位置**: `pkg/box/policy.py` (98 行)
-- **现状**: `SandboxPolicy`、`ToolPolicy`、`ElevatedPolicy` 三个类已定义，但全项目无任何导入或调用
-- **影响**: 三层安全策略（沙箱模式 / 工具白名单 / 权限提升）完全未生效。当前实际策略仍是"Box 可用就暴露全部 6 个 native tool，不可用就全部隐藏"
-- **建议**: 要么删除死代码，要么接入 NativeToolLoader 的工具暴露 / exec 调用链。如果短期不会接入，至少在 `pkg/box/__init__.py` 显式标注其状态
+- **#5 session 数量无上限**: SDK `box/runtime.py` `_get_or_create_session` 的 `_sessions` dict 无容量限制——可变 `session_id` 的恶意调用可无限创建容器，耗尽宿主 CPU/内存/PID/磁盘。
+- **#8 无定时回收**: 过期 session 仅在 `_get_or_create_session` 时机会性清理，无独立周期任务；一波创建后转静默会永久泄漏容器。
+- **要求**: `max_sessions` 上限（拒绝或 LRU），加独立周期 reaper（如 60s）。
 
-### 2. WebSocket relay 无认证
+### S4. 工作区配额无内核级限制（TOCTOU） — Med-High
 
-- **位置**: SDK `box/server.py` — Action RPC 路径 `/rpc/ws` 与 managed-process relay `/v1/sessions/{id}/managed-process/{pid}/ws`
-- **现状**: 任何能访问 5410 端口的客户端都可以连接，attach 任意 session 的 managed process stdin/stdout，或直接发起 EXEC
-- **影响**: 容器化 / Docker compose 部署中，若 Box runtime 端口外暴露，网络内的攻击者可直接控制沙箱
-- **建议**: 至少加 token 认证（INIT 时下发，WS 连接 query string 或 header 校验）；多 process 后 attach 面更大，更不能裸奔
+- **位置**: LangBot `pkg/box/service.py` `_enforce_workspace_quota`（应用层 read-then-check）；SDK 侧 `workspace_quota_mb` 仅记录/透传，无 `--storage-opt size=` 等内核/FS 限额
+- **现状**: 执行前后两次检查之间存在竞态窗口；单条命令（`dd`/`fallocate`）可在检查间隙撑爆磁盘，事后检查只能补救。
+- **要求**: Docker `--storage-opt size=` 做内核级限制，或 Redis 原子计数预留式配额。
 
-### 3. security.py 根路径未拦截
+### S5. 挂载校验缺口 — Med-High
 
-- **位置**: SDK `box/security.py` `BLOCKED_HOST_PATHS_POSIX`
-- **现状**: 黑名单中没有 `/`，`host_path="/"` 可通过校验并挂载整个主机文件系统；用户 home 目录、`/var` 等也未拦截
-- **建议**: 将 `/` 加入黑名单，或改用白名单策略与 LangBot 侧 `allowed_mount_roots` 二次拦截
+- **位置**: SDK `box/security.py` `_BLOCKED_HOST_PATHS_POSIX`；`box/backend.py` 的 `extra_mounts` 处理
+- **现状**: ① SDK 黑名单仍不含 `/`（前缀匹配，`host_path="/"` 可通过，挂载整个宿主 fs）；用户 home、`/usr`、`/opt`、`/tmp` 也未拦截。② `validate_sandbox_security` 只校验 `spec.host_path`，**从不遍历 `spec.extra_mounts`**——LangBot 侧 `allowed_mount_roots` 也只校验 `host_path`。当前 `extra_mounts` 仅由 `build_skill_extra_mounts` 内部填充（agent 不可达），但缺乏纵深防御：一旦 S1 的无认证 RPC 被触达，extra_mounts 可挂任意宿主路径，两层都不拦。
+- **要求**: SDK 黑名单加入 `/`（或改白名单）；`extra_mounts` 在 SDK 与 LangBot 两侧都纳入挂载校验。
 
-### 4. INIT 与 backend 初始化的竞态
+### S6. 容器加固缺失 — Med
 
-- **位置**: SDK `box/runtime.py` `init()` 在握手后才下发实际配置；`backend` 在 INIT 之前可能已经按默认值实例化
-- **现状**: commit `5029d9c` 修复了 "init config before backend reuse" 的部分场景，但 backend 重新实例化时若有正在执行的 session，可能命中旧 backend
-- **建议**: 整理 init/handshake 顺序——要么 INIT 完成前不接受任何业务 action，要么允许 backend 配置变更时显式清理现有 session
+- **位置**: SDK `box/backend.py` 的 `docker run` 组装
+- **现状**: 未设置 `--cap-drop=ALL`、`--security-opt=no-new-privileges`、非 root `--user`；叠加挂载 docker.sock，逃逸面偏大。
+- **要求**: 默认加上上述加固 flag（需回归常用 skill 不被破坏）。
 
----
+### S7. 全局锁内执行慢操作（扩展性） — Med
 
-## P1 — 合并后优先跟进
+- **位置**: SDK `box/runtime.py` `_get_or_create_session`：`self._lock` 持有期间调用 `backend.start_session()`（`docker run` / nsjail 启动 / E2B `Sandbox.create`）
+- **影响**: 冷启动（镜像拉取数秒、E2B >1s）期间串行阻塞所有并发请求——多租户负载下整个 Box runtime 停顿。降级表现是延迟而非失败。
+- **要求**: 锁内只做状态检查与注册，容器创建移到锁外。
 
-### 5. Session 数量无上限
+### S8. 其他硬化 / 跟进 — Low
 
-- **位置**: SDK `box/runtime.py` `_get_or_create_session()`
-- **现状**: `_sessions` dict 无容量限制，恶意或异常调用可创建无限 session
-- **建议**: 加 `max_sessions` 配置项，达到上限时拒绝新建或按 LRU 清理
-
-### 6. Quota 检查存在 TOCTOU
-
-- **位置**: `pkg/box/service.py` `_enforce_workspace_quota()`
-- **现状**: 应用层先读磁盘大小再执行命令，两步之间有竞态窗口
-- **建议**: 短期用 Docker `--storage-opt size=` 做内核级限制；长期用 Redis 原子计数器做预留式配额
-
-### 7. 全局锁持有期间执行慢操作
-
-- **位置**: SDK `box/runtime.py` `_get_or_create_session()` — `self._lock` 下调用 `backend.start_session()` (即 `docker run` / `nsjail` 进程启动 / E2B `Sandbox.create`)
-- **影响**: `docker run` 可能耗时数秒（含镜像拉取）、E2B 冷启动通常 > 1s，期间阻塞所有并发请求
-- **建议**: 在 `_lock` 下仅做状态检查和 session 注册，容器创建在锁外执行
-
-### 8. Session 清理是机会性的
-
-- **位置**: SDK `box/runtime.py` `_reap_expired_sessions_locked()` — 仅在 `_get_or_create_session()` 时调用
-- **影响**: 如果长时间无新 session 请求，过期 session（含容器）不会被清理
-- **建议**: 加一个独立的 `asyncio.create_task` 定时清理（如每 60s 一次）
-
-### 9. server.py 直接访问 runtime 私有字段
-
-- **位置**: SDK `box/server.py` — managed-process WS handler 直接读 `runtime._sessions`
-- **影响**: 绕过锁和封装，在并发场景下可能读到不一致状态
-- **建议**: 在 BoxRuntime 上增加公共方法（如 `get_session_managed_process(session_id, process_id)`）
-
-### 10. workspace quota 检查阻塞事件循环
-
-- **位置**: `pkg/box/service.py` `_get_workspace_size_bytes()` — 使用同步 `os.scandir` 递归遍历
-- **影响**: 大工作区可能阻塞 asyncio event loop
-- **建议**: 用 `asyncio.to_thread()` 包装，或用 `aiofiles` 异步扫描
-
-### 11. extra_mounts 一旦容器创建即固定
-
-- **位置**: SDK `box/runtime.py` 的兼容性检查；`pkg/box/service.py:build_skill_extra_mounts()`
-- **现状**: Skill 挂载在容器创建时一次性写入；同一 session 后续 pipeline 切换 skill 列表时，新挂载不会生效（除非销毁重建）
-- **影响**: 用户长时间共享 session 的场景下，新激活的 skill 可能挂不上
-- **建议**: 要么在创建时把 pipeline 绑定的所有 skill 都挂上（实际现状）+ 写入文档；要么变更挂载时强制销毁 session 重建（已被 commit `5029d9c` 部分覆盖，需校验）
-
----
-
-## P2 — 后续迭代
-
-### 12. 重复的 `_is_path_under` 函数
-
-- **位置**: `pkg/box/service.py` 行 30 附近 — 同名函数定义两次
-- **建议**: 删除重复定义
-
-### 13. localagent.py 工具循环无迭代上限
-
-- **位置**: `pkg/provider/runners/localagent.py` `while pending_tool_calls` 循环
-- **影响**: 恶意或混乱的 LLM 可无限产生 tool call，消耗资源
-- **建议**: 加 `max_tool_iterations` 配置项（如默认 50 次）
-
-### 14. localagent.py 中的死代码
-
-- **位置**: `pkg/provider/runners/localagent.py:29-35` 附近 — 旧命名 `SANDBOX_EXEC_TOOL_NAME` 和 `SANDBOX_EXEC_SYSTEM_GUIDANCE`
-- **现状**: 旧命名方案的遗留常量，从未被引用（实际使用 `EXEC_TOOL_NAME` from native.py）
-- **建议**: 删除
-
-### 15. @loader_class 装饰器未使用
-
-- **位置**: `pkg/provider/tools/loader.py` — `preregistered_loaders` 列表和 `@loader_class` 装饰器
-- **现状**: 各 loader 的 `@loader_class` 多数被注释掉，ToolManager 手动实例化所有 loader
-- **建议**: 要么启用装饰器自动注册，要么删除未用的机制
-
-### 16. 工具名冲突风险
-
-- **位置**: `pkg/provider/tools/toolmgr.py` `execute_func_call()` — 按优先级 native → plugin → mcp → skill → skill_authoring 分发
-- **影响**: 如果 plugin 或 MCP 有名为 `exec`/`read`/`write`/`edit`/`glob`/`grep`/`activate` 的工具，会被前序 loader 静默遮蔽
-- **建议**: 加命名空间前缀或冲突检测告警
-
-### 17. client.py 反序列化不一致
-
-- **位置**: SDK `box/client.py` — `execute()` 与其他方法对返回值的反序列化方式不统一（部分手动构造 model，部分用 `model_validate`）
-- **建议**: 统一使用 `model_validate`
-
-### 18. 错误类型还原基于字符串前缀匹配
-
-- **位置**: SDK `box/client.py` `_translate_action_error()`
-- **影响**: 如果 server 端错误消息格式变化，client 会回退到通用 `BoxError`，丢失类型信息
-- **建议**: 在 ActionResponse 中增加结构化的错误类型字段（如 `error_code` 枚举）
-
-### 19. 前端只用到了 status
-
-- **位置**: `web/src/app/home/monitoring/...` 已接入 `/api/v1/box/status`
-- **现状**: `/api/v1/box/sessions` 与 `/api/v1/box/errors` 后端可用、前端未消费
-- **建议**: 在监控页或独立 Box 详情页展示活跃 session 列表与最近错误，提升运维体感
-
-### 20. skill_store 测试覆盖偏薄
-
-- **位置**: SDK `tests/box/test_skill_store.py` 仅 88 行
-- **现状**: 相对 `skill_store.py` 的 647 行实现，单测覆盖度不够；GitHub 安装路径、`source_subdir` / `target_suffix` 组合、损坏 zip 的错误处理等场景未覆盖
-- **建议**: 至少补到核心 path 覆盖（preview/install/list/file CRUD 各 2~3 个 case）
-
-### 21. 集成测试未进 CI
-
-- **位置**: LangBot `tests/integration_tests/box/test_box_integration.py`、`test_box_mcp_integration.py`，SDK 端的 E2B 真机测试
-- **现状**: 容器实际执行、E2B 真实 sandbox、Managed process WS attach 均仅本地能跑
-- **建议**: 加一个可选的 Docker-in-Docker CI stage，或在合并前手动跑 checklist
+- **#9** SDK `box/server.py` 直接读 `runtime._sessions` 私有字段、绕过锁，并发下可能读到不一致状态——应加公共访问方法。
+- **#16** `pkg/provider/tools/toolmgr.py` `execute_func_call` 按优先级分发，plugin/MCP 若有同名 `exec/read/write/...` 工具会被静默遮蔽——应加命名空间或冲突告警。
+- **#4** SDK `box/runtime.py` INIT/handshake 与 backend 实例化的残留竞态（仅"纯远程 WS box 先启动、LangBot 后连"场景成立；stdio/compose 路径下 config 经 env 在 spawn 时已就位，无竞态）——应在 INIT 完成前拒绝业务 action。
+- **#11** `extra_mounts` 在容器创建时固定（SDK `runtime.py` 兼容性检查不含 extra_mounts）；长生命周期共享 session 后续新激活的 skill 不会挂上（当前缓解：创建时挂上 pipeline 绑定的全部 skill）——动态绑定场景需销毁重建或文档说明。
+- **#21** 集成测试未进 CI：容器实际执行、E2B 真机、managed-process WS attach 仅本地可跑。安全关键路径缺自动化覆盖——SaaS 前建议加 Docker-in-Docker CI stage 或合并前手动 checklist。

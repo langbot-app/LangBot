@@ -1,6 +1,7 @@
 # Box Session Scope Design
 
-> Date: 2026-04-18 (last reviewed 2026-05-19)
+> Date: 2026-04-18 (last reviewed 2026-06-02)
+> Status (2026-06-02): the self-hosted community edition is release-ready (box optional, clean degradation, no migration debt). Tool-call loop cap, async quota scan, and the host_path mount allowlist have landed. Remaining multi-tenant / security hardening is tracked in [box-issues.md](./box-issues.md).
 > Branch: `feat/sandbox` (LangBot + langbot-plugin-sdk)
 > Related: [Box Architecture](./box-architecture.md) | [Box vs Plugin Runtime](./box-vs-plugin-runtime.md)
 
