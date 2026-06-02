@@ -11,6 +11,8 @@ const viVN = {
       'Các trang trực quan được cung cấp bởi plugin đã cài đặt',
     quickStart: 'Bắt đầu nhanh',
     scrollToBottom: 'Cuộn xuống cuối',
+    editionCommunity: 'Bản cộng đồng',
+    editionCloud: 'Bản đám mây',
   },
   common: {
     login: 'Đăng nhập',

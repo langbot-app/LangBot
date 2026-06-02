@@ -10,6 +10,8 @@ const jaJP = {
     pluginPagesTooltip: 'インストール済みプラグインが提供するビジュアルページ',
     quickStart: 'クイックスタート',
     scrollToBottom: '一番下までスクロール',
+    editionCommunity: 'コミュニティ版',
+    editionCloud: 'クラウド版',
   },
   common: {
     login: 'ログイン',

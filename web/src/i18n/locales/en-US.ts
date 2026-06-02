@@ -10,6 +10,8 @@ const enUS = {
     pluginPagesTooltip: 'Visual pages provided by installed plugins',
     quickStart: 'Quick Start',
     scrollToBottom: 'Scroll to bottom',
+    editionCommunity: 'Community',
+    editionCloud: 'Cloud',
   },
   common: {
     login: 'Login',

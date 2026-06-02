@@ -11,6 +11,8 @@ const ruRU = {
       'Визуальные страницы, предоставляемые установленными плагинами',
     quickStart: 'Быстрый старт',
     scrollToBottom: 'Прокрутить вниз',
+    editionCommunity: 'Сообщество',
+    editionCloud: 'Облако',
   },
   common: {
     login: 'Войти',

@@ -10,6 +10,8 @@ const zhHans = {
     pluginPagesTooltip: '由已安装的插件提供的可视化页面',
     quickStart: '快速开始向导',
     scrollToBottom: '滚动到底部',
+    editionCommunity: '社区版',
+    editionCloud: '云版',
   },
   common: {
     login: '登录',

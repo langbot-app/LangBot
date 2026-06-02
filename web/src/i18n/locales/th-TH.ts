@@ -10,6 +10,8 @@ const thTH = {
     pluginPagesTooltip: 'หน้าเว็บที่จัดทำโดยปลั๊กอินที่ติดตั้ง',
     quickStart: 'เริ่มต้นอย่างรวดเร็ว',
     scrollToBottom: 'เลื่อนไปด้านล่าง',
+    editionCommunity: 'รุ่นชุมชน',
+    editionCloud: 'รุ่นคลาวด์',
   },
   common: {
     login: 'เข้าสู่ระบบ',

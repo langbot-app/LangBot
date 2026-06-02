@@ -10,6 +10,8 @@ const zhHant = {
     pluginPagesTooltip: '由已安裝的插件提供的視覺化頁面',
     quickStart: '快速開始',
     scrollToBottom: '捲動到底部',
+    editionCommunity: '社區版',
+    editionCloud: '雲端版',
   },
   common: {
     login: '登入',

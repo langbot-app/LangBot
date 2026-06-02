@@ -1801,7 +1801,21 @@ export default function HomeSidebar({
                   className="size-8 rounded-lg"
                 />
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">LangBot</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="truncate font-semibold">LangBot</span>
+                    <Badge
+                      variant="secondary"
+                      className={`shrink-0 px-1 py-0 h-3.5 text-[0.55rem] font-medium ${
+                        systemInfo?.edition === 'cloud'
+                          ? 'border-transparent bg-blue-500 text-white hover:bg-blue-600'
+                          : ''
+                      }`}
+                    >
+                      {systemInfo?.edition === 'cloud'
+                        ? t('sidebar.editionCloud')
+                        : t('sidebar.editionCommunity')}
+                    </Badge>
+                  </div>
                   <div className="flex items-center gap-1.5">
                     <span className="truncate text-xs text-muted-foreground">
                       {systemInfo?.version}

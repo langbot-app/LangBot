@@ -11,6 +11,8 @@ const esES = {
       'Páginas visuales proporcionadas por los plugins instalados',
     quickStart: 'Inicio rápido',
     scrollToBottom: 'Desplazar al final',
+    editionCommunity: 'Comunidad',
+    editionCloud: 'Nube',
   },
   common: {
     login: 'Iniciar sesión',
