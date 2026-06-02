@@ -1807,7 +1807,7 @@ export default function HomeSidebar({
                       variant="secondary"
                       className={`shrink-0 px-1 py-0 h-3.5 text-[0.55rem] font-medium ${
                         systemInfo?.edition === 'cloud'
-                          ? 'border-transparent bg-blue-500 text-white hover:bg-blue-600'
+                          ? 'border-transparent bg-blue-500 text-white'
                           : ''
                       }`}
                     >

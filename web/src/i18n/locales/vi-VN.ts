@@ -12,7 +12,7 @@ const viVN = {
     quickStart: 'Bắt đầu nhanh',
     scrollToBottom: 'Cuộn xuống cuối',
     editionCommunity: 'Bản cộng đồng',
-    editionCloud: 'Bản đám mây',
+    editionCloud: 'Cloud',
   },
   common: {
     login: 'Đăng nhập',

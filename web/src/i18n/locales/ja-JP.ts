@@ -11,7 +11,7 @@ const jaJP = {
     quickStart: 'クイックスタート',
     scrollToBottom: '一番下までスクロール',
     editionCommunity: 'コミュニティ版',
-    editionCloud: 'クラウド版',
+    editionCloud: 'Cloud',
   },
   common: {
     login: 'ログイン',

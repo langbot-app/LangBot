@@ -12,7 +12,7 @@ const esES = {
     quickStart: 'Inicio rápido',
     scrollToBottom: 'Desplazar al final',
     editionCommunity: 'Comunidad',
-    editionCloud: 'Nube',
+    editionCloud: 'Cloud',
   },
   common: {
     login: 'Iniciar sesión',

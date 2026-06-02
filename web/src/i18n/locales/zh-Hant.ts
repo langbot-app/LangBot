@@ -11,7 +11,7 @@ const zhHant = {
     quickStart: '快速開始',
     scrollToBottom: '捲動到底部',
     editionCommunity: '社區版',
-    editionCloud: '雲端版',
+    editionCloud: 'Cloud',
   },
   common: {
     login: '登入',

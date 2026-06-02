@@ -12,7 +12,7 @@ const ruRU = {
     quickStart: 'Быстрый старт',
     scrollToBottom: 'Прокрутить вниз',
     editionCommunity: 'Сообщество',
-    editionCloud: 'Облако',
+    editionCloud: 'Cloud',
   },
   common: {
     login: 'Войти',
