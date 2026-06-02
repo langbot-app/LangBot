@@ -38,7 +38,7 @@ v2 只是在 Host 上新增一层可选能力。需要管控面的 runner 或管
 - EventLog / Transcript / ArtifactStore / PersistentStateStore
 - History / Event / Artifact / State / Storage pull APIs
 - AgentRunner result stream 和受控错误回流
-- binding config 与 host-owned state
+- Agent/runner config 与 host-owned state
 
 这些能力足够支持一次 `runner.run(ctx)` 内的安全执行，但不足以承担完整 runtime 管控面。
 

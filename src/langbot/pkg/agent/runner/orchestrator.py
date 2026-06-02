@@ -93,9 +93,9 @@ class AgentRunOrchestrator:
 
         Args:
             event: Event envelope from event gateway
-            binding: Agent binding configuration
+            binding: Agent binding
             bound_plugins: Optional list of bound plugin identities for authorization
-            adapter_context: Optional adapter context from Pipeline adapter
+            adapter_context: Optional context from an entry adapter
 
         Yields:
             Message or MessageChunk for pipeline response
@@ -125,12 +125,12 @@ class AgentRunOrchestrator:
             resources=resources,
         )
 
-        # Merge adapter context if provided (for Pipeline adapter)
+        # Merge adapter context if provided
         if adapter_context:
             # Merge params into adapter.extra
             if 'params' in adapter_context:
                 context['adapter']['extra']['params'] = adapter_context['params']
-            # Merge prompt into adapter.extra for Pipeline adapter consumers.
+            # Merge prompt into adapter.extra for transitional adapter consumers.
             if 'prompt' in adapter_context:
                 context['adapter']['extra']['prompt'] = adapter_context['prompt']
             # Set query_id if provided
@@ -420,7 +420,7 @@ class AgentRunOrchestrator:
         Args:
             result_dict: Raw result dict with type='state.updated'
             event: Event envelope
-            binding: Agent binding configuration
+            binding: Agent binding
             descriptor: Runner descriptor
         """
         data = result_dict.get('data', {})

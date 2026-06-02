@@ -36,7 +36,6 @@ class TestMigratePipelineConfig:
         assert 'plugin:langbot/local-agent/default' in migrated['ai']['runner_config']
         assert migrated['ai']['runner_config']['plugin:langbot/local-agent/default']['knowledge-bases'] == ['kb-uuid']
         assert 'knowledge-base' not in migrated['ai']['runner_config']['plugin:langbot/local-agent/default']
-        assert 'max-round' not in migrated['ai']['runner_config']['plugin:langbot/local-agent/default']
 
         # Expire-time preserved
         assert migrated['ai']['runner']['expire-time'] == 0
@@ -270,7 +269,7 @@ class TestResolveRunnerConfig:
         """resolve_runner_config should not read old ai.local-agent at runtime."""
         config = {
             'ai': {
-                'local-agent': {'max-round': 15, 'custom-option': 20},
+                'local-agent': {'custom-option': 20},
             },
         }
         runner_config = ConfigMigration.resolve_runner_config(config, 'plugin:langbot/local-agent/default')
@@ -280,7 +279,7 @@ class TestResolveRunnerConfig:
         """resolve_legacy_runner_config should read old ai.local-agent for migration."""
         config = {
             'ai': {
-                'local-agent': {'max-round': 15, 'custom-option': 20},
+                'local-agent': {'custom-option': 20},
             },
         }
         runner_config = ConfigMigration.resolve_legacy_runner_config(config, 'plugin:langbot/local-agent/default')
@@ -293,7 +292,7 @@ class TestResolveRunnerConfig:
                 'runner_config': {
                     'plugin:langbot/local-agent/default': {'custom-option': 25},
                 },
-                'local-agent': {'max-round': 10, 'custom-option': 10},  # Old, should be ignored
+                'local-agent': {'custom-option': 10},  # Old, should be ignored
             },
         }
         runner_config = ConfigMigration.resolve_runner_config(config, 'plugin:langbot/local-agent/default')

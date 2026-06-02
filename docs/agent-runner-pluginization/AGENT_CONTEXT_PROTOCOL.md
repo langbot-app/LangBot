@@ -14,7 +14,7 @@
 - ✅ `AgentRunAPIProxy.state` — get/set/delete API
 - ✅ EventLog / Transcript / ArtifactStore — host 事实源
 - ✅ PersistentStateStore — 持久化状态存储
-- ✅ `max-round` / host-side history window 已从 LangBot Host/Pipeline 语义中移除；如某 runner 仍需要类似参数，应由该 runner 自己解释配置
+- ✅ Host-side history window 已从 LangBot Host 语义中移除；runner 自己管理 working context
 - ✅ 外部 harness context projection 已用 Claude Code runner 做 MVP 验证：context 文件、skill 投影、MCP 配置和 host-owned resume state
 
 ## 1. 设计原则
@@ -35,11 +35,10 @@
 - 可投影给外部 harness 的 scoped context、MCP、skill 和 resource refs。
 - payload hard cap 和权限 guardrail。
 
-### 1.2 不再把 `max-round` 作为目标设计
+### 1.2 Host 不定义通用历史窗口
 
-`max-round` 这类历史窗口参数不应继续作为 AgentRunner 协议或 Pipeline adapter 的核心概念。
-
-如果某个 runner 仍需要“最多读取多少轮历史”这样的策略参数，应由该 runner 在自己的 manifest/config schema 中声明，并作为 binding config 存到 `ctx.config` / `runner_config`。Host 只提供 history pull API、cursor、hard cap 和权限边界；runner 自己决定是否读取、读取多少、如何截断和压缩。
+历史窗口策略不应继续作为 AgentRunner 协议或 Pipeline adapter 的核心概念。
+Host 只提供 history pull API、cursor、hard cap 和权限边界；runner 自己决定是否读取、读取多少、如何截断和压缩。
 
 当前 official local-agent 方向是通过 Host history API 拉取 transcript，并由 runner 自己管理模型上下文。它不依赖 Pipeline adapter 下发历史窗口。
 
@@ -100,7 +99,7 @@ class AgentRunContext(BaseModel):
 - delivery 能力，例如是否支持 streaming、reply target、平台限制。
 - 已授权资源列表。
 - context cursors 和可用 API 能力。
-- runner binding config。
+- Agent/runner config。
 
 这些是 agent 决定下一步需要的最低信息。
 
@@ -324,7 +323,7 @@ LangBot core 不应内置官方 agent 的业务流程：
 
 **已完成（当前分支）**：
 
-- ✅ `max-round` 不再是协议字段，也不再是 Host / Pipeline 通用语义
+- ✅ Host 不再定义通用历史窗口字段或策略
 - ✅ 新 runner 默认不收到历史窗口
 - ✅ `AgentRunContext` 增加 `context` / cursor / access capabilities
 - ✅ `AgentRunAPIProxy` 增加 history / events / artifacts / state API

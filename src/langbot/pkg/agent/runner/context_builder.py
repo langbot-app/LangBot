@@ -22,7 +22,7 @@ class AgentTrigger(typing.TypedDict):
     """Agent trigger information."""
 
     type: str
-    source: str  # 'pipeline' or 'event_router'
+    source: str
     timestamp: int | None
 
 
@@ -37,7 +37,6 @@ class ConversationContext(typing.TypedDict):
     bot_id: str | None
     workspace_id: str | None
     session_id: str | None
-    pipeline_uuid: str | None
 
 
 class AgentInput(typing.TypedDict):
@@ -128,8 +127,9 @@ class AgentRunContextPayload(typing.TypedDict):
 
     Protocol v1 structure - matches SDK AgentRunContext.
 
-    Note: The 'config' field contains the binding config from ai.runner_config[runner_id],
-    which is Pipeline's configuration for this specific runner binding (not plugin instance config).
+    Note: The 'config' field contains the current Agent/runner config
+    from ai.runner_config[runner_id] while Pipeline remains the temporary
+    configuration container. It is not plugin instance config.
     """
 
     run_id: str
@@ -144,9 +144,9 @@ class AgentRunContextPayload(typing.TypedDict):
     context: dict[str, typing.Any]  # ContextAccess - REQUIRED for Protocol v1
     state: AgentRunState
     runtime: AgentRuntimeContext
-    config: dict[str, typing.Any]  # Binding config from ai.runner_config[runner_id]
+    config: dict[str, typing.Any]  # Agent/runner config from ai.runner_config[runner_id]
     bootstrap: dict[str, typing.Any] | None  # Optional bootstrap context
-    adapter: dict[str, typing.Any] | None  # Pipeline adapter context
+    adapter: dict[str, typing.Any] | None  # Entry adapter context
     metadata: dict[str, typing.Any]  # Additional metadata
 
 
@@ -160,7 +160,7 @@ class AgentRunContextBuilder:
     - Build input from event
     - Build state snapshot from PersistentStateStore
     - Build runtime context with host info, trace_id, deadline
-    - Set config from runner binding configuration.
+    - Set config from current Agent/runner configuration.
 
     Pipeline Query adaptation belongs to PipelineAdapter, not this builder.
     """
@@ -184,7 +184,7 @@ class AgentRunContextBuilder:
 
         Args:
             event: Event envelope
-            binding: Agent binding configuration
+            binding: Agent binding
             descriptor: Runner descriptor
             resources: Built resources
 
@@ -205,7 +205,7 @@ class AgentRunContextBuilder:
         conversation: ConversationContext | None = None
         if event.conversation_id:
             conversation = {
-                'session_id': None,  # Pipeline adapter field
+                'session_id': None,
                 'conversation_id': event.conversation_id,
                 'thread_id': event.thread_id,
                 'launcher_type': None,  # Will be filled from actor/subject if needed
@@ -213,7 +213,6 @@ class AgentRunContextBuilder:
                 'sender_id': event.actor.actor_id if event.actor else None,
                 'bot_id': event.bot_id,
                 'workspace_id': event.workspace_id,
-                'pipeline_uuid': binding.pipeline_uuid,  # Pipeline adapter field
             }
 
         # Build event context (Protocol v1 event-first)
@@ -277,7 +276,7 @@ class AgentRunContextBuilder:
                 'model_context_window_tokens': None,
                 # TODO(model-info): populate model_context_window_tokens after
                 # LiteLLM/model metadata lands. Runners fall back to their
-                # binding config until Host can provide the real window.
+                # ctx.config until Host can provide the real window.
             },
         }
 
@@ -295,7 +294,6 @@ class AgentRunContextBuilder:
         # Build adapter context (empty for event-first)
         adapter_context = {
             'query_id': None,
-            'pipeline_uuid': binding.pipeline_uuid,
             'extra': {},
         }
 

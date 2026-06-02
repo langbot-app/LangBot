@@ -73,11 +73,11 @@ class AgentEventEnvelope(pydantic.BaseModel):
 class BindingScope(pydantic.BaseModel):
     """Scope for agent binding."""
 
-    scope_type: typing.Literal["bot", "pipeline", "workspace", "global"] = "pipeline"
+    scope_type: typing.Literal["agent", "bot", "workspace", "global"] = "agent"
     """Scope type."""
 
     scope_id: str | None = None
-    """Scope identifier (bot_uuid, pipeline_uuid, etc.)."""
+    """Scope identifier (agent_id, bot_uuid, etc.)."""
 
 
 class ResourcePolicy(pydantic.BaseModel):
@@ -153,7 +153,7 @@ class AgentBinding(pydantic.BaseModel):
     """Runner ID to invoke."""
 
     runner_config: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
-    """Runner binding configuration."""
+    """Current Agent/runner configuration."""
 
     resource_policy: ResourcePolicy = pydantic.Field(default_factory=ResourcePolicy)
     """Resource policy."""
@@ -167,6 +167,5 @@ class AgentBinding(pydantic.BaseModel):
     enabled: bool = True
     """Whether binding is enabled."""
 
-    # Fields for Pipeline adapter
-    pipeline_uuid: str | None = None
-    """Pipeline UUID (for Pipeline adapter)."""
+    agent_id: str | None = None
+    """Host-side Agent/config identifier for this binding."""

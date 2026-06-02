@@ -80,7 +80,7 @@ Pipeline path 已获得 event-first host capabilities：
 
 LangBot 不应成为最终 agentic context manager。它应提供事实源、默认上下文引用和按需读取 API；agent 或其背后的 runtime 负责历史剪裁、摘要、召回和 KV cache 策略。
 
-`max-round` 这类历史窗口参数不应作为目标协议继续扩展；如果某个 runner 仍需要类似策略，应由该 runner 的 manifest/config schema 暴露为 binding config。
+Host 不定义通用历史窗口字段或策略；runner 通过 Host pull API 按需拉取历史并自行管理 working context。
 
 详见 [AGENT_CONTEXT_PROTOCOL.md](./AGENT_CONTEXT_PROTOCOL.md)。
 

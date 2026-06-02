@@ -144,17 +144,9 @@ class TestPipelineConfigToBinding:
             mock_query, "plugin:test/plugin/runner"
         )
 
-        assert binding.scope.scope_type == "pipeline"
+        assert binding.scope.scope_type == "agent"
         assert binding.scope.scope_id == mock_query.pipeline_uuid
-
-    def test_config_to_binding_does_not_add_host_context_window(self, mock_query):
-        """Pipeline binding should not define Host-side context window controls."""
-        binding = PipelineAdapter.pipeline_config_to_binding(
-            mock_query, "plugin:test/plugin/runner"
-        )
-
-        assert not hasattr(binding, "max_round")
-
+        assert binding.agent_id == mock_query.pipeline_uuid
 
 class TestAgentRunContextProtocolV1:
     """Test AgentRunContext Protocol v1 behavior."""
@@ -238,23 +230,14 @@ class TestAgentRunContextProtocolV1:
         assert ctx.bootstrap is None or isinstance(ctx.bootstrap.messages, list)
 
 
-class TestHostContextWindowNotInProtocol:
-    """Test that Host-side context window controls are not in Protocol v1."""
+class TestHostManagedHistoryNotInProtocol:
+    """Test that Host-managed history payloads are not in Protocol v1."""
 
-    def test_context_window_not_in_sdk_context(self):
-        """AgentRunContext should not expose Host-side window controls."""
+    def test_messages_not_in_sdk_context_top_level(self):
+        """AgentRunContext should not expose top-level history messages."""
         ctx_fields = AgentRunContext.model_fields.keys()
 
-        assert "max_round" not in ctx_fields
-        assert "maxRound" not in ctx_fields
-
-    def test_binding_has_no_context_window_field(self, mock_query):
-        """Pipeline adapter should not attach context window policy to binding."""
-        binding = PipelineAdapter.pipeline_config_to_binding(
-            mock_query, "plugin:test/plugin/runner"
-        )
-
-        assert not hasattr(binding, "max_round")
+        assert "messages" not in ctx_fields
 
 
 class TestSDKCapabilitiesProtocolV1:

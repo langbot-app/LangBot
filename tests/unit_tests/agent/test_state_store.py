@@ -82,8 +82,8 @@ class FakeBinding:
         self,
         binding_id: str = 'binding_001',
         state_policy: StatePolicy | None = None,
-        scope_type: str = 'pipeline',
-        scope_id: str = 'pipeline_001',
+        scope_type: str = 'agent',
+        scope_id: str = 'agent_001',
     ):
         self.binding_id = binding_id
         self.scope = BindingScope(scope_type=scope_type, scope_id=scope_id)

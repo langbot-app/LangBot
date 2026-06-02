@@ -15,7 +15,7 @@ class RunnerNotFoundError(AgentRunnerError):
 
 
 class RunnerNotAuthorizedError(AgentRunnerError):
-    """Runner not authorized for this pipeline."""
+    """Runner not authorized for this binding."""
     def __init__(self, runner_id: str, bound_plugins: list[str] | None):
         self.runner_id = runner_id
         self.bound_plugins = bound_plugins

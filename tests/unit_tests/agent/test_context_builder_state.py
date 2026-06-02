@@ -8,7 +8,7 @@ Tests focus on:
 from __future__ import annotations
 
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock
 
 from langbot.pkg.agent.runner.context_builder import AgentRunContextBuilder
 from langbot.pkg.agent.runner.host_models import AgentEventEnvelope, AgentBinding, BindingScope, StatePolicy
@@ -67,7 +67,7 @@ class TestContextAccessStateDetermination:
         binding = AgentBinding(
             binding_id='binding_001',
             runner_id='plugin:test/runner/default',
-            scope=BindingScope(scope_type='pipeline', scope_id='conv_001'),
+            scope=BindingScope(scope_type='agent', scope_id='conv_001'),
             state_policy=StatePolicy(
                 enable_state=True,
                 state_scopes=['conversation', 'actor'],
@@ -88,7 +88,7 @@ class TestContextAccessStateDetermination:
         binding = AgentBinding(
             binding_id='binding_001',
             runner_id='plugin:test/runner/default',
-            scope=BindingScope(scope_type='pipeline', scope_id='conv_001'),
+            scope=BindingScope(scope_type='agent', scope_id='conv_001'),
             state_policy=StatePolicy(
                 enable_state=False,
                 state_scopes=[],
@@ -109,7 +109,7 @@ class TestContextAccessStateDetermination:
         binding = AgentBinding(
             binding_id='binding_001',
             runner_id='plugin:test/runner/default',
-            scope=BindingScope(scope_type='pipeline', scope_id='conv_001'),
+            scope=BindingScope(scope_type='agent', scope_id='conv_001'),
             state_policy=StatePolicy(
                 enable_state=True,
                 state_scopes=[],  # Empty scopes - state not available
@@ -177,7 +177,7 @@ class TestContextAccessStateDetermination:
         binding = AgentBinding(
             binding_id='binding_003',
             runner_id='plugin:test/runner/default',
-            scope=BindingScope(scope_type='pipeline', scope_id='conv_001'),
+            scope=BindingScope(scope_type='agent', scope_id='conv_001'),
             state_policy=StatePolicy(
                 enable_state=True,
                 state_scopes=['conversation', 'actor', 'subject', 'runner'],
@@ -226,7 +226,7 @@ class TestBindingWithStatePolicy:
         binding = AgentBinding(
             binding_id='binding_001',
             runner_id='plugin:test/runner/default',
-            scope=BindingScope(scope_type='pipeline', scope_id='conv_001'),
+            scope=BindingScope(scope_type='agent', scope_id='conv_001'),
             state_policy=StatePolicy(
                 enable_state=True,
                 state_scopes=['conversation'],
@@ -260,7 +260,7 @@ class TestContextAccessOtherAPIs:
         binding = AgentBinding(
             binding_id='binding_001',
             runner_id='plugin:test/runner/default',
-            scope=BindingScope(scope_type='pipeline', scope_id='conv_001'),
+            scope=BindingScope(scope_type='agent', scope_id='conv_001'),
             state_policy=StatePolicy(enable_state=False, state_scopes=[]),
         )
 
@@ -288,7 +288,7 @@ class TestContextAccessOtherAPIs:
         binding = AgentBinding(
             binding_id='binding_001',
             runner_id='plugin:test/runner/default',
-            scope=BindingScope(scope_type='pipeline', scope_id='conv_001'),
+            scope=BindingScope(scope_type='agent', scope_id='conv_001'),
             state_policy=StatePolicy(enable_state=False, state_scopes=[]),
         )
 
@@ -316,7 +316,7 @@ class TestContextAccessOtherAPIs:
         binding = AgentBinding(
             binding_id='binding_001',
             runner_id='plugin:test/runner/default',
-            scope=BindingScope(scope_type='pipeline', scope_id='conv_001'),
+            scope=BindingScope(scope_type='agent', scope_id='conv_001'),
             state_policy=StatePolicy(enable_state=False, state_scopes=[]),
         )
 
@@ -342,7 +342,7 @@ class TestContextAccessOtherAPIs:
         binding = AgentBinding(
             binding_id='binding_001',
             runner_id='plugin:test/runner/default',
-            scope=BindingScope(scope_type='pipeline', scope_id='conv_001'),
+            scope=BindingScope(scope_type='agent', scope_id='conv_001'),
             state_policy=StatePolicy(enable_state=False, state_scopes=[]),
         )
 

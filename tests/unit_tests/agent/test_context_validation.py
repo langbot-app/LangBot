@@ -66,11 +66,11 @@ class TestContextValidation:
         """Create a test binding."""
         return AgentBinding(
             binding_id="binding_1",
-            scope=BindingScope(scope_type="pipeline", scope_id="pipeline_1"),
+            scope=BindingScope(scope_type="agent", scope_id="pipeline_1"),
             event_types=["message.received"],
             runner_id="plugin:test/plugin/runner",
             runner_config={"timeout": 300},
-            pipeline_uuid="pipeline_1",
+            agent_id="pipeline_1",
             enabled=True,
         )
 

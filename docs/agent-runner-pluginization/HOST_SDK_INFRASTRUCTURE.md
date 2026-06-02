@@ -393,7 +393,7 @@ Proxy 是 runner 访问 host 能力的唯一入口：
 - ✅ `PipelineAdapter` — Query → Event + Binding
 - ✅ `AgentBinding` 抽象
 - ✅ `AgentEventEnvelope` 抽象
-- ✅ `max-round` 从目标协议中移除；类似历史窗口参数若仍需要，应由具体 runner 的 manifest/config schema 暴露为 binding config
+- ✅ Host 不定义通用历史窗口字段或策略；runner 自己管理 working context
 - ✅ `PersistentStateStore` — 持久化状态存储
 - ✅ `EventLogStore` / `TranscriptStore` / `ArtifactStore`
 - ✅ history / artifact / event 的受限拉取 API

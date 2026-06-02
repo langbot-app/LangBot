@@ -23,7 +23,7 @@
 
 ### Runner Plugin 负责
 
-- 遵守 LangBot 下发的 binding config、授权资源和运行约束。
+- 遵守 LangBot 下发的 Agent/runner config、授权资源和运行约束。
 - 将 LangBot 资源投影成目标 runner 可消费的形式，例如 context 文件、MCP 配置、环境变量或 CLI 参数。
 - 不把长期状态保存在插件实例内；需要跨轮次保存的外部 session id / working directory 等状态应写入 host-owned state。
 - 对外部进程做最小必要封装，包括命令参数构造、超时、取消、输出解析和错误映射。
@@ -70,4 +70,3 @@ Claude Code、Codex、Kimi Code 等外部 harness 可以继续使用自身的权
 - Codex / Kimi runner 全量接入。
 - EBA 分支完整迁移和联调。
 - 发布级安全 hardening 的完整实现。
-

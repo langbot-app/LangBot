@@ -25,7 +25,7 @@ class ConfigMigration:
     Responsibilities:
     - Resolve runner ID from new ai.runner.id or old ai.runner.runner
     - Map old built-in runner names to official plugin runner IDs
-    - Extract runtime runner config from ai.runner_config
+    - Extract current Agent/runner config from ai.runner_config
     - Migrate old ai.<runner-name> blocks into ai.runner_config
     """
 
@@ -74,7 +74,7 @@ class ConfigMigration:
         pipeline_config: dict[str, typing.Any],
         runner_id: str,
     ) -> dict[str, typing.Any]:
-        """Resolve runner binding configuration from pipeline configuration.
+        """Resolve Agent/runner configuration from pipeline configuration.
 
         Runtime code should only read the migrated format. Legacy
         ai.<runner-name> blocks are handled by migration helpers, not by the
@@ -114,9 +114,6 @@ class ConfigMigration:
         if old_runner_name:
             old_config = ai_config.get(old_runner_name, {})
             if old_config:
-                old_config = dict(old_config)
-                if runner_id == OLD_RUNNER_TO_PLUGIN_RUNNER_ID['local-agent']:
-                    old_config.pop('max-round', None)
                 return ConfigMigration.normalize_runner_config_for_migration(runner_id, old_config)
 
         return {}
@@ -126,7 +123,7 @@ class ConfigMigration:
         runner_id: str,
         runner_config: dict[str, typing.Any],
     ) -> dict[str, typing.Any]:
-        """Normalize released legacy runner config before storing binding config.
+        """Normalize released legacy runner config before storing Agent/runner config.
 
         Runtime code should not carry aliases. This helper is intentionally used
         only by config migration so AgentRunner implementations can consume the

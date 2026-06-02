@@ -11,7 +11,7 @@
 - ✅ Host 支持 `run_id` session authorization
 - ✅ Host 能从当前 Pipeline 入口生成 event-first context
 - ✅ `messages` 降级为 optional bootstrap
-- ✅ `max-round` 不出现在协议实体中，也不属于 Host / Pipeline 语义；类似参数若存在，由 runner 自己解释 `ctx.config`
+- ✅ Host 不定义通用历史窗口字段或策略；runner 自己管理 working context
 - ✅ Proxy 覆盖 model、tool、knowledge、state/storage
 - ✅ History / Event / Artifact / State API 已落地
 - ✅ EventLog / Transcript / ArtifactStore / PersistentStateStore 已落地
@@ -148,7 +148,7 @@ Host 不使用该声明给 runner inline 历史窗口。默认原则：
 - Host 只 inline 当前 event / input 和 context handles。
 - Runner 拥有 working context assembly。
 - Runner 可在授权后通过 Host history / event / artifact / state APIs 拉取更多上下文。
-- `max-round` 或类似窗口参数不属于 Protocol v1 字段，也不属于 Pipeline / Host 通用语义；如果某个 runner 需要，应由 runner 自己解释 `ctx.config`。
+- 历史窗口策略不属于 Protocol v1 字段，也不属于 Host 通用语义。
 
 ## 4. Run 协议
 
@@ -194,8 +194,8 @@ class AgentRunContext(BaseModel):
 - `event` 是必选字段，Protocol v1 是 event-first。
 - `input` 表示当前事件的主输入，不等于历史消息。
 - `bootstrap` 是可选字段；LangBot Host 默认不填历史窗口。
-- `adapter` 只放 Pipeline adapter 字段，runner 不应依赖它做长期能力。
-- `config` 是 Host binding config，不是插件实例状态。
+- `adapter` 只放入口 adapter 的非核心元数据，runner 不应依赖它做长期能力。
+- `config` 是 Agent/runner config，不是插件实例状态。
 
 ### 4.3 AgentTrigger
 
@@ -345,7 +345,7 @@ class BootstrapContext(BaseModel):
 - `bootstrap.messages` 不是 LangBot Host 的默认行为。
 - 自管 context runner 默认应收到空 bootstrap。
 - Host 不应为了”帮 agent 更聪明”而自动拼接完整 transcript。
-- 类似历史窗口策略应由具体 runner 自己解释 binding config，并通过 Host history API 拉取历史；new/official runners 不应依赖 Pipeline adapter 下发历史窗口。
+- 历史窗口策略由 runner 自己管理，并通过 Host history API 按需拉取历史；new/official runners 不应依赖入口 adapter 下发历史窗口。
 
 ### 4.10 RuntimeContext
 
@@ -661,14 +661,14 @@ Pipeline 是当前入口 adapter，不是协议中心。
 - ✅ `PipelineAdapter.query_to_event(query)` — 从 `Query` 构造 `AgentEventEnvelope`
 - ✅ `PipelineAdapter.pipeline_config_to_binding(query, runner_id)` — 从 Pipeline config 构造临时 AgentBinding
 - ✅ `run_from_query()` 委托到 `run(event, binding)`
-- ✅ runner-specific config 从 Pipeline 当前绑定配置透传到 `AgentBinding.runner_config` / `ctx.config`
+- ✅ Agent/runner config 从当前配置容器透传到 `AgentBinding.runner_config` / `ctx.config`
 - ✅ Query-only 字段放入 `adapter` context
 
 Pipeline adapter 负责：
 
 - 从 `Query` 构造 `AgentEventContext`。
-- 从 Pipeline config 构造临时 AgentBinding。
-- 从当前 runner binding config 构造 `ctx.config`。
+- 从当前配置容器构造临时 AgentBinding。
+- 从当前 Agent/runner config 构造 `ctx.config`。
 - 保留必要的 legacy adapter metadata，但不定义历史窗口、prompt 组装或 agentic context 策略。
 - 后续若需要传递 preprocessing / hook 后的有效指令，应通过 Host prompt/instruction
   package pull API 暴露能力位和引用，而不是继续把 prompt 推入 `ctx.adapter.extra`。
@@ -685,7 +685,7 @@ Protocol v1 已在当前分支完成：
 - ✅ Host 支持 `run_id` session authorization
 - ✅ Host 能从当前 Pipeline 入口生成 event-first context
 - ✅ `messages` 降级为 optional bootstrap
-- ✅ `max-round` 不出现在协议实体中，也不属于 Host / Pipeline 语义
+- ✅ Host 不定义通用历史窗口字段或策略
 - ✅ Proxy 至少覆盖 model、tool、knowledge、state/storage
 - ✅ History / event / artifact API 已落地
 - ✅ EventLog / Transcript / ArtifactStore / PersistentStateStore 已落地

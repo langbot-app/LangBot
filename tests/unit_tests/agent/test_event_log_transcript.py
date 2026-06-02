@@ -56,7 +56,7 @@ def make_binding(runner_id: str = "plugin:test/plugin/runner") -> AgentBinding:
     """Create a test binding."""
     return AgentBinding(
         binding_id="binding_1",
-        scope=BindingScope(scope_type="pipeline", scope_id="pipeline_1"),
+        scope=BindingScope(scope_type="agent", scope_id="pipeline_1"),
         event_types=["message.received"],
         runner_id=runner_id,
         runner_config={},

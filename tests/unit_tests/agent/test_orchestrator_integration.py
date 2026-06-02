@@ -347,7 +347,7 @@ async def test_orchestrator_does_not_package_query_messages_into_context(clean_a
     ap = FakeApplication(plugin_connector, db_engine)
     orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
     query = make_query()
-    query.pipeline_config["ai"]["runner_config"][RUNNER_ID]["agent-window"] = 2
+    query.pipeline_config["ai"]["runner_config"][RUNNER_ID]["custom-option"] = 2
     query.messages = [
         provider_message.Message(role="user", content="message 1"),
         provider_message.Message(role="assistant", content="response 1"),
@@ -361,9 +361,9 @@ async def test_orchestrator_does_not_package_query_messages_into_context(clean_a
 
     assert len(messages) == 1
     context = plugin_connector.contexts[0]
-    assert context["config"]["agent-window"] == 2
+    assert context["config"]["custom-option"] == 2
     assert context["bootstrap"] is None
-    assert "adapter_messages" not in context["adapter"]
+    assert set(context["adapter"]) == {"query_id", "extra"}
     assert "context_packaging" not in context["runtime"]["metadata"]
     assert [message.content for message in query.messages] == [
         "message 1",
@@ -538,7 +538,7 @@ class TestPipelineCompatibilityQueryIdInSession:
         )
         binding = AgentBinding(
             binding_id="binding_001",
-            scope=BindingScope(scope_type="pipeline", scope_id="pipeline_001"),
+            scope=BindingScope(scope_type="agent", scope_id="pipeline_001"),
             event_types=["message.received"],
             runner_id=RUNNER_ID,
             runner_config={},

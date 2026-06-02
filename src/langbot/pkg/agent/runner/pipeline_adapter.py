@@ -114,12 +114,11 @@ class PipelineAdapter:
         pipeline_config = query.pipeline_config or {}
         ai_config = pipeline_config.get('ai', {})
         runner_config = ai_config.get('runner_config', {}).get(runner_id, {})
-        pipeline_uuid = getattr(query, 'pipeline_uuid', None)
+        agent_id = getattr(query, 'pipeline_uuid', None)
 
-        # Build scope
         scope = BindingScope(
-            scope_type="pipeline",
-            scope_id=pipeline_uuid,
+            scope_type="agent",
+            scope_id=agent_id,
         )
 
         # Build resource policy from pipeline config
@@ -142,7 +141,7 @@ class PipelineAdapter:
         )
 
         return AgentBinding(
-            binding_id=f"pipeline_{pipeline_uuid or 'default'}_{runner_id}",
+            binding_id=f"agent_{agent_id or 'default'}_{runner_id}",
             scope=scope,
             event_types=[runner_events.MESSAGE_RECEIVED],
             runner_id=runner_id,
@@ -151,7 +150,7 @@ class PipelineAdapter:
             state_policy=state_policy,
             delivery_policy=delivery_policy,
             enabled=True,
-            pipeline_uuid=pipeline_uuid,
+            agent_id=agent_id,
         )
 
     @classmethod
@@ -335,9 +334,6 @@ class PipelineAdapter:
         # Handle bot_uuid
         bot_uuid = getattr(query, 'bot_uuid', None)
 
-        # Handle pipeline_uuid
-        pipeline_uuid = getattr(query, 'pipeline_uuid', None)
-
         return ConversationContext(
             conversation_id=str(conversation_id) if conversation_id is not None else None,
             thread_id=None,
@@ -347,7 +343,6 @@ class PipelineAdapter:
             bot_id=bot_uuid,
             workspace_id=None,
             session_id=session_id,
-            pipeline_uuid=pipeline_uuid,
         )
 
     @classmethod
@@ -398,7 +393,6 @@ class PipelineAdapter:
                 "launcher_id": getattr(query, 'launcher_id', None),
                 "sender_id": str(getattr(query, 'sender_id', '')) if getattr(query, 'sender_id', None) else None,
                 "bot_uuid": getattr(query, 'bot_uuid', None),
-                "pipeline_uuid": getattr(query, 'pipeline_uuid', None),
             },
         )
 
