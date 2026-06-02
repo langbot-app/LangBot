@@ -23,6 +23,7 @@ Current acceptance report: [EBA Adapter Acceptance Report](./acceptance-report.m
 | WeCom | Migrated; private text plugin E2E verified, media/group gaps remain | [WeCom](./wecom.md) |
 | WeComBot | Migrated; private text and outbound/API plugin E2E verified, feedback/group gaps remain | [WeComBot](./wecombot.md) |
 | Official Account | Migrated; private text plugin E2E verified, proactive outbound not supported | [Official Account](./officialaccount.md) |
+| QQ Official API | Migrated; WebSocket inbound reached LangBot, model config blocked reply | [QQ Official API](./qqofficial.md) |
 
 ## Documentation Checklist
 
