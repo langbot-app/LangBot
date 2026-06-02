@@ -11,7 +11,7 @@ const zhHans = {
     quickStart: '快速开始向导',
     scrollToBottom: '滚动到底部',
     editionCommunity: '社区版',
-    editionCloud: '云版',
+    editionCloud: '云端版',
   },
   common: {
     login: '登录',
