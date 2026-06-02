@@ -1,4 +1,4 @@
-﻿const jaJP = {
+const jaJP = {
   sidebar: {
     home: 'ホーム',
     extensions: '拡張機能',
@@ -701,6 +701,9 @@
     loadFailed: '読み込みに失敗しました',
     modifyFailed: '変更に失敗しました：',
     toolCount: 'ツール：{{count}}',
+    resourceCount: 'リソース：{{count}}',
+    resourceBinaryContent: 'バイナリコンテンツ（表示できません）',
+    resourceReadFailed: 'リソースの読み込みに失敗しました',
     statusConnected: '接続済み',
     statusDisconnected: '未接続',
     statusError: '接続エラー',

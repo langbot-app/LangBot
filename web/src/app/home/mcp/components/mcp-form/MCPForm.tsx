@@ -39,6 +39,8 @@ import { httpClient } from '@/app/infra/http/HttpClient';
 import {
   MCPServerRuntimeInfo,
   MCPTool,
+  MCPResource,
+  MCPResourceContent,
   MCPServer,
   MCPSessionStatus,
   MCPServerExtraArgsSSE,
@@ -155,6 +157,96 @@ function ToolsList({ tools }: { tools: MCPTool[] }) {
               </CardDescription>
             )}
           </CardHeader>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+// Resources list component
+function ResourcesList({
+  resources,
+  serverName,
+  t,
+}: {
+  resources: MCPResource[];
+  serverName: string;
+  t: (key: string) => string;
+}) {
+  const [expandedUri, setExpandedUri] = React.useState<string | null>(null);
+  const [resourceContent, setResourceContent] =
+    React.useState<MCPResourceContent | null>(null);
+  const [loadingContent, setLoadingContent] = React.useState(false);
+
+  const handleToggleResource = async (uri: string) => {
+    if (expandedUri === uri) {
+      setExpandedUri(null);
+      setResourceContent(null);
+      return;
+    }
+
+    setExpandedUri(uri);
+    setResourceContent(null);
+    setLoadingContent(true);
+
+    try {
+      const resp = await httpClient.readMCPServerResource(serverName, uri);
+      if (resp.contents && resp.contents.length > 0) {
+        setResourceContent(resp.contents[0]);
+      }
+    } catch {
+      setResourceContent(null);
+    } finally {
+      setLoadingContent(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2 max-h-[400px] overflow-y-auto">
+      {resources.map((resource, index) => (
+        <Card key={index} className="py-3 shadow-none">
+          <CardHeader
+            className="cursor-pointer"
+            onClick={() => handleToggleResource(resource.uri)}
+          >
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm">{resource.name}</CardTitle>
+              {resource.mime_type && (
+                <span className="text-xs text-muted-foreground font-mono">
+                  {resource.mime_type}
+                </span>
+              )}
+            </div>
+            {resource.description && (
+              <CardDescription className="text-xs">
+                {resource.description}
+              </CardDescription>
+            )}
+            <div className="text-xs text-muted-foreground font-mono break-all">
+              {resource.uri}
+            </div>
+          </CardHeader>
+          {expandedUri === resource.uri && (
+            <CardContent>
+              {loadingContent ? (
+                <div className="text-xs text-muted-foreground">
+                  {t('mcp.loading')}
+                </div>
+              ) : resourceContent?.type === 'text' && resourceContent.text ? (
+                <pre className="text-xs bg-muted p-3 rounded-md overflow-auto max-h-[200px] whitespace-pre-wrap break-all">
+                  {resourceContent.text}
+                </pre>
+              ) : resourceContent?.type === 'blob' ? (
+                <div className="text-xs text-muted-foreground">
+                  {t('mcp.resourceBinaryContent')}
+                </div>
+              ) : (
+                <div className="text-xs text-muted-foreground">
+                  {t('mcp.resourceReadFailed')}
+                </div>
+              )}
+            </CardContent>
+          )}
         </Card>
       ))}
     </div>
@@ -666,15 +758,32 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
               )}
 
               {!mcpTesting &&
-                runtimeInfo.status === MCPSessionStatus.CONNECTED &&
-                runtimeInfo.tools?.length > 0 && (
+                runtimeInfo.status === MCPSessionStatus.CONNECTED && (
                   <>
-                    <div className="text-sm font-medium">
-                      {t('mcp.toolCount', {
-                        count: runtimeInfo.tools?.length || 0,
-                      })}
-                    </div>
-                    <ToolsList tools={runtimeInfo.tools} />
+                    {runtimeInfo.tools?.length > 0 && (
+                      <>
+                        <div className="text-sm font-medium">
+                          {t('mcp.toolCount', {
+                            count: runtimeInfo.tools?.length || 0,
+                          })}
+                        </div>
+                        <ToolsList tools={runtimeInfo.tools} />
+                      </>
+                    )}
+                    {runtimeInfo.resources?.length > 0 && (
+                      <>
+                        <div className="text-sm font-medium mt-2">
+                          {t('mcp.resourceCount', {
+                            count: runtimeInfo.resources?.length || 0,
+                          })}
+                        </div>
+                        <ResourcesList
+                          resources={runtimeInfo.resources}
+                          serverName={form.getValues('name')}
+                          t={t}
+                        />
+                      </>
+                    )}
                   </>
                 )}
             </CardContent>
