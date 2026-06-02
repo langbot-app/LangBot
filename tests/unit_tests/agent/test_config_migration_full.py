@@ -20,7 +20,6 @@ class TestMigratePipelineConfig:
                 },
                 'local-agent': {
                     'model': {'primary': 'model-uuid', 'fallbacks': []},
-                    'max-round': 10,
                     'knowledge-base': 'kb-uuid',
                     'prompt': [{'role': 'system', 'content': 'Hello'}],
                 },
@@ -35,9 +34,9 @@ class TestMigratePipelineConfig:
 
         # Config should be in runner_config
         assert 'plugin:langbot/local-agent/default' in migrated['ai']['runner_config']
-        assert migrated['ai']['runner_config']['plugin:langbot/local-agent/default']['max-round'] == 10
         assert migrated['ai']['runner_config']['plugin:langbot/local-agent/default']['knowledge-bases'] == ['kb-uuid']
         assert 'knowledge-base' not in migrated['ai']['runner_config']['plugin:langbot/local-agent/default']
+        assert 'max-round' not in migrated['ai']['runner_config']['plugin:langbot/local-agent/default']
 
         # Expire-time preserved
         assert migrated['ai']['runner']['expire-time'] == 0
@@ -76,7 +75,7 @@ class TestMigratePipelineConfig:
                 'runner_config': {
                     'plugin:langbot/local-agent/default': {
                         'model': {'primary': '', 'fallbacks': []},
-                        'max-round': 10,
+                        'custom-option': 10,
                     },
                 },
             },
@@ -86,7 +85,7 @@ class TestMigratePipelineConfig:
 
         # Should remain unchanged
         assert migrated['ai']['runner']['id'] == 'plugin:langbot/local-agent/default'
-        assert migrated['ai']['runner_config']['plugin:langbot/local-agent/default']['max-round'] == 10
+        assert migrated['ai']['runner_config']['plugin:langbot/local-agent/default']['custom-option'] == 10
 
     def test_new_format_local_agent_config_normalizes_legacy_kb_key(self):
         """Migration should normalize legacy KB aliases before runtime."""
@@ -260,18 +259,18 @@ class TestResolveRunnerConfig:
         config = {
             'ai': {
                 'runner_config': {
-                    'plugin:langbot/local-agent/default': {'max-round': 20},
+                    'plugin:langbot/local-agent/default': {'custom-option': 20},
                 },
             },
         }
         runner_config = ConfigMigration.resolve_runner_config(config, 'plugin:langbot/local-agent/default')
-        assert runner_config['max-round'] == 20
+        assert runner_config['custom-option'] == 20
 
     def test_resolve_old_format_config(self):
         """resolve_runner_config should not read old ai.local-agent at runtime."""
         config = {
             'ai': {
-                'local-agent': {'max-round': 15},
+                'local-agent': {'max-round': 15, 'custom-option': 20},
             },
         }
         runner_config = ConfigMigration.resolve_runner_config(config, 'plugin:langbot/local-agent/default')
@@ -281,21 +280,21 @@ class TestResolveRunnerConfig:
         """resolve_legacy_runner_config should read old ai.local-agent for migration."""
         config = {
             'ai': {
-                'local-agent': {'max-round': 15},
+                'local-agent': {'max-round': 15, 'custom-option': 20},
             },
         }
         runner_config = ConfigMigration.resolve_legacy_runner_config(config, 'plugin:langbot/local-agent/default')
-        assert runner_config['max-round'] == 15
+        assert runner_config == {'custom-option': 20}
 
     def test_resolve_new_format_priority(self):
         """New format runner_config should take priority."""
         config = {
             'ai': {
                 'runner_config': {
-                    'plugin:langbot/local-agent/default': {'max-round': 25},
+                    'plugin:langbot/local-agent/default': {'custom-option': 25},
                 },
-                'local-agent': {'max-round': 10},  # Old, should be ignored
+                'local-agent': {'max-round': 10, 'custom-option': 10},  # Old, should be ignored
             },
         }
         runner_config = ConfigMigration.resolve_runner_config(config, 'plugin:langbot/local-agent/default')
-        assert runner_config['max-round'] == 25
+        assert runner_config['custom-option'] == 25

@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import types
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine
@@ -332,8 +332,8 @@ async def test_orchestrator_runs_fake_plugin_with_authorized_context(clean_agent
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_packages_max_round_without_mutating_query(clean_agent_state):
-    """Test that max-round is packaged without mutating original query."""
+async def test_orchestrator_does_not_package_query_messages_into_context(clean_agent_state):
+    """Host should not build an agent working-context window from query.messages."""
     db_engine = clean_agent_state
     descriptor = make_descriptor()
     plugin_connector = FakePluginConnector(
@@ -347,7 +347,7 @@ async def test_orchestrator_packages_max_round_without_mutating_query(clean_agen
     ap = FakeApplication(plugin_connector, db_engine)
     orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
     query = make_query()
-    query.pipeline_config["ai"]["runner_config"][RUNNER_ID]["max-round"] = 2
+    query.pipeline_config["ai"]["runner_config"][RUNNER_ID]["agent-window"] = 2
     query.messages = [
         provider_message.Message(role="user", content="message 1"),
         provider_message.Message(role="assistant", content="response 1"),
@@ -361,21 +361,10 @@ async def test_orchestrator_packages_max_round_without_mutating_query(clean_agen
 
     assert len(messages) == 1
     context = plugin_connector.contexts[0]
-    # Protocol v1: messages are in bootstrap.messages
-    assert context["bootstrap"] is not None
-    assert [message["content"] for message in context["bootstrap"]["messages"]] == [
-        "message 2",
-        "response 2",
-        "message 3",
-        "response 3",
-    ]
-    # Also exposed in adapter.adapter_messages for runners that consume adapter bootstrap.
-    assert [message["content"] for message in context["adapter"]["adapter_messages"]] == [
-        "message 2",
-        "response 2",
-        "message 3",
-        "response 3",
-    ]
+    assert context["config"]["agent-window"] == 2
+    assert context["bootstrap"] is None
+    assert "adapter_messages" not in context["adapter"]
+    assert "context_packaging" not in context["runtime"]["metadata"]
     assert [message.content for message in query.messages] == [
         "message 1",
         "response 1",
@@ -384,18 +373,6 @@ async def test_orchestrator_packages_max_round_without_mutating_query(clean_agen
         "message 3",
         "response 3",
     ]
-    assert context["runtime"]["metadata"]["context_packaging"] == {
-        "policy": {
-            "mode": "max_round",
-            "max_round": 2,
-        },
-        "history": {
-            "source": "query.messages",
-            "source_total_count": 6,
-            "delivered_count": 4,
-            "messages_complete": False,
-        },
-    }
 
 
 @pytest.mark.asyncio
@@ -493,7 +470,7 @@ async def test_orchestrator_enforces_total_runner_deadline(clean_agent_state):
 
     assert exc_info.value.retryable is True
     assert "runner.timeout" in str(exc_info.value)
-    assert await get_session_registry().get(plugin_connector.contexts[0]["run_id"]) is None
+    assert await get_session_registry().list_active_runs() == []
 
 
 class TestPipelineCompatibilityQueryIdInSession:
@@ -610,7 +587,7 @@ class TestPipelineAdapterPromptAndParams:
             ],
         )
 
-        messages = [message async for message in orchestrator.run_from_query(query)]
+        _messages = [message async for message in orchestrator.run_from_query(query)]
 
         context = plugin_connector.contexts[0]
         # Prompt should be in adapter.extra
@@ -641,7 +618,7 @@ class TestPipelineAdapterPromptAndParams:
             "another_param": 123,
         }
 
-        messages = [message async for message in orchestrator.run_from_query(query)]
+        _messages = [message async for message in orchestrator.run_from_query(query)]
 
         context = plugin_connector.contexts[0]
         assert context["adapter"]["extra"]["params"] == {
@@ -671,7 +648,7 @@ class TestPipelineAdapterPromptAndParams:
             "_pipeline_bound_plugins": ["plugin1"],
         }
 
-        messages = [message async for message in orchestrator.run_from_query(query)]
+        _messages = [message async for message in orchestrator.run_from_query(query)]
 
         context = plugin_connector.contexts[0]
         params = context["adapter"]["extra"]["params"]
@@ -703,7 +680,7 @@ class TestPipelineAdapterPromptAndParams:
             "credential": "secret000",
         }
 
-        messages = [message async for message in orchestrator.run_from_query(query)]
+        _messages = [message async for message in orchestrator.run_from_query(query)]
 
         context = plugin_connector.contexts[0]
         params = context["adapter"]["extra"]["params"]
@@ -735,7 +712,7 @@ class TestPipelineAdapterPromptAndParams:
             "a_lambda": lambda x: x,  # function is not JSON-serializable
         }
 
-        messages = [message async for message in orchestrator.run_from_query(query)]
+        _messages = [message async for message in orchestrator.run_from_query(query)]
 
         context = plugin_connector.contexts[0]
         params = context["adapter"]["extra"]["params"]

@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from ...entity.persistence.event_log import EventLog
-from ...entity.persistence.transcript import Transcript
 
 
 class EventLogStore:

@@ -133,16 +133,6 @@ class AgentRunOrchestrator:
             # Merge prompt into adapter.extra for Pipeline adapter consumers.
             if 'prompt' in adapter_context:
                 context['adapter']['extra']['prompt'] = adapter_context['prompt']
-            # Merge bootstrap if provided
-            if adapter_context.get('bootstrap'):
-                context['bootstrap'] = adapter_context['bootstrap']
-                # Also expose the bootstrap window through adapter metadata.
-                bootstrap_messages = adapter_context['bootstrap'].get('messages')
-                if bootstrap_messages:
-                    context['adapter']['adapter_messages'] = bootstrap_messages
-            # Merge runtime metadata if provided
-            if adapter_context.get('runtime_metadata'):
-                context['runtime']['metadata'].update(adapter_context['runtime_metadata'])
             # Set query_id if provided
             if adapter_context.get('query_id'):
                 context['runtime']['query_id'] = adapter_context['query_id']

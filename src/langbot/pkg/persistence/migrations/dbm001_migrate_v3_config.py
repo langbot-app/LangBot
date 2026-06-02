@@ -118,9 +118,6 @@ class DBMigrateV3Config(migration.DBMigration):
                 'runner': self.ap.provider_cfg.data['runner'],
             }
             pipeline_config['ai']['local-agent']['model'] = model_uuid
-            pipeline_config['ai']['local-agent']['max-round'] = self.ap.pipeline_cfg.data['msg-truncate']['round'][
-                'max-round'
-            ]
 
             pipeline_config['ai']['local-agent']['prompt'] = [
                 {

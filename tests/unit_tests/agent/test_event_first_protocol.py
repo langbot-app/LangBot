@@ -4,7 +4,7 @@ Tests cover:
 1. Pipeline Query -> AgentEventEnvelope conversion
 2. Pipeline config -> AgentBinding conversion
 3. AgentRunContext not inlining full history by default
-4. Pipeline max-round only affecting bootstrap/adapter context
+4. LangBot Host not defining context-window controls
 5. Event-first run() entry point
 """
 from __future__ import annotations
@@ -147,23 +147,13 @@ class TestPipelineConfigToBinding:
         assert binding.scope.scope_type == "pipeline"
         assert binding.scope.scope_id == mock_query.pipeline_uuid
 
-    def test_config_to_binding_max_round(self, mock_query_with_max_round):
-        """Test max_round extraction for Pipeline adapter."""
-        binding = PipelineAdapter.pipeline_config_to_binding(
-            mock_query_with_max_round, "plugin:test/plugin/runner"
-        )
-
-        # max_round should be captured but NOT in Protocol v1 entities
-        assert binding.max_round == 10
-
-    def test_config_to_binding_no_max_round(self, mock_query):
-        """Test binding without max_round."""
+    def test_config_to_binding_does_not_add_host_context_window(self, mock_query):
+        """Pipeline binding should not define Host-side context window controls."""
         binding = PipelineAdapter.pipeline_config_to_binding(
             mock_query, "plugin:test/plugin/runner"
         )
 
-        # max_round may be None
-        assert binding.max_round is None
+        assert not hasattr(binding, "max_round")
 
 
 class TestAgentRunContextProtocolV1:
@@ -248,60 +238,23 @@ class TestAgentRunContextProtocolV1:
         assert ctx.bootstrap is None or isinstance(ctx.bootstrap.messages, list)
 
 
-class TestMaxRoundNotInProtocol:
-    """Test that Pipeline max-round only affects adapter context, not Protocol v1."""
+class TestHostContextWindowNotInProtocol:
+    """Test that Host-side context window controls are not in Protocol v1."""
 
-    def test_max_round_not_in_sdk_context(self):
-        """Test max-round is not a field in SDK AgentRunContext."""
-        # AgentRunContext should not have max_round field
+    def test_context_window_not_in_sdk_context(self):
+        """AgentRunContext should not expose Host-side window controls."""
         ctx_fields = AgentRunContext.model_fields.keys()
 
         assert "max_round" not in ctx_fields
         assert "maxRound" not in ctx_fields
 
-    def test_max_round_in_adapter_context(self):
-        """Test max_round is in adapter context, not main context."""
-        trigger = AgentTrigger(type="message.received")
-        event = AgentEventContext(
-            event_id="evt_1",
-            event_type="message.received",
-            source="platform",
-        )
-        input = AgentInput(text="Hello")
-        from langbot_plugin.api.entities.builtin.agent_runner.resources import AgentResources
-        from langbot_plugin.api.entities.builtin.agent_runner.runtime import AgentRuntimeContext
-        from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
-        from langbot_plugin.api.entities.builtin.agent_runner.context import AdapterContext
-
-        adapter = AdapterContext(max_round=10)
-
-        ctx = AgentRunContext(
-            run_id="run_1",
-            trigger=trigger,
-            event=event,
-            input=input,
-            delivery=DeliveryContext(surface="platform"),
-            resources=AgentResources(),
-            runtime=AgentRuntimeContext(),
-            adapter=adapter,
-        )
-
-        # max_round is in adapter context, not main context
-        assert ctx.adapter is not None
-        assert ctx.adapter.max_round == 10
-
-    def test_binding_max_round_for_adapter_only(self, mock_query_with_max_round):
-        """Test max_round in binding is for adapter use, not Protocol v1."""
+    def test_binding_has_no_context_window_field(self, mock_query):
+        """Pipeline adapter should not attach context window policy to binding."""
         binding = PipelineAdapter.pipeline_config_to_binding(
-            mock_query_with_max_round, "plugin:test/plugin/runner"
+            mock_query, "plugin:test/plugin/runner"
         )
 
-        # max_round is in binding (Host-internal) for Pipeline adapter
-        assert binding.max_round == 10
-
-        # But SDK entities don't have it
-        ctx_fields = AgentRunContext.model_fields.keys()
-        assert "max_round" not in ctx_fields
+        assert not hasattr(binding, "max_round")
 
 
 class TestSDKCapabilitiesProtocolV1:
@@ -414,18 +367,6 @@ def mock_query():
     query.use_llm_model_uuid = None
 
     return query
-
-
-@pytest.fixture
-def mock_query_with_max_round(mock_query):
-    """Create a mock Query with max_round configuration."""
-    mock_query.pipeline_config = {
-        "ai": {
-            "runner": "plugin:test/plugin/runner",
-            "max-round": 10,
-        }
-    }
-    return mock_query
 
 
 @pytest.fixture

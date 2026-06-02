@@ -8,8 +8,6 @@ import typing
 import pydantic
 
 from langbot_plugin.api.entities.builtin.agent_runner.event import (
-    AgentEventContext,
-    ConversationContext,
     ActorContext,
     SubjectContext,
     RawEventRef,
@@ -172,6 +170,3 @@ class AgentBinding(pydantic.BaseModel):
     # Fields for Pipeline adapter
     pipeline_uuid: str | None = None
     """Pipeline UUID (for Pipeline adapter)."""
-
-    max_round: int | None = None
-    """max-round (for Pipeline adapter bootstrap, not Protocol v1)."""

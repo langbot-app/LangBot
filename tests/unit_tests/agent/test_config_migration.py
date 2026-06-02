@@ -120,7 +120,7 @@ class TestResolveRunnerConfig:
                 'runner_config': {
                     'plugin:langbot/local-agent/default': {
                         'model': 'uuid-123',
-                        'max_round': 10,
+                        'custom_option': 10,
                     },
                 },
             },
@@ -130,7 +130,7 @@ class TestResolveRunnerConfig:
             pipeline_config,
             'plugin:langbot/local-agent/default',
         )
-        assert config == {'model': 'uuid-123', 'max_round': 10}
+        assert config == {'model': 'uuid-123', 'custom_option': 10}
 
     def test_resolve_old_format_config(self):
         """Runtime config resolver should not read old format."""
@@ -138,7 +138,7 @@ class TestResolveRunnerConfig:
             'ai': {
                 'local-agent': {
                     'model': 'uuid-123',
-                    'max_round': 10,
+                    'custom_option': 10,
                 },
             },
         }
@@ -155,7 +155,7 @@ class TestResolveRunnerConfig:
             'ai': {
                 'local-agent': {
                     'model': 'uuid-123',
-                    'max_round': 10,
+                    'custom_option': 10,
                     'knowledge-base': 'kb-123',
                 },
             },
@@ -165,7 +165,7 @@ class TestResolveRunnerConfig:
             pipeline_config,
             'plugin:langbot/local-agent/default',
         )
-        assert config == {'model': 'uuid-123', 'max_round': 10, 'knowledge-bases': ['kb-123']}
+        assert config == {'model': 'uuid-123', 'custom_option': 10, 'knowledge-bases': ['kb-123']}
         assert 'knowledge-base' not in config
 
     def test_resolve_no_config(self):

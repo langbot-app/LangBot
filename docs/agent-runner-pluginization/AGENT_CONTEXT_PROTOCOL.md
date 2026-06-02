@@ -14,7 +14,7 @@
 - ✅ `AgentRunAPIProxy.state` — get/set/delete API
 - ✅ EventLog / Transcript / ArtifactStore — host 事实源
 - ✅ PersistentStateStore — 持久化状态存储
-- ✅ `max-round` 已从协议实体中移除；如某 runner 仍需要类似历史窗口参数，应作为 runner binding config 由插件 manifest 暴露，而不是 Host / Pipeline 协议字段
+- ✅ `max-round` / host-side history window 已从 LangBot Host/Pipeline 语义中移除；如某 runner 仍需要类似参数，应由该 runner 自己解释配置
 - ✅ 外部 harness context projection 已用 Claude Code runner 做 MVP 验证：context 文件、skill 投影、MCP 配置和 host-owned resume state
 
 ## 1. 设计原则
@@ -41,7 +41,7 @@
 
 如果某个 runner 仍需要“最多读取多少轮历史”这样的策略参数，应由该 runner 在自己的 manifest/config schema 中声明，并作为 binding config 存到 `ctx.config` / `runner_config`。Host 只提供 history pull API、cursor、hard cap 和权限边界；runner 自己决定是否读取、读取多少、如何截断和压缩。
 
-当前 official local-agent 方向是通过 Host history API 拉取 transcript，并由 runner 自己管理模型上下文。它不依赖 Pipeline adapter 下发的 `max-round` / bootstrap 窗口。
+当前 official local-agent 方向是通过 Host history API 拉取 transcript，并由 runner 自己管理模型上下文。它不依赖 Pipeline adapter 下发历史窗口。
 
 新协议不应该问“LangBot 每轮裁几轮历史给 agent”，而应该问：
 
@@ -58,7 +58,7 @@
 - `Transcript`: Host 从 EventLog 投影出的对话视图，用于 UI、审计和按需历史读取。
 - `Working context`: Agent 本轮实际送进模型或 runtime 的上下文，由 AgentRunner 决定。
 
-LangBot 可以为简单 runner 提供 bootstrap window，但这只是 convenience，不是主架构。
+LangBot 不再提供 host-side bootstrap window。简单 runner 如果需要历史窗口，应在 runner 内部通过 Host history API 拉取并裁剪。
 
 ## 2. Event 到来时传什么
 
@@ -117,22 +117,11 @@ class AgentRunContext(BaseModel):
 
 这些会破坏跨进程序列化成本、泄露范围、KV cache 稳定性，也会迫使 host 替 agent 做 context 策略。
 
-### 2.3 可选 bootstrap
+### 2.3 不提供 Host Bootstrap Window
 
-根据 runner manifest 可以提供可选 bootstrap：
+`AgentRunContext.bootstrap` 可以作为协议里的可选扩展字段保留，但 LangBot Host 默认不填历史窗口，也不通过 Pipeline 配置决定窗口大小。
 
-```yaml
-context:
-  bootstrap: none | current_event | recent_tail | summary_tail
-  max_inline_events: 0
-  max_inline_bytes: 0
-```
-
-建议默认：
-
-- 自管 runtime：`bootstrap: current_event`
-- 简单 HTTP runner：`bootstrap: recent_tail`
-- runner 如果需要 `recent_tail` 策略，应通过自己的 binding config 声明窗口大小；Host 不把 `max-round` 作为通用协议字段扩展。
+如果 runner 需要类似 `recent_tail` 的策略，它应在自己的 manifest/config schema 中声明参数，并在 runner 内部通过 `history_page` / `history_search` 读取、裁剪和压缩历史。Host 只负责权限、分页、hard cap 和事实源。
 
 ## 3. ContextAccess
 
@@ -335,7 +324,7 @@ LangBot core 不应内置官方 agent 的业务流程：
 
 **已完成（当前分支）**：
 
-- ✅ `max-round` 不再是协议字段；类似历史窗口策略属于 runner binding config，而不是 Host / Pipeline 通用语义
+- ✅ `max-round` 不再是协议字段，也不再是 Host / Pipeline 通用语义
 - ✅ 新 runner 默认不收到历史窗口
 - ✅ `AgentRunContext` 增加 `context` / cursor / access capabilities
 - ✅ `AgentRunAPIProxy` 增加 history / events / artifacts / state API

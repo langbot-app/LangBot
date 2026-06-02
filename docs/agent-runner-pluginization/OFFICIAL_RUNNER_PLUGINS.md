@@ -183,10 +183,9 @@ LangBot core 不应为了 local-agent 保留业务编排逻辑。local-agent 的
 - `ctx.runtime.metadata.streaming_supported`：当前 adapter 是否能消费流式输出。
 - 宿主代理 action：模型、工具、知识库、rerank 调用必须通过 `run_id` 校验资源权限。
 
-`local-agent` 不应消费 Pipeline adapter 生成的 `max-round` / `bootstrap`
-窗口，也不应读取 `ctx.adapter.extra.prompt`。它应从绑定配置读取静态
-`prompt`，并通过 Host history API 拉取 transcript。Pipeline adapter 可以继续为旧入口
-保留 `max-round` 兼容逻辑，但这不是 official local-agent 的行为契约。
+`local-agent` 不应消费 Pipeline adapter 生成的历史窗口，也不应读取
+`ctx.adapter.extra.prompt`。它应从绑定配置读取静态 `prompt`，并通过 Host
+history API 拉取 transcript。Pipeline adapter 不保留 Host-side window 兼容逻辑。
 
 建议 local-agent manifest 使用 hybrid 或 self-managed context：
 

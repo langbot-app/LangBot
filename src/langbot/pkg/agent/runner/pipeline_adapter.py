@@ -29,7 +29,6 @@ from .host_models import (
     DeliveryPolicy,
 )
 from . import events as runner_events
-from ...pipeline.msgtrun.round_policy import select_max_round_messages
 
 
 class PipelineAdapter:
@@ -38,7 +37,6 @@ class PipelineAdapter:
     This adapter is responsible for:
     - Converting Query to AgentEventEnvelope
     - Converting Pipeline config to temporary AgentBinding
-    - Handling max-round as bootstrap policy
     - Putting Query-only fields into adapter context
     """
 
@@ -118,10 +116,6 @@ class PipelineAdapter:
         runner_config = ai_config.get('runner_config', {}).get(runner_id, {})
         pipeline_uuid = getattr(query, 'pipeline_uuid', None)
 
-        # Extract max_round for adapter (used in bootstrap, not Protocol v1)
-        # Note: config uses 'max-round' with hyphen, not 'max_round' with underscore
-        max_round = runner_config.get('max-round') or ai_config.get('max-round')
-
         # Build scope
         scope = BindingScope(
             scope_type="pipeline",
@@ -158,44 +152,7 @@ class PipelineAdapter:
             delivery_policy=delivery_policy,
             enabled=True,
             pipeline_uuid=pipeline_uuid,
-            max_round=max_round,
         )
-
-    @classmethod
-    def build_bootstrap_context(
-        cls,
-        query: pipeline_query.Query,
-        binding: AgentBinding,
-    ) -> tuple[dict[str, typing.Any] | None, dict[str, typing.Any]]:
-        """Build bootstrap messages and runtime metadata for Pipeline max-round."""
-        max_round = binding.max_round
-        source_messages = query.messages or []
-        if not max_round or max_round <= 0 or not source_messages:
-            return None, {}
-
-        packaged_messages = select_max_round_messages(source_messages, max_round)
-        bootstrap_messages = [cls._dump_message(msg) for msg in packaged_messages]
-        bootstrap = {
-            "messages": bootstrap_messages,
-            "summary": None,
-            "artifacts": [],
-            "metadata": {},
-        }
-        runtime_metadata = {
-            'context_packaging': {
-                'policy': {
-                    'mode': 'max_round',
-                    'max_round': max_round,
-                },
-                'history': {
-                    'source': 'query.messages',
-                    'source_total_count': len(source_messages),
-                    'delivered_count': len(packaged_messages),
-                    'messages_complete': len(packaged_messages) == len(source_messages),
-                },
-            },
-        }
-        return bootstrap, runtime_metadata
 
     @classmethod
     def build_adapter_context(
@@ -204,13 +161,10 @@ class PipelineAdapter:
         binding: AgentBinding,
     ) -> dict[str, typing.Any]:
         """Build Query-derived fields for the Pipeline adapter entry."""
-        bootstrap, runtime_metadata = cls.build_bootstrap_context(query, binding)
         return {
             'params': cls.build_params(query),
             'prompt': cls.build_prompt(query),
-            'bootstrap': bootstrap,
             'query_id': getattr(query, 'query_id', None),
-            'runtime_metadata': runtime_metadata,
         }
 
     @classmethod

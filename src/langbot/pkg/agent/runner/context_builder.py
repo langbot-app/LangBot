@@ -296,8 +296,6 @@ class AgentRunContextBuilder:
         adapter_context = {
             'query_id': None,
             'pipeline_uuid': binding.pipeline_uuid,
-            'max_round': binding.max_round,  # For reference only
-            'adapter_messages': [],
             'extra': {},
         }
 
@@ -316,7 +314,7 @@ class AgentRunContextBuilder:
             'state': state,
             'runtime': runtime,
             'config': binding.runner_config,
-            'bootstrap': None,  # Optional - no messages inlined by default
+            'bootstrap': None,
             'adapter': adapter_context,
             'metadata': {},  # Additional metadata
         }

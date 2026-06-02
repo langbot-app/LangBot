@@ -114,6 +114,9 @@ class ConfigMigration:
         if old_runner_name:
             old_config = ai_config.get(old_runner_name, {})
             if old_config:
+                old_config = dict(old_config)
+                if runner_id == OLD_RUNNER_TO_PLUGIN_RUNNER_ID['local-agent']:
+                    old_config.pop('max-round', None)
                 return ConfigMigration.normalize_runner_config_for_migration(runner_id, old_config)
 
         return {}

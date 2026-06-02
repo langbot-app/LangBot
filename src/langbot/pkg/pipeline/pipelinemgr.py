@@ -28,7 +28,6 @@ from . import (
     wrapper,
     preproc,
     ratelimit,
-    msgtrun,
 )
 
 importutil.import_modules_in_pkgs(
@@ -42,7 +41,6 @@ importutil.import_modules_in_pkgs(
         wrapper,
         preproc,
         ratelimit,
-        msgtrun,
     ]
 )
 
@@ -438,6 +436,9 @@ class PipelineManager:
         # initialize stage containers according to pipeline_entity.stages
         stage_containers: list[StageInstContainer] = []
         for stage_name in pipeline_entity.stages:
+            if stage_name not in self.stage_dict:
+                self.ap.logger.warning(f'Pipeline stage {stage_name} is not registered; skipping')
+                continue
             stage_containers.append(StageInstContainer(inst_name=stage_name, inst=self.stage_dict[stage_name](self.ap)))
 
         for stage_container in stage_containers:

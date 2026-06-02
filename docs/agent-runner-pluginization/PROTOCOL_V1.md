@@ -11,7 +11,7 @@
 - ✅ Host 支持 `run_id` session authorization
 - ✅ Host 能从当前 Pipeline 入口生成 event-first context
 - ✅ `messages` 降级为 optional bootstrap
-- ✅ `max-round` 不出现在协议实体中；类似历史窗口参数若存在，应来自 runner manifest/config schema，并作为 binding config 进入 `ctx.config`
+- ✅ `max-round` 不出现在协议实体中，也不属于 Host / Pipeline 语义；类似参数若存在，由 runner 自己解释 `ctx.config`
 - ✅ Proxy 覆盖 model、tool、knowledge、state/storage
 - ✅ History / Event / Artifact / State API 已落地
 - ✅ EventLog / Transcript / ArtifactStore / PersistentStateStore 已落地
@@ -142,13 +142,13 @@ class AgentRunnerContextPolicy(BaseModel):
     wants_static_context_refs: bool = True
 ```
 
-Host 使用该声明决定是否给 runner inline bootstrap history。默认原则：
+Host 不使用该声明给 runner inline 历史窗口。默认原则：
 
 - Host 不得默认 inline 全量历史。
-- Host 默认只 inline 当前 event / input 和 context handles。
+- Host 只 inline 当前 event / input 和 context handles。
 - Runner 拥有 working context assembly。
 - Runner 可在授权后通过 Host history / event / artifact / state APIs 拉取更多上下文。
-- `max-round` 不属于 Protocol v1 字段，也不属于 Pipeline / Host 通用语义。
+- `max-round` 或类似窗口参数不属于 Protocol v1 字段，也不属于 Pipeline / Host 通用语义；如果某个 runner 需要，应由 runner 自己解释 `ctx.config`。
 
 ## 4. Run 协议
 
@@ -193,7 +193,7 @@ class AgentRunContext(BaseModel):
 
 - `event` 是必选字段，Protocol v1 是 event-first。
 - `input` 表示当前事件的主输入，不等于历史消息。
-- `bootstrap` 是可选字段，不是完整 history。
+- `bootstrap` 是可选字段；LangBot Host 默认不填历史窗口。
 - `adapter` 只放 Pipeline adapter 字段，runner 不应依赖它做长期能力。
 - `config` 是 Host binding config，不是插件实例状态。
 
@@ -342,10 +342,10 @@ class BootstrapContext(BaseModel):
 
 约束：
 
-- `bootstrap.messages` 是 host convenience，不是协议核心。
-- 自管 context runner 默认应收到空 bootstrap 或只收到当前 event。
+- `bootstrap.messages` 不是 LangBot Host 的默认行为。
+- 自管 context runner 默认应收到空 bootstrap。
 - Host 不应为了”帮 agent 更聪明”而自动拼接完整 transcript。
-- 类似历史窗口策略应由具体 runner 的 binding config 表达；new/official runners 不应依赖 Pipeline adapter 下发的 bootstrap window。
+- 类似历史窗口策略应由具体 runner 自己解释 binding config，并通过 Host history API 拉取历史；new/official runners 不应依赖 Pipeline adapter 下发历史窗口。
 
 ### 4.10 RuntimeContext
 
@@ -685,7 +685,7 @@ Protocol v1 已在当前分支完成：
 - ✅ Host 支持 `run_id` session authorization
 - ✅ Host 能从当前 Pipeline 入口生成 event-first context
 - ✅ `messages` 降级为 optional bootstrap
-- ✅ `max-round` 不出现在协议实体中；类似参数属于具体 runner binding config
+- ✅ `max-round` 不出现在协议实体中，也不属于 Host / Pipeline 语义
 - ✅ Proxy 至少覆盖 model、tool、knowledge、state/storage
 - ✅ History / event / artifact API 已落地
 - ✅ EventLog / Transcript / ArtifactStore / PersistentStateStore 已落地
