@@ -234,7 +234,21 @@ LangBot 应提供事实源能力：
 
 AgentRunner 可以读取这些能力，但不能被迫使用 LangBot 作为唯一记忆系统。
 
-### 4.8 External harness resource projection
+### 4.8 Prompt / Instruction Package（占位）
+
+旧 Pipeline 入口目前可以把 preprocessing 后的有效 prompt 放进 adapter metadata，
+这是为了保持旧入口行为，不是长期协议。目标形态应是 Host 保存或生成一个
+run-scoped instruction package，runner 通过 Host API 拉取：
+
+- Host 负责记录静态绑定 prompt、host hook / user plugin 产生的 instruction
+  fragment、来源和审计信息。
+- `ctx.context.available_apis.prompt_get` 只表示拉取能力是否可用。
+- Runner 拉取 instruction package 后，仍由 runner 自己决定如何与 history、RAG、
+  tool 结果、memory 和当前输入组装最终模型 prompt。
+- Host 不实现通用 agentic prompt assembler，也不把 Pipeline adapter prompt 作为
+  长期业务输入契约。
+
+### 4.9 External harness resource projection
 
 Claude Code、Codex、Kimi Code 等外部 harness runner 可能不会直接调用 LangBot 的 model/tool loop，而是把 LangBot 事件和授权资源投影到自己的 harness 中执行。Host 侧仍要保持统一边界：
 

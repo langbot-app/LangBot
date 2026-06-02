@@ -21,6 +21,7 @@ class TestMigratePipelineConfig:
                 'local-agent': {
                     'model': {'primary': 'model-uuid', 'fallbacks': []},
                     'max-round': 10,
+                    'knowledge-base': 'kb-uuid',
                     'prompt': [{'role': 'system', 'content': 'Hello'}],
                 },
             },
@@ -35,6 +36,8 @@ class TestMigratePipelineConfig:
         # Config should be in runner_config
         assert 'plugin:langbot/local-agent/default' in migrated['ai']['runner_config']
         assert migrated['ai']['runner_config']['plugin:langbot/local-agent/default']['max-round'] == 10
+        assert migrated['ai']['runner_config']['plugin:langbot/local-agent/default']['knowledge-bases'] == ['kb-uuid']
+        assert 'knowledge-base' not in migrated['ai']['runner_config']['plugin:langbot/local-agent/default']
 
         # Expire-time preserved
         assert migrated['ai']['runner']['expire-time'] == 0
@@ -84,6 +87,26 @@ class TestMigratePipelineConfig:
         # Should remain unchanged
         assert migrated['ai']['runner']['id'] == 'plugin:langbot/local-agent/default'
         assert migrated['ai']['runner_config']['plugin:langbot/local-agent/default']['max-round'] == 10
+
+    def test_new_format_local_agent_config_normalizes_legacy_kb_key(self):
+        """Migration should normalize legacy KB aliases before runtime."""
+        config = {
+            'ai': {
+                'runner': {
+                    'id': 'plugin:langbot/local-agent/default',
+                },
+                'runner_config': {
+                    'plugin:langbot/local-agent/default': {
+                        'knowledge-base': 'kb-legacy',
+                    },
+                },
+            },
+        }
+
+        migrated = ConfigMigration.migrate_pipeline_config(config)
+        runner_config = migrated['ai']['runner_config']['plugin:langbot/local-agent/default']
+
+        assert runner_config == {'knowledge-bases': ['kb-legacy']}
 
     def test_migrate_all_old_runners(self):
         """All old runner names should be migrated."""

@@ -1,4 +1,5 @@
 """Tests for agent runner config migration."""
+
 from __future__ import annotations
 
 
@@ -155,6 +156,7 @@ class TestResolveRunnerConfig:
                 'local-agent': {
                     'model': 'uuid-123',
                     'max_round': 10,
+                    'knowledge-base': 'kb-123',
                 },
             },
         }
@@ -163,7 +165,8 @@ class TestResolveRunnerConfig:
             pipeline_config,
             'plugin:langbot/local-agent/default',
         )
-        assert config == {'model': 'uuid-123', 'max_round': 10}
+        assert config == {'model': 'uuid-123', 'max_round': 10, 'knowledge-bases': ['kb-123']}
+        assert 'knowledge-base' not in config
 
     def test_resolve_no_config(self):
         """Resolve runner config when not found."""

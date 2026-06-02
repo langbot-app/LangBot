@@ -10,6 +10,7 @@ Authorization paths:
 1. AgentRunner calls: has run_id, validates against session_registry
 2. Regular plugin calls: no run_id, unscoped plugin action path
 """
+
 from __future__ import annotations
 
 import pytest
@@ -26,6 +27,7 @@ from .conftest import make_resources
 
 class MockModel:
     """Mock LLM model for testing."""
+
     def __init__(self, uuid: str):
         self.uuid = uuid
         self.provider = MagicMock()
@@ -34,6 +36,7 @@ class MockModel:
 
 class MockEmbeddingModel:
     """Mock embedding model for testing."""
+
     def __init__(self, uuid: str):
         self.uuid = uuid
         self.provider = MagicMock()
@@ -41,6 +44,7 @@ class MockEmbeddingModel:
 
 class MockKnowledgeBase:
     """Mock knowledge base for testing."""
+
     def __init__(self, uuid: str, name: str = 'KB'):
         self.knowledge_base_entity = MagicMock()
         self.knowledge_base_entity.description = f'{name} description'
@@ -57,6 +61,7 @@ class MockKnowledgeBase:
 
 class MockQuery:
     """Mock query for testing."""
+
     def __init__(self, query_id: int = 1):
         self.query_id = query_id
         self.session = MagicMock()
@@ -81,6 +86,7 @@ class MockQuery:
 
 class MockApplication:
     """Mock Application for testing."""
+
     def __init__(self):
         self.logger = MagicMock()
         self.logger.debug = MagicMock()
@@ -125,6 +131,7 @@ class FakeAgentRunnerRegistry:
 
 class MockConnection:
     """Mock connection for testing."""
+
     pass
 
 
@@ -155,6 +162,7 @@ class TestPipelineKnowledgeBaseScope:
 
 class MockDisconnectCallback:
     """Mock disconnect callback for testing."""
+
     async def __call__(self):
         return True
 
@@ -489,25 +497,25 @@ class TestHandlerAuthorizationErrorMessages:
 
     def test_model_not_authorized_error_message(self):
         """Error message should mention model not authorized."""
-        expected_msg = "Model model_999 is not authorized for this agent run"
+        expected_msg = 'Model model_999 is not authorized for this agent run'
         assert 'not authorized' in expected_msg
         assert 'model_999' in expected_msg
 
     def test_tool_not_authorized_error_message(self):
         """Error message should mention tool not authorized."""
-        expected_msg = "Tool image_gen is not authorized for this agent run"
+        expected_msg = 'Tool image_gen is not authorized for this agent run'
         assert 'not authorized' in expected_msg
         assert 'image_gen' in expected_msg
 
     def test_kb_not_authorized_error_message(self):
         """Error message should mention kb not authorized."""
-        expected_msg = "Knowledge base kb_999 is not authorized for this agent run"
+        expected_msg = 'Knowledge base kb_999 is not authorized for this agent run'
         assert 'not authorized' in expected_msg
         assert 'kb_999' in expected_msg
 
     def test_session_not_found_error_message(self):
         """Error message should mention session not found."""
-        expected_msg = "Run session run_xyz not found or expired"
+        expected_msg = 'Run session run_xyz not found or expired'
         assert 'not found' in expected_msg
         assert 'run_xyz' in expected_msg
 
@@ -585,8 +593,8 @@ class TestRETRIEVEKNOWLEDGEBASEBugFix:
         # Should resolve to plugin:langbot/local-agent/default
         assert 'local-agent' in runner_id
 
-    def test_retrieve_kb_fix_backward_compat_knowledge_base(self):
-        """Fix should handle backward compat for old 'knowledge-base' field."""
+    def test_retrieve_kb_legacy_single_key_is_migration_only(self):
+        """Old singular knowledge-base config is normalized before runtime."""
         from langbot.pkg.agent.runner.config_migration import ConfigMigration
 
         pipeline_config = {
@@ -602,17 +610,11 @@ class TestRETRIEVEKNOWLEDGEBASEBugFix:
             },
         }
 
-        runner_id = ConfigMigration.resolve_runner_id(pipeline_config)
-        runner_config = ConfigMigration.resolve_runner_config(pipeline_config, runner_id)
+        migrated = ConfigMigration.migrate_pipeline_config(pipeline_config)
+        runner_id = ConfigMigration.resolve_runner_id(migrated)
+        runner_config = ConfigMigration.resolve_runner_config(migrated, runner_id)
 
-        # Handler.py checks both knowledge-bases and knowledge-base
-        allowed_kbs = runner_config.get('knowledge-bases', [])
-        if not allowed_kbs:
-            old_kb = runner_config.get('knowledge-base', '')
-            if old_kb and old_kb != '__none__':
-                allowed_kbs = [old_kb]
-
-        assert 'kb_single' in allowed_kbs
+        assert runner_config == {'knowledge-bases': ['kb_single']}
 
 
 class TestHandlerActionAuthorization:
@@ -1059,10 +1061,12 @@ class TestResourceTypeValidation:
     async def test_model_resource_validation(self):
         """Model resource: correct model_id validation."""
         registry = AgentRunSessionRegistry()
-        resources = make_resources(models=[
-            {'model_id': 'model_001'},
-            {'model_id': 'model_002'},
-        ])
+        resources = make_resources(
+            models=[
+                {'model_id': 'model_001'},
+                {'model_id': 'model_002'},
+            ]
+        )
 
         await registry.register(
             run_id='run_model_validation',
@@ -1087,10 +1091,12 @@ class TestResourceTypeValidation:
     async def test_tool_resource_validation(self):
         """Tool resource: correct tool_name validation."""
         registry = AgentRunSessionRegistry()
-        resources = make_resources(tools=[
-            {'tool_name': 'web_search'},
-            {'tool_name': 'image_gen'},
-        ])
+        resources = make_resources(
+            tools=[
+                {'tool_name': 'web_search'},
+                {'tool_name': 'image_gen'},
+            ]
+        )
 
         await registry.register(
             run_id='run_tool_validation',
@@ -1115,10 +1121,12 @@ class TestResourceTypeValidation:
     async def test_knowledge_base_resource_validation(self):
         """Knowledge base resource: correct kb_id validation."""
         registry = AgentRunSessionRegistry()
-        resources = make_resources(knowledge_bases=[
-            {'kb_id': 'kb_001'},
-            {'kb_id': 'kb_002'},
-        ])
+        resources = make_resources(
+            knowledge_bases=[
+                {'kb_id': 'kb_001'},
+                {'kb_id': 'kb_002'},
+            ]
+        )
 
         await registry.register(
             run_id='run_kb_validation',
@@ -1262,6 +1270,7 @@ class TestValidateRunAuthorizationHelper:
         """_validate_run_authorization returns session when resource is authorized."""
         # Use global session registry (same as _validate_run_authorization)
         from langbot.pkg.agent.runner.session_registry import get_session_registry
+
         registry = get_session_registry()
         resources = make_resources(models=[{'model_id': 'model_001'}])
 
@@ -1280,12 +1289,7 @@ class TestValidateRunAuthorizationHelper:
         mock_ap = MagicMock()
         mock_ap.logger = MagicMock()
 
-        session, error = await _validate_run_authorization(
-            'run_validate_test_helper',
-            'model',
-            'model_001',
-            mock_ap
-        )
+        session, error = await _validate_run_authorization('run_validate_test_helper', 'model', 'model_001', mock_ap)
 
         # Should return session, no error
         assert session is not None
@@ -1303,12 +1307,7 @@ class TestValidateRunAuthorizationHelper:
         mock_ap.logger = MagicMock()
         mock_ap.logger.warning = MagicMock()
 
-        session, error = await _validate_run_authorization(
-            'run_nonexistent_helper',
-            'model',
-            'model_001',
-            mock_ap
-        )
+        session, error = await _validate_run_authorization('run_nonexistent_helper', 'model', 'model_001', mock_ap)
 
         # Should return no session, error response
         assert session is None
@@ -1321,6 +1320,7 @@ class TestValidateRunAuthorizationHelper:
         """_validate_run_authorization returns error when resource not allowed."""
         # Use global session registry
         from langbot.pkg.agent.runner.session_registry import get_session_registry
+
         registry = get_session_registry()
         resources = make_resources(models=[{'model_id': 'model_001'}])
 
@@ -1342,7 +1342,7 @@ class TestValidateRunAuthorizationHelper:
             'run_unauthorized_helper',
             'model',
             'model_999',  # Not in resources
-            mock_ap
+            mock_ap,
         )
 
         # Should return no session, error response
@@ -1358,6 +1358,7 @@ class TestValidateRunAuthorizationHelper:
         """_validate_run_authorization works for tool resource type."""
         # Use global session registry
         from langbot.pkg.agent.runner.session_registry import get_session_registry
+
         registry = get_session_registry()
         resources = make_resources(tools=[{'tool_name': 'web_search'}])
 
@@ -1374,12 +1375,7 @@ class TestValidateRunAuthorizationHelper:
         mock_ap = MagicMock()
         mock_ap.logger = MagicMock()
 
-        session, error = await _validate_run_authorization(
-            'run_tool_test_helper',
-            'tool',
-            'web_search',
-            mock_ap
-        )
+        session, error = await _validate_run_authorization('run_tool_test_helper', 'tool', 'web_search', mock_ap)
 
         assert session is not None
         assert error is None
@@ -1391,6 +1387,7 @@ class TestValidateRunAuthorizationHelper:
         """_validate_run_authorization works for knowledge_base resource type."""
         # Use global session registry
         from langbot.pkg.agent.runner.session_registry import get_session_registry
+
         registry = get_session_registry()
         resources = make_resources(knowledge_bases=[{'kb_id': 'kb_001'}])
 
@@ -1407,12 +1404,7 @@ class TestValidateRunAuthorizationHelper:
         mock_ap = MagicMock()
         mock_ap.logger = MagicMock()
 
-        session, error = await _validate_run_authorization(
-            'run_kb_test_helper',
-            'knowledge_base',
-            'kb_001',
-            mock_ap
-        )
+        session, error = await _validate_run_authorization('run_kb_test_helper', 'knowledge_base', 'kb_001', mock_ap)
 
         assert session is not None
         assert error is None
@@ -1545,6 +1537,7 @@ class TestFilesResourcePermission:
     async def test_files_resource_type_now_implemented(self):
         """'files' resource type is now implemented in is_resource_allowed."""
         from langbot.pkg.agent.runner.session_registry import get_session_registry
+
         registry = get_session_registry()
         resources = make_resources(files=[{'file_id': 'file_001'}])
 
@@ -1577,6 +1570,7 @@ class TestRealActionHandlerSimulation:
         """Simulate INVOKE_LLM action handler authorization flow."""
         # Use global session registry
         from langbot.pkg.agent.runner.session_registry import get_session_registry
+
         registry = get_session_registry()
         resources = make_resources(models=[{'model_id': 'model_001'}])
 
@@ -1595,12 +1589,7 @@ class TestRealActionHandlerSimulation:
         mock_ap.logger = MagicMock()
 
         # Step 1: Validate authorization
-        session, error = await _validate_run_authorization(
-            'run_invoke_llm_flow_sim',
-            'model',
-            'model_001',
-            mock_ap
-        )
+        session, error = await _validate_run_authorization('run_invoke_llm_flow_sim', 'model', 'model_001', mock_ap)
 
         # Should pass authorization
         assert session is not None
@@ -1615,6 +1604,7 @@ class TestRealActionHandlerSimulation:
         """Simulate INVOKE_LLM handler rejecting unauthorized model."""
         # Use global session registry
         from langbot.pkg.agent.runner.session_registry import get_session_registry
+
         registry = get_session_registry()
         resources = make_resources(models=[{'model_id': 'model_001'}])
 
@@ -1633,12 +1623,7 @@ class TestRealActionHandlerSimulation:
         mock_ap.logger.warning = MagicMock()
 
         # Try to access unauthorized model
-        session, error = await _validate_run_authorization(
-            'run_reject_model_sim',
-            'model',
-            'model_999',
-            mock_ap
-        )
+        session, error = await _validate_run_authorization('run_reject_model_sim', 'model', 'model_999', mock_ap)
 
         # Should reject
         assert session is None
@@ -1659,10 +1644,7 @@ class TestRealActionHandlerSimulation:
 
         # Try to validate with non-existent run_id
         session, error = await _validate_run_authorization(
-            'run_nonexistent_session_flow',
-            'model',
-            'model_001',
-            mock_ap
+            'run_nonexistent_session_flow', 'model', 'model_001', mock_ap
         )
 
         # Should return error
@@ -1683,6 +1665,7 @@ class TestStoragePermissionValidation:
     async def test_plugin_storage_allowed_when_permitted(self):
         """_validate_run_authorization allows 'plugin' storage when permitted."""
         from langbot.pkg.agent.runner.session_registry import get_session_registry
+
         registry = get_session_registry()
         resources = make_resources(storage={'plugin_storage': True, 'workspace_storage': False})
 
@@ -1699,12 +1682,7 @@ class TestStoragePermissionValidation:
         mock_ap = MagicMock()
         mock_ap.logger = MagicMock()
 
-        session, error = await _validate_run_authorization(
-            'run_plugin_storage_auth',
-            'storage',
-            'plugin',
-            mock_ap
-        )
+        session, error = await _validate_run_authorization('run_plugin_storage_auth', 'storage', 'plugin', mock_ap)
 
         assert session is not None
         assert error is None
@@ -1715,6 +1693,7 @@ class TestStoragePermissionValidation:
     async def test_plugin_storage_denied_when_not_permitted(self):
         """_validate_run_authorization denies 'plugin' storage when not permitted."""
         from langbot.pkg.agent.runner.session_registry import get_session_registry
+
         registry = get_session_registry()
         resources = make_resources(storage={'plugin_storage': False, 'workspace_storage': False})
 
@@ -1732,12 +1711,7 @@ class TestStoragePermissionValidation:
         mock_ap.logger = MagicMock()
         mock_ap.logger.warning = MagicMock()
 
-        session, error = await _validate_run_authorization(
-            'run_plugin_storage_denied',
-            'storage',
-            'plugin',
-            mock_ap
-        )
+        session, error = await _validate_run_authorization('run_plugin_storage_denied', 'storage', 'plugin', mock_ap)
 
         assert session is None
         assert error is not None
@@ -1749,6 +1723,7 @@ class TestStoragePermissionValidation:
     async def test_workspace_storage_allowed_when_permitted(self):
         """_validate_run_authorization allows 'workspace' storage when permitted."""
         from langbot.pkg.agent.runner.session_registry import get_session_registry
+
         registry = get_session_registry()
         resources = make_resources(storage={'plugin_storage': False, 'workspace_storage': True})
 
@@ -1766,10 +1741,7 @@ class TestStoragePermissionValidation:
         mock_ap.logger = MagicMock()
 
         session, error = await _validate_run_authorization(
-            'run_workspace_storage_auth',
-            'storage',
-            'workspace',
-            mock_ap
+            'run_workspace_storage_auth', 'storage', 'workspace', mock_ap
         )
 
         assert session is not None
@@ -1781,6 +1753,7 @@ class TestStoragePermissionValidation:
     async def test_workspace_storage_denied_when_not_permitted(self):
         """_validate_run_authorization denies 'workspace' storage when not permitted."""
         from langbot.pkg.agent.runner.session_registry import get_session_registry
+
         registry = get_session_registry()
         resources = make_resources(storage={'plugin_storage': False, 'workspace_storage': False})
 
@@ -1799,10 +1772,7 @@ class TestStoragePermissionValidation:
         mock_ap.logger.warning = MagicMock()
 
         session, error = await _validate_run_authorization(
-            'run_workspace_storage_denied',
-            'storage',
-            'workspace',
-            mock_ap
+            'run_workspace_storage_denied', 'storage', 'workspace', mock_ap
         )
 
         assert session is None
@@ -1823,6 +1793,7 @@ class TestFilePermissionValidation:
     async def test_file_allowed_when_in_resources(self):
         """_validate_run_authorization allows file when in resources."""
         from langbot.pkg.agent.runner.session_registry import get_session_registry
+
         registry = get_session_registry()
         resources = make_resources(files=[{'file_id': 'file_001'}])
 
@@ -1839,12 +1810,7 @@ class TestFilePermissionValidation:
         mock_ap = MagicMock()
         mock_ap.logger = MagicMock()
 
-        session, error = await _validate_run_authorization(
-            'run_file_auth',
-            'file',
-            'file_001',
-            mock_ap
-        )
+        session, error = await _validate_run_authorization('run_file_auth', 'file', 'file_001', mock_ap)
 
         assert session is not None
         assert error is None
@@ -1855,6 +1821,7 @@ class TestFilePermissionValidation:
     async def test_file_denied_when_not_in_resources(self):
         """_validate_run_authorization denies file when not in resources."""
         from langbot.pkg.agent.runner.session_registry import get_session_registry
+
         registry = get_session_registry()
         resources = make_resources(files=[{'file_id': 'file_001'}])
 
@@ -1876,7 +1843,7 @@ class TestFilePermissionValidation:
             'run_file_denied',
             'file',
             'file_999',  # Not in resources
-            mock_ap
+            mock_ap,
         )
 
         assert session is None
@@ -1898,6 +1865,7 @@ class TestCallerPluginIdentityValidation:
     async def test_same_plugin_identity_allowed(self):
         """_validate_run_authorization allows when caller matches session."""
         from langbot.pkg.agent.runner.session_registry import get_session_registry
+
         registry = get_session_registry()
         resources = make_resources(models=[{'model_id': 'model_001'}])
 
@@ -1931,6 +1899,7 @@ class TestCallerPluginIdentityValidation:
     async def test_different_plugin_identity_denied(self):
         """_validate_run_authorization denies when caller differs from session."""
         from langbot.pkg.agent.runner.session_registry import get_session_registry
+
         registry = get_session_registry()
         resources = make_resources(models=[{'model_id': 'model_001'}])
 
@@ -1967,6 +1936,7 @@ class TestCallerPluginIdentityValidation:
         """_validate_run_authorization allows when caller_plugin_identity not provided."""
         # Unscoped plugin path: if caller_plugin_identity is None, skip identity check
         from langbot.pkg.agent.runner.session_registry import get_session_registry
+
         registry = get_session_registry()
         resources = make_resources(models=[{'model_id': 'model_001'}])
 

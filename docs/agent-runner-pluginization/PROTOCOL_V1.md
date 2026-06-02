@@ -670,6 +670,8 @@ Pipeline adapter 负责：
 - 从 Pipeline config 构造临时 AgentBinding。
 - 从当前 runner binding config 构造 `ctx.config`。
 - 保留必要的 legacy adapter metadata，但不定义历史窗口、prompt 组装或 agentic context 策略。
+- 后续若需要传递 preprocessing / hook 后的有效指令，应通过 Host prompt/instruction
+  package pull API 暴露能力位和引用，而不是继续把 prompt 推入 `ctx.adapter.extra`。
 - 将 Query-only 字段放入 `adapter`。
 
 Runner 不应长期依赖 `adapter`。新 runner 应只依赖 event-first context 和 Host APIs。

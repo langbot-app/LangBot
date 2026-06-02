@@ -1,4 +1,5 @@
 """Configuration migration for agent runner IDs."""
+
 from __future__ import annotations
 
 import typing
@@ -113,9 +114,32 @@ class ConfigMigration:
         if old_runner_name:
             old_config = ai_config.get(old_runner_name, {})
             if old_config:
-                return old_config
+                return ConfigMigration.normalize_runner_config_for_migration(runner_id, old_config)
 
         return {}
+
+    @staticmethod
+    def normalize_runner_config_for_migration(
+        runner_id: str,
+        runner_config: dict[str, typing.Any],
+    ) -> dict[str, typing.Any]:
+        """Normalize released legacy runner config before storing binding config.
+
+        Runtime code should not carry aliases. This helper is intentionally used
+        only by config migration so AgentRunner implementations can consume the
+        current manifest-defined field names.
+        """
+        normalized = dict(runner_config)
+
+        if runner_id == OLD_RUNNER_TO_PLUGIN_RUNNER_ID['local-agent']:
+            legacy_kb = normalized.pop('knowledge-base', None)
+            if 'knowledge-bases' not in normalized:
+                if isinstance(legacy_kb, str) and legacy_kb and legacy_kb not in {'__none__', '__none'}:
+                    normalized['knowledge-bases'] = [legacy_kb]
+                elif legacy_kb is not None:
+                    normalized['knowledge-bases'] = []
+
+        return normalized
 
     @staticmethod
     def get_old_runner_name(runner_id: str) -> str | None:
@@ -188,6 +212,7 @@ class ConfigMigration:
             if not resolved_config:
                 resolved_config = ConfigMigration.resolve_legacy_runner_config(pipeline_config, runner_id)
             if resolved_config:
+                resolved_config = ConfigMigration.normalize_runner_config_for_migration(runner_id, resolved_config)
                 runner_configs[runner_id] = resolved_config
                 # Remove old runner config block
                 for old_name, mapped_id in OLD_RUNNER_TO_PLUGIN_RUNNER_ID.items():

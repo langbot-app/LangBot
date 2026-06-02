@@ -1,4 +1,5 @@
 """Agent run context builder for provisioning AgentRunContext envelopes."""
+
 from __future__ import annotations
 
 import uuid
@@ -19,6 +20,7 @@ DEFAULT_RUNNER_TIMEOUT_SECONDS = 300
 
 class AgentTrigger(typing.TypedDict):
     """Agent trigger information."""
+
     type: str
     source: str  # 'pipeline' or 'event_router'
     timestamp: int | None
@@ -26,6 +28,7 @@ class AgentTrigger(typing.TypedDict):
 
 class ConversationContext(typing.TypedDict):
     """Conversation context."""
+
     conversation_id: str | None
     thread_id: str | None
     launcher_type: str | None
@@ -39,6 +42,7 @@ class ConversationContext(typing.TypedDict):
 
 class AgentInput(typing.TypedDict):
     """Agent input."""
+
     text: str | None
     contents: list[dict[str, typing.Any]]
     message_chain: dict[str, typing.Any] | None
@@ -47,6 +51,7 @@ class AgentInput(typing.TypedDict):
 
 class AgentRunState(typing.TypedDict):
     """Agent run state with 4 scopes."""
+
     conversation: dict[str, typing.Any]
     actor: dict[str, typing.Any]
     subject: dict[str, typing.Any]
@@ -58,6 +63,7 @@ class AgentRunState(typing.TypedDict):
 
 class ModelResource(typing.TypedDict):
     """Model resource payload."""
+
     model_id: str
     model_type: str | None
     provider: str | None
@@ -65,6 +71,7 @@ class ModelResource(typing.TypedDict):
 
 class ToolResource(typing.TypedDict):
     """Tool resource payload."""
+
     tool_name: str
     tool_type: str | None
     description: str | None
@@ -72,6 +79,7 @@ class ToolResource(typing.TypedDict):
 
 class KnowledgeBaseResource(typing.TypedDict):
     """Knowledge base resource payload."""
+
     kb_id: str
     kb_name: str | None
     kb_type: str | None
@@ -79,6 +87,7 @@ class KnowledgeBaseResource(typing.TypedDict):
 
 class FileResource(typing.TypedDict):
     """File resource payload."""
+
     file_id: str
     file_name: str | None
     mime_type: str | None
@@ -87,12 +96,14 @@ class FileResource(typing.TypedDict):
 
 class StorageResource(typing.TypedDict):
     """Storage resource payload."""
+
     plugin_storage: bool
     workspace_storage: bool
 
 
 class AgentResources(typing.TypedDict):
     """Agent resources payload."""
+
     models: list[ModelResource]
     tools: list[ToolResource]
     knowledge_bases: list[KnowledgeBaseResource]
@@ -103,6 +114,7 @@ class AgentResources(typing.TypedDict):
 
 class AgentRuntimeContext(typing.TypedDict):
     """Agent runtime context."""
+
     langbot_version: str | None
     sdk_protocol_version: str
     query_id: int | None
@@ -119,6 +131,7 @@ class AgentRunContextPayload(typing.TypedDict):
     Note: The 'config' field contains the binding config from ai.runner_config[runner_id],
     which is Pipeline's configuration for this specific runner binding (not plugin instance config).
     """
+
     run_id: str
     trigger: AgentTrigger
     conversation: ConversationContext | None
@@ -237,7 +250,9 @@ class AgentRunContextBuilder:
             'text': event.input.text,
             'contents': [c.model_dump(mode='json') if hasattr(c, 'model_dump') else c for c in event.input.contents],
             'message_chain': event.input.message_chain,
-            'attachments': [a.model_dump(mode='json') if hasattr(a, 'model_dump') else a for a in event.input.attachments],
+            'attachments': [
+                a.model_dump(mode='json') if hasattr(a, 'model_dump') else a for a in event.input.attachments
+            ],
         }
 
         # Build context access (no history inlined by default for Protocol v1)
@@ -245,9 +260,7 @@ class AgentRunContextBuilder:
         context_access = await self._build_context_access(event, descriptor, binding)
 
         # Build state snapshot from persistent state store (event-first Protocol v1)
-        persistent_state_store = get_persistent_state_store(
-            self.ap.persistence_mgr.get_db_engine()
-        )
+        persistent_state_store = get_persistent_state_store(self.ap.persistence_mgr.get_db_engine())
         state: AgentRunState = await persistent_state_store.build_snapshot_from_event(event, binding, descriptor)
 
         # Build runtime context
@@ -261,6 +274,10 @@ class AgentRunContextBuilder:
                 'bot_id': event.bot_id,
                 'workspace_id': event.workspace_id,
                 'streaming_supported': event.delivery.supports_streaming,
+                'model_context_window_tokens': None,
+                # TODO(model-info): populate model_context_window_tokens after
+                # LiteLLM/model metadata lands. Runners fall back to their
+                # binding config until Host can provide the real window.
             },
         }
 
@@ -375,6 +392,7 @@ class AgentRunContextBuilder:
         if conversation_id:
             try:
                 from .transcript_store import TranscriptStore
+
                 store = TranscriptStore(self.ap.persistence_mgr.get_db_engine())
 
                 latest_cursor = await store.get_latest_cursor(conversation_id)
@@ -406,5 +424,6 @@ class AgentRunContextBuilder:
                 'artifact_read': artifact_read_enabled,
                 'state': state_enabled,
                 'storage': True,
+                'prompt_get': False,
             },
         }

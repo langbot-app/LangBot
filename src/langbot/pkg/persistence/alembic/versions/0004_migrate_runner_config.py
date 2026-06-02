@@ -31,6 +31,21 @@ def is_plugin_runner_id(runner_id: str) -> bool:
     return runner_id.startswith('plugin:')
 
 
+def normalize_runner_config_for_migration(runner_id: str, runner_config: dict) -> dict:
+    """Normalize released legacy runner fields before storing binding config."""
+    normalized = dict(runner_config)
+
+    if runner_id == OLD_RUNNER_TO_PLUGIN_RUNNER_ID['local-agent']:
+        legacy_kb = normalized.pop('knowledge-base', None)
+        if 'knowledge-bases' not in normalized:
+            if isinstance(legacy_kb, str) and legacy_kb and legacy_kb not in {'__none__', '__none'}:
+                normalized['knowledge-bases'] = [legacy_kb]
+            elif legacy_kb is not None:
+                normalized['knowledge-bases'] = []
+
+    return normalized
+
+
 def migrate_pipeline_config(config: dict) -> dict:
     """Migrate pipeline config to new format."""
     new_config = dict(config)
@@ -44,7 +59,13 @@ def migrate_pipeline_config(config: dict) -> dict:
     # Check for new format first
     runner_id = runner_config.get('id')
     if runner_id and is_plugin_runner_id(runner_id):
-        # Already in new format, no need to migrate
+        if runner_id in runner_configs:
+            runner_configs[runner_id] = normalize_runner_config_for_migration(
+                runner_id,
+                runner_configs[runner_id],
+            )
+            ai_config['runner_config'] = runner_configs
+            new_config['ai'] = ai_config
         return new_config
 
     # Check for old format
@@ -67,14 +88,14 @@ def migrate_pipeline_config(config: dict) -> dict:
         if old_runner_name in ai_config:
             old_runner_config = ai_config[old_runner_name]
             if old_runner_config:
-                runner_configs[runner_id] = old_runner_config
+                runner_configs[runner_id] = normalize_runner_config_for_migration(runner_id, old_runner_config)
             # Remove old config block after migration
             del ai_config[old_runner_name]
 
         # Also check if runner_id has config under other old name formats
         for old_name, mapped_id in OLD_RUNNER_TO_PLUGIN_RUNNER_ID.items():
             if mapped_id == runner_id and old_name in ai_config:
-                runner_configs[runner_id] = ai_config[old_name]
+                runner_configs[runner_id] = normalize_runner_config_for_migration(runner_id, ai_config[old_name])
                 # Remove old config block after migration
                 del ai_config[old_name]
 
@@ -111,7 +132,7 @@ def upgrade() -> None:
             if json.dumps(config, sort_keys=True) != json.dumps(migrated_config, sort_keys=True):
                 conn.execute(
                     sa.text('UPDATE pipelines SET config = :config WHERE uuid = :uuid'),
-                    {'config': json.dumps(migrated_config), 'uuid': pipeline_uuid}
+                    {'config': json.dumps(migrated_config), 'uuid': pipeline_uuid},
                 )
         except Exception:
             # Skip invalid configs
