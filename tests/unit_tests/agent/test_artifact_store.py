@@ -12,6 +12,7 @@ from langbot.pkg.agent.runner.session_registry import (
     AgentRunSessionRegistry,
     get_session_registry,
 )
+from .conftest import make_session
 
 
 class TestArtifactStore:
@@ -210,6 +211,13 @@ class TestArtifactAuthorization:
 class TestArtifactAccessValidation:
     """Test _validate_artifact_access authorization rules."""
 
+    def _make_session(self, conversation_id: str | None):
+        return make_session(
+            run_id="run_001",
+            conversation_id=conversation_id,
+            permissions={"artifacts": ["metadata", "read"]},
+        )
+
     def _call_validate(self, session, metadata, operation="metadata"):
         """Helper to call the validation function."""
         from langbot.pkg.plugin.handler import _validate_artifact_access
@@ -217,11 +225,7 @@ class TestArtifactAccessValidation:
 
     def test_global_artifact_denied_by_default(self):
         """Artifacts without conversation_id are denied by default (no global access)."""
-        session = {
-            "run_id": "run_001",
-            "conversation_id": "conv_001",
-            "permissions": {"artifacts": ["metadata", "read"]},
-        }
+        session = self._make_session("conv_001")
         metadata = {
             "artifact_id": "art_global",
             "conversation_id": None,  # No conversation scope
@@ -234,11 +238,7 @@ class TestArtifactAccessValidation:
 
     def test_own_run_artifact_allowed(self):
         """Artifacts created by same run are allowed (even cross-conversation)."""
-        session = {
-            "run_id": "run_001",
-            "conversation_id": "conv_001",
-            "permissions": {"artifacts": ["metadata", "read"]},
-        }
+        session = self._make_session("conv_001")
         metadata = {
             "artifact_id": "art_001",
             "conversation_id": "conv_other",  # Different conversation
@@ -251,11 +251,7 @@ class TestArtifactAccessValidation:
 
     def test_same_conversation_allowed(self):
         """Artifacts in same conversation are allowed."""
-        session = {
-            "run_id": "run_001",
-            "conversation_id": "conv_001",
-            "permissions": {"artifacts": ["metadata", "read"]},
-        }
+        session = self._make_session("conv_001")
         metadata = {
             "artifact_id": "art_001",
             "conversation_id": "conv_001",  # Same as session
@@ -268,11 +264,7 @@ class TestArtifactAccessValidation:
 
     def test_different_conversation_and_run_denied(self):
         """Artifacts in different conversation and different run are denied."""
-        session = {
-            "run_id": "run_001",
-            "conversation_id": "conv_001",
-            "permissions": {"artifacts": ["metadata", "read"]},
-        }
+        session = self._make_session("conv_001")
         metadata = {
             "artifact_id": "art_001",
             "conversation_id": "conv_other",  # Different conversation
@@ -285,11 +277,7 @@ class TestArtifactAccessValidation:
 
     def test_session_without_conversation_denied_for_conversation_artifact(self):
         """Session without conversation_id cannot access conversation-scoped artifacts."""
-        session = {
-            "run_id": "run_001",
-            "conversation_id": None,  # No conversation
-            "permissions": {"artifacts": ["metadata", "read"]},
-        }
+        session = self._make_session(None)
         metadata = {
             "artifact_id": "art_001",
             "conversation_id": "conv_001",  # Has conversation
@@ -301,11 +289,7 @@ class TestArtifactAccessValidation:
 
     def test_session_without_conversation_allowed_for_own_artifact(self):
         """Session without conversation can access artifacts it created."""
-        session = {
-            "run_id": "run_001",
-            "conversation_id": None,  # No conversation
-            "permissions": {"artifacts": ["metadata", "read"]},
-        }
+        session = self._make_session(None)
         metadata = {
             "artifact_id": "art_001",
             "conversation_id": "conv_001",  # Has conversation
@@ -431,9 +415,10 @@ class TestSessionRegistryPermissions:
 
         session = await session_registry.get("run_001")
         assert session is not None
-        assert session["permissions"]["artifacts"] == ["metadata", "read"]
-        assert session["permissions"]["history"] == ["page"]
-        assert session["permissions"]["events"] == ["get"]
+        permissions = session["authorization"]["permissions"]
+        assert permissions["artifacts"] == ["metadata", "read"]
+        assert permissions["history"] == ["page"]
+        assert permissions["events"] == ["get"]
 
     @pytest.mark.asyncio
     async def test_register_with_empty_permissions(self, session_registry):
@@ -457,7 +442,7 @@ class TestSessionRegistryPermissions:
 
         session = await session_registry.get("run_002")
         assert session is not None
-        assert session["permissions"] == {}
+        assert session["authorization"]["permissions"] == {}
 
 
 class TestArtifactStoreRealSQLite:

@@ -116,16 +116,17 @@ def _validate_artifact_access(
     Without an explicit scope field, we enforce strict access control.
 
     Args:
-        session: AgentRunSession dict with run_id, conversation_id, permissions
+        session: AgentRunSession dict with run_id and authorization snapshot
         artifact_metadata: Artifact metadata dict with conversation_id, run_id
         operation: Operation name for error messages ('metadata' or 'read')
 
     Returns:
         Tuple of (is_allowed, error_message). If is_allowed is False, error_message contains reason.
     """
+    authorization = session['authorization']
     artifact_conversation_id = artifact_metadata.get('conversation_id')
     artifact_run_id = artifact_metadata.get('run_id')
-    session_conversation_id = session.get('conversation_id')
+    session_conversation_id = authorization.get('conversation_id')
     session_run_id = session.get('run_id')
 
     # Rule 1: Created by this run (allows cross-conversation access for self-created artifacts)
@@ -139,6 +140,40 @@ def _validate_artifact_access(
 
     # Rule 3: Deny - no matching authorization rule
     return False, f'Artifact {operation} access denied: artifact not in session conversation and not created by this run'
+
+
+def _get_run_authorization(session: dict[str, Any]) -> dict[str, Any]:
+    """Return the run-scoped authorization snapshot."""
+    return session['authorization']
+
+
+def _resolve_state_scope(
+    session: dict[str, Any],
+    scope: str,
+) -> tuple[dict[str, Any] | None, str | None, handler.ActionResponse | None]:
+    """Resolve state policy/context for an authorized run scope."""
+    authorization = _get_run_authorization(session)
+    state_policy = authorization['state_policy']
+
+    if not state_policy.get('enable_state', True):
+        return None, None, handler.ActionResponse.error(
+            message='State access is disabled by binding policy'
+        )
+
+    state_scopes = state_policy.get('state_scopes', ['conversation', 'actor'])
+    if scope not in state_scopes:
+        return None, None, handler.ActionResponse.error(
+            message=f'Scope "{scope}" is not enabled by binding policy'
+        )
+
+    state_context = authorization['state_context']
+    scope_key = state_context.get('scope_keys', {}).get(scope)
+    if not scope_key:
+        return None, None, handler.ActionResponse.error(
+            message=f'Scope key not available for scope "{scope}"'
+        )
+
+    return state_context, scope_key, None
 
 
 async def _validate_agent_run_session(
@@ -173,7 +208,7 @@ async def _validate_agent_run_session(
             )
 
     if permission_group and permission_operation:
-        permissions = session.get('permissions', {})
+        permissions = _get_run_authorization(session)['permissions']
         allowed_operations = permissions.get(permission_group, [])
         if permission_operation not in allowed_operations:
             return None, handler.ActionResponse.error(
@@ -189,7 +224,7 @@ def _resolve_run_conversation(
     api_name: str,
 ) -> tuple[str | None, handler.ActionResponse | None]:
     """Resolve and enforce current-run conversation scope."""
-    session_conversation_id = session.get('conversation_id')
+    session_conversation_id = _get_run_authorization(session).get('conversation_id')
 
     if requested_conversation_id:
         if not session_conversation_id:
@@ -1572,7 +1607,7 @@ class RuntimeConnectionHandler(handler.Handler):
                     )
 
                 # Validate event is in the same conversation as the run, or was created by the same run.
-                session_conversation_id = session.get('conversation_id')
+                session_conversation_id = _get_run_authorization(session).get('conversation_id')
                 event_run_id = event.get('run_id')
                 if event_run_id and event_run_id == run_id:
                     return handler.ActionResponse.success(data=event)
@@ -1813,53 +1848,18 @@ class RuntimeConnectionHandler(handler.Handler):
             if not key:
                 return handler.ActionResponse.error(message='key is required')
 
-            # Validate run session
-            session_registry = get_session_registry()
-            session = await session_registry.get(run_id)
-            if not session:
-                return handler.ActionResponse.error(
-                    message=f'Run session {run_id} not found or expired'
-                )
+            session, error = await _validate_agent_run_session(
+                run_id,
+                caller_plugin_identity,
+                self.ap,
+                'State get',
+            )
+            if error:
+                return error
 
-            # Validate caller plugin identity (strict: required when session has plugin_identity)
-            session_plugin_identity = session.get('plugin_identity')
-            if session_plugin_identity:
-                if not caller_plugin_identity:
-                    return handler.ActionResponse.error(
-                        message=f'caller_plugin_identity is required for run_id {run_id}'
-                    )
-                if caller_plugin_identity != session_plugin_identity:
-                    return handler.ActionResponse.error(
-                        message=f'Plugin identity mismatch for run_id {run_id}'
-                    )
-
-            # Get state policy from session (stored in state_policy field, not in resources)
-            state_policy = session.get('state_policy', {})
-            if not state_policy:
-                # Default state policy
-                state_policy = {'enable_state': True, 'state_scopes': ['conversation', 'actor']}
-
-            # Check if state is enabled
-            if not state_policy.get('enable_state', True):
-                return handler.ActionResponse.error(
-                    message='State access is disabled by binding policy'
-                )
-
-            # Check if scope is enabled
-            state_scopes = state_policy.get('state_scopes', ['conversation', 'actor'])
-            if scope not in state_scopes:
-                return handler.ActionResponse.error(
-                    message=f'Scope "{scope}" is not enabled by binding policy'
-                )
-
-            # Build scope key using state_context from session (stored in state_context field, not in resources)
-            state_context = session.get('state_context', {})
-            scope_key = state_context.get('scope_keys', {}).get(scope)
-
-            if not scope_key:
-                return handler.ActionResponse.error(
-                    message=f'Scope key not available for scope "{scope}"'
-                )
+            _state_context, scope_key, state_error = _resolve_state_scope(session, scope)
+            if state_error:
+                return state_error
 
             # Get state from persistent store
             from ..agent.runner.persistent_state_store import get_persistent_state_store
@@ -1894,52 +1894,18 @@ class RuntimeConnectionHandler(handler.Handler):
             if not key:
                 return handler.ActionResponse.error(message='key is required')
 
-            # Validate run session
-            session_registry = get_session_registry()
-            session = await session_registry.get(run_id)
-            if not session:
-                return handler.ActionResponse.error(
-                    message=f'Run session {run_id} not found or expired'
-                )
+            session, error = await _validate_agent_run_session(
+                run_id,
+                caller_plugin_identity,
+                self.ap,
+                'State set',
+            )
+            if error:
+                return error
 
-            # Validate caller plugin identity (strict: required when session has plugin_identity)
-            session_plugin_identity = session.get('plugin_identity')
-            if session_plugin_identity:
-                if not caller_plugin_identity:
-                    return handler.ActionResponse.error(
-                        message=f'caller_plugin_identity is required for run_id {run_id}'
-                    )
-                if caller_plugin_identity != session_plugin_identity:
-                    return handler.ActionResponse.error(
-                        message=f'Plugin identity mismatch for run_id {run_id}'
-                    )
-
-            # Get state policy from session (stored in state_policy field, not in resources)
-            state_policy = session.get('state_policy', {})
-            if not state_policy:
-                state_policy = {'enable_state': True, 'state_scopes': ['conversation', 'actor']}
-
-            # Check if state is enabled
-            if not state_policy.get('enable_state', True):
-                return handler.ActionResponse.error(
-                    message='State access is disabled by binding policy'
-                )
-
-            # Check if scope is enabled
-            state_scopes = state_policy.get('state_scopes', ['conversation', 'actor'])
-            if scope not in state_scopes:
-                return handler.ActionResponse.error(
-                    message=f'Scope "{scope}" is not enabled by binding policy'
-                )
-
-            # Build scope key using state_context from session (stored in state_context field, not in resources)
-            state_context = session.get('state_context', {})
-            scope_key = state_context.get('scope_keys', {}).get(scope)
-
-            if not scope_key:
-                return handler.ActionResponse.error(
-                    message=f'Scope key not available for scope "{scope}"'
-                )
+            state_context, scope_key, state_error = _resolve_state_scope(session, scope)
+            if state_error:
+                return state_error
 
             # Get additional context for DB insert
             runner_id = session.get('runner_id', '')
@@ -1989,52 +1955,18 @@ class RuntimeConnectionHandler(handler.Handler):
             if not key:
                 return handler.ActionResponse.error(message='key is required')
 
-            # Validate run session
-            session_registry = get_session_registry()
-            session = await session_registry.get(run_id)
-            if not session:
-                return handler.ActionResponse.error(
-                    message=f'Run session {run_id} not found or expired'
-                )
+            session, error = await _validate_agent_run_session(
+                run_id,
+                caller_plugin_identity,
+                self.ap,
+                'State delete',
+            )
+            if error:
+                return error
 
-            # Validate caller plugin identity (strict: required when session has plugin_identity)
-            session_plugin_identity = session.get('plugin_identity')
-            if session_plugin_identity:
-                if not caller_plugin_identity:
-                    return handler.ActionResponse.error(
-                        message=f'caller_plugin_identity is required for run_id {run_id}'
-                    )
-                if caller_plugin_identity != session_plugin_identity:
-                    return handler.ActionResponse.error(
-                        message=f'Plugin identity mismatch for run_id {run_id}'
-                    )
-
-            # Get state policy from session (stored in state_policy field, not in resources)
-            state_policy = session.get('state_policy', {})
-            if not state_policy:
-                state_policy = {'enable_state': True, 'state_scopes': ['conversation', 'actor']}
-
-            # Check if state is enabled
-            if not state_policy.get('enable_state', True):
-                return handler.ActionResponse.error(
-                    message='State access is disabled by binding policy'
-                )
-
-            # Check if scope is enabled
-            state_scopes = state_policy.get('state_scopes', ['conversation', 'actor'])
-            if scope not in state_scopes:
-                return handler.ActionResponse.error(
-                    message=f'Scope "{scope}" is not enabled by binding policy'
-                )
-
-            # Build scope key using state_context from session (stored in state_context field, not in resources)
-            state_context = session.get('state_context', {})
-            scope_key = state_context.get('scope_keys', {}).get(scope)
-
-            if not scope_key:
-                return handler.ActionResponse.error(
-                    message=f'Scope key not available for scope "{scope}"'
-                )
+            _state_context, scope_key, state_error = _resolve_state_scope(session, scope)
+            if state_error:
+                return state_error
 
             # Delete state from persistent store
             from ..agent.runner.persistent_state_store import get_persistent_state_store
@@ -2070,52 +2002,18 @@ class RuntimeConnectionHandler(handler.Handler):
                 limit = 100
             limit = min(limit, 100)  # Cap at 100
 
-            # Validate run session
-            session_registry = get_session_registry()
-            session = await session_registry.get(run_id)
-            if not session:
-                return handler.ActionResponse.error(
-                    message=f'Run session {run_id} not found or expired'
-                )
+            session, error = await _validate_agent_run_session(
+                run_id,
+                caller_plugin_identity,
+                self.ap,
+                'State list',
+            )
+            if error:
+                return error
 
-            # Validate caller plugin identity (strict: required when session has plugin_identity)
-            session_plugin_identity = session.get('plugin_identity')
-            if session_plugin_identity:
-                if not caller_plugin_identity:
-                    return handler.ActionResponse.error(
-                        message=f'caller_plugin_identity is required for run_id {run_id}'
-                    )
-                if caller_plugin_identity != session_plugin_identity:
-                    return handler.ActionResponse.error(
-                        message=f'Plugin identity mismatch for run_id {run_id}'
-                    )
-
-            # Get state policy from session (stored in state_policy field, not in resources)
-            state_policy = session.get('state_policy', {})
-            if not state_policy:
-                state_policy = {'enable_state': True, 'state_scopes': ['conversation', 'actor']}
-
-            # Check if state is enabled
-            if not state_policy.get('enable_state', True):
-                return handler.ActionResponse.error(
-                    message='State access is disabled by binding policy'
-                )
-
-            # Check if scope is enabled
-            state_scopes = state_policy.get('state_scopes', ['conversation', 'actor'])
-            if scope not in state_scopes:
-                return handler.ActionResponse.error(
-                    message=f'Scope "{scope}" is not enabled by binding policy'
-                )
-
-            # Build scope key using state_context from session (stored in state_context field, not in resources)
-            state_context = session.get('state_context', {})
-            scope_key = state_context.get('scope_keys', {}).get(scope)
-
-            if not scope_key:
-                return handler.ActionResponse.error(
-                    message=f'Scope key not available for scope "{scope}"'
-                )
+            _state_context, scope_key, state_error = _resolve_state_scope(session, scope)
+            if state_error:
+                return state_error
 
             # List state keys from persistent store
             from ..agent.runner.persistent_state_store import get_persistent_state_store

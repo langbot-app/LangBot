@@ -11,7 +11,7 @@
 LangBot 要转为 agent host，而不是内置 runner 容器：
 
 - 接收 IM、WebUI、API 和未来 EventRouter 产生的事件。
-- 根据事件、bot、workspace、scope 解析应该调用的 agent binding。
+- 根据事件、bot、workspace、scope 解析应该调用的 Agent / agent binding。
 - 发现、校验和调用插件提供的 AgentRunner。
 - 为每次 run 提供受限资源、状态、存储、上下文引用和生命周期控制。
 - 接收 AgentRunner 返回的事件流，投递到 IM、WebUI 或其他 output surface。
@@ -53,7 +53,12 @@ AgentRunResult stream
 Delivery / Renderer / Platform API
 ```
 
-当前 Pipeline 只应接入在 Query entry adapter 位置：它可以继续产生 `message.received`，但不应再拥有 runner 选择、上下文裁剪和业务 agent 执行的核心语义。EventGateway 由外部 event branch 实现。
+目标产品模型中，Agent 替代 Pipeline 承载 agent 配置：bot / IM
+channel 绑定一个 Agent，一个 Agent 可以被多个 bot / channel 复用。
+当前 Pipeline 只应接入在 Query entry adapter 位置：它可以继续产生
+`message.received` 并投影出临时 `AgentBinding`，但不应再拥有 runner
+选择、上下文裁剪和业务 agent 执行的核心语义。EventGateway 由外部 event
+branch 实现。
 
 ## 4. LangBot 侧能力
 
@@ -87,7 +92,11 @@ class AgentEventEnvelope(BaseModel):
 
 ### 4.2 AgentBinding
 
-`AgentBinding` 是"什么事件调用哪个 runner、带什么绑定配置"的持久配置，是 Host 内部模型（不暴露给 SDK），替代长期依赖 Pipeline runner config 的角色。
+`AgentBinding` 是"什么事件调用哪个 AgentRunner、带什么 Agent 配置"的
+Host 内部运行投影（不暴露给 SDK）。产品层的持久对象应是 Agent：
+Agent 携带 runner id、runner config、resource/state/delivery policy，并可被
+多个 bot / channel 复用。`AgentBinding` 是 EventRouter / 当前
+QueryEntryAdapter 在一次运行前解析出的有效绑定。
 
 ```python
 class AgentBinding(BaseModel):
@@ -103,16 +112,25 @@ class AgentBinding(BaseModel):
     delivery_policy: DeliveryPolicy
 ```
 
-**当前 adapter source**：`QueryEntryAdapter.config_to_binding(query, runner_id)` 从 current config 生成临时 `AgentBinding`。Pipeline 当前作为一种 binding source（AI runner config → binding、extension preference → resource_policy、output settings → delivery_policy），但新设计不再把这些字段命名为 Pipeline 专属概念。
+一个 bot / IM channel 在同一时间只应解析出一个负责 agentic 处理的
+AgentBinding。若未来需要 observer / fan-out / 多 agent 裁决，必须另行定义
+delivery、state、platform action 和 result 合并语义；当前 v1/EBA 主线不隐式支持。
+
+**当前 adapter source**：`QueryEntryAdapter.config_to_agent_config(query, runner_id)`
+先把 current config 投影为迁移期 `AgentConfig`，再由
+`AgentBindingResolver.resolve_one(event, [agent_config])` 解析出唯一
+`AgentBinding`。Pipeline 当前只是迁移期 Agent config source（AI runner config
+→ runner_config、extension preference → resource_policy、output settings →
+delivery_policy），但新设计不再把这些字段命名为 Pipeline 专属概念。
 
 ### 4.3 AgentRunnerRegistry
 
-Registry 收集 runner descriptor（来自插件 runtime、可能的 host adapter runner、开发期本地插件）：
+Registry 收集 runner descriptor（来自插件 runtime、开发期本地插件）：
 
 ```python
 class AgentRunnerDescriptor(BaseModel):
     id: str
-    source: Literal["plugin", "host_adapter"]
+    source: Literal["plugin"]
     label: I18nObject
     description: I18nObject | None = None
     protocol_version: str = "1"
@@ -123,6 +141,10 @@ class AgentRunnerDescriptor(BaseModel):
 ```
 
 职责：调用 `plugin_connector.list_agent_runners()` 拉取 runner、校验 manifest（`kind == AgentRunner`、`metadata.name/label` 存在、`protocol_version` 兼容、`spec.*` 类型正确）、输出 descriptor、缓存 discovery 结果并提供 `refresh()`。单个插件 manifest 失败只记 warning，不影响其它 runner。`plugin:author/name/runner` 是稳定 id 格式；多个 binding 指向同一 runner id 时**不创建多个插件实例**。
+
+Host 内置 runner / adapter 不能作为 `AgentRunnerDescriptor.source` 绕过插件
+runtime、`run_id`、`ctx.resources` 和 `AgentRunAPIProxy` 权限链。若需要
+开发期调试 adapter，应放在 Host 内部测试入口，不进入可选 runner 列表。
 
 刷新触发点：插件安装/卸载/升级/重启后；Pipeline metadata 请求时发现缓存为空；可选 TTL（优先保证正确性）。
 
@@ -154,7 +176,14 @@ LangBot 在每次 run 前生成 `ctx.resources`（PROTOCOL_V1 §6），来自三
 2. binding / resource policy 允许的资源范围。
 3. 当前 event / actor / bot / workspace 的实际权限。
 
-运行期每个 proxy action 必须再次通过 `run_id` 校验。SDK 侧本地校验只用于开发体验，host 侧校验才是安全边界。
+这次裁剪结果必须冻结为 run-scoped authorization snapshot，并由
+`AgentRunSessionRegistry` 按 `run_id` 保存。`ctx.resources` 是投影给 runner
+看的同一份授权结果；运行期每个 proxy action 只依据该 snapshot 校验 active
+run session、caller plugin identity、resource id、scope、payload size、rate
+limit 和 deadline。Handler 不应重新执行三层裁剪，否则 build-time 与 runtime
+授权逻辑会漂移。
+
+SDK 侧本地校验只用于开发体验，host 侧 run authorization snapshot 才是安全边界。
 
 资源裁剪应通用，不写死 local-agent。selector 与资源的映射示例：`model-fallback-selector` → primary/fallback LLM、`llm-model-selector` → LLM、`rerank-model-selector` → rerank 模型、`knowledge-base-multi-selector` → 知识库；新增 selector 时在 resource builder 中统一扩展。
 

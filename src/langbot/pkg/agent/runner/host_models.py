@@ -133,6 +133,42 @@ class DeliveryPolicy(pydantic.BaseModel):
     """Maximum message size."""
 
 
+class AgentConfig(pydantic.BaseModel):
+    """Host-side Agent configuration.
+
+    Product-level Agent is the target replacement for Pipeline-owned agent
+    config. Current Pipeline entry paths can project their config into this
+    model during migration.
+    """
+
+    agent_id: str | None = None
+    """Host-side Agent/config identifier."""
+
+    runner_id: str
+    """Runner ID to invoke."""
+
+    runner_config: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
+    """Agent/runner binding configuration."""
+
+    resource_policy: ResourcePolicy = pydantic.Field(default_factory=ResourcePolicy)
+    """Resource policy for this Agent."""
+
+    state_policy: StatePolicy = pydantic.Field(default_factory=StatePolicy)
+    """State policy for this Agent."""
+
+    delivery_policy: DeliveryPolicy = pydantic.Field(default_factory=DeliveryPolicy)
+    """Delivery policy for this Agent."""
+
+    event_types: list[str] = pydantic.Field(default_factory=lambda: ["message.received"])
+    """Event types this Agent handles."""
+
+    enabled: bool = True
+    """Whether this Agent can be selected by a binding resolver."""
+
+    metadata: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
+    """Non-protocol diagnostic metadata, such as legacy config source."""
+
+
 class AgentBinding(pydantic.BaseModel):
     """Binding configuration for mapping events to runners.
 

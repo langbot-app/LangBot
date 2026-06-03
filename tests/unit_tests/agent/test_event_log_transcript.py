@@ -313,7 +313,7 @@ class TestHistoryPageAuthorization:
 
         session = await session_registry.get("run_1")
         assert session is not None
-        assert session["conversation_id"] == "conv_1"
+        assert session["authorization"]["conversation_id"] == "conv_1"
 
         # Cleanup
         await session_registry.unregister("run_1")

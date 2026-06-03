@@ -21,6 +21,7 @@ from .session_registry import get_session_registry, AgentRunSessionRegistry
 from .config_migration import ConfigMigration
 from .host_models import AgentEventEnvelope, AgentBinding
 from .query_entry_adapter import QueryEntryAdapter
+from .binding_resolver import AgentBindingResolver
 from .state_scope import build_state_context
 from .errors import (
     RunnerNotFoundError,
@@ -61,6 +62,8 @@ class AgentRunOrchestrator:
 
     result_normalizer: AgentResultNormalizer
 
+    binding_resolver: AgentBindingResolver
+
     # Cached singleton references (set in __init__)
     _session_registry: AgentRunSessionRegistry
     _persistent_state_store: PersistentStateStore | None
@@ -75,6 +78,7 @@ class AgentRunOrchestrator:
         self.context_builder = AgentRunContextBuilder(ap)
         self.resource_builder = AgentResourceBuilder(ap)
         self.result_normalizer = AgentResultNormalizer(ap)
+        self.binding_resolver = AgentBindingResolver()
         # Cache singleton references to avoid per-request getter calls
         self._session_registry = get_session_registry()
         self._persistent_state_store = None  # Lazy init on first use
@@ -258,8 +262,10 @@ class AgentRunOrchestrator:
         # Convert Query to event-first envelope
         event = QueryEntryAdapter.query_to_event(query)
 
-        # Convert current config to binding
-        binding = QueryEntryAdapter.config_to_binding(query, runner_id)
+        # Project legacy Pipeline config into target Agent config, then resolve
+        # exactly one effective binding for this event.
+        agent_config = QueryEntryAdapter.config_to_agent_config(query, runner_id)
+        binding = self.binding_resolver.resolve_one(event, [agent_config])
 
         # Extract bound plugins for authorization
         bound_plugins = query.variables.get('_pipeline_bound_plugins')

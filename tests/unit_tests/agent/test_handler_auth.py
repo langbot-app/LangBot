@@ -22,7 +22,7 @@ from langbot.pkg.agent.runner.session_registry import AgentRunSessionRegistry
 from langbot.pkg.plugin.handler import _build_tool_detail, _get_pipeline_knowledge_base_uuids
 
 # Import shared test fixtures from conftest.py
-from .conftest import make_resources
+from .conftest import make_resources, make_session
 
 
 class MockModel:
@@ -1152,15 +1152,7 @@ class TestResourceTypeValidation:
         registry = AgentRunSessionRegistry()
         resources = make_resources()
 
-        # Create session manually for this test
-        session = {
-            'run_id': 'test',
-            'runner_id': 'test',
-            'query_id': 1,
-            'plugin_identity': 'test',
-            'resources': resources,
-            'status': {'started_at': 0, 'last_activity_at': 0},
-        }
+        session = make_session(resources=resources)
 
         # Unknown resource type should return False
         assert registry.is_resource_allowed(session, 'unknown_type', 'any_id') is False
@@ -1487,15 +1479,7 @@ class TestStorageResourcePermissionHelper:
         """is_resource_allowed handles missing storage field gracefully."""
         registry = AgentRunSessionRegistry()
 
-        # Create session without storage field
-        session = {
-            'run_id': 'test',
-            'runner_id': 'test',
-            'query_id': 1,
-            'plugin_identity': 'test',
-            'resources': {},  # No storage field
-            'status': {'started_at': 0, 'last_activity_at': 0},
-        }
+        session = make_session(resources={})
 
         # Should return False for both storage types
         assert registry.is_resource_allowed(session, 'storage', 'plugin') is False

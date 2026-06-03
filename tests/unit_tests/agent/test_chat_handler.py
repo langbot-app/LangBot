@@ -97,6 +97,7 @@ class MockMessageChunk:
         self.role = 'assistant'
         self.content = content
         self.resp_message_id = resp_message_id
+        self.tool_calls = []
         self.is_final = False
 
     def readable_str(self):

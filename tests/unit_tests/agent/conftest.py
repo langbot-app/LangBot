@@ -39,6 +39,10 @@ def make_session(
     query_id: int | None = 1,
     plugin_identity: str = 'test/test-runner',
     resources: dict | None = None,
+    conversation_id: str | None = None,
+    permissions: dict[str, list[str]] | None = None,
+    state_policy: dict[str, typing.Any] | None = None,
+    state_context: dict[str, typing.Any] | None = None,
 ) -> dict[str, typing.Any]:
     """Create a minimal AgentRunSession dict for testing.
 
@@ -50,13 +54,19 @@ def make_session(
         resources: AgentResources dict (uses make_resources() default if None)
 
     Returns:
-        AgentRunSession dict with all required fields including pre-computed _authorized_ids
+        AgentRunSession dict with run-scoped authorization snapshot
     """
     import time
     now = int(time.time())
-    res = resources or make_resources()
+    res = resources if resources is not None else make_resources()
+    perms = permissions if permissions is not None else {}
+    policy = (
+        state_policy
+        if state_policy is not None
+        else {'enable_state': True, 'state_scopes': ['conversation', 'actor']}
+    )
+    context = state_context if state_context is not None else {}
 
-    # Pre-compute authorized IDs for O(1) lookup (matching production behavior)
     authorized_ids: dict[str, set[str]] = {
         'model': {m.get('model_id') for m in res.get('models', [])},
         'tool': {t.get('tool_name') for t in res.get('tools', [])},
@@ -69,10 +79,16 @@ def make_session(
         'runner_id': runner_id,
         'query_id': query_id,
         'plugin_identity': plugin_identity,
-        'resources': res,
+        'authorization': {
+            'resources': res,
+            'permissions': perms,
+            'conversation_id': conversation_id,
+            'state_policy': policy,
+            'state_context': context,
+            'authorized_ids': authorized_ids,
+        },
         'status': {
             'started_at': now,
             'last_activity_at': now,
         },
-        '_authorized_ids': authorized_ids,
     }

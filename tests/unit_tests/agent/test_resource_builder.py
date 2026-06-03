@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
+from langbot.pkg.agent.runner.binding_resolver import AgentBindingResolver
 from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
 from langbot.pkg.agent.runner.resource_builder import AgentResourceBuilder
 
@@ -48,6 +49,15 @@ def make_query(
     use_funcs: list | None = None,
 ):
     return SimpleNamespace(
+        query_id=1,
+        bot_uuid='bot_001',
+        launcher_type='person',
+        launcher_id='launcher_001',
+        sender_id='sender_001',
+        message_event=None,
+        message_chain=None,
+        user_message=None,
+        session=None,
         pipeline_config={
             'ai': {
                 'runner': {'id': RUNNER_ID},
@@ -62,9 +72,11 @@ def make_query(
 
 
 async def build_resources(app, query, descriptor):
-    binding = QueryEntryAdapter.config_to_binding(query, descriptor.id)
+    event = QueryEntryAdapter.query_to_event(query)
+    agent_config = QueryEntryAdapter.config_to_agent_config(query, descriptor.id)
+    binding = AgentBindingResolver().resolve_one(event, [agent_config])
     return await AgentResourceBuilder(app).build_resources_from_binding(
-        event=Mock(),
+        event=event,
         binding=binding,
         descriptor=descriptor,
     )

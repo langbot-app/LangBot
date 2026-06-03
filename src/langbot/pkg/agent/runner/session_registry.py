@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import typing
 import time
 import threading
@@ -15,6 +16,22 @@ class AgentRunSessionStatus(typing.TypedDict):
     last_activity_at: int
 
 
+class RunAuthorizationSnapshot(typing.TypedDict):
+    """Frozen authorization data for one active run.
+
+    ResourceBuilder creates the authorized resource list once before runner
+    execution. Runtime proxy handlers must validate against this run-scoped
+    snapshot instead of recomputing resource policy.
+    """
+
+    resources: AgentResources
+    permissions: dict[str, list[str]]
+    conversation_id: str | None
+    state_policy: dict[str, typing.Any]
+    state_context: dict[str, typing.Any]
+    authorized_ids: dict[str, set[str]]
+
+
 class AgentRunSession(typing.TypedDict):
     """Session for an active agent runner execution.
 
@@ -25,25 +42,15 @@ class AgentRunSession(typing.TypedDict):
         runner_id: Runner descriptor ID (plugin:author/name/runner)
         query_id: Host entry query ID, only present for query-based adapters
         plugin_identity: Plugin identifier (author/name) of the runner
-        conversation_id: Conversation ID for history/event access
-        resources: Authorized resources for this run (from AgentResources)
-        permissions: Runner permissions from descriptor (artifacts, history, events, etc.)
-        state_policy: State policy from binding (enable_state, state_scopes)
-        state_context: Context for state API (scope_keys, binding_identity, etc.)
+        authorization: Run-scoped authorization snapshot; runtime auth truth
         status: Session status tracking
-        _authorized_ids: Pre-computed authorized resource IDs for O(1) lookup
     """
     run_id: str
     runner_id: str
     query_id: int | None
     plugin_identity: str  # author/name
-    conversation_id: str | None
-    resources: AgentResources
-    permissions: dict[str, list[str]]
-    state_policy: dict[str, typing.Any]  # {enable_state: bool, state_scopes: list}
-    state_context: dict[str, typing.Any]  # {scope_keys: dict, binding_identity: str, ...}
+    authorization: RunAuthorizationSnapshot
     status: AgentRunSessionStatus
-    _authorized_ids: dict[str, set[str]]  # Pre-computed sets for O(1) lookup
 
 
 class AgentRunSessionRegistry:
@@ -82,7 +89,7 @@ class AgentRunSessionRegistry:
         Args:
             run_id: Unique run identifier
             runner_id: Runner descriptor ID
-        query_id: Host entry query ID, only present for query-based adapters
+            query_id: Host entry query ID, only present for query-based adapters
             plugin_identity: Plugin identifier (author/name)
             resources: Authorized resources for this run
             conversation_id: Conversation ID for history/event access
@@ -102,35 +109,39 @@ class AgentRunSessionRegistry:
         # Normalize state_context to empty dict if None
         state_context = state_context or {}
 
-        # Pre-compute authorized resource IDs for O(1) lookup
-        authorized_ids: dict[str, set[str]] = {
-            'model': {m.get('model_id') for m in resources.get('models', [])},
-            'tool': {t.get('tool_name') for t in resources.get('tools', [])},
-            'knowledge_base': {kb.get('kb_id') for kb in resources.get('knowledge_bases', [])},
-            'file': {f.get('file_id') for f in resources.get('files', [])},
+        resources_snapshot = copy.deepcopy(resources)
+        authorization: RunAuthorizationSnapshot = {
+            'resources': resources_snapshot,
+            'permissions': copy.deepcopy(permissions),
+            'conversation_id': conversation_id,
+            'state_policy': copy.deepcopy(state_policy),
+            'state_context': copy.deepcopy(state_context),
+            'authorized_ids': self._build_authorized_ids(resources_snapshot),
         }
 
-        # NOTE: state_policy and state_context are stored at session top-level,
-        # NOT in resources. Resources should only contain resource authorization info.
         session: AgentRunSession = {
             'run_id': run_id,
             'runner_id': runner_id,
             'query_id': query_id,
             'plugin_identity': plugin_identity,
-            'conversation_id': conversation_id,
-            'resources': resources,  # Original AgentResources, no state metadata mixed in
-            'permissions': permissions,
-            'state_policy': state_policy,
-            'state_context': state_context,
+            'authorization': authorization,
             'status': {
                 'started_at': now,
                 'last_activity_at': now,
             },
-            '_authorized_ids': authorized_ids,
         }
 
         async with self._lock:
             self._sessions[run_id] = session
+
+    def _build_authorized_ids(self, resources: AgentResources) -> dict[str, set[str]]:
+        """Pre-compute authorized resource IDs for O(1) lookup."""
+        return {
+            'model': {m.get('model_id') for m in resources.get('models', [])},
+            'tool': {t.get('tool_name') for t in resources.get('tools', [])},
+            'knowledge_base': {kb.get('kb_id') for kb in resources.get('knowledge_bases', [])},
+            'file': {f.get('file_id') for f in resources.get('files', [])},
+        }
 
     async def unregister(self, run_id: str) -> None:
         """Unregister an agent run session.
@@ -182,13 +193,15 @@ class AgentRunSessionRegistry:
         Returns:
             True if resource is authorized, False otherwise
         """
-        authorized_ids = session.get('_authorized_ids', {})
+        authorization = session['authorization']
+        authorized_ids = authorization['authorized_ids']
+        resources = authorization['resources']
 
         if resource_type in ('model', 'tool', 'knowledge_base', 'file'):
             return resource_id in authorized_ids.get(resource_type, set())
 
         if resource_type == 'storage':
-            storage = session['resources'].get('storage', {})
+            storage = resources.get('storage', {})
             if resource_id == 'plugin':
                 return storage.get('plugin_storage', False)
             elif resource_id == 'workspace':

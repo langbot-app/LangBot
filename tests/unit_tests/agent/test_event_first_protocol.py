@@ -2,7 +2,7 @@
 
 Tests cover:
 1. Query -> AgentEventEnvelope conversion
-2. Current config -> AgentBinding conversion
+2. Current config -> AgentConfig projection and single-binding resolution
 3. AgentRunContext not inlining full history by default
 4. LangBot Host not defining context-window controls
 5. Event-first run() entry point
@@ -32,6 +32,10 @@ from langbot_plugin.api.entities.builtin.agent_runner.permissions import (
 
 # Import LangBot host models
 from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
+from langbot.pkg.agent.runner.binding_resolver import (
+    AgentBindingResolver,
+    AgentBindingResolutionError,
+)
 
 
 class TestQueryToEventEnvelope:
@@ -127,26 +131,39 @@ class TestQueryToEventEnvelope:
         assert second.event_id != first.event_id
 
 
-class TestQueryConfigToBinding:
-    """Test current config -> AgentBinding conversion."""
+class TestQueryConfigToAgentConfig:
+    """Test current config projection and single-Agent binding resolution."""
 
-    def test_config_to_binding_runner_id(self, mock_query):
-        """Test binding runner_id extraction."""
-        binding = QueryEntryAdapter.config_to_binding(
+    def test_config_to_agent_config_runner_id(self, mock_query):
+        """Test AgentConfig runner_id extraction."""
+        agent_config = QueryEntryAdapter.config_to_agent_config(
             mock_query, "plugin:author/plugin/runner"
         )
 
-        assert binding.runner_id == "plugin:author/plugin/runner"
+        assert agent_config.runner_id == "plugin:author/plugin/runner"
 
-    def test_config_to_binding_scope(self, mock_query):
-        """Test binding scope extraction."""
-        binding = QueryEntryAdapter.config_to_binding(
+    def test_resolver_projects_agent_scope(self, mock_query):
+        """Test binding scope projection through the resolver."""
+        event = QueryEntryAdapter.query_to_event(mock_query)
+        agent_config = QueryEntryAdapter.config_to_agent_config(
             mock_query, "plugin:test/plugin/runner"
         )
+        binding = AgentBindingResolver().resolve_one(event, [agent_config])
 
         assert binding.scope.scope_type == "agent"
         assert binding.scope.scope_id == mock_query.pipeline_uuid
         assert binding.agent_id == mock_query.pipeline_uuid
+
+    def test_resolver_rejects_multiple_matching_agents(self, mock_query):
+        """Event dispatch is single-Agent in v1."""
+        event = QueryEntryAdapter.query_to_event(mock_query)
+        first = QueryEntryAdapter.config_to_agent_config(
+            mock_query, "plugin:test/plugin/runner"
+        )
+        second = first.model_copy(update={"agent_id": "agent_2"})
+
+        with pytest.raises(AgentBindingResolutionError):
+            AgentBindingResolver().resolve_one(event, [first, second])
 
 class TestAgentRunContextProtocolV1:
     """Test AgentRunContext Protocol v1 behavior."""

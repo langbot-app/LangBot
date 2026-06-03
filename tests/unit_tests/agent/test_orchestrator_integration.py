@@ -13,6 +13,7 @@ from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
 from langbot.pkg.agent.runner.errors import RunnerExecutionError
 from langbot.pkg.agent.runner.orchestrator import AgentRunOrchestrator
 from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
+from langbot.pkg.agent.runner.binding_resolver import AgentBindingResolver
 from langbot.pkg.agent.runner.session_registry import get_session_registry
 from langbot.pkg.agent.runner.persistent_state_store import reset_persistent_state_store
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
@@ -327,7 +328,7 @@ async def test_orchestrator_runs_fake_plugin_with_authorized_context(clean_agent
     session_during_run = plugin_connector.sessions_during_run[0]
     assert session_during_run is not None
     assert session_during_run["plugin_identity"] == "langbot/local-agent"
-    assert session_during_run["_authorized_ids"]["tool"] == {"langbot/test-tool/search"}
+    assert session_during_run["authorization"]["authorized_ids"]["tool"] == {"langbot/test-tool/search"}
     assert await get_session_registry().get(context["run_id"]) is None
 
 
@@ -758,7 +759,8 @@ class TestQueryEntryAdapterHostCapabilities:
         # Note: We need to rebuild the event and binding to query the store
         from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
         event = QueryEntryAdapter.query_to_event(query)
-        binding = QueryEntryAdapter.config_to_binding(query, RUNNER_ID)
+        agent_config = QueryEntryAdapter.config_to_agent_config(query, RUNNER_ID)
+        binding = AgentBindingResolver().resolve_one(event, [agent_config])
 
         snapshot = await persistent_store.build_snapshot_from_event(event, binding, descriptor)
         assert snapshot["conversation"]["external.test_key"] == "test_value"

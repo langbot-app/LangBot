@@ -21,9 +21,8 @@ from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput
 from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
 
 from .host_models import (
+    AgentConfig,
     AgentEventEnvelope,
-    AgentBinding,
-    BindingScope,
     ResourcePolicy,
     StatePolicy,
     DeliveryPolicy,
@@ -36,7 +35,7 @@ class QueryEntryAdapter:
 
     This adapter is responsible for:
     - Converting Query to AgentEventEnvelope
-    - Converting current Agent/runner config to temporary AgentBinding
+    - Projecting current Pipeline config to temporary AgentConfig
     - Putting Query-only fields into adapter context
     """
 
@@ -97,29 +96,16 @@ class QueryEntryAdapter:
         )
 
     @classmethod
-    def config_to_binding(
+    def config_to_agent_config(
         cls,
         query: pipeline_query.Query,
         runner_id: str,
-    ) -> AgentBinding:
-        """Convert current config container to temporary AgentBinding.
-
-        Args:
-            query: Current entry query
-            runner_id: Resolved runner ID
-
-        Returns:
-            AgentBinding for this run
-        """
+    ) -> AgentConfig:
+        """Project the current Pipeline config container into target Agent config."""
         pipeline_config = query.pipeline_config or {}
         ai_config = pipeline_config.get('ai', {})
         runner_config = ai_config.get('runner_config', {}).get(runner_id, {})
         agent_id = getattr(query, 'pipeline_uuid', None)
-
-        scope = BindingScope(
-            scope_type="agent",
-            scope_id=agent_id,
-        )
 
         # Build resource policy from current config
         resource_policy = ResourcePolicy(
@@ -140,17 +126,16 @@ class QueryEntryAdapter:
             enable_reply=True,
         )
 
-        return AgentBinding(
-            binding_id=f"agent_{agent_id or 'default'}_{runner_id}",
-            scope=scope,
-            event_types=[runner_events.MESSAGE_RECEIVED],
+        return AgentConfig(
+            agent_id=agent_id,
             runner_id=runner_id,
             runner_config=runner_config,
             resource_policy=resource_policy,
             state_policy=state_policy,
             delivery_policy=delivery_policy,
+            event_types=[runner_events.MESSAGE_RECEIVED],
             enabled=True,
-            agent_id=agent_id,
+            metadata={'source': 'pipeline_adapter'},
         )
 
     @classmethod

@@ -111,7 +111,11 @@ Claude Code、Codex、Kimi Code 这类 runner 不一定通过 LangBot 的模型/
 
 ## 7. Claude Code / Codex runner 当前形态
 
-`claude-code-agent` 与 `codex-agent` 是最小可运行 MVP，用来证明外部 harness runner 可以接入同一套 AgentRunner 协议。本地 smoke 验收记录见 [PROGRESS.md](./PROGRESS.md) 与 [PHASE1_QA_ACCEPTANCE_MATRIX.md](./PHASE1_QA_ACCEPTANCE_MATRIX.md)。
+`claude-code-agent` 与 `codex-agent` 是最小可运行 MVP / dev path，用来证明外部 harness runner 可以接入同一套 AgentRunner 协议。本地 smoke 验收记录见 [PROGRESS.md](./PROGRESS.md) 与 [PHASE1_QA_ACCEPTANCE_MATRIX.md](./PHASE1_QA_ACCEPTANCE_MATRIX.md)。
+
+MVP 含义：已验证 event-first context、resource projection、result stream 和
+基础 resume state 可以跑通；不表示 Docker 生产部署、发布级执行隔离、
+workspace lifecycle、secret projection、团队级 audit 或 runtime sidecar 已完成。
 
 ### 7.1 Claude Code runner
 
@@ -127,7 +131,7 @@ Claude Code、Codex、Kimi Code 这类 runner 不一定通过 LangBot 的模型/
 
 ### 7.3 当前限制
 
-不是发布级安全边界实现；默认只做本地 CLI 调用，不实现完整执行隔离或 workspace 生命周期；不实现 issue-centric 队列、复杂 workflow engine 或长期任务调度；Codex 仅验证协议形态，不代表 Codex 发布级能力或 Kimi runner 已完成。runtime 管控面方向见 [RUNTIME_CONTROL_PLANE_V2.md](./RUNTIME_CONTROL_PLANE_V2.md)。
+不是发布级安全边界实现；默认只做本地 CLI 调用，不实现完整执行隔离或 workspace 生命周期；不实现 issue-centric 队列、复杂 workflow engine 或长期任务调度；Docker 环境只能访问容器内 CLI 和凭据；Codex 仅验证协议形态，不代表 Codex 发布级能力或 Kimi runner 已完成。runtime 管控面方向见 [RUNTIME_CONTROL_PLANE_V2.md](./RUNTIME_CONTROL_PLANE_V2.md)。
 
 ## 8. 发布和安装策略
 

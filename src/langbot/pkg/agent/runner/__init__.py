@@ -16,7 +16,13 @@ from .resource_builder import AgentResourceBuilder
 from .result_normalizer import AgentResultNormalizer
 from .orchestrator import AgentRunOrchestrator
 from .config_migration import ConfigMigration
-from .session_registry import AgentRunSessionRegistry, AgentRunSession, get_session_registry
+from .binding_resolver import AgentBindingResolver, AgentBindingResolutionError
+from .session_registry import (
+    AgentRunSessionRegistry,
+    AgentRunSession,
+    RunAuthorizationSnapshot,
+    get_session_registry,
+)
 from .events import (
     MESSAGE_RECEIVED,
     MESSAGE_RECALLED,
@@ -41,8 +47,11 @@ __all__ = [
     'AgentResultNormalizer',
     'AgentRunOrchestrator',
     'ConfigMigration',
+    'AgentBindingResolver',
+    'AgentBindingResolutionError',
     'AgentRunSessionRegistry',
     'AgentRunSession',
+    'RunAuthorizationSnapshot',
     'get_session_registry',
     'MESSAGE_RECEIVED',
     'MESSAGE_RECALLED',

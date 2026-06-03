@@ -41,8 +41,43 @@ class TestSessionRegistryBasic:
         assert result['runner_id'] == 'plugin:test/my-runner/default'
         assert result['query_id'] == 1
         assert result['plugin_identity'] == 'test/my-runner'
-        assert len(result['resources']['models']) == 1
-        assert result['resources']['models'][0]['model_id'] == 'model_001'
+        auth_resources = result['authorization']['resources']
+        assert len(auth_resources['models']) == 1
+        assert auth_resources['models'][0]['model_id'] == 'model_001'
+        assert 'resources' not in result
+        assert 'permissions' not in result
+        assert '_authorized_ids' not in result
+
+    @pytest.mark.asyncio
+    async def test_register_freezes_authorization_snapshot(self):
+        """Register should freeze authorization data for the run."""
+        registry = AgentRunSessionRegistry()
+        resources = make_resources(
+            models=[{'model_id': 'model_001'}],
+            storage={'plugin_storage': True, 'workspace_storage': False},
+        )
+
+        await registry.register(
+            run_id='run_snapshot',
+            runner_id='plugin:test/my-runner/default',
+            query_id=1,
+            plugin_identity='test/my-runner',
+            resources=resources,
+            permissions={'models': ['invoke']},
+            conversation_id='conv_001',
+        )
+
+        resources['models'].append({'model_id': 'model_late'})
+        resources['storage']['workspace_storage'] = True
+
+        session = await registry.get('run_snapshot')
+        assert session is not None
+        authorization = session['authorization']
+        assert authorization['conversation_id'] == 'conv_001'
+        assert authorization['permissions'] == {'models': ['invoke']}
+        assert registry.is_resource_allowed(session, 'model', 'model_001') is True
+        assert registry.is_resource_allowed(session, 'model', 'model_late') is False
+        assert registry.is_resource_allowed(session, 'storage', 'workspace') is False
 
     @pytest.mark.asyncio
     async def test_get_nonexistent_session(self):
@@ -91,23 +126,15 @@ class TestSessionRegistryBasic:
 
         # Create session with manually set old timestamp
         now = int(time.time())
-        res = make_resources()
-        old_session: AgentRunSession = {
-            'run_id': run_id,
-            'runner_id': 'plugin:test/my-runner/default',
-            'query_id': 1,
-            'plugin_identity': 'test/my-runner',
-            'resources': res,
-            'status': {
-                'started_at': now - 100,  # 100 seconds ago
-                'last_activity_at': now - 100,  # 100 seconds ago
-            },
-            '_authorized_ids': {
-                'model': set(),
-                'tool': set(),
-                'knowledge_base': set(),
-                'file': set(),
-            },
+        old_session: AgentRunSession = make_session(
+            run_id=run_id,
+            runner_id='plugin:test/my-runner/default',
+            query_id=1,
+            plugin_identity='test/my-runner',
+        )
+        old_session['status'] = {
+            'started_at': now - 100,
+            'last_activity_at': now - 100,
         }
 
         async with registry._lock:
@@ -153,40 +180,25 @@ class TestSessionRegistryBasic:
 
         # Create sessions with manually set old timestamp
         now = int(time.time())
-        res = make_resources()
-        old_session: AgentRunSession = {
-            'run_id': 'old_run',
-            'runner_id': 'plugin:test/runner/default',
-            'query_id': 1,
-            'plugin_identity': 'test/runner',
-            'resources': res,
-            'status': {
-                'started_at': now - 7200,  # 2 hours ago
-                'last_activity_at': now - 7200,  # 2 hours ago
-            },
-            '_authorized_ids': {
-                'model': set(),
-                'tool': set(),
-                'knowledge_base': set(),
-                'file': set(),
-            },
+        old_session: AgentRunSession = make_session(
+            run_id='old_run',
+            runner_id='plugin:test/runner/default',
+            query_id=1,
+            plugin_identity='test/runner',
+        )
+        old_session['status'] = {
+            'started_at': now - 7200,
+            'last_activity_at': now - 7200,
         }
-        new_session: AgentRunSession = {
-            'run_id': 'new_run',
-            'runner_id': 'plugin:test/runner/default',
-            'query_id': 2,
-            'plugin_identity': 'test/runner',
-            'resources': res,
-            'status': {
-                'started_at': now,
-                'last_activity_at': now,
-            },
-            '_authorized_ids': {
-                'model': set(),
-                'tool': set(),
-                'knowledge_base': set(),
-                'file': set(),
-            },
+        new_session: AgentRunSession = make_session(
+            run_id='new_run',
+            runner_id='plugin:test/runner/default',
+            query_id=2,
+            plugin_identity='test/runner',
+        )
+        new_session['status'] = {
+            'started_at': now,
+            'last_activity_at': now,
         }
 
         async with registry._lock:

@@ -342,7 +342,7 @@ class TestStateAPIFullFlowWithRealDB:
             # Verify session has correct state_context
             session = await session_registry.get('run_full_flow')
             assert session is not None
-            state_ctx = session.get('state_context')
+            state_ctx = session['authorization']['state_context']
             assert state_ctx is not None, f"state_context is None. Session keys: {list(session.keys())}"
             assert 'scope_keys' in state_ctx, f"scope_keys not in state_context: {state_ctx}"
             assert 'conversation' in state_ctx['scope_keys'], f"conversation not in scope_keys: {state_ctx['scope_keys']}"
@@ -412,31 +412,31 @@ class TestStateAPIFullFlowWithRealDB:
         await session_registry.unregister('run_full_flow')
 
 
-class TestStateHandlerReadsFromSessionTopLevel:
-    """Tests verifying handlers read state_policy/state_context from session top-level, not resources."""
+class TestStateHandlerReadsFromAuthorizationSnapshot:
+    """Tests verifying handlers read state_policy/state_context from authorization snapshot."""
 
     @pytest.mark.asyncio
-    async def test_state_handler_reads_state_policy_from_session_top_level(self, session_registry, db_engine, persistent_store):
-        """Handler reads state_policy from session['state_policy'], not session['resources']['state_policy']."""
+    async def test_state_handler_reads_state_policy_from_authorization(self, session_registry, db_engine, persistent_store):
+        """Handler reads state_policy from session['authorization'], not resources."""
         fake_app = FakeApplication(db_engine)
         fake_app.persistence_mgr.get_db_engine = MagicMock(return_value=db_engine)
 
-        # Register with explicit state_policy at top level
+        # Register with explicit state_policy in the authorization snapshot
         await session_registry.register(
             run_id='run_policy_top_level',
             runner_id='plugin:test/runner/default',
             query_id=1,
             plugin_identity='test/runner',
             resources=make_resources(),
-            state_policy={'enable_state': False, 'state_scopes': []},  # Disabled at top level
+            state_policy={'enable_state': False, 'state_scopes': []},
             state_context={'scope_keys': {}, 'binding_identity': 'binding_1'},
         )
 
         # Verify resources does NOT contain state_policy
         session = await session_registry.get('run_policy_top_level')
         assert session is not None
-        assert 'state_policy' not in session.get('resources', {}), \
-            "resources should NOT contain state_policy"
+        resources = session['authorization']['resources']
+        assert 'state_policy' not in resources, "resources should NOT contain state_policy"
 
         async def fake_disconnect():
             return True
@@ -445,7 +445,7 @@ class TestStateHandlerReadsFromSessionTopLevel:
             handler = RuntimeConnectionHandler(FakeConnection(), fake_disconnect, fake_app)
             state_get_handler = handler.actions[PluginToRuntimeAction.STATE_GET.value]
 
-            # Should fail because enable_state=False in session['state_policy']
+            # Should fail because enable_state=False in authorization.state_policy
             result = await state_get_handler({
                 'run_id': 'run_policy_top_level',
                 'scope': 'conversation',
@@ -459,12 +459,12 @@ class TestStateHandlerReadsFromSessionTopLevel:
         await session_registry.unregister('run_policy_top_level')
 
     @pytest.mark.asyncio
-    async def test_state_handler_reads_state_context_from_session_top_level(self, session_registry, db_engine, persistent_store):
-        """Handler reads state_context from session['state_context'], not session['resources']['state_context']."""
+    async def test_state_handler_reads_state_context_from_authorization(self, session_registry, db_engine, persistent_store):
+        """Handler reads state_context from session['authorization'], not resources."""
         fake_app = FakeApplication(db_engine)
         fake_app.persistence_mgr.get_db_engine = MagicMock(return_value=db_engine)
 
-        # Register with explicit state_context at top level
+        # Register with explicit state_context in the authorization snapshot
         await session_registry.register(
             run_id='run_context_top_level',
             runner_id='plugin:test/runner/default',
@@ -478,8 +478,8 @@ class TestStateHandlerReadsFromSessionTopLevel:
         # Verify resources does NOT contain state_context
         session = await session_registry.get('run_context_top_level')
         assert session is not None
-        assert 'state_context' not in session.get('resources', {}), \
-            "resources should NOT contain state_context"
+        resources = session['authorization']['resources']
+        assert 'state_context' not in resources, "resources should NOT contain state_context"
 
         async def fake_disconnect():
             return True
@@ -488,7 +488,7 @@ class TestStateHandlerReadsFromSessionTopLevel:
             handler = RuntimeConnectionHandler(FakeConnection(), fake_disconnect, fake_app)
             state_set_handler = handler.actions[PluginToRuntimeAction.STATE_SET.value]
 
-            # Should use scope_key from session['state_context']['scope_keys']['conversation']
+            # Should use scope_key from authorization.state_context.scope_keys.conversation
             result = await state_set_handler({
                 'run_id': 'run_context_top_level',
                 'scope': 'conversation',
@@ -508,7 +508,7 @@ class TestResourcesDoesNotContainStateMetadata:
 
     @pytest.mark.asyncio
     async def test_resources_clean_after_register(self, session_registry):
-        """After register(), resources should not contain state_policy or state_context."""
+        """After register(), only authorization contains resources and state metadata."""
         resources = make_resources()
 
         await session_registry.register(
@@ -524,15 +524,15 @@ class TestResourcesDoesNotContainStateMetadata:
         session = await session_registry.get('run_resources_clean')
         assert session is not None
 
-        # Verify resources is clean
-        session_resources = session.get('resources', {})
+        # Verify resources is nested under authorization and is clean.
+        assert 'resources' not in session
+        session_resources = session['authorization']['resources']
         assert 'state_policy' not in session_resources, \
-            "session['resources'] should NOT contain state_policy"
+            "authorization['resources'] should NOT contain state_policy"
         assert 'state_context' not in session_resources, \
-            "session['resources'] should NOT contain state_context"
+            "authorization['resources'] should NOT contain state_context"
 
-        # Verify state metadata is at top level
-        assert 'state_policy' in session
-        assert 'state_context' in session
+        assert 'state_policy' in session['authorization']
+        assert 'state_context' in session['authorization']
 
         await session_registry.unregister('run_resources_clean')
