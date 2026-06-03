@@ -1,8 +1,8 @@
-"""Tests for event-first Protocol v1 entities and Pipeline adapter.
+"""Tests for event-first Protocol v1 entities and Query entry adapter.
 
 Tests cover:
-1. Pipeline Query -> AgentEventEnvelope conversion
-2. Pipeline config -> AgentBinding conversion
+1. Query -> AgentEventEnvelope conversion
+2. Current config -> AgentBinding conversion
 3. AgentRunContext not inlining full history by default
 4. LangBot Host not defining context-window controls
 5. Event-first run() entry point
@@ -31,32 +31,32 @@ from langbot_plugin.api.entities.builtin.agent_runner.permissions import (
 )
 
 # Import LangBot host models
-from langbot.pkg.agent.runner.pipeline_adapter import PipelineAdapter
+from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
 
 
-class TestPipelineQueryToEventEnvelope:
-    """Test Pipeline Query -> AgentEventEnvelope conversion."""
+class TestQueryToEventEnvelope:
+    """Test Query -> AgentEventEnvelope conversion."""
 
     def test_query_to_event_basic_fields(self, mock_query):
         """Test basic field conversion from Query to Event envelope."""
-        event = PipelineAdapter.query_to_event(mock_query)
+        event = QueryEntryAdapter.query_to_event(mock_query)
 
         assert event.event_type == "message.received"
-        assert event.source == "pipeline_adapter"
+        assert event.source == "host_adapter"
         assert event.bot_id == mock_query.bot_uuid
         assert event.actor is not None
         assert event.actor.actor_type == "user"
 
     def test_query_to_event_input(self, mock_query):
         """Test input conversion from Query."""
-        event = PipelineAdapter.query_to_event(mock_query)
+        event = QueryEntryAdapter.query_to_event(mock_query)
 
         assert event.input is not None
         assert event.input.text == "Hello world"
 
     def test_query_to_event_conversation(self, mock_query):
         """Test conversation context extraction."""
-        event = PipelineAdapter.query_to_event(mock_query)
+        event = QueryEntryAdapter.query_to_event(mock_query)
 
         assert event.conversation_id == "conv-uuid-123"
 
@@ -65,7 +65,7 @@ class TestPipelineQueryToEventEnvelope:
         mock_query.session.using_conversation.uuid = None
         mock_query.variables["conversation_id"] = "conv-from-vars"
 
-        event = PipelineAdapter.query_to_event(mock_query)
+        event = QueryEntryAdapter.query_to_event(mock_query)
 
         assert event.conversation_id == "conv-from-vars"
 
@@ -73,13 +73,13 @@ class TestPipelineQueryToEventEnvelope:
         """Debug Chat and legacy pipeline runs may not have a conversation UUID."""
         mock_query.session.using_conversation.uuid = None
 
-        event = PipelineAdapter.query_to_event(mock_query)
+        event = QueryEntryAdapter.query_to_event(mock_query)
 
         assert event.conversation_id == "person_launcher-123"
 
     def test_query_to_event_delivery_context(self, mock_query):
         """Test delivery context extraction."""
-        event = PipelineAdapter.query_to_event(mock_query)
+        event = QueryEntryAdapter.query_to_event(mock_query)
 
         assert event.delivery is not None
         assert event.delivery.surface == "platform"
@@ -98,7 +98,7 @@ class TestPipelineQueryToEventEnvelope:
         })
         mock_query.message_event = source_event
 
-        event = PipelineAdapter.query_to_event(mock_query)
+        event = QueryEntryAdapter.query_to_event(mock_query)
 
         assert event.source_event_type == "platform.message.created"
         assert event.event_time == 1700000000
@@ -111,28 +111,28 @@ class TestPipelineQueryToEventEnvelope:
         """Test delivery context building when Query has no message_chain."""
         delattr(mock_query, "message_chain")
 
-        event = PipelineAdapter.query_to_event(mock_query)
+        event = QueryEntryAdapter.query_to_event(mock_query)
 
         assert event.delivery.reply_target == {"message_id": None}
 
     def test_query_to_event_scopes_pipeline_local_event_ids(self, mock_query):
         """Pipeline-local message IDs must not become global audit IDs."""
-        first = PipelineAdapter.query_to_event(mock_query)
+        first = QueryEntryAdapter.query_to_event(mock_query)
 
         mock_query.launcher_id = "launcher-456"
-        second = PipelineAdapter.query_to_event(mock_query)
+        second = QueryEntryAdapter.query_to_event(mock_query)
 
-        assert first.event_id.startswith("pipeline:")
+        assert first.event_id.startswith("host:")
         assert first.event_id != "789"
         assert second.event_id != first.event_id
 
 
-class TestPipelineConfigToBinding:
-    """Test Pipeline config -> AgentBinding conversion."""
+class TestQueryConfigToBinding:
+    """Test current config -> AgentBinding conversion."""
 
     def test_config_to_binding_runner_id(self, mock_query):
         """Test binding runner_id extraction."""
-        binding = PipelineAdapter.pipeline_config_to_binding(
+        binding = QueryEntryAdapter.config_to_binding(
             mock_query, "plugin:author/plugin/runner"
         )
 
@@ -140,7 +140,7 @@ class TestPipelineConfigToBinding:
 
     def test_config_to_binding_scope(self, mock_query):
         """Test binding scope extraction."""
-        binding = PipelineAdapter.pipeline_config_to_binding(
+        binding = QueryEntryAdapter.config_to_binding(
             mock_query, "plugin:test/plugin/runner"
         )
 
@@ -177,8 +177,8 @@ class TestAgentRunContextProtocolV1:
         assert ctx.event is not None
         assert ctx.event.event_type == "message.received"
 
-    def test_sdk_context_messages_default_empty(self):
-        """Test that messages default to empty (not full history)."""
+    def test_sdk_context_has_no_history_message_fields(self):
+        """AgentRunContext should not expose inline history message fields."""
         trigger = AgentTrigger(type="message.received")
         event = AgentEventContext(
             event_id="evt_1",
@@ -200,34 +200,9 @@ class TestAgentRunContextProtocolV1:
             runtime=AgentRuntimeContext(),
         )
 
-        # messages is now in bootstrap, not top-level
-        assert ctx.bootstrap is None or ctx.bootstrap.messages == []
-
-    def test_sdk_context_bootstrap_optional(self):
-        """Test that bootstrap is optional."""
-        trigger = AgentTrigger(type="message.received")
-        event = AgentEventContext(
-            event_id="evt_1",
-            event_type="message.received",
-            source="platform",
-        )
-        input = AgentInput(text="Hello")
-        from langbot_plugin.api.entities.builtin.agent_runner.resources import AgentResources
-        from langbot_plugin.api.entities.builtin.agent_runner.runtime import AgentRuntimeContext
-        from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
-
-        ctx = AgentRunContext(
-            run_id="run_1",
-            trigger=trigger,
-            event=event,
-            input=input,
-            delivery=DeliveryContext(surface="platform"),
-            resources=AgentResources(),
-            runtime=AgentRuntimeContext(),
-        )
-
-        # bootstrap is optional
-        assert ctx.bootstrap is None or isinstance(ctx.bootstrap.messages, list)
+        assert "messages" not in AgentRunContext.model_fields
+        assert "bootstrap" not in AgentRunContext.model_fields
+        assert not hasattr(ctx, "bootstrap")
 
 
 class TestHostManagedHistoryNotInProtocol:
@@ -306,7 +281,7 @@ class TestSDKResultProtocolV1:
 # Fixtures
 @pytest.fixture
 def mock_query():
-    """Create a mock Pipeline Query for testing."""
+    """Create a mock query for testing."""
     query = Mock()
     query.query_id = 123
     query.bot_uuid = "bot-uuid-123"

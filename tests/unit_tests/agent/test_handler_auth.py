@@ -576,11 +576,10 @@ class TestRETRIEVEKNOWLEDGEBASEBugFix:
 
         assert 'kb_custom' in allowed_kbs
 
-    def test_retrieve_kb_fix_old_format(self):
-        """Fix should work for old format pipeline config."""
+    def test_retrieve_kb_ignores_old_runner_format(self):
+        """Old runner format is not resolved by current AgentRunner helpers."""
         from langbot.pkg.agent.runner.config_migration import ConfigMigration
 
-        # Old format: ai.runner.runner = 'local-agent'
         pipeline_config = {
             'ai': {
                 'runner': {
@@ -590,31 +589,7 @@ class TestRETRIEVEKNOWLEDGEBASEBugFix:
         }
 
         runner_id = ConfigMigration.resolve_runner_id(pipeline_config)
-        # Should resolve to plugin:langbot/local-agent/default
-        assert 'local-agent' in runner_id
-
-    def test_retrieve_kb_legacy_single_key_is_migration_only(self):
-        """Old singular knowledge-base config is normalized before runtime."""
-        from langbot.pkg.agent.runner.config_migration import ConfigMigration
-
-        pipeline_config = {
-            'ai': {
-                'runner': {
-                    'id': 'plugin:langbot/local-agent/default',
-                },
-                'runner_config': {
-                    'plugin:langbot/local-agent/default': {
-                        'knowledge-base': 'kb_single',  # Old singular field
-                    },
-                },
-            },
-        }
-
-        migrated = ConfigMigration.migrate_pipeline_config(pipeline_config)
-        runner_id = ConfigMigration.resolve_runner_id(migrated)
-        runner_config = ConfigMigration.resolve_runner_config(migrated, runner_id)
-
-        assert runner_config == {'knowledge-bases': ['kb_single']}
+        assert runner_id is None
 
 
 class TestHandlerActionAuthorization:
@@ -850,7 +825,7 @@ class TestSDKAgentRunAPIProxyFieldConsistency:
         """CALL_TOOL: SDK includes 'run_id' field."""
         # SDK agent_run_api.py line 144: "run_id": self.run_id
         # Host handler.py line 458: run_id = data.get('run_id')
-        sdk_fields = ['run_id', 'tool_name', 'parameters', 'session', 'query_id']
+        sdk_fields = ['run_id', 'tool_name', 'parameters']
         host_expected_fields = ['tool_name', 'parameters', 'run_id']
 
         for field in host_expected_fields:

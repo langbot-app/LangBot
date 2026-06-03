@@ -259,7 +259,7 @@ class TestContextValidation:
         # Protocol v1 DOES have these
         assert 'delivery' in context_dict, "delivery is REQUIRED in Protocol v1"
         assert 'context' in context_dict, "context (ContextAccess) is REQUIRED in Protocol v1"
-        assert 'bootstrap' in context_dict, "bootstrap should exist (can be None)"
+        assert 'bootstrap' not in context_dict, "Host must not inline bootstrap/history windows"
         assert 'adapter' in context_dict, "adapter should exist"
         assert 'metadata' in context_dict, "metadata should exist"
 

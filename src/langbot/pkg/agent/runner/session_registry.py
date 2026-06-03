@@ -23,7 +23,7 @@ class AgentRunSession(typing.TypedDict):
     Fields:
         run_id: Unique run identifier (UUID from AgentRunContext)
         runner_id: Runner descriptor ID (plugin:author/name/runner)
-        query_id: Pipeline query ID
+        query_id: Host entry query ID, only present for query-based adapters
         plugin_identity: Plugin identifier (author/name) of the runner
         conversation_id: Conversation ID for history/event access
         resources: Authorized resources for this run (from AgentResources)
@@ -82,7 +82,7 @@ class AgentRunSessionRegistry:
         Args:
             run_id: Unique run identifier
             runner_id: Runner descriptor ID
-            query_id: Pipeline query ID
+        query_id: Host entry query ID, only present for query-based adapters
             plugin_identity: Plugin identifier (author/name)
             resources: Authorized resources for this run
             conversation_id: Conversation ID for history/event access

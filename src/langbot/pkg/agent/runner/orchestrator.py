@@ -20,7 +20,7 @@ from .persistent_state_store import get_persistent_state_store, PersistentStateS
 from .session_registry import get_session_registry, AgentRunSessionRegistry
 from .config_migration import ConfigMigration
 from .host_models import AgentEventEnvelope, AgentBinding
-from .pipeline_adapter import PipelineAdapter
+from .query_entry_adapter import QueryEntryAdapter
 from .state_scope import build_state_context
 from .errors import (
     RunnerNotFoundError,
@@ -37,7 +37,7 @@ class AgentRunOrchestrator:
     """Orchestrator for agent runner execution.
 
     Responsibilities:
-    - Resolve runner ID from pipeline config (new or old format)
+    - Resolve runner ID from current Agent/runner config
     - Get runner descriptor from registry
     - Provision AgentRunContext envelope from Query
     - Build AgentResources with permission filtering
@@ -48,7 +48,7 @@ class AgentRunOrchestrator:
 
     Entry points:
     - run(event, binding): Main entry for event-first Protocol v1
-    - run_from_query(query): Pipeline adapter wrapper
+    - run_from_query(query): current Query entry adapter wrapper
     """
 
     ap: app.Application
@@ -125,28 +125,24 @@ class AgentRunOrchestrator:
             resources=resources,
         )
 
+        session_query_id = None
+
         # Merge adapter context if provided
         if adapter_context:
+            session_query_id = adapter_context.get('query_id')
             # Merge params into adapter.extra
             if 'params' in adapter_context:
                 context['adapter']['extra']['params'] = adapter_context['params']
-            # Merge prompt into adapter.extra for transitional adapter consumers.
-            if 'prompt' in adapter_context:
-                context['adapter']['extra']['prompt'] = adapter_context['prompt']
-            # Set query_id if provided
-            if adapter_context.get('query_id'):
-                context['runtime']['query_id'] = adapter_context['query_id']
 
         # Build state context for State API handlers
         state_context = build_state_context(event, binding, descriptor)
 
         # Register session for proxy action permission validation
         run_id = context['run_id']
-        query_id = context['runtime'].get('query_id')  # May be None for pure event-first mode
         await self._session_registry.register(
             run_id=run_id,
             runner_id=descriptor.id,
-            query_id=query_id,
+            query_id=session_query_id,
             plugin_identity=descriptor.get_plugin_id(),
             resources=resources,
             permissions=descriptor.permissions or {},
@@ -238,7 +234,7 @@ class AgentRunOrchestrator:
     ) -> typing.AsyncGenerator[provider_message.Message | provider_message.MessageChunk, None]:
         """Run agent runner from pipeline query.
 
-        This is the Pipeline adapter wrapper for the Query-based flow.
+        This is the Query entry adapter wrapper for the query-based flow.
         It delegates to the event-first run(event, binding) method.
 
         For the new event-first Protocol v1, use run(event, binding) instead.
@@ -260,16 +256,16 @@ class AgentRunOrchestrator:
             raise RunnerNotFoundError('no runner configured')
 
         # Convert Query to event-first envelope
-        event = PipelineAdapter.query_to_event(query)
+        event = QueryEntryAdapter.query_to_event(query)
 
-        # Convert Pipeline config to binding
-        binding = PipelineAdapter.pipeline_config_to_binding(query, runner_id)
+        # Convert current config to binding
+        binding = QueryEntryAdapter.config_to_binding(query, runner_id)
 
         # Extract bound plugins for authorization
         bound_plugins = query.variables.get('_pipeline_bound_plugins')
 
-        # Build adapter context for Pipeline-specific fields
-        adapter_context = PipelineAdapter.build_adapter_context(query, binding)
+        # Build adapter context for Query-specific fields
+        adapter_context = QueryEntryAdapter.build_adapter_context(query, binding)
 
         # Delegate to event-first run()
         async for result in self.run(

@@ -239,7 +239,7 @@ async def _get_pipeline_knowledge_base_uuids(ap: app.Application, query: Any) ->
     try:
         descriptor = await registry.get(runner_id, bound_plugins)
     except Exception as e:
-        ap.logger.warning(f'Failed to load AgentRunner descriptor for pipeline knowledge-base scope: {e}')
+        ap.logger.warning(f'Failed to load AgentRunner descriptor for knowledge-base scope: {e}')
         return []
 
     return config_schema.extract_knowledge_base_uuids(descriptor, runner_config)
@@ -302,7 +302,7 @@ async def _validate_run_authorization(
 
 
 def _get_cached_query(ap: app.Application, query_id: int | None) -> Any | None:
-    """Return a cached pipeline Query for runtime actions when available."""
+    """Return a cached Query for query-based runtime actions when available."""
     if query_id is None:
         return None
 
@@ -313,7 +313,7 @@ def _get_cached_query(ap: app.Application, query_id: int | None) -> Any | None:
 
 
 def _resolve_action_query(data: dict[str, Any], session: Any | None, ap: app.Application) -> Any | None:
-    """Resolve the current Query from an AgentRunner session or action payload."""
+    """Resolve the current Query from internal run state or query-based action payload."""
     query_id = None
     if session:
         query_id = session.get('query_id')
@@ -762,8 +762,6 @@ class RuntimeConnectionHandler(handler.Handler):
             parameters = data.get('tool_parameters') or data.get('parameters', {})
             run_id = data.get('run_id')  # Optional: present for AgentRunner calls
             caller_plugin_identity = data.get('caller_plugin_identity')  # Optional: for cross-plugin validation
-            # session_data = data['session']
-            # query_id = data['query_id']
             session = None
 
             # Permission validation for AgentRunner calls
@@ -1322,7 +1320,7 @@ class RuntimeConnectionHandler(handler.Handler):
 
         @self.action(PluginToRuntimeAction.RETRIEVE_KNOWLEDGE_BASE)
         async def retrieve_knowledge_base(data: dict[str, Any]) -> handler.ActionResponse:
-            """Retrieve documents from a knowledge base within the pipeline's scope.
+            """Retrieve documents from a knowledge base within the current run or query scope.
 
             For AgentRunner calls: requires run_id and validates kb_id against session.resources.knowledge_bases.
             For regular plugin calls: no run_id, validates against pipeline's configured knowledge bases.
@@ -1331,20 +1329,14 @@ class RuntimeConnectionHandler(handler.Handler):
             - AgentRunner: uses session_registry for permission check
             - Regular plugin: uses ConfigMigration.resolve_runner_config for pipeline-level check
             """
-            query_id = data['query_id']
             kb_id = data['kb_id']
             query_text = data['query_text']
             top_k = data.get('top_k', 5)
             filters = data.get('filters') or {}
             run_id = data.get('run_id')  # Optional: present for AgentRunner calls
             caller_plugin_identity = data.get('caller_plugin_identity')  # Optional: for cross-plugin validation
-
-            if query_id not in self.ap.query_pool.cached_queries:
-                return handler.ActionResponse.error(
-                    message=f'Query with query_id {query_id} not found',
-                )
-
-            query = self.ap.query_pool.cached_queries[query_id]
+            session = None
+            query = None
 
             # Permission validation for AgentRunner calls
             if run_id:
@@ -1353,7 +1345,16 @@ class RuntimeConnectionHandler(handler.Handler):
                 )
                 if error:
                     return error
+                query = _resolve_action_query(data, session, self.ap)
             else:
+                query_id = data['query_id']
+                if query_id not in self.ap.query_pool.cached_queries:
+                    return handler.ActionResponse.error(
+                        message=f'Query with query_id {query_id} not found',
+                    )
+
+                query = self.ap.query_pool.cached_queries[query_id]
+
                 # Regular plugin call: validate against the runner binding's
                 # schema-defined KB selectors or the preprocessed query scope.
                 allowed_kb_uuids = await _get_pipeline_knowledge_base_uuids(self.ap, query)
@@ -1370,16 +1371,22 @@ class RuntimeConnectionHandler(handler.Handler):
                 )
 
             try:
-                session_name = f'{query.session.launcher_type.value}_{query.session.launcher_id}'
+                settings: dict[str, Any] = {
+                    'top_k': top_k,
+                    'filters': filters,
+                }
+                if query is not None:
+                    session_name = f'{query.session.launcher_type.value}_{query.session.launcher_id}'
+                    settings.update(
+                        {
+                            'session_name': session_name,
+                            'bot_uuid': query.bot_uuid or '',
+                            'sender_id': str(query.sender_id),
+                        }
+                    )
                 entries = await kb.retrieve(
                     query_text,
-                    settings={
-                        'top_k': top_k,
-                        'filters': filters,
-                        'session_name': session_name,
-                        'bot_uuid': query.bot_uuid or '',
-                        'sender_id': str(query.sender_id),
-                    },
+                    settings=settings,
                 )
                 results = [entry.model_dump(mode='json') for entry in entries]
                 return handler.ActionResponse.success(data={'results': results})

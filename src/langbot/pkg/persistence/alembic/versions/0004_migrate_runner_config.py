@@ -1,4 +1,4 @@
-"""Migrate pipeline config to new runner format
+"""Normalize AgentRunner config containers
 
 Revision ID: 0004_migrate_runner_config
 Revises: 0003_add_rerank_models
@@ -14,101 +14,23 @@ down_revision = '0003_add_rerank_models'
 branch_labels = None
 depends_on = None
 
-# Mapping from old built-in runner names to official plugin runner IDs
-OLD_RUNNER_TO_PLUGIN_RUNNER_ID = {
-    'local-agent': 'plugin:langbot/local-agent/default',
-    'dify-service-api': 'plugin:langbot/dify-agent/default',
-    'n8n-service-api': 'plugin:langbot/n8n-agent/default',
-    'coze-api': 'plugin:langbot/coze-agent/default',
-    'dashscope-app-api': 'plugin:langbot/dashscope-agent/default',
-    'langflow-api': 'plugin:langbot/langflow-agent/default',
-    'tbox-app-api': 'plugin:langbot/tbox-agent/default',
-}
-
-
-def is_plugin_runner_id(runner_id: str) -> bool:
-    """Check if runner ID is in plugin:* format."""
-    return runner_id.startswith('plugin:')
-
-
-def normalize_runner_config_for_migration(runner_id: str, runner_config: dict) -> dict:
-    """Normalize released legacy runner fields before storing binding config."""
-    normalized = dict(runner_config)
-
-    if runner_id == OLD_RUNNER_TO_PLUGIN_RUNNER_ID['local-agent']:
-        legacy_kb = normalized.pop('knowledge-base', None)
-        if 'knowledge-bases' not in normalized:
-            if isinstance(legacy_kb, str) and legacy_kb and legacy_kb not in {'__none__', '__none'}:
-                normalized['knowledge-bases'] = [legacy_kb]
-            elif legacy_kb is not None:
-                normalized['knowledge-bases'] = []
-
-    return normalized
-
-
 def migrate_pipeline_config(config: dict) -> dict:
-    """Migrate pipeline config to new format."""
+    """Keep current AgentRunner config containers explicit."""
     new_config = dict(config)
-    ai_config = new_config.get('ai', {})
-    if not ai_config:
+    if 'ai' not in new_config:
         return new_config
 
-    runner_config = ai_config.get('runner', {})
-    runner_configs = ai_config.get('runner_config', {})
+    ai_config = dict(new_config.get('ai', {}))
 
-    # Check for new format first
-    runner_id = runner_config.get('id')
-    if runner_id and is_plugin_runner_id(runner_id):
-        if runner_id in runner_configs:
-            runner_configs[runner_id] = normalize_runner_config_for_migration(
-                runner_id,
-                runner_configs[runner_id],
-            )
-            ai_config['runner_config'] = runner_configs
-            new_config['ai'] = ai_config
-        return new_config
-
-    # Check for old format
-    old_runner_name = runner_config.get('runner')
-    if old_runner_name:
-        # Map to new runner ID
-        if is_plugin_runner_id(old_runner_name):
-            runner_id = old_runner_name
-        else:
-            runner_id = OLD_RUNNER_TO_PLUGIN_RUNNER_ID.get(old_runner_name, old_runner_name)
-
-        # Set new format
-        runner_config['id'] = runner_id
-
-        # Remove old runner field if it's a mapped built-in runner
-        if old_runner_name in OLD_RUNNER_TO_PLUGIN_RUNNER_ID:
-            del runner_config['runner']
-
-        # Migrate runner-specific config and remove old config blocks
-        if old_runner_name in ai_config:
-            old_runner_config = ai_config[old_runner_name]
-            if old_runner_config:
-                runner_configs[runner_id] = normalize_runner_config_for_migration(runner_id, old_runner_config)
-            # Remove old config block after migration
-            del ai_config[old_runner_name]
-
-        # Also check if runner_id has config under other old name formats
-        for old_name, mapped_id in OLD_RUNNER_TO_PLUGIN_RUNNER_ID.items():
-            if mapped_id == runner_id and old_name in ai_config:
-                runner_configs[runner_id] = normalize_runner_config_for_migration(runner_id, ai_config[old_name])
-                # Remove old config block after migration
-                del ai_config[old_name]
-
-    # Update configs
-    ai_config['runner'] = runner_config
-    ai_config['runner_config'] = runner_configs
+    ai_config['runner'] = dict(ai_config.get('runner', {}))
+    ai_config['runner_config'] = dict(ai_config.get('runner_config', {}))
     new_config['ai'] = ai_config
 
     return new_config
 
 
 def upgrade() -> None:
-    """Migrate existing pipeline configs to new runner format."""
+    """Normalize existing pipeline config containers."""
     conn = op.get_bind()
     inspector = sa.inspect(conn)
 

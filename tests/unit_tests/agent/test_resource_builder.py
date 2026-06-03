@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
-from langbot.pkg.agent.runner.pipeline_adapter import PipelineAdapter
+from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
 from langbot.pkg.agent.runner.resource_builder import AgentResourceBuilder
 
 
@@ -62,7 +62,7 @@ def make_query(
 
 
 async def build_resources(app, query, descriptor):
-    binding = PipelineAdapter.pipeline_config_to_binding(query, descriptor.id)
+    binding = QueryEntryAdapter.config_to_binding(query, descriptor.id)
     return await AgentResourceBuilder(app).build_resources_from_binding(
         event=Mock(),
         binding=binding,

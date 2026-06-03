@@ -14,7 +14,7 @@ event -> binding -> runner.run(ctx) -> result stream
 
 本指南验证：
 
-- Host 能通过当前 Pipeline adapter 进入 event-first `run(event, binding)` 主链路。
+- Host 能通过当前 Query entry adapter 进入 event-first `run(event, binding)` 主链路。
 - Runner 来自插件 registry，而不是旧内置 runner 分支。
 - `local-agent` 能消费 Host 模型、工具、知识库、history、state、artifact 等基础设施。
 - 外部 harness runner（Claude Code / Codex）能消费 event-first context，并把 session / working directory 等指针写回 host-owned state。
@@ -136,7 +136,7 @@ bin/lbs case list
 | ID | 场景 | 操作 | 通过条件 |
 | --- | --- | --- | --- |
 | LA-01 | 绑定 prompt | 配置 system prompt 后发送文本。 | runner 使用 `ctx.config.prompt`，不读取 `ctx.adapter.extra["prompt"]`；回复体现绑定 prompt。 |
-| LA-02 | history API | 连续两轮对话，第二轮引用第一轮 marker。 | runner 通过 Host history API 或自管上下文读取历史，不依赖 bootstrap window。 |
+| LA-02 | history API | 连续两轮对话，第二轮引用第一轮 marker。 | runner 通过 Host history API 或自管上下文读取历史，不依赖 inline history window。 |
 | LA-03 | 流式 / 非流式 | 分别用支持流式和关闭流式的路径发送文本。 | 流式 UI 不重复、不空白；非流式只输出最终消息。 |
 | LA-04 | 工具调用 | 绑定测试工具，发送会触发工具的 prompt。 | `ctx.resources.tools` 只包含授权工具；工具调用 started/completed；最终回复包含工具结果。 |
 | LA-05 | RAG | 绑定测试知识库，发送命中文档的 prompt。 | `ctx.resources.knowledge_bases` 包含所选知识库；runner 通过授权 API 检索；回复使用检索内容。 |

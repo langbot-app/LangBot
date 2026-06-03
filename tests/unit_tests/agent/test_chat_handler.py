@@ -29,8 +29,9 @@ class MockLauncherType:
 
 
 class MockConversation:
-    uuid = 'conv-uuid'
-    messages = []
+    def __init__(self):
+        self.uuid = 'conv-uuid'
+        self.messages = []
 
 
 class MockMessage:
@@ -51,7 +52,9 @@ class MockAdapter:
 class MockSession:
     launcher_type = MockLauncherType()
     launcher_id = 'user123'
-    using_conversation = MockConversation()
+
+    def __init__(self):
+        self.using_conversation = MockConversation()
 
 
 class MockQuery:
@@ -155,6 +158,10 @@ class MockApplication:
         self.model_mgr = MagicMock()
         self.model_mgr.get_model_by_uuid = AsyncMock(return_value=None)
 
+        # Mock sess_mgr
+        self.sess_mgr = MagicMock()
+        self.sess_mgr.get_conversation = AsyncMock()
+
 
 class TestStreamingBehavior:
     """Tests for streaming mode behavior."""
@@ -232,7 +239,7 @@ class TestConfigMigrationInChatHandler:
         assert runner_id == 'plugin:langbot/local-agent/default'
 
     def test_resolve_runner_id_from_old_format(self):
-        """ConfigMigration should handle old runner format."""
+        """ConfigMigration should not resolve removed runner aliases."""
         pipeline_config = {
             'ai': {
                 'runner': {
@@ -242,7 +249,7 @@ class TestConfigMigrationInChatHandler:
         }
 
         runner_id = ConfigMigration.resolve_runner_id(pipeline_config)
-        assert runner_id == 'plugin:langbot/local-agent/default'
+        assert runner_id is None
 
 
 class TestErrorHandling:
@@ -398,6 +405,50 @@ class TestChatHandlerAsyncBehavior:
         assert len(query.resp_messages) == 2
         assert query.resp_messages[0].content == 'Response 1'
         assert query.resp_messages[1].content == 'Response 2'
+
+    @pytest.mark.asyncio
+    async def test_history_update_recreates_conversation_if_tool_resets_it(self):
+        """History update should tolerate CREATE_NEW_CONVERSATION during runner execution."""
+        from langbot.pkg.pipeline.process.handlers.chat import ChatMessageHandler
+        from langbot.pkg.pipeline import entities
+
+        response = MockMessageChunk('Tool response')
+        new_conversation = MockConversation()
+
+        class ResetConversationOrchestrator(MockAgentRunOrchestrator):
+            async def run_from_query(self, query):
+                query.session.using_conversation = None
+                yield response
+
+        mock_ap = MockApplication(orchestrator=ResetConversationOrchestrator())
+        mock_ap.plugin_connector.emit_event = AsyncMock(return_value=MockEventContext(prevented=False))
+        mock_ap.sess_mgr.get_conversation = AsyncMock(return_value=new_conversation)
+
+        query = MockQuery()
+        query.adapter.is_stream = False
+
+        handler = ChatMessageHandler(mock_ap)
+
+        mock_event = MagicMock()
+        mock_event.return_value = MagicMock()
+
+        def make_result(*args, **kwargs):
+            return MagicMock(result_type=kwargs.get('result_type', entities.ResultType.CONTINUE))
+
+        with patch('langbot.pkg.pipeline.process.handlers.chat.events') as mock_events_module, \
+             patch('langbot.pkg.pipeline.entities.StageProcessResult', side_effect=make_result):
+            mock_events_module.PersonNormalMessageReceived = mock_event
+            mock_events_module.GroupNormalMessageReceived = mock_event
+
+            results = []
+            async for result in handler.handle(query):
+                results.append(result)
+
+        assert len(results) == 1
+        assert results[0].result_type == entities.ResultType.CONTINUE
+        mock_ap.sess_mgr.get_conversation.assert_awaited_once()
+        assert query.session.using_conversation is new_conversation
+        assert new_conversation.messages == [query.user_message, response]
 
     @pytest.mark.asyncio
     async def test_runner_not_found_error(self):

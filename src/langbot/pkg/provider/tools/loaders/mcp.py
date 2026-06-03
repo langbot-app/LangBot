@@ -582,7 +582,7 @@ class MCPLoader(loader.ToolLoader):
                     return function
         return None
 
-    async def invoke_tool(self, name: str, parameters: dict, query: pipeline_query.Query) -> typing.Any:
+    async def invoke_tool(self, name: str, parameters: dict, query: pipeline_query.Query | None) -> typing.Any:
         """执行工具调用"""
         for session in self.sessions.values():
             for function in session.get_tools():

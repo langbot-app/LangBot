@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine
 from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
 from langbot.pkg.agent.runner.errors import RunnerExecutionError
 from langbot.pkg.agent.runner.orchestrator import AgentRunOrchestrator
-from langbot.pkg.agent.runner.pipeline_adapter import PipelineAdapter
+from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
 from langbot.pkg.agent.runner.session_registry import get_session_registry
 from langbot.pkg.agent.runner.persistent_state_store import reset_persistent_state_store
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
@@ -239,7 +239,7 @@ def test_context_builder_includes_consumable_base64_attachments():
         [platform_message.Image(base64="data:image/jpeg;base64,aGVsbG8=")]
     )
 
-    input_data = PipelineAdapter._build_input(query)
+    input_data = QueryEntryAdapter._build_input(query)
 
     assert input_data.contents[0].text == "see attached"
     assert input_data.contents[1].image_base64 == "data:image/png;base64,aGVsbG8="
@@ -362,8 +362,8 @@ async def test_orchestrator_does_not_package_query_messages_into_context(clean_a
     assert len(messages) == 1
     context = plugin_connector.contexts[0]
     assert context["config"]["custom-option"] == 2
-    assert context["bootstrap"] is None
-    assert set(context["adapter"]) == {"query_id", "extra"}
+    assert "bootstrap" not in context
+    assert set(context["adapter"]) == {"extra"}
     assert "context_packaging" not in context["runtime"]["metadata"]
     assert [message.content for message in query.messages] == [
         "message 1",
@@ -473,12 +473,12 @@ async def test_orchestrator_enforces_total_runner_deadline(clean_agent_state):
     assert await get_session_registry().list_active_runs() == []
 
 
-class TestPipelineCompatibilityQueryIdInSession:
-    """Tests for query_id entering session registry."""
+class TestQueryEntrySessionQueryId:
+    """Tests for internal query_id entering session registry."""
 
     @pytest.mark.asyncio
-    async def test_query_id_registered_in_session_for_pipeline_flow(self, clean_agent_state):
-        """query_id from Pipeline flow is registered in session."""
+    async def test_query_id_registered_in_session_for_query_entry_flow(self, clean_agent_state):
+        """query_id from Query entry flow is registered internally in session."""
         db_engine = clean_agent_state
         descriptor = make_descriptor()
         plugin_connector = FakePluginConnector(
@@ -557,12 +557,12 @@ class TestPipelineCompatibilityQueryIdInSession:
         assert session_during_run["query_id"] is None
 
 
-class TestPipelineAdapterPromptAndParams:
-    """Tests for prompt and params handling in Pipeline adapter."""
+class TestQueryEntryAdapterParams:
+    """Tests for params handling in Query entry adapter."""
 
     @pytest.mark.asyncio
-    async def test_prompt_in_adapter_extra(self, clean_agent_state):
-        """Pipeline prompt is placed in adapter.extra.prompt."""
+    async def test_prompt_not_pushed_into_adapter_extra(self, clean_agent_state):
+        """Pipeline prompt is not pushed into adapter.extra."""
         from langbot_plugin.api.entities.builtin.provider import prompt as provider_prompt
 
         db_engine = clean_agent_state
@@ -590,12 +590,8 @@ class TestPipelineAdapterPromptAndParams:
         _messages = [message async for message in orchestrator.run_from_query(query)]
 
         context = plugin_connector.contexts[0]
-        # Prompt should be in adapter.extra
-        assert "prompt" in context["adapter"]["extra"]
-        assert len(context["adapter"]["extra"]["prompt"]) == 1
-        assert context["adapter"]["extra"]["prompt"][0]["role"] == "system"
-        # Top-level should NOT have prompt
         assert "prompt" not in context
+        assert "prompt" not in context["adapter"]["extra"]
 
     @pytest.mark.asyncio
     async def test_params_filtering_keeps_public_param(self, clean_agent_state):
@@ -721,8 +717,8 @@ class TestPipelineAdapterPromptAndParams:
         assert "a_lambda" not in params
 
 
-class TestPipelineAdapterHostCapabilities:
-    """Tests for event-first host capabilities via Pipeline adapter path."""
+class TestQueryEntryAdapterHostCapabilities:
+    """Tests for event-first host capabilities via Query entry adapter path."""
 
     @pytest.mark.asyncio
     async def test_state_updated_writes_to_persistent_store(self, clean_agent_state):
@@ -760,9 +756,9 @@ class TestPipelineAdapterHostCapabilities:
         persistent_store = get_persistent_state_store(db_engine)
         # Build snapshot to check if state was written
         # Note: We need to rebuild the event and binding to query the store
-        from langbot.pkg.agent.runner.pipeline_adapter import PipelineAdapter
-        event = PipelineAdapter.query_to_event(query)
-        binding = PipelineAdapter.pipeline_config_to_binding(query, RUNNER_ID)
+        from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
+        event = QueryEntryAdapter.query_to_event(query)
+        binding = QueryEntryAdapter.config_to_binding(query, RUNNER_ID)
 
         snapshot = await persistent_store.build_snapshot_from_event(event, binding, descriptor)
         assert snapshot["conversation"]["external.test_key"] == "test_value"

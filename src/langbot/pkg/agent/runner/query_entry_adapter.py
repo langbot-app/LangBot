@@ -1,7 +1,7 @@
-"""Pipeline adapter for converting Query to event-first envelope.
+"""Query entry adapter for converting Query to event-first envelope.
 
-This adapter bridges the Query/Pipeline entry point with the event-first
-Protocol v1 architecture.
+This adapter bridges the current Query entry point with the event-first
+Protocol v1 architecture without exposing Query internals to runners.
 """
 from __future__ import annotations
 
@@ -31,12 +31,12 @@ from .host_models import (
 from . import events as runner_events
 
 
-class PipelineAdapter:
-    """Adapter for converting Pipeline Query to event-first envelope.
+class QueryEntryAdapter:
+    """Adapter for converting Query to event-first envelope.
 
     This adapter is responsible for:
     - Converting Query to AgentEventEnvelope
-    - Converting Pipeline config to temporary AgentBinding
+    - Converting current Agent/runner config to temporary AgentBinding
     - Putting Query-only fields into adapter context
     """
 
@@ -49,10 +49,10 @@ class PipelineAdapter:
         cls,
         query: pipeline_query.Query,
     ) -> AgentEventEnvelope:
-        """Convert Pipeline Query to AgentEventEnvelope.
+        """Convert Query to AgentEventEnvelope.
 
         Args:
-            query: Pipeline query
+            query: Current entry query
 
         Returns:
             AgentEventEnvelope for event-first processing
@@ -82,7 +82,7 @@ class PipelineAdapter:
             event_id=event.event_id or str(query.query_id),
             event_type=event.event_type or runner_events.MESSAGE_RECEIVED,
             event_time=event.event_time,
-            source="pipeline_adapter",
+            source="host_adapter",
             source_event_type=event.source_event_type,
             bot_id=query.bot_uuid,
             workspace_id=None,  # Not available in Query
@@ -97,15 +97,15 @@ class PipelineAdapter:
         )
 
     @classmethod
-    def pipeline_config_to_binding(
+    def config_to_binding(
         cls,
         query: pipeline_query.Query,
         runner_id: str,
     ) -> AgentBinding:
-        """Convert Pipeline config to temporary AgentBinding.
+        """Convert current config container to temporary AgentBinding.
 
         Args:
-            query: Pipeline query
+            query: Current entry query
             runner_id: Resolved runner ID
 
         Returns:
@@ -121,7 +121,7 @@ class PipelineAdapter:
             scope_id=agent_id,
         )
 
-        # Build resource policy from pipeline config
+        # Build resource policy from current config
         resource_policy = ResourcePolicy(
             allowed_model_uuids=cls._extract_allowed_models(query),
             allowed_tool_names=cls._extract_allowed_tools(query),
@@ -159,10 +159,9 @@ class PipelineAdapter:
         query: pipeline_query.Query,
         binding: AgentBinding,
     ) -> dict[str, typing.Any]:
-        """Build Query-derived fields for the Pipeline adapter entry."""
+        """Build Query-derived fields for the current entry adapter."""
         return {
             'params': cls.build_params(query),
-            'prompt': cls.build_prompt(query),
             'query_id': getattr(query, 'query_id', None),
         }
 
@@ -188,15 +187,6 @@ class PipelineAdapter:
         return params
 
     @classmethod
-    def build_prompt(cls, query: pipeline_query.Query) -> list[dict[str, typing.Any]]:
-        """Build effective prompt messages from Pipeline preprocessing output."""
-        prompt = getattr(query, 'prompt', None)
-        messages = getattr(prompt, 'messages', None)
-        if not messages:
-            return []
-        return [cls._dump_message(msg) for msg in messages]
-
-    @classmethod
     def is_json_serializable(cls, value: typing.Any) -> bool:
         """Return whether a value can safely cross the adapter boundary as JSON."""
         if value is None or isinstance(value, (str, int, float, bool)):
@@ -209,18 +199,6 @@ class PipelineAdapter:
                 for k, v in value.items()
             )
         return False
-
-    @staticmethod
-    def _dump_message(message: typing.Any) -> dict[str, typing.Any]:
-        """Serialize a provider message-like object."""
-        if hasattr(message, 'model_dump'):
-            return message.model_dump(mode='json')
-        if isinstance(message, dict):
-            return message
-        return {
-            'role': getattr(message, 'role', None),
-            'content': getattr(message, 'content', None),
-        }
 
     # Private helper methods
 
@@ -262,7 +240,7 @@ class PipelineAdapter:
             event_id=cls._build_scoped_event_id(query, source_event_id, event_time),
             event_type=runner_events.MESSAGE_RECEIVED,
             event_time=event_time,
-            source="pipeline_adapter",
+            source="host_adapter",
             source_event_type=source_event_type,
             data=event_data,
         )
@@ -278,7 +256,7 @@ class PipelineAdapter:
         launcher_type = getattr(query, 'launcher_type', None)
         launcher_type_value = getattr(launcher_type, 'value', launcher_type) if launcher_type is not None else None
         scope_parts = [
-            'pipeline_adapter',
+            'host_adapter',
             getattr(query, 'pipeline_uuid', None),
             getattr(query, 'bot_uuid', None),
             launcher_type_value,
@@ -289,7 +267,7 @@ class PipelineAdapter:
         ]
         scoped = '|'.join('' if part is None else str(part) for part in scope_parts)
         digest = hashlib.sha256(scoped.encode('utf-8')).hexdigest()[:32]
-        return f'pipeline:{digest}'
+        return f'host:{digest}'
 
     @classmethod
     def _build_conversation_context(

@@ -10,6 +10,8 @@
 
 安全发布级 hardening 是后续 release gate，不应阻塞当前协议闭环，但必须作为进入生产默认启用前的验收条件。
 
+> **硬规则**：能执行代码 / 访问工作目录的外部 harness runner（Claude Code、Codex、Kimi Code 等）在本文 Release Gate Checklist 完成前，**不得在生产环境默认启用**。本地 smoke 通过不等于可生产默认开启。
+
 ## 责任边界
 
 ### LangBot Host 负责

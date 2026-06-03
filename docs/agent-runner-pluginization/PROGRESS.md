@@ -2,6 +2,8 @@
 
 本文档跟踪 Agent Runner 插件化的实现状态，便于快速了解当前进度。
 
+> 本文是 agent-runner 插件化**实现状态的唯一事实源**。协议规范见 [PROTOCOL_V1.md](./PROTOCOL_V1.md)，Host 架构见 [HOST_SDK_INFRASTRUCTURE.md](./HOST_SDK_INFRASTRUCTURE.md)。规范类文档不再各自维护"当前状态/✅"段落，状态一律以本文为准。
+
 ## 总体进度
 
 **当前阶段**: Phase 3.5 已完成，Event-first 基础设施已完成；2026-05-29 已通过本地 `local-agent` 与 Claude Code runner smoke。
@@ -47,7 +49,7 @@
 | `AgentRunContextBuilder` | ✅ | `pkg/agent/runner/context_builder.py` - event-first context |
 | `AgentResultNormalizer` | ✅ | `pkg/agent/runner/result_normalizer.py` |
 | `ConfigMigration` | ✅ | `pkg/agent/runner/config_migration.py` |
-| `PipelineAdapter` | ✅ | `pkg/agent/runner/pipeline_adapter.py` - Query → Event + Binding |
+| `QueryEntryAdapter` | ✅ | `pkg/agent/runner/query_entry_adapter.py` - Query → Event + Binding |
 | `run_from_query()` → `run(event, binding)` | ✅ | Pipeline 路径委托到 event-first path |
 | `ChatMessageHandler` 集成 | ✅ | 使用 orchestrator 替代 wrapper |
 | `PipelineService` 集成 | ✅ | 从 registry 获取 runner metadata |
@@ -89,6 +91,7 @@
 | 2026-05-29 | `claude-code-agent` Pipeline Debug Chat | ✅ PASS | `langbot-skills/reports/2026-05-29-18-03-31-169-08-00-pipeline-debug-chat.md` |
 | 2026-05-29 | Claude Code context / skill / MCP projection | ✅ PASS | `langbot-skills/reports/claude-code-agent-resource-context-20260529.md` |
 | 2026-05-29 | Claude Code resume state | ✅ PASS | `langbot-skills/reports/claude-code-agent-real-workdir-20260529.md` |
+| 2026-05-29 | `codex-agent` Debug Chat + thread_id resume state | ✅ PASS | 见 [PHASE1_QA_ACCEPTANCE_MATRIX.md](./PHASE1_QA_ACCEPTANCE_MATRIX.md) §10 / `langbot-skills/reports/` |
 
 ---
 
@@ -150,8 +153,8 @@
 
 ## 相关文档
 
-- [README.md](./README.md) — 总体设计
+- [README.md](./README.md) — 总体设计与路由
+- [PROTOCOL_V1.md](./PROTOCOL_V1.md) — 协议规范（唯一 schema 事实源）
 - [PHASE1_QA_ACCEPTANCE_MATRIX.md](./PHASE1_QA_ACCEPTANCE_MATRIX.md) — Agent Runner QA 指南和下一轮测试入口
 - [OFFICIAL_RUNNER_PLUGINS.md](./OFFICIAL_RUNNER_PLUGINS.md) — 官方插件仓库计划
 - [SECURITY_HARDENING.md](./SECURITY_HARDENING.md) — 安全发布级 hardening 后续门槛
-- [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) — 具体实施细节

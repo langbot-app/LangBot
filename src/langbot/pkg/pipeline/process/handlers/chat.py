@@ -11,11 +11,18 @@ from .. import handler
 from ... import entities
 
 import langbot_plugin.api.entities.events as events
+from ....agent.runner.config_migration import ConfigMigration
+from ....agent.runner import config_schema
 from ....utils import constants, runner as runner_utils
 from ....telemetry import features as telemetry_features
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
+
+
+DEFAULT_PROMPT_CONFIG = [
+    {'role': 'system', 'content': 'You are a helpful assistant.'},
+]
 
 
 class ChatMessageHandler(handler.MessageHandler):
@@ -141,8 +148,9 @@ class ChatMessageHandler(handler.MessageHandler):
                     )
 
                 # Update conversation history
-                query.session.using_conversation.messages.append(query.user_message)
-                query.session.using_conversation.messages.extend(query.resp_messages)
+                conversation = await self._ensure_conversation_for_history(query)
+                conversation.messages.append(query.user_message)
+                conversation.messages.extend(query.resp_messages)
 
             except Exception as e:
                 # Import orchestrator errors for specific handling
@@ -243,3 +251,69 @@ class ChatMessageHandler(handler.MessageHandler):
                             await self.ap.survey.record_bot_response_success()
                 except Exception as ex:
                     self.ap.logger.warning(f'Failed to send telemetry: {ex}')
+
+    async def _ensure_conversation_for_history(
+        self,
+        query: pipeline_query.Query,
+    ) -> provider_session.Conversation:
+        session = getattr(query, 'session', None)
+        conversation = getattr(session, 'using_conversation', None)
+        if conversation is not None:
+            return conversation
+
+        if session is None or getattr(self.ap, 'sess_mgr', None) is None:
+            raise RuntimeError('Conversation is not available for history update')
+
+        prompt_config = await self._build_history_prompt_config(query)
+        conversation = await self.ap.sess_mgr.get_conversation(
+            query,
+            session,
+            prompt_config,
+            query.pipeline_uuid,
+            query.bot_uuid,
+        )
+        if conversation is None:
+            raise RuntimeError('Conversation manager did not return a conversation')
+
+        if getattr(session, 'using_conversation', None) is None:
+            session.using_conversation = conversation
+        return conversation
+
+    async def _build_history_prompt_config(
+        self,
+        query: pipeline_query.Query,
+    ) -> list[dict[str, typing.Any]]:
+        prompt_messages = getattr(getattr(query, 'prompt', None), 'messages', None)
+        if prompt_messages:
+            prompt_config = []
+            for message in prompt_messages:
+                if hasattr(message, 'model_dump'):
+                    prompt_config.append(message.model_dump(mode='python'))
+                elif isinstance(message, dict):
+                    prompt_config.append(message)
+            if prompt_config:
+                return prompt_config
+
+        runner_id = ConfigMigration.resolve_runner_id(query.pipeline_config)
+        runner_config = ConfigMigration.resolve_runner_config(query.pipeline_config, runner_id) if runner_id else {}
+        bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
+        descriptor = await self._get_runner_descriptor(runner_id, bound_plugins)
+        return config_schema.extract_prompt_config(descriptor, runner_config, DEFAULT_PROMPT_CONFIG)
+
+    async def _get_runner_descriptor(
+        self,
+        runner_id: str | None,
+        bound_plugins: list[str] | None,
+    ) -> typing.Any | None:
+        if not runner_id:
+            return None
+
+        registry = getattr(self.ap, 'agent_runner_registry', None)
+        if registry is None:
+            return None
+
+        try:
+            return await registry.get(runner_id, bound_plugins)
+        except Exception as e:
+            self.ap.logger.debug(f'Unable to load AgentRunner descriptor for {runner_id}: {e}')
+            return None

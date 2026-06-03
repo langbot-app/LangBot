@@ -45,7 +45,7 @@ def make_session(
     Args:
         run_id: Unique run identifier
         runner_id: Runner descriptor ID
-        query_id: Pipeline query ID
+        query_id: Host entry query ID
         plugin_identity: Plugin identifier (author/name)
         resources: AgentResources dict (uses make_resources() default if None)
 

@@ -2,6 +2,8 @@
 
 本文档记录后续 Agent Platform / runtime 管控面的设计方向。它是当前讨论中的 **v2 文档**，但这里的 v2 指 Host capability layer / runtime control plane，不是 `AgentRunner Protocol v2`，也不属于当前 AgentRunner Protocol v1 插件化主线的交付范围。
 
+> **future design note**。协议数据结构见 [PROTOCOL_V1.md](./PROTOCOL_V1.md)，实现进度见 [PROGRESS.md](./PROGRESS.md)。本文只讲 v2 管控面方向，不重抄 schema。
+
 ## 1. 结论
 
 当前主线应继续收口 AgentRunner v1：

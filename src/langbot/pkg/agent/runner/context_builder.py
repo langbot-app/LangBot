@@ -116,7 +116,6 @@ class AgentRuntimeContext(typing.TypedDict):
 
     langbot_version: str | None
     sdk_protocol_version: str
-    query_id: int | None
     trace_id: str | None
     deadline_at: float | None
     metadata: dict[str, typing.Any]
@@ -128,8 +127,8 @@ class AgentRunContextPayload(typing.TypedDict):
     Protocol v1 structure - matches SDK AgentRunContext.
 
     Note: The 'config' field contains the current Agent/runner config
-    from ai.runner_config[runner_id] while Pipeline remains the temporary
-    configuration container. It is not plugin instance config.
+    from ai.runner_config[runner_id] while the current Query entry remains
+    a temporary configuration container. It is not plugin instance config.
     """
 
     run_id: str
@@ -145,7 +144,6 @@ class AgentRunContextPayload(typing.TypedDict):
     state: AgentRunState
     runtime: AgentRuntimeContext
     config: dict[str, typing.Any]  # Agent/runner config from ai.runner_config[runner_id]
-    bootstrap: dict[str, typing.Any] | None  # Optional bootstrap context
     adapter: dict[str, typing.Any] | None  # Entry adapter context
     metadata: dict[str, typing.Any]  # Additional metadata
 
@@ -162,7 +160,7 @@ class AgentRunContextBuilder:
     - Build runtime context with host info, trace_id, deadline
     - Set config from current Agent/runner configuration.
 
-    Pipeline Query adaptation belongs to PipelineAdapter, not this builder.
+    Query adaptation belongs to QueryEntryAdapter, not this builder.
     """
 
     ap: app.Application
@@ -266,7 +264,6 @@ class AgentRunContextBuilder:
         runtime: AgentRuntimeContext = {
             'langbot_version': self.ap.ver_mgr.get_current_version(),
             'sdk_protocol_version': descriptor.protocol_version,
-            'query_id': None,  # No query_id in event-first mode
             'trace_id': run_id,
             'deadline_at': self._build_deadline_from_binding(binding),
             'metadata': {
@@ -293,7 +290,6 @@ class AgentRunContextBuilder:
 
         # Build adapter context (empty for event-first)
         adapter_context = {
-            'query_id': None,
             'extra': {},
         }
 
@@ -312,7 +308,6 @@ class AgentRunContextBuilder:
             'state': state,
             'runtime': runtime,
             'config': binding.runner_config,
-            'bootstrap': None,
             'adapter': adapter_context,
             'metadata': {},  # Additional metadata
         }
