@@ -148,6 +148,7 @@ class QueryEntryAdapter:
         return {
             'params': cls.build_params(query),
             'query_id': getattr(query, 'query_id', None),
+            'prompt_get': cls._has_effective_prompt(query),
         }
 
     @classmethod
@@ -184,6 +185,12 @@ class QueryEntryAdapter:
                 for k, v in value.items()
             )
         return False
+
+    @classmethod
+    def _has_effective_prompt(cls, query: pipeline_query.Query) -> bool:
+        prompt = getattr(query, 'prompt', None)
+        messages = getattr(prompt, 'messages', None) if prompt is not None else None
+        return isinstance(messages, list)
 
     # Private helper methods
 
@@ -374,24 +381,18 @@ class QueryEntryAdapter:
             content = getattr(user_message, 'content', None)
             if isinstance(content, list):
                 for elem in content:
-                    # Handle both real objects and mocks
+                    elem_dict = None
                     if hasattr(elem, 'model_dump'):
-                        contents.append(elem.model_dump(mode='json'))
+                        elem_dict = elem.model_dump(mode='json')
                     elif isinstance(elem, dict):
-                        contents.append(elem)
-                    else:
-                        # For mocks, extract type and text attributes
-                        elem_type = getattr(elem, 'type', None)
-                        if elem_type == 'text':
-                            elem_text = getattr(elem, 'text', None)
-                            contents.append({'type': 'text', 'text': elem_text})
-                            if elem_text:
-                                text_parts.append(elem_text)
+                        elem_dict = elem
+
+                    if not isinstance(elem_dict, dict):
                         continue
 
-                    # Extract text for the text field
-                    if hasattr(elem, 'type') and getattr(elem, 'type', None) == 'text':
-                        elem_text = getattr(elem, 'text', None)
+                    contents.append(elem_dict)
+                    if elem_dict.get('type') == 'text':
+                        elem_text = elem_dict.get('text')
                         if elem_text:
                             text_parts.append(elem_text)
             elif content is not None:
@@ -466,36 +467,37 @@ class QueryEntryAdapter:
         message_chain = getattr(query, 'message_chain', None)
         if message_chain:
             try:
-                for component in message_chain:
-                    artifact_id = str(uuid.uuid4())  # Generate unique ID
-
-                    if isinstance(component, platform_message.Image):
-                        attachments.append({
-                            'artifact_id': artifact_id,
-                            'artifact_type': 'image',
-                            'source': 'message_chain',
-                            'id': component.image_id or None,
-                            'url': component.url or None,
-                        })
-                    elif isinstance(component, platform_message.File):
-                        attachments.append({
-                            'artifact_id': artifact_id,
-                            'artifact_type': 'file',
-                            'source': 'message_chain',
-                            'id': component.id or None,
-                            'name': component.name or None,
-                        })
-                    elif isinstance(component, platform_message.Voice):
-                        attachments.append({
-                            'artifact_id': artifact_id,
-                            'artifact_type': 'voice',
-                            'source': 'message_chain',
-                            'id': component.voice_id or None,
-                            'url': component.url or None,
-                        })
+                message_components = iter(message_chain)
             except TypeError:
-                # message_chain is not iterable (e.g., a Mock object)
-                pass
+                message_components = iter(())
+
+            for component in message_components:
+                artifact_id = str(uuid.uuid4())  # Generate unique ID
+
+                if isinstance(component, platform_message.Image):
+                    attachments.append({
+                        'artifact_id': artifact_id,
+                        'artifact_type': 'image',
+                        'source': 'message_chain',
+                        'id': component.image_id or None,
+                        'url': component.url or None,
+                    })
+                elif isinstance(component, platform_message.File):
+                    attachments.append({
+                        'artifact_id': artifact_id,
+                        'artifact_type': 'file',
+                        'source': 'message_chain',
+                        'id': component.id or None,
+                        'name': component.name or None,
+                    })
+                elif isinstance(component, platform_message.Voice):
+                    attachments.append({
+                        'artifact_id': artifact_id,
+                        'artifact_type': 'voice',
+                        'source': 'message_chain',
+                        'id': component.voice_id or None,
+                        'url': component.url or None,
+                    })
 
         return attachments
 

@@ -368,6 +368,25 @@ def _resolve_remove_think(data: dict[str, Any], query: Any | None) -> bool:
     return False
 
 
+def _dump_prompt_messages(query: Any) -> list[dict[str, Any]]:
+    """Serialize the current effective prompt from a cached Query."""
+    prompt = getattr(query, 'prompt', None)
+    messages = getattr(prompt, 'messages', None) if prompt is not None else None
+    if not isinstance(messages, list):
+        return []
+
+    dumped: list[dict[str, Any]] = []
+    for message in messages:
+        if hasattr(message, 'model_dump'):
+            try:
+                dumped.append(message.model_dump(mode='json'))
+            except TypeError:
+                dumped.append(message.model_dump())
+        elif isinstance(message, dict):
+            dumped.append(message)
+    return dumped
+
+
 def _merge_model_extra_args(model: Any, call_extra_args: Any) -> dict[str, Any]:
     """Merge persisted model extra_args with action-level overrides."""
     merged: dict[str, Any] = {}
@@ -787,17 +806,21 @@ class RuntimeConnectionHandler(handler.Handler):
 
             For AgentRunner calls: requires run_id and validates tool_name against session.resources.tools.
             For regular plugin calls: no run_id, unrestricted access (backward compatibility).
-
-            Note: SDK LangBotAPIProxy (legacy) sends 'tool_parameters' and expects 'tool_response'.
-            SDK AgentRunAPIProxy sends 'parameters' and expects 'result'.
-            Handler returns both for backward compatibility.
             """
             tool_name = data['tool_name']
-            # Support 'tool_parameters' (LangBotAPIProxy) and 'parameters' (AgentRunAPIProxy)
-            parameters = data.get('tool_parameters') or data.get('parameters', {})
             run_id = data.get('run_id')  # Optional: present for AgentRunner calls
             caller_plugin_identity = data.get('caller_plugin_identity')  # Optional: for cross-plugin validation
             session = None
+            is_agent_runner_call = bool(run_id)
+
+            if is_agent_runner_call:
+                if 'parameters' not in data:
+                    return handler.ActionResponse.error(
+                        message='parameters is required for AgentRunner tool calls',
+                    )
+                parameters = data.get('parameters') or {}
+            else:
+                parameters = data.get('tool_parameters') or {}
 
             # Permission validation for AgentRunner calls
             if run_id:
@@ -817,14 +840,9 @@ class RuntimeConnectionHandler(handler.Handler):
                     parameters=parameters,
                     query=query,
                 )
-                # Return both 'tool_response' (LangBotAPIProxy) and 'result' (AgentRunAPIProxy)
-                # LangBotAPIProxy expects 'tool_response', AgentRunAPIProxy expects 'result'
-                return handler.ActionResponse.success(
-                    data={
-                        'tool_response': result,
-                        'result': result,  # backward compatibility
-                    },
-                )
+                if is_agent_runner_call:
+                    return handler.ActionResponse.success(data={'result': result})
+                return handler.ActionResponse.success(data={'tool_response': result})
             except Exception as e:
                 traceback.print_exc()
                 return handler.ActionResponse.error(
@@ -1429,6 +1447,32 @@ class RuntimeConnectionHandler(handler.Handler):
                 return _make_rag_error_response(e, 'RetrievalError', kb_id=kb_id)
 
         # ================= Agent History/Event APIs =================
+
+        @self.action(PluginToRuntimeAction.PROMPT_GET)
+        async def prompt_get(data: dict[str, Any]) -> handler.ActionResponse:
+            """Return the post-preprocessing effective prompt for a query-backed run."""
+            run_id = data.get('run_id')
+            caller_plugin_identity = data.get('caller_plugin_identity')
+
+            if not run_id:
+                return handler.ActionResponse.error(message='run_id is required')
+
+            session, error = await _validate_agent_run_session(
+                run_id,
+                caller_plugin_identity,
+                self.ap,
+                'Prompt get',
+            )
+            if error:
+                return error
+
+            query = _resolve_action_query(data, session, self.ap)
+            if query is None:
+                return handler.ActionResponse.error(
+                    message='Prompt get is only available for query-backed agent runs',
+                )
+
+            return handler.ActionResponse.success(data={'prompt': _dump_prompt_messages(query)})
 
         @self.action(PluginToRuntimeAction.HISTORY_PAGE)
         async def history_page(data: dict[str, Any]) -> handler.ActionResponse:

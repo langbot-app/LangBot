@@ -147,10 +147,11 @@ class ChatMessageHandler(handler.MessageHandler):
                         f'Conversation({query.query_id}) Streaming completed: {chunk_count} chunks, {text_length} chars'
                     )
 
-                # Update conversation history
-                conversation = await self._ensure_conversation_for_history(query)
-                conversation.messages.append(query.user_message)
-                conversation.messages.extend(query.resp_messages)
+                # Keep a conversation object available for downstream legacy
+                # readers, but do not mirror AgentRunner history into
+                # conversation.messages. TranscriptStore is the canonical
+                # history source for this path.
+                await self._ensure_conversation_for_history(query)
 
             except Exception as e:
                 # Import orchestrator errors for specific handling

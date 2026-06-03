@@ -137,6 +137,8 @@ class AgentRunOrchestrator:
             # Merge params into adapter.extra
             if 'params' in adapter_context:
                 context['adapter']['extra']['params'] = adapter_context['params']
+            if adapter_context.get('prompt_get'):
+                context['context']['available_apis']['prompt_get'] = True
 
         # Build state context for State API handlers
         state_context = build_state_context(event, binding, descriptor)

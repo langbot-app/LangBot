@@ -89,6 +89,8 @@ class AgentRunnerCapabilities(BaseModel):
     tool_calling: bool = False
     knowledge_retrieval: bool = False
     multimodal_input: bool = False
+    skill_authoring: bool = False
+    skill_injection: bool = False
     event_context: bool = True
     platform_api: bool = False
     interrupt: bool = False
@@ -102,6 +104,8 @@ class AgentRunnerCapabilities(BaseModel):
 - `tool_calling`: runner 可能调用 Host tool API。
 - `knowledge_retrieval`: runner 可能调用 Host knowledge API。
 - `multimodal_input`: runner 可以处理非纯文本 input / artifact。
+- `skill_authoring`: runner 需要 Host 提供的 skill authoring tools。
+- `skill_injection`: runner 需要 Host 在 effective prompt 中注入 skill index。
 - `event_context`: runner 理解 event-first 输入。
 - `platform_api`: runner 可能请求平台动作。
 - `interrupt`: runner 支持取消或中断。

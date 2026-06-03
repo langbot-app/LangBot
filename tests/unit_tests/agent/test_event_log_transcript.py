@@ -2,8 +2,6 @@
 from __future__ import annotations
 
 import pytest
-from unittest.mock import Mock, MagicMock, patch
-import datetime
 
 from langbot.pkg.agent.runner.host_models import (
     AgentEventEnvelope,
@@ -17,7 +15,6 @@ from langbot.pkg.agent.runner.event_log_store import EventLogStore
 from langbot.pkg.agent.runner.transcript_store import TranscriptStore
 from langbot.pkg.agent.runner.session_registry import get_session_registry
 from langbot_plugin.api.entities.builtin.agent_runner.event import (
-    AgentEventContext,
     ActorContext,
 )
 from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput
@@ -386,9 +383,7 @@ class TestEventLogStoreRealSQLite:
     async def db_engine(self):
         """Create an in-memory SQLite database for testing."""
         from sqlalchemy.ext.asyncio import create_async_engine
-        from sqlalchemy import text
         from langbot.pkg.entity.persistence.base import Base
-        from langbot.pkg.entity.persistence.event_log import EventLog
 
         engine = create_async_engine("sqlite+aiosqlite:///:memory:")
 
@@ -483,9 +478,7 @@ class TestTranscriptStoreRealSQLite:
     async def db_engine(self):
         """Create an in-memory SQLite database for testing."""
         from sqlalchemy.ext.asyncio import create_async_engine
-        from sqlalchemy import text
         from langbot.pkg.entity.persistence.base import Base
-        from langbot.pkg.entity.persistence.transcript import Transcript
 
         engine = create_async_engine("sqlite+aiosqlite:///:memory:")
 
@@ -520,6 +513,44 @@ class TestTranscriptStoreRealSQLite:
 
         assert len(items) == 3
         assert items[0]["conversation_id"] == "conv_001"
+
+    @pytest.mark.asyncio
+    async def test_get_legacy_provider_messages_projects_transcript_history(self, db_engine):
+        """Transcript is the canonical source; legacy Pipeline readers get a Message view."""
+        store = TranscriptStore(db_engine)
+
+        await store.append_transcript(
+            transcript_id="trans_view_001",
+            event_id="evt_view_001",
+            conversation_id="conv_view",
+            role="user",
+            content="User text",
+            content_json={
+                "role": "user",
+                "content": [{"type": "text", "text": "User structured text"}],
+            },
+        )
+        await store.append_transcript(
+            transcript_id="trans_view_002",
+            event_id="evt_view_002",
+            conversation_id="conv_view",
+            role="tool",
+            item_type="tool_result",
+            content="ignored tool result",
+        )
+        await store.append_transcript(
+            transcript_id="trans_view_003",
+            event_id="evt_view_003",
+            conversation_id="conv_view",
+            role="assistant",
+            content="Assistant text",
+        )
+
+        messages = await store.get_legacy_provider_messages("conv_view")
+
+        assert [message.role for message in messages] == ["user", "assistant"]
+        assert messages[0].content[0].text == "User structured text"
+        assert messages[1].content == "Assistant text"
 
     @pytest.mark.asyncio
     async def test_search_transcript_real_db(self, db_engine):
@@ -586,7 +617,7 @@ def mock_db_engine():
 @pytest.fixture
 def mock_handler():
     """Create a mock handler for testing actions."""
-    from langbot_plugin.runtime.io.handler import Handler, ActionResponse
+    from langbot_plugin.runtime.io.handler import Handler
 
     class MockHandler(Handler):
         def __init__(self):

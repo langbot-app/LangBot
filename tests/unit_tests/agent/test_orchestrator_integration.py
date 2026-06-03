@@ -593,6 +593,7 @@ class TestQueryEntryAdapterParams:
         context = plugin_connector.contexts[0]
         assert "prompt" not in context
         assert "prompt" not in context["adapter"]["extra"]
+        assert context["context"]["available_apis"]["prompt_get"] is True
 
     @pytest.mark.asyncio
     async def test_params_filtering_keeps_public_param(self, clean_agent_state):

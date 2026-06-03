@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from ...entity.persistence.transcript import Transcript
+from langbot_plugin.api.entities.builtin.provider import message as provider_message
 
 
 class TranscriptStore:
@@ -225,6 +226,30 @@ class TranscriptStore:
                 return None
             return str(row)
 
+    async def get_legacy_provider_messages(
+        self,
+        conversation_id: str,
+        limit: int = HARD_LIMIT,
+    ) -> list[provider_message.Message]:
+        """Project Transcript rows into the legacy provider Message view.
+
+        AgentRunner history is canonical in Transcript. This view exists for
+        legacy Pipeline readers such as PromptPreProcessing that still expect
+        query.messages.
+        """
+        items, _, _, _ = await self.page_transcript(
+            conversation_id=conversation_id,
+            limit=limit,
+            direction="backward",
+        )
+
+        messages: list[provider_message.Message] = []
+        for item in reversed(items):
+            message = self._transcript_item_to_provider_message(item)
+            if message is not None:
+                messages.append(message)
+        return messages
+
     async def has_history_before(
         self,
         conversation_id: str,
@@ -288,3 +313,29 @@ class TranscriptStore:
             result['artifact_refs'] = []
 
         return result
+
+    def _transcript_item_to_provider_message(
+        self,
+        item: dict[str, typing.Any],
+    ) -> provider_message.Message | None:
+        """Convert one Transcript API item into a provider Message."""
+        if item.get('item_type') != 'message':
+            return None
+
+        role = item.get('role')
+        if role not in {'user', 'assistant'}:
+            return None
+
+        content_json = item.get('content_json')
+        if isinstance(content_json, dict):
+            message_data = dict(content_json)
+            message_data['role'] = role
+            try:
+                return provider_message.Message.model_validate(message_data)
+            except Exception:
+                pass
+
+        content = item.get('content')
+        if content is None:
+            return None
+        return provider_message.Message(role=role, content=content)

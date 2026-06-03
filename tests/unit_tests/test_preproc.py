@@ -17,6 +17,32 @@ from langbot_plugin.api.entities.builtin.provider.prompt import Prompt
 from langbot_plugin.api.entities.builtin.provider.session import Conversation, LauncherTypes, Session
 
 
+class _FakeRunnerDescriptor:
+    config_schema = [
+        {'name': 'model', 'type': 'model-fallback-selector'},
+        {'name': 'prompt', 'type': 'prompt-editor', 'default': []},
+        {'name': 'knowledge-bases', 'type': 'knowledge-base-multi-selector', 'default': []},
+    ]
+    permissions = {
+        'models': ['list', 'invoke', 'stream'],
+        'tools': ['list', 'detail', 'call'],
+        'knowledge_bases': ['list', 'retrieve'],
+    }
+    capabilities = {
+        'tool_calling': True,
+        'knowledge_retrieval': True,
+        'multimodal_input': True,
+        'skill_authoring': True,
+        'skill_injection': True,
+    }
+
+    def supports_tool_calling(self):
+        return self.capabilities.get('tool_calling', False)
+
+    def supports_knowledge_retrieval(self):
+        return self.capabilities.get('knowledge_retrieval', False)
+
+
 def _make_query() -> Query:
     message_chain = MessageChain([Plain(text='create a skill')])
     return Query(
@@ -34,11 +60,13 @@ def _make_query() -> Query:
         pipeline_uuid='pipe-1',
         pipeline_config={
             'ai': {
-                'runner': {'runner': 'local-agent'},
-                'local-agent': {
-                    'model': {'primary': 'model-1', 'fallbacks': []},
-                    'prompt': 'default',
-                    'knowledge-bases': [],
+                'runner': {'id': 'plugin:langbot/local-agent/default'},
+                'runner_config': {
+                    'plugin:langbot/local-agent/default': {
+                        'model': {'primary': 'model-1', 'fallbacks': []},
+                        'prompt': [],
+                        'knowledge-bases': [],
+                    },
                 },
             },
             'trigger': {'misc': {}},
@@ -54,6 +82,15 @@ def _make_conversation() -> Conversation:
         pipeline_uuid='pipe-1',
         bot_uuid='bot-1',
         uuid='conv-1',
+    )
+
+
+async def _passthrough_preproc_event(event, bound_plugins):
+    return SimpleNamespace(
+        event=SimpleNamespace(
+            default_prompt=event.default_prompt,
+            prompt=event.prompt,
+        )
     )
 
 
@@ -83,6 +120,7 @@ def _make_app(*, skill_service) -> SimpleNamespace:
         pipeline_service=SimpleNamespace(
             get_pipeline=AsyncMock(return_value={'extensions_preferences': {'enable_all_skills': True}})
         ),
+        agent_runner_registry=SimpleNamespace(get=AsyncMock(return_value=_FakeRunnerDescriptor())),
         skill_mgr=SimpleNamespace(
             build_skill_aware_prompt_addition=Mock(return_value=''),
             skills={},
@@ -195,6 +233,49 @@ async def test_preproc_skips_injection_when_addendum_is_empty():
     assert result.result_type == entities_module.ResultType.CONTINUE
     if query.prompt and query.prompt.messages:
         assert 'Available Skills' not in (query.prompt.messages[0].content or '')
+
+
+@pytest.mark.asyncio
+async def test_preproc_uses_transcript_history_view_when_available():
+    preproc_module, entities_module = _import_preproc_modules()
+
+    app = _make_app(skill_service=SimpleNamespace())
+    conversation = app.sess_mgr.get_conversation.return_value
+    conversation.messages = [Message(role='user', content='legacy history')]
+    app.plugin_connector.emit_event = AsyncMock(side_effect=_passthrough_preproc_event)
+
+    transcript_messages = [
+        Message(role='user', content='from transcript user'),
+        Message(role='assistant', content='from transcript assistant'),
+    ]
+
+    stage = preproc_module.PreProcessor(app)
+    stage._load_agent_runner_history_messages = AsyncMock(return_value=transcript_messages)
+
+    query = _make_query()
+    result = await stage.process(query, 'PreProcessor')
+
+    assert result.result_type == entities_module.ResultType.CONTINUE
+    assert query.messages == transcript_messages
+
+
+@pytest.mark.asyncio
+async def test_preproc_falls_back_to_conversation_messages_when_transcript_empty():
+    preproc_module, entities_module = _import_preproc_modules()
+
+    app = _make_app(skill_service=SimpleNamespace())
+    legacy_messages = [Message(role='user', content='legacy history')]
+    app.sess_mgr.get_conversation.return_value.messages = legacy_messages
+    app.plugin_connector.emit_event = AsyncMock(side_effect=_passthrough_preproc_event)
+
+    stage = preproc_module.PreProcessor(app)
+    stage._load_agent_runner_history_messages = AsyncMock(return_value=None)
+
+    query = _make_query()
+    result = await stage.process(query, 'PreProcessor')
+
+    assert result.result_type == entities_module.ResultType.CONTINUE
+    assert query.messages == legacy_messages
 
 
 async def stage_process_capture(preproc_module, app, query):

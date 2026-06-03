@@ -408,8 +408,8 @@ class TestChatHandlerAsyncBehavior:
         assert query.resp_messages[1].content == 'Response 2'
 
     @pytest.mark.asyncio
-    async def test_history_update_recreates_conversation_if_tool_resets_it(self):
-        """History update should tolerate CREATE_NEW_CONVERSATION during runner execution."""
+    async def test_agent_turn_recreates_conversation_if_tool_resets_it(self):
+        """Agent turn bookkeeping should tolerate CREATE_NEW_CONVERSATION during runner execution."""
         from langbot.pkg.pipeline.process.handlers.chat import ChatMessageHandler
         from langbot.pkg.pipeline import entities
 
@@ -449,7 +449,7 @@ class TestChatHandlerAsyncBehavior:
         assert results[0].result_type == entities.ResultType.CONTINUE
         mock_ap.sess_mgr.get_conversation.assert_awaited_once()
         assert query.session.using_conversation is new_conversation
-        assert new_conversation.messages == [query.user_message, response]
+        assert new_conversation.messages == []
 
     @pytest.mark.asyncio
     async def test_runner_not_found_error(self):

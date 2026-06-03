@@ -19,8 +19,6 @@ DEFAULT_PROMPT_CONFIG = [
     {'role': 'system', 'content': 'You are a helpful assistant.'},
 ]
 
-LOCAL_AGENT_RUNNER_ID = 'plugin:langbot/local-agent/default'
-
 
 @stage.stage_class('PreProcessor')
 class PreProcessor(stage.PipelineStage):
@@ -107,6 +105,48 @@ class PreProcessor(stage.PipelineStage):
             if isinstance(msg.content, list):
                 msg.content = [elem for elem in msg.content if elem.type != 'image_url']
 
+    def _has_declared_db_engine(self) -> bool:
+        persistence_mgr = getattr(self.ap, 'persistence_mgr', None)
+        if persistence_mgr is None:
+            return False
+        if 'get_db_engine' in getattr(persistence_mgr, '__dict__', {}):
+            return True
+        return hasattr(type(persistence_mgr), 'get_db_engine')
+
+    async def _load_agent_runner_history_messages(
+        self,
+        runner_id: str | None,
+        conversation_uuid: str | None,
+    ) -> list[provider_message.Message] | None:
+        if not runner_id or not conversation_uuid or not self._has_declared_db_engine():
+            return None
+
+        try:
+            from ...agent.runner.transcript_store import TranscriptStore
+
+            store = TranscriptStore(self.ap.persistence_mgr.get_db_engine())
+            messages = await store.get_legacy_provider_messages(str(conversation_uuid))
+        except Exception as e:
+            self.ap.logger.warning(
+                f'Unable to load Transcript history view for conversation {conversation_uuid}: {e}'
+            )
+            return None
+
+        return messages or None
+
+    async def _resolve_history_messages(
+        self,
+        runner_id: str | None,
+        conversation: typing.Any,
+    ) -> list[provider_message.Message]:
+        transcript_messages = await self._load_agent_runner_history_messages(
+            runner_id,
+            getattr(conversation, 'uuid', None),
+        )
+        if transcript_messages is not None:
+            return transcript_messages
+        return conversation.messages.copy()
+
     async def process(
         self,
         query: pipeline_query.Query,
@@ -127,8 +167,11 @@ class PreProcessor(stage.PipelineStage):
 
         uses_host_models = config_schema.uses_host_models(descriptor)
         uses_host_tools = config_schema.uses_host_tools(descriptor)
-        is_local_agent = runner_id == LOCAL_AGENT_RUNNER_ID
-        include_skill_authoring = is_local_agent and getattr(self.ap, 'skill_service', None) is not None
+        include_skill_authoring = (
+            config_schema.supports_skill_authoring(descriptor)
+            and getattr(self.ap, 'skill_service', None) is not None
+        )
+        inject_skill_context = config_schema.supports_skill_injection(descriptor)
         llm_model = None
         if uses_host_models:
             primary_uuid, fallback_uuids = config_schema.extract_model_selection(descriptor, runner_config)
@@ -171,7 +214,7 @@ class PreProcessor(stage.PipelineStage):
         # 设置query
         query.session = session
         query.prompt = conversation.prompt.copy()
-        query.messages = conversation.messages.copy()
+        query.messages = await self._resolve_history_messages(runner_id, conversation)
 
         if uses_host_models:
             query.use_funcs = []
@@ -307,7 +350,7 @@ class PreProcessor(stage.PipelineStage):
         query.prompt.messages = event_ctx.event.default_prompt
         query.messages = event_ctx.event.prompt
 
-        # =========== Skill awareness for the local-agent runner ===========
+        # =========== Skill awareness for capable runners ===========
         # The actual activation goes through the ``activate`` Tool Call so the
         # LLM doesn't see full SKILL.md instructions until it commits to a
         # skill (Claude Code's progressive disclosure). But the LLM still has
@@ -319,7 +362,7 @@ class PreProcessor(stage.PipelineStage):
         #      only) into the system prompt. The contributor's original PR
         #      relied on this injection; without it the LLM never discovers
         #      the skills are there and just calls native tools instead.
-        if is_local_agent and self.ap.skill_mgr:
+        if inject_skill_context and self.ap.skill_mgr:
             pipeline_data = await self.ap.pipeline_service.get_pipeline(query.pipeline_uuid)
             extensions_prefs = (pipeline_data or {}).get('extensions_preferences', {})
             enable_all_skills = extensions_prefs.get('enable_all_skills', True)
