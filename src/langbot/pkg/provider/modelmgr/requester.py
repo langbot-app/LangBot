@@ -69,6 +69,11 @@ class RuntimeProvider:
                 if usage_info:
                     input_tokens = usage_info.get('input_tokens', 0)
                     output_tokens = usage_info.get('output_tokens', 0)
+                    # Attach usage info to message using object.__setattr__ to bypass pydantic validation
+                    try:
+                        object.__setattr__(msg, 'usage', usage_info)
+                    except (AttributeError, TypeError):
+                        pass  # If we can't set it, just skip it
                 return msg
             else:
                 return result

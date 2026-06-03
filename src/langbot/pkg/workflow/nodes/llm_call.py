@@ -234,19 +234,25 @@ Respond in the same language as the user's input.
         messages: list,
         funcs: list | None,
         extra_args: dict,
-    ) -> tuple[Any, Any]:
-        """Try non-streaming invocation with sequential fallback. Returns (message, model_used)."""
+    ) -> tuple[Any, Any, dict]:
+        """Try non-streaming invocation with sequential fallback. Returns (message, model_used, usage_info)."""
         last_error = None
         for model in candidates:
             try:
-                msg = await model.provider.invoke_llm(
+                result = await model.provider.invoke_llm(
                     query=None,
                     model=model,
                     messages=messages,
                     funcs=funcs if model.model_entity.abilities.__contains__('func_call') else [],
                     extra_args=extra_args,
                 )
-                return msg, model
+                # invoke_llm returns (message, usage_info) tuple
+                if isinstance(result, tuple) and len(result) == 2:
+                    msg, usage_info = result
+                else:
+                    msg = result
+                    usage_info = {}
+                return msg, model, usage_info
             except Exception as e:
                 last_error = e
                 logger.warning(f'[LLM:{self.node_id}] Model {model.model_entity.name} failed: {e}, trying next...')
@@ -514,7 +520,7 @@ Respond in the same language as the user's input.
 
         # Invoke LLM with fallback
         try:
-            result_message, used_model = await self._invoke_with_fallback(
+            result_message, used_model, llm_usage = await self._invoke_with_fallback(
                 candidates=candidates,
                 messages=messages,
                 funcs=None,
@@ -579,25 +585,31 @@ Respond in the same language as the user's input.
                 'blocked_by_filter': True,
             }
 
-        # Extract usage info
-        if hasattr(result_message, 'usage') and result_message.usage:
+        # Extract usage info from LLM call result
+        # Priority: llm_usage (from _invoke_with_fallback) > result_message.usage > result_message.token_usage
+        if llm_usage:
+            usage = {
+                'prompt_tokens': llm_usage.get('input_tokens', 0) or llm_usage.get('prompt_tokens', 0),
+                'completion_tokens': llm_usage.get('output_tokens', 0) or llm_usage.get('completion_tokens', 0),
+                'total_tokens': llm_usage.get('total_tokens', 0),
+            }
+        # Check result_message.usage (set by RuntimeProvider.invoke_llm)
+        elif hasattr(result_message, 'usage') and result_message.usage:
             u = result_message.usage
-            # Handle both object and dict usage
             if isinstance(u, dict):
                 usage = {
-                    'prompt_tokens': u.get('prompt_tokens', 0) or 0,
-                    'completion_tokens': u.get('completion_tokens', 0) or 0,
-                    'total_tokens': u.get('total_tokens', 0) or 0,
+                    'prompt_tokens': u.get('input_tokens', 0) or u.get('prompt_tokens', 0),
+                    'completion_tokens': u.get('output_tokens', 0) or u.get('completion_tokens', 0),
+                    'total_tokens': u.get('total_tokens', 0),
                 }
             else:
                 usage = {
-                    'prompt_tokens': getattr(u, 'prompt_tokens', 0) or 0,
-                    'completion_tokens': getattr(u, 'completion_tokens', 0) or 0,
-                    'total_tokens': getattr(u, 'total_tokens', 0) or 0,
+                    'prompt_tokens': getattr(u, 'input_tokens', 0) or getattr(u, 'prompt_tokens', 0),
+                    'completion_tokens': getattr(u, 'output_tokens', 0) or getattr(u, 'completion_tokens', 0),
+                    'total_tokens': getattr(u, 'total_tokens', 0),
                 }
         elif hasattr(result_message, 'token_usage') and result_message.token_usage:
             u = result_message.token_usage
-            # Handle both object and dict token_usage
             if isinstance(u, dict):
                 usage = {
                     'prompt_tokens': u.get('prompt_tokens', 0) or 0,

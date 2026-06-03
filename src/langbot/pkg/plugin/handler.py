@@ -354,9 +354,19 @@ class RuntimeConnectionHandler(handler.Handler):
                 extra_args=extra_args,
             )
 
+            # invoke_llm returns (message, usage_info) tuple
+            if isinstance(result, tuple) and len(result) == 2:
+                msg, usage_info = result
+                msg_dump = msg.model_dump()
+                # Attach usage info to message dump
+                if usage_info:
+                    msg_dump['usage'] = usage_info
+            else:
+                msg_dump = result.model_dump()
+
             return handler.ActionResponse.success(
                 data={
-                    'message': result.model_dump(),
+                    'message': msg_dump,
                 },
             )
 

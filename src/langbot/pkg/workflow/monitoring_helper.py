@@ -20,17 +20,24 @@ import json
 
 if typing.TYPE_CHECKING:
     from ..core import app
-    from langbot_plugin.api.entities.builtin.workflow.query import WorkflowQuery
 
 
 class WorkflowMonitoringHelper:
     """Helper class for workflow monitoring operations"""
 
     @staticmethod
+    def _is_workflow_query(query) -> bool:
+        """Check if query is a WorkflowQuery object"""
+        if query is None or isinstance(query, str):
+            return False
+        # Check for WorkflowQuery attributes
+        return hasattr(query, 'launcher_type') or hasattr(query, 'workflow_uuid')
+
+    @staticmethod
     def _get_session_id(query, context_vars: dict | None = None) -> str:
         """Build session_id from query or context_vars"""
-        # Try to get from query first
-        if not isinstance(query, str) and query.launcher_type:
+        # Try to get from WorkflowQuery first
+        if WorkflowMonitoringHelper._is_workflow_query(query) and query.launcher_type:
             launcher_type = query.launcher_type.value if hasattr(query.launcher_type, 'value') else str(query.launcher_type)
             launcher_id = query.launcher_id or 'unknown'
             return f'{launcher_type}_{launcher_id}'
@@ -44,17 +51,23 @@ class WorkflowMonitoringHelper:
     @staticmethod
     def _get_platform(query, context_vars: dict | None = None) -> str:
         """Get platform name from query or context_vars"""
-        if not isinstance(query, str) and query.launcher_type:
+        # Try WorkflowQuery first
+        if WorkflowMonitoringHelper._is_workflow_query(query) and query.launcher_type:
             if hasattr(query.launcher_type, 'value'):
                 return query.launcher_type.value
             return str(query.launcher_type)
+        
+        # Fallback to context_vars for launcher_type (person/group)
+        if context_vars and context_vars.get('_launcher_type'):
+            return context_vars['_launcher_type']
+        
         return 'workflow'
 
     @staticmethod
     def _get_sender_name(query, context_vars: dict | None = None) -> str | None:
         """Get sender name from query or context_vars"""
-        # Try query first
-        if not isinstance(query, str):
+        # Try WorkflowQuery first
+        if WorkflowMonitoringHelper._is_workflow_query(query):
             if query.sender_name:
                 return query.sender_name
             if query.message_event and hasattr(query.message_event, 'sender'):

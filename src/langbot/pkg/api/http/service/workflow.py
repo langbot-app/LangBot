@@ -6,9 +6,7 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime, timedelta
-from typing import Optional
-
-logger = logging.getLogger(__name__)
+from typing import Optional, TYPE_CHECKING
 
 import sqlalchemy
 
@@ -22,10 +20,13 @@ from ....workflow.entities import (
     Position,
     MessageContext,
 )
-from langbot_plugin.api.entities.builtin.workflow.enums import ExecutionStatus, NodeStatus
+from langbot_plugin.api.entities.builtin.workflow.enums import ExecutionStatus, NodeStatus, TriggerType
+from langbot_plugin.api.entities.builtin.workflow.query import WorkflowQuery
+from langbot_plugin.api.entities.builtin.provider.session import LauncherTypes
 from ....workflow.executor import WorkflowExecutor
 from ....workflow.registry import NodeTypeRegistry
 
+logger = logging.getLogger(__name__)
 
 class WorkflowExecutionFailedError(Exception):
     """Raised when a workflow execution finishes with failed status."""
@@ -399,8 +400,26 @@ class WorkflowService:
                     ),
                     raw_message=message_context_data.get('raw_message', {}),
                 )
-                # Set query from message_content for logging purposes
-                context.query = context.message_context.message_content
+                
+                # Determine launcher_type from is_group flag
+                is_group = message_context_data.get('is_group', False)
+                launcher_type = LauncherTypes.GROUP if is_group else LauncherTypes.PERSON
+                
+                # Create WorkflowQuery object with launcher_type for monitoring
+                context.query = WorkflowQuery(
+                    workflow_uuid=workflow_uuid,
+                    workflow_name=workflow_name,
+                    execution_id=execution_uuid,
+                    launcher_type=launcher_type,
+                    launcher_id=message_context_data.get('sender_id', ''),
+                    sender_id=message_context_data.get('sender_id', ''),
+                    sender_name=message_context_data.get('sender_name', 'User'),
+                    message_context=context.message_context,
+                    bot_uuid=bot_id,
+                    trigger_type=TriggerType.MESSAGE,
+                    trigger_data=raw_trigger_data,
+                    variables={},
+                )
 
             # Note: Frontend panel logging has been removed.
             # A new solution will be implemented separately.
@@ -413,7 +432,9 @@ class WorkflowService:
             
             # Store launcher info for monitoring (used when query is a string)
             if message_context_data:
-                context.variables['_launcher_type'] = 'websocket'
+                # Determine launcher_type from is_group flag
+                is_group = message_context_data.get('is_group', False)
+                context.variables['_launcher_type'] = 'group' if is_group else 'person'
                 context.variables['_launcher_id'] = message_context_data.get('sender_id', '')
                 context.variables['_sender_name'] = message_context_data.get('sender_name', 'User')
 

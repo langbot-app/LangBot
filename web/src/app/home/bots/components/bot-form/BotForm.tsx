@@ -320,6 +320,7 @@ export default function BotForm({
     setIsLoading(true);
     if (initBotId) {
       const formValues = form.getValues();
+      const bindingType = formValues.binding_type ?? 'pipeline';
       const updateBot: Bot = {
         uuid: initBotId,
         name: formValues.name,
@@ -327,13 +328,13 @@ export default function BotForm({
         adapter: formValues.adapter,
         adapter_config: formValues.adapter_config,
         enable: formValues.enable,
-        binding_type: formValues.binding_type ?? 'pipeline',
+        binding_type: bindingType,
         binding_uuid: formValues.binding_uuid ?? '',
-        // Sync use_pipeline_uuid for backward compatibility when binding_type is 'pipeline'
-        use_pipeline_uuid:
-          formValues.binding_type === 'pipeline'
-            ? formValues.binding_uuid
-            : formValues.use_pipeline_uuid,
+        // Only send use_pipeline_uuid when binding_type is 'pipeline'
+        // For 'workflow' binding, we don't need this field
+        ...(bindingType === 'pipeline' && {
+          use_pipeline_uuid: formValues.binding_uuid,
+        }),
       };
       httpClient
         .updateBot(initBotId, updateBot)

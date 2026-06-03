@@ -135,7 +135,8 @@ class BotService:
         binding_type = bot_data.get('binding_type')
 
         # set use_pipeline_name (for backward compatibility with 'pipeline' binding_type)
-        if 'use_pipeline_uuid' in bot_data:
+        # Only validate pipeline when binding_type is 'pipeline' or not set (default to pipeline)
+        if 'use_pipeline_uuid' in bot_data and binding_type != 'workflow':
             result = await self.ap.persistence_mgr.execute_async(
                 sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(
                     persistence_pipeline.LegacyPipeline.uuid == bot_data['use_pipeline_uuid']
@@ -149,7 +150,12 @@ class BotService:
                     bot_data['binding_uuid'] = bot_data['use_pipeline_uuid']
                     bot_data['binding_type'] = 'pipeline'
             else:
-                raise Exception('Pipeline not found')
+                # Only raise error if binding_type is explicitly 'pipeline' or not set
+                if binding_type is None or binding_type == 'pipeline':
+                    raise Exception('Pipeline not found')
+                # If binding_type is 'workflow', just clear the use_pipeline_uuid
+                bot_data['use_pipeline_uuid'] = None
+                bot_data['use_pipeline_name'] = None
 
         # If binding_uuid is set directly (for workflow), sync use_pipeline_uuid for backward compatibility
         if 'binding_uuid' in bot_data and binding_type == 'workflow':

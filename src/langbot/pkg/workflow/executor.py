@@ -32,7 +32,6 @@ from .entities import (
 )
 from ..entity.persistence import workflow as persistence_workflow
 from .registry import NodeTypeRegistry
-from . import monitor
 
 if TYPE_CHECKING:
     from ..core import app
