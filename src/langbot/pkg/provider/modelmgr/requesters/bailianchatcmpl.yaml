@@ -7,6 +7,7 @@ metadata:
     zh_Hans: 阿里云百炼
   icon: bailian.png
 spec:
+  litellm_provider: openai
   config:
   - name: base_url
     label:
@@ -24,6 +25,7 @@ spec:
     default: 120
   support_type:
   - llm
+  - text-embedding
   - rerank
   provider_category: maas
 execution:

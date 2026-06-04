@@ -152,6 +152,10 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             args['stream'] = True
             args['stream_options'] = {'include_usage': True}
         self._build_common_args(args)
+
+        # Apply model-level extra_args first, then call-level extra_args
+        if model.model_entity.extra_args:
+            args.update(model.model_entity.extra_args)
         args.update(extra_args)
 
         if funcs:
@@ -239,9 +243,15 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 delta_content = delta.get('content', '')
                 reasoning_content = delta.get('reasoning_content', '')
 
+                # Handle reasoning_content based on remove_think flag
                 if reasoning_content:
-                    chunk_idx += 1
-                    continue
+                    if remove_think:
+                        # Skip reasoning content when remove_think is True
+                        chunk_idx += 1
+                        continue
+                    else:
+                        # Use reasoning_content as the displayed content
+                        delta_content = reasoning_content
 
                 if chunk_idx == 0 and not delta_content and not delta.get('tool_calls'):
                     chunk_idx += 1

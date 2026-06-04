@@ -248,6 +248,7 @@ const zhHans = {
     selectProvider: '选择供应商',
     requester: '供应商类型',
     selectRequester: '选择供应商类型',
+    searchProviders: '搜索供应商...',
     langbotModelsDescription: 'LangBot Space 提供的云端模型',
     credits: '积分',
     loginWithSpace: '通过 Space 登录',

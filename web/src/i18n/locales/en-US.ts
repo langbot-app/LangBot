@@ -258,6 +258,7 @@ const enUS = {
     selectProvider: 'Select Provider',
     requester: 'Provider Type',
     selectRequester: 'Select Provider Type',
+    searchProviders: 'Search providers...',
     langbotModelsDescription: 'Cloud models powered by LangBot Space',
     credits: 'Credits',
     loginWithSpace: 'Login with Space',

@@ -7,6 +7,7 @@ metadata:
     zh_Hans: Cohere
   icon: cohere.svg
 spec:
+  litellm_provider: cohere
   config:
   - name: base_url
     label:

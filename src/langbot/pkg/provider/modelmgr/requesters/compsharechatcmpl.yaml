@@ -7,6 +7,7 @@ metadata:
     zh_Hans: 优云智算
   icon: compshare.png
 spec:
+  litellm_provider: openai
   config:
   - name: base_url
     label:
@@ -24,6 +25,8 @@ spec:
     default: 120
   support_type:
   - llm
+  - text-embedding
+  - rerank
   provider_category: maas
 execution:
   python:

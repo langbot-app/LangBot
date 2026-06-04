@@ -7,6 +7,7 @@ metadata:
     zh_Hans: 小马算力
   icon: tokenpony.svg
 spec:
+  litellm_provider: openai
   config:
   - name: base_url
     label:
