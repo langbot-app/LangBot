@@ -6,6 +6,7 @@ import datetime
 import typing
 import uuid
 import base64
+import os
 
 import sqlalchemy
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
@@ -13,6 +14,8 @@ from sqlalchemy.orm import sessionmaker
 
 from ...entity.persistence.artifact import AgentArtifact
 from ...entity.persistence.bstorage import BinaryStorage
+
+_FILE_ARTIFACT_METADATA_KEY = '_langbot_file_artifact'
 
 
 class ArtifactStore:
@@ -34,6 +37,64 @@ class ArtifactStore:
         self.engine = engine
         self._session_factory = sessionmaker(
             engine, class_=AsyncSession, expire_on_commit=False
+        )
+
+    async def register_file_artifact(
+        self,
+        *,
+        artifact_id: str | None,
+        host_path: str,
+        host_root: str,
+        artifact_type: str = 'file',
+        source: str = 'tool',
+        mime_type: str | None = None,
+        name: str | None = None,
+        size_bytes: int | None = None,
+        sha256: str | None = None,
+        conversation_id: str | None = None,
+        run_id: str | None = None,
+        runner_id: str | None = None,
+        bot_id: str | None = None,
+        workspace_id: str | None = None,
+        expires_at: datetime.datetime | None = None,
+        metadata: dict[str, typing.Any] | None = None,
+    ) -> str:
+        """Register a Host-owned artifact backed by a bounded local file path.
+
+        The public metadata intentionally excludes the real host path. Reads go
+        through read_artifact(), which revalidates the path against host_root.
+        """
+        real_path, real_root = self._validate_file_artifact_path(host_path, host_root)
+        if not os.path.isfile(real_path):
+            raise ValueError('file artifact path must point to a file')
+
+        public_metadata = dict(metadata or {})
+        public_metadata[_FILE_ARTIFACT_METADATA_KEY] = {
+            'path': real_path,
+            'root': real_root,
+        }
+
+        if size_bytes is None:
+            size_bytes = os.path.getsize(real_path)
+
+        return await self.register_artifact(
+            artifact_id=artifact_id,
+            artifact_type=artifact_type,
+            source=source,
+            storage_key=f'file:{uuid.uuid4().hex}',
+            storage_type='file',
+            mime_type=mime_type,
+            name=name or os.path.basename(real_path),
+            size_bytes=size_bytes,
+            sha256=sha256,
+            conversation_id=conversation_id,
+            run_id=run_id,
+            runner_id=runner_id,
+            bot_id=bot_id,
+            workspace_id=workspace_id,
+            expires_at=expires_at,
+            metadata=public_metadata,
+            content=None,
         )
 
     async def register_artifact(
@@ -244,6 +305,9 @@ class ArtifactStore:
                 'has_more': has_more,
             }
 
+        if storage_type == 'file':
+            return self._read_file_storage(record, artifact_id, offset, limit)
+
         # For other storage types, return storage reference
         # (caller can use file_key for chunked transfer)
         return {
@@ -277,6 +341,72 @@ class ArtifactStore:
                 return None
             return row.value
 
+    def _read_file_storage(
+        self,
+        record: AgentArtifact,
+        artifact_id: str,
+        offset: int,
+        limit: int,
+    ) -> dict[str, typing.Any] | None:
+        metadata = self._load_metadata(record.metadata_json)
+        file_info = metadata.get(_FILE_ARTIFACT_METADATA_KEY)
+        if not isinstance(file_info, dict):
+            return None
+
+        host_path = file_info.get('path')
+        host_root = file_info.get('root')
+        if not isinstance(host_path, str) or not isinstance(host_root, str):
+            return None
+
+        real_path, _ = self._validate_file_artifact_path(host_path, host_root)
+        if not os.path.isfile(real_path):
+            return None
+
+        file_size = os.path.getsize(real_path)
+        if offset >= file_size:
+            content = b''
+        else:
+            with open(real_path, 'rb') as f:
+                f.seek(offset)
+                content = f.read(limit)
+
+        return {
+            'artifact_id': artifact_id,
+            'mime_type': record.mime_type,
+            'size_bytes': file_size,
+            'offset': offset,
+            'length': len(content),
+            'content_base64': base64.b64encode(content).decode('utf-8'),
+            'file_key': None,
+            'has_more': offset + len(content) < file_size,
+        }
+
+    @staticmethod
+    def _validate_file_artifact_path(host_path: str, host_root: str) -> tuple[str, str]:
+        real_path = os.path.realpath(host_path)
+        real_root = os.path.realpath(host_root)
+        if not real_root:
+            raise ValueError('file artifact root is required')
+        if not (real_path == real_root or real_path.startswith(real_root + os.sep)):
+            raise ValueError('file artifact path escapes allowed root')
+        return real_path, real_root
+
+    @staticmethod
+    def _load_metadata(metadata_json: str | None) -> dict[str, typing.Any]:
+        if not metadata_json:
+            return {}
+        try:
+            metadata = json.loads(metadata_json)
+        except Exception:
+            return {}
+        return metadata if isinstance(metadata, dict) else {}
+
+    @staticmethod
+    def _public_metadata(metadata_json: str | None) -> dict[str, typing.Any]:
+        metadata = ArtifactStore._load_metadata(metadata_json)
+        metadata.pop(_FILE_ARTIFACT_METADATA_KEY, None)
+        return metadata
+
     def _row_to_public_dict(self, row: AgentArtifact) -> dict[str, typing.Any]:
         """Convert an AgentArtifact row to public dict.
 
@@ -296,5 +426,5 @@ class ArtifactStore:
             'runner_id': row.runner_id,
             'created_at': int(row.created_at.timestamp()) if row.created_at else None,
             'expires_at': int(row.expires_at.timestamp()) if row.expires_at else None,
-            'metadata': json.loads(row.metadata_json) if row.metadata_json else {},
+            'metadata': self._public_metadata(row.metadata_json),
         }

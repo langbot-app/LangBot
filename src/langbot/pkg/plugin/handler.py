@@ -354,7 +354,10 @@ def _resolve_action_query(data: dict[str, Any], session: Any | None, ap: app.App
         query_id = session.get('query_id')
     if query_id is None:
         query_id = data.get('query_id')
-    return _get_cached_query(ap, query_id)
+    query = _get_cached_query(ap, query_id)
+    if query is not None and session is not None:
+        object.__setattr__(query, '_agent_run_session', session)
+    return query
 
 
 def _resolve_remove_think(data: dict[str, Any], query: Any | None) -> bool:

@@ -589,6 +589,7 @@ class TestAgentRunProxyActions:
             await registry.unregister(run_id)
 
         assert response.code == 0
+        assert getattr(query, '_agent_run_session')['run_id'] == run_id
         app.tool_mgr.execute_func_call.assert_awaited_once_with(
             name='test/search',
             parameters={'q': 'langbot'},

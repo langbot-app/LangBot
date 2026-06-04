@@ -68,23 +68,33 @@ class ToolManager:
         return all_functions
 
     async def get_tool_by_name(self, name: str) -> resource_tool.LLMTool | None:
-        """Get tool by name from plugin or MCP loaders.
+        """Get tool by name from any active loader.
 
         Args:
-            name: Tool name (format: plugin_author/plugin_name/tool_name or mcp_server/tool_name)
+            name: Tool name.
 
         Returns:
             LLMTool if found, None otherwise
         """
-        # Try plugin loader first
-        tool = await self.plugin_tool_loader._get_tool(name)
-        if tool:
-            return tool
+        for tool_loader in (
+            self.native_tool_loader,
+            self.plugin_tool_loader,
+            self.mcp_tool_loader,
+            self.skill_tool_loader,
+        ):
+            tool = await self._get_tool_from_loader(tool_loader, name)
+            if tool:
+                return tool
 
-        # Try MCP loader
-        tool = await self.mcp_tool_loader._get_tool(name)
-        if tool:
-            return tool
+        return None
+
+    async def _get_tool_from_loader(self, tool_loader: typing.Any, name: str) -> resource_tool.LLMTool | None:
+        if hasattr(tool_loader, '_get_tool'):
+            return await tool_loader._get_tool(name)
+
+        for tool in await tool_loader.get_tools():
+            if tool.name == name:
+                return tool
 
         return None
 

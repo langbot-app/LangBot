@@ -5,11 +5,9 @@ import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 import base64
 import datetime
-import asyncio
 
 from langbot.pkg.agent.runner.artifact_store import ArtifactStore
 from langbot.pkg.agent.runner.session_registry import (
-    AgentRunSessionRegistry,
     get_session_registry,
 )
 from .conftest import make_session
@@ -24,7 +22,6 @@ class TestArtifactStore:
         Note: The new store uses AsyncSession, so we need to mock
         the session factory behavior.
         """
-        from unittest.mock import MagicMock, AsyncMock, patch
         from sqlalchemy.ext.asyncio import AsyncEngine
 
         engine = MagicMock(spec=AsyncEngine)
@@ -452,10 +449,7 @@ class TestArtifactStoreRealSQLite:
     async def db_engine(self):
         """Create an in-memory SQLite database for testing."""
         from sqlalchemy.ext.asyncio import create_async_engine
-        from sqlalchemy import text
         from langbot.pkg.entity.persistence.base import Base
-        from langbot.pkg.entity.persistence.artifact import AgentArtifact
-        from langbot.pkg.entity.persistence.bstorage import BinaryStorage
 
         engine = create_async_engine("sqlite+aiosqlite:///:memory:")
 
@@ -579,6 +573,56 @@ class TestArtifactStoreRealSQLite:
         assert result is not None
         assert result["has_more"] is True
         assert result["length"] == 100
+
+    @pytest.mark.asyncio
+    async def test_file_artifact_range_read_and_public_metadata(self, db_engine, tmp_path):
+        """File-backed artifacts read ranges without exposing host paths."""
+        store = ArtifactStore(db_engine)
+        content = b"0123456789" * 20
+        file_path = tmp_path / "large.txt"
+        file_path.write_bytes(content)
+
+        artifact_id = await store.register_file_artifact(
+            artifact_id="art_file_001",
+            host_path=str(file_path),
+            host_root=str(tmp_path),
+            source="tool",
+            mime_type="text/plain",
+            name="large.txt",
+            conversation_id="conv_001",
+            run_id="run_001",
+            metadata={"sandbox_path": "/workspace/large.txt"},
+        )
+
+        metadata = await store.get_metadata(artifact_id)
+        assert metadata is not None
+        assert metadata["artifact_id"] == "art_file_001"
+        assert metadata["metadata"] == {"sandbox_path": "/workspace/large.txt"}
+        assert str(file_path) not in str(metadata)
+
+        result = await store.read_artifact(artifact_id, offset=10, limit=15)
+        assert result is not None
+        assert result["offset"] == 10
+        assert result["length"] == 15
+        assert result["size_bytes"] == len(content)
+        assert result["has_more"] is True
+        assert base64.b64decode(result["content_base64"]) == content[10:25]
+
+    @pytest.mark.asyncio
+    async def test_register_file_artifact_rejects_path_escape(self, db_engine, tmp_path):
+        """File-backed artifacts must stay inside their declared host root."""
+        store = ArtifactStore(db_engine)
+        root = tmp_path / "root"
+        root.mkdir()
+        outside = tmp_path / "outside.txt"
+        outside.write_text("outside")
+
+        with pytest.raises(ValueError, match="escapes"):
+            await store.register_file_artifact(
+                artifact_id="art_file_escape",
+                host_path=str(outside),
+                host_root=str(root),
+            )
 
     @pytest.mark.asyncio
     async def test_metadata_sdk_validation(self, db_engine):
