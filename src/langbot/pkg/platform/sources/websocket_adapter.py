@@ -373,7 +373,6 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         """
         pipeline_uuid = connection.pipeline_uuid
         session_type = connection.session_type
-        is_workflow = bool(connection.metadata.get('is_workflow'))
 
         # 获取stream参数，默认为True
         self.stream_enabled = message_data.get('stream', True)
@@ -415,8 +414,13 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             session_type=session_type,
         )
 
-        if is_workflow:
-            # 设置 pipeline_uuid，以便工作流节点发送消息时能正确广播
+        # Determine if pipeline_uuid is a workflow or a legacy pipeline by querying both services
+        workflow_dict = await self.ap.workflow_service.get_workflow(pipeline_uuid)
+        pipeline_dict = await self.ap.pipeline_service.get_pipeline(pipeline_uuid)
+
+        if workflow_dict is not None:
+            # UUID exists in workflow table - execute as workflow
+            # Set pipeline_uuid for workflow nodes to broadcast messages correctly
             self.ap.platform_mgr.websocket_proxy_bot.bot_entity.use_pipeline_uuid = pipeline_uuid
 
             message_content = str(message_chain)
@@ -451,17 +455,16 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
 
                 # Log workflow execution start (matching pipeline logging)
                 session_id = f'{session_type}_{connection.connection_id}'
-                logger.info(f'Processing request from {session_id} (0): {message_content}')
+                logger.info(f'Processing workflow message from {session_id}: {message_content}')
 
                 execution_id = await self.ap.workflow_service.execute_workflow(
-                    pipeline_uuid,
+                    pipeline_uuid,  # This is actually a workflow UUID
                     trigger_type='message',
                     trigger_data=trigger_data,
                     session_id=session_id,
                     user_id=message_context['sender_id'],
                     bot_id=self.ap.platform_mgr.websocket_proxy_bot.bot_entity.uuid,
                 )
-                # Removed success broadcast - only show error on failure
             except WorkflowExecutionFailedError as e:
                 await connection.send_queue.put({'type': 'error', 'message': e.message})
             except Exception as e:

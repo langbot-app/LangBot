@@ -157,11 +157,12 @@ class BotService:
                 bot_data['use_pipeline_uuid'] = None
                 bot_data['use_pipeline_name'] = None
 
-        # If binding_uuid is set directly (for workflow), sync use_pipeline_uuid for backward compatibility
+        # If binding_uuid is set directly (for workflow), clear pipeline fields
         if 'binding_uuid' in bot_data and binding_type == 'workflow':
-            # For workflow binding, we don't sync to use_pipeline_uuid
-            # but we ensure binding_type is correctly set
+            # For workflow binding, clear pipeline-related fields to avoid confusion
             bot_data['binding_type'] = 'workflow'
+            bot_data['use_pipeline_uuid'] = None
+            bot_data['use_pipeline_name'] = None
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_bot.Bot).values(bot_data).where(persistence_bot.Bot.uuid == bot_uuid)
