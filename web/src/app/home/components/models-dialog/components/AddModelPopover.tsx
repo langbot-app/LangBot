@@ -130,32 +130,6 @@ export default function AddModelPopover({
     setScanLoading(true);
     try {
       const result = await onScanModels(trigger ? undefined : tab);
-
-      const debugData = (
-        result.debug?.response as { data?: Record<string, unknown>[] }
-      )?.data;
-      if (Array.isArray(debugData)) {
-        const debugMap = new Map<string, Record<string, unknown>>();
-        for (const item of debugData) {
-          if (typeof item?.id === 'string') {
-            debugMap.set(item.id, item);
-          }
-        }
-        for (const model of result.models) {
-          const debugItem = debugMap.get(model.id);
-          if (!debugItem) continue;
-          const features = debugItem.features as
-            | Record<string, unknown>
-            | undefined;
-          const tools = features?.tools as Record<string, unknown> | undefined;
-          if (tools?.function_calling === true) {
-            const nextAbilities = new Set(model.abilities || []);
-            nextAbilities.add('func_call');
-            model.abilities = [...nextAbilities];
-          }
-        }
-      }
-
       setScannedModels(result.models);
       setSelectedScannedModels({});
     } finally {

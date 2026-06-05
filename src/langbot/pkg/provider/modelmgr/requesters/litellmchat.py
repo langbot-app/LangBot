@@ -16,6 +16,9 @@ import langbot_plugin.api.entities.builtin.provider.message as provider_message
 class LiteLLMRequester(requester.ProviderAPIRequester):
     """LiteLLM unified API requester supporting chat, embedding, and rerank."""
 
+    _EMBEDDING_MODEL_HINTS = ('embedding', 'embed', 'bge-', 'e5-', 'm3e', 'gte-', 'text-embedding')
+    _RERANK_MODEL_HINTS = ('rerank', 're-rank', 're_rank')
+
     default_config: dict[str, typing.Any] = {
         'base_url': '',
         'timeout': 120,
@@ -36,9 +39,89 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         provider = custom_llm_provider or self.requester_cfg.get('custom_llm_provider', '')
         if provider:
             # LiteLLM format: provider/model_name
+            if model_name.startswith(f'{provider}/'):
+                return model_name
             return f'{provider}/{model_name}'
         # If no custom provider, assume model_name already includes prefix or is OpenAI-compatible
         return model_name
+
+    def _get_custom_llm_provider(self) -> str | None:
+        return self.requester_cfg.get('custom_llm_provider') or None
+
+    def _safe_litellm_bool_helper(self, helper_name: str, model_name: str) -> bool:
+        """Call a LiteLLM boolean capability helper without letting metadata gaps fail requests."""
+        helper = getattr(litellm, helper_name, None)
+        if not callable(helper):
+            return False
+
+        provider = self._get_custom_llm_provider()
+        candidates: list[tuple[str, str | None]] = [(model_name, provider)]
+        litellm_model_name = self._build_litellm_model_name(model_name)
+        if litellm_model_name != model_name:
+            candidates.append((litellm_model_name, None))
+
+        for candidate_model, candidate_provider in candidates:
+            try:
+                if bool(helper(model=candidate_model, custom_llm_provider=candidate_provider)):
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def _safe_context_length(self, model_name: str) -> int | None:
+        helper = getattr(litellm, 'get_max_tokens', None)
+        if not callable(helper):
+            return None
+
+        candidates = [model_name]
+        litellm_model_name = self._build_litellm_model_name(model_name)
+        if litellm_model_name != model_name:
+            candidates.append(litellm_model_name)
+
+        for candidate in candidates:
+            try:
+                max_tokens = helper(candidate)
+            except Exception:
+                continue
+            if isinstance(max_tokens, int) and max_tokens > 0:
+                return max_tokens
+        return None
+
+    def _supports_function_calling(self, model_name: str) -> bool:
+        return self._safe_litellm_bool_helper('supports_function_calling', model_name)
+
+    def _supports_vision(self, model_name: str) -> bool:
+        return self._safe_litellm_bool_helper('supports_vision', model_name)
+
+    def _infer_model_type(self, model_id: str) -> str:
+        normalized_id = (model_id or '').lower()
+        if any(kw in normalized_id for kw in self._RERANK_MODEL_HINTS):
+            return 'rerank'
+        if any(kw in normalized_id for kw in self._EMBEDDING_MODEL_HINTS):
+            return 'embedding'
+        return 'llm'
+
+    def _enrich_scanned_model(self, model_id: str) -> dict[str, typing.Any]:
+        model_type = self._infer_model_type(model_id)
+        scanned_model: dict[str, typing.Any] = {
+            'id': model_id,
+            'name': model_id,
+            'type': model_type,
+        }
+
+        if model_type == 'llm':
+            abilities = []
+            if self._supports_function_calling(model_id):
+                abilities.append('func_call')
+            if self._supports_vision(model_id):
+                abilities.append('vision')
+            scanned_model['abilities'] = abilities
+
+            context_length = self._safe_context_length(model_id)
+            if context_length is not None:
+                scanned_model['context_length'] = context_length
+
+        return scanned_model
 
     def _convert_messages(self, messages: typing.List[provider_message.Message]) -> list[dict]:
         """Convert LangBot messages to LiteLLM/OpenAI format."""
@@ -121,6 +204,64 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         """Extract usage info from a non-streaming LiteLLM response."""
         return self._normalize_usage(getattr(response, 'usage', None))
 
+    @staticmethod
+    def _as_dict(value: typing.Any) -> dict:
+        if value is None:
+            return {}
+        if isinstance(value, dict):
+            return value
+        if hasattr(value, 'model_dump'):
+            return value.model_dump()
+        return {}
+
+    def _normalize_stream_tool_calls(
+        self,
+        raw_tool_calls: typing.Any,
+        tool_call_state: dict[int, dict[str, str]],
+    ) -> list[dict] | None:
+        """Fill OpenAI-style streaming tool-call deltas so MessageChunk can validate them."""
+        if not raw_tool_calls:
+            return None
+
+        normalized = []
+        for fallback_index, raw_tool_call in enumerate(raw_tool_calls):
+            tool_call = self._as_dict(raw_tool_call)
+            index = tool_call.get('index')
+            if not isinstance(index, int):
+                index = fallback_index
+
+            state = tool_call_state.setdefault(index, {'id': '', 'type': 'function', 'name': ''})
+            if tool_call.get('id'):
+                state['id'] = tool_call['id']
+            if tool_call.get('type'):
+                state['type'] = tool_call['type']
+
+            function = self._as_dict(tool_call.get('function'))
+            if function.get('name'):
+                state['name'] = function['name']
+
+            arguments = function.get('arguments')
+            if arguments is None:
+                arguments = ''
+            elif not isinstance(arguments, str):
+                arguments = str(arguments)
+
+            if not state['id'] or not state['name']:
+                continue
+
+            normalized.append(
+                {
+                    'id': state['id'],
+                    'type': state['type'] or 'function',
+                    'function': {
+                        'name': state['name'],
+                        'arguments': arguments,
+                    },
+                }
+            )
+
+        return normalized or None
+
     def _build_common_args(self, args: dict, include_retry_params: bool = True) -> dict:
         """Apply common requester config to args dict."""
         if self.requester_cfg.get('base_url'):
@@ -189,6 +330,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             tools = await self.ap.tool_mgr.generate_tools_for_openai(funcs)
             if tools:
                 args['tools'] = tools
+                args.setdefault('tool_choice', 'auto')
 
         return args
 
@@ -240,6 +382,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
         chunk_idx = 0
         role = 'assistant'
+        tool_call_state: dict[int, dict[str, str]] = {}
 
         try:
             response = await acompletion(**args)
@@ -283,14 +426,16 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                         # Use reasoning_content as the displayed content
                         delta_content = reasoning_content
 
-                if chunk_idx == 0 and not delta_content and not delta.get('tool_calls'):
+                tool_calls = self._normalize_stream_tool_calls(delta.get('tool_calls'), tool_call_state)
+
+                if chunk_idx == 0 and not delta_content and not tool_calls:
                     chunk_idx += 1
                     continue
 
                 chunk_data = {
                     'role': role,
                     'content': delta_content if delta_content else None,
-                    'tool_calls': delta.get('tool_calls'),
+                    'tool_calls': tool_calls,
                     'is_final': bool(finish_reason),
                 }
 
@@ -412,18 +557,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 if not model_id:
                     continue
 
-                # Infer model type
-                normalized_id = (model_id or '').lower()
-                embedding_keywords = ('embedding', 'embed', 'bge-', 'e5-', 'm3e', 'gte-', 'text-embedding')
-                model_type = 'embedding' if any(kw in normalized_id for kw in embedding_keywords) else 'llm'
-
-                models.append(
-                    {
-                        'id': model_id,
-                        'name': model_id,
-                        'type': model_type,
-                    }
-                )
+                models.append(self._enrich_scanned_model(model_id))
 
             models.sort(key=lambda x: (x['type'] != 'llm', x['name'].lower()))
 

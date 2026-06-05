@@ -37,16 +37,39 @@ class ModelManager:
         self.requester_components = []
         self.requester_dict = {}
 
+    @staticmethod
+    def _get_litellm_provider_from_manifest(component: engine.Component | None) -> str | None:
+        if component is None:
+            return None
+
+        spec = getattr(component, 'spec', None) or {}
+        litellm_provider = None
+
+        if isinstance(spec, dict):
+            litellm_provider = spec.get('litellm_provider')
+        else:
+            getter = getattr(spec, 'get', None)
+            if callable(getter):
+                try:
+                    litellm_provider = getter('litellm_provider')
+                except Exception:
+                    litellm_provider = None
+
+        if isinstance(litellm_provider, str) and litellm_provider:
+            return litellm_provider
+        return None
+
     async def initialize(self):
         self.requester_components = self.ap.discover.get_components_by_kind('LLMAPIRequester')
 
         requester_dict: dict[str, type[requester.ProviderAPIRequester]] = {}
         for component in self.requester_components:
             # Skip components that use litellm_provider (they will use litellmchat.py instead)
-            if component.spec.get('litellm_provider'):
+            litellm_provider = self._get_litellm_provider_from_manifest(component)
+            if litellm_provider:
                 self.ap.logger.debug(
                     f'Skipping Python class loading for {component.metadata.name} '
-                    f'(uses litellm_provider={component.spec.get("litellm_provider")})'
+                    f'(uses litellm_provider={litellm_provider})'
                 )
                 continue
             requester_dict[component.metadata.name] = component.get_python_component_class()
@@ -303,17 +326,18 @@ class ModelManager:
 
         # Get requester manifest to check for litellm_provider
         requester_manifest = self.get_available_requester_manifest_by_name(provider_entity.requester)
+        litellm_provider = self._get_litellm_provider_from_manifest(requester_manifest)
 
         # Build config from base_url
         config = {'base_url': provider_entity.base_url}
 
         # Check if requester manifest specifies litellm_provider
-        if requester_manifest and requester_manifest.spec.get('litellm_provider'):
+        if litellm_provider:
             from .requesters import litellmchat
 
             # Use unified LiteLLMRequester with provider prefix
             # Map litellm_provider (YAML spec) to custom_llm_provider (config)
-            config['custom_llm_provider'] = requester_manifest.spec['litellm_provider']
+            config['custom_llm_provider'] = litellm_provider
             requester_inst = litellmchat.LiteLLMRequester(
                 ap=self.ap,
                 config=config,
