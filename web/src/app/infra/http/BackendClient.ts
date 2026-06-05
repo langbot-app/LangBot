@@ -1224,6 +1224,68 @@ export class BackendClient extends BaseHttpClient {
     return this.get(`/api/v1/monitoring/overview?${queryParams.toString()}`);
   }
 
+  public getTokenStatistics(params: {
+    botId?: string[];
+    pipelineId?: string[];
+    startTime?: string;
+    endTime?: string;
+    bucket?: 'hour' | 'day';
+  }): Promise<{
+    summary: {
+      total_calls: number;
+      success_calls: number;
+      error_calls: number;
+      total_input_tokens: number;
+      total_output_tokens: number;
+      total_tokens: number;
+      total_cost: number;
+      avg_tokens_per_call: number;
+      avg_duration_ms: number;
+      avg_tokens_per_second: number;
+      zero_token_success_calls: number;
+    };
+    by_model: Array<{
+      model_name: string;
+      calls: number;
+      error_calls: number;
+      input_tokens: number;
+      output_tokens: number;
+      total_tokens: number;
+      cost: number;
+      avg_tokens_per_call: number;
+      avg_duration_ms: number;
+    }>;
+    timeseries: Array<{
+      bucket: string;
+      input_tokens: number;
+      output_tokens: number;
+      total_tokens: number;
+      calls: number;
+    }>;
+    bucket: string;
+  }> {
+    const queryParams = new URLSearchParams();
+    if (params.botId) {
+      params.botId.forEach((id) => queryParams.append('botId', id));
+    }
+    if (params.pipelineId) {
+      params.pipelineId.forEach((id) => queryParams.append('pipelineId', id));
+    }
+    if (params.startTime) {
+      queryParams.append('startTime', params.startTime);
+    }
+    if (params.endTime) {
+      queryParams.append('endTime', params.endTime);
+    }
+    if (params.bucket) {
+      queryParams.append('bucket', params.bucket);
+    }
+
+    return this.get(
+      `/api/v1/monitoring/token-statistics?${queryParams.toString()}`,
+    );
+  }
+
   // ============ Survey API ============
   public getSurveyPending(): Promise<{
     survey: {

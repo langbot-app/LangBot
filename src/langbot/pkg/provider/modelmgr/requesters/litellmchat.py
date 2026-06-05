@@ -85,14 +85,41 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         # because it's typically internal model reasoning, not user-visible thinking
         return content or ''
 
-    def _extract_usage(self, response) -> dict:
-        """Extract usage info from LiteLLM response."""
-        usage = response.usage
+    @staticmethod
+    def _normalize_usage(usage: typing.Any) -> dict:
+        """Normalize a LiteLLM/OpenAI usage object into a plain token dict.
+
+        Handles several real-world shapes returned by different upstreams:
+        - object with ``prompt_tokens`` / ``completion_tokens`` / ``total_tokens`` attrs
+        - dict with the same keys
+        - missing ``total_tokens`` (derived from prompt + completion)
+        - ``None`` / partially-populated usage (defaults to 0)
+        """
+        if usage is None:
+            return {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}
+
+        def _get(key: str) -> typing.Any:
+            if isinstance(usage, dict):
+                return usage.get(key)
+            return getattr(usage, key, None)
+
+        prompt_tokens = _get('prompt_tokens') or 0
+        completion_tokens = _get('completion_tokens') or 0
+        total_tokens = _get('total_tokens') or 0
+
+        # Some providers omit total_tokens in streaming usage; derive it.
+        if not total_tokens:
+            total_tokens = prompt_tokens + completion_tokens
+
         return {
-            'prompt_tokens': usage.prompt_tokens or 0,
-            'completion_tokens': usage.completion_tokens or 0,
-            'total_tokens': usage.total_tokens or 0,
+            'prompt_tokens': int(prompt_tokens),
+            'completion_tokens': int(completion_tokens),
+            'total_tokens': int(total_tokens),
         }
+
+    def _extract_usage(self, response) -> dict:
+        """Extract usage info from a non-streaming LiteLLM response."""
+        return self._normalize_usage(getattr(response, 'usage', None))
 
     def _build_common_args(self, args: dict, include_retry_params: bool = True) -> dict:
         """Apply common requester config to args dict."""
@@ -217,18 +244,21 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         try:
             response = await acompletion(**args)
             async for chunk in response:
-                # Check for usage chunk (final chunk with stream_options include_usage)
-                if hasattr(chunk, 'usage') and chunk.usage and (not hasattr(chunk, 'choices') or not chunk.choices):
-                    usage_info = {
-                        'prompt_tokens': chunk.usage.prompt_tokens or 0,
-                        'completion_tokens': chunk.usage.completion_tokens or 0,
-                        'total_tokens': chunk.usage.total_tokens or 0,
-                    }
-                    if query:
+                # Capture usage whenever a chunk carries it.
+                #
+                # Important: many OpenAI-compatible gateways (e.g. new-api) and
+                # providers send the final usage payload in a chunk that STILL
+                # contains a (empty-delta) choice, not an empty `choices` list.
+                # The previous implementation only captured usage when `choices`
+                # was empty, so streamed calls always recorded 0 tokens.
+                # We therefore capture usage independently of `choices`, and then
+                # fall through to also process any content this chunk may carry.
+                if getattr(chunk, 'usage', None):
+                    usage_info = self._normalize_usage(chunk.usage)
+                    if query is not None:
                         if query.variables is None:
                             query.variables = {}
                         query.variables['_stream_usage'] = usage_info
-                    continue
 
                 if not hasattr(chunk, 'choices') or not chunk.choices:
                     continue
