@@ -6,7 +6,7 @@
 
 ## 总体进度
 
-**当前阶段**: Phase 3.5 已完成，Event-first 基础设施已完成；2026-05-29 已通过本地 `local-agent` 与 Claude Code runner smoke。
+**当前阶段**: Phase 3.6 已完成，Event-first 基础设施与外部 harness runner smoke 已完成；2026-06-04 已完成协议 / 文档漂移复核，当前未发布分支不保留 PoC 兼容 shim。
 
 | Phase | 描述 | 状态 |
 |-------|------|------|
@@ -92,6 +92,7 @@
 | 2026-05-29 | Claude Code context / skill / MCP projection | ✅ PASS | `langbot-skills/reports/claude-code-agent-resource-context-20260529.md` |
 | 2026-05-29 | Claude Code resume state | ✅ PASS | `langbot-skills/reports/claude-code-agent-real-workdir-20260529.md` |
 | 2026-05-29 | `codex-agent` Debug Chat + thread_id resume state | ✅ PASS | 见 [PHASE1_QA_ACCEPTANCE_MATRIX.md](./PHASE1_QA_ACCEPTANCE_MATRIX.md) §10 / `langbot-skills/reports/` |
+| 2026-06-04 | 协议 / 文档漂移复核 | ✅ PASS | SDK scaffold 与 Protocol v1 对齐；LangBot UI 旧 runner fallback 已移除；run-scoped API 身份校验已收紧。 |
 
 ---
 
@@ -100,7 +101,7 @@
 以下项目属于本分支收尾工作：
 
 - [x] Smoke / manual validation — `local-agent`、Claude Code MVP、Codex MVP 已通过本地 WebUI smoke
-- [ ] Docs final QA
+- [x] Docs final QA — 2026-06-04 已完成当前 Protocol v1 / scaffold / QA 指南漂移复核
 - [ ] Claude Code runner 文档、安装和 marketplace 发布准备
 
 ---
@@ -130,7 +131,7 @@
 - [x] Pipeline `run_from_query()` → `run(event, binding)` — 已完成
 - [x] EventLog / Transcript / ArtifactStore / PersistentStateStore — 已完成
 - [x] History / Event / Artifact / State pull APIs — 已完成
-- [x] `caller_plugin_identity` 验证路径 — 已完成
+- [x] `caller_plugin_identity` 验证路径 — 已完成；run-scoped session 绑定插件身份时，省略或不匹配 caller identity 都会被拒绝
 
 ### 低优先级 / 未来
 
@@ -148,6 +149,7 @@
 | 2026-05-13 | Phase 3 完成：所有 7 个官方 runner 插件迁移完成 |
 | 2026-05-23 | Phase 3.5 完成：`run_from_query()` 委托到 event-first `run(event, binding)`，Pipeline path 获得 host capabilities |
 | 2026-05-29 | 本地 `local-agent` 与 `claude-code-agent` 通过 WebUI smoke；Claude Code runner 验证 external harness context 投影和 host-owned resume state |
+| 2026-06-04 | 未发布协议面收敛：移除旧 runner 字段 / 旧本地 runner 名 / PoC schema 兼容分支，SDK 文档和模板对齐当前 `AgentRunContext` |
 
 ---
 

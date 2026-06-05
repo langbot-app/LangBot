@@ -494,6 +494,47 @@ class TestBuildBoxProcessPayload:
         assert payload['args'] == ['/opt/other/server.py', '--flag']
 
 
+# ── Python Workspace Preparation ────────────────────────────────────
+
+
+class TestPythonWorkspacePreparation:
+    def test_requirements_workspace_uses_venv_bootstrap(self, mcp_module, tmp_path):
+        host_path = tmp_path / 'mcp-source'
+        host_path.mkdir()
+        (host_path / 'requirements.txt').write_text('mcp==1.26.0\n', encoding='utf-8')
+
+        command = mcp_module.BoxStdioSessionRuntime.detect_install_command(
+            str(host_path),
+            '/workspace/.mcp/u1/workspace',
+        )
+
+        assert command is not None
+        assert '_LB_SYSTEM_PYTHON="$(command -v python3 || command -v python || true)"' in command
+        assert '"$_LB_SYSTEM_PYTHON" -m venv "$_LB_VENV_DIR"' in command
+        assert 'python -m pip install -r "/workspace/.mcp/u1/workspace/requirements.txt"' in command
+        assert 'pip install --no-cache-dir -r' not in command
+
+    def test_process_payload_can_start_from_prepared_python_env(self, mcp_module):
+        payload = {
+            'command': 'python',
+            'args': ['/workspace/.mcp/u1/workspace/server.py'],
+            'env': {},
+            'cwd': '/workspace/.mcp/u1/workspace',
+        }
+
+        wrapped = mcp_module.BoxStdioSessionRuntime._wrap_process_payload_with_python_env(
+            payload,
+            '/workspace/.mcp/u1/workspace',
+        )
+
+        assert wrapped['command'] == 'sh'
+        assert wrapped['args'][0] == '-lc'
+        assert 'export VIRTUAL_ENV=/workspace/.mcp/u1/workspace/.venv' in wrapped['args'][1]
+        assert 'export PATH=/workspace/.mcp/u1/workspace/.venv/bin:$PATH' in wrapped['args'][1]
+        assert 'exec python /workspace/.mcp/u1/workspace/server.py' in wrapped['args'][1]
+        assert wrapped['cwd'] == '/workspace/.mcp/u1/workspace'
+
+
 # ── get_runtime_info_dict ───────────────────────────────────────────
 
 

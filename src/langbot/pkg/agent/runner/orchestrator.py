@@ -264,7 +264,7 @@ class AgentRunOrchestrator:
         # Convert Query to event-first envelope
         event = QueryEntryAdapter.query_to_event(query)
 
-        # Project legacy Pipeline config into target Agent config, then resolve
+        # Project the current Pipeline adapter config into target Agent config.
         # exactly one effective binding for this event.
         agent_config = QueryEntryAdapter.config_to_agent_config(query, runner_id)
         binding = self.binding_resolver.resolve_one(event, [agent_config])

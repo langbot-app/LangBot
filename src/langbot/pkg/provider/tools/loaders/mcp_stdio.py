@@ -18,6 +18,7 @@ from ....box.workspace import (
     rewrite_mounted_path,
     rewrite_venv_command,
     unwrap_venv_path,
+    wrap_python_command_with_env,
 )
 
 if TYPE_CHECKING:
@@ -128,6 +129,7 @@ class BoxStdioSessionRuntime:
         workspace = self._build_workspace(host_path=None)
         host_path = self.resolve_host_path()
         process_cwd = '/workspace'
+        install_cmd: str | None = None
 
         try:
             await workspace.create_session()
@@ -168,6 +170,8 @@ class BoxStdioSessionRuntime:
                 env=self.server_config.get('env', {}),
                 cwd=process_cwd,
             )
+            if install_cmd:
+                payload = self._wrap_process_payload_with_python_env(payload, process_cwd)
             payload['process_id'] = self.process_id
             await workspace.box_service.start_managed_process(workspace.session_id, payload)
         except Exception:
@@ -343,22 +347,30 @@ class BoxStdioSessionRuntime:
     @staticmethod
     def detect_install_command(host_path: str, workspace_path: str = '/workspace') -> str | None:
         workspace_kind = classify_python_workspace(host_path)
-        quoted_workspace_path = shlex.quote(workspace_path)
-        if workspace_kind == 'package':
-            return (
-                'mkdir -p /opt/_lb_src'
-                f' && tar -C {quoted_workspace_path}'
-                ' --exclude=.venv --exclude=.git --exclude=__pycache__'
-                ' --exclude=node_modules --exclude=.tox --exclude=.nox'
-                ' --exclude="*.egg-info" --exclude=.uv-cache'
-                ' -cf - .'
-                ' | tar -C /opt/_lb_src -xf -'
-                ' && pip install --no-cache-dir /opt/_lb_src'
-                ' && rm -rf /opt/_lb_src'
-            )
-        if workspace_kind == 'requirements':
-            return f'pip install --no-cache-dir -r {quoted_workspace_path}/requirements.txt'
+        if workspace_kind in {'package', 'requirements'}:
+            return wrap_python_command_with_env('python -c "pass"', mount_path=workspace_path).rstrip()
         return None
+
+    @staticmethod
+    def _wrap_process_payload_with_python_env(payload: dict[str, Any], workspace_path: str) -> dict[str, Any]:
+        """Start a prepared Python workspace without writing bootstrap output to MCP stdio."""
+        workspace_root = workspace_path.rstrip('/') or '/workspace'
+        venv_dir = f'{workspace_root}/.venv'
+        venv_bin = f'{venv_dir}/bin'
+        command = ' '.join(
+            [shlex.quote(payload['command']), *[shlex.quote(arg) for arg in payload.get('args', [])]]
+        )
+        wrapped = dict(payload)
+        wrapped['command'] = 'sh'
+        wrapped['args'] = [
+            '-lc',
+            (
+                f'export VIRTUAL_ENV={shlex.quote(venv_dir)}; '
+                f'export PATH={shlex.quote(venv_bin)}:$PATH; '
+                f'exec {command}'
+            ),
+        ]
+        return wrapped
 
     def build_box_session_payload(self, session_id: str, host_path: str | None = None) -> dict[str, Any]:
         workspace = self._build_workspace()

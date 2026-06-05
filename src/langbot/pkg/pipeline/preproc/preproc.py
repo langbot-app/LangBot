@@ -153,7 +153,7 @@ class PreProcessor(stage.PipelineStage):
         stage_inst_name: str,
     ) -> entities.StageProcessResult:
         """Process"""
-        # Resolve runner ID using ConfigMigration (supports both new and old formats)
+        # Resolve runner ID from the current ai.runner.id shape.
         runner_id = ConfigMigration.resolve_runner_id(query.pipeline_config)
 
         # Get runner config from ai.runner_config[runner_id].

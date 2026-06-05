@@ -112,6 +112,8 @@ bin/lbs case list
 - runner 选项来自插件 registry。
 - 保存后配置仍为 `ai.runner.id` + `ai.runner_config[id]`。
 - `runner_config` 表示 Agent/runner config，不表示插件实例状态。
+- 不读取或回写旧 `ai.runner.runner` 字段。
+- 不出现旧内置 runner stage 名（例如裸 `local-agent`）作为当前选中项或配置 surface。
 - 插件没有循环重启或 metadata 加载失败。
 
 ### 5.2 主聊天路径
@@ -208,6 +210,7 @@ Dify、n8n、Coze、DashScope、Langflow、Tbox 等外部服务 runner 不作为
 | 未授权知识库检索被拒绝 | `ctx.resources.knowledge_bases` 与 host action 拒绝日志。 |
 | run_id 结束后复用被拒绝 | session registry 注销测试。 |
 | 插件身份不匹配被拒绝 | `caller_plugin_identity` mismatch 测试。 |
+| 绑定插件身份的 run_id 省略 caller identity 被拒绝 | `_validate_run_authorization(..., caller_plugin_identity=None)` 返回错误。 |
 | storage/state scope 越权被拒绝 | state/storage proxy 单测。 |
 
 如果这些单测失败，不能用 WebUI 正常回复替代。

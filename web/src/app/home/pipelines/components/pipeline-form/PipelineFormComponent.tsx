@@ -6,7 +6,6 @@ import {
   PipelineConfigStage,
 } from '@/app/infra/entities/pipeline';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
-import N8nAuthFormComponent from '@/app/home/components/dynamic-form/N8nAuthFormComponent';
 import { useBoxStatus } from '@/app/infra/hooks/useBoxStatus';
 import { systemInfo } from '@/app/infra/http';
 import { Button } from '@/components/ui/button';
@@ -238,7 +237,7 @@ export default function PipelineFormComponent({
           initializedStagesRef.current.clear();
         });
     }
-  }, []);
+  }, [form, isEditMode, pipelineId]);
 
   useEffect(() => {
     if (!isEditMode) {
@@ -311,7 +310,7 @@ export default function PipelineFormComponent({
       });
   }
 
-  // Called from DynamicFormComponent/N8nAuthFormComponent onSubmit callbacks.
+  // Called from DynamicFormComponent onSubmit callbacks.
   // On the first emission for a stage (mount-time default filling), the
   // snapshot is synchronously re-captured so that hasUnsavedChanges stays false.
   // However, if the form is already dirty (the user has made real changes),
@@ -326,8 +325,7 @@ export default function PipelineFormComponent({
     const isFirstEmission = !initializedStagesRef.current.has(stageKey);
 
     const currentValues =
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (form.getValues(formName) as Record<string, any>) || {};
+      (form.getValues(formName) as Record<string, unknown>) || {};
     form.setValue(formName, {
       ...currentValues,
       [stageName]: values,
@@ -350,12 +348,23 @@ export default function PipelineFormComponent({
     stage: PipelineConfigStage,
     formName: keyof FormValues,
   ) {
+    const forcedBoxTemplate =
+      systemInfo.limitation?.force_box_session_id_template || '';
+    const boxScopeForced = !!forcedBoxTemplate;
+    const isLocalAgentRunner =
+      stage.name === 'local-agent' ||
+      stage.name === 'plugin:langbot/local-agent/default';
+    const stageSystemContext = isLocalAgentRunner
+      ? {
+          box_available: boxAvailable,
+          box_scope_editable: boxAvailable && !boxScopeForced,
+        }
+      : undefined;
+
     // Special handling for AI config section
     if (formName === 'ai') {
-      // Get the currently selected runner (use 'id' for new format, fallback to 'runner' for old)
-
       const runnerConfig = (form.watch('ai.runner') as any) || {};
-      const currentRunner = runnerConfig.id || runnerConfig.runner;
+      const currentRunner = runnerConfig.id;
 
       // If this is the runner selector stage, render it directly
       if (stage.name === 'runner') {
@@ -373,9 +382,9 @@ export default function PipelineFormComponent({
               <DynamicFormComponent
                 itemConfigList={stage.config}
                 initialValues={
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  (form.watch(formName) as Record<string, any>)?.[stage.name] ||
-                  {}
+                  (form.watch(formName) as Record<string, unknown>)?.[
+                    stage.name
+                  ] || {}
                 }
                 onSubmit={(values) => {
                   handleDynamicFormEmit(formName, stage.name, values);
@@ -391,42 +400,20 @@ export default function PipelineFormComponent({
         return null;
       }
 
-      // For old n8n built-in runner config, use N8nAuthFormComponent for form linkage
-      // New plugin:langbot/n8n-agent/default follows normal plugin runner path below
-      if (stage.name === 'n8n-service-api') {
-        return (
-          <Card key={stage.name}>
-            <CardHeader>
-              <CardTitle>{extractI18nObject(stage.label)}</CardTitle>
-              {stage.description && (
-                <CardDescription>
-                  {extractI18nObject(stage.description)}
-                </CardDescription>
-              )}
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <N8nAuthFormComponent
-                itemConfigList={stage.config}
-                initialValues={
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  (form.watch(formName) as Record<string, any>)?.[stage.name] ||
-                  {}
-                }
-                onSubmit={(values) => {
-                  handleDynamicFormEmit(formName, stage.name, values);
-                }}
-              />
-            </CardContent>
-          </Card>
-        );
-      }
-
       // For plugin runner configs, store in ai.runner_config[runnerId]
 
       const isPluginRunner =
         currentRunner && currentRunner.startsWith('plugin:');
       if (isPluginRunner) {
         const runnerConfigs = (form.watch('ai.runner_config') as any) || {};
+        const stageInitialValues = runnerConfigs[stage.name] || {};
+        const effectiveInitialValues =
+          isLocalAgentRunner && boxScopeForced
+            ? {
+                ...stageInitialValues,
+                'box-session-id-template': forcedBoxTemplate,
+              }
+            : stageInitialValues;
         return (
           <Card key={stage.name}>
             <CardHeader>
@@ -440,7 +427,7 @@ export default function PipelineFormComponent({
             <CardContent className="space-y-6">
               <DynamicFormComponent
                 itemConfigList={stage.config}
-                initialValues={runnerConfigs[stage.name] || {}}
+                initialValues={effectiveInitialValues}
                 onSubmit={(values) => {
                   // Store in ai.runner_config[stage.name]
 
@@ -457,6 +444,7 @@ export default function PipelineFormComponent({
                     savedSnapshotRef.current = JSON.stringify(form.getValues());
                   }
                 }}
+                systemContext={stageSystemContext}
               />
             </CardContent>
           </Card>
@@ -469,23 +457,6 @@ export default function PipelineFormComponent({
     // opt-in via ``disable_if`` + ``disabled_tooltip`` rather than every page
     // hard-coding a banner. Field-level gating keeps unrelated fields
     // untouched.
-    //
-    // ``box_scope_editable`` folds the two reasons the Sandbox Scope selector
-    // can be locked into a single flag the yaml ``disable_if`` consumes:
-    //   1. Box sandbox is unavailable, or
-    //   2. the deployment pins all pipelines to a fixed scope via
-    //      ``system.limitation.force_box_session_id_template`` (SaaS).
-    const forcedBoxTemplate =
-      systemInfo.limitation?.force_box_session_id_template || '';
-    const boxScopeForced = !!forcedBoxTemplate;
-    const stageSystemContext =
-      stage.name === 'local-agent'
-        ? {
-            box_available: boxAvailable,
-            box_scope_editable: boxAvailable && !boxScopeForced,
-          }
-        : undefined;
-
     // When the deployment pins every pipeline to a fixed sandbox scope (SaaS
     // ``force_box_session_id_template``), the Sandbox Scope selector is locked.
     // The runtime already overrides the scope on every exec, but the stored
@@ -497,7 +468,7 @@ export default function PipelineFormComponent({
     const stageInitialValues: Record<string, any> =
       (form.watch(formName) as Record<string, any>)?.[stage.name] || {};
     const effectiveInitialValues =
-      stage.name === 'local-agent' && boxScopeForced
+      isLocalAgentRunner && boxScopeForced
         ? {
             ...stageInitialValues,
             'box-session-id-template': forcedBoxTemplate,

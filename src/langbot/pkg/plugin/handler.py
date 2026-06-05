@@ -297,7 +297,8 @@ async def _validate_run_authorization(
         resource_type: Resource type ('model', 'tool', 'knowledge_base', 'storage', 'file').
         resource_id: Resource identifier (model_uuid, tool_name, kb_id, 'plugin'/'workspace', file_key).
         ap: Application instance for logging.
-        caller_plugin_identity: Optional plugin identity (author/name) of the caller for cross-plugin validation.
+        caller_plugin_identity: Plugin identity (author/name) of the caller.
+            Required when the run session is bound to a plugin identity.
 
     Returns:
         Tuple of (session, None) if validation passes.
@@ -313,10 +314,13 @@ async def _validate_run_authorization(
             message=f'Run session {run_id} not found or expired',
         )
 
-    # Validate caller_plugin_identity matches session's plugin_identity
-    if caller_plugin_identity:
-        session_plugin_identity = session.get('plugin_identity')
-        if session_plugin_identity and caller_plugin_identity != session_plugin_identity:
+    session_plugin_identity = session.get('plugin_identity')
+    if session_plugin_identity:
+        if not caller_plugin_identity:
+            return None, handler.ActionResponse.error(
+                message=f'caller_plugin_identity is required for run_id {run_id}',
+            )
+        if caller_plugin_identity != session_plugin_identity:
             ap.logger.warning(
                 f'{resource_type.upper()}: caller_plugin_identity {caller_plugin_identity} '
                 f'does not match session plugin_identity {session_plugin_identity}'

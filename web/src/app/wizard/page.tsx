@@ -86,7 +86,6 @@ export default function WizardPage() {
   const [selectedAdapter, setSelectedAdapter] = useState<string | null>(null);
   const [selectedRunner, setSelectedRunner] = useState<string | null>(null);
   const [botName, setBotName] = useState('');
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [botDescription, _setBotDescription] = useState('');
   const [adapterConfig, setAdapterConfig] = useState<Record<string, unknown>>(
     {},
@@ -202,9 +201,7 @@ export default function WizardPage() {
 
   const runnerOptions = useMemo(() => {
     if (!runnerStage) return [];
-    const runnerField =
-      runnerStage.config.find((c) => c.name === 'id') ??
-      runnerStage.config.find((c) => c.name === 'runner');
+    const runnerField = runnerStage.config.find((c) => c.name === 'id');
     return runnerField?.options ?? [];
   }, [runnerStage]);
 
@@ -1139,8 +1136,7 @@ function StepAIEngine({
             })}
 
             {/* Space promotion banner */}
-            {(selected === 'local-agent' ||
-              selected === 'plugin:langbot/local-agent/default') &&
+            {selected === 'plugin:langbot/local-agent/default' &&
               isLocalAccount && (
                 <div className="animate-in fade-in slide-in-from-left-2 duration-300">
                   <div className="relative rounded-lg p-[2px] bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500">

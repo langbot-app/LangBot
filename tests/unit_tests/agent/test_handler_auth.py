@@ -1256,7 +1256,13 @@ class TestValidateRunAuthorizationHelper:
         mock_ap = MagicMock()
         mock_ap.logger = MagicMock()
 
-        session, error = await _validate_run_authorization('run_validate_test_helper', 'model', 'model_001', mock_ap)
+        session, error = await _validate_run_authorization(
+            'run_validate_test_helper',
+            'model',
+            'model_001',
+            mock_ap,
+            caller_plugin_identity='test/runner',
+        )
 
         # Should return session, no error
         assert session is not None
@@ -1310,6 +1316,7 @@ class TestValidateRunAuthorizationHelper:
             'model',
             'model_999',  # Not in resources
             mock_ap,
+            caller_plugin_identity='test/runner',
         )
 
         # Should return no session, error response
@@ -1342,7 +1349,13 @@ class TestValidateRunAuthorizationHelper:
         mock_ap = MagicMock()
         mock_ap.logger = MagicMock()
 
-        session, error = await _validate_run_authorization('run_tool_test_helper', 'tool', 'web_search', mock_ap)
+        session, error = await _validate_run_authorization(
+            'run_tool_test_helper',
+            'tool',
+            'web_search',
+            mock_ap,
+            caller_plugin_identity='test/runner',
+        )
 
         assert session is not None
         assert error is None
@@ -1371,7 +1384,13 @@ class TestValidateRunAuthorizationHelper:
         mock_ap = MagicMock()
         mock_ap.logger = MagicMock()
 
-        session, error = await _validate_run_authorization('run_kb_test_helper', 'knowledge_base', 'kb_001', mock_ap)
+        session, error = await _validate_run_authorization(
+            'run_kb_test_helper',
+            'knowledge_base',
+            'kb_001',
+            mock_ap,
+            caller_plugin_identity='test/runner',
+        )
 
         assert session is not None
         assert error is None
@@ -1548,7 +1567,13 @@ class TestRealActionHandlerSimulation:
         mock_ap.logger = MagicMock()
 
         # Step 1: Validate authorization
-        session, error = await _validate_run_authorization('run_invoke_llm_flow_sim', 'model', 'model_001', mock_ap)
+        session, error = await _validate_run_authorization(
+            'run_invoke_llm_flow_sim',
+            'model',
+            'model_001',
+            mock_ap,
+            caller_plugin_identity='test/runner',
+        )
 
         # Should pass authorization
         assert session is not None
@@ -1582,7 +1607,13 @@ class TestRealActionHandlerSimulation:
         mock_ap.logger.warning = MagicMock()
 
         # Try to access unauthorized model
-        session, error = await _validate_run_authorization('run_reject_model_sim', 'model', 'model_999', mock_ap)
+        session, error = await _validate_run_authorization(
+            'run_reject_model_sim',
+            'model',
+            'model_999',
+            mock_ap,
+            caller_plugin_identity='test/runner',
+        )
 
         # Should reject
         assert session is None
@@ -1641,7 +1672,13 @@ class TestStoragePermissionValidation:
         mock_ap = MagicMock()
         mock_ap.logger = MagicMock()
 
-        session, error = await _validate_run_authorization('run_plugin_storage_auth', 'storage', 'plugin', mock_ap)
+        session, error = await _validate_run_authorization(
+            'run_plugin_storage_auth',
+            'storage',
+            'plugin',
+            mock_ap,
+            caller_plugin_identity='test/runner',
+        )
 
         assert session is not None
         assert error is None
@@ -1670,7 +1707,13 @@ class TestStoragePermissionValidation:
         mock_ap.logger = MagicMock()
         mock_ap.logger.warning = MagicMock()
 
-        session, error = await _validate_run_authorization('run_plugin_storage_denied', 'storage', 'plugin', mock_ap)
+        session, error = await _validate_run_authorization(
+            'run_plugin_storage_denied',
+            'storage',
+            'plugin',
+            mock_ap,
+            caller_plugin_identity='test/runner',
+        )
 
         assert session is None
         assert error is not None
@@ -1700,7 +1743,11 @@ class TestStoragePermissionValidation:
         mock_ap.logger = MagicMock()
 
         session, error = await _validate_run_authorization(
-            'run_workspace_storage_auth', 'storage', 'workspace', mock_ap
+            'run_workspace_storage_auth',
+            'storage',
+            'workspace',
+            mock_ap,
+            caller_plugin_identity='test/runner',
         )
 
         assert session is not None
@@ -1731,7 +1778,11 @@ class TestStoragePermissionValidation:
         mock_ap.logger.warning = MagicMock()
 
         session, error = await _validate_run_authorization(
-            'run_workspace_storage_denied', 'storage', 'workspace', mock_ap
+            'run_workspace_storage_denied',
+            'storage',
+            'workspace',
+            mock_ap,
+            caller_plugin_identity='test/runner',
         )
 
         assert session is None
@@ -1769,7 +1820,13 @@ class TestFilePermissionValidation:
         mock_ap = MagicMock()
         mock_ap.logger = MagicMock()
 
-        session, error = await _validate_run_authorization('run_file_auth', 'file', 'file_001', mock_ap)
+        session, error = await _validate_run_authorization(
+            'run_file_auth',
+            'file',
+            'file_001',
+            mock_ap,
+            caller_plugin_identity='test/runner',
+        )
 
         assert session is not None
         assert error is None
@@ -1803,6 +1860,7 @@ class TestFilePermissionValidation:
             'file',
             'file_999',  # Not in resources
             mock_ap,
+            caller_plugin_identity='test/runner',
         )
 
         assert session is None
@@ -1891,9 +1949,8 @@ class TestCallerPluginIdentityValidation:
         await registry.unregister('run_identity_mismatch')
 
     @pytest.mark.asyncio
-    async def test_no_caller_identity_allowed(self):
-        """_validate_run_authorization allows when caller_plugin_identity not provided."""
-        # Unscoped plugin path: if caller_plugin_identity is None, skip identity check
+    async def test_run_id_requires_caller_identity(self):
+        """Run-scoped authorization requires caller_plugin_identity."""
         from langbot.pkg.agent.runner.session_registry import get_session_registry
 
         registry = get_session_registry()
@@ -1912,18 +1969,17 @@ class TestCallerPluginIdentityValidation:
         mock_ap = MagicMock()
         mock_ap.logger = MagicMock()
 
-        # caller_plugin_identity not provided (None)
         session, error = await _validate_run_authorization(
             'run_no_caller_identity',
             'model',
             'model_001',
             mock_ap,
-            caller_plugin_identity=None,  # Not provided
+            caller_plugin_identity=None,
         )
 
-        # Should pass (backward compat)
-        assert session is not None
-        assert error is None
+        assert session is None
+        assert error is not None
+        assert 'caller_plugin_identity is required' in error.message
 
         await registry.unregister('run_no_caller_identity')
 
