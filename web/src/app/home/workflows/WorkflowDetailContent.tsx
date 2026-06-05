@@ -186,7 +186,11 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
       edges,
       variables: workflow?.variables || {},
       settings: workflow?.settings || {},
-      version: '1.0',
+      // Keep the exported version aligned with the (published) workflow version
+      // instead of a hard-coded placeholder.
+      version: workflow?.version ?? 1,
+      createdAt: workflow?.created_at,
+      updatedAt: workflow?.updated_at,
       exportedAt: new Date().toISOString(),
     };
 

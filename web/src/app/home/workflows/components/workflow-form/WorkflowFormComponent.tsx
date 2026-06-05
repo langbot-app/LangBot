@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
 import { Workflow } from '@/app/infra/entities/api';
 import {
   Card,
@@ -42,7 +41,6 @@ export default function WorkflowFormComponent({
   const [name, setName] = useState(workflow?.name || '');
   const [description, setDescription] = useState(workflow?.description || '');
   const [emoji, setEmoji] = useState(workflow?.emoji || '🔄');
-  const [isEnabled, setIsEnabled] = useState(workflow?.is_enabled ?? true);
   const isSyncingFromProp = useRef(false);
 
   // Sync with workflow prop
@@ -52,7 +50,6 @@ export default function WorkflowFormComponent({
       setName(workflow.name || '');
       setDescription(workflow.description || '');
       setEmoji(workflow.emoji || '🔄');
-      setIsEnabled(workflow.is_enabled ?? true);
     }
   }, [workflow?.uuid, workflow?.version]);
 
@@ -68,10 +65,11 @@ export default function WorkflowFormComponent({
         name,
         description,
         emoji,
-        is_enabled: isEnabled,
+        // Workflows are always enabled; the toggle was removed as redundant.
+        is_enabled: true,
       });
     }
-  }, [name, description, emoji, isEnabled]);
+  }, [name, description, emoji]);
 
   if (!workflow) {
     return (
@@ -117,17 +115,6 @@ export default function WorkflowFormComponent({
               placeholder={t('workflows.descriptionPlaceholder')}
               rows={3}
             />
-          </div>
-
-          {/* Enabled toggle */}
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label>{t('workflows.enabled')}</Label>
-              <p className="text-sm text-muted-foreground">
-                {t('workflows.enabledDesc')}
-              </p>
-            </div>
-            <Switch checked={isEnabled} onCheckedChange={setIsEnabled} />
           </div>
         </CardContent>
       </Card>
