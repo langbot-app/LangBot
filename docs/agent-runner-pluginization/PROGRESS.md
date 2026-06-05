@@ -3,6 +3,7 @@
 本文档跟踪 Agent Runner 插件化的实现状态，便于快速了解当前进度。
 
 > 本文是 agent-runner 插件化**实现状态的唯一事实源**。协议规范见 [PROTOCOL_V1.md](./PROTOCOL_V1.md)，Host 架构见 [HOST_SDK_INFRASTRUCTURE.md](./HOST_SDK_INFRASTRUCTURE.md)。规范类文档不再各自维护"当前状态/✅"段落，状态一律以本文为准。
+> 本文记录最近一次已知实现 / 验收状态，但不替代对当前 checkout 的代码和 WebUI smoke 复核；复核步骤见 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md)。
 
 ## 总体进度
 
@@ -67,8 +68,8 @@
 
 ### 官方插件
 
-> 外部服务插件仓库：`/home/glwuy/langbot-app/langbot-agent-runner/`  
-> 本地 Local Agent 插件仓库：`/home/glwuy/langbot-app/langbot-local-agent/`
+> 外部服务插件仓库：`langbot-agent-runner/`  
+> 本地 Local Agent 插件仓库：`langbot-local-agent/`
 
 | 插件 | 状态 | 备注 |
 |------|------|------|
@@ -91,7 +92,7 @@
 | 2026-05-29 | `claude-code-agent` Pipeline Debug Chat | ✅ PASS | `langbot-skills/reports/2026-05-29-18-03-31-169-08-00-pipeline-debug-chat.md` |
 | 2026-05-29 | Claude Code context / skill / MCP projection | ✅ PASS | `langbot-skills/reports/claude-code-agent-resource-context-20260529.md` |
 | 2026-05-29 | Claude Code resume state | ✅ PASS | `langbot-skills/reports/claude-code-agent-real-workdir-20260529.md` |
-| 2026-05-29 | `codex-agent` Debug Chat + thread_id resume state | ✅ PASS | 见 [PHASE1_QA_ACCEPTANCE_MATRIX.md](./PHASE1_QA_ACCEPTANCE_MATRIX.md) §10 / `langbot-skills/reports/` |
+| 2026-05-29 | `codex-agent` Debug Chat + thread_id resume state | ✅ PASS | 见 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md) §10 / `langbot-skills/reports/` |
 | 2026-06-04 | 协议 / 文档漂移复核 | ✅ PASS | SDK scaffold 与 Protocol v1 对齐；LangBot UI 旧 runner fallback 已移除；run-scoped API 身份校验已收紧。 |
 
 ---
@@ -157,6 +158,6 @@
 
 - [README.md](./README.md) — 总体设计与路由
 - [PROTOCOL_V1.md](./PROTOCOL_V1.md) — 协议规范（唯一 schema 事实源）
-- [PHASE1_QA_ACCEPTANCE_MATRIX.md](./PHASE1_QA_ACCEPTANCE_MATRIX.md) — Agent Runner QA 指南和下一轮测试入口
+- [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md) — Agent Runner QA 指南和下一轮测试入口
 - [OFFICIAL_RUNNER_PLUGINS.md](./OFFICIAL_RUNNER_PLUGINS.md) — 官方插件仓库计划
 - [SECURITY_HARDENING.md](./SECURITY_HARDENING.md) — 安全发布级 hardening 后续门槛

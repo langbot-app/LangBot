@@ -53,12 +53,7 @@ AgentRunResult stream
 Delivery / Renderer / Platform API
 ```
 
-目标产品模型中，Agent 替代 Pipeline 承载 agent 配置：bot / IM
-channel 绑定一个 Agent，一个 Agent 可以被多个 bot / channel 复用。
-当前 Pipeline 只应接入在 Query entry adapter 位置：它可以继续产生
-`message.received` 并投影出临时 `AgentBinding`，但不应再拥有 runner
-选择、上下文裁剪和业务 agent 执行的核心语义。EventGateway 由外部 event
-branch 实现。
+目标产品模型、单绑定调度、Agent 复用、插件实例无状态和 fan-out 边界以 [PROTOCOL_V1.md](./PROTOCOL_V1.md) §13 为准。本文只说明 Host 如何把当前入口投影为内部模型。当前 Pipeline 只应接入在 Query entry adapter 位置：它可以继续产生 `message.received` 并投影出临时 `AgentConfig` / `AgentBinding`，但不应再拥有 runner 选择、上下文裁剪和业务 agent 执行的核心语义。EventGateway 由外部 event branch 实现。
 
 ## 4. LangBot 侧能力
 
@@ -90,13 +85,24 @@ class AgentEventEnvelope(BaseModel):
 
 **当前 adapter source**：`QueryEntryAdapter.query_to_event(query)` 从 Query 生成 `AgentEventEnvelope`。
 
-### 4.2 AgentBinding
+### 4.2 AgentConfig 与 AgentBinding
 
-`AgentBinding` 是"什么事件调用哪个 AgentRunner、带什么 Agent 配置"的
-Host 内部运行投影（不暴露给 SDK）。产品层的持久对象应是 Agent：
-Agent 携带 runner id、runner config、resource/state/delivery policy，并可被
-多个 bot / channel 复用。`AgentBinding` 是 EventRouter / 当前
-QueryEntryAdapter 在一次运行前解析出的有效绑定。
+`AgentConfig` 是迁移期的 Host 内部 Agent 配置投影（不暴露给 SDK）。当前 Query entry adapter 从 Pipeline config 投影出它；未来持久 Agent 也应先投影成这个运行期配置，再由 BindingResolver 结合事件和 scope 解析为 `AgentBinding`。
+
+```python
+class AgentConfig(BaseModel):
+    agent_id: str | None = None
+    runner_id: str
+    runner_config: dict[str, Any] = {}
+    resource_policy: ResourcePolicy = ResourcePolicy()
+    state_policy: StatePolicy = StatePolicy()
+    delivery_policy: DeliveryPolicy = DeliveryPolicy()
+    event_types: list[str] = ["message.received"]
+    enabled: bool = True
+    metadata: dict[str, Any] = {}
+```
+
+`AgentBinding` 是"什么事件调用哪个 AgentRunner、带什么 Agent 配置"的 Host 内部运行投影（不暴露给 SDK）。它是 EventRouter / 当前 QueryEntryAdapter 在一次运行前解析出的有效绑定。
 
 ```python
 class AgentBinding(BaseModel):
@@ -112,9 +118,7 @@ class AgentBinding(BaseModel):
     delivery_policy: DeliveryPolicy
 ```
 
-一个 bot / IM channel 在同一时间只应解析出一个负责 agentic 处理的
-AgentBinding。若未来需要 observer / fan-out / 多 agent 裁决，必须另行定义
-delivery、state、platform action 和 result 合并语义；当前 v1/EBA 主线不隐式支持。
+BindingResolver 的基数、fan-out 和冲突处理约束见 PROTOCOL_V1 §13；本节只定义 Host 内部投影形态。
 
 **当前 adapter source**：`QueryEntryAdapter.config_to_agent_config(query, runner_id)`
 先把 current config 投影为迁移期 `AgentConfig`，再由
@@ -140,7 +144,7 @@ class AgentRunnerDescriptor(BaseModel):
     plugin: PluginRef | None = None
 ```
 
-职责：调用 `plugin_connector.list_agent_runners()` 拉取 runner、校验 manifest（`kind == AgentRunner`、`metadata.name/label` 存在、`protocol_version` 兼容、`spec.*` 类型正确）、输出 descriptor、缓存 discovery 结果并提供 `refresh()`。单个插件 manifest 失败只记 warning，不影响其它 runner。`plugin:author/name/runner` 是稳定 id 格式；多个 binding 指向同一 runner id 时**不创建多个插件实例**。
+职责：调用 `plugin_connector.list_agent_runners()` 拉取 runner、校验 manifest（`kind == AgentRunner`、`metadata.name/label` 存在、`protocol_version` 兼容、`spec.*` 类型正确）、输出 descriptor、缓存 discovery 结果并提供 `refresh()`。单个插件 manifest 失败只记 warning，不影响其它 runner。`plugin:author/name/runner` 是稳定 id 格式；插件实例边界见 PROTOCOL_V1 §13。
 
 Host 内置 runner / adapter 不能作为 `AgentRunnerDescriptor.source` 绕过插件
 runtime、`run_id`、`ctx.resources` 和 `AgentRunAPIProxy` 权限链。若需要
@@ -166,7 +170,27 @@ run(event, binding)
 
 它负责：`run_id` 生成和生命周期、timeout/deadline/cancellation、插件异常隔离、result schema 校验和大小限制、`state.updated` 处理、delivery backpressure 和 telemetry。
 
-`run_from_query()` 保留为 Query entry adapter 入口，但内部转换成 event + binding 后走统一 `run()`。约束：`ChatMessageHandler` 不解析 `plugin:*`、不实例化 wrapper、不知道 runner 组件细节；`PipelineService` 从 registry 读取 metadata，不直接访问插件 runtime；插件是无状态执行单元，跨请求持久化状态必须走授权 storage / 外部服务，不能隐式存在 per-pipeline 插件对象里。
+典型 run 时序：
+
+```text
+QueryEntryAdapter / EventRouter
+  -> AgentRunOrchestrator.run(event, binding)
+  -> AgentRunnerRegistry.resolve(runner_id)
+  -> AgentResourceBuilder.freeze_snapshot(binding, event)
+  -> AgentRunSessionRegistry.register(run_id, runner_id, snapshot)
+  -> AgentContextBuilder.build(event, binding, snapshot)
+  -> PluginRuntimeConnector.run_agent(ctx)
+       -> AgentRunAPIProxy action
+          -> validate active run session + caller identity + snapshot
+          -> Host API / Store
+       <- AgentRunResult stream
+  -> apply state.updated to PersistentStateStore
+  -> write message.completed / artifact.created to Transcript / ArtifactStore
+  -> render delivery or raise RunnerExecutionError
+  -> AgentRunSessionRegistry.unregister(run_id)
+```
+
+`run_from_query()` 保留为 Query entry adapter 入口，但内部转换成 event + binding 后走统一 `run()`。约束：`ChatMessageHandler` 不解析 `plugin:*`、不实例化 wrapper、不知道 runner 组件细节；`PipelineService` 从 registry 读取 metadata，不直接访问插件 runtime；跨请求持久化状态必须走授权 storage / 外部服务。
 
 ### 4.5 Resource Authorization（三层裁剪）
 

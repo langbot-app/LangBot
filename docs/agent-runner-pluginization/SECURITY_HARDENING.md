@@ -27,7 +27,7 @@
 
 - 遵守 LangBot 下发的 Agent/runner config、授权资源和运行约束。
 - 将 LangBot 资源投影成目标 runner 可消费的形式，例如 context 文件、MCP 配置、环境变量或 CLI 参数。
-- 不把长期状态保存在插件实例内；需要跨轮次保存的外部 session id / working directory 等状态应写入 host-owned state。
+- 遵守 PROTOCOL_V1 §13 的插件实例边界；需要跨轮次保存的外部 session id / working directory 等状态应写入 host-owned state。
 - 对外部进程做最小必要封装，包括命令参数构造、超时、取消、输出解析和错误映射。
 
 ### 外部 Harness 负责

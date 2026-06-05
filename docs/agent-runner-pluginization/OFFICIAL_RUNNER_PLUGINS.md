@@ -1,6 +1,6 @@
 # 官方 AgentRunner 插件迁移计划
 
-本文档描述内置 `RequestRunner` 迁出 LangBot 后，官方 runner 插件如何组织、迁移和验收。它是 [HOST_SDK_INFRASTRUCTURE.md](./HOST_SDK_INFRASTRUCTURE.md) 和 [AGENT_CONTEXT_PROTOCOL.md](./AGENT_CONTEXT_PROTOCOL.md) 的下游落地计划，不是 LangBot 宿主协议的设计前提。验收状态见 [PROGRESS.md](./PROGRESS.md)，QA 入口见 [PHASE1_QA_ACCEPTANCE_MATRIX.md](./PHASE1_QA_ACCEPTANCE_MATRIX.md)。
+本文档描述内置 `RequestRunner` 迁出 LangBot 后，官方 runner 插件如何组织、迁移和验收。它是 [HOST_SDK_INFRASTRUCTURE.md](./HOST_SDK_INFRASTRUCTURE.md) 和 [AGENT_CONTEXT_PROTOCOL.md](./AGENT_CONTEXT_PROTOCOL.md) 的下游落地计划，不是 LangBot 宿主协议的设计前提。验收状态见 [PROGRESS.md](./PROGRESS.md)，QA 入口见 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md)。
 
 官方 `local-agent` 可以外移，也可以重写。设计重点不是保留旧内置 runner 的内部结构，而是验证一个依附 LangBot host 基础设施的官方 agent 能否完整工作。同时，LangBot host 协议必须服务 Claude Code SDK、Codex、Pi Agent SDK、外部 Agent 平台等自管 context/runtime 的 runner，不能被官方插件的实现细节绑死。
 
@@ -96,7 +96,11 @@ execution:
 
 ### 6.1 Code-agent harness runner
 
-Claude Code、Codex、Kimi Code 这类 runner 不一定通过 LangBot 的模型/工具 loop 执行，可以依赖自己的 harness，但仍必须遵守 Host 边界：输入来自 `ctx.event` / `ctx.input`，不依赖 Pipeline 私有 `Query`；授权资源投影为 harness 可读的 context 文件、MCP 配置、skill 目录、环境变量或 CLI 参数（投影形态见 AGENT_CONTEXT_PROTOCOL §4.5）；外部 session id / workspace / checkpoint 写入 Host state 或 plugin storage，插件实例保持无状态；CLI / subprocess runner 必须处理 timeout、取消、空输出、非零退出和 stderr 映射；harness 的 permission mode / allow-deny / MCP 配置只是一层执行约束，Host 仍负责调用前的资源授权、路径策略、secret 过滤和审计（发布级要求见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)）。
+Claude Code、Codex、Kimi Code 这类 runner 不一定通过 LangBot 的模型/工具 loop 执行，可以依赖自己的 harness，但仍必须遵守 Host 边界：输入来自 `ctx.event` / `ctx.input`，不依赖 Pipeline 私有 `Query`；授权资源投影为 harness 可读的 context 文件、MCP 配置、skill 目录、环境变量或 CLI 参数（投影形态见 AGENT_CONTEXT_PROTOCOL §4.5）；外部 session id / workspace / checkpoint 写入 Host state 或 plugin storage；插件实例边界见 PROTOCOL_V1 §13；CLI / subprocess runner 必须处理 timeout、取消、空输出、非零退出和 stderr 映射；harness 的 permission mode / allow-deny / MCP 配置只是一层执行约束，Host 仍负责调用前的资源授权、路径策略、secret 过滤和审计（发布级要求见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)）。
+
+实现结构应把 provider-native output 解析与 LangBot result stream 组装分开：Claude stream-json、Codex JSONL、Kimi / OpenCode 事件等只在 runner adapter 内解析，输出统一归一为 `AgentRunResult`（`message.completed` / `message.delta`、`state.updated`、`artifact.created`、`run.completed` / `run.failed`）。未知 native event 不应导致 run 崩溃；应记录诊断 metadata 或 warning。新增 harness 时优先补 native fixture -> `AgentRunResult` 的转换测试，再接 WebUI smoke。
+
+并发约束应按外部 session 粒度表达，而不是按 Agent / runner id / 插件实例表达；Agent 复用和全局锁边界见 PROTOCOL_V1 §13。若 runner 使用 `external.session_id` / `thread_id` resume 到同一 native session，且该 harness 不支持并发 turn，runner 应按稳定 external session key 串行写入；一次性 subprocess runner 可以只在单次 `run(ctx)` 内处理，长连接/daemon runner 则应采用 reader 独占 native stream、turn writer 串行写入的结构。
 
 ### 6.2 SDK-owned LangBot MCP bridge
 
@@ -111,7 +115,7 @@ Claude Code、Codex、Kimi Code 这类 runner 不一定通过 LangBot 的模型/
 
 ## 7. Claude Code / Codex runner 当前形态
 
-`claude-code-agent` 与 `codex-agent` 是最小可运行 MVP / dev path，用来证明外部 harness runner 可以接入同一套 AgentRunner 协议。本地 smoke 验收记录见 [PROGRESS.md](./PROGRESS.md) 与 [PHASE1_QA_ACCEPTANCE_MATRIX.md](./PHASE1_QA_ACCEPTANCE_MATRIX.md)。
+`claude-code-agent` 与 `codex-agent` 是最小可运行 MVP / dev path，用来证明外部 harness runner 可以接入同一套 AgentRunner 协议。本地 smoke 验收记录见 [PROGRESS.md](./PROGRESS.md) 与 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md)。
 
 MVP 含义：已验证 event-first context、resource projection、result stream 和
 基础 resume state 可以跑通；不表示 Docker 生产部署、发布级执行隔离、

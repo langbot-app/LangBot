@@ -3,6 +3,7 @@
 > **future design note**，不是当前分支实现范围。EventGateway、EventRouter、Event subscription/notification 由其他分支实现；本分支只预留 event-first 入口和 envelope/binding models。实现进度见 [PROGRESS.md](./PROGRESS.md)。
 >
 > 数据结构唯一定义在 [PROTOCOL_V1.md](./PROTOCOL_V1.md)（runner 可见）与 [HOST_SDK_INFRASTRUCTURE.md](./HOST_SDK_INFRASTRUCTURE.md)（Host 内部模型）；本文只讲 EBA 语义，不重抄 schema。
+> 与当前 runner 外化分支、后续 Agent Platform / Runtime Control Plane 的边界见 [EXTENSION_SCOPE_MATRIX.md](./EXTENSION_SCOPE_MATRIX.md)。
 
 本文描述未来 EBA 接入时，事件如何进入 LangBot、如何触发 AgentRunner，以及如何复用插件化 agent 基础设施。本阶段不实现完整 EventBus / EventRouter / Platform API，目标是把协议边界设计对，避免当前消息入口继续绑死 Pipeline 和用户文本消息。
 
@@ -43,9 +44,7 @@
 - 入口事件用 `AgentEventEnvelope`（HOST_SDK §4.1）承载；顶层字段使用 LangBot 稳定协议名，平台原始事件名和原始 payload 放 `metadata` / `raw_ref`。
 - 触发关系用 `AgentBinding`（HOST_SDK §4.2）表达。EBA 阶段 binding 通过 `event_types`、`scope`、`filters` 决定哪些事件触发当前 bot / channel 绑定的 Agent。
 
-目标产品语义：一个 bot / IM channel 在同一时间只绑定一个负责 agentic
-处理的 Agent；一个 Agent 可以被多个 bot / channel 复用。因此 EBA 主线按
-single-agent dispatch 设计，不做默认 fan-out。
+EBA dispatch 基数、Agent 复用和 fan-out 边界以 PROTOCOL_V1 §13 为准；本节只说明 future EventRouter 如何产出当前 v1 主线需要的 binding。
 
 Binding scope 示例：workspace 全局、bot 级、platform channel 级、conversation / group / thread 级、user / actor 级。旧 Pipeline 可迁移为 `message.received` 的临时 binding source，但目标持久配置应是 Agent，不是 Pipeline。
 
@@ -65,15 +64,11 @@ Platform Adapter / WebUI / API
   -> DeliveryController render / platform action
 ```
 
-约束：必须复用现有 orchestrator，不能为 EBA 单独实现另一套 plugin runner 调用协议；非消息事件不能绕过 resource authorization；delivery 和 platform action 走统一权限模型；外部 harness runner 也通过同一套 envelope/binding/context/result 协议接入，不为 Claude Code / Codex / Kimi 单独发明队列协议。
-
-若未来产品需要 observer agent、多个 agent 并行处理同一事件、或多 runner
-裁决，应另行设计 fan-out 合并、delivery 冲突、state 写入冲突、platform
-action 审批和 audit 语义。当前 EBA 预留不隐含这些能力。
+约束：必须复用现有 orchestrator，不能为 EBA 单独实现另一套 plugin runner 调用协议；非消息事件不能绕过 resource authorization；delivery 和 platform action 走统一权限模型；外部 harness runner 也通过同一套 envelope/binding/context/result 协议接入，不为 Claude Code / Codex / Kimi 单独发明队列协议。observer / fan-out / parallel arbitration 的额外语义仍按 PROTOCOL_V1 §13 处理。
 
 ## 6. 平台动作执行
 
-EBA 后 `action.requested`（PROTOCOL_V1 §7.2，当前仅 telemetry 不执行）将用于请求 host 执行平台动作：
+EBA 后 `action.requested`（PROTOCOL_V1 §7.3，当前仅 telemetry 不执行）将用于请求 host 执行平台动作：
 
 ```json
 { "type": "action.requested",

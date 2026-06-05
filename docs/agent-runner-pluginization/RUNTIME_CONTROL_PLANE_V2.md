@@ -3,6 +3,7 @@
 本文档记录后续 Agent Platform / runtime 管控面的设计方向。它是当前讨论中的 **v2 文档**，但这里的 v2 指 Host capability layer / runtime control plane，不是 `AgentRunner Protocol v2`，也不属于当前 AgentRunner Protocol v1 插件化主线的交付范围。
 
 > **future design note**。协议数据结构见 [PROTOCOL_V1.md](./PROTOCOL_V1.md)，实现进度见 [PROGRESS.md](./PROGRESS.md)。本文只讲 v2 管控面方向，不重抄 schema。
+> 与当前 runner 外化分支、EBA 和 Agent Platform 的边界见 [EXTENSION_SCOPE_MATRIX.md](./EXTENSION_SCOPE_MATRIX.md)。
 
 ## 1. 结论
 
@@ -195,7 +196,7 @@ Audit / artifacts：
 
 ## 8. 管控面插件可以构建的能力
 
-基于 v2 Host 能力，可以实现一个类似 Multica 的 agent 管控面插件：
+基于 v2 Host 能力，可以实现一个类似 Multica 的 agent 管控面插件。这里的“类似 Multica”只指产品形态：一个集中页面管理 agent profile、runtime 连接、任务队列、执行进度、失败诊断和审计视图；不是引入新的 runner 协议或把 runtime/task 事实源交给插件。
 
 - runtime 列表、在线状态、CLI 能力、版本、认证状态。
 - agent profile 与 runtime/provider 绑定。

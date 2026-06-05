@@ -366,18 +366,142 @@ class AgentResources(BaseModel):
 
 ## 7. Result Stream
 
-### 7.1 AgentRunResult
+### 7.1 AgentRunResult envelope
 
 ```python
-class AgentRunResult(BaseModel):
+JSONValue = str | int | float | bool | None | list["JSONValue"] | dict[str, "JSONValue"]
+
+ResultType = Literal[
+    "message.delta",
+    "message.completed",
+    "tool.call.started",
+    "tool.call.completed",
+    "artifact.created",
+    "state.updated",
+    "action.requested",
+    "run.completed",
+    "run.failed",
+]
+
+class AgentRunResultBase(BaseModel):
     run_id: str
-    type: str
-    data: dict[str, Any] = {}
     sequence: int | None = None
     timestamp: int | None = None
+    metadata: dict[str, Any] = {}
 ```
 
-### 7.2 稳定 result types
+`AgentRunResult` 是以下 typed result 的 discriminated union。Host 必须按 `type` 校验对应 `data` 结构；未知 `type` 按 §3 版本演进规则忽略并记录 warning。
+
+### 7.2 稳定 result payloads
+
+```python
+class AssistantMessageChunk(BaseModel):
+    role: Literal["assistant"] = "assistant"
+    content: str | None = None
+    contents: list[ContentElement] = []
+    metadata: dict[str, Any] = {}
+
+class AssistantMessage(BaseModel):
+    role: Literal["assistant"] = "assistant"
+    content: str | None = None
+    contents: list[ContentElement] = []
+    artifacts: list[ArtifactRef] = []
+    metadata: dict[str, Any] = {}
+
+class MessageDeltaData(BaseModel):
+    chunk: AssistantMessageChunk
+
+class MessageCompletedData(BaseModel):
+    message: AssistantMessage
+
+class ToolCallStartedData(BaseModel):
+    tool_call_id: str
+    tool_name: str
+    parameters: dict[str, Any] = {}
+
+class ToolCallCompletedData(BaseModel):
+    tool_call_id: str
+    tool_name: str
+    result_preview: dict[str, Any] | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+
+class ArtifactCreatedData(BaseModel):
+    artifact: ArtifactRef
+
+class StateUpdatedData(BaseModel):
+    scope: Literal["conversation", "actor", "subject", "runner", "binding", "workspace"]
+    key: str
+    value: JSONValue
+
+class ActionRequestedData(BaseModel):
+    action: str
+    target: dict[str, Any]
+    payload: dict[str, Any] = {}
+    idempotency_key: str | None = None
+    approval_hint: str | None = None
+
+class RunCompletedData(BaseModel):
+    finish_reason: str = "stop"
+    message: AssistantMessage | None = None
+    usage: dict[str, Any] = {}
+
+class RunFailedData(BaseModel):
+    code: str
+    message: str
+    retryable: bool = False
+    details: dict[str, Any] = {}
+
+class MessageDeltaResult(AgentRunResultBase):
+    type: Literal["message.delta"]
+    data: MessageDeltaData
+
+class MessageCompletedResult(AgentRunResultBase):
+    type: Literal["message.completed"]
+    data: MessageCompletedData
+
+class ToolCallStartedResult(AgentRunResultBase):
+    type: Literal["tool.call.started"]
+    data: ToolCallStartedData
+
+class ToolCallCompletedResult(AgentRunResultBase):
+    type: Literal["tool.call.completed"]
+    data: ToolCallCompletedData
+
+class ArtifactCreatedResult(AgentRunResultBase):
+    type: Literal["artifact.created"]
+    data: ArtifactCreatedData
+
+class StateUpdatedResult(AgentRunResultBase):
+    type: Literal["state.updated"]
+    data: StateUpdatedData
+
+class ActionRequestedResult(AgentRunResultBase):
+    type: Literal["action.requested"]
+    data: ActionRequestedData
+
+class RunCompletedResult(AgentRunResultBase):
+    type: Literal["run.completed"]
+    data: RunCompletedData
+
+class RunFailedResult(AgentRunResultBase):
+    type: Literal["run.failed"]
+    data: RunFailedData
+
+AgentRunResult = (
+    MessageDeltaResult
+    | MessageCompletedResult
+    | ToolCallStartedResult
+    | ToolCallCompletedResult
+    | ArtifactCreatedResult
+    | StateUpdatedResult
+    | ActionRequestedResult
+    | RunCompletedResult
+    | RunFailedResult
+)
+```
+
+### 7.3 稳定 result types
 
 | type | 说明 | 当前消费 |
 | --- | --- | --- |
@@ -393,16 +517,24 @@ class AgentRunResult(BaseModel):
 
 `action.requested` 是为 EBA 和 platform API 预留的协议表面：当前阶段 Host 收到后只记 telemetry，**不执行**，runner 作者不应依赖其副作用。执行模型见 EVENT_BASED_AGENT §6。
 
-### 7.3 示例
+Host 必须校验 `state.updated` 的 scope、key、value 大小和 JSON 可序列化性。`action.requested` 如果请求未来会产生外部副作用，runner 必须提供稳定 `idempotency_key`；当前阶段 Host 仍只记录 telemetry。
+
+### 7.4 Stream delivery semantics
+
+- Host 按 Runtime stream 顺序消费 result。当前 v1 不定义跨连接 replay，也不承诺 at-least-once；从 Host 视角，收到的 result 最多应用一次。
+- `sequence` 是单个 `run_id` 内的结果序号。in-process / stdio 这类天然有序的在线 stream 可以省略；任何会缓冲、重放、跨进程队列或 runtime-managed task 的 transport 必须提供从 1 开始严格递增的 `sequence`。
+- Host 看到已提供 `sequence` 的 result 时，应按 `(run_id, sequence)` 做重复检测，并在缺号或乱序时记录 warning；除非 transport 明确声明 replay 语义，Host 不应自行等待缺失序号重排用户可见输出。
+- `run.failed.data.retryable` 只表示整次 run 理论上可由上层重试；Protocol v1 不自动重试 run，也不自动重试 proxy action。任何未来自动重试的 side-effecting action 必须依赖 `idempotency_key` 或等价 Host-owned 去重键。
+- History / Event / Transcript cursor 是 opaque token。runner 不得解析 cursor，也不得假设 cursor 在不同 API、conversation、thread 或 retention window 之间可比较；当前实现即使返回数字字符串，也只是实现细节。
+
+### 7.5 示例
 
 ```json
 { "type": "message.delta",     "data": { "chunk": { "role": "assistant", "content": "hel" } } }
 { "type": "message.completed", "data": { "message": { "role": "assistant", "content": "hello" } } }
 { "type": "state.updated",     "data": { "scope": "conversation", "key": "external.session_id", "value": "abc" } }
-{ "type": "action.requested",  "data": { "action": "message.edit", "target": {"message_id": "..."}, "payload": {"text": "..."} } }
+{ "type": "action.requested",  "data": { "action": "message.edit", "target": {"message_id": "..."}, "payload": {"text": "..."}, "idempotency_key": "run_1:edit:msg_1" } }
 ```
-
-Host 必须校验 `state.updated` 的 scope、key、value 大小和 JSON 可序列化性。
 
 ## 8. AgentRunAPIProxy
 
@@ -523,6 +655,8 @@ entry adapter 只是迁移桥。它负责：
 - observer agent、多 runner fan-out、并行裁决、result 合并等能力需要单独设计 delivery、state、platform action 和 audit 语义，不属于当前 v1 契约。
 - `AgentRunnerDescriptor.source` 只允许 `plugin`；Host 内置 adapter 不能作为 runner source 绕过插件/runtime/proxy 权限链。
 - `ctx.resources` 与 proxy action 校验必须来自同一个 run authorization snapshot；runtime handler 不应重新执行资源裁剪。
+- v1 不要求 Agent、AgentRunner 插件实例或 runner id 全局串行。多个 bot / channel 可复用同一个 Agent；并发隔离依赖 `run_id`、binding、conversation / thread scope 和 Host authorization snapshot。
+- 对 `stateful_session` runner，若外部 runtime 不支持同一 session 并发 turn，串行化粒度应是稳定的 external session key（例如 workspace / bot / binding / runner / conversation / thread / external session id），不是 Agent 或插件实例全局锁。
 - 外部 harness runner 当前是 MVP / dev path，证明协议可接入，不代表发布级安全边界或 Docker 生产可用性完成。
 
 ## 14. 开放问题
