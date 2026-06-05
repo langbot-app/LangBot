@@ -10,10 +10,9 @@ Debug execution support has been moved to the ``debug`` module.
 
 from __future__ import annotations
 
-import ast
 import asyncio
 import logging
-import operator
+import re
 import uuid
 from datetime import datetime
 from typing import Any, Optional, TYPE_CHECKING
@@ -32,113 +31,12 @@ from .entities import (
 )
 from ..entity.persistence import workflow as persistence_workflow
 from .registry import NodeTypeRegistry
+from .safe_eval import safe_eval_with_vars
 
 if TYPE_CHECKING:
     from ..core import app
 
 logger = logging.getLogger(__name__)
-
-
-# ─── Safe expression evaluator (replaces eval()) ─────────────────────
-# Uses Python's ast module to whitelist only comparison / boolean / arithmetic
-# operations.  No function calls, attribute access, or subscript injection.
-
-_SAFE_OPS = {
-    ast.Add: operator.add,
-    ast.Sub: operator.sub,
-    ast.Mult: operator.mul,
-    ast.Div: operator.truediv,
-    ast.FloorDiv: operator.floordiv,
-    ast.Mod: operator.mod,
-    ast.Pow: operator.pow,
-    ast.USub: operator.neg,
-    ast.UAdd: operator.pos,
-    ast.Not: operator.not_,
-    ast.Eq: operator.eq,
-    ast.NotEq: operator.ne,
-    ast.Lt: operator.lt,
-    ast.LtE: operator.le,
-    ast.Gt: operator.gt,
-    ast.GtE: operator.ge,
-    ast.Is: operator.is_,
-    ast.IsNot: operator.is_not,
-    ast.In: lambda a, b: a in b,
-    ast.NotIn: lambda a, b: a not in b,
-}
-
-
-def _safe_eval(expr: str) -> Any:
-    """Evaluate a simple expression safely via AST whitelist.
-
-    Supports: literals, comparisons (==, !=, <, >, <=, >=, in, not in, is, is not),
-    boolean logic (and, or, not), arithmetic (+, -, *, /, //, %, **), and
-    string operations (contains via ``in``).
-
-    Raises ``ValueError`` on any disallowed construct (function calls,
-    attribute access, imports, etc.).
-    """
-    tree = ast.parse(expr.strip(), mode='eval')
-    return _eval_node(tree.body)
-
-
-def _eval_node(node: ast.AST) -> Any:
-    # Literals: numbers, strings, True/False/None
-    if isinstance(node, ast.Constant):
-        return node.value
-
-    # Unary operators: -x, +x, not x
-    if isinstance(node, ast.UnaryOp):
-        op_fn = _SAFE_OPS.get(type(node.op))
-        if op_fn is None:
-            raise ValueError(f'Unsupported unary op: {type(node.op).__name__}')
-        return op_fn(_eval_node(node.operand))
-
-    # Binary operators: x + y, x * y, etc.
-    if isinstance(node, ast.BinOp):
-        op_fn = _SAFE_OPS.get(type(node.op))
-        if op_fn is None:
-            raise ValueError(f'Unsupported binary op: {type(node.op).__name__}')
-        return op_fn(_eval_node(node.left), _eval_node(node.right))
-
-    # Comparisons: x == y, x > y, x in y, etc.  (chained)
-    if isinstance(node, ast.Compare):
-        left = _eval_node(node.left)
-        for op, comparator in zip(node.ops, node.comparators):
-            op_fn = _SAFE_OPS.get(type(op))
-            if op_fn is None:
-                raise ValueError(f'Unsupported comparison: {type(op).__name__}')
-            right = _eval_node(comparator)
-            if not op_fn(left, right):
-                return False
-            left = right
-        return True
-
-    # Boolean operators: x and y, x or y
-    if isinstance(node, ast.BoolOp):
-        if isinstance(node.op, ast.And):
-            return all(_eval_node(v) for v in node.values)
-        if isinstance(node.op, ast.Or):
-            return any(_eval_node(v) for v in node.values)
-
-    # Ternary: x if cond else y
-    if isinstance(node, ast.IfExp):
-        return _eval_node(node.body) if _eval_node(node.test) else _eval_node(node.orelse)
-
-    # Tuples / Lists (used in "x in [1,2,3]")
-    if isinstance(node, (ast.Tuple, ast.List)):
-        return [_eval_node(e) for e in node.elts]
-
-    # Name lookup – only allow None, True, False
-    if isinstance(node, ast.Name):
-        if node.id == 'None':
-            return None
-        if node.id == 'True':
-            return True
-        if node.id == 'False':
-            return False
-        raise ValueError(f'Unsupported variable reference: {node.id}')
-
-    raise ValueError(f'Unsupported expression node: {type(node).__name__}')
 
 
 class WorkflowExecutor:
@@ -168,10 +66,6 @@ class WorkflowExecutor:
         """
         context.status = ExecutionStatus.RUNNING
         context.start_time = datetime.now()
-
-        # Note: Frontend panel logging has been removed.
-        # A new solution will be implemented separately.
-        monitoring_message_id = ''
 
         try:
             # Build execution graph
@@ -575,42 +469,40 @@ class WorkflowExecutor:
         return None
 
     async def _evaluate_condition(self, condition: str, context: ExecutionContext) -> bool:
-        """Evaluate a condition expression safely using AST whitelist"""
-        try:
-            # Resolve variable references in condition
-            if '{{' in condition:
-                import re
+        """Evaluate a condition expression safely.
 
+        Any ``{{ ... }}`` references are resolved against the execution context
+        and bound as **variables** that are passed to :func:`safe_eval_with_vars`.
+        Values are never string-concatenated into the expression, which avoids
+        broken parsing (e.g. values containing quotes) and any injection risk
+        from non-literal value types (lists, dicts, etc.).
+        """
+        variables: dict[str, Any] = {}
+        try:
+            # Resolve variable references in condition into bound variables.
+            if '{{' in condition:
                 pattern = r'\{\{([^}]+)\}\}'
 
-                # First pass: replace all variable references with placeholders
-                placeholders = {}
+                placeholders: dict[str, str] = {}
                 placeholder_idx = 0
 
-                def replace_with_placeholder(match):
+                def replace_with_placeholder(match: re.Match[str]) -> str:
                     nonlocal placeholder_idx
                     var_expr = match.group(1)
-                    placeholder = f'__PH{placeholder_idx}__'
+                    placeholder = f'__ph{placeholder_idx}__'
                     placeholders[placeholder] = var_expr
                     placeholder_idx += 1
                     return placeholder
 
-                condition_with_placeholders = re.sub(pattern, replace_with_placeholder, condition)
+                condition = re.sub(pattern, replace_with_placeholder, condition)
 
-                # Second pass: resolve each placeholder asynchronously
+                # Resolve each placeholder and bind it as a variable, so the
+                # actual value (of any type) is passed through unchanged.
                 for placeholder, var_expr in placeholders.items():
-                    value = await self._resolve_expression(var_expr, context)
-                    if isinstance(value, str):
-                        condition_with_placeholders = condition_with_placeholders.replace(placeholder, f'"{value}"')
-                    elif value is None:
-                        condition_with_placeholders = condition_with_placeholders.replace(placeholder, 'None')
-                    else:
-                        condition_with_placeholders = condition_with_placeholders.replace(placeholder, str(value))
+                    variables[placeholder] = await self._resolve_expression(var_expr, context)
 
-                condition = condition_with_placeholders
-
-            # Safe expression evaluation using AST whitelist
-            result = _safe_eval(condition)
+            # Safe expression evaluation with bound variables (AST whitelist).
+            result = safe_eval_with_vars(condition, variables)
             return bool(result)
 
         except Exception as e:
@@ -753,8 +645,13 @@ class ParallelExecutor:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         processed_results = []
-        for result in results:
+        for index, result in enumerate(results):
             if isinstance(result, Exception):
+                logger.error(
+                    f'Parallel branch {index} failed: {result}',
+                    exc_info=result,
+                    extra={'branch_index': index, 'execution_id': context.execution_id},
+                )
                 processed_results.append({'error': str(result)})
             else:
                 processed_results.append(result)

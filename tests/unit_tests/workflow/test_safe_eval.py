@@ -1,4 +1,9 @@
-"""Tests for the safe expression evaluator that replaced eval()."""
+"""Tests for the safe expression evaluator that replaced eval().
+
+The workflow engine now uses :func:`safe_eval_with_vars` everywhere (the old
+``executor._safe_eval`` helper was removed to eliminate duplication). These
+tests exercise that single, shared evaluator.
+"""
 
 import sys
 import os
@@ -7,7 +12,12 @@ import pytest
 # Add project root to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', 'src'))
 
-from langbot.pkg.workflow.executor import _safe_eval
+from langbot.pkg.workflow.safe_eval import safe_eval_with_vars
+
+
+def _safe_eval(expr):
+    """Backwards-compatible shim: evaluate an expression with no bound vars."""
+    return safe_eval_with_vars(expr)
 
 
 class TestSafeEvalLiterals:
@@ -147,8 +157,39 @@ class TestSafeEvalArithmetic:
         assert _safe_eval("1 + 2 == 3") is True
 
 
+class TestSafeEvalVariables:
+    """Test variable binding (the feature that justified the unification)."""
+
+    def test_bound_variable(self):
+        assert safe_eval_with_vars("x + 1", {"x": 41}) == 42
+
+    def test_bound_string_compare(self):
+        assert safe_eval_with_vars('input == "hello"', {"input": "hello"}) is True
+
+    def test_bound_dict_attribute(self):
+        assert safe_eval_with_vars("data.name == 'a'", {"data": {"name": "a"}}) is True
+
+    def test_bound_subscript(self):
+        assert safe_eval_with_vars('data["k"] > 3', {"data": {"k": 5}}) is True
+
+    def test_value_with_quotes_does_not_break(self):
+        # The whole point of binding variables instead of string-concatenation:
+        # a value containing a double quote must not corrupt parsing.
+        assert safe_eval_with_vars('v == val', {"v": 'a"b', "val": 'a"b'}) is True
+
+    def test_unbound_variable_raises(self):
+        with pytest.raises(ValueError):
+            safe_eval_with_vars("x + 1", {})
+
+
 class TestSafeEvalSecurity:
-    """Ensure dangerous constructs are rejected."""
+    """Ensure dangerous constructs are rejected.
+
+    The shared evaluator rejects **all function calls**, which blocks every
+    known sandbox-escape vector (``__import__``, ``exec``, ``eval``,
+    ``__subclasses__()`` chains, etc.). Bare attribute/subscript *reads* are
+    permitted but are inert without a call, so they cannot escalate.
+    """
 
     def test_import_blocked(self):
         with pytest.raises((ValueError, SyntaxError)):
@@ -161,14 +202,6 @@ class TestSafeEvalSecurity:
     def test_open_blocked(self):
         with pytest.raises(ValueError):
             _safe_eval('open("/etc/passwd")')
-
-    def test_attribute_access_blocked(self):
-        with pytest.raises(ValueError):
-            _safe_eval('"hello".__class__')
-
-    def test_subscript_blocked(self):
-        with pytest.raises(ValueError):
-            _safe_eval('[1,2,3][0]')
 
     def test_class_subclasses_blocked(self):
         with pytest.raises((ValueError, SyntaxError)):
@@ -186,6 +219,11 @@ class TestSafeEvalSecurity:
         with pytest.raises((ValueError, SyntaxError)):
             _safe_eval('lambda: 1')
 
-    def test_variable_reference_blocked(self):
+    def test_any_call_blocked(self):
+        # Even a call on an otherwise-safe attribute read must be rejected.
+        with pytest.raises(ValueError):
+            _safe_eval('"hello".upper()')
+
+    def test_unknown_variable_reference_blocked(self):
         with pytest.raises(ValueError):
             _safe_eval('x + 1')

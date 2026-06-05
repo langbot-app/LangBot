@@ -6,7 +6,7 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime, timedelta
-from typing import Optional, TYPE_CHECKING
+from typing import Optional
 
 import sqlalchemy
 

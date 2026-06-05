@@ -83,7 +83,6 @@ export default function WorkflowDebugger({
   const [activeTab, setActiveTab] = useState<string>('context');
   const [autoScroll, setAutoScroll] = useState(true);
   const [newVariable, setNewVariable] = useState({ key: '', value: '' });
-  const [, setExpandedNodes] = useState<Set<string>>(new Set());
   const pollCancelledRef = useRef(false);
 
   const {
@@ -107,7 +106,6 @@ export default function WorkflowDebugger({
     clearDebugLogs,
     setDebugContext,
     resetDebugContext,
-    addWatchedVariable,
     removeWatchedVariable,
     resetDebugState,
   } = useWorkflowStore();
@@ -310,19 +308,6 @@ export default function WorkflowDebugger({
       });
     }
   }, [workflowId, debugExecutionId, t, resetDebugState]);
-
-  // Toggle node expansion
-  const toggleNodeExpanded = (nodeId: string) => {
-    setExpandedNodes((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(nodeId)) {
-        newSet.delete(nodeId);
-      } else {
-        newSet.add(nodeId);
-      }
-      return newSet;
-    });
-  };
 
   // Add custom variable
   const handleAddVariable = () => {

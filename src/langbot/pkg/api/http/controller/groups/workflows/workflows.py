@@ -61,6 +61,7 @@ class WorkflowsRouterGroup(group.RouterGroup):
             elif quart.request.method == 'DELETE':
                 await self.ap.workflow_service.delete_workflow(workflow_uuid)
                 return self.success()
+            return self.http_status(405, -1, 'method not allowed')
 
         # Publish workflow (enable)
         @self.route('/<workflow_uuid>/publish', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
@@ -193,6 +194,7 @@ class WorkflowsRouterGroup(group.RouterGroup):
                     return self.success()
                 except ValueError as e:
                     return self.http_status(404, -1, str(e))
+            return self.http_status(405, -1, 'method not allowed')
 
         # Debug API - Start debug execution
         @self.route('/<workflow_uuid>/debug/start', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)

@@ -358,7 +358,10 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
               <Upload className="size-4 mr-1" />
               {t('workflows.import')}
             </Button>
-            <Button onClick={handleSave} disabled={isSaving || !basicInfo.name.trim()}>
+            <Button
+              onClick={handleSave}
+              disabled={isSaving || !basicInfo.name.trim()}
+            >
               {isSaving ? t('common.saving') : t('common.create')}
             </Button>
           </div>
