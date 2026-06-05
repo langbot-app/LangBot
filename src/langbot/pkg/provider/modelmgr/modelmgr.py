@@ -4,7 +4,6 @@ import sqlalchemy
 import traceback
 
 from . import requester
-from .requesters import litellmchat
 from ...core import app
 from ...discover import engine
 from . import token
@@ -310,6 +309,8 @@ class ModelManager:
 
         # Check if requester manifest specifies litellm_provider
         if requester_manifest and requester_manifest.spec.get('litellm_provider'):
+            from .requesters import litellmchat
+
             # Use unified LiteLLMRequester with provider prefix
             # Map litellm_provider (YAML spec) to custom_llm_provider (config)
             config['custom_llm_provider'] = requester_manifest.spec['litellm_provider']

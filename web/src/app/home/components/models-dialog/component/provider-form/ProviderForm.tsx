@@ -54,6 +54,7 @@ export default function ProviderForm({
       api_key: '',
     },
   });
+  const { setValue } = form;
 
   const [requesterList, setRequesterList] = useState<
     {
@@ -69,6 +70,37 @@ export default function ProviderForm({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  const loadRequesters = useCallback(async () => {
+    const resp = await httpClient.getProviderRequesters();
+    setRequesterList(
+      resp.requesters
+        .filter((item) => item.name !== 'space-chat-completions')
+        .map((item) => ({
+          label: extractI18nObject(item.label),
+          value: item.name,
+          category: item.spec.provider_category || 'manufacturer',
+          defaultUrl:
+            item.spec.config
+              .find((c) => c.name === 'base_url')
+              ?.default?.toString() || '',
+          description: extractI18nObject(item.description),
+        })),
+    );
+  }, []);
+
+  const loadProvider = useCallback(
+    async (id: string) => {
+      const resp = await httpClient.getModelProvider(id);
+      const provider = resp.provider;
+
+      setValue('name', provider.name);
+      setValue('requester', provider.requester);
+      setValue('base_url', provider.base_url);
+      setValue('api_key', provider.api_keys?.[0] || '');
+    },
+    [setValue],
+  );
+
   useEffect(() => {
     async function init() {
       await loadRequesters();
@@ -77,7 +109,7 @@ export default function ProviderForm({
       }
     }
     init();
-  }, [providerId]);
+  }, [providerId, loadProvider, loadRequesters]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -126,34 +158,6 @@ export default function ProviderForm({
     maas: t('models.aggregationPlatform'),
     'self-hosted': t('models.selfDeployed'),
   };
-
-  async function loadRequesters() {
-    const resp = await httpClient.getProviderRequesters();
-    setRequesterList(
-      resp.requesters
-        .filter((item) => item.name !== 'space-chat-completions')
-        .map((item) => ({
-          label: extractI18nObject(item.label),
-          value: item.name,
-          category: item.spec.provider_category || 'manufacturer',
-          defaultUrl:
-            item.spec.config
-              .find((c) => c.name === 'base_url')
-              ?.default?.toString() || '',
-          description: extractI18nObject(item.description),
-        })),
-    );
-  }
-
-  async function loadProvider(id: string) {
-    const resp = await httpClient.getModelProvider(id);
-    const provider = resp.provider;
-
-    form.setValue('name', provider.name);
-    form.setValue('requester', provider.requester);
-    form.setValue('base_url', provider.base_url);
-    form.setValue('api_key', provider.api_keys?.[0] || '');
-  }
 
   async function handleFormSubmit(values: z.infer<typeof formSchema>) {
     const data = {
