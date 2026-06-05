@@ -457,7 +457,9 @@ class TestNativeToolLoaderSkillPaths:
                 SimpleNamespace(query_id='q1', variables={PIPELINE_BOUND_SKILLS_KEY: ['demo']}),
             )
 
-            assert result == {'ok': True, 'content': 'demo instructions'}
+            assert result['ok'] is True
+            assert result['content'] == 'demo instructions'
+            assert result['truncated'] is False
 
     @pytest.mark.asyncio
     async def test_exec_in_activated_skill_mount_rewrites_command_and_refreshes(self):
@@ -486,7 +488,7 @@ class TestNativeToolLoaderSkillPaths:
                 query,
             )
 
-            assert result == {'ok': True}
+            assert result['ok'] is True
             tool_parameters = ap.box_service.execute_tool.await_args.args[0]
             assert tool_parameters['command'] == 'python /workspace/.skills/demo/scripts/run.py'
             assert tool_parameters['workdir'] == '/workspace/.skills/demo'

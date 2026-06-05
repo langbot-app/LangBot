@@ -425,6 +425,7 @@ class TestAgentRunProxyActions:
         try:
             response = await runtime_handler.actions[PluginToRuntimeAction.INVOKE_LLM.value]({
                 'run_id': run_id,
+                'caller_plugin_identity': 'test/runner',
                 'llm_model_uuid': 'llm_001',
                 'messages': [{'role': 'user', 'content': 'hello'}],
                 'funcs': [{
@@ -489,6 +490,7 @@ class TestAgentRunProxyActions:
         try:
             stream = runtime_handler.actions[PluginToRuntimeAction.INVOKE_LLM_STREAM.value]({
                 'run_id': run_id,
+                'caller_plugin_identity': 'test/runner',
                 'llm_model_uuid': 'llm_stream_001',
                 'messages': [{'role': 'user', 'content': 'hello'}],
                 'funcs': [{
@@ -547,6 +549,7 @@ class TestAgentRunProxyActions:
         try:
             stream = runtime_handler.actions[PluginToRuntimeAction.INVOKE_LLM_STREAM.value]({
                 'run_id': run_id,
+                'caller_plugin_identity': 'test/runner',
                 'llm_model_uuid': 'llm_stream_002',
                 'messages': [{'role': 'user', 'content': 'hello'}],
             })
@@ -582,6 +585,7 @@ class TestAgentRunProxyActions:
         try:
             response = await runtime_handler.actions[PluginToRuntimeAction.CALL_TOOL.value]({
                 'run_id': run_id,
+                'caller_plugin_identity': 'test/runner',
                 'tool_name': 'test/search',
                 'parameters': {'q': 'langbot'},
             })
@@ -628,6 +632,7 @@ class TestAgentRunProxyActions:
         try:
             response = await runtime_handler.actions[PluginToRuntimeAction.INVOKE_RERANK.value]({
                 'run_id': run_id,
+                'caller_plugin_identity': 'test/runner',
                 'rerank_model_uuid': 'rerank_001',
                 'query': 'hello',
                 'documents': ['a', 'b'],

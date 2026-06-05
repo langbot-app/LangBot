@@ -48,7 +48,7 @@ from ..survey import manager as survey_module
 from ..skill import manager as skill_mgr
 
 if TYPE_CHECKING:
-    from ..agent.runner import AgentRunnerRegistry, AgentRunOrchestrator
+    from ..agent.runner import AgentRunnerRegistry, AgentRunOrchestrator, AgentRunnerDefaultConfigService
 
 
 class Application:
@@ -171,6 +171,8 @@ class Application:
 
     # Agent runner subsystem
     agent_runner_registry: AgentRunnerRegistry = None
+
+    agent_runner_default_config_service: AgentRunnerDefaultConfigService = None
 
     agent_run_orchestrator: AgentRunOrchestrator = None
 

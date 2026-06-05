@@ -37,7 +37,7 @@ def make_runner(runner_id: str, config_schema: list[dict]):
 
 
 @pytest.mark.asyncio
-async def test_default_pipeline_config_uses_installed_local_agent_schema():
+async def test_default_pipeline_config_uses_first_installed_runner_schema():
     local_agent = make_runner(
         'plugin:langbot/local-agent/default',
         [
@@ -56,11 +56,10 @@ async def test_default_pipeline_config_uses_installed_local_agent_schema():
 
     config = await PipelineService(ap).get_default_pipeline_config()
 
-    assert config['ai']['runner']['id'] == 'plugin:langbot/local-agent/default'
+    assert config['ai']['runner']['id'] == 'plugin:alice/custom-agent/default'
     assert config['ai']['runner_config'] == {
-        'plugin:langbot/local-agent/default': {
-            'model': {'primary': '', 'fallbacks': []},
-            'prompt': [{'role': 'system', 'content': 'Hello'}],
+        'plugin:alice/custom-agent/default': {
+            'api-key': '',
         },
     }
 

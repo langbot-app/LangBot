@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from langbot.pkg.agent.runner.default_config import AgentRunnerDefaultConfigService
 from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
 from langbot.pkg.api.http.service.model import (
     LLMModelsService,
@@ -474,6 +475,7 @@ class TestLLMModelsServiceCreateLLMModel:
         ap.model_mgr.load_llm_model_with_provider = AsyncMock(return_value=Mock())
         ap.pipeline_service = SimpleNamespace(update_pipeline=AsyncMock())
         ap.agent_runner_registry = FakeAgentRunnerRegistry()
+        ap.agent_runner_default_config_service = AgentRunnerDefaultConfigService(ap)
 
         pipeline = SimpleNamespace(
             uuid='pipeline-uuid',

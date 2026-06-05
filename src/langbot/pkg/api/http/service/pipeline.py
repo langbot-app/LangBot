@@ -8,11 +8,6 @@ import typing
 from ....core import app
 from ....entity.persistence import pipeline as persistence_pipeline
 
-# Prefer the official local-agent plugin when it is installed. This is not a
-# built-in fallback: when no AgentRunner plugin is available, the default
-# pipeline stays unbound so the UI can guide users to install a runner.
-PREFERRED_DEFAULT_RUNNER_ID = 'plugin:langbot/local-agent/default'
-
 
 default_stage_order = [
     'GroupRespondRuleCheckStage',  # 群响应规则检查
@@ -69,10 +64,7 @@ class PipelineService:
         if not runners:
             return config
 
-        selected_runner = next(
-            (runner for runner in runners if runner.id == PREFERRED_DEFAULT_RUNNER_ID),
-            runners[0],
-        )
+        selected_runner = runners[0]
         ai_config = config.setdefault('ai', {})
         runner_config = ai_config.setdefault('runner', {})
         runner_config['id'] = selected_runner.id
@@ -113,15 +105,10 @@ class PipelineService:
                         # Only installed/available runners should be shown
                         config_item['options'] = runner_options
 
-                        # Prefer the official local-agent plugin when installed; otherwise use the first
-                        # discoverable runner. If no runner is available, leave the default unset so the
-                        # UI can recommend installing an AgentRunner plugin, similar to the RAG flow.
+                        # Use the registry order as the default order. If no runner is available, leave
+                        # the default unset so the UI can recommend installing an AgentRunner plugin.
                         if runner_options and 'default' not in config_item:
-                            default_option = next(
-                                (option for option in runner_options if option['name'] == PREFERRED_DEFAULT_RUNNER_ID),
-                                runner_options[0],
-                            )
-                            config_item['default'] = default_option['name']
+                            config_item['default'] = runner_options[0]['name']
 
                         # Add corresponding stage configuration for each runner
                         for stage_config in runner_stages:

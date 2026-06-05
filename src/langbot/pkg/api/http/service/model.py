@@ -7,10 +7,7 @@ from langbot_plugin.api.entities.builtin.provider import message as provider_mes
 
 from ....core import app
 from ....entity.persistence import model as persistence_model
-from ....entity.persistence import pipeline as persistence_pipeline
 from ....provider.modelmgr import requester as model_requester
-from ....agent.runner.config_migration import ConfigMigration
-from ....agent.runner import config_schema
 
 
 def _parse_provider_api_keys(provider_dict: dict) -> dict:
@@ -81,40 +78,6 @@ class LLMModelsService:
 
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
-
-    async def _get_runner_descriptor(self, runner_id: str):
-        registry = getattr(self.ap, 'agent_runner_registry', None)
-        if registry is None:
-            return None
-        try:
-            return await registry.get(runner_id, bound_plugins=None)
-        except Exception as e:
-            logger = getattr(self.ap, 'logger', None)
-            if logger:
-                logger.warning(f'Failed to load AgentRunner descriptor while setting default model: {e}')
-            return None
-
-    async def _auto_set_default_pipeline_llm_model(self, pipeline: persistence_pipeline.LegacyPipeline, model_uuid: str):
-        pipeline_config = pipeline.config
-        if not isinstance(pipeline_config, dict):
-            return
-
-        runner_id = ConfigMigration.resolve_runner_id(pipeline_config)
-        if not runner_id:
-            return
-
-        descriptor = await self._get_runner_descriptor(runner_id)
-        if descriptor is None:
-            return
-
-        ai_config = pipeline_config.setdefault('ai', {})
-        runner_configs = ai_config.setdefault('runner_config', {})
-        runner_config = runner_configs.setdefault(runner_id, {})
-
-        if not config_schema.set_empty_llm_model_selection(descriptor, runner_config, model_uuid):
-            return
-
-        await self.ap.pipeline_service.update_pipeline(pipeline.uuid, {'config': pipeline_config})
 
     async def get_llm_models(self, include_secret: bool = True) -> list[dict]:
         """Get all LLM models with provider info"""
@@ -187,14 +150,9 @@ class LLMModelsService:
         self.ap.model_mgr.llm_models.append(runtime_llm_model)
 
         if auto_set_to_default_pipeline:
-            result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(
-                    persistence_pipeline.LegacyPipeline.is_default == True
-                )
-            )
-            pipeline = result.first()
-            if pipeline is not None:
-                await self._auto_set_default_pipeline_llm_model(pipeline, model_data['uuid'])
+            default_config_service = getattr(self.ap, 'agent_runner_default_config_service', None)
+            if default_config_service is not None:
+                await default_config_service.auto_set_default_pipeline_llm_model(model_data['uuid'])
 
         return model_data['uuid']
 
