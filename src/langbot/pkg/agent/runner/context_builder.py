@@ -115,7 +115,7 @@ class AgentRuntimeContext(typing.TypedDict):
     """Agent runtime context."""
 
     langbot_version: str | None
-    sdk_protocol_version: str
+    protocol_version: str
     trace_id: str | None
     deadline_at: float | None
     metadata: dict[str, typing.Any]
@@ -263,7 +263,7 @@ class AgentRunContextBuilder:
         # Build runtime context
         runtime: AgentRuntimeContext = {
             'langbot_version': self.ap.ver_mgr.get_current_version(),
-            'sdk_protocol_version': descriptor.protocol_version,
+            'protocol_version': descriptor.protocol_version,
             'trace_id': run_id,
             'deadline_at': self._build_deadline_from_binding(binding),
             'metadata': {

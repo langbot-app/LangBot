@@ -144,6 +144,10 @@ class TestContextValidation:
         assert isinstance(validated.resources, AgentResources)
         assert validated.runtime is not None
         assert isinstance(validated.runtime, AgentRuntimeContext)
+        assert validated.runtime.protocol_version == "1"
+        assert "protocol_version" in validated.runtime.model_dump()
+        assert "sdk_protocol_version" not in validated.runtime.model_dump()
+        assert "sdk_protocol_version" not in context_dict["runtime"]
 
         # Verify event context
         assert validated.event.event_id == "evt_1"
