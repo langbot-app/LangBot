@@ -3,8 +3,6 @@ Legacy n8n Service API Runner.
 
 DEPRECATED: This runner has been migrated to the AgentRunner plugin format.
 Use the official `langbot/n8n-agent` plugin instead.
-
-Migration target: /home/glwuy/langbot-app/langbot-agent-runner/n8n-agent/
 """
 
 from __future__ import annotations

@@ -3,8 +3,6 @@ Legacy Dify Service API Runner.
 
 DEPRECATED: This runner has been migrated to the AgentRunner plugin format.
 Use the official `langbot/dify-agent` plugin instead.
-
-Migration target: /home/glwuy/langbot-app/langbot-agent-runner/dify-agent/
 """
 
 from __future__ import annotations

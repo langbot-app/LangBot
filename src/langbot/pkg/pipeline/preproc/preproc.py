@@ -211,7 +211,7 @@ class PreProcessor(stage.PipelineStage):
         # time instead of the first message/creation time.
         conversation.update_time = now
 
-        # 设置query
+        # Attach resolved session state to the query.
         query.session = session
         query.prompt = conversation.prompt.copy()
         query.messages = await self._resolve_history_messages(runner_id, conversation)
@@ -292,7 +292,7 @@ class PreProcessor(stage.PipelineStage):
                     if me.base64 is not None:
                         content_list.append(provider_message.ContentElement.from_image_base64(me.base64))
             elif isinstance(me, platform_message.Voice):
-                # 转成文件链接，让下游 runner 上传到目标模型
+                # Convert voice input into file content for downstream model upload.
                 if me.base64:
                     content_list.append(provider_message.ContentElement.from_file_base64(me.base64, 'voice.silk'))
                 elif me.url:
@@ -334,7 +334,7 @@ class PreProcessor(stage.PipelineStage):
             runner_config,
         )
 
-        # =========== 触发事件 PromptPreProcessing
+        # Emit PromptPreProcessing before the runner receives the query.
 
         event = events.PromptPreProcessing(
             session_name=f'{query.session.launcher_type.value}_{query.session.launcher_id}',

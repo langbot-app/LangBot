@@ -8,6 +8,8 @@ import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 from langbot_plugin.api.entities.events import pipeline_query
 
 from .. import loader
+from ..errors import ToolNotFoundError
+from .availability import is_box_backend_available
 from . import skill as skill_loader
 
 EXEC_TOOL_NAME = 'exec'
@@ -52,18 +54,7 @@ class NativeToolLoader(loader.ToolLoader):
 
     async def _check_backend_available(self) -> bool:
         """Check if the box backend is truly available (not just the runtime)."""
-        box_service = getattr(self.ap, 'box_service', None)
-        if box_service is None:
-            return False
-        if not getattr(box_service, 'available', False):
-            return False
-        # Check if backend is truly available via get_status
-        try:
-            status = await box_service.get_status()
-            backend_info = status.get('backend', {})
-            return backend_info.get('available', False)
-        except Exception:
-            return False
+        return await is_box_backend_available(self.ap)
 
     async def get_tools(self, bound_plugins: list[str] | None = None) -> list[resource_tool.LLMTool]:
         if not self._is_sandbox_available():
@@ -100,7 +91,7 @@ class NativeToolLoader(loader.ToolLoader):
             return await self._invoke_glob(parameters, query)
         if name == GREP_TOOL_NAME:
             return await self._invoke_grep(parameters, query)
-        raise ValueError(f'未找到工具: {name}')
+        raise ToolNotFoundError(name)
 
     async def shutdown(self):
         pass

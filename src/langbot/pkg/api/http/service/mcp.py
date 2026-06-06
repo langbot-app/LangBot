@@ -137,7 +137,7 @@ class MCPService:
                 await self.ap.tool_mgr.mcp_tool_loader.remove_mcp_server(server_name)
 
     async def test_mcp_server(self, server_name: str, server_data: dict) -> int:
-        """测试 MCP 服务器连接并返回任务 ID"""
+        """Test an MCP server connection and return the task ID."""
 
         runtime_mcp_session: RuntimeMCPSession | None = None
 

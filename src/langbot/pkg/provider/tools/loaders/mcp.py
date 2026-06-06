@@ -30,7 +30,7 @@ class MCPSessionStatus(enum.Enum):
 
 
 class RuntimeMCPSession:
-    """运行时 MCP 会话"""
+    """Runtime MCP session."""
 
     ap: app.Application
 
@@ -384,12 +384,12 @@ class RuntimeMCPSession:
         return info
 
     async def shutdown(self):
-        """关闭会话并清理资源"""
+        """Close the session and release resources."""
         try:
-            # 设置shutdown事件，通知lifecycle任务退出
+            # Signal the lifecycle task to exit.
             self._shutdown_event.set()
 
-            # 等待lifecycle任务完成（带超时）
+            # Wait for the lifecycle task with a bounded timeout.
             if self._lifecycle_task and not self._lifecycle_task.done():
                 try:
                     await asyncio.wait_for(self._lifecycle_task, timeout=5.0)
@@ -448,9 +448,9 @@ class RuntimeMCPSession:
 
 # @loader.loader_class('mcp')
 class MCPLoader(loader.ToolLoader):
-    """MCP 工具加载器。
+    """MCP tool loader.
 
-    在此加载器中管理所有与 MCP Server 的连接。
+    This loader owns all active MCP server connections.
     """
 
     sessions: dict[str, RuntimeMCPSession]
@@ -505,14 +505,14 @@ class MCPLoader(loader.ToolLoader):
         self.ap.logger.debug(f'Started MCP server {server_config["name"]}({server_config["uuid"]})')
 
     async def load_mcp_server(self, server_config: dict) -> RuntimeMCPSession:
-        """加载 MCP 服务器到运行时
+        """Load an MCP server into the runtime.
 
         Args:
-            server_config: 服务器配置字典，必须包含:
-                - name: 服务器名称
-                - mode: 连接模式 (stdio/sse/http)
-                - enable: 是否启用
-                - extra_args: 额外的配置参数 (可选)
+            server_config: Server config dict. Must include:
+                - name: Server name.
+                - mode: Connection mode (stdio/sse/http).
+                - enable: Whether the server is enabled.
+                - extra_args: Optional extra config.
         """
         uuid_ = server_config.get('uuid')
         is_transient = False
@@ -560,7 +560,7 @@ class MCPLoader(loader.ToolLoader):
         return all_functions
 
     async def has_tool(self, name: str) -> bool:
-        """检查工具是否存在"""
+        """Return whether a loaded MCP tool exists."""
         for session in self.sessions.values():
             for function in session.get_tools():
                 if function.name == name:
@@ -583,7 +583,7 @@ class MCPLoader(loader.ToolLoader):
         return None
 
     async def invoke_tool(self, name: str, parameters: dict, query: pipeline_query.Query | None) -> typing.Any:
-        """执行工具调用"""
+        """Invoke a loaded MCP tool."""
         for session in self.sessions.values():
             for function in session.get_tools():
                 if function.name == name:
@@ -599,7 +599,7 @@ class MCPLoader(loader.ToolLoader):
         raise ValueError(f'Tool not found: {name}')
 
     async def remove_mcp_server(self, server_name: str):
-        """移除 MCP 服务器"""
+        """Remove an MCP server from the runtime."""
         if server_name not in self.sessions:
             self.ap.logger.warning(f'MCP server {server_name} not found in sessions, skipping removal')
             return
@@ -609,24 +609,24 @@ class MCPLoader(loader.ToolLoader):
         self.ap.logger.info(f'Removed MCP server: {server_name}')
 
     def get_session(self, server_name: str) -> RuntimeMCPSession | None:
-        """获取指定名称的 MCP 会话"""
+        """Get an MCP session by server name."""
         return self.sessions.get(server_name)
 
     def has_session(self, server_name: str) -> bool:
-        """检查是否存在指定名称的 MCP 会话"""
+        """Return whether a session exists for the server name."""
         return server_name in self.sessions
 
     def get_all_server_names(self) -> list[str]:
-        """获取所有已加载的 MCP 服务器名称"""
+        """Return all loaded MCP server names."""
         return list(self.sessions.keys())
 
     def get_server_tool_count(self, server_name: str) -> int:
-        """获取指定服务器的工具数量"""
+        """Return the number of tools exposed by one MCP server."""
         session = self.get_session(server_name)
         return len(session.get_tools()) if session else 0
 
     def get_all_servers_info(self) -> dict[str, dict]:
-        """获取所有服务器的信息"""
+        """Return runtime information for all loaded MCP servers."""
         info = {}
         for server_name, session in self.sessions.items():
             tools = session.get_tools()
@@ -640,7 +640,7 @@ class MCPLoader(loader.ToolLoader):
         return info
 
     async def shutdown(self):
-        """关闭所有工具"""
+        """Shut down all MCP sessions."""
         self.ap.logger.info('Shutting down all MCP sessions...')
         for server_name, session in list(self.sessions.items()):
             try:

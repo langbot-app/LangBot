@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 from langbot_plugin.api.entities.events import pipeline_query
 
+from .errors import ToolNotFoundError
+
 if TYPE_CHECKING:
     from ...core import app
     from langbot.pkg.provider.tools.loaders import (
@@ -128,7 +130,7 @@ class ToolManager:
         return tools
 
     async def execute_func_call(self, name: str, parameters: dict, query: pipeline_query.Query | None) -> typing.Any:
-        """执行函数调用"""
+        """Execute a tool call through the active tool loaders."""
         from langbot.pkg.telemetry import features as telemetry_features
 
         if await self.native_tool_loader.has_tool(name):
@@ -143,7 +145,7 @@ class ToolManager:
         if await self.skill_tool_loader.has_tool(name):
             telemetry_features.increment(query, 'tool_calls', 'skill')
             return await self.skill_tool_loader.invoke_tool(name, parameters, query)
-        raise ValueError(f'未找到工具: {name}')
+        raise ToolNotFoundError(name)
 
     async def shutdown(self):
         await self.native_tool_loader.shutdown()
