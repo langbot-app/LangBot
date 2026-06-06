@@ -567,7 +567,7 @@ class MCPLoader(loader.ToolLoader):
                     return True
         return False
 
-    async def _get_tool(self, name: str) -> resource_tool.LLMTool | None:
+    async def get_tool(self, name: str) -> resource_tool.LLMTool | None:
         """Get tool by name.
 
         Args:

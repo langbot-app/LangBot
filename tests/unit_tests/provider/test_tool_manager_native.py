@@ -9,6 +9,7 @@ import pytest
 
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 
+from langbot.pkg.provider.tools.loader import ToolLoader
 from langbot.pkg.provider.tools.loaders.native import (
     _DEFAULT_TOOL_RESULT_MAX_BYTES,
     _GLOB_MAX_MATCHES,
@@ -26,6 +27,12 @@ class StubLoader:
     async def get_tools(self, *_args, **_kwargs):
         return self._tools
 
+    async def get_tool(self, name: str):
+        for tool in self._tools:
+            if tool.name == name:
+                return tool
+        return None
+
     async def has_tool(self, name: str) -> bool:
         return any(tool.name == name for tool in self._tools)
 
@@ -36,6 +43,14 @@ class StubLoader:
         return None
 
 
+class DirectLookupLoader(StubLoader):
+    async def get_tools(self, *_args, **_kwargs):
+        raise AssertionError('ToolManager should use the loader get_tool contract')
+
+    async def get_tool(self, name: str):
+        return make_tool(name) if name == 'direct_tool' else None
+
+
 def make_tool(name: str) -> resource_tool.LLMTool:
     return resource_tool.LLMTool(
         name=name,
@@ -44,6 +59,32 @@ def make_tool(name: str) -> resource_tool.LLMTool:
         parameters={'type': 'object', 'properties': {}},
         func=lambda parameters: parameters,
     )
+
+
+class ListOnlyLoader(ToolLoader):
+    async def get_tools(self, *_args, **_kwargs):
+        return [make_tool('listed_tool')]
+
+    async def has_tool(self, name: str) -> bool:
+        return name == 'listed_tool'
+
+    async def invoke_tool(self, name: str, parameters: dict, query):
+        return parameters
+
+    async def shutdown(self):
+        return None
+
+
+@pytest.mark.asyncio
+async def test_tool_loader_get_tool_falls_back_to_public_tool_list():
+    loader = ListOnlyLoader(SimpleNamespace())
+
+    tool = await loader.get_tool('listed_tool')
+    missing_tool = await loader.get_tool('missing_tool')
+
+    assert tool is not None
+    assert tool.name == 'listed_tool'
+    assert missing_tool is None
 
 
 @pytest.mark.asyncio
@@ -101,6 +142,20 @@ async def test_tool_manager_get_tool_by_name_resolves_native_and_skill_tools():
     assert native_tool.name == 'exec'
     assert skill_tool is not None
     assert skill_tool.name == 'activate'
+
+
+@pytest.mark.asyncio
+async def test_tool_manager_uses_loader_get_tool_contract():
+    manager = ToolManager(SimpleNamespace())
+    manager.native_tool_loader = StubLoader([])
+    manager.skill_tool_loader = StubLoader([])
+    manager.plugin_tool_loader = DirectLookupLoader()
+    manager.mcp_tool_loader = StubLoader([])
+
+    tool = await manager.get_tool_by_name('direct_tool')
+
+    assert tool is not None
+    assert tool.name == 'direct_tool'
 
 
 @pytest.mark.asyncio
