@@ -160,6 +160,28 @@ async def test_preproc_enables_skill_authoring_tools_when_skill_service_availabl
 
 
 @pytest.mark.asyncio
+async def test_preproc_puts_host_skill_tools_into_query_scope():
+    """AgentRunner resource authorization consumes the tools discovered by preproc."""
+    preproc_module, entities_module = _import_preproc_modules()
+
+    app = _make_app(skill_service=SimpleNamespace())
+    app.tool_mgr.get_all_tools = AsyncMock(
+        return_value=[
+            SimpleNamespace(name='activate'),
+            SimpleNamespace(name='register_skill'),
+        ]
+    )
+    query = _make_query()
+    stage = preproc_module.PreProcessor(app)
+
+    result = await stage.process(query, 'PreProcessor')
+
+    assert result.result_type == entities_module.ResultType.CONTINUE
+    app.tool_mgr.get_all_tools.assert_awaited_once_with(None, None, include_skill_authoring=True)
+    assert [tool.name for tool in query.use_funcs] == ['activate', 'register_skill']
+
+
+@pytest.mark.asyncio
 async def test_preproc_disables_skill_authoring_tools_when_skill_service_missing():
     preproc_module, entities_module = _import_preproc_modules()
 

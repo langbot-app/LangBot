@@ -71,6 +71,9 @@ def _i18n_to_text(value: Any) -> str:
 
 def _build_tool_detail(tool: Any, requested_tool_name: str | None = None) -> dict[str, Any]:
     """Normalize LLMTool and plugin ComponentManifest objects for tool detail APIs."""
+    # TODO(litellm): This handler-local adapter is temporary. Once LiteLLM-backed
+    # tool schema normalization owns tool detail generation, simplify GET_TOOL_DETAIL
+    # and make ToolManager return one host-level tool detail shape.
     if hasattr(tool, 'metadata') and hasattr(tool, 'spec'):
         metadata = tool.metadata
         spec = tool.spec or {}
