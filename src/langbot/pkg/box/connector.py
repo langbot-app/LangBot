@@ -120,19 +120,29 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
         self._relay_port = parsed.port or _DEFAULT_PORT
         self._filtered_box_config = _filter_config_for_runtime(_get_box_config(ap))
 
-    def _uses_websocket(self) -> bool:
+    def uses_websocket(self) -> bool:
         """Whether the connector should use WebSocket to reach the Box runtime.
 
         True when:
           - Running inside Docker (Box runtime is a separate container)
           - The ``--standalone-box`` CLI flag was passed
           - An explicit ``runtime.endpoint`` was configured
+
+        When this is True the Box runtime lives in a separate process with its
+        own filesystem view (container, pod sidecar, or remote host), so paths
+        it reports (e.g. skill ``package_root``) are NOT resolvable on the
+        LangBot side. When False, Box runs as a stdio child process that shares
+        LangBot's filesystem.
         """
         return bool(
             self.configured_runtime_endpoint
             or platform.get_platform() == 'docker'
             or platform.use_websocket_to_connect_box_runtime()
         )
+
+    # Backwards-compatible private alias.
+    def _uses_websocket(self) -> bool:
+        return self.uses_websocket()
 
     async def initialize(self) -> None:
         if self._uses_websocket():

@@ -62,15 +62,17 @@ class TestSkillManagerCache:
 
     @pytest.mark.asyncio
     async def test_reload_skills_drops_box_skills_with_missing_package_root(self):
-        """When Box reports a skill whose package_root is gone from the
-        LangBot-visible filesystem, the cache must drop it instead of
-        keeping a stale entry that would later produce a bad mount."""
+        """When LangBot shares a filesystem with Box (local stdio mode) and Box
+        reports a skill whose package_root is gone from that shared filesystem,
+        the cache must drop it instead of keeping a stale entry that would later
+        produce a bad mount."""
         from langbot.pkg.skill.manager import SkillManager
 
         with tempfile.TemporaryDirectory() as live_dir:
             ghost_dir = os.path.join(live_dir, '_does_not_exist')
             box_service = SimpleNamespace(
                 available=True,
+                shares_filesystem_with_box=True,
                 list_skills=AsyncMock(
                     return_value=[
                         _make_skill_data(name='alive', package_root=live_dir),
@@ -89,6 +91,37 @@ class TestSkillManagerCache:
         # Warning fired with the dropped skill name so operators can see it.
         warning_messages = [str(call.args[0]) for call in ap.logger.warning.call_args_list]
         assert any('ghost' in msg and 'package_root missing' in msg for msg in warning_messages)
+
+    @pytest.mark.asyncio
+    async def test_reload_skills_trusts_box_paths_when_filesystem_not_shared(self):
+        """In separated deployments (Docker Compose, k8s sidecar,
+        --standalone-box, remote endpoint) the package_root reported by Box
+        lives on the Box runtime's filesystem and is not resolvable on the
+        LangBot side. The cache must keep every Box-reported skill rather than
+        dropping them all via a local isdir() check."""
+        from langbot.pkg.skill.manager import SkillManager
+
+        box_service = SimpleNamespace(
+            available=True,
+            shares_filesystem_with_box=False,
+            list_skills=AsyncMock(
+                return_value=[
+                    _make_skill_data(name='alpha', package_root='/box/skills/alpha'),
+                    _make_skill_data(name='beta', package_root='/box/skills/beta'),
+                ]
+            ),
+        )
+
+        ap = _make_ap()
+        ap.box_service = box_service
+        mgr = SkillManager(ap)
+
+        await mgr.reload_skills()
+
+        assert sorted(mgr.skills) == ['alpha', 'beta']
+        # No skill dropped → no "package_root missing" warning.
+        warning_messages = [str(call.args[0]) for call in ap.logger.warning.call_args_list]
+        assert not any('package_root missing' in msg for msg in warning_messages)
 
 
 class TestSkillActivationHelper:

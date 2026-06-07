@@ -46,6 +46,13 @@ class SkillManager:
             self.ap.logger.info('Box runtime unavailable; skill cache is empty.')
             return
 
+        # LangBot may only validate Box-reported paths against its own
+        # filesystem when the two share one (local stdio mode). In separated
+        # deployments (Docker Compose, k8s sidecar, --standalone-box, remote
+        # endpoint) the package_root lives on the Box runtime's filesystem and
+        # is not resolvable here, so we trust what Box reports.
+        validate_locally = bool(getattr(box_service, 'shares_filesystem_with_box', False))
+
         try:
             dropped = 0
             for skill_data in await box_service.list_skills():
@@ -53,7 +60,7 @@ class SkillManager:
                 if not skill_name:
                     continue
                 package_root = str(skill_data.get('package_root', '') or '').strip()
-                if package_root and not os.path.isdir(package_root):
+                if validate_locally and package_root and not os.path.isdir(package_root):
                     self.ap.logger.warning(
                         f'Skill "{skill_name}" reported by Box runtime but '
                         f'package_root missing on LangBot filesystem '
