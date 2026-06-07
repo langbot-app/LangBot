@@ -494,6 +494,7 @@ async def test_model_manager_init_temporary_runtime_llm_model(fake_requester_reg
             'api_keys': ['temp-key'],
         },
         'abilities': ['func_call'],
+        'context_length': 128000,
         'extra_args': {'temperature': 0.5},
     }
 
@@ -501,6 +502,9 @@ async def test_model_manager_init_temporary_runtime_llm_model(fake_requester_reg
 
     assert runtime_model.model_entity.uuid == 'temp-model-uuid'
     assert runtime_model.model_entity.name == 'TempModel'
+    assert runtime_model.model_entity.context_length == 128000
+    assert runtime_model.model_entity.extra_args == {'temperature': 0.5}
+    assert 'context_length' not in runtime_model.model_entity.extra_args
     assert runtime_model.provider.provider_entity.uuid == 'temp-provider-uuid'
     assert runtime_model.provider.token_mgr.tokens == ['temp-key']
 

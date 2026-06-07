@@ -203,6 +203,10 @@ const ruRU = {
     selectModelAbilities: 'Выберите возможности модели',
     visionAbility: 'Распознавание изображений',
     functionCallAbility: 'Вызов функций',
+    contextLength: 'Контекстное окно',
+    contextLengthPlaceholder: 'Неизвестно',
+    contextLengthInvalid:
+      'Контекстное окно должно быть положительным целым числом',
     extraParameters: 'Дополнительные параметры',
     addParameter: 'Добавить параметр',
     keyName: 'Имя ключа',

@@ -266,6 +266,7 @@ class ModelManager:
                 name=model_info.get('name', ''),
                 provider_uuid='',
                 abilities=model_info.get('abilities', []),
+                context_length=model_info.get('context_length'),
                 extra_args=model_info.get('extra_args', {}),
             ),
             provider=runtime_provider,
@@ -460,6 +461,7 @@ class ModelManager:
             name=model_info.get('name', ''),
             provider_uuid=model_info.get('provider_uuid', ''),
             abilities=model_info.get('abilities', []),
+            context_length=model_info.get('context_length'),
             extra_args=model_info.get('extra_args', {}),
         )
 

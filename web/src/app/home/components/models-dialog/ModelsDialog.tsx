@@ -64,6 +64,17 @@ function convertExtraArgsToObject(
   return obj;
 }
 
+function parseContextLength(
+  value: number | null | undefined,
+  invalidMessage: string,
+): number | null {
+  if (value === undefined || value === null) return null;
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(invalidMessage);
+  }
+  return value;
+}
+
 export default function ModelsDialog({
   open,
   onOpenChange,
@@ -254,6 +265,7 @@ export default function ModelsDialog({
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    contextLength?: number | null,
   ) {
     if (!name.trim()) {
       toast.error(t('models.modelNameRequired'));
@@ -268,6 +280,10 @@ export default function ModelsDialog({
           name,
           provider_uuid: providerUuid,
           abilities,
+          context_length: parseContextLength(
+            contextLength,
+            t('models.contextLengthInvalid'),
+          ),
           extra_args: extraArgsObj,
         } as never);
       } else if (modelType === 'embedding') {
@@ -325,6 +341,7 @@ export default function ModelsDialog({
             name: item.model.name,
             provider_uuid: providerUuid,
             abilities: item.abilities,
+            context_length: item.model.context_length ?? null,
             extra_args: {},
           } as never);
         } else if (effectiveType === 'embedding') {
@@ -361,6 +378,7 @@ export default function ModelsDialog({
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    contextLength?: number | null,
   ) {
     if (!name.trim()) {
       toast.error(t('models.modelNameRequired'));
@@ -375,6 +393,10 @@ export default function ModelsDialog({
           name,
           provider_uuid: providerUuid,
           abilities,
+          context_length: parseContextLength(
+            contextLength,
+            t('models.contextLengthInvalid'),
+          ),
           extra_args: extraArgsObj,
         } as never);
       } else if (modelType === 'embedding') {
@@ -509,8 +531,15 @@ export default function ModelsDialog({
         onSpaceLogin={handleSpaceLogin}
         onOpenAddModel={() => setAddModelPopoverOpen(provider.uuid)}
         onCloseAddModel={() => setAddModelPopoverOpen(null)}
-        onAddModel={(modelType, name, abilities, extraArgs) =>
-          handleAddModel(provider.uuid, modelType, name, abilities, extraArgs)
+        onAddModel={(modelType, name, abilities, extraArgs, contextLength) =>
+          handleAddModel(
+            provider.uuid,
+            modelType,
+            name,
+            abilities,
+            extraArgs,
+            contextLength,
+          )
         }
         onScanModels={(modelType) => handleScanModels(provider.uuid, modelType)}
         onAddScannedModels={(modelType, models) =>
@@ -518,7 +547,14 @@ export default function ModelsDialog({
         }
         onOpenEditModel={(modelId) => setEditModelPopoverOpen(modelId)}
         onCloseEditModel={() => setEditModelPopoverOpen(null)}
-        onUpdateModel={(modelId, modelType, name, abilities, extraArgs) =>
+        onUpdateModel={(
+          modelId,
+          modelType,
+          name,
+          abilities,
+          extraArgs,
+          contextLength,
+        ) =>
           handleUpdateModel(
             provider.uuid,
             modelId,
@@ -526,6 +562,7 @@ export default function ModelsDialog({
             name,
             abilities,
             extraArgs,
+            contextLength,
           )
         }
         onOpenDeleteConfirm={(modelId) => setDeleteConfirmOpen(modelId)}

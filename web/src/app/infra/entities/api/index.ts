@@ -96,6 +96,7 @@ export interface LLMModel {
   provider_uuid: string;
   provider?: ModelProvider;
   abilities?: string[];
+  context_length?: number | null;
   extra_args?: object;
 }
 

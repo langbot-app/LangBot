@@ -60,6 +60,7 @@ interface ProviderCardProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    contextLength?: number | null,
   ) => Promise<void>;
   onScanModels: (modelType?: ModelType) => Promise<ScanModelsResult>;
   onAddScannedModels: (
@@ -74,6 +75,7 @@ interface ProviderCardProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    contextLength?: number | null,
   ) => Promise<void>;
   onOpenDeleteConfirm: (modelId: string) => void;
   onCloseDeleteConfirm: () => void;
@@ -405,13 +407,19 @@ export default function ProviderCard({
                     onOpenDeleteConfirm={onOpenDeleteConfirm}
                     onCloseDeleteConfirm={onCloseDeleteConfirm}
                     onDeleteModel={() => onDeleteModel(model.uuid, 'llm')}
-                    onUpdateModel={(name, abilities, extraArgs) =>
+                    onUpdateModel={(
+                      name,
+                      abilities,
+                      extraArgs,
+                      contextLength,
+                    ) =>
                       onUpdateModel(
                         model.uuid,
                         'llm',
                         name,
                         abilities,
                         extraArgs,
+                        contextLength,
                       )
                     }
                     onTestModel={(name, abilities, extraArgs) =>

@@ -59,8 +59,15 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         litellm_model_name = self._build_litellm_model_name(model_name)
         if litellm_model_name != model_name:
             candidates.append((litellm_model_name, None))
+        for metadata_provider in self._metadata_provider_candidates(model_name):
+            candidates.append((f'{metadata_provider}/{model_name}', None))
 
+        tried_candidates: set[tuple[str, str | None]] = set()
         for candidate_model, candidate_provider in candidates:
+            candidate_key = (candidate_model, candidate_provider)
+            if candidate_key in tried_candidates:
+                continue
+            tried_candidates.add(candidate_key)
             try:
                 if bool(helper(model=candidate_model, custom_llm_provider=candidate_provider)):
                     return True
@@ -68,24 +75,80 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 continue
         return False
 
+    def _context_length_from_scan_payload(self, model_payload: dict[str, typing.Any] | None) -> int | None:
+        if not model_payload:
+            return None
+
+        for field_name in ('context_length', 'context_window', 'max_context_length'):
+            value = model_payload.get(field_name)
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, int) and value > 0:
+                return value
+            if isinstance(value, str) and value.isdigit():
+                parsed_value = int(value)
+                if parsed_value > 0:
+                    return parsed_value
+        return None
+
+    def _metadata_provider_candidates(self, model_name: str) -> list[str]:
+        normalized_model_name = (model_name or '').lower()
+        candidates = []
+        if normalized_model_name.startswith(('moonshot-', 'kimi-')):
+            candidates.append('moonshot')
+        if normalized_model_name.startswith('deepseek-'):
+            candidates.append('deepseek')
+
+        base_url = self.requester_cfg.get('base_url', '').lower()
+        if 'moonshot' in base_url:
+            candidates.append('moonshot')
+        if 'deepseek' in base_url:
+            candidates.append('deepseek')
+
+        deduped_candidates = []
+        for candidate in candidates:
+            if candidate not in deduped_candidates:
+                deduped_candidates.append(candidate)
+        return deduped_candidates
+
+    def _known_context_length_fallback(self, model_name: str) -> int | None:
+        normalized_model_name = (model_name or '').lower()
+        if normalized_model_name.startswith('deepseek-v4-'):
+            return 1_000_000
+        if normalized_model_name.startswith(('kimi-k2.5', 'kimi-k2.6')):
+            return 256 * 1024
+        if normalized_model_name.startswith('moonshot-v1-8k'):
+            return 8 * 1024
+        if normalized_model_name.startswith('moonshot-v1-32k'):
+            return 32 * 1024
+        if normalized_model_name.startswith('moonshot-v1-128k') or normalized_model_name == 'moonshot-v1-auto':
+            return 128 * 1024
+        return None
+
     def _safe_context_length(self, model_name: str) -> int | None:
         helper = getattr(litellm, 'get_max_tokens', None)
         if not callable(helper):
-            return None
+            return self._known_context_length_fallback(model_name)
 
         candidates = [model_name]
         litellm_model_name = self._build_litellm_model_name(model_name)
         if litellm_model_name != model_name:
             candidates.append(litellm_model_name)
+        for provider in self._metadata_provider_candidates(model_name):
+            candidates.append(f'{provider}/{model_name}')
 
+        tried_candidates = []
         for candidate in candidates:
+            if candidate in tried_candidates:
+                continue
+            tried_candidates.append(candidate)
             try:
                 max_tokens = helper(candidate)
             except Exception:
                 continue
             if isinstance(max_tokens, int) and max_tokens > 0:
                 return max_tokens
-        return None
+        return self._known_context_length_fallback(model_name)
 
     def _supports_function_calling(self, model_name: str) -> bool:
         return self._safe_litellm_bool_helper('supports_function_calling', model_name)
@@ -101,7 +164,11 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             return 'embedding'
         return 'llm'
 
-    def _enrich_scanned_model(self, model_id: str) -> dict[str, typing.Any]:
+    def _enrich_scanned_model(
+        self,
+        model_id: str,
+        model_payload: dict[str, typing.Any] | None = None,
+    ) -> dict[str, typing.Any]:
         model_type = self._infer_model_type(model_id)
         scanned_model: dict[str, typing.Any] = {
             'id': model_id,
@@ -113,11 +180,17 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             abilities = []
             if self._supports_function_calling(model_id):
                 abilities.append('func_call')
-            if self._supports_vision(model_id):
+            supports_provider_reported_vision = bool(
+                model_payload
+                and (model_payload.get('supports_image_in') is True or model_payload.get('supports_vision') is True)
+            )
+            if supports_provider_reported_vision or self._supports_vision(model_id):
                 abilities.append('vision')
             scanned_model['abilities'] = abilities
 
-            context_length = self._safe_context_length(model_id)
+            context_length = self._context_length_from_scan_payload(model_payload)
+            if context_length is None:
+                context_length = self._safe_context_length(model_id)
             if context_length is not None:
                 scanned_model['context_length'] = context_length
 
@@ -557,7 +630,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 if not model_id:
                     continue
 
-                models.append(self._enrich_scanned_model(model_id))
+                models.append(self._enrich_scanned_model(model_id, item))
 
             models.sort(key=lambda x: (x['type'] != 'llm', x['name'].lower()))
 

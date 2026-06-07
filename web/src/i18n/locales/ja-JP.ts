@@ -204,6 +204,10 @@ const jaJP = {
     selectModelAbilities: 'モデル機能を選択',
     visionAbility: '視覚機能',
     functionCallAbility: '関数呼び出し',
+    contextLength: 'コンテキストウィンドウ',
+    contextLengthPlaceholder: '不明',
+    contextLengthInvalid:
+      'コンテキストウィンドウは正の整数である必要があります',
     extraParameters: '追加パラメータ',
     addParameter: 'パラメータを追加',
     keyName: 'キー名',

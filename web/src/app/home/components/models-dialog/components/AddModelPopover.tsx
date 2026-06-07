@@ -41,6 +41,7 @@ interface AddModelPopoverProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    contextLength?: number | null,
   ) => Promise<void>;
   onScanModels: (modelType?: ModelType) => Promise<ScanModelsResult>;
   onAddScannedModels: (
@@ -81,6 +82,7 @@ export default function AddModelPopover({
   const [mode, setMode] = useState<'manual' | 'scan'>('manual');
   const [name, setName] = useState('');
   const [abilities, setAbilities] = useState<string[]>([]);
+  const [contextLength, setContextLength] = useState('');
   const [extraArgs, setExtraArgs] = useState<ExtraArg[]>([]);
   const [scanLoading, setScanLoading] = useState(false);
   const [scannedModels, setScannedModels] = useState<ScannedProviderModel[]>(
@@ -98,6 +100,7 @@ export default function AddModelPopover({
       setMode(initialMode);
       setName('');
       setAbilities([]);
+      setContextLength('');
       setExtraArgs([]);
       setScanLoading(false);
       setScannedModels([]);
@@ -119,7 +122,11 @@ export default function AddModelPopover({
   }, [tab, mode]);
 
   const handleAdd = async () => {
-    await onAddModel(tab, name, abilities, extraArgs);
+    const parsedContextLength =
+      tab === 'llm' && contextLength.trim()
+        ? Number(contextLength.trim())
+        : null;
+    await onAddModel(tab, name, abilities, extraArgs, parsedContextLength);
   };
 
   const handleTest = async () => {
@@ -315,6 +322,24 @@ export default function AddModelPopover({
                           </Label>
                         </div>
                       </div>
+                    </div>
+                  )}
+
+                  {tab === 'llm' && (
+                    <div className="space-y-2">
+                      <Label htmlFor="add-context-length">
+                        {t('models.contextLength')}
+                      </Label>
+                      <Input
+                        id="add-context-length"
+                        type="number"
+                        min={1}
+                        step={1}
+                        inputMode="numeric"
+                        placeholder={t('models.contextLengthPlaceholder')}
+                        value={contextLength}
+                        onChange={(e) => setContextLength(e.target.value)}
+                      />
                     </div>
                   )}
 
