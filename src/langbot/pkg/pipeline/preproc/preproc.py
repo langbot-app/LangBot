@@ -159,11 +159,7 @@ class PreProcessor(stage.PipelineStage):
 
         # Check if this model supports vision, if not, remove all images
         # TODO this checking should be performed in runner, and in this stage, the image should be reserved
-        if (
-            selected_runner == 'local-agent'
-            and llm_model
-            and 'vision' not in (llm_model.model_entity.abilities or [])
-        ):
+        if selected_runner == 'local-agent' and llm_model and 'vision' not in (llm_model.model_entity.abilities or []):
             for msg in query.messages:
                 if isinstance(msg.content, list):
                     for me in msg.content:

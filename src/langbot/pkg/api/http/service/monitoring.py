@@ -517,12 +517,8 @@ class MonitoringService:
                 sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.total_tokens), 0),
                 sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.duration), 0),
                 sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.cost), 0.0),
-                sqlalchemy.func.sum(
-                    sqlalchemy.case((LLMCall.status == 'success', 1), else_=0)
-                ),
-                sqlalchemy.func.sum(
-                    sqlalchemy.case((LLMCall.status == 'error', 1), else_=0)
-                ),
+                sqlalchemy.func.sum(sqlalchemy.case((LLMCall.status == 'success', 1), else_=0)),
+                sqlalchemy.func.sum(sqlalchemy.case((LLMCall.status == 'error', 1), else_=0)),
                 # Count of successful calls that nonetheless recorded zero tokens —
                 # a data-quality signal that usage reporting may be broken upstream.
                 sqlalchemy.func.sum(
@@ -578,9 +574,7 @@ class MonitoringService:
                 sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.total_tokens), 0),
                 sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.duration), 0),
                 sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.cost), 0.0),
-                sqlalchemy.func.sum(
-                    sqlalchemy.case((LLMCall.status == 'error', 1), else_=0)
-                ),
+                sqlalchemy.func.sum(sqlalchemy.case((LLMCall.status == 'error', 1), else_=0)),
             ).group_by(LLMCall.model_name)
         )
         by_model_result = await self.ap.persistence_mgr.execute_async(by_model_query)

@@ -469,9 +469,7 @@ class LocalAgentRunner(runner.RequestRunner):
                     query,
                     use_llm_model,
                     req_messages,
-                    query.use_funcs
-                    if _model_has_ability(use_llm_model, 'func_call')
-                    else [],
+                    query.use_funcs if _model_has_ability(use_llm_model, 'func_call') else [],
                     extra_args=use_llm_model.model_entity.extra_args,
                     remove_think=remove_think,
                 )
@@ -487,9 +485,7 @@ class LocalAgentRunner(runner.RequestRunner):
                     query,
                     use_llm_model,
                     req_messages,
-                    query.use_funcs
-                    if _model_has_ability(use_llm_model, 'func_call')
-                    else [],
+                    query.use_funcs if _model_has_ability(use_llm_model, 'func_call') else [],
                     extra_args=use_llm_model.model_entity.extra_args,
                     remove_think=remove_think,
                 )
