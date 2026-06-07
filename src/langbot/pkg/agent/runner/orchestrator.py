@@ -20,6 +20,7 @@ from .result_normalizer import AgentResultNormalizer
 from .run_journal import AgentRunJournal, MAX_ARTIFACT_INLINE_BYTES as _MAX_ARTIFACT_INLINE_BYTES
 from .session_registry import AgentRunSessionRegistry, get_session_registry
 from .state_scope import build_state_context
+from ...provider.tools.loaders import skill as skill_loader
 
 
 MAX_ARTIFACT_INLINE_BYTES = _MAX_ARTIFACT_INLINE_BYTES
@@ -86,6 +87,13 @@ class AgentRunOrchestrator:
 
         session_query_id = None
         if adapter_context:
+            query = adapter_context.get('_query')
+            if query is not None:
+                skill_loader.restore_activated_skills_from_state(
+                    self.ap,
+                    query,
+                    context.get('state', {}),
+                )
             session_query_id = adapter_context.get('query_id')
             if 'params' in adapter_context:
                 context['adapter']['extra']['params'] = adapter_context['params']
@@ -175,11 +183,13 @@ class AgentRunOrchestrator:
     ) -> typing.AsyncGenerator[provider_message.Message | provider_message.MessageChunk, None]:
         """Run an AgentRunner from the current Pipeline Query entry point."""
         plan = self.query_bridge.build_plan(query)
+        adapter_context = dict(plan.adapter_context)
+        adapter_context['_query'] = query
         async for result in self.run(
             plan.event,
             plan.binding,
             bound_plugins=plan.bound_plugins,
-            adapter_context=plan.adapter_context,
+            adapter_context=adapter_context,
         ):
             yield result
 

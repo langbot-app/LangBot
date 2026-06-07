@@ -80,6 +80,7 @@ class TestContextValidation:
             'models': [],
             'tools': [],
             'knowledge_bases': [],
+            'skills': [],
             'files': [],
             'storage': {'plugin_storage': True, 'workspace_storage': True},
             'platform_capabilities': {},

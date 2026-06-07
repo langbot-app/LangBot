@@ -84,6 +84,14 @@ class KnowledgeBaseResource(typing.TypedDict):
     kb_type: str | None
 
 
+class SkillResource(typing.TypedDict):
+    """Skill resource payload."""
+
+    skill_name: str
+    display_name: str | None
+    description: str | None
+
+
 class FileResource(typing.TypedDict):
     """File resource payload."""
 
@@ -106,6 +114,7 @@ class AgentResources(typing.TypedDict):
     models: list[ModelResource]
     tools: list[ToolResource]
     knowledge_bases: list[KnowledgeBaseResource]
+    skills: list[SkillResource]
     files: list[FileResource]
     storage: StorageResource
     platform_capabilities: dict[str, typing.Any]

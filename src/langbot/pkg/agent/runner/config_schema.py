@@ -71,13 +71,6 @@ def supports_skill_authoring(descriptor: AgentRunnerDescriptor | None) -> bool:
     return bool(descriptor.capabilities.get('skill_authoring', False))
 
 
-def supports_skill_injection(descriptor: AgentRunnerDescriptor | None) -> bool:
-    """Return whether the runner wants the Host skill index in the effective prompt."""
-    if descriptor is None:
-        return False
-    return bool(descriptor.capabilities.get('skill_injection', False))
-
-
 def extract_prompt_config(
     descriptor: AgentRunnerDescriptor | None,
     runner_config: dict[str, typing.Any],

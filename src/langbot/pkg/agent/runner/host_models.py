@@ -95,6 +95,9 @@ class ResourcePolicy(pydantic.BaseModel):
     allowed_kb_uuids: list[str] | None = None
     """Additional knowledge base UUID grants. None means no additional KB grants."""
 
+    allowed_skill_names: list[str] | None = None
+    """Allowed skill names. None means all currently visible skills are allowed."""
+
     allow_plugin_storage: bool = True
     """Whether plugin storage is allowed."""
 

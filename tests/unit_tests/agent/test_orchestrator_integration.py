@@ -124,6 +124,20 @@ class FakeApplication:
         self.rag_mgr = types.SimpleNamespace(
             get_knowledge_base_by_uuid=AsyncMock(return_value=FakeKnowledgeBase("kb_001"))
         )
+        self.skill_mgr = types.SimpleNamespace(
+            skills={
+                "demo": {
+                    "name": "demo",
+                    "display_name": "Demo Skill",
+                    "description": "Helps with demo tasks.",
+                },
+                "hidden": {
+                    "name": "hidden",
+                    "display_name": "Hidden Skill",
+                    "description": "Not bound to this pipeline.",
+                },
+            }
+        )
 
 
 class FakeConversation:
@@ -140,7 +154,12 @@ def make_descriptor() -> AgentRunnerDescriptor:
         plugin_name="local-agent",
         runner_name="default",
         protocol_version="1",
-        capabilities={"streaming": True, "tool_calling": True, "knowledge_retrieval": True},
+        capabilities={
+            "streaming": True,
+            "tool_calling": True,
+            "knowledge_retrieval": True,
+            "skill_authoring": True,
+        },
         config_schema=[
             {"name": "model", "type": "model-fallback-selector"},
             {"name": "knowledge-bases", "type": "knowledge-base-multi-selector", "default": []},
@@ -211,6 +230,7 @@ def make_query():
         variables={
             "_pipeline_bound_plugins": ["langbot/local-agent"],
             "_fallback_model_uuids": ["model_fallback"],
+            "_pipeline_bound_skills": ["demo"],
             "public_param": "visible",
         },
         use_llm_model_uuid="model_primary",
@@ -323,12 +343,20 @@ async def test_orchestrator_runs_fake_plugin_with_authorized_context(clean_agent
     assert {m["model_id"] for m in resources["models"]} == {"model_primary", "model_fallback"}
     assert resources["tools"][0]["tool_name"] == "langbot/test-tool/search"
     assert resources["knowledge_bases"][0]["kb_id"] == "kb_001"
+    assert resources["skills"] == [
+        {
+            "skill_name": "demo",
+            "display_name": "Demo Skill",
+            "description": "Helps with demo tasks.",
+        }
+    ]
     assert resources["storage"]["plugin_storage"] is True
 
     session_during_run = plugin_connector.sessions_during_run[0]
     assert session_during_run is not None
     assert session_during_run["plugin_identity"] == "langbot/local-agent"
     assert session_during_run["authorization"]["authorized_ids"]["tool"] == {"langbot/test-tool/search"}
+    assert session_during_run["authorization"]["authorized_ids"]["skill"] == {"demo"}
     assert await get_session_registry().get(context["run_id"]) is None
 
 
@@ -765,6 +793,50 @@ class TestQueryEntryAdapterHostCapabilities:
 
         snapshot = await persistent_store.build_snapshot_from_event(event, binding, descriptor)
         assert snapshot["conversation"]["external.test_key"] == "test_value"
+
+    @pytest.mark.asyncio
+    async def test_run_from_query_restores_activated_skills_from_state(self, clean_agent_state):
+        """Persisted activated skill names are restored into the next Query run."""
+        from langbot.pkg.agent.runner.persistent_state_store import get_persistent_state_store
+        from langbot.pkg.provider.tools.loaders.skill import (
+            ACTIVATED_SKILL_NAMES_STATE_KEY,
+            ACTIVATED_SKILLS_KEY,
+        )
+
+        db_engine = clean_agent_state
+        descriptor = make_descriptor()
+        plugin_connector = FakePluginConnector(
+            results=[
+                {
+                    "type": "message.completed",
+                    "data": {"message": {"role": "assistant", "content": "restored"}},
+                }
+            ]
+        )
+        ap = FakeApplication(plugin_connector, db_engine)
+        orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+        query = make_query()
+
+        persistent_store = get_persistent_state_store(db_engine)
+        event = QueryEntryAdapter.query_to_event(query)
+        agent_config = QueryEntryAdapter.config_to_agent_config(query, RUNNER_ID)
+        binding = AgentBindingResolver().resolve_one(event, [agent_config])
+        success, error = await persistent_store.apply_update_from_event(
+            event,
+            binding,
+            descriptor,
+            "conversation",
+            ACTIVATED_SKILL_NAMES_STATE_KEY,
+            ["demo"],
+            None,
+        )
+        assert success is True
+        assert error is None
+
+        messages = [message async for message in orchestrator.run_from_query(query)]
+
+        assert len(messages) == 1
+        assert query.variables[ACTIVATED_SKILLS_KEY]["demo"]["name"] == "demo"
 
     @pytest.mark.asyncio
     async def test_event_log_and_transcript_written(self, clean_agent_state):

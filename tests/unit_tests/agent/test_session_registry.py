@@ -307,6 +307,21 @@ class TestIsResourceAllowed:
 
         assert registry.is_resource_allowed(session, 'knowledge_base', 'kb_001') is False
 
+    def test_skill_allowed(self):
+        """Skill in resources should be allowed."""
+        registry = AgentRunSessionRegistry()
+        resources = make_resources(
+            skills=[
+                {'skill_name': 'demo', 'display_name': 'Demo'},
+                {'skill_name': 'writer', 'display_name': 'Writer'},
+            ]
+        )
+        session = make_session(resources=resources)
+
+        assert registry.is_resource_allowed(session, 'skill', 'demo') is True
+        assert registry.is_resource_allowed(session, 'skill', 'writer') is True
+        assert registry.is_resource_allowed(session, 'skill', 'hidden') is False
+
     def test_storage_plugin_allowed(self):
         """Plugin storage permission should be checked."""
         registry = AgentRunSessionRegistry()

@@ -82,17 +82,17 @@ class SkillToolLoader(loader.ToolLoader):
         if not skill_name:
             raise ValueError('skill_name is required')
 
-        skill_mgr = self.ap.skill_mgr
-        skill_data = skill_mgr.get_skill_by_name(skill_name)
+        from . import skill as skill_loader
+
+        skill_data = skill_loader.get_visible_skill(self.ap, query, skill_name)
         if skill_data is None:
-            visible_skills = getattr(skill_mgr, 'skills', {})
+            visible_skills = skill_loader.get_visible_skills(self.ap, query)
             available_names = ', '.join(sorted(visible_skills.keys())) or 'none'
             raise ValueError(f'Skill "{skill_name}" not found. Available skills: {available_names}')
 
         # Register activated skill for sandbox mount path resolution
-        from . import skill as skill_loader
-
         skill_loader.register_activated_skill(query, skill_data)
+        await skill_loader.persist_activated_skill(self.ap, query, skill_name)
 
         # Return SKILL.md content as Tool Result (injects into context)
         instructions = skill_data.get('instructions', '')
@@ -191,13 +191,13 @@ class SkillToolLoader(loader.ToolLoader):
         return resource_tool.LLMTool(
             name=ACTIVATE_SKILL_TOOL_NAME,
             human_desc='Activate a skill',
-            description=self._build_activate_tool_description(),
+            description='Activate a pipeline-visible skill by name and return its instructions as a tool result.',
             parameters={
                 'type': 'object',
                 'properties': {
                     'skill_name': {
                         'type': 'string',
-                        'description': 'The skill name to activate (no arguments). E.g., "pdf" or "data-analysis"',
+                        'description': 'The skill name to activate.',
                     },
                 },
                 'required': ['skill_name'],
@@ -245,50 +245,3 @@ class SkillToolLoader(loader.ToolLoader):
             },
             func=lambda parameters: parameters,
         )
-
-    def _build_activate_tool_description(self) -> str:
-        """Build tool description with embedded available_skills list."""
-        skill_mgr = getattr(self.ap, 'skill_mgr', None)
-        if skill_mgr is None:
-            return 'Activate a skill. No skills are currently available.'
-
-        skills = getattr(skill_mgr, 'skills', {})
-        if not skills:
-            return 'Activate a skill. No skills are currently available.'
-
-        # Build <available_skills> section
-        available_skills_lines = ['<available_skills>']
-        for skill_name, skill_data in sorted(skills.items()):
-            description = skill_data.get('description', '')
-            available_skills_lines.append('<skill>')
-            available_skills_lines.append(f'<name>{skill_name}</name>')
-            available_skills_lines.append(f'<description>{description}</description>')
-            available_skills_lines.append('</skill>')
-        available_skills_lines.append('</available_skills>')
-
-        available_skills_block = '\n'.join(available_skills_lines)
-
-        return f"""Activate a skill within the main conversation.
-
-<skills_instructions>
-When users ask you to perform tasks, check if any of the available skills
-below can help complete the task more effectively. Skills provide specialized
-capabilities and domain knowledge.
-
-How to use skills:
-- Invoke skills using this tool with the skill name only (no arguments)
-- When you invoke a skill, you will see <command-message>
-The skill is activated
-</command-message>
-- The skill's instructions will be provided in the tool result
-- Examples:
-  - skill_name: "pdf" - invoke the pdf skill
-  - skill_name: "data-analysis" - invoke the data-analysis skill
-
-Important:
-- Only use skills listed in <available_skills> below
-- Do not invoke a skill that is already running
-- To create a new skill: prepare it in /workspace, then use register_skill tool
-</skills_instructions>
-
-{available_skills_block}"""

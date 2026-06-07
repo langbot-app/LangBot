@@ -51,7 +51,6 @@ def make_host_model_runner_descriptor(
     tool_calling: bool = True,
     knowledge_retrieval: bool = True,
     skill_authoring: bool = False,
-    skill_injection: bool = False,
 ):
     from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
 
@@ -72,7 +71,6 @@ def make_host_model_runner_descriptor(
             'knowledge_retrieval': knowledge_retrieval,
             'multimodal_input': multimodal_input,
             'skill_authoring': skill_authoring,
-            'skill_injection': skill_injection,
         },
         permissions={
             'models': ['list', 'invoke', 'stream'],

@@ -112,6 +112,7 @@ class QueryEntryAdapter:
             allowed_model_uuids=cls._extract_allowed_models(query),
             allowed_tool_names=cls._extract_allowed_tools(query),
             allowed_kb_uuids=cls._extract_allowed_kbs(query),
+            allowed_skill_names=cls._extract_allowed_skills(query),
         )
 
         # Build state policy
@@ -583,3 +584,19 @@ class QueryEntryAdapter:
         if kb_uuids:
             return kb_uuids
         return None
+
+    @classmethod
+    def _extract_allowed_skills(
+        cls,
+        query: pipeline_query.Query,
+    ) -> list[str] | None:
+        """Extract pipeline-visible skill names from query."""
+        variables = getattr(query, 'variables', None)
+        if not variables or '_pipeline_bound_skills' not in variables:
+            return None
+        bound_skills = variables.get('_pipeline_bound_skills')
+        if bound_skills is None:
+            return None
+        if not isinstance(bound_skills, list):
+            return []
+        return [str(skill_name) for skill_name in bound_skills if skill_name]

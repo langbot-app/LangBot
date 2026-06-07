@@ -90,7 +90,6 @@ class AgentRunnerCapabilities(BaseModel):
     knowledge_retrieval: bool = False
     multimodal_input: bool = False
     skill_authoring: bool = False
-    skill_injection: bool = False
     event_context: bool = True
     platform_api: bool = False
     interrupt: bool = False
@@ -104,8 +103,7 @@ class AgentRunnerCapabilities(BaseModel):
 - `tool_calling`: runner 可能调用 Host tool API。
 - `knowledge_retrieval`: runner 可能调用 Host knowledge API。
 - `multimodal_input`: runner 可以处理非纯文本 input / artifact。
-- `skill_authoring`: runner 需要 Host 提供的 skill authoring tools。
-- `skill_injection`: runner 需要 Host 在 effective prompt 中注入 skill index。
+- `skill_authoring`: runner 需要 Host 提供 skill facts 以及 skill authoring tools，例如 `activate` / `register_skill`。
 - `event_context`: runner 理解 event-first 输入。
 - `platform_api`: runner 可能请求平台动作。
 - `interrupt`: runner 支持取消或中断。
@@ -353,14 +351,22 @@ State 是可选 host-owned snapshot。Runner 也可以完全自管状态。
 ## 6. Resources
 
 ```python
+class SkillResource(BaseModel):
+    skill_name: str
+    display_name: str | None = None
+    description: str | None = None
+
 class AgentResources(BaseModel):
     models: list[ModelResource] = []
     tools: list[ToolResource] = []
     knowledge_bases: list[KnowledgeBaseResource] = []
+    skills: list[SkillResource] = []
     files: list[FileResource] = []
     storage: StorageResource = StorageResource()
     platform_capabilities: dict[str, Any] = {}
 ```
+
+`skills` 只包含本次 run 中 pipeline-visible 的 skill facts，例如 `skill_name`、`display_name` 和 `description`。Host 不把这些 facts 追加到 system prompt，也不把它们编排进工具描述；runner 可以自行决定是否放入 model prompt、转换成 MCP surface，或只在自己的策略层使用。
 
 资源列表是本次 run 的授权结果。History / Event / Artifact 访问通过 permissions、`ctx.context.available_apis` 和 Host 侧 run session 校验控制，不作为可枚举 resource list 暴露。Runner 只能通过 `AgentRunAPIProxy` 访问这些能力。
 

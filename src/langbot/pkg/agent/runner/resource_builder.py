@@ -10,6 +10,7 @@ from .context_builder import (
     ModelResource,
     ToolResource,
     KnowledgeBaseResource,
+    SkillResource,
     StorageResource,
 )
 from . import config_schema
@@ -36,6 +37,7 @@ class AgentResourceBuilder:
     - ModelResource: model_id, model_type, provider
     - ToolResource: tool_name, tool_type, description
     - KnowledgeBaseResource: kb_id, kb_name, kb_type
+    - SkillResource: skill_name, display_name, description
     - StorageResource: plugin_storage, workspace_storage
     """
 
@@ -81,12 +83,16 @@ class AgentResourceBuilder:
         knowledge_bases = await self._build_knowledge_bases_from_binding(
             manifest_perms, resource_policy, descriptor, runner_config
         )
+        skills = self._build_skills_from_binding(
+            resource_policy, descriptor
+        )
         storage = self._build_storage_from_binding(manifest_perms, binding)
 
         return {
             'models': models,
             'tools': tools,
             'knowledge_bases': knowledge_bases,
+            'skills': skills,
             'files': [],  # Files are populated at runtime
             'storage': storage,
             'platform_capabilities': {},  # Reserved for EBA
@@ -192,6 +198,36 @@ class AgentResourceBuilder:
                 self.ap.logger.warning(f'Failed to build knowledge base resource {kb_uuid}: {e}')
 
         return kb_resources
+
+    def _build_skills_from_binding(
+        self,
+        resource_policy: typing.Any,
+        descriptor: AgentRunnerDescriptor,
+    ) -> list[SkillResource]:
+        """Build pipeline-visible skill resource facts."""
+        if not config_schema.supports_skill_authoring(descriptor):
+            return []
+
+        skill_mgr = getattr(self.ap, 'skill_mgr', None)
+        if skill_mgr is None:
+            return []
+
+        loaded_skills = getattr(skill_mgr, 'skills', {}) or {}
+        allowed_names = resource_policy.allowed_skill_names
+        if allowed_names is None:
+            names = sorted(loaded_skills.keys())
+        else:
+            names = sorted(name for name in allowed_names if name in loaded_skills)
+
+        skills: list[SkillResource] = []
+        for skill_name in names:
+            skill_data = loaded_skills.get(skill_name) or {}
+            skills.append({
+                'skill_name': skill_name,
+                'display_name': skill_data.get('display_name') or skill_data.get('name') or skill_name,
+                'description': skill_data.get('description') or None,
+            })
+        return skills
 
     def _build_storage_from_binding(
         self,

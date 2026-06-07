@@ -8,6 +8,7 @@ def make_resources(
     models: list[dict] | None = None,
     tools: list[dict] | None = None,
     knowledge_bases: list[dict] | None = None,
+    skills: list[dict] | None = None,
     storage: dict | None = None,
     files: list[dict] | None = None,
 ) -> dict[str, typing.Any]:
@@ -17,6 +18,7 @@ def make_resources(
         models: List of model dicts with 'model_id' key
         tools: List of tool dicts with 'tool_name' key
         knowledge_bases: List of KB dicts with 'kb_id' key
+        skills: List of skill dicts with 'skill_name' key
         storage: Storage permissions dict
         files: List of file dicts with 'file_id' key
 
@@ -27,6 +29,7 @@ def make_resources(
         'models': models or [],
         'tools': tools or [],
         'knowledge_bases': knowledge_bases or [],
+        'skills': skills or [],
         'files': files or [],
         'storage': storage or {'plugin_storage': False, 'workspace_storage': False},
         'platform_capabilities': {},
@@ -71,6 +74,7 @@ def make_session(
         'model': {m.get('model_id') for m in res.get('models', [])},
         'tool': {t.get('tool_name') for t in res.get('tools', [])},
         'knowledge_base': {kb.get('kb_id') for kb in res.get('knowledge_bases', [])},
+        'skill': {s.get('skill_name') for s in res.get('skills', [])},
         'file': {f.get('file_id') for f in res.get('files', [])},
     }
 

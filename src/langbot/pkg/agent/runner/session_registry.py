@@ -140,6 +140,7 @@ class AgentRunSessionRegistry:
             'model': {m.get('model_id') for m in resources.get('models', [])},
             'tool': {t.get('tool_name') for t in resources.get('tools', [])},
             'knowledge_base': {kb.get('kb_id') for kb in resources.get('knowledge_bases', [])},
+            'skill': {s.get('skill_name') for s in resources.get('skills', [])},
             'file': {f.get('file_id') for f in resources.get('files', [])},
         }
 
@@ -197,7 +198,7 @@ class AgentRunSessionRegistry:
         authorized_ids = authorization['authorized_ids']
         resources = authorization['resources']
 
-        if resource_type in ('model', 'tool', 'knowledge_base', 'file'):
+        if resource_type in ('model', 'tool', 'knowledge_base', 'skill', 'file'):
             return resource_id in authorized_ids.get(resource_type, set())
 
         if resource_type == 'storage':
