@@ -1674,24 +1674,31 @@ export default function HomeSidebar({
         .catch(() => {});
     }
 
-    getCloudServiceClientSync()
-      .getLangBotReleases()
-      .then((releases) => {
-        if (releases && releases.length > 0) {
-          const latestStable = releases.find((r) => !r.prerelease && !r.draft);
-          const latest = latestStable || releases[0];
-          setLatestRelease(latest);
+    // Cloud edition is updated centrally by the operator, so end users should
+    // not see a "new version available" prompt in the sidebar. Skip the GitHub
+    // release check entirely for edition=cloud.
+    if (systemInfo?.edition !== 'cloud') {
+      getCloudServiceClientSync()
+        .getLangBotReleases()
+        .then((releases) => {
+          if (releases && releases.length > 0) {
+            const latestStable = releases.find(
+              (r) => !r.prerelease && !r.draft,
+            );
+            const latest = latestStable || releases[0];
+            setLatestRelease(latest);
 
-          const currentVersion = systemInfo?.version;
-          if (currentVersion && latest.tag_name) {
-            const isNewer = compareVersions(latest.tag_name, currentVersion);
-            setHasNewVersion(isNewer);
+            const currentVersion = systemInfo?.version;
+            if (currentVersion && latest.tag_name) {
+              const isNewer = compareVersions(latest.tag_name, currentVersion);
+              setHasNewVersion(isNewer);
+            }
           }
-        }
-      })
-      .catch((error) => {
-        console.error('Failed to fetch releases:', error);
-      });
+        })
+        .catch((error) => {
+          console.error('Failed to fetch releases:', error);
+        });
+    }
 
     getCloudServiceClientSync()
       .getGitHubRepoInfo()
