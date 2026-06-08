@@ -198,6 +198,35 @@ function WebhookUrlField({
   );
 }
 
+// Hover-only Radix tooltips never open on touch devices (no pointer hover),
+// so the ``disabled_tooltip`` explaining why a field is locked was invisible on
+// mobile. This wrapper makes the info icon also toggle the tooltip on tap while
+// keeping hover behavior on desktop.
+function DisabledTooltipIcon({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <TooltipProvider delayDuration={100}>
+      <Tooltip open={open} onOpenChange={setOpen}>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label={text}
+            className="inline-flex shrink-0"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setOpen((v) => !v);
+            }}
+          >
+            <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help shrink-0" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-xs">{text}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 export default function DynamicFormComponent({
   itemConfigList,
   onSubmit,
@@ -550,18 +579,7 @@ export default function DynamicFormComponent({
               ? extractI18nObject(config.disabled_tooltip)
               : '';
           const renderDisabledTooltipIcon = () =>
-            disabledTooltip ? (
-              <TooltipProvider delayDuration={100}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help shrink-0" />
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    {disabledTooltip}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            ) : null;
+            disabledTooltip ? <DisabledTooltipIcon text={disabledTooltip} /> : null;
 
           // Webhook URL fields are display-only; render outside of form binding
           if (config.type === 'webhook-url') {

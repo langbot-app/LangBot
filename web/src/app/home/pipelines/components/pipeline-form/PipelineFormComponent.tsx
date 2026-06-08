@@ -427,8 +427,9 @@ export default function PipelineFormComponent({
     //   1. Box sandbox is unavailable, or
     //   2. the deployment pins all pipelines to a fixed scope via
     //      ``system.limitation.force_box_session_id_template`` (SaaS).
-    const boxScopeForced =
-      !!systemInfo.limitation?.force_box_session_id_template;
+    const forcedBoxTemplate =
+      systemInfo.limitation?.force_box_session_id_template || '';
+    const boxScopeForced = !!forcedBoxTemplate;
     const stageSystemContext =
       stage.name === 'local-agent'
         ? {
@@ -436,6 +437,24 @@ export default function PipelineFormComponent({
             box_scope_editable: boxAvailable && !boxScopeForced,
           }
         : undefined;
+
+    // When the deployment pins every pipeline to a fixed sandbox scope (SaaS
+    // ``force_box_session_id_template``), the Sandbox Scope selector is locked.
+    // The runtime already overrides the scope on every exec, but the stored
+    // pipeline value can be anything (e.g. the per-chat default), which would
+    // make the locked selector display a scope that is NOT the one actually in
+    // effect. Coerce the displayed/saved value to the forced template so the UI
+    // truthfully reflects runtime behavior.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const stageInitialValues: Record<string, any> =
+      (form.watch(formName) as Record<string, any>)?.[stage.name] || {};
+    const effectiveInitialValues =
+      stage.name === 'local-agent' && boxScopeForced
+        ? {
+            ...stageInitialValues,
+            'box-session-id-template': forcedBoxTemplate,
+          }
+        : stageInitialValues;
 
     return (
       <Card key={stage.name}>
@@ -450,10 +469,7 @@ export default function PipelineFormComponent({
         <CardContent className="space-y-6">
           <DynamicFormComponent
             itemConfigList={stage.config}
-            initialValues={
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (form.watch(formName) as Record<string, any>)?.[stage.name] || {}
-            }
+            initialValues={effectiveInitialValues}
             onSubmit={(values) => {
               handleDynamicFormEmit(formName, stage.name, values);
             }}
