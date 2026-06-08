@@ -8,6 +8,7 @@ import {
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import N8nAuthFormComponent from '@/app/home/components/dynamic-form/N8nAuthFormComponent';
 import { useBoxStatus } from '@/app/infra/hooks/useBoxStatus';
+import { systemInfo } from '@/app/infra/http';
 import { Button } from '@/components/ui/button';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -420,9 +421,20 @@ export default function PipelineFormComponent({
     // opt-in via ``disable_if`` + ``disabled_tooltip`` rather than every page
     // hard-coding a banner. Field-level gating keeps unrelated fields
     // untouched.
+    //
+    // ``box_scope_editable`` folds the two reasons the Sandbox Scope selector
+    // can be locked into a single flag the yaml ``disable_if`` consumes:
+    //   1. Box sandbox is unavailable, or
+    //   2. the deployment pins all pipelines to a fixed scope via
+    //      ``system.limitation.force_box_session_id_template`` (SaaS).
+    const boxScopeForced =
+      !!systemInfo.limitation?.force_box_session_id_template;
     const stageSystemContext =
       stage.name === 'local-agent'
-        ? { box_available: boxAvailable }
+        ? {
+            box_available: boxAvailable,
+            box_scope_editable: boxAvailable && !boxScopeForced,
+          }
         : undefined;
 
     return (

@@ -221,13 +221,25 @@ class BoxService:
         return self._serialize_result(result)
 
     def resolve_box_session_id(self, query: pipeline_query.Query) -> str:
-        """Resolve the Box session_id from the pipeline's template and query variables."""
-        template = (
-            (query.pipeline_config or {})
-            .get('ai', {})
-            .get('local-agent', {})
-            .get('box-session-id-template', '{launcher_type}_{launcher_id}')
-        )
+        """Resolve the Box session_id from the pipeline's template and query variables.
+
+        When ``system.limitation.force_box_session_id_template`` is set to a
+        non-empty value, that template overrides whatever the pipeline
+        configured. This is the authoritative SaaS guard: it runs on every
+        ``exec`` call, so a tenant cannot escape a single shared sandbox even
+        by editing the pipeline config directly through the API (which only
+        gates the web UI).
+        """
+        forced_template = self._forced_box_session_id_template()
+        if forced_template:
+            template = forced_template
+        else:
+            template = (
+                (query.pipeline_config or {})
+                .get('ai', {})
+                .get('local-agent', {})
+                .get('box-session-id-template', '{launcher_type}_{launcher_id}')
+            )
         variables = dict(query.variables or {})
         launcher_type = getattr(query, 'launcher_type', None)
         if hasattr(launcher_type, 'value'):
@@ -605,6 +617,20 @@ class BoxService:
     def _load_custom_image(self) -> str | None:
         raw = str(self._local_config().get('image', '') or '').strip()
         return raw or None
+
+    def _forced_box_session_id_template(self) -> str:
+        """Return the SaaS-forced sandbox-scope template, or '' when unset.
+
+        Read from ``system.limitation.force_box_session_id_template``. A
+        non-empty value pins every pipeline to a single sandbox scope
+        (e.g. ``'{global}'``) and cannot be overridden per-pipeline.
+        """
+        limitation = (
+            (self.ap.instance_config.data or {}).get('system', {}).get('limitation', {})
+            if getattr(self.ap, 'instance_config', None) is not None
+            else {}
+        )
+        return str(limitation.get('force_box_session_id_template', '') or '').strip()
 
     def _load_workspace_quota_mb(self) -> int | None:
         raw_value = self._local_config().get('workspace_quota_mb')

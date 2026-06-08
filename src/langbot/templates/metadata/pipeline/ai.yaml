@@ -152,21 +152,22 @@ stages:
           es_ES: Determina cómo se comparten los entornos sandbox entre mensajes.
           ru_RU: Определяет, как песочницы используются совместно между сообщениями.
         disable_if:
-          field: __system.box_available
+          field: __system.box_scope_editable
           operator: eq
           value: false
         disabled_tooltip:
           en_US: >-
-            Box sandbox is disabled or unavailable. Enable it in config.yaml
-            (box.enabled = true) and ensure the runtime is reachable to change
-            this setting.
-          zh_Hans: Box 沙箱已禁用或不可用。请在配置中启用（box.enabled = true）并确认运行时连接正常，才能修改此项。
-          zh_Hant: Box 沙箱已停用或無法使用。請在設定中啟用（box.enabled = true）並確認執行時連線正常，才能修改此項。
-          ja_JP: Box サンドボックスが無効または利用できません。設定で有効化（box.enabled = true）し、ランタイムが接続できることを確認してから変更してください。
-          vi_VN: Sandbox Box đã tắt hoặc không khả dụng. Hãy bật trong cấu hình (box.enabled = true) và đảm bảo runtime hoạt động để chỉnh sửa.
-          th_TH: Sandbox Box ถูกปิดใช้งานหรือไม่พร้อมใช้งาน กรุณาเปิดใช้งานในการตั้งค่า (box.enabled = true) และตรวจสอบว่ารันไทม์เชื่อมต่อปกติก่อนปรับค่า
-          es_ES: El sandbox de Box está desactivado o no disponible. Actívelo en la configuración (box.enabled = true) y asegúrese de que el runtime esté conectado para modificar este ajuste.
-          ru_RU: Песочница Box отключена или недоступна. Включите её в конфигурации (box.enabled = true) и убедитесь, что среда выполнения работает, чтобы изменить эту настройку.
+            Sandbox scope can't be changed: either the Box sandbox is disabled
+            or unavailable (enable it in config.yaml with box.enabled = true and
+            ensure the runtime is reachable), or this deployment pins all
+            pipelines to a fixed scope.
+          zh_Hans: "无法修改沙箱作用域：Box 沙箱已禁用或不可用（请在配置中启用 box.enabled = true 并确认运行时连接正常），或本部署已将所有流水线固定为统一作用域。"
+          zh_Hant: "無法修改沙箱作用域：Box 沙箱已停用或無法使用（請在設定中啟用 box.enabled = true 並確認執行時連線正常），或本部署已將所有流水線固定為統一作用域。"
+          ja_JP: "サンドボックススコープを変更できません：Box サンドボックスが無効/利用不可（設定で box.enabled = true にしてランタイム接続を確認）、またはこのデプロイがすべてのパイプラインを固定スコープに制限しています。"
+          vi_VN: "Không thể thay đổi phạm vi sandbox：Box sandbox bị tắt hoặc không khả dụng (bật box.enabled = true và đảm bảo runtime hoạt động), hoặc bản triển khai này cố định mọi pipeline về một phạm vi."
+          th_TH: "ไม่สามารถเปลี่ยนขอบเขต Sandbox：Box sandbox ถูกปิดหรือไม่พร้อมใช้งาน (เปิด box.enabled = true และตรวจสอบรันไทม์) หรือการ deploy นี้ล็อกทุก pipeline ไว้ที่ขอบเขตเดียว"
+          es_ES: "No se puede cambiar el alcance del sandbox: el sandbox de Box está desactivado o no disponible (actívelo con box.enabled = true y verifique el runtime), o este despliegue fija todas las pipelines a un alcance único."
+          ru_RU: "Невозможно изменить область песочницы: песочница Box отключена или недоступна (включите box.enabled = true и проверьте среду выполнения), либо это развёртывание фиксирует единую область для всех конвейеров."
         type: select
         required: false
         default: "{launcher_type}_{launcher_id}"
