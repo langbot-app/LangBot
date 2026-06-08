@@ -579,7 +579,9 @@ export default function DynamicFormComponent({
               ? extractI18nObject(config.disabled_tooltip)
               : '';
           const renderDisabledTooltipIcon = () =>
-            disabledTooltip ? <DisabledTooltipIcon text={disabledTooltip} /> : null;
+            disabledTooltip ? (
+              <DisabledTooltipIcon text={disabledTooltip} />
+            ) : null;
 
           // Webhook URL fields are display-only; render outside of form binding
           if (config.type === 'webhook-url') {
