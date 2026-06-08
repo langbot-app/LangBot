@@ -20,14 +20,12 @@ Authorization rules:
 from __future__ import annotations
 
 import pytest
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from langbot.pkg.agent.runner.session_registry import AgentRunSessionRegistry, get_session_registry
+from langbot.pkg.agent.runner.session_registry import AgentRunSessionRegistry
 from langbot.pkg.agent.runner.persistent_state_store import PersistentStateStore, reset_persistent_state_store
 from langbot.pkg.plugin.handler import RuntimeConnectionHandler
-from langbot_plugin.runtime.io.connection import Connection
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
 
 # Import shared test fixtures
@@ -72,7 +70,7 @@ async def persistent_store(db_engine):
 
     # Create the table
     from langbot.pkg.entity.persistence.agent_runner_state import AgentRunnerState
-    from sqlalchemy import text
+
     async with db_engine.begin() as conn:
         await conn.run_sync(AgentRunnerState.__table__.create, checkfirst=True)
 

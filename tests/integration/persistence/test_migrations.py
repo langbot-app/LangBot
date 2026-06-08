@@ -10,10 +10,12 @@ Run: uv run pytest tests/integration/persistence/test_migrations.py -q
 from __future__ import annotations
 
 import pytest
+from alembic.script import ScriptDirectory
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from langbot.pkg.entity.persistence.base import Base
 from langbot.pkg.persistence.alembic_runner import (
+    _ALEMBIC_DIR,
     run_alembic_upgrade,
     run_alembic_stamp,
     get_alembic_current,
@@ -36,6 +38,19 @@ async def sqlite_engine(sqlite_db_url):
     engine = create_async_engine(sqlite_db_url)
     yield engine
     await engine.dispose()
+
+
+def alembic_head_revision() -> str:
+    """Return the repository's current Alembic head revision."""
+    return ScriptDirectory.from_config(_alembic_script_config()).get_current_head()
+
+
+def _alembic_script_config():
+    from alembic.config import Config
+
+    cfg = Config()
+    cfg.set_main_option('script_location', _ALEMBIC_DIR)
+    return cfg
 
 
 class TestSQLiteMigrationBaseline:
@@ -103,8 +118,7 @@ class TestSQLiteMigrationUpgrade:
         # Verify revision
         rev = await get_alembic_current(sqlite_engine)
         assert rev is not None, "Expected a revision after upgrade"
-        # Head should be the latest migration
-        assert rev.startswith('0005'), f"Expected head to be 0005_*, got {rev}"
+        assert rev == alembic_head_revision()
 
     @pytest.mark.asyncio
     async def test_upgrade_idempotent(self, sqlite_engine):
