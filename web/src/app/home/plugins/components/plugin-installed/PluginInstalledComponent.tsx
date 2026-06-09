@@ -103,8 +103,8 @@ const PluginInstalledComponent = forwardRef<
     getExtensionList();
   }
 
-  async function getExtensionList() {
-    setLoading(true);
+  async function getExtensionList(silent = false) {
+    if (!silent) setLoading(true);
     try {
       const client = getCloudServiceClientSync();
 
@@ -200,11 +200,24 @@ const PluginInstalledComponent = forwardRef<
       setExtensionList(extensions);
     } catch (error) {
       console.error('Failed to fetch extension list:', error);
-      setExtensionList([]);
+      if (!silent) setExtensionList([]);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
+
+  // While any MCP server is still connecting, poll quietly so the status badge
+  // transitions (connecting -> connected/error) without a manual refresh.
+  useEffect(() => {
+    const hasConnecting = extensionList.some(
+      (e) => e.type === 'mcp' && e.enabled && e.runtimeStatus === 'connecting',
+    );
+    if (!hasConnecting) return;
+    const timer = setInterval(() => {
+      getExtensionList(true);
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [extensionList]);
 
   useImperativeHandle(ref, () => ({
     refreshPluginList: getExtensionList,
