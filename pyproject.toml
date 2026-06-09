@@ -70,7 +70,7 @@ dependencies = [
     "chromadb>=1.0.0,<2.0.0",
     "qdrant-client (>=1.15.1,<2.0.0)",
     "pyseekdb==1.1.0.post3",
-    "langbot-plugin==0.4.2b1",
+    "langbot-plugin==0.4.2b2",
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",
     "matrix-nio>=0.25.2",
