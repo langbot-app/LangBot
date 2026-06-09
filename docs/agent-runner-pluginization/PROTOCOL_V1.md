@@ -521,9 +521,9 @@ AgentRunResult = (
 | `run.completed` | run 正常结束。 | ✅ |
 | `run.failed` | run 失败。 | ✅ |
 
-`action.requested` 是为 EBA 和 platform API 预留的协议表面：当前阶段 Host 收到后只记 telemetry，**不执行**，runner 作者不应依赖其副作用。执行模型见 EVENT_BASED_AGENT §6。
+`action.requested` 是为 EBA 和 platform API 保留的协议表面：本分支 Host 收到后只记 telemetry，**不执行**，runner 作者不应在当前 Host 底座中依赖其副作用。真实执行器由外部 EBA / platform action 分支接入；执行模型见 EVENT_BASED_AGENT §6。
 
-Host 必须校验 `state.updated` 的 scope、key、value 大小和 JSON 可序列化性。`action.requested` 如果请求未来会产生外部副作用，runner 必须提供稳定 `idempotency_key`；当前阶段 Host 仍只记录 telemetry。
+Host 必须校验 `state.updated` 的 scope、key、value 大小和 JSON 可序列化性。`action.requested` 如果请求未来会产生外部副作用，runner 必须提供稳定 `idempotency_key`；本分支 Host 仍只记录 telemetry。
 
 ### 7.4 Stream delivery semantics
 

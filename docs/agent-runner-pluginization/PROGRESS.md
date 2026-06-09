@@ -7,7 +7,7 @@
 
 ## 总体进度
 
-**当前阶段**: Phase 3.6 已完成，Event-first 基础设施与外部 harness runner smoke 已完成；2026-06-04 已完成协议 / 文档漂移复核，当前未发布分支不保留 PoC 兼容 shim。
+**当前阶段**: Phase 3.6 已完成，Event-first 基础设施与外部 harness runner smoke 已完成；2026-06-04 已完成协议 / 文档漂移复核，当前未发布分支不保留 PoC 兼容 shim。EBA 完整事件网关与事件路由由外部 EBA 分支推进，目前处于联调阶段；本分支只保留其接入边界和复用点。
 
 | Phase | 描述 | 状态 |
 |-------|------|------|
@@ -17,7 +17,7 @@
 | Phase 3 | 内置 runner 迁移到插件 | ✅ 完成（7/7） |
 | Phase 3.5 | Event-first 基础设施 | ✅ 完成 |
 | Phase 3.6 | 外部 harness runner 协议 smoke | ✅ 完成（Claude Code MVP） |
-| Phase 4 | EBA 事件支持 | 🔲 未开始（已预留 event-first 入口，EventGateway 由其他分支实现） |
+| Phase 4 | EBA 事件支持 | ↗ 外部分支联调中（本分支已预留 event-first 入口，EventGateway / EventRouter 由 EBA 分支实现） |
 
 ---
 
@@ -77,7 +77,7 @@
 | `dify-agent` | ✅ 已完成 | 支持 chat/agent/workflow 三种应用类型 |
 | `n8n-agent` | ✅ 已完成 | Webhook 调用，支持 basic/jwt/header 认证 |
 | `coze-agent` | ✅ 已完成 | 多模态输入，思维链处理 |
-| `claude-code-agent` | ✅ MVP smoke 通过 | 本地 Claude Code CLI；context / skill / MCP 投影；host-owned resume state |
+| `claude-code-agent` | ✅ MVP smoke 通过 | 本地 Claude Code CLI；context / SDK-owned MCP bridge / skill-backed scoped tools；host-owned resume state |
 | `dashscope-agent` | ✅ 已完成 | 阿里云百炼，支持 agent/workflow 两种模式 |
 | `langflow-agent` | ✅ 已完成 | SSE 流式，tweaks 配置支持 |
 | `tbox-agent` | ✅ 已完成 | 蚂蚁百宝箱，多模态输入 |
@@ -90,7 +90,7 @@
 |------|------|------|------|
 | 2026-05-29 | `local-agent` Pipeline Debug Chat | ✅ PASS | `langbot-skills/reports/2026-05-29-17-59-00-462-08-00-pipeline-debug-chat.md` |
 | 2026-05-29 | `claude-code-agent` Pipeline Debug Chat | ✅ PASS | `langbot-skills/reports/2026-05-29-18-03-31-169-08-00-pipeline-debug-chat.md` |
-| 2026-05-29 | Claude Code context / skill / MCP projection | ✅ PASS | `langbot-skills/reports/claude-code-agent-resource-context-20260529.md` |
+| 2026-05-29 | Claude Code context / SDK-owned MCP bridge / skill-backed scoped tools | ✅ PASS | `langbot-skills/reports/claude-code-agent-resource-context-20260529.md` |
 | 2026-05-29 | Claude Code resume state | ✅ PASS | `langbot-skills/reports/claude-code-agent-real-workdir-20260529.md` |
 | 2026-05-29 | `codex-agent` Debug Chat + thread_id resume state | ✅ PASS | 见 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md) §10 / `langbot-skills/reports/` |
 | 2026-06-04 | 协议 / 文档漂移复核 | ✅ PASS | SDK scaffold 与 Protocol v1 对齐；LangBot UI 旧 runner fallback 已移除；run-scoped API 身份校验已收紧。 |
@@ -113,10 +113,10 @@
 
 | 能力 | 负责分支 | 备注 |
 |------|----------|------|
-| EventGateway implementation | event branch | 完整事件网关、事件路由、持久化管理 |
-| Event subscription / notification | event branch | 事件订阅、推送通知 |
+| EventGateway implementation | EBA branch（联调中） | 完整事件网关、事件路由、持久化管理 |
+| Event subscription / notification | EBA branch（联调中） | 事件订阅、推送通知 |
 | BindingResolver persistence UI | 其他模块 | 绑定配置的持久化 UI |
-| Event router integration | event branch | 与 BindingResolver 集成 |
+| Event router integration | EBA branch（联调中） | 与 BindingResolver 集成 |
 | Scheduler / background event source | 其他模块 | 定时任务、后台事件源 |
 | Security release hardening | 后续 release gate | 路径隔离、权限边界、secret、MCP/skill 投影策略、资源配额、审计 |
 | Codex / Kimi runner 全量接入 | 后续 runner 插件工作 | Codex MVP 已打通；Codex 发布级能力、Kimi runner 和全量 hardening 仍不扩大到当前协议闭环 |
@@ -136,7 +136,7 @@
 
 ### 低优先级 / 未来
 
-- [ ] EBA 完整集成 — EventGateway、event subscription、event notification 由其他分支实现
+- [ ] EBA 完整集成 — EventGateway、EventRouter、event subscription、event notification 正在外部 EBA 分支联调，本分支不直接实现
 - [ ] 平台 API 动作执行 — `action.requested` 结果类型存在但未执行
 - [ ] 安全发布级 hardening — 作为生产默认启用前的 release gate，不阻塞当前协议闭环
 
@@ -151,6 +151,7 @@
 | 2026-05-23 | Phase 3.5 完成：`run_from_query()` 委托到 event-first `run(event, binding)`，Pipeline path 获得 host capabilities |
 | 2026-05-29 | 本地 `local-agent` 与 `claude-code-agent` 通过 WebUI smoke；Claude Code runner 验证 external harness context 投影和 host-owned resume state |
 | 2026-06-04 | 未发布协议面收敛：移除旧 runner 字段 / 旧本地 runner 名 / PoC schema 兼容分支，SDK 文档和模板对齐当前 `AgentRunContext` |
+| 2026-06-09 | EBA 状态同步：完整 EventGateway / EventRouter 已转由外部 EBA 分支联调；本分支继续作为 AgentRunner Protocol v1 / Host 底座闭环。 |
 
 ---
 

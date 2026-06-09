@@ -1,8 +1,8 @@
 # AgentRunner 外化扩展边界矩阵
 
-本文用于回答一个问题：本分支只做 AgentRunner 外化时，哪些能力已经作为扩展底座完成，哪些只是为后续 EBA / Agent Platform / Runtime Control Plane 预留，后续分支接入时应该走哪个扩展点。
+本文用于回答一个问题：本分支只做 AgentRunner 外化时，哪些能力已经作为扩展底座完成，哪些由外部 EBA / Agent Platform / Runtime Control Plane 分支接入，后续分支接入时应该走哪个扩展点。
 
-结论：本分支不实现完整 Agent Platform，也不实现完整 EBA。它必须把 runner 外化的 Host / SDK 边界做干净，让后续分支只需要接入持久模型、事件路由或 runtime task，而不需要重写 `AgentRunner Protocol v1`。
+结论：本分支不实现完整 Agent Platform，也不实现完整 EBA。EBA 完整事件网关与事件路由由外部 EBA 分支联调。本分支必须把 runner 外化的 Host / SDK 边界做干净，让外部分支只需要接入持久模型、事件路由或 runtime task，而不需要重写 `AgentRunner Protocol v1`。
 
 调度基数、Agent 复用、插件实例无状态、Pipeline adapter 和 fan-out 边界的单一事实源是 [PROTOCOL_V1.md](./PROTOCOL_V1.md) §13；本矩阵只说明后续能力应该接入哪个扩展点。
 
@@ -22,9 +22,9 @@
 | Product `Agent` | 已有运行期 `AgentConfig` / `AgentBinding` 投影；还没有正式持久化产品对象。 | Agent Platform / binding persistence UI。 | 持久 Agent 保存 runner id、runner config、resource/state/delivery policy；运行前投影为 `AgentBinding`。 | 不把持久 Agent schema 加进 SDK 协议；插件实例边界见 PROTOCOL_V1 §13。 |
 | Bot / channel 绑定 Agent | 已有单次运行前的 `AgentBinding` 解析投影；目标调度语义见 PROTOCOL_V1 §13。 | EBA / Agent Platform。 | EventRouter 根据 bot、channel、workspace、conversation、event type 解析有效 `AgentBinding`。 | 不在本矩阵重定义 fan-out / observer 语义；需要时按 §3 新增设计。 |
 | Agent session / run | 当前只有 `run_id` 和 active `AgentRunSessionRegistry`，用于权限校验和生命周期。 | Agent Platform / Runtime Control Plane。 | 如需要可新增持久 `AgentRun` / `AgentSession` / task 表，但执行仍回到 `run(event, binding)` 或 runtime-managed 等价入口。 | 不把持久 session 字段塞进 `AgentRunContext` 顶层；不要求所有 runner 长期持有 LangBot session。 |
-| EventLog / Transcript / Artifact | 已完成 Host-owned store 和 pull API；runner 不直接写 DB。 | 本分支持续维护底座；Agent Platform 可复用。 | 后续 EBA、scheduler、integration、runtime task 都写同一套 EventLog / Transcript / Artifact。 | 不让 runner / sandbox 直接访问 Host DB；不把大 payload 内联进 prompt。 |
+| EventLog / Transcript / Artifact | 已完成 Host-owned store 和 pull API；runner 不直接写 DB。 | 本分支持续维护底座；Agent Platform 可复用。 | 外部 EBA、scheduler、integration、runtime task 都写同一套 EventLog / Transcript / Artifact。 | 不让 runner / sandbox 直接访问 Host DB；不把大 payload 内联进 prompt。 |
 | Host-owned state / storage | 已有 state snapshot、`state.updated` 处理和 State API；storage 作为授权能力保留。 | 本分支持续维护底座；Runtime / Platform 可复用。 | 外部 session id、working directory、checkpoint 等小 JSON 用 state；大对象用 storage / artifact。 | 不把跨轮次状态存在插件实例内；不绕过 run-scoped authorization。 |
-| EventGateway / EventRouter | 只预留 event-first envelope 和 `run(event, binding)` 入口。 | EBA 分支。 | EventGateway 规范化平台/WebUI/API/scheduler 事件；EventRouter 解析一个 binding；调用现有 orchestrator。 | 不为 EBA 新增另一套 runner 调用协议；不把非消息事件伪装成 user message。 |
+| EventGateway / EventRouter | 本分支只提供 event-first envelope 和 `run(event, binding)` 入口。 | EBA 分支（联调中）。 | EventGateway 规范化平台/WebUI/API/scheduler 事件；EventRouter 解析一个 binding；调用现有 orchestrator。 | 不为 EBA 新增另一套 runner 调用协议；不把非消息事件伪装成 user message。 |
 | Scheduler / Automation | 不实现。文档中只把 `scheduler` 作为 future event source。 | EBA / Agent Platform。 | 定时任务触发 `schedule.triggered` host event，复用 EventGateway -> EventRouter -> `run(event, binding)`。 | 不直接调用某个 runner 插件；不绕过 EventLog / authorization。 |
 | Integration provider | 不实现。IM platform adapter 仍是当前平台接入系统。 | EBA / Agent Platform。 | OAuth/webhook/outbound provider 应先转成 canonical host event 或 platform action，再交给 AgentRunner。 | 不把 Linear/Slack/GitHub 等 provider 私有 payload 扩散到 runner 协议顶层。 |
 | Platform action / delivery | `action.requested` 已预留但当前仅 telemetry，不执行。`DeliveryContext` 只作为上下文/策略投影。 | EBA / platform action executor。 | 后续 executor 校验 runner capability、binding policy、actor/bot/workspace 权限和审批后执行。 | 不让 runner 直接调用平台 adapter 私有 API；不把平台动作伪装成文本回复副作用。 |
@@ -35,7 +35,7 @@
 
 ## 3. 后续分支接入规则
 
-后续 EBA、Agent Platform 或 Runtime Control Plane 分支接入时，默认遵守以下规则：
+外部 EBA、Agent Platform 或 Runtime Control Plane 分支接入时，默认遵守以下规则：
 
 - 新入口只生产或解析 Host 内部模型：`AgentEventEnvelope`、持久 Agent 投影出的 `AgentBinding`、以及必要的 delivery/resource/state policy。
 - runner 调用仍走 `AgentRunOrchestrator.run(event, binding)`，除非 Runtime Control Plane 明确引入 runtime-managed 执行模式；即便如此，runner 可见合同仍应保持 Protocol v1。

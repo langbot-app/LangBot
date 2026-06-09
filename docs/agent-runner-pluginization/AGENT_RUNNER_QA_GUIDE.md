@@ -23,7 +23,7 @@ event -> binding -> runner.run(ctx) -> result stream
 本指南不验证：
 
 - Runtime Control Plane v2。
-- EventGateway / EventRouter 完整落地。
+- EventGateway / EventRouter 完整落地由外部 EBA 分支联调；本指南只验证本分支 Host 底座。
 - 发布级 path isolation、secret filtering、MCP allowlist、资源配额和 workspace cleanup。
 - 所有外部服务 runner 的真实凭据联调。
 
@@ -162,14 +162,14 @@ Smoke 前应优先保留一层轻量单测或 fixture 测试：provider-native o
 2. 绑定 `plugin:langbot/claude-code-agent/default`。
 3. 使用保守权限模式和确定性 prompt。
 4. 在 Debug Chat 执行一次真实 smoke。
-5. 检查 context / skill / MCP projection 和 host-owned state。
+5. 检查 context / SDK-owned MCP bridge / skill-backed scoped tools 和 host-owned state。
 
 通过条件：
 
 - WebUI 可见回复包含预期 sentinel。
 - context JSON schema 为 `langbot.agent_runner.external_harness_context.v1` 或当前文档声明的等价 schema。
 - context 包含 event、input、delivery、resources、context、state。
-- 如启用 skills / MCP，投影路径和配置可被 Claude Code 读取。
+- 如启用 LangBot skills / MCP，Claude Code 只能通过 SDK-owned MCP bridge 或 skill-backed scoped tools 访问 LangBot 资源；不能用 native tools 直接访问。
 - `external.session_id` / `external.working_directory` 写入 host-owned state。
 - CLI missing、nonzero exit、timeout、empty output 都转成受控 `run.failed`。
 - resume 到同一 `external.session_id` 时，不并发写入同一 native session；全局锁边界符合 PROTOCOL_V1 §13。
@@ -246,7 +246,7 @@ Dify、n8n、Coze、DashScope、Langflow、Tbox 等外部服务 runner 不作为
 
 - `local-agent` 可以通过 Pipeline Debug Chat 走插件化 `AgentRunOrchestrator` 主链路。
 - Claude Code runner 可以通过同一条 `run(event, binding)` 路径执行。
-- Claude Code runner 可以读取 LangBot event-first context / skill / MCP 投影，并写回 `external.session_id` / `external.working_directory`。
+- Claude Code runner 可以读取 LangBot event-first context，并通过 SDK-owned MCP bridge / skill-backed scoped tools 访问授权资源，随后写回 `external.session_id` / `external.working_directory`。
 - Codex runner 可以通过同一条路径执行，并把 Codex `thread_id` 写回 host-owned state。
 
 这些记录只证明本地协议闭环可用，不代表发布级 security hardening 已完成。
