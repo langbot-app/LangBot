@@ -165,7 +165,7 @@ export default function ExtensionCardComponent({
           // A server can be enabled but still CONNECTING or in ERROR — showing
           // "Connected" in those cases is misleading.
           const runtime = cardVO.enabled
-            ? cardVO.runtimeStatus ?? 'connecting'
+            ? (cardVO.runtimeStatus ?? 'connecting')
             : 'disabled';
           const badgeClass: Record<string, string> = {
             connected: 'border-green-400 text-green-600 dark:text-green-400',
