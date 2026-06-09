@@ -73,6 +73,13 @@ class RuntimeMCPSession:
         self.enable = enable
         self.session = None
 
+        # Transient test sessions (created from the config page "test" button,
+        # which carry no persisted server UUID) must NOT share the live
+        # "mcp-shared" Box session. Otherwise a failing test churns the shared
+        # session and tears down healthy, already-connected servers. Callers
+        # flag these via server_config['_transient'] = True.
+        self.is_transient = bool(server_config.get('_transient', False))
+
         self.exit_stack = AsyncExitStack()
         self.functions = []
 
@@ -402,6 +409,11 @@ class RuntimeMCPSession:
         return self._box_stdio_runtime.uses_box_stdio()
 
     def _build_box_session_id(self) -> str:
+        # Transient test sessions get their own isolated Box session so a
+        # failing/short-lived test can never disturb the shared session that
+        # hosts live, already-connected MCP servers.
+        if self.is_transient:
+            return f'mcp-test-{self.server_uuid}'
         return 'mcp-shared'
 
     def _rewrite_path(self, path: str, host_path: str | None) -> str:
@@ -503,10 +515,14 @@ class MCPLoader(loader.ToolLoader):
                 - extra_args: 额外的配置参数 (可选)
         """
         uuid_ = server_config.get('uuid')
+        is_transient = False
         if not uuid_:
             self.ap.logger.warning('Server UUID is None for MCP server, maybe testing in the config page.')
             uuid_ = str(uuid_module.uuid4())
             server_config['uuid'] = uuid_
+            # No persisted UUID => this is a throwaway "test" session from the
+            # config page. Isolate it from the shared live Box session.
+            is_transient = True
 
         name = server_config['name']
         uuid = server_config['uuid']
@@ -519,6 +535,7 @@ class MCPLoader(loader.ToolLoader):
             'uuid': uuid,
             'mode': mode,
             'enable': enable,
+            '_transient': is_transient,
             **extra_args,
         }
 
