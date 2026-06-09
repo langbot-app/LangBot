@@ -152,7 +152,24 @@ class MCPService:
                 coroutine = runtime_mcp_session.refresh()
         else:
             runtime_mcp_session = await self.ap.tool_mgr.mcp_tool_loader.load_mcp_server(server_config=server_data)
-            coroutine = runtime_mcp_session.start()
+
+            # A transient test owns an isolated Box session. Always tear it down
+            # after the test completes (success or failure) so it does not leak.
+            test_session = runtime_mcp_session
+
+            async def _run_and_cleanup() -> None:
+                try:
+                    await test_session.start()
+                finally:
+                    try:
+                        await test_session.shutdown()
+                    except Exception as exc:
+                        self.ap.logger.warning(
+                            f'Failed to tear down transient MCP test session '
+                            f'{test_session.server_name}: {type(exc).__name__}: {exc}'
+                        )
+
+            coroutine = _run_and_cleanup()
 
         ctx = taskmgr.TaskContext.new()
         wrapper = self.ap.task_mgr.create_user_task(
