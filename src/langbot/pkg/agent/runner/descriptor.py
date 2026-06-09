@@ -36,9 +36,6 @@ class AgentRunnerDescriptor(pydantic.BaseModel):
     plugin_version: str | None = None
     """Optional plugin version"""
 
-    protocol_version: str = '1'
-    """SDK protocol version, default '1'"""
-
     config_schema: list[dict[str, typing.Any]] = []
     """Configuration schema using DynamicForm format"""
 

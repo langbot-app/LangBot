@@ -137,14 +137,13 @@ class AgentRunnerDescriptor(BaseModel):
     source: Literal["plugin"]
     label: I18nObject
     description: I18nObject | None = None
-    protocol_version: str = "1"
     capabilities: AgentRunnerCapabilities    # 见 PROTOCOL_V1 §4.3
     permissions: AgentRunnerPermissions      # 见 PROTOCOL_V1 §4.4
     config_schema: list[DynamicFormItemSchema]
     plugin: PluginRef | None = None
 ```
 
-职责：调用 `plugin_connector.list_agent_runners()` 拉取 runner、校验 manifest（`kind == AgentRunner`、`metadata.name/label` 存在、`protocol_version` 兼容、`spec.*` 类型正确）、输出 descriptor、缓存 discovery 结果并提供 `refresh()`。单个插件 manifest 失败只记 warning，不影响其它 runner。`plugin:author/name/runner` 是稳定 id 格式；插件实例边界见 PROTOCOL_V1 §13。
+职责：调用 `plugin_connector.list_agent_runners()` 拉取 runner、校验 manifest（`kind == AgentRunner`、`metadata.name/label` 存在、`spec.*` 类型正确）、输出 descriptor、缓存 discovery 结果并提供 `refresh()`。单个插件 manifest 失败只记 warning，不影响其它 runner。`plugin:author/name/runner` 是稳定 id 格式；插件实例边界见 PROTOCOL_V1 §13。
 
 Host 内置 runner / adapter 不能作为 `AgentRunnerDescriptor.source` 绕过插件
 runtime、`run_id`、`ctx.resources` 和 `AgentRunAPIProxy` 权限链。若需要
@@ -225,16 +224,7 @@ LangBot 可提供 host-owned state 让 runner 寄宿状态（conversation / acto
 
 三类数据与 working context 的边界、读取约束见 [AGENT_CONTEXT_PROTOCOL.md](./AGENT_CONTEXT_PROTOCOL.md)。AgentRunner 可读取这些能力，但不被迫使用 LangBot 作为唯一记忆系统。
 
-### 4.8 Prompt / Instruction Package（占位）
-
-当前 Query 入口不把 preprocessing 后的有效 prompt 放进 adapter metadata。目标形态是 Host 保存或生成一个 run-scoped instruction package，runner 通过 Host API 拉取：
-
-- Host 记录静态绑定 prompt、host hook / user plugin 产生的 instruction fragment、来源和审计信息。
-- `ctx.context.available_apis` 增加 `prompt_get` 能力位表示拉取是否可用。
-- Runner 拉取后仍由自己决定如何与 history、RAG、tool 结果、memory 和当前输入组装最终 prompt。
-- Host 不实现通用 agentic prompt assembler，也不把 Query entry adapter prompt 作为长期业务输入契约。
-
-### 4.9 External harness resource projection
+### 4.8 External harness resource projection
 
 Claude Code、Codex、Kimi Code 等外部 harness runner 可能不直接调用 LangBot 的 model/tool loop，而是把 LangBot 事件和授权资源句柄投影到自己的 harness 执行。Host 侧仍保持统一边界：Host 负责构造 event-first context、资源授权、state/storage、EventLog/Transcript/ArtifactStore 和审计；Host 或 binding policy 决定哪些 MCP bridge、skill-backed tool、artifact、history/state 句柄可投影给 runner；runner plugin 把 scoped projection 转成目标 harness 可消费形式；所有 LangBot 资源访问必须经 SDK runtime / `AgentRunAPIProxy` / SDK-owned MCP bridge 转发并接受 Host 校验；外部 harness 负责自己的 native session、tool loop、压缩、权限模式和 resume，但不能用 native tools 绕过 Host 授权。
 

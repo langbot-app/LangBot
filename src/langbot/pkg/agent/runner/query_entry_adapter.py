@@ -149,7 +149,6 @@ class QueryEntryAdapter:
         return {
             'params': cls.build_params(query),
             'query_id': getattr(query, 'query_id', None),
-            'prompt_get': cls._has_effective_prompt(query),
         }
 
     @classmethod
@@ -186,12 +185,6 @@ class QueryEntryAdapter:
                 for k, v in value.items()
             )
         return False
-
-    @classmethod
-    def _has_effective_prompt(cls, query: pipeline_query.Query) -> bool:
-        prompt = getattr(query, 'prompt', None)
-        messages = getattr(prompt, 'messages', None) if prompt is not None else None
-        return isinstance(messages, list)
 
     # Private helper methods
 

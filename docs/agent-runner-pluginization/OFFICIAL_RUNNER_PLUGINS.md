@@ -57,7 +57,6 @@ metadata:
     en_US: Run a Dify application as a LangBot AgentRunner.
     zh_Hans: 将 Dify 应用作为 LangBot AgentRunner 运行。
 spec:
-  protocol_version: "1"
   config: []
   capabilities:        # 字段语义见 PROTOCOL_V1 §4.3
     streaming: true

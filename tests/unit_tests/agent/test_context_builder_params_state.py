@@ -159,4 +159,4 @@ class TestBuildAdapterContext:
 
         context = QueryEntryAdapter.build_adapter_context(query, binding=None)
 
-        assert context == {'params': {}, 'query_id': 123, 'prompt_get': False}
+        assert context == {'params': {}, 'query_id': 123}

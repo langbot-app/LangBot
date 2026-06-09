@@ -29,7 +29,6 @@ def make_descriptor(runner_id: str = 'plugin:test/my-runner/default') -> AgentRu
         plugin_author='test',
         plugin_name='my-runner',
         runner_name='default',
-        protocol_version='1',
         capabilities={'streaming': True},
     )
 

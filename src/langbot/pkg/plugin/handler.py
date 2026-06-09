@@ -378,25 +378,6 @@ def _resolve_remove_think(data: dict[str, Any], query: Any | None) -> bool:
     return False
 
 
-def _dump_prompt_messages(query: Any) -> list[dict[str, Any]]:
-    """Serialize the current effective prompt from a cached Query."""
-    prompt = getattr(query, 'prompt', None)
-    messages = getattr(prompt, 'messages', None) if prompt is not None else None
-    if not isinstance(messages, list):
-        return []
-
-    dumped: list[dict[str, Any]] = []
-    for message in messages:
-        if hasattr(message, 'model_dump'):
-            try:
-                dumped.append(message.model_dump(mode='json'))
-            except TypeError:
-                dumped.append(message.model_dump())
-        elif isinstance(message, dict):
-            dumped.append(message)
-    return dumped
-
-
 def _merge_model_extra_args(model: Any, call_extra_args: Any) -> dict[str, Any]:
     """Merge persisted model extra_args with action-level overrides."""
     merged: dict[str, Any] = {}
@@ -1250,7 +1231,7 @@ class RuntimeConnectionHandler(handler.Handler):
             except Exception as e:
                 return _make_rag_error_response(e, 'VectorStoreError', collection_id=collection_id)
 
-        @self.action(PluginToRuntimeAction.GET_KNOWLEDGE_FILE_STREAM)
+        @self.action(PluginToRuntimeAction.GET_KNOWLEDEGE_FILE_STREAM)
         async def get_knowledge_file_stream(data: dict[str, Any]) -> handler.ActionResponse:
             storage_path = data['storage_path']
             try:
@@ -1457,32 +1438,6 @@ class RuntimeConnectionHandler(handler.Handler):
                 return _make_rag_error_response(e, 'RetrievalError', kb_id=kb_id)
 
         # ================= Agent History/Event APIs =================
-
-        @self.action(PluginToRuntimeAction.PROMPT_GET)
-        async def prompt_get(data: dict[str, Any]) -> handler.ActionResponse:
-            """Return the post-preprocessing effective prompt for a query-backed run."""
-            run_id = data.get('run_id')
-            caller_plugin_identity = data.get('caller_plugin_identity')
-
-            if not run_id:
-                return handler.ActionResponse.error(message='run_id is required')
-
-            session, error = await _validate_agent_run_session(
-                run_id,
-                caller_plugin_identity,
-                self.ap,
-                'Prompt get',
-            )
-            if error:
-                return error
-
-            query = _resolve_action_query(data, session, self.ap)
-            if query is None:
-                return handler.ActionResponse.error(
-                    message='Prompt get is only available for query-backed agent runs',
-                )
-
-            return handler.ActionResponse.success(data={'prompt': _dump_prompt_messages(query)})
 
         @self.action(PluginToRuntimeAction.HISTORY_PAGE)
         async def history_page(data: dict[str, Any]) -> handler.ActionResponse:
@@ -2236,7 +2191,6 @@ class RuntimeConnectionHandler(handler.Handler):
         - runner_name
         - runner_description
         - manifest
-        - protocol_version
         - capabilities
         - permissions
         - config

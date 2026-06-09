@@ -80,7 +80,7 @@ class AgentRunnerRegistry:
             runner_data: Raw runner data from plugin runtime with fields:
                 - plugin_author, plugin_name, runner_name
                 - manifest (full component manifest dict)
-                - protocol_version, capabilities, permissions, config (extracted from spec)
+                - capabilities, permissions, config (extracted from spec)
 
         Returns:
             AgentRunnerDescriptor if valid, None if invalid
@@ -114,7 +114,6 @@ class AgentRunnerRegistry:
 
         # SDK now provides these directly extracted from spec. Fall back to
         # manifest.spec for older runtimes/tests that return the raw manifest.
-        protocol_version = runner_data.get('protocol_version') or spec.get('protocol_version', '1')
         config_schema = runner_data.get('config') or spec.get('config', [])
         capabilities = runner_data.get('capabilities') or spec.get('capabilities', {})
         permissions = runner_data.get('permissions') or spec.get('permissions', {})
@@ -136,7 +135,6 @@ class AgentRunnerRegistry:
             plugin_name=plugin_name,
             runner_name=runner_name,
             plugin_version=runner_data.get('plugin_version'),
-            protocol_version=protocol_version,
             config_schema=config_schema,
             capabilities=capabilities,
             permissions=permissions,

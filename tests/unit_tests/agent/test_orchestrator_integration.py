@@ -153,7 +153,6 @@ def make_descriptor() -> AgentRunnerDescriptor:
         plugin_author="langbot",
         plugin_name="local-agent",
         runner_name="default",
-        protocol_version="1",
         capabilities={
             "streaming": True,
             "tool_calling": True,
@@ -591,7 +590,7 @@ class TestQueryEntryAdapterParams:
 
     @pytest.mark.asyncio
     async def test_prompt_not_pushed_into_adapter_extra(self, clean_agent_state):
-        """Pipeline prompt is not pushed into adapter.extra."""
+        """Pipeline prompt is not pushed into adapter.extra or exposed via prompt_get."""
         from langbot_plugin.api.entities.builtin.provider import prompt as provider_prompt
 
         db_engine = clean_agent_state
@@ -621,7 +620,7 @@ class TestQueryEntryAdapterParams:
         context = plugin_connector.contexts[0]
         assert "prompt" not in context
         assert "prompt" not in context["adapter"]["extra"]
-        assert context["context"]["available_apis"]["prompt_get"] is True
+        assert "prompt_get" not in context["context"]["available_apis"]
 
     @pytest.mark.asyncio
     async def test_params_filtering_keeps_public_param(self, clean_agent_state):

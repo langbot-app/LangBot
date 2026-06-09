@@ -35,7 +35,6 @@ def make_descriptor():
         plugin_author='langbot',
         plugin_name='local-agent',
         runner_name='default',
-        protocol_version='1',
         capabilities={'streaming': True},
     )
 

@@ -56,7 +56,6 @@ class TestContextAccessStateDetermination:
         """Create mock runner descriptor."""
         descriptor = MagicMock()
         descriptor.id = 'plugin:test/runner/default'
-        descriptor.protocol_version = '1.0'
         descriptor.permissions = {}
         return descriptor
 

@@ -90,7 +90,6 @@ class TestContextValidation:
         """Create a mock runner descriptor."""
         descriptor = MagicMock()
         descriptor.id = "plugin:test/plugin/runner"
-        descriptor.protocol_version = "1"
         descriptor.permissions = {
             'history': ['page', 'search'],
             'events': ['get', 'page'],
@@ -145,8 +144,7 @@ class TestContextValidation:
         assert isinstance(validated.resources, AgentResources)
         assert validated.runtime is not None
         assert isinstance(validated.runtime, AgentRuntimeContext)
-        assert validated.runtime.protocol_version == "1"
-        assert "protocol_version" in validated.runtime.model_dump()
+        assert "protocol_version" not in validated.runtime.model_dump()
         assert "sdk_protocol_version" not in validated.runtime.model_dump()
         assert "sdk_protocol_version" not in context_dict["runtime"]
 

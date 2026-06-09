@@ -45,7 +45,6 @@ class FakeApplication:
                                 'label': {'en_US': 'Local Agent'},
                             },
                             'spec': {
-                                'protocol_version': '1',
                                 'config': [],
                                 'capabilities': {'streaming': True},
                                 'permissions': {},
@@ -63,7 +62,6 @@ class FakeApplication:
                                 'label': {'en_US': 'Custom Agent'},
                             },
                             'spec': {
-                                'protocol_version': '1',
                                 'config': [{'name': 'param1', 'type': 'string'}],
                                 'capabilities': {},
                                 'permissions': {},
@@ -266,7 +264,7 @@ class TestDescriptorValidation:
 
         assert descriptor.id == 'plugin:test/my-runner/default'
         assert descriptor.get_plugin_id() == 'test/my-runner'
-        assert descriptor.protocol_version == '1'
+        assert 'protocol_version' not in AgentRunnerDescriptor.model_fields
 
     def test_descriptor_capabilities(self):
         """Descriptor capability helper methods."""

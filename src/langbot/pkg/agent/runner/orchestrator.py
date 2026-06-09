@@ -97,8 +97,6 @@ class AgentRunOrchestrator:
             session_query_id = adapter_context.get('query_id')
             if 'params' in adapter_context:
                 context['adapter']['extra']['params'] = adapter_context['params']
-            if adapter_context.get('prompt_get'):
-                context['context']['available_apis']['prompt_get'] = True
 
         state_context = build_state_context(event, binding, descriptor)
         run_id = context['run_id']
