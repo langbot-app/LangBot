@@ -114,6 +114,29 @@ def _clear_pending_form(session_key: str, form_token: str | None = None) -> None
         _PENDING_FORMS.pop(session_key, None)
 
 
+def _format_human_input_text(
+    node_title: str,
+    form_content: str,
+    actions: list[dict[str, typing.Any]],
+) -> str:
+    """Render a paused-workflow human-input prompt as plain text.
+
+    Used by adapters without rich UI (no buttons/cards) so users can reply
+    with the option number or the option title to resume the workflow.
+    """
+    lines: list[str] = [f'[Human Input Required] {node_title or ""}'.rstrip()]
+    if form_content:
+        lines.append('')
+        lines.append(form_content)
+    if actions:
+        lines.append('')
+        lines.append('Reply with the number or title to continue:')
+        for idx, action in enumerate(actions, start=1):
+            title = action.get('title') or action.get('id') or ''
+            lines.append(f'  {idx}. {title}')
+    return '\n'.join(lines)
+
+
 @runner.runner_class('dify-service-api')
 class DifyServiceAPIRunner(runner.RequestRunner):
     """Dify Service API 对话请求器"""
@@ -520,13 +543,36 @@ class DifyServiceAPIRunner(runner.RequestRunner):
     def _match_pending_form_action(self, session_key: str, user_text: str) -> dict | None:
         """Match plain text replies against pending Dify form actions.
 
-        Iterates all pending forms newest-first; the first action whose
-        title/id matches the text wins. This means when multiple forms are
-        pending with the same button label, the most recent one resolves.
+        Resolution order:
+        1. A pure digit reply (e.g. "1", "2") maps to the 1-indexed action of
+           the most recent pending form. Lets users on plain-text platforms
+           pick options without retyping titles.
+        2. Otherwise, iterate pending forms newest-first and match each
+           action's title/id case-insensitively. The first hit wins, so when
+           two forms share a button label the newer one resolves.
         """
         normalized_text = user_text.strip().lower()
         if not normalized_text:
             return None
+
+        def _build(pending_form: dict, action: dict) -> dict:
+            return {
+                'form_token': pending_form.get('form_token', ''),
+                'workflow_run_id': pending_form.get('workflow_run_id', ''),
+                'action_id': action.get('id', ''),
+                'action_title': action.get('title', action.get('id', '')),
+                'node_title': pending_form.get('node_title', ''),
+                'inputs': pending_form.get('inputs', {}),
+                'user': pending_form.get('user', ''),
+            }
+
+        if normalized_text.isdigit():
+            position = int(normalized_text)
+            latest_form = _get_latest_pending_form(session_key)
+            if latest_form is not None:
+                actions = latest_form.get('actions', [])
+                if 1 <= position <= len(actions):
+                    return _build(latest_form, actions[position - 1])
 
         for pending_form in _iter_pending_forms(session_key):
             for action in pending_form.get('actions', []):
@@ -535,15 +581,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                     str(action.get('id', '')).strip().lower(),
                 }
                 if normalized_text in titles:
-                    return {
-                        'form_token': pending_form.get('form_token', ''),
-                        'workflow_run_id': pending_form.get('workflow_run_id', ''),
-                        'action_id': action.get('id', ''),
-                        'action_title': action.get('title', action.get('id', '')),
-                        'node_title': pending_form.get('node_title', ''),
-                        'inputs': pending_form.get('inputs', {}),
-                        'user': pending_form.get('user', ''),
-                    }
+                    return _build(pending_form, action)
 
         return None
 
@@ -636,8 +674,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                             'node_title': node_title,
                         }
 
-                        action_lines = '\n'.join(f'- [{a.get("title", a.get("id", ""))}]' for a in actions)
-                        display_text = f'[Human Input Required] {node_title}\n{form_content}\n{action_lines}'
+                        display_text = _format_human_input_text(node_title, form_content, actions)
 
                         human_input_yielded = True
                         yield provider_message.Message(
@@ -1139,8 +1176,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                             'node_title': node_title,
                         }
 
-                        action_lines = '\n'.join(f'- [{a.get("title", a.get("id", ""))}]' for a in actions)
-                        display_text = f'[Human Input Required] {node_title}\n{form_content}\n{action_lines}'
+                        display_text = _format_human_input_text(node_title, form_content, actions)
                         workflow_contents += display_text + '\n'
 
                         # Save form data to attach to the final chunk later.

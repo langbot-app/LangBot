@@ -2250,7 +2250,59 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                                 'vertical_align': 'top',
                                 'margin': '0px 0px 0px 0px',
                                 'weight': 1,
-                            }
+                            },
+                            *(
+                                []
+                                if form_data
+                                else [
+                                    {
+                                        'tag': 'column',
+                                        'width': '20px',
+                                        'elements': [
+                                            {
+                                                'tag': 'button',
+                                                'text': {'tag': 'plain_text', 'content': ''},
+                                                'type': 'text',
+                                                'width': 'fill',
+                                                'size': 'medium',
+                                                'icon': {'tag': 'standard_icon', 'token': 'thumbsup_outlined'},
+                                                'hover_tips': {'tag': 'plain_text', 'content': '有帮助'},
+                                                'behaviors': [{'type': 'callback', 'value': {'feedback': '有帮助'}}],
+                                                'margin': '0px 0px 0px 0px',
+                                            }
+                                        ],
+                                        'padding': '0px 0px 0px 0px',
+                                        'direction': 'vertical',
+                                        'horizontal_spacing': '8px',
+                                        'vertical_spacing': '8px',
+                                        'horizontal_align': 'left',
+                                        'vertical_align': 'top',
+                                        'margin': '0px 0px 0px 0px',
+                                    },
+                                    {
+                                        'tag': 'column',
+                                        'width': '30px',
+                                        'elements': [
+                                            {
+                                                'tag': 'button',
+                                                'text': {'tag': 'plain_text', 'content': ''},
+                                                'type': 'text',
+                                                'width': 'default',
+                                                'size': 'medium',
+                                                'icon': {'tag': 'standard_icon', 'token': 'thumbdown_outlined'},
+                                                'hover_tips': {'tag': 'plain_text', 'content': '无帮助'},
+                                                'behaviors': [{'type': 'callback', 'value': {'feedback': '无帮助'}}],
+                                                'margin': '0px 0px 0px 0px',
+                                            }
+                                        ],
+                                        'padding': '0px 0px 0px 0px',
+                                        'vertical_spacing': '8px',
+                                        'horizontal_align': 'left',
+                                        'vertical_align': 'top',
+                                        'margin': '0px 0px 0px 0px',
+                                    },
+                                ]
+                            ),
                         ],
                         'margin': '0px 0px 4px 0px',
                     },
