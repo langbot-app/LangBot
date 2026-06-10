@@ -3,7 +3,7 @@
 本文档描述 LangBot 作为 agent host 的内部能力与分层架构，以及 Host 内部模型。
 
 - SDK ↔ Host 的协议数据结构（`AgentRunContext`、`AgentRunnerManifest`、`AgentRunResult`、`AgentRunAPIProxy` 等）的**唯一定义在** [PROTOCOL_V1.md](./PROTOCOL_V1.md)；本文只引用，不重抄。
-- 实现进度见 [PROGRESS.md](./PROGRESS.md)。
+- 测试执行入口和 smoke 记录见 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md)；安全发布门槛见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
 - 本文定义的 Host 内部模型（`AgentEventEnvelope`、`AgentBinding`、`AgentRunnerDescriptor`）不属于 SDK 协议字段。
 
 ## 1. 目标
@@ -137,13 +137,17 @@ class AgentRunnerDescriptor(BaseModel):
     source: Literal["plugin"]
     label: I18nObject
     description: I18nObject | None = None
+    plugin_author: str
+    plugin_name: str
+    runner_name: str
     capabilities: AgentRunnerCapabilities    # 见 PROTOCOL_V1 §4.3
     permissions: AgentRunnerPermissions      # 见 PROTOCOL_V1 §4.4
     config_schema: list[DynamicFormItemSchema]
-    plugin: PluginRef | None = None
+    plugin_version: str | None = None
+    raw_manifest: dict[str, Any] = {}
 ```
 
-职责：调用 `plugin_connector.list_agent_runners()` 拉取 runner、校验 manifest（`kind == AgentRunner`、`metadata.name/label` 存在、`spec.*` 类型正确）、输出 descriptor、缓存 discovery 结果并提供 `refresh()`。单个插件 manifest 失败只记 warning，不影响其它 runner。`plugin:author/name/runner` 是稳定 id 格式；插件实例边界见 PROTOCOL_V1 §13。
+职责：调用 `plugin_connector.list_agent_runners()` 拉取 runner、校验 typed `AgentRunnerManifest`、输出 descriptor、缓存 discovery 结果并提供 `refresh()`。单个插件 manifest 失败只记 warning，不影响其它 runner。`plugin:author/name/runner` 是稳定 id 格式；插件实例边界见 PROTOCOL_V1 §13。
 
 Host 内置 runner / adapter 不能作为 `AgentRunnerDescriptor.source` 绕过插件
 runtime、`run_id`、`ctx.resources` 和 `AgentRunAPIProxy` 权限链。若需要
@@ -191,22 +195,24 @@ QueryEntryAdapter / EventRouter
 
 `run_from_query()` 保留为 Query entry adapter 入口，但内部转换成 event + binding 后走统一 `run()`。约束：`ChatMessageHandler` 不解析 `plugin:*`、不实例化 wrapper、不知道 runner 组件细节；`PipelineService` 从 registry 读取 metadata，不直接访问插件 runtime；跨请求持久化状态必须走授权 storage / 外部服务。
 
-### 4.5 Resource Authorization（三层裁剪）
+### 4.5 Resource Authorization
 
-LangBot 在每次 run 前生成 `ctx.resources`（PROTOCOL_V1 §6），来自三层约束：
+LangBot 在每次 run 前生成 `ctx.resources`（PROTOCOL_V1 §6），来自 manifest permissions 与 binding policy 的交集：
 
-1. runner manifest 声明的 `permissions`（最大能力）。
+1. `descriptor.permissions` 声明 runner 需要的 LangBot 资源访问上限。
 2. binding / resource policy 允许的资源范围。
-3. 当前 event / actor / bot / workspace 的实际权限。
+3. Agent/runner config 中选择的模型、知识库、文件等资源。
+4. 当前 event / actor / bot / workspace 的实际权限。
+5. `ctx.context.available_apis` 暴露的 pull API 能力。
 
 这次裁剪结果必须冻结为 run-scoped authorization snapshot，并由
 `AgentRunSessionRegistry` 按 `run_id` 保存。`ctx.resources` 是投影给 runner
 看的同一份授权结果；运行期每个 proxy action 只依据该 snapshot 校验 active
 run session、caller plugin identity、resource id、scope、payload size、rate
-limit 和 deadline。Handler 不应重新执行三层裁剪，否则 build-time 与 runtime
+limit 和 deadline。Handler 不应重新执行授权裁剪，否则 build-time 与 runtime
 授权逻辑会漂移。
 
-SDK 侧本地校验只用于开发体验，host 侧 run authorization snapshot 才是安全边界。
+SDK 侧本地校验只用于开发体验，host 侧 run authorization snapshot 才是安全边界。`spec.capabilities` 只帮助 Host 判断 runner 是否需要 tool / knowledge / skill 等资源投影，不能替代 permissions 或 binding policy。
 
 资源裁剪应通用，不写死 local-agent。selector 与资源的映射示例：`model-fallback-selector` → primary/fallback LLM、`llm-model-selector` → LLM、`rerank-model-selector` → rerank 模型、`knowledge-base-multi-selector` → 知识库；新增 selector 时在 resource builder 中统一扩展。
 
@@ -239,16 +245,13 @@ class AgentRunner(BaseComponent):
     __kind__ = "AgentRunner"
 
     @classmethod
-    def get_capabilities(cls) -> AgentRunnerCapabilities: ...   # PROTOCOL_V1 §4.3
-
-    @classmethod
     def get_config_schema(cls) -> list[dict]: ...
 
     async def run(self, ctx: AgentRunContext) -> AsyncGenerator[AgentRunResult, None]: ...
     # ctx: PROTOCOL_V1 §5.2 ; AgentRunResult: PROTOCOL_V1 §7
 ```
 
-- Manifest / capabilities / permissions / context policy：PROTOCOL_V1 §4。
+- Manifest / capabilities / effective access：PROTOCOL_V1 §4。Capabilities 来自组件 manifest 的 `spec.capabilities`，不是 SDK 基类 classmethod。
 - `AgentRunContext`：PROTOCOL_V1 §5.2。`messages` / `bootstrap` 不是协议字段。
 - `AgentRunResult`：PROTOCOL_V1 §7。
 - `AgentRunAPIProxy`：PROTOCOL_V1 §8，是 runner 访问 host 能力的唯一入口，所有请求带 `run_id`。

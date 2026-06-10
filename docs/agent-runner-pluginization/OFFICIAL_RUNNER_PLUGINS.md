@@ -1,6 +1,6 @@
 # 官方 AgentRunner 插件迁移计划
 
-本文档描述内置 `RequestRunner` 迁出 LangBot 后，官方 runner 插件如何组织、迁移和验收。它是 [HOST_SDK_INFRASTRUCTURE.md](./HOST_SDK_INFRASTRUCTURE.md) 和 [AGENT_CONTEXT_PROTOCOL.md](./AGENT_CONTEXT_PROTOCOL.md) 的下游落地计划，不是 LangBot 宿主协议的设计前提。验收状态见 [PROGRESS.md](./PROGRESS.md)，QA 入口见 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md)。
+本文档描述内置 `RequestRunner` 迁出 LangBot 后，官方 runner 插件如何组织、迁移和验收。它是 [HOST_SDK_INFRASTRUCTURE.md](./HOST_SDK_INFRASTRUCTURE.md) 和 [AGENT_CONTEXT_PROTOCOL.md](./AGENT_CONTEXT_PROTOCOL.md) 的下游落地计划，不是 LangBot 宿主协议的设计前提。QA 入口和 smoke 记录见 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md)。
 
 官方 `local-agent` 可以外移，也可以重写。设计重点不是保留旧内置 runner 的内部结构，而是验证一个依附 LangBot host 基础设施的官方 agent 能否完整工作。同时，LangBot host 协议必须服务 Claude Code SDK、Codex、Pi Agent SDK、外部 Agent 平台等自管 context/runtime 的 runner，不能被官方插件的实现细节绑死。
 
@@ -60,13 +60,6 @@ spec:
   config: []
   capabilities:        # 字段语义见 PROTOCOL_V1 §4.3
     streaming: true
-    event_context: true
-    stateful_session: true
-  permissions:         # 字段语义见 PROTOCOL_V1 §4.4
-    storage: ["plugin"]
-  context:             # 字段语义见 PROTOCOL_V1 §4.5
-    supports_history_pull: true
-    owns_compaction: true
 execution:
   python: { path: ./main.py, attr: DefaultAgentRunner }
 ```
@@ -83,7 +76,7 @@ execution:
 - 通过 `AgentRunAPIProxy.history` 拉取 transcript，而不是依赖 host 每轮强塞历史窗口。
 - `ctx.input.contents` 保留图片/文件等多模态内容；RAG 只替换/插入文本部分，不丢图片/文件。
 - 不能绕过 `ctx.resources` 调用未授权模型、工具或知识库。
-- manifest 声明自管上下文能力（`context.supports_history_pull/search`、`owns_compaction` 等）。
+- manifest 只声明功能能力和配置表单；资源授权来自 binding resource policy、runner config、`ctx.context.available_apis` 和 Host run session snapshot。
 
 ### 5.1 Native Execution / Skills 后续接入
 
@@ -114,7 +107,7 @@ Claude Code、Codex、Kimi Code 这类 runner 不一定通过 LangBot 的模型/
 
 ## 7. Claude Code / Codex runner 当前形态
 
-`claude-code-agent` 与 `codex-agent` 是最小可运行 MVP / dev path，用来证明外部 harness runner 可以接入同一套 AgentRunner 协议。本地 smoke 验收记录见 [PROGRESS.md](./PROGRESS.md) 与 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md)。
+`claude-code-agent` 与 `codex-agent` 是最小可运行 MVP / dev path，用来证明外部 harness runner 可以接入同一套 AgentRunner 协议。本地 smoke 验收入口与记录见 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md)。
 
 MVP 含义：已验证 event-first context、resource projection、result stream 和
 基础 resume state 可以跑通；不表示 Docker 生产部署、发布级执行隔离、

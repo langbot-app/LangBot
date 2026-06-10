@@ -2,7 +2,7 @@
 
 本文档记录 AgentRunner 插件化之后，LangBot 如何继续演进成 Agent Platform 基础设施层。这里讨论的是 Host capability layer，不是 `AgentRunner Protocol v2`，也不是把某个具体 Agent Platform 产品写进 LangBot core。
 
-> 本文是当前决策版。协议数据结构仍以 [PROTOCOL_V1.md](./PROTOCOL_V1.md) 为准；实现进度见 [PROGRESS.md](./PROGRESS.md)；扩展边界见 [EXTENSION_SCOPE_MATRIX.md](./EXTENSION_SCOPE_MATRIX.md)。
+> 本文是当前决策版。协议数据结构仍以 [PROTOCOL_V1.md](./PROTOCOL_V1.md) 为准；测试执行入口见 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md)；扩展边界见 [EXTENSION_SCOPE_MATRIX.md](./EXTENSION_SCOPE_MATRIX.md)。
 
 ## 1. 当前决策
 

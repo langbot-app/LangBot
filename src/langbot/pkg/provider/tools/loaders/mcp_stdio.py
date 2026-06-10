@@ -5,6 +5,7 @@ import asyncio
 import os
 import shutil
 import shlex
+import threading
 from typing import TYPE_CHECKING, Any
 
 import pydantic
@@ -23,6 +24,19 @@ from ....box.workspace import (
 
 if TYPE_CHECKING:
     from .mcp import RuntimeMCPSession
+
+
+_WORKSPACE_COPY_LOCKS: dict[str, threading.Lock] = {}
+_WORKSPACE_COPY_LOCKS_GUARD = threading.Lock()
+
+
+def _workspace_copy_lock(path: str) -> threading.Lock:
+    with _WORKSPACE_COPY_LOCKS_GUARD:
+        lock = _WORKSPACE_COPY_LOCKS.get(path)
+        if lock is None:
+            lock = threading.Lock()
+            _WORKSPACE_COPY_LOCKS[path] = lock
+        return lock
 
 
 class MCPSessionErrorPhase(enum.Enum):
@@ -50,7 +64,7 @@ class MCPServerBoxConfig(pydantic.BaseModel):
     host_path: str | None = None
     host_path_mode: str = 'ro'  # MCP servers default to read-write mount only when explicitly requested
     env: dict[str, str] = pydantic.Field(default_factory=dict)
-    startup_timeout_sec: int = 120  # Longer default to allow dependency bootstrap
+    startup_timeout_sec: int = 300  # First Docker bootstrap may need to build a venv and install MCP deps.
     cpus: float | None = None
     memory_mb: int | None = None
     pids_limit: int | None = None
@@ -257,14 +271,32 @@ class BoxStdioSessionRuntime:
 
     @staticmethod
     def _copy_workspace_tree(source_path: str, process_host_root: str, process_host_workspace: str) -> None:
-        shutil.rmtree(process_host_root, ignore_errors=True)
-        os.makedirs(process_host_root, exist_ok=True)
-        shutil.copytree(
-            source_path,
-            process_host_workspace,
-            symlinks=True,
-            ignore=shutil.ignore_patterns('.git', '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache'),
-        )
+        # Docker-backed bootstrap writes root-owned runtime directories such as
+        # .venv/.tmp into the staged workspace. The host process may not be able
+        # to delete them, so refresh source files in place and preserve runtime
+        # directories instead of rmtree'ing the whole staging root.
+        with _workspace_copy_lock(process_host_root):
+            os.makedirs(process_host_workspace, exist_ok=True)
+            shutil.copytree(
+                source_path,
+                process_host_workspace,
+                symlinks=True,
+                dirs_exist_ok=True,
+                ignore=shutil.ignore_patterns(
+                    '.git',
+                    '__pycache__',
+                    '.pytest_cache',
+                    '.mypy_cache',
+                    '.ruff_cache',
+                    '.venv',
+                    'venv',
+                    'env',
+                    '.env',
+                    '.cache',
+                    '.tmp',
+                    '.langbot',
+                ),
+            )
 
     async def _cleanup_staged_workspace(self) -> None:
         if not self.resolve_host_path():

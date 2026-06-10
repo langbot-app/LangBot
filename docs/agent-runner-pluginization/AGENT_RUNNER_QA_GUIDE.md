@@ -240,13 +240,4 @@ Dify、n8n、Coze、DashScope、Langflow、Tbox 等外部服务 runner 不作为
 
 ## 10. 历史高价值记录
 
-历史报告已合并为本指南，不再保留单独文档。后续若需要追溯，优先查看 `langbot-skills/reports/` 下的原始执行报告。
-
-截至 2026-05-29，已有本地 smoke 证明：
-
-- `local-agent` 可以通过 Pipeline Debug Chat 走插件化 `AgentRunOrchestrator` 主链路。
-- Claude Code runner 可以通过同一条 `run(event, binding)` 路径执行。
-- Claude Code runner 可以读取 LangBot event-first context，并通过 SDK-owned MCP bridge / skill-backed scoped tools 访问授权资源，随后写回 `external.session_id` / `external.working_directory`。
-- Codex runner 可以通过同一条路径执行，并把 Codex `thread_id` 写回 host-owned state。
-
-这些记录只证明本地协议闭环可用，不代表发布级 security hardening 已完成。
+历史高价值记录与当前 runner 验收状态见 [STATUS.md](./STATUS.md)。本指南只保留可重复执行的测试步骤和证据要求。

@@ -180,7 +180,7 @@ class TestMCPServerBoxConfig:
         assert cfg.host_path is None
         assert cfg.host_path_mode == 'ro'
         assert cfg.env == {}
-        assert cfg.startup_timeout_sec == 120
+        assert cfg.startup_timeout_sec == 300
         assert cfg.cpus is None
         assert cfg.memory_mb is None
         assert cfg.pids_limit is None
@@ -533,6 +533,27 @@ class TestPythonWorkspacePreparation:
         assert 'export PATH=/workspace/.mcp/u1/workspace/.venv/bin:$PATH' in wrapped['args'][1]
         assert 'exec python /workspace/.mcp/u1/workspace/server.py' in wrapped['args'][1]
         assert wrapped['cwd'] == '/workspace/.mcp/u1/workspace'
+
+    def test_staging_refresh_preserves_box_runtime_dirs(self, mcp_module, tmp_path):
+        source = tmp_path / 'source'
+        source.mkdir()
+        (source / 'server.py').write_text('print("new")\n', encoding='utf-8')
+        (source / 'requirements.txt').write_text('mcp==1.26.0\n', encoding='utf-8')
+
+        process_root = tmp_path / 'shared' / '.mcp' / 'u1'
+        workspace = process_root / 'workspace'
+        (workspace / '.venv' / 'bin').mkdir(parents=True)
+        (workspace / '.venv' / 'bin' / 'python').write_text('', encoding='utf-8')
+        (workspace / '.langbot').mkdir()
+        (workspace / '.langbot' / 'python-env.lock').mkdir()
+        (workspace / 'server.py').write_text('print("old")\n', encoding='utf-8')
+
+        mcp_module.BoxStdioSessionRuntime._copy_workspace_tree(str(source), str(process_root), str(workspace))
+
+        assert (workspace / 'server.py').read_text(encoding='utf-8') == 'print("new")\n'
+        assert (workspace / 'requirements.txt').read_text(encoding='utf-8') == 'mcp==1.26.0\n'
+        assert (workspace / '.venv' / 'bin' / 'python').exists()
+        assert (workspace / '.langbot' / 'python-env.lock').is_dir()
 
 
 # ── get_runtime_info_dict ───────────────────────────────────────────
