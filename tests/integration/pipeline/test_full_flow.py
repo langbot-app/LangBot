@@ -31,7 +31,7 @@ def mock_circular_import_chain():
     """
     Break circular import chain for pipeline modules using isolated_sys_modules.
 
-    Chain: pipeline → core.app → provider.runner → http_controller → groups/plugins
+    Chain: pipeline → core.app → http_controller → groups/plugins
 
     We mock minimal modules to allow importing RuntimePipeline, StageInstContainer,
     and stage classes without triggering full application initialization.
@@ -63,14 +63,12 @@ def mock_circular_import_chain():
         'langbot.pkg.pipeline.process.handlers.chat',
         'langbot.pkg.pipeline.process.handlers.command',
         'langbot.pkg.pipeline.respback.respback',
-        'langbot.pkg.provider.runner',
     ]
 
     with isolated_sys_modules(
         mocks={
             'langbot.pkg.core.entities': mock_core_entities,
             'langbot.pkg.core.app': mock_core_app,
-            'langbot.pkg.provider.runner': Mock(preregistered_runners=[]),
             'langbot.pkg.utils.importutil': mock_importutil,
             'langbot.pkg.pipeline.controller': Mock(),
             'langbot.pkg.pipeline.pipelinemgr': Mock(),
@@ -342,7 +340,7 @@ class TestPreProcessorStage:
 
         result = await preproc_stage.process(query, 'PreProcessor')
 
-        assert result.result_type == entities.ResultType.CONTINUE
+        assert result.result_type.name == entities.ResultType.CONTINUE.name
         assert result.new_query.session is not None
         assert result.new_query.user_message is not None
 
@@ -369,7 +367,7 @@ class TestPreProcessorStage:
 
         result = await preproc_stage.process(query, 'PreProcessor')
 
-        assert result.result_type == entities.ResultType.CONTINUE
+        assert result.result_type.name == entities.ResultType.CONTINUE.name
         # Check user_message content
         assert result.new_query.user_message is not None
         assert result.new_query.user_message.role == 'user'
@@ -440,7 +438,7 @@ class TestProcessorStage:
         results = await collect_processor_results(processor_stage, query, 'MessageProcessor')
 
         assert len(results) == 1
-        assert results[0].result_type == entities.ResultType.INTERRUPT
+        assert results[0].result_type.name == entities.ResultType.INTERRUPT.name
 
     @pytest.mark.asyncio
     async def test_processor_prevent_default_with_reply_continues(self, pipeline_app, fake_platform_adapter):
@@ -474,7 +472,7 @@ class TestProcessorStage:
         results = await collect_processor_results(processor_stage, query, 'MessageProcessor')
 
         assert len(results) == 1
-        assert results[0].result_type == entities.ResultType.CONTINUE
+        assert results[0].result_type.name == entities.ResultType.CONTINUE.name
         assert len(query.resp_messages) == 1
         assert query.resp_messages[0] == reply_chain
 
@@ -518,7 +516,7 @@ class TestRunnerExceptionFlow:
         results = await collect_processor_results(processor_stage, query, 'MessageProcessor')
 
         assert len(results) == 1
-        assert results[0].result_type == entities.ResultType.INTERRUPT
+        assert results[0].result_type.name == entities.ResultType.INTERRUPT.name
         assert results[0].user_notice == 'Request failed.'
         assert results[0].error_notice is not None
 
@@ -556,7 +554,7 @@ class TestRunnerExceptionFlow:
         results = await collect_processor_results(processor_stage, query, 'MessageProcessor')
 
         assert len(results) == 1
-        assert results[0].result_type == entities.ResultType.INTERRUPT
+        assert results[0].result_type.name == entities.ResultType.INTERRUPT.name
         assert 'Custom runtime error' in results[0].user_notice
 
     @pytest.mark.asyncio
@@ -593,7 +591,7 @@ class TestRunnerExceptionFlow:
         results = await collect_processor_results(processor_stage, query, 'MessageProcessor')
 
         assert len(results) == 1
-        assert results[0].result_type == entities.ResultType.INTERRUPT
+        assert results[0].result_type.name == entities.ResultType.INTERRUPT.name
         assert results[0].user_notice is None
 
 
@@ -625,7 +623,7 @@ class TestSendResponseBackStage:
 
         result = await respback_stage.process(query, 'SendResponseBackStage')
 
-        assert result.result_type == entities.ResultType.CONTINUE
+        assert result.result_type.name == entities.ResultType.CONTINUE.name
 
         # Check that adapter was called
         outbound = platform.get_outbound_messages()
@@ -691,7 +689,7 @@ class TestStageChainIntegration:
 
         # Run PreProcessor
         result1 = await preproc_stage.process(query, 'PreProcessor')
-        assert result1.result_type == entities.ResultType.CONTINUE
+        assert result1.result_type.name == entities.ResultType.CONTINUE.name
         query = result1.new_query
 
         # Run Processor
@@ -705,7 +703,7 @@ class TestStageChainIntegration:
 
         # Run SendResponseBackStage
         result3 = await respback_stage.process(query, 'SendResponseBackStage')
-        assert result3.result_type == entities.ResultType.CONTINUE
+        assert result3.result_type.name == entities.ResultType.CONTINUE.name
 
         # Verify adapter was called
         outbound = platform.get_outbound_messages()
@@ -753,14 +751,14 @@ class TestStageChainIntegration:
 
         # Run PreProcessor
         result1 = await preproc_stage.process(query, 'PreProcessor')
-        assert result1.result_type == entities.ResultType.CONTINUE
+        assert result1.result_type.name == entities.ResultType.CONTINUE.name
         query = result1.new_query
 
         # Run Processor - should INTERRUPT
         results = await collect_processor_results(processor_stage, query, 'MessageProcessor')
 
         assert len(results) == 1
-        assert results[0].result_type == entities.ResultType.INTERRUPT
+        assert results[0].result_type.name == entities.ResultType.INTERRUPT.name
 
         # Chain stops here - no resp_messages
         assert len(query.resp_messages) == 0

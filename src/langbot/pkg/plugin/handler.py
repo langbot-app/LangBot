@@ -184,10 +184,9 @@ async def _validate_agent_run_session(
     caller_plugin_identity: str | None,
     ap: app.Application,
     api_name: str,
-    permission_group: str | None = None,
-    permission_operation: str | None = None,
+    api_capability: str | None = None,
 ) -> Union[tuple[None, handler.ActionResponse], tuple[Any, None]]:
-    """Validate an AgentRunner pull API run session and optional manifest permission."""
+    """Validate an AgentRunner pull API run session and run-scoped API access."""
     session_registry = get_session_registry()
     session = await session_registry.get(run_id)
     if not session:
@@ -210,10 +209,9 @@ async def _validate_agent_run_session(
                 message=f'Plugin identity mismatch for run_id {run_id}'
             )
 
-    if permission_group and permission_operation:
-        permissions = _get_run_authorization(session)['permissions']
-        allowed_operations = permissions.get(permission_group, [])
-        if permission_operation not in allowed_operations:
+    if api_capability:
+        available_apis = _get_run_authorization(session).get('available_apis', {})
+        if not available_apis.get(api_capability, False):
             return None, handler.ActionResponse.error(
                 message=f'{api_name} access not authorized'
             )
@@ -1489,8 +1487,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 caller_plugin_identity,
                 self.ap,
                 'History page',
-                permission_group='history',
-                permission_operation='page',
+                api_capability='history_page',
             )
             if error:
                 return error
@@ -1560,8 +1557,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 caller_plugin_identity,
                 self.ap,
                 'History search',
-                permission_group='history',
-                permission_operation='search',
+                api_capability='history_search',
             )
             if error:
                 return error
@@ -1625,8 +1621,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 caller_plugin_identity,
                 self.ap,
                 'Event get',
-                permission_group='events',
-                permission_operation='get',
+                api_capability='event_get',
             )
             if error:
                 return error
@@ -1678,8 +1673,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 caller_plugin_identity,
                 self.ap,
                 'Event page',
-                permission_group='events',
-                permission_operation='page',
+                api_capability='event_page',
             )
             if error:
                 return error
@@ -1749,8 +1743,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 caller_plugin_identity,
                 self.ap,
                 'Artifact metadata',
-                permission_group='artifacts',
-                permission_operation='metadata',
+                api_capability='artifact_metadata',
             )
             if error:
                 return error
@@ -1820,8 +1813,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 caller_plugin_identity,
                 self.ap,
                 'Artifact read',
-                permission_group='artifacts',
-                permission_operation='read',
+                api_capability='artifact_read',
             )
             if error:
                 return error
@@ -2218,8 +2210,6 @@ class RuntimeConnectionHandler(handler.Handler):
         - runner_name
         - runner_description
         - manifest
-        - capabilities
-        - permissions
         - config
         """
         result = await self.call_action(

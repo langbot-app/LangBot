@@ -106,7 +106,7 @@ class AgentRunOrchestrator:
             query_id=session_query_id,
             plugin_identity=descriptor.get_plugin_id(),
             resources=resources,
-            permissions=descriptor.permissions or {},
+            available_apis=context.get('context', {}).get('available_apis'),
             conversation_id=event.conversation_id,
             state_policy={
                 'enable_state': binding.state_policy.enable_state,
@@ -137,6 +137,12 @@ class AgentRunOrchestrator:
         try:
             async for result_dict in self.invoker.invoke(descriptor, context):
                 result_type = result_dict.get('type')
+                if result_type and not self.result_normalizer.validate_payload(
+                    result_type,
+                    result_dict.get('data', {}),
+                    descriptor,
+                ):
+                    continue
 
                 if result_type == 'artifact.created':
                     artifact_ref = await self.journal.handle_artifact_created(

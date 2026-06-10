@@ -212,7 +212,7 @@ class TestArtifactAccessValidation:
         return make_session(
             run_id="run_001",
             conversation_id=conversation_id,
-            permissions={"artifacts": ["metadata", "read"]},
+            available_apis={"artifact_metadata": True, "artifact_read": True},
         )
 
     def _call_validate(self, session, metadata, operation="metadata"):
@@ -298,33 +298,23 @@ class TestArtifactAccessValidation:
 
 
 class TestContextAccessArtifactAPIs:
-    """Test ContextAccess reflects artifact API permissions."""
+    """Test ContextAccess reflects runtime artifact API availability."""
 
     @pytest.mark.asyncio
     async def test_context_access_has_artifact_apis_when_permitted(self):
-        """Test ContextAccess shows artifact APIs when permissions allow."""
-        # This tests the context builder logic
-        # When artifact permissions include 'metadata' and 'read',
-        # available_apis should reflect that
-        permissions = {"artifacts": ["metadata", "read"]}
+        """Artifact APIs are exposed through run-scoped available_apis."""
+        available_apis = {"artifact_metadata": True, "artifact_read": True}
 
-        # Check that permissions are properly interpreted
-        artifact_metadata_enabled = "metadata" in permissions.get("artifacts", [])
-        artifact_read_enabled = "read" in permissions.get("artifacts", [])
-
-        assert artifact_metadata_enabled is True
-        assert artifact_read_enabled is True
+        assert available_apis["artifact_metadata"] is True
+        assert available_apis["artifact_read"] is True
 
     @pytest.mark.asyncio
     async def test_context_access_no_artifact_apis_without_permission(self):
-        """Test ContextAccess hides artifact APIs when permissions denied."""
-        permissions = {"artifacts": []}
+        """Artifact APIs are absent when the run did not receive them."""
+        available_apis = {}
 
-        artifact_metadata_enabled = "metadata" in permissions.get("artifacts", [])
-        artifact_read_enabled = "read" in permissions.get("artifacts", [])
-
-        assert artifact_metadata_enabled is False
-        assert artifact_read_enabled is False
+        assert available_apis.get("artifact_metadata", False) is False
+        assert available_apis.get("artifact_read", False) is False
 
 
 class TestArtifactMetadataFieldAlignment:
@@ -376,8 +366,8 @@ class TestArtifactMetadataFieldAlignment:
         assert "storage_type" not in result
 
 
-class TestSessionRegistryPermissions:
-    """Test that session registry stores and retrieves permissions correctly."""
+class TestSessionRegistryAvailableAPIs:
+    """Test that session registry stores and retrieves available APIs correctly."""
 
     @pytest.fixture
     def session_registry(self):
@@ -387,8 +377,8 @@ class TestSessionRegistryPermissions:
         return get_session_registry()
 
     @pytest.mark.asyncio
-    async def test_register_stores_permissions(self, session_registry):
-        """Test that register() stores permissions from descriptor."""
+    async def test_register_stores_available_apis(self, session_registry):
+        """Test that register() stores runtime API availability."""
         await session_registry.register(
             run_id="run_001",
             runner_id="plugin:author/plugin/runner",
@@ -402,24 +392,26 @@ class TestSessionRegistryPermissions:
                 "storage": {"plugin_storage": True, "workspace_storage": False},
                 "platform_capabilities": {},
             },
-            permissions={
-                "artifacts": ["metadata", "read"],
-                "history": ["page"],
-                "events": ["get"],
+            available_apis={
+                "artifact_metadata": True,
+                "artifact_read": True,
+                "history_page": True,
+                "event_get": True,
             },
             conversation_id="conv_001",
         )
 
         session = await session_registry.get("run_001")
         assert session is not None
-        permissions = session["authorization"]["permissions"]
-        assert permissions["artifacts"] == ["metadata", "read"]
-        assert permissions["history"] == ["page"]
-        assert permissions["events"] == ["get"]
+        available_apis = session["authorization"]["available_apis"]
+        assert available_apis["artifact_metadata"] is True
+        assert available_apis["artifact_read"] is True
+        assert available_apis["history_page"] is True
+        assert available_apis["event_get"] is True
 
     @pytest.mark.asyncio
-    async def test_register_with_empty_permissions(self, session_registry):
-        """Test that register() handles empty permissions."""
+    async def test_register_with_empty_available_apis(self, session_registry):
+        """Test that register() handles empty API availability."""
         await session_registry.register(
             run_id="run_002",
             runner_id="plugin:author/plugin/runner",
@@ -433,13 +425,13 @@ class TestSessionRegistryPermissions:
                 "storage": {"plugin_storage": True, "workspace_storage": False},
                 "platform_capabilities": {},
             },
-            permissions={},
+            available_apis={},
             conversation_id="conv_001",
         )
 
         session = await session_registry.get("run_002")
         assert session is not None
-        assert session["authorization"]["permissions"] == {}
+        assert session["authorization"]["available_apis"] == {}
 
 
 class TestArtifactStoreRealSQLite:

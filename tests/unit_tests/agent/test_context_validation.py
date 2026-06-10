@@ -18,6 +18,7 @@ from langbot.pkg.agent.runner.context_builder import (
     AgentRunContextBuilder,
     AgentResources as BuilderResources,
 )
+from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
 from langbot.pkg.agent.runner.host_models import AgentEventEnvelope, AgentBinding, BindingScope
 from langbot.pkg.core import app
 
@@ -88,13 +89,20 @@ class TestContextValidation:
 
     def _make_descriptor(self):
         """Create a mock runner descriptor."""
-        descriptor = MagicMock()
-        descriptor.id = "plugin:test/plugin/runner"
-        descriptor.permissions = {
-            'history': ['page', 'search'],
-            'events': ['get', 'page'],
-        }
-        return descriptor
+        return AgentRunnerDescriptor(
+            id="plugin:test/plugin/runner",
+            source="plugin",
+            label={"en_US": "Test Runner"},
+            plugin_author="test",
+            plugin_name="plugin",
+            runner_name="runner",
+            permissions={
+                "history": ["page", "search"],
+                "events": ["get", "page"],
+                "artifacts": ["metadata", "read"],
+                "storage": ["plugin", "workspace"],
+            },
+        )
 
     @pytest.mark.asyncio
     async def test_build_context_from_event_validates(self):

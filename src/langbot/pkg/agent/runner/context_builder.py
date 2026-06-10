@@ -44,7 +44,6 @@ class AgentInput(typing.TypedDict):
 
     text: str | None
     contents: list[dict[str, typing.Any]]
-    message_chain: dict[str, typing.Any] | None
     attachments: list[dict[str, typing.Any]]
 
 
@@ -254,7 +253,6 @@ class AgentRunContextBuilder:
         input: AgentInput = {
             'text': event.input.text,
             'contents': [c.model_dump(mode='json') if hasattr(c, 'model_dump') else c for c in event.input.contents],
-            'message_chain': event.input.message_chain,
             'attachments': [
                 a.model_dump(mode='json') if hasattr(a, 'model_dump') else a for a in event.input.attachments
             ],
@@ -361,27 +359,32 @@ class AgentRunContextBuilder:
             ContextAccess dict
         """
         conversation_id = event.conversation_id
+        permissions = descriptor.permissions
+        history_perms = set(permissions.history)
+        event_perms = set(permissions.events)
+        artifact_perms = set(permissions.artifacts)
+        storage_perms = set(permissions.storage)
 
-        # Check if history APIs are available for this runner
-        # Based on runner permissions
-        permissions = descriptor.permissions or {}
-        history_permissions = permissions.get('history', [])
-        event_permissions = permissions.get('events', [])
-        artifact_permissions = permissions.get('artifacts', [])
-
-        history_page_enabled = 'page' in history_permissions and conversation_id is not None
-        history_search_enabled = 'search' in history_permissions and conversation_id is not None
-        event_get_enabled = 'get' in event_permissions
-        event_page_enabled = 'page' in event_permissions and conversation_id is not None
-        artifact_metadata_enabled = 'metadata' in artifact_permissions
-        artifact_read_enabled = 'read' in artifact_permissions
+        history_page_enabled = 'page' in history_perms and conversation_id is not None
+        history_search_enabled = 'search' in history_perms and conversation_id is not None
+        event_get_enabled = 'get' in event_perms
+        event_page_enabled = 'page' in event_perms and conversation_id is not None
+        artifact_metadata_enabled = 'metadata' in artifact_perms
+        artifact_read_enabled = 'read' in artifact_perms
 
         # Determine state API availability based on binding state_policy.
         state_enabled = False
+        storage_enabled = False
         if binding is not None:
             state_policy = binding.state_policy
             if state_policy.enable_state and state_policy.state_scopes:
                 state_enabled = True
+
+            resource_policy = binding.resource_policy
+            storage_enabled = (
+                ('plugin' in storage_perms and resource_policy.allow_plugin_storage)
+                or ('workspace' in storage_perms and resource_policy.allow_workspace_storage)
+            )
 
         # Get latest cursor and has_history_before if conversation exists
         latest_cursor = None
@@ -411,7 +414,7 @@ class AgentRunContextBuilder:
                 'delivered_count': 0,
                 'source_total_count': None,
                 'messages_complete': False,
-                'reason': 'self_managed_context',
+                'reason': 'current_event_only',
             },
             'available_apis': {
                 'history_page': history_page_enabled,
@@ -421,6 +424,6 @@ class AgentRunContextBuilder:
                 'artifact_metadata': artifact_metadata_enabled,
                 'artifact_read': artifact_read_enabled,
                 'state': state_enabled,
-                'storage': True,
+                'storage': storage_enabled,
             },
         }

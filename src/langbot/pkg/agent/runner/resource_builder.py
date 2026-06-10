@@ -18,17 +18,14 @@ from .host_models import AgentEventEnvelope, AgentBinding
 
 
 class AgentResourceBuilder:
-    """Builder for constructing AgentResources with permission filtering.
+    """Builder for constructing run-scoped AgentResources with permission filtering.
 
     Responsibilities:
-    - Apply 3-layer permission filtering:
-        1. Runner manifest declared permissions
-        2. Pipeline extensions_preference (bound plugins/MCP servers)
-        3. Agent/runner config selected resources
+    - Apply manifest permissions intersected with binding resource policy
     - Build models list from authorized models
     - Build tools list from bound plugins/MCP servers
     - Build knowledge_bases list from config
-    - Build storage and files permissions summary
+    - Build storage and files access summary
 
     Note: This only builds the resource declaration. The actual proxy actions
     in handler.py must still validate against ctx.resources at runtime.
@@ -59,26 +56,21 @@ class AgentResourceBuilder:
         Args:
             event: Event envelope
             binding: Agent binding with resource policy
-            descriptor: Runner descriptor with permissions and capabilities
+            descriptor: Runner descriptor with capabilities, permissions, and config schema
 
         Returns:
             AgentResources dict with filtered resource lists
         """
-        # Layer 1: Runner manifest permissions
-        manifest_perms = descriptor.permissions
-
-        # Layer 2: Binding resource policy
         resource_policy = binding.resource_policy
-
-        # Layer 3: Agent/runner config
         runner_config = binding.runner_config
+        manifest_perms = descriptor.permissions
 
         # Build each resource category
         models = await self._build_models_from_binding(
             manifest_perms, resource_policy, descriptor, runner_config
         )
         tools = await self._build_tools_from_binding(
-            manifest_perms, resource_policy, binding
+            manifest_perms, resource_policy, descriptor
         )
         knowledge_bases = await self._build_knowledge_bases_from_binding(
             manifest_perms, resource_policy, descriptor, runner_config
@@ -100,7 +92,7 @@ class AgentResourceBuilder:
 
     async def _build_models_from_binding(
         self,
-        manifest_perms: dict[str, list[str]],
+        manifest_perms: typing.Any,
         resource_policy: typing.Any,
         descriptor: AgentRunnerDescriptor,
         runner_config: dict[str, typing.Any],
@@ -109,10 +101,10 @@ class AgentResourceBuilder:
         models: list[ModelResource] = []
         seen_model_ids: set[str] = set()
 
-        model_perms = manifest_perms.get('models', [])
-        allow_llm = 'invoke' in model_perms or 'stream' in model_perms
-        allow_rerank = 'rerank' in model_perms
-        if not allow_llm and not allow_rerank:
+        model_perms = set(manifest_perms.models)
+        include_llm = bool({'invoke', 'stream'} & model_perms)
+        include_rerank = 'rerank' in model_perms
+        if not include_llm and not include_rerank:
             return models
 
         # Get additional model UUID grants from resource policy.
@@ -124,12 +116,12 @@ class AgentResourceBuilder:
             seen_model_ids=seen_model_ids,
             descriptor=descriptor,
             runner_config=runner_config,
-            include_llm=allow_llm,
-            include_rerank=allow_rerank,
+            include_llm=include_llm,
+            include_rerank=include_rerank,
         )
 
         # Add explicitly allowed models
-        if allowed_uuids and allow_llm:
+        if allowed_uuids and include_llm:
             for model_uuid in allowed_uuids:
                 await self._append_llm_model_resource(models, seen_model_ids, model_uuid)
 
@@ -137,16 +129,17 @@ class AgentResourceBuilder:
 
     async def _build_tools_from_binding(
         self,
-        manifest_perms: dict[str, list[str]],
+        manifest_perms: typing.Any,
         resource_policy: typing.Any,
-        binding: AgentBinding,
+        descriptor: AgentRunnerDescriptor,
     ) -> list[ToolResource]:
         """Build tools list from binding."""
         tools: list[ToolResource] = []
+        tool_perms = set(manifest_perms.tools)
+        if not ({'detail', 'call'} & tool_perms):
+            return tools
 
-        # Check manifest permission
-        tool_perms = manifest_perms.get('tools', [])
-        if 'detail' not in tool_perms and 'call' not in tool_perms:
+        if not config_schema.uses_host_tools(descriptor):
             return tools
 
         # Get tool names from resource policy
@@ -164,17 +157,18 @@ class AgentResourceBuilder:
 
     async def _build_knowledge_bases_from_binding(
         self,
-        manifest_perms: dict[str, list[str]],
+        manifest_perms: typing.Any,
         resource_policy: typing.Any,
         descriptor: AgentRunnerDescriptor,
         runner_config: dict[str, typing.Any],
     ) -> list[KnowledgeBaseResource]:
         """Build knowledge bases list from binding."""
         kb_resources: list[KnowledgeBaseResource] = []
+        kb_perms = set(manifest_perms.knowledge_bases)
+        if not ({'list', 'retrieve'} & kb_perms):
+            return kb_resources
 
-        # Check manifest permission
-        kb_perms = manifest_perms.get('knowledge_bases', [])
-        if 'list' not in kb_perms and 'retrieve' not in kb_perms:
+        if not config_schema.uses_host_knowledge_bases(descriptor):
             return kb_resources
 
         # Get KB UUID grants from schema-defined config fields.
@@ -231,12 +225,12 @@ class AgentResourceBuilder:
 
     def _build_storage_from_binding(
         self,
-        manifest_perms: dict[str, list[str]],
+        manifest_perms: typing.Any,
         binding: AgentBinding,
     ) -> StorageResource:
-        """Build storage permissions from binding."""
-        storage_perms = manifest_perms.get('storage', [])
+        """Build storage access summary from manifest and binding policy."""
         resource_policy = binding.resource_policy
+        storage_perms = set(manifest_perms.storage)
 
         return {
             'plugin_storage': 'plugin' in storage_perms and resource_policy.allow_plugin_storage,

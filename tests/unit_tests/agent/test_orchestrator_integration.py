@@ -159,17 +159,19 @@ def make_descriptor() -> AgentRunnerDescriptor:
             "knowledge_retrieval": True,
             "skill_authoring": True,
         },
+        permissions={
+            "models": ["invoke", "stream"],
+            "tools": ["detail", "call"],
+            "knowledge_bases": ["list", "retrieve"],
+            "history": ["page", "search"],
+            "events": ["get", "page"],
+            "artifacts": ["metadata", "read"],
+            "storage": ["plugin"],
+        },
         config_schema=[
             {"name": "model", "type": "model-fallback-selector"},
             {"name": "knowledge-bases", "type": "knowledge-base-multi-selector", "default": []},
         ],
-        permissions={
-            "models": ["invoke", "stream"],
-            "tools": ["list", "detail", "call"],
-            "knowledge_bases": ["list", "retrieve"],
-            "storage": ["plugin"],
-            "files": [],
-        },
     )
 
 

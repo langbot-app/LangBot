@@ -63,7 +63,7 @@ class TestSessionRegistryBasic:
             query_id=1,
             plugin_identity='test/my-runner',
             resources=resources,
-            permissions={'models': ['invoke']},
+            available_apis={'history_page': True},
             conversation_id='conv_001',
         )
 
@@ -74,7 +74,7 @@ class TestSessionRegistryBasic:
         assert session is not None
         authorization = session['authorization']
         assert authorization['conversation_id'] == 'conv_001'
-        assert authorization['permissions'] == {'models': ['invoke']}
+        assert authorization['available_apis'] == {'history_page': True}
         assert registry.is_resource_allowed(session, 'model', 'model_001') is True
         assert registry.is_resource_allowed(session, 'model', 'model_late') is False
         assert registry.is_resource_allowed(session, 'storage', 'workspace') is False

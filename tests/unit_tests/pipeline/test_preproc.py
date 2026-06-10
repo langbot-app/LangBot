@@ -73,8 +73,8 @@ def make_host_model_runner_descriptor(
             'skill_authoring': skill_authoring,
         },
         permissions={
-            'models': ['list', 'invoke', 'stream'],
-            'tools': ['list', 'detail', 'call'],
+            'models': ['invoke', 'stream'],
+            'tools': ['detail', 'call'],
             'knowledge_bases': ['list', 'retrieve'],
         },
     )

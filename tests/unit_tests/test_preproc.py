@@ -8,6 +8,10 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from langbot_plugin.api.entities.builtin.agent_runner.manifest import (
+    AgentRunnerCapabilities,
+    AgentRunnerPermissions,
+)
 from langbot_plugin.api.entities.builtin.pipeline.query import Query
 from langbot_plugin.api.entities.builtin.platform.entities import Friend
 from langbot_plugin.api.entities.builtin.platform.events import FriendMessage
@@ -24,22 +28,23 @@ class _FakeRunnerDescriptor:
         {'name': 'knowledge-bases', 'type': 'knowledge-base-multi-selector', 'default': []},
     ]
     permissions = {
-        'models': ['list', 'invoke', 'stream'],
-        'tools': ['list', 'detail', 'call'],
+        'models': ['invoke', 'stream'],
+        'tools': ['detail', 'call'],
         'knowledge_bases': ['list', 'retrieve'],
     }
-    capabilities = {
-        'tool_calling': True,
-        'knowledge_retrieval': True,
-        'multimodal_input': True,
-        'skill_authoring': True,
-    }
+    permissions = AgentRunnerPermissions.model_validate(permissions)
+    capabilities = AgentRunnerCapabilities(
+        tool_calling=True,
+        knowledge_retrieval=True,
+        multimodal_input=True,
+        skill_authoring=True,
+    )
 
     def supports_tool_calling(self):
-        return self.capabilities.get('tool_calling', False)
+        return self.capabilities.tool_calling
 
     def supports_knowledge_retrieval(self):
-        return self.capabilities.get('knowledge_retrieval', False)
+        return self.capabilities.knowledge_retrieval
 
 
 def _make_query() -> Query:

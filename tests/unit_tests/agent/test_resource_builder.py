@@ -13,13 +13,23 @@ from langbot.pkg.agent.runner.resource_builder import AgentResourceBuilder
 
 
 RUNNER_ID = 'plugin:test/runner/default'
+FULL_PERMISSIONS = {
+    'models': ['invoke', 'stream', 'rerank'],
+    'tools': ['detail', 'call'],
+    'knowledge_bases': ['list', 'retrieve'],
+    'history': ['page', 'search'],
+    'events': ['get', 'page'],
+    'artifacts': ['metadata', 'read'],
+    'storage': ['plugin', 'workspace'],
+    'files': ['config', 'knowledge'],
+}
 
 
 def make_descriptor(
     *,
-    permissions: dict | None = None,
     config_schema: list[dict] | None = None,
     capabilities: dict | None = None,
+    permissions: dict | None = None,
 ) -> AgentRunnerDescriptor:
     return AgentRunnerDescriptor(
         id=RUNNER_ID,
@@ -29,7 +39,7 @@ def make_descriptor(
         plugin_name='runner',
         runner_name='default',
         capabilities=capabilities or {},
-        permissions=permissions or {'models': ['invoke', 'stream']},
+        permissions=permissions if permissions is not None else FULL_PERMISSIONS,
         config_schema=config_schema or [],
     )
 
@@ -113,7 +123,6 @@ async def test_build_models_authorizes_config_declared_llm_and_rerank_models(app
     app.model_mgr.get_model_by_uuid = AsyncMock(side_effect=get_model_by_uuid)
     app.model_mgr.get_rerank_model_by_uuid = AsyncMock(side_effect=get_rerank_model_by_uuid)
     descriptor = make_descriptor(
-        permissions={'models': ['invoke', 'stream', 'rerank']},
         config_schema=[
             {'name': 'model', 'type': 'model-fallback-selector'},
             {'name': 'aux-model', 'type': 'llm-model-selector'},
@@ -137,16 +146,16 @@ async def test_build_models_authorizes_config_declared_llm_and_rerank_models(app
 
 
 @pytest.mark.asyncio
-async def test_build_models_still_honors_manifest_permissions(app):
-    """Config-selected models should not bypass runner manifest permissions."""
+async def test_build_models_from_config_without_manifest_acl(app):
+    """Config-selected models are not projected without manifest model permissions."""
     app.model_mgr.get_model_by_uuid = AsyncMock(return_value=make_model())
     app.model_mgr.get_rerank_model_by_uuid = AsyncMock(return_value=make_model(model_type='rerank'))
     descriptor = make_descriptor(
-        permissions={'models': []},
         config_schema=[
             {'name': 'model', 'type': 'model-fallback-selector'},
             {'name': 'rerank-model', 'type': 'rerank-model-selector'},
         ],
+        permissions={},
     )
     query = make_query({
         'model': {'primary': 'primary', 'fallbacks': ['fallback']},
@@ -156,19 +165,16 @@ async def test_build_models_still_honors_manifest_permissions(app):
     resources = await build_resources(app, query, descriptor)
 
     assert resources['models'] == []
-    app.model_mgr.get_model_by_uuid.assert_not_awaited()
-    app.model_mgr.get_rerank_model_by_uuid.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_build_models_authorizes_rerank_only_runner(app):
-    """A rerank-only runner should receive config-selected rerank models."""
+async def test_build_models_authorizes_rerank_and_llm_refs_from_config(app):
+    """Config-selected model references are projected regardless of method granularity."""
     app.model_mgr.get_model_by_uuid = AsyncMock(return_value=make_model())
     app.model_mgr.get_rerank_model_by_uuid = AsyncMock(
         return_value=make_model(model_type='rerank', provider='rerank-provider')
     )
     descriptor = make_descriptor(
-        permissions={'models': ['rerank']},
         config_schema=[
             {'name': 'model', 'type': 'llm-model-selector'},
             {'name': 'rerank-model', 'type': 'rerank-model-selector'},
@@ -182,9 +188,38 @@ async def test_build_models_authorizes_rerank_only_runner(app):
     resources = await build_resources(app, query, descriptor)
 
     assert resources['models'] == [
+        {'model_id': 'llm', 'model_type': 'llm', 'provider': 'test-provider'},
         {'model_id': 'rerank', 'model_type': 'rerank', 'provider': 'rerank-provider'},
     ]
-    app.model_mgr.get_model_by_uuid.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_build_models_manifest_permission_narrows_binding(app):
+    """Manifest model permissions narrower than binding should remove LLM grants."""
+    app.model_mgr.get_model_by_uuid = AsyncMock(return_value=make_model())
+    app.model_mgr.get_rerank_model_by_uuid = AsyncMock(
+        return_value=make_model(model_type='rerank', provider='rerank-provider')
+    )
+    descriptor = make_descriptor(
+        config_schema=[
+            {'name': 'model', 'type': 'llm-model-selector'},
+            {'name': 'rerank-model', 'type': 'rerank-model-selector'},
+        ],
+        permissions={
+            **FULL_PERMISSIONS,
+            'models': ['rerank'],
+        },
+    )
+    query = make_query({
+        'model': 'llm',
+        'rerank-model': 'rerank',
+    })
+
+    resources = await build_resources(app, query, descriptor)
+
+    assert resources['models'] == [
+        {'model_id': 'rerank', 'model_type': 'rerank', 'provider': 'rerank-provider'},
+    ]
 
 
 @pytest.mark.asyncio
@@ -212,10 +247,7 @@ async def test_build_models_deduplicates_query_and_config_models(app):
 async def test_build_tools_authorizes_query_declared_tools(app):
     """Tools discovered by Pipeline preprocessing become run-scoped authorized resources."""
     descriptor = make_descriptor(
-        permissions={
-            'models': [],
-            'tools': ['detail', 'call'],
-        },
+        capabilities={'tool_calling': True},
     )
     query = make_query(
         {},
@@ -242,13 +274,31 @@ async def test_build_tools_authorizes_query_declared_tools(app):
 
 
 @pytest.mark.asyncio
+async def test_build_tools_manifest_permission_denies_binding_tools(app):
+    """Binding tool grants should be removed when manifest does not request tools."""
+    descriptor = make_descriptor(
+        capabilities={'tool_calling': True},
+        permissions={
+            **FULL_PERMISSIONS,
+            'tools': [],
+        },
+    )
+    query = make_query(
+        {},
+        use_funcs=[
+            {'name': 'qa_plugin_echo', 'description': 'Echo test tool'},
+        ],
+    )
+
+    resources = await build_resources(app, query, descriptor)
+
+    assert resources['tools'] == []
+
+
+@pytest.mark.asyncio
 async def test_build_knowledge_bases_unions_config_and_policy_grants(app):
     descriptor = make_descriptor(
         capabilities={'knowledge_retrieval': True},
-        permissions={
-            'models': [],
-            'knowledge_bases': ['retrieve'],
-        },
         config_schema=[
             {'name': 'knowledge-bases', 'type': 'knowledge-base-multi-selector'},
         ],
@@ -273,3 +323,43 @@ async def test_build_knowledge_bases_unions_config_and_policy_grants(app):
         {'kb_id': 'kb_config', 'kb_name': 'name-kb_config', 'kb_type': 'default'},
         {'kb_id': 'kb_policy', 'kb_name': 'name-kb_policy', 'kb_type': 'default'},
     ]
+
+
+@pytest.mark.asyncio
+async def test_build_knowledge_bases_manifest_permission_denies_binding_kbs(app):
+    descriptor = make_descriptor(
+        capabilities={'knowledge_retrieval': True},
+        permissions={
+            **FULL_PERMISSIONS,
+            'knowledge_bases': [],
+        },
+        config_schema=[
+            {'name': 'knowledge-bases', 'type': 'knowledge-base-multi-selector'},
+        ],
+    )
+    query = make_query(
+        {'knowledge-bases': ['kb_config']},
+        variables={'_knowledge_base_uuids': ['kb_policy']},
+    )
+
+    resources = await build_resources(app, query, descriptor)
+
+    assert resources['knowledge_bases'] == []
+
+
+@pytest.mark.asyncio
+async def test_build_storage_intersects_manifest_and_binding_policy(app):
+    descriptor = make_descriptor(
+        permissions={
+            **FULL_PERMISSIONS,
+            'storage': ['plugin'],
+        },
+    )
+    query = make_query({})
+
+    resources = await build_resources(app, query, descriptor)
+
+    assert resources['storage'] == {
+        'plugin_storage': True,
+        'workspace_storage': False,
+    }

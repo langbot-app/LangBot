@@ -21,7 +21,6 @@ from langbot.pkg.provider.modelmgr.modelmgr import ModelManager
 from langbot.pkg.provider.modelmgr.requesters.chatcmpl import OpenAIChatCompletions
 from langbot.pkg.provider.modelmgr.requesters.modelscopechatcmpl import ModelScopeChatCompletions
 from langbot.pkg.provider.modelmgr.token import TokenManager
-from langbot.pkg.provider.runners.localagent import LocalAgentRunner
 
 
 DEFAULT_RUNNER_ID = 'plugin:langbot/local-agent/default'
@@ -43,8 +42,8 @@ class FakeAgentRunnerRegistry:
             ],
             capabilities={'tool_calling': True, 'knowledge_retrieval': True, 'multimodal_input': True},
             permissions={
-                'models': ['list', 'invoke', 'stream'],
-                'tools': ['list', 'detail', 'call'],
+                'models': ['invoke', 'stream'],
+                'tools': ['detail', 'call'],
                 'knowledge_bases': ['list', 'retrieve'],
             },
         )
@@ -320,8 +319,3 @@ async def test_updated_llm_model_is_immediately_usable_by_local_agent_pipeline()
     processed_query = result.new_query
 
     assert processed_query.use_llm_model_uuid == model_uuid
-
-    runner = SimpleNamespace(ap=ap, pipeline_config=pipeline_config)
-    candidates = await LocalAgentRunner._get_model_candidates(runner, processed_query)
-
-    assert [model.model_entity.uuid for model in candidates] == [model_uuid]

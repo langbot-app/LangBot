@@ -43,7 +43,7 @@ def make_session(
     plugin_identity: str = 'test/test-runner',
     resources: dict | None = None,
     conversation_id: str | None = None,
-    permissions: dict[str, list[str]] | None = None,
+    available_apis: dict[str, bool] | None = None,
     state_policy: dict[str, typing.Any] | None = None,
     state_context: dict[str, typing.Any] | None = None,
 ) -> dict[str, typing.Any]:
@@ -62,7 +62,7 @@ def make_session(
     import time
     now = int(time.time())
     res = resources if resources is not None else make_resources()
-    perms = permissions if permissions is not None else {}
+    apis = available_apis if available_apis is not None else {}
     policy = (
         state_policy
         if state_policy is not None
@@ -85,7 +85,7 @@ def make_session(
         'plugin_identity': plugin_identity,
         'authorization': {
             'resources': res,
-            'permissions': perms,
+            'available_apis': apis,
             'conversation_id': conversation_id,
             'state_policy': policy,
             'state_context': context,

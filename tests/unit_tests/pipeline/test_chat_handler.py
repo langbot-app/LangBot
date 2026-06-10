@@ -14,6 +14,23 @@ from tests.factories import FakeApp
 
 
 DEFAULT_RUNNER_ID = 'plugin:langbot/local-agent/default'
+_current_runner_class = None
+
+
+def _default_runner_class():
+    from langbot_plugin.api.entities.builtin.provider.message import Message
+
+    class DefaultRunner:
+        name = 'local-agent'
+
+        def __init__(self, app, config):
+            self.app = app
+            self.config = config
+
+        async def run(self, query):
+            yield Message(role='assistant', content='fake response')
+
+    return DefaultRunner
 
 
 def runner_pipeline_config(output_misc: dict) -> dict:
@@ -47,20 +64,7 @@ def mock_circular_import_chain():
         make_pipeline_handler_import_mocks,
         get_handler_modules_to_clear,
     )
-    from langbot_plugin.api.entities.builtin.provider.message import Message
-
     mocks = make_pipeline_handler_import_mocks()
-
-    # Create a default runner that yields a simple response
-    class DefaultRunner:
-        name = 'local-agent'
-        def __init__(self, app, config):
-            self.app = app
-            self.config = config
-        async def run(self, query):
-            yield Message(role='assistant', content='fake response')
-
-    mocks['langbot.pkg.provider.runner'].preregistered_runners = [DefaultRunner]
 
     clear = get_handler_modules_to_clear('chat')
 
@@ -75,9 +79,7 @@ def fake_app():
 
     class ProviderRunnerBackedOrchestrator:
         async def run_from_query(self, query):
-            import sys
-
-            runner_class = sys.modules['langbot.pkg.provider.runner'].preregistered_runners[0]
+            runner_class = _current_runner_class or _default_runner_class()
             runner = runner_class(app, {})
             async for result in runner.run(query):
                 yield result
@@ -103,10 +105,15 @@ def mock_event_ctx():
 @pytest.fixture
 def set_runner():
     """Factory fixture to set a custom runner for tests."""
+    global _current_runner_class
+    previous = _current_runner_class
+
     def _set_runner(runner_class):
-        import sys
-        sys.modules['langbot.pkg.provider.runner'].preregistered_runners = [runner_class]
-    return _set_runner
+        global _current_runner_class
+        _current_runner_class = runner_class
+
+    yield _set_runner
+    _current_runner_class = previous
 
 
 # ============== CACHED LAZY IMPORTS ==============

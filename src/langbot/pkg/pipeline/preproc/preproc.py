@@ -80,7 +80,7 @@ class PreProcessor(stage.PipelineStage):
     def _runner_accepts_multimodal_input(self, descriptor: AgentRunnerDescriptor | None) -> bool:
         if descriptor is None:
             return True
-        return descriptor.capabilities.get('multimodal_input', False)
+        return descriptor.capabilities.multimodal_input
 
     def _model_supports_vision(self, llm_model: typing.Any | None) -> bool:
         if not llm_model:

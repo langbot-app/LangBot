@@ -3,6 +3,16 @@ from __future__ import annotations
 
 import typing
 
+import pydantic
+from langbot_plugin.api.entities.builtin.agent_runner.result import (
+    ActionRequestedPayload,
+    ArtifactCreatedPayload,
+    MessageCompletedPayload,
+    MessageDeltaPayload,
+    RunCompletedPayload,
+    RunFailedPayload,
+    StateUpdatedPayload,
+)
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
 
 from ...core import app
@@ -12,6 +22,16 @@ from .errors import RunnerExecutionError, RunnerProtocolError
 
 # Maximum size for a single result payload (prevent memory exhaustion)
 MAX_RESULT_SIZE_BYTES = 1024 * 1024  # 1 MB
+
+STRICT_RESULT_PAYLOADS: dict[str, type[pydantic.BaseModel]] = {
+    'message.delta': MessageDeltaPayload,
+    'message.completed': MessageCompletedPayload,
+    'state.updated': StateUpdatedPayload,
+    'artifact.created': ArtifactCreatedPayload,
+    'action.requested': ActionRequestedPayload,
+    'run.completed': RunCompletedPayload,
+    'run.failed': RunFailedPayload,
+}
 
 
 class AgentResultNormalizer:
@@ -87,6 +107,9 @@ class AgentResultNormalizer:
         # Handle each result type
         data = result_dict.get('data', {})
 
+        if not self.validate_payload(result_type, data, descriptor):
+            return None
+
         if result_type == 'message.delta':
             return self._normalize_message_delta(data, descriptor)
 
@@ -159,6 +182,31 @@ class AgentResultNormalizer:
                 f'Expected supported types (message.delta, message.completed, run.completed, run.failed, etc.)'
             )
             return None
+
+    def validate_payload(
+        self,
+        result_type: str,
+        data: typing.Any,
+        descriptor: AgentRunnerDescriptor,
+    ) -> bool:
+        """Validate typed payloads that affect Host state or delivery.
+
+        Tool-call telemetry stays intentionally loose so older runners can keep
+        emitting diagnostic fields. Unknown result types are handled by the
+        caller and are not validated here.
+        """
+        payload_model = STRICT_RESULT_PAYLOADS.get(result_type)
+        if payload_model is None:
+            return True
+
+        try:
+            payload_model.model_validate(data)
+            return True
+        except Exception as e:
+            self.ap.logger.warning(
+                f'Runner {descriptor.id} returned invalid {result_type} payload; dropping result: {e}'
+            )
+            return False
 
     def _normalize_message_delta(
         self,

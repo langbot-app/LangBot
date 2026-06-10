@@ -5,6 +5,11 @@ from __future__ import annotations
 import typing
 import asyncio
 
+import pydantic
+from langbot_plugin.api.entities.builtin.agent_runner.manifest import (
+    AgentRunnerManifest,
+)
+
 from ...core import app
 from .descriptor import AgentRunnerDescriptor
 from .id import parse_runner_id, format_runner_id
@@ -79,7 +84,7 @@ class AgentRunnerRegistry:
         Args:
             runner_data: Raw runner data from plugin runtime with fields:
                 - plugin_author, plugin_name, runner_name
-                - manifest (full component manifest dict)
+                - manifest (typed AgentRunnerManifest or legacy component manifest)
                 - capabilities, permissions, config (extracted from spec)
 
         Returns:
@@ -93,17 +98,77 @@ class AgentRunnerRegistry:
             return None
 
         manifest = runner_data.get('manifest', {})
+        runner_id = format_runner_id(
+            source='plugin',
+            plugin_author=plugin_author,
+            plugin_name=plugin_name,
+            runner_name=runner_name,
+        )
+
+        is_typed_manifest = self._looks_like_typed_manifest(manifest)
+        if is_typed_manifest:
+            typed_manifest = AgentRunnerManifest.model_validate(manifest)
+        else:
+            typed_manifest = self._build_typed_manifest_from_legacy_data(
+                runner_id=runner_id,
+                runner_name=runner_name,
+                runner_data=runner_data,
+                manifest=manifest,
+            )
+
+        if runner_data.get('config'):
+            config_schema = runner_data['config']
+        elif not is_typed_manifest and isinstance(manifest.get('spec'), dict):
+            config_schema = manifest['spec'].get('config', [])
+        else:
+            config_schema = [
+                item.model_dump(mode='json') for item in typed_manifest.config_schema
+            ]
+
+        return AgentRunnerDescriptor(
+            id=runner_id,
+            source='plugin',
+            label=typed_manifest.label,
+            description=typed_manifest.description or runner_data.get('runner_description'),
+            plugin_author=plugin_author,
+            plugin_name=plugin_name,
+            runner_name=runner_name,
+            plugin_version=runner_data.get('plugin_version'),
+            config_schema=config_schema,
+            capabilities=typed_manifest.capabilities,
+            permissions=typed_manifest.permissions,
+            raw_manifest=manifest,
+        )
+
+    def _looks_like_typed_manifest(self, manifest: dict[str, typing.Any]) -> bool:
+        """Return whether manifest is the SDK typed AgentRunnerManifest shape."""
+        return (
+            isinstance(manifest, dict)
+            and 'id' in manifest
+            and 'name' in manifest
+            and 'label' in manifest
+        )
+
+    def _build_typed_manifest_from_legacy_data(
+        self,
+        *,
+        runner_id: str,
+        runner_name: str,
+        runner_data: dict[str, typing.Any],
+        manifest: dict[str, typing.Any],
+    ) -> AgentRunnerManifest:
+        """Validate legacy raw component manifest data as typed runner manifest."""
 
         # Validate kind
         kind = manifest.get('kind', '')
         if kind != 'AgentRunner':
-            return None
+            raise ValueError(f'Invalid AgentRunner kind: {kind or "<missing>"}')
 
         # Validate metadata
         metadata = manifest.get('metadata', {})
         name = metadata.get('name', '')
         if not name:
-            return None
+            raise ValueError('Missing AgentRunner metadata.name')
 
         # metadata.label must exist
         label = metadata.get('label', {})
@@ -118,28 +183,20 @@ class AgentRunnerRegistry:
         capabilities = runner_data.get('capabilities') or spec.get('capabilities', {})
         permissions = runner_data.get('permissions') or spec.get('permissions', {})
 
-        # Build descriptor
-        runner_id = format_runner_id(
-            source='plugin',
-            plugin_author=plugin_author,
-            plugin_name=plugin_name,
-            runner_name=runner_name,
-        )
-
-        return AgentRunnerDescriptor(
-            id=runner_id,
-            source='plugin',
-            label=label,
-            description=metadata.get('description') or runner_data.get('runner_description'),
-            plugin_author=plugin_author,
-            plugin_name=plugin_name,
-            runner_name=runner_name,
-            plugin_version=runner_data.get('plugin_version'),
-            config_schema=config_schema,
-            capabilities=capabilities,
-            permissions=permissions,
-            raw_manifest=manifest,
-        )
+        try:
+            return AgentRunnerManifest(
+                id=runner_id,
+                name=runner_name,
+                label=label,
+                description=metadata.get('description') or runner_data.get('runner_description'),
+                capabilities=capabilities,
+                permissions=permissions,
+                config_schema=config_schema,
+            )
+        except pydantic.ValidationError:
+            raise
+        except Exception as exc:
+            raise ValueError(f'Invalid AgentRunner manifest: {exc}') from exc
 
     async def refresh(self) -> None:
         """Refresh runner cache.

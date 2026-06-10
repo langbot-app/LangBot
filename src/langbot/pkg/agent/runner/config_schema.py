@@ -26,49 +26,26 @@ def iter_schema_items(
             yield item
 
 
-def has_permission(
-    descriptor: AgentRunnerDescriptor | None,
-    name: str,
-    actions: set[str],
-) -> bool:
-    """Return whether a runner descriptor requests one of the given actions."""
-    if descriptor is None:
-        return False
-    configured_actions = descriptor.permissions.get(name, [])
-    return any(action in configured_actions for action in actions)
-
-
 def uses_host_models(descriptor: AgentRunnerDescriptor | None) -> bool:
     """Return whether LangBot should resolve model resources for this runner."""
-    return (
-        has_permission(descriptor, 'models', {'invoke', 'stream', 'list'})
-        and any(True for _ in iter_schema_items(descriptor, LLM_MODEL_SELECTOR_TYPES))
-    )
+    return any(True for _ in iter_schema_items(descriptor, LLM_MODEL_SELECTOR_TYPES))
 
 
 def uses_host_tools(descriptor: AgentRunnerDescriptor | None) -> bool:
     """Return whether LangBot should expose tool resources to this runner."""
-    return (
-        descriptor is not None
-        and descriptor.supports_tool_calling()
-        and has_permission(descriptor, 'tools', {'list', 'detail', 'call'})
-    )
+    return descriptor is not None and descriptor.supports_tool_calling()
 
 
 def uses_host_knowledge_bases(descriptor: AgentRunnerDescriptor | None) -> bool:
     """Return whether LangBot should expose knowledge-base resources to this runner."""
-    return (
-        descriptor is not None
-        and descriptor.supports_knowledge_retrieval()
-        and has_permission(descriptor, 'knowledge_bases', {'list', 'retrieve'})
-    )
+    return descriptor is not None and descriptor.supports_knowledge_retrieval()
 
 
 def supports_skill_authoring(descriptor: AgentRunnerDescriptor | None) -> bool:
     """Return whether the runner wants Host skill-authoring tools."""
     if descriptor is None:
         return False
-    return bool(descriptor.capabilities.get('skill_authoring', False))
+    return descriptor.capabilities.skill_authoring
 
 
 def extract_prompt_config(

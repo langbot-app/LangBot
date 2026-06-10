@@ -14,12 +14,15 @@ class FakeApplication:
     """Fake Application for testing."""
     def __init__(self):
         class FakeLogger:
+            def __init__(self):
+                self.warnings = []
+
             def info(self, msg):
                 pass
             def debug(self, msg):
                 pass
             def warning(self, msg):
-                pass
+                self.warnings.append(msg)
             def error(self, msg):
                 pass
 
@@ -67,7 +70,7 @@ class TestNormalizeMessageDelta:
 
     @pytest.mark.asyncio
     async def test_normalize_message_delta_missing_chunk(self):
-        """Normalize message.delta without chunk data."""
+        """Invalid message.delta payload is dropped."""
         normalizer = AgentResultNormalizer(FakeApplication())
         descriptor = make_descriptor()
 
@@ -76,10 +79,9 @@ class TestNormalizeMessageDelta:
             'data': {},
         }
 
-        with pytest.raises(RunnerProtocolError) as exc_info:
-            await normalizer.normalize(result_dict, descriptor)
+        result = await normalizer.normalize(result_dict, descriptor)
 
-        assert 'missing chunk data' in str(exc_info.value)
+        assert result is None
 
 
 class TestNormalizeMessageCompleted:
@@ -110,7 +112,7 @@ class TestNormalizeMessageCompleted:
 
     @pytest.mark.asyncio
     async def test_normalize_message_completed_missing_message(self):
-        """Normalize message.completed without message data."""
+        """Invalid message.completed payload is dropped."""
         normalizer = AgentResultNormalizer(FakeApplication())
         descriptor = make_descriptor()
 
@@ -119,10 +121,9 @@ class TestNormalizeMessageCompleted:
             'data': {},
         }
 
-        with pytest.raises(RunnerProtocolError) as exc_info:
-            await normalizer.normalize(result_dict, descriptor)
+        result = await normalizer.normalize(result_dict, descriptor)
 
-        assert 'missing message data' in str(exc_info.value)
+        assert result is None
 
 
 class TestNormalizeRunCompleted:
@@ -260,12 +261,56 @@ class TestNormalizeNonMessageResults:
             'type': 'action.requested',
             'data': {
                 'action': 'platform.message.edit',
-                'parameters': {},
+                'payload': {},
             },
         }
 
         result = await normalizer.normalize(result_dict, descriptor)
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_invalid_state_updated_payload_is_dropped(self):
+        """Invalid state.updated payload returns None with a warning."""
+        app = FakeApplication()
+        normalizer = AgentResultNormalizer(app)
+        descriptor = make_descriptor()
+
+        result = await normalizer.normalize(
+            {
+                'type': 'state.updated',
+                'data': {
+                    'scope': 'invalid',
+                    'key': 'k',
+                    'value': 'v',
+                },
+            },
+            descriptor,
+        )
+
+        assert result is None
+        assert app.logger.warnings
+
+    @pytest.mark.asyncio
+    async def test_invalid_artifact_created_payload_is_dropped(self):
+        """Invalid artifact.created payload returns None with a warning."""
+        app = FakeApplication()
+        normalizer = AgentResultNormalizer(app)
+        descriptor = make_descriptor()
+
+        result = await normalizer.normalize(
+            {
+                'type': 'artifact.created',
+                'data': {
+                    'artifact_id': 'artifact-1',
+                    'artifact_type': 'file',
+                    'content_base64': 'not base64',
+                },
+            },
+            descriptor,
+        )
+
+        assert result is None
+        assert app.logger.warnings
 
 
 class TestNormalizeInvalidResults:

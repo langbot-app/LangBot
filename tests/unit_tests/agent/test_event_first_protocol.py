@@ -23,12 +23,6 @@ from langbot_plugin.api.entities.builtin.agent_runner.result import (
     AgentRunResult,
     AgentRunResultType,
 )
-from langbot_plugin.api.entities.builtin.agent_runner.capabilities import (
-    AgentRunnerCapabilities,
-)
-from langbot_plugin.api.entities.builtin.agent_runner.permissions import (
-    AgentRunnerPermissions,
-)
 
 # Import LangBot host models
 from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
@@ -57,6 +51,7 @@ class TestQueryToEventEnvelope:
 
         assert event.input is not None
         assert event.input.text == "Hello world"
+        assert "message_chain" not in event.input.model_dump()
 
     def test_query_to_event_conversation(self, mock_query):
         """Test conversation context extraction."""
@@ -230,43 +225,6 @@ class TestHostManagedHistoryNotInProtocol:
         ctx_fields = AgentRunContext.model_fields.keys()
 
         assert "messages" not in ctx_fields
-
-
-class TestSDKCapabilitiesProtocolV1:
-    """Test SDK capabilities for Protocol v1."""
-
-    def test_self_managed_context_default_true(self):
-        """Test self_managed_context defaults to True for Protocol v1."""
-        caps = AgentRunnerCapabilities()
-
-        assert caps.self_managed_context is True
-
-    def test_event_context_default_true(self):
-        """Test event_context defaults to True for Protocol v1."""
-        caps = AgentRunnerCapabilities()
-
-        assert caps.event_context is True
-
-
-class TestSDKPermissionsProtocolV1:
-    """Test SDK permissions for Protocol v1."""
-
-    def test_permissions_new_fields(self):
-        """Test new permission fields for Protocol v1."""
-        perms = AgentRunnerPermissions(
-            models=["invoke", "stream", "rerank"],
-            tools=["detail", "call"],
-            knowledge_bases=["list", "retrieve"],
-            history=["page", "search"],
-            events=["get", "page"],
-            artifacts=["metadata", "read"],
-            storage=["plugin", "workspace", "binding"],
-        )
-
-        assert perms.history == ["page", "search"]
-        assert perms.events == ["get", "page"]
-        assert perms.artifacts == ["metadata", "read"]
-        assert perms.storage == ["plugin", "workspace", "binding"]
 
 
 class TestSDKResultProtocolV1:

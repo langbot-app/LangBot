@@ -396,18 +396,11 @@ class QueryEntryAdapter:
         if text_parts:
             text = ''.join(text_parts)
 
-        message_chain_dict = None
-        message_chain = getattr(query, 'message_chain', None)
-        if message_chain:
-            if hasattr(message_chain, 'model_dump'):
-                message_chain_dict = message_chain.model_dump(mode='json')
-
         attachments = cls._build_attachments(query, contents)
 
         return AgentInput(
             text=text,
             contents=contents,
-            message_chain=message_chain_dict,
             attachments=attachments,
         )
 

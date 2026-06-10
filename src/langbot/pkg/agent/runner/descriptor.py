@@ -4,6 +4,11 @@ from __future__ import annotations
 import typing
 import pydantic
 
+from langbot_plugin.api.entities.builtin.agent_runner.manifest import (
+    AgentRunnerCapabilities,
+    AgentRunnerPermissions,
+)
+
 
 class AgentRunnerDescriptor(pydantic.BaseModel):
     """Descriptor for an agent runner.
@@ -36,16 +41,20 @@ class AgentRunnerDescriptor(pydantic.BaseModel):
     plugin_version: str | None = None
     """Optional plugin version"""
 
-    config_schema: list[dict[str, typing.Any]] = []
+    config_schema: list[dict[str, typing.Any]] = pydantic.Field(default_factory=list)
     """Configuration schema using DynamicForm format"""
 
-    capabilities: dict[str, bool] = {}
+    capabilities: AgentRunnerCapabilities = pydantic.Field(
+        default_factory=AgentRunnerCapabilities
+    )
     """Runner capabilities: streaming, tool_calling, knowledge_retrieval, etc."""
 
-    permissions: dict[str, list[str]] = {}
-    """Requested permissions: models, tools, knowledge_bases, storage, files, platform_api"""
+    permissions: AgentRunnerPermissions = pydantic.Field(
+        default_factory=AgentRunnerPermissions
+    )
+    """Requested LangBot resource permissions."""
 
-    raw_manifest: dict[str, typing.Any] = {}
+    raw_manifest: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
     """Original manifest for reference"""
 
     model_config = pydantic.ConfigDict(
@@ -58,12 +67,12 @@ class AgentRunnerDescriptor(pydantic.BaseModel):
 
     def supports_streaming(self) -> bool:
         """Check if runner supports streaming output."""
-        return self.capabilities.get('streaming', False)
+        return self.capabilities.streaming
 
     def supports_tool_calling(self) -> bool:
         """Check if runner supports tool calling."""
-        return self.capabilities.get('tool_calling', False)
+        return self.capabilities.tool_calling
 
     def supports_knowledge_retrieval(self) -> bool:
         """Check if runner supports knowledge retrieval."""
-        return self.capabilities.get('knowledge_retrieval', False)
+        return self.capabilities.knowledge_retrieval

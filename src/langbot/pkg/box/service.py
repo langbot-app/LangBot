@@ -803,8 +803,8 @@ class BoxService:
     def get_system_guidance(self) -> str:
         """Return LLM system-prompt guidance for the exec tool.
 
-        All execution-specific prompt text is kept here so that callers
-        (e.g. LocalAgentRunner) stay free of box domain knowledge.
+        All execution-specific prompt text is kept here so that callers stay
+        free of box domain knowledge.
         """
         guidance = (
             'When the exec tool is available, use it for exact calculations, statistics, structured data parsing, '

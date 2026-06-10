@@ -64,7 +64,7 @@ async def _register_session(
     *,
     run_id='run_1',
     conversation_id='conv_1',
-    permissions=None,
+    available_apis=None,
 ):
     await session_registry.register(
         run_id=run_id,
@@ -73,13 +73,13 @@ async def _register_session(
         plugin_identity='test/runner',
         resources=make_resources(),
         conversation_id=conversation_id,
-        permissions=permissions or {},
+        available_apis=available_apis or {},
     )
 
 
 @pytest.mark.asyncio
-async def test_history_page_requires_manifest_permission(session_registry, db_engine):
-    await _register_session(session_registry, permissions={'history': []})
+async def test_history_page_requires_runtime_capability(session_registry, db_engine):
+    await _register_session(session_registry, available_apis={'history_page': False})
     handler = _handler(db_engine, session_registry)
     history_page = handler.actions[PluginToRuntimeAction.HISTORY_PAGE.value]
 
@@ -94,7 +94,7 @@ async def test_history_page_requires_manifest_permission(session_registry, db_en
 
 @pytest.mark.asyncio
 async def test_history_page_rejects_cross_conversation(session_registry, db_engine):
-    await _register_session(session_registry, permissions={'history': ['page']})
+    await _register_session(session_registry, available_apis={'history_page': True})
     handler = _handler(db_engine, session_registry)
     history_page = handler.actions[PluginToRuntimeAction.HISTORY_PAGE.value]
 
@@ -110,7 +110,7 @@ async def test_history_page_rejects_cross_conversation(session_registry, db_engi
 
 @pytest.mark.asyncio
 async def test_history_search_rejects_filter_conversation_override(session_registry, db_engine):
-    await _register_session(session_registry, permissions={'history': ['search']})
+    await _register_session(session_registry, available_apis={'history_search': True})
     handler = _handler(db_engine, session_registry)
     history_search = handler.actions[PluginToRuntimeAction.HISTORY_SEARCH.value]
 
@@ -126,8 +126,8 @@ async def test_history_search_rejects_filter_conversation_override(session_regis
 
 
 @pytest.mark.asyncio
-async def test_event_page_requires_manifest_permission(session_registry, db_engine):
-    await _register_session(session_registry, permissions={'events': []})
+async def test_event_page_requires_runtime_capability(session_registry, db_engine):
+    await _register_session(session_registry, available_apis={'event_page': False})
     handler = _handler(db_engine, session_registry)
     event_page = handler.actions[PluginToRuntimeAction.EVENT_PAGE.value]
 
@@ -142,7 +142,7 @@ async def test_event_page_requires_manifest_permission(session_registry, db_engi
 
 @pytest.mark.asyncio
 async def test_event_page_rejects_cross_conversation(session_registry, db_engine):
-    await _register_session(session_registry, permissions={'events': ['page']})
+    await _register_session(session_registry, available_apis={'event_page': True})
     handler = _handler(db_engine, session_registry)
     event_page = handler.actions[PluginToRuntimeAction.EVENT_PAGE.value]
 
@@ -158,7 +158,7 @@ async def test_event_page_rejects_cross_conversation(session_registry, db_engine
 
 @pytest.mark.asyncio
 async def test_event_get_returns_sdk_record_projection(session_registry, db_engine):
-    await _register_session(session_registry, permissions={'events': ['get']})
+    await _register_session(session_registry, available_apis={'event_get': True})
     store = EventLogStore(db_engine)
     event_id = await store.append_event(
         event_id='evt_projection_1',
@@ -193,7 +193,7 @@ async def test_event_get_returns_sdk_record_projection(session_registry, db_engi
 
 @pytest.mark.asyncio
 async def test_event_page_returns_sdk_page_projection(session_registry, db_engine):
-    await _register_session(session_registry, permissions={'events': ['page']})
+    await _register_session(session_registry, available_apis={'event_page': True})
     store = EventLogStore(db_engine)
     await store.append_event(
         event_id='evt_projection_page_1',

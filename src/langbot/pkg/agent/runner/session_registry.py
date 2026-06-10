@@ -25,7 +25,7 @@ class RunAuthorizationSnapshot(typing.TypedDict):
     """
 
     resources: AgentResources
-    permissions: dict[str, list[str]]
+    available_apis: dict[str, bool]
     conversation_id: str | None
     state_policy: dict[str, typing.Any]
     state_context: dict[str, typing.Any]
@@ -80,7 +80,7 @@ class AgentRunSessionRegistry:
         plugin_identity: str,
         resources: AgentResources,
         conversation_id: str | None = None,
-        permissions: dict[str, list[str]] | None = None,
+        available_apis: dict[str, bool] | None = None,
         state_policy: dict[str, typing.Any] | None = None,
         state_context: dict[str, typing.Any] | None = None,
     ) -> None:
@@ -93,14 +93,13 @@ class AgentRunSessionRegistry:
             plugin_identity: Plugin identifier (author/name)
             resources: Authorized resources for this run
             conversation_id: Conversation ID for history/event access
-            permissions: Runner permissions from descriptor (artifacts, history, events, etc.)
+            available_apis: Run-scoped pull APIs exposed in AgentRunContext
             state_policy: State policy from binding (enable_state, state_scopes)
             state_context: Context for state API (scope_keys, binding_identity, etc.)
         """
         now = int(time.time())
 
-        # Normalize permissions to empty dict if None
-        permissions = permissions or {}
+        available_apis = copy.deepcopy(available_apis or {})
 
         # Normalize state_policy to defaults if None
         if state_policy is None:
@@ -112,7 +111,7 @@ class AgentRunSessionRegistry:
         resources_snapshot = copy.deepcopy(resources)
         authorization: RunAuthorizationSnapshot = {
             'resources': resources_snapshot,
-            'permissions': copy.deepcopy(permissions),
+            'available_apis': available_apis,
             'conversation_id': conversation_id,
             'state_policy': copy.deepcopy(state_policy),
             'state_context': copy.deepcopy(state_context),

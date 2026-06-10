@@ -11,6 +11,7 @@ import pytest
 from unittest.mock import MagicMock
 
 from langbot.pkg.agent.runner.context_builder import AgentRunContextBuilder
+from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
 from langbot.pkg.agent.runner.host_models import AgentEventEnvelope, AgentBinding, BindingScope, StatePolicy
 from langbot_plugin.api.entities.builtin.agent_runner.event import ActorContext
 from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput
@@ -23,6 +24,27 @@ class MockApplication:
         self.logger = MagicMock()
         self.persistence_mgr = MagicMock()
         self.persistence_mgr.get_db_engine = MagicMock()
+
+
+def make_descriptor(
+    permissions: dict | None = None,
+) -> AgentRunnerDescriptor:
+    return AgentRunnerDescriptor(
+        id='plugin:test/runner/default',
+        source='plugin',
+        label={'en_US': 'Test Runner'},
+        plugin_author='test',
+        plugin_name='runner',
+        runner_name='default',
+        permissions=permissions
+        if permissions is not None
+        else {
+            'history': ['page', 'search'],
+            'events': ['get', 'page'],
+            'artifacts': ['metadata', 'read'],
+            'storage': ['plugin'],
+        },
+    )
 
 
 class TestContextAccessStateDetermination:
@@ -54,10 +76,7 @@ class TestContextAccessStateDetermination:
     @pytest.fixture
     def mock_descriptor(self):
         """Create mock runner descriptor."""
-        descriptor = MagicMock()
-        descriptor.id = 'plugin:test/runner/default'
-        descriptor.permissions = {}
-        return descriptor
+        return make_descriptor()
 
     @pytest.mark.asyncio
     async def test_enable_state_true_with_scopes_sets_state_true(self, mock_app, mock_event, mock_descriptor):
@@ -237,7 +256,7 @@ class TestBindingWithStatePolicy:
 
 
 class TestContextAccessOtherAPIs:
-    """Tests for other available_apis fields based on permissions."""
+    """Tests for other available_apis fields based on run scope."""
 
     @pytest.fixture
     def mock_app(self):
@@ -245,16 +264,12 @@ class TestContextAccessOtherAPIs:
         return MockApplication()
 
     @pytest.mark.asyncio
-    async def test_history_apis_based_on_permissions(self, mock_app):
-        """History APIs availability based on runner permissions."""
+    async def test_history_apis_enabled_with_conversation(self, mock_app):
+        """History APIs are available when the run has a conversation scope."""
         mock_event = MagicMock()
         mock_event.conversation_id = 'conv_001'
         mock_event.thread_id = None
-
-        mock_descriptor = MagicMock()
-        mock_descriptor.permissions = {
-            'history': ['page', 'search'],
-        }
+        mock_descriptor = make_descriptor()
 
         binding = AgentBinding(
             binding_id='binding_001',
@@ -268,21 +283,16 @@ class TestContextAccessOtherAPIs:
         # Real call
         context_access = await builder._build_context_access(mock_event, mock_descriptor, binding)
 
-        # History APIs enabled based on permissions
         assert context_access['available_apis']['history_page'] is True
         assert context_access['available_apis']['history_search'] is True
 
     @pytest.mark.asyncio
-    async def test_event_apis_based_on_permissions(self, mock_app):
-        """Event APIs availability based on runner permissions."""
+    async def test_event_apis_enabled_by_default(self, mock_app):
+        """Event APIs are available based on current run scope."""
         mock_event = MagicMock()
         mock_event.conversation_id = 'conv_001'
         mock_event.thread_id = None
-
-        mock_descriptor = MagicMock()
-        mock_descriptor.permissions = {
-            'events': ['get', 'page'],
-        }
+        mock_descriptor = make_descriptor()
 
         binding = AgentBinding(
             binding_id='binding_001',
@@ -296,21 +306,16 @@ class TestContextAccessOtherAPIs:
         # Real call
         context_access = await builder._build_context_access(mock_event, mock_descriptor, binding)
 
-        # Event APIs enabled based on permissions
         assert context_access['available_apis']['event_get'] is True
         assert context_access['available_apis']['event_page'] is True
 
     @pytest.mark.asyncio
-    async def test_artifact_apis_based_on_permissions(self, mock_app):
-        """Artifact APIs availability based on runner permissions."""
+    async def test_artifact_apis_enabled_by_default(self, mock_app):
+        """Artifact APIs are available based on current run scope."""
         mock_event = MagicMock()
         mock_event.conversation_id = 'conv_001'
         mock_event.thread_id = None
-
-        mock_descriptor = MagicMock()
-        mock_descriptor.permissions = {
-            'artifacts': ['metadata', 'read'],
-        }
+        mock_descriptor = make_descriptor()
 
         binding = AgentBinding(
             binding_id='binding_001',
@@ -324,19 +329,16 @@ class TestContextAccessOtherAPIs:
         # Real call
         context_access = await builder._build_context_access(mock_event, mock_descriptor, binding)
 
-        # Artifact APIs enabled based on permissions
         assert context_access['available_apis']['artifact_metadata'] is True
         assert context_access['available_apis']['artifact_read'] is True
 
     @pytest.mark.asyncio
-    async def test_no_permissions_all_apis_disabled(self, mock_app):
-        """All pull APIs disabled when permissions are empty."""
+    async def test_conversation_required_apis_disabled_without_conversation(self, mock_app):
+        """Conversation-scoped APIs are disabled when the run has no conversation."""
         mock_event = MagicMock()
-        mock_event.conversation_id = 'conv_001'
+        mock_event.conversation_id = None
         mock_event.thread_id = None
-
-        mock_descriptor = MagicMock()
-        mock_descriptor.permissions = {}  # No permissions
+        mock_descriptor = make_descriptor()
 
         binding = AgentBinding(
             binding_id='binding_001',
@@ -350,11 +352,37 @@ class TestContextAccessOtherAPIs:
         # Real call
         context_access = await builder._build_context_access(mock_event, mock_descriptor, binding)
 
-        # All pull APIs should be disabled
+        assert context_access['available_apis']['history_page'] is False
+        assert context_access['available_apis']['history_search'] is False
+        assert context_access['available_apis']['event_get'] is True
+        assert context_access['available_apis']['event_page'] is False
+        assert context_access['available_apis']['artifact_metadata'] is True
+        assert context_access['available_apis']['artifact_read'] is True
+        assert context_access['available_apis']['state'] is False
+
+    @pytest.mark.asyncio
+    async def test_manifest_permissions_disable_context_apis(self, mock_app):
+        """Pull APIs are disabled when manifest permissions omit them."""
+        mock_event = MagicMock()
+        mock_event.conversation_id = 'conv_001'
+        mock_event.thread_id = None
+        mock_descriptor = make_descriptor(permissions={})
+
+        binding = AgentBinding(
+            binding_id='binding_001',
+            runner_id='plugin:test/runner/default',
+            scope=BindingScope(scope_type='agent', scope_id='conv_001'),
+            state_policy=StatePolicy(enable_state=False, state_scopes=[]),
+        )
+
+        builder = AgentRunContextBuilder(mock_app)
+
+        context_access = await builder._build_context_access(mock_event, mock_descriptor, binding)
+
         assert context_access['available_apis']['history_page'] is False
         assert context_access['available_apis']['history_search'] is False
         assert context_access['available_apis']['event_get'] is False
         assert context_access['available_apis']['event_page'] is False
         assert context_access['available_apis']['artifact_metadata'] is False
         assert context_access['available_apis']['artifact_read'] is False
-        assert context_access['available_apis']['state'] is False
+        assert context_access['available_apis']['storage'] is False
