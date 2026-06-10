@@ -243,6 +243,33 @@ def _resolve_run_conversation(
     return session_conversation_id, None
 
 
+def _project_event_record_for_api(event: dict[str, Any]) -> dict[str, Any]:
+    """Project EventLogStore rows onto the SDK AgentEventRecord DTO."""
+    seq = event.get('seq') or event.get('id')
+    return {
+        'event_id': event.get('event_id'),
+        'event_type': event.get('event_type'),
+        'event_time': event.get('event_time'),
+        'source': event.get('source'),
+        'bot_id': event.get('bot_id'),
+        'workspace_id': event.get('workspace_id'),
+        'conversation_id': event.get('conversation_id'),
+        'thread_id': event.get('thread_id'),
+        'actor_type': event.get('actor_type'),
+        'actor_id': event.get('actor_id'),
+        'actor_name': event.get('actor_name'),
+        'subject_type': event.get('subject_type'),
+        'subject_id': event.get('subject_id'),
+        'input_summary': event.get('input_summary'),
+        'input_ref': event.get('input_ref'),
+        'raw_ref': event.get('raw_ref'),
+        'seq': seq,
+        'cursor': event.get('cursor') or (str(seq) if seq is not None else None),
+        'created_at': event.get('created_at'),
+        'metadata': event.get('metadata') or {},
+    }
+
+
 def _normalize_uuid_list(values: Any) -> list[str]:
     """Normalize a user/config supplied UUID list while preserving order."""
     if not isinstance(values, list):
@@ -1619,13 +1646,13 @@ class RuntimeConnectionHandler(handler.Handler):
                 session_conversation_id = _get_run_authorization(session).get('conversation_id')
                 event_run_id = event.get('run_id')
                 if event_run_id and event_run_id == run_id:
-                    return handler.ActionResponse.success(data=event)
+                    return handler.ActionResponse.success(data=_project_event_record_for_api(event))
                 if not session_conversation_id or event.get('conversation_id') != session_conversation_id:
                     return handler.ActionResponse.error(
                         message=f'Event {event_id} is not accessible by this run'
                     )
 
-                return handler.ActionResponse.success(data=event)
+                return handler.ActionResponse.success(data=_project_event_record_for_api(event))
             except Exception as e:
                 self.ap.logger.error(f'EVENT_GET error: {e}', exc_info=True)
                 return handler.ActionResponse.error(message=f'Event get error: {e}')
@@ -1689,7 +1716,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 )
 
                 return handler.ActionResponse.success(data={
-                    'items': items,
+                    'items': [_project_event_record_for_api(item) for item in items],
                     'next_cursor': str(next_seq) if next_seq else None,
                     'prev_cursor': None,
                     'has_more': has_more,

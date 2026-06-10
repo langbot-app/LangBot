@@ -1,6 +1,7 @@
 """Tests for persistent AgentRunner state store."""
 from __future__ import annotations
 
+import asyncio
 import os
 import tempfile
 
@@ -211,6 +212,26 @@ class TestPersistentStateStore:
 
         snapshot = await persistent_store.build_snapshot_from_event(event, binding, descriptor)
         assert snapshot['conversation']['test_key'] == {'nested': 'value'}
+
+    @pytest.mark.asyncio
+    async def test_concurrent_first_state_set_uses_upsert(self, persistent_store):
+        scope_key = 'conversation:runner:binding:conv_concurrent'
+
+        async def set_value(value: int):
+            return await persistent_store.state_set(
+                scope_key=scope_key,
+                state_key='external.concurrent',
+                value={'value': value},
+                runner_id='plugin:test/my-runner/default',
+                binding_identity='binding_001',
+                scope='conversation',
+            )
+
+        results = await asyncio.gather(*(set_value(value) for value in range(8)))
+
+        assert all(success is True and error is None for success, error in results)
+        stored = await persistent_store.state_get(scope_key, 'external.concurrent')
+        assert stored in [{'value': value} for value in range(8)]
 
     @pytest.mark.asyncio
     async def test_state_api_methods_normalize_public_key_aliases(self, persistent_store):
