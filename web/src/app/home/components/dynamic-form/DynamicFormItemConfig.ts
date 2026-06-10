@@ -3,6 +3,7 @@ import {
   DynamicFormItemType,
   IDynamicFormItemOption,
   IShowIfCondition,
+  SYSTEM_FIELD_PREFIX,
 } from '@/app/infra/entities/form/dynamic';
 import { I18nObject } from '@/app/infra/entities/common';
 
@@ -16,6 +17,7 @@ export class DynamicFormItemConfig implements IDynamicFormItemSchema {
   description?: I18nObject;
   options?: IDynamicFormItemOption[];
   show_if?: IShowIfCondition;
+  login_platform?: string;
 
   constructor(params: IDynamicFormItemSchema) {
     this.id = params.id;
@@ -27,6 +29,7 @@ export class DynamicFormItemConfig implements IDynamicFormItemSchema {
     this.description = params.description;
     this.options = params.options;
     this.show_if = params.show_if;
+    this.login_platform = params.login_platform;
   }
 }
 
@@ -48,6 +51,11 @@ export function getDefaultValues(
 ): Record<string, any> {
   return itemConfigList.reduce(
     (acc, item) => {
+      // `__system.*` fields are display-only (resolved from systemContext);
+      // their placeholder defaults must not leak into the config values.
+      if (item.name.startsWith(SYSTEM_FIELD_PREFIX)) {
+        return acc;
+      }
       acc[item.name] = item.default;
       return acc;
     },

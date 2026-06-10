@@ -19,6 +19,18 @@ spec:
     en: https://link.langbot.app/en/platforms/wecombot
     ja: https://link.langbot.app/ja/platforms/wecombot
   config:
+    - name: one-click-create
+      label:
+        en_US: One-Click Create Bot
+        zh_Hans: 一键创建机器人
+        zh_Hant: 一鍵建立機器人
+      description:
+        en_US: "Scan QR code with WeCom to automatically create a bot and fill in BotId and Secret. Note: Robot Name needs to be filled in manually."
+        zh_Hans: "使用企业微信扫码自动创建机器人并填写 BotId 和 Secret。注意：机器人名称需手动填写。"
+        zh_Hant: "使用企業微信掃碼自動建立機器人並填寫 BotId 和 Secret。注意：機器人名稱需手動填寫。"
+      type: qr-code-login
+      login_platform: wecombot
+      required: false
     - name: BotId
       label:
         en_US: BotId
@@ -63,6 +75,18 @@ spec:
         field: enable-webhook
         operator: eq
         value: true
+    - name: __system.outbound_ips
+      label:
+        en_US: Trusted IPs
+        zh_Hans: 企业可信 IP
+        zh_Hant: 企業可信 IP
+      description:
+        en_US: Add these outbound IPs of the LangBot server to the "Trusted Enterprise IPs" of the bot configuration in the WeCom admin console
+        zh_Hans: 请将这些 LangBot 服务器的出网 IP 添加到企业微信管理后台智能机器人配置的「企业可信 IP」中
+        zh_Hant: 請將這些 LangBot 伺服器的出網 IP 加入企業微信管理後台智慧機器人設定的「企業可信 IP」中
+      type: array[string]
+      required: false
+      default: []
     - name: Secret
       label:
         en_US: Secret

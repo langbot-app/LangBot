@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -102,9 +102,30 @@ export default function N8nAuthFormComponent({
     }, {} as FormValues),
   });
 
+  const isInitialMount = useRef(true);
+  const previousInitialValues = useRef(initialValues);
+
+  // Stable ref for onSubmit to avoid re-triggering the effect when the
+  // parent passes a new closure on every render (matches DynamicFormComponent pattern).
+  const onSubmitRef = useRef(onSubmit);
+  onSubmitRef.current = onSubmit;
+
   // 当 initialValues 变化时更新表单值
   useEffect(() => {
-    if (initialValues) {
+    // Skip the first mount — defaultValues already handles it
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      previousInitialValues.current = initialValues;
+      return;
+    }
+
+    // Deep compare to avoid reacting to parent re-renders that pass
+    // the same values back (e.g. after our own onSubmit emission).
+    const hasRealChange =
+      JSON.stringify(previousInitialValues.current) !==
+      JSON.stringify(initialValues);
+
+    if (initialValues && hasRealChange) {
       // 合并默认值和初始值
       const mergedValues = itemConfigList.reduce(
         (acc, item) => {
@@ -120,11 +141,28 @@ export default function N8nAuthFormComponent({
 
       // 更新认证类型
       setAuthType((mergedValues['auth-type'] as string) || 'none');
+      previousInitialValues.current = initialValues;
     }
   }, [initialValues, form, itemConfigList]);
 
   // 监听表单值变化
   useEffect(() => {
+    // Emit initial form values on mount so the parent form's
+    // initializedStagesRef registers this stage (matches DynamicFormComponent).
+    const formValues = form.getValues();
+    const initialFinalValues = itemConfigList.reduce(
+      (acc, item) => {
+        acc[item.name] = formValues[item.name] ?? item.default;
+        return acc;
+      },
+      {} as Record<string, string>,
+    );
+    onSubmitRef.current?.(initialFinalValues);
+    previousInitialValues.current = initialFinalValues as Record<
+      string,
+      string
+    >;
+
     const subscription = form.watch((value, { name }) => {
       // 如果认证类型变化，更新状态
       if (name === 'auth-type') {
@@ -141,10 +179,11 @@ export default function N8nAuthFormComponent({
         {} as Record<string, string>,
       );
 
-      onSubmit?.(finalValues);
+      onSubmitRef.current?.(finalValues);
+      previousInitialValues.current = finalValues as Record<string, string>;
     });
     return () => subscription.unsubscribe();
-  }, [form, onSubmit, itemConfigList]);
+  }, [form, itemConfigList]);
 
   // 根据认证类型过滤表单项
   const filteredConfigList = itemConfigList.filter((config) => {

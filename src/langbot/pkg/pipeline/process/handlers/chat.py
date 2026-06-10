@@ -113,9 +113,11 @@ class ChatMessageHandler(handler.MessageHandler):
                         # This prevents memory overflow from thousands of log entries per conversation
                         # First chunk uses INFO level to confirm connection establishment
                         if chunk_count == 1:
-                            self.ap.logger.info(
-                                f'Conversation({query.query_id}) Streaming started: {self.cut_str(result.readable_str())}'
-                            )
+                            summary = self.format_result_log(result)
+                            if summary is not None:
+                                self.ap.logger.info(f'Conversation({query.query_id}) Streaming started: {summary}')
+                            else:
+                                self.ap.logger.info(f'Conversation({query.query_id}) Streaming started')
                         elif chunk_count % 10 == 0:
                             self.ap.logger.debug(
                                 f'Conversation({query.query_id}) Streaming chunk {chunk_count}: {self.cut_str(result.readable_str())}'
@@ -135,9 +137,9 @@ class ChatMessageHandler(handler.MessageHandler):
                     async for result in runner.run(query):
                         query.resp_messages.append(result)
 
-                        self.ap.logger.info(
-                            f'Conversation({query.query_id}) Response: {self.cut_str(result.readable_str())}'
-                        )
+                        summary = self.format_result_log(result)
+                        if summary is not None:
+                            self.ap.logger.info(f'Conversation({query.query_id}) Response: {summary}')
 
                         if result.content is not None:
                             text_length += len(result.content)

@@ -143,49 +143,83 @@ class ModelManager:
         # get the latest models from space
         space_models = await self.ap.space_service.get_models()
 
-        exists_llm_models_uuids = [m['uuid'] for m in await self.ap.llm_model_service.get_llm_models()]
-        exists_embedding_models_uuids = [
-            m['uuid'] for m in await self.ap.embedding_models_service.get_embedding_models()
-        ]
+        # Index existing models by uuid. Space reuses a model's uuid across
+        # renames / re-specs (e.g. the uuid that used to be ``claude-opus-4-6``
+        # may later become ``claude-opus-4-7``). So for Space-managed models we
+        # upsert: create when the uuid is new, otherwise update name/abilities/
+        # ranking to track Space. Models owned by other providers are never
+        # touched, even on an (unexpected) uuid collision.
+        existing_llm_models = {m['uuid']: m for m in await self.ap.llm_model_service.get_llm_models()}
+        existing_embedding_models = {
+            m['uuid']: m for m in await self.ap.embedding_models_service.get_embedding_models()
+        }
+
+        created = 0
+        updated = 0
 
         for space_model in space_models:
             if space_model.category == 'chat':
-                uuid = space_model.uuid
-
-                if uuid in exists_llm_models_uuids:
-                    continue
-
-                # model will be automatically loaded
-                await self.ap.llm_model_service.create_llm_model(
-                    {
-                        'uuid': space_model.uuid,
+                existing = existing_llm_models.get(space_model.uuid)
+                if existing is None:
+                    # model will be automatically loaded
+                    await self.ap.llm_model_service.create_llm_model(
+                        {
+                            'uuid': space_model.uuid,
+                            'name': space_model.model_id,
+                            'provider_uuid': space_model_provider.uuid,
+                            'abilities': space_model.llm_abilities or [],
+                            'extra_args': {},
+                            'prefered_ranking': space_model.featured_order,
+                        },
+                        preserve_uuid=True,
+                        auto_set_to_default_pipeline=False,
+                    )
+                    created += 1
+                elif existing.get('provider_uuid') == space_model_provider.uuid:
+                    desired = {
                         'name': space_model.model_id,
                         'provider_uuid': space_model_provider.uuid,
                         'abilities': space_model.llm_abilities or [],
-                        'extra_args': {},
                         'prefered_ranking': space_model.featured_order,
-                    },
-                    preserve_uuid=True,
-                    auto_set_to_default_pipeline=False,
-                )
+                    }
+                    if (
+                        existing.get('name') != desired['name']
+                        or list(existing.get('abilities') or []) != list(desired['abilities'])
+                        or existing.get('prefered_ranking') != desired['prefered_ranking']
+                    ):
+                        await self.ap.llm_model_service.update_llm_model(space_model.uuid, dict(desired))
+                        updated += 1
 
             elif space_model.category == 'embedding':
-                uuid = space_model.uuid
-
-                if uuid in exists_embedding_models_uuids:
-                    continue
-
-                # model will be automatically loaded
-                await self.ap.embedding_models_service.create_embedding_model(
-                    {
-                        'uuid': space_model.uuid,
+                existing = existing_embedding_models.get(space_model.uuid)
+                if existing is None:
+                    # model will be automatically loaded
+                    await self.ap.embedding_models_service.create_embedding_model(
+                        {
+                            'uuid': space_model.uuid,
+                            'name': space_model.model_id,
+                            'provider_uuid': space_model_provider.uuid,
+                            'extra_args': {},
+                            'prefered_ranking': space_model.featured_order,
+                        },
+                        preserve_uuid=True,
+                    )
+                    created += 1
+                elif existing.get('provider_uuid') == space_model_provider.uuid:
+                    desired = {
                         'name': space_model.model_id,
                         'provider_uuid': space_model_provider.uuid,
-                        'extra_args': {},
                         'prefered_ranking': space_model.featured_order,
-                    },
-                    preserve_uuid=True,
-                )
+                    }
+                    if (
+                        existing.get('name') != desired['name']
+                        or existing.get('prefered_ranking') != desired['prefered_ranking']
+                    ):
+                        await self.ap.embedding_models_service.update_embedding_model(space_model.uuid, dict(desired))
+                        updated += 1
+
+        if created or updated:
+            self.ap.logger.info(f'Synced models from LangBot Space: {created} added, {updated} updated.')
 
     async def init_temporary_runtime_llm_model(
         self,

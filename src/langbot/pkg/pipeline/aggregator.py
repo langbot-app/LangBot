@@ -275,6 +275,7 @@ class MessageAggregator:
             message_chain=merged_chain,
             adapter=base_msg.adapter,
             pipeline_uuid=base_msg.pipeline_uuid,
+            routed_by_rule=any(msg.routed_by_rule for msg in messages),
         )
 
     async def flush_all(self) -> None:

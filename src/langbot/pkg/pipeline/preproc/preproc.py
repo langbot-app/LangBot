@@ -32,6 +32,9 @@ class PreProcessor(stage.PipelineStage):
     ) -> entities.StageProcessResult:
         """Process"""
         selected_runner = query.pipeline_config['ai']['runner']['runner']
+        include_skill_authoring = (
+            selected_runner == 'local-agent' and getattr(self.ap, 'skill_service', None) is not None
+        )
 
         session = await self.ap.sess_mgr.get_session(query)
 
@@ -110,7 +113,11 @@ class PreProcessor(stage.PipelineStage):
                     # Get bound plugins and MCP servers for filtering tools
                     bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
                     bound_mcp_servers = query.variables.get('_pipeline_bound_mcp_servers', None)
-                    query.use_funcs = await self.ap.tool_mgr.get_all_tools(bound_plugins, bound_mcp_servers)
+                    query.use_funcs = await self.ap.tool_mgr.get_all_tools(
+                        bound_plugins,
+                        bound_mcp_servers,
+                        include_skill_authoring=include_skill_authoring,
+                    )
 
                     self.ap.logger.debug(f'Bound plugins: {bound_plugins}')
                     self.ap.logger.debug(f'Bound MCP servers: {bound_mcp_servers}')
@@ -121,7 +128,11 @@ class PreProcessor(stage.PipelineStage):
             if not query.use_funcs and query.variables.get('_fallback_model_uuids'):
                 bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
                 bound_mcp_servers = query.variables.get('_pipeline_bound_mcp_servers', None)
-                query.use_funcs = await self.ap.tool_mgr.get_all_tools(bound_plugins, bound_mcp_servers)
+                query.use_funcs = await self.ap.tool_mgr.get_all_tools(
+                    bound_plugins,
+                    bound_mcp_servers,
+                    include_skill_authoring=include_skill_authoring,
+                )
 
         sender_name = ''
 
@@ -247,5 +258,68 @@ class PreProcessor(stage.PipelineStage):
 
         query.prompt.messages = event_ctx.event.default_prompt
         query.messages = event_ctx.event.prompt
+
+        # =========== Skill awareness for the local-agent runner ===========
+        # The actual activation goes through the ``activate`` Tool Call so the
+        # LLM doesn't see full SKILL.md instructions until it commits to a
+        # skill (Claude Code's progressive disclosure). But the LLM still has
+        # to KNOW which skills exist to make that choice, so we:
+        #   1. resolve the pipeline's bound skills and stash them in
+        #      ``query.variables['_pipeline_bound_skills']`` for downstream
+        #      visibility checks (skill loader, native exec workdir);
+        #   2. inject a short ``Available Skills`` index (name + description
+        #      only) into the system prompt. The contributor's original PR
+        #      relied on this injection; without it the LLM never discovers
+        #      the skills are there and just calls native tools instead.
+        if selected_runner == 'local-agent' and self.ap.skill_mgr:
+            pipeline_data = await self.ap.pipeline_service.get_pipeline(query.pipeline_uuid)
+            extensions_prefs = (pipeline_data or {}).get('extensions_preferences', {})
+            enable_all_skills = extensions_prefs.get('enable_all_skills', True)
+
+            if enable_all_skills:
+                bound_skills = None  # None = all loaded skills are visible
+            else:
+                bound_skills = extensions_prefs.get('skills', [])
+
+            query.variables['_pipeline_bound_skills'] = bound_skills
+
+            skill_addition = self.ap.skill_mgr.build_skill_aware_prompt_addition(
+                bound_skills=bound_skills,
+            )
+            if skill_addition:
+                # Append to the first system message; create one if the
+                # prompt has none. Handles both plain-string and
+                # content-element (list) message bodies.
+                if query.prompt.messages and query.prompt.messages[0].role == 'system':
+                    head = query.prompt.messages[0]
+                    if isinstance(head.content, str):
+                        head.content = head.content + skill_addition
+                    elif isinstance(head.content, list):
+                        appended = False
+                        for ce in head.content:
+                            if getattr(ce, 'type', None) == 'text':
+                                ce.text = (ce.text or '') + skill_addition
+                                appended = True
+                                break
+                        if not appended:
+                            head.content.append(provider_message.ContentElement(type='text', text=skill_addition))
+                else:
+                    query.prompt.messages.insert(
+                        0,
+                        provider_message.Message(role='system', content=skill_addition.strip()),
+                    )
+                self.ap.logger.debug(
+                    f'Skill index injected into system prompt: '
+                    f'pipeline={query.pipeline_uuid} '
+                    f'bound_skills={bound_skills or "all"} '
+                    f'loaded_skills={len(self.ap.skill_mgr.skills)}'
+                )
+            else:
+                self.ap.logger.debug(
+                    f'No skills available for prompt injection: '
+                    f'pipeline={query.pipeline_uuid} '
+                    f'loaded_skills={len(self.ap.skill_mgr.skills)} '
+                    f'bound_skills={bound_skills}'
+                )
 
         return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)

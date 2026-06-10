@@ -19,6 +19,18 @@ spec:
     en: https://link.langbot.app/en/platforms/dingtalk
     ja: https://link.langbot.app/ja/platforms/dingtalk
   config:
+    - name: one-click-create
+      label:
+        en_US: One-Click Create App
+        zh_Hans: 一键创建应用
+        zh_Hant: 一鍵建立應用
+      description:
+        en_US: "Scan QR code with DingTalk to automatically create an app and fill in credentials. Note: Robot Code cannot be obtained automatically, you need to copy it from the DingTalk Developer Backend manually."
+        zh_Hans: "使用钉钉扫码自动创建应用并填写凭据。注意：机器人代码无法自动获取，需前往钉钉开发者后台手动复制。"
+        zh_Hant: "使用釘釘掃碼自動建立應用並填寫憑證。注意：機器人代碼無法自動取得，需前往釘釘開發者後台手動複製。"
+      type: qr-code-login
+      login_platform: dingtalk
+      required: false
     - name: client_id
       label:
         en_US: Client ID
@@ -40,6 +52,10 @@ spec:
         en_US: Robot Code
         zh_Hans: 机器人代码
         zh_Hant: 機器人代碼
+      description:
+        en_US: "Required for image recognition, file upload and other features. Get it from DingTalk Developer Backend > Robot Configuration."
+        zh_Hans: "识图、上传文件等功能必填。请前往钉钉开发者后台 > 机器人配置中获取。"
+        zh_Hant: "識圖、上傳檔案等功能必填。請前往釘釘開發者後台 > 機器人設定中取得。"
       type: string
       required: true
       default: ""

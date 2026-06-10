@@ -280,6 +280,15 @@ export interface ApiRespPlugins {
   plugins: Plugin[];
 }
 
+export type ExtensionItem =
+  | { type: 'plugin'; plugin: Plugin }
+  | { type: 'mcp'; server: MCPServer }
+  | { type: 'skill'; skill: Skill };
+
+export interface ApiRespExtensions {
+  extensions: ExtensionItem[];
+}
+
 export interface ApiRespPlugin {
   plugin: Plugin;
 }
@@ -316,6 +325,10 @@ export interface SystemLimitation {
   max_bots: number;
   max_pipelines: number;
   max_extensions: number;
+  /** When non-empty, every pipeline is forced to this Box sandbox-scope
+   *  template (e.g. ``{global}``) and the per-pipeline "Sandbox Scope"
+   *  selector is locked. Used by SaaS deployments. Empty = no restriction. */
+  force_box_session_id_template?: string;
 }
 
 export interface WizardProgress {
@@ -335,6 +348,10 @@ export interface ApiRespSystemInfo {
   allow_modify_login_info: boolean;
   disable_models_service: boolean;
   limitation: SystemLimitation;
+  /** Public outbound IPs of the deployment (``system.outbound_ips`` in
+   *  config.yaml). Shown on adapter config forms whose platform requires
+   *  trusted-IP / IP-whitelist settings. Empty = not configured. */
+  outbound_ips: string[];
   wizard_status: string; // 'none' | 'skipped' | 'completed'
   wizard_progress: WizardProgress | null;
 }
@@ -349,6 +366,37 @@ export interface ApiRespPluginSystemStatus {
   is_enable: boolean;
   is_connected: boolean;
   plugin_connector_error: string;
+}
+
+export interface ApiRespBoxStatus {
+  available: boolean;
+  /** Whether ``box.enabled`` is true in config. When false, the sandbox
+   * is deliberately disabled — distinct from "configured but failed". */
+  enabled?: boolean;
+  profile: string;
+  recent_error_count: number;
+  connector_error?: string;
+  backend?: {
+    name: string;
+    available: boolean;
+  };
+  active_sessions?: number;
+  managed_processes?: number;
+  session_ttl_sec?: number;
+}
+
+export interface BoxSessionInfo {
+  session_id: string;
+  backend_name: string;
+  image: string;
+  network: string;
+  host_path: string | null;
+  host_path_mode: string;
+  mount_path: string;
+  cpus: number;
+  memory_mb: number;
+  created_at: string;
+  last_used_at: string;
 }
 
 export interface ApiRespAsyncTasks {
@@ -489,8 +537,18 @@ export enum MCPSessionStatus {
 export interface MCPServerRuntimeInfo {
   status: MCPSessionStatus;
   error_message?: string;
+  /** Stage at which the session failed. Frontends key off this to render
+   *  a localized actionable message instead of the raw ``error_message``.
+   *  Notable values: ``box_unavailable`` (stdio MCP refused because Box is
+   *  disabled / unreachable). See ``MCPSessionErrorPhase`` (backend). */
+  error_phase?: string;
+  retry_count?: number;
   tool_count: number;
   tools: MCPTool[];
+  /** Optional ``box_session_id`` / ``box_enabled`` set when this stdio
+   *  server runs inside Box. Absent when Box is unavailable. */
+  box_session_id?: string;
+  box_enabled?: boolean;
 }
 
 export type MCPServer =
@@ -501,6 +559,7 @@ export type MCPServer =
       enable: boolean;
       extra_args: MCPServerExtraArgsSSE;
       runtime_info?: MCPServerRuntimeInfo;
+      readme?: string;
       created_at?: string;
       updated_at?: string;
     }
@@ -511,6 +570,7 @@ export type MCPServer =
       enable: boolean;
       extra_args: MCPServerExtraArgsHttp;
       runtime_info?: MCPServerRuntimeInfo;
+      readme?: string;
       created_at?: string;
       updated_at?: string;
     }
@@ -521,6 +581,7 @@ export type MCPServer =
       enable: boolean;
       extra_args: MCPServerExtraArgsStdio;
       runtime_info?: MCPServerRuntimeInfo;
+      readme?: string;
       created_at?: string;
       updated_at?: string;
     };
@@ -544,4 +605,24 @@ export interface ApiRespTools {
 
 export interface ApiRespToolDetail {
   tool: PluginTool;
+}
+
+// Skills
+export interface Skill {
+  name: string;
+  display_name?: string;
+  description: string;
+  instructions?: string;
+  package_root?: string;
+  is_builtin?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ApiRespSkills {
+  skills: Skill[];
+}
+
+export interface ApiRespSkill {
+  skill: Skill;
 }

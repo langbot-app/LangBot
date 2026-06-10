@@ -1,5 +1,5 @@
 # Docker Compose configuration for LangBot
-# For Kubernetes deployment, see kubernetes.yaml and README_K8S.md
+# For Kubernetes deployment, see kubernetes.yaml and the deployment guide at https://docs.langbot.app
 version: "3"
 
 services:
@@ -18,6 +18,40 @@ services:
     networks:
       - langbot_network
 
+  # The Box sandbox runtime is optional. It is only started when you run
+  # ``docker compose --profile box up`` (or ``docker compose --profile all
+  # up``). With Box off, LangBot keeps the dashboard / skills list visible
+  # (read-only) but disables sandbox tools, skill add/edit and stdio MCP —
+  # set ``box.enabled: false`` in ``data/config.yaml`` (or
+  # ``BOX__ENABLED=false`` in the langbot service env below) to match.
+  langbot_box:
+    image: rockchin/langbot:latest
+    container_name: langbot_box
+    profiles: ["box", "all"]
+    volumes:
+      # Keep the source and target path identical because langbot_box uses the
+      # host Docker socket to create sandbox containers. Override
+      # LANGBOT_BOX_ROOT with an absolute path if you do not want the default.
+      - ${LANGBOT_BOX_ROOT:-${PWD}/data/box}:${LANGBOT_BOX_ROOT:-${PWD}/data/box}
+      # Mount container runtime socket for Box sandbox backend.
+      # Uncomment the one that matches your container runtime:
+      # - /var/run/podman/podman.sock:/var/run/podman/podman.sock   # Podman
+      - /var/run/docker.sock:/var/run/docker.sock                   # Docker
+    restart: on-failure
+    environment:
+      - TZ=Asia/Shanghai
+      # The Box runtime does NOT read box.local.* from config.yaml or env; it
+      # receives its configuration from LangBot via the INIT RPC action.
+      # Do not add LANGBOT_BOX_* / BOX__* here — they would be silently ignored.
+    # Launched through the same CLI entry point as the plugin runtime
+    # (`langbot_plugin.cli.__init__ <subcommand>`). WebSocket is the default
+    # control transport — mirrors `rt`, which also runs with no flag. Pass
+    # `-s` / `--stdio-control` only for the stdio mode LangBot uses outside
+    # containers.
+    command: ["uv", "run", "--no-sync", "-m", "langbot_plugin.cli.__init__", "box"]
+    networks:
+      - langbot_network
+
   langbot:
     image: rockchin/langbot:latest
     container_name: langbot
@@ -26,6 +60,13 @@ services:
     restart: on-failure
     environment:
       - TZ=Asia/Shanghai
+      # Unified env-override convention: SECTION__SUBSECTION__KEY overrides the
+      # matching config.yaml field (see LoadConfigStage). These map onto
+      # box.local.* and are forwarded to the Box runtime via INIT RPC.
+      - BOX__LOCAL__HOST_ROOT=${LANGBOT_BOX_ROOT:-${PWD}/data/box}
+      - BOX__LOCAL__DEFAULT_WORKSPACE=default
+      - BOX__LOCAL__SKILLS_ROOT=skills
+      - BOX__LOCAL__ALLOWED_MOUNT_ROOTS=${LANGBOT_BOX_ROOT:-${PWD}/data/box}
     ports:
       - 5300:5300  # For web ui and webhook callback
       - 2280-2285:2280-2285  # For platform reverse connection

@@ -176,6 +176,38 @@ class TestPathTraversalPrevention:
             assert loaded == content
             await provider.delete(key)
 
+    @pytest.mark.asyncio
+    async def test_delete_dir_recursive_non_existing_dir(self, storage_provider):
+        """delete_dir_recursive should handle non-existing directories gracefully."""
+        provider, storage_path = storage_provider
+
+        with patch("langbot.pkg.storage.providers.localstorage.LOCAL_STORAGE_PATH", storage_path):
+            # Try to delete a non-existing directory - should not raise
+            await provider.delete_dir_recursive("nonexistent_dir")
+
+    @pytest.mark.asyncio
+    async def test_delete_dir_recursive_with_files(self, storage_provider):
+        """delete_dir_recursive should delete directory with files inside."""
+        provider, storage_path = storage_provider
+
+        with patch("langbot.pkg.storage.providers.localstorage.LOCAL_STORAGE_PATH", storage_path):
+            # Create a directory with files
+            key1 = "test_dir/file1.txt"
+            key2 = "test_dir/file2.txt"
+            await provider.save(key1, b"content1")
+            await provider.save(key2, b"content2")
+
+            # Verify files exist
+            assert await provider.exists(key1)
+            assert await provider.exists(key2)
+
+            # Delete directory recursively
+            await provider.delete_dir_recursive("test_dir")
+
+            # Verify files no longer exist
+            assert not await provider.exists(key1)
+            assert not await provider.exists(key2)
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { SidebarChildVO } from '@/app/home/components/home-sidebar/HomeSidebarChild';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { sidebarConfigList } from '@/app/home/components/home-sidebar/sidbarConfigList';
@@ -26,7 +26,12 @@ import {
   Store,
   Github,
   Zap,
+  FilePlus2,
+  Sparkles,
   HardDrive,
+  Server,
+  Puzzle,
+  RefreshCcw,
 } from 'lucide-react';
 import { useTheme } from '@/components/providers/theme-provider';
 
@@ -81,7 +86,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { ChevronRight, Plus } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -114,6 +119,22 @@ function compareVersions(v1: string, v2: string): boolean {
   return false;
 }
 
+// Discord brand glyph (lucide-react has no Discord icon).
+function DiscordIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      role="img"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z" />
+    </svg>
+  );
+}
+
 // IDs of sidebar entries that have collapsible entity sub-items
 const ENTITY_CATEGORY_IDS = [
   'bots',
@@ -121,6 +142,7 @@ const ENTITY_CATEGORY_IDS = [
   'knowledge',
   'plugins',
   'mcp',
+  'skills',
 ] as const;
 type EntityCategoryId = (typeof ENTITY_CATEGORY_IDS)[number];
 
@@ -131,6 +153,7 @@ const DETAIL_PAGE_CATEGORIES: EntityCategoryId[] = [
   'knowledge',
   'plugins',
   'mcp',
+  'skills',
 ];
 
 // Categories that support creating new entities from the sidebar
@@ -139,7 +162,7 @@ const CREATABLE_CATEGORIES: EntityCategoryId[] = [
   'pipelines',
   'knowledge',
   'mcp',
-  'plugins',
+  'skills',
 ];
 
 // Categories where clicking the parent only toggles collapse (no list page)
@@ -148,6 +171,7 @@ const COLLAPSIBLE_ONLY_CATEGORIES: EntityCategoryId[] = [
   'pipelines',
   'knowledge',
   'mcp',
+  'skills',
 ];
 
 function isEntityCategory(id: string): id is EntityCategoryId {
@@ -157,13 +181,14 @@ function isEntityCategory(id: string): id is EntityCategoryId {
 // Map sidebar config IDs to SidebarDataContext keys
 const ENTITY_KEY_MAP: Record<
   EntityCategoryId,
-  'bots' | 'pipelines' | 'knowledgeBases' | 'plugins' | 'mcpServers'
+  'bots' | 'pipelines' | 'knowledgeBases' | 'plugins' | 'mcpServers' | 'skills'
 > = {
   bots: 'bots',
   pipelines: 'pipelines',
   knowledge: 'knowledgeBases',
   plugins: 'plugins',
   mcp: 'mcpServers',
+  skills: 'skills',
 };
 
 // Route prefix map for entity detail pages
@@ -171,12 +196,28 @@ const ENTITY_ROUTE_MAP: Record<EntityCategoryId, string> = {
   bots: '/home/bots',
   pipelines: '/home/pipelines',
   knowledge: '/home/knowledge',
-  plugins: '/home/plugins',
+  plugins: '/home/extensions',
   mcp: '/home/mcp',
+  skills: '/home/skills',
 };
 
 // localStorage key for collapsible section open/closed state
 const SIDEBAR_SECTIONS_KEY = 'sidebar_sections';
+const SIDEBAR_LIST_EXPANSION_KEY = 'sidebar_entity_list_expansion';
+const SCROLL_HINT_BOTTOM_THRESHOLD = 40;
+
+type SidebarNavSection = 'home' | 'extensions';
+type SidebarListExpansionState = Record<
+  SidebarNavSection,
+  Partial<Record<EntityCategoryId, boolean>>
+>;
+
+function createEmptyListExpansionState(): SidebarListExpansionState {
+  return {
+    home: {},
+    extensions: {},
+  };
+}
 
 function loadSectionState(): Record<string, boolean> {
   if (typeof window === 'undefined') return {};
@@ -191,6 +232,29 @@ function loadSectionState(): Record<string, boolean> {
 function saveSectionState(state: Record<string, boolean>) {
   try {
     localStorage.setItem(SIDEBAR_SECTIONS_KEY, JSON.stringify(state));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+function loadListExpansionState(): SidebarListExpansionState {
+  if (typeof window === 'undefined') return createEmptyListExpansionState();
+  try {
+    const stored = localStorage.getItem(SIDEBAR_LIST_EXPANSION_KEY);
+    if (!stored) return createEmptyListExpansionState();
+    const parsed = JSON.parse(stored) as Partial<SidebarListExpansionState>;
+    return {
+      home: parsed.home ?? {},
+      extensions: parsed.extensions ?? {},
+    };
+  } catch {
+    return createEmptyListExpansionState();
+  }
+}
+
+function saveListExpansionState(state: SidebarListExpansionState) {
+  try {
+    localStorage.setItem(SIDEBAR_LIST_EXPANSION_KEY, JSON.stringify(state));
   } catch {
     // Ignore storage errors
   }
@@ -224,6 +288,27 @@ function mcpStatusColor(item: SidebarEntityItem): string {
   }
 }
 
+function MCPStatusIcon({
+  item,
+  borderClass,
+}: {
+  item: SidebarEntityItem;
+  borderClass: string;
+}) {
+  return (
+    <span className="relative shrink-0">
+      <Server className="size-4 !text-blue-500" />
+      <span
+        className={cn(
+          'absolute -bottom-1 -right-1 size-3 rounded-full border-2',
+          borderClass,
+          mcpStatusColor(item),
+        )}
+      />
+    </span>
+  );
+}
+
 // Plugin operation type enum
 enum PluginOperationType {
   DELETE = 'DELETE',
@@ -240,7 +325,7 @@ function NavItems({
 }: {
   selectedChild: SidebarChildVO | undefined;
   onChildClick: (child: SidebarChildVO) => void;
-  section: 'home' | 'extensions';
+  section: SidebarNavSection;
   sectionOpenState: Record<string, boolean>;
   onSectionToggle: (id: string, open: boolean) => void;
 }) {
@@ -249,15 +334,31 @@ function NavItems({
   const pathname = location.pathname;
   const [searchParams] = useSearchParams();
   const sidebarData = useSidebarData();
-  const { setPendingPluginInstallAction } = sidebarData;
   const { state: sidebarState, isMobile } = useSidebar();
   const { t } = useTranslation();
   // Track which entity categories have their full list expanded
-  const [expandedLists, setExpandedLists] = useState<Record<string, boolean>>(
-    {},
+  const [expandedLists, setExpandedLists] = useState<SidebarListExpansionState>(
+    loadListExpansionState,
   );
   // Track popover open state for collapsed sidebar entity categories
   const [popoverOpen, setPopoverOpen] = useState<Record<string, boolean>>({});
+  // Spin state for the installed-extensions refresh button
+  const [extRefreshing, setExtRefreshing] = useState(false);
+
+  const handleRefreshExtensions = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (extRefreshing) return;
+    setExtRefreshing(true);
+    try {
+      await Promise.all([
+        sidebarData.refreshPlugins(),
+        sidebarData.refreshMCPServers(),
+        sidebarData.refreshSkills(),
+      ]);
+    } finally {
+      setExtRefreshing(false);
+    }
+  };
 
   // Plugin operation state
   const [showPluginOpModal, setShowPluginOpModal] = useState(false);
@@ -325,6 +426,37 @@ function NavItems({
 
   const sectionItems = sidebarConfigList.filter((c) => c.section === section);
 
+  function handleListExpansionToggle(id: EntityCategoryId, expanded: boolean) {
+    setExpandedLists(() => {
+      const latest = loadListExpansionState();
+      const next = {
+        ...latest,
+        [section]: {
+          ...latest[section],
+          [id]: expanded,
+        },
+      };
+      saveListExpansionState(next);
+      return next;
+    });
+  }
+
+  // Persist open state for sections that become active through navigation,
+  // so they remain expanded when the user switches to a different section.
+  const sectionOpenRef = useRef(sectionOpenState);
+  sectionOpenRef.current = sectionOpenState;
+  useEffect(() => {
+    sectionItems.forEach((config) => {
+      if (!isEntityCategory(config.id)) return;
+      const routePrefix = ENTITY_ROUTE_MAP[config.id];
+      const active =
+        pathname === routePrefix || pathname.startsWith(routePrefix + '/');
+      if (active && sectionOpenRef.current[config.id] === undefined) {
+        onSectionToggle(config.id, true);
+      }
+    });
+  }, [pathname, sectionItems, onSectionToggle]);
+
   return (
     <>
       {sectionItems.map((config) => {
@@ -338,29 +470,61 @@ function NavItems({
                 tooltip={config.name}
               >
                 {config.icon}
-                <span>{config.name}</span>
+                <span className="cursor-pointer select-none">
+                  {config.name}
+                </span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           );
         }
 
         // Entity categories: collapsible with sub-items
-        const entityKey = ENTITY_KEY_MAP[config.id];
-        const items: SidebarEntityItem[] = sidebarData[entityKey];
-        const routePrefix = ENTITY_ROUTE_MAP[config.id];
-        const hasDetailPages = DETAIL_PAGE_CATEGORIES.includes(config.id);
-        const canCreate = CREATABLE_CATEGORIES.includes(config.id);
-        const isCollapseOnly = COLLAPSIBLE_ONLY_CATEGORIES.includes(config.id);
-        const isPlugin = config.id === 'plugins';
-        const isBot = config.id === 'bots';
-        const isMCP = config.id === 'mcp';
+        const categoryId = config.id;
+        const entityKey = ENTITY_KEY_MAP[categoryId];
+        const isExtensionsCategory = categoryId === 'plugins';
+        const items: SidebarEntityItem[] = isExtensionsCategory
+          ? [
+              ...sidebarData.plugins.map((p) => ({
+                ...p,
+                extensionType: 'plugin' as const,
+              })),
+              ...sidebarData.mcpServers.map((m) => ({
+                ...m,
+                extensionType: 'mcp' as const,
+              })),
+              ...sidebarData.skills.map((s) => ({
+                ...s,
+                extensionType: 'skill' as const,
+              })),
+            ]
+          : sidebarData[entityKey];
+        const routePrefix = ENTITY_ROUTE_MAP[categoryId];
+        const hasDetailPages = DETAIL_PAGE_CATEGORIES.includes(categoryId);
+        const canCreate = CREATABLE_CATEGORIES.includes(categoryId);
+        const isCollapseOnly = COLLAPSIBLE_ONLY_CATEGORIES.includes(categoryId);
+        const isPlugin = categoryId === 'plugins';
+        const isSkill = categoryId === 'skills';
+        const isBot = categoryId === 'bots';
+        const isMCP = categoryId === 'mcp';
+
+        const resolveItemRoute = (item: SidebarEntityItem): string => {
+          if (item.extensionType === 'mcp') {
+            return `/home/mcp?id=${encodeURIComponent(item.id)}`;
+          }
+          if (item.extensionType === 'skill') {
+            return `/home/skills?id=${encodeURIComponent(item.id)}`;
+          }
+          return hasDetailPages
+            ? `${routePrefix}?id=${encodeURIComponent(item.id)}`
+            : routePrefix;
+        };
         const isActive =
-          selectedChild?.id === config.id ||
+          selectedChild?.id === categoryId ||
           pathname === routePrefix ||
           pathname.startsWith(routePrefix + '/');
 
         // Use stored open state if available, otherwise default to active state
-        const isOpen = sectionOpenState[config.id] ?? isActive;
+        const isOpen = sectionOpenState[categoryId] ?? isActive;
 
         // When sidebar is collapsed on desktop and category is collapse-only,
         // show a popover flyout instead of the hidden collapsible sub-items
@@ -369,8 +533,14 @@ function NavItems({
 
         // Shared entity list renderer used by both popover and collapsible
         const renderEntityList = (inPopover: boolean) => {
-          const sortedItems = sortByRecent(items);
-          const isExpanded = expandedLists[config.id] ?? false;
+          const sortedItems = isExtensionsCategory
+            ? [...items].sort((a, b) =>
+                a.name.localeCompare(b.name, undefined, {
+                  sensitivity: 'base',
+                }),
+              )
+            : sortByRecent(items);
+          const isExpanded = expandedLists[section]?.[categoryId] ?? false;
           const maxItems = inPopover ? 10 : MAX_VISIBLE_ITEMS;
           const visibleItems =
             sortedItems.length > maxItems && !isExpanded
@@ -391,152 +561,219 @@ function NavItems({
             );
           }
 
-          return (
-            <>
-              {visibleItems.map((item) => {
-                const itemRoute = hasDetailPages
-                  ? `${routePrefix}?id=${encodeURIComponent(item.id)}`
-                  : routePrefix;
-                const isItemActive =
-                  hasDetailPages &&
-                  pathname === routePrefix &&
-                  searchParams.get('id') === item.id;
+          const itemActiveCheck = (item: SidebarEntityItem): boolean => {
+            if (item.extensionType === 'mcp') {
+              return (
+                pathname === '/home/mcp' && searchParams.get('id') === item.id
+              );
+            }
+            if (item.extensionType === 'skill') {
+              return (
+                pathname === '/home/skills' &&
+                searchParams.get('id') === item.id
+              );
+            }
+            return (
+              hasDetailPages &&
+              pathname === routePrefix &&
+              searchParams.get('id') === item.id
+            );
+          };
 
-                if (inPopover) {
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className={cn(
-                        'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-left',
-                        'hover:bg-accent hover:text-accent-foreground transition-colors',
-                        isItemActive &&
-                          'bg-accent text-accent-foreground font-medium',
-                      )}
-                      onClick={() => {
-                        navigate(itemRoute);
-                        setPopoverOpen((prev) => ({
-                          ...prev,
-                          [config.id]: false,
-                        }));
-                      }}
-                    >
-                      {item.emoji ? (
-                        <span className="text-sm shrink-0">{item.emoji}</span>
-                      ) : item.iconURL ? (
-                        <span className="relative shrink-0">
-                          <img
-                            src={item.iconURL}
-                            alt=""
-                            className="size-4 rounded"
-                          />
-                          {(isBot || isMCP) && (
-                            <span
-                              className={cn(
-                                'absolute -bottom-0.5 -right-0.5 size-2 rounded-full border-2 border-popover',
-                                isMCP
-                                  ? mcpStatusColor(item)
-                                  : item.enabled === false
-                                    ? 'bg-muted-foreground/40'
-                                    : 'bg-green-500',
-                              )}
-                            />
-                          )}
-                        </span>
-                      ) : isMCP ? (
+          const itemIsPlugin = (item: SidebarEntityItem): boolean =>
+            isExtensionsCategory ? item.extensionType === 'plugin' : isPlugin;
+
+          const showGroupHeaders =
+            isExtensionsCategory &&
+            !inPopover &&
+            sidebarData.extensionsGroupByType;
+
+          const groupOrder: Array<'plugin' | 'mcp' | 'skill'> = [
+            'plugin',
+            'mcp',
+            'skill',
+          ];
+          const groupLabelKey: Record<'plugin' | 'mcp' | 'skill', string> = {
+            plugin: 'market.typePlugin',
+            mcp: 'market.typeMCP',
+            skill: 'market.typeSkill',
+          };
+
+          const renderItem = (item: SidebarEntityItem) => {
+            const itemRoute = resolveItemRoute(item);
+            const isItemActive = itemActiveCheck(item);
+            const itemIsPluginType = itemIsPlugin(item);
+            if (inPopover) {
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={cn(
+                    'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-left',
+                    'hover:bg-accent hover:text-accent-foreground transition-colors',
+                    isItemActive &&
+                      'bg-accent text-accent-foreground font-medium',
+                  )}
+                  onClick={() => {
+                    navigate(itemRoute);
+                    setPopoverOpen((prev) => ({
+                      ...prev,
+                      [categoryId]: false,
+                    }));
+                  }}
+                >
+                  {item.extensionType === 'mcp' ? (
+                    <MCPStatusIcon item={item} borderClass="border-popover" />
+                  ) : item.extensionType === 'skill' ? (
+                    <Sparkles className="size-4 shrink-0 !text-blue-500" />
+                  ) : item.emoji ? (
+                    <span className="text-sm shrink-0">{item.emoji}</span>
+                  ) : item.iconURL ? (
+                    <span className="relative shrink-0">
+                      <img
+                        src={item.iconURL}
+                        alt=""
+                        className="size-4 rounded"
+                      />
+                      {(isBot || isMCP) && (
                         <span
                           className={cn(
-                            'size-2 shrink-0 rounded-full',
-                            mcpStatusColor(item),
+                            'absolute -bottom-0.5 -right-0.5 size-2 rounded-full border-2 border-popover',
+                            isMCP
+                              ? mcpStatusColor(item)
+                              : item.enabled === false
+                                ? 'bg-muted-foreground/40'
+                                : 'bg-green-500',
                           )}
                         />
-                      ) : null}
-                      <span className="truncate">{item.name}</span>
-                    </button>
-                  );
-                }
+                      )}
+                    </span>
+                  ) : item.extensionType === 'plugin' ? (
+                    <Puzzle className="size-4 shrink-0 !text-blue-500" />
+                  ) : isMCP ? (
+                    <span
+                      className={cn(
+                        'size-2 shrink-0 rounded-full',
+                        mcpStatusColor(item),
+                      )}
+                    />
+                  ) : null}
+                  <span className="truncate">{item.name}</span>
+                </button>
+              );
+            }
 
-                // Normal sidebar sub-item rendering
-                return (
-                  <SidebarMenuSubItem
-                    key={item.id}
-                    className={isPlugin ? 'group/plugin-item relative' : ''}
-                  >
-                    <Tooltip delayDuration={500}>
-                      <TooltipTrigger asChild>
-                        <SidebarMenuSubButton asChild isActive={isItemActive}>
-                          <a
-                            href={itemRoute}
-                            className={cn(
-                              isPlugin && !item.debug ? 'pr-6' : '',
-                            )}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              navigate(itemRoute);
-                            }}
-                          >
-                            {item.emoji ? (
-                              <span className="text-sm shrink-0">
-                                {item.emoji}
-                              </span>
-                            ) : item.iconURL ? (
-                              <span className="relative shrink-0">
-                                <img
-                                  src={item.iconURL}
-                                  alt=""
-                                  className="size-4 rounded"
-                                />
-                                {(isBot || isMCP) && (
-                                  <span
-                                    className={cn(
-                                      'absolute -bottom-0.5 -right-0.5 size-2 rounded-full border-2 border-sidebar',
-                                      isMCP
-                                        ? mcpStatusColor(item)
-                                        : item.enabled === false
-                                          ? 'bg-muted-foreground/40'
-                                          : 'bg-green-500',
-                                    )}
-                                  />
-                                )}
-                              </span>
-                            ) : isMCP ? (
+            // Normal sidebar sub-item rendering
+            return (
+              <SidebarMenuSubItem
+                key={item.id}
+                className={itemIsPluginType ? 'group/plugin-item relative' : ''}
+              >
+                <Tooltip delayDuration={500}>
+                  <TooltipTrigger asChild>
+                    <SidebarMenuSubButton asChild isActive={isItemActive}>
+                      <a
+                        href={itemRoute}
+                        className={cn(
+                          itemIsPluginType && !item.debug ? 'pr-6' : '',
+                        )}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          navigate(itemRoute);
+                        }}
+                      >
+                        {item.extensionType === 'mcp' ? (
+                          <MCPStatusIcon
+                            item={item}
+                            borderClass="border-sidebar"
+                          />
+                        ) : item.extensionType === 'skill' ? (
+                          <Sparkles className="size-4 shrink-0 !text-blue-500" />
+                        ) : item.emoji ? (
+                          <span className="text-sm shrink-0">{item.emoji}</span>
+                        ) : item.iconURL ? (
+                          <span className="relative shrink-0">
+                            <img
+                              src={item.iconURL}
+                              alt=""
+                              className="size-4 rounded"
+                            />
+                            {(isBot || isMCP) && (
                               <span
                                 className={cn(
-                                  'size-2 shrink-0 rounded-full',
-                                  mcpStatusColor(item),
+                                  'absolute -bottom-0.5 -right-0.5 size-2 rounded-full border-2 border-sidebar',
+                                  isMCP
+                                    ? mcpStatusColor(item)
+                                    : item.enabled === false
+                                      ? 'bg-muted-foreground/40'
+                                      : 'bg-green-500',
                                 )}
                               />
-                            ) : null}
-                            <span className="truncate">{item.name}</span>
-                            {item.debug && (
-                              <Bug className="size-3.5 shrink-0 text-orange-400" />
                             )}
-                          </a>
-                        </SidebarMenuSubButton>
-                      </TooltipTrigger>
-                      {item.description && (
-                        <TooltipContent
-                          side="right"
-                          align="center"
-                          className="max-w-64"
-                        >
-                          {item.description.length > 80
-                            ? item.description.slice(0, 80) + '…'
-                            : item.description}
-                        </TooltipContent>
-                      )}
-                    </Tooltip>
-                    {/* Plugin context menu - shown on hover (not for debug plugins) */}
-                    {isPlugin && !item.debug && (
-                      <PluginItemMenu
-                        item={item}
-                        onUpdate={() => handlePluginUpdate(item)}
-                        onDelete={() => handlePluginDelete(item)}
-                      />
+                          </span>
+                        ) : item.extensionType === 'plugin' ? (
+                          <Puzzle className="size-4 shrink-0 !text-blue-500" />
+                        ) : isMCP ? (
+                          <span
+                            className={cn(
+                              'size-2 shrink-0 rounded-full',
+                              mcpStatusColor(item),
+                            )}
+                          />
+                        ) : null}
+                        <span className="truncate">{item.name}</span>
+                        {item.debug && (
+                          <Bug className="size-3.5 shrink-0 text-orange-400" />
+                        )}
+                      </a>
+                    </SidebarMenuSubButton>
+                  </TooltipTrigger>
+                  <TooltipContent
+                    side="right"
+                    align="center"
+                    className="max-w-64"
+                  >
+                    {/* Full name — so truncated sidebar items are readable on hover */}
+                    <div className="break-words font-medium">{item.name}</div>
+                    {item.description && (
+                      <div className="mt-0.5 break-words text-xs text-muted-foreground">
+                        {item.description.length > 80
+                          ? item.description.slice(0, 80) + '…'
+                          : item.description}
+                      </div>
                     )}
-                  </SidebarMenuSubItem>
-                );
-              })}
+                  </TooltipContent>
+                </Tooltip>
+                {/* Plugin context menu - shown on hover (not for debug plugins) */}
+                {itemIsPluginType && !item.debug && (
+                  <PluginItemMenu
+                    item={item}
+                    onUpdate={() => handlePluginUpdate(item)}
+                    onDelete={() => handlePluginDelete(item)}
+                  />
+                )}
+              </SidebarMenuSubItem>
+            );
+          };
+
+          return (
+            <>
+              {showGroupHeaders
+                ? groupOrder.map((type) => {
+                    const groupItems = visibleItems.filter(
+                      (it) => it.extensionType === type,
+                    );
+                    if (groupItems.length === 0) return null;
+                    return (
+                      <div key={type} className="flex flex-col gap-0.5 mt-0.5">
+                        <div className="px-2 pt-1 pb-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                          {t(groupLabelKey[type])}
+                        </div>
+                        {groupItems.map((item) => renderItem(item))}
+                      </div>
+                    );
+                  })
+                : visibleItems.map((item) => renderItem(item))}
               {/* Show more / less toggle when items exceed limit */}
               {sortedItems.length > maxItems && !inPopover && (
                 <SidebarMenuSubItem>
@@ -547,10 +784,7 @@ function NavItems({
                     <button
                       type="button"
                       onClick={() =>
-                        setExpandedLists((prev) => ({
-                          ...prev,
-                          [config.id]: !isExpanded,
-                        }))
+                        handleListExpansionToggle(categoryId, !isExpanded)
                       }
                     >
                       <span className="text-xs">
@@ -566,12 +800,7 @@ function NavItems({
                 <button
                   type="button"
                   className="flex w-full items-center justify-center rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-accent transition-colors"
-                  onClick={() =>
-                    setExpandedLists((prev) => ({
-                      ...prev,
-                      [config.id]: true,
-                    }))
-                  }
+                  onClick={() => handleListExpansionToggle(categoryId, true)}
                 >
                   {t('common.more', { count: hiddenCount })}
                 </button>
@@ -624,7 +853,7 @@ function NavItems({
                               <DropdownMenuItem
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  navigate('/home/market');
+                                  navigate('/home/add-extension');
                                   setPopoverOpen((prev) => ({
                                     ...prev,
                                     [config.id]: false,
@@ -638,8 +867,7 @@ function NavItems({
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setPendingPluginInstallAction('local');
-                                navigate('/home/plugins');
+                                navigate('/home/add-extension?manual=1');
                                 setPopoverOpen((prev) => ({
                                   ...prev,
                                   [config.id]: false,
@@ -652,8 +880,7 @@ function NavItems({
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setPendingPluginInstallAction('github');
-                                navigate('/home/plugins');
+                                navigate('/home/add-extension?manual=1');
                                 setPopoverOpen((prev) => ({
                                   ...prev,
                                   [config.id]: false,
@@ -662,6 +889,58 @@ function NavItems({
                             >
                               <Github className="size-4" />
                               {t('plugins.installFromGithub')}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : isSkill ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="p-1 rounded-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+                            >
+                              <Plus className="size-3.5" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate('/home/skills?action=create');
+                                setPopoverOpen((prev) => ({
+                                  ...prev,
+                                  [config.id]: false,
+                                }));
+                              }}
+                            >
+                              <FilePlus2 className="size-4" />
+                              {t('skills.createManually')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate('/home/add-extension?manual=1');
+                                setPopoverOpen((prev) => ({
+                                  ...prev,
+                                  [config.id]: false,
+                                }));
+                              }}
+                            >
+                              <Upload className="size-4" />
+                              {t('skills.uploadZip')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate('/home/add-extension?manual=1');
+                                setPopoverOpen((prev) => ({
+                                  ...prev,
+                                  [config.id]: false,
+                                }));
+                              }}
+                            >
+                              <Github className="size-4" />
+                              {t('skills.importFromGithub')}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -728,8 +1007,25 @@ function NavItems({
                   }}
                 >
                   {config.icon}
-                  <span>{config.name}</span>
+                  <span className="cursor-pointer select-none">
+                    {config.name}
+                  </span>
                   <div className="ml-auto flex items-center gap-0.5 -mr-1">
+                    {isExtensionsCategory && (
+                      <button
+                        type="button"
+                        title={t('common.refresh', '刷新')}
+                        className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all"
+                        onClick={handleRefreshExtensions}
+                      >
+                        <RefreshCcw
+                          className={cn(
+                            'size-3.5',
+                            extRefreshing && 'animate-spin',
+                          )}
+                        />
+                      </button>
+                    )}
                     {canCreate &&
                       (isPlugin ? (
                         <DropdownMenu>
@@ -747,7 +1043,7 @@ function NavItems({
                               <DropdownMenuItem
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  navigate('/home/market');
+                                  navigate('/home/add-extension');
                                 }}
                               >
                                 <Store className="size-4" />
@@ -757,8 +1053,7 @@ function NavItems({
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setPendingPluginInstallAction('local');
-                                navigate('/home/plugins');
+                                navigate('/home/add-extension?manual=1');
                               }}
                             >
                               <Upload className="size-4" />
@@ -767,12 +1062,52 @@ function NavItems({
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setPendingPluginInstallAction('github');
-                                navigate('/home/plugins');
+                                navigate('/home/add-extension?manual=1');
                               }}
                             >
                               <Github className="size-4" />
                               {t('plugins.installFromGithub')}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : isSkill ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Plus className="size-3.5" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate('/home/skills?action=create');
+                              }}
+                            >
+                              <FilePlus2 className="size-4" />
+                              {t('skills.createManually')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate('/home/add-extension?manual=1');
+                              }}
+                            >
+                              <Upload className="size-4" />
+                              {t('skills.uploadZip')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate('/home/add-extension?manual=1');
+                              }}
+                            >
+                              <Github className="size-4" />
+                              {t('skills.importFromGithub')}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -1108,7 +1443,7 @@ function PluginPagesNav() {
                       className="select-none"
                     >
                       {pluginIcon}
-                      <span>{page.name}</span>
+                      <span className="cursor-pointer">{page.name}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 );
@@ -1128,7 +1463,7 @@ function PluginPagesNav() {
                         className="select-none"
                       >
                         {pluginIcon}
-                        <span>{label}</span>
+                        <span className="cursor-pointer">{label}</span>
                         <ChevronRight className="ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                       </SidebarMenuButton>
                     </CollapsibleTrigger>
@@ -1144,7 +1479,9 @@ function PluginPagesNav() {
                                 onClick={() => navigate(route)}
                                 className="select-none"
                               >
-                                <span>{page.name}</span>
+                                <span className="cursor-pointer">
+                                  {page.name}
+                                </span>
                               </SidebarMenuSubButton>
                             </SidebarMenuSubItem>
                           );
@@ -1160,6 +1497,39 @@ function PluginPagesNav() {
       </SidebarGroupContent>
     </SidebarGroup>
   );
+}
+
+function findSidebarChildForPath(pathname: string): SidebarChildVO | undefined {
+  const matchedChild =
+    sidebarConfigList.find((childConfig) => childConfig.route === pathname) ||
+    sidebarConfigList.find((childConfig) =>
+      pathname.startsWith(childConfig.route + '/'),
+    );
+  if (matchedChild) return matchedChild;
+
+  if (
+    pathname === '/home/mcp' ||
+    pathname === '/home/skills' ||
+    pathname === '/home/plugin-pages' ||
+    pathname.startsWith('/home/mcp/') ||
+    pathname.startsWith('/home/skills/') ||
+    pathname.startsWith('/home/plugin-pages/')
+  ) {
+    return sidebarConfigList.find(
+      (childConfig) => childConfig.id === 'plugins',
+    );
+  }
+
+  if (
+    pathname === '/home/add-extension' ||
+    pathname.startsWith('/home/add-extension/')
+  ) {
+    return sidebarConfigList.find(
+      (childConfig) => childConfig.id === 'add-extension',
+    );
+  }
+
+  return undefined;
 }
 
 export default function HomeSidebar({
@@ -1209,6 +1579,27 @@ export default function HomeSidebar({
   const [userEmail, setUserEmail] = useState<string>('');
   const [starCount, setStarCount] = useState<number | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const navigationContentRef = useRef<HTMLDivElement | null>(null);
+  const [showScrollHint, setShowScrollHint] = useState(false);
+
+  function scrollNavigationToBottom() {
+    const contentEl = navigationContentRef.current;
+    if (!contentEl) return;
+
+    const maxScrollTop = contentEl.scrollHeight - contentEl.clientHeight;
+    contentEl.scrollTo({
+      top: maxScrollTop,
+      behavior: 'smooth',
+    });
+    setShowScrollHint(false);
+
+    window.setTimeout(() => {
+      if (contentEl.scrollTop < maxScrollTop - 2) {
+        contentEl.scrollTop = maxScrollTop;
+      }
+      setShowScrollHint(false);
+    }, 250);
+  }
   function handleModelsDialogChange(open: boolean) {
     setModelsDialogOpen(open);
     if (open) {
@@ -1283,24 +1674,31 @@ export default function HomeSidebar({
         .catch(() => {});
     }
 
-    getCloudServiceClientSync()
-      .getLangBotReleases()
-      .then((releases) => {
-        if (releases && releases.length > 0) {
-          const latestStable = releases.find((r) => !r.prerelease && !r.draft);
-          const latest = latestStable || releases[0];
-          setLatestRelease(latest);
+    // Cloud edition is updated centrally by the operator, so end users should
+    // not see a "new version available" prompt in the sidebar. Skip the GitHub
+    // release check entirely for edition=cloud.
+    if (systemInfo?.edition !== 'cloud') {
+      getCloudServiceClientSync()
+        .getLangBotReleases()
+        .then((releases) => {
+          if (releases && releases.length > 0) {
+            const latestStable = releases.find(
+              (r) => !r.prerelease && !r.draft,
+            );
+            const latest = latestStable || releases[0];
+            setLatestRelease(latest);
 
-          const currentVersion = systemInfo?.version;
-          if (currentVersion && latest.tag_name) {
-            const isNewer = compareVersions(latest.tag_name, currentVersion);
-            setHasNewVersion(isNewer);
+            const currentVersion = systemInfo?.version;
+            if (currentVersion && latest.tag_name) {
+              const isNewer = compareVersions(latest.tag_name, currentVersion);
+              setHasNewVersion(isNewer);
+            }
           }
-        }
-      })
-      .catch((error) => {
-        console.error('Failed to fetch releases:', error);
-      });
+        })
+        .catch((error) => {
+          console.error('Failed to fetch releases:', error);
+        });
+    }
 
     getCloudServiceClientSync()
       .getGitHubRepoInfo()
@@ -1310,6 +1708,48 @@ export default function HomeSidebar({
         }
       })
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const contentEl = navigationContentRef.current;
+    if (!contentEl) return;
+
+    let animationFrame = 0;
+    const updateScrollHint = () => {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = requestAnimationFrame(() => {
+        const hasHiddenContent =
+          contentEl.scrollTop + contentEl.clientHeight <
+          contentEl.scrollHeight - SCROLL_HINT_BOTTOM_THRESHOLD;
+        setShowScrollHint(hasHiddenContent);
+      });
+    };
+
+    updateScrollHint();
+    contentEl.addEventListener('scroll', updateScrollHint, { passive: true });
+
+    const resizeObserver = new ResizeObserver(updateScrollHint);
+    resizeObserver.observe(contentEl);
+    if (contentEl.firstElementChild) {
+      resizeObserver.observe(contentEl.firstElementChild);
+    }
+
+    const mutationObserver = new MutationObserver(updateScrollHint);
+    mutationObserver.observe(contentEl, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+    });
+
+    window.addEventListener('resize', updateScrollHint);
+
+    return () => {
+      cancelAnimationFrame(animationFrame);
+      contentEl.removeEventListener('scroll', updateScrollHint);
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      window.removeEventListener('resize', updateScrollHint);
+    };
   }, []);
 
   // Update selected state + notify parent without navigating
@@ -1335,14 +1775,7 @@ export default function HomeSidebar({
 
   function initSelect() {
     const currentPath = pathname;
-    // Match exact route or sub-routes (e.g., /home/bots/abc-123 matches /home/bots)
-    const matchedChild =
-      sidebarConfigList.find(
-        (childConfig) => childConfig.route === currentPath,
-      ) ||
-      sidebarConfigList.find((childConfig) =>
-        currentPath.startsWith(childConfig.route + '/'),
-      );
+    const matchedChild = findSidebarChildForPath(currentPath);
     if (matchedChild) {
       // Route already matches — just select without navigating (preserves ?id= query params)
       selectChild(matchedChild);
@@ -1357,12 +1790,7 @@ export default function HomeSidebar({
 
   function handleRouteChange(pathname: string) {
     if (!pathname.startsWith('/home')) return;
-    // Match exact route or sub-routes (entity detail pages)
-    const routeSelectChild =
-      sidebarConfigList.find((childConfig) => childConfig.route === pathname) ||
-      sidebarConfigList.find((childConfig) =>
-        pathname.startsWith(childConfig.route + '/'),
-      );
+    const routeSelectChild = findSidebarChildForPath(pathname);
     if (routeSelectChild) {
       setSelectedChild(routeSelectChild);
       onSelectedChangeAction(routeSelectChild);
@@ -1396,7 +1824,21 @@ export default function HomeSidebar({
                   className="size-8 rounded-lg"
                 />
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">LangBot</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="truncate font-semibold">LangBot</span>
+                    <Badge
+                      variant="secondary"
+                      className={`shrink-0 px-1 py-0 h-3.5 text-[0.55rem] font-medium ${
+                        systemInfo?.edition === 'cloud'
+                          ? 'border-transparent bg-blue-500 text-white'
+                          : ''
+                      }`}
+                    >
+                      {systemInfo?.edition === 'cloud'
+                        ? t('sidebar.editionCloud')
+                        : t('sidebar.editionCommunity')}
+                    </Badge>
+                  </div>
                   <div className="flex items-center gap-1.5">
                     <span className="truncate text-xs text-muted-foreground">
                       {systemInfo?.version}
@@ -1417,37 +1859,57 @@ export default function HomeSidebar({
         </SidebarHeader>
 
         {/* Navigation items grouped by section */}
-        <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupLabel>{t('sidebar.home')}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <NavItems
-                  selectedChild={selectedChild}
-                  onChildClick={handleChildClick}
-                  section="home"
-                  sectionOpenState={sectionOpenState}
-                  onSectionToggle={handleSectionToggle}
-                />
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-          <SidebarGroup>
-            <SidebarGroupLabel>{t('sidebar.extensions')}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <NavItems
-                  selectedChild={selectedChild}
-                  onChildClick={handleChildClick}
-                  section="extensions"
-                  sectionOpenState={sectionOpenState}
-                  onSectionToggle={handleSectionToggle}
-                />
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-          <PluginPagesNav />
-        </SidebarContent>
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+          <SidebarContent ref={navigationContentRef} className="min-h-0 pb-8">
+            <SidebarGroup>
+              <SidebarGroupLabel>{t('sidebar.home')}</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <NavItems
+                    selectedChild={selectedChild}
+                    onChildClick={handleChildClick}
+                    section="home"
+                    sectionOpenState={sectionOpenState}
+                    onSectionToggle={handleSectionToggle}
+                  />
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+            <SidebarGroup>
+              <SidebarGroupLabel>{t('sidebar.extensions')}</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <NavItems
+                    selectedChild={selectedChild}
+                    onChildClick={handleChildClick}
+                    section="extensions"
+                    sectionOpenState={sectionOpenState}
+                    onSectionToggle={handleSectionToggle}
+                  />
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+            <PluginPagesNav />
+          </SidebarContent>
+          <button
+            type="button"
+            onClick={scrollNavigationToBottom}
+            disabled={!showScrollHint}
+            aria-label={t('sidebar.scrollToBottom')}
+            aria-hidden={!showScrollHint}
+            tabIndex={showScrollHint ? 0 : -1}
+            className={cn(
+              'absolute inset-x-0 bottom-2 z-10 mx-auto flex w-fit justify-center rounded-full transition-opacity duration-200 group-data-[collapsible=icon]:hidden',
+              showScrollHint
+                ? 'pointer-events-auto opacity-100'
+                : 'pointer-events-none opacity-0',
+            )}
+          >
+            <span className="flex size-7 items-center justify-center rounded-full border border-sidebar-border bg-sidebar/95 text-sidebar-foreground/70 shadow-sm backdrop-blur transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
+              <ChevronDown className="size-4" />
+            </span>
+          </button>
+        </div>
 
         {/* Footer */}
         <SidebarFooter>
@@ -1471,15 +1933,7 @@ export default function HomeSidebar({
                 onClick={() => handleModelsDialogChange(true)}
                 tooltip={t('models.title')}
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  aria-hidden="true"
-                  className="text-blue-500"
-                >
-                  <path d="M10.6144 17.7956C10.277 18.5682 9.20776 18.5682 8.8704 17.7956L7.99275 15.7854C7.21171 13.9966 5.80589 12.5726 4.0523 11.7942L1.63658 10.7219C.868536 10.381.868537 9.26368 1.63658 8.92276L3.97685 7.88394C5.77553 7.08552 7.20657 5.60881 7.97427 3.75892L8.8633 1.61673C9.19319.821767 10.2916.821765 10.6215 1.61673L11.5105 3.75894C12.2782 5.60881 13.7092 7.08552 15.5079 7.88394L17.8482 8.92276C18.6162 9.26368 18.6162 10.381 17.8482 10.7219L15.4325 11.7942C13.6789 12.5726 12.2731 13.9966 11.492 15.7854L10.6144 17.7956ZM4.53956 9.82234C6.8254 10.837 8.68402 12.5048 9.74238 14.7996 10.8008 12.5048 12.6594 10.837 14.9452 9.82234 12.6321 8.79557 10.7676 7.04647 9.74239 4.71088 8.71719 7.04648 6.85267 8.79557 4.53956 9.82234ZM19.4014 22.6899 19.6482 22.1242C20.0882 21.1156 20.8807 20.3125 21.8695 19.8732L22.6299 19.5353C23.0412 19.3526 23.0412 18.7549 22.6299 18.5722L21.9121 18.2532C20.8978 17.8026 20.0911 16.9698 19.6586 15.9269L19.4052 15.3156C19.2285 14.8896 18.6395 14.8896 18.4628 15.3156L18.2094 15.9269C17.777 16.9698 16.9703 17.8026 15.956 18.2532L15.2381 18.5722C14.8269 18.7549 14.8269 19.3526 15.2381 19.5353L15.9985 19.8732C16.9874 20.3125 17.7798 21.1156 18.2198 22.1242L18.4667 22.6899C18.6473 23.104 19.2207 23.104 19.4014 22.6899ZM18.3745 19.0469 18.937 18.4883 19.4878 19.0469 18.937 19.5898 18.3745 19.0469Z" />
-                </svg>
+                <Sparkles className="text-blue-500" />
                 <span>{t('models.title')}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -1645,6 +2099,14 @@ export default function HomeSidebar({
                             : starCount}
                         </Badge>
                       )}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        window.open('https://discord.gg/wdNEHETs87', '_blank');
+                      }}
+                    >
+                      <DiscordIcon className="text-[#5865F2]" />
+                      {t('common.joinDiscord')}
                     </DropdownMenuItem>
                   </DropdownMenuGroup>
                   <DropdownMenuSeparator />

@@ -228,6 +228,7 @@ export default function WizardPage() {
           type: parseDynamicFormItemType(item.type),
           options: item.options,
           show_if: item.show_if,
+          login_platform: item.login_platform,
         }),
     );
   }, [adapters, selectedAdapter]);
@@ -247,6 +248,7 @@ export default function WizardPage() {
           type: parseDynamicFormItemType(item.type),
           options: item.options,
           show_if: item.show_if,
+          login_platform: item.login_platform,
         }),
     );
   }, [selectedRunnerConfigStage]);
@@ -937,6 +939,7 @@ function StepBotConfig({
                     is_wizard: true,
                     webhook_url: webhookUrl,
                     extra_webhook_url: extraWebhookUrl,
+                    outbound_ips: systemInfo.outbound_ips,
                   }}
                 />
               </CardContent>

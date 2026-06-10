@@ -6,6 +6,7 @@ from .. import stage, app
 from ...utils import version, proxy
 from ...pipeline import pool, controller, pipelinemgr
 from ...pipeline import aggregator as message_aggregator
+from ...box import service as box_service
 from ...plugin import connector as plugin_connector
 from ...command import cmdmgr
 from ...provider.session import sessionmgr as llm_session_mgr
@@ -28,6 +29,8 @@ from ...api.http.service import mcp as mcp_service
 from ...api.http.service import apikey as apikey_service
 from ...api.http.service import webhook as webhook_service
 from ...api.http.service import monitoring as monitoring_service
+from ...api.http.service import skill as skill_service
+from ...skill import manager as skill_mgr
 from ...api.http.service import maintenance as maintenance_service
 from ...discover import engine as discover_engine
 from ...storage import mgr as storagemgr
@@ -86,6 +89,9 @@ class BuildAppStage(stage.BootingStage):
         webhook_service_inst = webhook_service.WebhookService(ap)
         ap.webhook_service = webhook_service_inst
 
+        skill_service_inst = skill_service.SkillService(ap)
+        ap.skill_service = skill_service_inst
+
         proxy_mgr = proxy.ProxyManager(ap)
         await proxy_mgr.initialize()
         ap.proxy_mgr = proxy_mgr
@@ -129,6 +135,10 @@ class BuildAppStage(stage.BootingStage):
         await llm_session_mgr_inst.initialize()
         ap.sess_mgr = llm_session_mgr_inst
 
+        box_service_inst = box_service.BoxService(ap)
+        await box_service_inst.initialize()
+        ap.box_service = box_service_inst
+
         llm_tool_mgr_inst = llm_tool_mgr.ToolManager(ap)
         await llm_tool_mgr_inst.initialize()
         ap.tool_mgr = llm_tool_mgr_inst
@@ -148,6 +158,11 @@ class BuildAppStage(stage.BootingStage):
         # Initialize message aggregator (after pipeline_mgr, as it needs pipeline config)
         msg_aggregator_inst = message_aggregator.MessageAggregator(ap)
         ap.msg_aggregator = msg_aggregator_inst
+
+        # Initialize skill manager
+        skill_mgr_inst = skill_mgr.SkillManager(ap)
+        await skill_mgr_inst.initialize()
+        ap.skill_mgr = skill_mgr_inst
 
         rag_mgr_inst = rag_mgr.RAGManager(ap)
         await rag_mgr_inst.initialize()

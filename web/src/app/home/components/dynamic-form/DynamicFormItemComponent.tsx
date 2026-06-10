@@ -69,7 +69,6 @@ export default function DynamicFormItemComponent({
   onFileUploaded,
 }: {
   config: IDynamicFormItemSchema;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   field: ControllerRenderProps<any, any>;
   onFileUploaded?: (fileKey: string) => void;
 }) {
@@ -251,7 +250,7 @@ export default function DynamicFormItemComponent({
       return (
         <Input
           type="number"
-          className="max-w-xs"
+          className="w-full max-w-xs"
           {...field}
           onChange={(e) => field.onChange(Number(e.target.value))}
         />
@@ -260,8 +259,8 @@ export default function DynamicFormItemComponent({
     case DynamicFormItemType.STRING:
       if (config.options && config.options.length > 0) {
         return (
-          <div className="flex items-center gap-1.5 max-w-md">
-            <Input className="flex-1" {...field} />
+          <div className="flex w-full max-w-md min-w-0 items-center gap-1.5">
+            <Input className="min-w-0 flex-1" {...field} />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -292,21 +291,26 @@ export default function DynamicFormItemComponent({
           </div>
         );
       }
-      return <Input className="max-w-md" {...field} />;
+      return <Input className="w-full max-w-md" {...field} />;
 
     case DynamicFormItemType.TEXT:
-      return <Textarea {...field} className="min-h-[120px] max-w-2xl" />;
+      return (
+        <Textarea
+          {...field}
+          className="min-h-[120px] w-full max-w-full resize-y overflow-x-hidden break-all"
+        />
+      );
 
     case DynamicFormItemType.BOOLEAN:
       return <Switch checked={field.value} onCheckedChange={field.onChange} />;
 
     case DynamicFormItemType.STRING_ARRAY:
       return (
-        <div className="space-y-2 max-w-md">
+        <div className="w-full max-w-md min-w-0 space-y-2">
           {field.value.map((item: string, index: number) => (
-            <div key={index} className="flex gap-1.5 items-center">
+            <div key={index} className="flex min-w-0 items-center gap-1.5">
               <Input
-                className="flex-1"
+                className="min-w-0 flex-1"
                 value={item}
                 onChange={(e) => {
                   const newValue = [...field.value];
@@ -347,7 +351,7 @@ export default function DynamicFormItemComponent({
     case DynamicFormItemType.SELECT:
       return (
         <Select value={field.value} onValueChange={field.onChange}>
-          <SelectTrigger className="max-w-md bg-[#ffffff] dark:bg-[#2a2a2e]">
+          <SelectTrigger className="w-full max-w-md bg-[#ffffff] dark:bg-[#2a2a2e]">
             <SelectValue placeholder={t('common.select')} />
           </SelectTrigger>
           <SelectContent>
@@ -409,10 +413,10 @@ export default function DynamicFormItemComponent({
       ];
 
       return (
-        <div className="max-w-md flex items-center gap-1.5">
-          <div className="flex-1">
+        <div className="flex w-full max-w-md min-w-0 items-center gap-1.5">
+          <div className="min-w-0 flex-1">
             <Select value={field.value} onValueChange={field.onChange}>
-              <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
+              <SelectTrigger className="min-w-0 bg-[#ffffff] dark:bg-[#2a2a2e]">
                 <SelectValue placeholder={t('models.selectModel')} />
               </SelectTrigger>
               <SelectContent>
@@ -577,9 +581,9 @@ export default function DynamicFormItemComponent({
       );
 
       return (
-        <div className="max-w-md">
+        <div className="w-full max-w-md min-w-0">
           <Select value={field.value} onValueChange={field.onChange}>
-            <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
+            <SelectTrigger className="min-w-0 bg-[#ffffff] dark:bg-[#2a2a2e]">
               <SelectValue placeholder={t('knowledge.selectEmbeddingModel')} />
             </SelectTrigger>
             <SelectContent>
@@ -612,12 +616,12 @@ export default function DynamicFormItemComponent({
       );
 
       return (
-        <div className="max-w-md">
+        <div className="w-full max-w-md min-w-0">
           <Select
             value={field.value || '__none__'}
             onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}
           >
-            <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
+            <SelectTrigger className="min-w-0 bg-[#ffffff] dark:bg-[#2a2a2e]">
               <SelectValue placeholder={t('models.rerank')} />
             </SelectTrigger>
             <SelectContent>
@@ -713,7 +717,7 @@ export default function DynamicFormItemComponent({
         placeholder: string,
       ) => (
         <Select value={value} onValueChange={onChange}>
-          <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
+          <SelectTrigger className="min-w-0 bg-[#ffffff] dark:bg-[#2a2a2e]">
             <SelectValue placeholder={placeholder} />
           </SelectTrigger>
           <SelectContent>
@@ -879,14 +883,14 @@ export default function DynamicFormItemComponent({
       };
 
       return (
-        <div className="space-y-3">
+        <div className="w-full min-w-0 space-y-3">
           {/* Primary model selector */}
           <div>
             <p className="text-xs text-muted-foreground mb-1">
               {t('models.fallback.primary')}
             </p>
-            <div className="flex items-center gap-1.5">
-              <div className="flex-1">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <div className="min-w-0 flex-1">
                 {renderModelSelect(
                   modelValue.primary,
                   (val) => updateValue({ primary: val }),
@@ -918,16 +922,16 @@ export default function DynamicFormItemComponent({
 
           {/* Fallback models */}
           {modelValue.fallbacks.length > 0 && (
-            <div className="space-y-2">
+            <div className="min-w-0 space-y-2">
               <p className="text-xs text-muted-foreground">
                 {t('models.fallback.fallbackList')}
               </p>
               {modelValue.fallbacks.map((fbUuid: string, index: number) => (
-                <div key={index} className="flex items-center gap-2">
+                <div key={index} className="flex min-w-0 items-center gap-2">
                   <span className="text-xs text-muted-foreground w-4 shrink-0">
                     {index + 1}.
                   </span>
-                  <div className="flex-1">
+                  <div className="min-w-0 flex-1">
                     {renderModelSelect(
                       fbUuid,
                       (val) => updateFallbackModel(index, val),
@@ -1003,20 +1007,22 @@ export default function DynamicFormItemComponent({
 
       return (
         <Select value={field.value} onValueChange={field.onChange}>
-          <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
+          <SelectTrigger className="min-w-0 bg-[#ffffff] dark:bg-[#2a2a2e]">
             {field.value && field.value !== '__none__' ? (
               (() => {
                 const selectedKb = knowledgeBases.find(
                   (kb) => kb.uuid === field.value,
                 );
                 return (
-                  <div className="flex items-center gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
                     {selectedKb?.emoji && (
                       <span className="text-sm shrink-0">
                         {selectedKb.emoji}
                       </span>
                     )}
-                    <span>{selectedKb?.name ?? field.value}</span>
+                    <span className="truncate">
+                      {selectedKb?.name ?? field.value}
+                    </span>
                   </div>
                 );
               })()
@@ -1066,9 +1072,9 @@ export default function DynamicFormItemComponent({
 
       return (
         <>
-          <div className="space-y-2">
+          <div className="min-w-0 space-y-2">
             {field.value && field.value.length > 0 ? (
-              <div className="space-y-2">
+              <div className="min-w-0 space-y-2">
                 {field.value.map((kbId: string) => {
                   const currentKb = knowledgeBases.find(
                     (base) => base.uuid === kbId,
@@ -1078,17 +1084,17 @@ export default function DynamicFormItemComponent({
                   return (
                     <div
                       key={kbId}
-                      className="flex items-center justify-between rounded-lg border p-3 hover:bg-accent"
+                      className="flex min-w-0 items-center justify-between rounded-lg border p-3 hover:bg-accent"
                     >
-                      <div className="flex items-center gap-2 flex-1">
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium flex items-center gap-2">
+                          <div className="flex min-w-0 items-center gap-2 font-medium">
                             {currentKb.emoji && (
                               <span className="text-sm shrink-0">
                                 {currentKb.emoji}
                               </span>
                             )}
-                            {currentKb.name}
+                            <span className="truncate">{currentKb.name}</span>
                             {currentKb.knowledge_engine?.name && (
                               <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300">
                                 {extractI18nObject(
@@ -1098,7 +1104,7 @@ export default function DynamicFormItemComponent({
                             )}
                           </div>
                           {currentKb.description && (
-                            <div className="text-sm text-muted-foreground">
+                            <div className="text-sm break-words text-muted-foreground">
                               {currentKb.description}
                             </div>
                           )}
@@ -1221,7 +1227,7 @@ export default function DynamicFormItemComponent({
     case DynamicFormItemType.BOT_SELECTOR:
       return (
         <Select value={field.value} onValueChange={field.onChange}>
-          <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
+          <SelectTrigger className="min-w-0 bg-[#ffffff] dark:bg-[#2a2a2e]">
             <SelectValue placeholder={t('bots.selectBot')} />
           </SelectTrigger>
           <SelectContent>
@@ -1239,9 +1245,9 @@ export default function DynamicFormItemComponent({
     case DynamicFormItemType.TOOLS_SELECTOR:
       return (
         <>
-          <div className="space-y-2">
+          <div className="min-w-0 space-y-2">
             {field.value && field.value.length > 0 ? (
-              <div className="space-y-2">
+              <div className="min-w-0 space-y-2">
                 {field.value.map((toolName: string) => {
                   const currentTool = tools.find(
                     (tool) => tool.name === toolName,
@@ -1250,12 +1256,12 @@ export default function DynamicFormItemComponent({
                   return (
                     <div
                       key={toolName}
-                      className="flex items-center justify-between rounded-lg border p-3 hover:bg-accent"
+                      className="flex min-w-0 items-center justify-between rounded-lg border p-3 hover:bg-accent"
                     >
-                      <div className="flex items-center gap-2 flex-1">
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
                         <Wrench className="h-4 w-4 shrink-0 text-muted-foreground" />
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium">{toolName}</div>
+                          <div className="truncate font-medium">{toolName}</div>
                           {currentTool?.human_desc && (
                             <div className="text-sm text-muted-foreground truncate">
                               {currentTool.human_desc}
@@ -1379,13 +1385,16 @@ export default function DynamicFormItemComponent({
         ? field.value
         : [{ role: 'system', content: '' }];
       return (
-        <div className="space-y-2">
+        <div className="min-w-0 space-y-2">
           {promptItems.map(
             (item: { role: string; content: string }, index: number) => (
-              <div key={index} className="flex gap-2 items-center">
+              <div
+                key={index}
+                className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center"
+              >
                 {/* 角色选择 */}
                 {index === 0 ? (
-                  <div className="w-[120px] px-3 py-2 border rounded bg-gray-50 dark:bg-[#2a292e] text-gray-500 dark:text-white dark:border-gray-600">
+                  <div className="w-full shrink-0 rounded border bg-gray-50 px-3 py-2 text-gray-500 sm:w-[120px] dark:border-gray-600 dark:bg-[#2a292e] dark:text-white">
                     system
                   </div>
                 ) : (
@@ -1410,7 +1419,7 @@ export default function DynamicFormItemComponent({
                 )}
                 {/* 内容输入 */}
                 <Textarea
-                  className="w-[300px]"
+                  className="min-h-20 w-full min-w-0 flex-1 resize-y overflow-x-hidden break-all sm:w-[300px]"
                   value={item.content}
                   onChange={(e) => {
                     const newValue = [...(field.value ?? promptItems)];
@@ -1428,20 +1437,12 @@ export default function DynamicFormItemComponent({
                     className="p-2 hover:bg-gray-100 rounded"
                     onClick={() => {
                       const newValue = (field.value ?? promptItems).filter(
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         (_: any, i: number) => i !== index,
                       );
                       field.onChange(newValue);
                     }}
                   >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                      className="w-5 h-5 text-red-500"
-                    >
-                      <path d="M7 4V2H17V4H22V6H20V21C20 21.5523 19.5523 22 19 22H5C4.44772 22 4 21.5523 4 21V6H2V4H7ZM6 6V20H18V6H6ZM9 9H11V17H9V9ZM13 9H15V17H13V9Z"></path>
-                    </svg>
+                    <Trash2 className="w-5 h-5 text-red-500" />
                   </button>
                 )}
               </div>
@@ -1492,14 +1493,7 @@ export default function DynamicFormItemComponent({
                   }}
                   title={t('common.delete')}
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                    className="w-4 h-4 text-destructive"
-                  >
-                    <path d="M7 4V2H17V4H22V6H20V21C20 21.5523 19.5523 22 19 22H5C4.44772 22 4 21.5523 4 21V6H2V4H7ZM6 6V20H18V6H6ZM9 9H11V17H9V9ZM13 9H15V17H13V9Z"></path>
-                  </svg>
+                  <Trash2 className="w-4 h-4 text-destructive" />
                 </Button>
               </CardContent>
             </Card>
@@ -1531,14 +1525,7 @@ export default function DynamicFormItemComponent({
                   document.getElementById(`file-input-${config.name}`)?.click()
                 }
               >
-                <svg
-                  className="w-4 h-4 mr-2"
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                >
-                  <path d="M11 11V5H13V11H19V13H13V19H11V13H5V11H11Z"></path>
-                </svg>
+                <Plus className="w-4 h-4 mr-2" />
                 {uploading
                   ? t('plugins.fileUpload.uploading')
                   : t('plugins.fileUpload.chooseFile')}
@@ -1584,14 +1571,7 @@ export default function DynamicFormItemComponent({
                     }}
                     title={t('common.delete')}
                   >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                      className="w-4 h-4 text-destructive"
-                    >
-                      <path d="M7 4V2H17V4H22V6H20V21C20 21.5523 19.5523 22 19 22H5C4.44772 22 4 21.5523 4 21V6H2V4H7ZM6 6V20H18V6H6ZM9 9H11V17H9V9ZM13 9H15V17H13V9Z"></path>
-                    </svg>
+                    <Trash2 className="w-4 h-4 text-destructive" />
                   </Button>
                 </CardContent>
               </Card>
@@ -1626,14 +1606,7 @@ export default function DynamicFormItemComponent({
                   ?.click()
               }
             >
-              <svg
-                className="w-4 h-4 mr-2"
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
-                <path d="M11 11V5H13V11H19V13H13V19H11V13H5V11H11Z"></path>
-              </svg>
+              <Plus className="w-4 h-4 mr-2" />
               {uploading
                 ? t('plugins.fileUpload.uploading')
                 : t('plugins.fileUpload.addFile')}

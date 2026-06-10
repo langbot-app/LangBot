@@ -340,6 +340,7 @@ class ProviderAPIRequester(metaclass=abc.ABCMeta):
     """Provider API请求器"""
 
     name: str = None
+    init_api_key: str = 'langbot-init-placeholder'
 
     ap: app.Application
 

@@ -27,10 +27,7 @@ class WebPageBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
     listeners: dict = pydantic.Field(default_factory=dict, exclude=True)
     _ws_adapter: typing.Any = None
 
-    class Config:
-        arbitrary_types_allowed = True
-        # Allow private attributes
-        underscore_attrs_are_private = True
+    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
 
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger, **kwargs):
         super().__init__(config=config, logger=logger, **kwargs)

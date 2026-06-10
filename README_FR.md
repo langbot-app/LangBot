@@ -37,7 +37,7 @@ LangBot est une **plateforme open-source de niveau production** pour créer des 
 
 ### Capacités Clés
 
-- **Conversations IA & Agents** — Dialogues multi-tours, appels d'outils, support multimodal, sortie en streaming. RAG (base de connaissances) intégré avec intégration profonde de [Dify](https://dify.ai), [Coze](https://coze.com), [n8n](https://n8n.io), [Langflow](https://langflow.org).
+- **Conversations IA & Agents** — Dialogues multi-tours, appels d'outils, support multimodal, sortie en streaming. RAG (base de connaissances) intégré avec intégration profonde de [Dify](https://dify.ai), [Coze](https://coze.com), [n8n](https://n8n.io), [Langflow](https://langflow.org), [Deerflow](https://deerflow.tech), [Weknora](https://weknora.weixin.qq.com).
 - **Support Universel des Plateformes de MI** — Un seul code pour Discord, Telegram, Slack, LINE, QQ, WeChat, WeCom, Lark, DingTalk, KOOK.
 - **Prêt pour la Production** — Contrôle d'accès, limitation de débit, filtrage de mots sensibles, surveillance complète et gestion des exceptions. Approuvé par les entreprises.
 - **Écosystème de Plugins** — Des centaines de plugins, architecture événementielle, extensions de composants, et support du [protocole MCP](https://modelcontextprotocol.io/).
@@ -45,6 +45,8 @@ LangBot est une **plateforme open-source de niveau production** pour créer des 
 - **Architecture Multi-Pipeline** — Différents bots pour différents scénarios, avec surveillance complète et gestion des exceptions.
 
 [→ En savoir plus sur toutes les fonctionnalités](https://link.langbot.app/en/docs/features)
+
+📍 Guides pratiques : [déployer un bot IA multiplateforme en 5 minutes](https://blog.langbot.app/en/blog/deploy-ai-bot-in-5-minutes/), [connecter DeepSeek à WeChat, Discord et Telegram](https://blog.langbot.app/en/blog/connect-deepseek-to-wechat/), [exécuter un Dify Agent dans Discord, Telegram et Slack](https://blog.langbot.app/en/blog/dify-agent-discord-telegram-slack/) et [créer un chatbot avec n8n](https://blog.langbot.app/en/blog/n8n-multi-platform-ai-chatbot/).
 
 ---
 
@@ -75,7 +77,7 @@ docker compose up -d
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/en-US/templates/ZKTBDH)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
 
-**Plus d'options :** [Docker](https://link.langbot.app/en/docs/docker) · [Manuel](https://link.langbot.app/en/docs/manual-deploy) · [BTPanel](https://link.langbot.app/en/docs/bt-panel) · [Kubernetes](./docker/README_K8S.md)
+**Plus d'options :** [Docker](https://link.langbot.app/en/docs/docker) · [Manuel](https://link.langbot.app/en/docs/manual-deploy) · [BTPanel](https://link.langbot.app/en/docs/bt-panel) · [Kubernetes](https://docs.langbot.app/en/deploy/langbot/kubernetes)
 
 ---
 

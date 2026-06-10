@@ -119,30 +119,24 @@ async def test_remove_pipeline(mock_app):
 
 @pytest.mark.asyncio
 async def test_runtime_pipeline_execute(mock_app, sample_query):
-    """Test runtime pipeline execution"""
+    """Test runtime pipeline execution with real Pydantic models."""
     pipelinemgr = get_pipelinemgr_module()
     stage = get_stage_module()
     persistence_pipeline = get_persistence_pipeline_module()
+    entities = get_entities_module()
 
-    # Create mock stage that returns a simple result dict (avoiding Pydantic validation)
-    mock_result = Mock()
-    mock_result.result_type = Mock()
-    mock_result.result_type.value = 'CONTINUE'  # Simulate enum value
-    mock_result.new_query = sample_query
-    mock_result.user_notice = ''
-    mock_result.console_notice = ''
-    mock_result.debug_notice = ''
-    mock_result.error_notice = ''
-
-    # Make it look like ResultType.CONTINUE
-    from unittest.mock import MagicMock
-
-    CONTINUE = MagicMock()
-    CONTINUE.__eq__ = lambda self, other: True  # Always equal for comparison
-    mock_result.result_type = CONTINUE
+    # Create result using real Pydantic model (not Mock) to ensure validation
+    real_result = entities.StageProcessResult(
+        result_type=entities.ResultType.CONTINUE,
+        new_query=sample_query,
+        user_notice='',
+        console_notice='',
+        debug_notice='',
+        error_notice='',
+    )
 
     mock_stage = Mock(spec=stage.PipelineStage)
-    mock_stage.process = AsyncMock(return_value=mock_result)
+    mock_stage.process = AsyncMock(return_value=real_result)
 
     # Create stage container
     stage_container = pipelinemgr.StageInstContainer(inst_name='TestStage', inst=mock_stage)

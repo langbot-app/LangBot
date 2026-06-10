@@ -43,8 +43,12 @@ class WebSocketChatRouterGroup(group.RouterGroup):
                     await quart.websocket.send(json.dumps({'type': 'error', 'message': 'WebSocket adapter not found'}))
                     return
 
-                # Find the owning bot for this pipeline (e.g. a web_page_bot)
-                owner_bot = self._find_owner_bot(pipeline_uuid)
+                # Dashboard pipeline-debug sessions must always run under the
+                # built-in websocket_proxy_bot identity. We deliberately do NOT
+                # resolve a web_page_bot owner here — even if one is bound to
+                # the same pipeline, debug requests must not be attributed to
+                # it. The embed widget path (`/api/v1/embed/<bot>/ws/connect`)
+                # is the one that carries the page-bot identity.
 
                 # 注册连接
                 connection = await ws_connection_manager.add_connection(
@@ -73,7 +77,7 @@ class WebSocketChatRouterGroup(group.RouterGroup):
                 )
 
                 # 创建接收和发送任务
-                receive_task = asyncio.create_task(self._handle_receive(connection, websocket_adapter, owner_bot))
+                receive_task = asyncio.create_task(self._handle_receive(connection, websocket_adapter))
                 send_task = asyncio.create_task(self._handle_send(connection))
 
                 # 等待任务完成
@@ -181,14 +185,7 @@ class WebSocketChatRouterGroup(group.RouterGroup):
             except Exception as e:
                 return self.http_status(500, -1, f'Internal server error: {str(e)}')
 
-    def _find_owner_bot(self, pipeline_uuid: str):
-        """Find a user-created bot (e.g. web_page_bot) that owns this pipeline."""
-        for bot in self.ap.platform_mgr.bots:
-            if bot.bot_entity.adapter == 'web_page_bot' and bot.bot_entity.use_pipeline_uuid == pipeline_uuid:
-                return bot
-        return None
-
-    async def _handle_receive(self, connection, websocket_adapter, owner_bot=None):
+    async def _handle_receive(self, connection, websocket_adapter):
         """处理接收消息的任务"""
         try:
             while connection.is_active:
@@ -213,7 +210,10 @@ class WebSocketChatRouterGroup(group.RouterGroup):
                         logger.debug(f'收到消息: {data} from {connection.connection_id}')
 
                         # 处理消息（不等待响应，响应会通过broadcast异步发送）
-                        await websocket_adapter.handle_websocket_message(connection, data, owner_bot=owner_bot)
+                        # owner_bot is intentionally NOT passed: the dashboard
+                        # debug WebSocket must always run under the proxy bot,
+                        # never under a coincidentally-bound web_page_bot.
+                        await websocket_adapter.handle_websocket_message(connection, data)
 
                     elif message_type == 'disconnect':
                         # 客户端主动断开

@@ -10,6 +10,15 @@ body:
       placeholder: "For example: v3.3.0, CentOS x64 Python 3.10.3, Docker"
     validations:
       required: true
+  - type: dropdown
+    attributes:
+      label: Deployment version
+      description: Please select the LangBot deployment version you are using.
+      options:
+        - Community Edition
+        - Cloud Service
+    validations:
+      required: true
   - type: textarea
     attributes:
       label: Exception

@@ -14,23 +14,42 @@ import json
 import sys
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
-# Break the circular import chain before importing n8nsvapi:
-#   n8nsvapi → runner → app → pipelinemgr → all runners → runner (partially init)
-_mock_runner = MagicMock()
-_mock_runner.runner_class = lambda name: (lambda cls: cls)  # no-op decorator
-_mock_runner.RequestRunner = object
-sys.modules.setdefault('langbot.pkg.provider.runner', _mock_runner)
-sys.modules.setdefault('langbot.pkg.core.app', MagicMock())
-sys.modules.setdefault('langbot.pkg.utils.httpclient', MagicMock())
-
 import pytest
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
-from langbot.pkg.provider.runners.n8nsvapi import N8nServiceAPIRunner
+
+# Break the circular import chain while importing n8nsvapi:
+#   n8nsvapi → runner → app → pipelinemgr → all runners → runner (partially init)
+# The stubs are restored in a ``finally`` block so this module does NOT pollute
+# sys.modules for other test modules (e.g. ones importing the real
+# LocalAgentRunner, which would otherwise inherit ``object`` and break).
+# Mirrors master's intent but uses try/finally so a raised import doesn't
+# leave the global namespace in a stubbed state, and includes
+# ``langbot.pkg.utils.httpclient`` which master didn't stub.
+_runner_stub = MagicMock()
+_runner_stub.runner_class = lambda name: (lambda cls: cls)  # no-op decorator
+_runner_stub.RequestRunner = object
+_import_stubs = {
+    'langbot.pkg.provider.runner': _runner_stub,
+    'langbot.pkg.core.app': MagicMock(),
+    'langbot.pkg.utils.httpclient': MagicMock(),
+}
+_saved_modules = {name: sys.modules.get(name) for name in _import_stubs}
+for _name, _stub in _import_stubs.items():
+    sys.modules[_name] = _stub
+try:
+    from langbot.pkg.provider.runners.n8nsvapi import N8nServiceAPIRunner
+finally:
+    for _name, _original in _saved_modules.items():
+        if _original is None:
+            sys.modules.pop(_name, None)
+        else:
+            sys.modules[_name] = _original
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def make_runner(output_key: str = 'response') -> N8nServiceAPIRunner:
     ap = Mock()
@@ -74,6 +93,7 @@ async def collect_chunks(runner: N8nServiceAPIRunner, chunks: list[bytes | str])
 # _process_response: stream format (type:item/end)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_stream_format_single_item():
     """Single item + end in one chunk yields final chunk with full content."""
@@ -82,10 +102,10 @@ async def test_stream_format_single_item():
 
     chunks = await collect_chunks(runner, [data])
 
-    assert len(chunks) >= 1
-    final = chunks[-1]
-    assert final.is_final is True
-    assert final.content == 'hello'
+    assert len(chunks) == 1
+    assert chunks[0].is_final is True
+    assert chunks[0].content == 'hello'
+    assert chunks[0].msg_sequence == 1
 
 
 @pytest.mark.asyncio
@@ -100,9 +120,10 @@ async def test_stream_format_multi_item_accumulates():
 
     chunks = await collect_chunks(runner, chunks_data)
 
-    final = chunks[-1]
-    assert final.is_final is True
-    assert final.content == 'foobar'
+    assert len(chunks) == 1
+    assert chunks[0].is_final is True
+    assert chunks[0].content == 'foobar'
+    assert chunks[0].msg_sequence == 1
 
 
 @pytest.mark.asyncio
@@ -115,9 +136,13 @@ async def test_stream_format_batches_every_8_items():
 
     chunks = await collect_chunks(runner, [data])
 
-    # At least the batch yield at chunk_idx==8 + final yield
-    assert len(chunks) >= 2
-    assert chunks[-1].is_final is True
+    assert len(chunks) == 2
+    assert chunks[0].is_final is False
+    assert chunks[0].content == '01234567'
+    assert chunks[0].msg_sequence == 1
+    assert chunks[1].is_final is True
+    assert chunks[1].content == '01234567'
+    assert chunks[1].msg_sequence == 2
 
 
 @pytest.mark.asyncio
@@ -129,9 +154,9 @@ async def test_stream_format_split_across_network_chunks():
 
     chunks = await collect_chunks(runner, [part1, part2])
 
-    final = chunks[-1]
-    assert final.is_final is True
-    assert final.content == 'world'
+    assert len(chunks) == 1
+    assert chunks[0].is_final is True
+    assert chunks[0].content == 'world'
 
 
 @pytest.mark.asyncio
@@ -143,15 +168,14 @@ async def test_stream_format_no_spurious_empty_yield():
 
     chunks = await collect_chunks(runner, [data])
 
-    # No chunk should have empty content before the real content arrives
-    non_final = [c for c in chunks if not c.is_final]
-    for c in non_final:
-        assert c.content  # must be non-empty
+    assert len(chunks) == 1
+    assert chunks[0].content == 'x'
 
 
 # ---------------------------------------------------------------------------
 # _process_response: plain JSON fallback
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_plain_json_with_output_key():
@@ -222,6 +246,7 @@ async def test_invalid_json_returns_raw_text():
 # ---------------------------------------------------------------------------
 # _call_webhook: output type depends on is_stream
 # ---------------------------------------------------------------------------
+
 
 def make_query(is_stream: bool):
     """Build a minimal Query mock."""

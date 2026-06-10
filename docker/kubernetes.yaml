@@ -1,6 +1,8 @@
 # Kubernetes Deployment for LangBot
 # This file provides Kubernetes deployment manifests for LangBot based on docker-compose.yaml
-# 
+#
+# Full deployment guide (zh/en/ja): https://docs.langbot.app -> Installation -> Kubernetes
+#
 # Usage:
 #   kubectl apply -f kubernetes.yaml
 #
@@ -8,13 +10,15 @@
 #   - A Kubernetes cluster (1.19+)
 #   - kubectl configured to communicate with your cluster
 #   - (Optional) A StorageClass for dynamic volume provisioning
+#   - For the Box sandbox runtime: a node with a reachable Docker daemon
+#     (the box mounts the node's /var/run/docker.sock). See the deployment guide.
 #
 # Components:
 #   - Namespace: langbot
 #   - PersistentVolumeClaims for data persistence
-#   - Deployments for langbot and langbot_plugin_runtime
+#   - Deployments for langbot, langbot-plugin-runtime, and langbot-box (sandbox)
 #   - Services for network access
-#   - ConfigMap for timezone configuration
+#   - ConfigMap for timezone + runtime endpoints
 
 ---
 # Namespace
@@ -83,6 +87,11 @@ metadata:
 data:
   TZ: "Asia/Shanghai"
   PLUGIN__RUNTIME_WS_URL: "ws://langbot-plugin-runtime:5400/control/ws"
+  # Box sandbox runtime endpoint. LangBot connects to the Box runtime over
+  # WebSocket. The hostname MUST match the langbot-box Service name. Note the
+  # in-container default ("langbot_box") uses an underscore, which is an
+  # invalid Kubernetes DNS name — so the endpoint is always set explicitly here.
+  BOX__RUNTIME__ENDPOINT: "ws://langbot-box:5410"
 
 ---
 # Deployment for LangBot Plugin Runtime
@@ -170,6 +179,136 @@ spec:
     name: runtime
 
 ---
+# Deployment for LangBot Box (sandbox) runtime
+#
+# The Box runtime backs LangBot's sandbox tools (exec / read / write / edit /
+# glob / grep), the `activate` skill tool, skill add/edit, and stdio-mode MCP
+# servers. It is OPTIONAL: if you do not deploy it, set `BOX__ENABLED=false` on
+# the langbot Deployment (or `box.enabled: false` in config.yaml) so the
+# dashboard renders cleanly with sandbox features disabled.
+#
+# IMPORTANT — how the sandbox actually runs:
+#   The bundled image ships only the Docker CLI (no dockerd, no nsjail). The Box
+#   runtime therefore creates sandbox containers by talking to a Docker daemon
+#   over the mounted socket (`/var/run/docker.sock`). Because that daemon
+#   resolves bind-mount paths on the NODE filesystem, the Box workspace root
+#   must be the SAME absolute path inside the box container, inside every
+#   sandbox container it spawns, AND on the node. That is why this manifest uses
+#   a hostPath at a fixed absolute path (/app/data/box) and pins langbot + box
+#   to the same node via podAffinity. A normal PVC will NOT work for the box
+#   workspace, because the node's dockerd cannot see paths that exist only
+#   inside the pod's mount namespace.
+#
+# Security note: mounting the host Docker socket grants the Box runtime (and any
+# code executed in the sandbox) effective root on the node. Only deploy Box on
+# nodes you trust for this workload, ideally a dedicated node pool. For a
+# stronger isolation boundary, switch box.backend to 'e2b' (set E2B_API_KEY) and
+# drop the docker.sock mount + hostPath entirely.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: langbot-box
+  namespace: langbot
+  labels:
+    app: langbot-box
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: langbot-box
+  template:
+    metadata:
+      labels:
+        app: langbot-box
+    spec:
+      # Pin to the same node as langbot so they share the hostPath box root.
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: langbot
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: langbot-box
+        image: rockchin/langbot:latest
+        imagePullPolicy: Always
+        # Launched through the same CLI entry point as the plugin runtime.
+        # No flag => WebSocket control transport (default), listening on 5410.
+        command: ["uv", "run", "--no-sync", "-m", "langbot_plugin.cli.__init__", "box"]
+        ports:
+        - containerPort: 5410
+          name: box-rpc
+          protocol: TCP
+        env:
+        - name: TZ
+          valueFrom:
+            configMapKeyRef:
+              name: langbot-config
+              key: TZ
+        # The Box runtime does NOT read box.local.* / BOX__* from its own env;
+        # it receives its configuration from LangBot via the INIT RPC action.
+        # Do not add BOX__* here — they would be silently ignored.
+        volumeMounts:
+        # Box workspace root — identical path on node, box, and sandbox
+        # containers (see the IMPORTANT note above).
+        - name: box-root
+          mountPath: /app/data/box
+        # Host Docker socket — the sandbox backend uses it to create containers.
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          tcpSocket:
+            port: 5410
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          tcpSocket:
+            port: 5410
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      volumes:
+      - name: box-root
+        hostPath:
+          path: /app/data/box
+          type: DirectoryOrCreate
+      - name: docker-sock
+        hostPath:
+          path: /var/run/docker.sock
+          type: Socket
+      restartPolicy: Always
+
+---
+# Service for LangBot Box runtime
+apiVersion: v1
+kind: Service
+metadata:
+  name: langbot-box
+  namespace: langbot
+  labels:
+    app: langbot-box
+spec:
+  type: ClusterIP
+  selector:
+    app: langbot-box
+  ports:
+  - port: 5410
+    targetPort: 5410
+    protocol: TCP
+    name: box-rpc
+
+---
 # Deployment for LangBot
 apiVersion: apps/v1
 kind: Deployment
@@ -213,11 +352,36 @@ spec:
             configMapKeyRef:
               name: langbot-config
               key: PLUGIN__RUNTIME_WS_URL
+        # Box (sandbox) runtime endpoint. Connects LangBot to the langbot-box
+        # Service over WebSocket. Remove this (and the langbot-box Deployment)
+        # and set BOX__ENABLED=false if you do not want the sandbox.
+        - name: BOX__RUNTIME__ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: langbot-config
+              key: BOX__RUNTIME__ENDPOINT
+        # box.local.* config — forwarded to the Box runtime via INIT RPC. The
+        # host_root MUST match the box-root hostPath mountPath below AND the box
+        # Deployment's box-root mountPath, so that skill package paths resolve
+        # identically on both sides and on the node's Docker daemon.
+        - name: BOX__LOCAL__HOST_ROOT
+          value: "/app/data/box"
+        - name: BOX__LOCAL__DEFAULT_WORKSPACE
+          value: "default"
+        - name: BOX__LOCAL__SKILLS_ROOT
+          value: "skills"
+        - name: BOX__LOCAL__ALLOWED_MOUNT_ROOTS
+          value: "/app/data/box"
         volumeMounts:
         - name: data
           mountPath: /app/data
         - name: plugins
           mountPath: /app/plugins
+        # Same node-level box root as the langbot-box Deployment. Mounted over
+        # the data PVC's /app/data/box subpath so both LangBot and the Box
+        # runtime (and the node's dockerd) agree on one absolute path.
+        - name: box-root
+          mountPath: /app/data/box
         resources:
           requests:
             memory: "1Gi"
@@ -250,6 +414,13 @@ spec:
       - name: plugins
         persistentVolumeClaim:
           claimName: langbot-plugins
+      # Node-level box workspace root, shared with the langbot-box Deployment.
+      # hostPath (not PVC) because the node's Docker daemon must see the same
+      # absolute path when bind-mounting workspaces into sandbox containers.
+      - name: box-root
+        hostPath:
+          path: /app/data/box
+          type: DirectoryOrCreate
       restartPolicy: Always
 
 ---

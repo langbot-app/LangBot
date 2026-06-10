@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import abc
 import typing
+from typing import TYPE_CHECKING
 
-from ..core import app
+if TYPE_CHECKING:
+    from ..core import app
+    import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+    import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
 
 preregistered_runners: list[typing.Type[RequestRunner]] = []
@@ -35,7 +39,7 @@ class RequestRunner(abc.ABC):
 
     @abc.abstractmethod
     async def run(
-        self, query: core_entities.Query
-    ) -> typing.AsyncGenerator[llm_entities.Message | llm_entities.MessageChunk, None]:
+        self, query: pipeline_query.Query
+    ) -> typing.AsyncGenerator[provider_message.Message | provider_message.MessageChunk, None]:
         """运行请求"""
         pass

@@ -16,7 +16,13 @@
     ]
   },
   "overrides": {
-    "@radix-ui/react-focus-scope": "1.1.7"
+    "@radix-ui/react-focus-scope": "1.1.7",
+    "flatted": ">=3.4.2",
+    "follow-redirects": ">=1.16.0",
+    "minimatch@>=3.0.0 <3.1.3": "3.1.3",
+    "minimatch@>=9.0.0 <9.0.7": "9.0.7",
+    "picomatch@>=2.0.0 <2.3.2": "2.3.2",
+    "picomatch@>=4.0.0 <4.0.4": "4.0.4"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -46,7 +52,7 @@
     "@tailwindcss/postcss": "^4.1.5",
     "@tanstack/react-table": "^8.21.3",
     "@vitejs/plugin-react": "^6.0.1",
-    "axios": "^1.15.0",
+    "axios": "^1.16.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "highlight.js": "^11.11.1",
@@ -55,7 +61,7 @@
     "input-otp": "^1.4.2",
     "lodash": "^4.18.0",
     "lucide-react": "^0.507.0",
-    "postcss": "^8.5.3",
+    "postcss": "^8.5.10",
     "qrcode": "^1.5.4",
     "react": "19.2.1",
     "react-dom": "19.2.1",
@@ -63,7 +69,7 @@
     "react-i18next": "^15.5.1",
     "react-markdown": "^10.1.0",
     "react-photo-view": "^1.2.7",
-    "react-router-dom": "^7.14.0",
+    "react-router-dom": "^7.15.0",
     "react-syntax-highlighter": "^16.1.0",
     "recharts": "2.15.4",
     "rehype-autolink-headings": "^7.1.0",
@@ -107,7 +113,12 @@
   "packageManager": "pnpm@8.9.2+sha512.b9d35fe91b2a5854dadc43034a3e7b2e675fa4b56e20e8e09ef078fa553c18f8aed44051e7b36e8b8dd435f97eb0c44c4ff3b44fc7c6fa7d21e1fac17bbe661e",
   "pnpm": {
     "overrides": {
-      "minimatch": "3.1.3"
+      "minimatch@>=3.0.0 <3.1.3": "3.1.3",
+      "minimatch@>=9.0.0 <9.0.7": "9.0.7",
+      "picomatch@>=2.0.0 <2.3.2": "2.3.2",
+      "picomatch@>=4.0.0 <4.0.4": "4.0.4",
+      "flatted": ">=3.4.2",
+      "follow-redirects": ">=1.16.0"
     }
   }
 }

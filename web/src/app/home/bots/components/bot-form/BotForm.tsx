@@ -13,6 +13,7 @@ import { IDynamicFormItemSchema } from '@/app/infra/entities/form/dynamic';
 import { UUID } from 'uuidjs';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import { httpClient } from '@/app/infra/http/HttpClient';
+import { systemInfo } from '@/app/infra/http';
 import { Bot } from '@/app/infra/entities/api';
 import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
 import { ExternalLink } from 'lucide-react';
@@ -267,6 +268,7 @@ export default function BotForm({
               type: parseDynamicFormItemType(item.type),
               options: item.options,
               show_if: item.show_if,
+              login_platform: item.login_platform,
             }),
         ),
       );
@@ -620,6 +622,7 @@ export default function BotForm({
                   extra_webhook_url: extraWebhookUrl,
                   bot_uuid: initBotId || '',
                   adapter_config: form.getValues('adapter_config') || {},
+                  outbound_ips: systemInfo.outbound_ips,
                 }}
               />
             )}

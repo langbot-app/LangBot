@@ -5,6 +5,8 @@ import argparse
 import sys
 import os
 
+from langbot.pkg.utils import paths
+
 # ASCII art banner
 asciiart = r"""
  _                   ___      _   
@@ -27,6 +29,12 @@ async def main_entry(loop: asyncio.AbstractEventLoop):
         help='Use standalone plugin runtime / 使用独立插件运行时',
         default=False,
     )
+    parser.add_argument(
+        '--standalone-box',
+        action='store_true',
+        help='Use standalone box runtime / 使用独立 Box 运行时',
+        default=False,
+    )
     parser.add_argument('--debug', action='store_true', help='Debug mode / 调试模式', default=False)
     args = parser.parse_args()
 
@@ -34,6 +42,11 @@ async def main_entry(loop: asyncio.AbstractEventLoop):
         from langbot.pkg.utils import platform
 
         platform.standalone_runtime = True
+
+    if args.standalone_box:
+        from langbot.pkg.utils import platform
+
+        platform.standalone_box = True
 
     if args.debug:
         from langbot.pkg.utils import constants
@@ -87,7 +100,7 @@ def main():
     # Set up the working directory
     # When installed as a package, we need to handle the working directory differently
     # We'll create data directory in current working directory if not exists
-    os.makedirs('data', exist_ok=True)
+    os.makedirs(paths.get_data_root(), exist_ok=True)
 
     loop = asyncio.new_event_loop()
 

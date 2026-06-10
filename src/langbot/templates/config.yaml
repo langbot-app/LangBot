@@ -21,10 +21,23 @@ system:
     recovery_key: ''
     allow_modify_login_info: true
     disabled_adapters: []
+    # Public outbound IP addresses of this LangBot deployment. Some platforms
+    # (e.g. WeCom, WeChat Official Account, QQ Official API) require the
+    # caller's IPs to be added to their trusted-IP / IP-whitelist settings.
+    # When set, the web UI shows these IPs on the bot config form of such
+    # adapters. Also settable via the SYSTEM__OUTBOUND_IPS env var
+    # (comma-separated). Empty list = hidden in the web UI.
+    outbound_ips: []
     limitation:
         max_bots: -1
         max_pipelines: -1
         max_extensions: -1
+        # When set to a non-empty string, every pipeline is forced to use this
+        # Box sandbox-scope template regardless of its own configuration, and
+        # the per-pipeline "Sandbox Scope" selector is locked in the web UI.
+        # Used by SaaS deployments to confine a tenant to a single shared
+        # sandbox (set to '{global}'). Empty string = no restriction.
+        force_box_session_id_template: ''
     task_retention:
         # Keep at most this many completed async task records in memory
         completed_limit: 200
@@ -104,6 +117,31 @@ monitoring:
         check_interval_hours: 1
         # Number of expired rows to delete per table batch
         delete_batch_size: 1000
+box:
+    # Master switch for the Box sandbox runtime. When false, LangBot does NOT
+    # attempt to connect to a remote Box runtime nor start a local stdio Box
+    # subprocess. Disabling Box also disables every feature that depends on it:
+    # the native sandbox tools (exec/read/write/edit/glob/grep), the activate
+    # skill tool, skill add/edit, and stdio-mode MCP servers. Skills can still
+    # be listed read-only and http/sse MCP servers continue to work.
+    enabled: true
+    backend: 'local'  # 'local' (Docker/nsjail), 'docker', 'nsjail', or 'e2b'. Can be written via BOX__BACKEND.
+    runtime:
+        endpoint: ''  # External Box Runtime base URL, e.g. 'ws://127.0.0.1:5410'. Leave empty for local auto-managed runtime.
+    local:
+        profile: 'default'
+        image: ''  # Custom local sandbox image. Leave empty to use the profile default.
+        host_root: './data/box'  # Base host directory for local workspace mounts. Docker deployments should override this with an absolute host path.
+        default_workspace: ''  # Defaults to '<host_root>/default'. Relative paths are resolved under host_root.
+        skills_root: 'skills'  # Box-owned skill package directory. Relative paths are resolved under host_root.
+        allowed_mount_roots:  # Defaults to ['<host_root>'] when left empty.
+            - './data/box'
+            - '/tmp'
+        workspace_quota_mb: null  # Optional disk quota override (>= 0). null = profile default.
+    e2b:
+        api_key: ''  # Can also be set via E2B_API_KEY env var.
+        api_url: ''  # Custom API URL for self-hosted deployments.
+        template: ''  # Default template ID (e.g. 'base', 'python-3.11').
 space:
     # Space service URL for OAuth and API
     url: 'https://space.langbot.app'

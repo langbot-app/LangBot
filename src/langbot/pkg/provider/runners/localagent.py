@@ -5,6 +5,7 @@ import copy
 import typing
 from .. import runner
 from ..modelmgr import requester as modelmgr_requester
+from ..tools.loaders.native import EXEC_TOOL_NAME
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.builtin.rag.context as rag_context
@@ -24,10 +25,43 @@ Respond in the same language as the user's input.
 </user_message>
 """
 
+SANDBOX_EXEC_TOOL_NAME = 'sandbox_exec'
+SANDBOX_EXEC_SYSTEM_GUIDANCE = (
+    'When sandbox_exec is available, use it for exact calculations, statistics, structured data parsing, '
+    'and code execution instead of estimating mentally. If the user provides numbers, tables, CSV-like text, '
+    'JSON, or other data and asks for a computed answer, prefer running a short Python script in sandbox_exec '
+    'and then answer from the tool result.'
+)
+
+
+# Hard cap on tool-call rounds within a single agent turn. A looping or
+# adversarial model can otherwise emit tool calls indefinitely (each potentially
+# a sandbox exec), yielding a non-terminating request and runaway cost. Set
+# generously so it never interrupts legitimate multi-step agentic workflows.
+MAX_TOOL_CALL_ROUNDS = 128
+
 
 @runner.runner_class('local-agent')
 class LocalAgentRunner(runner.RequestRunner):
     """Local agent request runner"""
+
+    def _build_request_messages(
+        self,
+        query: pipeline_query.Query,
+        user_message: provider_message.Message,
+    ) -> list[provider_message.Message]:
+        req_messages = query.prompt.messages.copy() + query.messages.copy()
+
+        if any(getattr(tool, 'name', None) == EXEC_TOOL_NAME for tool in query.use_funcs or []):
+            req_messages.append(
+                provider_message.Message(
+                    role='system',
+                    content=self.ap.box_service.get_system_guidance(),
+                )
+            )
+
+        req_messages.append(user_message)
+        return req_messages
 
     async def _get_model_candidates(
         self,
@@ -131,6 +165,7 @@ class LocalAgentRunner(runner.RequestRunner):
     ) -> typing.AsyncGenerator[provider_message.Message | provider_message.MessageChunk, None]:
         """Run request"""
         pending_tool_calls = []
+        initial_response_emitted = False
 
         # Get knowledge bases list from query variables (set by PreProcessor,
         # may have been modified by plugins during PromptPreProcessing)
@@ -236,7 +271,7 @@ class LocalAgentRunner(runner.RequestRunner):
                     ce.text = final_user_message_text
                     break
 
-        req_messages = query.prompt.messages.copy() + query.messages.copy() + [user_message]
+        req_messages = self._build_request_messages(query, user_message)
 
         try:
             is_stream = await query.adapter.is_stream_output_supported()
@@ -264,7 +299,6 @@ class LocalAgentRunner(runner.RequestRunner):
                 query.use_funcs,
                 remove_think,
             )
-            yield msg
             final_msg = msg
         else:
             # Streaming: invoke with fallback
@@ -312,6 +346,7 @@ class LocalAgentRunner(runner.RequestRunner):
                         is_final=msg.is_final,
                         msg_sequence=msg_sequence,
                     )
+                    initial_response_emitted = True
 
             final_msg = provider_message.MessageChunk(
                 role=last_role,
@@ -325,11 +360,25 @@ class LocalAgentRunner(runner.RequestRunner):
         if isinstance(final_msg, provider_message.MessageChunk):
             first_end_sequence = final_msg.msg_sequence
 
+        if not is_stream:
+            yield final_msg
+        elif not initial_response_emitted:
+            yield final_msg
+            initial_response_emitted = True
+
         req_messages.append(final_msg)
 
         # Once a model succeeds, commit to it for the tool call loop
         # (no fallback mid-conversation — different models may interpret tool results differently)
+        tool_call_round = 0
         while pending_tool_calls:
+            tool_call_round += 1
+            if tool_call_round > MAX_TOOL_CALL_ROUNDS:
+                self.ap.logger.warning(
+                    f'Tool-call loop reached the {MAX_TOOL_CALL_ROUNDS}-round cap '
+                    f'(query_id={query.query_id}); stopping to avoid a non-terminating request.'
+                )
+                break
             for tool_call in pending_tool_calls:
                 try:
                     func = tool_call.function
@@ -369,7 +418,15 @@ class LocalAgentRunner(runner.RequestRunner):
 
                     req_messages.append(msg)
                 except Exception as e:
-                    err_msg = provider_message.Message(role='tool', content=f'err: {e}', tool_call_id=tool_call.id)
+                    if is_stream:
+                        err_msg = provider_message.MessageChunk(
+                            role='tool',
+                            content=f'err: {e}',
+                            tool_call_id=tool_call.id,
+                            is_final=True,
+                        )
+                    else:
+                        err_msg = provider_message.Message(role='tool', content=f'err: {e}', tool_call_id=tool_call.id)
 
                     yield err_msg
 
