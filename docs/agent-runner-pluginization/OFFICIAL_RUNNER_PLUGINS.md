@@ -76,7 +76,7 @@ execution:
 - 通过 `AgentRunAPIProxy.history` 拉取 transcript，而不是依赖 host 每轮强塞历史窗口。
 - `ctx.input.contents` 保留图片/文件等多模态内容；RAG 只替换/插入文本部分，不丢图片/文件。
 - 不能绕过 `ctx.resources` 调用未授权模型、工具或知识库。
-- manifest 只声明功能能力和配置表单；资源授权来自 binding resource policy、runner config、`ctx.context.available_apis` 和 Host run session snapshot。
+- manifest 声明功能能力、LangBot 资源 permissions 和配置表单；实际授权来自 manifest permissions 与 binding resource policy、runner config、`ctx.context.available_apis` 和 Host run session snapshot 的交集。
 
 ### 5.1 Native Execution / Skills 后续接入
 
@@ -88,7 +88,9 @@ execution:
 
 ### 6.1 Code-agent harness runner
 
-Claude Code、Codex、Kimi Code 这类 runner 不一定通过 LangBot 的模型/工具 loop 执行，可以依赖自己的 harness，但仍必须遵守 Host 边界：输入来自 `ctx.event` / `ctx.input`，不依赖 Pipeline 私有 `Query`；授权资源只投影为 harness 可读的 context、资源句柄、SDK-owned MCP bridge 配置、受限环境变量或 CLI 参数（投影形态见 AGENT_CONTEXT_PROTOCOL §4.5）；访问任何 LangBot 资源都必须通过 SDK runtime / `AgentRunAPIProxy` / SDK-owned MCP bridge 转发，不能由 harness native tools 直接访问；外部 session id / workspace / checkpoint 写入 Host state 或 plugin storage；插件实例边界见 PROTOCOL_V1 §13；CLI / subprocess runner 必须处理 timeout、取消、空输出、非零退出和 stderr 映射；harness 的 permission mode / allow-deny / MCP 配置只是一层执行约束，Host 仍负责调用前的资源授权、路径策略、secret 过滤和审计（发布级要求见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)）。
+Claude Code、Codex、Kimi Code 这类 runner 不一定通过 LangBot 的模型/工具 loop 执行，可以依赖自己的 harness，但仍必须遵守统一 Host 边界。总体边界见 [HOST_SDK_INFRASTRUCTURE.md](./HOST_SDK_INFRASTRUCTURE.md) §4.8；context projection 形态见 [AGENT_CONTEXT_PROTOCOL.md](./AGENT_CONTEXT_PROTOCOL.md) §4.5；发布级要求见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
+
+本文件只补充官方 runner 的实现要求：输入来自 `ctx.event` / `ctx.input`，不依赖 Pipeline 私有 `Query`；外部 session id / workspace / checkpoint 写入 Host state 或 plugin storage；插件实例边界见 PROTOCOL_V1 §13；CLI / subprocess runner 必须处理 timeout、取消、空输出、非零退出和 stderr 映射。
 
 实现结构应把 provider-native output 解析与 LangBot result stream 组装分开：Claude stream-json、Codex JSONL、Kimi / OpenCode 事件等只在 runner adapter 内解析，输出统一归一为 `AgentRunResult`（`message.completed` / `message.delta`、`state.updated`、`artifact.created`、`run.completed` / `run.failed`）。未知 native event 不应导致 run 崩溃；应记录诊断 metadata 或 warning。新增 harness 时优先补 native fixture -> `AgentRunResult` 的转换测试，再接 WebUI smoke。
 

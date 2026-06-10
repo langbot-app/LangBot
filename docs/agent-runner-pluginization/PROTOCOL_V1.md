@@ -2,7 +2,7 @@
 
 本文档是 LangBot Host 与插件 SDK / Runtime / AgentRunner 之间协议合同的**唯一规范来源（single source of truth）**。
 
-- 本文件描述当前 Protocol v1 稳定合同，不混入验收流水。测试执行入口和 smoke 记录见 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md)，安全发布门槛见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
+- 本文件描述当前 Protocol v1 稳定合同，不混入验收流水。当前实现状态见 [STATUS.md](./STATUS.md)，测试执行入口见 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md)，安全发布门槛见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
 - 本文件之外的任何文档**不得重新定义这里的数据结构**，只能引用，例如"见 PROTOCOL_V1 §4.2"。
 - Host 内部模型（`AgentEventEnvelope`、`AgentBinding`、Descriptor、各 Store）不属于 SDK 协议，定义在 [HOST_SDK_INFRASTRUCTURE.md](./HOST_SDK_INFRASTRUCTURE.md)。
 
@@ -114,7 +114,7 @@ class AgentRunnerCapabilities(BaseModel):
 - `skill_authoring`: runner 需要 Host 提供 skill facts 以及 skill authoring tools，例如 `activate` / `register_skill`。
 - `interrupt`: runner 支持取消或中断。
 
-Capabilities 字段全部是 `bool`，未知 key 禁止进入 typed manifest。`event_context`、`stateful_session`、`self_managed_context` 等早期草案 key 不属于 Protocol v1 capabilities；对应语义由 event-first context 和 runner-owned context 原则表达。
+Capabilities 字段全部是 `bool`，未知 key 禁止进入 typed manifest。早期草案里的上下文/会话类 capability 已删除；对应语义由 event-first context 和 runner-owned context 原则表达。
 
 ### 4.4 Permissions 与 Effective Access
 
@@ -132,7 +132,7 @@ class AgentRunnerPermissions(BaseModel):
     model_config = ConfigDict(extra="forbid")
 ```
 
-`platform_api` 不属于当前 permissions。Platform action executor / EBA action 分支落地前，runner 只能返回 `action.requested` telemetry，Host 不执行平台动作。
+平台动作执行不属于当前 permissions。Platform action executor / EBA action 分支落地前，runner 只能返回 `action.requested` telemetry，Host 不执行平台动作。
 
 Runner 实际可用 LangBot 资源来自 Host 在 run 前冻结的授权快照：
 
@@ -636,7 +636,7 @@ Protocol v1 的安全边界在 Host：
 
 Host 不负责业务编排：不拼接全量历史、不替 runner 做 prompt assembly、不内置 agent memory / tool loop / 上下文压缩策略。这些由官方或第三方 AgentRunner 插件实现。
 
-对外部 harness runner，Host 在调用前完成 binding/resource policy 裁剪、路径策略、secret 过滤和审计；runner plugin 把授权后的 context/resource projection 适配为目标 harness 的形式；harness 的 native permission mode、allowed/disallowed tools 只是额外执行约束，不能替代 Host 授权。
+外部 harness runner 的边界统一见 HOST_SDK §4.8。简言之：harness native permission mode、allowed/disallowed tools、shell/MCP 权限只是额外执行约束，不能替代 Host 对 LangBot 资源的授权。
 
 > 发布级路径隔离、MCP allowlist、secret redaction、配额、workspace 清理等**不属于** v1 协议闭环，是生产默认启用前的 release gate，见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
 
