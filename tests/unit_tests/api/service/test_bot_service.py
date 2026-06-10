@@ -52,6 +52,23 @@ def _create_mock_result(items: list = None, first_item=None):
     return result
 
 
+def _create_mock_discover(adapter_webhook_flags: dict[str, bool] = None):
+    """Create mock ComponentDiscoveryEngine exposing MessagePlatformAdapter manifests.
+
+    adapter_webhook_flags maps adapter name -> whether its manifest declares a
+    webhook-url config item (mirrors _adapter_declares_webhook_url's lookup).
+    """
+    components = []
+    for name, has_webhook in (adapter_webhook_flags or {}).items():
+        component = SimpleNamespace()
+        component.metadata = SimpleNamespace(name=name)
+        component.spec = {'config': ([{'name': 'webhook_url', 'type': 'webhook-url'}] if has_webhook else [])}
+        components.append(component)
+    discover = SimpleNamespace()
+    discover.get_components_by_kind = Mock(return_value=components)
+    return discover
+
+
 class TestBotServiceGetBots:
     """Tests for get_bots method."""
 
@@ -219,6 +236,7 @@ class TestBotServiceGetRuntimeBotInfo:
         }
         ap.platform_mgr = SimpleNamespace()
         ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=None)
+        ap.discover = _create_mock_discover({'wecom': True})
 
         bot_data = {
             'uuid': 'wecom-uuid',
@@ -245,6 +263,7 @@ class TestBotServiceGetRuntimeBotInfo:
         ap.instance_config.data = {'api': {}}
         ap.platform_mgr = SimpleNamespace()
         ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=None)
+        ap.discover = _create_mock_discover({'telegram': False})
 
         bot_data = {
             'uuid': 'telegram-uuid',
@@ -276,6 +295,7 @@ class TestBotServiceGetRuntimeBotInfo:
         runtime_bot.adapter = SimpleNamespace()
         runtime_bot.adapter.bot_account_id = 'runtime-account-123'
         ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=runtime_bot)
+        ap.discover = _create_mock_discover({'telegram': False})
 
         bot_data = {
             'uuid': 'runtime-uuid',
@@ -303,13 +323,7 @@ class TestBotServiceCreateBot:
         ap = SimpleNamespace()
         ap.persistence_mgr = SimpleNamespace()
         ap.instance_config = SimpleNamespace()
-        ap.instance_config.data = {
-            'system': {
-                'limitation': {
-                    'max_bots': 2
-                }
-            }
-        }
+        ap.instance_config.data = {'system': {'limitation': {'max_bots': 2}}}
         ap.platform_mgr = SimpleNamespace()
         ap.platform_mgr.load_bot = AsyncMock()
 
@@ -318,9 +332,7 @@ class TestBotServiceCreateBot:
         bot2 = _create_mock_bot(bot_uuid='uuid-2')
         mock_result = _create_mock_result([bot1, bot2])
         ap.persistence_mgr.execute_async = AsyncMock(return_value=mock_result)
-        ap.persistence_mgr.serialize_model = Mock(
-            return_value={'uuid': 'uuid-1', 'name': 'Bot 1'}
-        )
+        ap.persistence_mgr.serialize_model = Mock(return_value={'uuid': 'uuid-1', 'name': 'Bot 1'})
 
         service = BotService(ap)
 
@@ -352,6 +364,7 @@ class TestBotServiceCreateBot:
         bot_result.first = Mock(return_value=_create_mock_bot())
 
         call_count = 0
+
         async def mock_execute(query):
             nonlocal call_count
             call_count += 1
@@ -362,9 +375,7 @@ class TestBotServiceCreateBot:
             return bot_result  # Get bot
 
         ap.persistence_mgr.execute_async = AsyncMock(side_effect=mock_execute)
-        ap.persistence_mgr.serialize_model = Mock(
-            return_value={'uuid': 'new-uuid', 'name': 'New Bot'}
-        )
+        ap.persistence_mgr.serialize_model = Mock(return_value={'uuid': 'new-uuid', 'name': 'New Bot'})
 
         service = BotService(ap)
 
@@ -397,6 +408,7 @@ class TestBotServiceCreateBot:
         bot_result.first = Mock(return_value=_create_mock_bot())
 
         call_count = 0
+
         async def mock_execute(query):
             nonlocal call_count
             call_count += 1
@@ -492,6 +504,7 @@ class TestBotServiceUpdateBot:
         pipeline_result.first = Mock(return_value=mock_pipeline)
 
         call_count = 0
+
         async def mock_execute(query):
             nonlocal call_count
             call_count += 1
@@ -582,10 +595,9 @@ class TestBotServiceListEventLogs:
         # Mock runtime bot with logger
         runtime_bot = SimpleNamespace()
         runtime_bot.logger = SimpleNamespace()
-        runtime_bot.logger.get_logs = AsyncMock(return_value=(
-            [SimpleNamespace(to_json=Mock(return_value={'msg': 'log1'}))],
-            5
-        ))
+        runtime_bot.logger.get_logs = AsyncMock(
+            return_value=([SimpleNamespace(to_json=Mock(return_value={'msg': 'log1'}))], 5)
+        )
         ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=runtime_bot)
 
         service = BotService(ap)
@@ -646,11 +658,7 @@ class TestBotServiceSendMessage:
         service = BotService(ap)
 
         # Execute with valid message chain format
-        message_chain_data = {
-            'messages': [
-                {'type': 'text', 'data': {'text': 'Hello'}}
-            ]
-        }
+        message_chain_data = {'messages': [{'type': 'text', 'data': {'text': 'Hello'}}]}
 
         # Patch the import location - the module imports inside the function
         with patch('langbot_plugin.api.entities.builtin.platform.message.MessageChain') as MockMessageChain:
