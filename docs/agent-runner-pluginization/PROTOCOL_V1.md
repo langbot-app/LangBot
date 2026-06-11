@@ -660,7 +660,7 @@ Runner 失败使用 `run.failed`：
 
 - Host 在 `ctx.runtime.deadline_at` 下发总 deadline；SDK proxy 必须用该 deadline 限制单次 action timeout。
 - Host 可以取消 active run；Runtime 应尽力中断 runner。
-- Protocol v1 的 run 绑定当前 Host 进程和当前 runtime channel，不保证跨 Host 重启恢复。Host 重启、runtime channel 断开或 run session 丢失时，Runtime / remote daemon 必须 fail-fast 并尽力取消仍在执行的 runner，不得继续使用旧 `run_id` 调用 Host API。
+- Protocol v1 的 run 绑定当前 Host 进程和当前 runtime channel，不保证跨 Host 重启恢复。Host 重启、runtime channel 断开或 run session 丢失时，Runtime / external harness connector 必须 fail-fast 并尽力取消仍在执行的 runner，不得继续使用旧 `run_id` 调用 Host API。
 - Runner 支持中断时应返回或触发 `run.failed`，code 为 `cancelled`。
 - Host 必须 unregister active run session。
 

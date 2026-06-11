@@ -67,7 +67,7 @@ EventGateway / EventRouter 在本文档中描述为 **external EBA branch integr
 | envelope | Host 内部事件封装，即 `AgentEventEnvelope`；runner 看到的是由它投影出的 `ctx.event`。 |
 | descriptor / manifest | runner discovery 的能力和配置描述；manifest 来自插件，descriptor 是 Host 校验后的注册表视图。 |
 | EBA | Event Based Agent，把消息、撤回、入群、定时任务等都统一成 host event 的接入方向；完整网关和路由在外部 EBA 分支联调。 |
-| harness runner | Claude Code、Codex 等已有自身 session / tool loop / MCP / 压缩机制的外部 runtime adapter。 |
+| harness runner | LiteLLM Agent Platform、Claude Code、Codex 等已有自身 session / tool loop / MCP / 压缩机制的外部 runtime adapter。 |
 | projection | Host 把内部事实源、授权资源或配置裁剪成 runner / harness 可消费视图的过程。 |
 | Runtime Control Plane | v2 Host 能力层，第一阶段重点是 Host-owned run/result ledger 与 control primitives；runtime registry、heartbeat、task queue 和 daemon claim 是后续可选阶段，不是 Protocol v1 主线。 |
 

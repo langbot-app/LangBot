@@ -6,7 +6,7 @@
 
 **当前结论：暂不塞进本阶段 agent-runner plugin 协议闭环。**
 
-本阶段目标是验证 LangBot 可以通过统一的 `run(event, binding)` 协议接入 `local-agent` 与外部 harness runner（如 Claude Code runner），并能传递事件、上下文、资源句柄、状态和结果流。
+本阶段目标是验证 LangBot 可以通过统一的 `run(event, binding)` 协议接入 `local-agent` 与外部 harness runner（当前官方路径为 LiteLLM Agent Platform runner），并能传递事件、上下文、资源句柄、状态和结果流。
 
 安全发布级 hardening 是后续 release gate，不应阻塞当前协议闭环，但必须作为进入生产默认启用前的验收条件。
 
@@ -63,7 +63,7 @@ Claude Code、Codex、Kimi Code 等外部 harness 可以继续使用自身的权
 
 - 由可信管理员配置 runner binding，并显式启用外部 harness 风险模式。
 - 工作目录和 context 输出目录为显式配置或 host 生成路径。
-- 外部 runner 应尽量使用保守权限，例如 plan / no-write 模式或禁用高风险工具；当前 Claude Code MVP 仍包含高风险执行模式，只能作为 dev / smoke path。
+- 外部 runner 应尽量使用保守权限，例如 plan / no-write 模式或禁用高风险工具；具体 provider-native 高风险模式只能作为管理员显式 opt-in 的 dev / smoke path。
 - 通过 timeout、max turns、输出长度和进程取消降低失控风险。
 - 通过 host-owned state 保存 `external.session_id`、`external.working_directory` 等 resume 所需指针。
 
@@ -89,16 +89,16 @@ Claude Code、Codex、Kimi Code 等外部 harness 可以继续使用自身的权
 
 | 项目 | 状态 | 当前已补 | 仍缺口 / 发布前要求 |
 | --- | --- | --- | --- |
-| Path isolation | Partial | 本地 Claude / Codex runner 会规范化 `working-directory`，拒绝系统根目录、用户 home 和不存在路径；context directory 必须是工作目录内相对路径，拒绝绝对路径、`..` 和 symlink 逃逸；remote daemon 对投影文件使用相对路径 + `realpath` containment，拒绝绝对路径、`..` 和 workspace 内 symlink 写出；ArtifactStore 对 file artifact 使用 `realpath` + root containment 复核。 | Host 生成 workspace / context / artifact root 还缺统一 allowlist、mount 策略、TTL cleanup 和 orphan cleanup；管理员显式 `working-directory` 仍是 operator-owned local directory，LangBot 不承诺阻止外部 CLI 访问同一 OS 用户可访问的所有路径。 |
-| Permission boundary | Partial | Host 已有 manifest permissions 与 binding resource policy 交集、run-scoped authorization snapshot、`ctx.context.available_apis`、proxy action `caller_plugin_identity` 校验；Claude Code `--dangerously-skip-permissions` 已改为显式配置，默认 false；Codex 默认 `sandbox=read-only`、`approval_policy=never`，并过滤用户 `mcp_servers.*` config override。 | 外部 CLI 的 native 文件 / 进程 / tool 能力仍属于 operator-owned execution；manifest permissions 只约束 LangBot 持有资源，生产默认或 managed runner 需要容器/VM/OS 级隔离、tool allow/deny 和可审计审批，不能把 runner manifest 当成外部 CLI 的完整权限边界。 |
-| Secret handling | Partial | 子进程不再继承完整 LangBot / daemon 环境，只保留 CLI auth、proxy、locale、CA 等 allowlisted env；Codex `environment-json` 禁止覆盖 `HOME`、`PATH`、`CODEX_HOME`、`PYTHONPATH` 和 `LANGBOT_*`；Codex per-run `CODEX_HOME` 会继承 runtime 用户的 Codex auth/session 和非 MCP provider config，但剥离全局 `mcp_servers`；LangBot managed MCP 写入 per-run `CODEX_HOME/config.toml` 且 `0600`，scoped secret 不进入 argv；remote daemon MCP config / `mcp.json` 使用 `0600`；stdout/stderr、错误和 diagnostic artifact 做 redaction + 输出截断；相关单测覆盖 secret/env 泄漏。 | 仍缺 Host 全链路统一 redaction policy、transcript / artifact metadata / admin UI 脱敏规则、secret 来源与轮换策略、跨 runner 的配置脱敏审计。 |
-| MCP policy | Partial | SDK-owned per-run LangBot MCP bridge 已有；remote MCP channel 有 per-run secret；bridge 只暴露 SDK annotated tool surface；Codex managed MCP 不允许用户通过 `config-overrides` 注入/覆盖 `mcp_servers.*`，也不继承 runtime 用户全局 `mcp_servers`；remote Codex MCP secret 不进 argv。 | 缺 Host / Admin 级外部 MCP server allowlist、scoped token 生命周期、tool allow / deny 策略、危险工具审批和 MCP 调用审计。 |
+| Path isolation | Partial | ArtifactStore 对 file artifact 使用 `realpath` + root containment 复核；Host 侧 run/session 生命周期和 resource authorization 已建立。 | LiteLLM Agent Platform 所在机器的 workspace、挂载、CLI 可访问路径和 cleanup 由部署侧承担；Host 生成 workspace / context / artifact root 还缺统一 allowlist、mount 策略、TTL cleanup 和 orphan cleanup。 |
+| Permission boundary | Partial | Host 已有 manifest permissions 与 binding resource policy 交集、run-scoped authorization snapshot、`ctx.context.available_apis`、proxy action `caller_plugin_identity` 校验；LiteLLM gateway 回访 LangBot 资产时必须携带 `run_id` 并接受 Host 校验。 | 外部 harness 的 native 文件 / 进程 / tool 能力仍属于 operator-owned execution；manifest permissions 只约束 LangBot 持有资源，生产默认或 managed runner 需要容器/VM/OS 级隔离、tool allow/deny 和可审计审批。 |
+| Secret handling | Partial | LangBot 持有的资源访问不直接投影 secret 给 harness；LiteLLM gateway 使用 bearer token 保护入口，真实 LangBot 资产请求回到 Host action 校验。 | 仍缺 Host 全链路统一 redaction policy、transcript / artifact metadata / admin UI 脱敏规则、secret 来源与轮换策略、跨 runner 的配置脱敏审计；LiteLLM 部署侧的 provider token、CLI auth 和日志脱敏另行负责。 |
+| MCP policy | Partial | LiteLLM runner 暴露稳定 HTTP MCP gateway，只提供 history page、knowledge retrieve、authorized tool call 等最小工具面；错误或过期 `run_id` 会被 Host 拒绝。 | 缺 Host / Admin 级外部 MCP server allowlist、scoped token 生命周期、tool allow / deny 策略、危险工具审批和 MCP 调用审计；后续如 LiteLLM 原生支持 run-scoped MCP session，应改为平台级传递 run scope。 |
 | Skill access policy | Partial | Host resource builder 会按 runner capability 和 resource policy 暴露 skill-backed scoped tool；当前 code-agent runner 不再接受用户手写 `skills-json`，避免 runner binding 任意投影 skill；skill tool 路径和可见性已有部分单测。 | 缺 code-agent harness 的发布级 skill 来源验证、版本 / hash 记录、projection cleanup 和审计；如后续需要 harness-native skill 文件，也必须由 Host / sandbox 生成受限 tool surface，不能绕过 SDK runtime 访问 LangBot 资源。 |
-| Process isolation | Partial | Host runtime deadline、runner subprocess timeout、timeout 后 kill、remote request size limit 已有；本地 Claude / Codex 和 remote daemon 子进程使用新进程组，timeout / cancel 路径会杀进程组；stdout/stderr 有输出上限；Codex 默认使用 `sandbox=read-only`、`approval_policy=never`；Claude Code 高风险 bypass 默认关闭。 | CPU / 内存 / 文件 / 容器 hard quota、网络策略、长期 workspace GC 和平台级 cancel/audit 仍只作为 managed/cloud/default external harness 的 full gate。self-host stdio 只能做到 runner wrapper 层的 timeout / kill / output bound。 |
-| State lifecycle | Partial | PersistentStateStore 有 runner / binding / scope 隔离、JSON size limit、state get / set / list / delete；外部 runner 已写回 `external.session_id`、本地 `external.working_directory`、远端 `external.runtime_id` / `external.workspace_key`，避免把远端绝对路径当成 Host resume 事实。 | 缺 session / workspace / artifact TTL、过期清理、迁移策略、orphan cleanup 和 lifecycle audit；managed/default runner 需要 Host first-class workspace 生命周期。 |
+| Process isolation | Partial | Host runtime deadline 和 runner timeout 已有；LiteLLM runner 对 HTTP 调用设置 timeout 并把服务错误映射为受控失败。 | 外部 harness 子进程、取消、输出上限、CPU / 内存 / 文件 / 容器 hard quota、网络策略、长期 workspace GC 和平台级 cancel/audit 由 LiteLLM 部署侧或后续 managed/cloud/default external harness gate 负责。 |
+| State lifecycle | Partial | PersistentStateStore 有 runner / binding / scope 隔离、JSON size limit、state get / set / list / delete；LiteLLM runner 会写回外部 session id，避免把具体 provider 的内部路径当成 Host resume 事实。 | 缺 session / workspace / artifact TTL、过期清理、迁移策略、orphan cleanup 和 lifecycle audit；managed/default runner 需要 Host first-class workspace 生命周期。 |
 | Audit first-class | Partial | EventLog、Transcript、ArtifactStore、PersistentStateStore 已能记录主链路事实；proxy 校验失败会写 warning。 | 资源授权快照、外部命令、MCP tool 决策、secret redaction、cleanup、resume / workspace 生命周期还不是一等 audit surface。 |
 | UI / Admin control | Missing | 当前 Pipeline runner 配置能选择插件 runner。 | 缺管理员可见的 runner 权限摘要、风险提示、生产禁用 / 启用入口、resource binding 管理、MCP / skill / workspace 策略 UI。 |
-| Test matrix | Partial | 已有 run authorization、caller identity、artifact、state、history / event pull API、local / remote path escape、remote symlink escape、env allowlist / secret 泄漏、Claude dangerous mode 显式启用、timeout、进程组 kill、MCP bridge、remote MCP 回访、Codex MCP secret 不进 argv、Codex per-run auth/config seed、skill visibility 等单测；runner 仓库 `pytest` / `ruff` 已通过；本机真实 Claude Code CLI 与 Codex CLI 的 runner 级 E2E 已通过。 | 仍缺 Host UI smoke、生产禁用入口、MCP deny / dangerous tool 审计、workspace cleanup / audit 完整性矩阵；CPU / memory / container quota 测试属于 managed/cloud/default full gate。 |
+| Test matrix | Partial | 已有 run authorization、caller identity、artifact、state、history / event pull API、LiteLLM HTTP session、run_id prompt 注入、gateway MCP 回访、错误 run_id 拒绝、skill visibility 等单测；runner 仓库 `pytest` / `ruff` 应保持通过。 | 仍缺 Host UI smoke、真实 LiteLLM Agent Platform harness E2E、生产禁用入口、MCP deny / dangerous tool 审计、workspace cleanup / audit 完整性矩阵；CPU / memory / container quota 测试属于 managed/cloud/default full gate。 |
 
 ## 非当前范围
 
@@ -106,6 +106,6 @@ Claude Code、Codex、Kimi Code 等外部 harness 可以继续使用自身的权
 
 - 完整异步队列与 issue-centric 产品模型。
 - 复杂 workflow engine。
-- Codex / Kimi runner 全量接入。
+- 具体 CLI provider 直连适配器全量接入。
 - EBA 分支的完整迁移由外部 EBA 分支联调；本阶段只复用其需要的 AgentRunner Host 底座。
 - 发布级安全 hardening 的完整实现。

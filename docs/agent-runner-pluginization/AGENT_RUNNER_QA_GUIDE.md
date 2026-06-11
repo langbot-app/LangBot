@@ -17,7 +17,7 @@ event -> binding -> runner.run(ctx) -> result stream
 - Host 能通过当前 Query entry adapter 进入 event-first `run(event, binding)` 主链路。
 - Runner 来自插件 registry，而不是旧内置 runner 分支。
 - `local-agent` 能消费 Host 模型、工具、知识库、history、state、artifact 等基础设施。
-- 外部 harness runner（Claude Code / Codex）能消费 event-first context，并把 session / working directory 等指针写回 host-owned state。
+- 外部 harness runner（当前为 LiteLLM Agent Platform 统一入口）能消费 event-first context，并把外部 session 指针写回 host-owned state。
 - 错误、权限裁剪、无输出、timeout 等路径不会破坏主聊天流程。
 
 本指南不验证：
@@ -49,7 +49,7 @@ event -> binding -> runner.run(ctx) -> result stream
 1. Host / SDK / runner 单测。
 2. WebUI 登录与 Pipeline Debug Chat 基础 smoke。
 3. `local-agent` 高价值场景。
-4. Claude Code / Codex 外部 harness smoke。
+4. LiteLLM Agent Platform 外部 harness smoke。
 5. 权限和错误路径补充检查。
 6. 汇总 PASS / FAIL / BLOCKED，并给出下一步建议。
 
@@ -148,52 +148,32 @@ bin/lbs case list
 
 Rerank、remove-think、文件输入等场景只在本次改动直接涉及时补测，不作为每轮必跑项。
 
-## 7. 外部 Harness Runner Smoke
+## 7. LiteLLM Agent Platform Harness Smoke
 
-这些测试用于验证 Claude Code / Codex 这类自管 runtime 能走同一条 Host 协议路径。若本机没有 CLI、登录态或代理配置，标记 BLOCKED，不要伪造 PASS。
+这些测试用于验证 Claude Code / Codex 这类自管 runtime 经 LiteLLM Agent Platform 能走同一条 Host 协议路径。若 LiteLLM Agent Platform 服务不可用、目标 harness 没有 CLI/登录态/代理配置，标记 BLOCKED，不要伪造 PASS。
 
-Smoke 前应优先保留一层轻量单测或 fixture 测试：provider-native output（Claude stream-json、Codex JSONL、外部 API SSE / JSON）必须能稳定转换成 `AgentRunResult`，未知 native event 只记录诊断，不导致解析器崩溃。WebUI smoke 证明真实链路可用，但不能替代转换层和错误映射测试。
+Smoke 前应优先保留一层轻量单测或 fixture 测试：LiteLLM Agent Platform HTTP session、消息发送、结果解析、`run_id` 提示词注入和 LangBot MCP gateway 必须有稳定测试覆盖。WebUI smoke 证明真实链路可用，但不能替代转换层和错误映射测试。
 
-### 7.1 Claude Code runner
+### 7.1 LiteLLM Agent Platform runner
 
 步骤：
 
-1. 确认 `claude` CLI 在 LangBot runtime host 上可执行。
-2. 绑定 `plugin:langbot/claude-code-agent/default`。
-3. 使用保守权限模式和确定性 prompt。
-4. 在 Debug Chat 执行一次真实 smoke。
-5. 检查 context / SDK-owned MCP bridge / skill-backed scoped tools 和 host-owned state。
+1. 确认 LiteLLM Agent Platform 服务可访问，目标 harness（例如 Claude Code 或 Codex）在该服务所在机器上可执行且已登录。
+2. 绑定 `plugin:langbot/litellm-agent-platform-agent/default`。
+3. 配置 `base-url`、`api-mode`、`agent-id` 或 `harness` 等必要字段。
+4. 在 Debug Chat 执行一次确定性真实 smoke。
+5. 检查 LangBot MCP gateway、`run_id` 回填和 host-owned state。
 
 通过条件：
 
 - WebUI 可见回复包含预期 sentinel。
-- context JSON schema 为 `langbot.agent_runner.external_harness_context.v1` 或当前文档声明的等价 schema。
-- context 包含 event、input、delivery、resources、context、state。
-- 如启用 LangBot skills / MCP，Claude Code 只能通过 SDK-owned MCP bridge 或 skill-backed scoped tools 访问 LangBot 资源；不能用 native tools 直接访问。
-- `external.session_id` / `external.working_directory` 写入 host-owned state。
-- CLI missing、nonzero exit、timeout、empty output 都转成受控 `run.failed`。
-- resume 到同一 `external.session_id` 时，不并发写入同一 native session；全局锁边界符合 PROTOCOL_V1 §13。
+- 发送给 LiteLLM 的消息包含当前 LangBot `run_id` 和可访问资源摘要。
+- Harness 通过 gateway 调用 `langbot_history_page`、`langbot_retrieve_knowledge` 或 `langbot_call_tool` 时必须携带正确 `run_id`；错误 run id 被拒绝。
+- `external.session_id` 写入 host-owned state。
+- LiteLLM 服务错误、timeout、empty output 都转成受控 `run.failed`。
+- resume 到同一 external session 时，全局锁边界符合 PROTOCOL_V1 §13。
 
-### 7.2 Codex runner
-
-步骤：
-
-1. 确认 `codex` CLI 在 LangBot runtime host 上可执行。
-2. 绑定 `plugin:langbot/codex-agent/default`。
-3. 如需要代理，使用 Agent/runner config 的 `environment-json` 显式传入。
-4. 在 Debug Chat 执行一次真实 smoke。
-5. 检查 JSONL 事件、last message、host-owned state。
-
-通过条件：
-
-- WebUI 可见回复包含预期 sentinel。
-- Codex JSONL 至少包含 thread/session 起始事件、agent message、turn completed。
-- `external.session_id` / `external.working_directory` 写入 host-owned state。
-- timeout/cancel 不遗留 orphan CLI 子进程。
-- CLI missing、nonzero exit、timeout、empty output 都转成受控 `run.failed`。
-- resume 到同一 `thread_id` / `external.session_id` 时，不并发写入同一 native session；全局锁边界符合 PROTOCOL_V1 §13。
-
-### 7.3 API 型外部 runner
+### 7.2 API 型外部 runner
 
 Dify、n8n、Coze、DashScope、Langflow、Tbox 等外部服务 runner 不作为每轮必跑项。只有在本次改动触及对应 runner 或凭据已经可用时执行 smoke。
 

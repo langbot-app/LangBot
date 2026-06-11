@@ -234,7 +234,7 @@ LangBot 可提供 host-owned state 让 runner 寄宿状态（conversation / acto
 
 Claude Code、Codex、Kimi Code 等外部 harness runner 可能不直接调用 LangBot 的 model/tool loop，而是把 LangBot 事件和授权资源句柄投影到自己的 harness 执行。Host 侧仍保持统一边界：Host 负责构造 event-first context、资源授权、state/storage、EventLog/Transcript/ArtifactStore 和审计；Host 或 binding policy 决定哪些 MCP bridge、skill-backed tool、artifact、history/state 句柄可投影给 runner；runner plugin 把 scoped projection 转成目标 harness 可消费形式；所有 LangBot 资源访问必须经 SDK runtime / `AgentRunAPIProxy` / SDK-owned MCP bridge 转发并接受 Host 校验；外部 harness 负责自己的 native session、tool loop、压缩、权限模式和 resume，但不能用 native tools 绕过 Host 授权。
 
-投影的具体形态（context 文件、resource handles、SDK-owned MCP bridge、state pointers）见 AGENT_CONTEXT_PROTOCOL §4.5；Claude Code / Codex 当前实现见 OFFICIAL_RUNNER_PLUGINS §7。发布级隔离要求见 SECURITY_HARDENING。
+投影的具体形态（context 文件、resource handles、LangBot MCP gateway、state pointers）见 AGENT_CONTEXT_PROTOCOL §4.5；当前 LiteLLM Agent Platform runner 形态见 OFFICIAL_RUNNER_PLUGINS §7。发布级隔离要求见 SECURITY_HARDENING。
 
 ## 5. SDK 侧协议
 

@@ -26,8 +26,8 @@ Agent Platform plugin
   Agent management UI / project-task model / event routing policy
   Business queue / multi-agent orchestration / runtime selection policy
 
-AgentRunner plugin / SDK remote daemon / external harness
-  Connects Claude Code / Codex / remote agent / subprocess / HTTP API
+AgentRunner plugin / external harness runtime
+  Connects LiteLLM Agent Platform / remote agent / subprocess / HTTP API
   Executes and converts provider-native events to AgentRunResult
 ```
 
@@ -500,6 +500,6 @@ Tests: 40+ 个文件
 - Platform 插件创建 run 时，是否传完整 `AgentBinding` snapshot，还是引用 Host-owned binding id。
 - `AgentRunEvent` 与现有 `EventLog` / `Transcript` 的查询关系：直接 join，还是通过专门 view 聚合。
 - `run.append_result` 的认证粒度：runner plugin identity、run token、scoped capability token，或 SDK runtime 内部 channel。
-- 取消语义：同步 runner、remote daemon、external harness session 如何统一感知 cancel。
+- 取消语义：同步 runner、external harness runtime/session 如何统一感知 cancel。
 - 何时把插件私有 daemon heartbeat 提升为 Host `RuntimeLease`。
 - 若未来 Host 做 claim lease，Platform 插件业务 queue 与 Host execution queue 如何避免双队列混乱。
