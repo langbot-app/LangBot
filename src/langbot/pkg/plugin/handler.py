@@ -1719,6 +1719,44 @@ class RuntimeConnectionHandler(handler.Handler):
                 self.ap.logger.error(f'EVENT_PAGE error: {e}', exc_info=True)
                 return handler.ActionResponse.error(message=f'Event page error: {e}')
 
+        @self.action(PluginToRuntimeAction.STEERING_PULL)
+        async def steering_pull(data: dict[str, Any]) -> handler.ActionResponse:
+            """Pull pending steering/follow-up inputs for the current run."""
+            run_id = data.get('run_id')
+            mode = data.get('mode', 'all')
+            limit = data.get('limit')
+            caller_plugin_identity = data.get('caller_plugin_identity')
+
+            if not run_id:
+                return handler.ActionResponse.error(message='run_id is required')
+
+            if limit is not None:
+                try:
+                    limit = int(limit)
+                except (TypeError, ValueError):
+                    return handler.ActionResponse.error(message='limit must be an integer')
+                if limit <= 0:
+                    return handler.ActionResponse.error(message='limit must be > 0')
+                limit = min(limit, 100)
+
+            session, error = await _validate_agent_run_session(
+                run_id,
+                caller_plugin_identity,
+                self.ap,
+                'Steering pull',
+                api_capability='steering_pull',
+            )
+            if error:
+                return error
+
+            session_registry = get_session_registry()
+            items = await session_registry.pull_steering(
+                run_id,
+                mode=str(mode or 'all'),
+                limit=limit,
+            )
+            return handler.ActionResponse.success(data={'items': items})
+
         # ================= Artifact APIs =================
 
         @self.action(PluginToRuntimeAction.ARTIFACT_METADATA)
@@ -1881,6 +1919,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 caller_plugin_identity,
                 self.ap,
                 'State get',
+                api_capability='state',
             )
             if error:
                 return error
@@ -1927,6 +1966,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 caller_plugin_identity,
                 self.ap,
                 'State set',
+                api_capability='state',
             )
             if error:
                 return error
@@ -1988,6 +2028,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 caller_plugin_identity,
                 self.ap,
                 'State delete',
+                api_capability='state',
             )
             if error:
                 return error
@@ -2035,6 +2076,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 caller_plugin_identity,
                 self.ap,
                 'State list',
+                api_capability='state',
             )
             if error:
                 return error

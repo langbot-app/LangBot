@@ -393,6 +393,22 @@ class QueryEntryAdapter:
                 text = str(content)
                 contents.append({'type': 'text', 'text': text})
 
+        if not contents:
+            message_chain = getattr(query, 'message_chain', None) or []
+            for component in message_chain:
+                if isinstance(component, platform_message.Plain):
+                    component_text = getattr(component, 'text', '')
+                    if component_text:
+                        text_parts.append(component_text)
+                        contents.append({'type': 'text', 'text': component_text})
+                elif isinstance(component, platform_message.Image):
+                    image_base64 = getattr(component, 'base64', None)
+                    image_url = getattr(component, 'url', None)
+                    if image_base64:
+                        contents.append({'type': 'image_base64', 'image_base64': image_base64})
+                    elif image_url:
+                        contents.append({'type': 'image_url', 'image_url': {'url': image_url}})
+
         if text_parts:
             text = ''.join(text_parts)
 

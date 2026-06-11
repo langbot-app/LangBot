@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 import typing
 
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
@@ -200,6 +201,98 @@ class AgentRunOrchestrator:
     def resolve_runner_id_for_telemetry(self, query: pipeline_query.Query) -> str | None:
         """Resolve runner ID for telemetry/logging without full execution."""
         return self.query_bridge.resolve_runner_id_for_telemetry(query)
+
+    async def try_claim_steering_from_query(
+        self,
+        query: pipeline_query.Query,
+    ) -> bool:
+        """Claim a query as steering input for an active run when possible."""
+        plan = self.query_bridge.build_plan(query)
+        event = plan.event
+        binding = plan.binding
+
+        if event.event_type != 'message.received' or not event.conversation_id:
+            return False
+
+        descriptor = await self.registry.get(binding.runner_id, plan.bound_plugins)
+        if not descriptor.supports_steering():
+            return False
+
+        target_run_id = await self._session_registry.find_steering_target(
+            conversation_id=event.conversation_id,
+            runner_id=descriptor.id,
+        )
+        if target_run_id is None:
+            return False
+
+        steering_item = self._build_steering_item(event, target_run_id, descriptor.id)
+        if not await self._session_registry.enqueue_steering(target_run_id, steering_item):
+            return False
+
+        try:
+            event_log_id = await self.journal.write_event_log(
+                event=event,
+                binding=binding,
+                run_id=target_run_id,
+                runner_id=descriptor.id,
+            )
+            await self.journal.register_input_artifacts(
+                event=event,
+                run_id=target_run_id,
+                runner_id=descriptor.id,
+            )
+            await self.journal.write_user_transcript(event, event_log_id)
+        except Exception as exc:
+            self.ap.logger.warning(
+                f'Failed to persist steering event {event.event_id} for run {target_run_id}: {exc}',
+                exc_info=True,
+            )
+
+        self.ap.logger.info(
+            f'Claimed event {event.event_id} as steering input for run {target_run_id}'
+        )
+        return True
+
+    def _build_steering_item(
+        self,
+        event: AgentEventEnvelope,
+        run_id: str,
+        runner_id: str,
+    ) -> dict[str, typing.Any]:
+        """Build the run-scoped steering item returned by the Host pull API."""
+        return {
+            'claimed_run_id': run_id,
+            'runner_id': runner_id,
+            'claimed_at': int(time.time()),
+            'event': {
+                'event_id': event.event_id,
+                'event_type': event.event_type,
+                'event_time': event.event_time,
+                'source': event.source,
+                'source_event_type': event.source_event_type,
+                'raw_ref': event.raw_ref.model_dump(mode='json') if event.raw_ref else None,
+                'data': event.data,
+            },
+            'conversation': {
+                'conversation_id': event.conversation_id,
+                'thread_id': event.thread_id,
+                'bot_id': event.bot_id,
+                'workspace_id': event.workspace_id,
+            },
+            'actor': event.actor.model_dump(mode='json') if event.actor else None,
+            'subject': event.subject.model_dump(mode='json') if event.subject else None,
+            'input': {
+                'text': event.input.text if event.input else None,
+                'contents': [
+                    c.model_dump(mode='json') if hasattr(c, 'model_dump') else c
+                    for c in (event.input.contents if event.input else [])
+                ],
+                'attachments': [
+                    a.model_dump(mode='json') if hasattr(a, 'model_dump') else a
+                    for a in (event.input.attachments if event.input else [])
+                ],
+            },
+        }
 
     async def _invoke_runner(
         self,

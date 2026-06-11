@@ -76,3 +76,7 @@ class AgentRunnerDescriptor(pydantic.BaseModel):
     def supports_knowledge_retrieval(self) -> bool:
         """Check if runner supports knowledge retrieval."""
         return self.capabilities.knowledge_retrieval
+
+    def supports_steering(self) -> bool:
+        """Check if runner supports run steering/follow-up input."""
+        return bool(getattr(self.capabilities, 'steering', False))

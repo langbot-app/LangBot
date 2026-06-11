@@ -21,11 +21,38 @@ class Controller:
         self.ap = ap
         self.semaphore = asyncio.Semaphore(self.ap.instance_config.data['concurrency']['pipeline'])
 
+    async def _try_claim_steering_before_session_slot(
+        self,
+        query: pipeline_query.Query,
+    ) -> bool:
+        """Claim steering while the normal per-session slot is still busy.
+
+        Follow-up input must be claimed before it waits behind the session
+        semaphore; otherwise the active run can finish before the query reaches
+        ChatMessageHandler.try_claim_steering_from_query.
+        """
+        pipeline_uuid = query.pipeline_uuid
+        if not pipeline_uuid:
+            return False
+
+        pipeline = await self.ap.pipeline_mgr.get_pipeline_by_uuid(pipeline_uuid)
+        if not pipeline:
+            return False
+
+        session = await self.ap.sess_mgr.get_session(query)
+        query.session = session
+        query.pipeline_config = pipeline.pipeline_entity.config
+        query.variables['_pipeline_bound_plugins'] = pipeline.bound_plugins
+        query.variables['_pipeline_bound_mcp_servers'] = pipeline.bound_mcp_servers
+
+        return await self.ap.agent_run_orchestrator.try_claim_steering_from_query(query)
+
     async def consumer(self):
         """事件处理循环"""
         try:
             while True:
                 selected_query: pipeline_query.Query = None
+                claimed_steering_query: pipeline_query.Query = None
 
                 # 取请求
                 async with self.ap.query_pool:
@@ -36,6 +63,13 @@ class Controller:
                         # Debug logging removed from tight loop to prevent excessive log generation
                         # that can cause memory overflow in high-traffic scenarios
 
+                        if session._semaphore.locked():
+                            if await self._try_claim_steering_before_session_slot(query):
+                                claimed_steering_query = query
+                                self.ap.logger.debug(f'Claimed query {query.query_id} as steering before session slot')
+                                break
+                            continue
+
                         if not session._semaphore.locked():
                             selected_query = query
                             await session._semaphore.acquire()
@@ -44,7 +78,12 @@ class Controller:
 
                             break
 
-                    if selected_query:  # 找到了
+                    if claimed_steering_query:
+                        queries.remove(claimed_steering_query)
+                        self.ap.query_pool.cached_queries.pop(claimed_steering_query.query_id, None)
+                        self.ap.query_pool.condition.notify_all()
+                        continue
+                    elif selected_query:  # 找到了
                         queries.remove(selected_query)
                     else:  # 没找到 说明：没有请求 或者 所有query对应的session都已达到并发上限
                         await self.ap.query_pool.condition.wait()

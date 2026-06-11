@@ -32,6 +32,9 @@ class RunAuthorizationSnapshot(typing.TypedDict):
     authorized_ids: dict[str, set[str]]
 
 
+SteeringQueueItem = dict[str, typing.Any]
+
+
 class AgentRunSession(typing.TypedDict):
     """Session for an active agent runner execution.
 
@@ -51,6 +54,7 @@ class AgentRunSession(typing.TypedDict):
     plugin_identity: str  # author/name
     authorization: RunAuthorizationSnapshot
     status: AgentRunSessionStatus
+    steering_queue: list[SteeringQueueItem]
 
 
 class AgentRunSessionRegistry:
@@ -128,6 +132,7 @@ class AgentRunSessionRegistry:
                 'started_at': now,
                 'last_activity_at': now,
             },
+            'steering_queue': [],
         }
 
         async with self._lock:
@@ -174,6 +179,76 @@ class AgentRunSessionRegistry:
         async with self._lock:
             if run_id in self._sessions:
                 self._sessions[run_id]['status']['last_activity_at'] = int(time.time())
+
+    async def find_steering_target(
+        self,
+        *,
+        conversation_id: str,
+        runner_id: str,
+    ) -> str | None:
+        """Find the oldest active run that can accept steering for a conversation."""
+        async with self._lock:
+            candidates: list[tuple[int, str]] = []
+            for run_id, session in self._sessions.items():
+                authorization = session['authorization']
+                if session.get('runner_id') != runner_id:
+                    continue
+                if authorization.get('conversation_id') != conversation_id:
+                    continue
+                if not authorization.get('available_apis', {}).get('steering_pull', False):
+                    continue
+                candidates.append((session['status'].get('started_at', 0), run_id))
+
+            if not candidates:
+                return None
+
+            candidates.sort(key=lambda item: item[0])
+            return candidates[0][1]
+
+    async def enqueue_steering(
+        self,
+        run_id: str,
+        item: SteeringQueueItem,
+    ) -> bool:
+        """Append one steering item to an active run queue."""
+        async with self._lock:
+            session = self._sessions.get(run_id)
+            if session is None:
+                return False
+            session['steering_queue'].append(copy.deepcopy(item))
+            session['status']['last_activity_at'] = int(time.time())
+            return True
+
+    async def pull_steering(
+        self,
+        run_id: str,
+        *,
+        mode: str = 'all',
+        limit: int | None = None,
+    ) -> list[SteeringQueueItem]:
+        """Pop pending steering items from a run queue."""
+        async with self._lock:
+            session = self._sessions.get(run_id)
+            if session is None:
+                return []
+
+            queue = session['steering_queue']
+            if not queue:
+                return []
+
+            normalized_mode = str(mode or 'all').lower()
+            if normalized_mode in {'one', 'one-at-a-time', 'one_at_a_time'}:
+                count = 1
+            elif isinstance(limit, int) and limit > 0:
+                count = min(limit, len(queue))
+            else:
+                count = len(queue)
+
+            count = max(0, min(count, len(queue), 100))
+            items = [copy.deepcopy(item) for item in queue[:count]]
+            del queue[:count]
+            session['status']['last_activity_at'] = int(time.time())
+            return items
 
     def is_resource_allowed(
         self,

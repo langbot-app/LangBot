@@ -85,13 +85,17 @@ class ChatMessageHandler(handler.MessageHandler):
 
             text_length = 0
             try:
-                is_stream = await query.adapter.is_stream_output_supported()
-            except AttributeError:
-                is_stream = False
-
-            try:
                 # Mark start time for telemetry
                 start_ts = time.time()
+
+                if await self.ap.agent_run_orchestrator.try_claim_steering_from_query(query):
+                    yield entities.StageProcessResult(result_type=entities.ResultType.INTERRUPT, new_query=query)
+                    return
+
+                try:
+                    is_stream = await query.adapter.is_stream_output_supported()
+                except AttributeError:
+                    is_stream = False
 
                 # Create a single resp_message_id for the entire streaming response
                 resp_message_id = uuid.uuid4()

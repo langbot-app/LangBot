@@ -103,6 +103,7 @@ class AgentRunnerCapabilities(BaseModel):
     multimodal_input: bool = False
     skill_authoring: bool = False
     interrupt: bool = False
+    steering: bool = False
 
     model_config = ConfigDict(extra="forbid")
 ```
@@ -113,6 +114,7 @@ class AgentRunnerCapabilities(BaseModel):
 - `multimodal_input`: runner 可以处理非纯文本 input / artifact。
 - `skill_authoring`: runner 需要 Host 提供 skill facts 以及 skill authoring tools，例如 `activate` / `register_skill`。
 - `interrupt`: runner 支持取消或中断。
+- `steering`: runner 支持在 turn 边界通过 Host pull API 消费同 conversation 在途追加消息。
 
 Capabilities 字段全部是 `bool`，未知 key 禁止进入 typed manifest。早期草案里的上下文/会话类 capability 已删除；对应语义由 event-first context 和 runner-owned context 原则表达。
 
@@ -323,6 +325,7 @@ class ContextAPICapabilities(BaseModel):
     artifact_read: bool = False
     state: bool = False
     storage: bool = False
+    steering_pull: bool = False
 ```
 
 `ContextAccess` 告诉 runner：Host inline 了什么、没 inline 什么、需要更多上下文时走哪些 API。它是 runner 按需读取上下文的入口说明，不是 Host 的业务上下文编排策略。
@@ -483,6 +486,7 @@ await api.history_search(query, filters=None, top_k=10)
 # Event（返回稳定 event envelope 或受限 raw ref，不默认返回大 payload）
 await api.event_get(event_id)
 await api.event_page(before_cursor=None, limit=50)
+await api.steering_pull(mode="all", limit=None)
 
 # Artifact（必须支持大小限制、MIME 校验、过期时间和授权范围）
 await api.artifact_metadata(artifact_id)
@@ -562,6 +566,20 @@ class EventPage(BaseModel):
     prev_cursor: str | None = None
     has_more: bool = False
     total_count: int | None = None
+
+class SteeringInputItem(BaseModel):
+    claimed_run_id: str
+    runner_id: str
+    claimed_at: int | None = None
+    event: AgentEventContext
+    input: AgentInput
+    conversation: ConversationContext | None = None
+    actor: ActorContext | None = None
+    subject: SubjectContext | None = None
+    metadata: dict[str, Any] = {}
+
+class SteeringPullResult(BaseModel):
+    items: list[SteeringInputItem] = []
 
 class ArtifactMetadata(BaseModel):
     artifact_id: str

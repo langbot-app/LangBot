@@ -371,6 +371,7 @@ class AgentRunContextBuilder:
         event_page_enabled = 'page' in event_perms and conversation_id is not None
         artifact_metadata_enabled = 'metadata' in artifact_perms
         artifact_read_enabled = 'read' in artifact_perms
+        steering_pull_enabled = bool(getattr(descriptor.capabilities, 'steering', False)) and conversation_id is not None
 
         # Determine state API availability based on binding state_policy.
         state_enabled = False
@@ -425,5 +426,6 @@ class AgentRunContextBuilder:
                 'artifact_read': artifact_read_enabled,
                 'state': state_enabled,
                 'storage': storage_enabled,
+                'steering_pull': steering_pull_enabled,
             },
         }
