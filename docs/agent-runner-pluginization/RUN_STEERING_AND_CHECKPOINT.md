@@ -1,10 +1,10 @@
-# Run Steering 与 Compaction Checkpoint（Future Design Note）
+# Run Steering 与 Compaction Checkpoint（Design Note）
 
-本文档描述两项尚未落地的 Host 能力缺口：**运行中消息注入（steering / follow-up）**和
+本文档记录两项 Host/runner 协作能力：**运行中消息注入（steering / follow-up）**和
 **压缩摘要持久化（compaction checkpoint）**。两者来自官方 local-agent 对照
 Pi agent harness（`pi-mono/packages/agent`，下称 pi-agent-core）的差距分析：
 local-agent 已移植 Pi 的事件生命周期、并行工具语义、hook 扩展点和压缩预算模型，
-但这两项无法由 runner 单方面闭环，需要 Host 协议或授权配合。
+这两项需要 Host 协议、授权与 runner turn 边界协同才能闭环。
 
 > 本文是设计备忘，不是 schema 事实源。涉及的数据结构最终落到
 > [PROTOCOL_V1.md](./PROTOCOL_V1.md)；上下文边界语义以
@@ -49,15 +49,18 @@ pi-agent-core 区分两个队列，注入时机都在 turn 边界，不打断进
   `should_stop_after_turn` 已预留了对应的注入点。
 - **能力协商**：runner manifest 声明 `steering` capability（参照 PROTOCOL_V1 §4.3）；
   未声明的 runner 保持现状（新消息按现有规则另起 run）。
-- **回执**：被 steering 消费的事件需要可审计的归属记录（event 被哪个 run_id 认领、
-  是否最终注入成功），形式可以是新的 result type 或 EventLog 记录，落协议时定。
+- **回执**：被 steering 消费的事件通过 EventLog 审计。原始 `message.received`
+  记录在 `metadata.steering` 标记 queued/absorbed 与 `claimed_by_run_id`；
+  runner 成功 pull 后，Host 追加 `steering.injected` 记录并引用源事件。
+  Transcript 继续只表示会话事实，不扩展 dispatch 行为字段。
 
-需要新增的协议面（最终定义归 PROTOCOL_V1）：
+已落地的协议面（最终定义归 PROTOCOL_V1）：
 
 1. `ContextAccess.available_apis` 增加 steering pull 能力位。
-2. `AgentRunAPIProxy` 增加 steering 拉取 action（含 one-at-a-time / all 语义参数）。
-3. dispatch 层的"认领"规则：什么事件类型可被 steering 吸收、超时未拉取如何回退
-   （建议：run 结束或 deadline 到期时，未消费的排队事件按普通事件重新触发 run）。
+2. `AgentRunAPIProxy` 增加 steering 拉取 action：默认 `mode=all`，Host 保序返回全部
+   pending 输入；`one-at-a-time` 仅作为 runner 主动节流选项。
+3. dispatch 层的"认领"规则：`message.received` 可被同 conversation 的 active run
+   吸收，原事件写 EventLog / Transcript，dispatch 行为写入 EventLog metadata。
 
 ### 1.4 边界
 
@@ -84,16 +87,15 @@ pi-agent-core 把 compaction 条目持久化进 session tree：摘要带
 
 ### 2.2 现状盘点
 
-协议面基本已备齐，缺的是消费约定和授权：
+协议面和主消费路径已具备：
 
 - State / Storage API 已定义（PROTOCOL_V1 §8 "State / Storage"），
   且 AGENT_CONTEXT_PROTOCOL 已点名 `summary.checkpoint` 是 state 的预期用法。
-- `ContextAccess.available_apis.state` 默认 `false`（PROTOCOL_V1 §5.8）；
-  Host 尚未对 local-agent binding 默认开启。
-- local-agent 侧完全未消费：不读不写 checkpoint（其 README "Current Boundary"
-  已声明这是预期的未来工作）。
+- Host 会根据 binding state policy 暴露 `ContextAccess.available_apis.state`。
+- local-agent 会在 state API 可用时读取/写入 `runner.compaction.checkpoint`；
+  缺失、schema 不匹配、conversation 不匹配或游标失败时回退尾部历史拉取。
 - LLM 生成摘要**不依赖**本项 Host 能力——runner 用已授权的 `invoke_llm`
-  即可生成，可以先行实现；本项只解决"存下来、下次复用"。
+  即可生成；checkpoint 只解决"存下来、下次复用"。
 
 ### 2.3 设计方向
 
@@ -129,24 +131,20 @@ pi-agent-core 把 compaction 条目持久化进 session tree：摘要带
 
 | 项 | 归属 | 依赖 |
 | --- | --- | --- |
-| steering queue、事件认领、超时回退 | LangBot Host（dispatch / binding 层） | 无 |
-| steering pull API + capability 位 | PROTOCOL_V1 + SDK proxy | 上一项 |
-| turn 边界拉取与注入 | langbot-local-agent（hooks 已预留） | 上两项 |
-| local-agent 对 state API 的 checkpoint 读写 | langbot-local-agent | Host 开启 `available_apis.state` |
-| checkpoint key / 内容 / 失效约定 | 本文档 → PROTOCOL_V1 | 无 |
-| LLM 压缩摘要生成 | langbot-local-agent | 无（`invoke_llm` 已可用） |
+| steering queue、事件认领、基础审计 | LangBot Host（dispatch / binding 层） | 已落地 |
+| steering pull API + capability 位 | PROTOCOL_V1 + SDK proxy | 已落地 |
+| turn 边界拉取与注入 | langbot-local-agent | 已落地 |
+| local-agent 对 state API 的 checkpoint 读写 | langbot-local-agent | 已落地 |
+| checkpoint key / 内容 / 失效约定 | PROTOCOL_V1 + local-agent README | 已落地 |
+| LLM 压缩摘要生成 | langbot-local-agent | 已落地（`invoke_llm`，失败回退确定性摘要） |
 | usage / context-window metadata 透传 | LangBot Host（model 层） | LiteLLM model-info |
 
-建议顺序：checkpoint 先行（协议面现成，改动集中在授权和 runner 消费），
-steering 后行（需要新协议面和 dispatch 行为变更）。
+剩余工作应优先补 usage / context-window metadata。streaming delivery 衔接依赖
+`ctx.delivery` 编辑/追加语义，不建议在协议能力缺失时硬编码。
 
 ## 4. 开放问题
 
-- steering 注入的消息在 Transcript 中如何与普通消息区分（审计需要区分
-  "作为新 run 触发"与"被在途 run 吸收"）。
-- 多条排队消息的合并语义由谁定：Host 全量递给 runner，还是支持
-  one-at-a-time 协商；建议 Host 全量递、runner 自行决定消费节奏。
 - streaming delivery 下 steering 注入后，前序 turn 已流出的内容与新 turn
   输出在 IM 消息编辑面的衔接（涉及 `ctx.delivery` 能力，待 delivery 演进定）。
-- checkpoint 是否需要 Host 侧主动失效通知（如会话清空时删除对应 state key），
-  还是仅靠 runner 读取时校验 `covers_until`。
+- checkpoint 是否需要 Host 侧主动失效通知（如会话清空时删除对应 state key）。
+  当前实现靠 runner 读取时校验并回退，功能不阻塞。

@@ -506,6 +506,10 @@ await api.get_file(file_key)
 await api.get_langbot_version()
 ```
 
+`steering_pull(mode="all")` 是推荐默认：Host 按 claim 顺序返回全部 pending steering 输入并清空对应队列。`mode="one-at-a-time"` 仅用于 runner 主动节流，每次返回一条。Host 不合并多条用户消息；runner 负责在 turn 边界决定模型侧格式。
+
+Steering 审计使用 EventLog 而不是 Transcript schema 扩展：被 active run 吸收的原始 `message.received` 事件保留原事件类型，并在 `metadata.steering` 标记 `status="queued"`、`trigger_behavior="absorbed_into_active_run"`、`claimed_by_run_id`、`claimed_runner_id`、`claimed_at`。Runner 成功 pull 后，Host 追加 `steering.injected` EventLog 记录，`metadata.steering.status="injected"` 并引用 `source_event_id`。Transcript 继续只表示会话事实，不承担 dispatch 行为标记。
+
 `state` 与 `storage` 的建议边界：`state` 放小型 JSON（conversation / actor / subject / runner），`storage` 放 blob 或较大数据（插件私有数据、workspace 数据、checkpoint）。
 
 Compaction checkpoint 的推荐 state 约定：

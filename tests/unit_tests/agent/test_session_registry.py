@@ -213,6 +213,51 @@ class TestSessionRegistryBasic:
         assert await registry.get('old_run') is None
         assert await registry.get('new_run') is not None
 
+    @pytest.mark.asyncio
+    async def test_pull_steering_all_preserves_queue_order(self):
+        """Default all-mode steering returns every queued item in FIFO order."""
+        registry = AgentRunSessionRegistry()
+        await registry.register(
+            run_id='run_steering',
+            runner_id='plugin:test/my-runner/default',
+            query_id=1,
+            plugin_identity='test/my-runner',
+            resources=make_resources(),
+            conversation_id='conv_1',
+            available_apis={'steering_pull': True},
+        )
+
+        await registry.enqueue_steering('run_steering', {'event': {'event_id': 'event_1'}, 'input': {'text': 'first'}})
+        await registry.enqueue_steering('run_steering', {'event': {'event_id': 'event_2'}, 'input': {'text': 'second'}})
+        await registry.enqueue_steering('run_steering', {'event': {'event_id': 'event_3'}, 'input': {'text': 'third'}})
+
+        items = await registry.pull_steering('run_steering', mode='all')
+        assert [item['event']['event_id'] for item in items] == ['event_1', 'event_2', 'event_3']
+        assert await registry.pull_steering('run_steering', mode='all') == []
+
+    @pytest.mark.asyncio
+    async def test_pull_steering_one_at_a_time_leaves_remaining_items(self):
+        """one-at-a-time is an explicit runner-side throttling mode."""
+        registry = AgentRunSessionRegistry()
+        await registry.register(
+            run_id='run_steering_one',
+            runner_id='plugin:test/my-runner/default',
+            query_id=1,
+            plugin_identity='test/my-runner',
+            resources=make_resources(),
+            conversation_id='conv_1',
+            available_apis={'steering_pull': True},
+        )
+
+        await registry.enqueue_steering('run_steering_one', {'event': {'event_id': 'event_1'}})
+        await registry.enqueue_steering('run_steering_one', {'event': {'event_id': 'event_2'}})
+
+        first = await registry.pull_steering('run_steering_one', mode='one-at-a-time')
+        second = await registry.pull_steering('run_steering_one', mode='one-at-a-time')
+
+        assert [item['event']['event_id'] for item in first] == ['event_1']
+        assert [item['event']['event_id'] for item in second] == ['event_2']
+
 
 class TestIsResourceAllowed:
     """Tests for is_resource_allowed validation."""

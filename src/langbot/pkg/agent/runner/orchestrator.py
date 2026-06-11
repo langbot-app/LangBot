@@ -235,6 +235,15 @@ class AgentRunOrchestrator:
                 binding=binding,
                 run_id=target_run_id,
                 runner_id=descriptor.id,
+                metadata={
+                    'steering': {
+                        'status': 'queued',
+                        'trigger_behavior': 'absorbed_into_active_run',
+                        'claimed_by_run_id': target_run_id,
+                        'claimed_runner_id': descriptor.id,
+                        'claimed_at': steering_item.get('claimed_at'),
+                    },
+                },
             )
             await self.journal.register_input_artifacts(
                 event=event,

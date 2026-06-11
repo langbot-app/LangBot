@@ -82,6 +82,7 @@ class AgentRunJournal:
         binding: AgentBinding,
         run_id: str,
         runner_id: str,
+        metadata: dict[str, typing.Any] | None = None,
     ) -> str:
         """Write incoming event to EventLog."""
         import datetime
@@ -119,6 +120,7 @@ class AgentRunJournal:
             run_id=run_id,
             runner_id=runner_id,
             event_time=datetime.datetime.fromtimestamp(event.event_time) if event.event_time else None,
+            metadata=metadata,
         )
 
     async def register_input_artifacts(

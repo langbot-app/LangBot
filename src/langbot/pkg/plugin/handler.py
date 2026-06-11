@@ -1755,6 +1755,50 @@ class RuntimeConnectionHandler(handler.Handler):
                 mode=str(mode or 'all'),
                 limit=limit,
             )
+            if items:
+                try:
+                    from ..agent.runner.event_log_store import EventLogStore
+
+                    store = EventLogStore(self.ap.persistence_mgr.get_db_engine())
+                    for item in items:
+                        event = item.get('event') if isinstance(item, dict) else None
+                        conversation = item.get('conversation') if isinstance(item, dict) else None
+                        actor = item.get('actor') if isinstance(item, dict) else None
+                        subject = item.get('subject') if isinstance(item, dict) else None
+                        if not isinstance(event, dict):
+                            continue
+                        await store.append_event(
+                            event_id=None,
+                            event_type='steering.injected',
+                            source='agent_runner',
+                            bot_id=conversation.get('bot_id') if isinstance(conversation, dict) else None,
+                            workspace_id=conversation.get('workspace_id') if isinstance(conversation, dict) else None,
+                            conversation_id=conversation.get('conversation_id') if isinstance(conversation, dict) else None,
+                            thread_id=conversation.get('thread_id') if isinstance(conversation, dict) else None,
+                            actor_type=actor.get('actor_type') if isinstance(actor, dict) else None,
+                            actor_id=actor.get('actor_id') if isinstance(actor, dict) else None,
+                            actor_name=actor.get('actor_name') if isinstance(actor, dict) else None,
+                            subject_type=subject.get('subject_type') if isinstance(subject, dict) else None,
+                            subject_id=subject.get('subject_id') if isinstance(subject, dict) else None,
+                            input_summary=f"steering injected from {event.get('event_id')}",
+                            run_id=run_id,
+                            runner_id=session.get('runner_id') if isinstance(session, dict) else None,
+                            metadata={
+                                'steering': {
+                                    'status': 'injected',
+                                    'source_event_id': event.get('event_id'),
+                                    'claimed_by_run_id': item.get('claimed_run_id') if isinstance(item, dict) else run_id,
+                                    'claimed_runner_id': item.get('runner_id') if isinstance(item, dict) else None,
+                                    'claimed_at': item.get('claimed_at') if isinstance(item, dict) else None,
+                                    'pull_mode': str(mode or 'all'),
+                                },
+                            },
+                        )
+                except Exception as exc:
+                    self.ap.logger.warning(
+                        f'Failed to write steering injection audit for run {run_id}: {exc}',
+                        exc_info=True,
+                    )
             return handler.ActionResponse.success(data={'items': items})
 
         # ================= Artifact APIs =================

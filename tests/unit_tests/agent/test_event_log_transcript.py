@@ -95,6 +95,41 @@ class TestEventLogStore:
             )
 
             assert event_id == "evt_1"
+            stored_event = mock_session.add.call_args.args[0]
+            assert stored_event.metadata_json is None
+
+    @pytest.mark.asyncio
+    async def test_append_event_stores_metadata_json(self, mock_db_engine):
+        """EventLog metadata records steering dispatch/audit facts."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        store = EventLogStore(mock_db_engine)
+
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+
+        with patch.object(store, '_session_factory') as mock_factory:
+            mock_factory.return_value.__aenter__.return_value = mock_session
+
+            event_id = await store.append_event(
+                event_id="evt_steering",
+                event_type="message.received",
+                source="platform",
+                run_id="run_1",
+                runner_id="plugin:test/plugin/runner",
+                metadata={
+                    "steering": {
+                        "status": "queued",
+                        "claimed_by_run_id": "run_1",
+                    }
+                },
+            )
+
+            assert event_id == "evt_steering"
+            stored_event = mock_session.add.call_args.args[0]
+            assert '"status": "queued"' in stored_event.metadata_json
+            assert '"claimed_by_run_id": "run_1"' in stored_event.metadata_json
 
     @pytest.mark.asyncio
     async def test_append_event_truncates_input_summary(self, mock_db_engine):
