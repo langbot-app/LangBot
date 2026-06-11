@@ -508,6 +508,25 @@ await api.get_langbot_version()
 
 `state` 与 `storage` 的建议边界：`state` 放小型 JSON（conversation / actor / subject / runner），`storage` 放 blob 或较大数据（插件私有数据、workspace 数据、checkpoint）。
 
+Compaction checkpoint 的推荐 state 约定：
+
+- scope: `conversation`
+- key: `runner.compaction.checkpoint`
+- value:
+
+```json
+{
+  "schema_version": "langbot.local_agent.compaction_checkpoint.v1",
+  "summary": "<conversation_summary>...</conversation_summary>",
+  "covers_until": "transcript-cursor-or-seq",
+  "tokens_before": 12345,
+  "created_at": 1710000000,
+  "conversation_id": "conv-..."
+}
+```
+
+`covers_until` 是摘要覆盖到的 transcript 游标锚点。Runner 读取 checkpoint 后应只拉取该游标之后的 transcript；若 checkpoint 缺失、schema 不匹配、conversation 不匹配或游标不可用，应回退到无 checkpoint 的尾部历史拉取行为。
+
 Proxy 返回数据结构也属于本协议：
 
 ```python
