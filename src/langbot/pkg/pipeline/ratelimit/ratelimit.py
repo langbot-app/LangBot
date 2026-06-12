@@ -24,7 +24,9 @@ class RateLimit(stage.PipelineStage):
     algo: algo.ReteLimitAlgo
 
     async def initialize(self, pipeline_config: dict):
-        algo_name = 'fixwin'
+        # Algorithm is config-selectable; defaults to the in-memory 'fixwin'
+        # for backward compatibility when the key is absent.
+        algo_name = pipeline_config.get('safety', {}).get('rate-limit', {}).get('algo', 'fixwin')
 
         algo_class = None
 

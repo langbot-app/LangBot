@@ -33,7 +33,8 @@
         "rate-limit": {
             "window-length": 60,
             "limitation": 60,
-            "strategy": "drop"
+            "strategy": "drop",
+            "algo": "fixwin"
         }
     },
     "ai": {

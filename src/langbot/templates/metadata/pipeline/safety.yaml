@@ -43,6 +43,25 @@ stages:
       en_US: Rate Limit
       zh_Hans: 速率限制
     config:
+      - name: algo
+        label:
+          en_US: Algorithm
+          zh_Hans: 限速算法
+        description:
+          en_US: "Fixed-window (in-memory, single process) or distributed fixed-window backed by Valkey (shared across workers). Valkey requires the top-level 'valkey' config block."
+          zh_Hans: "固定窗口（内存，单进程）或基于 Valkey 的分布式固定窗口（多进程共享）。Valkey 算法需要配置顶层 'valkey' 配置块。"
+        type: select
+        required: true
+        default: fixwin
+        options:
+          - name: fixwin
+            label:
+              en_US: Fixed Window (in-memory)
+              zh_Hans: 固定窗口（内存）
+          - name: valkey_fixwin
+            label:
+              en_US: Fixed Window (Valkey, distributed)
+              zh_Hans: 固定窗口（Valkey 分布式）
       - name: window-length
         label:
           en_US: Window Length
