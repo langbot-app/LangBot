@@ -65,6 +65,7 @@ class ModelResource(typing.TypedDict):
     model_id: str
     model_type: str | None
     provider: str | None
+    operations: list[str]
 
 
 class ToolResource(typing.TypedDict):
@@ -73,6 +74,7 @@ class ToolResource(typing.TypedDict):
     tool_name: str
     tool_type: str | None
     description: str | None
+    operations: list[str]
 
 
 class KnowledgeBaseResource(typing.TypedDict):
@@ -81,6 +83,7 @@ class KnowledgeBaseResource(typing.TypedDict):
     kb_id: str
     kb_name: str | None
     kb_type: str | None
+    operations: list[str]
 
 
 class SkillResource(typing.TypedDict):
@@ -98,6 +101,7 @@ class FileResource(typing.TypedDict):
     file_name: str | None
     mime_type: str | None
     source: str | None
+    operations: list[str]
 
 
 class StorageResource(typing.TypedDict):

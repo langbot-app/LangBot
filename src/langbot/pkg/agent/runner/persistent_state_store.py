@@ -361,10 +361,8 @@ class PersistentStateStore:
                 delete(AgentRunnerState)
                 .where(AgentRunnerState.scope_key == scope_key)
                 .where(AgentRunnerState.state_key == state_key)
-                .returning(AgentRunnerState.id)
             )
-            deleted = result.first()
-            return deleted is not None
+            return (result.rowcount or 0) > 0
 
     async def state_list(
         self,

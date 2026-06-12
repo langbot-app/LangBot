@@ -22,6 +22,17 @@ def _index_exists(table_name: str, index_name: str) -> bool:
     return index_name in {index['name'] for index in sa.inspect(op.get_bind()).get_indexes(table_name)}
 
 
+def _column_exists(table_name: str, column_name: str) -> bool:
+    return column_name in {column['name'] for column in sa.inspect(op.get_bind()).get_columns(table_name)}
+
+
+def _add_column_if_missing(table_name: str, column: sa.Column) -> None:
+    if not _table_exists(table_name) or _column_exists(table_name, column.name):
+        return
+    with op.batch_alter_table(table_name, schema=None) as batch_op:
+        batch_op.add_column(column)
+
+
 def _create_index_if_missing(table_name: str, index_name: str, columns: list[str], *, unique: bool = False) -> None:
     if not _table_exists(table_name) or _index_exists(table_name, index_name):
         return
@@ -78,6 +89,8 @@ def upgrade() -> None:
             sa.Column('id', sa.Integer(), primary_key=True, autoincrement=True),
             sa.Column('transcript_id', sa.String(255), nullable=False, unique=True),
             sa.Column('event_id', sa.String(255), nullable=False),
+            sa.Column('bot_id', sa.String(255), nullable=True),
+            sa.Column('workspace_id', sa.String(255), nullable=True),
             sa.Column('conversation_id', sa.String(255), nullable=False),
             sa.Column('thread_id', sa.String(255), nullable=True),
             sa.Column('role', sa.String(50), nullable=False),
@@ -91,22 +104,33 @@ def upgrade() -> None:
             sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('(CURRENT_TIMESTAMP)')),
             sa.Column('metadata_json', sa.Text(), nullable=True),
         )
+    else:
+        _add_column_if_missing('transcript', sa.Column('bot_id', sa.String(255), nullable=True))
+        _add_column_if_missing('transcript', sa.Column('workspace_id', sa.String(255), nullable=True))
 
     # Create indexes for transcript
     _create_index_if_missing('transcript', 'ix_transcript_transcript_id', ['transcript_id'], unique=True)
     _create_index_if_missing('transcript', 'ix_transcript_event_id', ['event_id'])
+    _create_index_if_missing('transcript', 'ix_transcript_bot_id', ['bot_id'])
     _create_index_if_missing('transcript', 'ix_transcript_conversation_id', ['conversation_id'])
     _create_index_if_missing('transcript', 'ix_transcript_conversation_seq', ['conversation_id', 'seq'])
     _create_index_if_missing('transcript', 'ix_transcript_conversation_created', ['conversation_id', 'created_at'])
+    _create_index_if_missing(
+        'transcript',
+        'ix_transcript_scope_seq',
+        ['bot_id', 'workspace_id', 'conversation_id', 'thread_id', 'seq'],
+    )
     _create_index_if_missing('transcript', 'ix_transcript_run_id', ['run_id'])
 
 
 def downgrade() -> None:
     # Drop transcript table
     _drop_index_if_exists('transcript', 'ix_transcript_run_id')
+    _drop_index_if_exists('transcript', 'ix_transcript_scope_seq')
     _drop_index_if_exists('transcript', 'ix_transcript_conversation_created')
     _drop_index_if_exists('transcript', 'ix_transcript_conversation_seq')
     _drop_index_if_exists('transcript', 'ix_transcript_conversation_id')
+    _drop_index_if_exists('transcript', 'ix_transcript_bot_id')
     _drop_index_if_exists('transcript', 'ix_transcript_event_id')
     _drop_index_if_exists('transcript', 'ix_transcript_transcript_id')
 

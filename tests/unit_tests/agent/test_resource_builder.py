@@ -138,10 +138,10 @@ async def test_build_models_authorizes_config_declared_llm_and_rerank_models(app
     resources = await build_resources(app, query, descriptor)
 
     assert resources['models'] == [
-        {'model_id': 'primary', 'model_type': 'llm', 'provider': 'test-provider'},
-        {'model_id': 'fallback', 'model_type': 'llm', 'provider': 'test-provider'},
-        {'model_id': 'aux', 'model_type': 'llm', 'provider': 'aux-provider'},
-        {'model_id': 'rerank', 'model_type': 'rerank', 'provider': 'rerank-provider'},
+        {'model_id': 'primary', 'model_type': 'llm', 'provider': 'test-provider', 'operations': ['invoke', 'stream']},
+        {'model_id': 'fallback', 'model_type': 'llm', 'provider': 'test-provider', 'operations': ['invoke', 'stream']},
+        {'model_id': 'aux', 'model_type': 'llm', 'provider': 'aux-provider', 'operations': ['invoke', 'stream']},
+        {'model_id': 'rerank', 'model_type': 'rerank', 'provider': 'rerank-provider', 'operations': ['rerank']},
     ]
 
 
@@ -188,8 +188,8 @@ async def test_build_models_authorizes_rerank_and_llm_refs_from_config(app):
     resources = await build_resources(app, query, descriptor)
 
     assert resources['models'] == [
-        {'model_id': 'llm', 'model_type': 'llm', 'provider': 'test-provider'},
-        {'model_id': 'rerank', 'model_type': 'rerank', 'provider': 'rerank-provider'},
+        {'model_id': 'llm', 'model_type': 'llm', 'provider': 'test-provider', 'operations': ['invoke', 'stream']},
+        {'model_id': 'rerank', 'model_type': 'rerank', 'provider': 'rerank-provider', 'operations': ['rerank']},
     ]
 
 
@@ -218,7 +218,7 @@ async def test_build_models_manifest_permission_narrows_binding(app):
     resources = await build_resources(app, query, descriptor)
 
     assert resources['models'] == [
-        {'model_id': 'rerank', 'model_type': 'rerank', 'provider': 'rerank-provider'},
+        {'model_id': 'rerank', 'model_type': 'rerank', 'provider': 'rerank-provider', 'operations': ['rerank']},
     ]
 
 
@@ -264,11 +264,13 @@ async def test_build_tools_authorizes_query_declared_tools(app):
             'tool_name': 'qa_plugin_echo',
             'tool_type': None,
             'description': None,
+            'operations': ['detail', 'call'],
         },
         {
             'tool_name': 'qa_mcp_echo',
             'tool_type': None,
             'description': None,
+            'operations': ['detail', 'call'],
         },
     ]
 
@@ -320,8 +322,8 @@ async def test_build_knowledge_bases_unions_config_and_policy_grants(app):
     resources = await build_resources(app, query, descriptor)
 
     assert resources['knowledge_bases'] == [
-        {'kb_id': 'kb_config', 'kb_name': 'name-kb_config', 'kb_type': 'default'},
-        {'kb_id': 'kb_policy', 'kb_name': 'name-kb_policy', 'kb_type': 'default'},
+        {'kb_id': 'kb_config', 'kb_name': 'name-kb_config', 'kb_type': 'default', 'operations': ['list', 'retrieve']},
+        {'kb_id': 'kb_policy', 'kb_name': 'name-kb_policy', 'kb_type': 'default', 'operations': ['list', 'retrieve']},
     ]
 
 
@@ -345,6 +347,42 @@ async def test_build_knowledge_bases_manifest_permission_denies_binding_kbs(app)
     resources = await build_resources(app, query, descriptor)
 
     assert resources['knowledge_bases'] == []
+
+
+@pytest.mark.asyncio
+async def test_build_files_authorizes_config_declared_file_fields(app):
+    descriptor = make_descriptor(
+        config_schema=[
+            {'name': 'avatar', 'type': 'file'},
+            {'name': 'references', 'type': 'array[file]'},
+        ],
+    )
+    query = make_query({
+        'avatar': {'file_key': 'plugin_config_avatar.png', 'mimetype': 'image/png'},
+        'references': [
+            {'file_key': 'plugin_config_doc.txt', 'mimetype': 'text/plain', 'file_name': 'doc.txt'},
+            {'file_key': 'plugin_config_doc.txt', 'mimetype': 'text/plain', 'file_name': 'doc.txt'},
+        ],
+    })
+
+    resources = await build_resources(app, query, descriptor)
+
+    assert resources['files'] == [
+        {
+            'file_id': 'plugin_config_avatar.png',
+            'file_name': None,
+            'mime_type': 'image/png',
+            'source': 'config',
+            'operations': ['config'],
+        },
+        {
+            'file_id': 'plugin_config_doc.txt',
+            'file_name': 'doc.txt',
+            'mime_type': 'text/plain',
+            'source': 'config',
+            'operations': ['config'],
+        },
+    ]
 
 
 @pytest.mark.asyncio

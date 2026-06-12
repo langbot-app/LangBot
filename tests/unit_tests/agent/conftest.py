@@ -77,6 +77,33 @@ def make_session(
         'skill': {s.get('skill_name') for s in res.get('skills', [])},
         'file': {f.get('file_id') for f in res.get('files', [])},
     }
+    authorized_operations: dict[str, dict[str, set[str]]] = {
+        'model': {
+            m.get('model_id'): set(m.get('operations') or ['invoke', 'stream', 'rerank'])
+            for m in res.get('models', [])
+            if m.get('model_id')
+        },
+        'tool': {
+            t.get('tool_name'): set(t.get('operations') or ['detail', 'call'])
+            for t in res.get('tools', [])
+            if t.get('tool_name')
+        },
+        'knowledge_base': {
+            kb.get('kb_id'): set(kb.get('operations') or ['list', 'retrieve'])
+            for kb in res.get('knowledge_bases', [])
+            if kb.get('kb_id')
+        },
+        'skill': {
+            s.get('skill_name'): set(s.get('operations') or ['activate'])
+            for s in res.get('skills', [])
+            if s.get('skill_name')
+        },
+        'file': {
+            f.get('file_id'): set(f.get('operations') or ['config', 'knowledge'])
+            for f in res.get('files', [])
+            if f.get('file_id')
+        },
+    }
 
     return {
         'run_id': run_id,
@@ -90,6 +117,7 @@ def make_session(
             'state_policy': policy,
             'state_context': context,
             'authorized_ids': authorized_ids,
+            'authorized_operations': authorized_operations,
         },
         'status': {
             'started_at': now,

@@ -9,6 +9,7 @@ from .descriptor import AgentRunnerDescriptor
 LLM_MODEL_SELECTOR_TYPES = {'model-fallback-selector', 'llm-model-selector'}
 KB_SELECTOR_TYPES = {'knowledge-base-multi-selector'}
 PROMPT_EDITOR_TYPES = {'prompt-editor'}
+FILE_SELECTOR_TYPES = {'file', 'array[file]'}
 NONE_SENTINELS = {'', '__none__', '__none'}
 
 
@@ -117,6 +118,43 @@ def extract_knowledge_base_uuids(
             )
 
     return list(dict.fromkeys(kb_uuids))
+
+
+def extract_config_file_resources(
+    descriptor: AgentRunnerDescriptor | None,
+    runner_config: dict[str, typing.Any],
+) -> list[dict[str, typing.Any]]:
+    """Extract uploaded config file resources from schema-defined file fields."""
+    files: list[dict[str, typing.Any]] = []
+
+    def append_file(value: typing.Any) -> None:
+        if not isinstance(value, dict):
+            return
+        file_key = value.get('file_key') or value.get('file_id')
+        if not isinstance(file_key, str) or file_key in NONE_SENTINELS:
+            return
+        files.append({
+            'file_id': file_key,
+            'file_name': value.get('file_name') or value.get('name'),
+            'mime_type': value.get('mime_type') or value.get('mimetype'),
+            'source': 'config',
+        })
+
+    for item in iter_schema_items(descriptor, FILE_SELECTOR_TYPES):
+        field_name = item.get('name')
+        if not field_name:
+            continue
+        value = runner_config.get(field_name, item.get('default'))
+        if item.get('type') == 'file':
+            append_file(value)
+        elif isinstance(value, list):
+            for entry in value:
+                append_file(entry)
+
+    deduped: dict[str, dict[str, typing.Any]] = {}
+    for file_resource in files:
+        deduped.setdefault(file_resource['file_id'], file_resource)
+    return list(deduped.values())
 
 
 def iter_config_model_refs(

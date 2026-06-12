@@ -20,7 +20,7 @@ class TestResolveRunnerId:
         runner_id = ConfigMigration.resolve_runner_id(pipeline_config)
         assert runner_id == 'plugin:langbot/local-agent/default'
 
-    def test_does_not_resolve_old_runner_field(self):
+    def test_resolves_old_runner_field(self):
         pipeline_config = {
             'ai': {
                 'runner': {
@@ -30,7 +30,7 @@ class TestResolveRunnerId:
         }
 
         runner_id = ConfigMigration.resolve_runner_id(pipeline_config)
-        assert runner_id is None
+        assert runner_id == 'plugin:langbot/local-agent/default'
 
     def test_resolve_no_runner_config(self):
         runner_id = ConfigMigration.resolve_runner_id({})
@@ -58,7 +58,7 @@ class TestResolveRunnerConfig:
         )
         assert config == {'model': 'uuid-123', 'custom_option': 10}
 
-    def test_does_not_read_old_runner_block(self):
+    def test_reads_old_runner_block(self):
         pipeline_config = {
             'ai': {
                 'local-agent': {
@@ -71,7 +71,7 @@ class TestResolveRunnerConfig:
             pipeline_config,
             'plugin:langbot/local-agent/default',
         )
-        assert config == {}
+        assert config == {'model': {'primary': 'uuid-123', 'fallbacks': []}}
 
     def test_resolve_no_config(self):
         config = ConfigMigration.resolve_runner_config(
@@ -138,15 +138,20 @@ class TestNormalizePipelineConfig:
         assert migrated['ai']['runner']['id'] == 'plugin:test/my-runner/default'
         assert migrated['ai']['runner_config']['plugin:test/my-runner/default']['custom-option'] == 20
 
-    def test_does_not_migrate_old_runner_blocks(self):
+    def test_migrates_old_runner_blocks(self):
         config = {
             'ai': {
                 'runner': {'runner': 'local-agent'},
-                'local-agent': {'model': 'old-model'},
+                'local-agent': {'model': 'old-model', 'knowledge-base': 'kb_1'},
             },
         }
 
         migrated = ConfigMigration.migrate_pipeline_config(config)
 
-        assert 'id' not in migrated['ai']['runner']
-        assert migrated['ai']['local-agent'] == {'model': 'old-model'}
+        assert migrated['ai']['runner']['id'] == 'plugin:langbot/local-agent/default'
+        assert 'runner' not in migrated['ai']['runner']
+        assert 'local-agent' not in migrated['ai']
+        assert migrated['ai']['runner_config']['plugin:langbot/local-agent/default'] == {
+            'model': {'primary': 'old-model', 'fallbacks': []},
+            'knowledge-bases': ['kb_1'],
+        }

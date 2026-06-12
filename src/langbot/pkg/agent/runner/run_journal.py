@@ -26,15 +26,61 @@ class AgentRunJournal:
         self.ap = ap
         self._persistent_state_store = None
 
+    @staticmethod
+    def _to_plain_dict(value: typing.Any) -> dict[str, typing.Any]:
+        if hasattr(value, 'model_dump'):
+            value = value.model_dump(mode='json')
+        if isinstance(value, dict):
+            return dict(value)
+        return {}
+
+    @classmethod
+    def _sanitize_content_item(cls, value: typing.Any) -> typing.Any:
+        item = cls._to_plain_dict(value)
+        if not item:
+            return value
+        item_type = item.get('type')
+        if item_type == 'image_base64' and item.get('image_base64'):
+            item['image_base64'] = None
+            item['content_redacted'] = True
+        elif item_type == 'file_base64' and item.get('file_base64'):
+            item['file_base64'] = None
+            item['content_redacted'] = True
+        return item
+
+    @classmethod
+    def _sanitize_attachment_ref(cls, value: typing.Any) -> dict[str, typing.Any]:
+        item = cls._to_plain_dict(value)
+        if item.get('content'):
+            item['content'] = None
+            item['content_redacted'] = True
+        return item
+
+    @classmethod
+    def _sanitize_contents(cls, contents: typing.Iterable[typing.Any]) -> list[typing.Any]:
+        return [cls._sanitize_content_item(content) for content in contents]
+
+    @classmethod
+    def _sanitize_attachments(cls, attachments: typing.Iterable[typing.Any]) -> list[dict[str, typing.Any]]:
+        return [cls._sanitize_attachment_ref(attachment) for attachment in attachments]
+
     async def handle_state_updated_event(
         self,
         result_dict: dict[str, typing.Any],
         event: AgentEventEnvelope,
         binding: AgentBinding,
         descriptor: AgentRunnerDescriptor,
+        run_id: str | None = None,
     ) -> None:
         """Handle state.updated result in event-first mode."""
         data = result_dict.get('data', {})
+
+        result_run_id = result_dict.get('run_id')
+        if run_id and result_run_id and result_run_id != run_id:
+            raise RunnerProtocolError(
+                descriptor.id,
+                f'state.updated run_id mismatch: expected {run_id}, got {result_run_id}',
+            )
 
         scope = data.get('scope')
         if not scope:
@@ -98,8 +144,8 @@ class AgentRunJournal:
                 input_summary = event.input.text[:1000]
             input_json = {
                 'text': event.input.text,
-                'contents': [c.model_dump(mode='json') if hasattr(c, 'model_dump') else c for c in event.input.contents],
-                'attachments': [a.model_dump(mode='json') if hasattr(a, 'model_dump') else a for a in event.input.attachments],
+                'contents': self._sanitize_contents(event.input.contents),
+                'attachments': self._sanitize_attachments(event.input.attachments),
             }
 
         return await store.append_event(
@@ -230,19 +276,21 @@ class AgentRunJournal:
         if event.input:
             content_json = {
                 'role': 'user',
-                'content': [c.model_dump(mode='json') if hasattr(c, 'model_dump') else c for c in event.input.contents] if event.input.contents else [],
+                'content': self._sanitize_contents(event.input.contents) if event.input.contents else [],
             }
 
         artifact_refs = []
         if event.input and event.input.attachments:
             for a in event.input.attachments:
-                artifact_refs.append(a.model_dump(mode='json') if hasattr(a, 'model_dump') else a)
+                artifact_refs.append(self._sanitize_attachment_ref(a))
 
         await store.append_transcript(
             transcript_id=None,
             event_id=event_log_id,
             conversation_id=event.conversation_id,
             role='user',
+            bot_id=event.bot_id,
+            workspace_id=event.workspace_id,
             content=content,
             content_json=content_json,
             artifact_refs=artifact_refs if artifact_refs else None,
@@ -438,8 +486,8 @@ class AgentRunJournal:
                 input_summary=input_summary,
                 input_json={
                     'text': text,
-                    'contents': input_data.get('contents') or [],
-                    'attachments': input_data.get('attachments') or [],
+                    'contents': self._sanitize_contents(input_data.get('contents') or []),
+                    'attachments': self._sanitize_attachments(input_data.get('attachments') or []),
                 },
                 run_id=run_id,
                 runner_id=runner_id,
@@ -486,7 +534,10 @@ class AgentRunJournal:
                 if isinstance(c, dict) and c.get('type') == 'text':
                     text_parts.append(c.get('text', ''))
             content = ' '.join(text_parts) if text_parts else None
-            content_json = message
+            content_json = {
+                **message,
+                'content': self._sanitize_contents(message['content']),
+            }
 
         assistant_event_id = str(uuid.uuid4())
 
@@ -495,6 +546,8 @@ class AgentRunJournal:
             event_id=assistant_event_id,
             conversation_id=event.conversation_id,
             role='assistant',
+            bot_id=event.bot_id,
+            workspace_id=event.workspace_id,
             content=content,
             content_json=content_json,
             artifact_refs=artifact_refs,

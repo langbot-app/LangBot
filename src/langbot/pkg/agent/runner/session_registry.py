@@ -12,6 +12,14 @@ from .context_builder import AgentResources
 
 MAX_STEERING_QUEUE_ITEMS = 100
 
+DEFAULT_RESOURCE_OPERATIONS: dict[str, set[str]] = {
+    'model': {'invoke', 'stream', 'rerank'},
+    'tool': {'detail', 'call'},
+    'knowledge_base': {'list', 'retrieve'},
+    'file': {'config', 'knowledge'},
+    'skill': {'activate'},
+}
+
 
 class AgentRunSessionStatus(typing.TypedDict):
     """Status tracking for agent run session."""
@@ -30,9 +38,13 @@ class RunAuthorizationSnapshot(typing.TypedDict):
     resources: AgentResources
     available_apis: dict[str, bool]
     conversation_id: str | None
+    bot_id: str | None
+    workspace_id: str | None
+    thread_id: str | None
     state_policy: dict[str, typing.Any]
     state_context: dict[str, typing.Any]
     authorized_ids: dict[str, set[str]]
+    authorized_operations: dict[str, dict[str, set[str]]]
 
 
 SteeringQueueItem = dict[str, typing.Any]
@@ -87,6 +99,9 @@ class AgentRunSessionRegistry:
         plugin_identity: str,
         resources: AgentResources,
         conversation_id: str | None = None,
+        bot_id: str | None = None,
+        workspace_id: str | None = None,
+        thread_id: str | None = None,
         available_apis: dict[str, bool] | None = None,
         state_policy: dict[str, typing.Any] | None = None,
         state_context: dict[str, typing.Any] | None = None,
@@ -100,6 +115,9 @@ class AgentRunSessionRegistry:
             plugin_identity: Plugin identifier (author/name)
             resources: Authorized resources for this run
             conversation_id: Conversation ID for history/event access
+            bot_id: Bot UUID for history/event access
+            workspace_id: Workspace ID for history/event access
+            thread_id: Thread ID for history/event access
             available_apis: Run-scoped pull APIs exposed in AgentRunContext
             state_policy: State policy from binding (enable_state, state_scopes)
             state_context: Context for state API (scope_keys, binding_identity, etc.)
@@ -120,9 +138,13 @@ class AgentRunSessionRegistry:
             'resources': resources_snapshot,
             'available_apis': available_apis,
             'conversation_id': conversation_id,
+            'bot_id': bot_id,
+            'workspace_id': workspace_id,
+            'thread_id': thread_id,
             'state_policy': copy.deepcopy(state_policy),
             'state_context': copy.deepcopy(state_context),
             'authorized_ids': self._build_authorized_ids(resources_snapshot),
+            'authorized_operations': self._build_authorized_operations(resources_snapshot),
         }
 
         session: AgentRunSession = {
@@ -150,6 +172,47 @@ class AgentRunSessionRegistry:
             'skill': {s.get('skill_name') for s in resources.get('skills', [])},
             'file': {f.get('file_id') for f in resources.get('files', [])},
         }
+
+    def _build_authorized_operations(
+        self,
+        resources: AgentResources,
+    ) -> dict[str, dict[str, set[str]]]:
+        """Pre-compute resource operations for runtime action validation."""
+        return {
+            'model': {
+                m.get('model_id'): self._resource_operations('model', m)
+                for m in resources.get('models', [])
+                if m.get('model_id')
+            },
+            'tool': {
+                t.get('tool_name'): self._resource_operations('tool', t)
+                for t in resources.get('tools', [])
+                if t.get('tool_name')
+            },
+            'knowledge_base': {
+                kb.get('kb_id'): self._resource_operations('knowledge_base', kb)
+                for kb in resources.get('knowledge_bases', [])
+                if kb.get('kb_id')
+            },
+            'skill': {
+                s.get('skill_name'): self._resource_operations('skill', s)
+                for s in resources.get('skills', [])
+                if s.get('skill_name')
+            },
+            'file': {
+                f.get('file_id'): self._resource_operations('file', f)
+                for f in resources.get('files', [])
+                if f.get('file_id')
+            },
+        }
+
+    @staticmethod
+    def _resource_operations(resource_type: str, resource: dict[str, typing.Any]) -> set[str]:
+        """Return explicit operations or the compatibility default for old resources."""
+        operations = resource.get('operations')
+        if isinstance(operations, list) and operations:
+            return {str(operation) for operation in operations}
+        return set(DEFAULT_RESOURCE_OPERATIONS.get(resource_type, set()))
 
     async def unregister(self, run_id: str) -> AgentRunSession | None:
         """Unregister an agent run session.
@@ -263,6 +326,7 @@ class AgentRunSessionRegistry:
         session: AgentRunSession,
         resource_type: str,
         resource_id: str,
+        operation: str | None = None,
     ) -> bool:
         """Check if resource access is allowed for this session.
 
@@ -272,6 +336,7 @@ class AgentRunSessionRegistry:
             session: AgentRunSession to check
             resource_type: Resource type ('model', 'tool', 'knowledge_base', 'storage', 'file')
             resource_id: Resource identifier (model_id, tool_name, kb_id, 'plugin'/'workspace', file_key)
+            operation: Optional operation to check within the authorized resource
 
         Returns:
             True if resource is authorized, False otherwise
@@ -281,7 +346,15 @@ class AgentRunSessionRegistry:
         resources = authorization['resources']
 
         if resource_type in ('model', 'tool', 'knowledge_base', 'skill', 'file'):
-            return resource_id in authorized_ids.get(resource_type, set())
+            if resource_id not in authorized_ids.get(resource_type, set()):
+                return False
+            if operation is None:
+                return True
+            operation_map = authorization.get('authorized_operations', {})
+            operations = operation_map.get(resource_type, {}).get(resource_id)
+            if not operations:
+                operations = DEFAULT_RESOURCE_OPERATIONS.get(resource_type, set())
+            return operation in operations
 
         if resource_type == 'storage':
             storage = resources.get('storage', {})

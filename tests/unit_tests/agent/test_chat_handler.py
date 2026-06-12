@@ -129,6 +129,9 @@ class MockAgentRunOrchestrator:
         for chunk in self._chunks:
             yield chunk
 
+    async def try_claim_steering_from_query(self, query):
+        return False
+
     def resolve_runner_id_for_telemetry(self, query):
         return 'plugin:langbot/local-agent/default'
 
@@ -240,7 +243,7 @@ class TestConfigMigrationInChatHandler:
         assert runner_id == 'plugin:langbot/local-agent/default'
 
     def test_resolve_runner_id_from_old_format(self):
-        """ConfigMigration should not resolve removed runner aliases."""
+        """ConfigMigration resolves old runner aliases for compatibility."""
         pipeline_config = {
             'ai': {
                 'runner': {
@@ -250,7 +253,7 @@ class TestConfigMigrationInChatHandler:
         }
 
         runner_id = ConfigMigration.resolve_runner_id(pipeline_config)
-        assert runner_id is None
+        assert runner_id == 'plugin:langbot/local-agent/default'
 
 
 class TestErrorHandling:

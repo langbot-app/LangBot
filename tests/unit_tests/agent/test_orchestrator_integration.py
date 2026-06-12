@@ -428,6 +428,37 @@ async def test_orchestrator_streams_fake_plugin_deltas(clean_agent_state):
 
 
 @pytest.mark.asyncio
+async def test_orchestrator_persists_run_completed_message_transcript(clean_agent_state):
+    """run.completed(message=...) should be treated as the final assistant transcript."""
+    from langbot.pkg.agent.runner.transcript_store import TranscriptStore
+
+    db_engine = clean_agent_state
+    descriptor = make_descriptor()
+    plugin_connector = FakePluginConnector(
+        results=[
+            {
+                "type": "run.completed",
+                "data": {
+                    "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": "final response"},
+                },
+            },
+        ]
+    )
+    orchestrator = AgentRunOrchestrator(FakeApplication(plugin_connector, db_engine), FakeRegistry(descriptor))
+    query = make_query()
+
+    messages = [message async for message in orchestrator.run_from_query(query)]
+
+    assert [message.content for message in messages] == ["final response"]
+    transcript_store = TranscriptStore(db_engine)
+    transcripts, _, _, _ = await transcript_store.page_transcript(query.session.using_conversation.uuid, limit=10)
+    assistant_items = [item for item in transcripts if item["role"] == "assistant"]
+    assert len(assistant_items) == 1
+    assert assistant_items[0]["content"] == "final response"
+
+
+@pytest.mark.asyncio
 async def test_orchestrator_drops_duplicate_result_sequence(clean_agent_state):
     """Duplicate runner result sequences are idempotently ignored."""
     db_engine = clean_agent_state
@@ -560,6 +591,14 @@ class TestQueryEntrySessionQueryId:
         ap = FakeApplication(plugin_connector, db_engine)
         orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
         query = make_query()
+        query.user_message = provider_message.Message(
+            role="user",
+            content=[
+                provider_message.ContentElement.from_text("hello"),
+                provider_message.ContentElement.from_image_base64("data:image/png;base64,aGVsbG8="),
+                provider_message.ContentElement.from_file_base64("data:text/plain;base64,aGVsbG8=", "hello.txt"),
+            ],
+        )
 
         messages = [message async for message in orchestrator.run_from_query(query)]
 
@@ -815,6 +854,13 @@ class TestQueryEntryAdapterHostCapabilities:
         ap = FakeApplication(plugin_connector, db_engine)
         orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
         query = make_query()
+        query.user_message = provider_message.Message(
+            role="user",
+            content=[
+                provider_message.ContentElement.from_text("hello"),
+                provider_message.ContentElement.from_image_base64("data:image/png;base64,aGVsbG8="),
+            ],
+        )
 
         messages = [message async for message in orchestrator.run_from_query(query)]
 
@@ -896,6 +942,13 @@ class TestQueryEntryAdapterHostCapabilities:
         ap = FakeApplication(plugin_connector, db_engine)
         orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
         query = make_query()
+        query.user_message = provider_message.Message(
+            role="user",
+            content=[
+                provider_message.ContentElement.from_text("hello"),
+                provider_message.ContentElement.from_image_base64("data:image/png;base64,aGVsbG8="),
+            ],
+        )
 
         messages = [message async for message in orchestrator.run_from_query(query)]
 
@@ -910,18 +963,26 @@ class TestQueryEntryAdapterHostCapabilities:
         assert len(event_logs) >= 1
         # First event should be the incoming message.received
         assert event_logs[0]["event_type"] == "message.received"
+        assert event_logs[0]["input_json"]["contents"][1]["image_base64"] is None
+        assert event_logs[0]["input_json"]["contents"][1]["content_redacted"] is True
+        assert "aGVsbG8=" not in str(event_logs[0]["input_json"])
 
         # Check Transcript has user and assistant messages
         transcript_store = TranscriptStore(db_engine)
         transcripts, _, _, _ = await transcript_store.page_transcript(
             conversation_id=query.session.using_conversation.uuid,
             limit=10,
+            include_artifacts=True,
         )
         assert len(transcripts) >= 2
         # Find user and assistant messages
         roles = [t["role"] for t in transcripts]
         assert "user" in roles
         assert "assistant" in roles
+        user_item = next(t for t in transcripts if t["role"] == "user")
+        assert user_item["content_json"]["content"][1]["image_base64"] is None
+        assert user_item["artifact_refs"][0]["content"] is None
+        assert "aGVsbG8=" not in str(user_item)
 
     @pytest.mark.asyncio
     async def test_artifact_created_via_event_first_path(self, clean_agent_state):

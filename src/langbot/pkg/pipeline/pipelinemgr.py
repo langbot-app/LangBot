@@ -276,8 +276,10 @@ class RuntimePipeline:
 
         # Get runner name from pipeline config
         runner_name = None
-        if query.pipeline_config and 'ai' in query.pipeline_config and 'runner' in query.pipeline_config['ai']:
-            runner_name = query.pipeline_config['ai']['runner'].get('runner')
+        if query.pipeline_config:
+            from ..agent.runner.config_migration import ConfigMigration
+
+            runner_name = ConfigMigration.resolve_runner_id(query.pipeline_config)
 
         # Record query start and store message_id
         message_id = ''

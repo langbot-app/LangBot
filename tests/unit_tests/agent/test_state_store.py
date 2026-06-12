@@ -119,18 +119,16 @@ class TestStateScopeHelpers:
             thread_id='thread_001',
         )
 
-        assert build_state_scope_key('conversation', event, binding, descriptor) == (
-            'conversation:plugin:test/my-runner/default:binding_a:conv_001:thread_001'
-        )
-        assert build_state_scope_key('actor', event, binding, descriptor) == (
-            'actor:plugin:test/my-runner/default:binding_a:user:user_001'
-        )
-        assert build_state_scope_key('subject', event, binding, descriptor) == (
-            'subject:plugin:test/my-runner/default:binding_a:message:msg_001'
-        )
-        assert build_state_scope_key('runner', event, binding, descriptor) == (
-            'runner:plugin:test/my-runner/default:binding_a'
-        )
+        keys = {
+            scope: build_state_scope_key(scope, event, binding, descriptor)
+            for scope in VALID_STATE_SCOPES
+        }
+
+        assert keys['conversation'].startswith('conversation:v2:')
+        assert keys['actor'].startswith('actor:v2:')
+        assert keys['subject'].startswith('subject:v2:')
+        assert keys['runner'].startswith('runner:v2:')
+        assert len(set(keys.values())) == len(keys)
 
     def test_scope_key_missing_identity_returns_none(self):
         descriptor = make_descriptor()

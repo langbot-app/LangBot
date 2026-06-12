@@ -138,6 +138,7 @@ class TestStateAPIHandlerAuthorization:
             query_id=1,
             plugin_identity='test/runner',
             resources=make_resources(),
+            available_apis={'state': True},
             state_policy={'enable_state': True, 'state_scopes': ['conversation']},
             state_context={'scope_keys': {'conversation': 'conv_key'}, 'binding_identity': 'binding_1'},
         )
@@ -173,6 +174,7 @@ class TestStateAPIHandlerAuthorization:
             query_id=1,
             plugin_identity='test/runner',
             resources=make_resources(),
+            available_apis={'state': True},
             state_policy={'enable_state': True, 'state_scopes': ['conversation']},
             state_context={'scope_keys': {'conversation': 'conv_key'}, 'binding_identity': 'binding_1'},
         )
@@ -209,6 +211,7 @@ class TestStateAPIHandlerAuthorization:
             query_id=1,
             plugin_identity='test/runner',
             resources=make_resources(),
+            available_apis={'state': True},
             state_policy={'enable_state': False, 'state_scopes': []},
             state_context={'scope_keys': {}, 'binding_identity': 'binding_1'},
         )
@@ -244,6 +247,7 @@ class TestStateAPIHandlerAuthorization:
             query_id=1,
             plugin_identity='test/runner',
             resources=make_resources(),
+            available_apis={'state': True},
             state_policy={'enable_state': True, 'state_scopes': ['conversation']},
             state_context={'scope_keys': {'conversation': 'conv_key', 'actor': 'actor_key'}, 'binding_identity': 'binding_1'},
         )
@@ -280,6 +284,7 @@ class TestStateAPIHandlerAuthorization:
             query_id=1,
             plugin_identity='test/runner',
             resources=make_resources(),
+            available_apis={'state': True},
             state_policy={'enable_state': True, 'state_scopes': ['conversation']},
             state_context={'scope_keys': {}, 'binding_identity': 'binding_1'},  # No scope_keys
         )
@@ -320,6 +325,7 @@ class TestStateAPIFullFlowWithRealDB:
             query_id=1,
             plugin_identity='test/runner',
             resources=make_resources(),
+            available_apis={'state': True},
             state_policy={'enable_state': True, 'state_scopes': ['conversation', 'runner']},
             state_context={
                 'scope_keys': {
@@ -426,6 +432,7 @@ class TestStateHandlerReadsFromAuthorizationSnapshot:
             query_id=1,
             plugin_identity='test/runner',
             resources=make_resources(),
+            available_apis={'state': True},
             state_policy={'enable_state': False, 'state_scopes': []},
             state_context={'scope_keys': {}, 'binding_identity': 'binding_1'},
         )
@@ -469,6 +476,7 @@ class TestStateHandlerReadsFromAuthorizationSnapshot:
             query_id=1,
             plugin_identity='test/runner',
             resources=make_resources(),
+            available_apis={'state': True},
             state_policy={'enable_state': True, 'state_scopes': ['conversation']},
             state_context={'scope_keys': {'conversation': 'conv_key_xyz'}, 'binding_identity': 'binding_xyz'},
         )

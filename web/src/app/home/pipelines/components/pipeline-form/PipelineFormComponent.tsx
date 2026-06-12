@@ -344,6 +344,26 @@ export default function PipelineFormComponent({
     }
   }
 
+  function handleRunnerConfigEmit(stageName: string, values: object) {
+    const stageKey = `ai.runner_config.${stageName}`;
+    const isFirstEmission = !initializedStagesRef.current.has(stageKey);
+
+    const currentRunnerConfigs =
+      (form.getValues('ai.runner_config') as Record<string, unknown>) || {};
+    form.setValue('ai.runner_config', {
+      ...currentRunnerConfigs,
+      [stageName]: values,
+    });
+
+    if (isFirstEmission) {
+      initializedStagesRef.current.add(stageKey);
+      const currentSnapshot = JSON.stringify(form.getValues());
+      if (savedSnapshotRef.current === '' || !hasUnsavedChangesRef.current) {
+        savedSnapshotRef.current = currentSnapshot;
+      }
+    }
+  }
+
   function renderDynamicForms(
     stage: PipelineConfigStage,
     formName: keyof FormValues,
@@ -404,6 +424,10 @@ export default function PipelineFormComponent({
 
       const isPluginRunner =
         currentRunner && currentRunner.startsWith('plugin:');
+      const stageSystemContext =
+        stage.name === 'plugin:langbot/local-agent/default'
+          ? { box_available: boxAvailable }
+          : undefined;
       if (isPluginRunner) {
         const runnerConfigs = (form.watch('ai.runner_config') as any) || {};
         const stageInitialValues = runnerConfigs[stage.name] || {};
@@ -429,20 +453,7 @@ export default function PipelineFormComponent({
                 itemConfigList={stage.config}
                 initialValues={effectiveInitialValues}
                 onSubmit={(values) => {
-                  // Store in ai.runner_config[stage.name]
-
-                  const currentRunnerConfigs =
-                    (form.getValues('ai.runner_config') as any) || {};
-                  form.setValue('ai.runner_config', {
-                    ...currentRunnerConfigs,
-                    [stage.name]: values,
-                  });
-                  // Mark as initialized
-                  const stageKey = `ai.runner_config.${stage.name}`;
-                  if (!initializedStagesRef.current.has(stageKey)) {
-                    initializedStagesRef.current.add(stageKey);
-                    savedSnapshotRef.current = JSON.stringify(form.getValues());
-                  }
+                  handleRunnerConfigEmit(stage.name, values);
                 }}
                 systemContext={stageSystemContext}
               />

@@ -241,6 +241,29 @@ def _resolve_run_conversation(
     return session_conversation_id, None
 
 
+def _run_scope_filters(session: dict[str, Any]) -> dict[str, Any]:
+    authorization = _get_run_authorization(session)
+    return {
+        'bot_id': authorization.get('bot_id'),
+        'workspace_id': authorization.get('workspace_id'),
+        'thread_id': authorization.get('thread_id'),
+        'strict_thread': True,
+    }
+
+
+def _event_matches_run_scope(session: dict[str, Any], event: dict[str, Any]) -> bool:
+    authorization = _get_run_authorization(session)
+    if authorization.get('conversation_id') != event.get('conversation_id'):
+        return False
+    if authorization.get('bot_id') is not None and authorization.get('bot_id') != event.get('bot_id'):
+        return False
+    if authorization.get('workspace_id') is not None and authorization.get('workspace_id') != event.get('workspace_id'):
+        return False
+    if authorization.get('thread_id') != event.get('thread_id'):
+        return False
+    return True
+
+
 def _project_event_record_for_api(event: dict[str, Any]) -> dict[str, Any]:
     """Project EventLogStore rows onto the SDK AgentEventRecord DTO."""
     seq = event.get('seq') or event.get('id')
@@ -314,6 +337,7 @@ async def _validate_run_authorization(
     resource_id: str,
     ap: app.Application,
     caller_plugin_identity: str | None = None,
+    operation: str | None = None,
 ) -> Union[tuple[None, handler.ActionResponse], tuple[Any, None]]:
     """Validate run_id authorization for a resource access.
 
@@ -327,6 +351,7 @@ async def _validate_run_authorization(
         ap: Application instance for logging.
         caller_plugin_identity: Plugin identity (author/name) of the caller.
             Required when the run session is bound to a plugin identity.
+        operation: Optional resource operation required by the runtime action.
 
     Returns:
         Tuple of (session, None) if validation passes.
@@ -357,12 +382,13 @@ async def _validate_run_authorization(
                 message=f'Plugin identity mismatch: caller {caller_plugin_identity} is not authorized for run_id {run_id}',
             )
 
-    if not session_registry.is_resource_allowed(session, resource_type, resource_id):
+    if not session_registry.is_resource_allowed(session, resource_type, resource_id, operation):
         ap.logger.warning(
-            f'{resource_type.upper()}: {resource_id} not allowed for run_id {run_id}'
+            f'{resource_type.upper()}: {resource_id} operation {operation or "*"} not allowed for run_id {run_id}'
         )
+        operation_suffix = f' for operation {operation}' if operation else ''
         return None, handler.ActionResponse.error(
-            message=f'{resource_type} {resource_id} is not authorized for this agent run',
+            message=f'{resource_type} {resource_id} is not authorized{operation_suffix} for this agent run',
         )
 
     return session, None
@@ -716,7 +742,7 @@ class RuntimeConnectionHandler(handler.Handler):
             # Permission validation for AgentRunner calls
             if run_id:
                 session, error = await _validate_run_authorization(
-                    run_id, 'model', llm_model_uuid, self.ap, caller_plugin_identity
+                    run_id, 'model', llm_model_uuid, self.ap, caller_plugin_identity, operation='invoke'
                 )
                 if error:
                     return error
@@ -774,7 +800,7 @@ class RuntimeConnectionHandler(handler.Handler):
             # Permission validation for AgentRunner calls
             if run_id:
                 session, error = await _validate_run_authorization(
-                    run_id, 'model', llm_model_uuid, self.ap, caller_plugin_identity
+                    run_id, 'model', llm_model_uuid, self.ap, caller_plugin_identity, operation='stream'
                 )
                 if error:
                     yield error
@@ -841,7 +867,7 @@ class RuntimeConnectionHandler(handler.Handler):
             # Permission validation for AgentRunner calls
             if run_id:
                 session, error = await _validate_run_authorization(
-                    run_id, 'tool', tool_name, self.ap, caller_plugin_identity
+                    run_id, 'tool', tool_name, self.ap, caller_plugin_identity, operation='call'
                 )
                 if error:
                     return error
@@ -881,7 +907,7 @@ class RuntimeConnectionHandler(handler.Handler):
             # Permission validation for AgentRunner calls
             if run_id:
                 session, error = await _validate_run_authorization(
-                    run_id, 'tool', tool_name, self.ap, caller_plugin_identity
+                    run_id, 'tool', tool_name, self.ap, caller_plugin_identity, operation='detail'
                 )
                 if error:
                     return error
@@ -1101,7 +1127,7 @@ class RuntimeConnectionHandler(handler.Handler):
             # Permission validation for AgentRunner calls
             if run_id:
                 session, error = await _validate_run_authorization(
-                    run_id, 'file', file_key, self.ap, caller_plugin_identity
+                    run_id, 'file', file_key, self.ap, caller_plugin_identity, operation='config'
                 )
                 if error:
                     return error
@@ -1151,7 +1177,7 @@ class RuntimeConnectionHandler(handler.Handler):
 
             # Validate run authorization
             session, error = await _validate_run_authorization(
-                run_id, 'model', rerank_model_uuid, self.ap, caller_plugin_identity
+                run_id, 'model', rerank_model_uuid, self.ap, caller_plugin_identity, operation='rerank'
             )
             if error:
                 return error
@@ -1335,7 +1361,7 @@ class RuntimeConnectionHandler(handler.Handler):
             # Permission validation for AgentRunner calls
             if run_id:
                 session, error = await _validate_run_authorization(
-                    run_id, 'knowledge_base', kb_id, self.ap, caller_plugin_identity
+                    run_id, 'knowledge_base', kb_id, self.ap, caller_plugin_identity, operation='retrieve'
                 )
                 if error:
                     return error
@@ -1410,7 +1436,7 @@ class RuntimeConnectionHandler(handler.Handler):
             # Permission validation for AgentRunner calls
             if run_id:
                 session, error = await _validate_run_authorization(
-                    run_id, 'knowledge_base', kb_id, self.ap, caller_plugin_identity
+                    run_id, 'knowledge_base', kb_id, self.ap, caller_plugin_identity, operation='retrieve'
                 )
                 if error:
                     return error
@@ -1524,6 +1550,7 @@ class RuntimeConnectionHandler(handler.Handler):
                     limit=limit,
                     direction=direction,
                     include_artifacts=include_artifacts,
+                    **_run_scope_filters(session),
                 )
 
                 return handler.ActionResponse.success(data={
@@ -1589,6 +1616,7 @@ class RuntimeConnectionHandler(handler.Handler):
                     query_text=query_text,
                     filters=safe_filters,
                     top_k=top_k,
+                    **_run_scope_filters(session),
                 )
 
                 return handler.ActionResponse.success(data={
@@ -1642,7 +1670,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 event_run_id = event.get('run_id')
                 if event_run_id and event_run_id == run_id:
                     return handler.ActionResponse.success(data=_project_event_record_for_api(event))
-                if not session_conversation_id or event.get('conversation_id') != session_conversation_id:
+                if not session_conversation_id or not _event_matches_run_scope(session, event):
                     return handler.ActionResponse.error(
                         message=f'Event {event_id} is not accessible by this run'
                     )
@@ -1707,6 +1735,7 @@ class RuntimeConnectionHandler(handler.Handler):
                     event_types=event_types,
                     before_seq=before_seq,
                     limit=limit,
+                    **_run_scope_filters(session),
                 )
 
                 return handler.ActionResponse.success(data={

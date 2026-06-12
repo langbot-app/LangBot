@@ -576,8 +576,8 @@ class TestRETRIEVEKNOWLEDGEBASEBugFix:
 
         assert 'kb_custom' in allowed_kbs
 
-    def test_retrieve_kb_ignores_old_runner_format(self):
-        """Old runner format is not resolved by current AgentRunner helpers."""
+    def test_retrieve_kb_reads_old_runner_format(self):
+        """Old runner format is resolved for migration compatibility."""
         from langbot.pkg.agent.runner.config_migration import ConfigMigration
 
         pipeline_config = {
@@ -585,11 +585,16 @@ class TestRETRIEVEKNOWLEDGEBASEBugFix:
                 'runner': {
                     'runner': 'local-agent',
                 },
+                'local-agent': {
+                    'knowledge-bases': ['kb_legacy'],
+                },
             },
         }
 
         runner_id = ConfigMigration.resolve_runner_id(pipeline_config)
-        assert runner_id is None
+        runner_config = ConfigMigration.resolve_runner_config(pipeline_config, runner_id)
+        assert runner_id == 'plugin:langbot/local-agent/default'
+        assert runner_config.get('knowledge-bases') == ['kb_legacy']
 
 
 class TestHandlerActionAuthorization:
@@ -1868,6 +1873,42 @@ class TestFilePermissionValidation:
         assert 'not authorized' in error.message.lower()
 
         await registry.unregister('run_file_denied')
+
+
+class TestOperationPermissionValidation:
+    """Tests operation-level Host-side run authorization."""
+
+    @pytest.mark.asyncio
+    async def test_model_operation_denied_when_resource_only_allows_invoke(self):
+        from langbot.pkg.agent.runner.session_registry import get_session_registry
+        from langbot.pkg.plugin.handler import _validate_run_authorization
+
+        registry = get_session_registry()
+        await registry.register(
+            run_id='run_model_operation_denied',
+            runner_id='plugin:test/runner/default',
+            query_id=1,
+            plugin_identity='test/runner',
+            resources=make_resources(models=[{'model_id': 'model_001', 'operations': ['invoke']}]),
+        )
+
+        mock_ap = MagicMock()
+        mock_ap.logger = MagicMock()
+
+        session, error = await _validate_run_authorization(
+            'run_model_operation_denied',
+            'model',
+            'model_001',
+            mock_ap,
+            caller_plugin_identity='test/runner',
+            operation='stream',
+        )
+
+        assert session is None
+        assert error is not None
+        assert 'operation stream' in error.message
+
+        await registry.unregister('run_model_operation_denied')
 
 
 class TestCallerPluginIdentityValidation:

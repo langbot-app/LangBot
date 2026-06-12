@@ -11,6 +11,7 @@ from .context_builder import (
     ToolResource,
     KnowledgeBaseResource,
     SkillResource,
+    FileResource,
     StorageResource,
 )
 from . import config_schema
@@ -79,13 +80,14 @@ class AgentResourceBuilder:
             resource_policy, descriptor
         )
         storage = self._build_storage_from_binding(manifest_perms, binding)
+        files = self._build_files_from_binding(manifest_perms, descriptor, runner_config)
 
         return {
             'models': models,
             'tools': tools,
             'knowledge_bases': knowledge_bases,
             'skills': skills,
-            'files': [],  # Files are populated at runtime
+            'files': files,
             'storage': storage,
             'platform_capabilities': {},  # Reserved for EBA
         }
@@ -104,6 +106,7 @@ class AgentResourceBuilder:
         model_perms = set(manifest_perms.models)
         include_llm = bool({'invoke', 'stream'} & model_perms)
         include_rerank = 'rerank' in model_perms
+        llm_operations = [operation for operation in ('invoke', 'stream') if operation in model_perms]
         if not include_llm and not include_rerank:
             return models
 
@@ -118,12 +121,13 @@ class AgentResourceBuilder:
             runner_config=runner_config,
             include_llm=include_llm,
             include_rerank=include_rerank,
+            llm_operations=llm_operations,
         )
 
         # Add explicitly allowed models
         if allowed_uuids and include_llm:
             for model_uuid in allowed_uuids:
-                await self._append_llm_model_resource(models, seen_model_ids, model_uuid)
+                await self._append_llm_model_resource(models, seen_model_ids, model_uuid, llm_operations)
 
         return models
 
@@ -144,6 +148,7 @@ class AgentResourceBuilder:
 
         # Get tool names from resource policy
         allowed_names = resource_policy.allowed_tool_names
+        tool_operations = [operation for operation in ('detail', 'call') if operation in tool_perms]
 
         if allowed_names:
             for tool_name in allowed_names:
@@ -151,6 +156,7 @@ class AgentResourceBuilder:
                     'tool_name': tool_name,
                     'tool_type': None,
                     'description': None,
+                    'operations': tool_operations,
                 })
 
         return tools
@@ -167,6 +173,7 @@ class AgentResourceBuilder:
         kb_perms = set(manifest_perms.knowledge_bases)
         if not ({'list', 'retrieve'} & kb_perms):
             return kb_resources
+        kb_operations = [operation for operation in ('list', 'retrieve') if operation in kb_perms]
 
         if not config_schema.uses_host_knowledge_bases(descriptor):
             return kb_resources
@@ -187,6 +194,7 @@ class AgentResourceBuilder:
                         'kb_id': kb_uuid,
                         'kb_name': kb.get_name(),
                         'kb_type': kb.knowledge_base_entity.kb_type if hasattr(kb.knowledge_base_entity, 'kb_type') else None,
+                        'operations': kb_operations,
                     })
             except Exception as e:
                 self.ap.logger.warning(f'Failed to build knowledge base resource {kb_uuid}: {e}')
@@ -223,6 +231,27 @@ class AgentResourceBuilder:
             })
         return skills
 
+    def _build_files_from_binding(
+        self,
+        manifest_perms: typing.Any,
+        descriptor: AgentRunnerDescriptor,
+        runner_config: dict[str, typing.Any],
+    ) -> list[FileResource]:
+        """Build config/knowledge file resources selected in runner config."""
+        file_perms = set(manifest_perms.files)
+        operations = [operation for operation in ('config', 'knowledge') if operation in file_perms]
+        if not operations:
+            return []
+
+        files: list[FileResource] = []
+        if 'config' in file_perms:
+            for file_resource in config_schema.extract_config_file_resources(descriptor, runner_config):
+                files.append({
+                    **file_resource,
+                    'operations': ['config'],
+                })
+        return files
+
     def _build_storage_from_binding(
         self,
         manifest_perms: typing.Any,
@@ -245,11 +274,12 @@ class AgentResourceBuilder:
         runner_config: dict[str, typing.Any],
         include_llm: bool,
         include_rerank: bool,
+        llm_operations: list[str],
     ) -> None:
         """Authorize model-like values selected through DynamicForm fields."""
         for model_type, model_uuid in config_schema.iter_config_model_refs(descriptor, runner_config):
             if model_type == 'llm' and include_llm:
-                await self._append_llm_model_resource(models, seen_model_ids, model_uuid)
+                await self._append_llm_model_resource(models, seen_model_ids, model_uuid, llm_operations)
             elif model_type == 'rerank' and include_rerank:
                 await self._append_rerank_model_resource(models, seen_model_ids, model_uuid)
 
@@ -258,6 +288,7 @@ class AgentResourceBuilder:
         models: list[ModelResource],
         seen_model_ids: set[str],
         model_uuid: str | None,
+        operations: list[str],
     ) -> None:
         """Append an LLM model resource if it exists and has not been added."""
         if not model_uuid or model_uuid == '__none__' or model_uuid in seen_model_ids:
@@ -270,6 +301,7 @@ class AgentResourceBuilder:
                     'model_id': model_uuid,
                     'model_type': getattr(model.model_entity, 'model_type', None),
                     'provider': getattr(model.provider_entity, 'name', None) if hasattr(model, 'provider_entity') else None,
+                    'operations': operations,
                 })
                 seen_model_ids.add(model_uuid)
         except Exception as e:
@@ -292,6 +324,7 @@ class AgentResourceBuilder:
                     'model_id': model_uuid,
                     'model_type': getattr(model.model_entity, 'model_type', 'rerank') or 'rerank',
                     'provider': getattr(model.provider_entity, 'name', None) if hasattr(model, 'provider_entity') else None,
+                    'operations': ['rerank'],
                 })
                 seen_model_ids.add(model_uuid)
         except Exception as e:

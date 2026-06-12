@@ -1,6 +1,8 @@
 """State scope key helpers for AgentRunner host-owned state."""
 from __future__ import annotations
 
+import hashlib
+import json
 import typing
 
 from .descriptor import AgentRunnerDescriptor
@@ -31,6 +33,30 @@ def get_binding_identity(binding: AgentBinding) -> str:
     return 'unknown_binding'
 
 
+def _scope_hash(scope: str, parts: dict[str, typing.Any]) -> str:
+    """Encode state scope dimensions without separator ambiguity."""
+    payload = {
+        'version': 2,
+        'scope': scope,
+        **parts,
+    }
+    raw = json.dumps(payload, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+    return f'{scope}:v2:{hashlib.sha256(raw.encode("utf-8")).hexdigest()}'
+
+
+def _base_scope_parts(
+    event: AgentEventEnvelope,
+    binding: AgentBinding,
+    descriptor: AgentRunnerDescriptor,
+) -> dict[str, typing.Any]:
+    return {
+        'runner_id': descriptor.id,
+        'binding_identity': get_binding_identity(binding),
+        'bot_id': event.bot_id,
+        'workspace_id': event.workspace_id,
+    }
+
+
 def build_state_scope_key(
     scope: str,
     event: AgentEventEnvelope,
@@ -41,40 +67,37 @@ def build_state_scope_key(
 
     Returns None when the event lacks the identity required by that scope.
     """
-    binding_identity = get_binding_identity(binding)
+    base_parts = _base_scope_parts(event, binding, descriptor)
 
     if scope == 'conversation':
         if not event.conversation_id:
             return None
-        parts = [descriptor.id, binding_identity, event.conversation_id]
-        if event.thread_id:
-            parts.append(event.thread_id)
-        return f'conversation:{":".join(parts)}'
+        return _scope_hash(scope, {
+            **base_parts,
+            'conversation_id': event.conversation_id,
+            'thread_id': event.thread_id,
+        })
 
     if scope == 'actor':
         if not event.actor or not event.actor.actor_id:
             return None
-        parts = [
-            descriptor.id,
-            binding_identity,
-            event.actor.actor_type or 'user',
-            event.actor.actor_id,
-        ]
-        return f'actor:{":".join(parts)}'
+        return _scope_hash(scope, {
+            **base_parts,
+            'actor_type': event.actor.actor_type or 'user',
+            'actor_id': event.actor.actor_id,
+        })
 
     if scope == 'subject':
         if not event.subject or not event.subject.subject_id:
             return None
-        parts = [
-            descriptor.id,
-            binding_identity,
-            event.subject.subject_type or 'unknown',
-            event.subject.subject_id,
-        ]
-        return f'subject:{":".join(parts)}'
+        return _scope_hash(scope, {
+            **base_parts,
+            'subject_type': event.subject.subject_type or 'unknown',
+            'subject_id': event.subject.subject_id,
+        })
 
     if scope == 'runner':
-        return f'runner:{descriptor.id}:{binding_identity}'
+        return _scope_hash(scope, base_parts)
 
     return None
 

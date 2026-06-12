@@ -39,7 +39,7 @@ class AgentRunnerState(Base):
     scope = sqlalchemy.Column(sqlalchemy.String(50), nullable=False, index=True)
     """State scope: 'conversation', 'actor', 'subject', or 'runner'."""
 
-    scope_key = sqlalchemy.Column(sqlalchemy.String(512), nullable=False, index=True)
+    scope_key = sqlalchemy.Column(sqlalchemy.String(512), nullable=False)
     """Full scope key for unique lookup (includes all identity parts)."""
 
     state_key = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)

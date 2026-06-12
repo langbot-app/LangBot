@@ -330,6 +330,19 @@ class TestIsResourceAllowed:
         assert registry.is_resource_allowed(session, 'model', 'model_001') is True
         assert registry.is_resource_allowed(session, 'model', 'model_002') is True
 
+    def test_model_operation_denied(self):
+        """Model resources should enforce operation-level grants."""
+        registry = AgentRunSessionRegistry()
+        resources = make_resources(
+            models=[
+                {'model_id': 'model_001', 'operations': ['invoke']},
+            ]
+        )
+        session = make_session(resources=resources)
+
+        assert registry.is_resource_allowed(session, 'model', 'model_001', 'invoke') is True
+        assert registry.is_resource_allowed(session, 'model', 'model_001', 'stream') is False
+
     def test_model_not_allowed(self):
         """Model not in resources should be denied."""
         registry = AgentRunSessionRegistry()
@@ -359,6 +372,19 @@ class TestIsResourceAllowed:
 
         assert registry.is_resource_allowed(session, 'tool', 'web_search') is True
         assert registry.is_resource_allowed(session, 'tool', 'code_exec') is True
+
+    def test_tool_operation_denied(self):
+        """Tool resources should enforce detail/call grants."""
+        registry = AgentRunSessionRegistry()
+        resources = make_resources(
+            tools=[
+                {'tool_name': 'web_search', 'operations': ['detail']},
+            ]
+        )
+        session = make_session(resources=resources)
+
+        assert registry.is_resource_allowed(session, 'tool', 'web_search', 'detail') is True
+        assert registry.is_resource_allowed(session, 'tool', 'web_search', 'call') is False
 
     def test_tool_not_allowed(self):
         """Tool not in resources should be denied."""

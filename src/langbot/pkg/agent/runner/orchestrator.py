@@ -109,6 +109,9 @@ class AgentRunOrchestrator:
             resources=resources,
             available_apis=context.get('context', {}).get('available_apis'),
             conversation_id=event.conversation_id,
+            bot_id=event.bot_id,
+            workspace_id=event.workspace_id,
+            thread_id=event.thread_id,
             state_policy={
                 'enable_state': binding.state_policy.enable_state,
                 'state_scopes': list(binding.state_policy.state_scopes),
@@ -136,6 +139,7 @@ class AgentRunOrchestrator:
         pending_artifact_refs: list[dict[str, typing.Any]] = []
         seen_sequences: set[int] = set()
         last_sequence = 0
+        assistant_transcript_written = False
 
         try:
             async for result_dict in self.invoker.invoke(descriptor, context):
@@ -187,11 +191,25 @@ class AgentRunOrchestrator:
                     continue
 
                 if result_type == 'state.updated':
-                    await self.journal.handle_state_updated_event(result_dict, event, binding, descriptor)
+                    await self.journal.handle_state_updated_event(
+                        result_dict,
+                        event,
+                        binding,
+                        descriptor,
+                        run_id=run_id,
+                    )
                     await self.result_normalizer.normalize(result_dict, descriptor)
                     continue
 
-                if result_type == 'message.completed' and event.conversation_id:
+                has_completed_message = (
+                    result_type == 'message.completed'
+                    or (
+                        result_type == 'run.completed'
+                        and isinstance(result_dict.get('data'), dict)
+                        and bool(result_dict['data'].get('message'))
+                    )
+                )
+                if has_completed_message and event.conversation_id and not assistant_transcript_written:
                     merged_refs = self.journal.merge_artifact_refs(
                         pending_artifact_refs,
                         result_dict,
@@ -205,6 +223,7 @@ class AgentRunOrchestrator:
                         runner_id=descriptor.id,
                         artifact_refs=merged_refs if merged_refs else None,
                     )
+                    assistant_transcript_written = True
 
                 result = await self.result_normalizer.normalize(result_dict, descriptor)
                 if result is not None:

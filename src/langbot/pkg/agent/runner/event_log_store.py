@@ -141,6 +141,10 @@ class EventLogStore:
         event_types: list[str] | None = None,
         before_seq: int | None = None,
         limit: int = 50,
+        bot_id: str | None = None,
+        workspace_id: str | None = None,
+        thread_id: str | None = None,
+        strict_thread: bool = False,
     ) -> tuple[list[dict[str, typing.Any]], int | None, bool]:
         """Page through event records.
 
@@ -149,6 +153,10 @@ class EventLogStore:
             event_types: Filter by event types
             before_seq: Get events before this sequence number
             limit: Maximum items to return (capped at 100)
+            bot_id: Optional bot scope filter
+            workspace_id: Optional workspace scope filter
+            thread_id: Optional thread scope filter
+            strict_thread: When true, require thread_id equality including NULL
 
         Returns:
             Tuple of (items, next_seq, has_more)
@@ -160,6 +168,7 @@ class EventLogStore:
 
             if conversation_id is not None:
                 query = query.where(EventLog.conversation_id == conversation_id)
+            query = self._apply_scope_filters(query, bot_id, workspace_id, thread_id, strict_thread)
 
             if event_types:
                 query = query.where(EventLog.event_type.in_(event_types))
@@ -206,6 +215,10 @@ class EventLogStore:
         self,
         conversation_id: str,
         seq: int,
+        bot_id: str | None = None,
+        workspace_id: str | None = None,
+        thread_id: str | None = None,
+        strict_thread: bool = False,
     ) -> bool:
         """Check if there are events before a sequence number.
 
@@ -217,16 +230,34 @@ class EventLogStore:
             True if there are events before
         """
         async with self._session_factory() as session:
-            result = await session.execute(
+            query = (
                 sqlalchemy.select(sqlalchemy.func.count())
                 .select_from(EventLog)
-                .where(
-                    EventLog.conversation_id == conversation_id,
-                    EventLog.id < seq,
-                )
+                .where(EventLog.conversation_id == conversation_id, EventLog.id < seq)
             )
+            query = self._apply_scope_filters(query, bot_id, workspace_id, thread_id, strict_thread)
+            result = await session.execute(query)
             count = result.scalar()
             return count > 0
+
+    def _apply_scope_filters(
+        self,
+        query: typing.Any,
+        bot_id: str | None,
+        workspace_id: str | None,
+        thread_id: str | None,
+        strict_thread: bool,
+    ) -> typing.Any:
+        if bot_id is not None:
+            query = query.where(EventLog.bot_id == bot_id)
+        if workspace_id is not None:
+            query = query.where(EventLog.workspace_id == workspace_id)
+        if strict_thread:
+            if thread_id is None:
+                query = query.where(EventLog.thread_id.is_(None))
+            else:
+                query = query.where(EventLog.thread_id == thread_id)
+        return query
 
     async def cleanup_events_older_than(
         self,

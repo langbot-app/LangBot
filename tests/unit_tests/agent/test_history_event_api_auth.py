@@ -64,6 +64,9 @@ async def _register_session(
     *,
     run_id='run_1',
     conversation_id='conv_1',
+    bot_id=None,
+    workspace_id=None,
+    thread_id=None,
     available_apis=None,
 ):
     await session_registry.register(
@@ -73,6 +76,9 @@ async def _register_session(
         plugin_identity='test/runner',
         resources=make_resources(),
         conversation_id=conversation_id,
+        bot_id=bot_id,
+        workspace_id=workspace_id,
+        thread_id=thread_id,
         available_apis=available_apis or {},
     )
 
@@ -220,3 +226,98 @@ async def test_event_page_returns_sdk_page_projection(session_registry, db_engin
     assert 'input_json' not in item
     assert 'run_id' not in item
     assert 'runner_id' not in item
+
+
+@pytest.mark.asyncio
+async def test_history_page_filters_run_scope_thread_and_bot(session_registry, db_engine):
+    from langbot.pkg.agent.runner.transcript_store import TranscriptStore
+
+    await _register_session(
+        session_registry,
+        bot_id='bot_1',
+        thread_id='thread_1',
+        available_apis={'history_page': True},
+    )
+    store = TranscriptStore(db_engine)
+    await store.append_transcript(
+        transcript_id='tr_visible',
+        event_id='evt_visible',
+        conversation_id='conv_1',
+        role='user',
+        bot_id='bot_1',
+        thread_id='thread_1',
+        content='visible',
+    )
+    await store.append_transcript(
+        transcript_id='tr_other_bot',
+        event_id='evt_other_bot',
+        conversation_id='conv_1',
+        role='user',
+        bot_id='bot_2',
+        thread_id='thread_1',
+        content='hidden bot',
+    )
+    await store.append_transcript(
+        transcript_id='tr_other_thread',
+        event_id='evt_other_thread',
+        conversation_id='conv_1',
+        role='user',
+        bot_id='bot_1',
+        thread_id='thread_2',
+        content='hidden thread',
+    )
+    handler = _handler(db_engine, session_registry)
+    history_page = handler.actions[PluginToRuntimeAction.HISTORY_PAGE.value]
+
+    result = await history_page({
+        'run_id': 'run_1',
+        'caller_plugin_identity': 'test/runner',
+    })
+
+    assert result.code == 0
+    assert [item['content'] for item in result.data['items']] == ['visible']
+
+
+@pytest.mark.asyncio
+async def test_event_page_filters_run_scope_thread_and_bot(session_registry, db_engine):
+    await _register_session(
+        session_registry,
+        bot_id='bot_1',
+        thread_id='thread_1',
+        available_apis={'event_page': True},
+    )
+    store = EventLogStore(db_engine)
+    await store.append_event(
+        event_id='evt_visible',
+        event_type='message.received',
+        source='platform',
+        bot_id='bot_1',
+        conversation_id='conv_1',
+        thread_id='thread_1',
+    )
+    await store.append_event(
+        event_id='evt_other_bot',
+        event_type='message.received',
+        source='platform',
+        bot_id='bot_2',
+        conversation_id='conv_1',
+        thread_id='thread_1',
+    )
+    await store.append_event(
+        event_id='evt_other_thread',
+        event_type='message.received',
+        source='platform',
+        bot_id='bot_1',
+        conversation_id='conv_1',
+        thread_id='thread_2',
+    )
+    handler = _handler(db_engine, session_registry)
+    event_page = handler.actions[PluginToRuntimeAction.EVENT_PAGE.value]
+
+    result = await event_page({
+        'run_id': 'run_1',
+        'caller_plugin_identity': 'test/runner',
+    })
+
+    assert result.code == 0
+    assert [item['event_id'] for item in result.data['items']] == ['evt_visible']

@@ -25,6 +25,12 @@ class Transcript(Base):
     event_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=False, index=True)
     """Reference to the source event in EventLog."""
 
+    bot_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
+    """Bot UUID this item belongs to."""
+
+    workspace_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
+    """Workspace this item belongs to."""
+
     conversation_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=False, index=True)
     """Conversation this item belongs to."""
 
@@ -69,4 +75,5 @@ class Transcript(Base):
     __table_args__ = (
         sqlalchemy.Index('ix_transcript_conversation_seq', 'conversation_id', 'seq'),
         sqlalchemy.Index('ix_transcript_conversation_created', 'conversation_id', 'created_at'),
+        sqlalchemy.Index('ix_transcript_scope_seq', 'bot_id', 'workspace_id', 'conversation_id', 'thread_id', 'seq'),
     )

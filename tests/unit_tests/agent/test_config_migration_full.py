@@ -31,7 +31,7 @@ class TestMigratePipelineConfig:
         assert migrated['ai']['runner']['id'] == 'plugin:langbot/local-agent/default'
         assert migrated['ai']['runner_config']['plugin:langbot/local-agent/default']['custom-option'] == 10
 
-    def test_old_runner_field_is_not_mapped(self):
+    def test_old_runner_field_is_mapped(self):
         config = {
             'ai': {
                 'runner': {
@@ -47,11 +47,13 @@ class TestMigratePipelineConfig:
         migrated = ConfigMigration.migrate_pipeline_config(config)
 
         assert migrated['ai']['runner'] == {
-            'runner': 'local-agent',
             'expire-time': 3600,
+            'id': 'plugin:langbot/local-agent/default',
         }
-        assert migrated['ai']['runner_config'] == {}
-        assert migrated['ai']['local-agent'] == {'model': 'old-model'}
+        assert migrated['ai']['runner_config']['plugin:langbot/local-agent/default'] == {
+            'model': {'primary': 'old-model', 'fallbacks': []},
+        }
+        assert 'local-agent' not in migrated['ai']
 
     def test_empty_config_is_unchanged(self):
         config = {}
@@ -95,14 +97,14 @@ class TestResolveRunnerId:
         runner_id = ConfigMigration.resolve_runner_id(config)
         assert runner_id == 'plugin:test/my-runner/default'
 
-    def test_old_runner_field_is_ignored(self):
+    def test_old_runner_field_is_mapped(self):
         config = {
             'ai': {
                 'runner': {'runner': 'local-agent'},
             },
         }
         runner_id = ConfigMigration.resolve_runner_id(config)
-        assert runner_id is None
+        assert runner_id == 'plugin:langbot/local-agent/default'
 
 
 class TestResolveRunnerConfig:
@@ -119,11 +121,11 @@ class TestResolveRunnerConfig:
         runner_config = ConfigMigration.resolve_runner_config(config, 'plugin:langbot/local-agent/default')
         assert runner_config['custom-option'] == 20
 
-    def test_old_runner_block_is_ignored(self):
+    def test_old_runner_block_is_read(self):
         config = {
             'ai': {
                 'local-agent': {'custom-option': 20},
             },
         }
         runner_config = ConfigMigration.resolve_runner_config(config, 'plugin:langbot/local-agent/default')
-        assert runner_config == {}
+        assert runner_config == {'custom-option': 20}

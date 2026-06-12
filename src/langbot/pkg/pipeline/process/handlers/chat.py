@@ -88,7 +88,12 @@ class ChatMessageHandler(handler.MessageHandler):
                 # Mark start time for telemetry
                 start_ts = time.time()
 
-                if await self.ap.agent_run_orchestrator.try_claim_steering_from_query(query):
+                try_claim_steering = getattr(
+                    self.ap.agent_run_orchestrator,
+                    'try_claim_steering_from_query',
+                    None,
+                )
+                if try_claim_steering and await try_claim_steering(query):
                     yield entities.StageProcessResult(result_type=entities.ResultType.INTERRUPT, new_query=query)
                     return
 

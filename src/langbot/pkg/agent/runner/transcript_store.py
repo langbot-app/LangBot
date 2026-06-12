@@ -39,6 +39,8 @@ class TranscriptStore:
         event_id: str,
         conversation_id: str,
         role: str,
+        bot_id: str | None = None,
+        workspace_id: str | None = None,
         content: str | None = None,
         content_json: dict[str, typing.Any] | None = None,
         artifact_refs: list[dict[str, typing.Any]] | None = None,
@@ -55,6 +57,8 @@ class TranscriptStore:
             event_id: Source event ID
             conversation_id: Conversation ID
             role: Message role (user, assistant, system, tool)
+            bot_id: Bot UUID scope
+            workspace_id: Workspace scope
             content: Text content
             content_json: Full structured content
             artifact_refs: Artifact references
@@ -78,6 +82,8 @@ class TranscriptStore:
             item = Transcript(
                 transcript_id=transcript_id,
                 event_id=event_id,
+                bot_id=bot_id,
+                workspace_id=workspace_id,
                 conversation_id=conversation_id,
                 thread_id=thread_id,
                 role=role,
@@ -106,6 +112,10 @@ class TranscriptStore:
         limit: int = 50,
         direction: str = "backward",
         include_artifacts: bool = False,
+        bot_id: str | None = None,
+        workspace_id: str | None = None,
+        thread_id: str | None = None,
+        strict_thread: bool = False,
     ) -> tuple[list[dict[str, typing.Any]], int | None, int | None, bool]:
         """Page through transcript items.
 
@@ -116,6 +126,10 @@ class TranscriptStore:
             limit: Maximum items to return (capped at 100)
             direction: 'backward' (older) or 'forward' (newer)
             include_artifacts: Include artifact refs
+            bot_id: Optional bot scope filter
+            workspace_id: Optional workspace scope filter
+            thread_id: Optional thread scope filter
+            strict_thread: When true, require thread_id equality including NULL
 
         Returns:
             Tuple of (items, next_seq, prev_seq, has_more)
@@ -126,6 +140,7 @@ class TranscriptStore:
             query = sqlalchemy.select(Transcript).where(
                 Transcript.conversation_id == conversation_id
             )
+            query = self._apply_scope_filters(query, bot_id, workspace_id, thread_id, strict_thread)
 
             if direction == "backward" and before_seq is not None:
                 query = query.where(Transcript.seq < before_seq)
@@ -168,6 +183,10 @@ class TranscriptStore:
         query_text: str,
         filters: dict[str, typing.Any] | None = None,
         top_k: int = 10,
+        bot_id: str | None = None,
+        workspace_id: str | None = None,
+        thread_id: str | None = None,
+        strict_thread: bool = False,
     ) -> list[dict[str, typing.Any]]:
         """Search transcript items.
 
@@ -178,6 +197,10 @@ class TranscriptStore:
             query_text: Search query
             filters: Optional filters
             top_k: Maximum results
+            bot_id: Optional bot scope filter
+            workspace_id: Optional workspace scope filter
+            thread_id: Optional thread scope filter
+            strict_thread: When true, require thread_id equality including NULL
 
         Returns:
             List of matching items
@@ -187,6 +210,7 @@ class TranscriptStore:
                 Transcript.conversation_id == conversation_id,
                 Transcript.content.ilike(f"%{query_text}%"),
             )
+            query = self._apply_scope_filters(query, bot_id, workspace_id, thread_id, strict_thread)
 
             # Apply additional filters
             if filters:
@@ -254,6 +278,10 @@ class TranscriptStore:
         self,
         conversation_id: str,
         seq: int,
+        bot_id: str | None = None,
+        workspace_id: str | None = None,
+        thread_id: str | None = None,
+        strict_thread: bool = False,
     ) -> bool:
         """Check if there is history before a sequence number.
 
@@ -265,16 +293,34 @@ class TranscriptStore:
             True if there are items before
         """
         async with self._session_factory() as session:
-            result = await session.execute(
+            query = (
                 sqlalchemy.select(sqlalchemy.func.count())
                 .select_from(Transcript)
-                .where(
-                    Transcript.conversation_id == conversation_id,
-                    Transcript.seq < seq,
-                )
+                .where(Transcript.conversation_id == conversation_id, Transcript.seq < seq)
             )
+            query = self._apply_scope_filters(query, bot_id, workspace_id, thread_id, strict_thread)
+            result = await session.execute(query)
             count = result.scalar()
             return count > 0
+
+    def _apply_scope_filters(
+        self,
+        query: typing.Any,
+        bot_id: str | None,
+        workspace_id: str | None,
+        thread_id: str | None,
+        strict_thread: bool,
+    ) -> typing.Any:
+        if bot_id is not None:
+            query = query.where(Transcript.bot_id == bot_id)
+        if workspace_id is not None:
+            query = query.where(Transcript.workspace_id == workspace_id)
+        if strict_thread:
+            if thread_id is None:
+                query = query.where(Transcript.thread_id.is_(None))
+            else:
+                query = query.where(Transcript.thread_id == thread_id)
+        return query
 
     async def cleanup_transcripts_older_than(
         self,
@@ -307,6 +353,8 @@ class TranscriptStore:
         result = {
             'transcript_id': row.transcript_id,
             'event_id': row.event_id,
+            'bot_id': row.bot_id,
+            'workspace_id': row.workspace_id,
             'conversation_id': row.conversation_id,
             'thread_id': row.thread_id,
             'role': row.role,
