@@ -228,6 +228,18 @@ class EventLogStore:
             count = result.scalar()
             return count > 0
 
+    async def cleanup_events_older_than(
+        self,
+        before: datetime.datetime,
+    ) -> int:
+        """Delete EventLog rows created before the supplied timestamp."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                sqlalchemy.delete(EventLog).where(EventLog.created_at < before)
+            )
+            await session.commit()
+            return result.rowcount or 0
+
     def _row_to_dict(self, row: EventLog) -> dict[str, typing.Any]:
         """Convert an EventLog row to dict."""
         return {

@@ -31,21 +31,28 @@ class Controller:
         semaphore; otherwise the active run can finish before the query reaches
         ChatMessageHandler.try_claim_steering_from_query.
         """
-        pipeline_uuid = query.pipeline_uuid
-        if not pipeline_uuid:
+        try:
+            pipeline_uuid = query.pipeline_uuid
+            if not pipeline_uuid:
+                return False
+
+            pipeline = await self.ap.pipeline_mgr.get_pipeline_by_uuid(pipeline_uuid)
+            if not pipeline:
+                return False
+
+            session = await self.ap.sess_mgr.get_session(query)
+            query.session = session
+            query.pipeline_config = pipeline.pipeline_entity.config
+            query.variables['_pipeline_bound_plugins'] = pipeline.bound_plugins
+            query.variables['_pipeline_bound_mcp_servers'] = pipeline.bound_mcp_servers
+
+            return await self.ap.agent_run_orchestrator.try_claim_steering_from_query(query)
+        except Exception as exc:
+            self.ap.logger.warning(
+                f'Failed to claim query {query.query_id} as steering input: {exc}',
+                exc_info=True,
+            )
             return False
-
-        pipeline = await self.ap.pipeline_mgr.get_pipeline_by_uuid(pipeline_uuid)
-        if not pipeline:
-            return False
-
-        session = await self.ap.sess_mgr.get_session(query)
-        query.session = session
-        query.pipeline_config = pipeline.pipeline_entity.config
-        query.variables['_pipeline_bound_plugins'] = pipeline.bound_plugins
-        query.variables['_pipeline_bound_mcp_servers'] = pipeline.bound_mcp_servers
-
-        return await self.ap.agent_run_orchestrator.try_claim_steering_from_query(query)
 
     async def consumer(self):
         """事件处理循环"""

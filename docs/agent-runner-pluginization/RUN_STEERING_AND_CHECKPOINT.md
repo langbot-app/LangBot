@@ -52,6 +52,8 @@ pi-agent-core 区分两个队列，注入时机都在 turn 边界，不打断进
 - **回执**：被 steering 消费的事件通过 EventLog 审计。原始 `message.received`
   记录在 `metadata.steering` 标记 queued/absorbed 与 `claimed_by_run_id`；
   runner 成功 pull 后，Host 追加 `steering.injected` 记录并引用源事件。
+  run 结束时仍未被 pull 的已 claim 输入，Host 追加 `steering.dropped` 记录作为
+  dispatch 终态；原始 Transcript 事实不删除。
   Transcript 继续只表示会话事实，不扩展 dispatch 行为字段。
 
 已落地的协议面（最终定义归 PROTOCOL_V1）：
@@ -61,6 +63,8 @@ pi-agent-core 区分两个队列，注入时机都在 turn 边界，不打断进
    pending 输入；`one-at-a-time` 仅作为 runner 主动节流选项。
 3. dispatch 层的"认领"规则：`message.received` 可被同 conversation 的 active run
    吸收，原事件写 EventLog / Transcript，dispatch 行为写入 EventLog metadata。
+4. Host 对单 run steering queue 设置内存上限，队列满时不再 claim 新消息，消息回到
+   正常 dispatch 路径，避免 active run 无限吞入同会话输入。
 
 ### 1.4 边界
 
@@ -131,7 +135,7 @@ pi-agent-core 把 compaction 条目持久化进 session tree：摘要带
 
 | 项 | 归属 | 依赖 |
 | --- | --- | --- |
-| steering queue、事件认领、基础审计 | LangBot Host（dispatch / binding 层） | 已落地 |
+| steering queue、事件认领、基础审计 | LangBot Host（dispatch / binding 层） | 已落地，含队列上限与未消费 dropped 终态 |
 | steering pull API + capability 位 | PROTOCOL_V1 + SDK proxy | 已落地 |
 | turn 边界拉取与注入 | langbot-local-agent | 已落地 |
 | local-agent 对 state API 的 checkpoint 读写 | langbot-local-agent | 已落地 |

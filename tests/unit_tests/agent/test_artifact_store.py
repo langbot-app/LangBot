@@ -567,6 +567,55 @@ class TestArtifactStoreRealSQLite:
         assert result["length"] == 100
 
     @pytest.mark.asyncio
+    async def test_expired_artifact_is_not_readable_before_cleanup(self, db_engine):
+        """Expired artifacts are hidden even before a cleanup job deletes rows."""
+        store = ArtifactStore(db_engine)
+        await store.register_artifact(
+            artifact_id="art_expired_hidden",
+            artifact_type="file",
+            source="runner",
+            content=b"expired",
+            expires_at=datetime.datetime.utcnow() - datetime.timedelta(seconds=1),
+        )
+
+        assert await store.get_metadata("art_expired_hidden") is None
+        assert await store.read_artifact("art_expired_hidden") is None
+
+    @pytest.mark.asyncio
+    async def test_cleanup_expired_artifacts_deletes_binary_storage(self, db_engine):
+        """Expired artifacts and their Host-owned binary blobs are removed."""
+        from sqlalchemy import select
+        from langbot.pkg.entity.persistence.bstorage import BinaryStorage
+
+        store = ArtifactStore(db_engine)
+        now = datetime.datetime.utcnow()
+        await store.register_artifact(
+            artifact_id="art_expired",
+            artifact_type="file",
+            source="runner",
+            content=b"expired",
+            expires_at=now - datetime.timedelta(seconds=1),
+        )
+        await store.register_artifact(
+            artifact_id="art_fresh",
+            artifact_type="file",
+            source="runner",
+            content=b"fresh",
+            expires_at=now + datetime.timedelta(days=1),
+        )
+
+        removed = await store.cleanup_expired_artifacts(now=now)
+
+        assert removed == 1
+        assert await store.get_metadata("art_expired") is None
+        assert await store.get_metadata("art_fresh") is not None
+        async with store._session_factory() as session:
+            result = await session.execute(
+                select(BinaryStorage).where(BinaryStorage.unique_key == "artifact:art_expired")
+            )
+            assert result.scalars().first() is None
+
+    @pytest.mark.asyncio
     async def test_file_artifact_range_read_and_public_metadata(self, db_engine, tmp_path):
         """File-backed artifacts read ranges without exposing host paths."""
         store = ArtifactStore(db_engine)

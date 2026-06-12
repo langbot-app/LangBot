@@ -82,7 +82,7 @@ EventGateway / EventRouter 在本文档中描述为 **external EBA branch integr
 | [EVENT_BASED_AGENT.md](./EVENT_BASED_AGENT.md) | EBA 接入边界：事件模型、事件来源、触发绑定、非消息事件如何复用 AgentRunner 调度；完整 EventGateway / EventRouter 由外部 EBA 分支联调。 |
 | [RUNTIME_CONTROL_PLANE_V2.md](./RUNTIME_CONTROL_PLANE_V2.md) | Agent Platform v2 / runtime 管控面决策：第一阶段优先把 `AgentRun` / `AgentRunEvent` / run control 做成 Host 事实源；完整 runtime registry / daemon 管控是后续可选阶段。**标注为 future design note**。 |
 | [OFFICIAL_RUNNER_PLUGINS.md](./OFFICIAL_RUNNER_PLUGINS.md) | 官方 runner 插件迁移，包括 local-agent 和外部 runner。它是下游落地计划，不是 LangBot 基础能力设计的前置约束。 |
-| [RUN_STEERING_AND_CHECKPOINT.md](./RUN_STEERING_AND_CHECKPOINT.md) | 运行中消息注入（steering / follow-up）与压缩摘要持久化（compaction checkpoint）的 Host 能力缺口设计：来自 local-agent 对照 Pi agent harness 的差距分析。**标注为 future design note**。 |
+| [RUN_STEERING_AND_CHECKPOINT.md](./RUN_STEERING_AND_CHECKPOINT.md) | 运行中消息注入（steering / follow-up）与压缩摘要持久化（compaction checkpoint）的设计与落地状态记录；schema 仍以 PROTOCOL_V1 为准。 |
 | [STATUS.md](./STATUS.md) | 当前实现状态、spec 与实现已知差距、runner 验收状态和历史高价值记录。 |
 | [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md) | Agent Runner QA 指南：保留最高价值测试路径，指导 agent 开展下一轮 WebUI / runner smoke 验证。 |
 | [SECURITY_HARDENING.md](./SECURITY_HARDENING.md) | 安全发布级 hardening 的后续发布门槛：路径隔离、权限边界、secret、资源配额、MCP / skill 投影和审计。 |

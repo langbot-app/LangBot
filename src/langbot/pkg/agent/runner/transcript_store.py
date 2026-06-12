@@ -276,6 +276,18 @@ class TranscriptStore:
             count = result.scalar()
             return count > 0
 
+    async def cleanup_transcripts_older_than(
+        self,
+        before: datetime.datetime,
+    ) -> int:
+        """Delete Transcript rows created before the supplied timestamp."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                sqlalchemy.delete(Transcript).where(Transcript.created_at < before)
+            )
+            await session.commit()
+            return result.rowcount or 0
+
     async def _get_next_seq(self, conversation_id: str) -> int:
         """Fallback next sequence number for stores that cannot expose autoincrement IDs."""
         async with self._session_factory() as session:

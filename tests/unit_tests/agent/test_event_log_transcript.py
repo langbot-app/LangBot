@@ -1,6 +1,8 @@
 """Tests for EventLog, Transcript, and history/event APIs."""
 from __future__ import annotations
 
+import datetime
+
 import pytest
 
 from langbot.pkg.agent.runner.host_models import (
@@ -505,6 +507,45 @@ class TestEventLogStoreRealSQLite:
         assert cursor is not None
         assert int(cursor) > 0
 
+    @pytest.mark.asyncio
+    async def test_cleanup_events_older_than(self, db_engine):
+        """EventLog cleanup removes only rows older than the cutoff."""
+        import sqlalchemy
+        from langbot.pkg.entity.persistence.event_log import EventLog
+
+        store = EventLogStore(db_engine)
+        cutoff = datetime.datetime.utcnow()
+        await store.append_event(
+            event_id="evt_cleanup_old",
+            event_type="message.received",
+            source="platform",
+            conversation_id="conv_cleanup",
+        )
+        await store.append_event(
+            event_id="evt_cleanup_new",
+            event_type="message.received",
+            source="platform",
+            conversation_id="conv_cleanup",
+        )
+        async with store._session_factory() as session:
+            await session.execute(
+                sqlalchemy.update(EventLog)
+                .where(EventLog.event_id == "evt_cleanup_old")
+                .values(created_at=cutoff - datetime.timedelta(days=2))
+            )
+            await session.execute(
+                sqlalchemy.update(EventLog)
+                .where(EventLog.event_id == "evt_cleanup_new")
+                .values(created_at=cutoff + datetime.timedelta(days=2))
+            )
+            await session.commit()
+
+        removed = await store.cleanup_events_older_than(cutoff)
+
+        assert removed == 1
+        assert await store.get_event("evt_cleanup_old") is None
+        assert await store.get_event("evt_cleanup_new") is not None
+
 
 class TestTranscriptStoreRealSQLite:
     """Test TranscriptStore with real SQLite database."""
@@ -636,6 +677,47 @@ class TestTranscriptStoreRealSQLite:
         cursor = await store.get_latest_cursor("conv_cursor")
         assert cursor is not None
         assert int(cursor) > 0
+
+    @pytest.mark.asyncio
+    async def test_cleanup_transcripts_older_than(self, db_engine):
+        """Transcript cleanup removes only rows older than the cutoff."""
+        import sqlalchemy
+        from langbot.pkg.entity.persistence.transcript import Transcript
+
+        store = TranscriptStore(db_engine)
+        cutoff = datetime.datetime.utcnow()
+        await store.append_transcript(
+            transcript_id="trans_cleanup_old",
+            event_id="evt_cleanup_old",
+            conversation_id="conv_cleanup",
+            role="user",
+            content="old",
+        )
+        await store.append_transcript(
+            transcript_id="trans_cleanup_new",
+            event_id="evt_cleanup_new",
+            conversation_id="conv_cleanup",
+            role="assistant",
+            content="new",
+        )
+        async with store._session_factory() as session:
+            await session.execute(
+                sqlalchemy.update(Transcript)
+                .where(Transcript.transcript_id == "trans_cleanup_old")
+                .values(created_at=cutoff - datetime.timedelta(days=2))
+            )
+            await session.execute(
+                sqlalchemy.update(Transcript)
+                .where(Transcript.transcript_id == "trans_cleanup_new")
+                .values(created_at=cutoff + datetime.timedelta(days=2))
+            )
+            await session.commit()
+
+        removed = await store.cleanup_transcripts_older_than(cutoff)
+        items, _, _, _ = await store.page_transcript("conv_cleanup", limit=10)
+
+        assert removed == 1
+        assert [item["content"] for item in items] == ["new"]
 
 
 # Fixtures

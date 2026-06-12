@@ -145,6 +145,7 @@ bin/lbs case list
 | LA-06 | 多模态 | 发送图片输入。 | `ctx.input.contents` 保留图片；支持视觉模型时正常处理，不支持时受控失败。 |
 | LA-07 | fallback / 错误 | 模拟 primary 模型失败或 runner 抛错。 | fallback 或 `run.failed` 行为受控；后续请求不受影响。 |
 | LA-08 | 无输出保护 | 测试 runner 完成但不产出消息。 | 不产生空白成功回复；按受控失败或明确缺陷处理。 |
+| LA-09 | steering / 运行中追加消息 | 使用支持 steering 的 runner，第一条消息触发长 run；run 未结束时在同 conversation 追加第二条消息。 | 第二条消息被 active run claim，不启动并发 run；runner 通过 `steering_pull` 看到追加输入；EventLog 有 `queued` -> `steering.injected`，若未消费则有 `steering.dropped` 终态；后续普通消息仍可处理。 |
 
 Rerank、remove-think、文件输入等场景只在本次改动直接涉及时补测，不作为每轮必跑项。
 
@@ -195,7 +196,10 @@ Dify、n8n、Coze、DashScope、Langflow、Tbox 等外部服务 runner 不作为
 | run_id 结束后复用被拒绝 | session registry 注销测试。 |
 | 插件身份不匹配被拒绝 | `caller_plugin_identity` mismatch 测试。 |
 | 绑定插件身份的 run_id 省略 caller identity 被拒绝 | `_validate_run_authorization(..., caller_plugin_identity=None)` 返回错误。 |
+| 未注册 Runtime 连接伪造插件身份被剥离 | SDK runtime forwarding 测试：请求自带 `caller_plugin_identity` 时，未注册连接转发前必须 `pop`，已注册连接必须覆盖为真实插件身份。 |
 | storage/state scope 越权被拒绝 | state/storage proxy 单测。 |
+| steering claim 异常不杀 consumer loop | controller 单测：无效 runner / registry 异常只让当前消息回到普通 session 槽位路径，消息消费循环继续。 |
+| steering queue 未消费有终态 | session registry / orchestrator 单测：队列有上限；run unregister 时未 pull 项写 `steering.dropped` 审计。 |
 
 如果这些单测失败，不能用 WebUI 正常回复替代。
 

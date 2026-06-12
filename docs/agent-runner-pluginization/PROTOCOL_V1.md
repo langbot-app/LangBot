@@ -47,7 +47,8 @@ Agent / binding 的持久化形态。
 
 - 新增可选字段保持向后兼容。
 - 删除字段或改变既有字段语义，需要在 SDK 发布前完成；发布后应走新的显式兼容方案。
-- 结果流演进：Host **必须忽略未知 result type 并记录 warning**（除非该 type 明确要求强校验）。新增 result type 不提升大版本。
+- 结果流演进：Host **必须忽略未知 result type 并记录 warning**（除非该 type 明确要求强校验）。SDK envelope 接收入站未知 `type` 字符串，runner 侧可按原字符串转发或忽略；新增 result type 不提升大版本。
+- SDK 入站 context 类实体偏宽松，用于兼容 Host 附加的非核心字段；manifest、result payload、page/result 返回与错误模型偏严格，未知字段默认禁止。安全边界仍在 Host，SDK 校验只提升开发体验。
 
 ## 4. Discovery 协议
 
@@ -65,10 +66,14 @@ class AgentRunnerDiscovery(BaseModel):
     runner_name: str
     runner_description: I18nObject | None = None
     manifest: AgentRunnerManifest
+    capabilities: AgentRunnerCapabilities  # compatibility alias of manifest.capabilities
+    permissions: AgentRunnerPermissions    # compatibility alias of manifest.permissions
     config: list[DynamicFormItemSchema] = []
 ```
 
 `manifest` 是 SDK typed `AgentRunnerManifest`，由 Runtime 从插件组件 manifest 解析并校验后返回。`plugin_author` / `plugin_name` / `runner_name` 保留为 transport 寻址字段；Host 以它们生成稳定 runner id，并把 `manifest.id` 校验为 `plugin:author/name/runner`。单个 runner manifest 解析失败时 Runtime/Host 记录 warning 并跳过该 runner，不影响同一插件或其它插件的 runner discovery。
+
+`capabilities` / `permissions` 顶层字段是兼容旧 discovery 消费方的冗余别名；新代码必须以 `manifest.capabilities` / `manifest.permissions` 为准。
 
 ### 4.2 AgentRunnerManifest
 
@@ -247,8 +252,10 @@ class ConversationContext(BaseModel):
     thread_id: str | None = None
     launcher_type: str | None = None
     launcher_id: str | None = None
+    sender_id: str | None = None
     bot_id: str | None = None
     workspace_id: str | None = None
+    session_id: str | None = None
 
 class ActorContext(BaseModel):
     actor_type: str
@@ -335,7 +342,7 @@ class ContextAPICapabilities(BaseModel):
 ```python
 class AgentRuntimeContext(BaseModel):
     langbot_version: str | None = None
-    trace_id: str
+    trace_id: str | None = None
     deadline_at: float | None = None
     metadata: dict[str, Any] = {}
 ```
@@ -395,7 +402,7 @@ ResultType = Literal[
 
 class AgentRunResult(BaseModel):
     run_id: str
-    type: AgentRunResultType
+    type: AgentRunResultType | str
     data: dict[str, Any] = {}
     sequence: int | None = None
     timestamp: int | None = None
@@ -508,7 +515,7 @@ await api.get_langbot_version()
 
 `steering_pull(mode="all")` 是推荐默认：Host 按 claim 顺序返回全部 pending steering 输入并清空对应队列。`mode="one-at-a-time"` 仅用于 runner 主动节流，每次返回一条。Host 不合并多条用户消息；runner 负责在 turn 边界决定模型侧格式。
 
-Steering 审计使用 EventLog 而不是 Transcript schema 扩展：被 active run 吸收的原始 `message.received` 事件保留原事件类型，并在 `metadata.steering` 标记 `status="queued"`、`trigger_behavior="absorbed_into_active_run"`、`claimed_by_run_id`、`claimed_runner_id`、`claimed_at`。Runner 成功 pull 后，Host 追加 `steering.injected` EventLog 记录，`metadata.steering.status="injected"` 并引用 `source_event_id`。Transcript 继续只表示会话事实，不承担 dispatch 行为标记。
+Steering 审计使用 EventLog 而不是 Transcript schema 扩展：被 active run 吸收的原始 `message.received` 事件保留原事件类型，并在 `metadata.steering` 标记 `status="queued"`、`trigger_behavior="absorbed_into_active_run"`、`claimed_by_run_id`、`claimed_runner_id`、`claimed_at`。Runner 成功 pull 后，Host 追加 `steering.injected` EventLog 记录，`metadata.steering.status="injected"` 并引用 `source_event_id`。若 run 结束时仍有已 claim 但未 pull 的 steering 输入，Host 追加 `steering.dropped` EventLog 记录，`metadata.steering.status="dropped"` 并引用 `source_event_id`；这不是用户消息事实的删除，只是 dispatch 终态。Transcript 继续只表示会话事实，不承担 dispatch 行为标记。
 
 `state` 与 `storage` 的建议边界：`state` 放小型 JSON（conversation / actor / subject / runner），`storage` 放 blob 或较大数据（插件私有数据、workspace 数据、checkpoint）。
 
@@ -649,6 +656,8 @@ class AgentAPIError(BaseModel):
 | `rate_limited` | Host 限流。 |
 | `invalid_argument` | 参数错误。 |
 | `runtime_error` | Host 或下游能力错误。 |
+
+SDK runner-facing proxy 在 Host 返回结构化错误或畸形响应时抛出 `AgentAPIException`，其中 `error` 字段为 `AgentAPIError`。Legacy transport 只返回字符串错误时，SDK 使用 `host.action_error` 包装，避免 runner 继续依赖裸 `KeyError` 或字符串匹配。
 
 Runner 失败使用 `run.failed`：
 

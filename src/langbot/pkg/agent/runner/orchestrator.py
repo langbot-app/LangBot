@@ -134,9 +134,39 @@ class AgentRunOrchestrator:
             )
 
         pending_artifact_refs: list[dict[str, typing.Any]] = []
+        seen_sequences: set[int] = set()
+        last_sequence = 0
 
         try:
             async for result_dict in self.invoker.invoke(descriptor, context):
+                sequence = result_dict.get('sequence')
+                if sequence is not None:
+                    try:
+                        sequence_int = int(sequence)
+                    except (TypeError, ValueError):
+                        self.ap.logger.warning(
+                            f'Runner {descriptor.id} returned invalid result sequence: {sequence}'
+                        )
+                    else:
+                        if sequence_int in seen_sequences:
+                            self.ap.logger.warning(
+                                f'Runner {descriptor.id} returned duplicate result sequence '
+                                f'{sequence_int} for run {run_id}; dropping duplicate'
+                            )
+                            continue
+                        if sequence_int <= 0:
+                            self.ap.logger.warning(
+                                f'Runner {descriptor.id} returned non-positive result sequence '
+                                f'{sequence_int} for run {run_id}'
+                            )
+                        elif last_sequence and sequence_int != last_sequence + 1:
+                            self.ap.logger.warning(
+                                f'Runner {descriptor.id} result sequence gap or out-of-order '
+                                f'for run {run_id}: previous={last_sequence}, current={sequence_int}'
+                            )
+                        seen_sequences.add(sequence_int)
+                        last_sequence = max(last_sequence, sequence_int)
+
                 result_type = result_dict.get('type')
                 if result_type and not self.result_normalizer.validate_payload(
                     result_type,
@@ -180,7 +210,20 @@ class AgentRunOrchestrator:
                 if result is not None:
                     yield result
         finally:
-            await self._session_registry.unregister(run_id)
+            session = await self._session_registry.unregister(run_id)
+            pending_steering = session.get('steering_queue', []) if session else []
+            if pending_steering:
+                try:
+                    await self.journal.write_steering_dropped_audits(
+                        pending_steering,
+                        run_id,
+                        descriptor.id,
+                    )
+                except Exception as exc:
+                    self.ap.logger.warning(
+                        f'Failed to write dropped steering audit for run {run_id}: {exc}',
+                        exc_info=True,
+                    )
 
     async def run_from_query(
         self,

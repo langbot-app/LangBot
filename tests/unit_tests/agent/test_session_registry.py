@@ -8,6 +8,7 @@ import time
 from langbot.pkg.agent.runner.session_registry import (
     AgentRunSessionRegistry,
     AgentRunSession,
+    MAX_STEERING_QUEUE_ITEMS,
     get_session_registry,
 )
 
@@ -257,6 +258,59 @@ class TestSessionRegistryBasic:
 
         assert [item['event']['event_id'] for item in first] == ['event_1']
         assert [item['event']['event_id'] for item in second] == ['event_2']
+
+    @pytest.mark.asyncio
+    async def test_enqueue_steering_rejects_when_queue_is_full(self):
+        """A full steering queue does not claim more queries."""
+        registry = AgentRunSessionRegistry()
+        await registry.register(
+            run_id='run_steering_full',
+            runner_id='plugin:test/my-runner/default',
+            query_id=1,
+            plugin_identity='test/my-runner',
+            resources=make_resources(),
+            conversation_id='conv_1',
+            available_apis={'steering_pull': True},
+        )
+
+        for index in range(MAX_STEERING_QUEUE_ITEMS):
+            assert await registry.enqueue_steering(
+                'run_steering_full',
+                {'event': {'event_id': f'event_{index}'}},
+            )
+
+        assert not await registry.enqueue_steering(
+            'run_steering_full',
+            {'event': {'event_id': 'overflow'}},
+        )
+
+        items = await registry.pull_steering('run_steering_full', mode='all')
+        assert len(items) == MAX_STEERING_QUEUE_ITEMS
+        assert all(item['event']['event_id'] != 'overflow' for item in items)
+
+    @pytest.mark.asyncio
+    async def test_unregister_returns_pending_steering_queue(self):
+        """Unregister returns the removed session so callers can audit pending steering."""
+        registry = AgentRunSessionRegistry()
+        await registry.register(
+            run_id='run_steering_unregister',
+            runner_id='plugin:test/my-runner/default',
+            query_id=1,
+            plugin_identity='test/my-runner',
+            resources=make_resources(),
+            conversation_id='conv_1',
+            available_apis={'steering_pull': True},
+        )
+        await registry.enqueue_steering(
+            'run_steering_unregister',
+            {'event': {'event_id': 'event_pending'}},
+        )
+
+        session = await registry.unregister('run_steering_unregister')
+
+        assert session is not None
+        assert session['steering_queue'][0]['event']['event_id'] == 'event_pending'
+        assert await registry.get('run_steering_unregister') is None
 
 
 class TestIsResourceAllowed:

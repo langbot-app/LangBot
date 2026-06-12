@@ -28,14 +28,17 @@ RUNNER_ID = "plugin:langbot/local-agent/default"
 
 
 class FakeLogger:
+    def __init__(self):
+        self.warnings: list[str] = []
+
     def debug(self, msg):
         pass
 
     def info(self, msg):
         pass
 
-    def warning(self, msg):
-        pass
+    def warning(self, msg, *args, **kwargs):
+        self.warnings.append(str(msg))
 
     def error(self, msg):
         pass
@@ -422,6 +425,41 @@ async def test_orchestrator_streams_fake_plugin_deltas(clean_agent_state):
     chunks = [message async for message in orchestrator.run_from_query(make_query())]
 
     assert [chunk.content for chunk in chunks] == ["hel", "hello"]
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_drops_duplicate_result_sequence(clean_agent_state):
+    """Duplicate runner result sequences are idempotently ignored."""
+    db_engine = clean_agent_state
+    descriptor = make_descriptor()
+    plugin_connector = FakePluginConnector(
+        results=[
+            {
+                "type": "message.delta",
+                "sequence": 1,
+                "data": {"chunk": {"role": "assistant", "content": "first"}},
+            },
+            {
+                "type": "message.delta",
+                "sequence": 1,
+                "data": {"chunk": {"role": "assistant", "content": "duplicate"}},
+            },
+            {
+                "type": "message.delta",
+                "sequence": 3,
+                "data": {"chunk": {"role": "assistant", "content": "after-gap"}},
+            },
+            {"type": "run.completed", "sequence": 4, "data": {"finish_reason": "stop"}},
+        ]
+    )
+    ap = FakeApplication(plugin_connector, db_engine)
+    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+
+    chunks = [message async for message in orchestrator.run_from_query(make_query())]
+
+    assert [chunk.content for chunk in chunks] == ["first", "after-gap"]
+    assert any("duplicate result sequence 1" in warning for warning in ap.logger.warnings)
+    assert any("result sequence gap or out-of-order" in warning for warning in ap.logger.warnings)
 
 
 @pytest.mark.asyncio

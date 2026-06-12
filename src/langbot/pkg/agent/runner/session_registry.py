@@ -10,6 +10,9 @@ import threading
 from .context_builder import AgentResources
 
 
+MAX_STEERING_QUEUE_ITEMS = 100
+
+
 class AgentRunSessionStatus(typing.TypedDict):
     """Status tracking for agent run session."""
     started_at: int
@@ -148,15 +151,18 @@ class AgentRunSessionRegistry:
             'file': {f.get('file_id') for f in resources.get('files', [])},
         }
 
-    async def unregister(self, run_id: str) -> None:
+    async def unregister(self, run_id: str) -> AgentRunSession | None:
         """Unregister an agent run session.
 
         Args:
             run_id: Unique run identifier
+
+        Returns:
+            The removed session, if one existed. Callers can inspect any
+            pending in-memory queues before they are discarded.
         """
         async with self._lock:
-            if run_id in self._sessions:
-                del self._sessions[run_id]
+            return self._sessions.pop(run_id, None)
 
     async def get(self, run_id: str) -> AgentRunSession | None:
         """Get session by run_id.
@@ -214,6 +220,8 @@ class AgentRunSessionRegistry:
         async with self._lock:
             session = self._sessions.get(run_id)
             if session is None:
+                return False
+            if len(session['steering_queue']) >= MAX_STEERING_QUEUE_ITEMS:
                 return False
             session['steering_queue'].append(copy.deepcopy(item))
             session['status']['last_activity_at'] = int(time.time())

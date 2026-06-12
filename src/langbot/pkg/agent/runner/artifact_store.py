@@ -212,6 +212,8 @@ class ArtifactStore:
             row = result.scalars().first()
             if row is None:
                 return None
+            if self._is_expired(row):
+                return None
             return self._row_to_public_dict(row)
 
     async def _get_internal_record(
@@ -234,7 +236,10 @@ class ArtifactStore:
                     AgentArtifact.artifact_id == artifact_id
                 )
             )
-            return result.scalars().first()
+            record = result.scalars().first()
+            if record is not None and self._is_expired(record):
+                return None
+            return record
 
     async def read_artifact(
         self,
@@ -321,6 +326,51 @@ class ArtifactStore:
             'has_more': False,
         }
 
+    async def cleanup_expired_artifacts(
+        self,
+        *,
+        now: datetime.datetime | None = None,
+    ) -> int:
+        """Delete expired artifact metadata and Host-owned binary blobs.
+
+        Returns the number of artifact metadata rows removed. External/file
+        storage references are only dereferenced from LangBot metadata; their
+        backing lifecycle remains owned by the storage provider.
+        """
+        if now is None:
+            now = datetime.datetime.utcnow()
+
+        async with self._session_factory() as session:
+            result = await session.execute(
+                sqlalchemy.select(AgentArtifact).where(
+                    AgentArtifact.expires_at.is_not(None),
+                    AgentArtifact.expires_at <= now,
+                )
+            )
+            expired = result.scalars().all()
+            if not expired:
+                return 0
+
+            binary_storage_keys = [
+                artifact.storage_key
+                for artifact in expired
+                if artifact.storage_type == 'binary_storage' and artifact.storage_key
+            ]
+            if binary_storage_keys:
+                await session.execute(
+                    sqlalchemy.delete(BinaryStorage).where(
+                        BinaryStorage.unique_key.in_(binary_storage_keys)
+                    )
+                )
+
+            await session.execute(
+                sqlalchemy.delete(AgentArtifact).where(
+                    AgentArtifact.id.in_([artifact.id for artifact in expired])
+                )
+            )
+            await session.commit()
+            return len(expired)
+
     async def _read_binary_storage(self, key: str) -> bytes | None:
         """Read content from BinaryStorage.
 
@@ -406,6 +456,17 @@ class ArtifactStore:
         metadata = ArtifactStore._load_metadata(metadata_json)
         metadata.pop(_FILE_ARTIFACT_METADATA_KEY, None)
         return metadata
+
+    @staticmethod
+    def _is_expired(
+        row: AgentArtifact,
+        now: datetime.datetime | None = None,
+    ) -> bool:
+        if row.expires_at is None:
+            return False
+        if now is None:
+            now = datetime.datetime.utcnow()
+        return row.expires_at <= now
 
     def _row_to_public_dict(self, row: AgentArtifact) -> dict[str, typing.Any]:
         """Convert an AgentArtifact row to public dict.

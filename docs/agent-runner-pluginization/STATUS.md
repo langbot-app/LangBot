@@ -2,7 +2,7 @@
 
 本文档是 `docs/agent-runner-pluginization/` 的状态事实源。协议 schema 仍以 [PROTOCOL_V1.md](./PROTOCOL_V1.md) 为准；测试步骤以 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md) 为准；安全发布门槛以 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md) 为准。
 
-状态快照日期：2026-06-10。
+状态快照日期：2026-06-12。
 
 ## 实现状态
 
@@ -17,12 +17,15 @@
 | Official runner manifests | Done | `local-agent`、LiteLLM Agent Platform、外部服务 runner 已重新声明真实生效的 LangBot resource permissions。 |
 | Runtime Control Plane v2 | Future | 第一阶段设计为 Host-owned Run Ledger；runtime registry / heartbeat / daemon claim 是后续可选阶段。 |
 | Full release security gate | Future | self-host / container opt-in 可继续；managed/default external harness 需完成 SECURITY_HARDENING full gate。 |
+| Steering control path | Done | claim 异常不再逃逸 consumer loop；queue 有上限；未 pull 的 claimed 输入在 run 结束时写 `steering.dropped` 审计终态。 |
+| SDK v1 contract closure | Done | SDK 提供 `AgentAPIError` / `AgentAPIException`、typed `SteeringPullResult`、未知 result type 宽容解析、result `sequence` 注入与取消传播。 |
 
 ## Spec 与实现已知差距
 
 - `action.requested` 仍只作为 telemetry / reserved surface；platform action executor 不在本分支执行。
 - EventGateway / EventRouter 完整实现由外部 EBA 分支联调；本分支只提供 event-first host envelope / binding / run 入口。
 - State 与 storage 的长期类型边界仍可继续收窄；当前合同只要求 JSON-safe state 与受控 storage API。
+- Artifact 读取路径已检查 `expires_at`，EventLog / Transcript / Artifact 已提供显式 cleanup primitive；长期 retention 默认值、TTL 调度接入和大 payload 去重仍是运维收尾项，应在 Runtime Control Plane Phase 1 前补齐。
 - External harness 的 native shell / filesystem / CLI / MCP 权限不受 manifest permissions 约束；manifest permissions 只约束 LangBot 持有的资源访问。
 - Managed/cloud/default external harness 的 OS/process/network quota、workspace GC、完整 audit/admin control 仍是发布门槛，不是 Protocol v1 已完成能力。
 

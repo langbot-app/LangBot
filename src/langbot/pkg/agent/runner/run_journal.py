@@ -386,6 +386,76 @@ class AgentRunJournal:
 
         return merged
 
+    async def write_steering_dropped_audits(
+        self,
+        items: list[dict[str, typing.Any]],
+        run_id: str,
+        runner_id: str,
+        *,
+        reason: str = 'run_ended',
+    ) -> None:
+        """Write terminal audit events for steering items left unconsumed."""
+        if not items:
+            return
+
+        import datetime
+        import uuid
+
+        from .event_log_store import EventLogStore
+
+        store = EventLogStore(self.ap.persistence_mgr.get_db_engine())
+
+        for item in items:
+            event = item.get('event') if isinstance(item.get('event'), dict) else {}
+            input_data = item.get('input') if isinstance(item.get('input'), dict) else {}
+            conversation = item.get('conversation') if isinstance(item.get('conversation'), dict) else {}
+            actor = item.get('actor') if isinstance(item.get('actor'), dict) else {}
+            subject = item.get('subject') if isinstance(item.get('subject'), dict) else {}
+
+            text = input_data.get('text')
+            input_summary = text[:1000] if isinstance(text, str) and text else 'Unconsumed steering input dropped'
+            event_time = None
+            raw_event_time = event.get('event_time')
+            if raw_event_time:
+                try:
+                    event_time = datetime.datetime.fromtimestamp(raw_event_time)
+                except (TypeError, ValueError, OSError):
+                    event_time = None
+
+            await store.append_event(
+                event_id=str(uuid.uuid4()),
+                event_type='steering.dropped',
+                source='host',
+                bot_id=conversation.get('bot_id'),
+                workspace_id=conversation.get('workspace_id'),
+                conversation_id=conversation.get('conversation_id'),
+                thread_id=conversation.get('thread_id'),
+                actor_type=actor.get('actor_type'),
+                actor_id=actor.get('actor_id'),
+                actor_name=actor.get('actor_name'),
+                subject_type=subject.get('subject_type'),
+                subject_id=subject.get('subject_id'),
+                input_summary=input_summary,
+                input_json={
+                    'text': text,
+                    'contents': input_data.get('contents') or [],
+                    'attachments': input_data.get('attachments') or [],
+                },
+                run_id=run_id,
+                runner_id=runner_id,
+                event_time=event_time,
+                metadata={
+                    'steering': {
+                        'status': 'dropped',
+                        'reason': reason,
+                        'original_event_id': event.get('event_id'),
+                        'claimed_run_id': item.get('claimed_run_id'),
+                        'claimed_runner_id': item.get('runner_id'),
+                        'claimed_at': item.get('claimed_at'),
+                    },
+                },
+            )
+
     async def write_assistant_transcript(
         self,
         result_dict: dict[str, typing.Any],
