@@ -1,0 +1,126 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+
+metadata:
+  name: dingtalk-eba
+  label:
+    en_US: DingTalk (EBA)
+    zh_Hans: 钉钉 (EBA)
+    zh_Hant: 釘釘 (EBA)
+  description:
+    en_US: DingTalk adapter (EBA architecture)
+    zh_Hans: 钉钉适配器（EBA 架构版本）
+    zh_Hant: 釘釘適配器（EBA 架構版本）
+  icon: dingtalk.svg
+
+spec:
+  categories:
+    - china
+  help_links:
+    zh: https://link.langbot.app/zh/platforms/dingtalk
+    en: https://link.langbot.app/en/platforms/dingtalk
+    ja: https://link.langbot.app/ja/platforms/dingtalk
+  config:
+    - name: client_id
+      label:
+        en_US: Client ID
+        zh_Hans: 客户端ID
+        zh_Hant: 用戶端ID
+      type: string
+      required: true
+      default: ""
+    - name: client_secret
+      label:
+        en_US: Client Secret
+        zh_Hans: 客户端密钥
+        zh_Hant: 用戶端密鑰
+      type: string
+      required: true
+      default: ""
+    - name: robot_code
+      label:
+        en_US: Robot Code
+        zh_Hans: 机器人代码
+        zh_Hant: 機器人代碼
+      type: string
+      required: true
+      default: ""
+    - name: robot_name
+      label:
+        en_US: Robot Name
+        zh_Hans: 机器人名称
+        zh_Hant: 機器人名稱
+      type: string
+      required: true
+      default: ""
+    - name: markdown_card
+      label:
+        en_US: Markdown Card
+        zh_Hans: 是否使用 Markdown 卡片
+        zh_Hant: 是否使用 Markdown 卡片
+      type: boolean
+      required: false
+      default: true
+    - name: enable-stream-reply
+      label:
+        en_US: Enable Stream Reply Mode
+        zh_Hans: 启用钉钉卡片流式回复模式
+        zh_Hant: 啟用釘釘卡片串流回覆模式
+      description:
+        en_US: If enabled, the bot will use DingTalk card streaming replies.
+        zh_Hans: 如果启用，将使用钉钉卡片流式方式来回复内容
+        zh_Hant: 如果啟用，將使用釘釘卡片串流方式來回覆內容
+      type: boolean
+      required: true
+      default: false
+    - name: card_auto_layout
+      label:
+        en_US: Card Auto Layout
+        zh_Hans: 卡片宽屏自动布局
+        zh_Hant: 卡片寬螢幕自動佈局
+      type: boolean
+      required: false
+      default: false
+    - name: card_template_id
+      label:
+        en_US: Card Template ID
+        zh_Hans: 卡片模板ID
+        zh_Hant: 卡片範本ID
+      type: string
+      required: true
+      default: "填写你的卡片template_id"
+
+  supported_events:
+    - message.received
+    - platform.specific
+
+  supported_apis:
+    required:
+      - send_message
+      - reply_message
+    optional:
+      - get_message
+      - get_group_info
+      - get_group_list
+      - get_group_member_info
+      - get_user_info
+      - get_friend_list
+      - get_file_url
+      - call_platform_api
+
+  platform_specific_apis:
+    - action: check_access_token
+      description: { en_US: "Check whether the current DingTalk access token is usable", zh_Hans: "检查当前钉钉 access token 是否可用" }
+    - action: refresh_access_token
+      description: { en_US: "Refresh the DingTalk access token", zh_Hans: "刷新钉钉 access token" }
+    - action: get_file_url
+      description: { en_US: "Resolve a DingTalk download code to a file URL", zh_Hans: "将钉钉 downloadCode 解析为文件 URL" }
+    - action: get_audio_base64
+      description: { en_US: "Download DingTalk audio as base64 by download code", zh_Hans: "通过 downloadCode 下载钉钉语音并转为 base64" }
+    - action: download_image_base64
+      description: { en_US: "Download DingTalk image as base64 by download code", zh_Hans: "通过 downloadCode 下载钉钉图片并转为 base64" }
+
+execution:
+  python:
+    path: ./adapter.py
+    attr: DingTalkAdapter
