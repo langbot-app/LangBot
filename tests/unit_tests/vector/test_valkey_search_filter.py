@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import struct
 from importlib import import_module
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -196,3 +197,42 @@ class TestSupportedSearchTypes:
         assert SearchType.VECTOR in types
         assert SearchType.FULL_TEXT in types
         assert SearchType.HYBRID in types
+
+
+class TestDeleteByFilterGuard:
+    """Regression tests for the delete_by_filter mass-deletion guard.
+
+    A non-empty filter referencing only non-indexed fields must NOT fall back
+    to match-all and wipe the whole collection: it must skip and return 0.
+    """
+
+    async def test_unsupported_only_filter_skips_and_returns_zero(self):
+        backend = make_backend()
+        # Make the client/index lookups succeed without a real server.
+        backend._client = AsyncMock()
+        backend.ap = type('Ap', (), {'logger': AsyncMock()})()
+        backend._ensure_client = AsyncMock(return_value=backend._client)
+        backend._index_exists = AsyncMock(return_value=True)
+        # _search_keys must never be reached for an unusable filter.
+        backend._search_keys = AsyncMock(
+            side_effect=AssertionError('_search_keys must not be called for an unusable filter')
+        )
+
+        # Filter references only a non-indexed field -> maps to no FT conditions.
+        deleted = await backend.delete_by_filter('col1', {'some_other_field': 'x'})
+
+        assert deleted == 0
+        backend._client.delete.assert_not_called()
+
+    async def test_supported_filter_deletes_matching_keys(self):
+        backend = make_backend()
+        backend._client = AsyncMock()
+        backend.ap = type('Ap', (), {'logger': AsyncMock()})()
+        backend._ensure_client = AsyncMock(return_value=backend._client)
+        backend._index_exists = AsyncMock(return_value=True)
+        backend._search_keys = AsyncMock(return_value=['kb:col1:id1', 'kb:col1:id2'])
+
+        deleted = await backend.delete_by_filter('col1', {'file_id': 'f1'})
+
+        assert deleted == 2
+        backend._client.delete.assert_awaited_once_with(['kb:col1:id1', 'kb:col1:id2'])

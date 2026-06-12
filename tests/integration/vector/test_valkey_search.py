@@ -192,7 +192,9 @@ async def test_vector_weight_not_honored(backend):
     ids, embeddings, metadatas, documents = _sample_docs()
     await db.add_embeddings(collection, ids, embeddings, metadatas, documents)
 
-    common = dict(collection=collection, query_embedding=[1.0, 0.0, 0.0, 0.0], k=3, search_type='hybrid', query_text='cats')
+    common = dict(
+        collection=collection, query_embedding=[1.0, 0.0, 0.0, 0.0], k=3, search_type='hybrid', query_text='cats'
+    )
     await _poll_until(lambda: db.search(**common), lambda r: len(r['ids'][0]) >= 1)
 
     r_low = await db.search(**common, vector_weight=0.1)

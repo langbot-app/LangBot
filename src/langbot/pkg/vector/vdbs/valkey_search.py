@@ -58,6 +58,12 @@ _VEC_SCORE_ALIAS = '__vec_score'
 # match-all idiom for FT.SEARCH.
 _MATCH_ALL = f'-@{"file_id"}:{{__langbot_match_all_sentinel__}}'
 
+# Page size used when enumerating matching keys for deletion.  Deletes
+# paginate through the full result set in batches of this size so that
+# files/filters matching more than one page of chunks are fully removed
+# (no silent truncation / orphaned vectors).
+_DELETE_SCAN_BATCH = 10000
+
 
 class ValkeySearchVectorDatabase(VectorDatabase):
     """Valkey Search (valkey-bundle) vector database adapter for LangBot.
@@ -170,7 +176,7 @@ class ValkeySearchVectorDatabase(VectorDatabase):
         """Escape characters that are special inside a TAG ``{...}`` clause."""
         out = []
         for ch in str(value):
-            if ch in ',.<>{}[]"\':;!@#$%^&*()-+=~| ':
+            if ch in '\\,.<>{}[]"\':;!@#$%^&*()-+=~| ':
                 out.append('\\')
             out.append(ch)
         return ''.join(out)
@@ -515,7 +521,16 @@ class ValkeySearchVectorDatabase(VectorDatabase):
             self.ap.logger.warning(f"Valkey Search collection '{collection}' not found for deletion")
             return 0
 
-        query = self._triples_to_ft(filter) or _MATCH_ALL
+        # Guard against accidental mass deletion: a non-empty filter that maps
+        # to no usable (indexed) conditions must NOT fall back to match-all and
+        # wipe the whole collection.  Skip instead (matching Milvus / pgvector).
+        query = self._triples_to_ft(filter)
+        if not query:
+            self.ap.logger.warning(
+                "Valkey Search delete_by_filter on '%s': filter produced no usable conditions, skipping",
+                collection,
+            )
+            return 0
         keys = await self._search_keys(client, index, query)
         if keys:
             await client.delete(keys)
@@ -624,20 +639,52 @@ class ValkeySearchVectorDatabase(VectorDatabase):
         return False
 
     async def _search_keys(self, client: GlideClient, index: str, query: str) -> list[str]:
-        """Return the matching document keys for a query (NOCONTENT)."""
-        options = FtSearchOptions(nocontent=True, limit=FtSearchLimit(0, 10000), dialect=2)
-        try:
-            reply = await ft.search(client, index, query, options)
-        except Exception as exc:
-            if self._is_missing_index_error(exc):
-                return []
-            raise
+        """Return all matching document keys for a query (NOCONTENT).
+
+        Paginates through the full result set in pages of ``_DELETE_SCAN_BATCH``
+        so that queries matching more than one page of chunks are fully
+        enumerated (avoids silently truncating deletes and leaving orphaned
+        vectors).
+        """
         keys: list[str] = []
-        if not reply or len(reply) < 2:
-            return keys
-        docs = reply[1]
-        if isinstance(docs, dict):
-            keys = [self._decode(k) for k in docs.keys()]
-        elif isinstance(docs, (list, tuple)):
-            keys = [self._decode(k) for k in docs]
+        offset = 0
+        while True:
+            options = FtSearchOptions(
+                nocontent=True,
+                limit=FtSearchLimit(offset, _DELETE_SCAN_BATCH),
+                dialect=2,
+            )
+            try:
+                reply = await ft.search(client, index, query, options)
+            except Exception as exc:
+                if self._is_missing_index_error(exc):
+                    return keys
+                raise
+
+            if not reply or len(reply) < 2:
+                break
+
+            # reply[0] is the total match count; reply[1] holds this page.
+            total = 0
+            try:
+                total = int(reply[0])
+            except (TypeError, ValueError):
+                total = 0
+
+            docs = reply[1]
+            if isinstance(docs, dict):
+                page = [self._decode(k) for k in docs.keys()]
+            elif isinstance(docs, (list, tuple)):
+                page = [self._decode(k) for k in docs]
+            else:
+                page = []
+
+            if not page:
+                break
+            keys.extend(page)
+
+            offset += len(page)
+            if offset >= total or len(page) < _DELETE_SCAN_BATCH:
+                break
+
         return keys
