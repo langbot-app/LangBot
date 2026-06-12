@@ -1,5 +1,7 @@
 # 分阶段迁移计划
 
+> **2026-06 方向修订**：Phase 3 的「四种 Handler 框架」与 Phase 5 的编排面板形态，按 [07-agent-orchestration.md](./07-agent-orchestration.md) 调整为「事件 → Agent」统一编排（EventRouter + Agent 实体 + 绑定模型 + SDK Agent 组件契约）。阶段划分、依赖关系与验收标准仍然适用，按 Agent 模型重新解读即可；发布节奏见 07 §5「发布火车」。
+
 ## 1. 概述
 
 EBA 架构涉及 langbot-plugin-sdk、LangBot 后端、LangBot 前端、文档和示例插件等多个仓库的改动。为降低风险、保证系统稳定性，采用分阶段渐进式迁移策略。

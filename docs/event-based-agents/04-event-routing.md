@@ -1,5 +1,7 @@
 # 事件路由与编排
 
+> **2026-06 方向修订**：本文档的四种 handler_type（pipeline / agent / webhook / plugin）分类法已被「事件 → Agent」统一编排取代，收编映射与新数据模型见 [07-agent-orchestration.md](./07-agent-orchestration.md)。本文档中的事件匹配规则（§4）、`use_pipeline_uuid` 迁移策略（§6）、WebUI 交互骨架（§7）与 webhook 请求/响应格式（§5.4）仍然有效，将在 Agent 模型下沿用。
+
 ## 1. 概述
 
 事件路由是 EBA 架构的核心机制：事件从适配器产生后，经由 EventBus 进入 EventRouter，由 EventRouter 根据 Bot 的配置将事件分发到对应的处理器（Handler）。
