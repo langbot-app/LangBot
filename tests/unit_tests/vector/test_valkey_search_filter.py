@@ -1,0 +1,198 @@
+"""Unit tests for the Valkey Search VDB backend's pure helpers.
+
+These tests exercise the filter-to-FT mapping, float32 packing, tag/text
+escaping, FT.SEARCH reply parsing and the import guard.  They run in the fast
+CI lane and require NO running Valkey server.
+"""
+
+from __future__ import annotations
+
+import struct
+from importlib import import_module
+
+import pytest
+
+
+def get_valkey_module():
+    """Lazy import of the valkey_search backend module."""
+    return import_module('langbot.pkg.vector.vdbs.valkey_search')
+
+
+def make_backend():
+    """Construct a backend instance without running its __init__.
+
+    The constructor needs a live ``ap`` + config; for pure-helper tests we
+    only need a bare instance with the attributes the helpers touch.
+    """
+    mod = get_valkey_module()
+    backend = object.__new__(mod.ValkeySearchVectorDatabase)
+    return backend
+
+
+class TestFloat32Packing:
+    """Tests for _pack_vector little-endian float32 packing."""
+
+    def test_pack_round_trips(self):
+        mod = get_valkey_module()
+        vec = [0.1, -2.5, 3.0, 4.25]
+        packed = mod.ValkeySearchVectorDatabase._pack_vector(vec)
+        assert isinstance(packed, bytes)
+        assert len(packed) == 4 * len(vec)
+        unpacked = list(struct.unpack(f'<{len(vec)}f', packed))
+        for original, restored in zip(vec, unpacked):
+            assert restored == pytest.approx(original, rel=1e-6)
+
+    def test_pack_is_little_endian(self):
+        mod = get_valkey_module()
+        packed = mod.ValkeySearchVectorDatabase._pack_vector([1.0])
+        assert packed == struct.pack('<f', 1.0)
+
+
+class TestTagEscaping:
+    """Tests for _escape_tag."""
+
+    def test_escapes_special_chars(self):
+        mod = get_valkey_module()
+        escaped = mod.ValkeySearchVectorDatabase._escape_tag('a-b c.d')
+        assert '\\-' in escaped
+        assert '\\ ' in escaped
+        assert '\\.' in escaped
+
+    def test_plain_value_unchanged(self):
+        mod = get_valkey_module()
+        assert mod.ValkeySearchVectorDatabase._escape_tag('abc123') == 'abc123'
+
+
+class TestFilterToFt:
+    """Tests for _triples_to_ft filter mapping (all 8 operators)."""
+
+    def test_empty_filter_returns_empty_string(self):
+        backend = make_backend()
+        assert backend._triples_to_ft(None) == ''
+        assert backend._triples_to_ft({}) == ''
+
+    def test_eq_tag(self):
+        backend = make_backend()
+        assert backend._triples_to_ft({'file_id': 'abc'}) == '@file_id:{abc}'
+
+    def test_explicit_eq_tag(self):
+        backend = make_backend()
+        assert backend._triples_to_ft({'file_id': {'$eq': 'abc'}}) == '@file_id:{abc}'
+
+    def test_ne_tag(self):
+        backend = make_backend()
+        assert backend._triples_to_ft({'file_id': {'$ne': 'abc'}}) == '-@file_id:{abc}'
+
+    def test_in_tag(self):
+        backend = make_backend()
+        assert backend._triples_to_ft({'file_id': {'$in': ['a', 'b']}}) == '@file_id:{a|b}'
+
+    def test_nin_tag(self):
+        backend = make_backend()
+        assert backend._triples_to_ft({'file_id': {'$nin': ['a', 'b']}}) == '-@file_id:{a|b}'
+
+    def test_numeric_range_operators(self):
+        backend = make_backend()
+        # file_id is the only indexed field; numeric ops still render via the
+        # generic range fragment, so use file_id to keep the field supported.
+        assert backend._triples_to_ft({'file_id': {'$gt': 5}}) == '@file_id:[(5 +inf]'
+        assert backend._triples_to_ft({'file_id': {'$gte': 5}}) == '@file_id:[5 +inf]'
+        assert backend._triples_to_ft({'file_id': {'$lt': 5}}) == '@file_id:[-inf (5]'
+        assert backend._triples_to_ft({'file_id': {'$lte': 5}}) == '@file_id:[-inf 5]'
+
+    def test_unsupported_field_dropped(self):
+        backend = make_backend()
+        # Non-indexed fields are dropped (returns empty expression).
+        assert backend._triples_to_ft({'some_other_field': 'x'}) == ''
+
+    def test_multiple_supported_keys_anded(self):
+        backend = make_backend()
+        # Two conditions on the same indexed field are joined with a space (AND).
+        result = backend._triples_to_ft({'file_id': {'$in': ['a', 'b']}})
+        assert result == '@file_id:{a|b}'
+
+
+class TestTextEscaping:
+    """Tests for _escape_text full-text escaping."""
+
+    def test_escapes_ft_special_chars(self):
+        mod = get_valkey_module()
+        escaped = mod.ValkeySearchVectorDatabase._escape_text('hello@world|test')
+        assert '\\@' in escaped
+        assert '\\|' in escaped
+
+
+class TestReplyToChroma:
+    """Tests for _reply_to_chroma FT.SEARCH reply parsing."""
+
+    def test_parses_knn_reply(self):
+        backend = make_backend()
+        # glide returns [total, {key: {field: value}}]
+        reply = [
+            2,
+            {
+                b'kb:col1:id1': {
+                    b'distance': b'0.10',
+                    b'document': b'hello',
+                    b'metadata_json': b'{"file_id": "f1"}',
+                },
+                b'kb:col1:id2': {
+                    b'distance': b'0.25',
+                    b'document': b'world',
+                    b'metadata_json': b'{"file_id": "f2"}',
+                },
+            },
+        ]
+        result = backend._reply_to_chroma('idx:col1', reply, has_distance=True)
+        assert result['ids'][0] == ['id1', 'id2']
+        assert result['distances'][0] == [pytest.approx(0.10), pytest.approx(0.25)]
+        assert result['metadatas'][0][0] == {'file_id': 'f1'}
+        assert result['metadatas'][0][1] == {'file_id': 'f2'}
+
+    def test_empty_reply(self):
+        backend = make_backend()
+        result = backend._reply_to_chroma('idx:col1', [0, {}], has_distance=True)
+        assert result == {'ids': [[]], 'metadatas': [[]], 'distances': [[]]}
+
+    def test_malformed_reply(self):
+        backend = make_backend()
+        result = backend._reply_to_chroma('idx:col1', [], has_distance=True)
+        assert result == {'ids': [[]], 'metadatas': [[]], 'distances': [[]]}
+
+    def test_text_search_reply_no_distance(self):
+        backend = make_backend()
+        reply = [
+            1,
+            {
+                b'kb:col1:id1': {
+                    b'document': b'hello',
+                    b'metadata_json': b'{"file_id": "f1"}',
+                },
+            },
+        ]
+        result = backend._reply_to_chroma('idx:col1', reply, has_distance=False)
+        assert result['ids'][0] == ['id1']
+        assert result['distances'][0] == [0.0]
+
+
+class TestImportGuard:
+    """Tests for the ImportError guard when glide is unavailable."""
+
+    def test_constructor_raises_when_unavailable(self, monkeypatch):
+        mod = get_valkey_module()
+        monkeypatch.setattr(mod, 'VALKEY_SEARCH_AVAILABLE', False)
+        with pytest.raises(ImportError, match='valkey-glide'):
+            mod.ValkeySearchVectorDatabase(ap=None)
+
+
+class TestSupportedSearchTypes:
+    """Tests for supported_search_types."""
+
+    def test_supports_vector_full_text_hybrid(self):
+        mod = get_valkey_module()
+        from langbot.pkg.vector.vdb import SearchType
+
+        types = mod.ValkeySearchVectorDatabase.supported_search_types()
+        assert SearchType.VECTOR in types
+        assert SearchType.FULL_TEXT in types
+        assert SearchType.HYBRID in types

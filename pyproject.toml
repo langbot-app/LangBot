@@ -79,6 +79,7 @@ dependencies = [
     "pymilvus>=2.6.4",
     "pgvector>=0.4.1",
     "botocore>=1.42.39",
+    "valkey-glide>=2.4.1,<3.0.0",
 ]
 keywords = [
     "bot",

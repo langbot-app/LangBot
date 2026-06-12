@@ -33,7 +33,7 @@ class TestVectorDBManagerInitialization:
         mocks['langbot.pkg.core.app'] = MagicMock()
 
         # Mock all VDB backend implementations
-        for backend in ['chroma', 'qdrant', 'seekdb', 'milvus', 'pgvector_db']:
+        for backend in ['chroma', 'qdrant', 'seekdb', 'milvus', 'pgvector_db', 'valkey_search']:
             mocks[f'langbot.pkg.vector.vdbs.{backend}'] = MagicMock()
 
         return mocks
@@ -118,6 +118,25 @@ class TestVectorDBManagerInitialization:
             asyncio.get_event_loop().run_until_complete(mgr.initialize())
 
             mock_seekdb_class.assert_called_once_with(mock_app)
+
+    def test_initialize_valkey_search_backend(self):
+        """Valkey Search config uses ValkeySearchVectorDatabase backend."""
+        vdb_config = {'use': 'valkey_search'}
+        mock_app = self._create_mock_app(vdb_config)
+
+        mocks = self._make_vector_import_mocks()
+        mock_valkey_class = MagicMock()
+        mocks['langbot.pkg.vector.vdbs.valkey_search'].ValkeySearchVectorDatabase = mock_valkey_class
+
+        with isolated_sys_modules(mocks):
+            from langbot.pkg.vector.mgr import VectorDBManager
+
+            mgr = VectorDBManager(mock_app)
+
+            import asyncio
+            asyncio.get_event_loop().run_until_complete(mgr.initialize())
+
+            mock_valkey_class.assert_called_once_with(mock_app)
 
     def test_initialize_milvus_backend_with_uri(self):
         """Milvus config with custom URI."""

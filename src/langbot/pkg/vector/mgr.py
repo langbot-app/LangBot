@@ -33,6 +33,12 @@ class VectorDBManager:
                 self.vector_db = SeekDBVectorDatabase(self.ap)
                 self.ap.logger.info('Initialized SeekDB vector database backend.')
 
+            elif vdb_type == 'valkey_search':
+                from .vdbs.valkey_search import ValkeySearchVectorDatabase
+
+                self.vector_db = ValkeySearchVectorDatabase(self.ap)
+                self.ap.logger.info('Initialized Valkey Search vector database backend.')
+
             elif vdb_type == 'milvus':
                 from .vdbs.milvus import MilvusVectorDatabase
 
