@@ -629,6 +629,52 @@ class TestTranscriptStoreRealSQLite:
         assert messages[1].content == "Assistant text"
 
     @pytest.mark.asyncio
+    async def test_get_legacy_provider_messages_filters_scope(self, db_engine):
+        """Legacy Pipeline history projection must stay inside the current run scope."""
+        store = TranscriptStore(db_engine)
+
+        await store.append_transcript(
+            transcript_id="trans_scope_001",
+            event_id="evt_scope_001",
+            conversation_id="conv_scope",
+            bot_id="bot_001",
+            workspace_id="workspace_001",
+            thread_id="thread_001",
+            role="user",
+            content="Current scope text",
+        )
+        await store.append_transcript(
+            transcript_id="trans_scope_002",
+            event_id="evt_scope_002",
+            conversation_id="conv_scope",
+            bot_id="bot_002",
+            workspace_id="workspace_001",
+            thread_id="thread_001",
+            role="assistant",
+            content="Other bot text",
+        )
+        await store.append_transcript(
+            transcript_id="trans_scope_003",
+            event_id="evt_scope_003",
+            conversation_id="conv_scope",
+            bot_id="bot_001",
+            workspace_id="workspace_001",
+            thread_id="thread_002",
+            role="assistant",
+            content="Other thread text",
+        )
+
+        messages = await store.get_legacy_provider_messages(
+            "conv_scope",
+            bot_id="bot_001",
+            workspace_id="workspace_001",
+            thread_id="thread_001",
+            strict_thread=True,
+        )
+
+        assert [message.content for message in messages] == ["Current scope text"]
+
+    @pytest.mark.asyncio
     async def test_search_transcript_real_db(self, db_engine):
         """Test search_transcript with real DB."""
         store = TranscriptStore(db_engine)

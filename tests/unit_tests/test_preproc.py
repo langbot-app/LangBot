@@ -273,6 +273,13 @@ async def test_preproc_uses_transcript_history_view_when_available():
 
     assert result.result_type == entities_module.ResultType.CONTINUE
     assert query.messages == transcript_messages
+    stage._load_agent_runner_history_messages.assert_awaited_once_with(
+        'plugin:langbot/local-agent/default',
+        'conv-1',
+        bot_id='bot-1',
+        workspace_id=None,
+        thread_id=None,
+    )
 
 
 @pytest.mark.asyncio

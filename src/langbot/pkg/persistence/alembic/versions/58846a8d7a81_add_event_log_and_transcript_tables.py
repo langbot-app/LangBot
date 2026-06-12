@@ -1,7 +1,7 @@
 """add_event_log_and_transcript_tables
 
 Revision ID: 58846a8d7a81
-Revises: 0004_migrate_runner_config
+Revises: 0005_migrate_runner_config
 Create Date: 2026-05-23 15:41:47.030841
 """
 from alembic import op
@@ -9,7 +9,7 @@ import sqlalchemy as sa
 
 # revision identifiers
 revision = '58846a8d7a81'
-down_revision = '0004_migrate_runner_config'
+down_revision = '0005_migrate_runner_config'
 branch_labels = None
 depends_on = None
 

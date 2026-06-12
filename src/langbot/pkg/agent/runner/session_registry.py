@@ -254,6 +254,9 @@ class AgentRunSessionRegistry:
         *,
         conversation_id: str,
         runner_id: str,
+        bot_id: str | None = None,
+        workspace_id: str | None = None,
+        thread_id: str | None = None,
     ) -> str | None:
         """Find the oldest active run that can accept steering for a conversation."""
         async with self._lock:
@@ -263,6 +266,12 @@ class AgentRunSessionRegistry:
                 if session.get('runner_id') != runner_id:
                     continue
                 if authorization.get('conversation_id') != conversation_id:
+                    continue
+                if authorization.get('bot_id') != bot_id:
+                    continue
+                if authorization.get('workspace_id') != workspace_id:
+                    continue
+                if authorization.get('thread_id') != thread_id:
                     continue
                 if not authorization.get('available_apis', {}).get('steering_pull', False):
                     continue

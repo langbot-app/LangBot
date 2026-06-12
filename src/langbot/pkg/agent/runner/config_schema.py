@@ -6,11 +6,22 @@ import typing
 from .descriptor import AgentRunnerDescriptor
 
 
+FORM_ITEM_TYPE_ALIASES = {
+    'select-llm-model': 'llm-model-selector',
+    'select-knowledge-bases': 'knowledge-base-multi-selector',
+}
 LLM_MODEL_SELECTOR_TYPES = {'model-fallback-selector', 'llm-model-selector'}
 KB_SELECTOR_TYPES = {'knowledge-base-multi-selector'}
 PROMPT_EDITOR_TYPES = {'prompt-editor'}
 FILE_SELECTOR_TYPES = {'file', 'array[file]'}
 NONE_SENTINELS = {'', '__none__', '__none'}
+
+
+def normalize_schema_item_type(item_type: typing.Any) -> typing.Any:
+    """Normalize legacy/frontend DynamicForm aliases to protocol field types."""
+    if not isinstance(item_type, str):
+        return item_type
+    return FORM_ITEM_TYPE_ALIASES.get(item_type, item_type)
 
 
 def iter_schema_items(
@@ -23,7 +34,7 @@ def iter_schema_items(
     for item in descriptor.config_schema or []:
         if not isinstance(item, dict):
             continue
-        if item.get('type') in field_types:
+        if normalize_schema_item_type(item.get('type')) in field_types:
             yield item
 
 
@@ -81,7 +92,8 @@ def extract_model_selection(
             continue
 
         value = runner_config.get(field_name, item.get('default'))
-        if item.get('type') == 'model-fallback-selector':
+        item_type = normalize_schema_item_type(item.get('type'))
+        if item_type == 'model-fallback-selector':
             if isinstance(value, str):
                 primary_uuid = value
             elif isinstance(value, dict):
@@ -91,7 +103,7 @@ def extract_model_selection(
                     fallback_uuids = [fallback for fallback in fallbacks if isinstance(fallback, str)]
             break
 
-        if item.get('type') == 'llm-model-selector' and isinstance(value, str):
+        if item_type == 'llm-model-selector' and isinstance(value, str):
             primary_uuid = value
             break
 
@@ -145,7 +157,8 @@ def extract_config_file_resources(
         if not field_name:
             continue
         value = runner_config.get(field_name, item.get('default'))
-        if item.get('type') == 'file':
+        item_type = normalize_schema_item_type(item.get('type'))
+        if item_type == 'file':
             append_file(value)
         elif isinstance(value, list):
             for entry in value:
@@ -167,7 +180,7 @@ def iter_config_model_refs(
             continue
 
         field_name = item.get('name')
-        field_type = item.get('type')
+        field_type = normalize_schema_item_type(item.get('type'))
         if not field_name or field_name not in runner_config:
             continue
 
@@ -200,7 +213,7 @@ def set_empty_llm_model_selection(
     """Set the first empty schema-defined LLM selector to model_uuid."""
     for item in iter_schema_items(descriptor, LLM_MODEL_SELECTOR_TYPES):
         field_name = item.get('name')
-        field_type = item.get('type')
+        field_type = normalize_schema_item_type(item.get('type'))
         if not field_name:
             continue
 

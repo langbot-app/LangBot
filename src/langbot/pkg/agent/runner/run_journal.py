@@ -230,6 +230,7 @@ class AgentRunJournal:
                     runner_id=runner_id,
                     bot_id=event.bot_id,
                     workspace_id=event.workspace_id,
+                    thread_id=event.thread_id,
                     metadata=metadata,
                     content=content,
                 )
@@ -371,6 +372,7 @@ class AgentRunJournal:
                 runner_id=runner_id,
                 bot_id=event.bot_id,
                 workspace_id=event.workspace_id,
+                thread_id=event.thread_id,
                 metadata=metadata,
                 content=content,
             )

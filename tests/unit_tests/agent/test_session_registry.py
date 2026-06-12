@@ -289,6 +289,45 @@ class TestSessionRegistryBasic:
         assert all(item['event']['event_id'] != 'overflow' for item in items)
 
     @pytest.mark.asyncio
+    async def test_find_steering_target_requires_same_scope(self):
+        """Steering claims must not cross bot/workspace/thread boundaries."""
+        registry = AgentRunSessionRegistry()
+        await registry.register(
+            run_id='run_steering_scoped',
+            runner_id='plugin:test/my-runner/default',
+            query_id=1,
+            plugin_identity='test/my-runner',
+            resources=make_resources(),
+            conversation_id='conv_1',
+            bot_id='bot_1',
+            workspace_id='workspace_1',
+            thread_id='thread_1',
+            available_apis={'steering_pull': True},
+        )
+
+        assert await registry.find_steering_target(
+            conversation_id='conv_1',
+            runner_id='plugin:test/my-runner/default',
+            bot_id='bot_1',
+            workspace_id='workspace_1',
+            thread_id='thread_1',
+        ) == 'run_steering_scoped'
+        assert await registry.find_steering_target(
+            conversation_id='conv_1',
+            runner_id='plugin:test/my-runner/default',
+            bot_id='bot_2',
+            workspace_id='workspace_1',
+            thread_id='thread_1',
+        ) is None
+        assert await registry.find_steering_target(
+            conversation_id='conv_1',
+            runner_id='plugin:test/my-runner/default',
+            bot_id='bot_1',
+            workspace_id='workspace_1',
+            thread_id='thread_2',
+        ) is None
+
+    @pytest.mark.asyncio
     async def test_unregister_returns_pending_steering_queue(self):
         """Unregister returns the removed session so callers can audit pending steering."""
         registry = AgentRunSessionRegistry()

@@ -254,6 +254,10 @@ class TranscriptStore:
         self,
         conversation_id: str,
         limit: int = HARD_LIMIT,
+        bot_id: str | None = None,
+        workspace_id: str | None = None,
+        thread_id: str | None = None,
+        strict_thread: bool = False,
     ) -> list[provider_message.Message]:
         """Project Transcript rows into the legacy provider Message view.
 
@@ -265,6 +269,10 @@ class TranscriptStore:
             conversation_id=conversation_id,
             limit=limit,
             direction="backward",
+            bot_id=bot_id,
+            workspace_id=workspace_id,
+            thread_id=thread_id,
+            strict_thread=strict_thread,
         )
 
         messages: list[provider_message.Message] = []

@@ -120,7 +120,8 @@ def _validate_artifact_access(
 
     Args:
         session: AgentRunSession dict with run_id and authorization snapshot
-        artifact_metadata: Artifact metadata dict with conversation_id, run_id
+        artifact_metadata: Artifact metadata dict with conversation_id, run_id,
+            and Host-only scope fields when available
         operation: Operation name for error messages ('metadata' or 'read')
 
     Returns:
@@ -138,7 +139,7 @@ def _validate_artifact_access(
 
     # Rule 2: Same conversation (requires artifact to have conversation_id)
     if artifact_conversation_id and session_conversation_id:
-        if artifact_conversation_id == session_conversation_id:
+        if artifact_conversation_id == session_conversation_id and _artifact_matches_run_scope(session, artifact_metadata):
             return True, None
 
     # Rule 3: Deny - no matching authorization rule
@@ -148,6 +149,21 @@ def _validate_artifact_access(
 def _get_run_authorization(session: dict[str, Any]) -> dict[str, Any]:
     """Return the run-scoped authorization snapshot."""
     return session['authorization']
+
+
+def _artifact_matches_run_scope(session: dict[str, Any], artifact_metadata: dict[str, Any]) -> bool:
+    authorization = _get_run_authorization(session)
+    for scope_key in ('bot_id', 'workspace_id', 'thread_id'):
+        if authorization.get(scope_key) != artifact_metadata.get(scope_key):
+            return False
+    return True
+
+
+def _public_artifact_metadata(artifact_metadata: dict[str, Any]) -> dict[str, Any]:
+    public_metadata = dict(artifact_metadata)
+    for scope_key in ('bot_id', 'workspace_id', 'thread_id'):
+        public_metadata.pop(scope_key, None)
+    return public_metadata
 
 
 def _resolve_state_scope(
@@ -1864,7 +1880,7 @@ class RuntimeConnectionHandler(handler.Handler):
             store = ArtifactStore(self.ap.persistence_mgr.get_db_engine())
 
             try:
-                metadata = await store.get_metadata(artifact_id)
+                metadata = await store.get_authorization_metadata(artifact_id)
                 if not metadata:
                     return handler.ActionResponse.error(
                         message=f'Artifact {artifact_id} not found'
@@ -1875,7 +1891,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 if not is_allowed:
                     return handler.ActionResponse.error(message=error_msg)
 
-                return handler.ActionResponse.success(data=metadata)
+                return handler.ActionResponse.success(data=_public_artifact_metadata(metadata))
             except Exception as e:
                 self.ap.logger.error(f'ARTIFACT_METADATA error: {e}', exc_info=True)
                 return handler.ActionResponse.error(message=f'Artifact metadata error: {e}')
@@ -1934,7 +1950,7 @@ class RuntimeConnectionHandler(handler.Handler):
             store = ArtifactStore(self.ap.persistence_mgr.get_db_engine())
 
             try:
-                metadata = await store.get_metadata(artifact_id)
+                metadata = await store.get_authorization_metadata(artifact_id)
                 if not metadata:
                     return handler.ActionResponse.error(
                         message=f'Artifact {artifact_id} not found'

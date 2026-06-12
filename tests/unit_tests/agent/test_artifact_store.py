@@ -208,10 +208,20 @@ class TestArtifactAuthorization:
 class TestArtifactAccessValidation:
     """Test _validate_artifact_access authorization rules."""
 
-    def _make_session(self, conversation_id: str | None):
+    def _make_session(
+        self,
+        conversation_id: str | None,
+        *,
+        bot_id: str | None = None,
+        workspace_id: str | None = None,
+        thread_id: str | None = None,
+    ):
         return make_session(
             run_id="run_001",
             conversation_id=conversation_id,
+            bot_id=bot_id,
+            workspace_id=workspace_id,
+            thread_id=thread_id,
             available_apis={"artifact_metadata": True, "artifact_read": True},
         )
 
@@ -258,6 +268,64 @@ class TestArtifactAccessValidation:
         is_allowed, error = self._call_validate(session, metadata)
         assert is_allowed is True
         assert error is None
+
+    def test_same_conversation_and_scope_allowed(self):
+        """Artifacts in the same run scope are allowed across runs."""
+        session = self._make_session(
+            "conv_001",
+            bot_id="bot_001",
+            workspace_id="workspace_001",
+            thread_id="thread_001",
+        )
+        metadata = {
+            "artifact_id": "art_001",
+            "conversation_id": "conv_001",
+            "run_id": "run_other",
+            "bot_id": "bot_001",
+            "workspace_id": "workspace_001",
+            "thread_id": "thread_001",
+        }
+
+        is_allowed, error = self._call_validate(session, metadata)
+        assert is_allowed is True
+        assert error is None
+
+    def test_same_conversation_different_scope_denied(self):
+        """Artifacts in another bot/thread scope are denied even in the same conversation."""
+        session = self._make_session(
+            "conv_001",
+            bot_id="bot_001",
+            workspace_id="workspace_001",
+            thread_id="thread_001",
+        )
+        metadata = {
+            "artifact_id": "art_001",
+            "conversation_id": "conv_001",
+            "run_id": "run_other",
+            "bot_id": "bot_002",
+            "workspace_id": "workspace_001",
+            "thread_id": "thread_001",
+        }
+
+        is_allowed, error = self._call_validate(session, metadata)
+        assert is_allowed is False
+        assert "denied" in error.lower()
+
+    def test_same_conversation_missing_scope_denied_for_scoped_session(self):
+        """Scoped runs should not read legacy-scope artifacts from other runs."""
+        session = self._make_session("conv_001", bot_id="bot_001")
+        metadata = {
+            "artifact_id": "art_001",
+            "conversation_id": "conv_001",
+            "run_id": "run_other",
+            "bot_id": None,
+            "workspace_id": None,
+            "thread_id": None,
+        }
+
+        is_allowed, error = self._call_validate(session, metadata)
+        assert is_allowed is False
+        assert "denied" in error.lower()
 
     def test_different_conversation_and_run_denied(self):
         """Artifacts in different conversation and different run are denied."""
@@ -470,6 +538,9 @@ class TestArtifactStoreRealSQLite:
             content=content,
             conversation_id="conv_001",
             run_id="run_001",
+            bot_id="bot_001",
+            workspace_id="workspace_001",
+            thread_id="thread_001",
         )
 
         assert artifact_id == "art_real_001"
@@ -489,6 +560,14 @@ class TestArtifactStoreRealSQLite:
         assert "storage_type" not in metadata
         assert "bot_id" not in metadata
         assert "workspace_id" not in metadata
+        assert "thread_id" not in metadata
+        assert "_langbot_thread_id" not in metadata.get("metadata", {})
+
+        auth_metadata = await store.get_authorization_metadata(artifact_id)
+        assert auth_metadata is not None
+        assert auth_metadata["bot_id"] == "bot_001"
+        assert auth_metadata["workspace_id"] == "workspace_001"
+        assert auth_metadata["thread_id"] == "thread_001"
 
     @pytest.mark.asyncio
     async def test_read_artifact_round_trip(self, db_engine):

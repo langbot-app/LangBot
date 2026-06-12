@@ -1,7 +1,7 @@
 """Normalize AgentRunner config containers
 
-Revision ID: 0004_migrate_runner_config
-Revises: 0003_add_rerank_models
+Revision ID: 0005_migrate_runner_config
+Revises: 0004_add_mcp_readme
 Create Date: 2026-05-10
 """
 
@@ -11,8 +11,8 @@ from alembic import op
 
 from langbot.pkg.agent.runner.config_migration import ConfigMigration
 
-revision = '0004_migrate_runner_config'
-down_revision = '0003_add_rerank_models'
+revision = '0005_migrate_runner_config'
+down_revision = '0004_add_mcp_readme'
 branch_labels = None
 depends_on = None
 

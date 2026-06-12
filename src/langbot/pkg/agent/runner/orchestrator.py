@@ -283,6 +283,9 @@ class AgentRunOrchestrator:
         target_run_id = await self._session_registry.find_steering_target(
             conversation_id=event.conversation_id,
             runner_id=descriptor.id,
+            bot_id=event.bot_id,
+            workspace_id=event.workspace_id,
+            thread_id=event.thread_id,
         )
         if target_run_id is None:
             return False

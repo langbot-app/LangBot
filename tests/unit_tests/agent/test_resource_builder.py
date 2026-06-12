@@ -194,6 +194,41 @@ async def test_build_models_authorizes_rerank_and_llm_refs_from_config(app):
 
 
 @pytest.mark.asyncio
+async def test_build_resources_accepts_dynamic_form_type_aliases(app):
+    """Frontend DynamicForm aliases should resolve to runtime resource grants."""
+    app.model_mgr.get_model_by_uuid = AsyncMock(return_value=make_model())
+
+    async def get_kb(kb_uuid):
+        return SimpleNamespace(
+            uuid=kb_uuid,
+            get_name=lambda: f'name-{kb_uuid}',
+            knowledge_base_entity=SimpleNamespace(kb_type='default'),
+        )
+
+    app.rag_mgr.get_knowledge_base_by_uuid = AsyncMock(side_effect=get_kb)
+    descriptor = make_descriptor(
+        capabilities={'knowledge_retrieval': True},
+        config_schema=[
+            {'name': 'model', 'type': 'select-llm-model'},
+            {'name': 'knowledge-bases', 'type': 'select-knowledge-bases'},
+        ],
+    )
+    query = make_query({
+        'model': 'llm_alias',
+        'knowledge-bases': ['kb_alias'],
+    })
+
+    resources = await build_resources(app, query, descriptor)
+
+    assert resources['models'] == [
+        {'model_id': 'llm_alias', 'model_type': 'llm', 'provider': 'test-provider', 'operations': ['invoke', 'stream']},
+    ]
+    assert resources['knowledge_bases'] == [
+        {'kb_id': 'kb_alias', 'kb_name': 'name-kb_alias', 'kb_type': 'default', 'operations': ['list', 'retrieve']},
+    ]
+
+
+@pytest.mark.asyncio
 async def test_build_models_manifest_permission_narrows_binding(app):
     """Manifest model permissions narrower than binding should remove LLM grants."""
     app.model_mgr.get_model_by_uuid = AsyncMock(return_value=make_model())

@@ -1038,6 +1038,8 @@ else:
                 run_id=run_session.get('run_id') if isinstance(run_session, dict) else None,
                 runner_id=run_session.get('runner_id') if isinstance(run_session, dict) else None,
                 bot_id=getattr(query, 'bot_uuid', None),
+                workspace_id=authorization.get('workspace_id'),
+                thread_id=authorization.get('thread_id'),
                 metadata=metadata,
             )
             artifact_ref = {

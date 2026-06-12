@@ -117,6 +117,9 @@ class PreProcessor(stage.PipelineStage):
         self,
         runner_id: str | None,
         conversation_uuid: str | None,
+        bot_id: str | None = None,
+        workspace_id: str | None = None,
+        thread_id: str | None = None,
     ) -> list[provider_message.Message] | None:
         if not runner_id or not conversation_uuid or not self._has_declared_db_engine():
             return None
@@ -125,7 +128,13 @@ class PreProcessor(stage.PipelineStage):
             from ...agent.runner.transcript_store import TranscriptStore
 
             store = TranscriptStore(self.ap.persistence_mgr.get_db_engine())
-            messages = await store.get_legacy_provider_messages(str(conversation_uuid))
+            messages = await store.get_legacy_provider_messages(
+                str(conversation_uuid),
+                bot_id=bot_id,
+                workspace_id=workspace_id,
+                thread_id=thread_id,
+                strict_thread=True,
+            )
         except Exception as e:
             self.ap.logger.warning(
                 f'Unable to load Transcript history view for conversation {conversation_uuid}: {e}'
@@ -138,10 +147,15 @@ class PreProcessor(stage.PipelineStage):
         self,
         runner_id: str | None,
         conversation: typing.Any,
+        bot_id: str | None = None,
+        workspace_id: str | None = None,
     ) -> list[provider_message.Message]:
         transcript_messages = await self._load_agent_runner_history_messages(
             runner_id,
             getattr(conversation, 'uuid', None),
+            bot_id=bot_id,
+            workspace_id=workspace_id,
+            thread_id=getattr(conversation, 'thread_id', None),
         )
         if transcript_messages is not None:
             return transcript_messages
@@ -213,7 +227,11 @@ class PreProcessor(stage.PipelineStage):
         # Attach resolved session state to the query.
         query.session = session
         query.prompt = conversation.prompt.copy()
-        query.messages = await self._resolve_history_messages(runner_id, conversation)
+        query.messages = await self._resolve_history_messages(
+            runner_id,
+            conversation,
+            bot_id=query.bot_uuid,
+        )
 
         if uses_host_models:
             query.use_funcs = []

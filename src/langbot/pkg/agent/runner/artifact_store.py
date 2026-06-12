@@ -16,6 +16,7 @@ from ...entity.persistence.artifact import AgentArtifact
 from ...entity.persistence.bstorage import BinaryStorage
 
 _FILE_ARTIFACT_METADATA_KEY = '_langbot_file_artifact'
+_ARTIFACT_THREAD_METADATA_KEY = '_langbot_thread_id'
 
 
 class ArtifactStore:
@@ -56,6 +57,7 @@ class ArtifactStore:
         runner_id: str | None = None,
         bot_id: str | None = None,
         workspace_id: str | None = None,
+        thread_id: str | None = None,
         expires_at: datetime.datetime | None = None,
         metadata: dict[str, typing.Any] | None = None,
     ) -> str:
@@ -92,6 +94,7 @@ class ArtifactStore:
             runner_id=runner_id,
             bot_id=bot_id,
             workspace_id=workspace_id,
+            thread_id=thread_id,
             expires_at=expires_at,
             metadata=public_metadata,
             content=None,
@@ -113,6 +116,7 @@ class ArtifactStore:
         runner_id: str | None = None,
         bot_id: str | None = None,
         workspace_id: str | None = None,
+        thread_id: str | None = None,
         expires_at: datetime.datetime | None = None,
         metadata: dict[str, typing.Any] | None = None,
         content: bytes | None = None,
@@ -137,6 +141,7 @@ class ArtifactStore:
             runner_id: Runner ID that created this
             bot_id: Bot UUID
             workspace_id: Workspace ID
+            thread_id: Thread ID stored as Host-only metadata
             expires_at: Expiration time
             metadata: Additional metadata
             content: Optional content to store in BinaryStorage
@@ -146,6 +151,10 @@ class ArtifactStore:
         """
         if artifact_id is None:
             artifact_id = str(uuid.uuid4())
+
+        metadata_payload = dict(metadata or {})
+        if thread_id is not None:
+            metadata_payload[_ARTIFACT_THREAD_METADATA_KEY] = thread_id
 
         # If content provided, store in BinaryStorage
         if content is not None and storage_key is None:
@@ -184,7 +193,7 @@ class ArtifactStore:
                 workspace_id=workspace_id,
                 created_at=datetime.datetime.utcnow(),
                 expires_at=expires_at,
-                metadata_json=json.dumps(metadata) if metadata else None,
+                metadata_json=json.dumps(metadata_payload) if metadata_payload else None,
             )
             session.add(artifact)
             await session.commit()
@@ -215,6 +224,22 @@ class ArtifactStore:
             if self._is_expired(row):
                 return None
             return self._row_to_public_dict(row)
+
+    async def get_authorization_metadata(
+        self,
+        artifact_id: str,
+    ) -> dict[str, typing.Any] | None:
+        """Get artifact metadata with Host-only scope fields for authorization."""
+        row = await self._get_internal_record(artifact_id)
+        if row is None:
+            return None
+        metadata = self._row_to_public_dict(row)
+        metadata.update({
+            'bot_id': row.bot_id,
+            'workspace_id': row.workspace_id,
+            'thread_id': self._load_metadata(row.metadata_json).get(_ARTIFACT_THREAD_METADATA_KEY),
+        })
+        return metadata
 
     async def _get_internal_record(
         self,
@@ -455,6 +480,7 @@ class ArtifactStore:
     def _public_metadata(metadata_json: str | None) -> dict[str, typing.Any]:
         metadata = ArtifactStore._load_metadata(metadata_json)
         metadata.pop(_FILE_ARTIFACT_METADATA_KEY, None)
+        metadata.pop(_ARTIFACT_THREAD_METADATA_KEY, None)
         return metadata
 
     @staticmethod
