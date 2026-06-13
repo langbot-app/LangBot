@@ -40,7 +40,7 @@ class SendResponseBackStage(stage.PipelineStage):
         has_chunks = any(isinstance(msg, provider_message.MessageChunk) for msg in query.resp_messages)
         # TODO 命令与流式的兼容性问题
         if await query.adapter.is_stream_output_supported() and has_chunks:
-            is_final = [msg.is_final for msg in query.resp_messages][0]
+            is_final = [msg.is_final for msg in query.resp_messages][-1]
             await query.adapter.reply_message_chunk(
                 message_source=query.message_event,
                 bot_message=query.resp_messages[-1],

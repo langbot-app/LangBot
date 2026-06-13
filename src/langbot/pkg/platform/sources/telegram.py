@@ -1,14 +1,14 @@
 from __future__ import annotations
-import time
 
 
 import telegram
 import telegram.ext
-from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CallbackQueryHandler, filters
 import telegramify_markdown
 import typing
 import traceback
+import json
 import base64
 import pydantic
 
@@ -189,6 +189,7 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
 class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     bot: telegram.Bot = pydantic.Field(exclude=True)
     application: telegram.ext.Application = pydantic.Field(exclude=True)
+    ap: typing.Any = pydantic.Field(exclude=True, default=None)
 
     message_converter: TelegramMessageConverter = TelegramMessageConverter()
     event_converter: TelegramEventConverter = TelegramEventConverter()
@@ -224,6 +225,102 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 telegram_callback,
             )
         )
+
+        async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            query = update.callback_query
+            await query.answer()
+            try:
+                data = json.loads(query.data)
+                if data.get('form_action') or data.get('f'):
+                    import langbot_plugin.api.entities.builtin.provider.session as provider_session
+
+                    workflow_run_id = data.get('workflow_run_id', '')
+                    w_suffix = data.get('w', '')
+                    action_id = data.get('action_id') or data.get('a', '')
+                    session_key = data.get('session_key') or data.get('s', '')
+
+                    if session_key.startswith('group_') or session_key.startswith('g:'):
+                        launcher_type = provider_session.LauncherTypes.GROUP
+                        launcher_id = (
+                            session_key.split(':', 1)[1]
+                            if session_key.startswith('g:')
+                            else session_key[len('group_') :]
+                        )
+                    else:
+                        launcher_type = provider_session.LauncherTypes.PERSON
+                        launcher_id = (
+                            session_key.split(':', 1)[1]
+                            if session_key.startswith('p:')
+                            else session_key[len('person_') :]
+                        )
+
+                    user_id = str(query.from_user.id)
+
+                    # Find bot_uuid and pipeline_uuid
+                    bot_uuid = ''
+                    pipeline_uuid = None
+                    for b in self.ap.platform_mgr.bots:
+                        if b.adapter is self:
+                            bot_uuid = b.bot_entity.uuid
+                            pipeline_uuid = b.bot_entity.use_pipeline_uuid
+                            break
+
+                    form_action_data = {
+                        'workflow_run_id': workflow_run_id,
+                        'w_suffix': w_suffix,
+                        'action_id': action_id,
+                        'user': f'{launcher_type.value}_{launcher_id}',
+                        'inputs': {},
+                    }
+
+                    message_chain = platform_message.MessageChain(
+                        [platform_message.Plain(text=f'[Form Action: {action_id}]')]
+                    )
+
+                    if launcher_type == provider_session.LauncherTypes.GROUP:
+                        synthetic_event = platform_events.GroupMessage(
+                            sender=platform_entities.GroupMember(
+                                id=user_id,
+                                member_name='',
+                                permission=platform_entities.Permission.Member,
+                                group=platform_entities.Group(
+                                    id=launcher_id,
+                                    name='',
+                                    permission=platform_entities.Permission.Member,
+                                ),
+                            ),
+                            message_chain=message_chain,
+                            source_platform_object=update,
+                        )
+                    else:
+                        synthetic_event = platform_events.FriendMessage(
+                            sender=platform_entities.Friend(
+                                id=user_id,
+                                nickname='',
+                                remark='',
+                            ),
+                            message_chain=message_chain,
+                            source_platform_object=update,
+                        )
+
+                    await self.ap.query_pool.add_query(
+                        bot_uuid=bot_uuid,
+                        launcher_type=launcher_type,
+                        launcher_id=launcher_id,
+                        sender_id=user_id,
+                        message_event=synthetic_event,
+                        message_chain=message_chain,
+                        adapter=self,
+                        pipeline_uuid=pipeline_uuid,
+                        variables={
+                            '_dify_form_action': form_action_data,
+                            '_routed_by_rule': True,
+                        },
+                    )
+            except Exception:
+                await self.logger.error(f'Error in telegram callback query: {traceback.format_exc()}')
+
+        application.add_handler(CallbackQueryHandler(callback_query_handler))
         super().__init__(
             config=config,
             logger=logger,
@@ -319,14 +416,19 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         update = event.source_platform_object
         chat_id = update.effective_chat.id
         chat_type = update.effective_chat.type
-        message_thread_id = update.message.message_thread_id
+        effective_message = update.effective_message
+        message_thread_id = getattr(effective_message, 'message_thread_id', None) if effective_message else None
 
         if chat_type == 'private':
-            draft_id = int(time.time() * 1000)
-            self.msg_stream_id[message_id] = ('private', draft_id)
+            import time as _time
 
+            draft_id = int(_time.time() * 1000)
+            self.msg_stream_id[message_id] = ('private', draft_id)
             args = self._build_message_args(chat_id, 'Thinking...', message_thread_id, draft_id=draft_id)
-            await self.bot.send_message_draft(**args)
+            try:
+                await self.bot.send_message_draft(**args)
+            except (telegram.error.RetryAfter, telegram.error.BadRequest):
+                pass
         else:
             args = self._build_message_args(chat_id, 'Thinking...', message_thread_id)
             send_msg = await self.bot.send_message(**args)
@@ -347,12 +449,13 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         assert isinstance(message_source.source_platform_object, Update)
         update = message_source.source_platform_object
         chat_id = update.effective_chat.id
-        message_thread_id = update.message.message_thread_id
+        effective_message = update.effective_message
+        message_thread_id = getattr(effective_message, 'message_thread_id', None) if effective_message else None
 
         if message_id not in self.msg_stream_id:
             return
 
-        chat_mode, draft_id = self.msg_stream_id[message_id]
+        chat_mode, stream_id = self.msg_stream_id[message_id]
         components = await TelegramMessageConverter.yiri2target(message, self.bot)
 
         if not components or components[0]['type'] != 'text':
@@ -361,16 +464,42 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             return
 
         content = components[0]['text']
+        form_data = getattr(bot_message, '_form_data', None)
+
+        if form_data and is_final:
+            self.msg_stream_id.pop(message_id, None)
+            await self._send_form_action_buttons(message_source, form_data)
+            return
 
         if chat_mode == 'private':
-            args = self._build_message_args(chat_id, content, message_thread_id, draft_id=draft_id)
-            await self.bot.send_message_draft(**args)
+            # Streaming via draft (ephemeral preview in the chat input area)
+            if (msg_seq - 1) % 8 == 0 or is_final:
+                args = self._build_message_args(chat_id, content, message_thread_id, draft_id=stream_id)
+                try:
+                    await self.bot.send_message_draft(**args)
+                except telegram.error.BadRequest as exc:
+                    if 'Message_too_long' in str(exc):
+                        args['text'] = content[:4000] + '\n\n… (truncated)'
+                        try:
+                            await self.bot.send_message_draft(**args)
+                        except telegram.error.RetryAfter:
+                            pass
+                    else:
+                        pass  # Ignore other draft errors (cosmetic)
             if is_final and bot_message.tool_calls is None:
-                del args['draft_id']
-                await self.bot.send_message(**args)
+                # Finalise: send the real message, discard the draft
+                args = self._build_message_args(chat_id, content, message_thread_id)
+                try:
+                    await self.bot.send_message(**args)
+                except telegram.error.BadRequest as exc:
+                    if 'Message_too_long' in str(exc):
+                        args['text'] = content[:4000] + '\n\n… (truncated)'
+                        await self.bot.send_message(**args)
+                    else:
+                        raise
                 self.msg_stream_id.pop(message_id)
         else:
-            stream_id = draft_id
+            # Streaming via edit_message_text (persistent message)
             if (msg_seq - 1) % 8 == 0 or is_final:
                 args = {
                     'message_id': stream_id,
@@ -379,10 +508,67 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 }
                 if self.config.get('markdown_card', False):
                     args['parse_mode'] = 'MarkdownV2'
-                await self.bot.edit_message_text(**args)
+                try:
+                    await self.bot.edit_message_text(**args)
+                except telegram.error.BadRequest as exc:
+                    if 'Message_too_long' in str(exc):
+                        args['text'] = self._process_markdown(content[:4000] + '\n\n… (truncated)')
+                        await self.bot.edit_message_text(**args)
+                    else:
+                        raise
 
             if is_final and bot_message.tool_calls is None:
                 self.msg_stream_id.pop(message_id)
+
+    async def _send_form_action_buttons(
+        self,
+        message_source: platform_events.MessageEvent,
+        form_data: dict,
+    ):
+        """Send inline keyboard buttons for Dify human_input_required form actions."""
+        actions = form_data.get('actions', [])
+        node_title = form_data.get('node_title', '')
+        form_content = form_data.get('form_content', '')
+        workflow_run_id = form_data.get('workflow_run_id', '')
+        # Telegram callback_data is capped at 64 bytes, so we identify the
+        # paused workflow by the last 8 chars of workflow_run_id (unique
+        # within a session with overwhelming probability).
+        w_suffix = workflow_run_id[-8:] if workflow_run_id else ''
+
+        if isinstance(message_source, platform_events.GroupMessage):
+            session_key = f'g:{message_source.group.id}'
+        else:
+            session_key = f'p:{message_source.sender.id}'
+
+        keyboard = []
+        for action in actions:
+            action_id = action.get('id', '')
+            action_title = action.get('title', action_id)
+            callback_payload = {'f': 1, 'a': action_id, 's': session_key}
+            if w_suffix:
+                callback_payload['w'] = w_suffix
+            callback_data = json.dumps(callback_payload, separators=(',', ':'))
+            keyboard.append([InlineKeyboardButton(action_title, callback_data=callback_data)])
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        update = message_source.source_platform_object
+        chat_id = update.effective_chat.id
+        effective_message = update.effective_message
+        message_thread_id = getattr(effective_message, 'message_thread_id', None) if effective_message else None
+
+        text_lines = [f'[{node_title}] Please select an action:']
+        if form_content:
+            text_lines.insert(0, form_content)
+        args = {
+            'chat_id': chat_id,
+            'text': '\n\n'.join(text_lines),
+            'reply_markup': reply_markup,
+        }
+        if message_thread_id:
+            args['message_thread_id'] = message_thread_id
+
+        await self.bot.send_message(**args)
 
     def get_launcher_id(self, event: platform_events.MessageEvent) -> str | None:
         if not isinstance(event.source_platform_object, Update):

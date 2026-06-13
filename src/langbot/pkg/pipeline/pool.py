@@ -42,9 +42,13 @@ class QueryPool:
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         pipeline_uuid: typing.Optional[str] = None,
         routed_by_rule: bool = False,
+        variables: typing.Optional[dict[str, typing.Any]] = None,
     ) -> pipeline_query.Query:
         async with self.condition:
             query_id = self.query_id_counter
+            initial_variables: dict[str, typing.Any] = {'_routed_by_rule': routed_by_rule}
+            if variables:
+                initial_variables.update(variables)
             query = pipeline_query.Query(
                 bot_uuid=bot_uuid,
                 query_id=query_id,
@@ -53,7 +57,7 @@ class QueryPool:
                 sender_id=sender_id,
                 message_event=message_event,
                 message_chain=message_chain,
-                variables={'_routed_by_rule': routed_by_rule},
+                variables=initial_variables,
                 resp_messages=[],
                 resp_message_chain=[],
                 adapter=adapter,
