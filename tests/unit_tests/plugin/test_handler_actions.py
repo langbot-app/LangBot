@@ -27,6 +27,66 @@ def compiled_params(statement):
     return statement.compile().params
 
 
+class TestRagRerankAction:
+    """Tests for RAG rerank action handler."""
+
+    @pytest.fixture
+    def app(self):
+        mock_app = Mock()
+        mock_app.model_mgr = Mock()
+        mock_app.logger = Mock()
+        return mock_app
+
+    @pytest.mark.asyncio
+    async def test_invokes_rerank_model_and_sorts_scores(self, app):
+        """Rerank action uses the selected model and returns top scores."""
+        provider = Mock()
+        provider.invoke_rerank = AsyncMock(
+            return_value=[
+                {'index': 0, 'relevance_score': 0.2},
+                {'index': 1, 'relevance_score': 0.9},
+            ]
+        )
+        rerank_model = SimpleNamespace(provider=provider)
+        app.model_mgr.get_rerank_model_by_uuid = AsyncMock(return_value=rerank_model)
+        runtime_handler = make_handler(app)
+
+        response = await runtime_handler.actions[PluginToRuntimeAction.INVOKE_RERANK.value]({
+            'rerank_model_uuid': 'rerank-1',
+            'query': 'hello',
+            'documents': ['a', 'b'],
+            'top_k': 1,
+            'extra_args': {'return_documents': False},
+        })
+
+        assert response.code == 0
+        assert response.data['results'] == [{'index': 1, 'relevance_score': 0.9}]
+        app.model_mgr.get_rerank_model_by_uuid.assert_awaited_once_with('rerank-1')
+        provider.invoke_rerank.assert_awaited_once_with(
+            model=rerank_model,
+            query='hello',
+            documents=['a', 'b'],
+            extra_args={'return_documents': False},
+        )
+
+    @pytest.mark.asyncio
+    async def test_returns_error_when_rerank_model_missing(self, app):
+        """Missing rerank model returns an action error."""
+        app.model_mgr.get_rerank_model_by_uuid = AsyncMock(
+            side_effect=ValueError('not found')
+        )
+        runtime_handler = make_handler(app)
+
+        response = await runtime_handler.actions[PluginToRuntimeAction.INVOKE_RERANK.value]({
+            'rerank_model_uuid': 'missing',
+            'query': 'hello',
+            'documents': ['a'],
+        })
+
+        assert response.code != 0
+        assert 'Rerank model with rerank_model_uuid missing not found' in response.message
+
+
 class TestInitializePluginSettings:
     """Tests for initialize_plugin_settings action handler."""
 
