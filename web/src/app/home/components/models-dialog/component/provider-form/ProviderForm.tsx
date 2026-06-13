@@ -63,6 +63,7 @@ export default function ProviderForm({
       category: string;
       defaultUrl: string;
       description: string;
+      alias: string;
     }[]
   >([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -84,6 +85,7 @@ export default function ProviderForm({
               .find((c) => c.name === 'base_url')
               ?.default?.toString() || '',
           description: extractI18nObject(item.description),
+          alias: item.spec.alias || '',
         })),
     );
   }, []);
@@ -137,7 +139,8 @@ export default function ProviderForm({
   const filteredRequesters = requesterList.filter(
     (r) =>
       r.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.value.toLowerCase().includes(searchQuery.toLowerCase()),
+      r.value.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      r.alias.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   // Group filtered requesters by category

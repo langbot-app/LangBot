@@ -30,6 +30,7 @@ spec:
     type: int
     required: true
     default: 120
+  alias: "qhaigc 青华 qinghua aigc 中转 中转站"
   support_type:
   - llm
   - text-embedding

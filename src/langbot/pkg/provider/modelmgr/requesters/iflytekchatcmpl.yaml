@@ -23,6 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "iflytek 讯飞 科大讯飞 星火 spark xinghuo xunfei 讯飞星火"
   support_type:
   - llm
   - text-embedding

@@ -23,6 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "voyage voyageai voyage-ai VoyageAI rerank 重排 reranker voyage-rerank embedding"
   support_type:
   - rerank
   provider_category: manufacturer

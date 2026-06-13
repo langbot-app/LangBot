@@ -23,6 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "groq Groq 高速 llama mixtral 推理加速 lpu"
   support_type:
   - llm
   provider_category: manufacturer

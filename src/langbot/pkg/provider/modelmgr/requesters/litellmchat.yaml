@@ -53,6 +53,7 @@ spec:
     type: string
     required: false
     default: ''
+  alias: "litellm LiteLLM 通用 universal 万能 兼容 compatible proxy 代理 中转"
   support_type:
   - llm
   - text-embedding

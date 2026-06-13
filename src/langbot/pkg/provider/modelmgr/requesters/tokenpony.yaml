@@ -23,6 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "tokenpony TokenPony token-pony 小马 token 小马算力 中转"
   support_type:
   - llm
   - text-embedding

@@ -23,6 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "openai OpenAI 欧派 gpt GPT ChatGPT chatgpt o1 o3 o4 text-embedding 通用 openai兼容 compatible"
   support_type:
   - llm
   - text-embedding

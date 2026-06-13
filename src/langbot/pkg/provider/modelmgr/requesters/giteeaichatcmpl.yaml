@@ -23,6 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "gitee Gitee 码云 gitee-ai gitee ai serverless bge embedding rerank"
   support_type:
   - llm
   - text-embedding

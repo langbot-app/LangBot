@@ -31,6 +31,7 @@ export interface Requester {
     config: IDynamicFormItemSchema[];
     provider_category: string;
     support_type?: string[];
+    alias?: string;
   };
 }
 

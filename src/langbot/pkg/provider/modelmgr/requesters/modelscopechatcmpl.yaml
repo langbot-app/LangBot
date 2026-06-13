@@ -30,6 +30,7 @@ spec:
     type: int
     required: true
     default: 120
+  alias: "modelscope ModelScope 魔搭 魔塔 摩搭 阿里 modelscope-aigc qwen bge"
   support_type:
   - llm
   - text-embedding

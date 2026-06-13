@@ -23,6 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "zhipu zhipuai 智谱 智谱AI 智谱清言 glm GLM chatglm 清言 bigmodel embedding-3 rerank"
   support_type:
   - llm
   - text-embedding

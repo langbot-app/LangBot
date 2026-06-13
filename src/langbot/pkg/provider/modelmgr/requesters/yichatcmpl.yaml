@@ -23,6 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "yi 零一 零一万物 零一万 lingyiwanwu 01 01.ai 万智 yi-large yi-lightning embedding"
   support_type:
   - llm
   - text-embedding

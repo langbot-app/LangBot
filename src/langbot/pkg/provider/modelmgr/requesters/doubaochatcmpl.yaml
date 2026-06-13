@@ -23,6 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "doubao 豆包 字节 字节跳动 bytedance volcengine 火山 火山引擎 ark 方舟 seed"
   support_type:
   - llm
   - text-embedding

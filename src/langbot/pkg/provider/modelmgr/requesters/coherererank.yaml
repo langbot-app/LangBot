@@ -23,6 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "cohere Cohere rerank 重排 reranker rerank-english rerank-multilingual command"
   support_type:
   - rerank
   provider_category: manufacturer

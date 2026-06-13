@@ -23,6 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "mistral Mistral 米斯特拉尔 mixtral codestral mistral-embed le-chat"
   support_type:
   - llm
   - text-embedding

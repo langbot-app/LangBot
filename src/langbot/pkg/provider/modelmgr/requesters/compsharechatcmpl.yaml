@@ -23,6 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "compshare 优刻得 ucloud UCloud 算力 共享算力 GPU"
   support_type:
   - llm
   - text-embedding

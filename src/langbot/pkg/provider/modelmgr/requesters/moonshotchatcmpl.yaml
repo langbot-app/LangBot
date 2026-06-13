@@ -23,6 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "moonshot Moonshot 月之暗面 月暗 kimi Kimi 月之 暗面 moonshot-v1 k2"
   support_type:
   - llm
   provider_category: manufacturer

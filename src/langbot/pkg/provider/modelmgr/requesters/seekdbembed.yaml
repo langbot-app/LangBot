@@ -12,6 +12,7 @@ metadata:
   icon: seekdb.svg
 spec:
   config: []
+  alias: "seekdb SeekDB seek-db 向量 vector embedding 嵌入 数据库"
   support_type:
   - text-embedding
   provider_category: builtin

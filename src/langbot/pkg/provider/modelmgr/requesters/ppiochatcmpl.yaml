@@ -30,6 +30,7 @@ spec:
     type: int
     required: true
     default: 120
+  alias: "ppio PPIO 派欧 派欧云 paiou ppinfra 派欧算力 bge embedding rerank"
   support_type:
   - llm
   - text-embedding

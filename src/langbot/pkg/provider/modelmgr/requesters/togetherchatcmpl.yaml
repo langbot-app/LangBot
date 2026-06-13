@@ -23,6 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "together Together together-ai togetherai 中转 llama qwen bge rerank embedding"
   support_type:
   - llm
   - text-embedding

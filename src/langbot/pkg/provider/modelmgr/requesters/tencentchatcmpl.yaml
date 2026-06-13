@@ -23,6 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "tencent 腾讯 腾讯云 hunyuan 混元 tencent-cloud txcloud 元宝"
   support_type:
   - llm
   - text-embedding

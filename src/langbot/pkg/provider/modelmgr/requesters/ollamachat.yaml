@@ -23,6 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "ollama Ollama 本地 local 本地部署 self-hosted llama gguf 私有化"
   support_type:
   - llm
   - text-embedding

@@ -23,6 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "anthropic Anthropic 克劳德 claude Claude Opus Sonnet Haiku 安thropic"
   support_type:
   - llm
   provider_category: manufacturer

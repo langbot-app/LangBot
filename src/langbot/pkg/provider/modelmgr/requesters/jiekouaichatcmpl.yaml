@@ -30,6 +30,7 @@ spec:
     type: int
     required: true
     default: 120
+  alias: "jiekouai 接口AI 接口 jiekou ai 中转 中转站 aggregator"
   support_type:
   - llm
   - text-embedding

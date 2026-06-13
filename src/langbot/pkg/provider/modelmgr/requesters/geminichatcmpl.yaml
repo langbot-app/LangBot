@@ -23,6 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "gemini Gemini 谷歌 google Google 双子座 bard flash pro text-embedding-004"
   support_type:
   - llm
   - text-embedding

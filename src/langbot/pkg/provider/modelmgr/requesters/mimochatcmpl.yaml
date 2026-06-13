@@ -23,6 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "mimo MiMo 小米 xiaomi 小米大模型 xiaomi-mimo"
   support_type:
   - llm
   - text-embedding

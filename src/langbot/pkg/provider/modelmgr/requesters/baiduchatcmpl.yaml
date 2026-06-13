@@ -23,6 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "baidu Baidu 百度 千帆 qianfan wenxin 文心 文心一言 ernie ERNIE bce embedding bce-reranker"
   support_type:
   - llm
   - text-embedding

@@ -23,9 +23,11 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "space LangBot Space langbot-space 官方 official 自有 内置 rerank embedding"
   support_type:
   - llm
   - text-embedding
+  - rerank
   provider_category: maas
 execution:
   python:

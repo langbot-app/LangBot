@@ -30,6 +30,7 @@ spec:
     type: int
     required: true
     default: 120
+  alias: "shengsuanyun 胜算云 胜算 sheng suan yun 算力 中转"
   support_type:
   - llm
   - text-embedding

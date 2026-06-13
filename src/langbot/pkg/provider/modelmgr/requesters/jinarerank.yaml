@@ -23,6 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "jina Jina jina-ai jinaai rerank 重排 reranker jina-reranker embedding"
   support_type:
   - rerank
   provider_category: manufacturer
