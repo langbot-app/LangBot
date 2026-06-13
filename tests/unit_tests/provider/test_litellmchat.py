@@ -680,6 +680,7 @@ class TestInvokeRerank:
             ap=Mock(),
             config={
                 'base_url': 'https://api.cohere.ai',
+                'custom_llm_provider': 'cohere',
             },
         )
 
@@ -708,7 +709,7 @@ class TestInvokeRerank:
     @pytest.mark.asyncio
     async def test_invoke_rerank_normalization(self):
         """Test rerank score normalization"""
-        requester = litellmchat.LiteLLMRequester(ap=Mock(), config={})
+        requester = litellmchat.LiteLLMRequester(ap=Mock(), config={'custom_llm_provider': 'cohere'})
 
         model = MockRuntimeRerankModel('rerank-english-v3.0', 'test-api-key')
 
@@ -733,7 +734,7 @@ class TestInvokeRerank:
     @pytest.mark.asyncio
     async def test_invoke_rerank_single_document(self):
         """Test rerank with single document (no normalization needed)"""
-        requester = litellmchat.LiteLLMRequester(ap=Mock(), config={})
+        requester = litellmchat.LiteLLMRequester(ap=Mock(), config={'custom_llm_provider': 'cohere'})
 
         model = MockRuntimeRerankModel('rerank-english-v3.0', 'test-api-key')
 
@@ -752,6 +753,100 @@ class TestInvokeRerank:
             assert len(results) == 1
             # Single score stays as is (min==max, no normalization)
             assert results[0]['relevance_score'] == 0.5
+
+    @pytest.mark.asyncio
+    async def test_invoke_rerank_openai_compatible_http(self):
+        """OpenAI-compatible gateways (newapi/one-api/vLLM) must use the HTTP /v1/rerank
+        endpoint instead of litellm.arerank, which rejects the 'openai' provider."""
+        requester = litellmchat.LiteLLMRequester(
+            ap=Mock(),
+            config={
+                'base_url': 'https://gateway.example.com/v1',
+                'custom_llm_provider': 'openai',
+            },
+        )
+
+        model = MockRuntimeRerankModel('bge-reranker-v2-m3', 'test-api-key')
+
+        # Mock the standard Jina/Cohere-style /v1/rerank HTTP response
+        mock_resp = Mock()
+        mock_resp.raise_for_status = Mock()
+        mock_resp.json = Mock(
+            return_value={
+                'results': [
+                    {'index': 0, 'relevance_score': 0.9},
+                    {'index': 1, 'relevance_score': 0.1},
+                ]
+            }
+        )
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch('httpx.AsyncClient', return_value=mock_client):
+            # arerank must NOT be called on the openai-compatible path
+            with patch.object(
+                litellmchat, 'arerank', new_callable=AsyncMock,
+                side_effect=AssertionError('arerank must not be used for openai-compatible provider'),
+            ):
+                results = await requester.invoke_rerank(
+                    model=model,
+                    query='test query',
+                    documents=['doc1', 'doc2'],
+                )
+
+        # Hit the standard rerank endpoint
+        called_url = mock_client.post.call_args[0][0]
+        assert called_url == 'https://gateway.example.com/v1/rerank'
+        # Payload carries the raw model name, query and documents
+        payload = mock_client.post.call_args[1]['json']
+        assert payload['model'] == 'bge-reranker-v2-m3'
+        assert payload['query'] == 'test query'
+        assert payload['documents'] == ['doc1', 'doc2']
+        # Scores normalized: 0.9 -> 1.0, 0.1 -> 0.0
+        assert results[0]['relevance_score'] == 1.0
+        assert results[1]['relevance_score'] == 0.0
+
+    @pytest.mark.asyncio
+    async def test_invoke_rerank_openai_compatible_score_alias(self):
+        """Some gateways return 'score' instead of 'relevance_score'; both must work."""
+        requester = litellmchat.LiteLLMRequester(
+            ap=Mock(),
+            config={
+                'base_url': 'https://gateway.example.com/v1',
+                'custom_llm_provider': 'openai',
+            },
+        )
+
+        model = MockRuntimeRerankModel('bge-reranker-v2-m3', 'test-api-key')
+
+        mock_resp = Mock()
+        mock_resp.raise_for_status = Mock()
+        mock_resp.json = Mock(
+            return_value={
+                'results': [
+                    {'index': 0, 'score': 0.8},
+                    {'index': 1, 'score': 0.2},
+                ]
+            }
+        )
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch('httpx.AsyncClient', return_value=mock_client):
+            results = await requester.invoke_rerank(
+                model=model,
+                query='test query',
+                documents=['doc1', 'doc2'],
+            )
+
+        assert results[0]['relevance_score'] == 1.0
+        assert results[1]['relevance_score'] == 0.0
 
 
 class TestConvertMessages:

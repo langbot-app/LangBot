@@ -544,7 +544,10 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         try:
             response = await aembedding(**args)
 
-            embeddings = [d.embedding for d in response.data]
+            # LiteLLM returns response.data entries either as objects with an
+            # `.embedding` attribute or as plain dicts (many OpenAI-compatible
+            # gateways, e.g. new-api, yield dict-shaped entries). Handle both.
+            embeddings = [d['embedding'] if isinstance(d, dict) else d.embedding for d in response.data]
             usage_info = self._extract_usage(response)
 
             return embeddings, usage_info
@@ -563,31 +566,50 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         model_name = self._build_litellm_model_name(model.model_entity.name)
         api_key = model.provider.token_mgr.get_token()
 
-        args = {
-            'model': model_name,
-            'query': query,
-            'documents': documents,
-            'api_key': api_key,
-            'top_n': min(len(documents), 64),
-        }
-        self._build_common_args(args, include_retry_params=False)
+        top_n = min(len(documents), 64)
 
-        if model.model_entity.extra_args:
-            args.update(model.model_entity.extra_args)
-
-        args.update(extra_args)
+        provider = self._get_custom_llm_provider()
 
         try:
-            response = await arerank(**args)
-
-            results = []
-            for r in response.results:
-                results.append(
-                    {
-                        'index': r.get('index', 0),
-                        'relevance_score': r.get('relevance_score', 0.0),
-                    }
+            # LiteLLM's rerank API does not support the `openai` provider
+            # (litellm/rerank_api/main.py raises "Unsupported provider: openai").
+            # OpenAI-compatible gateways (newapi / one-api / vLLM / Xinference, etc.)
+            # expose the standard Jina/Cohere-style POST /v1/rerank endpoint, so
+            # call it directly over HTTP for openai-compatible (or unspecified) providers.
+            if provider in (None, '', 'openai'):
+                results = await self._invoke_rerank_openai_compatible(
+                    model_name=model.model_entity.name,
+                    query=query,
+                    documents=documents,
+                    api_key=api_key,
+                    top_n=top_n,
+                    extra_args={**(model.model_entity.extra_args or {}), **extra_args},
                 )
+            else:
+                args = {
+                    'model': model_name,
+                    'query': query,
+                    'documents': documents,
+                    'api_key': api_key,
+                    'top_n': top_n,
+                }
+                self._build_common_args(args, include_retry_params=False)
+
+                if model.model_entity.extra_args:
+                    args.update(model.model_entity.extra_args)
+
+                args.update(extra_args)
+
+                response = await arerank(**args)
+
+                results = []
+                for r in response.results:
+                    results.append(
+                        {
+                            'index': r.get('index', 0),
+                            'relevance_score': r.get('relevance_score', 0.0),
+                        }
+                    )
 
             if results:
                 scores = [r['relevance_score'] for r in results]
@@ -599,8 +621,75 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
             return results
 
+        except errors.RequesterError:
+            raise
         except Exception as e:
             self._handle_litellm_error(e)
+
+    async def _invoke_rerank_openai_compatible(
+        self,
+        model_name: str,
+        query: str,
+        documents: typing.List[str],
+        api_key: str,
+        top_n: int,
+        extra_args: dict[str, typing.Any] = {},
+    ) -> typing.List[dict]:
+        """Call the standard Jina/Cohere-style POST /v1/rerank endpoint over HTTP.
+
+        Used for OpenAI-compatible gateways where litellm.arerank rejects the
+        `openai` provider. Returns the same shape as the litellm path:
+        a list of {'index': int, 'relevance_score': float}.
+        """
+        import httpx
+
+        base_url = (self.requester_cfg.get('base_url') or '').rstrip('/')
+        if not base_url:
+            raise errors.RequesterError('Base URL required for rerank')
+
+        timeout = self.requester_cfg.get('timeout', 120)
+
+        headers = {'Content-Type': 'application/json'}
+        if api_key:
+            headers['Authorization'] = f'Bearer {api_key}'
+
+        payload: dict[str, typing.Any] = {
+            'model': model_name,
+            'query': query,
+            'documents': documents,
+            'top_n': top_n,
+        }
+        if extra_args:
+            payload.update(extra_args)
+
+        rerank_url = f'{base_url}/rerank'
+
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.post(rerank_url, headers=headers, json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+        except httpx.HTTPStatusError as e:
+            body = ''
+            try:
+                body = e.response.text
+            except Exception:
+                pass
+            raise errors.RequesterError(f'rerank 请求失败 (HTTP {e.response.status_code}): {body or str(e)}')
+        except httpx.HTTPError as e:
+            raise errors.RequesterError(f'rerank 连接错误: {str(e)}')
+
+        raw_results = data.get('results', []) if isinstance(data, dict) else []
+        results = []
+        for r in raw_results:
+            results.append(
+                {
+                    'index': r.get('index', 0),
+                    'relevance_score': r.get('relevance_score', r.get('score', 0.0)) or 0.0,
+                }
+            )
+
+        return results
 
     async def scan_models(self, api_key: str | None = None) -> dict[str, typing.Any]:
         """Scan models supported by the provider."""
