@@ -422,6 +422,7 @@ class AgentRunContextBuilder:
                 'reason': 'current_event_only',
             },
             'available_apis': {
+                'prompt_get': False,
                 'history_page': history_page_enabled,
                 'history_search': history_search_enabled,
                 'event_get': event_get_enabled,

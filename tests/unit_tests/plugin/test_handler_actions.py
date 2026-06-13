@@ -388,7 +388,44 @@ class TestAgentRunProxyActions:
     def query(remove_think=True):
         return SimpleNamespace(
             pipeline_config={'output': {'misc': {'remove-think': remove_think}}},
+            prompt=SimpleNamespace(
+                messages=[provider_message.Message(role='system', content='effective prompt')]
+            ),
         )
+
+    @pytest.mark.asyncio
+    async def test_get_prompt_returns_query_effective_prompt(self, app):
+        """GET_PROMPT returns the preprocessed Query prompt for the active run."""
+        from langbot.pkg.agent.runner.session_registry import get_session_registry
+
+        run_id = 'run_proxy_get_prompt'
+        query = self.query()
+        app.query_pool.cached_queries[900] = query
+
+        registry = get_session_registry()
+        await registry.unregister(run_id)
+        await registry.register(
+            run_id=run_id,
+            runner_id='plugin:test/runner/default',
+            query_id=900,
+            plugin_identity='test/runner',
+            resources=make_agent_resources(),
+            available_apis={'prompt_get': True},
+        )
+
+        runtime_handler = make_handler(app)
+
+        try:
+            response = await runtime_handler.actions[PluginToRuntimeAction.GET_PROMPT.value]({
+                'run_id': run_id,
+                'caller_plugin_identity': 'test/runner',
+            })
+        finally:
+            await registry.unregister(run_id)
+
+        assert response.code == 0
+        assert response.data['prompt'][0]['role'] == 'system'
+        assert response.data['prompt'][0]['content'] == 'effective prompt'
 
     @pytest.mark.asyncio
     async def test_invoke_llm_restores_query_and_model_options(self, app):

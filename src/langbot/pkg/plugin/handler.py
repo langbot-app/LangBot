@@ -1506,6 +1506,40 @@ class RuntimeConnectionHandler(handler.Handler):
 
         # ================= Agent History/Event APIs =================
 
+        @self.action(PluginToRuntimeAction.GET_PROMPT)
+        async def get_prompt(data: dict[str, Any]) -> handler.ActionResponse:
+            """Return the current run's effective prompt after PromptPreProcessing."""
+            run_id = data.get('run_id')
+            caller_plugin_identity = data.get('caller_plugin_identity')
+
+            if not run_id:
+                return handler.ActionResponse.error(message='run_id is required')
+
+            session, error = await _validate_agent_run_session(
+                run_id,
+                caller_plugin_identity,
+                self.ap,
+                'Get prompt',
+                api_capability='prompt_get',
+            )
+            if error:
+                return error
+
+            query = _resolve_action_query(data, session, self.ap)
+            if query is None:
+                return handler.ActionResponse.error(
+                    message=f'Query for run_id {run_id} not found or expired',
+                )
+
+            prompt = getattr(query, 'prompt', None)
+            messages = getattr(prompt, 'messages', []) or []
+            return handler.ActionResponse.success(data={
+                'prompt': [
+                    message.model_dump(mode='json') if hasattr(message, 'model_dump') else message
+                    for message in messages
+                ],
+            })
+
         @self.action(PluginToRuntimeAction.HISTORY_PAGE)
         async def history_page(data: dict[str, Any]) -> handler.ActionResponse:
             """Page through transcript history for a conversation.

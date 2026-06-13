@@ -283,6 +283,7 @@ class TestContextAccessOtherAPIs:
         # Real call
         context_access = await builder._build_context_access(mock_event, mock_descriptor, binding)
 
+        assert context_access['available_apis']['prompt_get'] is False
         assert context_access['available_apis']['history_page'] is True
         assert context_access['available_apis']['history_search'] is True
 
