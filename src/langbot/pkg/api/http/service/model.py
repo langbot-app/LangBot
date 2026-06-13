@@ -43,13 +43,28 @@ async def _validate_provider_supports(ap: app.Application, provider_uuid: str, m
     a model cannot be attached to a provider that does not support it, even if
     the frontend tab restriction is bypassed.
     """
-    runtime_provider = ap.model_mgr.provider_dict.get(provider_uuid)
+    model_mgr = getattr(ap, 'model_mgr', None)
+    if model_mgr is None:
+        return
+
+    provider_dict = getattr(model_mgr, 'provider_dict', None)
+    if not provider_dict:
+        return
+    runtime_provider = provider_dict.get(provider_uuid)
     if runtime_provider is None:
         return
-    requester_name = runtime_provider.provider_entity.requester
-    manifest = ap.model_mgr.get_available_requester_manifest_by_name(requester_name)
+
+    requester_name = getattr(getattr(runtime_provider, 'provider_entity', None), 'requester', None)
+    if not requester_name:
+        return
+
+    get_manifest = getattr(model_mgr, 'get_available_requester_manifest_by_name', None)
+    if not callable(get_manifest):
+        return
+    manifest = get_manifest(requester_name)
     if manifest is None:
         return
+
     spec = getattr(manifest, 'spec', None) or {}
     support_type = spec.get('support_type') if isinstance(spec, dict) else None
     # When a manifest omits support_type, do not block (backward compatible).

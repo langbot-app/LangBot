@@ -23,6 +23,7 @@ from langbot.pkg.api.http.service.model import (
     RerankModelsService,
     _parse_provider_api_keys,
     _runtime_model_data,
+    _validate_provider_supports,
 )
 from langbot.pkg.entity.persistence.model import LLMModel, EmbeddingModel, RerankModel, ModelProvider
 
@@ -1032,3 +1033,55 @@ class TestRerankModelsServiceGetRerankModelsByProvider:
 
         # Verify
         assert len(result) == 2
+
+
+class TestValidateProviderSupports:
+    """Tests for _validate_provider_supports guard."""
+
+    @staticmethod
+    def _make_ap(requester_name: str, support_type):
+        """Build a fake ap whose model_mgr resolves a manifest with support_type."""
+        manifest = SimpleNamespace(spec={'support_type': support_type})
+        runtime_provider = SimpleNamespace(
+            provider_entity=SimpleNamespace(requester=requester_name)
+        )
+        model_mgr = SimpleNamespace(
+            provider_dict={'p1': runtime_provider},
+            get_available_requester_manifest_by_name=lambda name: manifest
+            if name == requester_name
+            else None,
+        )
+        return SimpleNamespace(model_mgr=model_mgr)
+
+    async def test_allows_supported_type(self):
+        ap = self._make_ap('cohere-rerank', ['rerank'])
+        # Should not raise
+        await _validate_provider_supports(ap, 'p1', 'rerank')
+
+    async def test_rejects_unsupported_type(self):
+        ap = self._make_ap('cohere-rerank', ['rerank'])
+        with pytest.raises(ValueError, match='does not support llm'):
+            await _validate_provider_supports(ap, 'p1', 'llm')
+
+    async def test_allows_when_support_type_missing(self):
+        # Manifest without support_type must not block (backward compatible)
+        manifest = SimpleNamespace(spec={})
+        runtime_provider = SimpleNamespace(
+            provider_entity=SimpleNamespace(requester='legacy')
+        )
+        model_mgr = SimpleNamespace(
+            provider_dict={'p1': runtime_provider},
+            get_available_requester_manifest_by_name=lambda name: manifest,
+        )
+        ap = SimpleNamespace(model_mgr=model_mgr)
+        await _validate_provider_supports(ap, 'p1', 'rerank')
+
+    async def test_allows_when_provider_unknown(self):
+        ap = self._make_ap('cohere-rerank', ['rerank'])
+        # Unknown provider uuid -> no entry -> no block
+        await _validate_provider_supports(ap, 'missing', 'llm')
+
+    async def test_degrades_when_model_mgr_incomplete(self):
+        # A bare ap without a usable model_mgr must not raise (defensive)
+        ap = SimpleNamespace(model_mgr=SimpleNamespace())
+        await _validate_provider_supports(ap, 'p1', 'llm')
