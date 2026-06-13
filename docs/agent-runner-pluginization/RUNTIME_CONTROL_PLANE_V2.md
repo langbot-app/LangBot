@@ -3,6 +3,8 @@
 本文档记录 AgentRunner 插件化之后，LangBot 如何继续演进成 Agent Platform 基础设施层。这里讨论的是 Host capability layer，不是 `AgentRunner Protocol v2`，也不是把某个具体 Agent Platform 产品写进 LangBot core。
 
 > 本文是当前决策版。协议数据结构仍以 [PROTOCOL_V1.md](./PROTOCOL_V1.md) 为准；测试执行入口见 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md)；扩展边界见 [EXTENSION_SCOPE_MATRIX.md](./EXTENSION_SCOPE_MATRIX.md)。
+>
+> 实现状态说明：本文描述的是 Runtime Control Plane v2 的目标能力和分阶段落地建议。当前 AgentRunner 插件化主线已经具备 event-first context、run-scoped authorization、EventLog / Transcript / Artifact / State 等 Host capability，但尚未实现持久 `AgentRun` / `AgentRunEvent` ledger 和完整 run control API。当前实现状态以 [STATUS.md](./STATUS.md) 为准。
 
 ## 1. 当前决策
 
@@ -11,7 +13,7 @@ LangBot 后续定位应更像 **Agent Host / infrastructure provider / transfer 
 结论：
 
 - **Agent Platform 产品形态做成插件**。插件负责 agent 管理、策略、业务队列、UI、编排、多 agent 协作和产品体验。
-- **Agent Platform 所需的基础事实源做进 Host**。Host 保存 event、run、result、artifact、state、transcript、权限快照、审计和通用控制状态。
+- **Agent Platform 所需的基础事实源做进 Host**。当前 Host 已保存 event、artifact、state、transcript 和 active run 权限快照；后续应补齐持久 run、result、审计关联和通用控制状态。
 - **不在第一阶段把 runtime registry / daemon worker 管控做成 Host 必选能力**。远程 harness / daemon 可以先由 AgentRunner 插件和 SDK remote layer 自己维护连接、心跳和本地执行。
 - **不把业务调度写进 Host**。Host 提供通用 run/result/control primitives，Platform 插件决定哪些事件触发哪些 agent、如何排队、如何分配、是否 fan-out。
 
@@ -19,8 +21,8 @@ LangBot 后续定位应更像 **Agent Host / infrastructure provider / transfer 
 
 ```text
 LangBot Host
-  Event / Agent / Binding / Run / RunEvent / Artifact / State / Transcript
-  Authorization / audit / delivery / result persistence / control primitives
+  Current: EventLog / runtime AgentBinding / Artifact / State / Transcript / active run authorization
+  Planned: Agent / Binding / Run / RunEvent / audit / result persistence / control primitives
 
 Agent Platform plugin
   Agent management UI / project-task model / event routing policy
@@ -38,8 +40,9 @@ AgentRunner plugin / external harness runtime
 - 抹平不同 AgentRunner。
 - 从 IM / Pipeline 入口触发 runner。
 - 有 event-first context 方向。
-- 有 Host-owned EventLog / Transcript / Artifact / State 的一部分。
-- 有 runner config 下发和 run-scoped authorization。
+- 有 Host-owned EventLog / Transcript / Artifact / State。
+- 有 runner config 下发和 active run-scoped authorization。
+- 有 `run_id` 串联 event、transcript、artifact、state 和内存授权上下文。
 
 这还不是完整 Agent Platform。完整 Platform 至少还需要：
 
@@ -56,6 +59,18 @@ managed agent assets + observable run lifecycle + operational run control
 
 Host 负责这些能力的通用事实源和安全边界；Platform 插件负责把它们组装成具体产品。
 
+### 2.1 当前实现边界
+
+当前代码中的 `run_id` 已经是重要关联键，但还不是持久 Run 模型：
+
+- `EventLog` 保存输入事件和审计入口，并记录 `run_id` / `runner_id`。
+- `Transcript` 保存对话历史投影，并用 `run_id` 关联 assistant 输出。
+- `ArtifactStore` 保存输入和 runner 产物，并用 `run_id` 做访问边界的一部分。
+- `PersistentStateStore` 保存 runner state，但不等同于 run lifecycle。
+- `AgentRunSessionRegistry` 保存 active run 的内存态授权快照，用于 proxy action 校验；进程结束或 run 结束后不作为可回放事实源。
+
+因此本文后续提到的 `AgentRun` / `AgentRunEvent` / `run.create` / `run.append_result` / `run.cancel` 都是 Runtime Control Plane v2 应新增的能力，不应理解为当前已经存在的 API。
+
 ## 3. 基础概念
 
 ### 3.1 Event
@@ -70,7 +85,7 @@ user.approved
 system.webhook.received
 ```
 
-EBA 负责把外部输入标准化成 event。Event 本身不是 queue，也不等同于一次 agent 执行。
+EBA 负责把外部输入标准化成 event。Event 本身不是 queue，也不等同于一次 agent 执行。当前 `EventLog` 记录的是输入事件和审计事实；未来 `AgentRunEvent` 记录的是某次 run 的输出事件流，二者不能混用。
 
 ### 3.2 Run
 
@@ -94,7 +109,7 @@ metadata
 
 ### 3.3 RunEvent / RunResult
 
-RunEvent 是一次 run 过程中产生的结果事件流，对应 `AgentRunResult`：
+RunEvent 是一次 run 过程中产生的结果事件流，对应 runner 返回的 `AgentRunResult`。它不同于 EBA/EventLog 的输入事件：
 
 ```text
 message.delta
@@ -108,7 +123,7 @@ run.completed
 run.failed
 ```
 
-Host 应保存这些事件，按 `run_id + sequence` 可回放。Transcript、Artifact、State 可以由这些 result event 触发写入现有 store。
+Host 应保存这些输出事件，按 `run_id + sequence` 可回放。Transcript、Artifact、State 可以由这些 result event 触发写入现有 store，并保留能回溯到 `AgentRunEvent` 的关联。
 
 ### 3.4 Queue
 
@@ -121,7 +136,7 @@ EBA 负责产生 event；queue 负责处理“这个 event 对应的执行 work 
 - **业务队列**：由 Platform 插件管理，例如项目任务、优先级、agent team、workflow、人工审批。
 - **执行队列 / run queue**：可选 Host 原语，例如 queued / running / completed / failed / cancelled、claim lease、dispatch timeout、orphan recovery。
 
-第一阶段不要求 Host 内置完整执行队列。Platform 插件可以先管理业务队列，然后调用 Host 创建 run、保存 result。
+第一阶段不要求 Host 内置完整执行队列。Platform 插件可以先管理业务队列；在 Phase 1 / Phase 2 能力落地前，插件仍只能通过现有 `AgentRunOrchestrator.run(...)` 同步执行路径和现有 Host stores 获得有限的 run 关联能力。
 
 ### 3.5 Runtime / Daemon
 
@@ -131,7 +146,7 @@ Runtime / daemon 表示执行位置或执行能力，例如某台机器上的 Cl
 
 - Host 不在第一阶段维护完整 runtime registry。
 - AgentRunner 插件可以通过 SDK remote layer 与 daemon 保持连接、心跳和执行通道。
-- 外部 harness / agent 不应直接访问 LangBot Host。访问 LangBot 资源必须通过 daemon / AgentRunner plugin / SDK runtime / `AgentRunAPIProxy` / MCP bridge。
+- 外部 harness / agent 不应直接访问 LangBot Host 或数据库。访问 LangBot 资源必须通过 daemon / AgentRunner plugin / SDK runtime / `AgentRunAPIProxy` / scoped MCP bridge，并接受 run-scoped authorization 校验。
 - 如果后续多个插件都需要共享 runtime 状态，再把薄的 `RuntimeLease` / registry 下沉为 Host 通用能力。
 
 ## 4. Host 应新增的最小能力
@@ -217,7 +232,7 @@ run.finalize
 语义：
 
 - `run.create` 创建 Host-owned run 和授权快照。
-- `run.append_result` 只允许受信 SDK/runtime 路径调用，写入 `AgentRunEvent` 并触发 transcript/artifact/state/delivery 副作用。
+- `run.append_result` 只允许受信 SDK/runtime 路径调用，必须绑定 run 创建时固化的授权快照，写入 `AgentRunEvent` 并触发 transcript/artifact/state/delivery 副作用。
 - `run.finalize` 关闭 run，更新 terminal status。
 - `run.cancel` 设置取消意图；同步 runner 通过 context/deadline 感知，远程 runner 通过插件/daemon 通道感知。
 
@@ -318,12 +333,12 @@ Agent Platform 插件可以负责：
 - 订阅 EBA event，决定哪些 event 触发哪些 agent。
 - 维护业务 queue：优先级、重试策略、人工审批、分配规则。
 - 选择 runner / runtime / daemon。
-- 调用 Host run API 创建、取消、查询执行。
+- 在 Run Control API 落地后，调用 Host run API 创建、取消、查询执行。
 - 展示 run status、result stream、artifact、失败原因和审计。
 
 Platform 插件不应负责：
 
-- 私有保存通用 run/result 事实源。
+- 在 Host Run Ledger 落地后，私有保存通用 run/result 事实源。
 - 绕过 Host 直接写 transcript/artifact/state。
 - 让外部 harness 直接访问 LangBot DB 或 Host 内部资源。
 - 把某个业务队列语义强塞进 AgentRunner Protocol v1。
@@ -338,7 +353,7 @@ EBA 做好后，事件流可以进入两种路径。
 EventGateway
   -> EventRouter resolves AgentBinding
   -> AgentRunOrchestrator.run(event, binding)
-  -> Host records AgentRun / AgentRunEvent
+  -> Host records AgentRun / AgentRunEvent (after Run Ledger lands)
   -> delivery
 ```
 
@@ -348,13 +363,13 @@ Platform 插件编排路径：
 EventGateway
   -> Platform plugin receives/subscribes event
   -> plugin applies policy / business queue
-  -> plugin creates Host run
+  -> plugin creates Host run (after Run Control API lands)
   -> runner/plugin/daemon executes
   -> Host records result and state
   -> plugin displays / Host delivers
 ```
 
-这两条路径共享 Host run/result/artifact/state 事实源。区别在于是否有 Platform 插件参与产品化调度和业务队列。
+这两条路径最终应共享 Host run/result/artifact/state 事实源。当前阶段可共享的是 event/transcript/artifact/state 和同步执行链路；持久 run/result ledger 需要 Runtime Control Plane v2 Phase 1 补齐。区别在于是否有 Platform 插件参与产品化调度和业务队列。
 
 ## 8. 与 AgentRunner Protocol v1 的关系
 
