@@ -21,6 +21,7 @@ import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 
 from ..entity.persistence import plugin as persistence_plugin
 from ..entity.persistence import bstorage as persistence_bstorage
+from ..provider.modelmgr import requester as model_requester
 
 from ..core import app
 from ..utils import constants
@@ -41,6 +42,18 @@ def _make_rag_error_response(error: Exception, error_type: str, **extra_context)
     context_str = f' [{", ".join(context_parts)}]' if context_parts else ''
     message = f'[{error_type}/{type(error).__name__}]{context_str} {str(error)}'
     return handler.ActionResponse.error(message=message)
+
+
+def _pop_query_llm_usage(query: Any) -> dict[str, Any] | None:
+    """Read provider usage stashed on a query by RuntimeProvider."""
+    if query is None or not getattr(query, 'variables', None):
+        return None
+    usage = query.variables.pop(model_requester.LLM_USAGE_QUERY_VARIABLE, None)
+    if usage is None:
+        return None
+    if isinstance(usage, dict):
+        return dict(usage)
+    return None
 
 
 def _i18n_to_dict(value: Any) -> dict[str, Any]:
@@ -802,10 +815,20 @@ class RuntimeConnectionHandler(handler.Handler):
                 remove_think=remove_think,
             )
 
+            usage = None
+            if isinstance(result, tuple):
+                result, usage = result
+            if usage is None:
+                usage = _pop_query_llm_usage(query)
+
+            response_data = {
+                'message': result.model_dump(),
+            }
+            if usage is not None:
+                response_data['usage'] = usage
+
             return handler.ActionResponse.success(
-                data={
-                    'message': result.model_dump(),
-                },
+                data=response_data,
             )
 
         @self.action(PluginToRuntimeAction.INVOKE_LLM_STREAM)
@@ -865,6 +888,13 @@ class RuntimeConnectionHandler(handler.Handler):
                 yield handler.ActionResponse.success(
                     data={
                         'chunk': chunk.model_dump(),
+                    },
+                )
+            usage = _pop_query_llm_usage(query)
+            if usage is not None:
+                yield handler.ActionResponse.success(
+                    data={
+                        'usage': usage,
                     },
                 )
 

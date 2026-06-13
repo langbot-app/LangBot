@@ -179,6 +179,52 @@ class AgentRunContextBuilder:
     def __init__(self, ap: app.Application):
         self.ap = ap
 
+    @staticmethod
+    def _positive_int(value: typing.Any) -> int | None:
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, int) and value > 0:
+            return value
+        if isinstance(value, str) and value.isdigit():
+            parsed_value = int(value)
+            if parsed_value > 0:
+                return parsed_value
+        return None
+
+    @staticmethod
+    def _is_llm_model_resource(model_resource: ModelResource) -> bool:
+        operations = model_resource.get('operations')
+        if isinstance(operations, list) and operations:
+            return bool({'invoke', 'stream'} & {str(operation) for operation in operations})
+        return model_resource.get('model_type') != 'rerank'
+
+    async def _build_model_context_window_tokens(self, resources: AgentResources) -> int | None:
+        model_mgr = getattr(self.ap, 'model_mgr', None)
+        if model_mgr is None:
+            return None
+
+        for model_resource in resources.get('models', []):
+            if not self._is_llm_model_resource(model_resource):
+                continue
+
+            model_uuid = model_resource.get('model_id')
+            if not isinstance(model_uuid, str) or not model_uuid:
+                continue
+
+            try:
+                model = await model_mgr.get_model_by_uuid(model_uuid)
+            except Exception as exc:
+                logger = getattr(self.ap, 'logger', None)
+                if logger is not None:
+                    logger.debug(f'Failed to resolve model context window for {model_uuid}: {exc}')
+                continue
+
+            model_entity = getattr(model, 'model_entity', None)
+            context_length = self._positive_int(getattr(model_entity, 'context_length', None))
+            return context_length
+
+        return None
+
     async def build_context_from_event(
         self,
         event: AgentEventEnvelope,
@@ -270,6 +316,8 @@ class AgentRunContextBuilder:
         persistent_state_store = get_persistent_state_store(self.ap.persistence_mgr.get_db_engine())
         state: AgentRunState = await persistent_state_store.build_snapshot_from_event(event, binding, descriptor)
 
+        model_context_window_tokens = await self._build_model_context_window_tokens(resources)
+
         # Build runtime context
         runtime: AgentRuntimeContext = {
             'langbot_version': self.ap.ver_mgr.get_current_version(),
@@ -279,10 +327,7 @@ class AgentRunContextBuilder:
                 'bot_id': event.bot_id,
                 'workspace_id': event.workspace_id,
                 'streaming_supported': event.delivery.supports_streaming,
-                'model_context_window_tokens': None,
-                # TODO(model-info): populate model_context_window_tokens after
-                # LiteLLM/model metadata lands. Runners fall back to their
-                # ctx.config until Host can provide the real window.
+                'model_context_window_tokens': model_context_window_tokens,
             },
         }
 

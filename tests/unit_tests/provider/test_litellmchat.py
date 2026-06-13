@@ -115,6 +115,15 @@ class TestExtractUsage:
         assert result['prompt_tokens'] == 0
         assert result['completion_tokens'] == 0
 
+    def test_extract_usage_without_provider_usage(self):
+        """Missing provider usage is not treated as authoritative zero usage."""
+        requester = litellmchat.LiteLLMRequester(ap=Mock(), config={})
+
+        response = Mock()
+        response.usage = None
+
+        assert requester._extract_usage(response) is None
+
 
 class TestNormalizeUsage:
     """Test _normalize_usage helper covering real-world usage shapes"""
@@ -130,6 +139,22 @@ class TestNormalizeUsage:
             {'prompt_tokens': 12, 'completion_tokens': 8, 'total_tokens': 20}
         )
         assert result == {'prompt_tokens': 12, 'completion_tokens': 8, 'total_tokens': 20}
+
+    def test_preserves_token_details(self):
+        """Provider token details such as cache counters are preserved."""
+        result = litellmchat.LiteLLMRequester._normalize_usage(
+            {
+                'prompt_tokens': 12,
+                'completion_tokens': 8,
+                'total_tokens': 20,
+                'prompt_tokens_details': {'cached_tokens': 7},
+                'completion_tokens_details': {'reasoning_tokens': 3},
+            }
+        )
+
+        assert result['prompt_tokens'] == 12
+        assert result['prompt_tokens_details'] == {'cached_tokens': 7}
+        assert result['completion_tokens_details'] == {'reasoning_tokens': 3}
 
     def test_missing_total_is_derived(self):
         """When total_tokens is absent/zero it is derived from prompt + completion"""

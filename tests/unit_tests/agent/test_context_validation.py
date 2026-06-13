@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import pytest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, AsyncMock, patch
 
 # SDK imports for validation
@@ -173,6 +174,87 @@ class TestContextValidation:
 
         # Verify input
         assert validated.input.text == "Hello world"
+
+    @pytest.mark.asyncio
+    async def test_build_context_from_event_populates_model_context_window(self):
+        """Runtime metadata should expose the selected LLM model context window."""
+        mock_app = self._make_mock_app()
+        mock_app.model_mgr = MagicMock()
+        mock_app.model_mgr.get_model_by_uuid = AsyncMock(
+            return_value=SimpleNamespace(
+                model_entity=SimpleNamespace(context_length=128000),
+            )
+        )
+        builder = AgentRunContextBuilder(mock_app)
+
+        event = self._make_event_envelope()
+        binding = self._make_binding()
+        resources = self._make_resources()
+        resources['models'] = [
+            {
+                'model_id': 'rerank-model',
+                'model_type': 'rerank',
+                'provider': 'test-provider',
+                'operations': ['rerank'],
+            },
+            {
+                'model_id': 'llm-model',
+                'model_type': 'llm',
+                'provider': 'test-provider',
+                'operations': ['invoke', 'stream'],
+            },
+        ]
+        descriptor = self._make_descriptor()
+
+        with patch('langbot.pkg.agent.runner.context_builder.get_persistent_state_store') as mock_get_store:
+            mock_store = AsyncMock()
+            mock_store.build_snapshot_from_event = AsyncMock(return_value={
+                'conversation': {},
+                'actor': {},
+                'subject': {},
+                'runner': {},
+            })
+            mock_get_store.return_value = mock_store
+
+            context_dict = await builder.build_context_from_event(
+                event=event,
+                binding=binding,
+                descriptor=descriptor,
+                resources=resources,
+            )
+
+        assert context_dict['runtime']['metadata']['model_context_window_tokens'] == 128000
+        mock_app.model_mgr.get_model_by_uuid.assert_awaited_once_with('llm-model')
+
+    @pytest.mark.asyncio
+    async def test_model_context_window_uses_primary_llm_only(self):
+        """Fallback model windows should not replace missing primary model metadata."""
+        mock_app = self._make_mock_app()
+        mock_app.model_mgr = MagicMock()
+        mock_app.model_mgr.get_model_by_uuid = AsyncMock(
+            return_value=SimpleNamespace(
+                model_entity=SimpleNamespace(context_length=None),
+            )
+        )
+        builder = AgentRunContextBuilder(mock_app)
+        resources = self._make_resources()
+        resources['models'] = [
+            {
+                'model_id': 'primary-model',
+                'model_type': 'llm',
+                'provider': 'test-provider',
+                'operations': ['invoke', 'stream'],
+            },
+            {
+                'model_id': 'fallback-model',
+                'model_type': 'llm',
+                'provider': 'test-provider',
+                'operations': ['invoke', 'stream'],
+            },
+        ]
+
+        assert await builder._build_model_context_window_tokens(resources) is None
+        mock_app.model_mgr.get_model_by_uuid.assert_awaited_once_with('primary-model')
 
     @pytest.mark.asyncio
     async def test_build_context_preserves_subject_data_for_non_message_events(self):
