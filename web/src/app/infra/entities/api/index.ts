@@ -30,6 +30,7 @@ export interface Requester {
   spec: {
     config: IDynamicFormItemSchema[];
     provider_category: string;
+    support_type?: string[];
   };
 }
 

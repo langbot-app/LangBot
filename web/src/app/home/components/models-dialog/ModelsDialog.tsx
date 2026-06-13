@@ -102,6 +102,12 @@ export default function ModelsDialog({
     null,
   );
 
+  // Map of requester name -> support_type[] (from requester manifests),
+  // used to restrict which model-type tabs are shown when adding models.
+  const [requesterSupportTypes, setRequesterSupportTypes] = useState<
+    Record<string, string[]>
+  >({});
+
   // Popover states
   const [addModelPopoverOpen, setAddModelPopoverOpen] = useState<string | null>(
     null,
@@ -133,6 +139,7 @@ export default function ModelsDialog({
     if (open) {
       loadUserInfo();
       loadProviders();
+      loadRequesterSupportTypes();
     }
   }, [open]);
 
@@ -169,6 +176,19 @@ export default function ModelsDialog({
     } catch (err) {
       console.error('Failed to load providers', err);
       toast.error(t('models.loadError'));
+    }
+  }
+
+  async function loadRequesterSupportTypes() {
+    try {
+      const resp = await httpClient.getProviderRequesters();
+      const map: Record<string, string[]> = {};
+      for (const r of resp.requesters) {
+        map[r.name] = r.spec?.support_type ?? [];
+      }
+      setRequesterSupportTypes(map);
+    } catch (err) {
+      console.error('Failed to load requester support types', err);
     }
   }
 
@@ -517,6 +537,7 @@ export default function ModelsDialog({
         key={provider.uuid}
         provider={provider}
         isLangBotModels={isLangBotModels}
+        supportTypes={requesterSupportTypes[provider.requester]}
         isExpanded={expandedProviders.has(provider.uuid)}
         isLoading={loadingProviders.has(provider.uuid)}
         models={providerModels[provider.uuid]}

@@ -39,6 +39,7 @@ import AddModelPopover from './AddModelPopover';
 interface ProviderCardProps {
   provider: ModelProvider;
   isLangBotModels?: boolean;
+  supportTypes?: string[];
   isExpanded: boolean;
   isLoading: boolean;
   models?: ProviderModels;
@@ -101,6 +102,7 @@ function maskApiKey(key: string): string {
 export default function ProviderCard({
   provider,
   isLangBotModels = false,
+  supportTypes,
   isExpanded,
   isLoading,
   models,
@@ -321,6 +323,7 @@ export default function ProviderCard({
                     addModelMode === 'manual'
                   }
                   initialMode="manual"
+                  supportTypes={supportTypes}
                   trigger={
                     <Button
                       variant="ghost"
@@ -355,6 +358,7 @@ export default function ProviderCard({
                     addModelMode === 'scan'
                   }
                   initialMode="scan"
+                  supportTypes={supportTypes}
                   trigger={
                     <Button
                       variant="ghost"

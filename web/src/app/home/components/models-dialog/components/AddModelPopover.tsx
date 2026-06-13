@@ -34,6 +34,7 @@ interface AddModelPopoverProps {
   isOpen: boolean;
   initialMode?: 'manual' | 'scan';
   trigger?: React.ReactNode;
+  supportTypes?: string[];
   onOpen: () => void;
   onClose: () => void;
   onAddModel: (
@@ -64,6 +65,7 @@ export default function AddModelPopover({
   isOpen,
   initialMode = 'manual',
   trigger,
+  supportTypes,
   onOpen,
   onClose,
   onAddModel,
@@ -78,7 +80,22 @@ export default function AddModelPopover({
   const { t } = useTranslation();
   const prevIsOpenRef = useRef(false);
 
-  const [tab, setTab] = useState<ModelType>('llm');
+  // Map manifest support_type values to UI tab values.
+  // Manifest uses 'text-embedding'; the UI tab uses 'embedding'.
+  const tabSupport: Record<ModelType, string> = {
+    llm: 'llm',
+    embedding: 'text-embedding',
+    rerank: 'rerank',
+  };
+  const allTabs: ModelType[] = ['llm', 'embedding', 'rerank'];
+  // When supportTypes is undefined (unknown requester), show all tabs for
+  // backward compatibility. Otherwise only show supported tabs.
+  const visibleTabs: ModelType[] = supportTypes
+    ? allTabs.filter((tabKey) => supportTypes.includes(tabSupport[tabKey]))
+    : allTabs;
+  const defaultTab: ModelType = visibleTabs[0] ?? 'llm';
+
+  const [tab, setTab] = useState<ModelType>(defaultTab);
   const [mode, setMode] = useState<'manual' | 'scan'>('manual');
   const [name, setName] = useState('');
   const [abilities, setAbilities] = useState<string[]>([]);
@@ -96,7 +113,7 @@ export default function AddModelPopover({
   useEffect(() => {
     const wasOpen = prevIsOpenRef.current;
     if (isOpen && !wasOpen) {
-      setTab('llm');
+      setTab(defaultTab);
       setMode(initialMode);
       setName('');
       setAbilities([]);
@@ -260,20 +277,31 @@ export default function AddModelPopover({
           className="flex flex-col min-h-0 flex-1"
         >
           <div className="flex-shrink-0">
-            {!(trigger && initialMode === 'scan') && (
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="llm">
-                  <MessageSquareText className="h-4 w-4 mr-1" />
-                  {t('models.chat')}
-                </TabsTrigger>
-                <TabsTrigger value="embedding">
-                  <Cpu className="h-4 w-4 mr-1" />
-                  {t('models.embedding')}
-                </TabsTrigger>
-                <TabsTrigger value="rerank">
-                  <ArrowUpDown className="h-4 w-4 mr-1" />
-                  {t('models.rerank')}
-                </TabsTrigger>
+            {!(trigger && initialMode === 'scan') && visibleTabs.length > 1 && (
+              <TabsList
+                className="grid w-full"
+                style={{
+                  gridTemplateColumns: `repeat(${visibleTabs.length}, minmax(0, 1fr))`,
+                }}
+              >
+                {visibleTabs.includes('llm') && (
+                  <TabsTrigger value="llm">
+                    <MessageSquareText className="h-4 w-4 mr-1" />
+                    {t('models.chat')}
+                  </TabsTrigger>
+                )}
+                {visibleTabs.includes('embedding') && (
+                  <TabsTrigger value="embedding">
+                    <Cpu className="h-4 w-4 mr-1" />
+                    {t('models.embedding')}
+                  </TabsTrigger>
+                )}
+                {visibleTabs.includes('rerank') && (
+                  <TabsTrigger value="rerank">
+                    <ArrowUpDown className="h-4 w-4 mr-1" />
+                    {t('models.rerank')}
+                  </TabsTrigger>
+                )}
               </TabsList>
             )}
           </div>

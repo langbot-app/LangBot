@@ -25,6 +25,4 @@ spec:
     default: 120
   support_type:
   - llm
-  - text-embedding
-  - rerank
   provider_category: manufacturer

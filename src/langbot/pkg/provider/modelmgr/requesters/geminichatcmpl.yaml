@@ -26,7 +26,6 @@ spec:
   support_type:
   - llm
   - text-embedding
-  - rerank
   provider_category: manufacturer
 execution:
   python:
