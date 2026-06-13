@@ -35,7 +35,7 @@
 | --- | --- | --- |
 | `plugin:langbot/local-agent/default` | Unit-pass; UI smoke pending | 2026-06-10 本地 pytest / ruff 通过；WebUI smoke 由人工统一执行。 |
 | `plugin:langbot/litellm-agent-platform-agent/default` | Unit-pass; E2E pending | 通过 runner 仓库单测覆盖 HTTP session、run_id prompt 注入和 LangBot MCP gateway；真实 harness E2E 取决于 LiteLLM Agent Platform 部署和 provider 登录态。 |
-| Dify / n8n / Coze / DashScope / Langflow / Tbox | Unit-pass; credential smoke optional | 2026-06-10 plugin layout / parser tests 通过；真实服务凭据 smoke 非每轮必跑。 |
+| Dify / n8n / Coze / DashScope / Langflow / Tbox / DeerFlow / WeKnora | Unit-pass; credential smoke optional | 2026-06-13 plugin layout / parser tests 通过；真实服务凭据 smoke 非每轮必跑。 |
 
 ## 历史高价值记录
 

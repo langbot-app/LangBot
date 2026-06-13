@@ -31,8 +31,10 @@ langbot-app/
 | `coze-api` | `langbot/coze-agent` | `plugin:langbot/coze-agent/default` |
 | - | `langbot/litellm-agent-platform-agent` | `plugin:langbot/litellm-agent-platform-agent/default` |
 | `dashscope-app-api` | `langbot/dashscope-agent` | `plugin:langbot/dashscope-agent/default` |
+| `deerflow-api` | `langbot/deerflow-agent` | `plugin:langbot/deerflow-agent/default` |
 | `langflow-api` | `langbot/langflow-agent` | `plugin:langbot/langflow-agent/default` |
 | `tbox-app-api` | `langbot/tbox-agent` | `plugin:langbot/tbox-agent/default` |
+| `weknora-api` | `langbot/weknora-agent` | `plugin:langbot/weknora-agent/default` |
 
 每个插件可后续提供多个 runner，但迁移目标的默认 runner 统一叫 `default`。
 
@@ -40,7 +42,7 @@ langbot-app/
 
 - **Batch 1（打通协议）**：`local-agent`（能力最完整基准）、`litellm-agent-platform-agent`（外部 code-agent harness 统一入口）、`dify-agent`（传统 service API runner）。
 - **Batch 2（外部 workflow）**：`n8n-agent`、`langflow-agent`（webhook/workflow 输入输出、timeout、外部 conversation id）。
-- **Batch 3（平台 Agent API）**：`coze-agent`、`dashscope-agent`、`tbox-agent`（平台特有响应格式、引用资料、文件/图片输入）。
+- **Batch 3（平台 Agent API）**：`coze-agent`、`dashscope-agent`、`tbox-agent`、`deerflow-agent`、`weknora-agent`（平台特有响应格式、引用资料、文件/图片输入、外部 thread/session 状态）。
 
 ## 4. 每个官方插件的组件要求
 

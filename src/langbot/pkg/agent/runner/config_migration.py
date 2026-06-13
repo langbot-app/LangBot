@@ -11,8 +11,10 @@ LEGACY_RUNNER_ID_MAP: dict[str, str] = {
     'n8n-service-api': 'plugin:langbot/n8n-agent/default',
     'coze-api': 'plugin:langbot/coze-agent/default',
     'dashscope-app-api': 'plugin:langbot/dashscope-agent/default',
+    'deerflow-api': 'plugin:langbot/deerflow-agent/default',
     'langflow-api': 'plugin:langbot/langflow-agent/default',
     'tbox-app-api': 'plugin:langbot/tbox-agent/default',
+    'weknora-api': 'plugin:langbot/weknora-agent/default',
 }
 
 

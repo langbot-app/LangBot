@@ -32,6 +32,32 @@ class TestResolveRunnerId:
         runner_id = ConfigMigration.resolve_runner_id(pipeline_config)
         assert runner_id == 'plugin:langbot/local-agent/default'
 
+    def test_resolves_deerflow_and_weknora_legacy_runner_fields(self):
+        assert (
+            ConfigMigration.resolve_runner_id(
+                {
+                    'ai': {
+                        'runner': {
+                            'runner': 'deerflow-api',
+                        },
+                    },
+                }
+            )
+            == 'plugin:langbot/deerflow-agent/default'
+        )
+        assert (
+            ConfigMigration.resolve_runner_id(
+                {
+                    'ai': {
+                        'runner': {
+                            'runner': 'weknora-api',
+                        },
+                    },
+                }
+            )
+            == 'plugin:langbot/weknora-agent/default'
+        )
+
     def test_resolve_no_runner_config(self):
         runner_id = ConfigMigration.resolve_runner_id({})
         assert runner_id is None
@@ -72,6 +98,38 @@ class TestResolveRunnerConfig:
             'plugin:langbot/local-agent/default',
         )
         assert config == {'model': {'primary': 'uuid-123', 'fallbacks': []}}
+
+    def test_reads_deerflow_and_weknora_legacy_runner_blocks(self):
+        pipeline_config = {
+            'ai': {
+                'deerflow-api': {
+                    'api-base': 'http://127.0.0.1:2026',
+                    'assistant-id': 'lead_agent',
+                },
+                'weknora-api': {
+                    'base-url': 'http://localhost:8080/api/v1',
+                    'app-type': 'agent',
+                },
+            },
+        }
+
+        deerflow_config = ConfigMigration.resolve_runner_config(
+            pipeline_config,
+            'plugin:langbot/deerflow-agent/default',
+        )
+        weknora_config = ConfigMigration.resolve_runner_config(
+            pipeline_config,
+            'plugin:langbot/weknora-agent/default',
+        )
+
+        assert deerflow_config == {
+            'api-base': 'http://127.0.0.1:2026',
+            'assistant-id': 'lead_agent',
+        }
+        assert weknora_config == {
+            'base-url': 'http://localhost:8080/api/v1',
+            'app-type': 'agent',
+        }
 
     def test_resolve_no_config(self):
         config = ConfigMigration.resolve_runner_config(
@@ -154,4 +212,46 @@ class TestNormalizePipelineConfig:
         assert migrated['ai']['runner_config']['plugin:langbot/local-agent/default'] == {
             'model': {'primary': 'old-model', 'fallbacks': []},
             'knowledge-bases': ['kb_1'],
+        }
+
+    def test_migrates_deerflow_legacy_runner_block(self):
+        config = {
+            'ai': {
+                'runner': {'runner': 'deerflow-api'},
+                'deerflow-api': {
+                    'api-base': 'http://127.0.0.1:2026',
+                    'assistant-id': 'lead_agent',
+                },
+            },
+        }
+
+        migrated = ConfigMigration.migrate_pipeline_config(config)
+
+        assert migrated['ai']['runner']['id'] == 'plugin:langbot/deerflow-agent/default'
+        assert 'runner' not in migrated['ai']['runner']
+        assert 'deerflow-api' not in migrated['ai']
+        assert migrated['ai']['runner_config']['plugin:langbot/deerflow-agent/default'] == {
+            'api-base': 'http://127.0.0.1:2026',
+            'assistant-id': 'lead_agent',
+        }
+
+    def test_migrates_weknora_legacy_runner_block(self):
+        config = {
+            'ai': {
+                'runner': {'runner': 'weknora-api'},
+                'weknora-api': {
+                    'base-url': 'http://localhost:8080/api/v1',
+                    'app-type': 'agent',
+                },
+            },
+        }
+
+        migrated = ConfigMigration.migrate_pipeline_config(config)
+
+        assert migrated['ai']['runner']['id'] == 'plugin:langbot/weknora-agent/default'
+        assert 'runner' not in migrated['ai']['runner']
+        assert 'weknora-api' not in migrated['ai']
+        assert migrated['ai']['runner_config']['plugin:langbot/weknora-agent/default'] == {
+            'base-url': 'http://localhost:8080/api/v1',
+            'app-type': 'agent',
         }
