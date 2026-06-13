@@ -55,4 +55,15 @@ class SendResponseBackStage(stage.PipelineStage):
                 quote_origin=quote_origin,
             )
 
+        # Send extra chains produced by long text split strategy
+        extra_chains = query.get_variable('_longtext_split_extra_chains')
+        if extra_chains:
+            for chain in extra_chains:
+                await query.adapter.reply_message(
+                    message_source=query.message_event,
+                    message=chain,
+                    quote_origin=False,
+                )
+            query.set_variable('_longtext_split_extra_chains', None)
+
         return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
