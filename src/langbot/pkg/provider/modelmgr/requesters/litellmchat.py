@@ -75,21 +75,32 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 continue
         return False
 
+    @staticmethod
+    def _positive_int(value: typing.Any) -> int | None:
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, int) and value > 0:
+            return value
+        if isinstance(value, str) and value.isdigit():
+            parsed_value = int(value)
+            if parsed_value > 0:
+                return parsed_value
+        return None
+
     def _context_length_from_scan_payload(self, model_payload: dict[str, typing.Any] | None) -> int | None:
         if not model_payload:
             return None
 
         for field_name in ('context_length', 'context_window', 'max_context_length'):
-            value = model_payload.get(field_name)
-            if isinstance(value, bool):
-                continue
-            if isinstance(value, int) and value > 0:
-                return value
-            if isinstance(value, str) and value.isdigit():
-                parsed_value = int(value)
-                if parsed_value > 0:
-                    return parsed_value
+            context_length = self._positive_int(model_payload.get(field_name))
+            if context_length is not None:
+                return context_length
         return None
+
+    def _context_length_from_litellm_model_info(self, model_info: typing.Any) -> int | None:
+        if isinstance(model_info, dict):
+            return self._positive_int(model_info.get('max_input_tokens'))
+        return self._positive_int(getattr(model_info, 'max_input_tokens', None))
 
     def _metadata_provider_candidates(self, model_name: str) -> list[str]:
         normalized_model_name = (model_name or '').lower()
@@ -126,7 +137,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         return None
 
     def _safe_context_length(self, model_name: str) -> int | None:
-        helper = getattr(litellm, 'get_max_tokens', None)
+        helper = getattr(litellm, 'get_model_info', None)
         if not callable(helper):
             return self._known_context_length_fallback(model_name)
 
@@ -143,11 +154,12 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 continue
             tried_candidates.append(candidate)
             try:
-                max_tokens = helper(candidate)
+                model_info = helper(candidate)
             except Exception:
                 continue
-            if isinstance(max_tokens, int) and max_tokens > 0:
-                return max_tokens
+            context_length = self._context_length_from_litellm_model_info(model_info)
+            if context_length is not None:
+                return context_length
         return self._known_context_length_fallback(model_name)
 
     def _supports_function_calling(self, model_name: str) -> bool:

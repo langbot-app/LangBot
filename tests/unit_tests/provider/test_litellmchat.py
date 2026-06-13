@@ -1034,10 +1034,27 @@ class TestScanModels:
             },
         )
 
-        with patch.object(litellmchat.litellm, 'get_max_tokens') as mock_get_max_tokens:
-            mock_get_max_tokens.side_effect = lambda model: 131072 if model == 'moonshot/moonshot-v1-128k' else None
+        with patch.object(litellmchat.litellm, 'get_model_info') as mock_get_model_info:
+            mock_get_model_info.side_effect = (
+                lambda model: {'max_input_tokens': 131072}
+                if model == 'moonshot/moonshot-v1-128k'
+                else {}
+            )
 
             assert requester._safe_context_length('moonshot-v1-128k') == 131072
+
+    def test_safe_context_length_uses_litellm_max_input_tokens(self):
+        """LiteLLM max_output_tokens must not be treated as the context window."""
+        requester = litellmchat.LiteLLMRequester(ap=Mock(), config={})
+
+        with patch.object(litellmchat.litellm, 'get_model_info') as mock_get_model_info:
+            mock_get_model_info.return_value = {
+                'max_input_tokens': 128000,
+                'max_output_tokens': 16384,
+                'max_tokens': 16384,
+            }
+
+            assert requester._safe_context_length('gpt-4o') == 128000
 
     def test_litellm_bool_helper_tries_moonshot_metadata_alias(self):
         """OpenAI-compatible Moonshot endpoints still use Moonshot metadata for abilities."""
@@ -1102,7 +1119,7 @@ class TestScanModels:
             },
         )
 
-        with patch.object(litellmchat.litellm, 'get_max_tokens', side_effect=Exception('not mapped')):
+        with patch.object(litellmchat.litellm, 'get_model_info', side_effect=Exception('not mapped')):
             assert requester._safe_context_length('deepseek-v4-pro') == 1_000_000
             assert requester._safe_context_length('deepseek-v4-flash') == 1_000_000
 
