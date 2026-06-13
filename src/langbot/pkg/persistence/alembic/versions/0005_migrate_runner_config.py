@@ -1,7 +1,7 @@
 """Normalize AgentRunner config containers
 
 Revision ID: 0005_migrate_runner_config
-Revises: 0004_add_mcp_readme
+Revises: 0005_add_llm_context_length
 Create Date: 2026-05-10
 """
 
@@ -12,7 +12,7 @@ from alembic import op
 from langbot.pkg.agent.runner.config_migration import ConfigMigration
 
 revision = '0005_migrate_runner_config'
-down_revision = '0004_add_mcp_readme'
+down_revision = '0005_add_llm_context_length'
 branch_labels = None
 depends_on = None
 
