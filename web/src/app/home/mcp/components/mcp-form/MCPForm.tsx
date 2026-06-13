@@ -40,6 +40,8 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { httpClient } from '@/app/infra/http/HttpClient';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import MCPReadme from '@/app/home/mcp/components/mcp-form/MCPReadme';
 import {
   MCPServerRuntimeInfo,
   MCPTool,
@@ -264,35 +266,10 @@ function RuntimePanel({
 
   const isConnected =
     !mcpTesting && runtimeInfo.status === MCPSessionStatus.CONNECTED;
-  // Only treat an explicit error (or box-unavailable) as failed; while testing,
-  // connecting, or in an initial/unresolved state, show "connecting" so we
-  // don't flash "connection failed" during a normal connection attempt.
-  const isFailed =
-    !mcpTesting &&
-    (runtimeInfo.status === MCPSessionStatus.ERROR ||
-      runtimeInfo.error_phase === 'box_unavailable');
   const tools = runtimeInfo.tools || [];
 
   return (
     <section className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="space-y-1">
-          <h3 className="text-sm font-medium">{t('mcp.title')}</h3>
-          <p className="text-sm text-muted-foreground">
-            {isConnected
-              ? t('mcp.toolCount', { count: tools.length })
-              : isFailed
-                ? t('mcp.connectionFailedStatus')
-                : t('mcp.connecting')}
-          </p>
-        </div>
-        {isConnected && (
-          <Badge variant="outline">
-            {t('mcp.toolCount', { count: tools.length })}
-          </Badge>
-        )}
-      </div>
-
       {!isConnected && (
         <div className="rounded-md bg-muted/40 p-3">
           <StatusDisplay testing={mcpTesting} runtimeInfo={runtimeInfo} t={t} />
@@ -434,6 +411,9 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
   const [runtimeInfo, setRuntimeInfo] = useState<MCPServerRuntimeInfo | null>(
     null,
   );
+  // README markdown captured from LangBot Space at install time, surfaced in
+  // the Docs tab of the detail panel. Empty for manually-created servers.
+  const [readme, setReadme] = useState<string>('');
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const watchMode = form.watch('mode');
   const {
@@ -470,6 +450,9 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
       testMcp: () => testMcp(),
       isTesting: mcpTesting,
     }),
+    // testMcp now reads everything via form.getValues(), so it does not need
+    // the latest stdioArgs/extraArgs closure — but keep mcpTesting so the
+    // exposed isTesting flag stays accurate.
     [mcpTesting],
   );
 
@@ -611,6 +594,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
       setStdioArgs(newStdioArgs);
       form.reset(formValues);
       setRuntimeInfo(server.runtime_info ?? null);
+      setReadme(server.readme ?? '');
     } catch (error) {
       console.error('Failed to load server:', error);
       toast.error(t('mcp.loadFailed'));
@@ -699,6 +683,17 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
 
     try {
       const mode = form.getValues('mode');
+      // Read every field via form.getValues() rather than the captured
+      // `stdioArgs` / `extraArgs` state. testMcp() is invoked through an
+      // imperative handle (formRef.current.testMcp()) whose closure is only
+      // refreshed when [mcpTesting] changes, so reading the React state here
+      // would use a stale snapshot — on the detail page that snapshot is the
+      // empty initial [], which dropped stdio args entirely and launched
+      // `uvx` with no package (exit 2 / "Connection closed", no detail).
+      // The form values are kept in sync on every edit and on load, so they
+      // are always current.
+      const formExtraArgs = form.getValues('extra_args') ?? [];
+      const formStdioArgs = form.getValues('args') ?? [];
       let extraArgsData:
         | MCPServerExtraArgsSSE
         | MCPServerExtraArgsHttp
@@ -709,7 +704,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
           url: form.getValues('url')!,
           timeout: form.getValues('timeout'),
           headers: Object.fromEntries(
-            extraArgs.map((arg) => [arg.key, arg.value]),
+            formExtraArgs.map((arg) => [arg.key, arg.value]),
           ),
           ssereadtimeout: form.getValues('ssereadtimeout'),
         };
@@ -718,14 +713,16 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
           url: form.getValues('url')!,
           timeout: form.getValues('timeout'),
           headers: Object.fromEntries(
-            extraArgs.map((arg) => [arg.key, arg.value]),
+            formExtraArgs.map((arg) => [arg.key, arg.value]),
           ),
         };
       } else {
         extraArgsData = {
           command: form.getValues('command')!,
-          args: stdioArgs.map((arg) => arg.value),
-          env: Object.fromEntries(extraArgs.map((arg) => [arg.key, arg.value])),
+          args: formStdioArgs.map((arg) => arg.value),
+          env: Object.fromEntries(
+            formExtraArgs.map((arg) => [arg.key, arg.value]),
+          ),
         };
       }
 
@@ -1063,6 +1060,42 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
     />
   );
 
+  // In edit mode the right side shows a tablist switching between the live
+  // Tools list and the Docs (README captured from LangBot Space at install).
+  // Create mode has neither, so it falls back to the bare runtime placeholder.
+  // The tool count lives in the tab label (only when connected); the panel
+  // body itself no longer repeats a title/subtitle.
+  const toolsConnected =
+    !mcpTesting && runtimeInfo?.status === MCPSessionStatus.CONNECTED;
+  const toolsCount = runtimeInfo?.tools?.length ?? 0;
+  const toolsTabLabel = toolsConnected
+    ? `${t('mcp.tabTools')} ${toolsCount}`
+    : t('mcp.tabTools');
+
+  const detailPanel = isEditMode ? (
+    <Tabs defaultValue="tools" className="flex h-full min-h-0 flex-col">
+      <TabsList>
+        <TabsTrigger value="docs" className="flex-none px-4">
+          {t('mcp.tabDocs')}
+        </TabsTrigger>
+        <TabsTrigger value="tools" className="flex-none px-4">
+          {toolsTabLabel}
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value="docs" className="mt-4 min-h-0 flex-1 overflow-y-auto">
+        <MCPReadme readme={readme} />
+      </TabsContent>
+      <TabsContent
+        value="tools"
+        className="mt-4 min-h-0 flex-1 overflow-y-auto"
+      >
+        {runtimePanel}
+      </TabsContent>
+    </Tabs>
+  ) : (
+    runtimePanel
+  );
+
   if (layout === 'split') {
     return (
       <Form {...form}>
@@ -1078,7 +1111,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
           </div>
           <div className="hidden w-px shrink-0 bg-border lg:block" />
           <div className="min-w-0 flex-1 pb-6 lg:min-h-0 lg:overflow-y-auto lg:overflow-x-hidden">
-            {runtimePanel}
+            {detailPanel}
           </div>
         </form>
       </Form>
@@ -1093,7 +1126,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
         className="space-y-5"
       >
         {sideHeader}
-        {runtimePanel}
+        {detailPanel}
         {configSection}
         {sideFooter}
       </form>

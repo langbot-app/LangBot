@@ -1,5 +1,5 @@
 # Docker Compose configuration for LangBot
-# For Kubernetes deployment, see kubernetes.yaml and README_K8S.md
+# For Kubernetes deployment, see kubernetes.yaml and the deployment guide at https://docs.langbot.app
 version: "3"
 
 services:

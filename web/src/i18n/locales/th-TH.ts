@@ -2,7 +2,7 @@ const thTH = {
   sidebar: {
     home: 'หน้าแรก',
     extensions: 'ส่วนขยาย',
-    installedPlugins: 'ปลั๊กอินที่ติดตั้ง',
+    installedPlugins: 'ที่ติดตั้งแล้ว',
     pluginMarket: 'ตลาดปลั๊กอิน',
     mcpServers: 'เซิร์ฟเวอร์ MCP',
     addExtension: 'เพิ่มส่วนขยาย',
@@ -627,6 +627,8 @@ const thTH = {
   },
   market: {
     searchPlaceholder: 'ค้นหาปลั๊กอิน...',
+    searchPlaceholderCount:
+      'ค้นหา {{count}} ส่วนขยาย ความสามารถ หรือกรณีใช้งาน...',
     searchResults: 'พบ {{count}} ส่วนขยาย',
     totalPlugins: 'ทั้งหมด {{count}} ส่วนขยาย',
     noPlugins: 'ไม่มีปลั๊กอินที่พร้อมใช้งาน',
@@ -634,6 +636,7 @@ const thTH = {
     loadingMore: 'กำลังโหลดเพิ่มเติม...',
     loading: 'กำลังโหลด...',
     allLoaded: 'แสดงปลั๊กอินทั้งหมดแล้ว',
+    allLoadedCount: 'แสดงส่วนขยายทั้งหมด {{count}} รายการแล้ว',
     install: 'ติดตั้ง',
     installConfirm:
       'คุณแน่ใจหรือไม่ว่าต้องการติดตั้งปลั๊กอิน "{{name}}" ({{version}})?',
@@ -758,6 +761,9 @@ const thTH = {
     toolsFound: 'เครื่องมือ',
     unknownError: 'ข้อผิดพลาดที่ไม่ทราบสาเหตุ',
     noToolsFound: 'ไม่พบเครื่องมือ',
+    tabTools: 'เครื่องมือ',
+    tabDocs: 'เอกสาร',
+    noReadme: 'ไม่มีเอกสาร',
     parseResultFailed: 'ไม่สามารถแยกวิเคราะห์ผลการทดสอบได้',
     noResultReturned: 'การทดสอบไม่ส่งผลลัพธ์กลับมา',
     getTaskFailed: 'ไม่สามารถดึงสถานะงานได้',

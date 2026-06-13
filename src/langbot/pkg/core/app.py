@@ -200,6 +200,17 @@ class Application:
                 scopes=[core_entities.LifecycleControlScope.APPLICATION],
             )
 
+            # Telemetry instance heartbeat (startup + daily); respects
+            # space.disable_telemetry via TelemetryManager.send().
+            if self.telemetry is not None:
+                from ..telemetry import heartbeat as telemetry_heartbeat
+
+                self.task_mgr.create_task(
+                    telemetry_heartbeat.heartbeat_loop(self),
+                    name='telemetry-heartbeat',
+                    scopes=[core_entities.LifecycleControlScope.APPLICATION],
+                )
+
             # Start monitoring data cleanup task if enabled
             monitoring_cfg = self.instance_config.data.get('monitoring', {})
             auto_cleanup_cfg = monitoring_cfg.get('auto_cleanup', {})

@@ -12,6 +12,7 @@ import pydantic
 
 from langbot_plugin.box.client import BoxRuntimeClient
 from .connector import BoxRuntimeConnector, _get_box_config
+from ..telemetry import features as telemetry_features
 from langbot_plugin.box.errors import BoxError, BoxValidationError
 from langbot_plugin.box.models import (
     BUILTIN_PROFILES,
@@ -67,6 +68,10 @@ class BoxService:
         self._available = False
         self._connector_error: str = ''
         self._reconnecting = False
+        # Optional explicit override for shares_filesystem_with_box. None means
+        # "derive from the connector transport". Set by tests / embedders that
+        # know the real LangBot<->Box filesystem topology.
+        self._shares_filesystem_with_box_override: bool | None = None
 
     @property
     def enabled(self) -> bool:
@@ -148,6 +153,32 @@ class BoxService:
     def available(self) -> bool:
         return self._available
 
+    @property
+    def shares_filesystem_with_box(self) -> bool:
+        """Whether LangBot and the Box runtime share a filesystem view.
+
+        This is True only when Box runs as a local stdio child process of
+        LangBot (same container/host). In that case paths the Box runtime
+        reports — notably skill ``package_root`` — resolve identically on the
+        LangBot side, so LangBot may validate them against its own filesystem.
+
+        It is False for every separated deployment (Docker Compose, k8s
+        sidecar, ``--standalone-box``, or an explicit ``runtime.endpoint``),
+        where the Box runtime owns its own filesystem and LangBot must trust
+        the paths it reports rather than checking them locally.
+
+        When Box is wired up with an injected client (tests, custom embeds)
+        there is no connector to introspect; we conservatively report False so
+        LangBot never wrongly drops Box-reported skills. An explicit override
+        can be set via ``_shares_filesystem_with_box`` (used by tests and any
+        embedder that knows the real topology).
+        """
+        if self._shares_filesystem_with_box_override is not None:
+            return self._shares_filesystem_with_box_override
+        if self._runtime_connector is None:
+            return False
+        return not self._runtime_connector.uses_websocket()
+
     async def execute_spec_payload(
         self,
         spec_payload: dict,
@@ -188,16 +219,29 @@ class BoxService:
             f'query_id={query.query_id} '
             f'summary={json.dumps(self._summarize_result(result), ensure_ascii=False)}'
         )
+        telemetry_features.increment(query, 'sandbox', 'execs')
         return self._serialize_result(result)
 
     def resolve_box_session_id(self, query: pipeline_query.Query) -> str:
-        """Resolve the Box session_id from the pipeline's template and query variables."""
-        template = (
-            (query.pipeline_config or {})
-            .get('ai', {})
-            .get('local-agent', {})
-            .get('box-session-id-template', '{launcher_type}_{launcher_id}')
-        )
+        """Resolve the Box session_id from the pipeline's template and query variables.
+
+        When ``system.limitation.force_box_session_id_template`` is set to a
+        non-empty value, that template overrides whatever the pipeline
+        configured. This is the authoritative SaaS guard: it runs on every
+        ``exec`` call, so a tenant cannot escape a single shared sandbox even
+        by editing the pipeline config directly through the API (which only
+        gates the web UI).
+        """
+        forced_template = self._forced_box_session_id_template()
+        if forced_template:
+            template = forced_template
+        else:
+            template = (
+                (query.pipeline_config or {})
+                .get('ai', {})
+                .get('local-agent', {})
+                .get('box-session-id-template', '{launcher_type}_{launcher_id}')
+            )
         variables = dict(query.variables or {})
         launcher_type = getattr(query, 'launcher_type', None)
         if hasattr(launcher_type, 'value'):
@@ -220,14 +264,24 @@ class BoxService:
         all skill packages mounted, regardless of which skill is currently
         activated.
 
-        Skills whose ``package_root`` is missing or no longer a directory on
-        the LangBot-visible filesystem are skipped with a warning instead of
-        being passed through to the backend. Without this guard the three
-        backends behave inconsistently on a stale mount: nsjail refuses to
-        start the sandbox (failing every exec in the session), Docker
-        silently auto-creates a root-owned empty directory on the host, and
-        E2B silently skips the upload — none of which surfaces an
-        actionable error to the agent or operator.
+        Path validation is filesystem-topology dependent. When LangBot and the
+        Box runtime share a filesystem (local stdio mode), a skill whose
+        ``package_root`` is missing or no longer a directory is skipped with a
+        warning instead of being passed through to the backend. Without that
+        guard the three backends behave inconsistently on a stale mount: nsjail
+        refuses to start the sandbox (failing every exec in the session),
+        Docker silently auto-creates a root-owned empty directory on the host,
+        and E2B silently skips the upload — none of which surfaces an
+        actionable error.
+
+        When Box runs as a separate process (Docker Compose, k8s sidecar,
+        ``--standalone-box``, or a remote ``runtime.endpoint``), the
+        ``package_root`` reported by ``list_skills`` is the Box runtime's own
+        filesystem path and is NOT resolvable on the LangBot side. Validating
+        it locally would wrongly drop every skill, so LangBot trusts the path
+        and lets the Box runtime resolve it. The Box runtime only ever reports
+        skills it discovered on its own filesystem, so the path is valid there
+        by construction.
         """
         skill_mgr = getattr(self.ap, 'skill_mgr', None)
         if skill_mgr is None:
@@ -235,13 +289,15 @@ class BoxService:
 
         from ..provider.tools.loaders import skill as skill_loader
 
+        validate_locally = self.shares_filesystem_with_box
+
         visible_skills = skill_loader.get_visible_skills(self.ap, query)
         mounts: list[dict] = []
         for skill_name, skill_data in visible_skills.items():
             package_root = str(skill_data.get('package_root', '') or '').strip()
             if not package_root:
                 continue
-            if not os.path.isdir(package_root):
+            if validate_locally and not os.path.isdir(package_root):
                 self.ap.logger.warning(
                     f'Skill "{skill_name}" package_root missing on filesystem '
                     f'({package_root}); skipping mount to prevent sandbox failures. '
@@ -564,6 +620,20 @@ class BoxService:
         raw = str(self._local_config().get('image', '') or '').strip()
         return raw or None
 
+    def _forced_box_session_id_template(self) -> str:
+        """Return the SaaS-forced sandbox-scope template, or '' when unset.
+
+        Read from ``system.limitation.force_box_session_id_template``. A
+        non-empty value pins every pipeline to a single sandbox scope
+        (e.g. ``'{global}'``) and cannot be overridden per-pipeline.
+        """
+        limitation = (
+            (self.ap.instance_config.data or {}).get('system', {}).get('limitation', {})
+            if getattr(self.ap, 'instance_config', None) is not None
+            else {}
+        )
+        return str(limitation.get('force_box_session_id_template', '') or '').strip()
+
     def _load_workspace_quota_mb(self) -> int | None:
         raw_value = self._local_config().get('workspace_quota_mb')
         if raw_value in (None, ''):
@@ -717,6 +787,7 @@ class BoxService:
     # ── Observability ─────────────────────────────────────────────────
 
     def _record_error(self, exc: Exception, query: pipeline_query.Query):
+        telemetry_features.increment(query, 'sandbox', 'errors')
         self._recent_errors.append(
             {
                 'timestamp': _dt.datetime.now(_UTC).isoformat(),

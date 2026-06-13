@@ -939,6 +939,7 @@ function StepBotConfig({
                     is_wizard: true,
                     webhook_url: webhookUrl,
                     extra_webhook_url: extraWebhookUrl,
+                    outbound_ips: systemInfo.outbound_ips,
                   }}
                 />
               </CardContent>

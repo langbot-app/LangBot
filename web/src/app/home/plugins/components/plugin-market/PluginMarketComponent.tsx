@@ -124,6 +124,8 @@ function MarketPageContent({
   const [hasMore, setHasMore] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [total, setTotal] = useState(0);
+  // Per-format extension counts shown next to the type filter options.
+  const [typeCounts, setTypeCounts] = useState<Record<string, number>>({});
   const [sortOption, setSortOption] = useState<string>(
     () => loadMarketFilters().sortOption ?? 'install_count_desc',
   );
@@ -145,7 +147,7 @@ function MarketPageContent({
     }
   }, [typeFilter, componentFilter, selectedTags, sortOption]);
 
-  const pageSize = 12; // 每页12个
+  const pageSize = 24; // 每页24个
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const isComposingRef = useRef(false);
@@ -216,12 +218,12 @@ function MarketPageContent({
   const transformToVO = useCallback(
     (plugin: PluginV4): PluginMarketCardVO => {
       const cloudClient = getCloudServiceClientSync();
-      const iconURL =
-        plugin.type === 'mcp'
-          ? cloudClient.getMCPMarketplaceIconURL(plugin.author, plugin.name)
-          : plugin.type === 'skill'
-            ? cloudClient.getSkillMarketplaceIconURL(plugin.author, plugin.name)
-            : cloudClient.getPluginIconURL(plugin.author, plugin.name);
+      const iconURL = cloudClient.resolveMarketplaceIconURL(
+        plugin.type,
+        plugin.author,
+        plugin.name,
+        plugin.icon,
+      );
 
       return new PluginMarketCardVO({
         pluginId: plugin.author + ' / ' + plugin.name,
@@ -320,6 +322,7 @@ function MarketPageContent({
       fetchPlugins(1, false, true);
       fetchAvailableTags();
       fetchRecommendationLists();
+      fetchTypeCounts();
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -356,6 +359,32 @@ function MarketPageContent({
       setTagNames(nameMap);
     } catch (error) {
       console.error('Failed to fetch tags:', error);
+    }
+  };
+
+  // 获取各扩展格式的数量（用于筛选器标签上的计数）
+  const fetchTypeCounts = async () => {
+    const types = ['plugin', 'mcp', 'skill'];
+    try {
+      const results = await Promise.all(
+        types.map((type) =>
+          getCloudServiceClientSync()
+            .searchMarketplaceExtensions({
+              page: 1,
+              page_size: 1,
+              type_filter: type,
+            })
+            .then((res) => res.total)
+            .catch(() => 0),
+        ),
+      );
+      const counts: Record<string, number> = {};
+      types.forEach((type, i) => {
+        counts[type] = results[i];
+      });
+      setTypeCounts(counts);
+    } catch (error) {
+      console.error('Failed to fetch extension type counts:', error);
     }
   };
 
@@ -603,7 +632,11 @@ function MarketPageContent({
           <div className="relative min-w-0 flex-1 lg:max-w-xl">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
             <Input
-              placeholder={t('market.searchPlaceholder')}
+              placeholder={
+                total > 0
+                  ? t('market.searchPlaceholderCount', { count: total })
+                  : t('market.searchPlaceholder')
+              }
               value={searchQuery}
               onChange={(e) => handleSearchInputChange(e.target.value)}
               onCompositionStart={() => {
@@ -682,6 +715,7 @@ function MarketPageContent({
                   >
                     {extensionTypeOptions.map((option) => {
                       const Icon = option.icon;
+                      const count = typeCounts[option.value];
                       return (
                         <ToggleGroupItem
                           key={option.value}
@@ -691,6 +725,11 @@ function MarketPageContent({
                         >
                           {Icon && <Icon className="mr-1 h-3.5 w-3.5" />}
                           {option.label}
+                          {typeof count === 'number' && (
+                            <span className="ml-1 text-muted-foreground">
+                              ({count})
+                            </span>
+                          )}
                         </ToggleGroupItem>
                       );
                     })}
@@ -781,15 +820,6 @@ function MarketPageContent({
             );
           })}
         </div>
-
-        {/* 搜索结果统计 */}
-        {total > 0 && (
-          <div className="text-center text-muted-foreground text-sm">
-            {searchQuery
-              ? t('market.searchResults', { count: total })
-              : t('market.totalPlugins', { count: total })}
-          </div>
-        )}
       </div>
 
       {/* Scrollable extension list section */}
@@ -828,7 +858,7 @@ function MarketPageContent({
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,22rem),1fr))] gap-6 mt-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-6 mt-6">
               {visiblePlugins.map((plugin) => (
                 <PluginMarketCardComponent
                   key={plugin.pluginId}
@@ -849,7 +879,9 @@ function MarketPageContent({
             {/* No more data hint */}
             {!hasMore && plugins.length > 0 && (
               <div className="text-center text-muted-foreground py-6">
-                {t('market.allLoaded')}
+                {searchQuery
+                  ? t('market.allLoadedCount', { count: total })
+                  : t('market.allLoaded')}
                 {' · '}
                 <a
                   href="https://github.com/langbot-app/langbot-plugin-demo/issues/new?template=plugin-request.yml"

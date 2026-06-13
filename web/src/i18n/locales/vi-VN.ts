@@ -2,7 +2,7 @@ const viVN = {
   sidebar: {
     home: 'Trang chủ',
     extensions: 'Tiện ích mở rộng',
-    installedPlugins: 'Plugin đã cài đặt',
+    installedPlugins: 'Đã cài đặt',
     pluginMarket: 'Chợ ứng dụng',
     mcpServers: 'Máy chủ MCP',
     addExtension: 'Thêm tiện ích mở rộng',
@@ -641,6 +641,8 @@ const viVN = {
   },
   market: {
     searchPlaceholder: 'Tìm kiếm plugin...',
+    searchPlaceholderCount:
+      'Tìm kiếm {{count}} tiện ích mở rộng, khả năng hoặc tình huống...',
     searchResults: 'Tìm thấy {{count}} tiện ích mở rộng',
     totalPlugins: 'Tổng cộng {{count}} tiện ích mở rộng',
     noPlugins: 'Không có plugin nào',
@@ -648,6 +650,7 @@ const viVN = {
     loadingMore: 'Đang tải thêm...',
     loading: 'Đang tải...',
     allLoaded: 'Đã hiển thị tất cả plugin',
+    allLoadedCount: 'Đã hiển thị tất cả {{count}} tiện ích mở rộng',
     install: 'Cài đặt',
     installConfirm:
       'Bạn có chắc chắn muốn cài đặt plugin "{{name}}" ({{version}}) không?',
@@ -772,6 +775,9 @@ const viVN = {
     toolsFound: 'công cụ',
     unknownError: 'Lỗi không xác định',
     noToolsFound: 'Không tìm thấy công cụ nào',
+    tabTools: 'Công cụ',
+    tabDocs: 'Tài liệu',
+    noReadme: 'Không có tài liệu',
     parseResultFailed: 'Phân tích kết quả kiểm tra thất bại',
     noResultReturned: 'Kiểm tra không trả về kết quả',
     getTaskFailed: 'Lấy trạng thái tác vụ thất bại',

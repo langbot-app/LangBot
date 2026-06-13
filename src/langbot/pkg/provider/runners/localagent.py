@@ -4,6 +4,7 @@ import json
 import copy
 import typing
 from .. import runner
+from ...telemetry import features as telemetry_features
 from ..modelmgr import requester as modelmgr_requester
 from ..tools.loaders.native import EXEC_TOOL_NAME
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -245,6 +246,8 @@ class LocalAgentRunner(runner.RequestRunner):
             # only support text for now
             all_results: list[rag_context.RetrievalResultEntry] = []
 
+            kb_engine_plugins: set[str] = set()
+
             # Retrieve from each knowledge base
             for kb_uuid in kb_uuids:
                 kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(kb_uuid)
@@ -252,6 +255,12 @@ class LocalAgentRunner(runner.RequestRunner):
                 if not kb:
                     self.ap.logger.warning(f'Knowledge base {kb_uuid} not found, skipping')
                     continue
+
+                try:
+                    engine_plugin_id = kb.get_knowledge_engine_plugin_id() or 'builtin'
+                except Exception:
+                    engine_plugin_id = 'builtin'
+                kb_engine_plugins.add(engine_plugin_id)
 
                 result = await kb.retrieve(
                     user_message_text,
@@ -264,6 +273,17 @@ class LocalAgentRunner(runner.RequestRunner):
 
                 if result:
                     all_results.extend(result)
+
+            # Telemetry: knowledge base usage (counts and engine categories only)
+            telemetry_features.set_value(
+                query,
+                'kb',
+                {
+                    'kb_count': len(kb_uuids),
+                    'engine_plugins': sorted(kb_engine_plugins),
+                    'retrieved_entries': len(all_results),
+                },
+            )
 
             # Rerank step: re-score results using a rerank model if configured
             local_agent_config = query.pipeline_config.get('ai', {}).get('local-agent', {})
@@ -395,6 +415,7 @@ class LocalAgentRunner(runner.RequestRunner):
         tool_call_round = 0
         while pending_tool_calls:
             tool_call_round += 1
+            telemetry_features.set_value(query, 'tool_call_rounds', tool_call_round)
             if tool_call_round > MAX_TOOL_CALL_ROUNDS:
                 self.ap.logger.warning(
                     f'Tool-call loop reached the {MAX_TOOL_CALL_ROUNDS}-round cap '

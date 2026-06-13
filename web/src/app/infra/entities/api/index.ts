@@ -328,6 +328,10 @@ export interface SystemLimitation {
   max_bots: number;
   max_pipelines: number;
   max_extensions: number;
+  /** When non-empty, every pipeline is forced to this Box sandbox-scope
+   *  template (e.g. ``{global}``) and the per-pipeline "Sandbox Scope"
+   *  selector is locked. Used by SaaS deployments. Empty = no restriction. */
+  force_box_session_id_template?: string;
 }
 
 export interface WizardProgress {
@@ -347,6 +351,10 @@ export interface ApiRespSystemInfo {
   allow_modify_login_info: boolean;
   disable_models_service: boolean;
   limitation: SystemLimitation;
+  /** Public outbound IPs of the deployment (``system.outbound_ips`` in
+   *  config.yaml). Shown on adapter config forms whose platform requires
+   *  trusted-IP / IP-whitelist settings. Empty = not configured. */
+  outbound_ips: string[];
   wizard_status: string; // 'none' | 'skipped' | 'completed'
   wizard_progress: WizardProgress | null;
 }
@@ -554,6 +562,7 @@ export type MCPServer =
       enable: boolean;
       extra_args: MCPServerExtraArgsSSE;
       runtime_info?: MCPServerRuntimeInfo;
+      readme?: string;
       created_at?: string;
       updated_at?: string;
     }
@@ -564,6 +573,7 @@ export type MCPServer =
       enable: boolean;
       extra_args: MCPServerExtraArgsHttp;
       runtime_info?: MCPServerRuntimeInfo;
+      readme?: string;
       created_at?: string;
       updated_at?: string;
     }
@@ -574,6 +584,7 @@ export type MCPServer =
       enable: boolean;
       extra_args: MCPServerExtraArgsStdio;
       runtime_info?: MCPServerRuntimeInfo;
+      readme?: string;
       created_at?: string;
       updated_at?: string;
     };

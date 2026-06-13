@@ -1,5 +1,10 @@
 import { I18nObject } from '@/app/infra/entities/common';
 
+/** Namespace prefix shared by ``show_if.field`` references and display-only
+ *  form item names whose value is resolved from the caller-supplied
+ *  ``DynamicFormComponent.systemContext``. */
+export const SYSTEM_FIELD_PREFIX = '__system.';
+
 export interface IShowIfCondition {
   field: string;
   operator: 'eq' | 'neq' | 'in';
@@ -11,6 +16,12 @@ export interface IDynamicFormItemSchema {
   id: string;
   default: string | number | boolean | Array<unknown>;
   label: I18nObject;
+  /** Form value key. Names prefixed with ``__system.`` denote display-only
+   *  fields whose value is resolved from
+   *  ``DynamicFormComponent.systemContext`` (e.g. ``__system.outbound_ips``
+   *  → ``systemContext.outbound_ips``) — same namespace as ``show_if``.
+   *  Such fields are rendered read-only with copy buttons, excluded from
+   *  form state/validation/emission, and hidden when the value is empty. */
   name: string;
   required: boolean;
   type: DynamicFormItemType;

@@ -13,6 +13,11 @@ from ..entity.persistence.metadata import Metadata
 from ..utils import constants
 
 SURVEY_TRIGGERED_KEY = 'survey_triggered_events'
+BOT_RESPONSE_COUNT_KEY = 'survey_bot_response_count'
+
+# Milestone event fired when an instance accumulates this many successful bot responses
+BOT_RESPONSE_MILESTONE = 100
+BOT_RESPONSE_MILESTONE_EVENT = f'bot_response_success_{BOT_RESPONSE_MILESTONE}'
 
 
 class SurveyManager:
@@ -23,11 +28,13 @@ class SurveyManager:
         self._triggered_events: set[str] = set()
         self._pending_survey: typing.Optional[dict] = None
         self._space_url: str = ''
+        self._bot_response_count: int = 0
 
     async def initialize(self):
         space_config = self.ap.instance_config.data.get('space', {})
         self._space_url = space_config.get('url', '').rstrip('/')
         await self._load_triggered_events()
+        await self._load_bot_response_count()
 
     async def _load_triggered_events(self):
         """Load previously triggered events from metadata table."""
@@ -64,6 +71,54 @@ class SurveyManager:
         if space_config.get('disable_telemetry', False):
             return False
         return bool(self._space_url)
+
+    async def _load_bot_response_count(self):
+        """Load the persisted successful bot response count from metadata table."""
+        try:
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(Metadata).where(Metadata.key == BOT_RESPONSE_COUNT_KEY)
+            )
+            row = result.first()
+            if row:
+                self._bot_response_count = int(row[0].value)
+        except Exception:
+            self._bot_response_count = 0
+
+    async def _save_bot_response_count(self):
+        """Persist the successful bot response count to metadata table."""
+        try:
+            value = str(self._bot_response_count)
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(Metadata).where(Metadata.key == BOT_RESPONSE_COUNT_KEY)
+            )
+            if result.first():
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.update(Metadata).where(Metadata.key == BOT_RESPONSE_COUNT_KEY).values(value=value)
+                )
+            else:
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.insert(Metadata).values(key=BOT_RESPONSE_COUNT_KEY, value=value)
+                )
+        except Exception as e:
+            self.ap.logger.debug(f'Failed to save survey bot response count: {e}')
+
+    async def record_bot_response_success(self):
+        """Count a successful bot response; fires the milestone event at the threshold.
+
+        Called by the chat handler after each successful (non-WebSocket) response.
+        The count is persisted so it survives restarts. Once the milestone event
+        has been triggered, counting stops (no further writes needed).
+        """
+        if BOT_RESPONSE_MILESTONE_EVENT in self._triggered_events:
+            return
+        if not self._is_space_configured():
+            return
+
+        self._bot_response_count += 1
+        await self._save_bot_response_count()
+
+        if self._bot_response_count >= BOT_RESPONSE_MILESTONE:
+            await self.trigger_event(BOT_RESPONSE_MILESTONE_EVENT)
 
     async def trigger_event(self, event: str):
         """Called when an event occurs. Checks Space for a pending survey."""

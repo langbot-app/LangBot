@@ -2,7 +2,7 @@ const jaJP = {
   sidebar: {
     home: 'ホーム',
     extensions: '拡張機能',
-    installedPlugins: 'インストール済みプラグイン',
+    installedPlugins: 'インストール済み',
     pluginMarket: 'プラグインマーケット',
     mcpServers: 'MCPサーバー',
     addExtension: '拡張機能を追加',
@@ -641,6 +641,8 @@ const jaJP = {
   },
   market: {
     searchPlaceholder: 'プラグインを検索...',
+    searchPlaceholderCount:
+      '{{count}} 個の拡張機能・機能・ユースケースを検索...',
     searchResults: '{{count}} 個の拡張機能が見つかりました',
     totalPlugins: '合計 {{count}} 個の拡張機能',
     noPlugins: '利用可能なプラグインがありません',
@@ -648,6 +650,7 @@ const jaJP = {
     loadingMore: 'さらに読み込み中...',
     loading: '読み込み中...',
     allLoaded: 'すべてのプラグインが表示されました',
+    allLoadedCount: '{{count}} 個の拡張機能をすべて表示しました',
     install: 'インストール',
     installConfirm:
       'プラグイン "{{name}}" ({{version}}) をインストールしますか？',
@@ -774,6 +777,9 @@ const jaJP = {
     toolsFound: '個のツール',
     unknownError: '不明なエラー',
     noToolsFound: 'ツールが見つかりません',
+    tabTools: 'ツール',
+    tabDocs: 'ドキュメント',
+    noReadme: 'ドキュメントがありません',
     parseResultFailed: 'テスト結果の解析に失敗しました',
     noResultReturned: 'テスト結果が返されませんでした',
     getTaskFailed: 'タスクステータスの取得に失敗しました',

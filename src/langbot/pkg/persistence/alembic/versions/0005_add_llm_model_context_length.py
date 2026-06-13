@@ -1,15 +1,15 @@
 """add llm model context length
 
-Revision ID: 0004_add_llm_model_context_length
-Revises: 0003_add_rerank_models
+Revision ID: 0005_add_llm_model_context_length
+Revises: 0004_add_mcp_readme
 Create Date: 2026-06-07
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = '0004_add_llm_model_context_length'
-down_revision = '0003_add_rerank_models'
+revision = '0005_add_llm_model_context_length'
+down_revision = '0004_add_mcp_readme'
 branch_labels = None
 depends_on = None
 

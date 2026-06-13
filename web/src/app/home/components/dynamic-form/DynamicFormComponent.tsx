@@ -1,4 +1,7 @@
-import { IDynamicFormItemSchema } from '@/app/infra/entities/form/dynamic';
+import {
+  IDynamicFormItemSchema,
+  SYSTEM_FIELD_PREFIX,
+} from '@/app/infra/entities/form/dynamic';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -44,8 +47,8 @@ function resolveShowIfValue(
   externalDependentValues?: Record<string, unknown>,
   systemContext?: Record<string, unknown>,
 ): unknown {
-  if (field.startsWith('__system.')) {
-    const key = field.slice('__system.'.length);
+  if (field.startsWith(SYSTEM_FIELD_PREFIX)) {
+    const key = field.slice(SYSTEM_FIELD_PREFIX.length);
     return systemContext?.[key];
   }
   if (watchedValues[field] !== undefined) {
@@ -198,6 +201,95 @@ function WebhookUrlField({
   );
 }
 
+/**
+ * Display-only component for `__system.*` fields (e.g. the deployment's
+ * outbound IPs that the operator must add to a platform's trusted-IP list).
+ * Renders one read-only row per value, each with a copy button. Rendered
+ * outside of react-hook-form binding since the values come from
+ * systemContext, not user input.
+ */
+function SystemInfoField({
+  label,
+  description,
+  values,
+}: {
+  label: string;
+  description?: string;
+  values: string[];
+}) {
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+
+  const handleCopy = (text: string, index: number) => {
+    copyToClipboard(text).catch(() => {});
+    setCopiedIndex(index);
+    setTimeout(() => setCopiedIndex(null), 2000);
+  };
+
+  return (
+    <FormItem className="min-w-0">
+      <FormLabel className="break-words">{label}</FormLabel>
+      <div className="space-y-2">
+        {values.map((value, index) => (
+          <div key={index} className="flex min-w-0 items-center gap-2">
+            <Input
+              value={value}
+              readOnly
+              className="min-w-0 flex-1 bg-muted"
+              onClick={(e) => (e.target as HTMLInputElement).select()}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => handleCopy(value, index)}
+            >
+              {copiedIndex === index ? (
+                <Check className="h-4 w-4 text-green-600" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+        ))}
+      </div>
+      {description && (
+        <p className="text-sm break-words text-muted-foreground">
+          {description}
+        </p>
+      )}
+    </FormItem>
+  );
+}
+
+// Hover-only Radix tooltips never open on touch devices (no pointer hover),
+// so the ``disabled_tooltip`` explaining why a field is locked was invisible on
+// mobile. This wrapper makes the info icon also toggle the tooltip on tap while
+// keeping hover behavior on desktop.
+function DisabledTooltipIcon({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <TooltipProvider delayDuration={100}>
+      <Tooltip open={open} onOpenChange={setOpen}>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label={text}
+            className="inline-flex shrink-0"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setOpen((v) => !v);
+            }}
+          >
+            <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help shrink-0" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-xs">{text}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 export default function DynamicFormComponent({
   itemConfigList,
   onSubmit,
@@ -261,15 +353,17 @@ export default function DynamicFormComponent({
     return value;
   };
 
-  // Filter out display-only field types (e.g. webhook-url, embed-code) that should not
-  // participate in form state, validation, or value emission.
+  // Filter out display-only fields (webhook-url/embed-code/qr-code-login types
+  // and `__system.*`-named fields) that should not participate in form state,
+  // validation, or value emission.
   const editableItems = useMemo(
     () =>
       itemConfigList.filter(
         (item) =>
           item.type !== 'webhook-url' &&
           item.type !== 'embed-code' &&
-          item.type !== 'qr-code-login',
+          item.type !== 'qr-code-login' &&
+          !item.name.startsWith(SYSTEM_FIELD_PREFIX),
       ),
     [itemConfigList],
   );
@@ -551,17 +645,33 @@ export default function DynamicFormComponent({
               : '';
           const renderDisabledTooltipIcon = () =>
             disabledTooltip ? (
-              <TooltipProvider delayDuration={100}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help shrink-0" />
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    {disabledTooltip}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <DisabledTooltipIcon text={disabledTooltip} />
             ) : null;
+
+          // `__system.*` fields are display-only; their value is resolved
+          // from systemContext (same namespace as show_if), not user input.
+          // Hidden entirely when the deployment doesn't provide the value.
+          if (config.name.startsWith(SYSTEM_FIELD_PREFIX)) {
+            const rawValue =
+              systemContext?.[config.name.slice(SYSTEM_FIELD_PREFIX.length)];
+            const values = (Array.isArray(rawValue) ? rawValue : [rawValue])
+              .filter((v) => v !== undefined && v !== null && v !== '')
+              .map(String);
+            if (values.length === 0) return null;
+
+            return (
+              <SystemInfoField
+                key={config.id}
+                label={extractI18nObject(config.label)}
+                description={
+                  config.description
+                    ? extractI18nObject(config.description)
+                    : undefined
+                }
+                values={values}
+              />
+            );
+          }
 
           // Webhook URL fields are display-only; render outside of form binding
           if (config.type === 'webhook-url') {

@@ -16,6 +16,7 @@ export const systemInfo: ApiRespSystemInfo = {
     max_pipelines: -1,
     max_extensions: -1,
   },
+  outbound_ips: [],
   wizard_status: 'none',
   wizard_progress: null,
 };

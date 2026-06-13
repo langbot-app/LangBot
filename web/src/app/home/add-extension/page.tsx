@@ -184,12 +184,20 @@ function AddExtensionContent() {
     const cloud = getCloudServiceClientSync();
     const a = installInfo.plugin_author || '';
     const n = installInfo.plugin_name || '';
-    if (installExtensionType === 'mcp')
-      return cloud.getMCPMarketplaceIconURL(a, n);
-    if (installExtensionType === 'skill')
-      return cloud.getSkillMarketplaceIconURL(a, n);
-    return cloud.getPluginIconURL(a, n);
+    return cloud.resolveMarketplaceIconURL(
+      installExtensionType,
+      a,
+      n,
+      installInfo.plugin_icon,
+    );
   })();
+
+  // When the resolved icon URL changes (e.g. the real external icon arrives
+  // after an async fetch), clear any prior load failure so the <img> retries
+  // instead of staying on the placeholder.
+  useEffect(() => {
+    setInstallIconFailed(false);
+  }, [installIconURL]);
 
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [popoverView, setPopoverView] = useState<PopoverView>('menu');
@@ -278,6 +286,23 @@ function AddExtensionContent() {
     setInstallIconFailed(false);
     setModalOpen(true);
 
+    // The icon is not carried in the URL params, so fetch it from the
+    // marketplace record. Without this the confirm dialog falls back to the
+    // /resources/icon endpoint, which 404s for extensions whose icon is an
+    // external URL (simpleicons / iconify), showing a placeholder.
+    const cloud = getCloudServiceClientSync();
+    cloud
+      .fetchMarketplaceIcon(extType, author, name)
+      .then((icon) => {
+        if (!icon) return;
+        setInstallInfo((prev) =>
+          prev.plugin_author === author && prev.plugin_name === name
+            ? { ...prev, plugin_icon: icon }
+            : prev,
+        );
+      })
+      .catch(() => {});
+
     setSearchParams(
       (current) => {
         const next = new URLSearchParams(current);
@@ -326,6 +351,7 @@ function AddExtensionContent() {
       plugin_version: plugin.latest_version,
       plugin_label: extractI18nObject(plugin.label) || plugin.name,
       plugin_description: extractI18nObject(plugin.description) || '',
+      plugin_icon: plugin.icon || '',
     });
     setInstallExtensionType(plugin.type || 'plugin');
     setPluginInstallStatus(PluginInstallStatus.ASK_CONFIRM);

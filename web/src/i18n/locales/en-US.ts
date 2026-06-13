@@ -2,7 +2,7 @@ const enUS = {
   sidebar: {
     home: 'Home',
     extensions: 'Extensions',
-    installedPlugins: 'Installed Extensions',
+    installedPlugins: 'Installed',
     pluginMarket: 'Extension Market',
     mcpServers: 'MCP Servers',
     addExtension: 'Add Extension',
@@ -636,6 +636,8 @@ const enUS = {
   },
   market: {
     searchPlaceholder: 'Search plugins...',
+    searchPlaceholderCount:
+      'Search {{count}} extensions, capabilities, or use cases...',
     searchResults: 'Found {{count}} extensions',
     totalPlugins: 'Total {{count}} extensions',
     noPlugins: 'No plugins available',
@@ -643,6 +645,7 @@ const enUS = {
     loadingMore: 'Loading more...',
     loading: 'Loading...',
     allLoaded: 'All plugins displayed',
+    allLoadedCount: 'All {{count}} extensions displayed',
     install: 'Install',
     installCard: 'Install {{name}}',
     installConfirm:
@@ -769,6 +772,9 @@ const enUS = {
     toolsFound: 'tools',
     unknownError: 'Unknown error',
     noToolsFound: 'No tools found',
+    tabTools: 'Tools',
+    tabDocs: 'Docs',
+    noReadme: 'No documentation available',
     parseResultFailed: 'Failed to parse test result',
     noResultReturned: 'Test returned no result',
     getTaskFailed: 'Failed to get task status',

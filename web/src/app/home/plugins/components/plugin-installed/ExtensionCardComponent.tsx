@@ -160,16 +160,34 @@ export default function ExtensionCardComponent({
             {cardVO.mode.toUpperCase()}
           </Badge>
         )}
-        <Badge
-          variant="outline"
-          className={`text-[0.7rem] flex-shrink-0 ${
-            cardVO.enabled
-              ? 'border-green-400 text-green-600 dark:text-green-400'
-              : 'border-gray-400 text-gray-600 dark:text-gray-300'
-          }`}
-        >
-          {cardVO.enabled ? t('mcp.statusConnected') : t('mcp.statusDisabled')}
-        </Badge>
+        {(() => {
+          // Reflect the real runtime status, not just the enabled flag.
+          // A server can be enabled but still CONNECTING or in ERROR — showing
+          // "Connected" in those cases is misleading.
+          const runtime = cardVO.enabled
+            ? (cardVO.runtimeStatus ?? 'connecting')
+            : 'disabled';
+          const badgeClass: Record<string, string> = {
+            connected: 'border-green-400 text-green-600 dark:text-green-400',
+            connecting: 'border-amber-400 text-amber-600 dark:text-amber-400',
+            error: 'border-red-400 text-red-600 dark:text-red-400',
+            disabled: 'border-gray-400 text-gray-600 dark:text-gray-300',
+          };
+          const badgeLabel: Record<string, string> = {
+            connected: t('mcp.statusConnected'),
+            connecting: t('mcp.connecting'),
+            error: t('mcp.statusError'),
+            disabled: t('mcp.statusDisabled'),
+          };
+          return (
+            <Badge
+              variant="outline"
+              className={`text-[0.7rem] flex-shrink-0 ${badgeClass[runtime] ?? badgeClass.disabled}`}
+            >
+              {badgeLabel[runtime] ?? badgeLabel.disabled}
+            </Badge>
+          );
+        })()}
       </div>
       <div className="text-[0.8rem] text-muted-foreground line-clamp-2 w-full">
         {cardVO.description ||

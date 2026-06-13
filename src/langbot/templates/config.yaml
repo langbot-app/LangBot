@@ -21,10 +21,23 @@ system:
     recovery_key: ''
     allow_modify_login_info: true
     disabled_adapters: []
+    # Public outbound IP addresses of this LangBot deployment. Some platforms
+    # (e.g. WeCom, WeChat Official Account, QQ Official API) require the
+    # caller's IPs to be added to their trusted-IP / IP-whitelist settings.
+    # When set, the web UI shows these IPs on the bot config form of such
+    # adapters. Also settable via the SYSTEM__OUTBOUND_IPS env var
+    # (comma-separated). Empty list = hidden in the web UI.
+    outbound_ips: []
     limitation:
         max_bots: -1
         max_pipelines: -1
         max_extensions: -1
+        # When set to a non-empty string, every pipeline is forced to use this
+        # Box sandbox-scope template regardless of its own configuration, and
+        # the per-pipeline "Sandbox Scope" selector is locked in the web UI.
+        # Used by SaaS deployments to confine a tenant to a single shared
+        # sandbox (set to '{global}'). Empty string = no restriction.
+        force_box_session_id_template: ''
     task_retention:
         # Keep at most this many completed async task records in memory
         completed_limit: 200

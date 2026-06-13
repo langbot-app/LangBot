@@ -248,6 +248,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
 
         mode = mcp_data.get('mode') or 'stdio'
         extra_args = mcp_data.get('extra_args') or {}
+        # Marketplace records carry the rendered README markdown; persist it so
+        # the detail page Docs tab works offline and without a marketplace round-trip.
+        readme = mcp_data.get('readme') or ''
         # Use __ instead of / to avoid URL routing issues with slashes
         name = f'{mcp_data.get("author", "")}__{mcp_data.get("name", "")}'
 
@@ -267,6 +270,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             'enable': True,
             'mode': mode,
             'extra_args': extra_args,
+            'readme': readme,
         }
 
         await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_mcp.MCPServer).values(server_data))

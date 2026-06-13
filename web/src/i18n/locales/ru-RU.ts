@@ -2,7 +2,7 @@ const ruRU = {
   sidebar: {
     home: 'Главная',
     extensions: 'Расширения',
-    installedPlugins: 'Установленные плагины',
+    installedPlugins: 'Установленные',
     pluginMarket: 'Маркетплейс',
     mcpServers: 'MCP-серверы',
     addExtension: 'Добавить расширение',
@@ -647,6 +647,8 @@ const ruRU = {
   },
   market: {
     searchPlaceholder: 'Поиск плагинов...',
+    searchPlaceholderCount:
+      'Поиск среди {{count}} расширений, возможностей или сценариев...',
     searchResults: 'Найдено {{count}} расширений',
     totalPlugins: 'Всего {{count}} расширений',
     noPlugins: 'Нет доступных плагинов',
@@ -654,6 +656,7 @@ const ruRU = {
     loadingMore: 'Загрузка ещё...',
     loading: 'Загрузка...',
     allLoaded: 'Все плагины отображены',
+    allLoadedCount: 'Показаны все {{count}} расширений',
     install: 'Установить',
     installConfirm:
       'Вы уверены, что хотите установить плагин "{{name}}" ({{version}})?',
@@ -779,6 +782,9 @@ const ruRU = {
     toolsFound: 'инструментов',
     unknownError: 'Неизвестная ошибка',
     noToolsFound: 'Инструменты не найдены',
+    tabTools: 'Инструменты',
+    tabDocs: 'Документация',
+    noReadme: 'Документация отсутствует',
     parseResultFailed: 'Не удалось разобрать результат теста',
     noResultReturned: 'Тест не вернул результат',
     getTaskFailed: 'Не удалось получить статус задачи',

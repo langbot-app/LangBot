@@ -25,11 +25,13 @@ import SkillsPage from '@/app/home/skills/page';
 import ErrorPage from '@/components/ErrorPage';
 import BackendUnavailablePage from '@/components/BackendUnavailablePage';
 import PluginPagesPage from '@/app/home/plugin-pages/page';
+import RootLayout from '@/app/RootLayout';
 
 const Loading = () => <div>Loading...</div>;
 
 export const router = createBrowserRouter([
   {
+    element: <RootLayout />,
     errorElement: <ErrorPage />,
     children: [
       {

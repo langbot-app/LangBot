@@ -37,7 +37,7 @@ LangBot es una **plataforma de código abierto y grado de producción** para con
 
 ### Capacidades Clave
 
-- **Conversaciones e Agentes IA** — Diálogos de múltiples turnos, llamadas a herramientas, soporte multimodal, salida en streaming. RAG (base de conocimientos) incorporado con integración profunda con [Dify](https://dify.ai), [Coze](https://coze.com), [n8n](https://n8n.io), [Langflow](https://langflow.org).
+- **Conversaciones e Agentes IA** — Diálogos de múltiples turnos, llamadas a herramientas, soporte multimodal, salida en streaming. RAG (base de conocimientos) incorporado con integración profunda con [Dify](https://dify.ai), [Coze](https://coze.com), [n8n](https://n8n.io), [Langflow](https://langflow.org), [Deerflow](https://deerflow.tech)、[Weknora](https://weknora.weixin.qq.com).
 - **Soporte Universal de Plataformas de MI** — Un solo código base para Discord, Telegram, Slack, LINE, QQ, WeChat, WeCom, Lark, DingTalk, KOOK.
 - **Listo para Producción** — Control de acceso, limitación de velocidad, filtrado de palabras sensibles, monitoreo completo y manejo de excepciones. De confianza para empresas.
 - **Ecosistema de Plugins** — Cientos de plugins, arquitectura basada en eventos, extensiones de componentes y soporte del [protocolo MCP](https://modelcontextprotocol.io/).
@@ -77,7 +77,7 @@ docker compose up -d
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/en-US/templates/ZKTBDH)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
 
-**Más opciones:** [Docker](https://link.langbot.app/en/docs/docker) · [Manual](https://link.langbot.app/en/docs/manual-deploy) · [BTPanel](https://link.langbot.app/en/docs/bt-panel) · [Kubernetes](./docker/README_K8S.md)
+**Más opciones:** [Docker](https://link.langbot.app/en/docs/docker) · [Manual](https://link.langbot.app/en/docs/manual-deploy) · [BTPanel](https://link.langbot.app/en/docs/bt-panel) · [Kubernetes](https://docs.langbot.app/en/deploy/langbot/kubernetes)
 
 ---
 

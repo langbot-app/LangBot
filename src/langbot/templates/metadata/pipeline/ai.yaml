@@ -47,6 +47,14 @@ stages:
             label:
               en_US: Langflow API
               zh_Hans: Langflow API
+          - name: weknora-api
+            label:
+              en_US: WeKnora API
+              zh_Hans: WeKnora API
+          - name: deerflow-api
+            label:
+              en_US: DeerFlow API
+              zh_Hans: DeerFlow API
       - name: expire-time
         label:
           en_US: Conversation expire time (seconds)
@@ -144,21 +152,22 @@ stages:
           es_ES: Determina cómo se comparten los entornos sandbox entre mensajes.
           ru_RU: Определяет, как песочницы используются совместно между сообщениями.
         disable_if:
-          field: __system.box_available
+          field: __system.box_scope_editable
           operator: eq
           value: false
         disabled_tooltip:
           en_US: >-
-            Box sandbox is disabled or unavailable. Enable it in config.yaml
-            (box.enabled = true) and ensure the runtime is reachable to change
-            this setting.
-          zh_Hans: Box 沙箱已禁用或不可用。请在配置中启用（box.enabled = true）并确认运行时连接正常，才能修改此项。
-          zh_Hant: Box 沙箱已停用或無法使用。請在設定中啟用（box.enabled = true）並確認執行時連線正常，才能修改此項。
-          ja_JP: Box サンドボックスが無効または利用できません。設定で有効化（box.enabled = true）し、ランタイムが接続できることを確認してから変更してください。
-          vi_VN: Sandbox Box đã tắt hoặc không khả dụng. Hãy bật trong cấu hình (box.enabled = true) và đảm bảo runtime hoạt động để chỉnh sửa.
-          th_TH: Sandbox Box ถูกปิดใช้งานหรือไม่พร้อมใช้งาน กรุณาเปิดใช้งานในการตั้งค่า (box.enabled = true) และตรวจสอบว่ารันไทม์เชื่อมต่อปกติก่อนปรับค่า
-          es_ES: El sandbox de Box está desactivado o no disponible. Actívelo en la configuración (box.enabled = true) y asegúrese de que el runtime esté conectado para modificar este ajuste.
-          ru_RU: Песочница Box отключена или недоступна. Включите её в конфигурации (box.enabled = true) и убедитесь, что среда выполнения работает, чтобы изменить эту настройку.
+            Sandbox scope can't be changed: either the Box sandbox is disabled
+            or unavailable (enable it in config.yaml with box.enabled = true and
+            ensure the runtime is reachable), or this deployment pins all
+            pipelines to a fixed scope.
+          zh_Hans: "无法修改沙箱作用域：Box 沙箱已禁用或不可用（请在配置中启用 box.enabled = true 并确认运行时连接正常），或本部署已将所有流水线固定为统一作用域。"
+          zh_Hant: "無法修改沙箱作用域：Box 沙箱已停用或無法使用（請在設定中啟用 box.enabled = true 並確認執行時連線正常），或本部署已將所有流水線固定為統一作用域。"
+          ja_JP: "サンドボックススコープを変更できません：Box サンドボックスが無効/利用不可（設定で box.enabled = true にしてランタイム接続を確認）、またはこのデプロイがすべてのパイプラインを固定スコープに制限しています。"
+          vi_VN: "Không thể thay đổi phạm vi sandbox：Box sandbox bị tắt hoặc không khả dụng (bật box.enabled = true và đảm bảo runtime hoạt động), hoặc bản triển khai này cố định mọi pipeline về một phạm vi."
+          th_TH: "ไม่สามารถเปลี่ยนขอบเขต Sandbox：Box sandbox ถูกปิดหรือไม่พร้อมใช้งาน (เปิด box.enabled = true และตรวจสอบรันไทม์) หรือการ deploy นี้ล็อกทุก pipeline ไว้ที่ขอบเขตเดียว"
+          es_ES: "No se puede cambiar el alcance del sandbox: el sandbox de Box está desactivado o no disponible (actívelo con box.enabled = true y verifique el runtime), o este despliegue fija todas las pipelines a un alcance único."
+          ru_RU: "Невозможно изменить область песочницы: песочница Box отключена или недоступна (включите box.enabled = true и проверьте среду выполнения), либо это развёртывание фиксирует единую область для всех конвейеров."
         type: select
         required: false
         default: "{launcher_type}_{launcher_id}"
@@ -653,3 +662,215 @@ stages:
         type: json
         required: false
         default: '{}'
+  - name: weknora-api
+    label:
+      en_US: WeKnora API
+      zh_Hans: WeKnora API
+    description:
+      en_US: Configure the WeKnora API of the pipeline
+      zh_Hans: 配置 WeKnora API
+    config:
+      - name: base-url
+        label:
+          en_US: Base URL
+          zh_Hans: 基础 URL
+        description:
+          en_US: The base URL of the WeKnora server (with /api/v1)
+          zh_Hans: WeKnora 服务器的基础 URL（包含 /api/v1）
+        type: string
+        required: true
+        default: 'http://localhost:8080/api/v1'
+      - name: api-key
+        label:
+          en_US: API Key
+          zh_Hans: API 密钥
+        description:
+          en_US: The API key for WeKnora, generated from WeKnora frontend Settings → API Keys
+          zh_Hans: WeKnora 的 API 密钥，从 WeKnora 前端 设置 → API Keys 生成
+        type: string
+        required: true
+        default: ''
+      - name: app-type
+        label:
+          en_US: App Type
+          zh_Hans: 应用类型
+        type: select
+        required: true
+        default: agent
+        options:
+          - name: agent
+            label:
+              en_US: Agent (Smart Reasoning)
+              zh_Hans: Agent（智能推理）
+          - name: chat
+            label:
+              en_US: Chat (Knowledge Base RAG)
+              zh_Hans: 聊天（知识库 RAG）
+      - name: agent-id
+        label:
+          en_US: Agent ID
+          zh_Hans: 智能体 ID
+        description:
+          en_US: The Agent ID to use. Built-in agents include builtin-quick-answer, builtin-smart-reasoning, builtin-data-analyst
+          zh_Hans: 要使用的智能体 ID。内置智能体：builtin-quick-answer、builtin-smart-reasoning、builtin-data-analyst
+        type: string
+        required: true
+        default: 'builtin-smart-reasoning'
+      - name: knowledge-base-ids
+        label:
+          en_US: Knowledge Base IDs
+          zh_Hans: 知识库 ID 列表
+        description:
+          en_US: List of WeKnora knowledge base IDs to use (one per line)
+          zh_Hans: 要使用的 WeKnora 知识库 ID 列表（每行一个）
+        type: array
+        required: false
+        default: []
+      - name: web-search-enabled
+        label:
+          en_US: Enable Web Search
+          zh_Hans: 启用网络搜索
+        description:
+          en_US: Whether to enable web search in agent mode
+          zh_Hans: 在 Agent 模式下是否启用网络搜索
+        type: boolean
+        required: false
+        default: false
+      - name: timeout
+        label:
+          en_US: Timeout
+          zh_Hans: 超时时间
+        description:
+          en_US: Request timeout in seconds
+          zh_Hans: 请求超时时间（秒）
+        type: integer
+        required: false
+        default: 120
+      - name: base-prompt
+        label:
+          en_US: Base Prompt
+          zh_Hans: 基础提示词
+        description:
+          en_US: Default prompt when user message is empty (e.g. only images)
+          zh_Hans: 当用户消息为空（例如仅图片）时使用的默认提示词
+        type: string
+        required: false
+        default: '请回答用户的问题。'
+  - name: deerflow-api
+    label:
+      en_US: DeerFlow API
+      zh_Hans: DeerFlow API
+    description:
+      en_US: Configure the DeerFlow LangGraph API of the pipeline
+      zh_Hans: 配置 DeerFlow LangGraph API
+    config:
+      - name: api-base
+        label:
+          en_US: API Base URL
+          zh_Hans: API 基础 URL
+        description:
+          en_US: The base URL of the DeerFlow server (e.g. http://127.0.0.1:2026)
+          zh_Hans: DeerFlow 服务器的基础 URL（例如 http://127.0.0.1:2026）
+        type: string
+        required: true
+        default: 'http://127.0.0.1:2026'
+      - name: api-key
+        label:
+          en_US: API Key
+          zh_Hans: API 密钥
+        description:
+          en_US: Optional API key for DeerFlow (leave empty if not required)
+          zh_Hans: DeerFlow 的 API 密钥（如果不需要可留空）
+        type: string
+        required: false
+        default: ''
+      - name: auth-header
+        label:
+          en_US: Auth Header Name
+          zh_Hans: 鉴权请求头名称
+        description:
+          en_US: Custom auth header name. Leave empty to use "x-api-key"
+          zh_Hans: 自定义鉴权请求头名称，留空则使用 "x-api-key"
+        type: string
+        required: false
+        default: ''
+      - name: assistant-id
+        label:
+          en_US: Assistant ID
+          zh_Hans: 助手 ID
+        description:
+          en_US: The DeerFlow assistant/graph id (default lead_agent)
+          zh_Hans: DeerFlow 助手/图 ID（默认 lead_agent）
+        type: string
+        required: true
+        default: 'lead_agent'
+      - name: model-name
+        label:
+          en_US: Model Name
+          zh_Hans: 模型名称
+        description:
+          en_US: Optional model override forwarded to DeerFlow configurable
+          zh_Hans: 可选的模型名称覆盖，会作为 configurable 转发给 DeerFlow
+        type: string
+        required: false
+        default: ''
+      - name: thinking-enabled
+        label:
+          en_US: Enable Thinking
+          zh_Hans: 启用思考
+        description:
+          en_US: Whether to enable DeerFlow thinking mode
+          zh_Hans: 是否启用 DeerFlow 思考模式
+        type: boolean
+        required: false
+        default: false
+      - name: plan-mode
+        label:
+          en_US: Plan Mode
+          zh_Hans: 规划模式
+        description:
+          en_US: Whether to enable DeerFlow plan mode
+          zh_Hans: 是否启用 DeerFlow 规划模式
+        type: boolean
+        required: false
+        default: false
+      - name: subagent-enabled
+        label:
+          en_US: Enable Subagents
+          zh_Hans: 启用子代理
+        description:
+          en_US: Whether to enable parallel subagent execution
+          zh_Hans: 是否启用并行子代理执行
+        type: boolean
+        required: false
+        default: false
+      - name: max-concurrent-subagents
+        label:
+          en_US: Max Concurrent Subagents
+          zh_Hans: 最大并发子代理数
+        description:
+          en_US: Maximum number of concurrent subagents (only effective when subagents are enabled)
+          zh_Hans: 最大并发子代理数（仅在启用子代理时生效）
+        type: integer
+        required: false
+        default: 3
+      - name: timeout
+        label:
+          en_US: Timeout
+          zh_Hans: 超时时间
+        description:
+          en_US: Request timeout in seconds (DeerFlow runs may take a long time)
+          zh_Hans: 请求超时时间（秒），DeerFlow 运行可能耗时较长
+        type: integer
+        required: false
+        default: 300
+      - name: recursion-limit
+        label:
+          en_US: Recursion Limit
+          zh_Hans: 递归上限
+        description:
+          en_US: LangGraph recursion limit for a single run
+          zh_Hans: 单次运行的 LangGraph 递归上限
+        type: integer
+        required: false
+        default: 1000

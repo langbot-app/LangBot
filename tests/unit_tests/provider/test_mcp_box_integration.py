@@ -561,6 +561,42 @@ class TestGetRuntimeInfoDict:
         assert info['box_session_id'] == 'mcp-shared'
         assert info['box_enabled'] is True
 
+    def test_transient_test_session_is_isolated_from_shared(self, mcp_module):
+        """A transient test session (config-page "test", no persisted UUID)
+        must NOT share the live "mcp-shared" Box session. Regression: a failing
+        test churned the shared session and tore down healthy live servers."""
+        ap = _make_ap()
+        ap.box_service.available = True
+        transient = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'gen-uuid-123',
+                'mode': 'stdio',
+                'command': 'uvx',
+                'args': ['mcp-server-time'],
+                '_transient': True,
+            },
+            ap=ap,
+        )
+        live = _make_session(
+            mcp_module,
+            {
+                'name': 'time',
+                'uuid': 'real-uuid',
+                'mode': 'stdio',
+                'command': 'uvx',
+                'args': ['mcp-server-time'],
+            },
+            ap=ap,
+        )
+        assert transient.is_transient is True
+        assert live.is_transient is False
+        # Isolated session id for the test, shared for the live server.
+        assert transient._build_box_session_id() == 'mcp-test-gen-uuid-123'
+        assert live._build_box_session_id() == 'mcp-shared'
+        assert transient._build_box_session_id() != live._build_box_session_id()
+
     def test_stdio_session_refuses_when_box_unavailable(self, mcp_module):
         """Policy: when Box is configured but unavailable (disabled in config
         OR connection failed), stdio MCP servers are NOT treated as box-stdio.

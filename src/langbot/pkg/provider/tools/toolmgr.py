@@ -84,13 +84,19 @@ class ToolManager:
         return tools
 
     async def execute_func_call(self, name: str, parameters: dict, query: pipeline_query.Query) -> typing.Any:
+        from langbot.pkg.telemetry import features as telemetry_features
+
         if await self.native_tool_loader.has_tool(name):
+            telemetry_features.increment(query, 'tool_calls', 'native')
             return await self.native_tool_loader.invoke_tool(name, parameters, query)
         if await self.plugin_tool_loader.has_tool(name):
+            telemetry_features.increment(query, 'tool_calls', 'plugin')
             return await self.plugin_tool_loader.invoke_tool(name, parameters, query)
         if await self.mcp_tool_loader.has_tool(name):
+            telemetry_features.increment(query, 'tool_calls', 'mcp')
             return await self.mcp_tool_loader.invoke_tool(name, parameters, query)
         if await self.skill_tool_loader.has_tool(name):
+            telemetry_features.increment(query, 'tool_calls', 'skill')
             return await self.skill_tool_loader.invoke_tool(name, parameters, query)
         raise ValueError(f'未找到工具: {name}')
 

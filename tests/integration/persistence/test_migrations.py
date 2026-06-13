@@ -104,7 +104,7 @@ class TestSQLiteMigrationUpgrade:
         rev = await get_alembic_current(sqlite_engine)
         assert rev is not None, "Expected a revision after upgrade"
         # Head should be the latest migration
-        assert rev.startswith('0004'), f"Expected head to be 0004_*, got {rev}"
+        assert rev.startswith('0005'), f"Expected head to be 0005_*, got {rev}"
 
     @pytest.mark.asyncio
     async def test_upgrade_idempotent(self, sqlite_engine):

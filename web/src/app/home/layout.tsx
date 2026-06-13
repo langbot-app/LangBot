@@ -42,6 +42,7 @@ import {
   PluginInstallTaskProvider,
   PluginInstallProgressDialog,
 } from '@/app/home/plugins/components/plugin-install-task';
+import { setDocumentTitle } from '@/hooks/useDocumentTitle';
 
 // Routes that belong to the "Extensions" section
 const EXTENSIONS_ROUTES = [
@@ -50,6 +51,28 @@ const EXTENSIONS_ROUTES = [
   '/home/mcp',
   '/home/skills',
   '/home/plugin-pages',
+];
+
+// Map a /home route to the i18n key for its type-level title. Used as a robust
+// fallback for the document title on direct page loads, before the sidebar's
+// onSelectedChange has populated the local `title` state. Detail routes reuse
+// the section key (prefix match), e.g. /home/mcp?id=... -> mcp.title.
+const HOME_TITLE_KEYS: { match: (path: string) => boolean; key: string }[] = [
+  { match: (p) => p.startsWith('/home/monitoring'), key: 'monitoring.title' },
+  { match: (p) => p.startsWith('/home/bots'), key: 'bots.title' },
+  { match: (p) => p.startsWith('/home/pipelines'), key: 'pipelines.title' },
+  {
+    match: (p) => p.startsWith('/home/add-extension'),
+    key: 'sidebar.addExtension',
+  },
+  { match: (p) => p.startsWith('/home/extensions'), key: 'plugins.title' },
+  { match: (p) => p.startsWith('/home/mcp'), key: 'mcp.title' },
+  { match: (p) => p.startsWith('/home/knowledge'), key: 'knowledge.title' },
+  { match: (p) => p.startsWith('/home/skills'), key: 'skills.title' },
+  {
+    match: (p) => p.startsWith('/home/plugin-pages'),
+    key: 'sidebar.pluginPages',
+  },
 ];
 
 function isExtensionsRoute(pathname: string): boolean {
@@ -146,6 +169,20 @@ function HomeLayoutInner({ children }: { children: React.ReactNode }) {
     ? t('sidebar.extensions')
     : t('sidebar.home');
   const sectionLink = isExtensions ? '/home/extensions' : '/home/monitoring';
+
+  // Drive the browser tab title for the /home section. The type-level label
+  // prefers the sidebar-provided `title`, falling back to a route-derived key on
+  // direct page loads. When a sub-entity (plugin / MCP / pipeline / KB / skill)
+  // is open, its name is prepended: "<entity> · <type> · LangBot".
+  useEffect(() => {
+    const routeEntry = HOME_TITLE_KEYS.find((e) => e.match(pathname));
+    const fallbackType =
+      routeEntry && t(routeEntry.key) !== routeEntry.key
+        ? t(routeEntry.key)
+        : null;
+    const typeLabel = title || fallbackType;
+    setDocumentTitle(detailEntityName, typeLabel);
+  }, [pathname, title, detailEntityName, t]);
 
   return (
     <SidebarProvider>

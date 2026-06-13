@@ -153,6 +153,7 @@ def make_app(
     host_root: str = '',
     workspace_quota_mb: int | None = None,
     enabled: bool = True,
+    force_box_session_id_template: str = '',
 ):
     box_config = {
         'enabled': enabled,
@@ -171,7 +172,12 @@ def make_app(
 
     return SimpleNamespace(
         logger=logger,
-        instance_config=SimpleNamespace(data={'box': box_config}),
+        instance_config=SimpleNamespace(
+            data={
+                'box': box_config,
+                'system': {'limitation': {'force_box_session_id_template': force_box_session_id_template}},
+            }
+        ),
     )
 
 
@@ -188,6 +194,66 @@ async def test_box_service_without_explicit_client_initializes_internal_connecto
 
     assert service.client is connector.client
     connector.initialize.assert_awaited_once()
+
+
+class TestSharesFilesystemWithBox:
+    """``shares_filesystem_with_box`` must reflect the real LangBot<->Box
+    filesystem topology, which is derived from the connector transport:
+
+    - stdio (local child process) → shared filesystem → True
+    - WebSocket (Docker / sidecar / --standalone-box / remote) → separated → False
+
+    This drives whether LangBot validates Box-reported skill paths locally.
+    Getting it wrong silently drops every skill in separated deployments.
+    """
+
+    def test_true_for_stdio_connector(self, monkeypatch: pytest.MonkeyPatch):
+        # Non-Docker Unix, no endpoint, not standalone → stdio transport.
+        monkeypatch.setattr('langbot.pkg.utils.platform.get_platform', lambda: 'linux')
+        monkeypatch.setattr('langbot.pkg.utils.platform.standalone_box', False)
+
+        service = BoxService(make_app(Mock()))
+
+        assert service._runtime_connector is not None
+        assert service._runtime_connector.uses_websocket() is False
+        assert service.shares_filesystem_with_box is True
+
+    def test_false_for_websocket_connector_via_endpoint(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr('langbot.pkg.utils.platform.get_platform', lambda: 'linux')
+        monkeypatch.setattr('langbot.pkg.utils.platform.standalone_box', False)
+        app = make_app(Mock())
+        app.instance_config.data['box']['runtime']['endpoint'] = 'ws://pod-x-box:5410'
+
+        service = BoxService(app)
+
+        assert service._runtime_connector is not None
+        assert service._runtime_connector.uses_websocket() is True
+        assert service.shares_filesystem_with_box is False
+
+    def test_false_for_websocket_connector_in_docker(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr('langbot.pkg.utils.platform.get_platform', lambda: 'docker')
+        monkeypatch.setattr('langbot.pkg.utils.platform.standalone_box', False)
+
+        service = BoxService(make_app(Mock()))
+
+        assert service.shares_filesystem_with_box is False
+
+    def test_false_when_client_injected_without_connector(self):
+        # Injected client (no connector) → unknown topology → conservative False
+        # so LangBot never wrongly drops Box-reported skills.
+        service = BoxService(make_app(Mock()), client=Mock(spec=BoxRuntimeClient))
+
+        assert service._runtime_connector is None
+        assert service.shares_filesystem_with_box is False
+
+    def test_explicit_override_wins(self):
+        service = BoxService(make_app(Mock()), client=Mock(spec=BoxRuntimeClient))
+
+        service._shares_filesystem_with_box_override = True
+        assert service.shares_filesystem_with_box is True
+
+        service._shares_filesystem_with_box_override = False
+        assert service.shares_filesystem_with_box is False
 
 
 @pytest.mark.asyncio
@@ -300,6 +366,69 @@ async def test_box_service_session_id_falls_back_to_query_id_for_synthetic_queri
     assert result['session_id'] == 'query_7'
     assert result['ok'] is True
     assert backend.start_calls == ['query_7']
+
+
+@pytest.mark.asyncio
+async def test_box_service_forced_global_scope_overrides_pipeline_template():
+    """SaaS guard: a non-empty ``force_box_session_id_template`` pins every
+    query to one shared sandbox regardless of the pipeline's own scope."""
+    logger = Mock()
+    backend = FakeBackend(logger)
+    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
+    service = BoxService(
+        make_app(logger, force_box_session_id_template='{global}'),
+        client=_InProcessBoxRuntimeClient(logger, runtime),
+    )
+    await service.initialize()
+
+    # Two distinct callers that would otherwise get separate sandboxes.
+    q1 = pipeline_query.Query.model_construct(query_id=1, launcher_type='group', launcher_id='room-1')
+    q2 = pipeline_query.Query.model_construct(query_id=2, launcher_type='person', launcher_id='alice')
+
+    r1 = await service.execute_tool({'command': 'pwd'}, q1)
+    r2 = await service.execute_tool({'command': 'pwd'}, q2)
+
+    assert r1['session_id'] == 'global'
+    assert r2['session_id'] == 'global'
+    # Only one sandbox was ever started — the shared global one.
+    assert backend.start_calls == ['global']
+
+
+def test_box_service_forced_template_ignores_pipeline_config():
+    """The forced template wins even when the pipeline explicitly sets a
+    per-user scope — proving the override is not bypassable via pipeline config."""
+    logger = Mock()
+    service = BoxService(
+        make_app(logger, force_box_session_id_template='{global}'),
+        client=Mock(spec=BoxRuntimeClient),
+    )
+    query = pipeline_query.Query.model_construct(
+        query_id=7,
+        launcher_type='person',
+        launcher_id='test_user',
+        sender_id='test_user',
+        pipeline_config={'ai': {'local-agent': {'box-session-id-template': '{launcher_type}_{launcher_id}_{sender_id}'}}},
+    )
+
+    assert service.resolve_box_session_id(query) == 'global'
+
+
+def test_box_service_empty_forced_template_respects_pipeline_config():
+    """An empty/whitespace forced template is a no-op: the pipeline's own
+    scope template is honoured (default non-SaaS behaviour)."""
+    logger = Mock()
+    service = BoxService(
+        make_app(logger, force_box_session_id_template='   '),
+        client=Mock(spec=BoxRuntimeClient),
+    )
+    query = pipeline_query.Query.model_construct(
+        query_id=7,
+        launcher_type='group',
+        launcher_id='room-1',
+        pipeline_config={'ai': {'local-agent': {'box-session-id-template': '{launcher_type}_{launcher_id}'}}},
+    )
+
+    assert service.resolve_box_session_id(query) == 'group_room-1'
 
 
 @pytest.mark.asyncio
@@ -1342,11 +1471,16 @@ class TestBuildSkillExtraMounts:
     the backend never sees a bad mount.
     """
 
-    def _make_service(self, logger, skills):
+    def _make_service(self, logger, skills, *, shares_filesystem=True):
         app = make_app(logger)
         app.skill_mgr = SimpleNamespace(skills=skills)
         client = Mock(spec=BoxRuntimeClient)
-        return BoxService(app, client=client)
+        service = BoxService(app, client=client)
+        # Tests construct BoxService with an injected client (no connector), so
+        # set the topology explicitly. Most cases exercise the shared-fs (local
+        # stdio) path where local package_root validation applies.
+        service._shares_filesystem_with_box_override = shares_filesystem
+        return service
 
     def test_skips_skill_with_missing_package_root(self):
         logger = Mock()
@@ -1373,6 +1507,30 @@ class TestBuildSkillExtraMounts:
                 for call in logger.warning.call_args_list
             )
 
+    def test_trusts_box_paths_when_filesystem_not_shared(self):
+        """In separated deployments (Docker Compose, k8s sidecar,
+        --standalone-box, remote endpoint) the Box runtime owns its own
+        filesystem. package_root values it reports are NOT resolvable on the
+        LangBot side, so LangBot must trust them rather than dropping every
+        skill via a local isdir() check."""
+        logger = Mock()
+        skills = {
+            'a': {'name': 'a', 'package_root': '/box/skills/a'},
+            'b': {'name': 'b', 'package_root': '/box/skills/b'},
+        }
+        service = self._make_service(logger, skills, shares_filesystem=False)
+
+        mounts = service.build_skill_extra_mounts(make_query())
+
+        assert mounts == [
+            {'host_path': '/box/skills/a', 'mount_path': '/workspace/.skills/a', 'mode': 'rw'},
+            {'host_path': '/box/skills/b', 'mount_path': '/workspace/.skills/b', 'mode': 'rw'},
+        ]
+        # No skill is dropped, so no "missing" warning should be logged.
+        assert not any(
+            'package_root missing' in str(call.args[0]) for call in logger.warning.call_args_list
+        )
+
     def test_skips_skill_with_empty_package_root(self):
         logger = Mock()
         skills = {
@@ -1380,6 +1538,14 @@ class TestBuildSkillExtraMounts:
             'whitespace': {'name': 'whitespace', 'package_root': '   '},
         }
         service = self._make_service(logger, skills)
+
+        assert service.build_skill_extra_mounts(make_query()) == []
+
+    def test_empty_package_root_skipped_even_when_not_shared(self):
+        """An empty package_root is always invalid regardless of topology."""
+        logger = Mock()
+        skills = {'no_root': {'name': 'no_root', 'package_root': ''}}
+        service = self._make_service(logger, skills, shares_filesystem=False)
 
         assert service.build_skill_extra_mounts(make_query()) == []
 
