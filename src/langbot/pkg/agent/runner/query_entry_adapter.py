@@ -27,6 +27,7 @@ from .host_models import (
     StatePolicy,
     DeliveryPolicy,
 )
+from .config_migration import ConfigMigration
 from . import events as runner_events
 
 
@@ -42,6 +43,7 @@ class QueryEntryAdapter:
     INTERNAL_PREFIX = '_'
     SENSITIVE_PATTERNS = ('secret', 'token', 'key', 'password', 'credential', 'api_key', 'apikey')
     PERMISSION_VARS = ('_pipeline_bound_plugins', '_authorized', '_permission')
+    EVENT_DATA_MAX_STRING_BYTES = 512
 
     @classmethod
     def query_to_event(
@@ -103,8 +105,7 @@ class QueryEntryAdapter:
     ) -> AgentConfig:
         """Project the current Pipeline config container into target Agent config."""
         pipeline_config = query.pipeline_config or {}
-        ai_config = pipeline_config.get('ai', {})
-        runner_config = ai_config.get('runner_config', {}).get(runner_id, {})
+        runner_config = ConfigMigration.resolve_runner_config(pipeline_config, runner_id)
         agent_id = getattr(query, 'pipeline_uuid', None)
 
         # Build resource policy from current config
@@ -199,12 +200,13 @@ class QueryEntryAdapter:
         event_data: dict[str, typing.Any] = {}
         if message_event and hasattr(message_event, 'model_dump'):
             try:
-                event_data = message_event.model_dump(mode='json')
+                raw_event_data = message_event.model_dump(mode='json')
             except TypeError:
-                event_data = message_event.model_dump()
+                raw_event_data = message_event.model_dump()
             except Exception:
-                event_data = {}
-            event_data.pop('source_platform_object', None)
+                raw_event_data = {}
+            if isinstance(raw_event_data, dict):
+                event_data = cls._compact_event_data(raw_event_data)
 
         source_event_type = None
         if message_event:
@@ -230,6 +232,25 @@ class QueryEntryAdapter:
             source_event_type=source_event_type,
             data=event_data,
         )
+
+    @classmethod
+    def _compact_event_data(
+        cls,
+        event_data: dict[str, typing.Any],
+    ) -> dict[str, typing.Any]:
+        """Keep only small scalar source-event metadata in event.data."""
+        compact: dict[str, typing.Any] = {}
+        for key, value in event_data.items():
+            if key == 'source_platform_object' or key.startswith('_'):
+                continue
+            if value is None or isinstance(value, (bool, int, float)):
+                compact[key] = value
+                continue
+            if isinstance(value, str):
+                if len(value.encode('utf-8')) <= cls.EVENT_DATA_MAX_STRING_BYTES:
+                    compact[key] = value
+                continue
+        return compact
 
     @classmethod
     def _build_scoped_event_id(
@@ -430,6 +451,18 @@ class QueryEntryAdapter:
         import uuid
 
         attachments: list[dict[str, typing.Any]] = []
+        seen_keys: dict[tuple[str, str, str], set[str]] = {}
+
+        def add_attachment(attachment: dict[str, typing.Any]) -> None:
+            key = cls._attachment_dedupe_key(attachment)
+            if key is not None:
+                source = str(attachment.get('source') or '')
+                sources = seen_keys.setdefault(key, set())
+                if source and sources and source not in sources:
+                    return
+                if source:
+                    sources.add(source)
+            attachments.append(attachment)
 
         for elem in contents:
             elem_type = elem.get('type')
@@ -437,21 +470,21 @@ class QueryEntryAdapter:
 
             if elem_type == 'image_url':
                 image_url = elem.get('image_url') or {}
-                attachments.append({
+                add_attachment({
                     'artifact_id': artifact_id,
                     'artifact_type': 'image',
                     'source': 'url',
                     'url': image_url.get('url') if isinstance(image_url, dict) else str(image_url),
                 })
             elif elem_type == 'image_base64':
-                attachments.append({
+                add_attachment({
                     'artifact_id': artifact_id,
                     'artifact_type': 'image',
                     'source': 'base64',
                     'content': elem.get('image_base64'),
                 })
             elif elem_type == 'file_url':
-                attachments.append({
+                add_attachment({
                     'artifact_id': artifact_id,
                     'artifact_type': 'file',
                     'source': 'url',
@@ -459,7 +492,7 @@ class QueryEntryAdapter:
                     'name': elem.get('file_name'),
                 })
             elif elem_type == 'file_base64':
-                attachments.append({
+                add_attachment({
                     'artifact_id': artifact_id,
                     'artifact_type': 'file',
                     'source': 'base64',
@@ -478,31 +511,55 @@ class QueryEntryAdapter:
                 artifact_id = str(uuid.uuid4())  # Generate unique ID
 
                 if isinstance(component, platform_message.Image):
-                    attachments.append({
+                    image_id = component.image_id or None
+                    image_url = component.url or None
+                    image_base64 = component.base64 or None
+                    add_attachment({
                         'artifact_id': artifact_id,
                         'artifact_type': 'image',
                         'source': 'message_chain',
-                        'id': component.image_id or None,
-                        'url': component.url or None,
+                        'id': image_id,
+                        'url': image_url,
+                        'content': image_base64,
                     })
                 elif isinstance(component, platform_message.File):
-                    attachments.append({
+                    add_attachment({
                         'artifact_id': artifact_id,
                         'artifact_type': 'file',
                         'source': 'message_chain',
                         'id': component.id or None,
                         'name': component.name or None,
+                        'url': component.url or None,
+                        'content': component.base64 or None,
                     })
                 elif isinstance(component, platform_message.Voice):
-                    attachments.append({
+                    add_attachment({
                         'artifact_id': artifact_id,
                         'artifact_type': 'voice',
                         'source': 'message_chain',
                         'id': component.voice_id or None,
                         'url': component.url or None,
+                        'content': component.base64 or None,
                     })
 
         return attachments
+
+    @classmethod
+    def _attachment_dedupe_key(
+        cls,
+        attachment: dict[str, typing.Any],
+    ) -> tuple[str, str, str] | None:
+        """Return a stable key for the same attachment across content sources."""
+        artifact_type = attachment.get('artifact_type')
+        if not artifact_type:
+            return None
+        for field in ('id', 'url', 'content'):
+            value = attachment.get(field)
+            if value:
+                if field == 'content':
+                    value = hashlib.sha256(str(value).encode('utf-8')).hexdigest()
+                return str(artifact_type), field, str(value)
+        return None
 
     @classmethod
     def _build_delivery_context(

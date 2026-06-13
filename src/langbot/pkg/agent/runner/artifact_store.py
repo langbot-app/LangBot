@@ -8,6 +8,7 @@ import uuid
 import base64
 import os
 
+import aiofiles
 import sqlalchemy
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.orm import sessionmaker
@@ -17,6 +18,23 @@ from ...entity.persistence.bstorage import BinaryStorage
 
 _FILE_ARTIFACT_METADATA_KEY = '_langbot_file_artifact'
 _ARTIFACT_THREAD_METADATA_KEY = '_langbot_thread_id'
+UTC = datetime.timezone.utc
+
+
+def _utc_now() -> datetime.datetime:
+    return datetime.datetime.now(UTC)
+
+
+def _as_utc(value: datetime.datetime) -> datetime.datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _datetime_to_epoch(value: datetime.datetime | None) -> int | None:
+    if value is None:
+        return None
+    return int(_as_utc(value).timestamp())
 
 
 class ArtifactStore:
@@ -191,7 +209,7 @@ class ArtifactStore:
                 runner_id=runner_id,
                 bot_id=bot_id,
                 workspace_id=workspace_id,
-                created_at=datetime.datetime.utcnow(),
+                created_at=_utc_now(),
                 expires_at=expires_at,
                 metadata_json=json.dumps(metadata_payload) if metadata_payload else None,
             )
@@ -336,7 +354,7 @@ class ArtifactStore:
             }
 
         if storage_type == 'file':
-            return self._read_file_storage(record, artifact_id, offset, limit)
+            return await self._read_file_storage(record, artifact_id, offset, limit)
 
         # For other storage types, return storage reference
         # (caller can use file_key for chunked transfer)
@@ -363,7 +381,7 @@ class ArtifactStore:
         backing lifecycle remains owned by the storage provider.
         """
         if now is None:
-            now = datetime.datetime.utcnow()
+            now = _utc_now()
 
         async with self._session_factory() as session:
             result = await session.execute(
@@ -416,7 +434,7 @@ class ArtifactStore:
                 return None
             return row.value
 
-    def _read_file_storage(
+    async def _read_file_storage(
         self,
         record: AgentArtifact,
         artifact_id: str,
@@ -441,9 +459,9 @@ class ArtifactStore:
         if offset >= file_size:
             content = b''
         else:
-            with open(real_path, 'rb') as f:
-                f.seek(offset)
-                content = f.read(limit)
+            async with aiofiles.open(real_path, 'rb') as f:
+                await f.seek(offset)
+                content = await f.read(limit)
 
         return {
             'artifact_id': artifact_id,
@@ -491,8 +509,8 @@ class ArtifactStore:
         if row.expires_at is None:
             return False
         if now is None:
-            now = datetime.datetime.utcnow()
-        return row.expires_at <= now
+            now = _utc_now()
+        return _as_utc(row.expires_at) <= _as_utc(now)
 
     def _row_to_public_dict(self, row: AgentArtifact) -> dict[str, typing.Any]:
         """Convert an AgentArtifact row to public dict.
@@ -511,7 +529,7 @@ class ArtifactStore:
             'conversation_id': row.conversation_id,
             'run_id': row.run_id,
             'runner_id': row.runner_id,
-            'created_at': int(row.created_at.timestamp()) if row.created_at else None,
-            'expires_at': int(row.expires_at.timestamp()) if row.expires_at else None,
+            'created_at': _datetime_to_epoch(row.created_at),
+            'expires_at': _datetime_to_epoch(row.expires_at),
             'metadata': self._public_metadata(row.metadata_json),
         }

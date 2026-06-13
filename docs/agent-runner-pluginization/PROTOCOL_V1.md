@@ -324,6 +324,7 @@ class InlineContextPolicy(BaseModel):
     reason: str | None = None
 
 class ContextAPICapabilities(BaseModel):
+    prompt_get: bool = False
     history_page: bool = False
     history_search: bool = False
     event_get: bool = False
@@ -473,8 +474,8 @@ Host 必须校验 `state.updated` 的 scope、key、value 大小和 JSON 可序�
 
 ```python
 # Model
-await api.invoke_llm(model_id, messages, funcs=None, extra_args=None)
-async for chunk in api.invoke_llm_stream(model_id, messages, funcs=None, extra_args=None):
+await api.invoke_llm(llm_model_uuid, messages, funcs=None, extra_args=None)
+async for chunk in api.invoke_llm_stream(llm_model_uuid, messages, funcs=None, extra_args=None):
     ...
 await api.invoke_rerank(rerank_model_id, query, documents, top_k=None)
 
@@ -486,13 +487,14 @@ await api.call_tool(tool_name, parameters)
 await api.retrieve_knowledge(kb_id, query_text, top_k=5, filters=None)
 
 # History（返回 Transcript projection，不返回原始平台 payload）
+await api.get_prompt()
 await api.history_page(conversation_id=None, before_cursor=None, after_cursor=None,
                        limit=50, direction="backward", include_artifacts=False)
 await api.history_search(query, filters=None, top_k=10)
 
 # Event（返回稳定 event envelope 或受限 raw ref，不默认返回大 payload）
 await api.event_get(event_id)
-await api.event_page(before_cursor=None, limit=50)
+await api.event_page(conversation_id=None, event_types=None, before_cursor=None, limit=50)
 await api.steering_pull(mode="all", limit=None)
 
 # Artifact（必须支持大小限制、MIME 校验、过期时间和授权范围）
@@ -502,7 +504,7 @@ await api.artifact_read_range(artifact_id, offset=0, length=65536)
 
 # State / Storage
 await api.state_get(scope, key);   await api.state_set(scope, key, value);   await api.state_delete(scope, key)
-await api.state_list(scope, prefix=None)
+await api.state_list(scope, prefix=None, limit=100)
 await api.get_plugin_storage(key); await api.set_plugin_storage(key, value); await api.delete_plugin_storage(key)
 await api.get_plugin_storage_keys()
 await api.get_workspace_storage(key); await api.set_workspace_storage(key, value); await api.delete_workspace_storage(key)
@@ -512,6 +514,15 @@ await api.get_workspace_storage_keys()
 await api.get_file(file_key)
 await api.get_langbot_version()
 ```
+
+`invoke_llm()` / `invoke_llm_stream()` 的第一个参数在 SDK 中命名为
+`llm_model_uuid`，wire payload 字段也是 `llm_model_uuid`。该值对 runner
+仍是 opaque identifier，不应解析其内部格式。
+
+`get_prompt()` 返回当前 query-backed run 的 Host effective prompt messages：
+`list[Message]` 的 JSON 形式。该能力只在 `ctx.context.available_apis.prompt_get`
+为 true 时可用；没有 query 缓存、prompt 已过期或非 query entry run 时 Host
+可以返回错误或空列表。Runner 应在不可用时回退到自己的 config/prompt 策略。
 
 `steering_pull(mode="all")` 是推荐默认：Host 按 claim 顺序返回全部 pending steering 输入并清空对应队列。`mode="one-at-a-time"` 仅用于 runner 主动节流，每次返回一条。Host 不合并多条用户消息；runner 负责在 turn 边界决定模型侧格式。
 

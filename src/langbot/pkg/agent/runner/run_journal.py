@@ -165,7 +165,11 @@ class AgentRunJournal:
             input_json=input_json,
             run_id=run_id,
             runner_id=runner_id,
-            event_time=datetime.datetime.fromtimestamp(event.event_time) if event.event_time else None,
+            event_time=(
+                datetime.datetime.fromtimestamp(event.event_time, datetime.timezone.utc)
+                if event.event_time
+                else None
+            ),
             metadata=metadata,
         )
 
@@ -468,7 +472,10 @@ class AgentRunJournal:
             raw_event_time = event.get('event_time')
             if raw_event_time:
                 try:
-                    event_time = datetime.datetime.fromtimestamp(raw_event_time)
+                    event_time = datetime.datetime.fromtimestamp(
+                        raw_event_time,
+                        datetime.timezone.utc,
+                    )
                 except (TypeError, ValueError, OSError):
                     event_time = None
 

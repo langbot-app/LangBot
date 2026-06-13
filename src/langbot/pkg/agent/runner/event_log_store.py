@@ -13,6 +13,23 @@ from sqlalchemy.orm import sessionmaker
 from ...entity.persistence.event_log import EventLog
 
 
+UTC = datetime.timezone.utc
+
+
+def _utc_now() -> datetime.datetime:
+    return datetime.datetime.now(UTC)
+
+
+def _datetime_to_epoch(value: datetime.datetime | None) -> int | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    else:
+        value = value.astimezone(UTC)
+    return int(value.timestamp())
+
+
 class EventLogStore:
     """Store for EventLog records.
 
@@ -107,7 +124,7 @@ class EventLogStore:
                 run_id=run_id,
                 runner_id=runner_id,
                 metadata_json=json.dumps(metadata) if metadata else None,
-                created_at=datetime.datetime.utcnow(),
+                created_at=_utc_now(),
             )
             session.add(event)
             await session.commit()
@@ -277,7 +294,7 @@ class EventLogStore:
             'id': row.id,
             'event_id': row.event_id,
             'event_type': row.event_type,
-            'event_time': int(row.event_time.timestamp()) if row.event_time else None,
+            'event_time': _datetime_to_epoch(row.event_time),
             'source': row.source,
             'bot_id': row.bot_id,
             'workspace_id': row.workspace_id,
@@ -293,6 +310,6 @@ class EventLogStore:
             'raw_ref': row.raw_ref,
             'run_id': row.run_id,
             'runner_id': row.runner_id,
-            'created_at': int(row.created_at.timestamp()) if row.created_at else None,
+            'created_at': _datetime_to_epoch(row.created_at),
             'metadata': json.loads(row.metadata_json) if row.metadata_json else {},
         }

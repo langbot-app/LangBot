@@ -14,6 +14,23 @@ from ...entity.persistence.transcript import Transcript
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
 
 
+UTC = datetime.timezone.utc
+
+
+def _utc_now() -> datetime.datetime:
+    return datetime.datetime.now(UTC)
+
+
+def _datetime_to_epoch(value: datetime.datetime | None) -> int | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    else:
+        value = value.astimezone(UTC)
+    return int(value.timestamp())
+
+
 class TranscriptStore:
     """Store for Transcript records.
 
@@ -94,7 +111,7 @@ class TranscriptStore:
                 seq=0,
                 run_id=run_id,
                 runner_id=runner_id,
-                created_at=datetime.datetime.utcnow(),
+                created_at=_utc_now(),
                 metadata_json=json.dumps(metadata) if metadata else None,
             )
             session.add(item)
@@ -371,7 +388,7 @@ class TranscriptStore:
             'content_json': json.loads(row.content_json) if row.content_json else None,
             'seq': row.seq,
             'cursor': str(row.seq),
-            'created_at': int(row.created_at.timestamp()) if row.created_at else None,
+            'created_at': _datetime_to_epoch(row.created_at),
             'metadata': json.loads(row.metadata_json) if row.metadata_json else {},
         }
 

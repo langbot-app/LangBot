@@ -211,19 +211,23 @@ async def _validate_agent_run_session(
         )
 
     session_plugin_identity = session.get('plugin_identity')
-    if session_plugin_identity:
-        if not caller_plugin_identity:
-            return None, handler.ActionResponse.error(
-                message=f'caller_plugin_identity is required for run_id {run_id}'
-            )
-        if caller_plugin_identity != session_plugin_identity:
-            ap.logger.warning(
-                f'{api_name}: caller_plugin_identity {caller_plugin_identity} '
-                f'does not match session plugin_identity {session_plugin_identity}'
-            )
-            return None, handler.ActionResponse.error(
-                message=f'Plugin identity mismatch for run_id {run_id}'
-            )
+    if not isinstance(session_plugin_identity, str) or not session_plugin_identity.strip():
+        ap.logger.warning(f'{api_name}: run_id {run_id} has no plugin_identity')
+        return None, handler.ActionResponse.error(
+            message=f'Run session {run_id} has no plugin_identity'
+        )
+    if not caller_plugin_identity:
+        return None, handler.ActionResponse.error(
+            message=f'caller_plugin_identity is required for run_id {run_id}'
+        )
+    if caller_plugin_identity != session_plugin_identity:
+        ap.logger.warning(
+            f'{api_name}: caller_plugin_identity {caller_plugin_identity} '
+            f'does not match session plugin_identity {session_plugin_identity}'
+        )
+        return None, handler.ActionResponse.error(
+            message=f'Plugin identity mismatch for run_id {run_id}'
+        )
 
     if api_capability:
         available_apis = _get_run_authorization(session).get('available_apis', {})
@@ -384,19 +388,25 @@ async def _validate_run_authorization(
         )
 
     session_plugin_identity = session.get('plugin_identity')
-    if session_plugin_identity:
-        if not caller_plugin_identity:
-            return None, handler.ActionResponse.error(
-                message=f'caller_plugin_identity is required for run_id {run_id}',
-            )
-        if caller_plugin_identity != session_plugin_identity:
-            ap.logger.warning(
-                f'{resource_type.upper()}: caller_plugin_identity {caller_plugin_identity} '
-                f'does not match session plugin_identity {session_plugin_identity}'
-            )
-            return None, handler.ActionResponse.error(
-                message=f'Plugin identity mismatch: caller {caller_plugin_identity} is not authorized for run_id {run_id}',
-            )
+    if not isinstance(session_plugin_identity, str) or not session_plugin_identity.strip():
+        ap.logger.warning(
+            f'{resource_type.upper()}: run_id {run_id} has no plugin_identity'
+        )
+        return None, handler.ActionResponse.error(
+            message=f'Run session {run_id} has no plugin_identity',
+        )
+    if not caller_plugin_identity:
+        return None, handler.ActionResponse.error(
+            message=f'caller_plugin_identity is required for run_id {run_id}',
+        )
+    if caller_plugin_identity != session_plugin_identity:
+        ap.logger.warning(
+            f'{resource_type.upper()}: caller_plugin_identity {caller_plugin_identity} '
+            f'does not match session plugin_identity {session_plugin_identity}'
+        )
+        return None, handler.ActionResponse.error(
+            message=f'Plugin identity mismatch: caller {caller_plugin_identity} is not authorized for run_id {run_id}',
+        )
 
     if not session_registry.is_resource_allowed(session, resource_type, resource_id, operation):
         ap.logger.warning(

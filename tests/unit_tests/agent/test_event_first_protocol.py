@@ -106,6 +106,28 @@ class TestQueryToEventEnvelope:
             "message_id": "source-message-1",
         }
 
+    def test_query_to_event_keeps_large_payloads_out_of_event_data(self, mock_query):
+        """Large or nested platform payloads should not be duplicated into event.data."""
+        source_event = Mock()
+        source_event.type = "platform.message.created"
+        source_event.time = 1700000000
+        source_event.sender = None
+        source_event.model_dump = Mock(return_value={
+            "type": "platform.message.created",
+            "message_id": "source-message-1",
+            "message_chain": [{"type": "Image", "base64": "data:image/png;base64," + ("a" * 1024)}],
+            "raw_text": "x" * 1024,
+            "source_platform_object": {"large": "payload"},
+        })
+        mock_query.message_event = source_event
+
+        event = QueryEntryAdapter.query_to_event(mock_query)
+
+        assert event.data == {
+            "type": "platform.message.created",
+            "message_id": "source-message-1",
+        }
+
     def test_query_to_event_handles_missing_message_chain(self, mock_query):
         """Test delivery context building when Query has no message_chain."""
         delattr(mock_query, "message_chain")
@@ -136,6 +158,29 @@ class TestQueryConfigToAgentConfig:
         )
 
         assert agent_config.runner_id == "plugin:author/plugin/runner"
+
+    def test_config_to_agent_config_uses_legacy_runner_config_migration(self, mock_query):
+        """Temporary query adapter must share the normal runner config resolver."""
+        mock_query.pipeline_config = {
+            "ai": {
+                "runner": {"runner": "local-agent"},
+                "local-agent": {
+                    "model": "model-primary",
+                    "knowledge-base": "kb-001",
+                },
+            }
+        }
+
+        agent_config = QueryEntryAdapter.config_to_agent_config(
+            mock_query,
+            "plugin:langbot/local-agent/default",
+        )
+
+        assert agent_config.runner_config["model"] == {
+            "primary": "model-primary",
+            "fallbacks": [],
+        }
+        assert agent_config.runner_config["knowledge-bases"] == ["kb-001"]
 
     def test_resolver_projects_agent_scope(self, mock_query):
         """Test binding scope projection through the resolver."""

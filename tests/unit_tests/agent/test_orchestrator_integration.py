@@ -275,6 +275,37 @@ def test_context_builder_includes_consumable_base64_attachments():
     assert input_data.attachments[1].name == "hello.txt"
 
 
+def test_context_builder_deduplicates_message_chain_attachments():
+    query = make_query()
+    query.user_message = None
+    query.message_chain = platform_message.MessageChain(
+        [platform_message.Image(base64="data:image/jpeg;base64,aGVsbG8=")]
+    )
+
+    input_data = QueryEntryAdapter._build_input(query)
+
+    assert [content.type for content in input_data.contents] == ["image_base64"]
+    assert len(input_data.attachments) == 1
+    assert input_data.attachments[0].artifact_type == "image"
+    assert input_data.attachments[0].content == "data:image/jpeg;base64,aGVsbG8="
+
+
+def test_context_builder_preserves_same_source_duplicate_attachments():
+    query = make_query()
+    query.user_message = provider_message.Message(
+        role="user",
+        content=[
+            provider_message.ContentElement.from_image_base64("data:image/png;base64,aGVsbG8="),
+            provider_message.ContentElement.from_image_base64("data:image/png;base64,aGVsbG8="),
+        ],
+    )
+    query.message_chain = platform_message.MessageChain([])
+
+    input_data = QueryEntryAdapter._build_input(query)
+
+    assert [attachment.artifact_type for attachment in input_data.attachments] == ["image", "image"]
+
+
 @pytest.fixture(autouse=True)
 async def clean_agent_state():
     """Reset all singleton stores and create a test database engine."""
@@ -544,6 +575,29 @@ async def test_orchestrator_unregisters_session_after_runner_failure(clean_agent
     context = plugin_connector.contexts[0]
     assert plugin_connector.sessions_during_run[0] is not None
     assert await get_session_registry().get(context["run_id"]) is None
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_unregisters_session_after_event_log_failure(clean_agent_state):
+    """Journal failures before runner invocation must not leave steerable sessions."""
+    db_engine = clean_agent_state
+    descriptor = make_descriptor()
+    plugin_connector = FakePluginConnector(
+        results=[
+            {
+                "type": "message.completed",
+                "data": {"message": {"role": "assistant", "content": "unused"}},
+            }
+        ]
+    )
+    orchestrator = AgentRunOrchestrator(FakeApplication(plugin_connector, db_engine), FakeRegistry(descriptor))
+    orchestrator.journal.write_event_log = AsyncMock(side_effect=RuntimeError("journal unavailable"))
+
+    with pytest.raises(RuntimeError, match="journal unavailable"):
+        [message async for message in orchestrator.run_from_query(make_query())]
+
+    assert plugin_connector.contexts == []
+    assert await get_session_registry().list_active_runs() == []
 
 
 @pytest.mark.asyncio

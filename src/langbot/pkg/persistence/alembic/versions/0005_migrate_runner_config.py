@@ -29,6 +29,26 @@ def _load_config(config_value):
     return None
 
 
+def _update_config(conn, table_name: str, pipeline_uuid: str, migrated_config: dict) -> None:
+    """Write JSON config using a dialect-compatible bind."""
+    config_json = json.dumps(migrated_config)
+    if conn.dialect.name == 'postgresql':
+        conn.execute(
+            sa.text(
+                f'UPDATE {table_name} '
+                'SET config = CAST(:config AS JSON) '
+                'WHERE uuid = :uuid'
+            ),
+            {'config': config_json, 'uuid': pipeline_uuid},
+        )
+        return
+
+    conn.execute(
+        sa.text(f'UPDATE {table_name} SET config = :config WHERE uuid = :uuid'),
+        {'config': config_json, 'uuid': pipeline_uuid},
+    )
+
+
 def upgrade() -> None:
     """Normalize existing pipeline config containers."""
     conn = op.get_bind()
@@ -56,10 +76,7 @@ def upgrade() -> None:
 
             # Only update if config changed
             if json.dumps(config, sort_keys=True) != json.dumps(migrated_config, sort_keys=True):
-                conn.execute(
-                    sa.text(f'UPDATE {table_name} SET config = :config WHERE uuid = :uuid'),
-                    {'config': json.dumps(migrated_config), 'uuid': pipeline_uuid},
-                )
+                _update_config(conn, table_name, pipeline_uuid, migrated_config)
         except Exception:
             # Skip invalid configs
             continue

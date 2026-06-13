@@ -103,40 +103,6 @@ class AgentRunOrchestrator:
 
         state_context = build_state_context(event, binding, descriptor)
         run_id = context['run_id']
-        await self._session_registry.register(
-            run_id=run_id,
-            runner_id=descriptor.id,
-            query_id=session_query_id,
-            plugin_identity=descriptor.get_plugin_id(),
-            resources=resources,
-            available_apis=context.get('context', {}).get('available_apis'),
-            conversation_id=event.conversation_id,
-            bot_id=event.bot_id,
-            workspace_id=event.workspace_id,
-            thread_id=event.thread_id,
-            state_policy={
-                'enable_state': binding.state_policy.enable_state,
-                'state_scopes': list(binding.state_policy.state_scopes),
-            },
-            state_context=state_context,
-        )
-
-        event_log_id = await self.journal.write_event_log(
-            event=event,
-            binding=binding,
-            run_id=run_id,
-            runner_id=descriptor.id,
-        )
-        await self.journal.register_input_artifacts(
-            event=event,
-            run_id=run_id,
-            runner_id=descriptor.id,
-        )
-        if event.event_type == 'message.received' and event.conversation_id:
-            await self.journal.write_user_transcript(
-                event=event,
-                event_log_id=event_log_id,
-            )
 
         pending_artifact_refs: list[dict[str, typing.Any]] = []
         seen_sequences: set[int] = set()
@@ -144,6 +110,41 @@ class AgentRunOrchestrator:
         assistant_transcript_written = False
 
         try:
+            await self._session_registry.register(
+                run_id=run_id,
+                runner_id=descriptor.id,
+                query_id=session_query_id,
+                plugin_identity=descriptor.get_plugin_id(),
+                resources=resources,
+                available_apis=context.get('context', {}).get('available_apis'),
+                conversation_id=event.conversation_id,
+                bot_id=event.bot_id,
+                workspace_id=event.workspace_id,
+                thread_id=event.thread_id,
+                state_policy={
+                    'enable_state': binding.state_policy.enable_state,
+                    'state_scopes': list(binding.state_policy.state_scopes),
+                },
+                state_context=state_context,
+            )
+
+            event_log_id = await self.journal.write_event_log(
+                event=event,
+                binding=binding,
+                run_id=run_id,
+                runner_id=descriptor.id,
+            )
+            await self.journal.register_input_artifacts(
+                event=event,
+                run_id=run_id,
+                runner_id=descriptor.id,
+            )
+            if event.event_type == 'message.received' and event.conversation_id:
+                await self.journal.write_user_transcript(
+                    event=event,
+                    event_log_id=event_log_id,
+                )
+
             async for result_dict in self.invoker.invoke(descriptor, context):
                 sequence = result_dict.get('sequence')
                 if sequence is not None:

@@ -22,7 +22,14 @@ class AgentBindingResolver:
         event: AgentEventEnvelope,
         agents: list[AgentConfig],
     ) -> AgentBinding:
-        """Resolve exactly one enabled Agent for the event."""
+        """Resolve exactly one enabled Agent for the event.
+
+        Callers that source agents from bot/workspace/global configuration must
+        pre-filter candidates to the event scope before calling this resolver.
+        The current AgentConfig model represents one already-selected product
+        Agent and does not carry enough scope metadata to make that decision
+        safely here.
+        """
         matches = [
             agent
             for agent in agents

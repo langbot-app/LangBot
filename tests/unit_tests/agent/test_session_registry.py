@@ -50,6 +50,20 @@ class TestSessionRegistryBasic:
         assert '_authorized_ids' not in result
 
     @pytest.mark.asyncio
+    async def test_register_requires_plugin_identity(self):
+        """Agent run sessions must always have an owning plugin identity."""
+        registry = AgentRunSessionRegistry()
+
+        with pytest.raises(ValueError, match='plugin_identity is required'):
+            await registry.register(
+                run_id='run_missing_identity',
+                runner_id='plugin:test/my-runner/default',
+                query_id=1,
+                plugin_identity='',
+                resources=make_resources(),
+            )
+
+    @pytest.mark.asyncio
     async def test_register_freezes_authorization_snapshot(self):
         """Register should freeze authorization data for the run."""
         registry = AgentRunSessionRegistry()

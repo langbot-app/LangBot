@@ -55,7 +55,7 @@ class Transcript(Base):
     """Artifact references as JSON string (list of ArtifactRef)."""
 
     # Sequence for cursor-based pagination
-    seq = sqlalchemy.Column(sqlalchemy.Integer, nullable=False, index=True)
+    seq = sqlalchemy.Column(sqlalchemy.Integer, nullable=False)
     """Monotonic cursor sequence for pagination."""
 
     # Context

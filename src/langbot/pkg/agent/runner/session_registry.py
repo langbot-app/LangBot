@@ -122,6 +122,9 @@ class AgentRunSessionRegistry:
             state_policy: State policy from binding (enable_state, state_scopes)
             state_context: Context for state API (scope_keys, binding_identity, etc.)
         """
+        if not isinstance(plugin_identity, str) or not plugin_identity.strip():
+            raise ValueError('plugin_identity is required for agent run sessions')
+
         now = int(time.time())
 
         available_apis = copy.deepcopy(available_apis or {})

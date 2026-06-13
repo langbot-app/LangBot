@@ -2024,6 +2024,75 @@ class TestCallerPluginIdentityValidation:
 
         await registry.unregister('run_no_caller_identity')
 
+    @pytest.mark.asyncio
+    async def test_session_missing_plugin_identity_denied(self):
+        """Malformed legacy sessions without plugin_identity fail closed."""
+        from langbot.pkg.agent.runner.session_registry import get_session_registry
+
+        registry = get_session_registry()
+        resources = make_resources(models=[{'model_id': 'model_001'}])
+        session = make_session(
+            run_id='run_missing_session_identity',
+            runner_id='plugin:test/runner/default',
+            plugin_identity='',
+            resources=resources,
+        )
+        async with registry._lock:
+            registry._sessions['run_missing_session_identity'] = session
+
+        from langbot.pkg.plugin.handler import _validate_run_authorization
+
+        mock_ap = MagicMock()
+        mock_ap.logger = MagicMock()
+
+        session, error = await _validate_run_authorization(
+            'run_missing_session_identity',
+            'model',
+            'model_001',
+            mock_ap,
+            caller_plugin_identity='test/runner',
+        )
+
+        assert session is None
+        assert error is not None
+        assert 'no plugin_identity' in error.message
+
+        await registry.unregister('run_missing_session_identity')
+
+    @pytest.mark.asyncio
+    async def test_pull_api_session_missing_plugin_identity_denied(self):
+        """Pull API validation also fails closed for missing session identity."""
+        from langbot.pkg.agent.runner.session_registry import get_session_registry
+
+        registry = get_session_registry()
+        session = make_session(
+            run_id='run_missing_pull_identity',
+            runner_id='plugin:test/runner/default',
+            plugin_identity='',
+            available_apis={'history_page': True},
+        )
+        async with registry._lock:
+            registry._sessions['run_missing_pull_identity'] = session
+
+        from langbot.pkg.plugin.handler import _validate_agent_run_session
+
+        mock_ap = MagicMock()
+        mock_ap.logger = MagicMock()
+
+        session, error = await _validate_agent_run_session(
+            'run_missing_pull_identity',
+            'test/runner',
+            mock_ap,
+            'HISTORY_PAGE',
+            'history_page',
+        )
+
+        assert session is None
+        assert error is not None
+        assert 'no plugin_identity' in error.message
+
+        await registry.unregister('run_missing_pull_identity')
+
 
 class TestBackwardCompatStorageNoRunId:
     """Tests for unscoped storage actions without run_id.
