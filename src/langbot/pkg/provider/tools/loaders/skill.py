@@ -10,6 +10,7 @@ if typing.TYPE_CHECKING:
     from langbot_plugin.api.entities.events import pipeline_query
 
 ACTIVATED_SKILLS_KEY = '_activated_skills'
+ACTIVATED_SKILL_NAMES_STATE_KEY = 'host.activated_skills'
 PIPELINE_BOUND_SKILLS_KEY = '_pipeline_bound_skills'
 SKILL_MOUNT_PREFIX = '/workspace/.skills'
 _SKILL_MOUNT_PATTERN = re.compile(r'/workspace/\.skills/([A-Za-z0-9_-]+)')
@@ -70,6 +71,116 @@ def register_activated_skill(query: pipeline_query.Query, skill_data: dict) -> N
     skill_name = str(skill_data.get('name', '') or '').strip()
     if skill_name and skill_name not in activated:
         activated[skill_name] = skill_data
+
+
+def _normalize_skill_names(value: typing.Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+
+    names: list[str] = []
+    for item in value:
+        skill_name = str(item or '').strip()
+        if skill_name and skill_name not in names:
+            names.append(skill_name)
+    return names
+
+
+def restore_activated_skills_from_state(
+    ap: app.Application,
+    query: pipeline_query.Query,
+    state: dict[str, dict[str, typing.Any]],
+) -> list[str]:
+    """Restore persisted activated skill names into Query variables.
+
+    The state value stores names only. Full skill metadata is rebuilt from the
+    current pipeline-visible skill cache so removed or unbound skills remain
+    unavailable to native exec/write/edit.
+    """
+    conversation_state = state.get('conversation', {}) if isinstance(state, dict) else {}
+    skill_names = _normalize_skill_names(conversation_state.get(ACTIVATED_SKILL_NAMES_STATE_KEY))
+    restored: list[str] = []
+    for skill_name in skill_names:
+        skill_data = get_visible_skill(ap, query, skill_name)
+        if skill_data is None:
+            continue
+        register_activated_skill(query, skill_data)
+        restored.append(skill_name)
+    return restored
+
+
+def _get_agent_run_authorization(query: pipeline_query.Query) -> dict[str, typing.Any] | None:
+    session = getattr(query, '_agent_run_session', None)
+    if not isinstance(session, dict):
+        return None
+    authorization = session.get('authorization')
+    return authorization if isinstance(authorization, dict) else None
+
+
+def _get_conversation_state_target(query: pipeline_query.Query) -> tuple[str, str, str, dict[str, typing.Any]] | None:
+    session = getattr(query, '_agent_run_session', None)
+    if not isinstance(session, dict):
+        return None
+
+    authorization = _get_agent_run_authorization(query)
+    if authorization is None:
+        return None
+
+    state_policy = authorization.get('state_policy') or {}
+    if not state_policy.get('enable_state', True):
+        return None
+    state_scopes = state_policy.get('state_scopes', ['conversation', 'actor'])
+    if 'conversation' not in state_scopes:
+        return None
+
+    state_context = authorization.get('state_context') or {}
+    scope_keys = state_context.get('scope_keys') or {}
+    scope_key = scope_keys.get('conversation')
+    if not scope_key:
+        return None
+
+    runner_id = str(session.get('runner_id') or 'unknown')
+    binding_identity = str(state_context.get('binding_identity') or 'unknown')
+    return scope_key, runner_id, binding_identity, state_context
+
+
+async def persist_activated_skill(ap: app.Application, query: pipeline_query.Query, skill_name: str) -> bool:
+    """Persist activated skill names for the current AgentRunner conversation.
+
+    Returns False when the call is outside an AgentRunner run or state policy
+    does not expose a conversation scope. The in-memory Query activation still
+    remains valid for the current turn.
+    """
+    target = _get_conversation_state_target(query)
+    if target is None:
+        return False
+
+    persistence_mgr = getattr(ap, 'persistence_mgr', None)
+    if persistence_mgr is None or not hasattr(persistence_mgr, 'get_db_engine'):
+        return False
+
+    from ....agent.runner.persistent_state_store import get_persistent_state_store
+
+    scope_key, runner_id, binding_identity, state_context = target
+    store = get_persistent_state_store(persistence_mgr.get_db_engine())
+    existing_names = _normalize_skill_names(await store.state_get(scope_key, ACTIVATED_SKILL_NAMES_STATE_KEY))
+    if skill_name not in existing_names:
+        existing_names.append(skill_name)
+
+    success, error = await store.state_set(
+        scope_key=scope_key,
+        state_key=ACTIVATED_SKILL_NAMES_STATE_KEY,
+        value=existing_names,
+        runner_id=runner_id,
+        binding_identity=binding_identity,
+        scope='conversation',
+        context=state_context,
+        logger=getattr(ap, 'logger', None),
+    )
+    if not success:
+        logger = getattr(ap, 'logger', None)
+        if logger is not None:
+            logger.warning(f'Failed to persist activated skill "{skill_name}": {error}')
+    return success
 
 
 def parse_skill_mount_path(sandbox_path: str) -> tuple[str | None, str]:
