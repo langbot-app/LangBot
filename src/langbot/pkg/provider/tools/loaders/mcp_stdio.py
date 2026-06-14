@@ -276,7 +276,7 @@ class BoxStdioSessionRuntime:
         # to delete them, so refresh source files in place and preserve runtime
         # directories instead of rmtree'ing the whole staging root.
         with _workspace_copy_lock(process_host_root):
-            preserved_names = {'.venv', 'venv', 'env', '.env', '.cache', '.tmp', '.langbot'}
+            preserved_names = {'.venv', 'venv', 'env', '.cache', '.tmp', '.langbot'}
             os.makedirs(process_host_workspace, exist_ok=True)
             for name in os.listdir(process_host_workspace):
                 if name in preserved_names:
@@ -288,6 +288,7 @@ class BoxStdioSessionRuntime:
                     try:
                         os.unlink(path)
                     except FileNotFoundError:
+                        # The entry may disappear between listdir and unlink if cleanup races us.
                         pass
             shutil.copytree(
                 source_path,
@@ -303,7 +304,6 @@ class BoxStdioSessionRuntime:
                     '.venv',
                     'venv',
                     'env',
-                    '.env',
                     '.cache',
                     '.tmp',
                     '.langbot',
@@ -401,18 +401,12 @@ class BoxStdioSessionRuntime:
         workspace_root = workspace_path.rstrip('/') or '/workspace'
         venv_dir = f'{workspace_root}/.venv'
         venv_bin = f'{venv_dir}/bin'
-        command = ' '.join(
-            [shlex.quote(payload['command']), *[shlex.quote(arg) for arg in payload.get('args', [])]]
-        )
+        command = ' '.join([shlex.quote(payload['command']), *[shlex.quote(arg) for arg in payload.get('args', [])]])
         wrapped = dict(payload)
         wrapped['command'] = 'sh'
         wrapped['args'] = [
             '-lc',
-            (
-                f'export VIRTUAL_ENV={shlex.quote(venv_dir)}; '
-                f'export PATH={shlex.quote(venv_bin)}:$PATH; '
-                f'exec {command}'
-            ),
+            (f'export VIRTUAL_ENV={shlex.quote(venv_dir)}; export PATH={shlex.quote(venv_bin)}:$PATH; exec {command}'),
         ]
         return wrapped
 
