@@ -197,10 +197,11 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         self,
         file_bytes: bytes,
         task_context: taskmgr.TaskContext | None,
-    ) -> tuple[str | None, str | None]:
+    ) -> tuple[str | None, str | None, str | None]:
         """Extract plugin identity and dependency metadata from a plugin package."""
         plugin_author = None
         plugin_name = None
+        plugin_version = None
 
         try:
             with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
@@ -209,6 +210,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     metadata = manifest.get('metadata', {})
                     plugin_author = metadata.get('author')
                     plugin_name = metadata.get('name')
+                    plugin_version = metadata.get('version')
                 except Exception:
                     pass
 
@@ -227,7 +229,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         except Exception:
             pass
 
-        return plugin_author, plugin_name
+        return plugin_author, plugin_name, plugin_version
 
     async def _install_mcp_from_marketplace(
         self,
@@ -369,6 +371,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
     ):
         plugin_author = install_info.get('plugin_author')
         plugin_name = install_info.get('plugin_name')
+        plugin_file_transferred = False
 
         if install_source == PluginInstallSource.MARKETPLACE:
             # Handle marketplace plugin/mcp/skill installation
@@ -463,9 +466,18 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                                         )
 
                                     file_bytes = download_resp.content
-                                    self._inspect_plugin_package(file_bytes, task_context)
+                                    plugin_author, plugin_name, plugin_version = self._inspect_plugin_package(
+                                        file_bytes,
+                                        task_context,
+                                    )
+                                    if task_context is not None and plugin_author and plugin_name:
+                                        task_context.metadata['plugin_name'] = f'{plugin_author}/{plugin_name}'
+                                    if task_context is not None and plugin_version:
+                                        task_context.metadata['plugin_version'] = plugin_version
                                     file_key = await self.handler.send_file(file_bytes, 'lbpkg')
                                     install_info['plugin_file_key'] = file_key
+                                    install_source = PluginInstallSource.LOCAL
+                                    plugin_file_transferred = True
                                     self.ap.logger.info(f'Transfered file {file_key} to plugin runtime')
                                     # Continue to install via runtime
                                 else:
@@ -481,12 +493,14 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     mcp_resp.raise_for_status()
                     raise Exception(f'Failed to get MCP {plugin_author}/{plugin_name}')
 
-        if install_source == PluginInstallSource.LOCAL:
+        if install_source == PluginInstallSource.LOCAL and not plugin_file_transferred:
             # transfer file before install
             file_bytes = install_info['plugin_file']
-            plugin_author, plugin_name = self._inspect_plugin_package(file_bytes, task_context)
+            plugin_author, plugin_name, plugin_version = self._inspect_plugin_package(file_bytes, task_context)
             if task_context is not None and plugin_author and plugin_name:
                 task_context.metadata['plugin_name'] = f'{plugin_author}/{plugin_name}'
+            if task_context is not None and plugin_version:
+                task_context.metadata['plugin_version'] = plugin_version
             file_key = await self.handler.send_file(file_bytes, 'lbpkg')
             install_info['plugin_file_key'] = file_key
             del install_info['plugin_file']
@@ -523,9 +537,11 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                                 task_context.metadata['download_speed'] = downloaded / elapsed if elapsed > 0 else 0
 
                     file_bytes = b''.join(chunks)
-                    plugin_author, plugin_name = self._inspect_plugin_package(file_bytes, task_context)
+                    plugin_author, plugin_name, plugin_version = self._inspect_plugin_package(file_bytes, task_context)
                     if task_context is not None and plugin_author and plugin_name:
                         task_context.metadata['plugin_name'] = f'{plugin_author}/{plugin_name}'
+                    if task_context is not None and plugin_version:
+                        task_context.metadata['plugin_version'] = plugin_version
                     file_key = await self.handler.send_file(file_bytes, 'lbpkg')
                     install_info['plugin_file_key'] = file_key
                     self.ap.logger.info(f'Transfered file {file_key} to plugin runtime')
