@@ -405,11 +405,30 @@ class AgentRunResult(BaseModel):
     run_id: str
     type: AgentRunResultType | str
     data: dict[str, Any] = {}
+    usage: LLMTokenUsage | None = None
     sequence: int | None = None
     timestamp: int | None = None
 ```
 
 SDK 当前实现是单一 envelope：`type` 枚举 + `data` dict。Payload 由 SDK typed model 构造并 dump，但 wire 不改成 discriminated union；这样新旧版本偏斜时 Host 仍可按 §3 忽略未知 `type`。
+
+`usage` 是 runner 可选上报的 token 使用量，沿用 SDK `LLMTokenUsage`：
+
+```python
+class LLMTokenUsage(BaseModel):
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
+    # provider-specific detail/cached/reasoning counters are preserved as extra fields
+```
+
+约束：
+
+- 运行时能观测到 provider/runtime usage 时，SHOULD 在 terminal `run.completed.usage` 上报本次 run 的最终聚合 token usage。
+- `run.failed.usage` MAY 上报失败前已经产生的部分 usage。
+- 不能观测 usage 的 runner 合法地省略该字段；缺失表示 unknown，Host 不得按 0 处理。
+- ACP 等外部协议不保证统一 usage；ACP runner 只能在具体 provider/native event 提供 usage 时填充本字段。
+- cost 不作为 runner result 的权威字段。Host 后续应基于 usage、model identity、时间和自身价格表计算账单成本；provider 原始 cost 如需保留，可放在 `usage` extra 字段中作为非权威 telemetry。
 
 Host 边界分级校验：
 

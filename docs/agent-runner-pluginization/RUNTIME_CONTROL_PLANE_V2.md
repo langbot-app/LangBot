@@ -170,6 +170,8 @@ status_reason
 created_at / started_at / finished_at / updated_at
 deadline_at
 cancel_requested_at
+usage_json
+cost_json
 metadata_json
 ```
 
@@ -202,6 +204,7 @@ run_id
 sequence
 type
 data_json
+usage_json
 created_at
 source
 artifact_refs_json
@@ -214,6 +217,7 @@ metadata_json
 - append 必须幂等，支持远程 daemon / plugin 重试。
 - 未知 result type 可保存但 Host 只对已知类型执行副作用。
 - 大 payload 仍应转 artifact，不直接塞入 result event。
+- `usage_json` 保存 `AgentRunResult.usage` 原样结构；缺失表示 unknown，不等于 0。
 
 ### 4.3 Run Control API
 
@@ -252,9 +256,24 @@ event -> binding -> context -> runner invocation -> result normalization
 - 每个 `AgentRunResult` 进入 `AgentRunEvent`。
 - `run.completed` / 正常 generator 结束时标记 completed。
 - `run.failed` / exception / timeout 标记 failed 或 timeout。
+- terminal result 携带 usage 时，写入 `AgentRunEvent.usage_json` 并汇总到 `AgentRun.usage_json`。
 - `state.updated`、`artifact.created`、transcript 写入继续走现有 journal，但应与 `AgentRunEvent` 有可追踪关系。
 
-### 4.5 Authorization Snapshot
+### 4.5 Usage / Cost Accounting
+
+SDK 侧 `AgentRunResult` 已提供可选 `usage` 字段，用于把不同 runner / external harness / provider-native event 的 token usage 归一到同一个 run result envelope。
+
+语义：
+
+- `run.completed.usage` SHOULD 表示本次 run 的最终聚合 token usage。
+- `run.failed.usage` MAY 表示失败前已知的部分 token usage。
+- 没有 usage 表示 upstream runtime 没有报告或 adapter 暂未接入；Host 不得按 0 计费或按 0 判断上下文消耗。
+- Host 应把 event-level usage 原样写入 `AgentRunEvent.usage_json`，并在 terminal event 或 finalize 阶段汇总到 `AgentRun.usage_json`。
+- cost 应由 Host 根据 usage、runner/model identity、发生时间和价格表计算，写入 `AgentRun.cost_json`；runner/provider 上报的 cost 只能作为非权威 telemetry 保留在 metadata 或 usage extra 中。
+
+这层约束先解决协议位置和持久化位置；具体 ACP、LiteLLM、remote daemon、local subprocess runner 如何从 native event 中抽取 usage，可在各插件后续适配。
+
+### 4.6 Authorization Snapshot
 
 异步或远程执行时，run 创建时必须固化授权快照：
 
