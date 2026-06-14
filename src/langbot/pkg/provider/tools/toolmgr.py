@@ -6,6 +6,9 @@ from typing import TYPE_CHECKING
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 from langbot_plugin.api.entities.events import pipeline_query
 
+from . import loader as tool_loader
+from .errors import ToolNotFoundError
+
 if TYPE_CHECKING:
     from ...core import app
     from langbot.pkg.provider.tools.loaders import (
@@ -67,6 +70,20 @@ class ToolManager:
 
         return all_functions
 
+    async def get_tool_by_name(self, name: str) -> tool_loader.ToolLookupResult | None:
+        """Get tool by name from any active loader."""
+        for active_loader in (
+            self.native_tool_loader,
+            self.plugin_tool_loader,
+            self.mcp_tool_loader,
+            self.skill_tool_loader,
+        ):
+            tool = await active_loader.get_tool(name)
+            if tool:
+                return tool
+
+        return None
+
     async def generate_tools_for_openai(self, use_funcs: list[resource_tool.LLMTool]) -> list:
         tools = []
 
@@ -98,7 +115,7 @@ class ToolManager:
         if await self.skill_tool_loader.has_tool(name):
             telemetry_features.increment(query, 'tool_calls', 'skill')
             return await self.skill_tool_loader.invoke_tool(name, parameters, query)
-        raise ValueError(f'未找到工具: {name}')
+        raise ToolNotFoundError(name)
 
     async def shutdown(self):
         await self.native_tool_loader.shutdown()

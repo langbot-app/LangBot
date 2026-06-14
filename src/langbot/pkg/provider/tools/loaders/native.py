@@ -7,6 +7,7 @@ import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 from langbot_plugin.api.entities.events import pipeline_query
 
 from .. import loader
+from ..errors import ToolNotFoundError
 from . import skill as skill_loader
 
 EXEC_TOOL_NAME = 'exec'
@@ -90,7 +91,7 @@ class NativeToolLoader(loader.ToolLoader):
             return await self._invoke_glob(parameters, query)
         if name == GREP_TOOL_NAME:
             return await self._invoke_grep(parameters, query)
-        raise ValueError(f'未找到工具: {name}')
+        raise ToolNotFoundError(name)
 
     async def shutdown(self):
         pass

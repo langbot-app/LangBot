@@ -226,7 +226,7 @@ class TestToolManagerExecuteFuncCall:
 
     @pytest.mark.asyncio
     async def test_execute_raises_when_tool_not_found(self, mock_app_with_loaders, sample_query):
-        """Test that execute_func_call raises ValueError when tool not found."""
+        """Test that execute_func_call raises ToolNotFoundError when tool not found."""
         toolmgr = get_toolmgr_module()
 
         mock_app, mock_plugin_loader, mock_mcp_loader = mock_app_with_loaders
@@ -236,7 +236,7 @@ class TestToolManagerExecuteFuncCall:
         manager = toolmgr.ToolManager(mock_app)
         self._wire_loaders(manager, mock_app, mock_plugin_loader, mock_mcp_loader)
 
-        with pytest.raises(ValueError, match='未找到工具'):
+        with pytest.raises(toolmgr.ToolNotFoundError, match='Tool not found: unknown_tool'):
             await manager.execute_func_call('unknown_tool', {}, sample_query)
 
     @pytest.mark.asyncio
