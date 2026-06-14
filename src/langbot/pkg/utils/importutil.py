@@ -5,10 +5,10 @@ import typing
 
 
 def import_modules_in_pkg(pkg: typing.Any) -> None:
-    """Import all Python modules inside a package.
-
+    """
+    导入一个包内的所有模块
     Args:
-        pkg: Package object to import from.
+        pkg: 要导入的包对象
     """
     pkg_path = os.path.dirname(pkg.__file__)
     import_dir(pkg_path)
