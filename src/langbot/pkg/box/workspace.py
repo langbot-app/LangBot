@@ -204,14 +204,14 @@ def wrap_python_command_with_env(command: str, *, mount_path: str = '/workspace'
         fi
 
         if [ "$_LB_NEEDS_BOOTSTRAP" -eq 1 ]; then
-          if [ -d "$_LB_LOCK_DIR" ] && [ ! -f "$_LB_LOCK_DIR/pid" ]; then
-            echo "Clearing stale Python environment lock without owner: $_LB_LOCK_DIR" >&2
-            rm -rf "$_LB_LOCK_DIR" 2>/dev/null || true
-          fi
-
           _LB_LOCK_WAIT=0
           while ! mkdir "$_LB_LOCK_DIR" 2>/dev/null; do
             if [ "$_LB_LOCK_WAIT" -ge 120 ]; then
+              _LB_LOCK_OWNER="$(cat "$_LB_LOCK_DIR/pid" 2>/dev/null || true)"
+              if [ -n "$_LB_LOCK_OWNER" ] && kill -0 "$_LB_LOCK_OWNER" 2>/dev/null; then
+                echo "Timed out waiting for active Python environment lock: $_LB_LOCK_DIR" >&2
+                exit 1
+              fi
               echo "Timed out waiting for Python environment lock, clearing stale lock: $_LB_LOCK_DIR" >&2
               rm -rf "$_LB_LOCK_DIR" 2>/dev/null || true
               if mkdir "$_LB_LOCK_DIR" 2>/dev/null; then

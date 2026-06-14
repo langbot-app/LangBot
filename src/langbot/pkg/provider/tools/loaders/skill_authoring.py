@@ -92,7 +92,6 @@ class SkillToolLoader(loader.ToolLoader):
 
         # Register activated skill for sandbox mount path resolution
         skill_loader.register_activated_skill(query, skill_data)
-        await skill_loader.persist_activated_skill(self.ap, query, skill_name)
 
         # Return SKILL.md content as Tool Result (injects into context)
         instructions = skill_data.get('instructions', '')
@@ -117,6 +116,7 @@ class SkillToolLoader(loader.ToolLoader):
             'activated': True,
             'skill_name': skill_name,
             'mount_path': mount_path,
+            'activated_skill_names': skill_loader.get_activated_skill_names(query),
             'content': result_content,
         }
 

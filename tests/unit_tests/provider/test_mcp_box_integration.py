@@ -519,6 +519,7 @@ class TestPythonWorkspacePreparation:
         source.mkdir()
         (source / 'server.py').write_text('print("new")\n', encoding='utf-8')
         (source / 'requirements.txt').write_text('mcp==1.26.0\n', encoding='utf-8')
+        (source / '.env').write_text('TOKEN=new\n', encoding='utf-8')
 
         process_root = tmp_path / 'shared' / '.mcp' / 'u1'
         workspace = process_root / 'workspace'
@@ -526,6 +527,7 @@ class TestPythonWorkspacePreparation:
         (workspace / '.venv' / 'bin' / 'python').write_text('', encoding='utf-8')
         (workspace / '.langbot').mkdir()
         (workspace / '.langbot' / 'python-env.lock').mkdir()
+        (workspace / '.env').write_text('TOKEN=old\n', encoding='utf-8')
         (workspace / 'server.py').write_text('print("old")\n', encoding='utf-8')
         (workspace / 'removed.py').write_text('stale\n', encoding='utf-8')
         (workspace / 'removed_dir').mkdir()
@@ -535,6 +537,7 @@ class TestPythonWorkspacePreparation:
 
         assert (workspace / 'server.py').read_text(encoding='utf-8') == 'print("new")\n'
         assert (workspace / 'requirements.txt').read_text(encoding='utf-8') == 'mcp==1.26.0\n'
+        assert (workspace / '.env').read_text(encoding='utf-8') == 'TOKEN=new\n'
         assert not (workspace / 'removed.py').exists()
         assert not (workspace / 'removed_dir').exists()
         assert (workspace / '.venv' / 'bin' / 'python').exists()

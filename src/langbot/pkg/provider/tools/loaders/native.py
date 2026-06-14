@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import mimetypes
 import os
 
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
@@ -478,9 +477,7 @@ else:
             if host_path and os.path.exists(host_path):
                 if os.path.isdir(host_path):
                     return self._build_directory_result(os.listdir(host_path))
-                result = self._read_text_file_preview(host_path, parameters)
-                host_root = str(selected_skill.get('package_root', '') or '')
-                return await self._attach_file_artifact_ref(result, host_path, host_root, path, query)
+                return self._read_text_file_preview(host_path, parameters)
 
             try:
                 result = await self.ap.box_service.read_skill_file(selected_skill['name'], relative)
@@ -506,9 +503,7 @@ else:
         if os.path.isdir(host_path):
             entries = os.listdir(host_path)
             return self._build_directory_result(entries)
-        result = self._read_text_file_preview(host_path, parameters)
-        host_root = self._get_host_root(selected_skill)
-        return await self._attach_file_artifact_ref(result, host_path, host_root, path, query)
+        return self._read_text_file_preview(host_path, parameters)
 
     async def _invoke_write(self, parameters: dict, query: pipeline_query.Query) -> dict:
         path = parameters['path']
@@ -695,8 +690,7 @@ else:
                     'max_bytes': {
                         'type': 'integer',
                         'description': (
-                            'Maximum bytes of file content to return. '
-                            f'Defaults to {_DEFAULT_TOOL_RESULT_MAX_BYTES}.'
+                            f'Maximum bytes of file content to return. Defaults to {_DEFAULT_TOOL_RESULT_MAX_BYTES}.'
                         ),
                         'default': _DEFAULT_TOOL_RESULT_MAX_BYTES,
                         'minimum': 1,
@@ -983,84 +977,6 @@ else:
         if not (host_path == host_root or host_path.startswith(host_root + os.sep)):
             raise ValueError('Path escapes the skill package boundary.')
         return host_path
-
-    def _get_host_root(self, selected_skill: dict | None) -> str:
-        if selected_skill is not None:
-            return str(selected_skill.get('package_root', '') or '')
-        return str(getattr(self.ap.box_service, 'default_workspace', '') or '')
-
-    async def _attach_file_artifact_ref(
-        self,
-        result: dict,
-        host_path: str,
-        host_root: str,
-        sandbox_path: str,
-        query: pipeline_query.Query,
-    ) -> dict:
-        if not result.get('ok') or not result.get('truncated') or result.get('artifact_refs'):
-            return result
-        if not host_root or not os.path.isfile(host_path):
-            return result
-
-        run_session = self._get_agent_run_session(query)
-        if not run_session:
-            return result
-
-        persistence_mgr = getattr(self.ap, 'persistence_mgr', None)
-        get_db_engine = getattr(persistence_mgr, 'get_db_engine', None)
-        if not callable(get_db_engine):
-            return result
-
-        try:
-            from langbot.pkg.agent.runner.artifact_store import ArtifactStore
-
-            authorization = run_session.get('authorization', {}) if isinstance(run_session, dict) else {}
-            mime_type = mimetypes.guess_type(host_path)[0] or 'text/plain'
-            size_bytes = os.path.getsize(host_path)
-            metadata = {
-                'tool_name': READ_TOOL_NAME,
-                'sandbox_path': sandbox_path,
-                'truncated_by': result.get('truncated_by'),
-                'start_line': result.get('start_line'),
-                'end_line': result.get('end_line'),
-                'next_offset': result.get('next_offset'),
-            }
-            artifact_id = await ArtifactStore(get_db_engine()).register_file_artifact(
-                artifact_id=None,
-                host_path=host_path,
-                host_root=host_root,
-                artifact_type='file',
-                source='tool',
-                mime_type=mime_type,
-                name=os.path.basename(host_path),
-                size_bytes=size_bytes,
-                conversation_id=authorization.get('conversation_id'),
-                run_id=run_session.get('run_id') if isinstance(run_session, dict) else None,
-                runner_id=run_session.get('runner_id') if isinstance(run_session, dict) else None,
-                bot_id=getattr(query, 'bot_uuid', None),
-                workspace_id=authorization.get('workspace_id'),
-                thread_id=authorization.get('thread_id'),
-                metadata=metadata,
-            )
-            artifact_ref = {
-                'artifact_id': artifact_id,
-                'artifact_type': 'file',
-                'mime_type': mime_type,
-                'name': os.path.basename(host_path),
-                'size_bytes': size_bytes,
-            }
-            enriched = dict(result)
-            enriched['preview'] = str(result.get('content') or '')
-            enriched['artifact_refs'] = [artifact_ref]
-            return enriched
-        except Exception as exc:
-            self.ap.logger.warning(f'Failed to register read artifact for {sandbox_path}: {exc}')
-            return result
-
-    @staticmethod
-    def _get_agent_run_session(query: pipeline_query.Query) -> dict | None:
-        session = getattr(query, '_agent_run_session', None)
-        return session if isinstance(session, dict) else None
 
     def _normalize_exec_result(self, result: dict) -> dict:
         normalized = dict(result)

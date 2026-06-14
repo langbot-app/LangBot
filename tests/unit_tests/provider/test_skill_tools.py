@@ -193,6 +193,29 @@ class TestSkillPathHelpers:
 
         assert list(result.keys()) == ['visible']
 
+    def test_restore_activated_skills_uses_caller_provided_names_and_visibility(self):
+        from langbot.pkg.provider.tools.loaders.skill import (
+            ACTIVATED_SKILLS_KEY,
+            PIPELINE_BOUND_SKILLS_KEY,
+            get_activated_skill_names,
+            restore_activated_skills,
+        )
+
+        ap = _make_ap()
+        ap.skill_mgr = SimpleNamespace(
+            skills={
+                'visible': _make_skill_data(name='visible'),
+                'hidden': _make_skill_data(name='hidden'),
+            }
+        )
+        query = SimpleNamespace(variables={PIPELINE_BOUND_SKILLS_KEY: ['visible']})
+
+        restored = restore_activated_skills(ap, query, ['visible', 'hidden', 'visible', ''])
+
+        assert restored == ['visible']
+        assert list(query.variables[ACTIVATED_SKILLS_KEY].keys()) == ['visible']
+        assert get_activated_skill_names(query) == ['visible']
+
     def test_resolve_virtual_skill_path_allows_visible_skill_reads(self):
         from langbot.pkg.provider.tools.loaders.skill import (
             PIPELINE_BOUND_SKILLS_KEY,
@@ -282,6 +305,7 @@ class TestSkillToolLoader:
         assert result['activated'] is True
         assert result['skill_name'] == 'demo'
         assert result['mount_path'] == '/workspace/.skills/demo'
+        assert result['activated_skill_names'] == ['demo']
         assert 'Step 1' in result['content']
         assert set(query.variables[ACTIVATED_SKILLS_KEY].keys()) == {'demo'}
 
