@@ -469,9 +469,10 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                                     if download_resp.status_code != 200:
                                         raise Exception(
                                             f'Failed to download plugin {plugin_author}/{plugin_name}: {download_resp.status_code}'
-                                        )
+                                    )
 
                                     file_bytes = download_resp.content
+                                    self._inspect_plugin_package(file_bytes, task_context)
                                     file_key = await self.handler.send_file(file_bytes, 'lbpkg')
                                     install_info['plugin_file_key'] = file_key
                                     self.ap.logger.info(f'Transfered file {file_key} to plugin runtime')
