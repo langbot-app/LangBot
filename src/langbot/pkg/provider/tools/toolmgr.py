@@ -71,14 +71,7 @@ class ToolManager:
         return all_functions
 
     async def get_tool_by_name(self, name: str) -> tool_loader.ToolLookupResult | None:
-        """Get tool by name from any active loader.
-
-        Args:
-            name: Tool name.
-
-        Returns:
-            LLMTool if found, None otherwise
-        """
+        """Get tool by name from any active loader."""
         for active_loader in (
             self.native_tool_loader,
             self.plugin_tool_loader,
@@ -107,21 +100,7 @@ class ToolManager:
 
         return tools
 
-    async def generate_tools_for_anthropic(self, use_funcs: list[resource_tool.LLMTool]) -> list:
-        tools = []
-
-        for function in use_funcs:
-            function_schema = {
-                'name': function.name,
-                'description': function.description,
-                'input_schema': function.parameters,
-            }
-            tools.append(function_schema)
-
-        return tools
-
-    async def execute_func_call(self, name: str, parameters: dict, query: pipeline_query.Query | None) -> typing.Any:
-        """Execute a tool call through the active tool loaders."""
+    async def execute_func_call(self, name: str, parameters: dict, query: pipeline_query.Query) -> typing.Any:
         from langbot.pkg.telemetry import features as telemetry_features
 
         if await self.native_tool_loader.has_tool(name):

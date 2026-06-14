@@ -47,11 +47,7 @@ class ToolLoader(abc.ABC):
         pass
 
     async def get_tool(self, name: str) -> ToolLookupResult | None:
-        """Get one tool by name.
-
-        Loaders with a cheaper direct lookup can override this method. The
-        default keeps simple loaders working by searching their public list.
-        """
+        """Get one tool by name."""
         for tool in await self.get_tools():
             if tool.name == name:
                 return tool
