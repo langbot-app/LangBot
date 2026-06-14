@@ -630,7 +630,9 @@ class TestMCPServiceTestMCPServer:
         ap.tool_mgr.mcp_tool_loader = SimpleNamespace()
 
         mock_session = MagicMock()
+        mock_session.server_name = 'transient-test-server'
         mock_session.start = AsyncMock()
+        mock_session.shutdown = AsyncMock()
         ap.tool_mgr.mcp_tool_loader.load_mcp_server = AsyncMock(return_value=mock_session)
 
         ap.task_mgr = SimpleNamespace()
@@ -646,3 +648,8 @@ class TestMCPServiceTestMCPServer:
         # Verify - load_mcp_server called
         ap.tool_mgr.mcp_tool_loader.load_mcp_server.assert_called_once()
         assert task_id == 456
+
+        coroutine = ap.task_mgr.create_user_task.call_args.args[0]
+        await coroutine
+        mock_session.start.assert_awaited_once()
+        mock_session.shutdown.assert_awaited_once()

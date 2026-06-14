@@ -14,14 +14,14 @@ from __future__ import annotations
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, Mock
-import sys
 
 from tests.factories import FakeApp, text_query, mock_platform_adapter
-from tests.factories.provider import FakeProvider
 from tests.factories.platform import FakePlatform
+from tests.factories.message import text_chain
 
 
 pytestmark = pytest.mark.integration
+DEFAULT_RUNNER_ID = 'plugin:langbot/local-agent/default'
 
 
 # ============== FIXTURE FOR SYS.MODULES ISOLATION ==============
@@ -31,7 +31,7 @@ def mock_circular_import_chain():
     """
     Break circular import chain for pipeline modules using isolated_sys_modules.
 
-    Chain: pipeline → core.app → provider.runner → http_controller → groups/plugins
+    Chain: pipeline → core.app → http_controller → groups/plugins
 
     We mock minimal modules to allow importing RuntimePipeline, StageInstContainer,
     and stage classes without triggering full application initialization.
@@ -46,10 +46,6 @@ def mock_circular_import_chain():
 
     # Mock core.app - Application class is referenced but not instantiated
     mock_core_app = Mock()
-
-    # Mock provider.runner with preregistered_runners list
-    mock_runner = Mock()
-    mock_runner.preregistered_runners = []  # Will be populated in tests
 
     # Mock utils.importutil - prevents auto-import of runners
     mock_importutil = Mock()
@@ -67,14 +63,12 @@ def mock_circular_import_chain():
         'langbot.pkg.pipeline.process.handlers.chat',
         'langbot.pkg.pipeline.process.handlers.command',
         'langbot.pkg.pipeline.respback.respback',
-        'langbot.pkg.provider.runner',
     ]
 
     with isolated_sys_modules(
         mocks={
             'langbot.pkg.core.entities': mock_core_entities,
             'langbot.pkg.core.app': mock_core_app,
-            'langbot.pkg.provider.runner': mock_runner,
             'langbot.pkg.utils.importutil': mock_importutil,
             'langbot.pkg.pipeline.controller': Mock(),
             'langbot.pkg.pipeline.pipelinemgr': Mock(),
@@ -104,48 +98,23 @@ def mock_circular_import_chain():
 # ============== FAKE RUNNER ==============
 
 class FakeRunner:
-    """Minimal fake runner class for pipeline integration tests.
-
-    Note: preregistered_runners expects a CLASS, not an instance.
-    The handler calls runner_cls(self.ap, query.pipeline_config) to instantiate.
-    """
+    """Minimal fake runner behavior for the orchestrator-backed pipeline tests."""
 
     name = 'local-agent'
 
-    def __init__(self, app=None, config=None):
-        self.app = app
-        self.config = config or {}
-        self._provider = FakeProvider()
-        # Instance-level configuration set via class attribute
-        self._response_text = "fake response"
-        self._raise_error = None
+    def __init__(self, response_text: str = "fake response", error: Exception | None = None):
+        self._response_text = response_text
+        self._raise_error = error
 
     @classmethod
-    def returns(cls, text: str):
-        """Create a runner class configured to return specific text."""
-        # We create a subclass with configured response
-        class ConfiguredRunner(cls):
-            name = cls.name
-            _response_text = text
-            _raise_error = None
-
-            def __init__(self, app=None, config=None):
-                super().__init__(app, config)
-                self._response_text = text
-        return ConfiguredRunner
+    def returns(cls, text: str) -> "FakeRunner":
+        """Create a fake runner configured to return specific text."""
+        return cls(response_text=text)
 
     @classmethod
-    def raises(cls, error: Exception):
+    def raises(cls, error: Exception) -> "FakeRunner":
         """Create a runner class configured to raise an error."""
-        class ConfiguredRunner(cls):
-            name = cls.name
-            _response_text = None
-            _raise_error = error
-
-            def __init__(self, app=None, config=None):
-                super().__init__(app, config)
-                self._raise_error = error
-        return ConfiguredRunner
+        return cls(error=error)
 
     async def run(self, query):
         """Run the fake provider and yield messages."""
@@ -157,6 +126,22 @@ class FakeRunner:
 
         # Yield a simple message
         yield Message(role='assistant', content=self._response_text)
+
+
+class FakeAgentRunOrchestrator:
+    """Adapter that exposes FakeRunner through the current AgentRunOrchestrator surface."""
+
+    def __init__(self, runner: FakeRunner | None = None):
+        self.runner = runner or FakeRunner()
+        self.queries = []
+
+    async def run_from_query(self, query):
+        self.queries.append(query)
+        async for result in self.runner.run(query):
+            yield result
+
+    def resolve_runner_id_for_telemetry(self, query):
+        return DEFAULT_RUNNER_ID
 
 
 # ============== PIPELINE APP FIXTURE ==============
@@ -222,6 +207,7 @@ def pipeline_app():
 
     # Survey mock
     app.survey = None
+    app.agent_run_orchestrator = FakeAgentRunOrchestrator()
 
     return app
 
@@ -235,11 +221,10 @@ def fake_platform_adapter():
 
 
 @pytest.fixture
-def set_fake_runner():
-    """Factory fixture to set a fake runner CLASS in preregistered_runners."""
-    def _set_runner(runner_cls):
-        # preregistered_runners expects a list of runner classes
-        sys.modules['langbot.pkg.provider.runner'].preregistered_runners = [runner_cls]
+def set_fake_runner(pipeline_app):
+    """Factory fixture to set fake runner behavior on the orchestrator surface."""
+    def _set_runner(runner: FakeRunner):
+        pipeline_app.agent_run_orchestrator.runner = runner
     return _set_runner
 
 
@@ -249,11 +234,13 @@ def create_minimal_pipeline_config():
     """Create minimal pipeline configuration for tests."""
     return {
         'ai': {
-            'runner': {'runner': 'local-agent', 'expire-time': None},
-            'local-agent': {
-                'model': {'primary': 'test-model-uuid', 'fallbacks': []},
-                'prompt': 'default',
-                'knowledge-bases': [],
+            'runner': {'id': DEFAULT_RUNNER_ID, 'expire-time': None},
+            'runner_config': {
+                DEFAULT_RUNNER_ID: {
+                    'model': {'primary': 'test-model-uuid', 'fallbacks': []},
+                    'prompt': [{'role': 'system', 'content': 'default'}],
+                    'knowledge-bases': [],
+                },
             },
         },
         'output': {
@@ -353,7 +340,7 @@ class TestPreProcessorStage:
 
         result = await preproc_stage.process(query, 'PreProcessor')
 
-        assert result.result_type == entities.ResultType.CONTINUE
+        assert result.result_type.name == entities.ResultType.CONTINUE.name
         assert result.new_query.session is not None
         assert result.new_query.user_message is not None
 
@@ -380,7 +367,7 @@ class TestPreProcessorStage:
 
         result = await preproc_stage.process(query, 'PreProcessor')
 
-        assert result.result_type == entities.ResultType.CONTINUE
+        assert result.result_type.name == entities.ResultType.CONTINUE.name
         # Check user_message content
         assert result.new_query.user_message is not None
         assert result.new_query.user_message.role == 'user'
@@ -396,7 +383,7 @@ class TestProcessorStage:
         adapter, platform = fake_platform_adapter
 
         # Set fake runner that returns pong
-        fake_runner = FakeRunner().returns("LANGBOT_FAKE_PONG")
+        fake_runner = FakeRunner.returns("LANGBOT_FAKE_PONG")
         set_fake_runner(fake_runner)
 
         # Create query
@@ -451,7 +438,7 @@ class TestProcessorStage:
         results = await collect_processor_results(processor_stage, query, 'MessageProcessor')
 
         assert len(results) == 1
-        assert results[0].result_type == entities.ResultType.INTERRUPT
+        assert results[0].result_type.name == entities.ResultType.INTERRUPT.name
 
     @pytest.mark.asyncio
     async def test_processor_prevent_default_with_reply_continues(self, pipeline_app, fake_platform_adapter):
@@ -485,7 +472,7 @@ class TestProcessorStage:
         results = await collect_processor_results(processor_stage, query, 'MessageProcessor')
 
         assert len(results) == 1
-        assert results[0].result_type == entities.ResultType.CONTINUE
+        assert results[0].result_type.name == entities.ResultType.CONTINUE.name
         assert len(query.resp_messages) == 1
         assert query.resp_messages[0] == reply_chain
 
@@ -502,7 +489,7 @@ class TestRunnerExceptionFlow:
         adapter, platform = fake_platform_adapter
 
         # Set fake runner that raises exception
-        fake_runner = FakeRunner().raises(ValueError("API Error: rate limit exceeded"))
+        fake_runner = FakeRunner.raises(ValueError("API Error: rate limit exceeded"))
         set_fake_runner(fake_runner)
 
         # Create query with exception handling config
@@ -529,7 +516,7 @@ class TestRunnerExceptionFlow:
         results = await collect_processor_results(processor_stage, query, 'MessageProcessor')
 
         assert len(results) == 1
-        assert results[0].result_type == entities.ResultType.INTERRUPT
+        assert results[0].result_type.name == entities.ResultType.INTERRUPT.name
         assert results[0].user_notice == 'Request failed.'
         assert results[0].error_notice is not None
 
@@ -541,7 +528,7 @@ class TestRunnerExceptionFlow:
         adapter, platform = fake_platform_adapter
 
         # Set fake runner that raises specific exception
-        fake_runner = FakeRunner().raises(RuntimeError("Custom runtime error"))
+        fake_runner = FakeRunner.raises(RuntimeError("Custom runtime error"))
         set_fake_runner(fake_runner)
 
         # Create query with show-error mode
@@ -567,7 +554,7 @@ class TestRunnerExceptionFlow:
         results = await collect_processor_results(processor_stage, query, 'MessageProcessor')
 
         assert len(results) == 1
-        assert results[0].result_type == entities.ResultType.INTERRUPT
+        assert results[0].result_type.name == entities.ResultType.INTERRUPT.name
         assert 'Custom runtime error' in results[0].user_notice
 
     @pytest.mark.asyncio
@@ -578,7 +565,7 @@ class TestRunnerExceptionFlow:
         adapter, platform = fake_platform_adapter
 
         # Set fake runner that raises exception
-        fake_runner = FakeRunner().raises(Exception("Hidden error"))
+        fake_runner = FakeRunner.raises(Exception("Hidden error"))
         set_fake_runner(fake_runner)
 
         # Create query with hide mode
@@ -604,7 +591,7 @@ class TestRunnerExceptionFlow:
         results = await collect_processor_results(processor_stage, query, 'MessageProcessor')
 
         assert len(results) == 1
-        assert results[0].result_type == entities.ResultType.INTERRUPT
+        assert results[0].result_type.name == entities.ResultType.INTERRUPT.name
         assert results[0].user_notice is None
 
 
@@ -636,7 +623,7 @@ class TestSendResponseBackStage:
 
         result = await respback_stage.process(query, 'SendResponseBackStage')
 
-        assert result.result_type == entities.ResultType.CONTINUE
+        assert result.result_type.name == entities.ResultType.CONTINUE.name
 
         # Check that adapter was called
         outbound = platform.get_outbound_messages()
@@ -666,7 +653,7 @@ class TestStageChainIntegration:
         adapter, platform = fake_platform_adapter
 
         # Set fake runner
-        fake_runner = FakeRunner().returns("LANGBOT_FAKE_PONG")
+        fake_runner = FakeRunner.returns("LANGBOT_FAKE_PONG")
         set_fake_runner(fake_runner)
 
         # Create query
@@ -702,7 +689,7 @@ class TestStageChainIntegration:
 
         # Run PreProcessor
         result1 = await preproc_stage.process(query, 'PreProcessor')
-        assert result1.result_type == entities.ResultType.CONTINUE
+        assert result1.result_type.name == entities.ResultType.CONTINUE.name
         query = result1.new_query
 
         # Run Processor
@@ -710,14 +697,13 @@ class TestStageChainIntegration:
         assert len(results) >= 1
 
         # Build resp_message_chain from resp_messages
-        from tests.factories.message import text_chain
         for resp_msg in query.resp_messages:
             if resp_msg.content:
                 query.resp_message_chain.append(text_chain(resp_msg.content))
 
         # Run SendResponseBackStage
         result3 = await respback_stage.process(query, 'SendResponseBackStage')
-        assert result3.result_type == entities.ResultType.CONTINUE
+        assert result3.result_type.name == entities.ResultType.CONTINUE.name
 
         # Verify adapter was called
         outbound = platform.get_outbound_messages()
@@ -765,14 +751,14 @@ class TestStageChainIntegration:
 
         # Run PreProcessor
         result1 = await preproc_stage.process(query, 'PreProcessor')
-        assert result1.result_type == entities.ResultType.CONTINUE
+        assert result1.result_type.name == entities.ResultType.CONTINUE.name
         query = result1.new_query
 
         # Run Processor - should INTERRUPT
         results = await collect_processor_results(processor_stage, query, 'MessageProcessor')
 
         assert len(results) == 1
-        assert results[0].result_type == entities.ResultType.INTERRUPT
+        assert results[0].result_type.name == entities.ResultType.INTERRUPT.name
 
         # Chain stops here - no resp_messages
         assert len(query.resp_messages) == 0

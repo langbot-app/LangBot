@@ -15,11 +15,14 @@ from __future__ import annotations
 
 import os
 import pytest
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import text
 
 from langbot.pkg.entity.persistence.base import Base
 from langbot.pkg.persistence.alembic_runner import (
+    _ALEMBIC_DIR,
     run_alembic_upgrade,
     run_alembic_stamp,
     get_alembic_current,
@@ -27,6 +30,13 @@ from langbot.pkg.persistence.alembic_runner import (
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.slow]
+
+
+def alembic_head_revision() -> str:
+    """Return the repository's current Alembic head revision."""
+    cfg = Config()
+    cfg.set_main_option('script_location', _ALEMBIC_DIR)
+    return ScriptDirectory.from_config(cfg).get_current_head()
 
 
 @pytest.fixture
@@ -150,8 +160,7 @@ class TestPostgreSQLMigrationUpgrade:
         # Verify revision
         rev = await get_alembic_current(postgres_engine)
         assert rev is not None, "Expected a revision after upgrade"
-        # Head should be the latest migration (0005 for current state)
-        assert rev.startswith('0005'), f"Expected head to be 0005_*, got {rev}"
+        assert rev == alembic_head_revision()
 
     @pytest.mark.asyncio
     async def test_postgres_upgrade_idempotent(

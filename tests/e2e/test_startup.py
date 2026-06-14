@@ -75,7 +75,7 @@ class TestStartupFlow:
         """Test auth endpoint."""
         # First startup may allow initial setup
         response = e2e_client.post('/api/v1/user/auth', json={
-            'username': 'admin',
+            'user': 'admin',
             'password': 'admin',
         })
 

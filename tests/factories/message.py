@@ -18,6 +18,7 @@ import langbot_plugin.api.entities.builtin.provider.session as provider_session
 
 # Counter for generating unique IDs
 _query_counter = 0
+DEFAULT_RUNNER_ID = "plugin:langbot/local-agent/default"
 
 
 def _next_query_id() -> int:
@@ -163,10 +164,12 @@ def _base_query(
         "bot_uuid": "test-bot-uuid",
         "pipeline_config": {
             "ai": {
-                "runner": {"runner": "local-agent"},
-                "local-agent": {
-                    "model": {"primary": "test-model-uuid", "fallbacks": []},
-                    "prompt": "test-prompt",
+                "runner": {"id": DEFAULT_RUNNER_ID},
+                "runner_config": {
+                    DEFAULT_RUNNER_ID: {
+                        "model": {"primary": "test-model-uuid", "fallbacks": []},
+                        "prompt": [{"role": "system", "content": "test-prompt"}],
+                    },
                 },
             },
             "output": {"misc": {"at-sender": False, "quote-origin": False}},

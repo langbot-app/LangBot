@@ -24,6 +24,9 @@ from tests.factories import (
 )
 
 
+RUNNER_ID = 'plugin:langbot/local-agent/default'
+
+
 def get_preproc_module():
     """Lazy import to avoid circular import issues."""
     return import_module('langbot.pkg.pipeline.preproc.preproc')
@@ -32,6 +35,78 @@ def get_preproc_module():
 def get_entities_module():
     """Lazy import for pipeline entities."""
     return import_module('langbot.pkg.pipeline.entities')
+
+
+class FakeAgentRunnerRegistry:
+    def __init__(self, descriptor):
+        self.descriptor = descriptor
+
+    async def get(self, runner_id, bound_plugins=None):
+        return self.descriptor
+
+
+def make_host_model_runner_descriptor(
+    *,
+    multimodal_input: bool = True,
+    tool_calling: bool = True,
+    knowledge_retrieval: bool = True,
+    skill_authoring: bool = False,
+):
+    from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
+
+    return AgentRunnerDescriptor(
+        id=RUNNER_ID,
+        source='plugin',
+        label={'en_US': 'Local Agent'},
+        plugin_author='langbot',
+        plugin_name='local-agent',
+        runner_name='default',
+        config_schema=[
+            {'name': 'model', 'type': 'model-fallback-selector'},
+            {'name': 'prompt', 'type': 'prompt-editor', 'default': []},
+            {'name': 'knowledge-bases', 'type': 'knowledge-base-multi-selector', 'default': []},
+        ],
+        capabilities={
+            'tool_calling': tool_calling,
+            'knowledge_retrieval': knowledge_retrieval,
+            'multimodal_input': multimodal_input,
+            'skill_authoring': skill_authoring,
+        },
+        permissions={
+            'models': ['invoke', 'stream'],
+            'tools': ['detail', 'call'],
+            'knowledge_bases': ['list', 'retrieve'],
+        },
+    )
+
+
+def set_runner_descriptor(app, descriptor=None):
+    app.agent_runner_registry = FakeAgentRunnerRegistry(
+        descriptor or make_host_model_runner_descriptor()
+    )
+
+
+def make_runner_config(
+    *,
+    primary: str = 'test-model-uuid',
+    fallbacks: list[str] | None = None,
+    prompt: list[dict] | None = None,
+    knowledge_bases: list[str] | None = None,
+):
+    return {
+        'ai': {
+            'runner': {'id': RUNNER_ID},
+            'runner_config': {
+                RUNNER_ID: {
+                    'model': {'primary': primary, 'fallbacks': fallbacks or []},
+                    'prompt': prompt if prompt is not None else [],
+                    'knowledge-bases': knowledge_bases or [],
+                },
+            },
+        },
+        'output': {'misc': {'at-sender': False}},
+        'trigger': {'misc': {}},
+    }
 
 
 class TestPreProcessorNormalText:
@@ -107,6 +182,7 @@ class TestPreProcessorNormalText:
         mock_model.model_entity = Mock(uuid='test-model', abilities=['func_call'])
         app.model_mgr.get_model_by_uuid = AsyncMock(return_value=mock_model)
         app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
+        set_runner_descriptor(app)
 
         mock_event_ctx = Mock()
         mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
@@ -195,6 +271,7 @@ class TestPreProcessorImageSegment:
         stage = preproc.PreProcessor(app)
         # Image query with base64
         query = image_query(text="look at this", url=None)
+        query.pipeline_config = make_runner_config(primary='vision-model')
         # Set base64 on the image component
         import langbot_plugin.api.entities.builtin.platform.message as platform_message
         chain = platform_message.MessageChain([
@@ -206,8 +283,8 @@ class TestPreProcessorImageSegment:
         result = await stage.process(query, 'PreProcessor')
 
         assert result.result_type == preproc.entities.ResultType.CONTINUE
-        # User message should have content
-        assert result.new_query.user_message.content is not None
+        content_types = [elem.type for elem in result.new_query.user_message.content]
+        assert 'image_base64' in content_types
 
     @pytest.mark.asyncio
     async def test_image_without_vision_model(self):
@@ -232,6 +309,7 @@ class TestPreProcessorImageSegment:
         mock_model.model_entity = Mock(uuid='text-only-model', abilities=['func_call'])
         app.model_mgr.get_model_by_uuid = AsyncMock(return_value=mock_model)
         app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
+        set_runner_descriptor(app)
 
         mock_event_ctx = Mock()
         mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
@@ -239,10 +317,13 @@ class TestPreProcessorImageSegment:
 
         stage = preproc.PreProcessor(app)
         query = image_query(text="describe this")
+        query.pipeline_config = make_runner_config(primary='text-only-model')
 
         result = await stage.process(query, 'PreProcessor')
 
         assert result.result_type == preproc.entities.ResultType.CONTINUE
+        content_types = [elem.type for elem in result.new_query.user_message.content]
+        assert 'image_url' not in content_types
 
 
 class TestPreProcessorModelSelection:
@@ -270,6 +351,7 @@ class TestPreProcessorModelSelection:
         mock_model.model_entity = Mock(uuid='primary-model-uuid', abilities=['func_call'])
         app.model_mgr.get_model_by_uuid = AsyncMock(return_value=mock_model)
         app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
+        set_runner_descriptor(app)
 
         mock_event_ctx = Mock()
         mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
@@ -279,17 +361,7 @@ class TestPreProcessorModelSelection:
         query = text_query("hello")
 
         # Set pipeline config with primary model
-        query.pipeline_config = {
-            'ai': {
-                'runner': {'runner': 'local-agent'},
-                'local-agent': {
-                    'model': {'primary': 'primary-model-uuid', 'fallbacks': []},
-                    'prompt': 'default',
-                },
-            },
-            'output': {'misc': {'at-sender': False}},
-            'trigger': {'misc': {}},
-        }
+        query.pipeline_config = make_runner_config(primary='primary-model-uuid')
 
         result = await stage.process(query, 'PreProcessor')
 
@@ -329,6 +401,7 @@ class TestPreProcessorModelSelection:
 
         app.model_mgr.get_model_by_uuid = AsyncMock(side_effect=mock_get_model)
         app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
+        set_runner_descriptor(app)
 
         mock_event_ctx = Mock()
         mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
@@ -337,17 +410,7 @@ class TestPreProcessorModelSelection:
         stage = preproc.PreProcessor(app)
         query = text_query("hello")
 
-        query.pipeline_config = {
-            'ai': {
-                'runner': {'runner': 'local-agent'},
-                'local-agent': {
-                    'model': {'primary': 'primary-uuid', 'fallbacks': ['fallback-uuid']},
-                    'prompt': 'default',
-                },
-            },
-            'output': {'misc': {'at-sender': False}},
-            'trigger': {'misc': {}},
-        }
+        query.pipeline_config = make_runner_config(primary='primary-uuid', fallbacks=['fallback-uuid'])
 
         result = await stage.process(query, 'PreProcessor')
 

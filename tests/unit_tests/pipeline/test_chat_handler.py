@@ -13,6 +13,41 @@ from unittest.mock import AsyncMock, Mock
 from tests.factories import FakeApp
 
 
+DEFAULT_RUNNER_ID = 'plugin:langbot/local-agent/default'
+_current_runner_class = None
+
+
+def _default_runner_class():
+    from langbot_plugin.api.entities.builtin.provider.message import Message
+
+    class DefaultRunner:
+        name = 'local-agent'
+
+        def __init__(self, app, config):
+            self.app = app
+            self.config = config
+
+        async def run(self, query):
+            yield Message(role='assistant', content='fake response')
+
+    return DefaultRunner
+
+
+def runner_pipeline_config(output_misc: dict) -> dict:
+    return {
+        'output': {'misc': output_misc},
+        'ai': {
+            'runner': {'id': DEFAULT_RUNNER_ID},
+            'runner_config': {
+                DEFAULT_RUNNER_ID: {
+                    'prompt': [{'role': 'system', 'content': 'default'}],
+                    'model': {'primary': 'test', 'fallbacks': []},
+                },
+            },
+        },
+    }
+
+
 # ============== FIXTURE USING IMPORT ISOLATION UTILITY ==============
 
 @pytest.fixture(scope='module')
@@ -29,20 +64,7 @@ def mock_circular_import_chain():
         make_pipeline_handler_import_mocks,
         get_handler_modules_to_clear,
     )
-    from langbot_plugin.api.entities.builtin.provider.message import Message
-
     mocks = make_pipeline_handler_import_mocks()
-
-    # Create a default runner that yields a simple response
-    class DefaultRunner:
-        name = 'local-agent'
-        def __init__(self, app, config):
-            self.app = app
-            self.config = config
-        async def run(self, query):
-            yield Message(role='assistant', content='fake response')
-
-    mocks['langbot.pkg.provider.runner'].preregistered_runners = [DefaultRunner]
 
     clear = get_handler_modules_to_clear('chat')
 
@@ -53,7 +75,20 @@ def mock_circular_import_chain():
 @pytest.fixture
 def fake_app():
     """Create FakeApp instance."""
-    return FakeApp()
+    app = FakeApp()
+
+    class ProviderRunnerBackedOrchestrator:
+        async def run_from_query(self, query):
+            runner_class = _current_runner_class or _default_runner_class()
+            runner = runner_class(app, {})
+            async for result in runner.run(query):
+                yield result
+
+        def resolve_runner_id_for_telemetry(self, query):
+            return DEFAULT_RUNNER_ID
+
+    app.agent_run_orchestrator = ProviderRunnerBackedOrchestrator()
+    return app
 
 
 @pytest.fixture
@@ -70,10 +105,15 @@ def mock_event_ctx():
 @pytest.fixture
 def set_runner():
     """Factory fixture to set a custom runner for tests."""
+    global _current_runner_class
+    previous = _current_runner_class
+
     def _set_runner(runner_class):
-        import sys
-        sys.modules['langbot.pkg.provider.runner'].preregistered_runners = [runner_class]
-    return _set_runner
+        global _current_runner_class
+        _current_runner_class = runner_class
+
+    yield _set_runner
+    _current_runner_class = previous
 
 
 # ============== CACHED LAZY IMPORTS ==============
@@ -301,10 +341,9 @@ class TestChatHandlerExceptions:
         query.adapter.is_stream_output_supported = AsyncMock(return_value=False)
         query.user_message = Message(role='user', content=[])
 
-        query.pipeline_config = {
-            'output': {'misc': {'exception-handling': 'show-hint', 'failure-hint': 'Request failed.'}},
-            'ai': {'runner': {'runner': 'local-agent'}, 'local-agent': {'prompt': 'default', 'model': {'primary': 'test'}}},
-        }
+        query.pipeline_config = runner_pipeline_config(
+            {'exception-handling': 'show-hint', 'failure-hint': 'Request failed.'}
+        )
 
         class FailingRunner:
             name = 'local-agent'
@@ -344,10 +383,7 @@ class TestChatHandlerExceptions:
         query.adapter.is_stream_output_supported = AsyncMock(return_value=False)
         query.user_message = Message(role='user', content=[])
 
-        query.pipeline_config = {
-            'output': {'misc': {'exception-handling': 'show-error'}},
-            'ai': {'runner': {'runner': 'local-agent'}, 'local-agent': {'prompt': 'default', 'model': {'primary': 'test'}}},
-        }
+        query.pipeline_config = runner_pipeline_config({'exception-handling': 'show-error'})
 
         class ErrorRunner:
             name = 'local-agent'
@@ -384,10 +420,7 @@ class TestChatHandlerExceptions:
         query.adapter.is_stream_output_supported = AsyncMock(return_value=False)
         query.user_message = Message(role='user', content=[])
 
-        query.pipeline_config = {
-            'output': {'misc': {'exception-handling': 'hide'}},
-            'ai': {'runner': {'runner': 'local-agent'}, 'local-agent': {'prompt': 'default', 'model': {'primary': 'test'}}},
-        }
+        query.pipeline_config = runner_pipeline_config({'exception-handling': 'hide'})
 
         class HideErrorRunner:
             name = 'local-agent'

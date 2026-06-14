@@ -13,10 +13,13 @@ Source: src/langbot/pkg/api/http/service/model.py
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import AsyncMock, Mock
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 
+import pytest
+
+from langbot.pkg.agent.runner.default_config import AgentRunnerDefaultConfigService
+from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
 from langbot.pkg.api.http.service.model import (
     LLMModelsService,
     EmbeddingModelsService,
@@ -29,6 +32,7 @@ from langbot.pkg.entity.persistence.model import LLMModel, EmbeddingModel, Reran
 
 
 pytestmark = pytest.mark.asyncio
+RUNNER_ID = 'plugin:test/runner/default'
 
 
 def _create_mock_llm_model(
@@ -99,6 +103,22 @@ def _create_mock_result(items: list = None, first_item=None):
     result.all = Mock(return_value=items or [])
     result.first = Mock(return_value=first_item)
     return result
+
+
+class FakeAgentRunnerRegistry:
+    async def get(self, runner_id, bound_plugins=None):
+        return AgentRunnerDescriptor(
+            id=runner_id,
+            source='plugin',
+            label={'en_US': 'Test Runner'},
+            plugin_author='test',
+            plugin_name='runner',
+            runner_name='default',
+            config_schema=[
+                {'name': 'model', 'type': 'model-fallback-selector', 'default': {'primary': '', 'fallbacks': []}},
+            ],
+            permissions={'models': ['invoke']},
+        )
 
 
 class TestParseProviderApiKeys:
@@ -443,6 +463,52 @@ class TestLLMModelsServiceCreateLLMModel:
         assert runtime_entity.context_length == 128000
         assert runtime_entity.extra_args == {'temperature': 0.2}
         assert 'context_length' not in runtime_entity.extra_args
+
+    async def test_create_llm_model_auto_sets_schema_defined_default_pipeline_model(self):
+        """Auto-default model selection should use runner schema, not legacy field names."""
+        ap = SimpleNamespace()
+        ap.logger = Mock()
+        ap.persistence_mgr = SimpleNamespace()
+        ap.model_mgr = SimpleNamespace()
+        ap.model_mgr.provider_dict = {'provider-uuid': Mock()}
+        ap.model_mgr.llm_models = []
+        ap.model_mgr.load_llm_model_with_provider = AsyncMock(return_value=Mock())
+        ap.pipeline_service = SimpleNamespace(update_pipeline=AsyncMock())
+        ap.agent_runner_registry = FakeAgentRunnerRegistry()
+        ap.agent_runner_default_config_service = AgentRunnerDefaultConfigService(ap)
+
+        pipeline = SimpleNamespace(
+            uuid='pipeline-uuid',
+            config={
+                'ai': {
+                    'runner': {'id': RUNNER_ID},
+                    'runner_config': {
+                        RUNNER_ID: {
+                            'model': {'primary': '', 'fallbacks': []},
+                        },
+                    },
+                },
+            },
+        )
+        ap.persistence_mgr.execute_async = AsyncMock(return_value=_create_mock_result(first_item=pipeline))
+
+        service = LLMModelsService(ap)
+
+        model_uuid = await service.create_llm_model({
+            'uuid': 'new-model-uuid',
+            'name': 'New LLM',
+            'provider_uuid': 'provider-uuid',
+            'abilities': [],
+            'extra_args': {},
+        }, preserve_uuid=True)
+
+        assert model_uuid == 'new-model-uuid'
+        ap.pipeline_service.update_pipeline.assert_awaited_once()
+        updated_config = ap.pipeline_service.update_pipeline.await_args.args[1]['config']
+        assert updated_config['ai']['runner_config'][RUNNER_ID]['model'] == {
+            'primary': 'new-model-uuid',
+            'fallbacks': [],
+        }
 
     async def test_create_llm_model_provider_not_found_raises_error(self):
         """Raises Exception when provider not found in runtime."""
