@@ -465,7 +465,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
 
                                     download_resp = await client.get(
                                         f'{space_url}/api/v1/marketplace/plugins/download/{plugin_author}/{plugin_name}/{latest_version}'
-                                    )
+                                        )
                                     if download_resp.status_code != 200:
                                         raise Exception(
                                             f'Failed to download plugin {plugin_author}/{plugin_name}: {download_resp.status_code}'
