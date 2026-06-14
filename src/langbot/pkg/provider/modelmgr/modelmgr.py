@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import sqlalchemy
 import traceback
 
@@ -85,19 +84,8 @@ class ModelManager:
             self.ap.logger.info('LangBot Space Models service is disabled, skipping sync.')
             return
 
-        sync_timeout = space_config.get('models_sync_timeout')
         try:
-            if sync_timeout:
-                await asyncio.wait_for(
-                    self.sync_new_models_from_space(),
-                    timeout=float(sync_timeout),
-                )
-            else:
-                await self.sync_new_models_from_space()
-        except asyncio.TimeoutError:
-            self.ap.logger.warning(
-                f'LangBot Space model sync timed out after {sync_timeout}s, skipping startup sync.'
-            )
+            await self.sync_new_models_from_space()
         except Exception as e:
             self.ap.logger.warning('Failed to sync new models from LangBot Space, model list may not be updated.')
             self.ap.logger.warning(f'  - Error: {e}')

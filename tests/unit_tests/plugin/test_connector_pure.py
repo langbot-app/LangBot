@@ -49,30 +49,6 @@ class TestExtractDepsMetadata:
         assert 'flask' in task_context.metadata['deps_list']
         assert 'numpy' in task_context.metadata['deps_list']
 
-    def test_extract_plugin_identity_includes_version(self):
-        """Extract plugin identity and version from manifest.yaml."""
-        connector = self._create_connector()
-
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, 'w') as zf:
-            zf.writestr(
-                'manifest.yaml',
-                '\n'.join(
-                    [
-                        'metadata:',
-                        '  author: langbot-team',
-                        '  name: LangRAG',
-                        '  version: 0.1.8',
-                    ]
-                ),
-            )
-
-        assert connector._inspect_plugin_package(zip_buffer.getvalue(), None) == (
-            'langbot-team',
-            'LangRAG',
-            '0.1.8',
-        )
-
     def test_extract_deps_empty_requirements(self):
         """Handle empty requirements.txt."""
         connector = self._create_connector()

@@ -12,7 +12,7 @@ class MCPRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route('/servers', methods=['GET', 'POST'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:
-            """List MCP servers or create a new MCP server."""
+            """获取MCP服务器列表"""
             if quart.request.method == 'GET':
                 servers = await self.ap.mcp_service.get_mcp_servers(contain_runtime_info=True)
 
@@ -30,7 +30,7 @@ class MCPRouterGroup(group.RouterGroup):
 
         @self.route('/servers/<server_name>', methods=['GET', 'PUT', 'DELETE'], auth_type=group.AuthType.USER_TOKEN)
         async def _(server_name: str) -> str:
-            """Get, update, or delete an MCP server configuration."""
+            """获取、更新或删除MCP服务器配置"""
             from urllib.parse import unquote
 
             server_name = unquote(server_name)
@@ -59,7 +59,7 @@ class MCPRouterGroup(group.RouterGroup):
 
         @self.route('/servers/<server_name>/test', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
         async def _(server_name: str) -> str:
-            """Test an MCP server connection."""
+            """测试MCP服务器连接"""
             from urllib.parse import unquote
 
             server_name = unquote(server_name)

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -113,28 +112,6 @@ def test_token_manager_next_token_ignores_empty_token_list():
 
     assert token_mgr.get_token() == ''
     assert token_mgr.using_token_index == 0
-
-
-@pytest.mark.asyncio
-async def test_model_manager_initialize_skips_space_sync_after_timeout():
-    ap = SimpleNamespace()
-    ap.discover = SimpleNamespace(get_components_by_kind=Mock(return_value=[]))
-    ap.instance_config = SimpleNamespace(data={'space': {'models_sync_timeout': 0.01}})
-    ap.logger = Mock()
-
-    mgr = ModelManager(ap)
-    mgr.load_models_from_db = AsyncMock()
-
-    async def slow_sync():
-        await asyncio.sleep(1)
-
-    mgr.sync_new_models_from_space = AsyncMock(side_effect=slow_sync)
-
-    await mgr.initialize()
-
-    mgr.load_models_from_db.assert_awaited_once()
-    mgr.sync_new_models_from_space.assert_awaited_once()
-    ap.logger.warning.assert_any_call('LangBot Space model sync timed out after 0.01s, skipping startup sync.')
 
 
 @pytest.mark.asyncio

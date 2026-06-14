@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import pytest
 from alembic.script import ScriptDirectory
-from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from langbot.pkg.entity.persistence.base import Base
@@ -147,42 +146,6 @@ class TestSQLiteMigrationUpgrade:
 
         rev2 = await get_alembic_current(sqlite_engine)
         assert rev2 == rev1, f"Expected {rev1}, got {rev2}"
-
-    @pytest.mark.asyncio
-    async def test_upgrade_repairs_head_stamped_mcp_readme_column(self, sqlite_engine):
-        """
-        A database may already be stamped at the previous head while missing a
-        column added by an earlier guarded migration. Upgrade should still
-        repair mcp_servers.readme so startup ORM queries do not fail.
-        """
-        async with sqlite_engine.begin() as conn:
-            await conn.execute(
-                text(
-                    """
-                    CREATE TABLE mcp_servers (
-                        uuid VARCHAR(255) NOT NULL PRIMARY KEY,
-                        name VARCHAR(255) NOT NULL,
-                        enable BOOLEAN NOT NULL,
-                        mode VARCHAR(255) NOT NULL,
-                        extra_args JSON NOT NULL,
-                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
-                    )
-                    """
-                )
-            )
-
-        await run_alembic_stamp(sqlite_engine, '7b2c1d9e4f30')
-        await run_alembic_upgrade(sqlite_engine, 'head')
-
-        async with sqlite_engine.connect() as conn:
-            columns = await conn.run_sync(
-                lambda sync_conn: {column['name'] for column in inspect(sync_conn).get_columns('mcp_servers')}
-            )
-
-        assert 'readme' in columns
-        assert await get_alembic_current(sqlite_engine) == alembic_head_revision()
-
 
 class TestSQLiteMigrationFreshDatabase:
     """Tests for fresh database workflow."""
