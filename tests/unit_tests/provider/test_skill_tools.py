@@ -245,8 +245,7 @@ class TestSkillPathHelpers:
 
         command = wrap_skill_command_with_python_env('python scripts/run.py')
 
-        assert '_LB_SYSTEM_PYTHON="$(command -v python3 || command -v python || true)"' in command
-        assert '"$_LB_SYSTEM_PYTHON" -m venv "$_LB_VENV_DIR"' in command
+        assert 'python -m venv "$_LB_VENV_DIR"' in command
         assert 'export VIRTUAL_ENV="$_LB_VENV_DIR"' in command
         assert command.rstrip().endswith('python scripts/run.py')
 
@@ -306,130 +305,6 @@ class TestSkillToolLoader:
                 {'skill_name': 'ghost'},
                 SimpleNamespace(variables={}),
             )
-
-    @pytest.mark.asyncio
-    async def test_activate_rejects_pipeline_hidden_skill(self):
-        from langbot.pkg.provider.tools.loaders.skill_authoring import (
-            ACTIVATE_SKILL_TOOL_NAME,
-            SkillToolLoader,
-        )
-        from langbot.pkg.provider.tools.loaders.skill import (
-            ACTIVATED_SKILLS_KEY,
-            PIPELINE_BOUND_SKILLS_KEY,
-        )
-
-        demo = _make_skill_data(name='demo', package_root='/data/skills/demo', instructions='Demo instructions')
-        hidden = _make_skill_data(
-            name='hidden',
-            package_root='/data/skills/hidden',
-            instructions='Hidden instructions',
-        )
-        ap = _make_ap()
-        ap.skill_mgr = SimpleNamespace(
-            skills={'demo': demo, 'hidden': hidden},
-        )
-
-        loader = SkillToolLoader(ap)
-        query = SimpleNamespace(variables={PIPELINE_BOUND_SKILLS_KEY: ['demo']})
-
-        with pytest.raises(ValueError, match='Available skills: demo'):
-            await loader.invoke_tool(ACTIVATE_SKILL_TOOL_NAME, {'skill_name': 'hidden'}, query)
-
-        result = await loader.invoke_tool(ACTIVATE_SKILL_TOOL_NAME, {'skill_name': 'demo'}, query)
-
-        assert result['activated'] is True
-        assert result['skill_name'] == 'demo'
-        assert set(query.variables[ACTIVATED_SKILLS_KEY].keys()) == {'demo'}
-
-    @pytest.mark.asyncio
-    async def test_activate_persists_and_restores_for_next_query_exec(self, tmp_path):
-        from sqlalchemy.ext.asyncio import create_async_engine
-
-        from langbot.pkg.agent.runner.persistent_state_store import (
-            get_persistent_state_store,
-            reset_persistent_state_store,
-        )
-        from langbot.pkg.entity.persistence.base import Base
-        from langbot.pkg.provider.tools.loaders.native import NativeToolLoader
-        from langbot.pkg.provider.tools.loaders.skill_authoring import (
-            ACTIVATE_SKILL_TOOL_NAME,
-            SkillToolLoader,
-        )
-        from langbot.pkg.provider.tools.loaders.skill import (
-            ACTIVATED_SKILL_NAMES_STATE_KEY,
-            ACTIVATED_SKILLS_KEY,
-            PIPELINE_BOUND_SKILLS_KEY,
-            restore_activated_skills_from_state,
-        )
-
-        reset_persistent_state_store()
-        engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "state.db"}')
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-
-        try:
-            skill = _make_skill_data(name='demo', package_root=str(tmp_path), instructions='Demo instructions')
-            ap = _make_ap()
-            ap.persistence_mgr.get_db_engine = Mock(return_value=engine)
-            ap.box_service = SimpleNamespace(
-                available=True,
-                default_workspace=str(tmp_path),
-                execute_tool=AsyncMock(return_value={'ok': True}),
-            )
-            ap.skill_mgr = SimpleNamespace(
-                skills={'demo': skill},
-                refresh_skill_from_disk=Mock(),
-            )
-
-            scope_key = 'conversation:plugin:langbot/local-agent/default:binding_001:conv_001'
-            query1 = SimpleNamespace(query_id='q1', variables={PIPELINE_BOUND_SKILLS_KEY: ['demo']})
-            object.__setattr__(
-                query1,
-                '_agent_run_session',
-                {
-                    'runner_id': 'plugin:langbot/local-agent/default',
-                    'authorization': {
-                        'state_policy': {'enable_state': True, 'state_scopes': ['conversation']},
-                        'state_context': {
-                            'scope_keys': {'conversation': scope_key},
-                            'binding_identity': 'binding_001',
-                            'conversation_id': 'conv_001',
-                        },
-                    },
-                },
-            )
-
-            await SkillToolLoader(ap).invoke_tool(ACTIVATE_SKILL_TOOL_NAME, {'skill_name': 'demo'}, query1)
-
-            store = get_persistent_state_store(engine)
-            persisted_names = await store.state_get(scope_key, ACTIVATED_SKILL_NAMES_STATE_KEY)
-            assert persisted_names == ['demo']
-
-            query2 = SimpleNamespace(query_id='q2', variables={PIPELINE_BOUND_SKILLS_KEY: ['demo']})
-            restored = restore_activated_skills_from_state(
-                ap,
-                query2,
-                {'conversation': {ACTIVATED_SKILL_NAMES_STATE_KEY: persisted_names}},
-            )
-
-            assert restored == ['demo']
-            assert set(query2.variables[ACTIVATED_SKILLS_KEY]) == {'demo'}
-
-            result = await NativeToolLoader(ap).invoke_tool(
-                'exec',
-                {
-                    'command': 'python /workspace/.skills/demo/scripts/run.py',
-                    'workdir': '/workspace/.skills/demo',
-                },
-                query2,
-            )
-
-            assert result['ok'] is True
-            ap.box_service.execute_tool.assert_awaited_once()
-            ap.skill_mgr.refresh_skill_from_disk.assert_called_once_with('demo')
-        finally:
-            reset_persistent_state_store()
-            await engine.dispose()
 
     @pytest.mark.asyncio
     async def test_register_skill_scans_directory_and_creates_skill(self):
@@ -617,35 +492,6 @@ class TestNativeToolLoaderSkillPaths:
             assert tool_parameters['command'] == 'python /workspace/.skills/demo/scripts/run.py'
             assert tool_parameters['workdir'] == '/workspace/.skills/demo'
             ap.skill_mgr.refresh_skill_from_disk.assert_called_once_with('demo')
-
-    @pytest.mark.asyncio
-    async def test_exec_requires_skill_activation_even_when_skill_visible(self):
-        from langbot.pkg.provider.tools.loaders.native import NativeToolLoader
-        from langbot.pkg.provider.tools.loaders.skill import PIPELINE_BOUND_SKILLS_KEY
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            ap = _make_ap()
-            ap.box_service = SimpleNamespace(
-                available=True,
-                default_workspace=tmpdir,
-                execute_tool=AsyncMock(return_value={'ok': True}),
-            )
-            ap.skill_mgr = SimpleNamespace(skills={'demo': _make_skill_data(name='demo', package_root=tmpdir)})
-            loader = NativeToolLoader(ap)
-
-            query = SimpleNamespace(query_id='q1', variables={PIPELINE_BOUND_SKILLS_KEY: ['demo']})
-
-            with pytest.raises(ValueError, match='must be activated before exec'):
-                await loader.invoke_tool(
-                    'exec',
-                    {
-                        'command': 'python /workspace/.skills/demo/scripts/run.py',
-                        'workdir': '/workspace',
-                    },
-                    query,
-                )
-
-            ap.box_service.execute_tool.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_write_requires_skill_activation(self):

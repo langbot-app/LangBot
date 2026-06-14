@@ -46,12 +46,7 @@ class PluginToolLoader(loader.ToolLoader):
                 return tool
         return None
 
-    async def invoke_tool(self, name: str, parameters: dict, query: pipeline_query.Query | None) -> typing.Any:
-        if query is None:
-            raise ValueError(
-                f'Plugin tool {name} requires a query-based host context. '
-                'Use MCP tools or provide a Host tool implementation that is run-scoped.'
-            )
+    async def invoke_tool(self, name: str, parameters: dict, query: pipeline_query.Query) -> typing.Any:
         try:
             return await self.ap.plugin_connector.call_tool(
                 name, parameters, session=query.session, query_id=query.query_id
