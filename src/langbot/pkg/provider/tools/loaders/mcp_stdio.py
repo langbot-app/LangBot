@@ -276,7 +276,19 @@ class BoxStdioSessionRuntime:
         # to delete them, so refresh source files in place and preserve runtime
         # directories instead of rmtree'ing the whole staging root.
         with _workspace_copy_lock(process_host_root):
+            preserved_names = {'.venv', 'venv', 'env', '.env', '.cache', '.tmp', '.langbot'}
             os.makedirs(process_host_workspace, exist_ok=True)
+            for name in os.listdir(process_host_workspace):
+                if name in preserved_names:
+                    continue
+                path = os.path.join(process_host_workspace, name)
+                if os.path.isdir(path) and not os.path.islink(path):
+                    shutil.rmtree(path, ignore_errors=True)
+                else:
+                    try:
+                        os.unlink(path)
+                    except FileNotFoundError:
+                        pass
             shutil.copytree(
                 source_path,
                 process_host_workspace,

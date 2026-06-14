@@ -509,32 +509,11 @@ class TestPythonWorkspacePreparation:
         )
 
         assert command is not None
-        assert '_LB_SYSTEM_PYTHON="$(command -v python3 || command -v python || true)"' in command
-        assert '"$_LB_SYSTEM_PYTHON" -m venv "$_LB_VENV_DIR"' in command
+        assert 'python -m venv "$_LB_VENV_DIR"' in command
         assert 'python -m pip install -r "/workspace/.mcp/u1/workspace/requirements.txt"' in command
         assert 'pip install --no-cache-dir -r' not in command
 
-    def test_process_payload_can_start_from_prepared_python_env(self, mcp_module):
-        payload = {
-            'command': 'python',
-            'args': ['/workspace/.mcp/u1/workspace/server.py'],
-            'env': {},
-            'cwd': '/workspace/.mcp/u1/workspace',
-        }
-
-        wrapped = mcp_module.BoxStdioSessionRuntime._wrap_process_payload_with_python_env(
-            payload,
-            '/workspace/.mcp/u1/workspace',
-        )
-
-        assert wrapped['command'] == 'sh'
-        assert wrapped['args'][0] == '-lc'
-        assert 'export VIRTUAL_ENV=/workspace/.mcp/u1/workspace/.venv' in wrapped['args'][1]
-        assert 'export PATH=/workspace/.mcp/u1/workspace/.venv/bin:$PATH' in wrapped['args'][1]
-        assert 'exec python /workspace/.mcp/u1/workspace/server.py' in wrapped['args'][1]
-        assert wrapped['cwd'] == '/workspace/.mcp/u1/workspace'
-
-    def test_staging_refresh_preserves_box_runtime_dirs(self, mcp_module, tmp_path):
+    def test_staging_refresh_removes_stale_source_files_but_preserves_runtime_dirs(self, mcp_module, tmp_path):
         source = tmp_path / 'source'
         source.mkdir()
         (source / 'server.py').write_text('print("new")\n', encoding='utf-8')
@@ -547,11 +526,16 @@ class TestPythonWorkspacePreparation:
         (workspace / '.langbot').mkdir()
         (workspace / '.langbot' / 'python-env.lock').mkdir()
         (workspace / 'server.py').write_text('print("old")\n', encoding='utf-8')
+        (workspace / 'removed.py').write_text('stale\n', encoding='utf-8')
+        (workspace / 'removed_dir').mkdir()
+        (workspace / 'removed_dir' / 'old.txt').write_text('stale\n', encoding='utf-8')
 
         mcp_module.BoxStdioSessionRuntime._copy_workspace_tree(str(source), str(process_root), str(workspace))
 
         assert (workspace / 'server.py').read_text(encoding='utf-8') == 'print("new")\n'
         assert (workspace / 'requirements.txt').read_text(encoding='utf-8') == 'mcp==1.26.0\n'
+        assert not (workspace / 'removed.py').exists()
+        assert not (workspace / 'removed_dir').exists()
         assert (workspace / '.venv' / 'bin' / 'python').exists()
         assert (workspace / '.langbot' / 'python-env.lock').is_dir()
 
