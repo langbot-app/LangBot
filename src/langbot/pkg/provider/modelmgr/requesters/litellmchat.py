@@ -262,32 +262,82 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         - dict with the same keys
         - missing ``total_tokens`` (derived from prompt + completion)
         - ``None`` / partially-populated usage (defaults to 0)
+        - provider-specific token details, including cache token counters
         """
-        if usage is None:
-            return {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}
 
-        def _get(key: str) -> typing.Any:
-            if isinstance(usage, dict):
-                return usage.get(key)
-            return getattr(usage, key, None)
+        def _plain_value(value: typing.Any) -> typing.Any:
+            if value is None:
+                return None
+            if isinstance(value, dict):
+                return {k: _plain_value(v) for k, v in value.items() if v is not None}
+            if isinstance(value, (list, tuple)):
+                return [_plain_value(v) for v in value]
 
-        prompt_tokens = _get('prompt_tokens') or 0
-        completion_tokens = _get('completion_tokens') or 0
-        total_tokens = _get('total_tokens') or 0
+            model_dump = getattr(value, 'model_dump', None)
+            if callable(model_dump):
+                try:
+                    dumped = model_dump()
+                    if isinstance(dumped, dict):
+                        return _plain_value(dumped)
+                except Exception:
+                    pass
+
+            return value
+
+        def _usage_dict(value: typing.Any) -> dict[str, typing.Any]:
+            if value is None:
+                return {}
+            plain = _plain_value(value)
+            if isinstance(plain, dict):
+                return plain
+
+            def _is_mock_attr(attr: typing.Any) -> bool:
+                return type(attr).__module__.startswith('unittest.mock')
+
+            data: dict[str, typing.Any] = {}
+            for key in (
+                'prompt_tokens',
+                'completion_tokens',
+                'total_tokens',
+                'prompt_tokens_details',
+                'completion_tokens_details',
+                'cache_creation_input_tokens',
+                'cache_read_input_tokens',
+                'input_token_details',
+                'output_token_details',
+            ):
+                attr_value = getattr(value, key, None)
+                if attr_value is not None and not _is_mock_attr(attr_value):
+                    data[key] = _plain_value(attr_value)
+            return data
+
+        def _to_int(value: typing.Any) -> int:
+            try:
+                return int(value or 0)
+            except (TypeError, ValueError):
+                return 0
+
+        normalized = _usage_dict(usage)
+
+        prompt_tokens = _to_int(normalized.get('prompt_tokens'))
+        completion_tokens = _to_int(normalized.get('completion_tokens'))
+        total_tokens = _to_int(normalized.get('total_tokens'))
 
         # Some providers omit total_tokens in streaming usage; derive it.
         if not total_tokens:
             total_tokens = prompt_tokens + completion_tokens
 
-        return {
-            'prompt_tokens': int(prompt_tokens),
-            'completion_tokens': int(completion_tokens),
-            'total_tokens': int(total_tokens),
-        }
+        normalized['prompt_tokens'] = prompt_tokens
+        normalized['completion_tokens'] = completion_tokens
+        normalized['total_tokens'] = total_tokens
+        return normalized
 
-    def _extract_usage(self, response) -> dict:
+    def _extract_usage(self, response) -> dict | None:
         """Extract usage info from a non-streaming LiteLLM response."""
-        return self._normalize_usage(getattr(response, 'usage', None))
+        usage = getattr(response, 'usage', None)
+        if usage is None:
+            return None
+        return self._normalize_usage(usage)
 
     @staticmethod
     def _as_dict(value: typing.Any) -> dict:
@@ -486,7 +536,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                     if query is not None:
                         if query.variables is None:
                             query.variables = {}
-                        query.variables['_stream_usage'] = usage_info
+                        query.variables[requester.STREAM_USAGE_QUERY_VARIABLE] = usage_info
 
                 if not hasattr(chunk, 'choices') or not chunk.choices:
                     continue
