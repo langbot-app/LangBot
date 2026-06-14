@@ -375,7 +375,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         install_source: PluginInstallSource,
         install_info: dict[str, Any],
         task_context: taskmgr.TaskContext | None = None,
-        ):
+    ):
         plugin_author = install_info.get('plugin_author')
         plugin_name = install_info.get('plugin_name')
 
@@ -472,12 +472,6 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                                         )
 
                                     file_bytes = download_resp.content
-                                    plugin_author, plugin_name = self._inspect_plugin_package(
-                                        file_bytes,
-                                        task_context,
-                                    )
-                                    if task_context is not None and plugin_author and plugin_name:
-                                        task_context.metadata['plugin_name'] = f'{plugin_author}/{plugin_name}'
                                     file_key = await self.handler.send_file(file_bytes, 'lbpkg')
                                     install_info['plugin_file_key'] = file_key
                                     self.ap.logger.info(f'Transfered file {file_key} to plugin runtime')
