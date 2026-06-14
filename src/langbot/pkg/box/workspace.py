@@ -157,6 +157,12 @@ def wrap_python_command_with_env(command: str, *, mount_path: str = '/workspace'
         export TMP="$_LB_TMP_DIR"
         export PIP_CACHE_DIR="$_LB_PIP_CACHE_DIR"
 
+        _LB_SYSTEM_PYTHON="$(command -v python3 || command -v python || true)"
+        if [ -z "$_LB_SYSTEM_PYTHON" ]; then
+          echo "No Python interpreter found for workspace bootstrap" >&2
+          exit 1
+        fi
+
         _lb_python_meta() {{
           "$_LB_SYSTEM_PYTHON" - <<'PY'
         import hashlib

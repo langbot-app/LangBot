@@ -509,7 +509,8 @@ class TestPythonWorkspacePreparation:
         )
 
         assert command is not None
-        assert 'python -m venv "$_LB_VENV_DIR"' in command
+        assert '_LB_SYSTEM_PYTHON="$(command -v python3 || command -v python || true)"' in command
+        assert '"$_LB_SYSTEM_PYTHON" -m venv "$_LB_VENV_DIR"' in command
         assert 'python -m pip install -r "/workspace/.mcp/u1/workspace/requirements.txt"' in command
         assert 'pip install --no-cache-dir -r' not in command
 
