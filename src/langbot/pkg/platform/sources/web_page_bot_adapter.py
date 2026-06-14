@@ -90,9 +90,7 @@ class WebPageBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
             return await self._ws_adapter.is_stream_output_supported()
         return False
 
-    async def create_message_card(
-        self, message_id: str | int, event: platform_events.MessageEvent
-    ) -> bool:
+    async def create_message_card(self, message_id: str | int, event: platform_events.MessageEvent) -> bool:
         """Delegate create_message_card to ws_adapter."""
         if self._ws_adapter is not None:
             return await self._ws_adapter.create_message_card(message_id, event)
