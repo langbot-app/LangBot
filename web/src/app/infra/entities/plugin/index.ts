@@ -21,6 +21,13 @@ export interface PluginComponent {
   };
 }
 
+// A single log line captured from a running plugin's stderr.
+export interface PluginLogEntry {
+  ts: number;
+  level: string;
+  text: string;
+}
+
 // marketplace plugin v4
 export enum PluginV4Status {
   Any = 'any',

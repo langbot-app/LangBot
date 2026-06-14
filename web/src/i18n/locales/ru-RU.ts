@@ -588,6 +588,14 @@ const ruRU = {
     viewSource: 'Исходный код',
     loadingReadme: 'Загрузка документации...',
     noReadme: 'Этот плагин не предоставляет документацию README',
+    tabDocs: 'Документация',
+    tabLogs: 'Журналы',
+    logsLevelAll: 'Все уровни',
+    logsRefresh: 'Обновить',
+    logsAutoRefreshOn: 'Автообновление: вкл.',
+    logsAutoRefreshOff: 'Автообновление: выкл.',
+    logsEmpty:
+      'Журналов пока нет. Здесь появятся логи, выводимые плагином через logger.',
     fileUpload: {
       tooLarge: 'Размер файла превышает лимит 10 МБ',
       success: 'Файл успешно загружен',

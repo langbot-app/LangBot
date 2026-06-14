@@ -569,6 +569,13 @@ const thTH = {
     viewSource: 'ดูซอร์สโค้ด',
     loadingReadme: 'กำลังโหลดเอกสาร...',
     noReadme: 'ปลั๊กอินนี้ไม่มีเอกสาร README',
+    tabDocs: 'เอกสาร',
+    tabLogs: 'บันทึก',
+    logsLevelAll: 'ทุกระดับ',
+    logsRefresh: 'รีเฟรช',
+    logsAutoRefreshOn: 'รีเฟรชอัตโนมัติ: เปิด',
+    logsAutoRefreshOff: 'รีเฟรชอัตโนมัติ: ปิด',
+    logsEmpty: 'ยังไม่มีบันทึก บันทึกที่ปลั๊กอินพิมพ์ผ่าน logger จะแสดงที่นี่',
     fileUpload: {
       tooLarge: 'ขนาดไฟล์เกินขีดจำกัด 10MB',
       success: 'อัปโหลดไฟล์สำเร็จ',

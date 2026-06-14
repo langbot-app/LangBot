@@ -552,6 +552,13 @@ const zhHans = {
     viewSource: '查看来源',
     loadingReadme: '正在加载文档...',
     noReadme: '该插件没有提供 README 文档',
+    tabDocs: '文档',
+    tabLogs: '日志',
+    logsLevelAll: '全部级别',
+    logsRefresh: '刷新',
+    logsAutoRefreshOn: '自动刷新：开',
+    logsAutoRefreshOff: '自动刷新：关',
+    logsEmpty: '暂无日志。插件通过 logger 打印的日志会显示在这里。',
     fileUpload: {
       tooLarge: '文件大小超过 10MB 限制',
       success: '文件上传成功',

@@ -2515,6 +2515,31 @@ class RuntimeConnectionHandler(handler.Handler):
 
         return readme_bytes.decode('utf-8')
 
+    async def get_plugin_logs(
+        self,
+        plugin_author: str,
+        plugin_name: str,
+        limit: int = 200,
+        level: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Get recent log lines captured from the plugin's stderr."""
+        try:
+            result = await self.call_action(
+                LangBotToRuntimeAction.GET_PLUGIN_LOGS,
+                {
+                    'plugin_author': plugin_author,
+                    'plugin_name': plugin_name,
+                    'limit': limit,
+                    'level': level,
+                },
+                timeout=20,
+            )
+        except Exception:
+            traceback.print_exc()
+            return []
+
+        return result.get('logs', [])
+
     async def get_plugin_assets(self, plugin_author: str, plugin_name: str, filepath: str) -> dict[str, Any]:
         """Get plugin assets"""
         result = await self.call_action(

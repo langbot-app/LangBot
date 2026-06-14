@@ -109,6 +109,7 @@ async def build_heartbeat_payload(ap: core_app.Application) -> dict:
         'query_id': '',
         'version': constants.semantic_version,
         'instance_id': constants.instance_id,
+        'instance_create_ts': constants.instance_create_ts,
         'edition': constants.edition,
         'features': features,
         'timestamp': datetime.now(timezone.utc).isoformat(),

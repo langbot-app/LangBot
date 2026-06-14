@@ -117,6 +117,7 @@ class SkillToolLoader(loader.ToolLoader):
             'activated': True,
             'skill_name': skill_name,
             'mount_path': mount_path,
+            'activated_skill_names': skill_loader.get_activated_skill_names(query),
             'content': result_content,
         }
 

@@ -589,6 +589,14 @@ const esES = {
     viewSource: 'Ver código fuente',
     loadingReadme: 'Cargando documentación...',
     noReadme: 'Este plugin no proporciona documentación README',
+    tabDocs: 'Documentación',
+    tabLogs: 'Registros',
+    logsLevelAll: 'Todos los niveles',
+    logsRefresh: 'Actualizar',
+    logsAutoRefreshOn: 'Auto-actualizar: Activado',
+    logsAutoRefreshOff: 'Auto-actualizar: Desactivado',
+    logsEmpty:
+      'Aún no hay registros. Los registros que el plugin imprima mediante logger aparecerán aquí.',
     fileUpload: {
       tooLarge: 'El tamaño del archivo supera el límite de 10MB',
       success: 'Archivo subido correctamente',

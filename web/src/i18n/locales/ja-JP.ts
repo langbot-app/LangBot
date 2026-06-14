@@ -582,6 +582,14 @@ const jaJP = {
     viewSource: 'ソースを表示',
     loadingReadme: 'ドキュメントを読み込み中...',
     noReadme: 'このプラグインはREADMEドキュメントを提供していません',
+    tabDocs: 'ドキュメント',
+    tabLogs: 'ログ',
+    logsLevelAll: 'すべてのレベル',
+    logsRefresh: '更新',
+    logsAutoRefreshOn: '自動更新：オン',
+    logsAutoRefreshOff: '自動更新：オフ',
+    logsEmpty:
+      'ログはまだありません。プラグインが logger で出力したログがここに表示されます。',
     fileUpload: {
       tooLarge: 'ファイルサイズが 10MB の制限を超えています',
       success: 'ファイルのアップロードに成功しました',

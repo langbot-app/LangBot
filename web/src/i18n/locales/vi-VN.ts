@@ -583,6 +583,14 @@ const viVN = {
     viewSource: 'Xem mã nguồn',
     loadingReadme: 'Đang tải tài liệu...',
     noReadme: 'Plugin này không cung cấp tài liệu README',
+    tabDocs: 'Tài liệu',
+    tabLogs: 'Nhật ký',
+    logsLevelAll: 'Tất cả cấp độ',
+    logsRefresh: 'Làm mới',
+    logsAutoRefreshOn: 'Tự động làm mới: Bật',
+    logsAutoRefreshOff: 'Tự động làm mới: Tắt',
+    logsEmpty:
+      'Chưa có nhật ký. Nhật ký do plugin in qua logger sẽ hiển thị ở đây.',
     fileUpload: {
       tooLarge: 'Kích thước tệp vượt quá giới hạn 10MB',
       success: 'Tải tệp lên thành công',

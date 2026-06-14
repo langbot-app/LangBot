@@ -577,6 +577,14 @@ const enUS = {
     viewSource: 'View Source',
     loadingReadme: 'Loading documentation...',
     noReadme: 'This plugin does not provide README documentation',
+    tabDocs: 'Documentation',
+    tabLogs: 'Logs',
+    logsLevelAll: 'All levels',
+    logsRefresh: 'Refresh',
+    logsAutoRefreshOn: 'Auto-refresh: On',
+    logsAutoRefreshOff: 'Auto-refresh: Off',
+    logsEmpty:
+      'No logs yet. Logs printed by the plugin via logger will appear here.',
     fileUpload: {
       tooLarge: 'File size exceeds 10MB limit',
       success: 'File uploaded successfully',

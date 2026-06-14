@@ -55,6 +55,7 @@ import {
   ApiRespSkill,
 } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
+import type { PluginLogEntry } from '@/app/infra/entities/plugin';
 import type { I18nObject } from '@/app/infra/entities/common';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
 import { GetBotLogsResponse } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
@@ -601,6 +602,22 @@ export class BackendClient extends BaseHttpClient {
   ): Promise<{ readme: string }> {
     return this.get(
       `/api/v1/plugins/${author}/${name}/readme?language=${language}`,
+    );
+  }
+
+  public getPluginLogs(
+    author: string,
+    name: string,
+    limit: number = 200,
+    level?: string,
+  ): Promise<{ logs: PluginLogEntry[] }> {
+    const params = new URLSearchParams();
+    params.set('limit', String(limit));
+    if (level) {
+      params.set('level', level);
+    }
+    return this.get(
+      `/api/v1/plugins/${author}/${name}/logs?${params.toString()}`,
     );
   }
 

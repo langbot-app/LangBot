@@ -272,6 +272,20 @@ class PluginsRouterGroup(group.RouterGroup):
             return self.success(data={'readme': readme})
 
         @self.route(
+            '/<author>/<plugin_name>/logs',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+        )
+        async def _(author: str, plugin_name: str) -> quart.Response:
+            try:
+                limit = int(quart.request.args.get('limit', 200))
+            except (TypeError, ValueError):
+                limit = 200
+            level = quart.request.args.get('level') or None
+            logs = await self.ap.plugin_connector.get_plugin_logs(author, plugin_name, limit=limit, level=level)
+            return self.success(data={'logs': logs})
+
+        @self.route(
             '/<author>/<plugin_name>/icon',
             methods=['GET'],
             auth_type=group.AuthType.NONE,

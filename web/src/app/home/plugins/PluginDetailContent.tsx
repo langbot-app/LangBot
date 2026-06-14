@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PluginForm from '@/app/home/plugins/components/plugin-installed/plugin-form/PluginForm';
 import PluginReadme from '@/app/home/plugins/components/plugin-installed/plugin-readme/PluginReadme';
+import PluginLogs from '@/app/home/plugins/components/plugin-installed/plugin-logs/PluginLogs';
 import PluginComponentList from '@/app/home/plugins/components/plugin-installed/PluginComponentList';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -217,8 +219,35 @@ export default function PluginDetailContent({ id }: { id: string }) {
             {dangerZone}
           </div>
           <div className="hidden w-px shrink-0 bg-border md:block" />
-          <div className="min-w-0 flex-1 pb-6 md:min-h-0 md:overflow-y-auto md:overflow-x-hidden">
-            <PluginReadme pluginAuthor={pluginAuthor} pluginName={pluginName} />
+          <div className="flex min-w-0 flex-1 flex-col pb-6 md:min-h-0 md:overflow-hidden">
+            <Tabs defaultValue="docs" className="flex min-h-0 flex-1 flex-col">
+              <TabsList className="mb-2 shrink-0">
+                <TabsTrigger value="docs" className="flex-none px-4">
+                  {t('plugins.tabDocs')}
+                </TabsTrigger>
+                <TabsTrigger value="logs" className="flex-none px-4">
+                  {t('plugins.tabLogs')}
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent
+                value="docs"
+                className="min-h-0 flex-1 md:overflow-y-auto md:overflow-x-hidden"
+              >
+                <PluginReadme
+                  pluginAuthor={pluginAuthor}
+                  pluginName={pluginName}
+                />
+              </TabsContent>
+              <TabsContent
+                value="logs"
+                className="min-h-0 flex-1 md:overflow-hidden"
+              >
+                <PluginLogs
+                  pluginAuthor={pluginAuthor}
+                  pluginName={pluginName}
+                />
+              </TabsContent>
+            </Tabs>
           </div>
         </div>
       </div>

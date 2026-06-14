@@ -202,6 +202,16 @@ class LoadConfigStage(stage.BootingStage):
                 constants.instance_id = new_id
         constants.edition = ap.instance_config.data.get('system', {}).get('edition', 'community')
 
+        # Instance creation timestamp: sourced from data/labels/instance_id.json.
+        # Instances created before this field existed (or supplied via
+        # system.instance_id) won't have it, so backfill with the current time
+        # and persist it via the dump below — from then on it stays stable.
+        instance_create_ts = ap.instance_id.data.get('instance_create_ts', 0)
+        if not isinstance(instance_create_ts, int) or instance_create_ts <= 0:
+            instance_create_ts = int(time.time())
+            ap.instance_id.data['instance_create_ts'] = instance_create_ts
+        constants.instance_create_ts = instance_create_ts
+
         print(f'LangBot instance id: {constants.instance_id}')
         print(f'LangBot edition: {constants.edition}')
 
