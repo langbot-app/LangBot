@@ -245,7 +245,8 @@ class TestSkillPathHelpers:
 
         command = wrap_skill_command_with_python_env('python scripts/run.py')
 
-        assert 'python -m venv "$_LB_VENV_DIR"' in command
+        assert '_LB_SYSTEM_PYTHON="$(command -v python3 || command -v python || true)"' in command
+        assert '"$_LB_SYSTEM_PYTHON" -m venv "$_LB_VENV_DIR"' in command
         assert 'export VIRTUAL_ENV="$_LB_VENV_DIR"' in command
         assert command.rstrip().endswith('python scripts/run.py')
 
