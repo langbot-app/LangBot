@@ -760,36 +760,6 @@ class DingTalkClient:
                 await self.logger.error(f'DingTalk update card error: {traceback.format_exc()}')
             return False
 
-    async def delete_card(self, *, out_track_id: str) -> bool:
-        """POST /v1.0/card/instances/delete — recall a delivered card.
-
-        Used to retroactively remove the initial streaming chat card when
-        the workflow turns out to be paused for human input — the prompt
-        and buttons then live entirely on the dedicated form card.
-        """
-        if not await self.check_access_token():
-            await self.get_access_token()
-
-        url = f'{DINGTALK_OPENAPI_BASE}/v1.0/card/instances/delete'
-        headers = {
-            'x-acs-dingtalk-access-token': self.access_token,
-            'Content-Type': 'application/json',
-        }
-        body = {'outTrackId': out_track_id, 'userIdType': 1}
-        try:
-            _stdout_logger.info('DingTalk delete_card request: out_track_id=%s', out_track_id)
-            async with httpx.AsyncClient() as client:
-                response = await client.post(url, headers=headers, json=body, timeout=30.0)
-                _stdout_logger.info(
-                    'DingTalk delete_card response: status=%d body=%s',
-                    response.status_code,
-                    response.text[:300],
-                )
-                return response.status_code == 200
-        except Exception:
-            _stdout_logger.exception('DingTalk delete_card error')
-            return False
-
     async def start(self):
         """启动 WebSocket 连接，监听消息"""
         self._stopped = False

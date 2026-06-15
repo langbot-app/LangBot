@@ -35,7 +35,7 @@ def markdown_block(node_id, variable='content'):
                 'valueType': 'fixed',
                 'condition': {'op': 'and', 'conditions': []},
             },
-            'isStreaming': False,
+            'isStreaming': True,
             'enableLinkStatPoint': False,
             'linkStatPoint': {'type': 'dynamicString', 'content': '', 'i18n': False},
             'linkStatPointParams': [],
@@ -552,6 +552,7 @@ def build_editor_data():
     return {
         'schemaVersion': '3.0.0',
         'schema': {
+            'config': {'update_multi': True, 'streaming_mode': True},
             'componentsMap': components_map,
             'componentsTree': [root],
             'i18n': {},
