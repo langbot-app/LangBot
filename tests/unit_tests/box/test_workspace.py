@@ -54,7 +54,9 @@ def test_classify_python_workspace_detects_package_and_requirements():
 def test_wrap_python_command_with_env_contains_bootstrap_and_command():
     command = wrap_python_command_with_env('python script.py')
 
-    assert 'python -m venv "$_LB_VENV_DIR"' in command
+    assert '_LB_SYSTEM_PYTHON="$(command -v python3 || command -v python || true)"' in command
+    assert '"$_LB_SYSTEM_PYTHON" -m venv "$_LB_VENV_DIR"' in command
+    assert 'kill -0 "$_LB_LOCK_OWNER"' in command
     assert 'export VIRTUAL_ENV="$_LB_VENV_DIR"' in command
     assert command.rstrip().endswith('python script.py')
 

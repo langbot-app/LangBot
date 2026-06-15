@@ -146,13 +146,19 @@ def wrap_python_command_with_env(command: str, *, mount_path: str = '/workspace'
         _LB_PIP_CACHE_DIR="{mount_path}/.cache/pip"
 
         mkdir -p "$_LB_META_DIR" "$_LB_TMP_DIR" "$_LB_PIP_CACHE_DIR"
+        _LB_SYSTEM_PYTHON="$(command -v python3 || command -v python || true)"
+        if [ -z "$_LB_SYSTEM_PYTHON" ]; then
+          echo "python3 or python is required to prepare the workspace Python environment" >&2
+          exit 127
+        fi
+
         export TMPDIR="$_LB_TMP_DIR"
         export TEMP="$_LB_TMP_DIR"
         export TMP="$_LB_TMP_DIR"
         export PIP_CACHE_DIR="$_LB_PIP_CACHE_DIR"
 
         _lb_python_meta() {{
-          python - <<'PY'
+          "$_LB_SYSTEM_PYTHON" - <<'PY'
         import hashlib
         import json
         import os
@@ -201,15 +207,26 @@ def wrap_python_command_with_env(command: str, *, mount_path: str = '/workspace'
           _LB_LOCK_WAIT=0
           while ! mkdir "$_LB_LOCK_DIR" 2>/dev/null; do
             if [ "$_LB_LOCK_WAIT" -ge 120 ]; then
+              _LB_LOCK_OWNER="$(cat "$_LB_LOCK_DIR/pid" 2>/dev/null || true)"
+              if [ -n "$_LB_LOCK_OWNER" ] && kill -0 "$_LB_LOCK_OWNER" 2>/dev/null; then
+                echo "Timed out waiting for active Python environment lock: $_LB_LOCK_DIR" >&2
+                exit 1
+              fi
+              echo "Timed out waiting for Python environment lock, clearing stale lock: $_LB_LOCK_DIR" >&2
+              rm -rf "$_LB_LOCK_DIR" 2>/dev/null || true
+              if mkdir "$_LB_LOCK_DIR" 2>/dev/null; then
+                break
+              fi
               echo "Timed out waiting for Python environment lock: $_LB_LOCK_DIR" >&2
               exit 1
             fi
             sleep 1
             _LB_LOCK_WAIT=$((_LB_LOCK_WAIT + 1))
           done
+          printf '%s\\n' "$$" > "$_LB_LOCK_DIR/pid" 2>/dev/null || true
 
           _lb_cleanup_lock() {{
-            rmdir "$_LB_LOCK_DIR" >/dev/null 2>&1 || true
+            rm -rf "$_LB_LOCK_DIR" >/dev/null 2>&1 || true
           }}
           trap _lb_cleanup_lock EXIT INT TERM
 
@@ -225,7 +242,7 @@ def wrap_python_command_with_env(command: str, *, mount_path: str = '/workspace'
 
           if [ "$_LB_NEEDS_BOOTSTRAP" -eq 1 ]; then
             rm -rf "$_LB_VENV_DIR"
-            python -m venv "$_LB_VENV_DIR"
+            "$_LB_SYSTEM_PYTHON" -m venv "$_LB_VENV_DIR"
             . "$_LB_VENV_DIR/bin/activate"
             python -m pip install --upgrade pip setuptools wheel
             if [ -f "{mount_path}/requirements.txt" ]; then

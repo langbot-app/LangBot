@@ -5,6 +5,8 @@ import asyncio
 import os
 import shutil
 import shlex
+import threading
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
 import pydantic
@@ -18,10 +20,24 @@ from ....box.workspace import (
     rewrite_mounted_path,
     rewrite_venv_command,
     unwrap_venv_path,
+    wrap_python_command_with_env,
 )
 
 if TYPE_CHECKING:
     from .mcp import RuntimeMCPSession
+
+
+_WORKSPACE_COPY_LOCKS: dict[str, threading.Lock] = {}
+_WORKSPACE_COPY_LOCKS_GUARD = threading.Lock()
+
+
+def _workspace_copy_lock(path: str) -> threading.Lock:
+    with _WORKSPACE_COPY_LOCKS_GUARD:
+        lock = _WORKSPACE_COPY_LOCKS.get(path)
+        if lock is None:
+            lock = threading.Lock()
+            _WORKSPACE_COPY_LOCKS[path] = lock
+        return lock
 
 
 class MCPSessionErrorPhase(enum.Enum):
@@ -49,7 +65,7 @@ class MCPServerBoxConfig(pydantic.BaseModel):
     host_path: str | None = None
     host_path_mode: str = 'ro'  # MCP servers default to read-write mount only when explicitly requested
     env: dict[str, str] = pydantic.Field(default_factory=dict)
-    startup_timeout_sec: int = 120  # Longer default to allow dependency bootstrap
+    startup_timeout_sec: int = 300  # First Docker bootstrap may need to build a venv and install MCP deps.
     cpus: float | None = None
     memory_mb: int | None = None
     pids_limit: int | None = None
@@ -128,6 +144,7 @@ class BoxStdioSessionRuntime:
         workspace = self._build_workspace(host_path=None)
         host_path = self.resolve_host_path()
         process_cwd = '/workspace'
+        install_cmd: str | None = None
 
         try:
             await workspace.create_session()
@@ -168,6 +185,8 @@ class BoxStdioSessionRuntime:
                 env=self.server_config.get('env', {}),
                 cwd=process_cwd,
             )
+            if install_cmd:
+                payload = self._wrap_process_payload_with_python_env(payload, process_cwd)
             payload['process_id'] = self.process_id
             await workspace.box_service.start_managed_process(workspace.session_id, payload)
         except Exception:
@@ -253,14 +272,42 @@ class BoxStdioSessionRuntime:
 
     @staticmethod
     def _copy_workspace_tree(source_path: str, process_host_root: str, process_host_workspace: str) -> None:
-        shutil.rmtree(process_host_root, ignore_errors=True)
-        os.makedirs(process_host_root, exist_ok=True)
-        shutil.copytree(
-            source_path,
-            process_host_workspace,
-            symlinks=True,
-            ignore=shutil.ignore_patterns('.git', '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache'),
-        )
+        # Docker-backed bootstrap writes root-owned runtime directories such as
+        # .venv/.tmp into the staged workspace. The host process may not be able
+        # to delete them, so refresh source files in place and preserve runtime
+        # directories instead of rmtree'ing the whole staging root.
+        with _workspace_copy_lock(process_host_root):
+            preserved_names = {'.venv', 'venv', 'env', '.cache', '.tmp', '.langbot'}
+            os.makedirs(process_host_workspace, exist_ok=True)
+            for name in os.listdir(process_host_workspace):
+                if name in preserved_names:
+                    continue
+                path = os.path.join(process_host_workspace, name)
+                if os.path.isdir(path) and not os.path.islink(path):
+                    shutil.rmtree(path, ignore_errors=True)
+                else:
+                    # The entry may disappear between listdir and unlink if cleanup races us.
+                    with suppress(FileNotFoundError):
+                        os.unlink(path)
+            shutil.copytree(
+                source_path,
+                process_host_workspace,
+                symlinks=True,
+                dirs_exist_ok=True,
+                ignore=shutil.ignore_patterns(
+                    '.git',
+                    '__pycache__',
+                    '.pytest_cache',
+                    '.mypy_cache',
+                    '.ruff_cache',
+                    '.venv',
+                    'venv',
+                    'env',
+                    '.cache',
+                    '.tmp',
+                    '.langbot',
+                ),
+            )
 
     async def _cleanup_staged_workspace(self) -> None:
         if not self.resolve_host_path():
@@ -343,22 +390,24 @@ class BoxStdioSessionRuntime:
     @staticmethod
     def detect_install_command(host_path: str, workspace_path: str = '/workspace') -> str | None:
         workspace_kind = classify_python_workspace(host_path)
-        quoted_workspace_path = shlex.quote(workspace_path)
-        if workspace_kind == 'package':
-            return (
-                'mkdir -p /opt/_lb_src'
-                f' && tar -C {quoted_workspace_path}'
-                ' --exclude=.venv --exclude=.git --exclude=__pycache__'
-                ' --exclude=node_modules --exclude=.tox --exclude=.nox'
-                ' --exclude="*.egg-info" --exclude=.uv-cache'
-                ' -cf - .'
-                ' | tar -C /opt/_lb_src -xf -'
-                ' && pip install --no-cache-dir /opt/_lb_src'
-                ' && rm -rf /opt/_lb_src'
-            )
-        if workspace_kind == 'requirements':
-            return f'pip install --no-cache-dir -r {quoted_workspace_path}/requirements.txt'
+        if workspace_kind in {'package', 'requirements'}:
+            return wrap_python_command_with_env('python -c "pass"', mount_path=workspace_path).rstrip()
         return None
+
+    @staticmethod
+    def _wrap_process_payload_with_python_env(payload: dict[str, Any], workspace_path: str) -> dict[str, Any]:
+        """Start a prepared Python workspace without writing bootstrap output to MCP stdio."""
+        workspace_root = workspace_path.rstrip('/') or '/workspace'
+        venv_dir = f'{workspace_root}/.venv'
+        venv_bin = f'{venv_dir}/bin'
+        command = ' '.join([shlex.quote(payload['command']), *[shlex.quote(arg) for arg in payload.get('args', [])]])
+        wrapped = dict(payload)
+        wrapped['command'] = 'sh'
+        wrapped['args'] = [
+            '-lc',
+            (f'export VIRTUAL_ENV={shlex.quote(venv_dir)}; export PATH={shlex.quote(venv_bin)}:$PATH; exec {command}'),
+        ]
+        return wrapped
 
     def build_box_session_payload(self, session_id: str, host_path: str | None = None) -> dict[str, Any]:
         workspace = self._build_workspace()
