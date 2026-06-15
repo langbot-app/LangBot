@@ -1,4 +1,5 @@
 """Agent runner modules."""
+
 from __future__ import annotations
 
 from .descriptor import AgentRunnerDescriptor
@@ -24,6 +25,7 @@ from .session_registry import (
     RunAuthorizationSnapshot,
     get_session_registry,
 )
+from .run_ledger_store import RunLedgerStore
 from .events import (
     MESSAGE_RECEIVED,
     MESSAGE_RECALLED,
@@ -55,6 +57,7 @@ __all__ = [
     'AgentRunSession',
     'RunAuthorizationSnapshot',
     'get_session_registry',
+    'RunLedgerStore',
     'MESSAGE_RECEIVED',
     'MESSAGE_RECALLED',
     'GROUP_MEMBER_JOINED',

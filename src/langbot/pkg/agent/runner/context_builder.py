@@ -420,7 +420,21 @@ class AgentRunContextBuilder:
         event_page_enabled = 'page' in event_perms and conversation_id is not None
         artifact_metadata_enabled = 'metadata' in artifact_perms
         artifact_read_enabled = 'read' in artifact_perms
-        steering_pull_enabled = bool(getattr(descriptor.capabilities, 'steering', False)) and conversation_id is not None
+        steering_pull_enabled = (
+            bool(getattr(descriptor.capabilities, 'steering', False)) and conversation_id is not None
+        )
+        run_get_enabled = True
+        run_list_enabled = conversation_id is not None
+        run_events_page_enabled = True
+        run_cancel_enabled = True
+        run_append_result_enabled = False
+        run_finalize_enabled = False
+        run_claim_enabled = False
+        run_renew_claim_enabled = False
+        run_release_claim_enabled = False
+        runtime_register_enabled = False
+        runtime_heartbeat_enabled = False
+        runtime_list_enabled = False
 
         # Determine state API availability based on binding state_policy.
         state_enabled = False
@@ -431,9 +445,8 @@ class AgentRunContextBuilder:
                 state_enabled = True
 
             resource_policy = binding.resource_policy
-            storage_enabled = (
-                ('plugin' in storage_perms and resource_policy.allow_plugin_storage)
-                or ('workspace' in storage_perms and resource_policy.allow_workspace_storage)
+            storage_enabled = ('plugin' in storage_perms and resource_policy.allow_plugin_storage) or (
+                'workspace' in storage_perms and resource_policy.allow_workspace_storage
             )
 
         # Get latest cursor and has_history_before if conversation exists
@@ -477,5 +490,17 @@ class AgentRunContextBuilder:
                 'state': state_enabled,
                 'storage': storage_enabled,
                 'steering_pull': steering_pull_enabled,
+                'run_get': run_get_enabled,
+                'run_list': run_list_enabled,
+                'run_events_page': run_events_page_enabled,
+                'run_cancel': run_cancel_enabled,
+                'run_append_result': run_append_result_enabled,
+                'run_finalize': run_finalize_enabled,
+                'run_claim': run_claim_enabled,
+                'run_renew_claim': run_renew_claim_enabled,
+                'run_release_claim': run_release_claim_enabled,
+                'runtime_register': runtime_register_enabled,
+                'runtime_heartbeat': runtime_heartbeat_enabled,
+                'runtime_list': runtime_list_enabled,
             },
         }

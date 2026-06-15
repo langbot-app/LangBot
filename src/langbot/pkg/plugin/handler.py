@@ -3,6 +3,8 @@ from __future__ import annotations
 import typing
 from typing import Any, Union
 import base64
+import json
+import time
 import traceback
 
 import sqlalchemy
@@ -28,6 +30,28 @@ from ..utils import constants
 from ..agent.runner.session_registry import get_session_registry
 from ..agent.runner.config_migration import ConfigMigration
 from ..agent.runner import config_schema
+
+
+class _RuntimeActionName:
+    def __init__(self, value: str):
+        self.value = value
+
+
+def _plugin_runtime_action(name: str, value: str) -> Any:
+    return getattr(PluginToRuntimeAction, name, _RuntimeActionName(value))
+
+
+def _deadline_seconds_from_payload(data: dict[str, Any], default: int = 60) -> int:
+    deadline_at = data.get('heartbeat_deadline_at')
+    if deadline_at is not None:
+        try:
+            return max(int(float(deadline_at) - time.time()), 1)
+        except (TypeError, ValueError):
+            pass
+    try:
+        return max(int(data.get('heartbeat_ttl_seconds') or default), 1)
+    except (TypeError, ValueError):
+        return default
 
 
 def _make_rag_error_response(error: Exception, error_type: str, **extra_context) -> handler.ActionResponse:
@@ -152,11 +176,16 @@ def _validate_artifact_access(
 
     # Rule 2: Same conversation (requires artifact to have conversation_id)
     if artifact_conversation_id and session_conversation_id:
-        if artifact_conversation_id == session_conversation_id and _artifact_matches_run_scope(session, artifact_metadata):
+        if artifact_conversation_id == session_conversation_id and _artifact_matches_run_scope(
+            session, artifact_metadata
+        ):
             return True, None
 
     # Rule 3: Deny - no matching authorization rule
-    return False, f'Artifact {operation} access denied: artifact not in session conversation and not created by this run'
+    return (
+        False,
+        f'Artifact {operation} access denied: artifact not in session conversation and not created by this run',
+    )
 
 
 def _get_run_authorization(session: dict[str, Any]) -> dict[str, Any]:
@@ -179,6 +208,24 @@ def _public_artifact_metadata(artifact_metadata: dict[str, Any]) -> dict[str, An
     return public_metadata
 
 
+def _run_matches_run_scope(session: dict[str, Any], run: dict[str, Any]) -> bool:
+    authorization = _get_run_authorization(session)
+    session_run_id = session.get('run_id')
+    if run.get('run_id') == session_run_id:
+        return True
+    if not authorization.get('conversation_id'):
+        return False
+    if run.get('conversation_id') != authorization.get('conversation_id'):
+        return False
+    if authorization.get('bot_id') is not None and authorization.get('bot_id') != run.get('bot_id'):
+        return False
+    if authorization.get('workspace_id') is not None and authorization.get('workspace_id') != run.get('workspace_id'):
+        return False
+    if authorization.get('thread_id') != run.get('thread_id'):
+        return False
+    return True
+
+
 def _resolve_state_scope(
     session: dict[str, Any],
     scope: str,
@@ -188,22 +235,16 @@ def _resolve_state_scope(
     state_policy = authorization['state_policy']
 
     if not state_policy.get('enable_state', True):
-        return None, None, handler.ActionResponse.error(
-            message='State access is disabled by binding policy'
-        )
+        return None, None, handler.ActionResponse.error(message='State access is disabled by binding policy')
 
     state_scopes = state_policy.get('state_scopes', ['conversation', 'actor'])
     if scope not in state_scopes:
-        return None, None, handler.ActionResponse.error(
-            message=f'Scope "{scope}" is not enabled by binding policy'
-        )
+        return None, None, handler.ActionResponse.error(message=f'Scope "{scope}" is not enabled by binding policy')
 
     state_context = authorization['state_context']
     scope_key = state_context.get('scope_keys', {}).get(scope)
     if not scope_key:
-        return None, None, handler.ActionResponse.error(
-            message=f'Scope key not available for scope "{scope}"'
-        )
+        return None, None, handler.ActionResponse.error(message=f'Scope key not available for scope "{scope}"')
 
     return state_context, scope_key, None
 
@@ -214,42 +255,81 @@ async def _validate_agent_run_session(
     ap: app.Application,
     api_name: str,
     api_capability: str | None = None,
+    allow_persistent_authorization: bool = False,
 ) -> Union[tuple[None, handler.ActionResponse], tuple[Any, None]]:
     """Validate an AgentRunner pull API run session and run-scoped API access."""
     session_registry = get_session_registry()
     session = await session_registry.get(run_id)
     if not session:
-        return None, handler.ActionResponse.error(
-            message=f'Run session {run_id} not found or expired'
-        )
+        if allow_persistent_authorization:
+            session = await _load_persistent_agent_run_session(run_id, ap, api_name)
+        if not session:
+            return None, handler.ActionResponse.error(message=f'Run session {run_id} not found or expired')
 
     session_plugin_identity = session.get('plugin_identity')
     if not isinstance(session_plugin_identity, str) or not session_plugin_identity.strip():
         ap.logger.warning(f'{api_name}: run_id {run_id} has no plugin_identity')
-        return None, handler.ActionResponse.error(
-            message=f'Run session {run_id} has no plugin_identity'
-        )
+        return None, handler.ActionResponse.error(message=f'Run session {run_id} has no plugin_identity')
     if not caller_plugin_identity:
-        return None, handler.ActionResponse.error(
-            message=f'caller_plugin_identity is required for run_id {run_id}'
-        )
+        return None, handler.ActionResponse.error(message=f'caller_plugin_identity is required for run_id {run_id}')
     if caller_plugin_identity != session_plugin_identity:
         ap.logger.warning(
             f'{api_name}: caller_plugin_identity {caller_plugin_identity} '
             f'does not match session plugin_identity {session_plugin_identity}'
         )
-        return None, handler.ActionResponse.error(
-            message=f'Plugin identity mismatch for run_id {run_id}'
-        )
+        return None, handler.ActionResponse.error(message=f'Plugin identity mismatch for run_id {run_id}')
 
     if api_capability:
         available_apis = _get_run_authorization(session).get('available_apis', {})
         if not available_apis.get(api_capability, False):
-            return None, handler.ActionResponse.error(
-                message=f'{api_name} access not authorized'
-            )
+            return None, handler.ActionResponse.error(message=f'{api_name} access not authorized')
 
     return session, None
+
+
+async def _load_persistent_agent_run_session(
+    run_id: str,
+    ap: app.Application,
+    api_name: str,
+) -> dict[str, Any] | None:
+    """Load an expired run session from the AgentRun authorization snapshot."""
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession
+        from sqlalchemy.orm import sessionmaker
+
+        from ..entity.persistence.agent_run import AgentRun
+
+        engine = ap.persistence_mgr.get_db_engine()
+        session_factory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        async with session_factory() as db_session:
+            result = await db_session.execute(sqlalchemy.select(AgentRun).where(AgentRun.run_id == run_id))
+            run = result.scalars().first()
+    except Exception as e:
+        ap.logger.error(f'{api_name}: failed to load persistent authorization for run_id {run_id}: {e}', exc_info=True)
+        return None
+
+    if run is None:
+        return None
+
+    try:
+        authorization = json.loads(run.authorization_json) if run.authorization_json else {}
+    except (TypeError, ValueError) as e:
+        ap.logger.warning(f'{api_name}: run_id {run_id} has invalid authorization_json: {e}')
+        return None
+
+    if not isinstance(authorization, dict):
+        ap.logger.warning(f'{api_name}: run_id {run_id} authorization_json is not an object')
+        return None
+
+    return {
+        'run_id': run.run_id,
+        'runner_id': authorization.get('runner_id') or run.runner_id,
+        'query_id': None,
+        'plugin_identity': authorization.get('plugin_identity'),
+        'authorization': authorization,
+        'status': {},
+        'steering_queue': [],
+    }
 
 
 def _resolve_run_conversation(
@@ -262,9 +342,7 @@ def _resolve_run_conversation(
 
     if requested_conversation_id:
         if not session_conversation_id:
-            return None, handler.ActionResponse.error(
-                message=f'{api_name} is not available without a run conversation'
-            )
+            return None, handler.ActionResponse.error(message=f'{api_name} is not available without a run conversation')
         if requested_conversation_id != session_conversation_id:
             return None, handler.ActionResponse.error(
                 message=f'Conversation {requested_conversation_id} is not accessible by this run'
@@ -329,9 +407,7 @@ def _normalize_uuid_list(values: Any) -> list[str]:
     if not isinstance(values, list):
         return []
     return list(
-        dict.fromkeys(
-            value for value in values if isinstance(value, str) and value not in config_schema.NONE_SENTINELS
-        )
+        dict.fromkeys(value for value in values if isinstance(value, str) and value not in config_schema.NONE_SENTINELS)
     )
 
 
@@ -393,18 +469,14 @@ async def _validate_run_authorization(
     session_registry = get_session_registry()
     session = await session_registry.get(run_id)
     if not session:
-        ap.logger.warning(
-            f'{resource_type.upper()}: run_id {run_id} not found in session registry'
-        )
+        ap.logger.warning(f'{resource_type.upper()}: run_id {run_id} not found in session registry')
         return None, handler.ActionResponse.error(
             message=f'Run session {run_id} not found or expired',
         )
 
     session_plugin_identity = session.get('plugin_identity')
     if not isinstance(session_plugin_identity, str) or not session_plugin_identity.strip():
-        ap.logger.warning(
-            f'{resource_type.upper()}: run_id {run_id} has no plugin_identity'
-        )
+        ap.logger.warning(f'{resource_type.upper()}: run_id {run_id} has no plugin_identity')
         return None, handler.ActionResponse.error(
             message=f'Run session {run_id} has no plugin_identity',
         )
@@ -1573,12 +1645,14 @@ class RuntimeConnectionHandler(handler.Handler):
 
             prompt = getattr(query, 'prompt', None)
             messages = getattr(prompt, 'messages', []) or []
-            return handler.ActionResponse.success(data={
-                'prompt': [
-                    message.model_dump(mode='json') if hasattr(message, 'model_dump') else message
-                    for message in messages
-                ],
-            })
+            return handler.ActionResponse.success(
+                data={
+                    'prompt': [
+                        message.model_dump(mode='json') if hasattr(message, 'model_dump') else message
+                        for message in messages
+                    ],
+                }
+            )
 
         @self.action(PluginToRuntimeAction.HISTORY_PAGE)
         async def history_page(data: dict[str, Any]) -> handler.ActionResponse:
@@ -1617,12 +1691,14 @@ class RuntimeConnectionHandler(handler.Handler):
                 return scope_error
 
             if not conversation_id:
-                return handler.ActionResponse.success(data={
-                    'items': [],
-                    'next_cursor': None,
-                    'prev_cursor': None,
-                    'has_more': False,
-                })
+                return handler.ActionResponse.success(
+                    data={
+                        'items': [],
+                        'next_cursor': None,
+                        'prev_cursor': None,
+                        'has_more': False,
+                    }
+                )
 
             # Parse cursors
             before_seq = int(before_cursor) if before_cursor else None
@@ -1630,6 +1706,7 @@ class RuntimeConnectionHandler(handler.Handler):
 
             # Query transcript
             from ..agent.runner.transcript_store import TranscriptStore
+
             store = TranscriptStore(self.ap.persistence_mgr.get_db_engine())
 
             try:
@@ -1643,12 +1720,14 @@ class RuntimeConnectionHandler(handler.Handler):
                     **_run_scope_filters(session),
                 )
 
-                return handler.ActionResponse.success(data={
-                    'items': items,
-                    'next_cursor': str(next_seq) if next_seq else None,
-                    'prev_cursor': str(prev_seq) if prev_seq else None,
-                    'has_more': has_more,
-                })
+                return handler.ActionResponse.success(
+                    data={
+                        'items': items,
+                        'next_cursor': str(next_seq) if next_seq else None,
+                        'prev_cursor': str(prev_seq) if prev_seq else None,
+                        'has_more': has_more,
+                    }
+                )
             except Exception as e:
                 self.ap.logger.error(f'HISTORY_PAGE error: {e}', exc_info=True)
                 return handler.ActionResponse.error(message=f'History page error: {e}')
@@ -1689,14 +1768,17 @@ class RuntimeConnectionHandler(handler.Handler):
                 return scope_error
 
             if not conversation_id:
-                return handler.ActionResponse.success(data={
-                    'items': [],
-                    'total_count': 0,
-                    'query': query_text,
-                })
+                return handler.ActionResponse.success(
+                    data={
+                        'items': [],
+                        'total_count': 0,
+                        'query': query_text,
+                    }
+                )
 
             # Search transcript
             from ..agent.runner.transcript_store import TranscriptStore
+
             store = TranscriptStore(self.ap.persistence_mgr.get_db_engine())
 
             try:
@@ -1709,11 +1791,13 @@ class RuntimeConnectionHandler(handler.Handler):
                     **_run_scope_filters(session),
                 )
 
-                return handler.ActionResponse.success(data={
-                    'items': items,
-                    'total_count': len(items),
-                    'query': query_text,
-                })
+                return handler.ActionResponse.success(
+                    data={
+                        'items': items,
+                        'total_count': len(items),
+                        'query': query_text,
+                    }
+                )
             except Exception as e:
                 self.ap.logger.error(f'HISTORY_SEARCH error: {e}', exc_info=True)
                 return handler.ActionResponse.error(message=f'History search error: {e}')
@@ -1746,14 +1830,13 @@ class RuntimeConnectionHandler(handler.Handler):
 
             # Get event
             from ..agent.runner.event_log_store import EventLogStore
+
             store = EventLogStore(self.ap.persistence_mgr.get_db_engine())
 
             try:
                 event = await store.get_event(event_id)
                 if not event:
-                    return handler.ActionResponse.error(
-                        message=f'Event {event_id} not found'
-                    )
+                    return handler.ActionResponse.error(message=f'Event {event_id} not found')
 
                 # Validate event is in the same conversation as the run, or was created by the same run.
                 session_conversation_id = _get_run_authorization(session).get('conversation_id')
@@ -1761,9 +1844,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 if event_run_id and event_run_id == run_id:
                     return handler.ActionResponse.success(data=_project_event_record_for_api(event))
                 if not session_conversation_id or not _event_matches_run_scope(session, event):
-                    return handler.ActionResponse.error(
-                        message=f'Event {event_id} is not accessible by this run'
-                    )
+                    return handler.ActionResponse.error(message=f'Event {event_id} is not accessible by this run')
 
                 return handler.ActionResponse.success(data=_project_event_record_for_api(event))
             except Exception as e:
@@ -1805,18 +1886,21 @@ class RuntimeConnectionHandler(handler.Handler):
                 return scope_error
 
             if not conversation_id:
-                return handler.ActionResponse.success(data={
-                    'items': [],
-                    'next_cursor': None,
-                    'prev_cursor': None,
-                    'has_more': False,
-                })
+                return handler.ActionResponse.success(
+                    data={
+                        'items': [],
+                        'next_cursor': None,
+                        'prev_cursor': None,
+                        'has_more': False,
+                    }
+                )
 
             # Parse cursor
             before_seq = int(before_cursor) if before_cursor else None
 
             # Query events
             from ..agent.runner.event_log_store import EventLogStore
+
             store = EventLogStore(self.ap.persistence_mgr.get_db_engine())
 
             try:
@@ -1828,15 +1912,629 @@ class RuntimeConnectionHandler(handler.Handler):
                     **_run_scope_filters(session),
                 )
 
-                return handler.ActionResponse.success(data={
-                    'items': [_project_event_record_for_api(item) for item in items],
-                    'next_cursor': str(next_seq) if next_seq else None,
-                    'prev_cursor': None,
-                    'has_more': has_more,
-                })
+                return handler.ActionResponse.success(
+                    data={
+                        'items': [_project_event_record_for_api(item) for item in items],
+                        'next_cursor': str(next_seq) if next_seq else None,
+                        'prev_cursor': None,
+                        'has_more': has_more,
+                    }
+                )
             except Exception as e:
                 self.ap.logger.error(f'EVENT_PAGE error: {e}', exc_info=True)
                 return handler.ActionResponse.error(message=f'Event page error: {e}')
+
+        @self.action(_plugin_runtime_action('RUN_GET', 'run_get'))
+        async def run_get(data: dict[str, Any]) -> handler.ActionResponse:
+            """Get one Host-owned run record visible to the current run."""
+            run_id = data.get('run_id')
+            target_run_id = data.get('target_run_id') or run_id
+            caller_plugin_identity = data.get('caller_plugin_identity')
+
+            if not run_id:
+                return handler.ActionResponse.error(message='run_id is required')
+            if not target_run_id:
+                return handler.ActionResponse.error(message='target_run_id is required')
+
+            session, error = await _validate_agent_run_session(
+                run_id,
+                caller_plugin_identity,
+                self.ap,
+                'Run get',
+                api_capability='run_get',
+                allow_persistent_authorization=True,
+            )
+            if error:
+                return error
+
+            from ..agent.runner.run_ledger_store import RunLedgerStore
+
+            store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
+
+            try:
+                run = await store.get_run(str(target_run_id))
+                if not run:
+                    return handler.ActionResponse.error(message=f'Run {target_run_id} not found')
+                if not _run_matches_run_scope(session, run):
+                    return handler.ActionResponse.error(message=f'Run {target_run_id} is not accessible by this run')
+                return handler.ActionResponse.success(data=run)
+            except Exception as e:
+                self.ap.logger.error(f'RUN_GET error: {e}', exc_info=True)
+                return handler.ActionResponse.error(message=f'Run get error: {e}')
+
+        @self.action(_plugin_runtime_action('RUN_LIST', 'run_list'))
+        async def run_list(data: dict[str, Any]) -> handler.ActionResponse:
+            """List Host-owned runs visible to the current run conversation."""
+            run_id = data.get('run_id')
+            conversation_id = data.get('conversation_id')
+            statuses = data.get('statuses')
+            before_cursor = data.get('before_cursor')
+            limit = data.get('limit', 50)
+            caller_plugin_identity = data.get('caller_plugin_identity')
+
+            if not run_id:
+                return handler.ActionResponse.error(message='run_id is required')
+
+            session, error = await _validate_agent_run_session(
+                run_id,
+                caller_plugin_identity,
+                self.ap,
+                'Run list',
+                api_capability='run_list',
+                allow_persistent_authorization=True,
+            )
+            if error:
+                return error
+
+            conversation_id, scope_error = _resolve_run_conversation(
+                session,
+                conversation_id,
+                'Run list',
+            )
+            if scope_error:
+                return scope_error
+
+            if not conversation_id:
+                return handler.ActionResponse.success(
+                    data={
+                        'items': [],
+                        'next_cursor': None,
+                        'prev_cursor': None,
+                        'has_more': False,
+                    }
+                )
+
+            if statuses is not None and not isinstance(statuses, list):
+                return handler.ActionResponse.error(message='statuses must be a list')
+            try:
+                before_id = int(before_cursor) if before_cursor else None
+            except (TypeError, ValueError):
+                return handler.ActionResponse.error(message='before_cursor must be an integer cursor')
+
+            from ..agent.runner.run_ledger_store import RunLedgerStore
+
+            store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
+
+            try:
+                items, next_cursor, has_more = await store.list_runs(
+                    conversation_id=conversation_id,
+                    statuses=[str(status) for status in statuses] if statuses else None,
+                    before_id=before_id,
+                    limit=limit,
+                    **_run_scope_filters(session),
+                )
+                return handler.ActionResponse.success(
+                    data={
+                        'items': items,
+                        'next_cursor': str(next_cursor) if next_cursor else None,
+                        'prev_cursor': None,
+                        'has_more': has_more,
+                    }
+                )
+            except Exception as e:
+                self.ap.logger.error(f'RUN_LIST error: {e}', exc_info=True)
+                return handler.ActionResponse.error(message=f'Run list error: {e}')
+
+        @self.action(_plugin_runtime_action('RUN_EVENTS_PAGE', 'run_events_page'))
+        async def run_events_page(data: dict[str, Any]) -> handler.ActionResponse:
+            """Page result events for one Host-owned run visible to current run."""
+            run_id = data.get('run_id')
+            target_run_id = data.get('target_run_id') or run_id
+            before_cursor = data.get('before_cursor')
+            after_cursor = data.get('after_cursor')
+            limit = data.get('limit', 50)
+            direction = data.get('direction', 'forward')
+            caller_plugin_identity = data.get('caller_plugin_identity')
+
+            if not run_id:
+                return handler.ActionResponse.error(message='run_id is required')
+            if not target_run_id:
+                return handler.ActionResponse.error(message='target_run_id is required')
+
+            session, error = await _validate_agent_run_session(
+                run_id,
+                caller_plugin_identity,
+                self.ap,
+                'Run events page',
+                api_capability='run_events_page',
+                allow_persistent_authorization=True,
+            )
+            if error:
+                return error
+
+            try:
+                before_sequence = int(before_cursor) if before_cursor else None
+                after_sequence = int(after_cursor) if after_cursor else None
+            except (TypeError, ValueError):
+                return handler.ActionResponse.error(message='run event cursors must be integer sequences')
+
+            from ..agent.runner.run_ledger_store import RunLedgerStore
+
+            store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
+
+            try:
+                run = await store.get_run(str(target_run_id))
+                if not run:
+                    return handler.ActionResponse.error(message=f'Run {target_run_id} not found')
+                if not _run_matches_run_scope(session, run):
+                    return handler.ActionResponse.error(message=f'Run {target_run_id} is not accessible by this run')
+
+                items, next_cursor, prev_cursor, has_more = await store.page_run_events(
+                    run_id=str(target_run_id),
+                    before_sequence=before_sequence,
+                    after_sequence=after_sequence,
+                    limit=limit,
+                    direction=str(direction or 'forward'),
+                )
+                return handler.ActionResponse.success(
+                    data={
+                        'items': items,
+                        'next_cursor': str(next_cursor) if next_cursor else None,
+                        'prev_cursor': str(prev_cursor) if prev_cursor else None,
+                        'has_more': has_more,
+                    }
+                )
+            except Exception as e:
+                self.ap.logger.error(f'RUN_EVENTS_PAGE error: {e}', exc_info=True)
+                return handler.ActionResponse.error(message=f'Run events page error: {e}')
+
+        @self.action(_plugin_runtime_action('RUN_CANCEL', 'run_cancel'))
+        async def run_cancel(data: dict[str, Any]) -> handler.ActionResponse:
+            """Request cancellation for one Host-owned run visible to the current run."""
+            run_id = data.get('run_id')
+            target_run_id = data.get('target_run_id') or run_id
+            caller_plugin_identity = data.get('caller_plugin_identity')
+
+            if not run_id:
+                return handler.ActionResponse.error(message='run_id is required')
+            if not target_run_id:
+                return handler.ActionResponse.error(message='target_run_id is required')
+
+            session, error = await _validate_agent_run_session(
+                run_id,
+                caller_plugin_identity,
+                self.ap,
+                'Run cancel',
+                api_capability='run_cancel',
+                allow_persistent_authorization=True,
+            )
+            if error:
+                return error
+
+            from ..agent.runner.run_ledger_store import RunLedgerStore
+
+            store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
+
+            try:
+                run = await store.get_run(str(target_run_id))
+                if not run:
+                    return handler.ActionResponse.error(message=f'Run {target_run_id} not found')
+                if not _run_matches_run_scope(session, run):
+                    return handler.ActionResponse.error(message=f'Run {target_run_id} is not accessible by this run')
+
+                updated = await store.request_cancel(
+                    run_id=str(target_run_id),
+                    status_reason=data.get('status_reason') or data.get('reason'),
+                )
+                if not updated:
+                    return handler.ActionResponse.error(message=f'Run {target_run_id} not found')
+                return handler.ActionResponse.success(data=updated)
+            except Exception as e:
+                self.ap.logger.error(f'RUN_CANCEL error: {e}', exc_info=True)
+                return handler.ActionResponse.error(message=f'Run cancel error: {e}')
+
+        @self.action(_plugin_runtime_action('RUN_APPEND_RESULT', 'run_append_result'))
+        async def run_append_result(data: dict[str, Any]) -> handler.ActionResponse:
+            """Append one result event for a Host-owned run visible to the current run."""
+            run_id = data.get('run_id')
+            target_run_id = data.get('target_run_id') or run_id
+            caller_plugin_identity = data.get('caller_plugin_identity')
+            result = data.get('result') if isinstance(data.get('result'), dict) else {}
+
+            if not run_id:
+                return handler.ActionResponse.error(message='run_id is required')
+            if not target_run_id:
+                return handler.ActionResponse.error(message='target_run_id is required')
+
+            try:
+                sequence = int(data.get('sequence') or result.get('sequence'))
+            except (TypeError, ValueError):
+                return handler.ActionResponse.error(message='sequence is required and must be an integer')
+
+            event_type = data.get('event_type') or data.get('type') or result.get('type')
+            if not event_type:
+                return handler.ActionResponse.error(message='event_type is required')
+
+            event_data = data.get('data') if isinstance(data.get('data'), dict) else result.get('data')
+            usage = data.get('usage') if isinstance(data.get('usage'), dict) else result.get('usage')
+            artifact_refs = data.get('artifact_refs') if isinstance(data.get('artifact_refs'), list) else None
+            metadata = data.get('metadata') if isinstance(data.get('metadata'), dict) else None
+
+            session, error = await _validate_agent_run_session(
+                run_id,
+                caller_plugin_identity,
+                self.ap,
+                'Run append result',
+                api_capability='run_append_result',
+                allow_persistent_authorization=True,
+            )
+            if error:
+                return error
+
+            from ..agent.runner.run_ledger_store import RunLedgerStore
+
+            store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
+
+            try:
+                run = await store.get_run(str(target_run_id))
+                if not run:
+                    return handler.ActionResponse.error(message=f'Run {target_run_id} not found')
+                if not _run_matches_run_scope(session, run):
+                    return handler.ActionResponse.error(message=f'Run {target_run_id} is not accessible by this run')
+
+                event = await store.append_event(
+                    run_id=str(target_run_id),
+                    sequence=sequence,
+                    event_type=str(event_type),
+                    data=event_data if isinstance(event_data, dict) else {},
+                    usage=usage if isinstance(usage, dict) else None,
+                    source=str(data.get('source') or result.get('source') or 'runner'),
+                    artifact_refs=artifact_refs,
+                    metadata=metadata,
+                )
+                return handler.ActionResponse.success(data=event)
+            except Exception as e:
+                self.ap.logger.error(f'RUN_APPEND_RESULT error: {e}', exc_info=True)
+                return handler.ActionResponse.error(message=f'Run append result error: {e}')
+
+        @self.action(_plugin_runtime_action('RUN_FINALIZE', 'run_finalize'))
+        async def run_finalize(data: dict[str, Any]) -> handler.ActionResponse:
+            """Finalize one Host-owned run visible to the current run."""
+            run_id = data.get('run_id')
+            target_run_id = data.get('target_run_id') or run_id
+            caller_plugin_identity = data.get('caller_plugin_identity')
+            status = data.get('status')
+
+            if not run_id:
+                return handler.ActionResponse.error(message='run_id is required')
+            if not target_run_id:
+                return handler.ActionResponse.error(message='target_run_id is required')
+            if not status:
+                return handler.ActionResponse.error(message='status is required')
+
+            session, error = await _validate_agent_run_session(
+                run_id,
+                caller_plugin_identity,
+                self.ap,
+                'Run finalize',
+                api_capability='run_finalize',
+                allow_persistent_authorization=True,
+            )
+            if error:
+                return error
+
+            from ..agent.runner.run_ledger_store import RunLedgerStore
+
+            store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
+
+            try:
+                run = await store.get_run(str(target_run_id))
+                if not run:
+                    return handler.ActionResponse.error(message=f'Run {target_run_id} not found')
+                if not _run_matches_run_scope(session, run):
+                    return handler.ActionResponse.error(message=f'Run {target_run_id} is not accessible by this run')
+
+                updated = await store.finalize_run(
+                    run_id=str(target_run_id),
+                    status=str(status),
+                    status_reason=data.get('status_reason') or data.get('reason'),
+                    usage=data.get('usage') if isinstance(data.get('usage'), dict) else None,
+                    cost=data.get('cost') if isinstance(data.get('cost'), dict) else None,
+                    metadata=data.get('metadata') if isinstance(data.get('metadata'), dict) else None,
+                )
+                if not updated:
+                    return handler.ActionResponse.error(message=f'Run {target_run_id} not found')
+                return handler.ActionResponse.success(data=updated)
+            except Exception as e:
+                self.ap.logger.error(f'RUN_FINALIZE error: {e}', exc_info=True)
+                return handler.ActionResponse.error(message=f'Run finalize error: {e}')
+
+        @self.action(_plugin_runtime_action('RUNTIME_REGISTER', 'runtime_register'))
+        async def runtime_register(data: dict[str, Any]) -> handler.ActionResponse:
+            """Register or update one Host-owned runtime registry record."""
+            run_id = data.get('run_id')
+            runtime_id = data.get('runtime_id')
+            caller_plugin_identity = data.get('caller_plugin_identity')
+
+            if not run_id:
+                return handler.ActionResponse.error(message='run_id is required')
+            if not runtime_id:
+                return handler.ActionResponse.error(message='runtime_id is required')
+
+            _session, error = await _validate_agent_run_session(
+                run_id,
+                caller_plugin_identity,
+                self.ap,
+                'Runtime register',
+                api_capability='runtime_register',
+            )
+            if error:
+                return error
+
+            from ..agent.runner.run_ledger_store import RunLedgerStore
+
+            store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
+
+            try:
+                runtime = await store.register_runtime(
+                    runtime_id=str(runtime_id),
+                    status=str(data.get('status') or 'online'),
+                    display_name=data.get('display_name'),
+                    endpoint=data.get('endpoint'),
+                    version=data.get('version'),
+                    capabilities=data.get('capabilities') if isinstance(data.get('capabilities'), dict) else {},
+                    labels=data.get('labels') if isinstance(data.get('labels'), dict) else {},
+                    metadata=data.get('metadata') if isinstance(data.get('metadata'), dict) else {},
+                    heartbeat_deadline_seconds=_deadline_seconds_from_payload(data),
+                )
+                return handler.ActionResponse.success(data=runtime)
+            except Exception as e:
+                self.ap.logger.error(f'RUNTIME_REGISTER error: {e}', exc_info=True)
+                return handler.ActionResponse.error(message=f'Runtime register error: {e}')
+
+        @self.action(_plugin_runtime_action('RUNTIME_HEARTBEAT', 'runtime_heartbeat'))
+        async def runtime_heartbeat(data: dict[str, Any]) -> handler.ActionResponse:
+            """Refresh one Host-owned runtime heartbeat."""
+            run_id = data.get('run_id')
+            runtime_id = data.get('runtime_id')
+            caller_plugin_identity = data.get('caller_plugin_identity')
+
+            if not run_id:
+                return handler.ActionResponse.error(message='run_id is required')
+            if not runtime_id:
+                return handler.ActionResponse.error(message='runtime_id is required')
+
+            _session, error = await _validate_agent_run_session(
+                run_id,
+                caller_plugin_identity,
+                self.ap,
+                'Runtime heartbeat',
+                api_capability='runtime_heartbeat',
+            )
+            if error:
+                return error
+
+            from ..agent.runner.run_ledger_store import RunLedgerStore
+
+            store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
+
+            try:
+                runtime = await store.heartbeat_runtime(
+                    runtime_id=str(runtime_id),
+                    status=str(data.get('status') or 'online'),
+                    capabilities=data.get('capabilities') if isinstance(data.get('capabilities'), dict) else None,
+                    labels=data.get('labels') if isinstance(data.get('labels'), dict) else None,
+                    metadata=data.get('metadata') if isinstance(data.get('metadata'), dict) else None,
+                    heartbeat_deadline_seconds=_deadline_seconds_from_payload(data),
+                )
+                if runtime is None:
+                    return handler.ActionResponse.error(message=f'Runtime {runtime_id} not found')
+                return handler.ActionResponse.success(data=runtime)
+            except Exception as e:
+                self.ap.logger.error(f'RUNTIME_HEARTBEAT error: {e}', exc_info=True)
+                return handler.ActionResponse.error(message=f'Runtime heartbeat error: {e}')
+
+        @self.action(_plugin_runtime_action('RUNTIME_LIST', 'runtime_list'))
+        async def runtime_list(data: dict[str, Any]) -> handler.ActionResponse:
+            """List Host-owned runtime registry records."""
+            run_id = data.get('run_id')
+            caller_plugin_identity = data.get('caller_plugin_identity')
+
+            if not run_id:
+                return handler.ActionResponse.error(message='run_id is required')
+
+            _session, error = await _validate_agent_run_session(
+                run_id,
+                caller_plugin_identity,
+                self.ap,
+                'Runtime list',
+                api_capability='runtime_list',
+            )
+            if error:
+                return error
+
+            statuses = data.get('statuses')
+            if statuses is not None and not isinstance(statuses, list):
+                return handler.ActionResponse.error(message='statuses must be a list')
+            labels = data.get('labels') if isinstance(data.get('labels'), dict) else {}
+
+            from ..agent.runner.run_ledger_store import RunLedgerStore
+
+            store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
+
+            try:
+                runtimes = await store.list_runtimes(
+                    statuses=[str(status) for status in statuses] if statuses else None,
+                    limit=data.get('limit', 50),
+                )
+                if labels:
+                    runtimes = [
+                        runtime
+                        for runtime in runtimes
+                        if all(runtime.get('labels', {}).get(key) == value for key, value in labels.items())
+                    ]
+                return handler.ActionResponse.success(
+                    data={
+                        'items': runtimes,
+                        'next_cursor': None,
+                        'prev_cursor': None,
+                        'has_more': False,
+                    }
+                )
+            except Exception as e:
+                self.ap.logger.error(f'RUNTIME_LIST error: {e}', exc_info=True)
+                return handler.ActionResponse.error(message=f'Runtime list error: {e}')
+
+        @self.action(_plugin_runtime_action('RUN_CLAIM', 'run_claim'))
+        async def run_claim(data: dict[str, Any]) -> handler.ActionResponse:
+            """Claim one queued run for a runtime lease."""
+            run_id = data.get('run_id')
+            runtime_id = data.get('runtime_id')
+            caller_plugin_identity = data.get('caller_plugin_identity')
+
+            if not run_id:
+                return handler.ActionResponse.error(message='run_id is required')
+            if not runtime_id:
+                return handler.ActionResponse.error(message='runtime_id is required')
+
+            _session, error = await _validate_agent_run_session(
+                run_id,
+                caller_plugin_identity,
+                self.ap,
+                'Run claim',
+                api_capability='run_claim',
+            )
+            if error:
+                return error
+
+            runner_ids = data.get('runner_ids')
+            if runner_ids is not None and not isinstance(runner_ids, list):
+                return handler.ActionResponse.error(message='runner_ids must be a list')
+
+            from ..agent.runner.run_ledger_store import RunLedgerStore
+
+            store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
+
+            try:
+                run = await store.claim_next_run(
+                    runtime_id=str(runtime_id),
+                    queue_name=data.get('queue_name'),
+                    lease_seconds=data.get('lease_seconds', 60),
+                    runner_ids=[str(item) for item in runner_ids] if runner_ids else None,
+                )
+                if run is None:
+                    return handler.ActionResponse.error(message='No queued run available')
+                return handler.ActionResponse.success(data=run)
+            except Exception as e:
+                self.ap.logger.error(f'RUN_CLAIM error: {e}', exc_info=True)
+                return handler.ActionResponse.error(message=f'Run claim error: {e}')
+
+        @self.action(_plugin_runtime_action('RUN_RENEW_CLAIM', 'run_renew_claim'))
+        async def run_renew_claim(data: dict[str, Any]) -> handler.ActionResponse:
+            """Renew one run claim lease."""
+            run_id = data.get('run_id')
+            target_run_id = data.get('target_run_id')
+            runtime_id = data.get('runtime_id')
+            claim_token = data.get('claim_token')
+            caller_plugin_identity = data.get('caller_plugin_identity')
+
+            if not run_id:
+                return handler.ActionResponse.error(message='run_id is required')
+            if not target_run_id:
+                return handler.ActionResponse.error(message='target_run_id is required')
+            if not runtime_id:
+                return handler.ActionResponse.error(message='runtime_id is required')
+            if not claim_token:
+                return handler.ActionResponse.error(message='claim_token is required')
+
+            _session, error = await _validate_agent_run_session(
+                run_id,
+                caller_plugin_identity,
+                self.ap,
+                'Run renew claim',
+                api_capability='run_renew_claim',
+            )
+            if error:
+                return error
+
+            from ..agent.runner.run_ledger_store import RunLedgerStore
+
+            store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
+
+            try:
+                current = await store.get_run(str(target_run_id))
+                if not current or current.get('claimed_by_runtime_id') != runtime_id:
+                    return handler.ActionResponse.error(message=f'Run claim {target_run_id} not found')
+                run = await store.renew_claim(
+                    run_id=str(target_run_id),
+                    claim_token=str(claim_token),
+                    lease_seconds=data.get('lease_seconds', 60),
+                )
+                if run is None:
+                    return handler.ActionResponse.error(message=f'Run claim {target_run_id} not found')
+                return handler.ActionResponse.success(data=run)
+            except Exception as e:
+                self.ap.logger.error(f'RUN_RENEW_CLAIM error: {e}', exc_info=True)
+                return handler.ActionResponse.error(message=f'Run renew claim error: {e}')
+
+        @self.action(_plugin_runtime_action('RUN_RELEASE_CLAIM', 'run_release_claim'))
+        async def run_release_claim(data: dict[str, Any]) -> handler.ActionResponse:
+            """Release one run claim lease."""
+            run_id = data.get('run_id')
+            target_run_id = data.get('target_run_id')
+            runtime_id = data.get('runtime_id')
+            claim_token = data.get('claim_token')
+            caller_plugin_identity = data.get('caller_plugin_identity')
+
+            if not run_id:
+                return handler.ActionResponse.error(message='run_id is required')
+            if not target_run_id:
+                return handler.ActionResponse.error(message='target_run_id is required')
+            if not runtime_id:
+                return handler.ActionResponse.error(message='runtime_id is required')
+            if not claim_token:
+                return handler.ActionResponse.error(message='claim_token is required')
+
+            _session, error = await _validate_agent_run_session(
+                run_id,
+                caller_plugin_identity,
+                self.ap,
+                'Run release claim',
+                api_capability='run_release_claim',
+            )
+            if error:
+                return error
+
+            from ..agent.runner.run_ledger_store import RunLedgerStore
+
+            store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
+
+            try:
+                current = await store.get_run(str(target_run_id))
+                if not current or current.get('claimed_by_runtime_id') != runtime_id:
+                    return handler.ActionResponse.error(message=f'Run claim {target_run_id} not found')
+                run = await store.release_claim(
+                    run_id=str(target_run_id),
+                    claim_token=str(claim_token),
+                    status=str(data.get('status') or 'queued'),
+                    status_reason=data.get('status_reason') or data.get('reason'),
+                )
+                if run is None:
+                    return handler.ActionResponse.error(message=f'Run claim {target_run_id} not found')
+                return handler.ActionResponse.success(data=run)
+            except Exception as e:
+                self.ap.logger.error(f'RUN_RELEASE_CLAIM error: {e}', exc_info=True)
+                return handler.ActionResponse.error(message=f'Run release claim error: {e}')
 
         @self.action(PluginToRuntimeAction.STEERING_PULL)
         async def steering_pull(data: dict[str, Any]) -> handler.ActionResponse:
@@ -1892,21 +2590,25 @@ class RuntimeConnectionHandler(handler.Handler):
                             source='agent_runner',
                             bot_id=conversation.get('bot_id') if isinstance(conversation, dict) else None,
                             workspace_id=conversation.get('workspace_id') if isinstance(conversation, dict) else None,
-                            conversation_id=conversation.get('conversation_id') if isinstance(conversation, dict) else None,
+                            conversation_id=conversation.get('conversation_id')
+                            if isinstance(conversation, dict)
+                            else None,
                             thread_id=conversation.get('thread_id') if isinstance(conversation, dict) else None,
                             actor_type=actor.get('actor_type') if isinstance(actor, dict) else None,
                             actor_id=actor.get('actor_id') if isinstance(actor, dict) else None,
                             actor_name=actor.get('actor_name') if isinstance(actor, dict) else None,
                             subject_type=subject.get('subject_type') if isinstance(subject, dict) else None,
                             subject_id=subject.get('subject_id') if isinstance(subject, dict) else None,
-                            input_summary=f"steering injected from {event.get('event_id')}",
+                            input_summary=f'steering injected from {event.get("event_id")}',
                             run_id=run_id,
                             runner_id=session.get('runner_id') if isinstance(session, dict) else None,
                             metadata={
                                 'steering': {
                                     'status': 'injected',
                                     'source_event_id': event.get('event_id'),
-                                    'claimed_by_run_id': item.get('claimed_run_id') if isinstance(item, dict) else run_id,
+                                    'claimed_by_run_id': item.get('claimed_run_id')
+                                    if isinstance(item, dict)
+                                    else run_id,
                                     'claimed_runner_id': item.get('runner_id') if isinstance(item, dict) else None,
                                     'claimed_at': item.get('claimed_at') if isinstance(item, dict) else None,
                                     'pull_mode': str(mode or 'all'),
@@ -1951,14 +2653,13 @@ class RuntimeConnectionHandler(handler.Handler):
 
             # Get artifact metadata
             from ..agent.runner.artifact_store import ArtifactStore
+
             store = ArtifactStore(self.ap.persistence_mgr.get_db_engine())
 
             try:
                 metadata = await store.get_authorization_metadata(artifact_id)
                 if not metadata:
-                    return handler.ActionResponse.error(
-                        message=f'Artifact {artifact_id} not found'
-                    )
+                    return handler.ActionResponse.error(message=f'Artifact {artifact_id} not found')
 
                 # Validate artifact access scope
                 is_allowed, error_msg = _validate_artifact_access(session, metadata, 'metadata')
@@ -2021,14 +2722,13 @@ class RuntimeConnectionHandler(handler.Handler):
 
             # Get artifact metadata first to validate access
             from ..agent.runner.artifact_store import ArtifactStore
+
             store = ArtifactStore(self.ap.persistence_mgr.get_db_engine())
 
             try:
                 metadata = await store.get_authorization_metadata(artifact_id)
                 if not metadata:
-                    return handler.ActionResponse.error(
-                        message=f'Artifact {artifact_id} not found'
-                    )
+                    return handler.ActionResponse.error(message=f'Artifact {artifact_id} not found')
 
                 # Validate artifact access scope
                 is_allowed, error_msg = _validate_artifact_access(session, metadata, 'read')
@@ -2043,9 +2743,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 )
 
                 if not result:
-                    return handler.ActionResponse.error(
-                        message=f'Failed to read artifact {artifact_id}'
-                    )
+                    return handler.ActionResponse.error(message=f'Failed to read artifact {artifact_id}')
 
                 return handler.ActionResponse.success(data=result)
             except ValueError as e:
@@ -2093,6 +2791,7 @@ class RuntimeConnectionHandler(handler.Handler):
 
             # Get state from persistent store
             from ..agent.runner.persistent_state_store import get_persistent_state_store
+
             store = get_persistent_state_store(self.ap.persistence_mgr.get_db_engine())
 
             try:
@@ -2144,6 +2843,7 @@ class RuntimeConnectionHandler(handler.Handler):
 
             # Set state in persistent store
             from ..agent.runner.persistent_state_store import get_persistent_state_store
+
             store = get_persistent_state_store(self.ap.persistence_mgr.get_db_engine())
 
             try:
@@ -2202,6 +2902,7 @@ class RuntimeConnectionHandler(handler.Handler):
 
             # Delete state from persistent store
             from ..agent.runner.persistent_state_store import get_persistent_state_store
+
             store = get_persistent_state_store(self.ap.persistence_mgr.get_db_engine())
 
             try:
@@ -2250,14 +2951,17 @@ class RuntimeConnectionHandler(handler.Handler):
 
             # List state keys from persistent store
             from ..agent.runner.persistent_state_store import get_persistent_state_store
+
             store = get_persistent_state_store(self.ap.persistence_mgr.get_db_engine())
 
             try:
                 keys, has_more = await store.state_list(scope_key, prefix, limit)
-                return handler.ActionResponse.success(data={
-                    'keys': keys,
-                    'has_more': has_more,
-                })
+                return handler.ActionResponse.success(
+                    data={
+                        'keys': keys,
+                        'has_more': has_more,
+                    }
+                )
             except Exception as e:
                 self.ap.logger.error(f'STATE_LIST error: {e}', exc_info=True)
                 return handler.ActionResponse.error(message=f'State list error: {e}')

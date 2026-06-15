@@ -103,13 +103,40 @@ class AgentRunOrchestrator:
 
         state_context = build_state_context(event, binding, descriptor)
         run_id = context['run_id']
+        available_apis = context.get('context', {}).get('available_apis')
+        run_authorization = {
+            'runner_id': descriptor.id,
+            'binding_id': binding.binding_id,
+            'plugin_identity': descriptor.get_plugin_id(),
+            'resources': resources,
+            'available_apis': available_apis,
+            'conversation_id': event.conversation_id,
+            'bot_id': event.bot_id,
+            'workspace_id': event.workspace_id,
+            'thread_id': event.thread_id,
+            'state_policy': {
+                'enable_state': binding.state_policy.enable_state,
+                'state_scopes': list(binding.state_policy.state_scopes),
+            },
+            'state_context': state_context,
+        }
 
         pending_artifact_refs: list[dict[str, typing.Any]] = []
         seen_sequences: set[int] = set()
         last_sequence = 0
         assistant_transcript_written = False
+        terminal_status: str | None = None
+        terminal_reason: str | None = None
+        terminal_usage: dict[str, typing.Any] | None = None
 
         try:
+            await self.journal.create_run(
+                event=event,
+                binding=binding,
+                descriptor=descriptor,
+                context=context,
+                authorization=run_authorization,
+            )
             await self._session_registry.register(
                 run_id=run_id,
                 runner_id=descriptor.id,
@@ -146,14 +173,15 @@ class AgentRunOrchestrator:
                 )
 
             async for result_dict in self.invoker.invoke(descriptor, context):
+                result_dict = dict(result_dict)
                 sequence = result_dict.get('sequence')
                 if sequence is not None:
                     try:
                         sequence_int = int(sequence)
                     except (TypeError, ValueError):
-                        self.ap.logger.warning(
-                            f'Runner {descriptor.id} returned invalid result sequence: {sequence}'
-                        )
+                        self.ap.logger.warning(f'Runner {descriptor.id} returned invalid result sequence: {sequence}')
+                        sequence_int = last_sequence + 1
+                        result_dict['sequence'] = sequence_int
                     else:
                         if sequence_int in seen_sequences:
                             self.ap.logger.warning(
@@ -166,6 +194,8 @@ class AgentRunOrchestrator:
                                 f'Runner {descriptor.id} returned non-positive result sequence '
                                 f'{sequence_int} for run {run_id}'
                             )
+                            sequence_int = last_sequence + 1
+                            result_dict['sequence'] = sequence_int
                         elif last_sequence and sequence_int != last_sequence + 1:
                             self.ap.logger.warning(
                                 f'Runner {descriptor.id} result sequence gap or out-of-order '
@@ -173,6 +203,11 @@ class AgentRunOrchestrator:
                             )
                         seen_sequences.add(sequence_int)
                         last_sequence = max(last_sequence, sequence_int)
+                else:
+                    sequence_int = last_sequence + 1
+                    result_dict['sequence'] = sequence_int
+                    seen_sequences.add(sequence_int)
+                    last_sequence = sequence_int
 
                 result_type = result_dict.get('type')
                 if result_type and not self.result_normalizer.validate_payload(
@@ -190,8 +225,20 @@ class AgentRunOrchestrator:
                         runner_id=descriptor.id,
                     )
                     pending_artifact_refs.append(artifact_ref)
+                    await self.journal.append_run_result(
+                        result_dict=result_dict,
+                        run_id=run_id,
+                        sequence=sequence_int,
+                        artifact_refs=[artifact_ref],
+                    )
                     await self.result_normalizer.normalize(result_dict, descriptor)
                     continue
+
+                await self.journal.append_run_result(
+                    result_dict=result_dict,
+                    run_id=run_id,
+                    sequence=sequence_int,
+                )
 
                 if result_type == 'state.updated':
                     await self.journal.handle_state_updated_event(
@@ -204,13 +251,28 @@ class AgentRunOrchestrator:
                     await self.result_normalizer.normalize(result_dict, descriptor)
                     continue
 
-                has_completed_message = (
-                    result_type == 'message.completed'
-                    or (
-                        result_type == 'run.completed'
-                        and isinstance(result_dict.get('data'), dict)
-                        and bool(result_dict['data'].get('message'))
+                if result_type == 'run.completed':
+                    terminal_status = 'completed'
+                    terminal_reason = (
+                        result_dict.get('data', {}).get('finish_reason')
+                        if isinstance(result_dict.get('data'), dict)
+                        else None
                     )
+                    usage = result_dict.get('usage')
+                    if isinstance(usage, dict):
+                        terminal_usage = usage
+                elif result_type == 'run.failed':
+                    terminal_status = 'failed'
+                    data = result_dict.get('data') if isinstance(result_dict.get('data'), dict) else {}
+                    terminal_reason = data.get('error') or data.get('code')
+                    usage = result_dict.get('usage')
+                    if isinstance(usage, dict):
+                        terminal_usage = usage
+
+                has_completed_message = result_type == 'message.completed' or (
+                    result_type == 'run.completed'
+                    and isinstance(result_dict.get('data'), dict)
+                    and bool(result_dict['data'].get('message'))
                 )
                 if has_completed_message and event.conversation_id and not assistant_transcript_written:
                     merged_refs = self.journal.merge_artifact_refs(
@@ -231,6 +293,27 @@ class AgentRunOrchestrator:
                 result = await self.result_normalizer.normalize(result_dict, descriptor)
                 if result is not None:
                     yield result
+
+                run_snapshot = await self.journal.get_run(run_id)
+                if run_snapshot and run_snapshot.get('cancel_requested_at') is not None:
+                    terminal_status = 'cancelled'
+                    terminal_reason = run_snapshot.get('status_reason') or 'cancel_requested'
+                    break
+            await self.journal.finalize_run(
+                run_id=run_id,
+                status=terminal_status or 'completed',
+                status_reason=terminal_reason,
+                usage=terminal_usage,
+            )
+        except Exception as exc:
+            failed_usage = terminal_usage
+            await self.journal.finalize_run(
+                run_id=run_id,
+                status='timeout' if self._is_deadline_exhausted(context) else 'failed',
+                status_reason=str(exc),
+                usage=failed_usage,
+            )
+            raise
         finally:
             session = await self._session_registry.unregister(run_id)
             pending_steering = session.get('steering_queue', []) if session else []
@@ -325,9 +408,7 @@ class AgentRunOrchestrator:
                 exc_info=True,
             )
 
-        self.ap.logger.info(
-            f'Claimed event {event.event_id} as steering input for run {target_run_id}'
-        )
+        self.ap.logger.info(f'Claimed event {event.event_id} as steering input for run {target_run_id}')
         return True
 
     def _build_steering_item(
