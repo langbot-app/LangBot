@@ -16,7 +16,7 @@
 | Old built-in runners | Done | 旧 `src/langbot/pkg/provider/runners/*` 与 `RequestRunner` 路径已从本分支删除。 |
 | Official runner manifests | Done | `local-agent`、LiteLLM Agent Platform、外部服务 runner 已重新声明真实生效的 LangBot resource permissions。 |
 | Runtime Control Plane v2 | Future | 第一阶段设计为 Host-owned Run Ledger；runtime registry / heartbeat / daemon claim 是后续可选阶段。 |
-| Full release security gate | Future | self-host / container opt-in 可继续；managed/default external harness 需完成 SECURITY_HARDENING full gate。 |
+| Security boundary | Done | 当前口径降级为轻量边界：LangBot 保护自身持有资源；external harness 的 OS / process / network / workspace 风险由用户或部署环境承担；managed sandbox 不是当前承诺。 |
 | Steering control path | Done | claim 异常不再逃逸 consumer loop；queue 有上限；未 pull 的 claimed 输入在 run 结束时写 `steering.dropped` 审计终态。 |
 | SDK v1 contract closure | Done | SDK 提供 `AgentAPIError` / `AgentAPIException`、typed `SteeringPullResult`、未知 result type 宽容解析、result `sequence` 注入与取消传播。 |
 
@@ -27,7 +27,7 @@
 - State 与 storage 的长期类型边界仍可继续收窄；当前合同只要求 JSON-safe state 与受控 storage API。
 - Artifact 读取路径已检查 `expires_at`，EventLog / Transcript / Artifact 已提供显式 cleanup primitive；长期 retention 默认值、TTL 调度接入和大 payload 去重仍是运维收尾项，应在 Runtime Control Plane Phase 1 前补齐。
 - External harness 的 native shell / filesystem / CLI / MCP 权限不受 manifest permissions 约束；manifest permissions 只约束 LangBot 持有的资源访问。
-- Managed/cloud/default external harness 的 OS/process/network quota、workspace GC、完整 audit/admin control 仍是发布门槛，不是 Protocol v1 已完成能力。
+- LangBot 当前不承诺 managed sandbox；external harness 的 OS/process/network quota、workspace GC、provider-native tool 权限由用户或部署环境承担。
 
 ## Runner 验收状态
 
@@ -46,4 +46,4 @@
 - `local-agent` 可以通过 Pipeline Debug Chat 走插件化 `AgentRunOrchestrator` 主链路。
 - 外部 harness runner 可以通过同一条 `run(event, binding)` 路径执行；当前官方实现已收敛到 LiteLLM Agent Platform runner，具体 Claude Code / Codex CLI provider 不再由本仓库直接维护。
 
-这些记录只证明本地协议闭环可用，不代表发布级 security hardening 已完成。
+这些记录只证明本地协议闭环可用，不代表 LangBot 提供 managed sandbox 或 external harness OS 级隔离。
