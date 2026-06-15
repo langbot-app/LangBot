@@ -95,9 +95,7 @@ class ModelManager:
             else:
                 await self.sync_new_models_from_space()
         except asyncio.TimeoutError:
-            self.ap.logger.warning(
-                f'LangBot Space model sync timed out after {sync_timeout}s, skipping startup sync.'
-            )
+            self.ap.logger.warning(f'LangBot Space model sync timed out after {sync_timeout}s, skipping startup sync.')
         except Exception as e:
             self.ap.logger.warning('Failed to sync new models from LangBot Space, model list may not be updated.')
             self.ap.logger.warning(f'  - Error: {e}')
