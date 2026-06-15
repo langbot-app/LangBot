@@ -211,6 +211,44 @@ class RunLedgerStore:
             await session.commit()
             return self._run_to_dict(run)
 
+    async def release_expired_claims(
+        self,
+        *,
+        now: datetime.datetime | None = None,
+        status: str = 'queued',
+        status_reason: str = 'claim lease expired',
+        limit: int = 100,
+    ) -> list[dict[str, typing.Any]]:
+        """Release claimed runs whose claim lease has expired."""
+        current_time = now or _utc_now()
+        if current_time.tzinfo is None:
+            current_time = current_time.replace(tzinfo=UTC)
+        limit = min(max(int(limit), 1), 500)
+
+        async with self._session_factory() as session:
+            result = await session.execute(
+                sqlalchemy.select(AgentRun)
+                .where(
+                    AgentRun.status == 'claimed',
+                    AgentRun.claim_lease_expires_at.is_not(None),
+                    AgentRun.claim_lease_expires_at <= current_time,
+                )
+                .order_by(AgentRun.claim_lease_expires_at.asc(), AgentRun.id.asc())
+                .limit(limit)
+            )
+            runs = result.scalars().all()
+            for run in runs:
+                run.status = status
+                run.status_reason = status_reason
+                run.claimed_by_runtime_id = None
+                run.claim_token = None
+                run.claim_lease_expires_at = None
+                run.updated_at = current_time
+                if status in TERMINAL_STATUSES:
+                    run.finished_at = run.finished_at or current_time
+            await session.commit()
+            return [self._run_to_dict(run) for run in runs]
+
     async def append_event(
         self,
         *,
@@ -249,6 +287,41 @@ class RunLedgerStore:
                 source=source,
                 artifact_refs_json=_json_dumps(artifact_refs or []),
                 metadata_json=_json_dumps(metadata),
+            )
+            session.add(row)
+            await session.commit()
+            return self._event_to_dict(row)
+
+    async def append_audit_event(
+        self,
+        *,
+        run_id: str,
+        event_type: str,
+        data: dict[str, typing.Any] | None = None,
+        metadata: dict[str, typing.Any] | None = None,
+    ) -> dict[str, typing.Any] | None:
+        """Append a Host-authored audit event after the current max sequence."""
+        async with self._session_factory() as session:
+            run = await self._get_run_row(session, run_id)
+            if run is None:
+                return None
+
+            result = await session.execute(
+                sqlalchemy.select(sqlalchemy.func.max(AgentRunEvent.sequence)).where(
+                    AgentRunEvent.run_id == run_id,
+                )
+            )
+            next_sequence = int(result.scalar_one_or_none() or 0) + 1
+            row = AgentRunEvent(
+                run_id=run_id,
+                sequence=next_sequence,
+                type=event_type,
+                data_json=_json_dumps(data or {}),
+                usage_json=None,
+                created_at=_utc_now(),
+                source='host',
+                artifact_refs_json=_json_dumps([]),
+                metadata_json=_json_dumps(metadata or {}),
             )
             session.add(row)
             await session.commit()
@@ -410,16 +483,34 @@ class RunLedgerStore:
         *,
         now: datetime.datetime | None = None,
         stale_status: str = 'stale',
+        stale_after_seconds: int | float | None = None,
     ) -> list[dict[str, typing.Any]]:
         """Mark runtimes stale when their heartbeat deadline has passed."""
         current_time = now or _utc_now()
         if current_time.tzinfo is None:
             current_time = current_time.replace(tzinfo=UTC)
+        stale_conditions: list[typing.Any] = [
+            sqlalchemy.and_(
+                AgentRuntime.heartbeat_deadline_at.is_not(None),
+                AgentRuntime.heartbeat_deadline_at < current_time,
+            )
+        ]
+        if stale_after_seconds is not None:
+            try:
+                stale_after_delta = datetime.timedelta(seconds=max(float(stale_after_seconds), 0))
+            except (TypeError, ValueError):
+                stale_after_delta = None
+            if stale_after_delta is not None:
+                stale_conditions.append(
+                    sqlalchemy.and_(
+                        AgentRuntime.last_heartbeat_at.is_not(None),
+                        AgentRuntime.last_heartbeat_at < current_time - stale_after_delta,
+                    )
+                )
         async with self._session_factory() as session:
             result = await session.execute(
                 sqlalchemy.select(AgentRuntime).where(
-                    AgentRuntime.heartbeat_deadline_at.is_not(None),
-                    AgentRuntime.heartbeat_deadline_at < current_time,
+                    sqlalchemy.or_(*stale_conditions),
                     AgentRuntime.status != stale_status,
                 )
             )

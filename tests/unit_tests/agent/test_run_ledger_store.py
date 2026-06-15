@@ -125,6 +125,84 @@ async def test_expired_claim_can_be_reclaimed(store, db_engine):
 
 
 @pytest.mark.asyncio
+async def test_release_expired_claims_requeues_runs(store, db_engine):
+    await store.create_run(
+        run_id='run-expired-release',
+        event_id='evt-3',
+        binding_id='binding-1',
+        runner_id='runner-a',
+        status='queued',
+        queue_name='default',
+    )
+    await store.create_run(
+        run_id='run-active-claim',
+        event_id='evt-4',
+        binding_id='binding-1',
+        runner_id='runner-a',
+        status='queued',
+        queue_name='default',
+    )
+    expired_claim = await store.claim_next_run(runtime_id='runtime-a', queue_name='default', lease_seconds=60)
+    active_claim = await store.claim_next_run(runtime_id='runtime-b', queue_name='default', lease_seconds=60)
+    assert expired_claim is not None
+    assert active_claim is not None
+
+    session_factory = sessionmaker(db_engine, class_=AsyncSession, expire_on_commit=False)
+    async with session_factory() as session:
+        await session.execute(
+            sqlalchemy.update(AgentRun)
+            .where(AgentRun.run_id == 'run-expired-release')
+            .values(claim_lease_expires_at=datetime.datetime.now(UTC) - datetime.timedelta(seconds=1))
+        )
+        await session.commit()
+
+    released = await store.release_expired_claims()
+
+    assert [run['run_id'] for run in released] == ['run-expired-release']
+    assert released[0]['status'] == 'queued'
+    assert released[0]['status_reason'] == 'claim lease expired'
+    assert released[0]['claimed_by_runtime_id'] is None
+    assert released[0]['claim_token'] is None
+    assert released[0]['claim_lease_expires_at'] is None
+
+    active = await store.get_run('run-active-claim')
+    assert active is not None
+    assert active['status'] == 'claimed'
+    assert active['claim_token'] == active_claim['claim_token']
+
+
+@pytest.mark.asyncio
+async def test_append_audit_event_uses_next_sequence(store):
+    await store.create_run(
+        run_id='run-audit',
+        event_id='evt-5',
+        binding_id='binding-1',
+        runner_id='runner-a',
+    )
+    await store.append_event(
+        run_id='run-audit',
+        sequence=1,
+        event_type='message.completed',
+        data={'ok': True},
+    )
+
+    event = await store.append_audit_event(
+        run_id='run-audit',
+        event_type='admin.run_cancel',
+        data={'action': 'run_cancel'},
+        metadata={'permission': 'agent_run:admin'},
+    )
+
+    assert event is not None
+    assert event['sequence'] == 2
+    assert event['type'] == 'admin.run_cancel'
+    assert event['source'] == 'host'
+    assert event['data'] == {'action': 'run_cancel'}
+    assert event['metadata'] == {'permission': 'agent_run:admin'}
+    assert await store.append_audit_event(run_id='missing', event_type='admin.missing') is None
+
+
+@pytest.mark.asyncio
 async def test_runtime_register_heartbeat_list_and_mark_stale(store):
     registered = await store.register_runtime(
         runtime_id='runtime-a',
