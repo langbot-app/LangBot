@@ -103,6 +103,18 @@ spec:
       type: string
       required: true
       default: "填写你的卡片template_id"
+    - name: human_input_card_template_id
+      label:
+        en_US: Human Input Card Template ID
+        zh_Hans: 人工输入卡片模板ID
+        zh_Hant: 人工輸入卡片範本ID
+      description:
+        en_US: "Template ID used as the SINGLE card for the whole conversation turn. Streamed LLM text fills the `content` markdown variable; on a Dify human-input pause the `btns` buttonGroup variable is populated so action buttons appear on the SAME card; after the user clicks a button the buttons disappear and resumed streaming continues into the same card. Use the bundled `src/langbot/templates/dingtalk_human_input_card.json` — it ships with `content` (MarkdownBlock) and `btns` (ButtonGroup) already wired. Leave empty to fall back to the legacy two-card behaviour (chat card streaming text + plain-text human-input prompts)."
+        zh_Hans: "用作整个对话回合**唯一**卡片的模板ID。流式 LLM 文本写入 `content` markdown 变量；Dify 人工输入暂停时同一张卡的 `btns` buttonGroup 变量被填上、按钮浮现；用户点击后按钮消失、恢复的流式内容继续追加到同一张卡。可使用项目附带的 `src/langbot/templates/dingtalk_human_input_card.json`——已经预先连好 `content` (MarkdownBlock) 与 `btns` (ButtonGroup)。留空则降级为旧的双卡行为（聊天卡走流式 + 人工输入走纯文本）。"
+        zh_Hant: "用作整個對話回合**唯一**卡片的範本ID。流式 LLM 文字寫入 `content` markdown 變數；Dify 人工輸入暫停時同一張卡的 `btns` buttonGroup 變數被填上、按鈕浮現；使用者點擊後按鈕消失、恢復的流式內容繼續追加到同一張卡。可使用專案附帶的 `src/langbot/templates/dingtalk_human_input_card.json`——已經預先連好 `content` (MarkdownBlock) 與 `btns` (ButtonGroup)。留空則降級為舊的雙卡行為（聊天卡走流式 + 人工輸入走純文字）。"
+      type: string
+      required: false
+      default: ""
 execution:
   python:
     path: ./dingtalk.py

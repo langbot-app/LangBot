@@ -1,13 +1,19 @@
+import asyncio
+import json
 import traceback
 import typing
+import uuid
+
 from langbot.libs.dingtalk_api.dingtalkevent import DingTalkEvent
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
+import langbot_plugin.api.entities.builtin.provider.session as provider_session
 from langbot.libs.dingtalk_api.api import DingTalkClient
 import datetime
 from langbot.pkg.platform.logger import EventLogger
+from langbot.pkg.provider.runners.difysvapi import _format_human_input_text
 
 
 class DingTalkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
@@ -170,6 +176,13 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     card_instance_id_dict: (
         dict  # 回复卡片消息字典，key为消息id，value为回复卡片实例id，用于在流式消息时判断是否发送到指定卡片
     )
+    # outTrackId → form snapshot {session_key, launcher_type, launcher_id, form_token,
+    #   workflow_run_id, actions, node_title, form_content, expires_at, open_space_id,
+    #   user_id_hint, current_text}. Lookup keys for the data-source pull endpoint and
+    #   the STREAM card-action callback.
+    card_state: dict
+    ap: typing.Any = None
+    bot_uuid: str = ''
 
     def __init__(self, config: dict, logger: EventLogger):
         required_keys = [
@@ -194,10 +207,15 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             config=config,
             logger=logger,
             card_instance_id_dict={},
+            card_state={},
             bot_account_id=bot_account_id,
             bot=bot,
             listeners={},
         )
+        # Wire the card-action callback after super().__init__ so we can reference
+        # self.* — the client's handler stores this as a soft reference and reads
+        # it at fire time.
+        self.bot.card_action_callback = self._on_card_action
 
     async def reply_message(
         self,
@@ -222,28 +240,79 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         quote_origin: bool = False,
         is_final: bool = False,
     ):
-        # event = await DingTalkEventConverter.yiri2target(
-        #     message_source,
-        # )
-        # incoming_message = event.incoming_message
-
-        # msg_id = incoming_message.message_id
         message_id = bot_message.resp_message_id
         msg_seq = bot_message.msg_sequence
+
+        form_template_id = (self.config.get('human_input_card_template_id') or '').strip()
+        form_data = getattr(bot_message, '_form_data', None)
+        if is_final and self.ap is not None:
+            self.ap.logger.info(
+                f'DingTalk reply_message_chunk final: form_data_present={form_data is not None}, '
+                f'form_template_configured={bool(form_template_id)}'
+            )
+
+        if form_data and is_final:
+            await self._handle_form_chunk(message_source, bot_message, message, form_data)
+            return
 
         if (msg_seq - 1) % 8 == 0 or is_final:
             markdown_enabled = self.config.get('markdown_card', False)
             content, at = await DingTalkMessageConverter.yiri2target(message, markdown_enabled)
-
-            card_instance, card_instance_id = self.card_instance_id_dict[message_id]
             if not content and bot_message.content:
                 content = bot_message.content  # 兼容直接传入content的情况
-            # print(card_instance_id)
+
+            chat_card_entry = self.card_instance_id_dict.get(message_id)
+            if chat_card_entry is None:
+                # No streaming chat card was created for this query — common
+                # path for synthetic events (e.g. resumed workflow after a
+                # button click). Lazy-create one so the resumed output streams
+                # into a card just like a normal conversation, instead of
+                # being deferred and sent in one shot on is_final.
+                if not content:
+                    return  # nothing to stream yet
+                chat_card_entry = await self._lazy_create_resume_chat_card(message_source, message_id)
+                if chat_card_entry is None:
+                    # Lazy-create failed (no template configured); fall back
+                    # to a one-shot proactive message on the final chunk.
+                    if is_final:
+                        await self._send_proactive_to_event(message_source, content)
+                    return
+
+            card_instance, card_instance_id = chat_card_entry
             if content:
-                await self.bot.send_card_message(card_instance, card_instance_id, content, is_final)
-            if is_final and bot_message.tool_calls is None:
-                # self.seq = 1  # 消息回复结束之后重置seq
-                self.card_instance_id_dict.pop(message_id)  # 消息回复结束之后删除卡片实例id
+                if form_template_id:
+                    # The form template's MarkdownBlock has `isStreaming: false`
+                    # — the streaming endpoint (PUT /v1.0/card/streaming) does
+                    # not propagate to non-streaming components. Use the full
+                    # update_card_data PUT instead so the content actually
+                    # appears in the card body.
+                    try:
+                        await self.bot.update_card_data(
+                            out_track_id=card_instance_id,
+                            card_param_map={
+                                'content': content,
+                                'btns': '[]',
+                                'flowStatus': '3' if is_final else '1',
+                            },
+                        )
+                    except Exception:
+                        if self.ap is not None:
+                            self.ap.logger.exception('DingTalk: update card content failed')
+                else:
+                    await self.bot.send_card_message(card_instance, card_instance_id, content, is_final)
+            if is_final:
+                if form_template_id and not content:
+                    # Empty final chunk still needs to leave the card with
+                    # flowStatus=3 so the spinner stops.
+                    try:
+                        await self.bot.update_card_data(
+                            out_track_id=card_instance_id,
+                            card_param_map={'flowStatus': '3'},
+                        )
+                    except Exception:
+                        pass
+                if bot_message.tool_calls is None:
+                    self.card_instance_id_dict.pop(message_id, None)
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         markdown_enabled = self.config.get('markdown_card', False)
@@ -260,15 +329,55 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         return is_stream
 
     async def create_message_card(self, message_id, event):
-        card_template_id = self.config['card_template_id']
+        # When a form template is configured, every card in the conversation
+        # uses it (chat output, form prompts, post-click states). The chat
+        # template fallback only kicks in if no form template is configured.
+        form_template_id = (self.config.get('human_input_card_template_id') or '').strip()
+        legacy_template_id = self.config.get('card_template_id', '')
+
+        # Synthetic events (e.g. card button clicks) have no inbound chatbot
+        # message — skip card creation. The lazy-create path in
+        # reply_message_chunk will spawn a fresh card when the first
+        # non-empty resume chunk arrives.
+        if event is None or event.source_platform_object is None:
+            return False
+
+        if form_template_id:
+            # Defer card creation to the first non-empty chunk. If the Dify
+            # workflow pauses immediately for human input without producing
+            # any LLM text first, no chat card is created at all — only the
+            # form card gets delivered. Lazy-create lives in
+            # reply_message_chunk → _lazy_create_resume_chat_card.
+            return False
+
+        # Legacy chat-card path (no form template configured).
         incoming_message = event.source_platform_object.incoming_message
-        # message_id = incoming_message.message_id
         card_auto_layout = self.config.get('card_ auto_layout', False)
         card_instance, card_instance_id = await self.bot.create_and_card(
-            card_template_id, incoming_message, card_auto_layout=card_auto_layout
+            legacy_template_id, incoming_message, card_auto_layout=card_auto_layout
         )
         self.card_instance_id_dict[message_id] = (card_instance, card_instance_id)
         return True
+
+    def _session_key_from_event(self, event) -> str:
+        """Return launcher_type_launcher_id for an event, '' if unrecoverable."""
+        if event is None:
+            return ''
+        spo = event.source_platform_object
+        if spo is None:
+            try:
+                if isinstance(event, platform_events.GroupMessage):
+                    return f'group_{event.group.id}'
+                return f'person_{event.sender.id}'
+            except Exception:
+                return ''
+        try:
+            inc = spo.incoming_message
+            if str(inc.conversation_type) == '2':
+                return f'group_{inc.conversation_id}'
+            return f'person_{inc.sender_staff_id}'
+        except Exception:
+            return ''
 
     def register_listener(
         self,
@@ -309,3 +418,449 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         ],
     ):
         return super().unregister_listener(event_type, callback)
+
+    # ------------------------------------------------------------------
+    # Dify human-input form support
+    # ------------------------------------------------------------------
+
+    def set_bot_uuid(self, bot_uuid: str):
+        """Receive the bot uuid from the platform manager.
+
+        Used to compose the public-facing unified-webhook URL for the card
+        dynamic-data-source pull endpoint.
+        """
+        self.bot_uuid = bot_uuid
+
+    def _derive_open_space(self, message_source: platform_events.MessageEvent) -> tuple[str, bool]:
+        """Return (openSpaceId, is_group) for the given inbound event."""
+        if isinstance(message_source, platform_events.GroupMessage):
+            return f'dtv1.card//IM_GROUP.{message_source.group.id}', True
+        return f'dtv1.card//IM_ROBOT.{message_source.sender.id}', False
+
+    def _derive_session_descriptor(
+        self, message_source: platform_events.MessageEvent
+    ) -> tuple[provider_session.LauncherTypes, str, str]:
+        """Return (launcher_type, launcher_id, sender_user_id) for routing."""
+        if isinstance(message_source, platform_events.GroupMessage):
+            return (
+                provider_session.LauncherTypes.GROUP,
+                str(message_source.group.id),
+                str(message_source.sender.id),
+            )
+        return (
+            provider_session.LauncherTypes.PERSON,
+            str(message_source.sender.id),
+            str(message_source.sender.id),
+        )
+
+    async def _handle_form_chunk(
+        self,
+        message_source: platform_events.MessageEvent,
+        bot_message,
+        message: platform_message.MessageChain,
+        form_data: dict,
+    ) -> None:
+        """Finalize the current chat card and deliver a new form card.
+
+        Multi-card flow: every Dify pause spawns its own card. The card the
+        chat was streaming into (if any) is closed out via streaming_update
+        with finished=True so its spinner stops; a fresh card is then
+        delivered carrying the prompt + buttons.
+        """
+        if self.ap is not None:
+            self.ap.logger.info(
+                f'DingTalk _handle_form_chunk: actions={len(form_data.get("actions") or [])}, '
+                f'node_title={form_data.get("node_title", "")!r}'
+            )
+        message_id = bot_message.resp_message_id
+        template_id = (self.config.get('human_input_card_template_id') or '').strip()
+
+        # Finalize the previous chat card so its spinner stops. Use the
+        # already-streamed text as the final content (or zero-width space
+        # when nothing streamed, to satisfy any non-empty-content guards).
+        chat_card_entry = self.card_instance_id_dict.pop(message_id, None)
+        if chat_card_entry is not None:
+            _, chat_out_track_id = chat_card_entry
+            markdown_enabled = self.config.get('markdown_card', False)
+            text_content, _ = await DingTalkMessageConverter.yiri2target(message, markdown_enabled)
+            if not text_content and bot_message.content:
+                text_content = bot_message.content
+            try:
+                await self.bot.send_card_message(None, chat_out_track_id, text_content or '​', True)
+            except Exception:
+                await self.logger.error(f'DingTalk: finalize chat card before form failed: {traceback.format_exc()}')
+            # When the chat card uses the form template, also flip flowStatus
+            # to 3 so it leaves the pending state visibly.
+            if template_id:
+                try:
+                    await self.bot.update_card_data(
+                        out_track_id=chat_out_track_id,
+                        card_param_map={'flowStatus': '3'},
+                    )
+                except Exception:
+                    pass
+
+        if not template_id:
+            # No form template configured — fall back to plain text so users
+            # can still reply with the option number or title.
+            await self.send_message_text_form(message_source, form_data)
+            return
+
+        await self._send_form_card(message_source, form_data, template_id)
+
+    async def _send_form_card(
+        self,
+        message_source: platform_events.MessageEvent,
+        form_data: dict,
+        template_id: str,
+    ) -> None:
+        """Deliver a new card pre-loaded with the human-input prompt + buttons."""
+        out_track_id = uuid.uuid4().hex
+        open_space_id, is_group = self._derive_open_space(message_source)
+        launcher_type, launcher_id, sender_user_id = self._derive_session_descriptor(message_source)
+        session_key = f'{launcher_type.value}_{launcher_id}'
+
+        actions = list(form_data.get('actions') or [])
+        node_title = form_data.get('node_title', '') or 'Human Input Required'
+        form_content = form_data.get('form_content', '') or ''
+
+        self.card_state[out_track_id] = {
+            'session_key': session_key,
+            'launcher_type': launcher_type.value,
+            'launcher_id': launcher_id,
+            'sender_user_id': sender_user_id,
+            'form_token': form_data.get('form_token', ''),
+            'workflow_run_id': form_data.get('workflow_run_id', ''),
+            'actions': actions,
+            'node_title': node_title,
+            'form_content': form_content,
+            'open_space_id': open_space_id,
+            'is_group': is_group,
+        }
+
+        parts = []
+        if node_title:
+            parts.append(f'**{node_title}**')
+        if form_content:
+            parts.append(form_content)
+        display_content = '\n\n'.join(parts) or '请选择一个操作以继续。'
+
+        btns = []
+        for idx, action in enumerate(actions):
+            action_id = str(action.get('id') or '')
+            title = str(action.get('title') or action_id or f'选项 {idx + 1}')
+            style = (action.get('button_style') or '').lower()
+            if style == 'primary' or (style == '' and idx == 0):
+                color = 'blue'
+            elif style == 'danger':
+                color = 'red'
+            else:
+                color = 'gray'
+            btns.append(
+                {
+                    'text': title,
+                    'color': color,
+                    'status': 'normal',
+                    'event': {
+                        'type': 'sendCardRequest',
+                        'params': {
+                            'actionId': action_id,
+                            'params': {'action_id': action_id, 'out_track_id': out_track_id},
+                        },
+                    },
+                }
+            )
+
+        try:
+            if self.ap is not None:
+                self.ap.logger.info(
+                    f'DingTalk _send_form_card: out_track_id={out_track_id} template_id={template_id} '
+                    f'open_space_id={open_space_id} is_group={is_group} btns={len(btns)}'
+                )
+            await self.bot.create_and_deliver_card(
+                card_template_id=template_id,
+                out_track_id=out_track_id,
+                open_space_id=open_space_id,
+                is_group=is_group,
+                card_param_map={
+                    'content': display_content,
+                    'btns': json.dumps(btns, ensure_ascii=False),
+                    'flowStatus': '3',
+                },
+                callback_type='STREAM',
+            )
+        except Exception:
+            await self.logger.error(f'DingTalk: deliver form card failed: {traceback.format_exc()}')
+            await self.send_message_text_form(message_source, form_data)
+            self.card_state.pop(out_track_id, None)
+
+    async def _lazy_create_resume_chat_card(
+        self,
+        message_source: platform_events.MessageEvent,
+        message_id: str,
+    ) -> typing.Optional[tuple]:
+        """Create a new card for resumed-workflow streaming output.
+
+        Used after a button click triggers a synthetic event — no inbound
+        chatbot message means no card was created upstream, so we spin one
+        up here when the first non-empty chunk arrives. Prefers the form
+        template (so empty `btns` keep the layout consistent across the
+        whole conversation); falls back to the legacy chat template.
+        """
+        form_template_id = (self.config.get('human_input_card_template_id') or '').strip()
+        legacy_template_id = (self.config.get('card_template_id') or '').strip()
+        template_id = form_template_id or legacy_template_id
+        if not template_id:
+            return None
+        out_track_id = uuid.uuid4().hex
+        open_space_id, is_group = self._derive_open_space(message_source)
+        if self.ap is not None:
+            self.ap.logger.info(
+                f'DingTalk _lazy_create_resume_chat_card: out_track_id={out_track_id} '
+                f'open_space_id={open_space_id} is_group={is_group} '
+                f'using_form_template={bool(form_template_id)}'
+            )
+        if form_template_id:
+            card_param_map = {'content': '', 'btns': '[]', 'flowStatus': '1'}
+            card_data_config = None
+        else:
+            card_param_map = {'content': '', 'query': '...'}
+            card_data_config = {'autoLayout': self.config.get('card_auto_layout', False)}
+        try:
+            success = await self.bot.create_and_deliver_card(
+                card_template_id=template_id,
+                out_track_id=out_track_id,
+                open_space_id=open_space_id,
+                is_group=is_group,
+                card_param_map=card_param_map,
+                card_data_config=card_data_config,
+                callback_type='STREAM',
+            )
+        except Exception:
+            if self.ap is not None:
+                self.ap.logger.exception('DingTalk: lazy create resume chat card failed')
+            return None
+        if not success:
+            return None
+        entry = (None, out_track_id)
+        self.card_instance_id_dict[message_id] = entry
+        return entry
+
+    async def send_message_text_form(
+        self,
+        message_source: platform_events.MessageEvent,
+        form_data: dict,
+    ) -> None:
+        """Fallback: send the human-input prompt as plain text."""
+        display_text = _format_human_input_text(
+            form_data.get('node_title', ''),
+            form_data.get('form_content', ''),
+            form_data.get('actions', []) or [],
+        )
+        await self._send_proactive_to_event(message_source, display_text)
+
+    async def _send_proactive_to_event(
+        self,
+        message_source: platform_events.MessageEvent,
+        content: str,
+    ) -> None:
+        """Send `content` as a proactive message to the conversation behind
+        `message_source`. Used when no inbound chatbot message exists to
+        anchor a card on (e.g. resumed flows triggered by card actions).
+        """
+        if not content:
+            return
+        if self.ap is not None:
+            target = (
+                str(message_source.group.id)
+                if isinstance(message_source, platform_events.GroupMessage)
+                else str(message_source.sender.id)
+            )
+            self.ap.logger.info(
+                f'DingTalk _send_proactive_to_event: target={target} '
+                f'is_group={isinstance(message_source, platform_events.GroupMessage)} content_len={len(content)}'
+            )
+        try:
+            if isinstance(message_source, platform_events.GroupMessage):
+                await self.bot.send_proactive_message_to_group(str(message_source.group.id), content)
+            else:
+                await self.bot.send_proactive_message_to_one(str(message_source.sender.id), content)
+        except Exception:
+            if self.ap is not None:
+                self.ap.logger.exception('DingTalk: send proactive message failed')
+            await self.logger.error(f'DingTalk: send proactive message failed: {traceback.format_exc()}')
+
+    async def _on_card_action(self, payload: dict) -> None:
+        """Translate a card button click into a synthetic query.
+
+        Reads the clicked button's ``actionId`` (the real Dify action id —
+        the ButtonGroup template sends it back via `event.params.actionId`),
+        recovers the action title from ``card_state``, and enqueues a
+        synthetic `_dify_form_action` query the same way Lark / Telegram do.
+        """
+        if self.ap is not None:
+            self.ap.logger.info(
+                f'DingTalk _on_card_action received: out_track_id={payload.get("out_track_id")} '
+                f'payload_action_id={payload.get("action_id")!r} params={payload.get("params")!r}'
+            )
+        out_track_id = payload.get('out_track_id') or ''
+        params = payload.get('params') or {}
+        # ButtonGroup `sendCardRequest` events surface the click id at the
+        # callback top level as `actionId`; fall back to `params.action_id`
+        # (alternate template wiring) and `params.actionId`.
+        raw_action_id = (
+            (payload.get('action_id') or '').strip()
+            or (params.get('action_id') or '').strip()
+            or (params.get('actionId') or '').strip()
+            or (params.get('id') or '').strip()
+        )
+        state = self.card_state.get(out_track_id)
+        if state is None:
+            await self.logger.warning(f'DingTalk: card action received for unknown out_track_id={out_track_id}')
+            return
+        if not raw_action_id:
+            await self.logger.warning(f'DingTalk: card action with no action_id, payload={payload}')
+            return
+
+        actions = state.get('actions', []) or []
+        action_id = raw_action_id
+        action_title = raw_action_id
+        for action in actions:
+            if str(action.get('id', '')) == raw_action_id:
+                action_title = action.get('title') or raw_action_id
+                break
+
+        launcher_type = (
+            provider_session.LauncherTypes.GROUP
+            if state.get('launcher_type') == provider_session.LauncherTypes.GROUP.value
+            else provider_session.LauncherTypes.PERSON
+        )
+        launcher_id = state.get('launcher_id', '')
+        sender_user_id = state.get('sender_user_id') or payload.get('user_id') or launcher_id
+
+        form_action_data = {
+            'form_token': state.get('form_token', ''),
+            'workflow_run_id': state.get('workflow_run_id', ''),
+            'action_id': action_id,
+            'action_title': action_title,
+            'node_title': state.get('node_title', ''),
+            'user': f'{launcher_type.value}_{launcher_id}',
+            'inputs': {},
+        }
+
+        message_chain = platform_message.MessageChain([platform_message.Plain(text=f'[Form Action: {action_title}]')])
+
+        if launcher_type == provider_session.LauncherTypes.GROUP:
+            synthetic_event = platform_events.GroupMessage(
+                sender=platform_entities.GroupMember(
+                    id=sender_user_id,
+                    member_name='',
+                    permission=platform_entities.Permission.Member,
+                    group=platform_entities.Group(
+                        id=launcher_id,
+                        name='',
+                        permission=platform_entities.Permission.Member,
+                    ),
+                    special_title='',
+                ),
+                message_chain=message_chain,
+                time=int(datetime.datetime.now().timestamp()),
+                source_platform_object=None,
+            )
+        else:
+            synthetic_event = platform_events.FriendMessage(
+                sender=platform_entities.Friend(
+                    id=sender_user_id,
+                    nickname='',
+                    remark='',
+                ),
+                message_chain=message_chain,
+                time=int(datetime.datetime.now().timestamp()),
+                source_platform_object=None,
+            )
+
+        bot_uuid = ''
+        pipeline_uuid = None
+        if self.ap is not None:
+            for bot in self.ap.platform_mgr.bots:
+                if bot.adapter is self:
+                    bot_uuid = bot.bot_entity.uuid
+                    pipeline_uuid = bot.bot_entity.use_pipeline_uuid
+                    break
+
+            try:
+                self.ap.logger.info(
+                    f'DingTalk _on_card_action enqueuing form action: action_id={action_id!r} '
+                    f'action_title={action_title!r} launcher_type={launcher_type.value} '
+                    f'launcher_id={launcher_id} bot_uuid={bot_uuid} pipeline_uuid={pipeline_uuid}'
+                )
+                await self.ap.query_pool.add_query(
+                    bot_uuid=bot_uuid,
+                    launcher_type=launcher_type,
+                    launcher_id=launcher_id,
+                    sender_id=sender_user_id,
+                    message_event=synthetic_event,
+                    message_chain=message_chain,
+                    adapter=self,
+                    pipeline_uuid=pipeline_uuid,
+                    variables={
+                        '_dify_form_action': form_action_data,
+                        '_routed_by_rule': True,
+                    },
+                )
+                self.ap.logger.info('DingTalk _on_card_action: query enqueued OK')
+            except Exception:
+                self.ap.logger.exception('DingTalk: enqueue form action query failed')
+                return
+
+        # Visual feedback: collapse the form card to a "已选择" notice so
+        # the user knows the click registered while the workflow resumes.
+        asyncio.create_task(
+            self._mark_card_resolved(
+                out_track_id,
+                action_title,
+                node_title=state.get('node_title', ''),
+                form_content=state.get('form_content', ''),
+            )
+        )
+
+        # Once consumed, drop the state — the runner clears _PENDING_FORMS too.
+        self.card_state.pop(out_track_id, None)
+
+    async def _mark_card_resolved(
+        self,
+        out_track_id: str,
+        action_title: str,
+        *,
+        node_title: str = '',
+        form_content: str = '',
+    ) -> None:
+        """Update the form card to acknowledge the user's selection.
+
+        We rewrite the card content with the original prompt + a green tick
+        marker, and explicitly clear ``btns`` so the buttons are removed
+        once chosen. ``flowStatus`` is re-sent because some DingTalk clients
+        treat the PUT update as a partial *replace* of cardParamMap rather
+        than a merge — without it, the AICardContainer status containers
+        would all gate to ``gone`` and the whole card would blank out.
+        """
+        parts: list[str] = []
+        if node_title:
+            parts.append(f'**{node_title}**')
+        if form_content:
+            parts.append(form_content)
+        parts.append(f'---\n✅ 已选择：**{action_title}**')
+        content = '\n\n'.join(parts)
+        if self.ap is not None:
+            self.ap.logger.info(f'DingTalk _mark_card_resolved: out_track_id={out_track_id} action={action_title!r}')
+        try:
+            await self.bot.update_card_data(
+                out_track_id=out_track_id,
+                card_param_map={
+                    'content': content,
+                    'btns': '[]',
+                    'flowStatus': '3',
+                },
+            )
+        except Exception:
+            await self.logger.error(f'DingTalk: update form card after click failed: {traceback.format_exc()}')
