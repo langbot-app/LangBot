@@ -248,3 +248,135 @@ async def test_path_escape_blocked():
 
         with pytest.raises(ValueError, match='escapes'):
             await loader.invoke_tool('read', {'path': '/workspace/../../etc/passwd'}, _make_query())
+
+
+@pytest.mark.asyncio
+async def test_box_availability_helper_handles_unavailable_and_errors():
+    from langbot.pkg.provider.tools.loaders.availability import is_box_backend_available
+
+    assert await is_box_backend_available(SimpleNamespace()) is False
+    assert await is_box_backend_available(SimpleNamespace(box_service=SimpleNamespace(available=False))) is False
+
+    unavailable_backend = SimpleNamespace(
+        available=True,
+        get_status=AsyncMock(return_value={'backend': {'available': False}}),
+    )
+    assert await is_box_backend_available(SimpleNamespace(box_service=unavailable_backend)) is False
+
+    failing_backend = SimpleNamespace(
+        available=True,
+        get_status=AsyncMock(side_effect=RuntimeError('box unavailable')),
+    )
+    assert await is_box_backend_available(SimpleNamespace(box_service=failing_backend)) is False
+
+
+@pytest.mark.asyncio
+async def test_read_file_supports_offset_limit_and_truncation_metadata():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        loader, _ = _make_loader_with_workspace(tmpdir)
+        with open(os.path.join(tmpdir, 'lines.txt'), 'w', encoding='utf-8') as f:
+            f.write('one\ntwo\nthree\nfour\n')
+
+        result = await loader.invoke_tool(
+            'read',
+            {'path': '/workspace/lines.txt', 'offset': 2, 'limit': 2},
+            _make_query(),
+        )
+
+        assert result == {
+            'ok': True,
+            'content': 'two\nthree',
+            'truncated': True,
+            'truncated_by': 'lines',
+            'start_line': 2,
+            'end_line': 3,
+            'next_offset': 4,
+            'max_lines': 2,
+            'max_bytes': 50 * 1024,
+        }
+
+
+@pytest.mark.asyncio
+async def test_read_file_handles_line_larger_than_byte_limit():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        loader, _ = _make_loader_with_workspace(tmpdir)
+        with open(os.path.join(tmpdir, 'long-line.txt'), 'w', encoding='utf-8') as f:
+            f.write('abcdef\n')
+
+        result = await loader.invoke_tool(
+            'read',
+            {'path': '/workspace/long-line.txt', 'max_bytes': 3},
+            _make_query(),
+        )
+
+        assert result['ok'] is True
+        assert result['truncated'] is True
+        assert result['truncated_by'] == 'bytes'
+        assert result['next_offset'] == 1
+        assert 'exceeds the 3B read limit' in result['content']
+
+
+@pytest.mark.asyncio
+async def test_exec_result_is_capped_and_exposes_preview_metadata():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        box_service = SimpleNamespace(
+            available=True,
+            default_workspace=tmpdir,
+            execute_tool=AsyncMock(
+                return_value={
+                    'ok': True,
+                    'stdout': 'a' * 60000,
+                    'stderr': 'b' * 60000,
+                    'exit_code': 0,
+                }
+            ),
+        )
+        loader = NativeToolLoader(SimpleNamespace(box_service=box_service, logger=Mock()))
+
+        result = await loader.invoke_tool('exec', {'command': 'python -V'}, _make_query())
+
+        assert result['ok'] is True
+        assert len(result['stdout'].encode('utf-8')) == 50 * 1024
+        assert len(result['stderr'].encode('utf-8')) == 50 * 1024
+        assert len(result['preview'].encode('utf-8')) == 50 * 1024
+        assert result['stdout_truncated'] is True
+        assert result['stderr_truncated'] is True
+        assert result['truncated'] is True
+        assert result['truncated_by'] == 'bytes'
+
+
+@pytest.mark.asyncio
+async def test_glob_caps_match_count_and_returns_preview():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        loader, _ = _make_loader_with_workspace(tmpdir)
+        for index in range(105):
+            with open(os.path.join(tmpdir, f'file-{index:03d}.txt'), 'w', encoding='utf-8') as f:
+                f.write(str(index))
+
+        result = await loader.invoke_tool('glob', {'path': '/workspace', 'pattern': '*.txt'}, _make_query())
+
+        assert result['ok'] is True
+        assert result['total'] == 105
+        assert len(result['matches']) == 100
+        assert result['preview'] == '\n'.join(result['matches'])
+        assert result['truncated'] is True
+        assert result['truncated_by'] == 'matches'
+
+
+@pytest.mark.asyncio
+async def test_grep_reports_invalid_regex_and_truncates_long_matching_lines():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        loader, _ = _make_loader_with_workspace(tmpdir)
+        with open(os.path.join(tmpdir, 'data.txt'), 'w', encoding='utf-8') as f:
+            f.write('needle ' + ('x' * 600) + '\n')
+
+        invalid = await loader.invoke_tool('grep', {'path': '/workspace', 'pattern': '['}, _make_query())
+        result = await loader.invoke_tool('grep', {'path': '/workspace', 'pattern': 'needle'}, _make_query())
+
+        assert invalid['ok'] is False
+        assert 'Invalid regex' in invalid['error']
+        assert result['ok'] is True
+        assert result['truncated'] is True
+        assert result['truncated_by'] == 'line'
+        assert result['matches'][0]['file'] == '/workspace/data.txt'
+        assert result['matches'][0]['content'].endswith('... [truncated]')

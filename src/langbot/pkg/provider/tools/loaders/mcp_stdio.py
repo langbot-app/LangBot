@@ -6,6 +6,7 @@ import os
 import shutil
 import shlex
 import threading
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
 import pydantic
@@ -285,11 +286,9 @@ class BoxStdioSessionRuntime:
                 if os.path.isdir(path) and not os.path.islink(path):
                     shutil.rmtree(path, ignore_errors=True)
                 else:
-                    try:
+                    # The entry may disappear between listdir and unlink if cleanup races us.
+                    with suppress(FileNotFoundError):
                         os.unlink(path)
-                    except FileNotFoundError:
-                        # The entry may disappear between listdir and unlink if cleanup races us.
-                        pass
             shutil.copytree(
                 source_path,
                 process_host_workspace,

@@ -543,6 +543,34 @@ class TestPythonWorkspacePreparation:
         assert (workspace / '.venv' / 'bin' / 'python').exists()
         assert (workspace / '.langbot' / 'python-env.lock').is_dir()
 
+    def test_staging_refresh_ignores_unlink_race(self, mcp_module, tmp_path, monkeypatch):
+        mcp_stdio_module = sys.modules['langbot.pkg.provider.tools.loaders.mcp_stdio']
+
+        source = tmp_path / 'source'
+        source.mkdir()
+        (source / 'server.py').write_text('print("new")\n', encoding='utf-8')
+
+        process_root = tmp_path / 'shared' / '.mcp' / 'u1'
+        workspace = process_root / 'workspace'
+        workspace.mkdir(parents=True)
+        stale_file = workspace / 'removed.py'
+        stale_file.write_text('stale\n', encoding='utf-8')
+
+        real_unlink = os.unlink
+
+        def unlink_with_race(path):
+            if os.fspath(path) == str(stale_file):
+                real_unlink(path)
+                raise FileNotFoundError(path)
+            real_unlink(path)
+
+        monkeypatch.setattr(mcp_stdio_module.os, 'unlink', unlink_with_race)
+
+        mcp_module.BoxStdioSessionRuntime._copy_workspace_tree(str(source), str(process_root), str(workspace))
+
+        assert not stale_file.exists()
+        assert (workspace / 'server.py').read_text(encoding='utf-8') == 'print("new")\n'
+
 
 # ── get_runtime_info_dict ───────────────────────────────────────────
 
