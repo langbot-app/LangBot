@@ -37,8 +37,80 @@ class _RuntimeActionName:
         self.value = value
 
 
+AGENT_RUN_ADMIN_PERMISSION = 'agent_run:admin'
+RUNTIME_ADMIN_PERMISSION = 'runtime:admin'
+AGENT_RUNNER_ADMIN_PERMISSION = 'agent_runner:admin'
+
+
 def _plugin_runtime_action(name: str, value: str) -> Any:
     return getattr(PluginToRuntimeAction, name, _RuntimeActionName(value))
+
+
+def _normalize_permission_set(value: Any) -> set[str]:
+    if isinstance(value, str):
+        return {permission.strip() for permission in value.split(',') if permission.strip()}
+    if isinstance(value, list):
+        return {str(item).strip() for item in value if str(item).strip()}
+    if isinstance(value, dict):
+        return {str(item).strip() for item, enabled in value.items() if enabled and str(item).strip()}
+    return set()
+
+
+def _iter_agent_runner_admin_plugin_configs(ap: app.Application) -> list[dict[str, Any]]:
+    instance_config = getattr(ap, 'instance_config', None)
+    config_data = getattr(instance_config, 'data', {}) if instance_config is not None else {}
+    if not isinstance(config_data, dict):
+        return []
+    agent_runner_config = config_data.get('agent_runner', {})
+    if not isinstance(agent_runner_config, dict):
+        return []
+    raw_admin_plugins = agent_runner_config.get('admin_plugins', [])
+    if isinstance(raw_admin_plugins, dict):
+        items: list[dict[str, Any]] = []
+        for identity, entry in raw_admin_plugins.items():
+            if isinstance(entry, dict):
+                merged = dict(entry)
+                merged.setdefault('identity', identity)
+                items.append(merged)
+            else:
+                items.append({'identity': identity, 'permissions': entry})
+        return items
+    if isinstance(raw_admin_plugins, list):
+        return [item for item in raw_admin_plugins if isinstance(item, dict)]
+    return []
+
+
+def _agent_runner_admin_permissions(ap: app.Application, plugin_identity: str | None) -> set[str]:
+    if not isinstance(plugin_identity, str) or not plugin_identity.strip():
+        return set()
+    normalized_identity = plugin_identity.strip()
+    permissions: set[str] = set()
+    for entry in _iter_agent_runner_admin_plugin_configs(ap):
+        if entry.get('enabled', True) is False:
+            continue
+        identity = entry.get('identity') or entry.get('plugin_identity') or entry.get('plugin') or entry.get('id')
+        if identity != normalized_identity:
+            continue
+        permissions.update(_normalize_permission_set(entry.get('permissions')))
+        permissions.update(_normalize_permission_set(entry.get('scopes')))
+    return permissions
+
+
+def _has_agent_runner_admin_permission(
+    ap: app.Application,
+    plugin_identity: str | None,
+    permission: str,
+) -> bool:
+    permissions = _agent_runner_admin_permissions(ap, plugin_identity)
+    if not permissions:
+        return False
+    domain = permission.split(':', 1)[0]
+    return bool(
+        permission in permissions
+        or f'{domain}:*' in permissions
+        or AGENT_RUNNER_ADMIN_PERMISSION in permissions
+        or '*' in permissions
+    )
 
 
 def _deadline_seconds_from_payload(data: dict[str, Any], default: int = 60) -> int:
@@ -256,8 +328,24 @@ async def _validate_agent_run_session(
     api_name: str,
     api_capability: str | None = None,
     allow_persistent_authorization: bool = False,
+    admin_permission: str | None = None,
 ) -> Union[tuple[None, handler.ActionResponse], tuple[Any, None]]:
     """Validate an AgentRunner pull API run session and run-scoped API access."""
+    if not run_id and admin_permission and _has_agent_runner_admin_permission(
+        ap,
+        caller_plugin_identity,
+        admin_permission,
+    ):
+        return {
+            'run_id': run_id,
+            'runner_id': None,
+            'query_id': None,
+            'plugin_identity': caller_plugin_identity,
+            'authorization': {},
+            'status': {},
+            'steering_queue': [],
+        }, None
+
     session_registry = get_session_registry()
     session = await session_registry.get(run_id)
     if not session:
@@ -281,7 +369,12 @@ async def _validate_agent_run_session(
 
     if api_capability:
         available_apis = _get_run_authorization(session).get('available_apis', {})
-        if not available_apis.get(api_capability, False):
+        has_admin_permission = bool(admin_permission) and _has_agent_runner_admin_permission(
+            ap,
+            caller_plugin_identity,
+            admin_permission,
+        )
+        if not available_apis.get(api_capability, False) and not has_admin_permission:
             return None, handler.ActionResponse.error(message=f'{api_name} access not authorized')
 
     return session, None
@@ -1930,8 +2023,13 @@ class RuntimeConnectionHandler(handler.Handler):
             run_id = data.get('run_id')
             target_run_id = data.get('target_run_id') or run_id
             caller_plugin_identity = data.get('caller_plugin_identity')
+            is_admin = _has_agent_runner_admin_permission(
+                self.ap,
+                caller_plugin_identity,
+                AGENT_RUN_ADMIN_PERMISSION,
+            )
 
-            if not run_id:
+            if not is_admin and not run_id:
                 return handler.ActionResponse.error(message='run_id is required')
             if not target_run_id:
                 return handler.ActionResponse.error(message='target_run_id is required')
@@ -1943,6 +2041,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 'Run get',
                 api_capability='run_get',
                 allow_persistent_authorization=True,
+                admin_permission=AGENT_RUN_ADMIN_PERMISSION,
             )
             if error:
                 return error
@@ -1955,7 +2054,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 run = await store.get_run(str(target_run_id))
                 if not run:
                     return handler.ActionResponse.error(message=f'Run {target_run_id} not found')
-                if not _run_matches_run_scope(session, run):
+                if not is_admin and not _run_matches_run_scope(session, run):
                     return handler.ActionResponse.error(message=f'Run {target_run_id} is not accessible by this run')
                 return handler.ActionResponse.success(data=run)
             except Exception as e:
@@ -1971,10 +2070,16 @@ class RuntimeConnectionHandler(handler.Handler):
             before_cursor = data.get('before_cursor')
             limit = data.get('limit', 50)
             caller_plugin_identity = data.get('caller_plugin_identity')
+            is_admin = _has_agent_runner_admin_permission(
+                self.ap,
+                caller_plugin_identity,
+                AGENT_RUN_ADMIN_PERMISSION,
+            )
 
-            if not run_id:
+            if not is_admin and not run_id:
                 return handler.ActionResponse.error(message='run_id is required')
 
+            scope_filters: dict[str, Any] = {}
             session, error = await _validate_agent_run_session(
                 run_id,
                 caller_plugin_identity,
@@ -1982,19 +2087,22 @@ class RuntimeConnectionHandler(handler.Handler):
                 'Run list',
                 api_capability='run_list',
                 allow_persistent_authorization=True,
+                admin_permission=AGENT_RUN_ADMIN_PERMISSION,
             )
             if error:
                 return error
 
-            conversation_id, scope_error = _resolve_run_conversation(
-                session,
-                conversation_id,
-                'Run list',
-            )
-            if scope_error:
-                return scope_error
+            if not is_admin:
+                conversation_id, scope_error = _resolve_run_conversation(
+                    session,
+                    conversation_id,
+                    'Run list',
+                )
+                if scope_error:
+                    return scope_error
+                scope_filters = _run_scope_filters(session)
 
-            if not conversation_id:
+            if not is_admin and not conversation_id:
                 return handler.ActionResponse.success(
                     data={
                         'items': [],
@@ -2021,7 +2129,7 @@ class RuntimeConnectionHandler(handler.Handler):
                     statuses=[str(status) for status in statuses] if statuses else None,
                     before_id=before_id,
                     limit=limit,
-                    **_run_scope_filters(session),
+                    **scope_filters,
                 )
                 return handler.ActionResponse.success(
                     data={
@@ -2045,8 +2153,13 @@ class RuntimeConnectionHandler(handler.Handler):
             limit = data.get('limit', 50)
             direction = data.get('direction', 'forward')
             caller_plugin_identity = data.get('caller_plugin_identity')
+            is_admin = _has_agent_runner_admin_permission(
+                self.ap,
+                caller_plugin_identity,
+                AGENT_RUN_ADMIN_PERMISSION,
+            )
 
-            if not run_id:
+            if not is_admin and not run_id:
                 return handler.ActionResponse.error(message='run_id is required')
             if not target_run_id:
                 return handler.ActionResponse.error(message='target_run_id is required')
@@ -2058,6 +2171,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 'Run events page',
                 api_capability='run_events_page',
                 allow_persistent_authorization=True,
+                admin_permission=AGENT_RUN_ADMIN_PERMISSION,
             )
             if error:
                 return error
@@ -2076,7 +2190,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 run = await store.get_run(str(target_run_id))
                 if not run:
                     return handler.ActionResponse.error(message=f'Run {target_run_id} not found')
-                if not _run_matches_run_scope(session, run):
+                if not is_admin and not _run_matches_run_scope(session, run):
                     return handler.ActionResponse.error(message=f'Run {target_run_id} is not accessible by this run')
 
                 items, next_cursor, prev_cursor, has_more = await store.page_run_events(
@@ -2104,8 +2218,13 @@ class RuntimeConnectionHandler(handler.Handler):
             run_id = data.get('run_id')
             target_run_id = data.get('target_run_id') or run_id
             caller_plugin_identity = data.get('caller_plugin_identity')
+            is_admin = _has_agent_runner_admin_permission(
+                self.ap,
+                caller_plugin_identity,
+                AGENT_RUN_ADMIN_PERMISSION,
+            )
 
-            if not run_id:
+            if not is_admin and not run_id:
                 return handler.ActionResponse.error(message='run_id is required')
             if not target_run_id:
                 return handler.ActionResponse.error(message='target_run_id is required')
@@ -2117,6 +2236,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 'Run cancel',
                 api_capability='run_cancel',
                 allow_persistent_authorization=True,
+                admin_permission=AGENT_RUN_ADMIN_PERMISSION,
             )
             if error:
                 return error
@@ -2129,7 +2249,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 run = await store.get_run(str(target_run_id))
                 if not run:
                     return handler.ActionResponse.error(message=f'Run {target_run_id} not found')
-                if not _run_matches_run_scope(session, run):
+                if not is_admin and not _run_matches_run_scope(session, run):
                     return handler.ActionResponse.error(message=f'Run {target_run_id} is not accessible by this run')
 
                 updated = await store.request_cancel(
@@ -2150,8 +2270,13 @@ class RuntimeConnectionHandler(handler.Handler):
             target_run_id = data.get('target_run_id') or run_id
             caller_plugin_identity = data.get('caller_plugin_identity')
             result = data.get('result') if isinstance(data.get('result'), dict) else {}
+            is_admin = _has_agent_runner_admin_permission(
+                self.ap,
+                caller_plugin_identity,
+                AGENT_RUN_ADMIN_PERMISSION,
+            )
 
-            if not run_id:
+            if not is_admin and not run_id:
                 return handler.ActionResponse.error(message='run_id is required')
             if not target_run_id:
                 return handler.ActionResponse.error(message='target_run_id is required')
@@ -2177,6 +2302,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 'Run append result',
                 api_capability='run_append_result',
                 allow_persistent_authorization=True,
+                admin_permission=AGENT_RUN_ADMIN_PERMISSION,
             )
             if error:
                 return error
@@ -2189,7 +2315,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 run = await store.get_run(str(target_run_id))
                 if not run:
                     return handler.ActionResponse.error(message=f'Run {target_run_id} not found')
-                if not _run_matches_run_scope(session, run):
+                if not is_admin and not _run_matches_run_scope(session, run):
                     return handler.ActionResponse.error(message=f'Run {target_run_id} is not accessible by this run')
 
                 event = await store.append_event(
@@ -2214,8 +2340,13 @@ class RuntimeConnectionHandler(handler.Handler):
             target_run_id = data.get('target_run_id') or run_id
             caller_plugin_identity = data.get('caller_plugin_identity')
             status = data.get('status')
+            is_admin = _has_agent_runner_admin_permission(
+                self.ap,
+                caller_plugin_identity,
+                AGENT_RUN_ADMIN_PERMISSION,
+            )
 
-            if not run_id:
+            if not is_admin and not run_id:
                 return handler.ActionResponse.error(message='run_id is required')
             if not target_run_id:
                 return handler.ActionResponse.error(message='target_run_id is required')
@@ -2229,6 +2360,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 'Run finalize',
                 api_capability='run_finalize',
                 allow_persistent_authorization=True,
+                admin_permission=AGENT_RUN_ADMIN_PERMISSION,
             )
             if error:
                 return error
@@ -2241,7 +2373,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 run = await store.get_run(str(target_run_id))
                 if not run:
                     return handler.ActionResponse.error(message=f'Run {target_run_id} not found')
-                if not _run_matches_run_scope(session, run):
+                if not is_admin and not _run_matches_run_scope(session, run):
                     return handler.ActionResponse.error(message=f'Run {target_run_id} is not accessible by this run')
 
                 updated = await store.finalize_run(
@@ -2265,8 +2397,13 @@ class RuntimeConnectionHandler(handler.Handler):
             run_id = data.get('run_id')
             runtime_id = data.get('runtime_id')
             caller_plugin_identity = data.get('caller_plugin_identity')
+            is_admin = _has_agent_runner_admin_permission(
+                self.ap,
+                caller_plugin_identity,
+                RUNTIME_ADMIN_PERMISSION,
+            )
 
-            if not run_id:
+            if not is_admin and not run_id:
                 return handler.ActionResponse.error(message='run_id is required')
             if not runtime_id:
                 return handler.ActionResponse.error(message='runtime_id is required')
@@ -2277,6 +2414,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 self.ap,
                 'Runtime register',
                 api_capability='runtime_register',
+                admin_permission=RUNTIME_ADMIN_PERMISSION,
             )
             if error:
                 return error
@@ -2308,8 +2446,13 @@ class RuntimeConnectionHandler(handler.Handler):
             run_id = data.get('run_id')
             runtime_id = data.get('runtime_id')
             caller_plugin_identity = data.get('caller_plugin_identity')
+            is_admin = _has_agent_runner_admin_permission(
+                self.ap,
+                caller_plugin_identity,
+                RUNTIME_ADMIN_PERMISSION,
+            )
 
-            if not run_id:
+            if not is_admin and not run_id:
                 return handler.ActionResponse.error(message='run_id is required')
             if not runtime_id:
                 return handler.ActionResponse.error(message='runtime_id is required')
@@ -2320,6 +2463,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 self.ap,
                 'Runtime heartbeat',
                 api_capability='runtime_heartbeat',
+                admin_permission=RUNTIME_ADMIN_PERMISSION,
             )
             if error:
                 return error
@@ -2349,8 +2493,13 @@ class RuntimeConnectionHandler(handler.Handler):
             """List Host-owned runtime registry records."""
             run_id = data.get('run_id')
             caller_plugin_identity = data.get('caller_plugin_identity')
+            is_admin = _has_agent_runner_admin_permission(
+                self.ap,
+                caller_plugin_identity,
+                RUNTIME_ADMIN_PERMISSION,
+            )
 
-            if not run_id:
+            if not is_admin and not run_id:
                 return handler.ActionResponse.error(message='run_id is required')
 
             _session, error = await _validate_agent_run_session(
@@ -2359,6 +2508,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 self.ap,
                 'Runtime list',
                 api_capability='runtime_list',
+                admin_permission=RUNTIME_ADMIN_PERMISSION,
             )
             if error:
                 return error
@@ -2401,8 +2551,13 @@ class RuntimeConnectionHandler(handler.Handler):
             run_id = data.get('run_id')
             runtime_id = data.get('runtime_id')
             caller_plugin_identity = data.get('caller_plugin_identity')
+            is_admin = _has_agent_runner_admin_permission(
+                self.ap,
+                caller_plugin_identity,
+                RUNTIME_ADMIN_PERMISSION,
+            )
 
-            if not run_id:
+            if not is_admin and not run_id:
                 return handler.ActionResponse.error(message='run_id is required')
             if not runtime_id:
                 return handler.ActionResponse.error(message='runtime_id is required')
@@ -2413,6 +2568,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 self.ap,
                 'Run claim',
                 api_capability='run_claim',
+                admin_permission=RUNTIME_ADMIN_PERMISSION,
             )
             if error:
                 return error
@@ -2447,8 +2603,13 @@ class RuntimeConnectionHandler(handler.Handler):
             runtime_id = data.get('runtime_id')
             claim_token = data.get('claim_token')
             caller_plugin_identity = data.get('caller_plugin_identity')
+            is_admin = _has_agent_runner_admin_permission(
+                self.ap,
+                caller_plugin_identity,
+                RUNTIME_ADMIN_PERMISSION,
+            )
 
-            if not run_id:
+            if not is_admin and not run_id:
                 return handler.ActionResponse.error(message='run_id is required')
             if not target_run_id:
                 return handler.ActionResponse.error(message='target_run_id is required')
@@ -2463,6 +2624,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 self.ap,
                 'Run renew claim',
                 api_capability='run_renew_claim',
+                admin_permission=RUNTIME_ADMIN_PERMISSION,
             )
             if error:
                 return error
@@ -2495,8 +2657,13 @@ class RuntimeConnectionHandler(handler.Handler):
             runtime_id = data.get('runtime_id')
             claim_token = data.get('claim_token')
             caller_plugin_identity = data.get('caller_plugin_identity')
+            is_admin = _has_agent_runner_admin_permission(
+                self.ap,
+                caller_plugin_identity,
+                RUNTIME_ADMIN_PERMISSION,
+            )
 
-            if not run_id:
+            if not is_admin and not run_id:
                 return handler.ActionResponse.error(message='run_id is required')
             if not target_run_id:
                 return handler.ActionResponse.error(message='target_run_id is required')
@@ -2511,6 +2678,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 self.ap,
                 'Run release claim',
                 api_capability='run_release_claim',
+                admin_permission=RUNTIME_ADMIN_PERMISSION,
             )
             if error:
                 return error

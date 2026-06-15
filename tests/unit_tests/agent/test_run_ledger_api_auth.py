@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -28,10 +29,17 @@ class FakeConnection:
 
 
 class FakeApplication:
-    def __init__(self, db_engine):
+    def __init__(self, db_engine, admin_plugins=None):
         self.logger = MagicMock()
         self.persistence_mgr = MagicMock()
         self.persistence_mgr.get_db_engine = MagicMock(return_value=db_engine)
+        self.instance_config = SimpleNamespace(
+            data={
+                'agent_runner': {
+                    'admin_plugins': admin_plugins or [],
+                }
+            }
+        )
 
 
 @pytest.fixture
@@ -54,11 +62,11 @@ async def db_engine():
     await engine.dispose()
 
 
-def _handler(db_engine):
+def _handler(db_engine, admin_plugins=None):
     async def fake_disconnect():
         return True
 
-    fake_app = FakeApplication(db_engine)
+    fake_app = FakeApplication(db_engine, admin_plugins=admin_plugins)
     return RuntimeConnectionHandler(FakeConnection(), fake_disconnect, fake_app)
 
 
@@ -92,6 +100,7 @@ async def _create_run(
     workspace_id='workspace_1',
     thread_id=None,
     plugin_identity='test/runner',
+    runner_id='plugin:test/runner/default',
     available_apis=None,
 ):
     store = RunLedgerStore(db_engine)
@@ -99,13 +108,13 @@ async def _create_run(
         run_id=run_id,
         event_id='evt_1',
         binding_id='binding_1',
-        runner_id='plugin:test/runner/default',
+        runner_id=runner_id,
         conversation_id=conversation_id,
         bot_id=bot_id,
         workspace_id=workspace_id,
         thread_id=thread_id,
         authorization={
-            'runner_id': 'plugin:test/runner/default',
+            'runner_id': runner_id,
             'binding_id': 'binding_1',
             'plugin_identity': plugin_identity,
             'resources': make_resources(),
@@ -279,6 +288,426 @@ async def test_persistent_authorization_does_not_reopen_artifact_api(db_engine):
 
     assert result.code != 0
     assert 'not found or expired' in result.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_agent_run_admin_can_list_all_runs_with_own_run_session(session_registry, db_engine):
+    await _register_session(session_registry, available_apis={})
+    await _create_run(db_engine)
+    await _create_run(
+        db_engine,
+        run_id='run_other',
+        conversation_id='conv_other',
+        bot_id='bot_other',
+        workspace_id='workspace_other',
+        plugin_identity='other/runner',
+        runner_id='plugin:other/runner/default',
+        available_apis={'run_list': True},
+    )
+    handler = _handler(
+        db_engine,
+        admin_plugins=[
+            {
+                'identity': 'test/runner',
+                'permissions': ['agent_run:admin'],
+            }
+        ],
+    )
+    run_list = handler.actions[PluginToRuntimeAction.RUN_LIST.value]
+
+    result = await run_list(
+        {
+            'run_id': 'run_1',
+            'caller_plugin_identity': 'test/runner',
+            'statuses': ['running'],
+        }
+    )
+
+    assert result.code == 0
+    page = RunPage.model_validate(result.data)
+    assert [run.run_id for run in page.items] == ['run_other', 'run_1']
+
+
+@pytest.mark.asyncio
+async def test_agent_run_admin_permission_string_allows_without_run_id(db_engine):
+    await _create_run(db_engine)
+    handler = _handler(
+        db_engine,
+        admin_plugins=[
+            {
+                'identity': 'test/runner',
+                'permissions': 'agent_run:admin',
+            }
+        ],
+    )
+    run_list = handler.actions[PluginToRuntimeAction.RUN_LIST.value]
+
+    result = await run_list(
+        {
+            'caller_plugin_identity': 'test/runner',
+        }
+    )
+
+    assert result.code == 0
+    page = RunPage.model_validate(result.data)
+    assert [run.run_id for run in page.items] == ['run_1']
+
+
+@pytest.mark.asyncio
+async def test_agent_run_admin_can_get_and_page_cross_scope_with_own_run_session(session_registry, db_engine):
+    await _register_session(session_registry, available_apis={})
+    await _create_run(
+        db_engine,
+        run_id='run_other',
+        conversation_id='conv_other',
+        bot_id='bot_other',
+        workspace_id='workspace_other',
+        plugin_identity='other/runner',
+        runner_id='plugin:other/runner/default',
+        available_apis={'run_get': True, 'run_events_page': True},
+    )
+    handler = _handler(
+        db_engine,
+        admin_plugins=[
+            {
+                'identity': 'test/runner',
+                'permissions': ['agent_run:admin'],
+            }
+        ],
+    )
+    run_get = handler.actions[PluginToRuntimeAction.RUN_GET.value]
+    run_events_page = handler.actions[PluginToRuntimeAction.RUN_EVENTS_PAGE.value]
+
+    run_result = await run_get(
+        {
+            'run_id': 'run_1',
+            'target_run_id': 'run_other',
+            'caller_plugin_identity': 'test/runner',
+        }
+    )
+    events_result = await run_events_page(
+        {
+            'run_id': 'run_1',
+            'target_run_id': 'run_other',
+            'caller_plugin_identity': 'test/runner',
+        }
+    )
+
+    assert run_result.code == 0
+    assert AgentRun.model_validate(run_result.data).run_id == 'run_other'
+    assert events_result.code == 0
+    page = RunEventPage.model_validate(events_result.data)
+    assert [event.type for event in page.items] == ['message.completed']
+
+
+@pytest.mark.asyncio
+async def test_agent_run_admin_can_get_and_page_cross_scope_without_run_id(db_engine):
+    await _create_run(
+        db_engine,
+        run_id='run_other',
+        conversation_id='conv_other',
+        bot_id='bot_other',
+        workspace_id='workspace_other',
+        plugin_identity='other/runner',
+        runner_id='plugin:other/runner/default',
+    )
+    handler = _handler(
+        db_engine,
+        admin_plugins=[
+            {
+                'identity': 'langbot/control',
+                'permissions': ['agent_run:admin'],
+            }
+        ],
+    )
+    run_get = handler.actions[PluginToRuntimeAction.RUN_GET.value]
+    run_events_page = handler.actions[PluginToRuntimeAction.RUN_EVENTS_PAGE.value]
+
+    run_result = await run_get(
+        {
+            'target_run_id': 'run_other',
+            'caller_plugin_identity': 'langbot/control',
+        }
+    )
+    events_result = await run_events_page(
+        {
+            'target_run_id': 'run_other',
+            'caller_plugin_identity': 'langbot/control',
+        }
+    )
+
+    assert run_result.code == 0
+    assert AgentRun.model_validate(run_result.data).run_id == 'run_other'
+    assert events_result.code == 0
+    page = RunEventPage.model_validate(events_result.data)
+    assert [event.type for event in page.items] == ['message.completed']
+
+
+@pytest.mark.asyncio
+async def test_unconfigured_plugin_cannot_use_admin_run_actions_without_run_id(db_engine):
+    await _create_run(db_engine)
+    handler = _handler(
+        db_engine,
+        admin_plugins=[
+            {
+                'identity': 'langbot/control',
+                'permissions': ['agent_run:admin'],
+            }
+        ],
+    )
+    run_list = handler.actions[PluginToRuntimeAction.RUN_LIST.value]
+
+    result = await run_list(
+        {
+            'caller_plugin_identity': 'test/runner',
+        }
+    )
+
+    assert result.code != 0
+    assert 'run_id is required' in result.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_agent_run_admin_can_cancel_cross_scope_with_own_run_session(session_registry, db_engine):
+    await _register_session(session_registry, available_apis={})
+    await _create_run(
+        db_engine,
+        run_id='run_other',
+        conversation_id='conv_other',
+        bot_id='bot_other',
+        workspace_id='workspace_other',
+        plugin_identity='other/runner',
+        runner_id='plugin:other/runner/default',
+    )
+    handler = _handler(
+        db_engine,
+        admin_plugins=[
+            {
+                'identity': 'test/runner',
+                'permissions': ['agent_run:admin'],
+            }
+        ],
+    )
+    run_cancel = handler.actions[PluginToRuntimeAction.RUN_CANCEL.value]
+
+    result = await run_cancel(
+        {
+            'run_id': 'run_1',
+            'target_run_id': 'run_other',
+            'caller_plugin_identity': 'test/runner',
+            'reason': 'admin requested',
+        }
+    )
+
+    assert result.code == 0
+    run = AgentRun.model_validate(result.data)
+    assert run.run_id == 'run_other'
+    assert run.cancel_requested_at is not None
+    assert run.status_reason == 'admin requested'
+
+
+@pytest.mark.asyncio
+async def test_configured_admin_identity_cannot_be_spoofed_with_other_run_session(session_registry, db_engine):
+    await _register_session(session_registry, available_apis={})
+    await _create_run(db_engine)
+    handler = _handler(
+        db_engine,
+        admin_plugins=[
+            {
+                'identity': 'langbot/control',
+                'permissions': ['agent_run:admin'],
+            }
+        ],
+    )
+    run_get = handler.actions[PluginToRuntimeAction.RUN_GET.value]
+
+    result = await run_get(
+        {
+            'run_id': 'run_1',
+            'target_run_id': 'run_1',
+            'caller_plugin_identity': 'langbot/control',
+        }
+    )
+
+    assert result.code != 0
+    assert 'mismatch' in result.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_agent_run_admin_permission_does_not_grant_runtime_admin(session_registry, db_engine):
+    await _register_session(session_registry, available_apis={})
+    handler = _handler(
+        db_engine,
+        admin_plugins=[
+            {
+                'identity': 'test/runner',
+                'permissions': ['agent_run:admin'],
+            }
+        ],
+    )
+    runtime_list = handler.actions[PluginToRuntimeAction.RUNTIME_LIST.value]
+
+    result = await runtime_list(
+        {
+            'run_id': 'run_1',
+            'caller_plugin_identity': 'test/runner',
+        }
+    )
+
+    assert result.code != 0
+    assert 'not authorized' in result.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_runtime_admin_can_register_list_and_claim_with_own_run_session(session_registry, db_engine):
+    await _register_session(session_registry, available_apis={})
+    await RunLedgerStore(db_engine).create_run(
+        run_id='queued_run',
+        event_id='evt_queued',
+        binding_id='binding_1',
+        runner_id='plugin:other/runner/default',
+        conversation_id='conv_1',
+        bot_id='bot_1',
+        workspace_id='workspace_1',
+        status='queued',
+        queue_name='default',
+        priority=5,
+    )
+    handler = _handler(
+        db_engine,
+        admin_plugins=[
+            {
+                'identity': 'test/runner',
+                'permissions': ['runtime:admin'],
+            }
+        ],
+    )
+    runtime_register = handler.actions[PluginToRuntimeAction.RUNTIME_REGISTER.value]
+    runtime_list = handler.actions[PluginToRuntimeAction.RUNTIME_LIST.value]
+    run_claim = handler.actions[PluginToRuntimeAction.RUN_CLAIM.value]
+
+    registered = await runtime_register(
+        {
+            'run_id': 'run_1',
+            'caller_plugin_identity': 'test/runner',
+            'runtime_id': 'runtime_1',
+            'display_name': 'Runtime 1',
+            'labels': {'region': 'test'},
+        }
+    )
+    page = await runtime_list(
+        {
+            'run_id': 'run_1',
+            'caller_plugin_identity': 'test/runner',
+            'statuses': ['online'],
+            'labels': {'region': 'test'},
+        }
+    )
+    claimed = await run_claim(
+        {
+            'run_id': 'run_1',
+            'caller_plugin_identity': 'test/runner',
+            'runtime_id': 'runtime_1',
+            'queue_name': 'default',
+            'runner_ids': ['plugin:other/runner/default'],
+        }
+    )
+
+    assert registered.code == 0
+    assert registered.data['runtime_id'] == 'runtime_1'
+    assert page.code == 0
+    assert [item['runtime_id'] for item in page.data['items']] == ['runtime_1']
+    assert claimed.code == 0
+    assert claimed.data['run_id'] == 'queued_run'
+    assert claimed.data['claimed_by_runtime_id'] == 'runtime_1'
+
+
+@pytest.mark.asyncio
+async def test_runtime_admin_can_register_list_and_claim_without_run_id(db_engine):
+    await RunLedgerStore(db_engine).create_run(
+        run_id='queued_run',
+        event_id='evt_queued',
+        binding_id='binding_1',
+        runner_id='plugin:other/runner/default',
+        conversation_id='conv_1',
+        bot_id='bot_1',
+        workspace_id='workspace_1',
+        status='queued',
+        queue_name='default',
+        priority=5,
+    )
+    handler = _handler(
+        db_engine,
+        admin_plugins=[
+            {
+                'identity': 'langbot/control',
+                'permissions': ['runtime:admin'],
+            }
+        ],
+    )
+    runtime_register = handler.actions[PluginToRuntimeAction.RUNTIME_REGISTER.value]
+    runtime_list = handler.actions[PluginToRuntimeAction.RUNTIME_LIST.value]
+    run_claim = handler.actions[PluginToRuntimeAction.RUN_CLAIM.value]
+
+    registered = await runtime_register(
+        {
+            'caller_plugin_identity': 'langbot/control',
+            'runtime_id': 'runtime_1',
+            'display_name': 'Runtime 1',
+            'labels': {'region': 'test'},
+        }
+    )
+    page = await runtime_list(
+        {
+            'caller_plugin_identity': 'langbot/control',
+            'statuses': ['online'],
+            'labels': {'region': 'test'},
+        }
+    )
+    claimed = await run_claim(
+        {
+            'caller_plugin_identity': 'langbot/control',
+            'runtime_id': 'runtime_1',
+            'queue_name': 'default',
+            'runner_ids': ['plugin:other/runner/default'],
+        }
+    )
+
+    assert registered.code == 0
+    assert registered.data['runtime_id'] == 'runtime_1'
+    assert page.code == 0
+    assert [item['runtime_id'] for item in page.data['items']] == ['runtime_1']
+    assert claimed.code == 0
+    assert claimed.data['run_id'] == 'queued_run'
+    assert claimed.data['claimed_by_runtime_id'] == 'runtime_1'
+
+
+@pytest.mark.asyncio
+async def test_disabled_admin_plugin_entry_does_not_grant_access(session_registry, db_engine):
+    await _register_session(session_registry, available_apis={})
+    await _create_run(db_engine)
+    handler = _handler(
+        db_engine,
+        admin_plugins=[
+            {
+                'identity': 'test/runner',
+                'permissions': ['agent_run:admin', 'runtime:admin'],
+                'enabled': False,
+            }
+        ],
+    )
+    run_get = handler.actions[PluginToRuntimeAction.RUN_GET.value]
+
+    result = await run_get(
+        {
+            'run_id': 'run_1',
+            'target_run_id': 'run_1',
+            'caller_plugin_identity': 'test/runner',
+        }
+    )
+
+    assert result.code != 0
+    assert 'not authorized' in result.message.lower()
 
 
 @pytest.mark.asyncio
