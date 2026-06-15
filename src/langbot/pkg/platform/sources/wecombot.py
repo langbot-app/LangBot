@@ -296,6 +296,7 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     listeners: dict = {}
     _stream_to_monitoring_msg: dict = {}  # Maps stream_id to (monitoring_message_id, timestamp)
     _STREAM_MAPPING_TTL = 600  # 10 minutes
+    ap: typing.Any = None
 
     def __init__(self, config: dict, logger: EventLogger):
         enable_webhook = config.get('enable-webhook', False)
@@ -336,6 +337,12 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             _stream_to_monitoring_msg={},
         )
 
+        # Both WecomBotClient (webhook) and WecomBotWsClient (ws long-conn)
+        # expose ``set_card_action_callback``. Wire the click handler so
+        # Dify human-input button taps resume the workflow on either mode.
+        if hasattr(self.bot, 'set_card_action_callback'):
+            self.bot.set_card_action_callback(self._on_card_action)
+
     async def reply_message(
         self,
         message_source: platform_events.MessageEvent,
@@ -345,15 +352,37 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         content = await self.message_converter.yiri2target(message)
         _ws_mode = not self.config.get('enable-webhook', False)
 
+        event = message_source.source_platform_object
+        # Synthetic events (button-click resume queries) have no inbound
+        # platform object. Fall back to a proactive send so error
+        # messages and one-shot replies still reach the user.
+        if event is None:
+            if _ws_mode:
+                if isinstance(message_source, platform_events.GroupMessage):
+                    chat_id = str(message_source.group.id)
+                else:
+                    chat_id = str(message_source.sender.id)
+                try:
+                    await self.bot.send_message(chat_id, content)
+                except Exception:
+                    await self.logger.error(
+                        f'WeComBot: proactive reply for synthetic event failed: {traceback.format_exc()}'
+                    )
+            else:
+                await self.logger.warning(
+                    'WeComBot webhook mode cannot reply to a synthetic event '
+                    '(no req_id and no proactive-send credentials); dropping.'
+                )
+            return
+
         if _ws_mode:
-            event = message_source.source_platform_object
-            req_id = event.get('req_id', '')
+            req_id = event.get('req_id', '') if isinstance(event, dict) else getattr(event, 'req_id', '')
             if req_id:
                 await self.bot.reply_text(req_id, content)
             else:
                 await self.bot.set_message(event.message_id, content)
         else:
-            await self.bot.set_message(message_source.source_platform_object.message_id, content)
+            await self.bot.set_message(event.message_id, content)
 
     async def reply_message_chunk(
         self,
@@ -364,8 +393,55 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         is_final: bool = False,
     ):
         content = await self.message_converter.yiri2target(message)
-        msg_id = message_source.source_platform_object.message_id
         _ws_mode = not self.config.get('enable-webhook', False)
+
+        # Synthetic events (e.g. button-click triggered form resume) have
+        # no inbound platform message — no msg_id, no req_id, no stream
+        # session. The output must go via the proactive-send path instead
+        # of the stream/reply path.
+        spo = message_source.source_platform_object
+        if spo is None:
+            return await self._handle_synthetic_chunk(message_source, bot_message, content, is_final, _ws_mode)
+
+        msg_id = spo.message_id
+
+        # Dify human-input pause: when the runner attaches `_form_data` to
+        # the final chunk, hand the button_interaction card off to the
+        # underlying client. In webhook mode the card is queued for the
+        # next followup poll; in ws mode it's sent as a reply frame
+        # immediately. Falls back to plain text when the bot has no active
+        # stream session for this msg_id (rare).
+        form_data = getattr(bot_message, '_form_data', None)
+        if form_data and is_final:
+            if hasattr(self.bot, 'push_form_pause'):
+                ok, stream_id, task_id = await self.bot.push_form_pause(msg_id, form_data)
+                if ok:
+                    await self.logger.info(
+                        f'WeComBot: pending button_interaction registered '
+                        f'stream_id={stream_id} task_id={task_id} ws_mode={_ws_mode}'
+                    )
+                    return {'stream': True, 'form': True, 'task_id': task_id}
+            await self.logger.warning(
+                'WeComBot: cannot register form pause (no active stream session); falling back to plain text'
+            )
+            try:
+                from langbot.pkg.provider.runners.difysvapi import _format_human_input_text
+
+                fallback = _format_human_input_text(
+                    form_data.get('node_title', ''),
+                    form_data.get('form_content', ''),
+                    form_data.get('actions', []) or [],
+                )
+            except Exception:
+                fallback = content or '（人工输入）'
+            if _ws_mode:
+                event = message_source.source_platform_object
+                req_id = event.get('req_id', '') if isinstance(event, dict) else getattr(event, 'req_id', '')
+                if req_id:
+                    await self.bot.reply_text(req_id, fallback)
+            else:
+                await self.bot.set_message(msg_id, fallback)
+            return {'stream': False, 'form': True, 'fallback': True}
 
         if _ws_mode:
             success = await self.bot.push_stream_chunk(msg_id, content, is_final=is_final)
@@ -384,6 +460,129 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     async def is_stream_output_supported(self) -> bool:
         """Whether streaming output is enabled for this bot instance."""
         return self.config.get('enable-stream-reply', True)
+
+    async def _handle_synthetic_chunk(
+        self,
+        message_source: platform_events.MessageEvent,
+        bot_message,
+        content: str,
+        is_final: bool,
+        ws_mode: bool,
+    ) -> dict:
+        """Handle reply_message_chunk for synthetic events (button clicks).
+
+        Synthetic events have no inbound message → no msg_id, no req_id,
+        no stream session. We can't do incremental streaming, so we
+        buffer chunks per-conversation and flush on ``is_final`` via the
+        proactive send path.
+
+        Buffer keyed by ``(launcher_type, launcher_id)`` from the
+        synthetic event itself. Only ws mode has a usable proactive-send
+        path right now (``ws_client.send_message`` /
+        ``ws_client.send_template_card``); webhook mode requires a
+        corpid/secret we don't have, so it logs and drops.
+        """
+        if isinstance(message_source, platform_events.GroupMessage):
+            chat_id = str(message_source.group.id)
+        else:
+            chat_id = str(message_source.sender.id)
+
+        form_data = getattr(bot_message, '_form_data', None)
+
+        # Buffer streaming content until is_final.
+        buf_key = chat_id
+        if not hasattr(self, '_synthetic_buffers'):
+            # Attribute-not-declared trick: pydantic forbids dynamic attrs
+            # on the model, but plain instance dicts via object.__setattr__
+            # do work. Lazy-create on first call.
+            object.__setattr__(self, '_synthetic_buffers', {})
+        buffers: dict[str, str] = self._synthetic_buffers
+        if content and not form_data:
+            buffers[buf_key] = buffers.get(buf_key, '') + content
+
+        if not is_final:
+            return {'stream': True, 'synthetic': True, 'buffered': True}
+
+        final_content = buffers.pop(buf_key, '')
+        if content and final_content.startswith(content):
+            # is_final chunk re-emitted the full accumulated text — keep
+            # whichever is longer.
+            final_content = final_content if len(final_content) >= len(content) else content
+        elif content and not final_content:
+            final_content = content
+
+        if not ws_mode:
+            await self.logger.warning(
+                'WeComBot webhook mode cannot proactively push synthetic-event '
+                'output (no corpid/secret); the resume reply is dropped. '
+                f'content_len={len(final_content)} form_data_present={form_data is not None}'
+            )
+            return {'stream': False, 'synthetic': True, 'dropped': True}
+
+        # ws mode: proactive send.
+        try:
+            if form_data:
+                # Determine user_id / chat_id for the routing context of any
+                # subsequent click on this card.
+                if isinstance(message_source, platform_events.GroupMessage):
+                    routing_chat_id = str(message_source.group.id)
+                    routing_user_id = str(message_source.sender.id)
+                else:
+                    routing_chat_id = ''
+                    routing_user_id = str(message_source.sender.id)
+                payload = self._build_button_interaction_payload_from_form(
+                    form_data,
+                    user_id=routing_user_id,
+                    chat_id=routing_chat_id,
+                )
+                await self.bot.send_template_card(chat_id, payload)
+                await self.logger.info(
+                    f'WeComBot ws: proactively sent template_card for synthetic event '
+                    f'chat_id={chat_id} form_token={form_data.get("form_token")!r} '
+                    f'workflow_run_id={form_data.get("workflow_run_id")!r}'
+                )
+            elif final_content:
+                await self.bot.send_message(chat_id, final_content)
+                await self.logger.info(
+                    f'WeComBot ws: proactively sent text for synthetic event chat_id={chat_id} len={len(final_content)}'
+                )
+        except Exception:
+            await self.logger.error(f'WeComBot: synthetic event proactive send failed: {traceback.format_exc()}')
+            return {'stream': False, 'synthetic': True, 'error': True}
+
+        return {'stream': True, 'synthetic': True}
+
+    def _build_button_interaction_payload_from_form(
+        self, form_data: dict, *, user_id: str = '', chat_id: str = ''
+    ) -> dict:
+        """Build a button_interaction payload + track task_id for click resolution.
+
+        Unlike the inbound-event path (where push_form_pause registers the
+        task_id with the active stream session), proactive sends still
+        need the task_id registered so button clicks find pending_form.
+        For ws mode we stash it directly on the ws_client's pending dict.
+        """
+        from langbot.libs.wecom_ai_bot_api.api import build_button_interaction_payload
+        import secrets as _secrets
+
+        task_id = f'dify-{_secrets.token_hex(12)}'
+        payload = build_button_interaction_payload(form_data, task_id)
+
+        # Register task_id → form_data so the click callback can find it.
+        # user_id / chat_id are required so _on_card_action can route the
+        # resulting synthetic query back to the right user. msg_id / req_id
+        # / stream_id are intentionally empty — synthetic cards have no
+        # inbound message to anchor on.
+        if hasattr(self.bot, '_pending_forms_by_task'):
+            self.bot._pending_forms_by_task[task_id] = {
+                'form_data': form_data,
+                'msg_id': '',
+                'user_id': user_id,
+                'chat_id': chat_id,
+                'stream_id': '',
+                'req_id': '',
+            }
+        return payload
 
     async def send_message(self, target_type, target_id, message):
         _ws_mode = not self.config.get('enable-webhook', False)
@@ -531,3 +730,114 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
     async def is_muted(self, group_id: int) -> bool:
         pass
+
+    # ------------------------------------------------------------------
+    # Dify human-input button-interaction click handling
+    # ------------------------------------------------------------------
+
+    async def _on_card_action(self, session, action_id: str, task_id: str, raw_event: dict) -> None:
+        """Translate a button click on a button_interaction card into a
+        synthetic ``_dify_form_action`` query enqueued on the pool.
+
+        Pattern mirrors DingTalk / Lark / Telegram so the runner's
+        ``_merge_pending_form_action`` path resumes the workflow.
+        """
+        import langbot_plugin.api.entities.builtin.provider.session as provider_session
+
+        form = session.pending_form or {}
+        await self.logger.info(
+            f'WeComBot _on_card_action: task_id={task_id} action_id={action_id!r} '
+            f'form_token={form.get("form_token")!r} workflow_run_id={form.get("workflow_run_id")!r} '
+            f'session.user_id={session.user_id!r} session.chat_id={session.chat_id!r}'
+        )
+
+        actions = form.get('actions') or []
+        clean_action_id = (action_id or '').strip()
+        action_title = clean_action_id
+        for a in actions:
+            if str(a.get('id', '')) == clean_action_id:
+                action_title = a.get('title') or clean_action_id
+                break
+
+        launcher_id = session.user_id or session.chat_id or ''
+        sender_user_id = session.user_id or launcher_id
+        # WeCom AI bot has both single-chat and group-chat; chat_id present
+        # indicates group context.
+        if session.chat_id:
+            launcher_type = provider_session.LauncherTypes.GROUP
+            launcher_id = session.chat_id
+        else:
+            launcher_type = provider_session.LauncherTypes.PERSON
+            launcher_id = session.user_id or ''
+
+        form_action_data = {
+            'form_token': form.get('form_token', ''),
+            'workflow_run_id': form.get('workflow_run_id', ''),
+            'action_id': clean_action_id,
+            'action_title': action_title,
+            'node_title': form.get('node_title', ''),
+            'user': f'{launcher_type.value}_{launcher_id}',
+            'inputs': {},
+        }
+
+        message_chain = platform_message.MessageChain([platform_message.Plain(text=f'[Form Action: {action_title}]')])
+
+        if launcher_type == provider_session.LauncherTypes.GROUP:
+            synthetic_event = platform_events.GroupMessage(
+                sender=platform_entities.GroupMember(
+                    id=sender_user_id,
+                    member_name='',
+                    permission=platform_entities.Permission.Member,
+                    group=platform_entities.Group(
+                        id=launcher_id,
+                        name='',
+                        permission=platform_entities.Permission.Member,
+                    ),
+                    special_title='',
+                ),
+                message_chain=message_chain,
+                time=int(time.time()),
+                source_platform_object=None,
+            )
+        else:
+            synthetic_event = platform_events.FriendMessage(
+                sender=platform_entities.Friend(
+                    id=sender_user_id,
+                    nickname='',
+                    remark='',
+                ),
+                message_chain=message_chain,
+                time=int(time.time()),
+                source_platform_object=None,
+            )
+
+        if self.ap is None:
+            await self.logger.error('WeComBot: ap not injected; cannot enqueue button-click query')
+            return
+
+        bot_uuid = ''
+        pipeline_uuid = None
+        for bot in self.ap.platform_mgr.bots:
+            if bot.adapter is self:
+                bot_uuid = bot.bot_entity.uuid
+                pipeline_uuid = bot.bot_entity.use_pipeline_uuid
+                break
+
+        try:
+            await self.ap.query_pool.add_query(
+                bot_uuid=bot_uuid,
+                launcher_type=launcher_type,
+                launcher_id=launcher_id,
+                sender_id=sender_user_id,
+                message_event=synthetic_event,
+                message_chain=message_chain,
+                adapter=self,
+                pipeline_uuid=pipeline_uuid,
+                variables={
+                    '_dify_form_action': form_action_data,
+                    '_routed_by_rule': True,
+                },
+            )
+            await self.logger.info(f'WeComBot: button-click query enqueued action_id={clean_action_id!r}')
+        except Exception:
+            await self.logger.error(f'WeComBot: enqueue button-click query failed: {traceback.format_exc()}')

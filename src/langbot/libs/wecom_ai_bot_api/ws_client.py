@@ -20,7 +20,11 @@ from typing import Any, Callable, Optional
 import aiohttp
 
 from langbot.libs.wecom_ai_bot_api import wecombotevent
-from langbot.libs.wecom_ai_bot_api.api import parse_wecom_bot_message, StreamSession
+from langbot.libs.wecom_ai_bot_api.api import (
+    parse_wecom_bot_message,
+    StreamSession,
+    build_button_interaction_payload,
+)
 from langbot.pkg.platform.logger import EventLogger
 
 DEFAULT_WS_URL = 'wss://openws.work.weixin.qq.com'
@@ -102,6 +106,18 @@ class WecomBotWsClient:
         self._feedback_sessions: dict[str, dict] = {}  # feedback_id -> {msg_id, user_id, chat_id, stream_id, req_id}
         # msg_id -> feedback_id (for associating feedback with message)
         self._msg_feedback_ids: dict[str, str] = {}  # msg_id -> feedback_id
+
+        # Dify human-input pause state for ws mode. Keys are task_id (echoed
+        # back in template_card_event.TaskId so we can rebuild the session
+        # context on click).
+        # task_id -> {form_data, msg_id, user_id, chat_id, stream_id, req_id}
+        self._pending_forms_by_task: dict[str, dict] = {}
+        # Reverse: msg_id -> task_id (for cleanup when stream finishes).
+        self._task_id_by_msg: dict[str, str] = {}
+        # Optional card-action callback registered by the adapter.
+        # Signature mirrors the http-mode WecomBotClient:
+        #   async def callback(session, action_id, task_id, raw_event) -> None
+        self._card_action_callback: Optional[Callable] = None
 
     # ── Public API ──────────────────────────────────────────────────
 
@@ -236,6 +252,83 @@ class WecomBotWsClient:
         }
         return await self._send_reply(req_id, body)
 
+    async def reply_template_card(self, req_id: str, card_payload: dict[str, Any]) -> Optional[dict]:
+        """Send a template_card (button_interaction etc.) reply.
+
+        Args:
+            req_id: The req_id from the original message frame.
+            card_payload: Body produced by ``build_button_interaction_payload``;
+                must contain ``msgtype`` and ``template_card`` keys.
+
+        Returns:
+            ACK frame dict, or None on failure.
+        """
+        return await self._send_reply(req_id, card_payload)
+
+    def set_card_action_callback(self, callback: Callable) -> None:
+        """Register the button-click handler.
+
+        ``async def callback(session, action_id, task_id, raw_event) -> None``
+        — same signature as the http-mode WecomBotClient version so the
+        adapter can hand both off to the same coroutine.
+        """
+        self._card_action_callback = callback
+
+    async def push_form_pause(
+        self, msg_id: str, form_data: dict, task_id: Optional[str] = None
+    ) -> tuple[bool, Optional[str], Optional[str]]:
+        """Attach a Dify human-input pause to the active stream and send
+        the button_interaction card immediately.
+
+        ws mode has no notion of polled "followup" responses — each reply
+        is a one-shot frame send. So unlike the http path (which defers
+        card delivery to the next followup), here we just craft the card
+        and reply with it on the original req_id. The corresponding stream
+        session is then torn down so subsequent chunks don't re-send.
+
+        Returns:
+            ``(ok, stream_id, task_id)``. ``ok=False`` if no active stream
+            for this msg_id (e.g. message arrived in non-stream mode).
+        """
+        key = self._stream_ids.get(msg_id)
+        if not key:
+            return False, None, None
+        req_id, stream_id = key.split('|', 1)
+
+        if not task_id:
+            task_id = f'dify-{secrets.token_hex(12)}'
+
+        session_info = self._stream_sessions.get(msg_id) or {}
+        self._pending_forms_by_task[task_id] = {
+            'form_data': form_data,
+            'msg_id': msg_id,
+            'user_id': session_info.get('user_id', ''),
+            'chat_id': session_info.get('chat_id', ''),
+            'stream_id': stream_id,
+            'req_id': req_id,
+        }
+        self._task_id_by_msg[msg_id] = task_id
+
+        card_payload = build_button_interaction_payload(form_data, task_id)
+        try:
+            await self.reply_template_card(req_id, card_payload)
+        except Exception:
+            await self.logger.error(f'Failed to send button_interaction card: {traceback.format_exc()}')
+            # Roll back the bookkeeping so the next attempt isn't blocked.
+            self._pending_forms_by_task.pop(task_id, None)
+            self._task_id_by_msg.pop(msg_id, None)
+            return False, stream_id, None
+
+        # Tear down the stream — WeCom expects either stream chunks OR a
+        # template_card, not both on the same req_id. Subsequent
+        # push_stream_chunk calls for this msg_id become no-ops.
+        self._stream_ids.pop(msg_id, None)
+        self._stream_last_content.pop(msg_id, None)
+        # Keep _stream_sessions so the button callback can still resolve
+        # user/chat context; it gets cleaned up when the click fires.
+
+        return True, stream_id, task_id
+
     async def send_message(self, chat_id: str, content: str, msgtype: str = 'markdown') -> Optional[dict]:
         """Proactively send a message to a specified chat.
 
@@ -256,6 +349,23 @@ class WecomBotWsClient:
             body['markdown'] = {'content': content}
         elif msgtype == 'text':
             body['text'] = {'content': content}
+        return await self._send_reply(req_id, body, cmd=CMD_SEND_MSG)
+
+    async def send_template_card(self, chat_id: str, card_payload: dict[str, Any]) -> Optional[dict]:
+        """Proactively push a template_card to a chat.
+
+        Used for the resumed-workflow path (button click → new query):
+        synthetic events have no inbound req_id to reply against, so we
+        fall back to proactive ``aibot_send_msg`` instead of reply mode.
+
+        Args:
+            chat_id: userid (single chat) or chatid (group chat).
+            card_payload: ``{"msgtype": "template_card", "template_card": {...}}``
+                as produced by :func:`build_button_interaction_payload`.
+        """
+        req_id = _generate_req_id(CMD_SEND_MSG)
+        body = dict(card_payload)
+        body['chatid'] = chat_id
         return await self._send_reply(req_id, body, cmd=CMD_SEND_MSG)
 
     async def push_stream_chunk(self, msg_id: str, content: str, is_final: bool = False) -> bool:
@@ -566,6 +676,38 @@ class WecomBotWsClient:
                         )
                     except Exception:
                         await self.logger.error(f'Error in feedback handler: {traceback.format_exc()}')
+                return
+
+            if event_type == 'template_card_event':
+                tce = event_info.get('template_card_event', {})
+                task_id = tce.get('TaskId') or tce.get('task_id') or ''
+                event_key = tce.get('EventKey') or tce.get('event_key') or ''
+                card_type = tce.get('CardType') or tce.get('card_type') or ''
+                await self.logger.info(
+                    f'收到按钮点击 (ws): task_id={task_id} event_key={event_key!r} card_type={card_type}'
+                )
+                pending = self._pending_forms_by_task.get(task_id)
+                if pending is None:
+                    await self.logger.warning(f'未找到 task_id={task_id} 对应的 pending_form (ws)，按钮点击被丢弃')
+                elif self._card_action_callback is not None:
+                    try:
+                        session = StreamSession(
+                            stream_id=pending.get('stream_id', ''),
+                            msg_id=pending.get('msg_id', ''),
+                            chat_id=pending.get('chat_id') or None,
+                            user_id=pending.get('user_id') or None,
+                        )
+                        session.pending_form = pending.get('form_data')
+                        session.pending_form_task_id = task_id
+                        await self._card_action_callback(session, event_key, task_id, body)
+                    except Exception:
+                        await self.logger.error(f'card action callback raised (ws): {traceback.format_exc()}')
+                    # Consume — drop bookkeeping so a stale click can't re-fire.
+                    self._pending_forms_by_task.pop(task_id, None)
+                    msg_id = pending.get('msg_id', '')
+                    if msg_id:
+                        self._task_id_by_msg.pop(msg_id, None)
+                        self._stream_sessions.pop(msg_id, None)
                 return
 
             event = wecombotevent.WecomBotEvent(message_data)

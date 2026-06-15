@@ -67,6 +67,16 @@ class StreamSession:
     # 反馈 ID，用于接收用户点赞/点踩反馈
     feedback_id: Optional[str] = None
 
+    # Dify 人工输入暂停态：runner 把 _form_data 传过来时填充。
+    # 一旦设置，下次企微 followup 请求时返回 button_interaction 模板卡
+    # 替代 stream chunk。点击按钮会回调 template_card_event，EventKey
+    # 就是 Dify 的 action_id。
+    pending_form: Optional[dict] = None
+
+    # template_card task_id（企微要求 button_interaction 必填且不可重复）。
+    # 创建 pending_form 时生成；按钮点击回调里用来反查 session。
+    pending_form_task_id: Optional[str] = None
+
 
 class StreamSessionManager:
     """管理 stream 会话的生命周期，并负责队列的生产消费。"""
@@ -83,6 +93,9 @@ class StreamSessionManager:
         self._sessions: dict[str, StreamSession] = {}  # stream_id -> StreamSession 映射
         self._msg_index: dict[str, str] = {}  # msgid -> stream_id 映射，便于流水线根据消息 ID 找到会话
         self._feedback_index: dict[str, str] = {}  # feedback_id -> stream_id 映射
+        # task_id (button_interaction template_card 的) -> stream_id 映射，
+        # 用于按钮点击回调里反查 pending_form。
+        self._task_index: dict[str, str] = {}
 
     def get_stream_id_by_msg(self, msg_id: str) -> Optional[str]:
         if not msg_id:
@@ -117,6 +130,40 @@ class StreamSessionManager:
         """
         if feedback_id and stream_id:
             self._feedback_index[feedback_id] = stream_id
+
+    def set_pending_form(self, stream_id: str, form_data: dict, task_id: str) -> None:
+        """把 Dify 人工输入暂停态绑定到 stream session。
+
+        下一次企微 followup 请求时，adapter 检测到 pending_form，
+        返回 button_interaction 模板卡而不是 stream chunk。
+        """
+        session = self._sessions.get(stream_id)
+        if not session:
+            return
+        session.pending_form = form_data
+        session.pending_form_task_id = task_id
+        if task_id:
+            self._task_index[task_id] = stream_id
+
+    def get_session_by_task_id(self, task_id: str) -> Optional[StreamSession]:
+        """按按钮点击回调里的 TaskId 反查 session。"""
+        if not task_id:
+            return None
+        stream_id = self._task_index.get(task_id)
+        if not stream_id:
+            return None
+        return self._sessions.get(stream_id)
+
+    def clear_pending_form(self, stream_id: str) -> None:
+        """按钮点击消费完后清掉 pending_form，避免重复弹卡。"""
+        session = self._sessions.get(stream_id)
+        if not session:
+            return
+        task_id = session.pending_form_task_id
+        session.pending_form = None
+        session.pending_form_task_id = None
+        if task_id:
+            self._task_index.pop(task_id, None)
 
     def create_or_get(self, msg_json: dict[str, Any]) -> tuple[StreamSession, bool]:
         """根据企业微信回调创建或获取会话。
@@ -723,6 +770,79 @@ async def parse_wecom_bot_message(
     return message_data
 
 
+def build_button_interaction_payload(form_data: dict, task_id: str) -> dict[str, Any]:
+    """Build a `template_card` (button_interaction) WeCom payload.
+
+    Shared by both the webhook-mode client (returns the payload as the
+    response to a stream-followup callback) and the ws_client (sends it
+    as a reply frame). Output shape is `{"msgtype": "template_card",
+    "template_card": {...}}` per the WeCom spec.
+
+    Args:
+        form_data: Dify human-input form data with keys ``actions`` (list of
+            ``{id, title, button_style}``), ``node_title``, ``form_content``.
+        task_id: Unique per-card identifier. WeCom requires this for
+            button_interaction. The click callback returns it as TaskId so we
+            can find the originating session.
+
+    Notes:
+        * ``button.key`` is set directly to the Dify ``action_id``. The click
+          callback's ``EventKey`` carries this back unchanged (1024-byte limit
+          per the spec, far more than we ever need).
+        * WeCom caps the button list at 6. Extra actions are appended to
+          ``sub_title_text`` so users can still reply with the id as text.
+        * Styles map ``primary``→1 (blue), ``danger``→2 (red), default→0
+          (gray). First button is auto-promoted to primary when no style.
+    """
+    actions = list(form_data.get('actions') or [])
+    node_title = (form_data.get('node_title') or '').strip() or '人工介入'
+    form_content = (form_data.get('form_content') or '').strip()
+
+    visible_actions = actions[:6]
+    overflow = actions[6:]
+
+    sub_title_parts: list[str] = []
+    if form_content:
+        sub_title_parts.append(form_content)
+    if overflow:
+        extra_lines = [f'  - {a.get("title") or a.get("id") or ""} (回复 id: {a.get("id") or ""})' for a in overflow]
+        sub_title_parts.append(f'另有 {len(overflow)} 个选项不在按钮列表中，可直接回复 id：\n' + '\n'.join(extra_lines))
+    sub_title_text = '\n\n'.join(sub_title_parts) or '请选择一个操作以继续。'
+
+    button_list = []
+    for idx, action in enumerate(visible_actions):
+        action_id = str(action.get('id') or '')
+        title = str(action.get('title') or action_id or f'选项 {idx + 1}')
+        style_raw = (action.get('button_style') or '').lower()
+        if style_raw == 'primary' or (style_raw == '' and idx == 0):
+            style = 1
+        elif style_raw == 'danger':
+            style = 2
+        else:
+            style = 0
+        button_list.append(
+            {
+                'text': title,
+                'style': style,
+                'key': action_id,
+            }
+        )
+
+    card = {
+        'card_type': 'button_interaction',
+        'main_title': {
+            'title': node_title,
+        },
+        'sub_title_text': sub_title_text,
+        'button_list': button_list,
+        'task_id': task_id,
+    }
+    return {
+        'msgtype': 'template_card',
+        'template_card': card,
+    }
+
+
 class WecomBotClient:
     def __init__(self, Token: str, EnCodingAESKey: str, Corpid: str, logger: EventLogger, unified_mode: bool = False):
         """企业微信智能机器人客户端。
@@ -761,6 +881,7 @@ class WecomBotClient:
         self.stream_poll_timeout = 0.5
 
         self._feedback_callback: Optional[Callable] = None
+        self._card_action_callback: Optional[Callable] = None
 
     def set_feedback_callback(self, callback: Callable) -> None:
         """设置反馈回调函数。
@@ -769,6 +890,19 @@ class WecomBotClient:
             callback: 反馈回调函数，签名: async def callback(feedback_id, feedback_type, feedback_content, inaccurate_reasons, session)
         """
         self._feedback_callback = callback
+
+    def set_card_action_callback(self, callback: Callable) -> None:
+        """设置按钮卡片点击回调函数。
+
+        Signature: ``async def callback(session, action_id, task_id, raw_event) -> None``
+
+        ``session`` is the StreamSession the card was attached to;
+        ``action_id`` is the Dify action_id reflected back via the
+        button's ``key`` field; ``task_id`` is the card's task_id
+        (matches ``session.pending_form_task_id``); ``raw_event`` is the
+        decoded callback JSON for any extra fields the adapter wants.
+        """
+        self._card_action_callback = callback
 
     @staticmethod
     def _build_stream_payload(
@@ -799,6 +933,12 @@ class WecomBotClient:
             'msgtype': 'stream',
             'stream': stream_payload,
         }
+
+    @staticmethod
+    def _build_button_interaction_payload(form_data: dict, task_id: str) -> dict[str, Any]:
+        """Class-level shim — delegates to module-level builder so ws_client
+        can reuse the exact same payload shape without importing the class."""
+        return build_button_interaction_payload(form_data, task_id)
 
     async def _encrypt_and_reply(self, payload: dict[str, Any], nonce: str) -> tuple[Response, int]:
         """对响应进行加密封装并返回给企业微信。
@@ -892,6 +1032,22 @@ class WecomBotClient:
             return await self._encrypt_and_reply(self._build_stream_payload('', '', True), nonce)
 
         session = self.stream_sessions.get_session(stream_id)
+
+        # If a Dify human-input pause arrived during this stream, switch
+        # the response from `msgtype: stream` to `msgtype: template_card`
+        # (button_interaction). The session's stream is also marked
+        # finished so future followups aren't expected (assuming the
+        # WeCom client treats template_card as the terminal response —
+        # we'll know from the next callback whether it kept polling).
+        if session and session.pending_form and session.pending_form_task_id:
+            await self.logger.info(
+                f'WeComBot: returning button_interaction for stream_id={stream_id} '
+                f'task_id={session.pending_form_task_id} actions={len(session.pending_form.get("actions") or [])}'
+            )
+            card_payload = self._build_button_interaction_payload(session.pending_form, session.pending_form_task_id)
+            self.stream_sessions.mark_finished(stream_id)
+            return await self._encrypt_and_reply(card_payload, nonce)
+
         chunk = await self.stream_sessions.consume(stream_id, timeout=self.stream_poll_timeout)
 
         if not chunk:
@@ -1000,10 +1156,49 @@ class WecomBotClient:
         if event_type == 'feedback_event':
             return await self._handle_feedback_event(msg_json, nonce)
 
+        # Button click on a button_interaction template_card. The WeCom doc
+        # calls this `template_card_event`; some routes wrap the button
+        # event payload inside `event.template_card_event`.
+        if event_type == 'template_card_event':
+            return await self._handle_template_card_event(msg_json, nonce)
+
         if msg_json.get('msgtype') == 'stream':
             return await self._handle_post_followup_response(msg_json, nonce)
 
         return await self._handle_post_initial_response(msg_json, nonce)
+
+    async def _handle_template_card_event(self, msg_json: dict[str, Any], nonce: str) -> tuple[Response, int]:
+        """Handle a button click on a button_interaction template_card.
+
+        WeCom carries the click info in ``event.template_card_event`` with
+        ``TaskId`` matching the card we created and ``EventKey`` carrying
+        the button's ``key`` (which we set to the Dify ``action_id``).
+        """
+        try:
+            tce = msg_json.get('event', {}).get('template_card_event', {})
+            task_id = tce.get('TaskId') or tce.get('task_id') or ''
+            event_key = tce.get('EventKey') or tce.get('event_key') or ''
+            card_type = tce.get('CardType') or tce.get('card_type') or ''
+
+            await self.logger.info(f'收到按钮点击: task_id={task_id} event_key={event_key!r} card_type={card_type}')
+
+            session = self.stream_sessions.get_session_by_task_id(task_id)
+            if session is None:
+                await self.logger.warning(f'未找到 task_id={task_id} 对应的 session，按钮点击被丢弃')
+            else:
+                if self._card_action_callback is not None:
+                    try:
+                        await self._card_action_callback(session, event_key, task_id, msg_json)
+                    except Exception:
+                        await self.logger.error(f'card action callback raised: {traceback.format_exc()}')
+                # Drop the form so a fresh chunk/followup doesn't re-render
+                # the same card (and so the task_id can be GC'd).
+                self.stream_sessions.clear_pending_form(session.stream_id)
+        except Exception:
+            await self.logger.error(f'_handle_template_card_event error: {traceback.format_exc()}')
+
+        # WeCom expects an empty success ack for event callbacks.
+        return await self._encrypt_and_reply({}, nonce)
 
     async def _handle_feedback_event(self, msg_json: dict[str, Any], nonce: str) -> tuple[Response, int]:
         """处理企业微信用户反馈事件（点赞/点踩）。
@@ -1113,6 +1308,29 @@ class WecomBotClient:
         if is_final:
             self.stream_sessions.mark_finished(stream_id)
         return True
+
+    async def push_form_pause(
+        self, msg_id: str, form_data: dict, task_id: Optional[str] = None
+    ) -> tuple[bool, Optional[str], Optional[str]]:
+        """Attach a Dify human-input pause to the active stream session.
+
+        On the next WeCom followup poll, the response switches from
+        ``msgtype: stream`` to ``msgtype: template_card`` (button_interaction)
+        carrying the buttons. ``task_id`` is auto-generated if not provided
+        and is what the button-click callback uses to look the session back up.
+
+        Returns:
+            ``(ok, stream_id, task_id)``. ``ok`` is False if the
+            adapter's msg_id maps to no stream session (e.g. non-stream mode).
+        """
+        stream_id = self.stream_sessions.get_stream_id_by_msg(msg_id)
+        if not stream_id:
+            return False, None, None
+        if not task_id:
+            # WeCom requires task_id [A-Za-z0-9_-@], <= 128 bytes, unique per bot.
+            task_id = f'dify-{uuid.uuid4().hex[:24]}'
+        self.stream_sessions.set_pending_form(stream_id, form_data, task_id)
+        return True, stream_id, task_id
 
     async def set_message(self, msg_id: str, content: str):
         """兼容旧逻辑：若无法流式返回则缓存最终结果。
