@@ -4,7 +4,7 @@
 
 > 本文是当前决策版。协议数据结构仍以 [PROTOCOL_V1.md](./PROTOCOL_V1.md) 为准；测试执行入口见 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md)；扩展边界见 [EXTENSION_SCOPE_MATRIX.md](./EXTENSION_SCOPE_MATRIX.md)。
 >
-> 实现状态说明：本文描述的是 Runtime Control Plane v2 的目标能力和分阶段落地建议。当前 AgentRunner 插件化主线已经具备 event-first context、run-scoped authorization、EventLog / Transcript / Artifact / State 等 Host capability，但尚未实现持久 `AgentRun` / `AgentRunEvent` ledger 和完整 run control API。当前实现状态以 [STATUS.md](./STATUS.md) 为准。
+> 实现状态说明：本文描述的是 Runtime Control Plane v2 的目标能力和分阶段落地建议。当前 AgentRunner 插件化主线已经具备 event-first context、run-scoped authorization、EventLog / Transcript / Artifact / State 等 Host capability，并已落地持久 `AgentRun` / `AgentRunEvent` ledger、run control actions、最小 runtime heartbeat/claim lease 和 admin reconcile 原语。完整 Agent Platform 产品形态、daemon supervisor、runtime wakeup channel 和分布式 runtime 管控仍未完成。当前实现状态以 [STATUS.md](./STATUS.md) 为准。
 
 ## 1. 当前决策
 
@@ -13,16 +13,17 @@ LangBot 后续定位应更像 **Agent Host / infrastructure provider / transfer 
 结论：
 
 - **Agent Platform 产品形态做成插件**。插件负责 agent 管理、策略、业务队列、UI、编排、多 agent 协作和产品体验。
-- **Agent Platform 所需的基础事实源做进 Host**。当前 Host 已保存 event、artifact、state、transcript 和 active run 权限快照；后续应补齐持久 run、result、审计关联和通用控制状态。
-- **不在第一阶段把 runtime registry / daemon worker 管控做成 Host 必选能力**。远程 harness / daemon 可以先由 AgentRunner 插件和 SDK remote layer 自己维护连接、心跳和本地执行。
+- **Agent Platform 所需的基础事实源做进 Host**。当前 Host 已保存 event、artifact、state、transcript、active run 权限快照、持久 run/result ledger、审计关联和通用控制状态。
+- **最小 runtime registry / heartbeat / claim lease 已作为 Host 原语落地，但不等于完整 daemon worker 管控**。远程 harness / daemon 的进程托管、wakeup channel、provider 登录态诊断和分布式调度仍可以先由 AgentRunner 插件和 SDK remote layer 自己维护。
 - **不把业务调度写进 Host**。Host 提供通用 run/result/control primitives，Platform 插件决定哪些事件触发哪些 agent、如何排队、如何分配、是否 fan-out。
 
 推荐分层：
 
 ```text
 LangBot Host
-  Current: EventLog / runtime AgentBinding / Artifact / State / Transcript / active run authorization
-  Planned: Agent / Binding / Run / RunEvent / audit / result persistence / control primitives
+  Current base: EventLog / runtime AgentBinding / Artifact / State / Transcript / active run authorization
+  Current v2 foundation: Run / RunEvent / audit / result persistence / control primitives / minimal runtime heartbeat and claim lease
+  Planned: Agent / Binding persistence / daemon supervisor / wakeup channel / distributed runtime operations
 
 Agent Platform plugin
   Agent management UI / project-task model / event routing policy
@@ -61,15 +62,18 @@ Host 负责这些能力的通用事实源和安全边界；Platform 插件负责
 
 ### 2.1 当前实现边界
 
-当前代码中的 `run_id` 已经是重要关联键，但还不是持久 Run 模型：
+当前代码中的 `run_id` 已经连接 active run 授权、持久 run ledger 和多个 Host 事实源：
 
 - `EventLog` 保存输入事件和审计入口，并记录 `run_id` / `runner_id`。
 - `Transcript` 保存对话历史投影，并用 `run_id` 关联 assistant 输出。
 - `ArtifactStore` 保存输入和 runner 产物，并用 `run_id` 做访问边界的一部分。
 - `PersistentStateStore` 保存 runner state，但不等同于 run lifecycle。
 - `AgentRunSessionRegistry` 保存 active run 的内存态授权快照，用于 proxy action 校验；进程结束或 run 结束后不作为可回放事实源。
+- `AgentRun` 保存 run lifecycle、scope、authorization snapshot、queue/claim 状态、cancel intent、usage/cost 和 metadata。
+- `AgentRunEvent` 保存 runner/result/admin event stream，按 `run_id + sequence` 做可回放分页。
+- `AgentRuntime` 保存最小 runtime registry / heartbeat 事实，用于 runtime list、stale mark 和 claim lease reconcile。
 
-因此本文后续提到的 `AgentRun` / `AgentRunEvent` / `run.create` / `run.append_result` / `run.cancel` 都是 Runtime Control Plane v2 应新增的能力，不应理解为当前已经存在的 API。
+因此本文后续提到的 `AgentRun` / `AgentRunEvent`、`run_append_result`、`run_finalize`、`run_cancel`、`runtime_register`、`runtime_heartbeat`、`run_claim` 等基础原语已经存在。仍未完成的是独立 platform `run_create` action、Host-owned Agent / Binding 持久模型、业务队列产品形态、daemon supervisor、runtime wakeup channel、跨 Host 分布式锁和 provider/runtime 诊断面。
 
 ## 3. 基础概念
 
@@ -408,7 +412,7 @@ AgentRunContext -> AgentRunner.run(ctx) -> AgentRunResult stream
 
 ## 9. 分阶段实施建议
 
-### Phase 1: Run Ledger
+### Phase 1: Run Ledger（Foundation Implemented）
 
 目标：Host 成为执行状态和结果事实源。
 
@@ -431,7 +435,7 @@ SDK: 4-8 个文件
 Tests: 8-15 个文件
 ```
 
-### Phase 2: Platform Plugin Queue On Host Run Primitives
+### Phase 2: Platform Plugin Queue On Host Run Primitives（Control Primitives Partially Implemented; Product Queue Pending）
 
 目标：Platform 插件管理业务 queue，Host 提供 run/result/cancel 原语。
 
@@ -455,7 +459,7 @@ SDK: 8-14 个文件
 Tests: 15-25 个文件
 ```
 
-### Phase 3: Optional Host Execution Queue / Claim Lease
+### Phase 3: Optional Host Execution Queue / Claim Lease（Claim Lease Primitive Implemented; Full Queue Pending）
 
 目标：当多个插件重复实现 claim/cancel/retry/recovery 时，再下沉执行队列到 Host。
 
@@ -478,7 +482,7 @@ SDK: 12-20 个文件
 Tests: 25-40 个文件
 ```
 
-### Phase 4: Optional Runtime Registry
+### Phase 4: Optional Runtime Registry（Minimal Registry Implemented; Full Daemon Control Pending）
 
 目标：当 Host 需要统一管理多个 daemon / worker 时，再引入 runtime registry。
 
