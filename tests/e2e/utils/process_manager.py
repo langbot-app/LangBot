@@ -44,6 +44,17 @@ class LangBotProcess:
         # Prepare environment
         env = os.environ.copy()
         env['PYTHONPATH'] = str(self.project_root / 'src')
+        for proxy_key in (
+            'HTTP_PROXY',
+            'HTTPS_PROXY',
+            'ALL_PROXY',
+            'http_proxy',
+            'https_proxy',
+            'all_proxy',
+        ):
+            env.pop(proxy_key, None)
+        env['NO_PROXY'] = '127.0.0.1,localhost'
+        env['no_proxy'] = '127.0.0.1,localhost'
 
         # Set API port via environment variable
         env['API__PORT'] = str(self.port)
@@ -113,6 +124,8 @@ precision = 2
                 r = httpx.get(
                     f'http://127.0.0.1:{self.port}/api/v1/system/info',
                     timeout=2.0,
+                    follow_redirects=False,
+                    trust_env=False,
                 )
                 if r.status_code == 200:
                     logger.info(f'LangBot started successfully on port {self.port}')
@@ -185,6 +198,8 @@ precision = 2
             r = httpx.get(
                 f'http://127.0.0.1:{self.port}/api/v1/system/info',
                 timeout=5.0,
+                follow_redirects=False,
+                trust_env=False,
             )
             return r.status_code == 200
         except Exception:

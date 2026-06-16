@@ -38,7 +38,7 @@ class TestStartupFlow:
         # System info should contain version info
         assert 'version' in data['data'] or 'edition' in data['data']
 
-    def test_database_initialized(self, e2e_db_path):
+    def test_database_initialized(self, langbot_process, e2e_db_path):
         """Verify SQLite database was created and initialized."""
         assert e2e_db_path.exists()
 
@@ -75,7 +75,7 @@ class TestStartupFlow:
         """Test auth endpoint."""
         # First startup may allow initial setup
         response = e2e_client.post('/api/v1/user/auth', json={
-            'username': 'admin',
+            'user': 'admin',
             'password': 'admin',
         })
 
@@ -94,7 +94,7 @@ class TestStartupStages:
         # If API responds on e2e_port, config was loaded
         assert e2e_client.get('/api/v1/system/info').status_code == 200
 
-    def test_migrations_applied(self, e2e_db_path):
+    def test_migrations_applied(self, langbot_process, e2e_db_path):
         """Verify database migrations were applied."""
         import sqlite3
         conn = sqlite3.connect(str(e2e_db_path))
