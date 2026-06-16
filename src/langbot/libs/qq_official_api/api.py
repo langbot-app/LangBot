@@ -12,6 +12,70 @@ import traceback
 from cryptography.hazmat.primitives.asymmetric import ed25519
 
 
+def build_keyboard_from_form(form_data: dict, *, buttons_per_row: int = 2) -> dict:
+    """Build a QQ keyboard JSON payload from a Dify human-input form_data.
+
+    Each Dify ``action`` becomes a callback button (``action.type=1``)
+    whose ``data`` is set directly to the Dify ``action_id``. The
+    INTERACTION_CREATE event carries this back as
+    ``data.resolved.button_data`` so the adapter can match the click to
+    the originating form.
+
+    Layout limits per spec: max 5 rows, max 5 buttons per row. We default
+    to 2 buttons per row for legibility; oversized button lists wrap
+    onto additional rows and overflow gets dropped (max 25 visible).
+
+    Args:
+        form_data: Dify ``{"actions": [{"id", "title", "button_style"}, ...]}``.
+        buttons_per_row: 1..5. Mobile UI looks best at 2.
+
+    Returns:
+        ``{"content": {"rows": [{"buttons": [...]}]}}``.
+    """
+    actions = list(form_data.get('actions') or [])[:25]  # 5×5 hard cap
+    buttons_per_row = max(1, min(5, buttons_per_row))
+
+    def _button(idx: int, action: dict) -> dict:
+        action_id = str(action.get('id') or '')
+        label = str(action.get('title') or action_id or f'选项 {idx + 1}')
+        style_raw = (action.get('button_style') or '').lower()
+        # QQ: 0 灰色线框, 1 蓝色线框. Highlight the primary / first action.
+        if style_raw == 'primary' or (style_raw == '' and idx == 0):
+            style = 1
+        else:
+            style = 0
+        return {
+            'id': str(idx + 1),
+            'render_data': {
+                'label': label,
+                # Shown after the user clicks — gives local "已选择" feedback
+                # without a follow-up message. Style mimics DingTalk/Lark's
+                # in-card selection state.
+                'visited_label': f'✓ {label}',
+                'style': style,
+            },
+            'action': {
+                'type': 1,  # callback button
+                'permission': {'type': 2},  # everyone can click
+                'data': action_id,
+                'unsupport_tips': '当前客户端版本不支持此按钮，请升级 QQ',
+            },
+        }
+
+    rows = []
+    for row_start in range(0, len(actions), buttons_per_row):
+        row_actions = actions[row_start : row_start + buttons_per_row]
+        rows.append(
+            {
+                'buttons': [_button(row_start + j, a) for j, a in enumerate(row_actions)],
+            }
+        )
+        if len(rows) >= 5:
+            break
+
+    return {'content': {'rows': rows}}
+
+
 class QQOfficialClient:
     def __init__(self, secret: str, token: str, app_id: str, logger: None, unified_mode: bool = False):
         self.unified_mode = unified_mode
@@ -30,6 +94,10 @@ class QQOfficialClient:
         self.token = token
         self.app_id = app_id
         self._message_handlers = {}
+        # Single optional handler for INTERACTION_CREATE (button click). We
+        # don't multiplex like message handlers — only the adapter cares,
+        # and the click<->resume path needs a single source of truth.
+        self._interaction_handler: Optional[Callable[[Dict[str, Any], Optional[str]], Any]] = None
         self.base_url = 'https://api.sgroup.qq.com'
         self.access_token = ''
         self.access_token_expiry_time = None
@@ -107,6 +175,23 @@ class QQOfficialClient:
                 return response, 200
 
             if payload.get('op') == 0:
+                # INTERACTION_CREATE (button click) skips ``get_message`` —
+                # that helper only flattens message-event fields and would
+                # drop ``data.resolved.button_data`` / ``data.button_id``.
+                if payload.get('t') == 'INTERACTION_CREATE':
+                    if self._interaction_handler:
+                        try:
+                            d = payload.get('d') or {}
+                            # Top-level ``id`` is the ws/event id used as
+                            # ``event_id`` for passive replies. ``d.id``
+                            # is the interaction id used for ACK. Do not
+                            # confuse the two — QQ rejects misuse with
+                            # 40034025.
+                            ws_event_id = payload.get('id')
+                            await self._interaction_handler(d, ws_event_id)
+                        except Exception:
+                            await self.logger.error(f'Error in interaction handler: {traceback.format_exc()}')
+                    return {'code': 0, 'message': 'success'}
                 message_data = await self.get_message(payload)
                 if message_data:
                     event = QQOfficialEvent.from_payload(message_data)
@@ -129,6 +214,21 @@ class QQOfficialClient:
             if msg_type not in self._message_handlers:
                 self._message_handlers[msg_type] = []
             self._message_handlers[msg_type].append(func)
+            return func
+
+        return decorator
+
+    def on_interaction(self):
+        """Register a single handler for INTERACTION_CREATE events.
+
+        The handler receives ``(data_dict, interaction_id)`` — the raw
+        ``d`` payload plus the top-level ``id`` field (the interaction
+        id, needed for the PUT /interactions/{id} ack and for reuse as
+        an ``event_id`` on the resumed reply within 30 minutes).
+        """
+
+        def decorator(func: Callable[[Dict[str, Any], Optional[str]], Any]):
+            self._interaction_handler = func
             return func
 
         return decorator
@@ -177,8 +277,20 @@ class QQOfficialClient:
         content_type = attachment.get('content_type', '')
         return content_type.startswith('image/')
 
-    async def send_private_text_msg(self, user_openid: str, content: str, msg_id: str):
-        """发送私聊消息"""
+    async def send_private_text_msg(
+        self,
+        user_openid: str,
+        content: str,
+        msg_id: Optional[str] = None,
+        event_id: Optional[str] = None,
+        msg_seq: int = 1,
+    ):
+        """Send a c2c text message.
+
+        Either ``msg_id`` (inbound user msg, free passive reply) or
+        ``event_id`` (e.g. INTERACTION_CREATE id, valid 30 min) is
+        required. Without either, the call costs the proactive-send quota.
+        """
         if not await self.check_access_token():
             await self.get_access_token()
 
@@ -188,11 +300,15 @@ class QQOfficialClient:
                 'Authorization': f'QQBot {self.access_token}',
                 'Content-Type': 'application/json',
             }
-            data = {
+            data: dict[str, Any] = {
                 'content': content,
                 'msg_type': 0,
-                'msg_id': msg_id,
+                'msg_seq': msg_seq,
             }
+            if msg_id:
+                data['msg_id'] = msg_id
+            if event_id:
+                data['event_id'] = event_id
             response = await client.post(url, headers=headers, json=data)
             response_data = response.json()
             if response.status_code == 200:
@@ -201,8 +317,19 @@ class QQOfficialClient:
                 await self.logger.error(f'Failed to send private message: {response_data}')
                 raise ValueError(response)
 
-    async def send_group_text_msg(self, group_openid: str, content: str, msg_id: str):
-        """发送群聊消息"""
+    async def send_group_text_msg(
+        self,
+        group_openid: str,
+        content: str,
+        msg_id: Optional[str] = None,
+        event_id: Optional[str] = None,
+        msg_seq: int = 1,
+    ):
+        """Send a group text message.
+
+        Either ``msg_id`` or ``event_id`` is required (see
+        :meth:`send_private_text_msg` for the distinction).
+        """
         if not await self.check_access_token():
             await self.get_access_token()
 
@@ -212,11 +339,15 @@ class QQOfficialClient:
                 'Authorization': f'QQBot {self.access_token}',
                 'Content-Type': 'application/json',
             }
-            data = {
+            data: dict[str, Any] = {
                 'content': content,
                 'msg_type': 0,
-                'msg_id': msg_id,
+                'msg_seq': msg_seq,
             }
+            if msg_id:
+                data['msg_id'] = msg_id
+            if event_id:
+                data['event_id'] = event_id
             response = await client.post(url, headers=headers, json=data)
             if response.status_code == 200:
                 return
@@ -485,6 +616,106 @@ class QQOfficialClient:
                 raise Exception(f'Failed to send stream message: HTTP {response.status_code} {response.text}')
             return response.json()
 
+    async def send_markdown_keyboard(
+        self,
+        target_type: str,
+        target_id: str,
+        markdown_content: str,
+        keyboard: dict,
+        msg_id: Optional[str] = None,
+        event_id: Optional[str] = None,
+        msg_seq: int = 1,
+    ) -> dict:
+        """Send a ``msg_type=2`` (markdown) message carrying a keyboard.
+
+        The keyboard ride-along is the only documented way to attach
+        buttons in QQ official; pure keyboard-only messages are not
+        accepted by the server (markdown content is required).
+
+        Args:
+            target_type: 'c2c' (single chat), 'group', 'channel' (text
+                channel — uses POST /channels/{id}/messages instead of v2).
+            target_id: openid for c2c/group, channel_id for channel.
+            markdown_content: Plain markdown text shown above the buttons.
+            keyboard: ``{'content': {'rows': [{'buttons': [...]}]}}`` per
+                the official spec. Use :func:`build_keyboard_from_form`
+                to construct from Dify form_data.
+            msg_id: Inbound user message id; turns this into a passive
+                reply (preferred — no monthly quota cost).
+            event_id: Use ``INTERACTION_CREATE`` event id from a prior
+                button click to keep within the 30-minute passive window
+                without an inbound msg_id.
+            msg_seq: De-dup counter when reusing msg_id.
+        """
+        if not await self.check_access_token():
+            await self.get_access_token()
+
+        if target_type == 'c2c':
+            url = f'{self.base_url}/v2/users/{target_id}/messages'
+        elif target_type == 'group':
+            url = f'{self.base_url}/v2/groups/{target_id}/messages'
+        elif target_type == 'channel':
+            url = f'{self.base_url}/channels/{target_id}/messages'
+        else:
+            raise ValueError(f'Unsupported target_type for markdown+keyboard: {target_type}')
+
+        body: dict[str, Any] = {
+            'msg_type': 2,
+            'markdown': {'content': markdown_content},
+            'keyboard': keyboard,
+            'msg_seq': msg_seq,
+        }
+        if msg_id:
+            body['msg_id'] = msg_id
+        if event_id:
+            body['event_id'] = event_id
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            headers = {
+                'Authorization': f'QQBot {self.access_token}',
+                'Content-Type': 'application/json',
+            }
+            response = await client.post(url, headers=headers, json=body)
+            if response.status_code != 200:
+                await self.logger.error(
+                    f'Failed to send markdown+keyboard: HTTP {response.status_code} {response.text}'
+                )
+                raise Exception(f'Failed to send markdown+keyboard: HTTP {response.status_code} {response.text}')
+            return response.json()
+
+    async def ack_interaction(self, interaction_id: str, code: int = 0) -> None:
+        """Acknowledge a button-click INTERACTION_CREATE event.
+
+        QQ keeps the client in a loading spinner until this ack is
+        received. Should be called as soon as the click is parsed, before
+        any heavier downstream work (the actual workflow resume can run
+        async).
+
+        Args:
+            interaction_id: The ``id`` field from the INTERACTION_CREATE event.
+            code: 0=success, 1=fail, 2=rate-limited, 3=duplicate, 4=no
+                permission, 5=admin only. Default 0.
+        """
+        if not interaction_id:
+            return
+        if not await self.check_access_token():
+            await self.get_access_token()
+
+        url = f'{self.base_url}/interactions/{interaction_id}'
+        async with httpx.AsyncClient(timeout=10) as client:
+            headers = {
+                'Authorization': f'QQBot {self.access_token}',
+                'Content-Type': 'application/json',
+            }
+            try:
+                response = await client.put(url, headers=headers, json={'code': code})
+                if response.status_code >= 400:
+                    await self.logger.warning(
+                        f'ack_interaction non-success: HTTP {response.status_code} {response.text}'
+                    )
+            except Exception as e:
+                await self.logger.warning(f'ack_interaction error (non-fatal): {e}')
+
     async def is_token_expired(self):
         """检查token是否过期"""
         if self.access_token_expiry_time is None:
@@ -653,6 +884,12 @@ class QQOfficialClient:
                     d = payload.get('d', {})
                     s = payload.get('s')
                     t = payload.get('t')
+                    # Top-level event id, distinct from `d.id`. Per QQ
+                    # spec this is the only value accepted as ``event_id``
+                    # in subsequent passive-reply send-message calls
+                    # (``d.id`` for INTERACTION_CREATE is the interaction
+                    # id, used solely for PUT /interactions/{id} ack).
+                    ws_event_id = payload.get('id')
 
                     if not isinstance(d, dict):
                         d = {}
@@ -731,7 +968,22 @@ class QQOfficialClient:
 
                         else:
                             await self.logger.debug(f'Received event: {t}, seq={s}')
-                            if on_event:
+                            # INTERACTION_CREATE bypasses the regular
+                            # on_event dispatcher so the adapter sees the
+                            # top-level ws_event_id (needed as event_id
+                            # for the resumed reply) — same shape as the
+                            # webhook handler.
+                            if t == 'INTERACTION_CREATE':
+                                if self._interaction_handler:
+                                    try:
+                                        result = self._interaction_handler(d, ws_event_id)
+                                        if asyncio.iscoroutine(result):
+                                            await result
+                                    except Exception:
+                                        await self.logger.error(
+                                            f'Error in interaction handler (ws): {traceback.format_exc()}'
+                                        )
+                            elif on_event:
                                 try:
                                     result = on_event(t, d)
                                     if asyncio.iscoroutine(result):
