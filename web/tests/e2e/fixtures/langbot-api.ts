@@ -54,7 +54,21 @@ interface MCPServerMock {
   updated_at: string;
 }
 
+interface BotMock {
+  uuid: string;
+  name: string;
+  description: string;
+  enable: boolean;
+  adapter: string;
+  adapter_config: JsonRecord;
+  use_pipeline_uuid?: string;
+  pipeline_routing_rules: unknown[];
+  adapter_runtime_values: JsonRecord;
+  updated_at: string;
+}
+
 interface LangBotApiMockState {
+  bots: BotMock[];
   counters: Record<string, number>;
   knowledgeBases: KnowledgeBaseMock[];
   mcpServers: MCPServerMock[];
@@ -233,6 +247,51 @@ function makeMCPServer(data: JsonRecord): MCPServerMock {
   };
 }
 
+function makeBot(
+  state: LangBotApiMockState,
+  data: JsonRecord,
+  uuid = nextId(state, 'bot'),
+): BotMock {
+  return {
+    uuid,
+    name: String(data.name || ''),
+    description: String(data.description || ''),
+    enable: data.enable !== false,
+    adapter: String(data.adapter || 'playwright-adapter'),
+    adapter_config: (data.adapter_config as JsonRecord | undefined) || {},
+    use_pipeline_uuid: data.use_pipeline_uuid
+      ? String(data.use_pipeline_uuid)
+      : undefined,
+    pipeline_routing_rules:
+      (data.pipeline_routing_rules as unknown[] | undefined) || [],
+    adapter_runtime_values: {
+      webhook_full_url: `https://playwright.test/bots/${uuid}/webhook`,
+      extra_webhook_full_url: '',
+    },
+    updated_at: now(),
+  };
+}
+
+function mockAdapters() {
+  return [
+    {
+      name: 'playwright-adapter',
+      label: {
+        en_US: 'Playwright Adapter',
+        zh_Hans: 'Playwright 适配器',
+      },
+      description: {
+        en_US: 'Minimal adapter for frontend E2E tests.',
+        zh_Hans: '用于前端 E2E 测试的最小适配器。',
+      },
+      spec: {
+        categories: ['testing'],
+        config: [],
+      },
+    },
+  ];
+}
+
 async function handleBackendApi(route: Route, state: LangBotApiMockState) {
   const request = route.request();
   const url = new URL(request.url());
@@ -287,8 +346,47 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
     return fulfillJson(route, { credits: null });
   }
 
+  if (path === '/api/v1/platform/adapters') {
+    return fulfillJson(route, { adapters: mockAdapters() });
+  }
+
   if (path === '/api/v1/platform/bots') {
-    return fulfillJson(route, { bots: [] });
+    if (method === 'POST') {
+      const bot = makeBot(state, parseJsonBody(route));
+      state.bots = [
+        ...state.bots.filter((item) => item.uuid !== bot.uuid),
+        bot,
+      ];
+      return fulfillJson(route, { uuid: bot.uuid });
+    }
+
+    return fulfillJson(route, { bots: state.bots });
+  }
+
+  const botLogsMatch = path.match(/^\/api\/v1\/platform\/bots\/([^/]+)\/logs$/);
+  if (botLogsMatch) {
+    return fulfillJson(route, { logs: [], total: 0 });
+  }
+
+  const botMatch = path.match(/^\/api\/v1\/platform\/bots\/([^/]+)$/);
+  if (botMatch) {
+    const botId = decodeURIComponent(botMatch[1]);
+
+    if (method === 'PUT') {
+      const bot = makeBot(state, parseJsonBody(route), botId);
+      state.bots = [...state.bots.filter((item) => item.uuid !== botId), bot];
+      return fulfillJson(route, {});
+    }
+
+    if (method === 'DELETE') {
+      state.bots = state.bots.filter((item) => item.uuid !== botId);
+      return fulfillJson(route, {});
+    }
+
+    const bot = state.bots.find((item) => item.uuid === botId);
+    return fulfillJson(route, {
+      bot: bot || makeBot(state, { name: botId }, botId),
+    });
   }
 
   if (path === '/api/v1/pipelines/_/metadata') {
@@ -704,6 +802,7 @@ export async function installLangBotApiMocks(
 ) {
   const { authenticated = false, storage = {} } = options;
   const state: LangBotApiMockState = {
+    bots: [],
     counters: {},
     knowledgeBases: [],
     mcpServers: [],

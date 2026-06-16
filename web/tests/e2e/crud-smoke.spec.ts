@@ -20,6 +20,39 @@ async function confirmDelete(page: Page) {
 }
 
 test.describe('frontend CRUD smoke flows', () => {
+  test('creates, edits, and deletes a bot', async ({ page }) => {
+    await installLangBotApiMocks(page, { authenticated: true });
+
+    await page.goto('/home/bots?id=new');
+
+    await expect(page.locator('input[name="name"]')).toBeVisible();
+    await page.locator('input[name="name"]').fill('Support Bot');
+    await page
+      .locator('input[name="description"]')
+      .fill('Answers customer support questions.');
+    await page.getByRole('combobox').click();
+    await page.getByRole('option', { name: 'Playwright Adapter' }).click();
+    await submit(page);
+
+    await expect(page).toHaveURL(/\/home\/bots\?id=bot-1$/);
+    await page.reload();
+    await expect(page.locator('input[name="name"]')).toHaveValue('Support Bot');
+
+    await page
+      .locator('input[name="description"]')
+      .fill('Answers customer support questions with context.');
+    await save(page);
+    await expect(page.locator('input[name="description"]')).toHaveValue(
+      'Answers customer support questions with context.',
+    );
+
+    await page.getByRole('button', { name: /^Delete$/ }).click();
+    await confirmDelete(page);
+
+    await expect(page).toHaveURL(/\/home\/bots$/);
+    await expect(page.getByText('Select a bot from the sidebar')).toBeVisible();
+  });
+
   test('creates, edits, and deletes a pipeline', async ({ page }) => {
     await installLangBotApiMocks(page, { authenticated: true });
 
