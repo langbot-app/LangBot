@@ -711,8 +711,19 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         endpoint: str,
         method: str,
         body: Any = None,
+        caller: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
-        return await self.handler.handle_page_api(plugin_author, plugin_name, page_id, endpoint, method, body)
+        return await self.handler.handle_page_api(
+            plugin_author,
+            plugin_name,
+            page_id,
+            endpoint,
+            method,
+            body,
+            caller,
+            headers or {},
+        )
 
     async def get_debug_info(self) -> dict[str, Any]:
         """Get debug information including debug key and WS URL"""

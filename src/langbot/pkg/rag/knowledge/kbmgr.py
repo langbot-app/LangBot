@@ -5,6 +5,7 @@ import traceback
 import uuid
 import zipfile
 import io
+import datetime
 from typing import Any
 from langbot.pkg.core import app
 import sqlalchemy
@@ -24,6 +25,10 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
     def __init__(self, ap: app.Application, knowledge_base_entity: persistence_rag.KnowledgeBase):
         super().__init__(ap)
         self.knowledge_base_entity = knowledge_base_entity
+
+    @staticmethod
+    def _utc_now() -> datetime.datetime:
+        return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 
     async def initialize(self):
         pass
@@ -334,6 +339,24 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         # are passed directly to vector_search by some plugins (e.g. LangRAG)
         # and would cause empty results when the metadata field doesn't exist.
         filters = settings.pop('filters', {})
+        trace_context = settings.pop('_trace_context', None)
+        host_span_started_at = self._utc_now()
+        host_span_id = None
+        if trace_context and trace_context.get('trace_id'):
+            host_parent_span_id = trace_context.get('parent_span_id')
+            host_span_id = trace_context.get('rag_span_id') or f'span-{uuid.uuid4().hex[:16]}'
+            trace_context = {
+                'trace_id': trace_context.get('trace_id'),
+                'parent_span_id': host_span_id,
+                'host_parent_span_id': host_parent_span_id,
+                'message_id': trace_context.get('message_id'),
+                'query_id': trace_context.get('query_id'),
+                'session_id': trace_context.get('session_id'),
+                'bot_id': trace_context.get('bot_id'),
+                'pipeline_id': trace_context.get('pipeline_id'),
+                'knowledge_base_id': kb.uuid,
+                'attributes': trace_context.get('attributes') or {},
+            }
 
         retrieval_context = {
             'query': query,
@@ -343,12 +366,103 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             'creation_settings': kb.creation_settings or {},
             'filters': filters,
         }
+        if trace_context:
+            retrieval_context['trace_context'] = trace_context
 
-        result = await self.ap.plugin_connector.call_rag_retrieve(
-            plugin_id,
-            retrieval_context,
-        )
+        try:
+            result = await self.ap.plugin_connector.call_rag_retrieve(
+                plugin_id,
+                retrieval_context,
+            )
+        except Exception as e:
+            if trace_context:
+                await self._record_rag_trace_result(
+                    trace_context=trace_context,
+                    host_span_id=host_span_id,
+                    started_at=host_span_started_at,
+                    plugin_id=plugin_id,
+                    result={
+                        'results': [],
+                        'metadata': {
+                            'status': 'error',
+                            'error_message': str(e),
+                        },
+                    },
+                )
+            raise
+        if trace_context:
+            await self._record_rag_trace_result(
+                trace_context=trace_context,
+                host_span_id=host_span_id,
+                started_at=host_span_started_at,
+                plugin_id=plugin_id,
+                result=result,
+            )
         return result
+
+    async def _record_rag_trace_result(
+        self,
+        trace_context: dict[str, Any],
+        host_span_id: str | None,
+        started_at: datetime.datetime,
+        plugin_id: str,
+        result: dict[str, Any],
+    ) -> None:
+        """Persist host RAG span and plugin-provided child spans."""
+        trace_id = trace_context.get('trace_id')
+        if not trace_id:
+            return
+
+        metadata = result.get('metadata') if isinstance(result, dict) else {}
+        metadata = metadata if isinstance(metadata, dict) else {}
+        plugin_spans = metadata.get('trace_spans') if isinstance(metadata.get('trace_spans'), list) else []
+        parent_span_id = trace_context.get('parent_span_id')
+        host_parent_span_id = trace_context.get('host_parent_span_id')
+
+        try:
+            await self.ap.monitoring_service.record_span(
+                trace_id=trace_id,
+                span_id=host_span_id,
+                parent_span_id=host_parent_span_id,
+                name=f'Knowledge retrieval {self.knowledge_base_entity.name}',
+                kind='rag.retrieval',
+                status=metadata.get('status', 'success'),
+                started_at=started_at,
+                duration=metadata.get('duration_ms'),
+                message_id=trace_context.get('message_id'),
+                session_id=trace_context.get('session_id'),
+                bot_id=trace_context.get('bot_id'),
+                pipeline_id=trace_context.get('pipeline_id'),
+                attributes={
+                    'knowledge_base_id': self.knowledge_base_entity.uuid,
+                    'knowledge_base_name': self.knowledge_base_entity.name,
+                    'plugin_id': plugin_id,
+                    'returned_count': len(result.get('results', []) if isinstance(result, dict) else []),
+                    'total_found': result.get('total_found') if isinstance(result, dict) else None,
+                },
+                error_message=metadata.get('error_message'),
+            )
+            for span in plugin_spans:
+                if not isinstance(span, dict):
+                    continue
+                await self.ap.monitoring_service.record_span(
+                    trace_id=trace_id,
+                    span_id=span.get('span_id'),
+                    parent_span_id=span.get('parent_span_id') or host_span_id or parent_span_id,
+                    name=span.get('name') or 'RAG plugin stage',
+                    kind=span.get('kind') or 'rag.stage',
+                    status=span.get('status') or 'success',
+                    started_at=started_at,
+                    duration=span.get('duration_ms'),
+                    message_id=trace_context.get('message_id'),
+                    session_id=trace_context.get('session_id'),
+                    bot_id=trace_context.get('bot_id'),
+                    pipeline_id=trace_context.get('pipeline_id'),
+                    attributes=span.get('attributes') if isinstance(span.get('attributes'), dict) else {},
+                    error_message=span.get('error_message'),
+                )
+        except Exception as e:
+            self.ap.logger.error(f'Failed to record RAG trace spans: {e}')
 
     async def _delete_document(self, document_id: str) -> bool:
         """Call plugin to delete document."""

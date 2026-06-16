@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import typing
 import traceback
+import time
+import uuid
+import datetime
 
 import sqlalchemy
 
@@ -78,6 +81,19 @@ class RuntimePipeline:
 
     enable_all_plugins: bool
     """是否启用所有插件"""
+
+    @staticmethod
+    def _new_span_id() -> str:
+        return f'span-{uuid.uuid4().hex[:16]}'
+
+    @staticmethod
+    def _utc_now() -> datetime.datetime:
+        return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+    @staticmethod
+    def _query_session_id(query: pipeline_query.Query) -> str:
+        launcher_type = query.launcher_type.value if hasattr(query.launcher_type, 'value') else str(query.launcher_type)
+        return f'{launcher_type}_{query.launcher_id}'
 
     enable_all_mcp_servers: bool
     """是否启用所有MCP服务器"""
@@ -234,44 +250,92 @@ class RuntimePipeline:
             stage_container = self.stage_containers[i]
 
             query.current_stage_name = stage_container.inst_name  # 标记到 Query 对象里
+            span_started_at = self._utc_now()
+            span_started = time.perf_counter()
+            span_status = 'success'
+            span_error = None
+            span_result_type = None
 
-            result = stage_container.inst.process(query, stage_container.inst_name)
+            try:
+                result = stage_container.inst.process(query, stage_container.inst_name)
 
-            if isinstance(result, typing.Coroutine):
-                result = await result
+                if isinstance(result, typing.Coroutine):
+                    result = await result
 
-            if isinstance(result, pipeline_entities.StageProcessResult):  # 直接返回结果
-                self.ap.logger.debug(
-                    f'Stage {stage_container.inst_name} processed query {query.query_id} res {result.result_type}'
-                )
-                await self._check_output(query, result)
-
-                if result.result_type == pipeline_entities.ResultType.INTERRUPT:
-                    self.ap.logger.debug(f'Stage {stage_container.inst_name} interrupted query {query.query_id}')
-                    break
-                elif result.result_type == pipeline_entities.ResultType.CONTINUE:
-                    query = result.new_query
-            elif isinstance(result, typing.AsyncGenerator):  # 生成器
-                self.ap.logger.debug(f'Stage {stage_container.inst_name} processed query {query.query_id} gen')
-
-                async for sub_result in result:
+                if isinstance(result, pipeline_entities.StageProcessResult):  # 直接返回结果
+                    span_result_type = str(result.result_type.value if hasattr(result.result_type, 'value') else result.result_type)
                     self.ap.logger.debug(
-                        f'Stage {stage_container.inst_name} processed query {query.query_id} res {sub_result.result_type}'
+                        f'Stage {stage_container.inst_name} processed query {query.query_id} res {result.result_type}'
                     )
-                    await self._check_output(query, sub_result)
+                    await self._check_output(query, result)
 
-                    if sub_result.result_type == pipeline_entities.ResultType.INTERRUPT:
+                    if result.result_type == pipeline_entities.ResultType.INTERRUPT:
                         self.ap.logger.debug(f'Stage {stage_container.inst_name} interrupted query {query.query_id}')
                         break
-                    elif sub_result.result_type == pipeline_entities.ResultType.CONTINUE:
-                        query = sub_result.new_query
-                        await self._execute_from_stage(i + 1, query)
-                break
+                    elif result.result_type == pipeline_entities.ResultType.CONTINUE:
+                        query = result.new_query
+                elif isinstance(result, typing.AsyncGenerator):  # 生成器
+                    span_result_type = 'generator'
+                    self.ap.logger.debug(f'Stage {stage_container.inst_name} processed query {query.query_id} gen')
+
+                    async for sub_result in result:
+                        span_result_type = str(
+                            sub_result.result_type.value
+                            if hasattr(sub_result.result_type, 'value')
+                            else sub_result.result_type
+                        )
+                        self.ap.logger.debug(
+                            f'Stage {stage_container.inst_name} processed query {query.query_id} res {sub_result.result_type}'
+                        )
+                        await self._check_output(query, sub_result)
+
+                        if sub_result.result_type == pipeline_entities.ResultType.INTERRUPT:
+                            self.ap.logger.debug(f'Stage {stage_container.inst_name} interrupted query {query.query_id}')
+                            break
+                        elif sub_result.result_type == pipeline_entities.ResultType.CONTINUE:
+                            query = sub_result.new_query
+                            await self._execute_from_stage(i + 1, query)
+                    break
+            except Exception as e:
+                span_status = 'error'
+                span_error = str(e)
+                raise
+            finally:
+                trace_id = (query.variables or {}).get('_monitoring_trace_id')
+                root_span_id = (query.variables or {}).get('_monitoring_root_span_id')
+                if trace_id:
+                    try:
+                        await self.ap.monitoring_service.record_span(
+                            trace_id=trace_id,
+                            parent_span_id=root_span_id,
+                            name=stage_container.inst_name,
+                            kind='pipeline.stage',
+                            status=span_status,
+                            started_at=span_started_at,
+                            duration=int((time.perf_counter() - span_started) * 1000),
+                            message_id=(query.variables or {}).get('_monitoring_message_id'),
+                            session_id=self._query_session_id(query),
+                            bot_id=query.bot_uuid,
+                            pipeline_id=self.pipeline_entity.uuid,
+                            attributes={
+                                'stage_class': stage_container.inst.__class__.__name__,
+                                'result_type': span_result_type,
+                                'query_id': query.query_id,
+                            },
+                            error_message=span_error,
+                        )
+                    except Exception as monitor_err:
+                        self.ap.logger.error(f'Failed to record stage span: {monitor_err}')
 
             i += 1
 
     async def process_query(self, query: pipeline_query.Query):
         """处理请求"""
+        trace_started_at = self._utc_now()
+        trace_started = time.perf_counter()
+        root_span_id = self._new_span_id()
+        trace_id = None
+        trace_status = 'success'
         # Get monitoring metadata
         bot_name = query.variables.get('_monitoring_bot_name', 'Unknown')
         pipeline_name = query.variables.get('_monitoring_pipeline_name', 'Unknown')
@@ -302,6 +366,28 @@ class RuntimePipeline:
                 await query.adapter.on_monitoring_message_created(query, message_id)
         except Exception as e:
             self.ap.logger.error(f'Failed to record query start: {e}')
+
+        try:
+            trace_id = await self.ap.monitoring_service.start_trace(
+                name='LangBot query',
+                bot_id=query.bot_uuid or 'unknown',
+                bot_name=bot_name,
+                pipeline_id=self.pipeline_entity.uuid,
+                pipeline_name=pipeline_name,
+                session_id=self._query_session_id(query),
+                message_id=message_id or None,
+                query_id=query.query_id,
+                attributes={
+                    'launcher_type': query.launcher_type.value
+                    if hasattr(query.launcher_type, 'value')
+                    else str(query.launcher_type),
+                    'runner_name': runner_name,
+                },
+            )
+            query.variables['_monitoring_trace_id'] = trace_id
+            query.variables['_monitoring_root_span_id'] = root_span_id
+        except Exception as e:
+            self.ap.logger.error(f'Failed to start query trace: {e}')
 
         try:
             # Get bound plugins for this pipeline
@@ -361,6 +447,7 @@ class RuntimePipeline:
                     self.ap.logger.error(f'Failed to record query response: {e}')
 
         except Exception as e:
+            trace_status = 'error'
             inst_name = query.current_stage_name if query.current_stage_name else 'unknown'
             self.ap.logger.error(f'Error processing query {query.query_id} stage={inst_name} : {e}')
             self.ap.logger.error(f'Traceback: {traceback.format_exc()}')
@@ -383,6 +470,35 @@ class RuntimePipeline:
                 self.ap.logger.error(f'Failed to record query error: {me}')
 
         finally:
+            if trace_id:
+                try:
+                    duration_ms = int((time.perf_counter() - trace_started) * 1000)
+                    await self.ap.monitoring_service.record_span(
+                        trace_id=trace_id,
+                        span_id=root_span_id,
+                        name='LangBot query',
+                        kind='pipeline.query',
+                        status=trace_status,
+                        started_at=trace_started_at,
+                        duration=duration_ms,
+                        message_id=message_id or None,
+                        session_id=self._query_session_id(query),
+                        bot_id=query.bot_uuid,
+                        pipeline_id=self.pipeline_entity.uuid,
+                        attributes={
+                            'query_id': query.query_id,
+                            'pipeline_name': pipeline_name,
+                            'runner_name': runner_name,
+                        },
+                    )
+                    await self.ap.monitoring_service.finish_trace(
+                        trace_id=trace_id,
+                        status=trace_status,
+                        duration=duration_ms,
+                        message_id=message_id or None,
+                    )
+                except Exception as monitor_err:
+                    self.ap.logger.error(f'Failed to finish query trace: {monitor_err}')
             self.ap.logger.debug(f'Query {query.query_id} processed')
             del self.ap.query_pool.cached_queries[query.query_id]
 

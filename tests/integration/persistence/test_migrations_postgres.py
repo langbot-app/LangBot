@@ -144,8 +144,8 @@ class TestPostgreSQLMigrationUpgrade:
         # Verify revision
         rev = await get_alembic_current(postgres_engine)
         assert rev is not None, 'Expected a revision after upgrade'
-        # Head should be the latest migration (0005 for current state)
-        assert rev.startswith('0005'), f'Expected head to be 0005_*, got {rev}'
+        # Head should be the latest migration.
+        assert rev.startswith('0006'), f'Expected head to be 0006_*, got {rev}'
 
     @pytest.mark.asyncio
     async def test_postgres_upgrade_idempotent(self, postgres_engine, clean_tables, clean_alembic_version):

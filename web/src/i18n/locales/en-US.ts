@@ -1217,6 +1217,7 @@ const enUS = {
       embeddingCalls: 'Embedding Calls',
       modelCalls: 'Model Calls',
       tokens: 'Token Monitoring',
+      traces: 'Traces',
       feedback: 'User Feedback',
       sessions: 'Session Analysis',
       errors: 'Error Logs',
@@ -1320,6 +1321,11 @@ const enUS = {
       occurredAt: 'Occurred At',
       noErrors: 'No errors found',
       stackTrace: 'Stack Trace',
+    },
+    traces: {
+      title: 'Traces',
+      noTraces: 'No traces found',
+      noSpans: 'No spans recorded for this trace',
     },
     feedback: {
       title: 'User Feedback',

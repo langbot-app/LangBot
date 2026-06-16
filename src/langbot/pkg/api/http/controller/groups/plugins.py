@@ -350,8 +350,24 @@ class PluginsRouterGroup(group.RouterGroup):
             if not endpoint.startswith('/') or '..' in endpoint:
                 return self.http_status(400, -1, 'invalid endpoint')
 
+            caller = {
+                'plugin_author': author,
+                'plugin_name': plugin_name,
+                'page_id': page_id,
+                'origin': _get_request_origin(),
+            }
+            headers = {
+                key: value
+                for key, value in {
+                    'user-agent': quart.request.headers.get('User-Agent'),
+                    'x-request-id': quart.request.headers.get('X-Request-ID'),
+                    'x-forwarded-for': quart.request.headers.get('X-Forwarded-For'),
+                }.items()
+                if value
+            }
+
             result = await self.ap.plugin_connector.handle_page_api(
-                author, plugin_name, page_id, endpoint, method.upper(), body
+                author, plugin_name, page_id, endpoint, method.upper(), body, caller, headers
             )
             if result.get('error'):
                 return self.http_status(400, -1, result['error'])

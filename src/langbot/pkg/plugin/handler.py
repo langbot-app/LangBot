@@ -755,6 +755,19 @@ class RuntimeConnectionHandler(handler.Handler):
                         'session_name': session_name,
                         'bot_uuid': query.bot_uuid or '',
                         'sender_id': str(query.sender_id),
+                        '_trace_context': {
+                            'trace_id': query.variables.get('_monitoring_trace_id') if query.variables else None,
+                            'parent_span_id': query.variables.get('_monitoring_root_span_id') if query.variables else None,
+                            'message_id': query.variables.get('_monitoring_message_id') if query.variables else None,
+                            'query_id': query.query_id,
+                            'session_id': session_name,
+                            'bot_id': query.bot_uuid or '',
+                            'pipeline_id': query.pipeline_uuid or '',
+                            'knowledge_base_id': kb_id,
+                            'attributes': {
+                                'source': 'plugin-api',
+                            },
+                        },
                     },
                 )
                 results = [entry.model_dump(mode='json') for entry in entries]
@@ -1011,6 +1024,8 @@ class RuntimeConnectionHandler(handler.Handler):
         endpoint: str,
         method: str,
         body: Any = None,
+        caller: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """Forward a page API call to the plugin via runtime."""
         result = await self.call_action(
@@ -1022,6 +1037,8 @@ class RuntimeConnectionHandler(handler.Handler):
                 'endpoint': endpoint,
                 'method': method,
                 'body': body,
+                'caller': caller,
+                'headers': headers or {},
             },
             timeout=30,
         )

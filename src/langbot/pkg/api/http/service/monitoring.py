@@ -3,9 +3,51 @@ from __future__ import annotations
 import uuid
 import datetime
 import sqlalchemy
+import json
 
 from ....core import app
 from ....entity.persistence import monitoring as persistence_monitoring
+
+
+def _utc_now() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+
+def _json_dumps(value: dict | list | None) -> str | None:
+    if value is None:
+        return None
+    try:
+        return json.dumps(value, ensure_ascii=False, default=str)
+    except Exception:
+        return json.dumps({'serialization_error': str(value)}, ensure_ascii=False)
+
+
+def _json_loads(value: str | None) -> dict | list | None:
+    if not value:
+        return None
+    try:
+        return json.loads(value)
+    except Exception:
+        return None
+
+
+def new_trace_id() -> str:
+    return f'trace-{uuid.uuid4().hex[:16]}'
+
+
+def new_span_id() -> str:
+    return f'span-{uuid.uuid4().hex[:16]}'
+
+
+def normalize_trace_status(status: str | None) -> str:
+    """Normalize operation status to the monitoring UI vocabulary."""
+    if status in ('completed', 'ok'):
+        return 'success'
+    if status in ('failed', 'failure', 'exception'):
+        return 'error'
+    if status in ('running', 'success', 'error'):
+        return status
+    return 'success'
 
 
 class MonitoringService:
@@ -74,6 +116,18 @@ class MonitoringService:
                 persistence_monitoring.MonitoringFeedback.timestamp,
                 persistence_monitoring.MonitoringFeedback.id,
             ),
+            (
+                'monitoring_traces',
+                persistence_monitoring.MonitoringTrace,
+                persistence_monitoring.MonitoringTrace.started_at,
+                persistence_monitoring.MonitoringTrace.trace_id,
+            ),
+            (
+                'monitoring_spans',
+                persistence_monitoring.MonitoringSpan,
+                persistence_monitoring.MonitoringSpan.started_at,
+                persistence_monitoring.MonitoringSpan.span_id,
+            ),
         ]
 
         deleted_counts: dict[str, int] = {}
@@ -132,6 +186,116 @@ class MonitoringService:
             await autocommit_conn.execute(sqlalchemy.text('VACUUM'))
 
     # ========== Recording Methods ==========
+
+    async def start_trace(
+        self,
+        trace_id: str | None = None,
+        name: str = 'LangBot query',
+        bot_id: str | None = None,
+        bot_name: str | None = None,
+        pipeline_id: str | None = None,
+        pipeline_name: str | None = None,
+        session_id: str | None = None,
+        message_id: str | None = None,
+        query_id: str | int | None = None,
+        attributes: dict | None = None,
+    ) -> str:
+        """Create or update a trace header row."""
+        trace_id = trace_id or new_trace_id()
+        trace_data = {
+            'trace_id': trace_id,
+            'started_at': _utc_now(),
+            'ended_at': None,
+            'duration': None,
+            'status': 'running',
+            'name': name,
+            'bot_id': bot_id,
+            'bot_name': bot_name,
+            'pipeline_id': pipeline_id,
+            'pipeline_name': pipeline_name,
+            'session_id': session_id,
+            'message_id': message_id,
+            'query_id': str(query_id) if query_id is not None else None,
+            'attributes': _json_dumps(attributes),
+        }
+
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.insert(persistence_monitoring.MonitoringTrace).values(trace_data)
+        )
+        return trace_id
+
+    async def finish_trace(
+        self,
+        trace_id: str,
+        status: str = 'success',
+        duration: int | None = None,
+        message_id: str | None = None,
+        attributes: dict | None = None,
+    ) -> None:
+        """Mark a trace complete."""
+        update_values: dict = {
+            'ended_at': _utc_now(),
+            'status': normalize_trace_status(status),
+        }
+        if duration is not None:
+            update_values['duration'] = duration
+        if message_id is not None:
+            update_values['message_id'] = message_id
+        if attributes is not None:
+            update_values['attributes'] = _json_dumps(attributes)
+
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.update(persistence_monitoring.MonitoringTrace)
+            .where(persistence_monitoring.MonitoringTrace.trace_id == trace_id)
+            .values(update_values)
+        )
+
+    async def record_span(
+        self,
+        trace_id: str,
+        name: str,
+        kind: str,
+        status: str = 'success',
+        span_id: str | None = None,
+        parent_span_id: str | None = None,
+        started_at: datetime.datetime | None = None,
+        ended_at: datetime.datetime | None = None,
+        duration: int | None = None,
+        message_id: str | None = None,
+        session_id: str | None = None,
+        bot_id: str | None = None,
+        pipeline_id: str | None = None,
+        attributes: dict | None = None,
+        error_message: str | None = None,
+    ) -> str:
+        """Record a single completed span."""
+        started_at = started_at or _utc_now()
+        if duration is None and ended_at is not None:
+            duration = int((ended_at - started_at).total_seconds() * 1000)
+        elif duration is not None:
+            duration = int(round(float(duration)))
+        span_data = {
+            'span_id': span_id or new_span_id(),
+            'trace_id': trace_id,
+            'parent_span_id': parent_span_id,
+            'name': name,
+            'kind': kind,
+            'status': normalize_trace_status(status),
+            'started_at': started_at,
+            'ended_at': ended_at or _utc_now(),
+            'duration': duration,
+            'message_id': message_id,
+            'session_id': session_id,
+            'bot_id': bot_id,
+            'pipeline_id': pipeline_id,
+            'attributes': _json_dumps(attributes),
+            'error_message': error_message,
+        }
+
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.insert(persistence_monitoring.MonitoringSpan).values(span_data)
+        )
+        return span_data['span_id']
 
     async def record_message(
         self,
@@ -1076,6 +1240,19 @@ class MonitoringService:
             for row in error_rows
         ]
 
+        trace_query = (
+            sqlalchemy.select(persistence_monitoring.MonitoringTrace)
+            .where(persistence_monitoring.MonitoringTrace.message_id == message_id)
+            .order_by(persistence_monitoring.MonitoringTrace.started_at.desc())
+            .limit(1)
+        )
+        trace_result = await self.ap.persistence_mgr.execute_async(trace_query)
+        trace_row = trace_result.first()
+        trace = None
+        if trace_row:
+            trace_model = trace_row[0] if isinstance(trace_row, tuple) else trace_row
+            trace = self._serialize_trace(trace_model)
+
         return {
             'message_id': message_id,
             'found': True,
@@ -1090,6 +1267,90 @@ class MonitoringService:
                 'average_duration_ms': int(total_duration / len(llm_rows)) if len(llm_rows) > 0 else 0,
             },
             'errors': errors,
+            'trace': trace,
+        }
+
+    def _serialize_trace(self, trace: persistence_monitoring.MonitoringTrace) -> dict:
+        data = self.ap.persistence_mgr.serialize_model(persistence_monitoring.MonitoringTrace, trace)
+        data['attributes'] = _json_loads(data.get('attributes')) or {}
+        return data
+
+    def _serialize_span(self, span: persistence_monitoring.MonitoringSpan) -> dict:
+        data = self.ap.persistence_mgr.serialize_model(persistence_monitoring.MonitoringSpan, span)
+        data['attributes'] = _json_loads(data.get('attributes')) or {}
+        return data
+
+    async def get_traces(
+        self,
+        bot_ids: list[str] | None = None,
+        pipeline_ids: list[str] | None = None,
+        session_ids: list[str] | None = None,
+        statuses: list[str] | None = None,
+        start_time: datetime.datetime | None = None,
+        end_time: datetime.datetime | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[list[dict], int]:
+        """Get trace headers with filters."""
+        conditions = []
+        if bot_ids:
+            conditions.append(persistence_monitoring.MonitoringTrace.bot_id.in_(bot_ids))
+        if pipeline_ids:
+            conditions.append(persistence_monitoring.MonitoringTrace.pipeline_id.in_(pipeline_ids))
+        if session_ids:
+            conditions.append(persistence_monitoring.MonitoringTrace.session_id.in_(session_ids))
+        if statuses:
+            conditions.append(persistence_monitoring.MonitoringTrace.status.in_(statuses))
+        if start_time:
+            conditions.append(persistence_monitoring.MonitoringTrace.started_at >= start_time)
+        if end_time:
+            conditions.append(persistence_monitoring.MonitoringTrace.started_at <= end_time)
+
+        count_query = sqlalchemy.select(sqlalchemy.func.count(persistence_monitoring.MonitoringTrace.trace_id))
+        query = sqlalchemy.select(persistence_monitoring.MonitoringTrace)
+        if conditions:
+            clause = sqlalchemy.and_(*conditions)
+            count_query = count_query.where(clause)
+            query = query.where(clause)
+
+        total_result = await self.ap.persistence_mgr.execute_async(count_query)
+        total = total_result.scalar() or 0
+
+        query = query.order_by(persistence_monitoring.MonitoringTrace.started_at.desc()).limit(limit).offset(offset)
+        result = await self.ap.persistence_mgr.execute_async(query)
+        traces = [
+            self._serialize_trace(row[0] if isinstance(row, tuple) else row)
+            for row in result.all()
+        ]
+        return traces, total
+
+    async def get_trace_details(self, trace_id: str) -> dict:
+        """Get a single trace and all spans in chronological order."""
+        trace_query = sqlalchemy.select(persistence_monitoring.MonitoringTrace).where(
+            persistence_monitoring.MonitoringTrace.trace_id == trace_id
+        )
+        trace_result = await self.ap.persistence_mgr.execute_async(trace_query)
+        trace_row = trace_result.first()
+        if not trace_row:
+            return {'trace_id': trace_id, 'found': False}
+
+        trace = trace_row[0] if isinstance(trace_row, tuple) else trace_row
+        span_query = (
+            sqlalchemy.select(persistence_monitoring.MonitoringSpan)
+            .where(persistence_monitoring.MonitoringSpan.trace_id == trace_id)
+            .order_by(persistence_monitoring.MonitoringSpan.started_at.asc())
+        )
+        span_result = await self.ap.persistence_mgr.execute_async(span_query)
+        spans = [
+            self._serialize_span(row[0] if isinstance(row, tuple) else row)
+            for row in span_result.all()
+        ]
+
+        return {
+            'trace_id': trace_id,
+            'found': True,
+            'trace': self._serialize_trace(trace),
+            'spans': spans,
         }
 
     # ========== Export Methods ==========

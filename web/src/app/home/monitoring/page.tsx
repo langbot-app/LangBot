@@ -10,6 +10,7 @@ import {
   MessageSquare,
   Sparkles,
   CheckCircle2,
+  GitBranch,
 } from 'lucide-react';
 import OverviewCards from './components/overview-cards/OverviewCards';
 import MonitoringFilters from './components/filters/MonitoringFilters';
@@ -22,9 +23,15 @@ import { MessageDetailsCard } from './components/MessageDetailsCard';
 import { MessageContentRenderer } from './components/MessageContentRenderer';
 import { FeedbackStatsCards } from './components/FeedbackCard';
 import { FeedbackList } from './components/FeedbackList';
-import { MessageDetails } from './types/monitoring';
+import {
+  MessageDetails,
+  TraceDetails,
+  MonitoringSpan,
+} from './types/monitoring';
 import { httpClient } from '@/app/infra/http/HttpClient';
+import { backendClient } from '@/app/infra/http';
 import { LoadingSpinner, LoadingPage } from '@/components/ui/loading-spinner';
+import { parseUTCTimestamp } from './utils/dateUtils';
 
 interface RawMessageData {
   id: string;
@@ -70,6 +77,97 @@ interface RawErrorData {
   error_type: string;
   error_message: string;
   stack_trace: string | null;
+}
+
+interface RawTraceData {
+  trace_id: string;
+  started_at: string;
+  ended_at?: string;
+  duration?: number;
+  status: string;
+  name: string;
+  bot_id?: string;
+  bot_name?: string;
+  pipeline_id?: string;
+  pipeline_name?: string;
+  session_id?: string;
+  message_id?: string;
+  query_id?: string;
+  attributes?: Record<string, unknown>;
+}
+
+interface RawSpanData {
+  span_id: string;
+  trace_id: string;
+  parent_span_id?: string;
+  name: string;
+  kind: string;
+  status: string;
+  started_at: string;
+  ended_at?: string;
+  duration?: number;
+  message_id?: string;
+  session_id?: string;
+  bot_id?: string;
+  pipeline_id?: string;
+  attributes?: Record<string, unknown>;
+  error_message?: string;
+}
+
+function mapTrace(raw: RawTraceData) {
+  return {
+    traceId: raw.trace_id,
+    name: raw.name,
+    startedAt: parseUTCTimestamp(raw.started_at),
+    endedAt: raw.ended_at ? parseUTCTimestamp(raw.ended_at) : undefined,
+    duration: raw.duration,
+    status: raw.status as 'running' | 'success' | 'error',
+    botId: raw.bot_id,
+    botName: raw.bot_name,
+    pipelineId: raw.pipeline_id,
+    pipelineName: raw.pipeline_name,
+    sessionId: raw.session_id,
+    messageId: raw.message_id,
+    queryId: raw.query_id,
+    attributes: raw.attributes || {},
+  };
+}
+
+function mapSpan(raw: RawSpanData): MonitoringSpan {
+  return {
+    spanId: raw.span_id,
+    traceId: raw.trace_id,
+    parentSpanId: raw.parent_span_id,
+    name: raw.name,
+    kind: raw.kind,
+    status: raw.status as 'running' | 'success' | 'error',
+    startedAt: parseUTCTimestamp(raw.started_at),
+    endedAt: raw.ended_at ? parseUTCTimestamp(raw.ended_at) : undefined,
+    duration: raw.duration,
+    messageId: raw.message_id,
+    sessionId: raw.session_id,
+    botId: raw.bot_id,
+    pipelineId: raw.pipeline_id,
+    attributes: raw.attributes || {},
+    errorMessage: raw.error_message,
+  };
+}
+
+function spanDepth(
+  span: MonitoringSpan,
+  spansById: Map<string, MonitoringSpan>,
+) {
+  let depth = 0;
+  let current = span.parentSpanId
+    ? spansById.get(span.parentSpanId)
+    : undefined;
+  while (current && depth < 8) {
+    depth += 1;
+    current = current.parentSpanId
+      ? spansById.get(current.parentSpanId)
+      : undefined;
+  }
+  return depth;
 }
 
 function MonitoringPageContent() {
@@ -158,6 +256,13 @@ function MonitoringPageContent() {
 
   // State for expanded errors
   const [expandedErrorId, setExpandedErrorId] = useState<string | null>(null);
+  const [expandedTraceId, setExpandedTraceId] = useState<string | null>(null);
+  const [traceDetails, setTraceDetails] = useState<
+    Record<string, TraceDetails>
+  >({});
+  const [loadingTraceDetails, setLoadingTraceDetails] = useState<
+    Record<string, boolean>
+  >({});
 
   // State for controlled tabs
   const [activeTab, setActiveTab] = useState<string>('messages');
@@ -265,6 +370,34 @@ function MonitoringPageContent() {
     }
   };
 
+  const toggleTraceExpand = async (traceId: string) => {
+    if (expandedTraceId === traceId) {
+      setExpandedTraceId(null);
+      return;
+    }
+
+    setExpandedTraceId(traceId);
+    if (traceDetails[traceId]) return;
+
+    setLoadingTraceDetails((prev) => ({ ...prev, [traceId]: true }));
+    try {
+      const result = await backendClient.getMonitoringTraceDetails(traceId);
+      setTraceDetails((prev) => ({
+        ...prev,
+        [traceId]: {
+          traceId: result.trace_id,
+          found: result.found,
+          trace: result.trace ? mapTrace(result.trace) : undefined,
+          spans: (result.spans || []).map(mapSpan),
+        },
+      }));
+    } catch (error) {
+      console.error('Failed to fetch trace details:', error);
+    } finally {
+      setLoadingTraceDetails((prev) => ({ ...prev, [traceId]: false }));
+    }
+  };
+
   return (
     <div className="w-full h-full overflow-y-auto overflow-x-hidden">
       {/* Filters and Refresh Button - Sticky */}
@@ -322,6 +455,9 @@ function MonitoringPageContent() {
                 </TabsTrigger>
                 <TabsTrigger value="tokens" className="px-6 py-2">
                   {t('monitoring.tabs.tokens')}
+                </TabsTrigger>
+                <TabsTrigger value="traces" className="px-6 py-2">
+                  {t('monitoring.tabs.traces')}
                 </TabsTrigger>
                 <TabsTrigger value="feedback" className="px-6 py-2">
                   {t('monitoring.tabs.feedback')}
@@ -688,6 +824,166 @@ function MonitoringPageContent() {
                 endTime={feedbackTimeRange.endTime}
                 refreshKey={feedbackRefreshKey}
               />
+            </TabsContent>
+
+            <TabsContent value="traces" className="p-6 m-0">
+              <div>
+                {loading && (
+                  <div className="py-12 flex justify-center">
+                    <LoadingSpinner text={t('common.loading')} />
+                  </div>
+                )}
+
+                {!loading && data && data.traces && data.traces.length > 0 && (
+                  <div className="space-y-4">
+                    {data.traces.map((trace) => {
+                      const details = traceDetails[trace.traceId];
+                      const spans = details?.spans || [];
+                      const spansById = new Map(
+                        spans.map((span) => [span.spanId, span]),
+                      );
+                      const maxDuration = Math.max(
+                        1,
+                        ...spans.map((span) => span.duration || 0),
+                      );
+
+                      return (
+                        <div
+                          key={trace.traceId}
+                          className="border rounded-xl overflow-hidden transition-all duration-200"
+                        >
+                          <div
+                            className="p-5 cursor-pointer hover:bg-accent transition-colors"
+                            onClick={() => toggleTraceExpand(trace.traceId)}
+                          >
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex items-start flex-1 min-w-0">
+                                <div className="mr-3 mt-0.5">
+                                  {expandedTraceId === trace.traceId ? (
+                                    <ChevronDown className="w-5 h-5 text-muted-foreground" />
+                                  ) : (
+                                    <ChevronRight className="w-5 h-5 text-muted-foreground" />
+                                  )}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                                    <span className="text-xs text-muted-foreground font-mono">
+                                      {trace.traceId}
+                                    </span>
+                                    <span
+                                      className={`text-xs px-2 py-1 rounded ${
+                                        trace.status === 'error'
+                                          ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                                          : trace.status === 'running'
+                                            ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                                            : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                                      }`}
+                                    >
+                                      {trace.status}
+                                    </span>
+                                  </div>
+                                  <div className="font-medium text-sm text-foreground mb-1">
+                                    {trace.name}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground truncate">
+                                    {trace.botName || '-'} →{' '}
+                                    {trace.pipelineName || '-'}
+                                    {trace.sessionId
+                                      ? ` · ${trace.sessionId}`
+                                      : ''}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex flex-col items-end gap-1 text-xs text-muted-foreground whitespace-nowrap">
+                                <span>{trace.startedAt.toLocaleString()}</span>
+                                <span>{trace.duration ?? 0}ms</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {expandedTraceId === trace.traceId && (
+                            <div className="border-t p-5 bg-muted">
+                              {loadingTraceDetails[trace.traceId] && (
+                                <div className="py-4 flex justify-center">
+                                  <LoadingSpinner size="sm" text="" />
+                                </div>
+                              )}
+                              {!loadingTraceDetails[trace.traceId] && (
+                                <div className="space-y-3">
+                                  {spans.length === 0 && (
+                                    <div className="text-sm text-muted-foreground">
+                                      {t('monitoring.traces.noSpans')}
+                                    </div>
+                                  )}
+                                  {spans.map((span) => {
+                                    const depth = spanDepth(span, spansById);
+                                    const width = Math.max(
+                                      6,
+                                      Math.min(
+                                        100,
+                                        ((span.duration || 0) / maxDuration) *
+                                          100,
+                                      ),
+                                    );
+                                    return (
+                                      <div
+                                        key={span.spanId}
+                                        className="grid grid-cols-[minmax(180px,1fr)_minmax(140px,2fr)_80px] gap-3 items-center text-xs"
+                                      >
+                                        <div
+                                          className="min-w-0"
+                                          style={{
+                                            paddingLeft: `${depth * 16}px`,
+                                          }}
+                                        >
+                                          <div className="font-medium text-foreground truncate">
+                                            {span.name}
+                                          </div>
+                                          <div className="text-muted-foreground truncate">
+                                            {span.kind}
+                                          </div>
+                                        </div>
+                                        <div className="h-7 bg-background rounded border overflow-hidden">
+                                          <div
+                                            className={`h-full ${
+                                              span.status === 'error'
+                                                ? 'bg-red-500/70'
+                                                : 'bg-blue-500/70'
+                                            }`}
+                                            style={{ width: `${width}%` }}
+                                          />
+                                        </div>
+                                        <div className="text-right text-muted-foreground">
+                                          {span.duration ?? 0}ms
+                                        </div>
+                                        {span.errorMessage && (
+                                          <div className="col-span-3 text-red-600 dark:text-red-400 bg-background rounded p-2">
+                                            {span.errorMessage}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {!loading &&
+                  (!data || !data.traces || data.traces.length === 0) && (
+                    <div className="flex flex-col items-center justify-center text-muted-foreground py-16 gap-2">
+                      <GitBranch className="h-[3rem] w-[3rem]" />
+                      <div className="text-sm">
+                        {t('monitoring.traces.noTraces')}
+                      </div>
+                    </div>
+                  )}
+              </div>
             </TabsContent>
 
             <TabsContent value="feedback" className="p-6 m-0">

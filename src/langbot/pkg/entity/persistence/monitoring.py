@@ -3,6 +3,49 @@ import sqlalchemy
 from .base import Base
 
 
+class MonitoringTrace(Base):
+    """End-to-end monitoring trace records"""
+
+    __tablename__ = 'monitoring_traces'
+
+    trace_id = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True)
+    started_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, index=True)
+    ended_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=True, index=True)
+    duration = sqlalchemy.Column(sqlalchemy.Integer, nullable=True)  # milliseconds
+    status = sqlalchemy.Column(sqlalchemy.String(50), nullable=False, index=True)  # running, success, error
+    name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
+    bot_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
+    bot_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
+    pipeline_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
+    pipeline_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
+    session_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
+    message_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
+    query_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
+    attributes = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+
+
+class MonitoringSpan(Base):
+    """Trace span records for pipeline, RAG, model, plugin and tool operations"""
+
+    __tablename__ = 'monitoring_spans'
+
+    span_id = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True)
+    trace_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=False, index=True)
+    parent_span_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
+    name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
+    kind = sqlalchemy.Column(sqlalchemy.String(80), nullable=False, index=True)
+    status = sqlalchemy.Column(sqlalchemy.String(50), nullable=False, index=True)
+    started_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, index=True)
+    ended_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=True)
+    duration = sqlalchemy.Column(sqlalchemy.Integer, nullable=True)  # milliseconds
+    message_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
+    session_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
+    bot_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
+    pipeline_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
+    attributes = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+    error_message = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+
+
 class MonitoringMessage(Base):
     """Monitoring message records"""
 

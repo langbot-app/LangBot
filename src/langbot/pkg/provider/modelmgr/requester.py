@@ -3,6 +3,7 @@ from __future__ import annotations
 import abc
 import typing
 import time
+import datetime
 
 from ...core import app
 from ...entity.persistence import model as persistence_model
@@ -14,6 +15,15 @@ import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
 LLM_USAGE_QUERY_VARIABLE = '_llm_usage'
 STREAM_USAGE_QUERY_VARIABLE = '_stream_usage'
+
+
+def _utc_now() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+
+def _query_session_id(query: pipeline_query.Query) -> str:
+    launcher_type = query.launcher_type.value if hasattr(query.launcher_type, 'value') else str(query.launcher_type)
+    return f'{launcher_type}_{query.launcher_id}'
 
 
 def _store_llm_usage(query: pipeline_query.Query | None, usage_info: dict | None) -> None:
@@ -59,6 +69,7 @@ class RuntimeProvider:
         """Bridge method for invoking LLM with monitoring"""
         # Start timing for monitoring
         start_time = time.time()
+        span_started_at = _utc_now()
         input_tokens = 0
         output_tokens = 0
         status = 'success'
@@ -125,6 +136,30 @@ class RuntimeProvider:
                         error_message=error_message,
                         message_id=message_id,
                     )
+                    trace_id = query.variables.get('_monitoring_trace_id') if query.variables else None
+                    parent_span_id = query.variables.get('_monitoring_root_span_id') if query.variables else None
+                    if trace_id:
+                        await self.requester.ap.monitoring_service.record_span(
+                            trace_id=trace_id,
+                            parent_span_id=parent_span_id,
+                            name=f'LLM {model.model_entity.name}',
+                            kind='model.llm',
+                            status=status,
+                            started_at=span_started_at,
+                            duration=duration_ms,
+                            message_id=message_id,
+                            session_id=_query_session_id(query),
+                            bot_id=query.bot_uuid,
+                            pipeline_id=query.pipeline_uuid,
+                            attributes={
+                                'model_name': model.model_entity.name,
+                                'input_tokens': input_tokens,
+                                'output_tokens': output_tokens,
+                                'total_tokens': input_tokens + output_tokens,
+                                'stream': False,
+                            },
+                            error_message=error_message,
+                        )
                 except Exception as monitor_err:
                     self.requester.ap.logger.error(f'[Monitoring] Failed to record LLM call: {monitor_err}')
 
@@ -140,6 +175,7 @@ class RuntimeProvider:
         """Bridge method for invoking LLM stream with monitoring"""
         # Start timing for monitoring
         start_time = time.time()
+        span_started_at = _utc_now()
         status = 'success'
         error_message = None
         input_tokens = 0
@@ -204,6 +240,30 @@ class RuntimeProvider:
                         error_message=error_message,
                         message_id=message_id,
                     )
+                    trace_id = query.variables.get('_monitoring_trace_id') if query.variables else None
+                    parent_span_id = query.variables.get('_monitoring_root_span_id') if query.variables else None
+                    if trace_id:
+                        await self.requester.ap.monitoring_service.record_span(
+                            trace_id=trace_id,
+                            parent_span_id=parent_span_id,
+                            name=f'LLM stream {model.model_entity.name}',
+                            kind='model.llm',
+                            status=status,
+                            started_at=span_started_at,
+                            duration=duration_ms,
+                            message_id=message_id,
+                            session_id=_query_session_id(query),
+                            bot_id=query.bot_uuid,
+                            pipeline_id=query.pipeline_uuid,
+                            attributes={
+                                'model_name': model.model_entity.name,
+                                'input_tokens': input_tokens,
+                                'output_tokens': output_tokens,
+                                'total_tokens': input_tokens + output_tokens,
+                                'stream': True,
+                            },
+                            error_message=error_message,
+                        )
                 except Exception as monitor_err:
                     self.requester.ap.logger.error(f'[Monitoring] Failed to record LLM stream call: {monitor_err}')
 

@@ -111,6 +111,48 @@ export interface ErrorLog {
   messageId?: string;
 }
 
+export interface MonitoringTrace {
+  traceId: string;
+  name: string;
+  startedAt: Date;
+  endedAt?: Date;
+  duration?: number;
+  status: 'running' | 'success' | 'error';
+  botId?: string;
+  botName?: string;
+  pipelineId?: string;
+  pipelineName?: string;
+  sessionId?: string;
+  messageId?: string;
+  queryId?: string;
+  attributes: Record<string, unknown>;
+}
+
+export interface MonitoringSpan {
+  spanId: string;
+  traceId: string;
+  parentSpanId?: string;
+  name: string;
+  kind: string;
+  status: 'success' | 'error' | 'running';
+  startedAt: Date;
+  endedAt?: Date;
+  duration?: number;
+  messageId?: string;
+  sessionId?: string;
+  botId?: string;
+  pipelineId?: string;
+  attributes: Record<string, unknown>;
+  errorMessage?: string;
+}
+
+export interface TraceDetails {
+  traceId: string;
+  found: boolean;
+  trace?: MonitoringTrace;
+  spans: MonitoringSpan[];
+}
+
 export interface MessageDetails {
   messageId: string;
   found: boolean;
@@ -125,6 +167,7 @@ export interface MessageDetails {
     averageDurationMs: number;
   };
   errors: ErrorLog[];
+  trace?: MonitoringTrace;
 }
 
 export interface OverviewMetrics {
@@ -203,6 +246,7 @@ export interface MonitoringData {
   modelCalls: ModelCall[];
   sessions: SessionInfo[];
   errors: ErrorLog[];
+  traces: MonitoringTrace[];
   feedback?: FeedbackRecord[];
   feedbackStats?: FeedbackStats;
   totalCount: {
@@ -211,6 +255,7 @@ export interface MonitoringData {
     embeddingCalls: number;
     sessions: number;
     errors: number;
+    traces: number;
     feedback?: number;
   };
 }

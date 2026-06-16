@@ -5,6 +5,7 @@ import {
   ModelCall,
   LLMCall,
   EmbeddingCall,
+  MonitoringTrace,
 } from '../types/monitoring';
 import { backendClient } from '@/app/infra/http';
 import { parseUTCTimestamp } from '../utils/dateUtils';
@@ -263,12 +264,48 @@ export function useMonitoringData(filterState: FilterState) {
             messageId: error.message_id,
           }),
         ),
+        traces: (response.traces || []).map(
+          (trace: {
+            trace_id: string;
+            started_at: string;
+            ended_at?: string;
+            duration?: number;
+            status: string;
+            name: string;
+            bot_id?: string;
+            bot_name?: string;
+            pipeline_id?: string;
+            pipeline_name?: string;
+            session_id?: string;
+            message_id?: string;
+            query_id?: string;
+            attributes?: Record<string, unknown>;
+          }): MonitoringTrace => ({
+            traceId: trace.trace_id,
+            name: trace.name,
+            startedAt: parseUTCTimestamp(trace.started_at),
+            endedAt: trace.ended_at
+              ? parseUTCTimestamp(trace.ended_at)
+              : undefined,
+            duration: trace.duration,
+            status: trace.status as 'running' | 'success' | 'error',
+            botId: trace.bot_id,
+            botName: trace.bot_name,
+            pipelineId: trace.pipeline_id,
+            pipelineName: trace.pipeline_name,
+            sessionId: trace.session_id,
+            messageId: trace.message_id,
+            queryId: trace.query_id,
+            attributes: trace.attributes || {},
+          }),
+        ),
         totalCount: {
           messages: response.totalCount.messages,
           llmCalls: response.totalCount.llmCalls,
           embeddingCalls: response.totalCount.embeddingCalls || 0,
           sessions: response.totalCount.sessions,
           errors: response.totalCount.errors,
+          traces: response.totalCount.traces || 0,
         },
       };
 

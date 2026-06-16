@@ -1158,6 +1158,7 @@ const zhHans = {
       embeddingCalls: 'Embedding调用',
       modelCalls: '模型调用',
       tokens: 'Token 监控',
+      traces: '链路追踪',
       feedback: '用户反馈',
       sessions: '会话分析',
       errors: '错误日志',
@@ -1261,6 +1262,11 @@ const zhHans = {
       occurredAt: '发生时间',
       noErrors: '未找到错误',
       stackTrace: '堆栈追踪',
+    },
+    traces: {
+      title: '链路追踪',
+      noTraces: '未找到链路记录',
+      noSpans: '此链路暂无 Span 记录',
     },
     feedback: {
       title: '用户反馈',

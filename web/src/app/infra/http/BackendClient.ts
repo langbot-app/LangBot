@@ -1185,12 +1185,29 @@ export class BackendClient extends BaseHttpClient {
       stack_trace?: string;
       message_id?: string;
     }>;
+    traces?: Array<{
+      trace_id: string;
+      started_at: string;
+      ended_at?: string;
+      duration?: number;
+      status: string;
+      name: string;
+      bot_id?: string;
+      bot_name?: string;
+      pipeline_id?: string;
+      pipeline_name?: string;
+      session_id?: string;
+      message_id?: string;
+      query_id?: string;
+      attributes?: Record<string, unknown>;
+    }>;
     totalCount: {
       messages: number;
       llmCalls: number;
       embeddingCalls: number;
       sessions: number;
       errors: number;
+      traces?: number;
     };
   }> {
     const queryParams = new URLSearchParams();
@@ -1211,6 +1228,90 @@ export class BackendClient extends BaseHttpClient {
     }
 
     return this.get(`/api/v1/monitoring/data?${queryParams.toString()}`);
+  }
+
+  public getMonitoringTraces(params: {
+    botId?: string[];
+    pipelineId?: string[];
+    startTime?: string;
+    endTime?: string;
+    limit?: number;
+  }): Promise<{
+    traces: Array<{
+      trace_id: string;
+      started_at: string;
+      ended_at?: string;
+      duration?: number;
+      status: string;
+      name: string;
+      bot_id?: string;
+      bot_name?: string;
+      pipeline_id?: string;
+      pipeline_name?: string;
+      session_id?: string;
+      message_id?: string;
+      query_id?: string;
+      attributes?: Record<string, unknown>;
+    }>;
+    total: number;
+  }> {
+    const queryParams = new URLSearchParams();
+    if (params.botId) {
+      params.botId.forEach((id) => queryParams.append('botId', id));
+    }
+    if (params.pipelineId) {
+      params.pipelineId.forEach((id) => queryParams.append('pipelineId', id));
+    }
+    if (params.startTime) {
+      queryParams.append('startTime', params.startTime);
+    }
+    if (params.endTime) {
+      queryParams.append('endTime', params.endTime);
+    }
+    if (params.limit) {
+      queryParams.append('limit', params.limit.toString());
+    }
+    return this.get(`/api/v1/monitoring/traces?${queryParams.toString()}`);
+  }
+
+  public getMonitoringTraceDetails(traceId: string): Promise<{
+    trace_id: string;
+    found: boolean;
+    trace: {
+      trace_id: string;
+      started_at: string;
+      ended_at?: string;
+      duration?: number;
+      status: string;
+      name: string;
+      bot_id?: string;
+      bot_name?: string;
+      pipeline_id?: string;
+      pipeline_name?: string;
+      session_id?: string;
+      message_id?: string;
+      query_id?: string;
+      attributes?: Record<string, unknown>;
+    };
+    spans: Array<{
+      span_id: string;
+      trace_id: string;
+      parent_span_id?: string;
+      name: string;
+      kind: string;
+      status: string;
+      started_at: string;
+      ended_at?: string;
+      duration?: number;
+      message_id?: string;
+      session_id?: string;
+      bot_id?: string;
+      pipeline_id?: string;
+      attributes?: Record<string, unknown>;
+      error_message?: string;
+    }>;
+  }> {
+    return this.get(`/api/v1/monitoring/traces/${traceId}`);
   }
 
   public getMonitoringOverview(params: {

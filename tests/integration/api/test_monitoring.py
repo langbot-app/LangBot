@@ -82,6 +82,15 @@ def fake_monitoring_app():
     app.monitoring_service.get_messages = AsyncMock(return_value=([{'id': 'msg-1', 'content': 'test'}], 100))
     app.monitoring_service.get_llm_calls = AsyncMock(return_value=([{'id': 'llm-1'}], 50))
     app.monitoring_service.get_embedding_calls = AsyncMock(return_value=([{'id': 'emb-1'}], 10))
+    app.monitoring_service.get_traces = AsyncMock(return_value=([{'trace_id': 'trace-1'}], 1))
+    app.monitoring_service.get_trace_details = AsyncMock(
+        return_value={
+            'found': True,
+            'trace_id': 'trace-1',
+            'trace': {'trace_id': 'trace-1'},
+            'spans': [],
+        }
+    )
     app.monitoring_service.get_sessions = AsyncMock(return_value=([{'session_id': 'sess-1'}], 20))
     app.monitoring_service.get_errors = AsyncMock(return_value=([{'id': 'err-1'}], 2))
     app.monitoring_service.get_session_analysis = AsyncMock(
@@ -222,6 +231,7 @@ class TestMonitoringAllDataEndpoint:
         assert response.status_code == 200
         data = await response.get_json()
         assert 'overview' in data['data']
+        assert 'traces' in data['data']
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
@@ -242,6 +252,15 @@ class TestMonitoringDetailsEndpoints:
         """GET /api/v1/monitoring/messages/{id}/details."""
         response = await quart_test_client.get(
             '/api/v1/monitoring/messages/msg-1/details', headers={'Authorization': 'Bearer test_token'}
+        )
+
+        assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_get_trace_details(self, quart_test_client):
+        """GET /api/v1/monitoring/traces/{id}."""
+        response = await quart_test_client.get(
+            '/api/v1/monitoring/traces/trace-1', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200

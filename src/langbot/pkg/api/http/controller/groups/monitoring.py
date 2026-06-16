@@ -313,18 +313,30 @@ class MonitoringRouterGroup(group.RouterGroup):
                 offset=0,
             )
 
+            # Get traces
+            traces, traces_total = await self.ap.monitoring_service.get_traces(
+                bot_ids=bot_ids if bot_ids else None,
+                pipeline_ids=pipeline_ids if pipeline_ids else None,
+                start_time=start_time,
+                end_time=end_time,
+                limit=limit,
+                offset=0,
+            )
+
             return self.success(
                 data={
                     'overview': overview,
                     'messages': messages,
                     'llmCalls': llm_calls,
                     'embeddingCalls': embedding_calls,
+                    'traces': traces,
                     'sessions': sessions,
                     'errors': errors,
                     'totalCount': {
                         'messages': messages_total,
                         'llmCalls': llm_calls_total,
                         'embeddingCalls': embedding_calls_total,
+                        'traces': traces_total,
                         'sessions': sessions_total,
                         'errors': errors_total,
                     },
@@ -348,6 +360,49 @@ class MonitoringRouterGroup(group.RouterGroup):
             if not details.get('found'):
                 return self.error(message=f'Message {message_id} not found', code=404)
 
+            return self.success(data=details)
+
+        @self.route('/traces', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
+        async def get_traces() -> str:
+            """Get end-to-end trace records."""
+            bot_ids = quart.request.args.getlist('botId')
+            pipeline_ids = quart.request.args.getlist('pipelineId')
+            session_ids = quart.request.args.getlist('sessionId')
+            statuses = quart.request.args.getlist('status')
+            start_time_str = quart.request.args.get('startTime')
+            end_time_str = quart.request.args.get('endTime')
+            limit = int(quart.request.args.get('limit', 100))
+            offset = int(quart.request.args.get('offset', 0))
+
+            start_time = parse_iso_datetime(start_time_str)
+            end_time = parse_iso_datetime(end_time_str)
+
+            traces, total = await self.ap.monitoring_service.get_traces(
+                bot_ids=bot_ids if bot_ids else None,
+                pipeline_ids=pipeline_ids if pipeline_ids else None,
+                session_ids=session_ids if session_ids else None,
+                statuses=statuses if statuses else None,
+                start_time=start_time,
+                end_time=end_time,
+                limit=limit,
+                offset=offset,
+            )
+
+            return self.success(
+                data={
+                    'traces': traces,
+                    'total': total,
+                    'limit': limit,
+                    'offset': offset,
+                }
+            )
+
+        @self.route('/traces/<trace_id>', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
+        async def get_trace_details(trace_id: str) -> str:
+            """Get one trace with all spans."""
+            details = await self.ap.monitoring_service.get_trace_details(trace_id)
+            if not details.get('found'):
+                return self.http_status(404, -1, f'Trace {trace_id} not found')
             return self.success(data=details)
 
         @self.route('/export', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
