@@ -2194,7 +2194,7 @@ class RuntimeConnectionHandler(handler.Handler):
             store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
 
             try:
-                items, next_cursor, has_more = await store.list_runs(
+                items, next_cursor, has_more, total_count = await store.list_runs(
                     conversation_id=conversation_id,
                     statuses=[str(status) for status in statuses] if statuses else None,
                     before_id=before_id,
@@ -2219,6 +2219,7 @@ class RuntimeConnectionHandler(handler.Handler):
                         'next_cursor': str(next_cursor) if next_cursor else None,
                         'prev_cursor': None,
                         'has_more': has_more,
+                        'total_count': total_count,
                     }
                 )
             except Exception as e:
@@ -2723,16 +2724,11 @@ class RuntimeConnectionHandler(handler.Handler):
             store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
 
             try:
-                runtimes = await store.list_runtimes(
+                runtimes, total_count = await store.list_runtimes(
                     statuses=[str(status) for status in statuses] if statuses else None,
+                    labels=labels,
                     limit=data.get('limit', 50),
                 )
-                if labels:
-                    runtimes = [
-                        runtime
-                        for runtime in runtimes
-                        if all(runtime.get('labels', {}).get(key) == value for key, value in labels.items())
-                    ]
                 if is_admin:
                     await _record_agent_runner_admin_action(
                         self.ap,
@@ -2751,6 +2747,7 @@ class RuntimeConnectionHandler(handler.Handler):
                         'next_cursor': None,
                         'prev_cursor': None,
                         'has_more': False,
+                        'total_count': total_count,
                     }
                 )
             except Exception as e:
@@ -2821,6 +2818,164 @@ class RuntimeConnectionHandler(handler.Handler):
             except Exception as e:
                 self.ap.logger.error(f'RUNTIME_RECONCILE error: {e}', exc_info=True)
                 return handler.ActionResponse.error(message=f'Runtime reconcile error: {e}')
+
+        @self.action(_plugin_runtime_action('RUN_STATS', 'run_stats'))
+        async def run_stats(data: dict[str, Any]) -> handler.ActionResponse:
+            """Get run statistics within a time window (admin-only)."""
+            run_id = data.get('run_id')
+            caller_plugin_identity = data.get('caller_plugin_identity')
+            is_admin = _has_agent_runner_admin_permission(
+                self.ap,
+                caller_plugin_identity,
+                AGENT_RUN_ADMIN_PERMISSION,
+            )
+
+            if not is_admin:
+                return handler.ActionResponse.error(message='Run stats access not authorized')
+
+            _session, error = await _validate_agent_run_session(
+                run_id,
+                caller_plugin_identity,
+                self.ap,
+                'Run stats',
+                api_capability='run_stats',
+                admin_permission=AGENT_RUN_ADMIN_PERMISSION,
+            )
+            if error:
+                return error
+
+            import time
+            end_time = data.get('end_time') or int(time.time())
+            start_time = data.get('start_time') or (end_time - 3600)  # Default: 1 hour
+            runner_id = data.get('runner_id')
+
+            from ..agent.runner.run_ledger_store import RunLedgerStore
+
+            store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
+
+            try:
+                stats = await store.get_run_stats(
+                    start_time=start_time,
+                    end_time=end_time,
+                    runner_id=runner_id,
+                )
+                await _record_agent_runner_admin_action(
+                    self.ap,
+                    store,
+                    action='run_stats',
+                    caller_plugin_identity=caller_plugin_identity,
+                    permission=AGENT_RUN_ADMIN_PERMISSION,
+                    detail={
+                        'start_time': start_time,
+                        'end_time': end_time,
+                        'runner_id': runner_id,
+                    },
+                )
+                return handler.ActionResponse.success(data=stats)
+            except Exception as e:
+                self.ap.logger.error(f'RUN_STATS error: {e}', exc_info=True)
+                return handler.ActionResponse.error(message=f'Run stats error: {e}')
+
+        @self.action(_plugin_runtime_action('RUNTIME_STATS', 'runtime_stats'))
+        async def runtime_stats(data: dict[str, Any]) -> handler.ActionResponse:
+            """Get runtime registry statistics (admin-only)."""
+            run_id = data.get('run_id')
+            caller_plugin_identity = data.get('caller_plugin_identity')
+            is_admin = _has_agent_runner_admin_permission(
+                self.ap,
+                caller_plugin_identity,
+                RUNTIME_ADMIN_PERMISSION,
+            )
+
+            if not is_admin:
+                return handler.ActionResponse.error(message='Runtime stats access not authorized')
+
+            _session, error = await _validate_agent_run_session(
+                run_id,
+                caller_plugin_identity,
+                self.ap,
+                'Runtime stats',
+                api_capability='runtime_stats',
+                admin_permission=RUNTIME_ADMIN_PERMISSION,
+            )
+            if error:
+                return error
+
+            from ..agent.runner.run_ledger_store import RunLedgerStore
+
+            store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
+
+            try:
+                stats = await store.get_runtime_stats()
+                await _record_agent_runner_admin_action(
+                    self.ap,
+                    store,
+                    action='runtime_stats',
+                    caller_plugin_identity=caller_plugin_identity,
+                    permission=RUNTIME_ADMIN_PERMISSION,
+                    detail={},
+                )
+                return handler.ActionResponse.success(data=stats)
+            except Exception as e:
+                self.ap.logger.error(f'RUNTIME_STATS error: {e}', exc_info=True)
+                return handler.ActionResponse.error(message=f'Runtime stats error: {e}')
+
+        @self.action(_plugin_runtime_action('RUNNER_STATS', 'runner_stats'))
+        async def runner_stats(data: dict[str, Any]) -> handler.ActionResponse:
+            """Get runner-aggregated statistics (admin-only)."""
+            run_id = data.get('run_id')
+            caller_plugin_identity = data.get('caller_plugin_identity')
+            is_admin = _has_agent_runner_admin_permission(
+                self.ap,
+                caller_plugin_identity,
+                AGENT_RUN_ADMIN_PERMISSION,
+            )
+
+            if not is_admin:
+                return handler.ActionResponse.error(message='Runner stats access not authorized')
+
+            _session, error = await _validate_agent_run_session(
+                run_id,
+                caller_plugin_identity,
+                self.ap,
+                'Runner stats',
+                api_capability='runner_stats',
+                admin_permission=AGENT_RUN_ADMIN_PERMISSION,
+            )
+            if error:
+                return error
+
+            import time
+            end_time = data.get('end_time') or int(time.time())
+            start_time = data.get('start_time') or (end_time - 3600)  # Default: 1 hour
+            limit = min(int(data.get('limit', 50)), 100)
+
+            from ..agent.runner.run_ledger_store import RunLedgerStore
+
+            store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
+
+            try:
+                stats = await store.get_runner_stats(
+                    start_time=start_time,
+                    end_time=end_time,
+                    limit=limit,
+                )
+                await _record_agent_runner_admin_action(
+                    self.ap,
+                    store,
+                    action='runner_stats',
+                    caller_plugin_identity=caller_plugin_identity,
+                    permission=AGENT_RUN_ADMIN_PERMISSION,
+                    detail={
+                        'start_time': start_time,
+                        'end_time': end_time,
+                        'limit': limit,
+                    },
+                )
+                return handler.ActionResponse.success(data={'items': stats, 'total_count': len(stats), 'has_more': False})
+            except Exception as e:
+                self.ap.logger.error(f'RUNNER_STATS error: {e}', exc_info=True)
+                return handler.ActionResponse.error(message=f'Runner stats error: {e}')
 
         @self.action(_plugin_runtime_action('RUN_CLAIM', 'run_claim'))
         async def run_claim(data: dict[str, Any]) -> handler.ActionResponse:

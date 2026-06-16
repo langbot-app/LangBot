@@ -466,17 +466,56 @@ class RunLedgerStore:
         self,
         *,
         statuses: list[str] | None = None,
+        labels: dict[str, str] | None = None,
         limit: int = 100,
-    ) -> list[dict[str, typing.Any]]:
-        """List runtime registry rows."""
+    ) -> tuple[list[dict[str, typing.Any]], int]:
+        """List runtime registry rows.
+
+        Args:
+            statuses: Filter by status list
+            labels: Filter by labels (key-value pairs)
+            limit: Maximum number of rows to return
+
+        Returns:
+            Tuple of (runtimes, total_count).
+        """
         limit = min(max(int(limit), 1), 500)
         async with self._session_factory() as session:
-            query = sqlalchemy.select(AgentRuntime)
+            # Build base query with status filter
+            base_query = sqlalchemy.select(AgentRuntime)
             if statuses:
-                query = query.where(AgentRuntime.status.in_(statuses))
-            query = query.order_by(AgentRuntime.id.asc()).limit(limit)
-            result = await session.execute(query)
-            return [self._runtime_to_dict(row) for row in result.scalars().all()]
+                base_query = base_query.where(AgentRuntime.status.in_(statuses))
+
+            # Get total count (before label filtering)
+            if not labels:
+                # Simple case - can count directly in DB
+                count_query = sqlalchemy.select(sqlalchemy.func.count(AgentRuntime.id))
+                if statuses:
+                    count_query = count_query.where(AgentRuntime.status.in_(statuses))
+                count_result = await session.execute(count_query)
+                total_count = count_result.scalar() or 0
+
+                # Get items
+                query = base_query.order_by(AgentRuntime.id.asc()).limit(limit)
+                result = await session.execute(query)
+                runtimes = [self._runtime_to_dict(row) for row in result.scalars().all()]
+            else:
+                # Need to fetch all and filter by labels in Python
+                query = base_query.order_by(AgentRuntime.id.asc())
+                result = await session.execute(query)
+                all_runtimes = [self._runtime_to_dict(row) for row in result.scalars().all()]
+
+                # Filter by labels
+                runtimes = [
+                    rt for rt in all_runtimes
+                    if all(rt.get('labels', {}).get(k) == v for k, v in labels.items())
+                ]
+                total_count = len(runtimes)
+
+                # Apply limit after filtering
+                runtimes = runtimes[:limit]
+
+            return runtimes, total_count
 
     async def mark_stale_runtimes(
         self,
@@ -532,10 +571,25 @@ class RunLedgerStore:
         workspace_id: str | None = None,
         thread_id: str | None = None,
         strict_thread: bool = False,
-    ) -> tuple[list[dict[str, typing.Any]], int | None, bool]:
-        """Page runs by scope."""
+    ) -> tuple[list[dict[str, typing.Any]], int | None, bool, int]:
+        """Page runs by scope.
+
+        Returns:
+            Tuple of (items, next_cursor, has_more, total_count).
+        """
         limit = min(max(int(limit), 1), 100)
         async with self._session_factory() as session:
+            # First get total count
+            count_query = sqlalchemy.select(sqlalchemy.func.count(AgentRun.id))
+            if conversation_id is not None:
+                count_query = count_query.where(AgentRun.conversation_id == conversation_id)
+            if statuses:
+                count_query = count_query.where(AgentRun.status.in_(statuses))
+            count_query = self._apply_scope_filters(count_query, bot_id, workspace_id, thread_id, strict_thread)
+            count_result = await session.execute(count_query)
+            total_count = count_result.scalar() or 0
+
+            # Then get items
             query = sqlalchemy.select(AgentRun)
             if conversation_id is not None:
                 query = query.where(AgentRun.conversation_id == conversation_id)
@@ -551,7 +605,8 @@ class RunLedgerStore:
             items = [self._run_to_dict(row) for row in rows[:limit]]
             has_more = len(rows) > limit
             next_cursor = items[-1]['id'] if items and has_more else None
-            return items, next_cursor, has_more
+
+            return items, next_cursor, has_more, total_count
 
     async def page_run_events(
         self,
@@ -689,3 +744,284 @@ class RunLedgerStore:
             'artifact_refs': _json_loads(row.artifact_refs_json, []),
             'metadata': _json_loads(row.metadata_json, {}),
         }
+
+    async def get_run_stats(
+        self,
+        *,
+        start_time: int,
+        end_time: int,
+        runner_id: str | None = None,
+    ) -> dict[str, typing.Any]:
+        """Get run statistics within a time window.
+
+        Args:
+            start_time: Unix timestamp for start of window
+            end_time: Unix timestamp for end of window
+            runner_id: Optional filter by runner
+
+        Returns:
+            Dict with status counts, rates, and duration stats.
+        """
+        from sqlalchemy import func
+
+        start_dt = _epoch_to_datetime(start_time)
+        end_dt = _epoch_to_datetime(end_time)
+
+        async with self._session_factory() as session:
+            # Base filter for time window
+            base_filter = [
+                AgentRun.created_at >= start_dt,
+                AgentRun.created_at <= end_dt,
+            ]
+            if runner_id:
+                base_filter.append(AgentRun.runner_id == runner_id)
+
+            # Count by status
+            status_query = (
+                sqlalchemy.select(
+                    AgentRun.status,
+                    func.count(AgentRun.id).label('count')
+                )
+                .where(*base_filter)
+                .group_by(AgentRun.status)
+            )
+            status_result = await session.execute(status_query)
+            status_counts = {row.status: row.count for row in status_result}
+
+            total_count = sum(status_counts.values())
+            completed_count = status_counts.get('completed', 0)
+            failed_count = status_counts.get('failed', 0) + status_counts.get('timeout', 0)
+
+            # Calculate rates
+            window_hours = max((end_time - start_time) / 3600, 0.001)
+            throughput = total_count / window_hours if total_count > 0 else 0
+            success_rate = completed_count / total_count if total_count > 0 else None
+            failure_rate = failed_count / total_count if total_count > 0 else None
+
+            # Duration stats for completed runs - compute in Python for DB compatibility
+            avg_duration_seconds = None
+            avg_queue_wait_seconds = None
+
+            # Fetch completed runs with timing data
+            timing_query = (
+                sqlalchemy.select(
+                    AgentRun.started_at,
+                    AgentRun.finished_at,
+                    AgentRun.created_at,
+                )
+                .where(
+                    AgentRun.status == 'completed',
+                    AgentRun.started_at.is_not(None),
+                    AgentRun.finished_at.is_not(None),
+                    *base_filter
+                )
+            )
+            timing_result = await session.execute(timing_query)
+            timing_rows = timing_result.all()
+
+            if timing_rows:
+                durations = []
+                for row in timing_rows:
+                    if row.finished_at and row.started_at:
+                        delta = row.finished_at - row.started_at
+                        durations.append(delta.total_seconds())
+                if durations:
+                    avg_duration_seconds = round(sum(durations) / len(durations), 2)
+
+            # Queue wait time - compute in Python
+            queue_query = (
+                sqlalchemy.select(
+                    AgentRun.created_at,
+                    AgentRun.started_at,
+                )
+                .where(
+                    AgentRun.started_at.is_not(None),
+                    *base_filter
+                )
+            )
+            queue_result = await session.execute(queue_query)
+            queue_rows = queue_result.all()
+
+            if queue_rows:
+                waits = []
+                for row in queue_rows:
+                    if row.started_at and row.created_at:
+                        delta = row.started_at - row.created_at
+                        wait_seconds = delta.total_seconds()
+                        if wait_seconds >= 0:  # Only count positive waits
+                            waits.append(wait_seconds)
+                if waits:
+                    avg_queue_wait_seconds = round(sum(waits) / len(waits), 2)
+
+            return {
+                'start_time': start_time,
+                'end_time': end_time,
+                'total_count': total_count,
+                'created_count': status_counts.get('created', 0),
+                'queued_count': status_counts.get('queued', 0),
+                'claimed_count': status_counts.get('claimed', 0),
+                'running_count': status_counts.get('running', 0),
+                'completed_count': completed_count,
+                'failed_count': status_counts.get('failed', 0),
+                'cancelled_count': status_counts.get('cancelled', 0),
+                'timeout_count': status_counts.get('timeout', 0),
+                'throughput_per_hour': round(throughput, 2),
+                'success_rate': round(success_rate, 4) if success_rate is not None else None,
+                'failure_rate': round(failure_rate, 4) if failure_rate is not None else None,
+                'avg_duration_seconds': avg_duration_seconds,
+                'p50_duration_seconds': None,  # Requires more complex calculation
+                'p95_duration_seconds': None,
+                'p99_duration_seconds': None,
+                'avg_queue_wait_seconds': avg_queue_wait_seconds,
+            }
+
+    async def get_runtime_stats(self) -> dict[str, typing.Any]:
+        """Get runtime registry statistics.
+
+        Returns:
+            Dict with counts, heartbeat health, and capacity.
+        """
+        import time
+        from sqlalchemy import func
+
+        now = _utc_now()
+
+        async with self._session_factory() as session:
+            # Count by status
+            status_query = (
+                sqlalchemy.select(
+                    AgentRuntime.status,
+                    func.count(AgentRuntime.id).label('count')
+                )
+                .group_by(AgentRuntime.status)
+            )
+            status_result = await session.execute(status_query)
+            status_counts = {row.status: row.count for row in status_result}
+
+            total_count = sum(status_counts.values())
+            online_count = status_counts.get('online', 0)
+            stale_count = status_counts.get('stale', 0)
+
+            # Heartbeat age stats - compute in Python for DB compatibility
+            avg_heartbeat_age = None
+            max_heartbeat_age = None
+
+            heartbeat_query = (
+                sqlalchemy.select(AgentRuntime.last_heartbeat_at)
+                .where(AgentRuntime.last_heartbeat_at.is_not(None))
+            )
+            heartbeat_result = await session.execute(heartbeat_query)
+            heartbeat_rows = heartbeat_result.all()
+
+            if heartbeat_rows:
+                ages = []
+                for row in heartbeat_rows:
+                    if row.last_heartbeat_at:
+                        delta = now - row.last_heartbeat_at
+                        age_seconds = delta.total_seconds()
+                        if age_seconds >= 0:
+                            ages.append(age_seconds)
+                if ages:
+                    avg_heartbeat_age = round(sum(ages) / len(ages), 2)
+                    max_heartbeat_age = round(max(ages), 2)
+
+            # Count active runs (claimed by runtimes)
+            active_runs_query = (
+                sqlalchemy.select(func.count(AgentRun.id))
+                .where(AgentRun.status.in_(['running', 'claimed']))
+            )
+            active_runs_result = await session.execute(active_runs_query)
+            active_runs = active_runs_result.scalar() or 0
+
+            return {
+                'total_count': total_count,
+                'online_count': online_count,
+                'stale_count': stale_count,
+                'avg_heartbeat_age_seconds': avg_heartbeat_age,
+                'max_heartbeat_age_seconds': max_heartbeat_age,
+                'active_runs': active_runs,
+                'claimed_runs': active_runs,  # Same as active_runs for now
+            }
+
+    async def get_runner_stats(
+        self,
+        *,
+        start_time: int,
+        end_time: int,
+        limit: int = 50,
+    ) -> list[dict[str, typing.Any]]:
+        """Get runner-aggregated statistics.
+
+        Args:
+            start_time: Unix timestamp for start of window
+            end_time: Unix timestamp for end of window
+            limit: Maximum number of runners to return
+
+        Returns:
+            List of dicts with per-runner statistics.
+        """
+        from sqlalchemy import func
+
+        start_dt = _epoch_to_datetime(start_time)
+        end_dt = _epoch_to_datetime(end_time)
+        limit = min(max(limit, 1), 100)
+
+        async with self._session_factory() as session:
+            # Aggregate runs by runner_id
+            query = (
+                sqlalchemy.select(
+                    AgentRun.runner_id,
+                    func.count(AgentRun.id).label('total'),
+                    func.sum(
+                        sqlalchemy.case(
+                            (AgentRun.status.in_(['queued', 'claimed', 'running']), 1),
+                            else_=0
+                        )
+                    ).label('active'),
+                    func.sum(
+                        sqlalchemy.case(
+                            (AgentRun.status == 'completed', 1),
+                            else_=0
+                        )
+                    ).label('completed'),
+                    func.sum(
+                        sqlalchemy.case(
+                            (AgentRun.status.in_(['failed', 'timeout']), 1),
+                            else_=0
+                        )
+                    ).label('failed'),
+                )
+                .where(
+                    AgentRun.created_at >= start_dt,
+                    AgentRun.created_at <= end_dt,
+                    AgentRun.runner_id.is_not(None),
+                )
+                .group_by(AgentRun.runner_id)
+                .order_by(func.count(AgentRun.id).desc())
+                .limit(limit)
+            )
+
+            result = await session.execute(query)
+            rows = result.all()
+
+            stats = []
+            for row in rows:
+                runner_id = row.runner_id or 'unknown'
+                total = row.total or 0
+                completed = row.completed or 0
+                failed = row.failed or 0
+                success_rate = completed / total if total > 0 else None
+
+                stats.append({
+                    'runner_id': runner_id,
+                    'runner_label': None,  # Would need to join with runner descriptors
+                    'plugin_identity': None,
+                    'total_runs': total,
+                    'active_runs': row.active or 0,
+                    'completed_runs': completed,
+                    'failed_runs': failed,
+                    'success_rate': round(success_rate, 4) if success_rate else None,
+                    'avg_duration_seconds': None,  # Would need more complex query
+                })
+
+            return stats

@@ -233,8 +233,9 @@ async def test_runtime_register_heartbeat_list_and_mark_stale(store):
     assert heartbeat is not None
     assert heartbeat['metadata'] == {'slot_count': 2, 'active_runs': 1}
 
-    runtimes = await store.list_runtimes(statuses=['online'])
+    runtimes, total_count = await store.list_runtimes(statuses=['online'])
     assert [runtime['runtime_id'] for runtime in runtimes] == ['runtime-a']
+    assert total_count == 1
 
     stale = await store.mark_stale_runtimes(
         now=datetime.datetime.now(UTC) + datetime.timedelta(seconds=31),
