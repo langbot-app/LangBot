@@ -47,12 +47,14 @@ class TestInitializePluginSettings:
             Mock(),
         ]
 
-        response = await runtime_handler.actions[RuntimeToLangBotAction.INITIALIZE_PLUGIN_SETTINGS.value]({
-            'plugin_author': 'test-author',
-            'plugin_name': 'test-plugin',
-            'install_source': 'local',
-            'install_info': {'path': '/test'},
-        })
+        response = await runtime_handler.actions[RuntimeToLangBotAction.INITIALIZE_PLUGIN_SETTINGS.value](
+            {
+                'plugin_author': 'test-author',
+                'plugin_name': 'test-plugin',
+                'install_source': 'local',
+                'install_info': {'path': '/test'},
+            }
+        )
 
         assert response.code == 0
         assert app.persistence_mgr.execute_async.await_count == 2
@@ -82,12 +84,14 @@ class TestInitializePluginSettings:
             Mock(),
         ]
 
-        response = await runtime_handler.actions[RuntimeToLangBotAction.INITIALIZE_PLUGIN_SETTINGS.value]({
-            'plugin_author': 'test-author',
-            'plugin_name': 'test-plugin',
-            'install_source': 'github',
-            'install_info': {'repo': 'author/name'},
-        })
+        response = await runtime_handler.actions[RuntimeToLangBotAction.INITIALIZE_PLUGIN_SETTINGS.value](
+            {
+                'plugin_author': 'test-author',
+                'plugin_name': 'test-plugin',
+                'install_source': 'github',
+                'install_info': {'repo': 'author/name'},
+            }
+        )
 
         assert response.code == 0
         assert app.persistence_mgr.execute_async.await_count == 3
@@ -161,9 +165,7 @@ class TestSetBinaryStorage:
         runtime_handler = make_handler(app)
         app.persistence_mgr.execute_async.return_value = make_result(SimpleNamespace(value=b'old'))
 
-        response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](
-            self.payload(b'new')
-        )
+        response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](self.payload(b'new'))
 
         assert response.code == 0
         assert app.persistence_mgr.execute_async.await_count == 2
@@ -203,9 +205,7 @@ class TestSetBinaryStorage:
         runtime_handler = make_handler(app)
         app.instance_config.data['plugin']['binary_storage']['max_value_bytes'] = 0
 
-        response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](
-            self.payload(b'x')
-        )
+        response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](self.payload(b'x'))
 
         assert response.code != 0
         assert '1 > 0 bytes' in response.message
@@ -228,10 +228,12 @@ class TestGetPluginSettings:
         runtime_handler = make_handler(app)
         app.persistence_mgr.execute_async.return_value = make_result()
 
-        response = await runtime_handler.actions[RuntimeToLangBotAction.GET_PLUGIN_SETTINGS.value]({
-            'plugin_author': 'test-author',
-            'plugin_name': 'test-plugin',
-        })
+        response = await runtime_handler.actions[RuntimeToLangBotAction.GET_PLUGIN_SETTINGS.value](
+            {
+                'plugin_author': 'test-author',
+                'plugin_name': 'test-plugin',
+            }
+        )
 
         assert response.code == 0
         assert response.data == {
@@ -255,10 +257,12 @@ class TestGetPluginSettings:
         )
         app.persistence_mgr.execute_async.return_value = make_result(setting)
 
-        response = await runtime_handler.actions[RuntimeToLangBotAction.GET_PLUGIN_SETTINGS.value]({
-            'plugin_author': 'test-author',
-            'plugin_name': 'test-plugin',
-        })
+        response = await runtime_handler.actions[RuntimeToLangBotAction.GET_PLUGIN_SETTINGS.value](
+            {
+                'plugin_author': 'test-author',
+                'plugin_name': 'test-plugin',
+            }
+        )
 
         assert response.code == 0
         assert response.data == {
@@ -286,11 +290,13 @@ class TestGetBinaryStorage:
         runtime_handler = make_handler(app)
         app.persistence_mgr.execute_async.return_value = make_result(SimpleNamespace(value=b'test binary content'))
 
-        response = await runtime_handler.actions[RuntimeToLangBotAction.GET_BINARY_STORAGE.value]({
-            'key': 'test-key',
-            'owner_type': 'plugin',
-            'owner': 'test-owner',
-        })
+        response = await runtime_handler.actions[RuntimeToLangBotAction.GET_BINARY_STORAGE.value](
+            {
+                'key': 'test-key',
+                'owner_type': 'plugin',
+                'owner': 'test-owner',
+            }
+        )
 
         assert response.code == 0
         assert response.data == {
@@ -303,11 +309,13 @@ class TestGetBinaryStorage:
         runtime_handler = make_handler(app)
         app.persistence_mgr.execute_async.return_value = make_result()
 
-        response = await runtime_handler.actions[RuntimeToLangBotAction.GET_BINARY_STORAGE.value]({
-            'key': 'test-key',
-            'owner_type': 'plugin',
-            'owner': 'test-owner',
-        })
+        response = await runtime_handler.actions[RuntimeToLangBotAction.GET_BINARY_STORAGE.value](
+            {
+                'key': 'test-key',
+                'owner_type': 'plugin',
+                'owner': 'test-owner',
+            }
+        )
 
         assert response.code != 0
         assert 'Storage with key test-key not found' in response.message
@@ -329,9 +337,11 @@ class TestHandlerQueryLookup:
         """Query-bound actions return error when query_id is not cached."""
         runtime_handler = make_handler(app)
 
-        response = await runtime_handler.actions[PluginToRuntimeAction.GET_BOT_UUID.value]({
-            'query_id': 'nonexistent-query',
-        })
+        response = await runtime_handler.actions[PluginToRuntimeAction.GET_BOT_UUID.value](
+            {
+                'query_id': 'nonexistent-query',
+            }
+        )
 
         assert response.code != 0
         assert 'nonexistent-query' in response.message
@@ -343,9 +353,11 @@ class TestHandlerQueryLookup:
         query = SimpleNamespace(variables={}, bot_uuid='test-bot-uuid')
         app.query_pool.cached_queries['existing-query'] = query
 
-        response = await runtime_handler.actions[PluginToRuntimeAction.GET_BOT_UUID.value]({
-            'query_id': 'existing-query',
-        })
+        response = await runtime_handler.actions[PluginToRuntimeAction.GET_BOT_UUID.value](
+            {
+                'query_id': 'existing-query',
+            }
+        )
 
         assert response.code == 0
         assert response.data == {'bot_uuid': 'test-bot-uuid'}

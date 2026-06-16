@@ -635,7 +635,9 @@ async def test_model_manager_reload_provider_not_found(fake_requester_registry):
 
 
 @pytest.mark.asyncio
-async def test_model_manager_load_llm_model_with_provider(fake_requester_registry, fake_persistence_data, runtime_provider):
+async def test_model_manager_load_llm_model_with_provider(
+    fake_requester_registry, fake_persistence_data, runtime_provider
+):
     """Test ModelManager.load_llm_model_with_provider creates RuntimeLLMModel."""
     model_mgr = fake_requester_registry
 
@@ -648,7 +650,9 @@ async def test_model_manager_load_llm_model_with_provider(fake_requester_registr
 
 
 @pytest.mark.asyncio
-async def test_model_manager_load_llm_model_with_provider_from_row(fake_requester_registry, fake_persistence_data, runtime_provider):
+async def test_model_manager_load_llm_model_with_provider_from_row(
+    fake_requester_registry, fake_persistence_data, runtime_provider
+):
     """Test ModelManager.load_llm_model_with_provider handles Row objects."""
     model_mgr = fake_requester_registry
 
@@ -661,7 +665,9 @@ async def test_model_manager_load_llm_model_with_provider_from_row(fake_requeste
 
 
 @pytest.mark.asyncio
-async def test_model_manager_load_embedding_model_with_provider(fake_requester_registry, fake_persistence_data, runtime_provider):
+async def test_model_manager_load_embedding_model_with_provider(
+    fake_requester_registry, fake_persistence_data, runtime_provider
+):
     """Test ModelManager.load_embedding_model_with_provider creates RuntimeEmbeddingModel."""
     model_mgr = fake_requester_registry
 

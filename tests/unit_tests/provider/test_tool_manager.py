@@ -136,6 +136,7 @@ class TestToolManagerSchemaGeneration:
             assert 'description' in func
             assert 'parameters' in func
 
+
 class TestToolManagerExecuteFuncCall:
     """Tests for execute_func_call method."""
 

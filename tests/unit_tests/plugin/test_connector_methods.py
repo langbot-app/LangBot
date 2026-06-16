@@ -6,6 +6,7 @@ Tests cover:
 - RAG methods (ingest, retrieve, schema)
 - Disabled plugin early returns
 """
+
 from __future__ import annotations
 
 import pytest
@@ -86,16 +87,12 @@ class TestListPlugins:
             return_value=[
                 {
                     'manifest': {'manifest': {'metadata': {'author': 'a', 'name': 'p1'}}},
-                    'components': [
-                        {'manifest': {'manifest': {'kind': 'Command'}}}
-                    ],
+                    'components': [{'manifest': {'manifest': {'kind': 'Command'}}}],
                     'debug': False,
                 },
                 {
                     'manifest': {'manifest': {'metadata': {'author': 'b', 'name': 'p2'}}},
-                    'components': [
-                        {'manifest': {'manifest': {'kind': 'Tool'}}}
-                    ],
+                    'components': [{'manifest': {'manifest': {'kind': 'Tool'}}}],
                     'debug': False,
                 },
             ]
@@ -127,9 +124,7 @@ class TestListPlugins:
                 },
             ]
         )
-        connector.ap.persistence_mgr.execute_async = AsyncMock(
-            return_value=Mock(__iter__=lambda self: iter([]))
-        )
+        connector.ap.persistence_mgr.execute_async = AsyncMock(return_value=Mock(__iter__=lambda self: iter([])))
 
         result = await connector.list_plugins()
 
@@ -230,7 +225,8 @@ class TestCallParser:
         )
 
         connector.handler.parse_document.assert_called_once_with(
-            'author', 'parser',
+            'author',
+            'parser',
             {'mime_type': 'text/plain', 'filename': 'test.txt'},
             b'file content',
         )
@@ -251,9 +247,7 @@ class TestRAGMethods:
 
         result = await connector.call_rag_ingest('author/engine', {'file': 'test.pdf'})
 
-        connector.handler.rag_ingest_document.assert_called_once_with(
-            'author', 'engine', {'file': 'test.pdf'}
-        )
+        connector.handler.rag_ingest_document.assert_called_once_with('author', 'engine', {'file': 'test.pdf'})
         assert result['status'] == 'success'
 
     @pytest.mark.asyncio
@@ -264,14 +258,16 @@ class TestRAGMethods:
 
         connector.handler = AsyncMock()
         connector.handler.retrieve_knowledge = AsyncMock(
-            return_value={'results': [{'id': 'doc1', 'content': [{'type': 'text', 'text': 'test'}], 'metadata': {}, 'distance': 0.1}]}
+            return_value={
+                'results': [
+                    {'id': 'doc1', 'content': [{'type': 'text', 'text': 'test'}], 'metadata': {}, 'distance': 0.1}
+                ]
+            }
         )
 
         result = await connector.call_rag_retrieve('author/engine', {'query': 'test'})
 
-        connector.handler.retrieve_knowledge.assert_called_once_with(
-            'author', 'engine', '', {'query': 'test'}
-        )
+        connector.handler.retrieve_knowledge.assert_called_once_with('author', 'engine', '', {'query': 'test'})
         assert result == {
             'results': [
                 {
@@ -290,9 +286,7 @@ class TestRAGMethods:
         connector = create_mock_connector()
 
         connector.handler = AsyncMock()
-        connector.handler.get_rag_creation_schema = AsyncMock(
-            return_value={'properties': {'name': {'type': 'string'}}}
-        )
+        connector.handler.get_rag_creation_schema = AsyncMock(return_value={'properties': {'name': {'type': 'string'}}})
 
         result = await connector.get_rag_creation_schema('author/engine')
 
@@ -326,9 +320,7 @@ class TestRAGMethods:
 
         await connector.rag_on_kb_create('author/engine', 'kb-uuid', {'model': 'test'})
 
-        connector.handler.rag_on_kb_create.assert_called_once_with(
-            'author', 'engine', 'kb-uuid', {'model': 'test'}
-        )
+        connector.handler.rag_on_kb_create.assert_called_once_with('author', 'engine', 'kb-uuid', {'model': 'test'})
 
     @pytest.mark.asyncio
     async def test_rag_on_kb_delete(self):
@@ -354,9 +346,7 @@ class TestRAGMethods:
 
         result = await connector.call_rag_delete_document('author/engine', 'doc-uuid', 'kb-uuid')
 
-        connector.handler.rag_delete_document.assert_called_once_with(
-            'author', 'engine', 'doc-uuid', 'kb-uuid'
-        )
+        connector.handler.rag_delete_document.assert_called_once_with('author', 'engine', 'doc-uuid', 'kb-uuid')
         assert result is True
 
 
@@ -446,9 +436,7 @@ class TestGetPluginInfo:
         connector = create_mock_connector()
 
         connector.handler = AsyncMock()
-        connector.handler.get_plugin_info = AsyncMock(
-            return_value={'manifest': {'metadata': {'name': 'plugin'}}}
-        )
+        connector.handler.get_plugin_info = AsyncMock(return_value={'manifest': {'metadata': {'name': 'plugin'}}})
 
         result = await connector.get_plugin_info('author', 'plugin')
 
@@ -470,9 +458,7 @@ class TestSetPluginConfig:
 
         await connector.set_plugin_config('author', 'plugin', {'setting': 'value'})
 
-        connector.handler.set_plugin_config.assert_called_once_with(
-            'author', 'plugin', {'setting': 'value'}
-        )
+        connector.handler.set_plugin_config.assert_called_once_with('author', 'plugin', {'setting': 'value'})
 
 
 class TestPingPluginRuntime:

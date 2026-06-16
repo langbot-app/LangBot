@@ -78,7 +78,7 @@ class TestPreProcessorNormalText:
         app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
 
         stage = preproc.PreProcessor(app)
-        query = text_query("hello world")
+        query = text_query('hello world')
 
         result = await stage.process(query, 'PreProcessor')
 
@@ -113,7 +113,7 @@ class TestPreProcessorNormalText:
         app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
 
         stage = preproc.PreProcessor(app)
-        query = text_query("test message")
+        query = text_query('test message')
 
         result = await stage.process(query, 'PreProcessor')
 
@@ -194,13 +194,16 @@ class TestPreProcessorImageSegment:
 
         stage = preproc.PreProcessor(app)
         # Image query with base64
-        query = image_query(text="look at this", url=None)
+        query = image_query(text='look at this', url=None)
         # Set base64 on the image component
         import langbot_plugin.api.entities.builtin.platform.message as platform_message
-        chain = platform_message.MessageChain([
-            platform_message.Plain(text="look at this"),
-            platform_message.Image(base64="data:image/png;base64,abc123"),
-        ])
+
+        chain = platform_message.MessageChain(
+            [
+                platform_message.Plain(text='look at this'),
+                platform_message.Image(base64='data:image/png;base64,abc123'),
+            ]
+        )
         query.message_chain = chain
 
         result = await stage.process(query, 'PreProcessor')
@@ -238,7 +241,7 @@ class TestPreProcessorImageSegment:
         app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
 
         stage = preproc.PreProcessor(app)
-        query = image_query(text="describe this")
+        query = image_query(text='describe this')
 
         result = await stage.process(query, 'PreProcessor')
 
@@ -276,7 +279,7 @@ class TestPreProcessorModelSelection:
         app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
 
         stage = preproc.PreProcessor(app)
-        query = text_query("hello")
+        query = text_query('hello')
 
         # Set pipeline config with primary model
         query.pipeline_config = {
@@ -335,7 +338,7 @@ class TestPreProcessorModelSelection:
         app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
 
         stage = preproc.PreProcessor(app)
-        query = text_query("hello")
+        query = text_query('hello')
 
         query.pipeline_config = {
             'ai': {
@@ -384,7 +387,7 @@ class TestPreProcessorVariables:
         app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
 
         stage = preproc.PreProcessor(app)
-        query = text_query("hello", sender_id=67890)
+        query = text_query('hello', sender_id=67890)
 
         result = await stage.process(query, 'PreProcessor')
 
@@ -421,7 +424,7 @@ class TestPreProcessorVariables:
         app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
 
         stage = preproc.PreProcessor(app)
-        query = group_text_query("hello", group_id=99999)
+        query = group_text_query('hello', group_id=99999)
 
         result = await stage.process(query, 'PreProcessor')
 

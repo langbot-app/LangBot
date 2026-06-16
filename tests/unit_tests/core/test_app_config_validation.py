@@ -4,6 +4,7 @@ Tests cover:
 - _get_positive_int_config() validation
 - _get_positive_float_config() validation
 """
+
 from __future__ import annotations
 
 from unittest.mock import Mock

@@ -40,11 +40,13 @@ class TestHandlerQueryVariables:
         """Test set_query_var returns error when query not found."""
         runtime_handler = make_handler(mock_app)
 
-        response = await runtime_handler.actions[PluginToRuntimeAction.SET_QUERY_VAR.value]({
-            'query_id': 'nonexistent-query',
-            'key': 'test_var',
-            'value': 'test_value',
-        })
+        response = await runtime_handler.actions[PluginToRuntimeAction.SET_QUERY_VAR.value](
+            {
+                'query_id': 'nonexistent-query',
+                'key': 'test_var',
+                'value': 'test_value',
+            }
+        )
 
         assert response.code != 0
         assert 'nonexistent-query' in response.message
@@ -58,11 +60,13 @@ class TestHandlerQueryVariables:
 
         mock_app.query_pool.cached_queries['test-query'] = mock_query
 
-        response = await runtime_handler.actions[PluginToRuntimeAction.SET_QUERY_VAR.value]({
-            'query_id': 'test-query',
-            'key': 'test_var',
-            'value': 'test_value',
-        })
+        response = await runtime_handler.actions[PluginToRuntimeAction.SET_QUERY_VAR.value](
+            {
+                'query_id': 'test-query',
+                'key': 'test_var',
+                'value': 'test_value',
+            }
+        )
 
         assert response.code == 0
         assert mock_query.variables['test_var'] == 'test_value'
@@ -76,10 +80,12 @@ class TestHandlerQueryVariables:
 
         mock_app.query_pool.cached_queries['test-query'] = mock_query
 
-        response = await runtime_handler.actions[PluginToRuntimeAction.GET_QUERY_VAR.value]({
-            'query_id': 'test-query',
-            'key': 'existing_var',
-        })
+        response = await runtime_handler.actions[PluginToRuntimeAction.GET_QUERY_VAR.value](
+            {
+                'query_id': 'test-query',
+                'key': 'existing_var',
+            }
+        )
 
         assert response.code == 0
         assert response.data == {'value': 'existing_value'}
@@ -93,9 +99,11 @@ class TestHandlerQueryVariables:
 
         mock_app.query_pool.cached_queries['test-query'] = mock_query
 
-        response = await runtime_handler.actions[PluginToRuntimeAction.GET_QUERY_VARS.value]({
-            'query_id': 'test-query',
-        })
+        response = await runtime_handler.actions[PluginToRuntimeAction.GET_QUERY_VARS.value](
+            {
+                'query_id': 'test-query',
+            }
+        )
 
         assert response.code == 0
         assert response.data == {'vars': mock_query.variables}
@@ -108,7 +116,7 @@ class TestHandlerRagErrorResponse:
         """Test basic error response creation."""
         from langbot.pkg.plugin.handler import _make_rag_error_response
 
-        error = Exception("test error")
+        error = Exception('test error')
         response = _make_rag_error_response(error, 'TestError')
 
         # ActionResponse is a pydantic model, check message field
@@ -120,13 +128,8 @@ class TestHandlerRagErrorResponse:
         """Test error response with extra context."""
         from langbot.pkg.plugin.handler import _make_rag_error_response
 
-        error = ValueError("invalid input")
-        response = _make_rag_error_response(
-            error,
-            'ValidationError',
-            field='name',
-            value='test'
-        )
+        error = ValueError('invalid input')
+        response = _make_rag_error_response(error, 'ValidationError', field='name', value='test')
 
         assert 'ValidationError' in response.message
         assert 'field=name' in response.message
@@ -137,7 +140,7 @@ class TestHandlerRagErrorResponse:
         """Test error response includes exception type."""
         from langbot.pkg.plugin.handler import _make_rag_error_response
 
-        error = RuntimeError("connection failed")
+        error = RuntimeError('connection failed')
         response = _make_rag_error_response(error, 'ConnectionError')
 
         assert 'RuntimeError' in response.message
@@ -148,7 +151,7 @@ class TestHandlerRagErrorResponse:
         """Test error response with no extra context."""
         from langbot.pkg.plugin.handler import _make_rag_error_response
 
-        error = KeyError("missing_key")
+        error = KeyError('missing_key')
         response = _make_rag_error_response(error, 'LookupError')
 
         # No context parts means no brackets

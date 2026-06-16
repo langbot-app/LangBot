@@ -46,7 +46,7 @@ class TestFixedWindowAlgo:
             'safety': {
                 'rate-limit': {
                     'window-length': 60,  # 60 seconds window
-                    'limitation': 10,     # 10 requests per window
+                    'limitation': 10,  # 10 requests per window
                     'strategy': 'drop',
                 }
             }
@@ -75,11 +75,9 @@ class TestFixedWindowAlgo:
         # Make requests within limit
         for i in range(10):
             result = await algo.require_access(
-                sample_query_with_rate_limit,
-                provider_session.LauncherTypes.PERSON,
-                '12345'
+                sample_query_with_rate_limit, provider_session.LauncherTypes.PERSON, '12345'
             )
-            assert result is True, f"Request {i+1} should be allowed"
+            assert result is True, f'Request {i + 1} should be allowed'
 
     @pytest.mark.asyncio
     async def test_fixedwin_exceeds_limit_drop_strategy(self, mock_app_for_algo, sample_query_with_rate_limit):
@@ -91,20 +89,12 @@ class TestFixedWindowAlgo:
 
         # Exhaust the limit
         for i in range(10):
-            await algo.require_access(
-                sample_query_with_rate_limit,
-                provider_session.LauncherTypes.PERSON,
-                '12345'
-            )
+            await algo.require_access(sample_query_with_rate_limit, provider_session.LauncherTypes.PERSON, '12345')
 
         # Next request should be denied
-        result = await algo.require_access(
-            sample_query_with_rate_limit,
-            provider_session.LauncherTypes.PERSON,
-            '12345'
-        )
+        result = await algo.require_access(sample_query_with_rate_limit, provider_session.LauncherTypes.PERSON, '12345')
 
-        assert result is False, "Request exceeding limit should be denied"
+        assert result is False, 'Request exceeding limit should be denied'
 
     @pytest.mark.asyncio
     async def test_fixedwin_different_sessions_isolated(self, mock_app_for_algo, sample_query_with_rate_limit):
@@ -116,20 +106,14 @@ class TestFixedWindowAlgo:
 
         # Exhaust limit for session 1
         for i in range(10):
-            await algo.require_access(
-                sample_query_with_rate_limit,
-                provider_session.LauncherTypes.PERSON,
-                'session1'
-            )
+            await algo.require_access(sample_query_with_rate_limit, provider_session.LauncherTypes.PERSON, 'session1')
 
         # Session 2 should still have its own limit
         result = await algo.require_access(
-            sample_query_with_rate_limit,
-            provider_session.LauncherTypes.PERSON,
-            'session2'
+            sample_query_with_rate_limit, provider_session.LauncherTypes.PERSON, 'session2'
         )
 
-        assert result is True, "Different session should have independent limit"
+        assert result is True, 'Different session should have independent limit'
 
     @pytest.mark.asyncio
     async def test_fixedwin_limit_one_request(self, mock_app_for_algo, sample_query):
@@ -150,19 +134,11 @@ class TestFixedWindowAlgo:
         await algo.initialize()
 
         # First request allowed
-        result1 = await algo.require_access(
-            sample_query,
-            provider_session.LauncherTypes.PERSON,
-            '12345'
-        )
+        result1 = await algo.require_access(sample_query, provider_session.LauncherTypes.PERSON, '12345')
         assert result1 is True
 
         # Second request denied
-        result2 = await algo.require_access(
-            sample_query,
-            provider_session.LauncherTypes.PERSON,
-            '12345'
-        )
+        result2 = await algo.require_access(sample_query, provider_session.LauncherTypes.PERSON, '12345')
         assert result2 is False
 
     @pytest.mark.asyncio
@@ -174,11 +150,7 @@ class TestFixedWindowAlgo:
         await algo.initialize()
 
         # First request creates container
-        await algo.require_access(
-            sample_query_with_rate_limit,
-            provider_session.LauncherTypes.PERSON,
-            '12345'
-        )
+        await algo.require_access(sample_query_with_rate_limit, provider_session.LauncherTypes.PERSON, '12345')
 
         # Key format: 'LauncherTypes.PERSON_12345' (enum string representation)
         expected_key = 'LauncherTypes.PERSON_12345'
@@ -230,7 +202,7 @@ class TestFixedWindowAlgo:
 
         # New request should be allowed (new window)
         result = await algo.require_access(sample_query, provider_session.LauncherTypes.PERSON, 'test')
-        assert result is True, "New window should allow new requests"
+        assert result is True, 'New window should allow new requests'
 
     @pytest.mark.asyncio
     async def test_fixedwin_wait_strategy_blocks_until_next_window(self, mock_app_for_algo, sample_query):
@@ -256,29 +228,21 @@ class TestFixedWindowAlgo:
 
         # First request allowed
         start_time = time.time()
-        result1 = await algo.require_access(
-            sample_query,
-            provider_session.LauncherTypes.PERSON,
-            'wait_test'
-        )
+        result1 = await algo.require_access(sample_query, provider_session.LauncherTypes.PERSON, 'wait_test')
         assert result1 is True
 
         # Exhaust limit
         await algo.require_access(sample_query, provider_session.LauncherTypes.PERSON, 'wait_test')
 
         # Third request should wait and then succeed
-        result3 = await algo.require_access(
-            sample_query,
-            provider_session.LauncherTypes.PERSON,
-            'wait_test'
-        )
+        result3 = await algo.require_access(sample_query, provider_session.LauncherTypes.PERSON, 'wait_test')
         elapsed = time.time() - start_time
 
-        assert result3 is True, "After wait, request should succeed"
+        assert result3 is True, 'After wait, request should succeed'
         # Should have waited approximately until next window
         # With 1-second window, elapsed should be > 0.5 second (allowing for timing variance)
         # Note: This is a timing-sensitive test, so we use a generous tolerance
-        assert elapsed >= 0.5, f"Should have waited for next window, elapsed={elapsed:.2f}s"
+        assert elapsed >= 0.5, f'Should have waited for next window, elapsed={elapsed:.2f}s'
 
     @pytest.mark.asyncio
     async def test_fixedwin_release_access(self, mock_app_for_algo, sample_query_with_rate_limit):
@@ -289,11 +253,7 @@ class TestFixedWindowAlgo:
         await algo.initialize()
 
         # release_access is empty in current implementation
-        await algo.release_access(
-            sample_query_with_rate_limit,
-            provider_session.LauncherTypes.PERSON,
-            '12345'
-        )
+        await algo.release_access(sample_query_with_rate_limit, provider_session.LauncherTypes.PERSON, '12345')
 
         # Should not raise or change state
         assert 'person_12345' not in algo.containers

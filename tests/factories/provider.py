@@ -27,51 +27,51 @@ class FakeProvider:
     Does not require API keys.
     """
 
-    PONG_RESPONSE = "LANGBOT_FAKE_PONG"
+    PONG_RESPONSE = 'LANGBOT_FAKE_PONG'
 
     def __init__(
         self,
         *,
-        default_response: str = "fake response",
+        default_response: str = 'fake response',
         streaming_chunks: list[str] = None,
         raise_error: Exception = None,
         captured_requests: list = None,
     ):
         self._default_response = default_response
-        self._streaming_chunks = streaming_chunks or ["fake ", "response"]
+        self._streaming_chunks = streaming_chunks or ['fake ', 'response']
         self._raise_error = raise_error
         self._captured_requests = captured_requests if captured_requests is not None else []
 
-    def returns(self, text: str) -> "FakeProvider":
+    def returns(self, text: str) -> 'FakeProvider':
         """Configure provider to return a specific text response."""
         self._default_response = text
         self._streaming_chunks = [text]
         return self
 
-    def returns_streaming(self, chunks: list[str]) -> "FakeProvider":
+    def returns_streaming(self, chunks: list[str]) -> 'FakeProvider':
         """Configure provider to return streaming chunks."""
         self._streaming_chunks = chunks
-        self._default_response = "".join(chunks)
+        self._default_response = ''.join(chunks)
         return self
 
-    def raises(self, error: Exception) -> "FakeProvider":
+    def raises(self, error: Exception) -> 'FakeProvider':
         """Configure provider to raise an error."""
         self._raise_error = error
         return self
 
-    def timeout(self) -> "FakeProvider":
+    def timeout(self) -> 'FakeProvider':
         """Configure provider to simulate timeout."""
-        return self.raises(TimeoutError("Provider timeout"))
+        return self.raises(TimeoutError('Provider timeout'))
 
-    def auth_error(self) -> "FakeProvider":
+    def auth_error(self) -> 'FakeProvider':
         """Configure provider to simulate auth error."""
-        return self.raises(Exception("Invalid API key"))
+        return self.raises(Exception('Invalid API key'))
 
-    def rate_limit(self) -> "FakeProvider":
+    def rate_limit(self) -> 'FakeProvider':
         """Configure provider to simulate rate limit."""
-        return self.raises(Exception("Rate limit exceeded"))
+        return self.raises(Exception('Rate limit exceeded'))
 
-    def malformed(self) -> "FakeProvider":
+    def malformed(self) -> 'FakeProvider':
         """Configure provider to simulate malformed response."""
         self._default_response = None
         return self
@@ -87,7 +87,7 @@ class FakeProvider:
     def _create_message(self, content: str) -> provider_message.Message:
         """Create a provider message from text content."""
         return provider_message.Message(
-            role="assistant",
+            role='assistant',
             content=content,
         )
 
@@ -99,7 +99,7 @@ class FakeProvider:
     ) -> provider_message.MessageChunk:
         """Create a provider message chunk."""
         return provider_message.MessageChunk(
-            role="assistant",
+            role='assistant',
             content=content,
             is_final=is_final,
             msg_sequence=msg_sequence,
@@ -116,13 +116,15 @@ class FakeProvider:
     ) -> provider_message.Message:
         """Simulate non-streaming LLM invocation."""
         # Capture request for assertions
-        self._captured_requests.append({
-            "query_id": query.query_id if query else None,
-            "model": model.model_entity.name if model and hasattr(model, 'model_entity') else None,
-            "messages": messages,
-            "funcs": funcs,
-            "extra_args": extra_args,
-        })
+        self._captured_requests.append(
+            {
+                'query_id': query.query_id if query else None,
+                'model': model.model_entity.name if model and hasattr(model, 'model_entity') else None,
+                'messages': messages,
+                'funcs': funcs,
+                'extra_args': extra_args,
+            }
+        )
 
         # Simulate error if configured
         if self._raise_error:
@@ -131,7 +133,7 @@ class FakeProvider:
         # Return response
         if self._default_response is None:
             # Malformed response
-            return provider_message.Message(role="assistant", content=None)
+            return provider_message.Message(role='assistant', content=None)
 
         return self._create_message(self._default_response)
 
@@ -146,14 +148,16 @@ class FakeProvider:
     ) -> typing.AsyncGenerator[provider_message.MessageChunk, None]:
         """Simulate streaming LLM invocation."""
         # Capture request for assertions
-        self._captured_requests.append({
-            "query_id": query.query_id if query else None,
-            "model": model.model_entity.name if model and hasattr(model, 'model_entity') else None,
-            "messages": messages,
-            "funcs": funcs,
-            "extra_args": extra_args,
-            "streaming": True,
-        })
+        self._captured_requests.append(
+            {
+                'query_id': query.query_id if query else None,
+                'model': model.model_entity.name if model and hasattr(model, 'model_entity') else None,
+                'messages': messages,
+                'funcs': funcs,
+                'extra_args': extra_args,
+                'streaming': True,
+            }
+        )
 
         # Simulate error if configured
         if self._raise_error:
@@ -161,12 +165,12 @@ class FakeProvider:
 
         # Yield chunks
         for i, chunk in enumerate(self._streaming_chunks):
-            is_final = (i == len(self._streaming_chunks) - 1)
+            is_final = i == len(self._streaming_chunks) - 1
             yield self._create_chunk(chunk, is_final=is_final, msg_sequence=i)
 
 
 def fake_provider(
-    default_response: str = "fake response",
+    default_response: str = 'fake response',
 ) -> FakeProvider:
     """Create a FakeProvider with optional default response."""
     return FakeProvider(default_response=default_response)
@@ -202,8 +206,8 @@ def fake_provider_malformed() -> FakeProvider:
 
 def fake_model(
     *,
-    uuid: str = "test-model-uuid",
-    name: str = "test-model",
+    uuid: str = 'test-model-uuid',
+    name: str = 'test-model',
     abilities: list[str] = None,
     provider: FakeProvider = None,
 ) -> Mock:
@@ -212,7 +216,7 @@ def fake_model(
     model.model_entity = Mock()
     model.model_entity.uuid = uuid
     model.model_entity.name = name
-    model.model_entity.abilities = abilities or ["func_call", "vision"]
+    model.model_entity.abilities = abilities or ['func_call', 'vision']
     model.model_entity.extra_args = {}
 
     # Attach fake provider

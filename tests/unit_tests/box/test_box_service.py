@@ -407,7 +407,9 @@ def test_box_service_forced_template_ignores_pipeline_config():
         launcher_type='person',
         launcher_id='test_user',
         sender_id='test_user',
-        pipeline_config={'ai': {'local-agent': {'box-session-id-template': '{launcher_type}_{launcher_id}_{sender_id}'}}},
+        pipeline_config={
+            'ai': {'local-agent': {'box-session-id-template': '{launcher_type}_{launcher_id}_{sender_id}'}}
+        },
     )
 
     assert service.resolve_box_session_id(query) == 'global'
@@ -1527,9 +1529,7 @@ class TestBuildSkillExtraMounts:
             {'host_path': '/box/skills/b', 'mount_path': '/workspace/.skills/b', 'mode': 'rw'},
         ]
         # No skill is dropped, so no "missing" warning should be logged.
-        assert not any(
-            'package_root missing' in str(call.args[0]) for call in logger.warning.call_args_list
-        )
+        assert not any('package_root missing' in str(call.args[0]) for call in logger.warning.call_args_list)
 
     def test_skips_skill_with_empty_package_root(self):
         logger = Mock()

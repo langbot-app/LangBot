@@ -44,6 +44,7 @@ class TestStartupFlow:
 
         # Database should have some tables after migration
         import sqlite3
+
         conn = sqlite3.connect(str(e2e_db_path))
         cursor = conn.cursor()
 
@@ -74,10 +75,13 @@ class TestStartupFlow:
     def test_auth_endpoint(self, e2e_client, e2e_tmpdir):
         """Test auth endpoint."""
         # First startup may allow initial setup
-        response = e2e_client.post('/api/v1/user/auth', json={
-            'user': 'admin',
-            'password': 'admin',
-        })
+        response = e2e_client.post(
+            '/api/v1/user/auth',
+            json={
+                'user': 'admin',
+                'password': 'admin',
+            },
+        )
 
         # Response could be:
         # - 200 if auth succeeds
@@ -97,6 +101,7 @@ class TestStartupStages:
     def test_migrations_applied(self, langbot_process, e2e_db_path):
         """Verify database migrations were applied."""
         import sqlite3
+
         conn = sqlite3.connect(str(e2e_db_path))
         cursor = conn.cursor()
 

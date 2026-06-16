@@ -6,6 +6,7 @@ Tests cover:
 - Knowledge engine enrichment
 - KB loading and removal
 """
+
 from __future__ import annotations
 
 import pytest
@@ -101,13 +102,9 @@ class TestRAGManagerCreateKnowledgeBase:
         rag_module = get_rag_module()
         mock_app = create_mock_app()
 
-        mock_app.plugin_connector.list_knowledge_engines = AsyncMock(
-            return_value=[{'plugin_id': 'author/engine'}]
-        )
+        mock_app.plugin_connector.list_knowledge_engines = AsyncMock(return_value=[{'plugin_id': 'author/engine'}])
         mock_app.persistence_mgr.execute_async = AsyncMock()
-        mock_app.plugin_connector.rag_on_kb_create = AsyncMock(
-            side_effect=Exception('Plugin error')
-        )
+        mock_app.plugin_connector.rag_on_kb_create = AsyncMock(side_effect=Exception('Plugin error'))
 
         manager = rag_module.RAGManager(mock_app)
 
@@ -128,9 +125,7 @@ class TestRAGManagerCreateKnowledgeBase:
         rag_module = get_rag_module()
         mock_app = create_mock_app()
 
-        mock_app.plugin_connector.list_knowledge_engines = AsyncMock(
-            return_value=[{'plugin_id': 'author/engine'}]
-        )
+        mock_app.plugin_connector.list_knowledge_engines = AsyncMock(return_value=[{'plugin_id': 'author/engine'}])
         mock_app.persistence_mgr.execute_async = AsyncMock()
         mock_app.plugin_connector.rag_on_kb_create = AsyncMock()
 
@@ -206,9 +201,7 @@ class TestRuntimeKnowledgeBaseOnKBCreate:
         mock_app = create_mock_app()
         mock_kb = create_mock_kb_entity()
 
-        mock_app.plugin_connector.rag_on_kb_create = AsyncMock(
-            side_effect=Exception('Plugin failed')
-        )
+        mock_app.plugin_connector.rag_on_kb_create = AsyncMock(side_effect=Exception('Plugin failed'))
 
         runtime_kb = rag_module.RuntimeKnowledgeBase(mock_app, mock_kb)
 
@@ -245,9 +238,7 @@ class TestRuntimeKnowledgeBaseIngestDocument:
         mock_app = create_mock_app()
         mock_kb = create_mock_kb_entity()
 
-        mock_app.plugin_connector.call_rag_ingest = AsyncMock(
-            return_value={'status': 'success'}
-        )
+        mock_app.plugin_connector.call_rag_ingest = AsyncMock(return_value={'status': 'success'})
 
         runtime_kb = rag_module.RuntimeKnowledgeBase(mock_app, mock_kb)
 
@@ -304,14 +295,10 @@ class TestRAGManagerLoadKnowledgeBasesFromDB:
         # KB that will cause initialize to fail
         mock_kb = create_mock_kb_entity()
 
-        mock_app.persistence_mgr.execute_async = AsyncMock(
-            return_value=Mock(all=Mock(return_value=[mock_kb]))
-        )
+        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=Mock(all=Mock(return_value=[mock_kb])))
 
         # Make initialize fail by having plugin_connector throw error
-        mock_app.plugin_connector.rag_on_kb_create = AsyncMock(
-            side_effect=Exception('Init failed')
-        )
+        mock_app.plugin_connector.rag_on_kb_create = AsyncMock(side_effect=Exception('Init failed'))
 
         manager = rag_module.RAGManager(mock_app)
         # Should not raise - errors are caught
@@ -411,9 +398,7 @@ class TestRuntimeKnowledgeBaseRetrieve:
         mock_kb = create_mock_kb_entity()
         mock_kb.retrieval_settings = {}
 
-        mock_app.plugin_connector.call_rag_retrieve = AsyncMock(
-            return_value={'results': []}
-        )
+        mock_app.plugin_connector.call_rag_retrieve = AsyncMock(return_value={'results': []})
 
         runtime_kb = rag_module.RuntimeKnowledgeBase(mock_app, mock_kb)
 
@@ -682,9 +667,7 @@ class TestRAGManagerGetAllDetails:
         """Test returns empty list when no knowledge bases."""
         rag_module = get_rag_module()
         mock_app = create_mock_app()
-        mock_app.persistence_mgr.execute_async = AsyncMock(
-            return_value=Mock(all=Mock(return_value=[]))
-        )
+        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=Mock(all=Mock(return_value=[])))
 
         manager = rag_module.RAGManager(mock_app)
         result = await manager.get_all_knowledge_base_details()
@@ -699,9 +682,7 @@ class TestRAGManagerGetAllDetails:
 
         # Mock DB result
         mock_kb_row = Mock()
-        mock_app.persistence_mgr.execute_async = AsyncMock(
-            return_value=Mock(all=Mock(return_value=[mock_kb_row]))
-        )
+        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=Mock(all=Mock(return_value=[mock_kb_row])))
         mock_app.persistence_mgr.serialize_model = Mock(
             return_value={'uuid': 'kb1', 'knowledge_engine_plugin_id': 'author/engine'}
         )
@@ -724,9 +705,7 @@ class TestRAGManagerGetDetails:
         """Test returns None when KB doesn't exist."""
         rag_module = get_rag_module()
         mock_app = create_mock_app()
-        mock_app.persistence_mgr.execute_async = AsyncMock(
-            return_value=Mock(first=Mock(return_value=None))
-        )
+        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=Mock(first=Mock(return_value=None)))
 
         manager = rag_module.RAGManager(mock_app)
         result = await manager.get_knowledge_base_details('nonexistent')
@@ -740,9 +719,7 @@ class TestRAGManagerGetDetails:
         mock_app = create_mock_app()
 
         mock_kb_row = Mock()
-        mock_app.persistence_mgr.execute_async = AsyncMock(
-            return_value=Mock(first=Mock(return_value=mock_kb_row))
-        )
+        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=Mock(first=Mock(return_value=mock_kb_row)))
         mock_app.persistence_mgr.serialize_model = Mock(
             return_value={'uuid': 'kb1', 'knowledge_engine_plugin_id': 'author/engine'}
         )

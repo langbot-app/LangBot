@@ -1062,9 +1062,7 @@ class TestScanModels:
 
         with patch.object(litellmchat.litellm, 'get_model_info') as mock_get_model_info:
             mock_get_model_info.side_effect = (
-                lambda model: {'max_input_tokens': 131072}
-                if model == 'moonshot/moonshot-v1-128k'
-                else {}
+                lambda model: {'max_input_tokens': 131072} if model == 'moonshot/moonshot-v1-128k' else {}
             )
 
             assert requester._safe_context_length('moonshot-v1-128k') == 131072

@@ -90,9 +90,11 @@ precision = 2
                 f.write(coveragerc_content)
 
             cmd = [
-                'coverage', 'run',
+                'coverage',
+                'run',
                 '--rcfile=' + str(coveragerc_path),
-                '-m', 'langbot',
+                '-m',
+                'langbot',
             ]
         else:
             cmd = ['uv', 'run', 'python', '-m', 'langbot']
