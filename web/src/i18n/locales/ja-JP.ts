@@ -1385,6 +1385,19 @@
     retry: '再試行',
     robotNameNote: 'ロボット名は自動取得できません。手動で入力してください。',
   },
+  qqofficial: {
+    createBinding: 'ワンクリックで QQ 公式ボットを QR バインド',
+    scanQRCode:
+      '以下の QR コードをモバイル QQ でスキャンし、「QQ ボットアシスタント」でバインドを承認してください',
+    waitingForScan: 'スキャン待ち',
+    bindSuccess: 'バインド成功！AppID と Secret が自動入力されました',
+    bindFailed: 'バインド失敗',
+    connecting: 'QQ サービスに接続中...',
+    retry: '再試行',
+    tokenNote:
+      'Token フィールドは現行アダプターでは使用しません。空欄のままで構いません。',
+    boundBy: 'QQ ユーザー {{openid}} によりバインドされました',
+  },
   pluginPages: {
     selectFromSidebar: 'サイドバーからプラグインページを選択してください',
     invalidPage: '無効なプラグインページ',

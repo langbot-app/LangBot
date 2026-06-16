@@ -16,7 +16,12 @@ import {
 } from 'lucide-react';
 import QRCode from 'qrcode';
 
-export type QrLoginPlatform = 'feishu' | 'weixin' | 'dingtalk' | 'wecombot';
+export type QrLoginPlatform =
+  | 'feishu'
+  | 'weixin'
+  | 'dingtalk'
+  | 'wecombot'
+  | 'qqofficial';
 
 interface PlatformConfig {
   titleKey: string;
@@ -29,6 +34,7 @@ interface PlatformConfig {
   apiBase: string;
   extractSuccess: (data: Record<string, string>) => Record<string, string>;
   successNoteKey?: string;
+  boundByKey?: string;
 }
 
 const PLATFORM_CONFIGS: Record<QrLoginPlatform, PlatformConfig> = {
@@ -92,6 +98,22 @@ const PLATFORM_CONFIGS: Record<QrLoginPlatform, PlatformConfig> = {
     }),
     successNoteKey: 'wecombot.robotNameNote',
   },
+  qqofficial: {
+    titleKey: 'qqofficial.createBinding',
+    connectingKey: 'qqofficial.connecting',
+    scanQRCodeKey: 'qqofficial.scanQRCode',
+    waitingKey: 'qqofficial.waitingForScan',
+    successKey: 'qqofficial.bindSuccess',
+    failedKey: 'qqofficial.bindFailed',
+    retryKey: 'qqofficial.retry',
+    apiBase: '/api/v1/platform/adapters/qqofficial/bind',
+    extractSuccess: (data) => ({
+      appid: data.appid,
+      secret: data.secret,
+    }),
+    successNoteKey: 'qqofficial.tokenNote',
+    boundByKey: 'qqofficial.boundBy',
+  },
 };
 
 interface QrCodeLoginDialogProps {
@@ -118,6 +140,7 @@ export default function QrCodeLoginDialog({
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [expireIn, setExpireIn] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
+  const [successMeta, setSuccessMeta] = useState('');
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const checkExpiredRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -178,6 +201,7 @@ export default function QrCodeLoginDialog({
     setQrDataUrl('');
     setExpireIn(0);
     setErrorMessage('');
+    setSuccessMeta('');
 
     const token = localStorage.getItem('token');
     const baseUrl = import.meta.env.VITE_API_BASE_URL || window.location.origin;
@@ -275,6 +299,13 @@ export default function QrCodeLoginDialog({
             sessionIdRef.current = null;
             cleanup();
             setState('success');
+            // Platform may return extra audit metadata (e.g. QQ Official returns
+            // the scanner's user_openid) — surface it briefly before the dialog closes.
+            if (rest.user_openid && cfg.boundByKey) {
+              setSuccessMeta(
+                tRef.current(cfg.boundByKey, { openid: rest.user_openid }),
+              );
+            }
             setTimeout(() => {
               onSuccessRef.current(cfg.extractSuccess(rest));
               onOpenChangeRef.current(false);
@@ -395,6 +426,11 @@ export default function QrCodeLoginDialog({
               <p className="text-sm text-green-600 font-medium">
                 {t(platformConfig.successKey)}
               </p>
+              {successMeta && (
+                <p className="text-xs text-muted-foreground text-center max-w-xs break-all">
+                  {successMeta}
+                </p>
+              )}
               {platformConfig.successNoteKey && (
                 <p className="text-xs text-muted-foreground text-center max-w-xs">
                   {t(platformConfig.successNoteKey)}

@@ -1361,6 +1361,18 @@ const thTH = {
     retry: 'ลองใหม่',
     robotNameNote: 'ไม่สามารถดึงชื่อบอตได้โดยอัตโนมัติ กรุณากรอกด้วยตนเอง',
   },
+  qqofficial: {
+    createBinding: 'ผูกบอต QQ Official ด้วย QR คลิกเดียว',
+    scanQRCode:
+      'สแกนคิวอาร์โค้ดด้านล่างด้วย QQ มือถือ แล้วอนุญาตการผูกใน «QQ Bot Assistant»',
+    waitingForScan: 'กำลังรอสแกน',
+    bindSuccess: 'ผูกสำเร็จ! AppID และ Secret ถูกกรอกอัตโนมัติแล้ว',
+    bindFailed: 'การผูกล้มเหลว',
+    connecting: 'กำลังเชื่อมต่อบริการ QQ...',
+    retry: 'ลองใหม่',
+    tokenNote: 'อะแดปเตอร์ปัจจุบันไม่ได้ใช้ฟิลด์ Token จึงเว้นว่างไว้ได้',
+    boundBy: 'ผูกโดยผู้ใช้ QQ {{openid}}',
+  },
   pluginPages: {
     selectFromSidebar: 'เลือกหน้าปลั๊กอินจากแถบด้านข้าง',
     invalidPage: 'หน้าปลั๊กอินไม่ถูกต้อง',

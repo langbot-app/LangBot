@@ -19,6 +19,18 @@ spec:
     en: https://link.langbot.app/en/platforms/qqofficial
     ja: https://link.langbot.app/ja/platforms/qqofficial
   config:
+    - name: one-click-bind
+      label:
+        en_US: One-Click QR Binding
+        zh_Hans: 一键扫码绑定
+        zh_Hant: 一鍵掃碼綁定
+      description:
+        en_US: Scan QR code with mobile QQ to auto-fill AppID and Secret (Token still needs to be filled manually)
+        zh_Hans: 使用手机 QQ 扫码绑定，自动填写 AppID 和密钥（Token 仍需手动填写）
+        zh_Hant: 使用手機 QQ 掃碼綁定，自動填寫 AppID 和密鑰（Token 仍需手動填寫）
+      type: qr-code-login
+      login_platform: qqofficial
+      required: false
     - name: appid
       label:
         en_US: App ID
@@ -40,8 +52,12 @@ spec:
         en_US: Token
         zh_Hans: 令牌
         zh_Hant: 令牌
+      description:
+        en_US: Optional. The QR binding cannot return this value; the current adapter implementation does not use it either, so it can be safely left blank.
+        zh_Hans: 可选。扫码绑定无法获取该字段，当前适配器实现也未使用该字段，留空即可。
+        zh_Hant: 可選。掃碼綁定無法取得此欄位，目前介面卡實作亦未使用，留空即可。
       type: string
-      required: true
+      required: false
       default: ""
     - name: enable-webhook
       label:

@@ -1319,6 +1319,17 @@ const zhHant = {
     retry: '重試',
     robotNameNote: '機器人名稱無法自動取得，請手動填寫。',
   },
+  qqofficial: {
+    createBinding: '一鍵掃碼綁定 QQ 機器人',
+    scanQRCode: '請使用手機 QQ 掃描以下 QR Code，在「QQ 機器人助手」中授權綁定',
+    waitingForScan: '等待掃碼中',
+    bindSuccess: '綁定成功！AppID 與密鑰已自動填入',
+    bindFailed: '綁定失敗',
+    connecting: '正在連線 QQ 服務...',
+    retry: '重試',
+    tokenNote: 'Token 欄位目前介面卡未使用，留空即可。',
+    boundBy: '由 QQ 用戶 {{openid}} 掃碼綁定',
+  },
   pluginPages: {
     selectFromSidebar: '從側邊欄選擇一個插件頁面',
     invalidPage: '無效的插件頁面',

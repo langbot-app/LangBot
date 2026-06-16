@@ -1426,6 +1426,20 @@ const esES = {
     robotNameNote:
       'El nombre del robot no puede obtenerse automáticamente. Introdúcelo manualmente.',
   },
+  qqofficial: {
+    createBinding: 'Vinculación QR con un clic para el bot oficial de QQ',
+    scanQRCode:
+      'Escanea el código QR siguiente con QQ móvil y autoriza la vinculación en «QQ Bot Assistant»',
+    waitingForScan: 'Esperando escaneo',
+    bindSuccess:
+      '¡Vinculación correcta! AppID y Secret se han rellenado automáticamente',
+    bindFailed: 'Error en la vinculación',
+    connecting: 'Conectando con el servicio de QQ...',
+    retry: 'Reintentar',
+    tokenNote:
+      'El campo Token no es utilizado por el adaptador actual; puedes dejarlo vacío.',
+    boundBy: 'Vinculado por el usuario QQ {{openid}}',
+  },
   pluginPages: {
     selectFromSidebar: 'Selecciona una página de plugin en la barra lateral',
     invalidPage: 'Página de plugin no válida',

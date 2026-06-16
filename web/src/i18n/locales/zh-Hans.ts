@@ -1319,6 +1319,17 @@ const zhHans = {
     retry: '重试',
     robotNameNote: '机器人名称无法自动获取，请手动填写。',
   },
+  qqofficial: {
+    createBinding: '一键扫码绑定 QQ 机器人',
+    scanQRCode: '请使用手机 QQ 扫描以下二维码，在「QQ 机器人助手」中授权绑定',
+    waitingForScan: '等待扫码中',
+    bindSuccess: '绑定成功！AppID 与密钥已自动填入',
+    bindFailed: '绑定失败',
+    connecting: '正在连接 QQ 服务...',
+    retry: '重试',
+    tokenNote: 'Token 字段当前适配器未使用，留空即可。',
+    boundBy: '由 QQ 用户 {{openid}} 扫码绑定',
+  },
   pluginPages: {
     selectFromSidebar: '从侧边栏选择一个插件页面',
     invalidPage: '无效的插件页面',

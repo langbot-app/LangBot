@@ -1385,6 +1385,19 @@ const viVN = {
     retry: 'Thử lại',
     robotNameNote: 'Không thể tự động lấy tên bot. Vui lòng điền thủ công.',
   },
+  qqofficial: {
+    createBinding: 'Liên kết bot QQ Official bằng QR một chạm',
+    scanQRCode:
+      'Quét mã QR bên dưới bằng QQ trên di động và xác nhận liên kết trong «QQ Bot Assistant»',
+    waitingForScan: 'Đang chờ quét',
+    bindSuccess: 'Liên kết thành công! AppID và Secret đã được điền tự động',
+    bindFailed: 'Liên kết thất bại',
+    connecting: 'Đang kết nối tới dịch vụ QQ...',
+    retry: 'Thử lại',
+    tokenNote:
+      'Bộ chuyển đổi hiện tại không dùng trường Token; có thể để trống.',
+    boundBy: 'Được liên kết bởi người dùng QQ {{openid}}',
+  },
   pluginPages: {
     selectFromSidebar: 'Chọn một trang plugin từ thanh bên',
     invalidPage: 'Trang plugin không hợp lệ',
