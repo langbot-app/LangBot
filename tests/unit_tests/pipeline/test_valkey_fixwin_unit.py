@@ -155,7 +155,10 @@ class TestValkeyFixedWindowAlgo:
         query = make_query(sample_query, limitation=5)
 
         async def boom(key, limitation, ws):
-            raise RuntimeError('valkey down')
+            # A connection-type error simulates a real Valkey/infra failure.
+            # (builtin ConnectionError is an OSError subclass, caught by the
+            # narrowed fail-open handler.)
+            raise ConnectionError('valkey down')
 
         algo._run_script = boom
 
@@ -169,6 +172,86 @@ class TestValkeyFixedWindowAlgo:
                 assert 'password' not in lowered
                 assert 'secret' not in lowered
                 assert 's3cret' not in lowered
+
+    @pytest.mark.asyncio
+    async def test_programming_error_propagates(self, mock_app_for_algo, sample_query):
+        """A programming bug (not an infra error) must NOT be swallowed by the
+        fail-open handler — it should propagate so regressions fail loudly."""
+        algo, _ = await make_algo(mock_app_for_algo)
+        query = make_query(sample_query, limitation=5)
+
+        async def bug(key, limitation, ws):
+            raise KeyError('renamed_config_key')
+
+        algo._run_script = bug
+
+        with pytest.raises(KeyError):
+            await algo.require_access(query, 'person', '12345')
+
+    @pytest.mark.asyncio
+    async def test_invalid_window_size_raises(self, mock_app_for_algo, sample_query):
+        """window-length <= 0 is a misconfiguration and must raise, not be
+        silently swallowed as a ZeroDivisionError fail-open."""
+        algo, _ = await make_algo(mock_app_for_algo)
+        query = make_query(sample_query, window_length=0, limitation=5)
+
+        with pytest.raises(ValueError):
+            await algo.require_access(query, 'person', '12345')
+
+    @pytest.mark.asyncio
+    async def test_fail_closed_denies_on_error(self, mock_app_for_algo, sample_query):
+        """With valkey.fail_strategy='closed', a Valkey error denies the request."""
+        valkey_fixwin = get_valkey_fixwin_module()
+        mock_app_for_algo.instance_config.data = {
+            'valkey': {'host': 'localhost', 'port': 6390, 'fail_strategy': 'closed'}
+        }
+        algo = valkey_fixwin.ValkeyFixedWindowAlgo(mock_app_for_algo)
+        await algo.initialize()
+        algo._client = AsyncMock()
+        query = make_query(sample_query, limitation=5)
+
+        async def boom(key, limitation, ws):
+            raise ConnectionError('valkey down')
+
+        algo._run_script = boom
+
+        result = await algo.require_access(query, 'person', '12345')
+        assert result is False  # fail-closed
+
+    @pytest.mark.asyncio
+    async def test_invalid_fail_strategy_raises(self, mock_app_for_algo):
+        """An unknown fail_strategy is a misconfiguration and must raise at init."""
+        valkey_fixwin = get_valkey_fixwin_module()
+        mock_app_for_algo.instance_config.data = {'valkey': {'host': 'localhost', 'fail_strategy': 'bogus'}}
+        algo = valkey_fixwin.ValkeyFixedWindowAlgo(mock_app_for_algo)
+        with pytest.raises(ValueError):
+            await algo.initialize()
+
+    @pytest.mark.asyncio
+    async def test_configurable_key_prefix(self, mock_app_for_algo, sample_query):
+        """valkey.key_prefix overrides the default key namespace."""
+        valkey_fixwin = get_valkey_fixwin_module()
+        mock_app_for_algo.instance_config.data = {'valkey': {'host': 'localhost', 'key_prefix': 'tenant-a:rl'}}
+        algo = valkey_fixwin.ValkeyFixedWindowAlgo(mock_app_for_algo)
+        await algo.initialize()
+        algo._client = AsyncMock()
+
+        captured = {}
+
+        async def fake_run_script(key, limitation, ws):
+            captured['key'] = key
+            return 1
+
+        algo._run_script = fake_run_script
+
+        fixed_now = 1_000_000_123
+        window_size = 60
+        expected_window_start = fixed_now - fixed_now % window_size
+        query = make_query(sample_query, window_length=window_size, limitation=10)
+        with patch.object(valkey_fixwin.time, 'time', return_value=float(fixed_now)):
+            await algo.require_access(query, 'person', '12345')
+
+        assert captured['key'] == f'tenant-a:rl:person:12345:{expected_window_start}'
 
     @pytest.mark.asyncio
     async def test_client_config_build(self, mock_app_for_algo):

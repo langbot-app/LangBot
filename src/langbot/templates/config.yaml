@@ -64,6 +64,8 @@ valkey:
     password: ''          # optional auth password (toB). Never logged.
     username: ''          # optional ACL username (toB).
     tls: false            # optional TLS (toB/SaaS).
+    key_prefix: ''        # optional rate-limit key namespace; defaults to 'langbot:ratelimit:fixwin'. Set a unique value per deployment when multiple LangBot instances share one Valkey instance/db.
+    fail_strategy: 'open' # 'open' (default) allows requests when Valkey errors (throttle); 'closed' denies them (abuse-prevention).
 vdb:
     use: chroma
     qdrant:
