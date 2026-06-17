@@ -28,9 +28,7 @@ import pytest
 
 pytestmark = [pytest.mark.integration, pytest.mark.slow]
 
-TEST_VALKEY_URL = os.environ.get('TEST_VALKEY_URL') or pytest.skip(
-    'TEST_VALKEY_URL not set', allow_module_level=True
-)
+TEST_VALKEY_URL = os.environ.get('TEST_VALKEY_URL') or pytest.skip('TEST_VALKEY_URL not set', allow_module_level=True)
 
 
 def _parse_url(url: str) -> dict:
@@ -172,7 +170,11 @@ class TestValkeyRateLimitIntegration:
         elapsed = time.time() - start
 
         assert result is True
-        assert elapsed >= 0.0  # sleep duration depends on position within window
+        # The wait must complete within roughly one window (it sleeps to the next
+        # boundary, never longer), proving it neither hung nor skipped the wait
+        # into an indefinite loop. Upper-bounded rather than lower-bounded to stay
+        # non-flaky regardless of where in the window the test starts.
+        assert elapsed <= 1.0 + 0.5, f'wait took {elapsed:.3f}s, expected <= ~1 window'
 
     @pytest.mark.asyncio
     async def test_different_sessions_isolated(self, valkey_cfg, unique_launcher_id, cleanup_keys):

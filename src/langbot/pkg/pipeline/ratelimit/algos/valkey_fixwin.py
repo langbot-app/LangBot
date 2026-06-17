@@ -195,9 +195,9 @@ class ValkeyFixedWindowAlgo(algo.ReteLimitAlgo):
             args=[str(limitation), str(window_size)],
         )
         # glide returns the Lua integer reply as an int; coerce defensively in
-        # case a bytes/str reply is produced by a future client version.
-        if isinstance(result, (bytes, bytearray)):
-            return int(result)
+        # case a bytes/bytearray reply (ASCII digits) is produced by a future
+        # client version. int() parses both int and bytes/bytearray digit
+        # strings, so a single conversion covers all cases.
         return int(result)
 
     def _warn_throttled(self, message: str, err: Exception) -> None:

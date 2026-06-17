@@ -10,6 +10,8 @@ the import guard.
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from unittest.mock import AsyncMock, Mock, patch
 from importlib import import_module
@@ -322,3 +324,89 @@ class TestValkeyFixedWindowAlgo:
             with pytest.raises(ImportError) as exc_info:
                 valkey_fixwin.ValkeyFixedWindowAlgo(mock_app_for_algo)
             assert 'valkey-glide' in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_run_script_coerces_bytes_reply(self, mock_app_for_algo, sample_query):
+        """A bytes/bytearray reply from a future glide version is coerced to int
+        (int() parses ASCII digit bytes), so the request path still works."""
+        algo, mock_client = await make_algo(mock_app_for_algo)
+        query = make_query(sample_query, limitation=5)
+
+        mock_client.invoke_script = AsyncMock(return_value=b'3')
+        assert await algo.require_access(query, 'person', '12345') is True
+
+        mock_client.invoke_script = AsyncMock(return_value=bytearray(b'-1'))
+        assert await algo.require_access(query, 'person', '12345') is False
+
+    @pytest.mark.asyncio
+    async def test_warn_throttle_suppresses_within_window(self, mock_app_for_algo, sample_query):
+        """A second fail-open warning within the throttle window is suppressed,
+        so a Valkey outage does not flood the log on every request."""
+        valkey_fixwin = get_valkey_fixwin_module()
+        algo, _ = await make_algo(mock_app_for_algo)
+        query = make_query(sample_query, limitation=5)
+
+        async def boom(key, limitation, ws):
+            raise ConnectionError('valkey down')
+
+        algo._run_script = boom
+
+        # Two errors a few seconds apart (< _WARN_THROTTLE_SECONDS) -> one log.
+        with patch.object(valkey_fixwin.time, 'time', side_effect=[100.0, 100.0, 105.0, 105.0]):
+            assert await algo.require_access(query, 'person', '12345') is True
+            assert await algo.require_access(query, 'person', '12345') is True
+        assert mock_app_for_algo.logger.warning.call_count == 1
+
+        # A third error past the throttle window logs again.
+        with patch.object(valkey_fixwin.time, 'time', side_effect=[200.0, 200.0]):
+            assert await algo.require_access(query, 'person', '12345') is True
+        assert mock_app_for_algo.logger.warning.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_wait_strategy_still_over_limit_denies(self, mock_app_for_algo, sample_query):
+        """If the post-wait window is also exhausted (script returns -1 twice),
+        the 'wait' strategy denies."""
+        valkey_fixwin = get_valkey_fixwin_module()
+        algo, _ = await make_algo(mock_app_for_algo)
+        query = make_query(sample_query, window_length=60, limitation=1, strategy='wait')
+
+        async def always_over(key, limitation, ws):
+            return -1
+
+        algo._run_script = always_over
+
+        with patch.object(valkey_fixwin.asyncio, 'sleep', AsyncMock()):
+            assert await algo.require_access(query, 'person', '12345') is False
+
+    @pytest.mark.asyncio
+    async def test_window_start_boundaries(self, mock_app_for_algo):
+        """_window_start floors to the window boundary, including exact boundaries."""
+        algo, _ = await make_algo(mock_app_for_algo)
+        assert algo._window_start(60, 60) == 60  # exact boundary
+        assert algo._window_start(59, 60) == 0  # just before boundary
+        assert algo._window_start(61, 60) == 60  # just after boundary
+        assert algo._window_start(120, 60) == 120
+        assert algo._window_start(0, 60) == 0
+
+    @pytest.mark.asyncio
+    async def test_ensure_client_double_check_locking(self, mock_app_for_algo):
+        """Concurrent _ensure_client calls create exactly one GlideClient and
+        all callers share it (double-checked locking)."""
+        valkey_fixwin = get_valkey_fixwin_module()
+        algo = valkey_fixwin.ValkeyFixedWindowAlgo(mock_app_for_algo)
+        await algo.initialize()
+
+        create_calls = 0
+
+        async def fake_create(conf):
+            nonlocal create_calls
+            create_calls += 1
+            # Yield so concurrent coroutines interleave inside the lock.
+            await asyncio.sleep(0)
+            return AsyncMock()
+
+        with patch.object(valkey_fixwin.GlideClient, 'create', side_effect=fake_create):
+            clients = await asyncio.gather(*[algo._ensure_client() for _ in range(10)])
+
+        assert create_calls == 1
+        assert all(c is clients[0] for c in clients)
