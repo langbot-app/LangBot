@@ -15,6 +15,7 @@ import {
   At,
   Quote,
   Voice,
+  File as FileComponent,
   Source,
 } from '@/app/infra/entities/message';
 import { toast } from 'sonner';
@@ -460,13 +461,29 @@ export default function DebugDialog({
       }
 
       case 'File': {
-        const file = component as MessageChainComponent & { name?: string };
+        const file = component as FileComponent;
+        const downloadHref = file.base64
+          ? file.base64.startsWith('data:')
+            ? file.base64
+            : `data:application/octet-stream;base64,${file.base64}`
+          : file.url || '';
+        const fileName = file.name || 'Unknown';
         return (
           <div key={index} className="my-2 flex items-center gap-2 text-sm">
             <Paperclip className="size-4" />
-            <span>
-              [{t('pipelines.debugDialog.file')}] {file.name || 'Unknown'}
-            </span>
+            {downloadHref ? (
+              <a
+                href={downloadHref}
+                download={fileName}
+                className="text-primary underline hover:opacity-80"
+              >
+                [{t('pipelines.debugDialog.file')}] {fileName}
+              </a>
+            ) : (
+              <span>
+                [{t('pipelines.debugDialog.file')}] {fileName}
+              </span>
+            )}
           </div>
         );
       }

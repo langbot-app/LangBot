@@ -1556,3 +1556,255 @@ class TestBuildSkillExtraMounts:
         service = BoxService(app, client=Mock(spec=BoxRuntimeClient))
 
         assert service.build_skill_extra_mounts(make_query()) == []
+
+
+# ── Attachment passthrough (inbound / outbound) ─────────────────────────────
+
+
+class TestAttachmentHelpers:
+    def test_sanitize_attachment_name_strips_traversal(self):
+        assert BoxService._sanitize_attachment_name('../../etc/passwd', 'fb') == 'passwd'
+        assert BoxService._sanitize_attachment_name('/a/b/c.png', 'fb') == 'c.png'
+        assert BoxService._sanitize_attachment_name('a b c.txt', 'fb') == 'a_b_c.txt'
+        assert BoxService._sanitize_attachment_name('', 'fallback.bin') == 'fallback.bin'
+        assert BoxService._sanitize_attachment_name('...', 'fb.bin') == 'fb.bin'
+        # weird unicode / shell chars dropped, but keeps a usable name
+        out = BoxService._sanitize_attachment_name('rm -rf $(x).png', 'fb')
+        assert '/' not in out and '$' not in out and out.endswith('.png')
+
+    def test_classify_outbound_entries_by_extension(self):
+        entries = [
+            {'name': 'chart.png', 'b64': 'AAA'},
+            {'name': 'clip.mp3', 'b64': 'BBB'},
+            {'name': 'report.pdf', 'b64': 'CCC'},
+            {'name': 'sub/dir/photo.JPG', 'b64': 'DDD'},
+            {'name': 'noext', 'b64': 'EEE'},
+            {'name': 'skip', 'b64': ''},  # dropped (no payload)
+        ]
+        out = BoxService._classify_outbound_entries(entries)
+        by_name = {a['name']: a for a in out}
+        assert by_name['chart.png']['type'] == 'Image'
+        assert by_name['chart.png']['base64'].startswith('data:image/png;base64,')
+        assert by_name['clip.mp3']['type'] == 'Voice'
+        assert by_name['clip.mp3']['base64'].startswith('data:audio/mp3;base64,')
+        assert by_name['report.pdf']['type'] == 'File'
+        assert by_name['report.pdf']['base64'] == 'CCC'  # raw b64, no data: prefix
+        # nested path collapses to basename, case-insensitive ext
+        assert by_name['photo.JPG']['type'] == 'Image'
+        assert by_name['noext']['type'] == 'File'
+        assert 'skip' not in by_name
+
+    @pytest.mark.asyncio
+    async def test_component_to_bytes_from_data_uri(self):
+        import base64
+
+        raw = b'hello-bytes'
+        data_uri = 'data:text/plain;base64,' + base64.b64encode(raw).decode()
+        component = SimpleNamespace(base64=data_uri, url=None, path=None)
+        result = await BoxService._component_to_bytes(component)
+        assert result is not None
+        data, mime = result
+        assert data == raw
+        assert mime == 'text/plain'
+
+    @pytest.mark.asyncio
+    async def test_component_to_bytes_returns_none_when_empty(self):
+        component = SimpleNamespace(base64=None, url=None, path=None)
+        assert await BoxService._component_to_bytes(component) is None
+
+
+class TestInboundOutboundRoundTrip:
+    def _service(self) -> BoxService:
+        service = BoxService(make_app(Mock()), client=Mock(spec=BoxRuntimeClient))
+        service._available = True
+        return service
+
+    @pytest.mark.asyncio
+    async def test_materialize_inbound_writes_and_describes(self):
+        import base64
+
+        import langbot_plugin.api.entities.builtin.platform.message as platform_message
+
+        service = self._service()
+
+        img_bytes = b'\x89PNG\r\n\x1a\n fake png'
+        img_b64 = 'data:image/png;base64,' + base64.b64encode(img_bytes).decode()
+
+        query = make_query()
+        query.message_chain = platform_message.MessageChain(
+            [
+                platform_message.Plain(text='please resize this'),
+                platform_message.Image(base64=img_b64),
+            ]
+        )
+
+        # Mock the sandbox write path: echo back the written paths.
+        async def fake_execute_tool(parameters, q):
+            assert '/workspace/inbox/' in parameters['command']
+            return {
+                'ok': True,
+                'stdout': '["/workspace/inbox/42/image_1.png"]',
+                'stderr': '',
+            }
+
+        service.execute_tool = AsyncMock(side_effect=fake_execute_tool)
+
+        descriptors = await service.materialize_inbound_attachments(query)
+        assert len(descriptors) == 1
+        d = descriptors[0]
+        assert d['type'] == 'Image'
+        assert d['path'] == '/workspace/inbox/42/image_1.png'
+        assert d['size'] == len(img_bytes)
+
+    @pytest.mark.asyncio
+    async def test_materialize_inbound_noop_without_attachments(self):
+        import langbot_plugin.api.entities.builtin.platform.message as platform_message
+
+        service = self._service()
+        query = make_query()
+        query.message_chain = platform_message.MessageChain([platform_message.Plain(text='just text')])
+        service.execute_tool = AsyncMock()
+        assert await service.materialize_inbound_attachments(query) == []
+        service.execute_tool.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_collect_outbound_reads_and_clears(self):
+        service = self._service()
+        query = make_query()
+
+        calls = []
+
+        async def fake_execute_tool(parameters, q):
+            calls.append(parameters['command'])
+            if 'os.walk' in parameters['command']:
+                return {
+                    'ok': True,
+                    'stdout': '[{"name": "out.png", "b64": "QUJD"}]',
+                    'stderr': '',
+                }
+            # the rm -rf cleanup call
+            return {'ok': True, 'stdout': '', 'stderr': ''}
+
+        service.execute_tool = AsyncMock(side_effect=fake_execute_tool)
+
+        attachments = await service.collect_outbound_attachments(query)
+        assert len(attachments) == 1
+        assert attachments[0]['type'] == 'Image'
+        assert attachments[0]['name'] == 'out.png'
+        # cleanup (rm -rf) must have been issued after a successful collection
+        assert any('rm -rf' in c for c in calls)
+
+    @pytest.mark.asyncio
+    async def test_collect_outbound_empty_no_cleanup(self):
+        service = self._service()
+        query = make_query()
+
+        calls = []
+
+        async def fake_execute_tool(parameters, q):
+            calls.append(parameters['command'])
+            return {'ok': True, 'stdout': '[]', 'stderr': ''}
+
+        service.execute_tool = AsyncMock(side_effect=fake_execute_tool)
+        assert await service.collect_outbound_attachments(query) == []
+        assert not any('rm -rf' in c for c in calls)
+
+    @pytest.mark.asyncio
+    async def test_passthrough_noop_when_unavailable(self):
+        service = BoxService(make_app(Mock()), client=Mock(spec=BoxRuntimeClient))
+        service._available = False
+        query = make_query()
+        assert await service.materialize_inbound_attachments(query) == []
+        assert await service.collect_outbound_attachments(query) == []
+
+
+class TestAttachmentHostPath:
+    """Direct host-filesystem transfer path (bind-mounted workspace).
+
+    When ``default_workspace`` is a real local dir, inbound/outbound bypass the
+    exec channel entirely (no ARG_MAX / stdout-truncation limits) and read/write
+    the bind-mounted host dir directly.
+    """
+
+    def _service_with_workspace(self, tmp_path):
+        ws = str(tmp_path / 'box' / 'default')
+        os.makedirs(ws, exist_ok=True)
+        app = make_app(Mock(), allowed_mount_roots=[str(tmp_path)], host_root=str(tmp_path / 'box'))
+        service = BoxService(app, client=Mock(spec=BoxRuntimeClient))
+        service._available = True
+        # Force the default_workspace to our tmp dir so _host_query_dir resolves.
+        service.default_workspace = ws
+        return service, ws
+
+    @pytest.mark.asyncio
+    async def test_inbound_writes_to_host_no_exec(self, tmp_path):
+        import base64
+
+        import langbot_plugin.api.entities.builtin.platform.message as platform_message
+
+        service, ws = self._service_with_workspace(tmp_path)
+        # Big payload that would blow ARG_MAX on the exec path:
+        big = b'\x89PNG\r\n\x1a\n' + b'x' * (300 * 1024)
+        b64 = 'data:image/png;base64,' + base64.b64encode(big).decode()
+        query = make_query()
+        query.message_chain = platform_message.MessageChain([platform_message.Image(base64=b64)])
+        # execute_tool must NOT be called on the host path.
+        service.execute_tool = AsyncMock(side_effect=AssertionError('exec must not be used on host path'))
+
+        descriptors = await service.materialize_inbound_attachments(query)
+        assert len(descriptors) == 1
+        d = descriptors[0]
+        assert d['type'] == 'Image'
+        assert d['size'] == len(big)
+        # File actually landed on the host workspace.
+        host_file = os.path.join(ws, 'inbox', str(query.query_id), d['name'])
+        assert os.path.isfile(host_file)
+        assert open(host_file, 'rb').read() == big
+
+    @pytest.mark.asyncio
+    async def test_inbound_host_clears_stale_query_dir(self, tmp_path):
+        import base64
+
+        import langbot_plugin.api.entities.builtin.platform.message as platform_message
+
+        service, ws = self._service_with_workspace(tmp_path)
+        # Seed a stale file under the same query_id (simulates webchat id reuse).
+        stale_dir = os.path.join(ws, 'inbox', '42')
+        os.makedirs(stale_dir, exist_ok=True)
+        open(os.path.join(stale_dir, 'image_1.png'), 'wb').write(b'STALE-OLD-IMAGE')
+
+        new = b'\x89PNG\r\n\x1a\n NEW'
+        b64 = 'data:image/png;base64,' + base64.b64encode(new).decode()
+        query = make_query(query_id=42)
+        query.message_chain = platform_message.MessageChain([platform_message.Image(base64=b64)])
+        service.execute_tool = AsyncMock()
+        descriptors = await service.materialize_inbound_attachments(query)
+        # The new write recreated the dir; the stale file is gone, new bytes present.
+        host_file = os.path.join(stale_dir, descriptors[0]['name'])
+        assert open(host_file, 'rb').read() == new
+        # No leftover content from the stale image.
+        assert b'STALE-OLD-IMAGE' not in open(host_file, 'rb').read()
+
+    @pytest.mark.asyncio
+    async def test_outbound_reads_host_and_clears(self, tmp_path):
+        service, ws = self._service_with_workspace(tmp_path)
+        query = make_query()
+        outbox = os.path.join(ws, 'outbox', str(query.query_id))
+        os.makedirs(outbox, exist_ok=True)
+        # A large file that would be truncated on the exec/stdout path:
+        big_png = b'\x89PNG\r\n\x1a\n' + b'y' * (400 * 1024)
+        open(os.path.join(outbox, 'result.png'), 'wb').write(big_png)
+        open(os.path.join(outbox, 'notes.txt'), 'wb').write(b'hello')
+
+        service.execute_tool = AsyncMock(side_effect=AssertionError('exec must not be used on host path'))
+        attachments = await service.collect_outbound_attachments(query)
+        by_name = {a['name']: a for a in attachments}
+        assert by_name['result.png']['type'] == 'Image'
+        assert by_name['notes.txt']['type'] == 'File'
+        # Full image survived (no truncation).
+        import base64
+
+        raw = base64.b64decode(by_name['result.png']['base64'].split(',', 1)[-1])
+        assert raw == big_png
+        # Outbox cleared after collection.
+        assert os.listdir(outbox) == []

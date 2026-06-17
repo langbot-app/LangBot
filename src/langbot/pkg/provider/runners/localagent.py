@@ -104,6 +104,55 @@ class _StreamAccumulator:
 class LocalAgentRunner(runner.RequestRunner):
     """Local agent request runner"""
 
+    async def _inject_inbound_attachments(
+        self,
+        query: pipeline_query.Query,
+        user_message: provider_message.Message,
+    ) -> None:
+        """Persist inbound attachments into the sandbox and tell the model.
+
+        No-op when the box service is unavailable or there are no attachments.
+        On success, appends an extra text ContentElement to the user message
+        listing the in-sandbox paths and the outbox convention, and stashes the
+        descriptors in ``query.variables['_sandbox_inbound_attachments']``.
+        """
+        box_service = getattr(self.ap, 'box_service', None)
+        if box_service is None or not getattr(box_service, 'available', False):
+            return
+        try:
+            attachments = await box_service.materialize_inbound_attachments(query)
+        except Exception as e:  # never break the chat turn over attachment IO
+            self.ap.logger.warning(f'Inbound attachment materialization failed: {e}')
+            return
+        if not attachments:
+            return
+
+        query.variables['_sandbox_inbound_attachments'] = attachments
+
+        lines = [
+            'The user sent attachments. They have been saved into the sandbox and are '
+            'available to the exec/read/write tools at these paths:'
+        ]
+        for att in attachments:
+            lines.append(f'- {att["type"]}: {att["path"]} ({att["size"]} bytes)')
+        outbox_dir = f'{box_service.OUTBOX_MOUNT_DIR}/{query.query_id}'
+        lines.append(
+            'If you produce any file (image, audio, document, etc.) that should be sent '
+            f'back to the user, write it into {outbox_dir}/ (create the directory if '
+            'needed). Every file placed there will be delivered to the user automatically.'
+        )
+        note = '\n'.join(lines)
+
+        if isinstance(user_message.content, str):
+            user_message.content = [
+                provider_message.ContentElement.from_text(user_message.content),
+                provider_message.ContentElement.from_text(note),
+            ]
+        elif isinstance(user_message.content, list):
+            user_message.content.append(provider_message.ContentElement.from_text(note))
+        else:
+            user_message.content = [provider_message.ContentElement.from_text(note)]
+
     def _build_request_messages(
         self,
         query: pipeline_query.Query,
@@ -231,6 +280,12 @@ class LocalAgentRunner(runner.RequestRunner):
         kb_uuids = query.variables.get('_knowledge_base_uuids', [])
 
         user_message = copy.deepcopy(query.user_message)
+
+        # Materialize inbound attachments (images / voices / files) into the
+        # sandbox so the agent's exec/read/write tools can operate on the real
+        # bytes — not just the multimodal copy the model sees. The exact
+        # in-sandbox paths are announced to the model as a system note.
+        await self._inject_inbound_attachments(query, user_message)
 
         user_message_text = ''
 
