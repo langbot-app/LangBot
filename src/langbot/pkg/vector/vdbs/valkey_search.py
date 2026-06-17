@@ -65,6 +65,16 @@ _MATCH_ALL = f'-@{"file_id"}:{{__langbot_match_all_sentinel__}}'
 # (no silent truncation / orphaned vectors).
 _DELETE_SCAN_BATCH = 10000
 
+# Characters Valkey Search's TAG query parser cannot handle even when
+# backslash-escaped (the brace delimiters and the wildcard).  file_id TAG
+# values are percent-encoded over this set (plus '%' itself, so the encoding
+# is reversible/unambiguous) before being stored or queried, so an arbitrary
+# file_id round-trips instead of producing an unparseable query.  For normal
+# UUID/hash file_ids none of these characters occur, so the encoding is a
+# no-op and the stored value is unchanged.  The original file_id is always
+# preserved verbatim inside ``metadata_json``.
+_FT_UNSAFE_TAG_CHARS = frozenset('{}*%')
+
 
 class ValkeySearchVectorDatabase(VectorDatabase):
     """Valkey Search (valkey-bundle) vector database adapter for LangBot.
@@ -206,11 +216,12 @@ class ValkeySearchVectorDatabase(VectorDatabase):
         ``|``, ``@``, ``:``, spaces, dashes) so a crafted ``file_id`` cannot
         break out of the clause.
 
-        Note: Valkey Search's TAG query parser does not accept a literal brace
-        (``{`` / ``}``) inside the value even when backslash-escaped — such a
-        value fails CLOSED (the query raises) rather than widening results.
-        Real ``file_id`` values are UUIDs/hashes and never contain braces, so
-        this is a safe, defensive edge.
+        Note: Valkey Search's TAG query parser cannot handle a literal brace
+        (``{`` / ``}``) or ``*`` even when backslash-escaped.  Callers that pass
+        a ``file_id`` route it through ``_encode_and_escape_tag`` /
+        ``_encode_file_id`` first, which percent-encodes exactly those
+        characters, so an arbitrary ``file_id`` round-trips safely. This raw
+        escaper is still correct for all other special characters.
         """
         out = []
         for ch in str(value):
@@ -218,6 +229,31 @@ class ValkeySearchVectorDatabase(VectorDatabase):
                 out.append('\\')
             out.append(ch)
         return ''.join(out)
+
+    @staticmethod
+    def _encode_file_id(value: str) -> str:
+        """Make a ``file_id`` safe to use as an FT TAG token AND query value.
+
+        Percent-encodes the characters Valkey Search's TAG parser cannot handle
+        even when backslash-escaped (``{``, ``}``, ``*``) plus ``%`` itself for
+        reversibility.  Applied identically at write time (the stored TAG field)
+        and query time (filters / ``delete_by_file_id``) so any value matches
+        itself.  For normal UUID/hash ids none of these characters occur, so
+        this is a no-op.  The original value is always kept verbatim in
+        ``metadata_json``; this encoded form is only ever used for the indexed
+        TAG.
+        """
+        out = []
+        for ch in str(value):
+            if ch in _FT_UNSAFE_TAG_CHARS:
+                out.append('%{:02X}'.format(ord(ch)))
+            else:
+                out.append(ch)
+        return ''.join(out)
+
+    def _encode_and_escape_tag(self, value: str) -> str:
+        """Encode an FT-unsafe ``file_id`` then escape TAG special chars."""
+        return self._escape_tag(self._encode_file_id(value))
 
     # ------------------------------------------------------------------ #
     # Filter mapping (canonical triples -> FT query fragment)
@@ -236,16 +272,17 @@ class ValkeySearchVectorDatabase(VectorDatabase):
 
         fragments: list[str] = []
         for field, op, value in triples:
-            # All currently-indexed fields are TAG fields.
+            # All currently-indexed fields are TAG fields; file_id values are
+            # encoded (FT-unsafe chars) then escaped so any value round-trips.
             if op == '$eq':
-                fragments.append(f'@{field}:{{{self._escape_tag(value)}}}')
+                fragments.append(f'@{field}:{{{self._encode_and_escape_tag(value)}}}')
             elif op == '$ne':
-                fragments.append(f'-@{field}:{{{self._escape_tag(value)}}}')
+                fragments.append(f'-@{field}:{{{self._encode_and_escape_tag(value)}}}')
             elif op == '$in':
-                joined = '|'.join(self._escape_tag(v) for v in value)
+                joined = '|'.join(self._encode_and_escape_tag(v) for v in value)
                 fragments.append(f'@{field}:{{{joined}}}')
             elif op == '$nin':
-                joined = '|'.join(self._escape_tag(v) for v in value)
+                joined = '|'.join(self._encode_and_escape_tag(v) for v in value)
                 fragments.append(f'-@{field}:{{{joined}}}')
             elif op == '$gt':
                 fragments.append(f'@{field}:[({value} +inf]')
@@ -366,7 +403,7 @@ class ValkeySearchVectorDatabase(VectorDatabase):
             }
             file_id = metadata.get('file_id')
             if file_id is not None:
-                mapping[_FIELD_FILE_ID] = str(file_id)
+                mapping[_FIELD_FILE_ID] = self._encode_file_id(str(file_id))
             if documents is not None and i < len(documents) and documents[i] is not None:
                 mapping[_FIELD_DOCUMENT] = documents[i]
 
@@ -541,7 +578,7 @@ class ValkeySearchVectorDatabase(VectorDatabase):
             self.ap.logger.warning(f"Valkey Search collection '{collection}' not found for deletion")
             return
 
-        query = f'@{_FIELD_FILE_ID}:{{{self._escape_tag(file_id)}}}'
+        query = f'@{_FIELD_FILE_ID}:{{{self._encode_and_escape_tag(file_id)}}}'
         keys = await self._search_keys(client, index, query)
         if keys:
             await client.delete(keys)

@@ -64,6 +64,48 @@ class TestTagEscaping:
         assert mod.ValkeySearchVectorDatabase._escape_tag('abc123') == 'abc123'
 
 
+class TestFileIdEncoding:
+    """Tests for _encode_file_id (FT-unsafe char percent-encoding)."""
+
+    def test_uuid_is_noop(self):
+        mod = get_valkey_module()
+        fid = '550e8400-e29b-41d4-a716-446655440000'
+        assert mod.ValkeySearchVectorDatabase._encode_file_id(fid) == fid
+
+    def test_encodes_braces_star_and_percent(self):
+        mod = get_valkey_module()
+        enc = mod.ValkeySearchVectorDatabase._encode_file_id('a{b}c*d%e')
+        # '{'=7B '}'=7D '*'=2A '%'=25
+        assert enc == 'a%7Bb%7Dc%2Ad%25e'
+        # No raw FT-unsafe char survives.
+        assert all(ch not in enc for ch in '{}*') or '%' in enc
+
+    def test_encoding_is_deterministic_and_collision_safe(self):
+        mod = get_valkey_module()
+        enc = mod.ValkeySearchVectorDatabase._encode_file_id
+        # A literal "%7B" must not collide with an encoded "{".
+        assert enc('{') != enc('%7B')
+        assert enc('{') == '%7B'
+        assert enc('%7B') == '%257B'
+
+    def test_filter_encodes_unsafe_chars_in_tag_query(self):
+        backend = make_backend()
+        # The emitted TAG query must contain the encoded form, never raw braces.
+        frag = backend._triples_to_ft({'file_id': 'x}y{z*'})
+        assert '7D' in frag and '7B' in frag and '2A' in frag
+        # No raw '*' from the value, and exactly one opening/closing brace (the
+        # TAG-clause delimiters) — the value's own braces were encoded away.
+        assert '*' not in frag
+        assert frag.count('{') == 1 and frag.count('}') == 1
+        assert frag.startswith('@file_id:{') and frag.endswith('}')
+
+    def test_filter_in_operator_encodes_each_value(self):
+        backend = make_backend()
+        frag = backend._triples_to_ft({'file_id': {'$in': ['a*b', 'c}d']}})
+        assert '2A' in frag and '7D' in frag
+        assert '*' not in frag
+
+
 class TestFilterToFt:
     """Tests for _triples_to_ft filter mapping (all 8 operators)."""
 

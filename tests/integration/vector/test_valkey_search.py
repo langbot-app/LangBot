@@ -298,22 +298,23 @@ async def test_adversarial_filter_and_query_input(backend):
       escaped to literal TAG content, never interpreted as extra clauses.
     * A query_text full of FT operators does not raise and does not widen the
       result set.
-    * A file_id containing a literal ``}`` cannot be used to break out of the
-      ``@file_id:{...}`` clause: it fails CLOSED (matches only its own row or
-      raises), it must NEVER widen to match an unrelated row. (Valkey Search's
-      TAG parser rejects literal braces; real file_ids are UUIDs/hashes.)
+    * A file_id containing FT-unsafe chars (``{`` / ``}`` / ``*``) is
+      percent-encoded, so it round-trips correctly: an exact match returns ONLY
+      its own row and never widens to an unrelated row, and the query does not
+      raise.
     """
     db, collection = backend
-    from glide import RequestError
 
-    # Injection-style file_id WITHOUT literal braces (the realistic surface).
+    # Injection-style file_id WITHOUT FT-unsafe chars (the realistic surface).
     injection_fid = 'evil") @file_id (".id|x-y:z'
-    ids = ['adv1', 'benign2']
-    embeddings = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]]
-    metadatas = [{'file_id': injection_fid}, {'file_id': 'plainB'}]
-    documents = ['payload row content', 'unrelated benign content']
+    # file_id WITH FT-unsafe chars that previously could not be queried.
+    brace_fid = 'x} @file_id:{*'
+    ids = ['adv1', 'benign2', 'brace3']
+    embeddings = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]]
+    metadatas = [{'file_id': injection_fid}, {'file_id': 'plainB'}, {'file_id': brace_fid}]
+    documents = ['payload row content', 'unrelated benign content', 'brace row content']
     await db.add_embeddings(collection, ids, embeddings, metadatas, documents)
-    await _poll_until(lambda: db.list_by_filter(collection, limit=10), lambda r: r[1] >= 2)
+    await _poll_until(lambda: db.list_by_filter(collection, limit=10), lambda r: r[1] >= 3)
 
     # Exact-match on the crafted file_id returns ONLY its own row.
     items, total = await db.list_by_filter(collection, filter={'file_id': injection_fid})
@@ -331,11 +332,12 @@ async def test_adversarial_filter_and_query_input(backend):
     )
     assert 'benign2' not in result['ids'][0]
 
-    # A brace-bearing payload must fail CLOSED: never widen to the benign row.
-    brace_fid = 'x} @file_id:{*'
-    try:
-        b_items, _ = await db.list_by_filter(collection, filter={'file_id': brace_fid})
-        assert all(it['id'] != 'benign2' for it in b_items)
-    except RequestError:
-        # Parser rejected the escaped braces — also safe (no widening occurred).
-        pass
+    # The brace/star-bearing file_id is encoded, so it round-trips: exact match
+    # returns ONLY its own row and never widens. No RequestError is raised.
+    b_items, b_total = await db.list_by_filter(collection, filter={'file_id': brace_fid})
+    assert b_total == 1
+    assert {it['id'] for it in b_items} == {'brace3'}
+
+    # And deletion by that file_id removes exactly its own row.
+    deleted = await db.delete_by_filter(collection, filter={'file_id': brace_fid})
+    assert deleted == 1
