@@ -9,6 +9,8 @@ from ....core import app
 from ....entity.persistence import monitoring as persistence_monitoring
 
 
+# TODO: Move shared trace/time helpers into a small monitoring utility module
+# when trace propagation expands beyond the current query/retrieval path.
 def _utc_now() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 

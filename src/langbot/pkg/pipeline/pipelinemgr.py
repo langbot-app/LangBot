@@ -270,6 +270,9 @@ class RuntimePipeline:
                         f'Stage {stage_container.inst_name} processed query {query.query_id} res {result.result_type}'
                     )
                     await self._check_output(query, result)
+                    if result.error_notice:
+                        span_status = 'error'
+                        span_error = result.error_notice
 
                     if result.result_type == pipeline_entities.ResultType.INTERRUPT:
                         self.ap.logger.debug(f'Stage {stage_container.inst_name} interrupted query {query.query_id}')
@@ -290,6 +293,9 @@ class RuntimePipeline:
                             f'Stage {stage_container.inst_name} processed query {query.query_id} res {sub_result.result_type}'
                         )
                         await self._check_output(query, sub_result)
+                        if sub_result.error_notice:
+                            span_status = 'error'
+                            span_error = sub_result.error_notice
 
                         if sub_result.result_type == pipeline_entities.ResultType.INTERRUPT:
                             self.ap.logger.debug(
@@ -426,7 +432,10 @@ class RuntimePipeline:
             await self._execute_from_stage(0, query)
 
             # Record query success only if no error occurred during processing
-            if not query.variables.get('_monitoring_has_error', False):
+            has_monitoring_error = query.variables.get('_monitoring_has_error', False)
+            if has_monitoring_error:
+                trace_status = 'error'
+            else:
                 try:
                     await monitoring_helper.MonitoringHelper.record_query_success(
                         ap=self.ap,

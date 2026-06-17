@@ -162,3 +162,61 @@ async def test_runtime_pipeline_execute(mock_app, sample_query):
 
     # Verify stage was called
     mock_stage.process.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_runtime_pipeline_marks_trace_error_when_stage_returns_error_notice(mock_app, sample_query):
+    """Trace status follows handled stage errors, not only raised exceptions."""
+    pipelinemgr = get_pipelinemgr_module()
+    stage = get_stage_module()
+    persistence_pipeline = get_persistence_pipeline_module()
+    entities = get_entities_module()
+
+    error_result = entities.StageProcessResult(
+        result_type=entities.ResultType.INTERRUPT,
+        new_query=sample_query,
+        user_notice='',
+        console_notice='',
+        debug_notice='traceback',
+        error_notice='model request failed',
+    )
+
+    mock_stage = Mock(spec=stage.PipelineStage)
+    mock_stage.process = AsyncMock(return_value=error_result)
+    stage_container = pipelinemgr.StageInstContainer(inst_name='FailingStage', inst=mock_stage)
+
+    pipeline_entity = Mock(spec=persistence_pipeline.LegacyPipeline)
+    pipeline_entity.uuid = 'test-pipeline-uuid'
+    pipeline_entity.name = 'Test Pipeline'
+    pipeline_entity.config = sample_query.pipeline_config
+    pipeline_entity.extensions_preferences = {'plugins': []}
+
+    mock_app.bot_service = AsyncMock()
+    mock_app.bot_service.get_bot = AsyncMock(return_value={'name': 'Test Bot'})
+    mock_app.monitoring_service = AsyncMock()
+    mock_app.monitoring_service.record_message = AsyncMock(return_value='message-1')
+    mock_app.monitoring_service.update_session_activity = AsyncMock(return_value=True)
+    mock_app.monitoring_service.start_trace = AsyncMock(return_value='trace-1')
+    mock_app.monitoring_service.record_span = AsyncMock()
+    mock_app.monitoring_service.finish_trace = AsyncMock()
+    mock_app.monitoring_service.update_message_status = AsyncMock()
+    mock_app.monitoring_service.record_error = AsyncMock()
+
+    event_ctx = Mock()
+    event_ctx.is_prevented_default = Mock(return_value=False)
+    mock_app.plugin_connector.emit_event = AsyncMock(return_value=event_ctx)
+    mock_app.query_pool.cached_queries[sample_query.query_id] = sample_query
+
+    runtime_pipeline = pipelinemgr.RuntimePipeline(mock_app, pipeline_entity, [stage_container])
+
+    await runtime_pipeline.run(sample_query)
+
+    mock_app.monitoring_service.finish_trace.assert_awaited_once()
+    assert mock_app.monitoring_service.finish_trace.await_args.kwargs['status'] == 'error'
+
+    span_calls = mock_app.monitoring_service.record_span.await_args_list
+    stage_span_call = next(call for call in span_calls if call.kwargs['name'] == 'FailingStage')
+    root_span_call = next(call for call in span_calls if call.kwargs['kind'] == 'pipeline.query')
+    assert stage_span_call.kwargs['status'] == 'error'
+    assert stage_span_call.kwargs['error_message'] == 'model request failed'
+    assert root_span_call.kwargs['status'] == 'error'
