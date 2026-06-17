@@ -263,7 +263,9 @@ class RuntimePipeline:
                     result = await result
 
                 if isinstance(result, pipeline_entities.StageProcessResult):  # 直接返回结果
-                    span_result_type = str(result.result_type.value if hasattr(result.result_type, 'value') else result.result_type)
+                    span_result_type = str(
+                        result.result_type.value if hasattr(result.result_type, 'value') else result.result_type
+                    )
                     self.ap.logger.debug(
                         f'Stage {stage_container.inst_name} processed query {query.query_id} res {result.result_type}'
                     )
@@ -290,7 +292,9 @@ class RuntimePipeline:
                         await self._check_output(query, sub_result)
 
                         if sub_result.result_type == pipeline_entities.ResultType.INTERRUPT:
-                            self.ap.logger.debug(f'Stage {stage_container.inst_name} interrupted query {query.query_id}')
+                            self.ap.logger.debug(
+                                f'Stage {stage_container.inst_name} interrupted query {query.query_id}'
+                            )
                             break
                         elif sub_result.result_type == pipeline_entities.ResultType.CONTINUE:
                             query = sub_result.new_query

@@ -1318,10 +1318,7 @@ class MonitoringService:
 
         query = query.order_by(persistence_monitoring.MonitoringTrace.started_at.desc()).limit(limit).offset(offset)
         result = await self.ap.persistence_mgr.execute_async(query)
-        traces = [
-            self._serialize_trace(row[0] if isinstance(row, tuple) else row)
-            for row in result.all()
-        ]
+        traces = [self._serialize_trace(row[0] if isinstance(row, tuple) else row) for row in result.all()]
         return traces, total
 
     async def get_trace_details(self, trace_id: str) -> dict:
@@ -1341,10 +1338,7 @@ class MonitoringService:
             .order_by(persistence_monitoring.MonitoringSpan.started_at.asc())
         )
         span_result = await self.ap.persistence_mgr.execute_async(span_query)
-        spans = [
-            self._serialize_span(row[0] if isinstance(row, tuple) else row)
-            for row in span_result.all()
-        ]
+        spans = [self._serialize_span(row[0] if isinstance(row, tuple) else row) for row in span_result.all()]
 
         return {
             'trace_id': trace_id,

@@ -270,7 +270,9 @@ class LocalAgentRunner(runner.RequestRunner):
                         'session_name': f'{query.session.launcher_type.value}_{query.session.launcher_id}',
                         '_trace_context': {
                             'trace_id': query.variables.get('_monitoring_trace_id') if query.variables else None,
-                            'parent_span_id': query.variables.get('_monitoring_root_span_id') if query.variables else None,
+                            'parent_span_id': query.variables.get('_monitoring_root_span_id')
+                            if query.variables
+                            else None,
                             'message_id': query.variables.get('_monitoring_message_id') if query.variables else None,
                             'query_id': query.query_id,
                             'session_id': f'{query.launcher_type.value}_{query.launcher_id}',

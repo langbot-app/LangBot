@@ -8,6 +8,7 @@ Run: uv run pytest tests/integration/api/test_monitoring.py -q
 
 from __future__ import annotations
 
+import datetime
 import pytest
 from unittest.mock import MagicMock, AsyncMock, Mock
 
@@ -84,11 +85,11 @@ def fake_monitoring_app():
     app.monitoring_service.get_embedding_calls = AsyncMock(return_value=([{'id': 'emb-1'}], 10))
     app.monitoring_service.get_traces = AsyncMock(return_value=([{'trace_id': 'trace-1'}], 1))
     app.monitoring_service.get_trace_details = AsyncMock(
-        return_value={
-            'found': True,
-            'trace_id': 'trace-1',
-            'trace': {'trace_id': 'trace-1'},
-            'spans': [],
+        side_effect=lambda trace_id: {
+            'found': trace_id == 'trace-1',
+            'trace_id': trace_id,
+            'trace': {'trace_id': trace_id} if trace_id == 'trace-1' else None,
+            'spans': [] if trace_id == 'trace-1' else None,
         }
     )
     app.monitoring_service.get_sessions = AsyncMock(return_value=([{'session_id': 'sess-1'}], 20))
@@ -264,6 +265,51 @@ class TestMonitoringDetailsEndpoints:
         )
 
         assert response.status_code == 200
+
+
+@pytest.mark.usefixtures('mock_circular_import_chain')
+class TestMonitoringTraceEndpoints:
+    """Tests for trace list and detail endpoints."""
+
+    @pytest.mark.asyncio
+    async def test_get_traces_forwards_filters(self, quart_test_client, fake_monitoring_app):
+        """GET /api/v1/monitoring/traces forwards filters to service."""
+        response = await quart_test_client.get(
+            '/api/v1/monitoring/traces'
+            '?botId=bot-1'
+            '&pipelineId=pipeline-1'
+            '&sessionId=session-1'
+            '&status=success'
+            '&startTime=2026-01-01T00:00:00Z'
+            '&endTime=2026-01-02T00:00:00Z'
+            '&limit=25'
+            '&offset=5',
+            headers={'Authorization': 'Bearer test_token'},
+        )
+
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert data['data']['traces'] == [{'trace_id': 'trace-1'}]
+        assert data['data']['total'] == 1
+        fake_monitoring_app.monitoring_service.get_traces.assert_awaited_with(
+            bot_ids=['bot-1'],
+            pipeline_ids=['pipeline-1'],
+            session_ids=['session-1'],
+            statuses=['success'],
+            start_time=datetime.datetime(2026, 1, 1, 0, 0),
+            end_time=datetime.datetime(2026, 1, 2, 0, 0),
+            limit=25,
+            offset=5,
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_trace_details_not_found(self, quart_test_client):
+        """GET /api/v1/monitoring/traces/{id} returns 404 when missing."""
+        response = await quart_test_client.get(
+            '/api/v1/monitoring/traces/trace-missing', headers={'Authorization': 'Bearer test_token'}
+        )
+
+        assert response.status_code == 404
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
