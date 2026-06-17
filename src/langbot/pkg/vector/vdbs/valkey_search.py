@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import struct
 from typing import Any, Dict, List
 
@@ -134,8 +135,17 @@ class ValkeySearchVectorDatabase(VectorDatabase):
         """Create the glide client on first use (lazy, non-blocking boot)."""
         if self._client is None:
             credentials = None
-            if self._password is not None or self._username is not None:
+            if self._password is not None:
+                # username is optional alongside a password (ACL "user" vs default user).
                 credentials = ServerCredentials(password=self._password, username=self._username)
+            elif self._username is not None:
+                # A username without a password is not a valid credential pair for
+                # ServerCredentials (password is required). Skip auth and warn rather than
+                # constructing ServerCredentials(password=None, ...) which glide rejects.
+                self.ap.logger.warning(
+                    'Valkey Search: a username was configured without a password; ignoring auth. '
+                    'Set both username and password to use ACL authentication.'
+                )
 
             conf = GlideClientConfiguration(
                 addresses=[NodeAddress(self._host, self._port)],
@@ -150,6 +160,22 @@ class ValkeySearchVectorDatabase(VectorDatabase):
                 f'Initialized Valkey Search client to {self._host}:{self._port} (db={self._db}, tls={self._tls})'
             )
         return self._client
+
+    async def close(self) -> None:
+        """Close the glide client and reset state.
+
+        Safe to call when no client was created. After ``close`` the next
+        operation transparently re-creates the client (``_ensure_client``
+        guards on ``self._client is None``).
+        """
+        if self._client is not None:
+            try:
+                await self._client.close()
+            except Exception:
+                self.ap.logger.warning('Valkey Search: error while closing client (ignored)')
+            finally:
+                self._client = None
+                self._ensured_indexes.clear()
 
     # ------------------------------------------------------------------ #
     # Naming helpers
@@ -173,7 +199,19 @@ class ValkeySearchVectorDatabase(VectorDatabase):
 
     @staticmethod
     def _escape_tag(value: str) -> str:
-        """Escape characters that are special inside a TAG ``{...}`` clause."""
+        """Escape characters that are special inside a TAG ``{...}`` clause.
+
+        The backslash is escaped first so it cannot consume a following
+        escape. This neutralises injection-style values (quotes, parens,
+        ``|``, ``@``, ``:``, spaces, dashes) so a crafted ``file_id`` cannot
+        break out of the clause.
+
+        Note: Valkey Search's TAG query parser does not accept a literal brace
+        (``{`` / ``}``) inside the value even when backslash-escaped — such a
+        value fails CLOSED (the query raises) rather than widening results.
+        Real ``file_id`` values are UUIDs/hashes and never contain braces, so
+        this is a safe, defensive edge.
+        """
         out = []
         for ch in str(value):
             if ch in '\\,.<>{}[]"\':;!@#$%^&*()-+=~| ':
@@ -318,7 +356,6 @@ class ValkeySearchVectorDatabase(VectorDatabase):
         await self._ensure_index(client, collection, dim)
 
         prefix = self._key_prefix(collection)
-        import json
 
         for i, _id in enumerate(ids):
             key = prefix + str(_id)
@@ -457,8 +494,6 @@ class ValkeySearchVectorDatabase(VectorDatabase):
         field (aliased ``distance``) is a COSINE/L2 distance directly, so no
         inversion is needed (unlike Qdrant).
         """
-        import json
-
         ids: list[str] = []
         distances: list[float] = []
         metadatas: list[dict[str, Any]] = []
@@ -548,8 +583,6 @@ class ValkeySearchVectorDatabase(VectorDatabase):
         index = self._index_name(collection)
         if not await self._index_exists(client, index):
             return [], 0
-
-        import json
 
         query = self._triples_to_ft(filter) or _MATCH_ALL
         options = FtSearchOptions(

@@ -236,3 +236,96 @@ class TestDeleteByFilterGuard:
 
         assert deleted == 2
         backend._client.delete.assert_awaited_once_with(['kb:col1:id1', 'kb:col1:id2'])
+
+
+class TestClose:
+    """Tests for the close() teardown."""
+
+    async def test_close_resets_client_and_indexes(self):
+        backend = make_backend()
+        client = AsyncMock()
+        backend._client = client
+        backend.ap = type('Ap', (), {'logger': AsyncMock()})()
+        backend._ensured_indexes = {'idx:col1'}
+
+        await backend.close()
+
+        client.close.assert_awaited_once()
+        assert backend._client is None
+        assert backend._ensured_indexes == set()
+
+    async def test_close_is_noop_when_no_client(self):
+        backend = make_backend()
+        backend._client = None
+        backend.ap = type('Ap', (), {'logger': AsyncMock()})()
+        backend._ensured_indexes = set()
+        # Should not raise.
+        await backend.close()
+        assert backend._client is None
+
+
+class TestCredentialsBuild:
+    """Tests for the auth-credential construction in _ensure_client."""
+
+    def _prep_backend(self, mod, monkeypatch, *, username, password):
+        backend = make_backend()
+        backend._client = None
+        backend._host = 'localhost'
+        backend._port = 6379
+        backend._db = 0
+        backend._tls = False
+        backend._username = username
+        backend._password = password
+        backend._ensured_indexes = set()
+        warnings: list[str] = []
+        backend.ap = type(
+            'Ap',
+            (),
+            {
+                'logger': type(
+                    'L', (), {'info': lambda self, *a, **k: None, 'warning': lambda s, m, *a, **k: warnings.append(m)}
+                )()
+            },
+        )()
+
+        created = {}
+
+        class _FakeClient:
+            @staticmethod
+            async def create(conf):
+                created['conf'] = conf
+                return AsyncMock()
+
+        cred_calls: list[dict] = []
+
+        def _fake_credentials(**kwargs):
+            cred_calls.append(kwargs)
+            return ('CRED', kwargs)
+
+        monkeypatch.setattr(mod, 'GlideClient', _FakeClient)
+        monkeypatch.setattr(mod, 'ServerCredentials', _fake_credentials)
+        monkeypatch.setattr(mod, 'GlideClientConfiguration', lambda **kw: kw)
+        monkeypatch.setattr(mod, 'NodeAddress', lambda *a, **k: ('node', a, k))
+        return backend, created, cred_calls, warnings
+
+    async def test_username_without_password_skips_credentials_and_warns(self, monkeypatch):
+        mod = get_valkey_module()
+        backend, created, cred_calls, warnings = self._prep_backend(mod, monkeypatch, username='acluser', password=None)
+
+        await backend._ensure_client()
+
+        assert cred_calls == []  # ServerCredentials NOT constructed
+        assert created['conf']['credentials'] is None
+        assert any('without a password' in w for w in warnings)
+
+    async def test_password_builds_credentials(self, monkeypatch):
+        mod = get_valkey_module()
+        backend, created, cred_calls, warnings = self._prep_backend(
+            mod, monkeypatch, username='acluser', password='secret'
+        )
+
+        await backend._ensure_client()
+
+        assert len(cred_calls) == 1
+        assert cred_calls[0] == {'password': 'secret', 'username': 'acluser'}
+        assert created['conf']['credentials'] == ('CRED', {'password': 'secret', 'username': 'acluser'})
