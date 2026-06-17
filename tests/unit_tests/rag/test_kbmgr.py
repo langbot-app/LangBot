@@ -408,6 +408,32 @@ class TestRuntimeKnowledgeBaseRetrieve:
         assert call_args[0][1]['retrieval_settings']['top_k'] == 5
 
     @pytest.mark.asyncio
+    async def test_retrieve_records_host_rag_duration(self, monkeypatch):
+        """Test host RAG span duration is measured even if plugin omits it."""
+        rag_module = get_rag_module()
+        mock_app = create_mock_app()
+        mock_app.monitoring_service = AsyncMock()
+        mock_kb = create_mock_kb_entity()
+        mock_app.plugin_connector.call_rag_retrieve = AsyncMock(
+            return_value={'results': [], 'metadata': {'status': 'success'}}
+        )
+        monkeypatch.setattr(rag_module.time, 'perf_counter', Mock(side_effect=[10.0, 10.25]))
+
+        runtime_kb = rag_module.RuntimeKnowledgeBase(mock_app, mock_kb)
+
+        await runtime_kb._retrieve(
+            'query text',
+            {
+                '_trace_context': {
+                    'trace_id': 'trace-1',
+                    'parent_span_id': 'span-root',
+                }
+            },
+        )
+
+        assert mock_app.monitoring_service.record_span.await_args.kwargs['duration'] == 250
+
+    @pytest.mark.asyncio
     async def test_retrieve_converts_dict_to_entry(self):
         """Test that dict results are converted to RetrievalResultEntry."""
         rag_module = get_rag_module()

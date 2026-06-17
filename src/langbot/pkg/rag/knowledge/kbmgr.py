@@ -1,6 +1,7 @@
 from __future__ import annotations
 import mimetypes
 import os.path
+import time
 import traceback
 import uuid
 import zipfile
@@ -341,6 +342,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         filters = settings.pop('filters', {})
         trace_context = settings.pop('_trace_context', None)
         host_span_started_at = self._utc_now()
+        host_span_started = time.perf_counter()
         host_span_id = None
         if trace_context and trace_context.get('trace_id'):
             host_parent_span_id = trace_context.get('parent_span_id')
@@ -380,6 +382,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
                     trace_context=trace_context,
                     host_span_id=host_span_id,
                     started_at=host_span_started_at,
+                    duration=int((time.perf_counter() - host_span_started) * 1000),
                     plugin_id=plugin_id,
                     result={
                         'results': [],
@@ -395,6 +398,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
                 trace_context=trace_context,
                 host_span_id=host_span_id,
                 started_at=host_span_started_at,
+                duration=int((time.perf_counter() - host_span_started) * 1000),
                 plugin_id=plugin_id,
                 result=result,
             )
@@ -405,6 +409,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         trace_context: dict[str, Any],
         host_span_id: str | None,
         started_at: datetime.datetime,
+        duration: int,
         plugin_id: str,
         result: dict[str, Any],
     ) -> None:
@@ -428,7 +433,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
                 kind='rag.retrieval',
                 status=metadata.get('status', 'success'),
                 started_at=started_at,
-                duration=metadata.get('duration_ms'),
+                duration=duration,
                 message_id=trace_context.get('message_id'),
                 session_id=trace_context.get('session_id'),
                 bot_id=trace_context.get('bot_id'),
