@@ -171,7 +171,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         Returns:
             (处理后的内容, 提取的思维链内容)
         """
-        remove_think = self.pipeline_config['output'].get('misc', '').get('remove-think')
+        remove_think = self.pipeline_config['output'].get('misc', {}).get('remove-think')
         thinking_content = ''
         # 从 content 中提取 <think> 标签内容
         if content and '<think>' in content and '</think>' in content:
@@ -750,7 +750,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         think_end = False
         yielded_final = False
 
-        remove_think = self.pipeline_config['output'].get('misc', '').get('remove-think')
+        remove_think = self.pipeline_config['output'].get('misc', {}).get('remove-think')
 
         async for chunk in self.dify_client.chat_messages(
             inputs=inputs,
@@ -852,7 +852,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         think_start = False
         think_end = False
 
-        remove_think = self.pipeline_config['output'].get('misc', '').get('remove-think')
+        remove_think = self.pipeline_config['output'].get('misc', {}).get('remove-think')
 
         async for chunk in self.dify_client.chat_messages(
             inputs=inputs,
@@ -997,6 +997,9 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                     raw_inputs = reason.get('inputs', {})
 
                     _set_pending_form(
+                        # Use the same session-key format as
+                        # _session_key_from_query (launcher_type_launcher_id).
+                        # The 'user' field is set by adapters in this format.
                         user,
                         {
                             'workflow_run_id': new_run_id,
@@ -1129,7 +1132,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         pending_form_data = None
         display_text = ''
 
-        remove_think = self.pipeline_config['output'].get('misc', '').get('remove-think')
+        remove_think = self.pipeline_config['output'].get('misc', {}).get('remove-think')
         async for chunk in self.dify_client.workflow_run(
             inputs=inputs,
             user=f'{query.session.launcher_type.value}_{query.session.launcher_id}',

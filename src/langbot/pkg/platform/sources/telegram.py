@@ -167,7 +167,7 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
                 time=event.message.date.timestamp(),
                 source_platform_object=event,
             )
-        elif event.effective_chat.type == 'group' or 'supergroup':
+        elif event.effective_chat.type in ('group', 'supergroup'):
             return platform_events.GroupMessage(
                 sender=platform_entities.GroupMember(
                     id=event.effective_chat.id,
@@ -234,7 +234,9 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 if data.get('form_action') or data.get('f'):
                     import langbot_plugin.api.entities.builtin.provider.session as provider_session
 
-                    workflow_run_id = data.get('workflow_run_id', '')
+                    # workflow_run_id is not in the callback payload (too large
+                    # for Telegram's 64-byte limit). Only w_suffix is sent;
+                    # the runner resolves the full run id from _PENDING_FORMS.
                     w_suffix = data.get('w', '')
                     action_id = data.get('action_id') or data.get('a', '')
                     session_key = data.get('session_key') or data.get('s', '')
@@ -266,7 +268,8 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                             break
 
                     form_action_data = {
-                        'workflow_run_id': workflow_run_id,
+                        # workflow_run_id is intentionally omitted; the runner
+                        # resolves it from w_suffix via _PENDING_FORMS.
                         'w_suffix': w_suffix,
                         'action_id': action_id,
                         'user': f'{launcher_type.value}_{launcher_id}',
@@ -541,6 +544,7 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             session_key = f'p:{message_source.sender.id}'
 
         keyboard = []
+        oversized = False
         for action in actions:
             action_id = action.get('id', '')
             action_title = action.get('title', action_id)
@@ -548,9 +552,10 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             if w_suffix:
                 callback_payload['w'] = w_suffix
             callback_data = json.dumps(callback_payload, separators=(',', ':'))
+            if len(callback_data.encode('utf-8')) > 64:
+                oversized = True
+                break
             keyboard.append([InlineKeyboardButton(action_title, callback_data=callback_data)])
-
-        reply_markup = InlineKeyboardMarkup(keyboard)
 
         update = message_source.source_platform_object
         chat_id = update.effective_chat.id
@@ -560,11 +565,25 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         text_lines = [f'[{node_title}] Please select an action:']
         if form_content:
             text_lines.insert(0, form_content)
-        args = {
-            'chat_id': chat_id,
-            'text': '\n\n'.join(text_lines),
-            'reply_markup': reply_markup,
-        }
+
+        if oversized:
+            # callback_data exceeds Telegram's 64-byte limit — fall back to
+            # a plain-text numbered list so the user can reply by number.
+            for idx, action in enumerate(actions, start=1):
+                title = action.get('title') or action.get('id') or ''
+                text_lines.append(f'  {idx}. {title}')
+            args = {
+                'chat_id': chat_id,
+                'text': '\n\n'.join(text_lines),
+            }
+        else:
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            args = {
+                'chat_id': chat_id,
+                'text': '\n\n'.join(text_lines),
+                'reply_markup': reply_markup,
+            }
+
         if message_thread_id:
             args['message_thread_id'] = message_thread_id
 
