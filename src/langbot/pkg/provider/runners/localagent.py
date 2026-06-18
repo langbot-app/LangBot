@@ -153,9 +153,7 @@ class LocalAgentRunner(runner.RequestRunner):
         _model_unsafe_types = {'file_base64', 'file_url'}
         if isinstance(user_message.content, list):
             user_message.content = [
-                ce
-                for ce in user_message.content
-                if getattr(ce, 'type', None) not in _model_unsafe_types
+                ce for ce in user_message.content if getattr(ce, 'type', None) not in _model_unsafe_types
             ]
 
         if isinstance(user_message.content, str):
