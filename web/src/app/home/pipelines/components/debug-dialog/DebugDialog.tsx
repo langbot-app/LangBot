@@ -65,7 +65,12 @@ export default function DebugDialog({
   const [isHovering, setIsHovering] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [selectedImages, setSelectedImages] = useState<
-    Array<{ file: File; preview: string; fileKey?: string }>
+    Array<{
+      file: File;
+      preview: string;
+      fileKey?: string;
+      kind: 'image' | 'voice' | 'file';
+    }>
   >([]);
   const [isUploading, setIsUploading] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState<string>('');
@@ -293,23 +298,38 @@ export default function DebugDialog({
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const newImages: Array<{ file: File; preview: string }> = [];
+    const newImages: Array<{
+      file: File;
+      preview: string;
+      kind: 'image' | 'voice' | 'file';
+    }> = [];
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       if (file.type.startsWith('image/')) {
-        const preview = URL.createObjectURL(file);
-        newImages.push({ file, preview });
+        newImages.push({
+          file,
+          preview: URL.createObjectURL(file),
+          kind: 'image',
+        });
+      } else if (file.type.startsWith('audio/')) {
+        newImages.push({ file, preview: '', kind: 'voice' });
+      } else {
+        newImages.push({ file, preview: '', kind: 'file' });
       }
     }
 
     setSelectedImages((prev) => [...prev, ...newImages]);
+    // reset the input so selecting the same file again re-triggers onChange
+    e.target.value = '';
   };
 
   const handleRemoveImage = (index: number) => {
     setSelectedImages((prev) => {
       const newImages = [...prev];
-      URL.revokeObjectURL(newImages[index].preview);
+      if (newImages[index].preview) {
+        URL.revokeObjectURL(newImages[index].preview);
+      }
       newImages.splice(index, 1);
       return newImages;
     });
@@ -373,19 +393,33 @@ export default function DebugDialog({
         });
       }
 
-      // Upload images and add to message chain
-      for (const image of selectedImages) {
+      // Upload attachments and add to message chain
+      for (const attachment of selectedImages) {
         try {
-          const result = await httpClient.uploadWebSocketImage(
-            selectedPipelineId,
-            image.file,
-          );
-          messageChain.push({
-            type: 'Image',
-            path: result.file_key,
-          });
+          if (attachment.kind === 'image') {
+            const result = await httpClient.uploadWebSocketImage(
+              selectedPipelineId,
+              attachment.file,
+            );
+            messageChain.push({
+              type: 'Image',
+              path: result.file_key,
+            });
+          } else {
+            // Voice / File go through the generic document upload endpoint,
+            // which returns a storage key the backend resolves into the
+            // sandbox inbox just like images.
+            const result = await httpClient.uploadDocumentFile(attachment.file);
+            messageChain.push({
+              type: attachment.kind === 'voice' ? 'Voice' : 'File',
+              path: result.file_id,
+              ...(attachment.kind === 'file'
+                ? { name: attachment.file.name }
+                : {}),
+            });
+          }
         } catch (error) {
-          console.error('Image upload failed:', error);
+          console.error('Attachment upload failed:', error);
           toast.error(t('pipelines.debugDialog.imageUploadFailed'));
         }
       }
@@ -394,7 +428,9 @@ export default function DebugDialog({
       setInputValue('');
       setHasAt(false);
       setQuotedMessage(null);
-      selectedImages.forEach((img) => URL.revokeObjectURL(img.preview));
+      selectedImages.forEach((img) => {
+        if (img.preview) URL.revokeObjectURL(img.preview);
+      });
       setSelectedImages([]);
 
       // Send message via WebSocket
@@ -861,17 +897,30 @@ export default function DebugDialog({
           </div>
         )}
 
-        {/* Image preview area */}
+        {/* Attachment preview area */}
         {selectedImages.length > 0 && (
           <div className="px-4 pb-2">
             <div className="flex gap-2 flex-wrap">
               {selectedImages.map((image, index) => (
                 <div key={index} className="relative group">
-                  <img
-                    src={image.preview}
-                    alt={`preview-${index}`}
-                    className="w-20 h-20 object-cover rounded-lg border"
-                  />
+                  {image.kind === 'image' ? (
+                    <img
+                      src={image.preview}
+                      alt={`preview-${index}`}
+                      className="w-20 h-20 object-cover rounded-lg border"
+                    />
+                  ) : (
+                    <div className="w-36 h-20 px-2 rounded-lg border bg-muted/40 flex items-center gap-2 overflow-hidden">
+                      {image.kind === 'voice' ? (
+                        <Music className="size-5 shrink-0 text-muted-foreground" />
+                      ) : (
+                        <Paperclip className="size-5 shrink-0 text-muted-foreground" />
+                      )}
+                      <span className="text-xs text-muted-foreground truncate">
+                        {image.file.name}
+                      </span>
+                    </div>
+                  )}
                   <button
                     type="button"
                     onClick={() => handleRemoveImage(index)}
@@ -900,7 +949,7 @@ export default function DebugDialog({
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,audio/*,*/*"
               multiple
               onChange={handleImageSelect}
               className="hidden"

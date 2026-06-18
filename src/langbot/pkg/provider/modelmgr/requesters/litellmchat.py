@@ -216,11 +216,22 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             content = msg_dict.get('content')
 
             if isinstance(content, list):
+                converted_parts = []
                 for part in content:
                     if isinstance(part, dict) and part.get('type') == 'image_base64':
                         part['image_url'] = {'url': part['image_base64']}
                         part['type'] = 'image_url'
                         del part['image_base64']
+                    # OpenAI-compatible chat models reject non-image file parts
+                    # (audio/document base64 or url). These originate from Voice /
+                    # File attachments — including ones replayed from conversation
+                    # history — and the agent already accesses their bytes via the
+                    # sandbox. Drop them from the model payload to avoid
+                    # "Invalid user message ... invalid content type=file_base64".
+                    if isinstance(part, dict) and part.get('type') in ('file_base64', 'file_url'):
+                        continue
+                    converted_parts.append(part)
+                msg_dict['content'] = converted_parts
 
             req_messages.append(msg_dict)
 

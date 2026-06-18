@@ -143,6 +143,21 @@ class LocalAgentRunner(runner.RequestRunner):
         )
         note = '\n'.join(lines)
 
+        # Voice/File attachments are now available to the agent via the sandbox
+        # (exec/read/write tools). Their raw bytes must NOT be forwarded to the
+        # chat model as multimodal content: providers reject non-image file
+        # parts ("Invalid user message ... ensure all user messages are valid
+        # OpenAI chat completion messages"). Strip those content elements and
+        # rely on the sandbox-path note instead. Images are kept so vision
+        # models can still see them.
+        _model_unsafe_types = {'file_base64', 'file_url'}
+        if isinstance(user_message.content, list):
+            user_message.content = [
+                ce
+                for ce in user_message.content
+                if getattr(ce, 'type', None) not in _model_unsafe_types
+            ]
+
         if isinstance(user_message.content, str):
             user_message.content = [
                 provider_message.ContentElement.from_text(user_message.content),
