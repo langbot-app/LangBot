@@ -1695,7 +1695,10 @@ class TestInboundOutboundRoundTrip:
         assert any('rm -rf' in c for c in calls)
 
     @pytest.mark.asyncio
-    async def test_collect_outbound_empty_no_cleanup(self):
+    async def test_collect_outbound_empty_still_clears(self):
+        # An empty collection MUST still clear the per-query outbox, so a later
+        # turn reusing the same query_id (the counter resets across restarts)
+        # cannot inherit stale files left from a prior run.
         service = self._service()
         query = make_query()
 
@@ -1703,11 +1706,14 @@ class TestInboundOutboundRoundTrip:
 
         async def fake_execute_tool(parameters, q):
             calls.append(parameters['command'])
-            return {'ok': True, 'stdout': '[]', 'stderr': ''}
+            if 'os.walk' in parameters['command']:
+                return {'ok': True, 'stdout': '[]', 'stderr': ''}
+            return {'ok': True, 'stdout': '', 'stderr': ''}
 
         service.execute_tool = AsyncMock(side_effect=fake_execute_tool)
         assert await service.collect_outbound_attachments(query) == []
-        assert not any('rm -rf' in c for c in calls)
+        # cleanup (rm -rf) is issued unconditionally now
+        assert any('rm -rf' in c for c in calls)
 
     @pytest.mark.asyncio
     async def test_passthrough_noop_when_unavailable(self):
@@ -1808,3 +1814,89 @@ class TestAttachmentHostPath:
         assert raw == big_png
         # Outbox cleared after collection.
         assert os.listdir(outbox) == []
+
+    @pytest.mark.asyncio
+    async def test_outbound_empty_clears_stale_host_dir(self, tmp_path):
+        # Reusing a query_id (counter resets on restart) must not re-send files
+        # a previous run left in the outbox: an empty collection still clears it.
+        service, ws = self._service_with_workspace(tmp_path)
+        query = make_query()
+        outbox = os.path.join(ws, 'outbox', str(query.query_id))
+        os.makedirs(outbox, exist_ok=True)
+        # Stale file from a prior turn; the agent produced nothing this turn —
+        # but _read_outbox_host would still pick it up, so collection must drop
+        # it and then wipe the dir. Simulate "nothing produced this turn" by
+        # treating any present file as stale and asserting it is not re-sent
+        # across a second, genuinely-empty collection.
+        open(os.path.join(outbox, 'stale.png'), 'wb').write(b'\x89PNG\r\n\x1a\n old')
+        service.execute_tool = AsyncMock(side_effect=AssertionError('exec must not be used on host path'))
+
+        # First collection drains + clears the dir.
+        first = await service.collect_outbound_attachments(query)
+        assert {a['name'] for a in first} == {'stale.png'}
+        assert os.listdir(outbox) == []
+
+        # Second collection (no new files) returns nothing and leaves a clean dir.
+        second = await service.collect_outbound_attachments(query)
+        assert second == []
+        assert os.listdir(outbox) == []
+
+    @pytest.mark.asyncio
+    async def test_purge_attachment_dirs_wipes_host_owned_leftovers_on_init(self, tmp_path):
+        # Leftover inbox/outbox dirs from a previous process (same reset
+        # query_id counter) must be removed at startup. Host-owned files are
+        # cleared without any sandbox exec.
+        service, ws = self._service_with_workspace(tmp_path)
+        for sub in ('inbox', 'outbox'):
+            d = os.path.join(ws, sub, '0')
+            os.makedirs(d, exist_ok=True)
+            open(os.path.join(d, 'leftover.bin'), 'wb').write(b'from a previous process')
+        service.execute_tool = AsyncMock(side_effect=AssertionError('exec must not be used for host-owned files'))
+
+        await service._purge_attachment_dirs()
+
+        assert not os.path.exists(os.path.join(ws, 'inbox'))
+        assert not os.path.exists(os.path.join(ws, 'outbox'))
+        # The workspace root itself survives.
+        assert os.path.isdir(ws)
+
+    @pytest.mark.asyncio
+    async def test_purge_attachment_dirs_falls_back_to_exec_for_root_owned(self, tmp_path, monkeypatch):
+        # When the host delete cannot remove a dir (root-owned container output),
+        # purge must fall back to deleting from inside the sandbox via exec.
+        service, ws = self._service_with_workspace(tmp_path)
+        outbox = os.path.join(ws, 'outbox')
+        os.makedirs(os.path.join(outbox, '0'), exist_ok=True)
+
+        # Simulate a host delete that cannot remove the root-owned outbox.
+        import shutil as _shutil
+
+        real_rmtree = _shutil.rmtree
+
+        def fake_rmtree(path, *a, **k):
+            if os.path.abspath(path) == os.path.abspath(outbox):
+                return  # "permission denied" — silently leaves the dir
+            return real_rmtree(path, *a, **k)
+
+        monkeypatch.setattr(_shutil, 'rmtree', fake_rmtree)
+
+        executed = {}
+        spec_obj = object()
+        service.build_spec = Mock(return_value=spec_obj)
+        service.client.execute = AsyncMock(side_effect=lambda s: executed.setdefault('spec', s))
+
+        await service._purge_attachment_dirs()
+
+        # build_spec was asked to rm the surviving outbox via exec.
+        cmd = service.build_spec.call_args.args[0]['cmd']
+        assert 'rm -rf' in cmd and '/workspace/outbox' in cmd
+        assert '/workspace/inbox' not in cmd  # inbox was host-deletable
+        service.client.execute.assert_awaited_once_with(spec_obj)
+
+    @pytest.mark.asyncio
+    async def test_purge_attachment_dirs_noop_without_workspace(self):
+        # No bind-mounted workspace (E2B / remote): purge is a safe no-op.
+        service = BoxService(make_app(Mock()), client=Mock(spec=BoxRuntimeClient))
+        service.default_workspace = None
+        # Must not raise.
+        await service._purge_attachment_dirs()

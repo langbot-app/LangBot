@@ -105,6 +105,7 @@ class BoxService:
                 f'LangBot Box runtime initialized: profile={self.profile.name} '
                 f'default_workspace={self.default_workspace or "(none)"}'
             )
+            await self._purge_attachment_dirs()
         except Exception as exc:
             self.ap.logger.warning(f'LangBot Box runtime unavailable, sandbox features disabled: {exc}')
             self._available = False
@@ -382,6 +383,63 @@ class BoxService:
             return None
         return os.path.join(root, subdir, str(query_id))
 
+    async def _purge_attachment_dirs(self) -> None:
+        """Remove leftover inbox/outbox directories on startup.
+
+        ``query_id`` is a process-local counter (see pipeline query pool) that
+        resets to 0 on every restart, so per-query attachment directories from
+        a previous process would otherwise be silently reused — leaking a prior
+        run's inbound files and re-sending stale outbound files.
+
+        Outbox files are written by the sandbox **container**, which runs as
+        root over the bind-mount, so the LangBot host process (a non-root user)
+        cannot ``rmtree`` them. We therefore try a host-side delete first (fast,
+        works for host-owned inbox files) and, for anything that survives,
+        delete from *inside* the sandbox via exec where the container's root can
+        remove its own files. Best-effort: never block startup.
+        """
+        root = self.default_workspace
+        if not root or not os.path.isdir(root):
+            return
+
+        import shutil
+
+        host_survivors: list[str] = []
+
+        def _host_purge() -> list[str]:
+            survivors: list[str] = []
+            for subdir in (self.INBOX_SUBDIR, self.OUTBOX_SUBDIR):
+                path = os.path.join(root, subdir)
+                if not os.path.isdir(path):
+                    continue
+                shutil.rmtree(path, ignore_errors=True)
+                if os.path.exists(path):
+                    survivors.append(subdir)
+            return survivors
+
+        try:
+            host_survivors = await asyncio.to_thread(_host_purge)
+        except Exception as exc:  # pragma: no cover - defensive
+            self.ap.logger.warning(f'Host-side purge of sandbox attachment dirs failed: {exc}')
+            host_survivors = [self.INBOX_SUBDIR, self.OUTBOX_SUBDIR]
+
+        if not host_survivors:
+            self.ap.logger.info('Purged leftover sandbox attachment dirs from a previous process.')
+            return
+
+        # Root-owned leftovers (container output): delete from inside the box.
+        targets = ' '.join(f'/workspace/{sub}' for sub in host_survivors)
+        try:
+            spec = self.build_spec({'cmd': f'rm -rf {targets}', 'session_id': '__startup_purge__', 'timeout_sec': 30})
+            await self.client.execute(spec)
+            self.ap.logger.info(
+                f'Purged root-owned leftover sandbox attachment dirs via sandbox exec: {host_survivors}'
+            )
+        except Exception as exc:
+            self.ap.logger.warning(
+                f'Failed to purge root-owned sandbox attachment dirs {host_survivors} via exec: {exc}'
+            )
+
     @staticmethod
     def _sanitize_attachment_name(name: str, fallback: str) -> str:
         """Reduce an arbitrary attachment name to a safe basename.
@@ -641,8 +699,11 @@ class BoxService:
 
         attachments = self._classify_outbound_entries(entries)
 
+        # Always clear the per-query outbox after reading — even when nothing
+        # was collected — so a later turn that reuses the same query_id (the
+        # counter resets across restarts) never inherits stale files.
+        await self._clear_outbox(query, host_dir)
         if attachments:
-            await self._clear_outbox(query, host_dir)
             self.ap.logger.info(
                 f'Collected {len(attachments)} outbound attachment(s) from sandbox: query_id={query.query_id}'
             )
@@ -711,21 +772,40 @@ class BoxService:
             return []
 
     async def _clear_outbox(self, query: pipeline_query.Query, host_dir: str | None) -> None:
-        """Empty the per-query outbox after collection (host or exec)."""
+        """Empty the per-query outbox after collection.
+
+        Tries a host-side ``rmtree`` first (fast, no container round-trip).
+        Outbox files are created by the sandbox container as root over the
+        bind-mount, so when LangBot runs as a non-root user the host delete
+        fails silently and the files survive — they would then be re-collected
+        on the next turn that reuses the same query_id. So if anything survives
+        the host delete, clear it from *inside* the sandbox via exec, where the
+        container's root can remove its own files. Best-effort: never raise
+        into the pipeline.
+        """
+        target_dir = f'{self.OUTBOX_MOUNT_DIR}/{query.query_id}'
+
         if host_dir is not None:
             import shutil
 
-            def _clear():
+            def _clear() -> bool:
                 shutil.rmtree(host_dir, ignore_errors=True)
+                survived = os.path.exists(host_dir) and bool(os.listdir(host_dir))
                 os.makedirs(host_dir, exist_ok=True)
+                return survived
 
-            await asyncio.to_thread(_clear)
-            return
-        target_dir = f'{self.OUTBOX_MOUNT_DIR}/{query.query_id}'
-        await self.execute_tool(
-            {'command': f'rm -rf {target_dir} && mkdir -p {target_dir}', 'timeout_sec': 30},
-            query,
-        )
+            survived = await asyncio.to_thread(_clear)
+            if not survived:
+                return
+            # Root-owned container files survived the host delete — fall through.
+
+        try:
+            await self.execute_tool(
+                {'command': f'rm -rf {target_dir} && mkdir -p {target_dir}', 'timeout_sec': 30},
+                query,
+            )
+        except Exception as exc:
+            self.ap.logger.warning(f'Failed to clear sandbox outbox {target_dir}: {exc}')
 
     @staticmethod
     def _classify_outbound_entries(entries: list[dict]) -> list[dict]:
