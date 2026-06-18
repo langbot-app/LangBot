@@ -29,7 +29,3 @@ spec:
   - text-embedding
   - rerank
   provider_category: maas
-execution:
-  python:
-    path: ./atlascloudchatcmpl.py
-    attr: AtlasCloudChatCompletions
