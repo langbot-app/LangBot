@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import os
 import tempfile
 from types import SimpleNamespace
@@ -187,6 +188,78 @@ async def test_write_creates_subdirectories():
         assert result['ok'] is True
         with open(os.path.join(tmpdir, 'sub', 'deep', 'file.txt')) as f:
             assert f.read() == 'nested'
+
+
+@pytest.mark.asyncio
+async def test_read_binary_file_as_base64_chunk():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        loader, _ = _make_loader_with_workspace(tmpdir)
+        with open(os.path.join(tmpdir, 'blob.bin'), 'wb') as f:
+            f.write(b'\x00\x01\x02\x03\x04')
+
+        result = await loader.invoke_tool(
+            'read',
+            {
+                'path': '/workspace/blob.bin',
+                'encoding': 'base64',
+                'byte_offset': 1,
+                'max_bytes': 2,
+            },
+            _make_query(),
+        )
+
+        assert result['ok'] is True
+        assert result['content'] == base64.b64encode(b'\x01\x02').decode('ascii')
+        assert result['encoding'] == 'base64'
+        assert result['byte_offset'] == 1
+        assert result['length'] == 2
+        assert result['size_bytes'] == 5
+        assert result['has_more'] is True
+        assert result['next_byte_offset'] == 3
+
+
+@pytest.mark.asyncio
+async def test_write_base64_file_append():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        loader, _ = _make_loader_with_workspace(tmpdir)
+
+        first = base64.b64encode(b'\x00\x01').decode('ascii')
+        second = base64.b64encode(b'\x02\x03').decode('ascii')
+        await loader.invoke_tool(
+            'write',
+            {'path': '/workspace/blob.bin', 'content': first, 'encoding': 'base64'},
+            _make_query(),
+        )
+        result = await loader.invoke_tool(
+            'write',
+            {
+                'path': '/workspace/blob.bin',
+                'content': second,
+                'encoding': 'base64',
+                'mode': 'append',
+            },
+            _make_query(),
+        )
+
+        assert result['ok'] is True
+        with open(os.path.join(tmpdir, 'blob.bin'), 'rb') as f:
+            assert f.read() == b'\x00\x01\x02\x03'
+
+
+@pytest.mark.asyncio
+async def test_write_base64_rejects_invalid_content():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        loader, _ = _make_loader_with_workspace(tmpdir)
+
+        result = await loader.invoke_tool(
+            'write',
+            {'path': '/workspace/blob.bin', 'content': 'not base64!', 'encoding': 'base64'},
+            _make_query(),
+        )
+
+        assert result['ok'] is False
+        assert 'invalid base64' in result['error']
+        assert not os.path.exists(os.path.join(tmpdir, 'blob.bin'))
 
 
 @pytest.mark.asyncio

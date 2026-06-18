@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import os
 
@@ -229,6 +230,7 @@ class NativeToolLoader(loader.ToolLoader):
 
     async def _read_workspace_via_box(self, path: str, parameters: dict, query: pipeline_query.Query) -> dict:
         offset = self._positive_int(parameters.get('offset'), default=1)
+        byte_offset = self._non_negative_int(parameters.get('byte_offset'), default=0)
         max_lines = self._positive_int(
             parameters.get('limit'),
             default=_DEFAULT_READ_MAX_LINES,
@@ -240,12 +242,15 @@ class NativeToolLoader(loader.ToolLoader):
             self._positive_int(parameters.get('max_bytes'), default=_DEFAULT_TOOL_RESULT_MAX_BYTES),
             _BOX_FILE_SCRIPT_MAX_BYTES,
         )
+        encoding = self._read_encoding(parameters)
         script = f"""
-import json, os
+import base64, json, os
 path = {json.dumps(path)}
 offset = {offset}
+byte_offset = {byte_offset}
 max_lines = {max_lines}
 max_bytes = {max_bytes}
+encoding = {json.dumps(encoding)}
 if not path.startswith('/workspace'):
     print(json.dumps({{'ok': False, 'error': 'Path must be under /workspace.'}}))
 elif not os.path.exists(path):
@@ -254,6 +259,24 @@ elif os.path.isdir(path):
     entries = sorted(os.listdir(path))
     content = '\\n'.join(entries)
     print(json.dumps({{'ok': True, 'content': content, 'is_directory': True, 'total': len(entries), 'truncated': False}}))
+elif encoding == 'base64':
+    size_bytes = os.path.getsize(path)
+    with open(path, 'rb') as f:
+        f.seek(byte_offset)
+        data = f.read(max_bytes + 1)
+    chunk = data[:max_bytes]
+    has_more = len(data) > max_bytes
+    print(json.dumps({{
+        'ok': True,
+        'content': base64.b64encode(chunk).decode('ascii'),
+        'encoding': 'base64',
+        'byte_offset': byte_offset,
+        'length': len(chunk),
+        'size_bytes': size_bytes,
+        'has_more': has_more,
+        'next_byte_offset': byte_offset + len(chunk) if has_more else None,
+        'max_bytes': max_bytes,
+    }}))
 else:
     lines = []
     output_bytes = 0
@@ -289,18 +312,37 @@ else:
 """.strip()
         return await self._run_workspace_file_script(script, query)
 
-    async def _write_workspace_via_box(self, path: str, content: str, query: pipeline_query.Query) -> dict:
+    async def _write_workspace_via_box(
+        self,
+        path: str,
+        content: str,
+        parameters: dict,
+        query: pipeline_query.Query,
+    ) -> dict:
+        encoding, mode = self._write_options(parameters)
         script = f"""
-import json, os
+import base64, json, os
 path = {json.dumps(path)}
 content = {json.dumps(content)}
+encoding = {json.dumps(encoding)}
+mode = {json.dumps(mode)}
 if not path.startswith('/workspace'):
     print(json.dumps({{'ok': False, 'error': 'Path must be under /workspace.'}}))
 else:
     os.makedirs(os.path.dirname(path) or '/workspace', exist_ok=True)
-    with open(path, 'w', encoding='utf-8') as f:
-        f.write(content)
-    print(json.dumps({{'ok': True, 'path': path}}))
+    if encoding == 'base64':
+        try:
+            data = base64.b64decode(content, validate=True)
+        except Exception as exc:
+            print(json.dumps({{'ok': False, 'error': f'invalid base64 content: {{exc}}'}}))
+        else:
+            with open(path, 'ab' if mode == 'append' else 'wb') as f:
+                f.write(data)
+            print(json.dumps({{'ok': True, 'path': path}}))
+    else:
+        with open(path, 'a' if mode == 'append' else 'w', encoding='utf-8') as f:
+            f.write(content)
+        print(json.dumps({{'ok': True, 'path': path}}))
 """.strip()
         return await self._run_workspace_file_script(script, query)
 
@@ -509,6 +551,7 @@ else:
         path = parameters['path']
         content = parameters['content']
         self.ap.logger.info(f'write tool invoked: query_id={query.query_id} path={path} length={len(content)}')
+        encoding, _mode = self._write_options(parameters)
         skill_request = self._resolve_skill_relative_path(
             query,
             path,
@@ -516,6 +559,8 @@ else:
             include_activated=True,
         )
         if skill_request is not None and hasattr(self.ap.box_service, 'write_skill_file'):
+            if encoding != 'text':
+                return {'ok': False, 'error': 'base64 writes to skill packages are not supported.'}
             selected_skill, relative = skill_request
             await self.ap.box_service.write_skill_file(selected_skill['name'], relative, content)
             await self.ap.skill_mgr.reload_skills()
@@ -528,10 +573,12 @@ else:
             include_activated=True,
         )
         if self._should_use_box_workspace_files(selected_skill):
-            return await self._write_workspace_via_box(path, content, query)
+            return await self._write_workspace_via_box(path, content, parameters, query)
         os.makedirs(os.path.dirname(host_path), exist_ok=True)
-        with open(host_path, 'w', encoding='utf-8') as f:
-            f.write(content)
+        try:
+            self._write_host_file(host_path, content, parameters)
+        except ValueError as exc:
+            return {'ok': False, 'error': str(exc)}
         self._refresh_skill_from_disk(selected_skill)
         return {'ok': True, 'path': path}
 
@@ -696,6 +743,18 @@ else:
                         'minimum': 1,
                         'maximum': _DEFAULT_TOOL_RESULT_MAX_BYTES,
                     },
+                    'encoding': {
+                        'type': 'string',
+                        'description': 'Return text by default, or base64 for binary byte-range reads.',
+                        'enum': ['text', 'base64'],
+                        'default': 'text',
+                    },
+                    'byte_offset': {
+                        'type': 'integer',
+                        'description': '0-indexed byte offset used when encoding is base64. Defaults to 0.',
+                        'default': 0,
+                        'minimum': 0,
+                    },
                 },
                 'required': ['path'],
                 'additionalProperties': False,
@@ -721,7 +780,19 @@ else:
                     },
                     'content': {
                         'type': 'string',
-                        'description': 'Content to write to the file.',
+                        'description': 'Text content, or base64 content when encoding is base64.',
+                    },
+                    'encoding': {
+                        'type': 'string',
+                        'description': 'Write content as text by default, or decode it from base64 for binary files.',
+                        'enum': ['text', 'base64'],
+                        'default': 'text',
+                    },
+                    'mode': {
+                        'type': 'string',
+                        'description': 'Overwrite the file by default, or append to it.',
+                        'enum': ['overwrite', 'append'],
+                        'default': 'overwrite',
                     },
                 },
                 'required': ['path', 'content'],
@@ -1017,6 +1088,9 @@ else:
         }
 
     def _read_text_file_preview(self, host_path: str, parameters: dict) -> dict:
+        if self._read_encoding(parameters) == 'base64':
+            return self._read_binary_file_chunk(host_path, parameters)
+
         offset = self._positive_int(parameters.get('offset'), default=1)
         max_lines = self._positive_int(
             parameters.get('limit'),
@@ -1075,6 +1149,54 @@ else:
             'max_lines': max_lines,
             'max_bytes': max_bytes,
         }
+
+    def _read_binary_file_chunk(self, host_path: str, parameters: dict) -> dict:
+        byte_offset = self._non_negative_int(parameters.get('byte_offset'), default=0)
+        max_bytes = self._positive_int(
+            parameters.get('max_bytes'),
+            default=_DEFAULT_TOOL_RESULT_MAX_BYTES,
+            max_value=_DEFAULT_TOOL_RESULT_MAX_BYTES,
+        )
+        size_bytes = os.path.getsize(host_path)
+        with open(host_path, 'rb') as f:
+            f.seek(byte_offset)
+            data = f.read(max_bytes + 1)
+        chunk = data[:max_bytes]
+        has_more = len(data) > max_bytes
+        return {
+            'ok': True,
+            'content': base64.b64encode(chunk).decode('ascii'),
+            'encoding': 'base64',
+            'byte_offset': byte_offset,
+            'length': len(chunk),
+            'size_bytes': size_bytes,
+            'has_more': has_more,
+            'next_byte_offset': byte_offset + len(chunk) if has_more else None,
+            'max_bytes': max_bytes,
+        }
+
+    def _write_host_file(self, host_path: str, content: str, parameters: dict) -> None:
+        encoding, mode = self._write_options(parameters)
+        if encoding == 'base64':
+            try:
+                data = base64.b64decode(content, validate=True)
+            except Exception as exc:
+                raise ValueError(f'invalid base64 content: {exc}') from exc
+            with open(host_path, 'ab' if mode == 'append' else 'wb') as f:
+                f.write(data)
+            return
+        with open(host_path, 'a' if mode == 'append' else 'w', encoding='utf-8') as f:
+            f.write(content)
+
+    @staticmethod
+    def _read_encoding(parameters: dict) -> str:
+        return 'base64' if parameters.get('encoding') == 'base64' else 'text'
+
+    @staticmethod
+    def _write_options(parameters: dict) -> tuple[str, str]:
+        encoding = 'base64' if parameters.get('encoding') == 'base64' else 'text'
+        mode = 'append' if parameters.get('mode') == 'append' else 'overwrite'
+        return encoding, mode
 
     def _build_read_result_from_text(self, content: str, parameters: dict) -> dict:
         offset = self._positive_int(parameters.get('offset'), default=1)
@@ -1136,6 +1258,14 @@ else:
         if max_value is not None:
             parsed = min(parsed, max_value)
         return parsed
+
+    @staticmethod
+    def _non_negative_int(value, *, default: int) -> int:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            parsed = default
+        return parsed if parsed >= 0 else default
 
     @staticmethod
     def _truncate_grep_line(line: str) -> tuple[str, bool]:
