@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import struct
-from typing import Any, Dict, List
+from typing import Any
 
 from langbot.pkg.core import app
 from langbot.pkg.vector.vdb import VectorDatabase, SearchType
@@ -10,9 +10,11 @@ from langbot.pkg.vector.filter_utils import normalize_filter, strip_unsupported_
 
 try:
     from glide import (
+        Batch,
         GlideClient,
         GlideClientConfiguration,
         NodeAddress,
+        RequestError,
         ServerCredentials,
         ft,
         VectorField,
@@ -33,6 +35,16 @@ try:
     VALKEY_SEARCH_AVAILABLE = True
 except ImportError:
     VALKEY_SEARCH_AVAILABLE = False
+
+# Default per-request timeout (ms) for the glide client.  The glide library
+# default is 250ms, which is too low for vector KNN (``FT.SEARCH ... =>[KNN]``)
+# under moderate load or with large indexes and yields spurious TimeoutErrors.
+# Overridable via the ``vdb.valkey_search.request_timeout`` config option.
+_DEFAULT_REQUEST_TIMEOUT_MS = 5000
+
+# Safety cap on the number of SCAN rounds when purging a collection's keys, so
+# a cursor-handling bug or pathological keyspace can never spin forever.
+_MAX_SCAN_ROUNDS = 100000
 
 
 # Mandatory client name for production observability (CLIENT LIST / dashboards).
@@ -57,7 +69,7 @@ _VEC_SCORE_ALIAS = '__vec_score'
 # (a standalone ``*`` is a syntax error).  A negated match on a sentinel tag
 # value that can never exist matches every key, which is the canonical
 # match-all idiom for FT.SEARCH.
-_MATCH_ALL = f'-@{"file_id"}:{{__langbot_match_all_sentinel__}}'
+_MATCH_ALL = '-@file_id:{__langbot_match_all_sentinel__}'
 
 # Page size used when enumerating matching keys for deletion.  Deletes
 # paginate through the full result set in batches of this size so that
@@ -119,6 +131,7 @@ class ValkeySearchVectorDatabase(VectorDatabase):
         self._password = config.get('password', '') or None
         self._username = config.get('username', '') or None
         self._tls = bool(config.get('tls', False))
+        self._request_timeout = int(config.get('request_timeout', _DEFAULT_REQUEST_TIMEOUT_MS))
 
         algorithm = str(config.get('index_algorithm', 'HNSW')).upper()
         self._algorithm = VectorAlgorithm.FLAT if algorithm == 'FLAT' else VectorAlgorithm.HNSW
@@ -149,12 +162,12 @@ class ValkeySearchVectorDatabase(VectorDatabase):
                 # username is optional alongside a password (ACL "user" vs default user).
                 credentials = ServerCredentials(password=self._password, username=self._username)
             elif self._username is not None:
-                # A username without a password is not a valid credential pair for
-                # ServerCredentials (password is required). Skip auth and warn rather than
-                # constructing ServerCredentials(password=None, ...) which glide rejects.
-                self.ap.logger.warning(
-                    'Valkey Search: a username was configured without a password; ignoring auth. '
-                    'Set both username and password to use ACL authentication.'
+                # A username without a password is not a valid credential pair, and silently
+                # connecting unauthenticated to a potentially shared Valkey instance is a
+                # security footgun (e.g. an env var that failed to resolve). Fail closed.
+                raise ValueError(
+                    'Valkey Search: a username was configured without a password. '
+                    'Set both username and password to use ACL authentication, or remove both.'
                 )
 
             conf = GlideClientConfiguration(
@@ -164,6 +177,7 @@ class ValkeySearchVectorDatabase(VectorDatabase):
                 use_tls=self._tls,
                 lazy_connect=True,
                 credentials=credentials,
+                request_timeout=self._request_timeout,
             )
             self._client = await GlideClient.create(conf)
             self.ap.logger.info(
@@ -199,7 +213,7 @@ class ValkeySearchVectorDatabase(VectorDatabase):
         return f'kb:{collection}:'
 
     @staticmethod
-    def _pack_vector(vec: List[float]) -> bytes:
+    def _pack_vector(vec: list[float]) -> bytes:
         """Pack a float vector into little-endian float32 bytes.
 
         Valkey Search stores and queries vectors as FLOAT32 little-endian
@@ -258,7 +272,7 @@ class ValkeySearchVectorDatabase(VectorDatabase):
     # ------------------------------------------------------------------ #
     # Filter mapping (canonical triples -> FT query fragment)
     # ------------------------------------------------------------------ #
-    def _triples_to_ft(self, filter: Dict[str, Any] | None) -> str:
+    def _triples_to_ft(self, filter: dict[str, Any] | None) -> str:
         """Translate a canonical filter dict into an FT filter expression.
 
         Only indexed fields (``file_id``) are filterable; unsupported fields
@@ -327,11 +341,15 @@ class ValkeySearchVectorDatabase(VectorDatabase):
         if index in self._ensured_indexes:
             return
 
-        existing = await ft.list(client)
-        existing_names = {self._decode(name) for name in existing}
-        if index in existing_names:
+        # ft.info is O(1) and raises RequestError when the index is absent —
+        # cheaper than ft.list (O(n) over all indexes) and it closes the
+        # check-then-create TOCTOU window.
+        try:
+            await ft.info(client, index)
             self._ensured_indexes.add(index)
             return
+        except RequestError:
+            pass
 
         if self._algorithm == VectorAlgorithm.FLAT:
             vector_attrs = VectorFieldAttributesFlat(
@@ -380,24 +398,31 @@ class ValkeySearchVectorDatabase(VectorDatabase):
     async def add_embeddings(
         self,
         collection: str,
-        ids: List[str],
-        embeddings_list: List[List[float]],
-        metadatas: List[Dict[str, Any]],
-        documents: List[str] | None = None,
+        ids: list[str],
+        embeddings_list: list[list[float]],
+        metadatas: list[dict[str, Any]],
+        documents: list[str] | None = None,
     ) -> None:
         if not embeddings_list:
             return
 
         client = await self._ensure_client()
         dim = len(embeddings_list[0])
+        # The index schema is fixed to the first embedding's dimension. A later
+        # embedding of a different length would be packed into a wrong-sized
+        # blob that Valkey stores silently but that yields garbage KNN
+        # distances, so reject mixed dimensions up-front.
+        if any(len(e) != dim for e in embeddings_list[1:]):
+            raise ValueError(f'All embeddings must have dimension {dim}; got mixed lengths')
         await self._ensure_index(client, collection, dim)
 
         prefix = self._key_prefix(collection)
 
+        batch = Batch(is_atomic=False)
         for i, _id in enumerate(ids):
             key = prefix + str(_id)
             metadata = metadatas[i] if i < len(metadatas) else {}
-            mapping: Dict[str, Any] = {
+            mapping: dict[str, Any] = {
                 _FIELD_VECTOR: self._pack_vector(embeddings_list[i]),
                 _FIELD_METADATA: json.dumps(metadata, ensure_ascii=False),
             }
@@ -407,20 +432,25 @@ class ValkeySearchVectorDatabase(VectorDatabase):
             if documents is not None and i < len(documents) and documents[i] is not None:
                 mapping[_FIELD_DOCUMENT] = documents[i]
 
-            await client.hset(key, mapping)
+            batch.hset(key, mapping)
+
+        # Pipeline all HSETs into a single round-trip (non-atomic) instead of
+        # one await per embedding, which is N sequential round-trips for N
+        # chunks.
+        await client.exec(batch, raise_on_error=True)
 
         self.ap.logger.info(f"Added {len(ids)} embeddings to Valkey Search collection '{collection}'")
 
     async def search(
         self,
         collection: str,
-        query_embedding: List[float],
+        query_embedding: list[float],
         k: int = 5,
         search_type: str = 'vector',
         query_text: str = '',
-        filter: Dict[str, Any] | None = None,
+        filter: dict[str, Any] | None = None,
         vector_weight: float | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         client = await self._ensure_client()
         index = self._index_name(collection)
 
@@ -456,22 +486,36 @@ class ValkeySearchVectorDatabase(VectorDatabase):
                 if text_clause:
                     pre = f'{pre} {text_clause}'.strip() if pre else text_clause
             pre = pre or '*'
-            query = f'{pre}=>[KNN {k} @{_FIELD_VECTOR} $BLOB AS {_VEC_SCORE_ALIAS}]'
+            query = f'{self._wrap_pre(pre)}=>[KNN {k} @{_FIELD_VECTOR} $BLOB AS {_VEC_SCORE_ALIAS}]'
             return await self._run_knn_search(client, index, query, query_embedding, k)
 
         # Default: pure VECTOR search.
         pre = filter_expr or '*'
-        query = f'{pre}=>[KNN {k} @{_FIELD_VECTOR} $BLOB AS {_VEC_SCORE_ALIAS}]'
+        query = f'{self._wrap_pre(pre)}=>[KNN {k} @{_FIELD_VECTOR} $BLOB AS {_VEC_SCORE_ALIAS}]'
         return await self._run_knn_search(client, index, query, query_embedding, k)
+
+    @staticmethod
+    def _wrap_pre(pre: str) -> str:
+        """Parenthesize a multi-condition pre-filter before the ``=>`` KNN clause.
+
+        When ``pre`` combines several terms (e.g. ``@file_id:{x} @document:term``)
+        the Valkey Search parser can otherwise mis-associate only the last term
+        with the KNN clause. Wrapping the whole expression forces correct
+        grouping. A bare ``*`` (match-all) and single-term expressions are left
+        untouched.
+        """
+        if pre and pre != '*' and ' ' in pre.strip():
+            return f'({pre})'
+        return pre
 
     async def _run_knn_search(
         self,
         client: GlideClient,
         index: str,
         query: str,
-        query_embedding: List[float],
+        query_embedding: list[float],
         k: int,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         options = FtSearchOptions(
             params={'BLOB': self._pack_vector(list(query_embedding))},
             return_fields=[
@@ -496,7 +540,7 @@ class ValkeySearchVectorDatabase(VectorDatabase):
         index: str,
         query: str,
         k: int,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         options = FtSearchOptions(
             return_fields=[
                 ReturnField(field_identifier=_FIELD_DOCUMENT),
@@ -524,12 +568,26 @@ class ValkeySearchVectorDatabase(VectorDatabase):
         message = str(exc).lower()
         return 'not found' in message and 'index' in message
 
-    def _reply_to_chroma(self, index: str, reply: Any, has_distance: bool) -> Dict[str, Any]:
+    def _iter_reply_docs(self, reply: Any, prefix: str):
+        """Yield ``(doc_id, decoded_fields)`` pairs from an FT.SEARCH reply.
+
+        glide returns ``[total, {key: {field: value}, ...}]``. This shared
+        iterator decodes each key, strips the per-collection prefix to recover
+        the original document id, and decodes the field map — the logic both
+        ``_reply_to_chroma`` and ``list_by_filter`` need.
+        """
+        docs = reply[1] if reply and len(reply) >= 2 and isinstance(reply[1], dict) else {}
+        for key, fields in docs.items():
+            key_str = self._decode(key)
+            doc_id = key_str[len(prefix) :] if prefix and key_str.startswith(prefix) else key_str
+            decoded_fields = {self._decode(fk): fv for fk, fv in fields.items()} if isinstance(fields, dict) else {}
+            yield doc_id, decoded_fields
+
+    def _reply_to_chroma(self, index: str, reply: Any, has_distance: bool) -> dict[str, Any]:
         """Convert an FT.SEARCH reply into Chroma-style nested lists.
 
-        glide returns ``[total, {key: {field: value}, ...}]``.  The KNN score
-        field (aliased ``distance``) is a COSINE/L2 distance directly, so no
-        inversion is needed (unlike Qdrant).
+        The KNN score field (aliased ``distance``) is a COSINE/L2 distance
+        directly, so no inversion is needed (unlike Qdrant).
         """
         ids: list[str] = []
         distances: list[float] = []
@@ -538,19 +596,10 @@ class ValkeySearchVectorDatabase(VectorDatabase):
         if not reply or len(reply) < 2:
             return {'ids': [ids], 'metadatas': [metadatas], 'distances': [distances]}
 
-        docs = reply[1]
         prefix = self._key_prefix(index[len('idx:') :]) if index.startswith('idx:') else ''
-        if isinstance(docs, dict):
-            items = docs.items()
-        else:
-            items = []
 
-        for key, fields in items:
-            key_str = self._decode(key)
-            doc_id = key_str[len(prefix) :] if prefix and key_str.startswith(prefix) else key_str
+        for doc_id, decoded_fields in self._iter_reply_docs(reply, prefix):
             ids.append(doc_id)
-
-            decoded_fields = {self._decode(fk): fv for fk, fv in fields.items()} if isinstance(fields, dict) else {}
 
             if has_distance and 'distance' in decoded_fields:
                 try:
@@ -586,7 +635,7 @@ class ValkeySearchVectorDatabase(VectorDatabase):
             f"Deleted {len(keys)} embeddings from Valkey Search collection '{collection}' with file_id: {file_id}"
         )
 
-    async def delete_by_filter(self, collection: str, filter: Dict[str, Any]) -> int:
+    async def delete_by_filter(self, collection: str, filter: dict[str, Any]) -> int:
         client = await self._ensure_client()
         index = self._index_name(collection)
         if not await self._index_exists(client, index):
@@ -612,10 +661,10 @@ class ValkeySearchVectorDatabase(VectorDatabase):
     async def list_by_filter(
         self,
         collection: str,
-        filter: Dict[str, Any] | None = None,
+        filter: dict[str, Any] | None = None,
         limit: int = 20,
         offset: int = 0,
-    ) -> tuple[list[Dict[str, Any]], int]:
+    ) -> tuple[list[dict[str, Any]], int]:
         client = await self._ensure_client()
         index = self._index_name(collection)
         if not await self._index_exists(client, index):
@@ -637,7 +686,6 @@ class ValkeySearchVectorDatabase(VectorDatabase):
                 return [], 0
             raise
 
-        items: list[Dict[str, Any]] = []
         total = 0
         if reply:
             try:
@@ -646,12 +694,8 @@ class ValkeySearchVectorDatabase(VectorDatabase):
                 total = 0
 
         prefix = self._key_prefix(collection)
-        docs = reply[1] if reply and len(reply) >= 2 and isinstance(reply[1], dict) else {}
-        for key, fields in docs.items():
-            key_str = self._decode(key)
-            doc_id = key_str[len(prefix) :] if key_str.startswith(prefix) else key_str
-            decoded_fields = {self._decode(fk): fv for fk, fv in fields.items()} if isinstance(fields, dict) else {}
-
+        items: list[dict[str, Any]] = []
+        for doc_id, decoded_fields in self._iter_reply_docs(reply, prefix):
             document = decoded_fields.get(_FIELD_DOCUMENT)
             metadata: dict[str, Any] = {}
             raw_meta = decoded_fields.get(_FIELD_METADATA)
@@ -679,14 +723,18 @@ class ValkeySearchVectorDatabase(VectorDatabase):
         if await self._index_exists(client, index):
             try:
                 await ft.dropindex(client, index)
-            except Exception:
-                self.ap.logger.warning(f"Valkey Search failed to drop index '{index}'")
+            except RequestError:
+                # The index was already dropped (e.g. by a concurrent process)
+                # between the existence check and this call — benign. Other
+                # errors (connection / auth) must propagate so the caller knows
+                # the operation failed rather than silently SCAN-deleting next.
+                pass
 
         # DROPINDEX does not remove the underlying hashes; delete them too.
         prefix = self._key_prefix(collection)
         cursor = b'0'
         deleted = 0
-        while True:
+        for _ in range(_MAX_SCAN_ROUNDS):
             cursor, keys = await client.scan(cursor, match=f'{prefix}*', count=500)
             if keys:
                 await client.delete(keys)
@@ -701,12 +749,15 @@ class ValkeySearchVectorDatabase(VectorDatabase):
     async def _index_exists(self, client: GlideClient, index: str) -> bool:
         if index in self._ensured_indexes:
             return True
-        existing = await ft.list(client)
-        names = {self._decode(name) for name in existing}
-        if index in names:
+        # ft.info is O(1) and raises RequestError when the index does not
+        # exist, vs ft.list which is O(n) over every index on the server and
+        # was being paid on the first query to each collection.
+        try:
+            await ft.info(client, index)
             self._ensured_indexes.add(index)
             return True
-        return False
+        except RequestError:
+            return False
 
     async def _search_keys(self, client: GlideClient, index: str, query: str) -> list[str]:
         """Return all matching document keys for a query (NOCONTENT).

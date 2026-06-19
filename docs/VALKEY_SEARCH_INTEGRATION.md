@@ -67,6 +67,7 @@ vdb:
     tls: false            # optional (toB / SaaS)
     index_algorithm: 'HNSW'   # HNSW | FLAT
     distance_metric: 'COSINE' # COSINE | L2 | IP
+    request_timeout: 5000     # per-request timeout in ms
 ```
 
 | Option | Default | Description |
@@ -75,10 +76,11 @@ vdb:
 | `port` | `6379` | Valkey port |
 | `db` | `0` | Logical database id |
 | `password` | `''` | Optional auth password (empty = no auth). Never logged. |
-| `username` | `''` | Optional ACL username |
+| `username` | `''` | Optional ACL username. Configuring a username without a password fails closed (raises) rather than connecting unauthenticated. |
 | `tls` | `false` | Enable TLS for the connection |
 | `index_algorithm` | `HNSW` | `HNSW` (approximate) or `FLAT` (exact) |
 | `distance_metric` | `COSINE` | `COSINE`, `L2`, or `IP` |
+| `request_timeout` | `5000` | Per-request timeout in milliseconds. The valkey-glide default (250ms) is too low for vector KNN under load; raise it further for remote/cross-AZ Valkey. |
 
 ### Connection behavior
 

@@ -113,6 +113,7 @@ def create_minimal_config(tmpdir: Path, port: int = 15300) -> Path:
                 'tls': False,
                 'index_algorithm': 'HNSW',
                 'distance_metric': 'COSINE',
+                'request_timeout': 5000,
             },
         },
         'storage': {

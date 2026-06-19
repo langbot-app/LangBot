@@ -91,6 +91,7 @@ vdb:
         tls: false            # optional (toB/SaaS)
         index_algorithm: 'HNSW'   # HNSW | FLAT
         distance_metric: 'COSINE' # COSINE | L2 | IP
+        request_timeout: 5000     # per-request timeout in ms (glide default 250ms is too low for KNN)
 storage:
     use: local
     cleanup:

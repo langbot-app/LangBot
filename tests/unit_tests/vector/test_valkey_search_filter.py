@@ -318,6 +318,7 @@ class TestCredentialsBuild:
         backend._tls = False
         backend._username = username
         backend._password = password
+        backend._request_timeout = 5000
         backend._ensured_indexes = set()
         warnings: list[str] = []
         backend.ap = type(
@@ -350,15 +351,17 @@ class TestCredentialsBuild:
         monkeypatch.setattr(mod, 'NodeAddress', lambda *a, **k: ('node', a, k))
         return backend, created, cred_calls, warnings
 
-    async def test_username_without_password_skips_credentials_and_warns(self, monkeypatch):
+    async def test_username_without_password_fails_closed(self, monkeypatch):
         mod = get_valkey_module()
         backend, created, cred_calls, warnings = self._prep_backend(mod, monkeypatch, username='acluser', password=None)
 
-        await backend._ensure_client()
+        # A username without a password must fail closed rather than silently
+        # connecting unauthenticated to a (potentially shared) Valkey instance.
+        with pytest.raises(ValueError, match='without a password'):
+            await backend._ensure_client()
 
         assert cred_calls == []  # ServerCredentials NOT constructed
-        assert created['conf']['credentials'] is None
-        assert any('without a password' in w for w in warnings)
+        assert 'conf' not in created  # client never created
 
     async def test_password_builds_credentials(self, monkeypatch):
         mod = get_valkey_module()
