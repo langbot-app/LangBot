@@ -109,7 +109,7 @@ class PreProcessor(stage.PipelineStage):
             if llm_model:
                 query.use_llm_model_uuid = llm_model.model_entity.uuid
 
-                if llm_model.model_entity.abilities.__contains__('func_call'):
+                if 'func_call' in (llm_model.model_entity.abilities or []):
                     # Get bound plugins and MCP servers for filtering tools
                     bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
                     bound_mcp_servers = query.variables.get('_pipeline_bound_mcp_servers', None)
@@ -159,11 +159,7 @@ class PreProcessor(stage.PipelineStage):
 
         # Check if this model supports vision, if not, remove all images
         # TODO this checking should be performed in runner, and in this stage, the image should be reserved
-        if (
-            selected_runner == 'local-agent'
-            and llm_model
-            and not llm_model.model_entity.abilities.__contains__('vision')
-        ):
+        if selected_runner == 'local-agent' and llm_model and 'vision' not in (llm_model.model_entity.abilities or []):
             for msg in query.messages:
                 if isinstance(msg.content, list):
                     for me in msg.content:
@@ -181,7 +177,7 @@ class PreProcessor(stage.PipelineStage):
                 plain_text += me.text
             elif isinstance(me, platform_message.Image):
                 if selected_runner != 'local-agent' or (
-                    llm_model and llm_model.model_entity.abilities.__contains__('vision')
+                    llm_model and 'vision' in (llm_model.model_entity.abilities or [])
                 ):
                     if me.base64 is not None:
                         content_list.append(provider_message.ContentElement.from_image_base64(me.base64))
@@ -202,7 +198,7 @@ class PreProcessor(stage.PipelineStage):
                         content_list.append(provider_message.ContentElement.from_text(msg.text))
                     elif isinstance(msg, platform_message.Image):
                         if selected_runner != 'local-agent' or (
-                            llm_model and llm_model.model_entity.abilities.__contains__('vision')
+                            llm_model and 'vision' in (llm_model.model_entity.abilities or [])
                         ):
                             if msg.base64 is not None:
                                 content_list.append(provider_message.ContentElement.from_image_base64(msg.base64))

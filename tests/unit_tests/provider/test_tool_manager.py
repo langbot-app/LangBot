@@ -1,7 +1,7 @@
 """Unit tests for ToolManager.
 
 Tests cover:
-- Tool schema generation for OpenAI and Anthropic
+- Tool schema generation for OpenAI/LiteLLM
 - Tool execution dispatch
 """
 
@@ -110,28 +110,6 @@ class TestToolManagerSchemaGeneration:
         assert tool2['function']['name'] == 'calculate'
 
     @pytest.mark.asyncio
-    async def test_generate_tools_for_anthropic(self, mock_app, sample_tools):
-        """Test that generate_tools_for_anthropic produces correct schema."""
-        toolmgr = get_toolmgr_module()
-
-        manager = toolmgr.ToolManager(mock_app)
-        result = await manager.generate_tools_for_anthropic(sample_tools)
-
-        assert len(result) == 2
-
-        # Verify first tool schema (Anthropic format)
-        tool1 = result[0]
-        assert tool1['name'] == 'get_weather'
-        assert tool1['description'] == 'Get current weather for a location'
-        assert 'input_schema' in tool1
-        assert tool1['input_schema']['type'] == 'object'
-
-        # Verify second tool schema
-        tool2 = result[1]
-        assert tool2['name'] == 'calculate'
-        assert 'input_schema' in tool2
-
-    @pytest.mark.asyncio
     async def test_generate_tools_empty_list(self, mock_app):
         """Test that generating tools from empty list returns empty list."""
         toolmgr = get_toolmgr_module()
@@ -140,9 +118,6 @@ class TestToolManagerSchemaGeneration:
 
         openai_result = await manager.generate_tools_for_openai([])
         assert openai_result == []
-
-        anthropic_result = await manager.generate_tools_for_anthropic([])
-        assert anthropic_result == []
 
     @pytest.mark.asyncio
     async def test_openai_schema_fields_complete(self, mock_app, sample_tools):
@@ -160,19 +135,6 @@ class TestToolManagerSchemaGeneration:
             assert 'name' in func
             assert 'description' in func
             assert 'parameters' in func
-
-    @pytest.mark.asyncio
-    async def test_anthropic_schema_fields_complete(self, mock_app, sample_tools):
-        """Test that Anthropic schema includes all required fields."""
-        toolmgr = get_toolmgr_module()
-
-        manager = toolmgr.ToolManager(mock_app)
-        result = await manager.generate_tools_for_anthropic(sample_tools)
-
-        for tool_schema in result:
-            assert 'name' in tool_schema
-            assert 'description' in tool_schema
-            assert 'input_schema' in tool_schema
 
 
 class TestToolManagerExecuteFuncCall:
@@ -265,7 +227,7 @@ class TestToolManagerExecuteFuncCall:
 
     @pytest.mark.asyncio
     async def test_execute_raises_when_tool_not_found(self, mock_app_with_loaders, sample_query):
-        """Test that execute_func_call raises ValueError when tool not found."""
+        """Test that execute_func_call raises ToolNotFoundError when tool not found."""
         toolmgr = get_toolmgr_module()
 
         mock_app, mock_plugin_loader, mock_mcp_loader = mock_app_with_loaders
@@ -275,7 +237,7 @@ class TestToolManagerExecuteFuncCall:
         manager = toolmgr.ToolManager(mock_app)
         self._wire_loaders(manager, mock_app, mock_plugin_loader, mock_mcp_loader)
 
-        with pytest.raises(ValueError, match='未找到工具'):
+        with pytest.raises(toolmgr.ToolNotFoundError, match='Tool not found: unknown_tool'):
             await manager.execute_func_call('unknown_tool', {}, sample_query)
 
     @pytest.mark.asyncio

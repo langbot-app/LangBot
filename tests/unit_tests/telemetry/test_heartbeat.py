@@ -62,6 +62,7 @@ class TestBuildHeartbeatPayload:
 
         assert payload['event_type'] == 'instance_heartbeat'
         assert payload['query_id'] == ''
+        assert 'instance_create_ts' in payload
         assert 'timestamp' in payload
         f = payload['features']
         assert f['database'] == 'postgresql'

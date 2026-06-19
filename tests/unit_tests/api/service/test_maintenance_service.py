@@ -174,9 +174,7 @@ class TestMaintenanceServiceGetStorageAnalysis:
         # Setup
         ap = SimpleNamespace()
         ap.instance_config = SimpleNamespace()
-        ap.instance_config.data = {
-            'database': {'use': 'sqlite', 'sqlite': {'path': 'data/langbot.db'}}
-        }
+        ap.instance_config.data = {'database': {'use': 'sqlite', 'sqlite': {'path': 'data/langbot.db'}}}
         ap.persistence_mgr = SimpleNamespace()
         ap.logger = SimpleNamespace()
         ap.logger.warning = Mock()
@@ -292,12 +290,8 @@ class TestMaintenanceServiceGetStorageAnalysis:
         service._file_count = Mock(return_value=0)
         service._monitoring_counts = AsyncMock(return_value={})
         service._binary_storage_stats = AsyncMock(return_value={'count': 0, 'size_bytes': 0})
-        service._expired_uploaded_candidates = AsyncMock(return_value=[
-            {'key': 'old_file', 'size_bytes': 100}
-        ])
-        service._expired_log_candidates = Mock(return_value=[
-            {'name': 'old_log', 'size_bytes': 50}
-        ])
+        service._expired_uploaded_candidates = AsyncMock(return_value=[{'key': 'old_file', 'size_bytes': 100}])
+        service._expired_log_candidates = Mock(return_value=[{'name': 'old_log', 'size_bytes': 50}])
 
         # Execute
         result = await service.get_storage_analysis()
@@ -367,6 +361,7 @@ class TestMaintenanceServiceBinaryStorageStats:
         size_result = _create_mock_result(scalar_value=5000)
 
         call_count = 0
+
         async def mock_execute(query):
             nonlocal call_count
             call_count += 1
@@ -396,6 +391,7 @@ class TestMaintenanceServiceBinaryStorageStats:
         count_result = _create_mock_result(scalar_value=5)
 
         call_count = 0
+
         async def mock_execute(query):
             nonlocal call_count
             call_count += 1

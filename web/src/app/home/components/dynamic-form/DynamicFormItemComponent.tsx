@@ -61,7 +61,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import ModelsDialog from '@/app/home/components/models-dialog/ModelsDialog';
+import SettingsDialog, {
+  SettingsSection,
+} from '@/app/home/components/settings-dialog/SettingsDialog';
 
 export default function DynamicFormItemComponent({
   config,
@@ -87,6 +89,8 @@ export default function DynamicFormItemComponent({
   );
   const { t } = useTranslation();
   const [modelsDialogOpen, setModelsDialogOpen] = useState(false);
+  const [settingsSection, setSettingsSection] =
+    useState<SettingsSection>('models');
 
   const fetchLlmModels = () => {
     httpClient
@@ -561,9 +565,11 @@ export default function DynamicFormItemComponent({
             </TooltipTrigger>
             <TooltipContent side="right">{t('models.title')}</TooltipContent>
           </Tooltip>
-          <ModelsDialog
+          <SettingsDialog
             open={modelsDialogOpen}
             onOpenChange={handleModelsDialogChange}
+            section={settingsSection}
+            onSectionChange={setSettingsSection}
           />
         </div>
       );
@@ -913,9 +919,11 @@ export default function DynamicFormItemComponent({
                   {t('models.title')}
                 </TooltipContent>
               </Tooltip>
-              <ModelsDialog
+              <SettingsDialog
                 open={modelsDialogOpen}
                 onOpenChange={handleModelsDialogChange}
+                section={settingsSection}
+                onSectionChange={setSettingsSection}
               />
             </div>
           </div>

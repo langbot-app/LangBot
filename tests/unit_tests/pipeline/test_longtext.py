@@ -126,11 +126,9 @@ class TestLongTextProcessStageProcess:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.pipeline_config = pipeline_config
-        query.resp_message_chain = [
-            platform_message.MessageChain([platform_message.Plain(text="very long response")])
-        ]
+        query.resp_message_chain = [platform_message.MessageChain([platform_message.Plain(text='very long response')])]
 
         result = await stage.process(query, 'LongTextProcessStage')
 
@@ -151,11 +149,9 @@ class TestLongTextProcessStageProcess:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.pipeline_config = pipeline_config
-        query.resp_message_chain = [
-            platform_message.MessageChain([platform_message.Plain(text="short response")])
-        ]
+        query.resp_message_chain = [platform_message.MessageChain([platform_message.Plain(text='short response')])]
 
         result = await stage.process(query, 'LongTextProcessStage')
 
@@ -179,14 +175,13 @@ class TestLongTextProcessStageProcess:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.pipeline_config = pipeline_config
         # Non-Plain component (Image)
         query.resp_message_chain = [
-            platform_message.MessageChain([
-                platform_message.Plain(text="short"),
-                platform_message.Image(url="https://example.com/img.png")
-            ])
+            platform_message.MessageChain(
+                [platform_message.Plain(text='short'), platform_message.Image(url='https://example.com/img.png')]
+            )
         ]
 
         result = await stage.process(query, 'LongTextProcessStage')
@@ -213,7 +208,7 @@ class TestLongTextProcessStageProcess:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.pipeline_config = pipeline_config
         query.resp_message_chain = []
 
@@ -232,7 +227,7 @@ class TestLongTextProcessStageProcess:
         stage = longtext.LongTextProcessStage(app)
         stage.strategy_impl = AsyncMock()
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.pipeline_config = make_longtext_config(strategy='forward', threshold=1)
         query.resp_message_chain = []
 
@@ -241,6 +236,7 @@ class TestLongTextProcessStageProcess:
         assert result.result_type == entities.ResultType.CONTINUE
         assert result.new_query is query
         stage.strategy_impl.process.assert_not_called()
+
 
 class TestForwardStrategy:
     """Tests for ForwardComponentStrategy."""
@@ -260,7 +256,7 @@ class TestForwardStrategy:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.pipeline_config = pipeline_config
         # Create a mock adapter with bot_account_id
         mock_adapter = Mock()
@@ -268,10 +264,8 @@ class TestForwardStrategy:
         query.adapter = mock_adapter
 
         # Long text exceeding threshold
-        long_text = "This is a very long response that exceeds the threshold"
-        query.resp_message_chain = [
-            platform_message.MessageChain([platform_message.Plain(text=long_text)])
-        ]
+        long_text = 'This is a very long response that exceeds the threshold'
+        query.resp_message_chain = [platform_message.MessageChain([platform_message.Plain(text=long_text)])]
 
         result = await stage.process(query, 'LongTextProcessStage')
 
@@ -297,13 +291,13 @@ class TestForwardStrategy:
 
         await strat.initialize()
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.pipeline_config = make_longtext_config()
         mock_adapter = Mock()
         mock_adapter.bot_account_id = '12345'
         query.adapter = mock_adapter
 
-        components = await strat.process("test message", query)
+        components = await strat.process('test message', query)
 
         assert len(components) == 1
         assert isinstance(components[0], platform_message.Forward)
@@ -326,14 +320,12 @@ class TestLongTextThreshold:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.pipeline_config = pipeline_config
 
         # Text below threshold
-        short_text = "x" * (threshold - 1)
-        query.resp_message_chain = [
-            platform_message.MessageChain([platform_message.Plain(text=short_text)])
-        ]
+        short_text = 'x' * (threshold - 1)
+        query.resp_message_chain = [platform_message.MessageChain([platform_message.Plain(text=short_text)])]
 
         result = await stage.process(query, 'LongTextProcessStage')
 

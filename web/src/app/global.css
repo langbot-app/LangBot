@@ -74,6 +74,15 @@
   }
 }
 
+/* Hide scrollbar while keeping scroll behaviour (horizontal tag/filter rows). */
+.scrollbar-hide {
+  -ms-overflow-style: none; /* IE / Edge */
+  scrollbar-width: none; /* Firefox */
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none; /* Chrome / Safari / WebKit */
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

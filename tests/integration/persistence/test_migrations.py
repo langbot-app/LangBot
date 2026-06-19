@@ -26,8 +26,8 @@ pytestmark = pytest.mark.integration
 @pytest.fixture
 def sqlite_db_url(tmp_path):
     """Create SQLite URL with temporary database file."""
-    db_file = tmp_path / "test_migrations.db"
-    return f"sqlite+aiosqlite:///{db_file}"
+    db_file = tmp_path / 'test_migrations.db'
+    return f'sqlite+aiosqlite:///{db_file}'
 
 
 @pytest.fixture
@@ -102,9 +102,9 @@ class TestSQLiteMigrationUpgrade:
 
         # Verify revision
         rev = await get_alembic_current(sqlite_engine)
-        assert rev is not None, "Expected a revision after upgrade"
+        assert rev is not None, 'Expected a revision after upgrade'
         # Head should be the latest migration
-        assert rev.startswith('0004'), f"Expected head to be 0004_*, got {rev}"
+        assert rev.startswith('0005'), f'Expected head to be 0005_*, got {rev}'
 
     @pytest.mark.asyncio
     async def test_upgrade_idempotent(self, sqlite_engine):
@@ -131,7 +131,7 @@ class TestSQLiteMigrationUpgrade:
         await run_alembic_upgrade(sqlite_engine, 'head')
 
         rev2 = await get_alembic_current(sqlite_engine)
-        assert rev2 == rev1, f"Expected {rev1}, got {rev2}"
+        assert rev2 == rev1, f'Expected {rev1}, got {rev2}'
 
 
 class TestSQLiteMigrationFreshDatabase:
@@ -149,8 +149,8 @@ class TestSQLiteMigrationFreshDatabase:
         4. Verify revision
         """
         # Use different DB file for fresh test
-        fresh_db_file = tmp_path / "test_migrations_fresh.db"
-        fresh_url = f"sqlite+aiosqlite:///{fresh_db_file}"
+        fresh_db_file = tmp_path / 'test_migrations_fresh.db'
+        fresh_url = f'sqlite+aiosqlite:///{fresh_db_file}'
         fresh_engine = create_async_engine(fresh_url)
 
         # Create tables on fresh DB
@@ -162,7 +162,7 @@ class TestSQLiteMigrationFreshDatabase:
 
         # Verify revision
         rev = await get_alembic_current(fresh_engine)
-        assert rev is not None, "Expected a revision on fresh DB"
+        assert rev is not None, 'Expected a revision on fresh DB'
 
         await fresh_engine.dispose()
 
@@ -181,8 +181,8 @@ class TestSQLiteMigrationFreshDatabase:
         IMPORTANT: This test verifies the ACTUAL behavior, not accepting
         any arbitrary failure with try-except pass.
         """
-        fresh_db_file = tmp_path / "test_empty_migrations.db"
-        fresh_url = f"sqlite+aiosqlite:///{fresh_db_file}"
+        fresh_db_file = tmp_path / 'test_empty_migrations.db'
+        fresh_url = f'sqlite+aiosqlite:///{fresh_db_file}'
         fresh_engine = create_async_engine(fresh_url)
 
         # Capture the actual behavior
@@ -201,23 +201,23 @@ class TestSQLiteMigrationFreshDatabase:
         # Verify specific behavior - one of two outcomes is expected
         if actual_result is not None:
             # Migration succeeded - verify revision exists
-            assert actual_result is not None, "Revision should exist after successful migration"
+            assert actual_result is not None, 'Revision should exist after successful migration'
         else:
             # Migration failed - verify the error type is known
             # Alembic typically raises specific errors for missing tables
-            assert actual_error is not None, "Error should be captured if migration failed"
+            assert actual_error is not None, 'Error should be captured if migration failed'
             # Log the error type for documentation (don't silently pass)
             error_type = type(actual_error).__name__
             # Acceptable error types for empty DB scenarios
             acceptable_errors = [
                 'OperationalError',  # SQLite table not found
                 'ProgrammingError',  # SQLAlchemy errors
-                'CommandError',      # Alembic command errors
+                'CommandError',  # Alembic command errors
             ]
             assert error_type in acceptable_errors, (
-                f"Unexpected error type: {error_type}. "
-                f"This may indicate a regression in migration behavior. "
-                f"Error: {actual_error}"
+                f'Unexpected error type: {error_type}. '
+                f'This may indicate a regression in migration behavior. '
+                f'Error: {actual_error}'
             )
 
 
@@ -235,7 +235,7 @@ class TestSQLiteMigrationGetCurrent:
 
         # No stamp - should return None
         rev = await get_alembic_current(sqlite_engine)
-        assert rev is None, f"Expected None for unstamped DB, got {rev}"
+        assert rev is None, f'Expected None for unstamped DB, got {rev}'
 
     @pytest.mark.asyncio
     async def test_get_current_after_stamp_returns_revision(self, sqlite_engine):

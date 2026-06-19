@@ -132,9 +132,7 @@ class TestApiKeyServiceCreateApiKey:
         with patch('langbot.pkg.api.http.service.apikey.secrets.token_urlsafe', return_value='fixed-token'):
             result = await service.create_api_key('New Key', 'Test description')
 
-        assert insert_params == [
-            {'name': 'New Key', 'key': 'lbk_fixed-token', 'description': 'Test description'}
-        ]
+        assert insert_params == [{'name': 'New Key', 'key': 'lbk_fixed-token', 'description': 'Test description'}]
         assert result['key'].startswith('lbk_')
         assert result['key'] == 'lbk_fixed-token'
         assert result['name'] == 'New Key'

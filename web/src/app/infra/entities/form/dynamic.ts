@@ -8,7 +8,7 @@ export const SYSTEM_FIELD_PREFIX = '__system.';
 export interface IShowIfCondition {
   field: string;
   operator: 'eq' | 'neq' | 'in';
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   value: any;
 }
 

@@ -7,6 +7,7 @@ metadata:
     zh_Hans: 接口 AI
   icon: jiekouai.png
 spec:
+  litellm_provider: openai
   config:
   - name: base_url
     label:
@@ -29,9 +30,11 @@ spec:
     type: int
     required: true
     default: 120
+  alias: "jiekouai 接口AI 接口 jiekou ai 中转 中转站 aggregator"
   support_type:
   - llm
   - text-embedding
+  - rerank
   provider_category: maas
 execution:
   python:

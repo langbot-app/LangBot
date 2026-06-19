@@ -787,38 +787,42 @@ function MarketPageContent({
           </div>
         </div>
 
-        {/* 用真实标签做快速筛选 */}
-        <div className="mx-auto flex w-full max-w-4xl items-center gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:justify-center sm:overflow-visible">
-          <Button
-            type="button"
-            variant={selectedTags.length === 0 ? 'secondary' : 'ghost'}
-            size="sm"
-            className="h-8 shrink-0"
-            onClick={() => handleTagsChange([])}
-          >
-            {t('market.allExtensions')}
-          </Button>
-          {availableTags.map((tag) => {
-            const selected = selectedTags.includes(tag.tag);
-            return (
-              <Button
-                key={tag.tag}
-                type="button"
-                variant={selected ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-8 shrink-0"
-                onClick={() => {
-                  const newTags = selected
-                    ? selectedTags.filter((t) => t !== tag.tag)
-                    : [...selectedTags, tag.tag];
-                  handleTagsChange(newTags);
-                }}
-              >
-                {tagNames[tag.tag] || tag.tag}
-                {selected && <X className="h-3.5 w-3.5" />}
-              </Button>
-            );
-          })}
+        {/* 用真实标签做快速筛选 —— 始终单行横向滚动，避免标签变多时换行错位 */}
+        <div className="relative mx-auto w-full max-w-4xl">
+          <div className="scrollbar-hide flex items-center gap-1.5 overflow-x-auto pb-1 pr-6">
+            <Button
+              type="button"
+              variant={selectedTags.length === 0 ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7 shrink-0 px-2.5 text-xs"
+              onClick={() => handleTagsChange([])}
+            >
+              {t('market.allExtensions')}
+            </Button>
+            {availableTags.map((tag) => {
+              const selected = selectedTags.includes(tag.tag);
+              return (
+                <Button
+                  key={tag.tag}
+                  type="button"
+                  variant={selected ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-7 shrink-0 px-2.5 text-xs"
+                  onClick={() => {
+                    const newTags = selected
+                      ? selectedTags.filter((t) => t !== tag.tag)
+                      : [...selectedTags, tag.tag];
+                    handleTagsChange(newTags);
+                  }}
+                >
+                  {tagNames[tag.tag] || tag.tag}
+                  {selected && <X className="h-3 w-3" />}
+                </Button>
+              );
+            })}
+          </div>
+          {/* 右侧渐隐，提示还有更多标签可横向滚动查看 */}
+          <div className="pointer-events-none absolute right-0 top-0 bottom-1 w-8 bg-gradient-to-l from-background to-transparent" />
         </div>
       </div>
 

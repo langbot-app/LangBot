@@ -84,6 +84,67 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Test Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
 
+  e2e:
+    name: E2E Startup Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run E2E startup tests
+        run: uv run pytest tests/e2e -q --tb=short
+
+      - name: E2E Test Summary
+        if: always()
+        run: |
+          echo "## E2E Startup Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Test Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+  box-integration:
+    name: Box Integration Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Check Docker runtime
+        run: docker info
+
+      - name: Run Box integration tests
+        run: uv run pytest tests/integration_tests -q --tb=short
+
+      - name: Box Integration Test Summary
+        if: always()
+        run: |
+          echo "## Box Integration Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Test Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
   coverage:
     name: Coverage Gate
     runs-on: ubuntu-latest

@@ -2,19 +2,16 @@ from __future__ import annotations
 
 import typing
 
-import openai
-
-from . import chatcmpl
+from . import litellmchat
 
 
-class QiniuChatCompletions(chatcmpl.OpenAIChatCompletions):
+class QiniuChatCompletions(litellmchat.LiteLLMRequester):
     """七牛云 ChatCompletion API 请求器"""
-
-    client: openai.AsyncClient
 
     default_config: dict[str, typing.Any] = {
         'base_url': 'https://api.qnaigc.com/v1',
         'timeout': 120,
+        'custom_llm_provider': 'openai',
     }
 
     async def scan_models(self, api_key: str | None = None) -> dict[str, typing.Any]:

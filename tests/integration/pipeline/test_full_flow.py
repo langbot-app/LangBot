@@ -26,6 +26,7 @@ pytestmark = pytest.mark.integration
 
 # ============== FIXTURE FOR SYS.MODULES ISOLATION ==============
 
+
 @pytest.fixture(scope='module')
 def mock_circular_import_chain():
     """
@@ -103,6 +104,7 @@ def mock_circular_import_chain():
 
 # ============== FAKE RUNNER ==============
 
+
 class FakeRunner:
     """Minimal fake runner class for pipeline integration tests.
 
@@ -117,12 +119,13 @@ class FakeRunner:
         self.config = config or {}
         self._provider = FakeProvider()
         # Instance-level configuration set via class attribute
-        self._response_text = "fake response"
+        self._response_text = 'fake response'
         self._raise_error = None
 
     @classmethod
     def returns(cls, text: str):
         """Create a runner class configured to return specific text."""
+
         # We create a subclass with configured response
         class ConfiguredRunner(cls):
             name = cls.name
@@ -132,11 +135,13 @@ class FakeRunner:
             def __init__(self, app=None, config=None):
                 super().__init__(app, config)
                 self._response_text = text
+
         return ConfiguredRunner
 
     @classmethod
     def raises(cls, error: Exception):
         """Create a runner class configured to raise an error."""
+
         class ConfiguredRunner(cls):
             name = cls.name
             _response_text = None
@@ -145,6 +150,7 @@ class FakeRunner:
             def __init__(self, app=None, config=None):
                 super().__init__(app, config)
                 self._raise_error = error
+
         return ConfiguredRunner
 
     async def run(self, query):
@@ -160,6 +166,7 @@ class FakeRunner:
 
 
 # ============== PIPELINE APP FIXTURE ==============
+
 
 @pytest.fixture
 def pipeline_app():
@@ -187,6 +194,7 @@ def pipeline_app():
         def __init__(self, name, messages):
             self.name = name
             self.messages = messages
+
         def copy(self):
             return MockPrompt(self.name, list(self.messages))
 
@@ -237,13 +245,16 @@ def fake_platform_adapter():
 @pytest.fixture
 def set_fake_runner():
     """Factory fixture to set a fake runner CLASS in preregistered_runners."""
+
     def _set_runner(runner_cls):
         # preregistered_runners expects a list of runner classes
         sys.modules['langbot.pkg.provider.runner'].preregistered_runners = [runner_cls]
+
     return _set_runner
 
 
 # ============== PIPELINE CONFIGURATION ==============
+
 
 def create_minimal_pipeline_config():
     """Create minimal pipeline configuration for tests."""
@@ -273,6 +284,7 @@ def create_minimal_pipeline_config():
 
 # ============== HELPER TO PROCESS COROUTINE/GENERATOR ==============
 
+
 async def collect_processor_results(processor, query, stage_name):
     """
     Helper to handle the coroutine -> async_generator pattern.
@@ -295,6 +307,7 @@ async def collect_processor_results(processor, query, stage_name):
 
 
 # ============== TESTS ==============
+
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
 class TestPipelineStageChainReal:
@@ -337,7 +350,7 @@ class TestPreProcessorStage:
         adapter, platform = fake_platform_adapter
 
         # Create query with adapter
-        query = text_query("hello")
+        query = text_query('hello')
         query.adapter = adapter
         query.pipeline_config = create_minimal_pipeline_config()
 
@@ -365,7 +378,7 @@ class TestPreProcessorStage:
 
         adapter, platform = fake_platform_adapter
 
-        query = text_query("test message content")
+        query = text_query('test message content')
         query.adapter = adapter
         query.pipeline_config = create_minimal_pipeline_config()
 
@@ -396,11 +409,11 @@ class TestProcessorStage:
         adapter, platform = fake_platform_adapter
 
         # Set fake runner that returns pong
-        fake_runner = FakeRunner().returns("LANGBOT_FAKE_PONG")
+        fake_runner = FakeRunner().returns('LANGBOT_FAKE_PONG')
         set_fake_runner(fake_runner)
 
         # Create query
-        query = text_query("hello")
+        query = text_query('hello')
         query.adapter = adapter
         query.pipeline_config = create_minimal_pipeline_config()
         query.resp_messages = []
@@ -414,6 +427,7 @@ class TestProcessorStage:
 
         # Create Processor stage
         from langbot.pkg.pipeline.process import process
+
         processor_stage = process.Processor(pipeline_app)
         await processor_stage.initialize(query.pipeline_config)
 
@@ -432,7 +446,7 @@ class TestProcessorStage:
         adapter, platform = fake_platform_adapter
 
         # Create query
-        query = text_query("hello")
+        query = text_query('hello')
         query.adapter = adapter
         query.pipeline_config = create_minimal_pipeline_config()
 
@@ -445,6 +459,7 @@ class TestProcessorStage:
 
         # Create Processor stage
         from langbot.pkg.pipeline.process import process
+
         processor_stage = process.Processor(pipeline_app)
         await processor_stage.initialize(query.pipeline_config)
 
@@ -462,13 +477,13 @@ class TestProcessorStage:
         adapter, platform = fake_platform_adapter
 
         # Create query
-        query = text_query("hello")
+        query = text_query('hello')
         query.adapter = adapter
         query.pipeline_config = create_minimal_pipeline_config()
         query.resp_messages = []
 
         # Create reply chain
-        reply_chain = text_chain("plugin response")
+        reply_chain = text_chain('plugin response')
 
         # Mock plugin_connector to prevent default with reply
         mock_event_ctx = Mock()
@@ -479,6 +494,7 @@ class TestProcessorStage:
 
         # Create Processor stage
         from langbot.pkg.pipeline.process import process
+
         processor_stage = process.Processor(pipeline_app)
         await processor_stage.initialize(query.pipeline_config)
 
@@ -502,7 +518,7 @@ class TestRunnerExceptionFlow:
         adapter, platform = fake_platform_adapter
 
         # Set fake runner that raises exception
-        fake_runner = FakeRunner().raises(ValueError("API Error: rate limit exceeded"))
+        fake_runner = FakeRunner().raises(ValueError('API Error: rate limit exceeded'))
         set_fake_runner(fake_runner)
 
         # Create query with exception handling config
@@ -510,7 +526,7 @@ class TestRunnerExceptionFlow:
         config['output']['misc']['exception-handling'] = 'show-hint'
         config['output']['misc']['failure-hint'] = 'Request failed.'
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.adapter = adapter
         query.pipeline_config = config
 
@@ -523,6 +539,7 @@ class TestRunnerExceptionFlow:
 
         # Create Processor stage
         from langbot.pkg.pipeline.process import process
+
         processor_stage = process.Processor(pipeline_app)
         await processor_stage.initialize(query.pipeline_config)
 
@@ -541,14 +558,14 @@ class TestRunnerExceptionFlow:
         adapter, platform = fake_platform_adapter
 
         # Set fake runner that raises specific exception
-        fake_runner = FakeRunner().raises(RuntimeError("Custom runtime error"))
+        fake_runner = FakeRunner().raises(RuntimeError('Custom runtime error'))
         set_fake_runner(fake_runner)
 
         # Create query with show-error mode
         config = create_minimal_pipeline_config()
         config['output']['misc']['exception-handling'] = 'show-error'
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.adapter = adapter
         query.pipeline_config = config
 
@@ -561,6 +578,7 @@ class TestRunnerExceptionFlow:
 
         # Create Processor stage
         from langbot.pkg.pipeline.process import process
+
         processor_stage = process.Processor(pipeline_app)
         await processor_stage.initialize(query.pipeline_config)
 
@@ -578,14 +596,14 @@ class TestRunnerExceptionFlow:
         adapter, platform = fake_platform_adapter
 
         # Set fake runner that raises exception
-        fake_runner = FakeRunner().raises(Exception("Hidden error"))
+        fake_runner = FakeRunner().raises(Exception('Hidden error'))
         set_fake_runner(fake_runner)
 
         # Create query with hide mode
         config = create_minimal_pipeline_config()
         config['output']['misc']['exception-handling'] = 'hide'
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.adapter = adapter
         query.pipeline_config = config
 
@@ -598,6 +616,7 @@ class TestRunnerExceptionFlow:
 
         # Create Processor stage
         from langbot.pkg.pipeline.process import process
+
         processor_stage = process.Processor(pipeline_app)
         await processor_stage.initialize(query.pipeline_config)
 
@@ -623,7 +642,7 @@ class TestSendResponseBackStage:
         adapter, platform = fake_platform_adapter
 
         # Create query with response message
-        query = text_query("hello")
+        query = text_query('hello')
         query.adapter = adapter
         query.pipeline_config = create_minimal_pipeline_config()
 
@@ -666,12 +685,12 @@ class TestStageChainIntegration:
         adapter, platform = fake_platform_adapter
 
         # Set fake runner
-        fake_runner = FakeRunner().returns("LANGBOT_FAKE_PONG")
+        fake_runner = FakeRunner().returns('LANGBOT_FAKE_PONG')
         set_fake_runner(fake_runner)
 
         # Create query
         config = create_minimal_pipeline_config()
-        query = text_query("ping")
+        query = text_query('ping')
         query.adapter = adapter
         query.pipeline_config = config
         query.resp_messages = []
@@ -690,7 +709,7 @@ class TestStageChainIntegration:
 
         pipeline_app.plugin_connector.emit_event = AsyncMock()
         pipeline_app.plugin_connector.emit_event.side_effect = [
-            mock_event_ctx_preproc,   # PreProcessor PromptPreProcessing
+            mock_event_ctx_preproc,  # PreProcessor PromptPreProcessing
             mock_event_ctx_processor,  # Processor NormalMessageReceived
         ]
 
@@ -711,6 +730,7 @@ class TestStageChainIntegration:
 
         # Build resp_message_chain from resp_messages
         from tests.factories.message import text_chain
+
         for resp_msg in query.resp_messages:
             if resp_msg.content:
                 query.resp_message_chain.append(text_chain(resp_msg.content))
@@ -737,7 +757,7 @@ class TestStageChainIntegration:
         adapter, platform = fake_platform_adapter
 
         # Create query
-        query = text_query("hello")
+        query = text_query('hello')
         query.adapter = adapter
         query.pipeline_config = create_minimal_pipeline_config()
 
@@ -754,7 +774,7 @@ class TestStageChainIntegration:
 
         pipeline_app.plugin_connector.emit_event = AsyncMock()
         pipeline_app.plugin_connector.emit_event.side_effect = [
-            mock_event_ctx_preproc,   # PreProcessor PromptPreProcessing
+            mock_event_ctx_preproc,  # PreProcessor PromptPreProcessing
             mock_event_ctx_processor,  # Processor NormalMessageReceived
         ]
 

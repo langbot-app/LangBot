@@ -39,6 +39,7 @@ import AddModelPopover from './AddModelPopover';
 interface ProviderCardProps {
   provider: ModelProvider;
   isLangBotModels?: boolean;
+  supportTypes?: string[];
   isExpanded: boolean;
   isLoading: boolean;
   models?: ProviderModels;
@@ -60,6 +61,7 @@ interface ProviderCardProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    contextLength?: number | null,
   ) => Promise<void>;
   onScanModels: (modelType?: ModelType) => Promise<ScanModelsResult>;
   onAddScannedModels: (
@@ -74,6 +76,7 @@ interface ProviderCardProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    contextLength?: number | null,
   ) => Promise<void>;
   onOpenDeleteConfirm: (modelId: string) => void;
   onCloseDeleteConfirm: () => void;
@@ -99,6 +102,7 @@ function maskApiKey(key: string): string {
 export default function ProviderCard({
   provider,
   isLangBotModels = false,
+  supportTypes,
   isExpanded,
   isLoading,
   models,
@@ -319,6 +323,7 @@ export default function ProviderCard({
                     addModelMode === 'manual'
                   }
                   initialMode="manual"
+                  supportTypes={supportTypes}
                   trigger={
                     <Button
                       variant="ghost"
@@ -353,6 +358,7 @@ export default function ProviderCard({
                     addModelMode === 'scan'
                   }
                   initialMode="scan"
+                  supportTypes={supportTypes}
                   trigger={
                     <Button
                       variant="ghost"
@@ -405,13 +411,19 @@ export default function ProviderCard({
                     onOpenDeleteConfirm={onOpenDeleteConfirm}
                     onCloseDeleteConfirm={onCloseDeleteConfirm}
                     onDeleteModel={() => onDeleteModel(model.uuid, 'llm')}
-                    onUpdateModel={(name, abilities, extraArgs) =>
+                    onUpdateModel={(
+                      name,
+                      abilities,
+                      extraArgs,
+                      contextLength,
+                    ) =>
                       onUpdateModel(
                         model.uuid,
                         'llm',
                         name,
                         abilities,
                         extraArgs,
+                        contextLength,
                       )
                     }
                     onTestModel={(name, abilities, extraArgs) =>

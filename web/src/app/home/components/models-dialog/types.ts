@@ -53,6 +53,7 @@ export interface ModelItemProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    contextLength?: number | null,
   ) => Promise<void>;
   onTest: (
     name: string,
@@ -89,6 +90,7 @@ export interface ProviderCardProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    contextLength?: number | null,
   ) => Promise<void>;
   onScanModels: (modelType?: ModelType) => Promise<ScanModelsResult>;
   onAddScannedModels: (
@@ -103,6 +105,7 @@ export interface ProviderCardProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    contextLength?: number | null,
   ) => Promise<void>;
   onOpenDeleteConfirm: (modelId: string) => void;
   onCloseDeleteConfirm: () => void;

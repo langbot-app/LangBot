@@ -323,7 +323,6 @@ export default function PipelineFormComponent({
     const isFirstEmission = !initializedStagesRef.current.has(stageKey);
 
     const currentValues =
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (form.getValues(formName) as Record<string, any>) || {};
     form.setValue(formName, {
       ...currentValues,
@@ -368,7 +367,6 @@ export default function PipelineFormComponent({
               <DynamicFormComponent
                 itemConfigList={stage.config}
                 initialValues={
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   (form.watch(formName) as Record<string, any>)?.[stage.name] ||
                   {}
                 }
@@ -402,7 +400,6 @@ export default function PipelineFormComponent({
               <N8nAuthFormComponent
                 itemConfigList={stage.config}
                 initialValues={
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   (form.watch(formName) as Record<string, any>)?.[stage.name] ||
                   {}
                 }
@@ -445,7 +442,7 @@ export default function PipelineFormComponent({
     // make the locked selector display a scope that is NOT the one actually in
     // effect. Coerce the displayed/saved value to the forced template so the UI
     // truthfully reflects runtime behavior.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const stageInitialValues: Record<string, any> =
       (form.watch(formName) as Record<string, any>)?.[stage.name] || {};
     const effectiveInitialValues =

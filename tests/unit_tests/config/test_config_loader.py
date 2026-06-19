@@ -25,7 +25,7 @@ class TestYAMLConfigFile:
     @pytest.mark.asyncio
     async def test_valid_yaml_loads(self, tmp_path):
         """Valid YAML config should load correctly."""
-        config_file = tmp_path / "test_config.yaml"
+        config_file = tmp_path / 'test_config.yaml'
 
         # Write valid YAML
         config_file.write_text("""
@@ -51,7 +51,7 @@ settings:
     @pytest.mark.asyncio
     async def test_invalid_yaml_raises_error(self, tmp_path):
         """Invalid YAML should raise clear error."""
-        config_file = tmp_path / "invalid.yaml"
+        config_file = tmp_path / 'invalid.yaml'
 
         # Write invalid YAML (unclosed bracket)
         config_file.write_text("""
@@ -67,13 +67,13 @@ settings:
             template_data={'name': 'default'},
         )
 
-        with pytest.raises(Exception, match="Syntax error"):
+        with pytest.raises(Exception, match='Syntax error'):
             await yaml_file.load(completion=False)
 
     @pytest.mark.asyncio
     async def test_missing_config_creates_from_template(self, tmp_path):
         """Missing config file should be created from template."""
-        config_file = tmp_path / "new_config.yaml"
+        config_file = tmp_path / 'new_config.yaml'
 
         # File doesn't exist yet
         assert not config_file.exists()
@@ -92,7 +92,7 @@ settings:
     @pytest.mark.asyncio
     async def test_template_completion(self, tmp_path):
         """Config should be completed with template defaults."""
-        config_file = tmp_path / "partial.yaml"
+        config_file = tmp_path / 'partial.yaml'
 
         # Write partial config missing some template keys
         config_file.write_text("""
@@ -115,7 +115,7 @@ name: custom_name
     @pytest.mark.asyncio
     async def test_yaml_save(self, tmp_path):
         """YAML config can be saved."""
-        config_file = tmp_path / "save_test.yaml"
+        config_file = tmp_path / 'save_test.yaml'
 
         yaml_file = YAMLConfigFile(
             str(config_file),
@@ -131,7 +131,7 @@ name: custom_name
 
     def test_yaml_save_sync(self, tmp_path):
         """YAML config can be saved synchronously."""
-        config_file = tmp_path / "sync_save.yaml"
+        config_file = tmp_path / 'sync_save.yaml'
 
         yaml_file = YAMLConfigFile(
             str(config_file),
@@ -151,14 +151,18 @@ class TestJSONConfigFile:
     @pytest.mark.asyncio
     async def test_valid_json_loads(self, tmp_path):
         """Valid JSON config should load correctly."""
-        config_file = tmp_path / "test_config.json"
+        config_file = tmp_path / 'test_config.json'
 
         # Write valid JSON
-        config_file.write_text(json.dumps({
-            'name': 'json_app',
-            'version': '1.0',
-            'settings': {'debug': True, 'port': 8080},
-        }))
+        config_file.write_text(
+            json.dumps(
+                {
+                    'name': 'json_app',
+                    'version': '1.0',
+                    'settings': {'debug': True, 'port': 8080},
+                }
+            )
+        )
 
         json_file = JSONConfigFile(
             str(config_file),
@@ -174,7 +178,7 @@ class TestJSONConfigFile:
     @pytest.mark.asyncio
     async def test_invalid_json_raises_error(self, tmp_path):
         """Invalid JSON should raise clear error."""
-        config_file = tmp_path / "invalid.json"
+        config_file = tmp_path / 'invalid.json'
 
         # Write invalid JSON (missing closing brace)
         config_file.write_text('{"name": "test", "unclosed": ')
@@ -184,13 +188,13 @@ class TestJSONConfigFile:
             template_data={'name': 'default'},
         )
 
-        with pytest.raises(Exception, match="Syntax error"):
+        with pytest.raises(Exception, match='Syntax error'):
             await json_file.load(completion=False)
 
     @pytest.mark.asyncio
     async def test_missing_json_creates_from_template(self, tmp_path):
         """Missing JSON file should be created from template."""
-        config_file = tmp_path / "new_config.json"
+        config_file = tmp_path / 'new_config.json'
 
         json_file = JSONConfigFile(
             str(config_file),
@@ -205,7 +209,7 @@ class TestJSONConfigFile:
     @pytest.mark.asyncio
     async def test_json_save(self, tmp_path):
         """JSON config can be saved."""
-        config_file = tmp_path / "save_test.json"
+        config_file = tmp_path / 'save_test.json'
 
         json_file = JSONConfigFile(
             str(config_file),
@@ -226,7 +230,7 @@ class TestConfigManager:
     @pytest.mark.asyncio
     async def test_config_manager_load(self, tmp_path):
         """ConfigManager loads config correctly."""
-        config_file = tmp_path / "manager_test.yaml"
+        config_file = tmp_path / 'manager_test.yaml'
         config_file.write_text('name: managed_app\nversion: "1.0"\n')
 
         yaml_file = YAMLConfigFile(
@@ -243,7 +247,7 @@ class TestConfigManager:
     @pytest.mark.asyncio
     async def test_config_manager_dump(self, tmp_path):
         """ConfigManager can dump config."""
-        config_file = tmp_path / "dump_test.yaml"
+        config_file = tmp_path / 'dump_test.yaml'
 
         yaml_file = YAMLConfigFile(
             str(config_file),
@@ -260,7 +264,7 @@ class TestConfigManager:
 
     def test_config_manager_dump_sync(self, tmp_path):
         """ConfigManager can dump config synchronously."""
-        config_file = tmp_path / "sync_dump.yaml"
+        config_file = tmp_path / 'sync_dump.yaml'
 
         yaml_file = YAMLConfigFile(
             str(config_file),
@@ -280,7 +284,7 @@ class TestConfigExists:
 
     def test_yaml_exists_true(self, tmp_path):
         """exists() returns True for existing file."""
-        config_file = tmp_path / "exists.yaml"
+        config_file = tmp_path / 'exists.yaml'
         config_file.write_text('name: test')
 
         yaml_file = YAMLConfigFile(str(config_file), template_data={})
@@ -288,14 +292,14 @@ class TestConfigExists:
 
     def test_yaml_exists_false(self, tmp_path):
         """exists() returns False for missing file."""
-        config_file = tmp_path / "missing.yaml"
+        config_file = tmp_path / 'missing.yaml'
 
         yaml_file = YAMLConfigFile(str(config_file), template_data={})
         assert yaml_file.exists() is False
 
     def test_json_exists_true(self, tmp_path):
         """exists() returns True for existing JSON file."""
-        config_file = tmp_path / "exists.json"
+        config_file = tmp_path / 'exists.json'
         config_file.write_text('{}')
 
         json_file = JSONConfigFile(str(config_file), template_data={})
@@ -303,7 +307,7 @@ class TestConfigExists:
 
     def test_json_exists_false(self, tmp_path):
         """exists() returns False for missing JSON file."""
-        config_file = tmp_path / "missing.json"
+        config_file = tmp_path / 'missing.json'
 
         json_file = JSONConfigFile(str(config_file), template_data={})
         assert json_file.exists() is False

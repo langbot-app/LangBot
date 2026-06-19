@@ -180,7 +180,7 @@ class TestMCPServerBoxConfig:
         assert cfg.host_path is None
         assert cfg.host_path_mode == 'ro'
         assert cfg.env == {}
-        assert cfg.startup_timeout_sec == 120
+        assert cfg.startup_timeout_sec == 300
         assert cfg.cpus is None
         assert cfg.memory_mb is None
         assert cfg.pids_limit is None
@@ -492,6 +492,84 @@ class TestBuildBoxProcessPayload:
         payload = s._build_box_process_payload()
         assert payload['command'] == 'python'
         assert payload['args'] == ['/opt/other/server.py', '--flag']
+
+
+# ── Python Workspace Preparation ────────────────────────────────────
+
+
+class TestPythonWorkspacePreparation:
+    def test_requirements_workspace_uses_venv_bootstrap(self, mcp_module, tmp_path):
+        host_path = tmp_path / 'mcp-source'
+        host_path.mkdir()
+        (host_path / 'requirements.txt').write_text('mcp==1.26.0\n', encoding='utf-8')
+
+        command = mcp_module.BoxStdioSessionRuntime.detect_install_command(
+            str(host_path),
+            '/workspace/.mcp/u1/workspace',
+        )
+
+        assert command is not None
+        assert '_LB_SYSTEM_PYTHON="$(command -v python3 || command -v python || true)"' in command
+        assert '"$_LB_SYSTEM_PYTHON" -m venv "$_LB_VENV_DIR"' in command
+        assert 'python -m pip install -r "/workspace/.mcp/u1/workspace/requirements.txt"' in command
+        assert 'pip install --no-cache-dir -r' not in command
+
+    def test_staging_refresh_removes_stale_source_files_but_preserves_runtime_dirs(self, mcp_module, tmp_path):
+        source = tmp_path / 'source'
+        source.mkdir()
+        (source / 'server.py').write_text('print("new")\n', encoding='utf-8')
+        (source / 'requirements.txt').write_text('mcp==1.26.0\n', encoding='utf-8')
+        (source / '.env').write_text('TOKEN=new\n', encoding='utf-8')
+
+        process_root = tmp_path / 'shared' / '.mcp' / 'u1'
+        workspace = process_root / 'workspace'
+        (workspace / '.venv' / 'bin').mkdir(parents=True)
+        (workspace / '.venv' / 'bin' / 'python').write_text('', encoding='utf-8')
+        (workspace / '.langbot').mkdir()
+        (workspace / '.langbot' / 'python-env.lock').mkdir()
+        (workspace / '.env').write_text('TOKEN=old\n', encoding='utf-8')
+        (workspace / 'server.py').write_text('print("old")\n', encoding='utf-8')
+        (workspace / 'removed.py').write_text('stale\n', encoding='utf-8')
+        (workspace / 'removed_dir').mkdir()
+        (workspace / 'removed_dir' / 'old.txt').write_text('stale\n', encoding='utf-8')
+
+        mcp_module.BoxStdioSessionRuntime._copy_workspace_tree(str(source), str(process_root), str(workspace))
+
+        assert (workspace / 'server.py').read_text(encoding='utf-8') == 'print("new")\n'
+        assert (workspace / 'requirements.txt').read_text(encoding='utf-8') == 'mcp==1.26.0\n'
+        assert (workspace / '.env').read_text(encoding='utf-8') == 'TOKEN=new\n'
+        assert not (workspace / 'removed.py').exists()
+        assert not (workspace / 'removed_dir').exists()
+        assert (workspace / '.venv' / 'bin' / 'python').exists()
+        assert (workspace / '.langbot' / 'python-env.lock').is_dir()
+
+    def test_staging_refresh_ignores_unlink_race(self, mcp_module, tmp_path, monkeypatch):
+        mcp_stdio_module = sys.modules['langbot.pkg.provider.tools.loaders.mcp_stdio']
+
+        source = tmp_path / 'source'
+        source.mkdir()
+        (source / 'server.py').write_text('print("new")\n', encoding='utf-8')
+
+        process_root = tmp_path / 'shared' / '.mcp' / 'u1'
+        workspace = process_root / 'workspace'
+        workspace.mkdir(parents=True)
+        stale_file = workspace / 'removed.py'
+        stale_file.write_text('stale\n', encoding='utf-8')
+
+        real_unlink = os.unlink
+
+        def unlink_with_race(path):
+            if os.fspath(path) == str(stale_file):
+                real_unlink(path)
+                raise FileNotFoundError(path)
+            real_unlink(path)
+
+        monkeypatch.setattr(mcp_stdio_module.os, 'unlink', unlink_with_race)
+
+        mcp_module.BoxStdioSessionRuntime._copy_workspace_tree(str(source), str(process_root), str(workspace))
+
+        assert not stale_file.exists()
+        assert (workspace / 'server.py').read_text(encoding='utf-8') == 'print("new")\n'
 
 
 # ── get_runtime_info_dict ───────────────────────────────────────────

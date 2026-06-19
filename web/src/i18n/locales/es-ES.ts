@@ -126,6 +126,8 @@ const esES = {
     changePasswordFailed:
       'Error al cambiar la contraseña, por favor verifica tu contraseña actual',
     apiIntegration: 'Integración API',
+    apiIntegrationDescription:
+      'Gestiona las claves API y los webhooks para el acceso externo',
     apiKeys: 'Claves API',
     manageApiIntegration: 'Gestionar integración API',
     manageApiKeys: 'Gestionar claves API',
@@ -206,6 +208,9 @@ const esES = {
     selectModelAbilities: 'Seleccionar capacidades del modelo',
     visionAbility: 'Capacidad de visión',
     functionCallAbility: 'Llamada a funciones',
+    contextLength: 'Ventana de contexto',
+    contextLengthPlaceholder: 'Desconocido',
+    contextLengthInvalid: 'La ventana de contexto debe ser un entero positivo',
     extraParameters: 'Parámetros adicionales',
     addParameter: 'Añadir parámetro',
     keyName: 'Nombre de la clave',
@@ -268,6 +273,7 @@ const esES = {
     selectProvider: 'Seleccionar proveedor',
     requester: 'Tipo de proveedor',
     selectRequester: 'Seleccionar tipo de proveedor',
+    searchProviders: 'Buscar proveedores...',
     langbotModelsDescription: 'Modelos en la nube impulsados por LangBot Space',
     credits: 'Créditos',
     loginWithSpace: 'Iniciar sesión con Space',
@@ -585,6 +591,14 @@ const esES = {
     viewSource: 'Ver código fuente',
     loadingReadme: 'Cargando documentación...',
     noReadme: 'Este plugin no proporciona documentación README',
+    tabDocs: 'Documentación',
+    tabLogs: 'Registros',
+    logsLevelAll: 'Todos los niveles',
+    logsRefresh: 'Actualizar',
+    logsAutoRefreshOn: 'Auto-actualizar: Activado',
+    logsAutoRefreshOff: 'Auto-actualizar: Desactivado',
+    logsEmpty:
+      'Aún no hay registros. Los registros que el plugin imprima mediante logger aparecerán aquí.',
     fileUpload: {
       tooLarge: 'El tamaño del archivo supera el límite de 10MB',
       success: 'Archivo subido correctamente',
@@ -832,7 +846,7 @@ const esES = {
       'Una vez eliminada, la configuración de este servidor MCP no se podrá recuperar.',
   },
   pipelines: {
-    title: 'Pipelines',
+    title: 'Flujos',
     description:
       'Los Pipelines definen el flujo de procesamiento de eventos de mensajes, se usan para vincular a los Bots',
     createPipeline: 'Crear Pipeline',
@@ -1166,6 +1180,7 @@ const esES = {
   },
   account: {
     settings: 'Configuración de la cuenta',
+    settingsDescription: 'Gestiona tu contraseña y las cuentas vinculadas',
     setPassword: 'Establecer contraseña',
     passwordSetSuccess: 'Contraseña establecida correctamente',
     passwordStatus: 'Contraseña local',
@@ -1233,6 +1248,7 @@ const esES = {
       llmCalls: 'Llamadas LLM',
       embeddingCalls: 'Llamadas Embedding',
       modelCalls: 'Llamadas a modelos',
+      tokens: 'Monitoreo de Tokens',
       sessions: 'Análisis de sesiones',
       feedback: 'Comentarios de usuarios',
       errors: 'Registros de errores',
@@ -1271,6 +1287,30 @@ const esES = {
       totalTokens: 'Tokens totales',
       avgDuration: 'Duración promedio',
       calls: 'Llamadas',
+    },
+    tokens: {
+      totalTokens: 'Tokens totales',
+      inputTokens: 'Tokens de entrada',
+      outputTokens: 'Tokens de salida',
+      avgPerCall: 'Prom. / llamada',
+      throughput: 'Rendimiento',
+      tokensPerSec: 'tokens/seg',
+      errorCalls: 'Llamadas fallidas',
+      acrossCalls: 'en {{count}} llamadas',
+      ofTotal: 'de {{count}} en total',
+      usageOverTime: 'Uso de tokens a lo largo del tiempo',
+      byModel: 'Por modelo',
+      model: 'Modelo',
+      calls: 'Llamadas',
+      avgLatency: 'Latencia media',
+      noData: 'No hay uso de tokens en el rango de tiempo seleccionado',
+      loadError: 'Error al cargar las estadísticas de tokens: {{error}}',
+      zeroTokenWarning:
+        '{{count}} llamada(s) exitosa(s) reportaron cero uso de tokens. Esto suele significar que el proveedor upstream no devolvió información de uso; revisa la configuración del proveedor del modelo.',
+      bucket: {
+        hour: 'Por hora',
+        day: 'Por día',
+      },
     },
     embeddingCalls: {
       title: 'Llamadas Embedding',
@@ -1381,6 +1421,15 @@ const esES = {
     boxSandboxes: 'Sandboxes',
     boxSessionCreated: 'Creado',
     boxSessionLastUsed: 'Último uso',
+  },
+  settingsDialog: {
+    title: 'Configuración',
+    nav: {
+      models: 'Modelos',
+      api: 'API',
+      storage: 'Almacenamiento',
+      account: 'Cuenta',
+    },
   },
   storageAnalysis: {
     title: 'Análisis de almacenamiento',

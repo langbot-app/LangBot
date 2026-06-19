@@ -123,6 +123,8 @@ const viVN = {
     changePasswordFailed:
       'Đổi mật khẩu thất bại, vui lòng kiểm tra mật khẩu hiện tại',
     apiIntegration: 'Tích hợp API',
+    apiIntegrationDescription:
+      'Quản lý API key và webhook cho truy cập từ bên ngoài',
     apiKeys: 'Khóa API',
     manageApiIntegration: 'Quản lý tích hợp API',
     manageApiKeys: 'Quản lý khóa API',
@@ -203,6 +205,9 @@ const viVN = {
     selectModelAbilities: 'Chọn khả năng mô hình',
     visionAbility: 'Khả năng thị giác',
     functionCallAbility: 'Gọi hàm',
+    contextLength: 'Cửa sổ ngữ cảnh',
+    contextLengthPlaceholder: 'Không rõ',
+    contextLengthInvalid: 'Cửa sổ ngữ cảnh phải là số nguyên dương',
     extraParameters: 'Tham số bổ sung',
     addParameter: 'Thêm tham số',
     keyName: 'Tên khóa',
@@ -263,6 +268,7 @@ const viVN = {
     selectProvider: 'Chọn nhà cung cấp',
     requester: 'Loại nhà cung cấp',
     selectRequester: 'Chọn loại nhà cung cấp',
+    searchProviders: 'Tìm kiếm nhà cung cấp...',
     langbotModelsDescription: 'Mô hình đám mây được cung cấp bởi LangBot Space',
     credits: 'Tín dụng',
     loginWithSpace: 'Đăng nhập với Space',
@@ -579,6 +585,14 @@ const viVN = {
     viewSource: 'Xem mã nguồn',
     loadingReadme: 'Đang tải tài liệu...',
     noReadme: 'Plugin này không cung cấp tài liệu README',
+    tabDocs: 'Tài liệu',
+    tabLogs: 'Nhật ký',
+    logsLevelAll: 'Tất cả cấp độ',
+    logsRefresh: 'Làm mới',
+    logsAutoRefreshOn: 'Tự động làm mới: Bật',
+    logsAutoRefreshOff: 'Tự động làm mới: Tắt',
+    logsEmpty:
+      'Chưa có nhật ký. Nhật ký do plugin in qua logger sẽ hiển thị ở đây.',
     fileUpload: {
       tooLarge: 'Kích thước tệp vượt quá giới hạn 10MB',
       success: 'Tải tệp lên thành công',
@@ -821,7 +835,7 @@ const viVN = {
     deleteMCPHint: 'Sau khi xóa, cấu hình máy chủ MCP này không thể khôi phục.',
   },
   pipelines: {
-    title: 'Pipeline',
+    title: 'Quy trình',
     description:
       'Pipeline xác định luồng xử lý sự kiện tin nhắn, dùng để liên kết với Bot',
     createPipeline: 'Tạo Pipeline',
@@ -1138,6 +1152,7 @@ const viVN = {
   },
   account: {
     settings: 'Cài đặt tài khoản',
+    settingsDescription: 'Quản lý mật khẩu và các tài khoản liên kết của bạn',
     setPassword: 'Đặt mật khẩu',
     passwordSetSuccess: 'Đặt mật khẩu thành công',
     passwordStatus: 'Mật khẩu cục bộ',
@@ -1203,6 +1218,7 @@ const viVN = {
       llmCalls: 'Cuộc gọi LLM',
       embeddingCalls: 'Cuộc gọi Embedding',
       modelCalls: 'Cuộc gọi mô hình',
+      tokens: 'Giám sát Token',
       sessions: 'Phân tích phiên',
       feedback: 'Phản hồi người dùng',
       errors: 'Nhật ký lỗi',
@@ -1240,6 +1256,30 @@ const viVN = {
       totalTokens: 'Tổng Token',
       avgDuration: 'Thời lượng trung bình',
       calls: 'Cuộc gọi',
+    },
+    tokens: {
+      totalTokens: 'Tổng số Token',
+      inputTokens: 'Token đầu vào',
+      outputTokens: 'Token đầu ra',
+      avgPerCall: 'TB / lượt gọi',
+      throughput: 'Thông lượng',
+      tokensPerSec: 'token/giây',
+      errorCalls: 'Lượt gọi thất bại',
+      acrossCalls: 'trong {{count}} lượt gọi',
+      ofTotal: 'trên tổng {{count}}',
+      usageOverTime: 'Mức sử dụng Token theo thời gian',
+      byModel: 'Theo mô hình',
+      model: 'Mô hình',
+      calls: 'Lượt gọi',
+      avgLatency: 'Độ trễ trung bình',
+      noData: 'Không có mức sử dụng Token trong khoảng thời gian đã chọn',
+      loadError: 'Không thể tải thống kê Token: {{error}}',
+      zeroTokenWarning:
+        '{{count}} lượt gọi thành công báo cáo mức sử dụng Token bằng 0. Điều này thường có nghĩa là nhà cung cấp thượng nguồn không trả về thông tin sử dụng — hãy kiểm tra cấu hình nhà cung cấp mô hình.',
+      bucket: {
+        hour: 'Theo giờ',
+        day: 'Theo ngày',
+      },
     },
     embeddingCalls: {
       title: 'Cuộc gọi Embedding',
@@ -1350,6 +1390,15 @@ const viVN = {
     boxSandboxes: 'Sandbox',
     boxSessionCreated: 'Đã tạo',
     boxSessionLastUsed: 'Lần cuối sử dụng',
+  },
+  settingsDialog: {
+    title: 'Cài đặt',
+    nav: {
+      models: 'Mô hình',
+      api: 'API',
+      storage: 'Lưu trữ',
+      account: 'Tài khoản',
+    },
   },
   storageAnalysis: {
     title: 'Phân tích lưu trữ',

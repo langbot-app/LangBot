@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: LLMAPIRequester
+metadata:
+  name: baidu-chat-completions
+  label:
+    en_US: Baidu ERNIE
+    zh_Hans: 百度文心一言
+  icon: baidu.svg
+spec:
+  litellm_provider: openai
+  config:
+  - name: base_url
+    label:
+      en_US: Base URL
+      zh_Hans: 基础 URL
+    type: string
+    required: true
+    default: https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop
+  - name: timeout
+    label:
+      en_US: Timeout
+      zh_Hans: 超时时间
+    type: integer
+    required: true
+    default: 120
+  alias: "baidu Baidu 百度 千帆 qianfan wenxin 文心 文心一言 ernie ERNIE bce embedding bce-reranker"
+  support_type:
+  - llm
+  - text-embedding
+  - rerank
+  provider_category: manufacturer

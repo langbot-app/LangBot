@@ -7,6 +7,7 @@ metadata:
     zh_Hans: 302.AI
   icon: 302ai.png
 spec:
+  litellm_provider: openai
   config:
   - name: base_url
     label:
@@ -22,6 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "302ai 302.AI 302 ai 中转 中转站 aggregator gpt claude gemini"
   support_type:
   - llm
   - text-embedding

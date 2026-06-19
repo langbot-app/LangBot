@@ -7,6 +7,7 @@ metadata:
     zh_Hans: LM Studio
   icon: lmstudio.webp
 spec:
+  litellm_provider: openai
   config:
   - name: base_url
     label:
@@ -22,6 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "lmstudio LM Studio lm-studio 本地 local 本地部署 self-hosted gguf"
   support_type:
   - llm
   - text-embedding

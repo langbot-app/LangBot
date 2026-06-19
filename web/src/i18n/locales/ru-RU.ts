@@ -122,6 +122,8 @@ const ruRU = {
     changePasswordFailed:
       'Не удалось изменить пароль, проверьте текущий пароль',
     apiIntegration: 'API-интеграция',
+    apiIntegrationDescription:
+      'Управление API-ключами и вебхуками для внешнего доступа',
     apiKeys: 'API-ключи',
     manageApiIntegration: 'Управление API-интеграцией',
     manageApiKeys: 'Управление API-ключами',
@@ -203,6 +205,10 @@ const ruRU = {
     selectModelAbilities: 'Выберите возможности модели',
     visionAbility: 'Распознавание изображений',
     functionCallAbility: 'Вызов функций',
+    contextLength: 'Контекстное окно',
+    contextLengthPlaceholder: 'Неизвестно',
+    contextLengthInvalid:
+      'Контекстное окно должно быть положительным целым числом',
     extraParameters: 'Дополнительные параметры',
     addParameter: 'Добавить параметр',
     keyName: 'Имя ключа',
@@ -265,6 +271,7 @@ const ruRU = {
     selectProvider: 'Выберите провайдера',
     requester: 'Тип провайдера',
     selectRequester: 'Выберите тип провайдера',
+    searchProviders: 'Поиск провайдеров...',
     langbotModelsDescription: 'Облачные модели на базе LangBot Space',
     credits: 'Кредиты',
     loginWithSpace: 'Войти через Space',
@@ -583,6 +590,14 @@ const ruRU = {
     viewSource: 'Исходный код',
     loadingReadme: 'Загрузка документации...',
     noReadme: 'Этот плагин не предоставляет документацию README',
+    tabDocs: 'Документация',
+    tabLogs: 'Журналы',
+    logsLevelAll: 'Все уровни',
+    logsRefresh: 'Обновить',
+    logsAutoRefreshOn: 'Автообновление: вкл.',
+    logsAutoRefreshOff: 'Автообновление: выкл.',
+    logsEmpty:
+      'Журналов пока нет. Здесь появятся логи, выводимые плагином через logger.',
     fileUpload: {
       tooLarge: 'Размер файла превышает лимит 10 МБ',
       success: 'Файл успешно загружен',
@@ -1143,6 +1158,7 @@ const ruRU = {
   },
   account: {
     settings: 'Настройки аккаунта',
+    settingsDescription: 'Управление паролем и связанными аккаунтами',
     setPassword: 'Установить пароль',
     passwordSetSuccess: 'Пароль успешно установлен',
     passwordStatus: 'Локальный пароль',
@@ -1209,6 +1225,7 @@ const ruRU = {
       llmCalls: 'Вызовы LLM',
       embeddingCalls: 'Вызовы Embedding',
       modelCalls: 'Вызовы моделей',
+      tokens: 'Мониторинг токенов',
       feedback: 'Обратная связь',
       sessions: 'Анализ сессий',
       errors: 'Журнал ошибок',
@@ -1246,6 +1263,30 @@ const ruRU = {
       totalTokens: 'Всего токенов',
       avgDuration: 'Средняя длительность',
       calls: 'Вызовы',
+    },
+    tokens: {
+      totalTokens: 'Всего токенов',
+      inputTokens: 'Входные токены',
+      outputTokens: 'Выходные токены',
+      avgPerCall: 'Сред. / вызов',
+      throughput: 'Пропускная способность',
+      tokensPerSec: 'токенов/сек',
+      errorCalls: 'Неуспешные вызовы',
+      acrossCalls: 'за {{count}} вызов(ов)',
+      ofTotal: 'из {{count}} всего',
+      usageOverTime: 'Использование токенов со временем',
+      byModel: 'По модели',
+      model: 'Модель',
+      calls: 'Вызовы',
+      avgLatency: 'Сред. задержка',
+      noData: 'Нет использования токенов в выбранном диапазоне времени',
+      loadError: 'Не удалось загрузить статистику токенов: {{error}}',
+      zeroTokenWarning:
+        '{{count}} успешный(ых) вызов(ов) сообщили о нулевом использовании токенов. Обычно это означает, что вышестоящий провайдер не вернул информацию об использовании — проверьте настройки провайдера модели.',
+      bucket: {
+        hour: 'По часам',
+        day: 'По дням',
+      },
     },
     embeddingCalls: {
       title: 'Вызовы Embedding',
@@ -1356,6 +1397,15 @@ const ruRU = {
     boxSandboxes: 'Песочницы',
     boxSessionCreated: 'Создано',
     boxSessionLastUsed: 'Последнее использование',
+  },
+  settingsDialog: {
+    title: 'Настройки',
+    nav: {
+      models: 'Модели',
+      api: 'API',
+      storage: 'Хранилище',
+      account: 'Аккаунт',
+    },
   },
   storageAnalysis: {
     title: 'Анализ хранилища',

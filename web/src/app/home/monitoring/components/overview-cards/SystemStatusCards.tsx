@@ -82,7 +82,6 @@ export default function SystemStatusCard({
     fetchStatus();
     const interval = setInterval(fetchStatus, 30_000);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchStatus, refreshKey]);
 
   const pluginOk = pluginStatus

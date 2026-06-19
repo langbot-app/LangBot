@@ -48,6 +48,7 @@ def mock_circular_import_chain():
         clear=clear,
     ):
         import langbot.pkg.api.http.controller.groups.platform.bots as _bots  # noqa: E402, F401
+
         yield
 
 
@@ -56,10 +57,12 @@ def fake_bot_app():
     """Create FakeApp with bot services (module scope for reuse)."""
     app = FakeApp()
 
-    app.instance_config.data.update({
-        'api': {'port': 5300},
-        'system': {'allow_modify_login_info': True, 'limitation': {}},
-    })
+    app.instance_config.data.update(
+        {
+            'api': {'port': 5300},
+            'system': {'allow_modify_login_info': True, 'limitation': {}},
+        }
+    )
 
     # Auth services
     app.user_service = Mock()
@@ -71,28 +74,29 @@ def fake_bot_app():
 
     # Bot service
     app.bot_service = Mock()
-    app.bot_service.get_bots = AsyncMock(return_value=[
-        {
+    app.bot_service.get_bots = AsyncMock(
+        return_value=[
+            {
+                'uuid': 'test-bot-uuid',
+                'name': 'Test Bot',
+                'platform': 'telegram',
+                'pipeline_uuid': 'test-pipeline-uuid',
+            }
+        ]
+    )
+    app.bot_service.get_runtime_bot_info = AsyncMock(
+        return_value={
             'uuid': 'test-bot-uuid',
             'name': 'Test Bot',
             'platform': 'telegram',
             'pipeline_uuid': 'test-pipeline-uuid',
+            'webhook_url': 'https://example.com/webhook/test-bot-uuid',
         }
-    ])
-    app.bot_service.get_runtime_bot_info = AsyncMock(return_value={
-        'uuid': 'test-bot-uuid',
-        'name': 'Test Bot',
-        'platform': 'telegram',
-        'pipeline_uuid': 'test-pipeline-uuid',
-        'webhook_url': 'https://example.com/webhook/test-bot-uuid',
-    })
+    )
     app.bot_service.create_bot = AsyncMock(return_value={'uuid': 'new-bot-uuid'})
     app.bot_service.update_bot = AsyncMock(return_value={})
     app.bot_service.delete_bot = AsyncMock()
-    app.bot_service.list_event_logs = AsyncMock(return_value=(
-        [{'uuid': 'log-1', 'message': 'test log'}],
-        1
-    ))
+    app.bot_service.list_event_logs = AsyncMock(return_value=([{'uuid': 'log-1', 'message': 'test log'}], 1))
     app.bot_service.send_message = AsyncMock()
 
     # Platform manager
@@ -118,10 +122,7 @@ class TestBotEndpoints:
     @pytest.mark.asyncio
     async def test_get_bots_success(self, quart_test_client):
         """GET /api/v1/platform/bots returns bot list."""
-        response = await quart_test_client.get(
-            '/api/v1/platform/bots',
-            headers={'Authorization': 'Bearer test_token'}
-        )
+        response = await quart_test_client.get('/api/v1/platform/bots', headers={'Authorization': 'Bearer test_token'})
 
         assert response.status_code == 200
         data = await response.get_json()
@@ -135,7 +136,7 @@ class TestBotEndpoints:
         response = await quart_test_client.post(
             '/api/v1/platform/bots',
             headers={'Authorization': 'Bearer test_token'},
-            json={'name': 'New Bot', 'platform': 'telegram', 'pipeline_uuid': 'test-pipeline'}
+            json={'name': 'New Bot', 'platform': 'telegram', 'pipeline_uuid': 'test-pipeline'},
         )
 
         assert response.status_code == 200
@@ -147,8 +148,7 @@ class TestBotEndpoints:
     async def test_get_single_bot_success(self, quart_test_client):
         """GET /api/v1/platform/bots/{uuid} returns bot with runtime info."""
         response = await quart_test_client.get(
-            '/api/v1/platform/bots/test-bot-uuid',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/platform/bots/test-bot-uuid', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -162,7 +162,7 @@ class TestBotEndpoints:
         response = await quart_test_client.put(
             '/api/v1/platform/bots/test-bot-uuid',
             headers={'Authorization': 'Bearer test_token'},
-            json={'name': 'Updated Bot'}
+            json={'name': 'Updated Bot'},
         )
 
         assert response.status_code == 200
@@ -173,8 +173,7 @@ class TestBotEndpoints:
     async def test_delete_bot_success(self, quart_test_client):
         """DELETE /api/v1/platform/bots/{uuid} deletes bot."""
         response = await quart_test_client.delete(
-            '/api/v1/platform/bots/test-bot-uuid',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/platform/bots/test-bot-uuid', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -190,7 +189,7 @@ class TestBotLogsEndpoint:
         response = await quart_test_client.post(
             '/api/v1/platform/bots/test-bot-uuid/logs',
             headers={'Authorization': 'Bearer test_token'},
-            json={'from_index': -1, 'max_count': 10}
+            json={'from_index': -1, 'max_count': 10},
         )
 
         assert response.status_code == 200
@@ -213,8 +212,8 @@ class TestBotSendMessageEndpoint:
             json={
                 'target_type': 'person',
                 'target_id': 'user123',
-                'message_chain': [{'type': 'text', 'text': 'Hello'}]
-            }
+                'message_chain': [{'type': 'text', 'text': 'Hello'}],
+            },
         )
 
         assert response.status_code == 200
@@ -228,7 +227,7 @@ class TestBotSendMessageEndpoint:
         response = await quart_test_client.post(
             '/api/v1/platform/bots/test-bot-uuid/send_message',
             headers={'Authorization': 'Bearer test_api_key'},
-            json={'target_id': 'user123', 'message_chain': [{'type': 'text', 'text': 'Hello'}]}
+            json={'target_id': 'user123', 'message_chain': [{'type': 'text', 'text': 'Hello'}]},
         )
 
         assert response.status_code == 400
@@ -244,8 +243,8 @@ class TestBotSendMessageEndpoint:
             json={
                 'target_type': 'invalid',
                 'target_id': 'user123',
-                'message_chain': [{'type': 'text', 'text': 'Hello'}]
-            }
+                'message_chain': [{'type': 'text', 'text': 'Hello'}],
+            },
         )
 
         assert response.status_code == 400

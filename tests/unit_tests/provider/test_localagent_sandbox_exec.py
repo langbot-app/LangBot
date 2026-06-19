@@ -10,7 +10,7 @@ import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 
-from langbot.pkg.provider.runners.localagent import LocalAgentRunner
+from langbot.pkg.provider.runners.localagent import LocalAgentRunner, _StreamAccumulator
 
 
 class RecordingProvider:
@@ -122,6 +122,45 @@ def make_query() -> pipeline_query.Query:
         use_llm_model_uuid='test-model-uuid',
         variables={},
     )
+
+
+def test_stream_accumulator_merges_fragmented_tool_call_arguments():
+    accumulator = _StreamAccumulator(msg_sequence=1)
+
+    assert (
+        accumulator.add(
+            provider_message.MessageChunk(
+                role='assistant',
+                tool_calls=[
+                    provider_message.ToolCall(
+                        id='call-1',
+                        type='function',
+                        function=provider_message.FunctionCall(name='exec', arguments='{"command":'),
+                    )
+                ],
+            )
+        )
+        is None
+    )
+
+    emitted = accumulator.add(
+        provider_message.MessageChunk(
+            role='assistant',
+            tool_calls=[
+                provider_message.ToolCall(
+                    id='call-1',
+                    type='function',
+                    function=provider_message.FunctionCall(name='exec', arguments='"pwd"}'),
+                )
+            ],
+            is_final=True,
+        )
+    )
+
+    assert emitted is not None
+    final_msg = accumulator.final_message()
+    assert final_msg.tool_calls[0].function.name == 'exec'
+    assert final_msg.tool_calls[0].function.arguments == '{"command":"pwd"}'
 
 
 @pytest.mark.asyncio

@@ -15,6 +15,7 @@ from tests.factories import FakeApp, command_query
 
 # ============== FIXTURE USING IMPORT ISOLATION UTILITY ==============
 
+
 @pytest.fixture(scope='module')
 def mock_circular_import_chain():
     """
@@ -56,6 +57,7 @@ def mock_event_ctx():
 @pytest.fixture
 def mock_execute_factory():
     """Factory fixture to create mock cmd_mgr.execute generators."""
+
     def _create_execute(
         text: str | None = 'ok',
         error: str | None = None,
@@ -71,7 +73,9 @@ def mock_execute_factory():
             ret.image_base64 = image_base64
             ret.file_url = file_url
             yield ret
+
         return mock_execute
+
     return _create_execute
 
 
@@ -86,6 +90,7 @@ def get_command_handler():
     global _command_handler_module
     if _command_handler_module is None:
         from importlib import import_module
+
         _command_handler_module = import_module('langbot.pkg.pipeline.process.handlers.command')
     return _command_handler_module
 
@@ -95,11 +100,13 @@ def get_entities():
     global _entities_module
     if _entities_module is None:
         from importlib import import_module
+
         _entities_module = import_module('langbot.pkg.pipeline.entities')
     return _entities_module
 
 
 # ============== REAL CommandHandler Tests ==============
+
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
 class TestCommandHandlerReal:
@@ -127,6 +134,7 @@ class TestCommandHandlerReal:
         fake_app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
 
         executed_commands = []
+
         async def track_execute(command_text, full_command_text, query, session):
             executed_commands.append(command_text)
             ret = Mock()
@@ -334,8 +342,7 @@ class TestCommandHandlerReal:
         command = get_command_handler()
         fake_app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
         fake_app.cmd_mgr.execute = mock_execute_factory(
-            text='Here is the image:',
-            image_url='https://example.com/image.png'
+            text='Here is the image:', image_url='https://example.com/image.png'
         )
 
         handler = command.CommandHandler(fake_app)

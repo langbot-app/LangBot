@@ -9,6 +9,7 @@ Tests cover:
 Note: Do NOT use 'from __future__ import annotations' because
        funcschema.py expects actual type objects, not string annotations.
 """
+
 import pytest
 from importlib import import_module
 

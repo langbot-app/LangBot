@@ -55,6 +55,7 @@ class TestVectorDBManagerInitialization:
 
             # Run initialize synchronously for test
             import asyncio
+
             asyncio.get_event_loop().run_until_complete(mgr.initialize())
 
             # Chroma should be instantiated
@@ -76,6 +77,7 @@ class TestVectorDBManagerInitialization:
             mgr = VectorDBManager(mock_app)
 
             import asyncio
+
             asyncio.get_event_loop().run_until_complete(mgr.initialize())
 
             mock_chroma_class.assert_called_once_with(mock_app)
@@ -96,6 +98,7 @@ class TestVectorDBManagerInitialization:
             mgr = VectorDBManager(mock_app)
 
             import asyncio
+
             asyncio.get_event_loop().run_until_complete(mgr.initialize())
 
             mock_qdrant_class.assert_called_once_with(mock_app)
@@ -115,6 +118,7 @@ class TestVectorDBManagerInitialization:
             mgr = VectorDBManager(mock_app)
 
             import asyncio
+
             asyncio.get_event_loop().run_until_complete(mgr.initialize())
 
             mock_seekdb_class.assert_called_once_with(mock_app)
@@ -123,11 +127,7 @@ class TestVectorDBManagerInitialization:
         """Milvus config with custom URI."""
         vdb_config = {
             'use': 'milvus',
-            'milvus': {
-                'uri': 'http://localhost:19530',
-                'token': 'root:Milvus',
-                'db_name': 'langbot_db'
-            }
+            'milvus': {'uri': 'http://localhost:19530', 'token': 'root:Milvus', 'db_name': 'langbot_db'},
         }
         mock_app = self._create_mock_app(vdb_config)
 
@@ -141,13 +141,11 @@ class TestVectorDBManagerInitialization:
             mgr = VectorDBManager(mock_app)
 
             import asyncio
+
             asyncio.get_event_loop().run_until_complete(mgr.initialize())
 
             mock_milvus_class.assert_called_once_with(
-                mock_app,
-                uri='http://localhost:19530',
-                token='root:Milvus',
-                db_name='langbot_db'
+                mock_app, uri='http://localhost:19530', token='root:Milvus', db_name='langbot_db'
             )
 
     def test_initialize_milvus_backend_defaults(self):
@@ -165,24 +163,15 @@ class TestVectorDBManagerInitialization:
             mgr = VectorDBManager(mock_app)
 
             import asyncio
+
             asyncio.get_event_loop().run_until_complete(mgr.initialize())
 
             # Should use default values
-            mock_milvus_class.assert_called_once_with(
-                mock_app,
-                uri='./data/milvus.db',
-                token=None,
-                db_name='default'
-            )
+            mock_milvus_class.assert_called_once_with(mock_app, uri='./data/milvus.db', token=None, db_name='default')
 
     def test_initialize_pgvector_with_connection_string(self):
         """pgvector with connection string."""
-        vdb_config = {
-            'use': 'pgvector',
-            'pgvector': {
-                'connection_string': 'postgresql://user:pass@host:5432/langbot'
-            }
-        }
+        vdb_config = {'use': 'pgvector', 'pgvector': {'connection_string': 'postgresql://user:pass@host:5432/langbot'}}
         mock_app = self._create_mock_app(vdb_config)
 
         mocks = self._make_vector_import_mocks()
@@ -195,11 +184,11 @@ class TestVectorDBManagerInitialization:
             mgr = VectorDBManager(mock_app)
 
             import asyncio
+
             asyncio.get_event_loop().run_until_complete(mgr.initialize())
 
             mock_pgvector_class.assert_called_once_with(
-                mock_app,
-                connection_string='postgresql://user:pass@host:5432/langbot'
+                mock_app, connection_string='postgresql://user:pass@host:5432/langbot'
             )
 
     def test_initialize_pgvector_with_individual_params(self):
@@ -211,8 +200,8 @@ class TestVectorDBManagerInitialization:
                 'port': 5433,
                 'database': 'vectordb',
                 'user': 'admin',
-                'password': 'secret'
-            }
+                'password': 'secret',
+            },
         }
         mock_app = self._create_mock_app(vdb_config)
 
@@ -226,15 +215,11 @@ class TestVectorDBManagerInitialization:
             mgr = VectorDBManager(mock_app)
 
             import asyncio
+
             asyncio.get_event_loop().run_until_complete(mgr.initialize())
 
             mock_pgvector_class.assert_called_once_with(
-                mock_app,
-                host='db.example.com',
-                port=5433,
-                database='vectordb',
-                user='admin',
-                password='secret'
+                mock_app, host='db.example.com', port=5433, database='vectordb', user='admin', password='secret'
             )
 
     def test_initialize_pgvector_defaults(self):
@@ -252,15 +237,11 @@ class TestVectorDBManagerInitialization:
             mgr = VectorDBManager(mock_app)
 
             import asyncio
+
             asyncio.get_event_loop().run_until_complete(mgr.initialize())
 
             mock_pgvector_class.assert_called_once_with(
-                mock_app,
-                host='localhost',
-                port=5432,
-                database='langbot',
-                user='postgres',
-                password='postgres'
+                mock_app, host='localhost', port=5432, database='langbot', user='postgres', password='postgres'
             )
 
     def test_initialize_unknown_backend_defaults_to_chroma(self):
@@ -278,6 +259,7 @@ class TestVectorDBManagerInitialization:
             mgr = VectorDBManager(mock_app)
 
             import asyncio
+
             asyncio.get_event_loop().run_until_complete(mgr.initialize())
 
             mock_chroma_class.assert_called_once_with(mock_app)

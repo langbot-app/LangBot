@@ -82,7 +82,7 @@ class UserService:
         payload = {
             'user': user_email,
             'iss': 'LangBot-' + constants.edition,
-            'exp': datetime.datetime.now() + datetime.timedelta(seconds=jwt_expire),
+            'exp': datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=jwt_expire),
         }
 
         return jwt.encode(payload, jwt_secret, algorithm='HS256')

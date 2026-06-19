@@ -33,7 +33,7 @@ class FakePlatform:
     def __init__(
         self,
         *,
-        bot_account_id: str = "test-bot",
+        bot_account_id: str = 'test-bot',
         stream_output_supported: bool = False,
         raise_error: Exception = None,
     ):
@@ -48,16 +48,16 @@ class FakePlatform:
         # Registered listeners
         self._listeners: dict = {}
 
-    def raises(self, error: Exception) -> "FakePlatform":
+    def raises(self, error: Exception) -> 'FakePlatform':
         """Configure platform to raise an error on send."""
         self._raise_error = error
         return self
 
-    def send_failure(self) -> "FakePlatform":
+    def send_failure(self) -> 'FakePlatform':
         """Configure platform to simulate send failure."""
-        return self.raises(Exception("Platform send failure"))
+        return self.raises(Exception('Platform send failure'))
 
-    def supports_streaming(self, supported: bool = True) -> "FakePlatform":
+    def supports_streaming(self, supported: bool = True) -> 'FakePlatform':
         """Configure whether streaming output is supported."""
         self._stream_output_supported = supported
         return self
@@ -89,7 +89,7 @@ class FakePlatform:
         self,
         text: str,
         sender_id: typing.Union[int, str] = 12345,
-        nickname: str = "TestUser",
+        nickname: str = 'TestUser',
     ) -> platform_events.FriendMessage:
         """Create an inbound friend (private) message event."""
         sender = platform_entities.Friend(
@@ -97,11 +97,13 @@ class FakePlatform:
             nickname=nickname,
             remark=None,
         )
-        chain = platform_message.MessageChain([
-            platform_message.Plain(text=text),
-        ])
+        chain = platform_message.MessageChain(
+            [
+                platform_message.Plain(text=text),
+            ]
+        )
         return platform_events.FriendMessage(
-            type="FriendMessage",
+            type='FriendMessage',
             sender=sender,
             message_chain=chain,
             time=1609459200,
@@ -111,9 +113,9 @@ class FakePlatform:
         self,
         text: str,
         sender_id: typing.Union[int, str] = 12345,
-        sender_name: str = "TestUser",
+        sender_name: str = 'TestUser',
         group_id: typing.Union[int, str] = 99999,
-        group_name: str = "TestGroup",
+        group_name: str = 'TestGroup',
         mention_bot: bool = False,
     ) -> platform_events.GroupMessage:
         """Create an inbound group message event.
@@ -142,12 +144,12 @@ class FakePlatform:
         components = []
         if mention_bot:
             components.append(platform_message.At(target=self.bot_account_id))
-            components.append(platform_message.Plain(text=" "))
+            components.append(platform_message.Plain(text=' '))
         components.append(platform_message.Plain(text=text))
 
         chain = platform_message.MessageChain(components)
         return platform_events.GroupMessage(
-            type="GroupMessage",
+            type='GroupMessage',
             sender=sender,
             message_chain=chain,
             time=1609459200,
@@ -155,8 +157,8 @@ class FakePlatform:
 
     def create_image_message(
         self,
-        url: str = "https://example.com/image.png",
-        text: str = "",
+        url: str = 'https://example.com/image.png',
+        text: str = '',
         sender_id: typing.Union[int, str] = 12345,
         is_group: bool = False,
         group_id: typing.Union[int, str] = 99999,
@@ -169,12 +171,12 @@ class FakePlatform:
         chain = platform_message.MessageChain(components)
 
         if is_group:
-            return self.create_group_message("", sender_id, group_id=group_id)
+            return self.create_group_message('', sender_id, group_id=group_id)
             # Replace chain
         else:
-            sender = platform_entities.Friend(id=sender_id, nickname="TestUser", remark=None)
+            sender = platform_entities.Friend(id=sender_id, nickname='TestUser', remark=None)
             return platform_events.FriendMessage(
-                type="FriendMessage",
+                type='FriendMessage',
                 sender=sender,
                 message_chain=chain,
                 time=1609459200,
@@ -192,12 +194,14 @@ class FakePlatform:
         if self._raise_error:
             raise self._raise_error
 
-        self._outbound_messages.append({
-            "type": "send",
-            "target_type": target_type,
-            "target_id": target_id,
-            "message": message,
-        })
+        self._outbound_messages.append(
+            {
+                'type': 'send',
+                'target_type': target_type,
+                'target_id': target_id,
+                'message': message,
+            }
+        )
 
     async def reply_message(
         self,
@@ -209,13 +213,15 @@ class FakePlatform:
         if self._raise_error:
             raise self._raise_error
 
-        self._outbound_messages.append({
-            "type": "reply",
-            "source_type": message_source.type,
-            "source": message_source,
-            "message": message,
-            "quote_origin": quote_origin,
-        })
+        self._outbound_messages.append(
+            {
+                'type': 'reply',
+                'source_type': message_source.type,
+                'source': message_source,
+                'message': message,
+                'quote_origin': quote_origin,
+            }
+        )
 
     async def reply_message_chunk(
         self,
@@ -229,15 +235,17 @@ class FakePlatform:
         if self._raise_error:
             raise self._raise_error
 
-        self._outbound_chunks.append({
-            "type": "reply_chunk",
-            "source_type": message_source.type,
-            "source": message_source,
-            "bot_message": bot_message,
-            "message": message,
-            "quote_origin": quote_origin,
-            "is_final": is_final,
-        })
+        self._outbound_chunks.append(
+            {
+                'type': 'reply_chunk',
+                'source_type': message_source.type,
+                'source': message_source,
+                'bot_message': bot_message,
+                'message': message,
+                'quote_origin': quote_origin,
+                'is_final': is_final,
+            }
+        )
 
     async def is_stream_output_supported(self) -> bool:
         """Return whether streaming output is supported."""
@@ -295,7 +303,7 @@ class FakePlatform:
 
 
 def fake_platform(
-    bot_account_id: str = "test-bot",
+    bot_account_id: str = 'test-bot',
     stream_output_supported: bool = False,
 ) -> FakePlatform:
     """Create a FakePlatform instance."""
@@ -328,9 +336,7 @@ def mock_platform_adapter(platform: FakePlatform = None) -> Mock:
     adapter.reply_message = AsyncMock(side_effect=platform.reply_message)
     adapter.reply_message_chunk = AsyncMock(side_effect=platform.reply_message_chunk)
     adapter.send_message = AsyncMock(side_effect=platform.send_message)
-    adapter.is_stream_output_supported = AsyncMock(
-        return_value=platform._stream_output_supported
-    )
+    adapter.is_stream_output_supported = AsyncMock(return_value=platform._stream_output_supported)
     adapter._fake_platform = platform  # Store for assertions
 
     return adapter

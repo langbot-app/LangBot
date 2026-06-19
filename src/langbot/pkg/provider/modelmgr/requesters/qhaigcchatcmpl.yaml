@@ -7,6 +7,7 @@ metadata:
     zh_Hans: 启航 AI
   icon: qhaigc.png
 spec:
+  litellm_provider: openai
   config:
   - name: base_url
     label:
@@ -29,9 +30,11 @@ spec:
     type: int
     required: true
     default: 120
+  alias: "qhaigc 青华 qinghua aigc 中转 中转站"
   support_type:
   - llm
   - text-embedding
+  - rerank
   provider_category: maas
 execution:
   python:

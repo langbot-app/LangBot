@@ -124,6 +124,8 @@ const jaJP = {
     changePasswordFailed:
       'パスワードの変更に失敗しました。現在のパスワードを確認してください',
     apiIntegration: 'API統合',
+    apiIntegrationDescription:
+      '外部アクセス用の API キーと Webhook を管理します',
     apiKeys: 'API キー',
     manageApiIntegration: 'API統合の管理',
     manageApiKeys: 'API キーの管理',
@@ -204,6 +206,10 @@ const jaJP = {
     selectModelAbilities: 'モデル機能を選択',
     visionAbility: '視覚機能',
     functionCallAbility: '関数呼び出し',
+    contextLength: 'コンテキストウィンドウ',
+    contextLengthPlaceholder: '不明',
+    contextLengthInvalid:
+      'コンテキストウィンドウは正の整数である必要があります',
     extraParameters: '追加パラメータ',
     addParameter: 'パラメータを追加',
     keyName: 'キー名',
@@ -262,6 +268,7 @@ const jaJP = {
     selectProvider: 'プロバイダーを選択',
     requester: 'プロバイダータイプ',
     selectRequester: 'プロバイダータイプを選択',
+    searchProviders: 'プロバイダーを検索...',
     langbotModelsDescription: 'LangBot Space が提供するクラウドモデル',
     credits: 'クレジット',
     loginWithSpace: 'Space でログイン',
@@ -577,6 +584,14 @@ const jaJP = {
     viewSource: 'ソースを表示',
     loadingReadme: 'ドキュメントを読み込み中...',
     noReadme: 'このプラグインはREADMEドキュメントを提供していません',
+    tabDocs: 'ドキュメント',
+    tabLogs: 'ログ',
+    logsLevelAll: 'すべてのレベル',
+    logsRefresh: '更新',
+    logsAutoRefreshOn: '自動更新：オン',
+    logsAutoRefreshOff: '自動更新：オフ',
+    logsEmpty:
+      'ログはまだありません。プラグインが logger で出力したログがここに表示されます。',
     fileUpload: {
       tooLarge: 'ファイルサイズが 10MB の制限を超えています',
       success: 'ファイルのアップロードに成功しました',
@@ -1140,6 +1155,7 @@ const jaJP = {
   },
   account: {
     settings: 'アカウント設定',
+    settingsDescription: 'パスワードと連携アカウントを管理します',
     setPassword: 'パスワードを設定',
     passwordSetSuccess: 'パスワードの設定に成功しました',
     passwordStatus: 'ローカルパスワード',
@@ -1206,6 +1222,7 @@ const jaJP = {
       llmCalls: 'LLM呼び出し',
       embeddingCalls: 'Embedding呼び出し',
       modelCalls: 'モデル呼び出し',
+      tokens: 'トークン監視',
       sessions: 'セッション分析',
       feedback: 'ユーザーフィードバック',
       errors: 'エラーログ',
@@ -1243,6 +1260,30 @@ const jaJP = {
       totalTokens: '合計トークン数',
       avgDuration: '平均期間',
       calls: '呼び出し',
+    },
+    tokens: {
+      totalTokens: '総トークン数',
+      inputTokens: '入力トークン',
+      outputTokens: '出力トークン',
+      avgPerCall: '平均 / 呼び出し',
+      throughput: 'スループット',
+      tokensPerSec: 'トークン/秒',
+      errorCalls: '失敗した呼び出し',
+      acrossCalls: '{{count}} 回の呼び出し',
+      ofTotal: '合計 {{count}} 回',
+      usageOverTime: 'トークン使用量の推移',
+      byModel: 'モデル別',
+      model: 'モデル',
+      calls: '呼び出し回数',
+      avgLatency: '平均レイテンシ',
+      noData: '選択した期間にトークン使用量がありません',
+      loadError: 'トークン統計の読み込みに失敗しました: {{error}}',
+      zeroTokenWarning:
+        '{{count}} 件の成功した呼び出しでトークン使用量が 0 と報告されました。通常これは上流プロバイダーが使用量情報を返さなかったことを意味します。モデルプロバイダーの設定を確認してください。',
+      bucket: {
+        hour: '時間単位',
+        day: '日単位',
+      },
     },
     embeddingCalls: {
       title: 'Embedding呼び出し',
@@ -1353,6 +1394,15 @@ const jaJP = {
     boxSandboxes: 'サンドボックス',
     boxSessionCreated: '作成日時',
     boxSessionLastUsed: '最終使用',
+  },
+  settingsDialog: {
+    title: '設定',
+    nav: {
+      models: 'モデル',
+      api: 'API',
+      storage: 'ストレージ',
+      account: 'アカウント',
+    },
   },
   storageAnalysis: {
     title: 'ストレージ分析',

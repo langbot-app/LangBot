@@ -6,6 +6,7 @@ Tests cover:
 - Knowledge engine discovery
 - File operations
 """
+
 from __future__ import annotations
 
 import pytest
@@ -52,9 +53,7 @@ class TestGetKnowledgeBases:
         """Test that it returns all knowledge base details."""
         knowledge_module = get_knowledge_service_module()
         mock_app = create_mock_app()
-        mock_app.rag_mgr.get_all_knowledge_base_details = AsyncMock(
-            return_value=[{'uuid': 'kb1', 'name': 'KB1'}]
-        )
+        mock_app.rag_mgr.get_all_knowledge_base_details = AsyncMock(return_value=[{'uuid': 'kb1', 'name': 'KB1'}])
 
         service = knowledge_module.KnowledgeService(mock_app)
         result = await service.get_knowledge_bases()
@@ -83,9 +82,7 @@ class TestGetKnowledgeBase:
         """Test that it returns specific KB details."""
         knowledge_module = get_knowledge_service_module()
         mock_app = create_mock_app()
-        mock_app.rag_mgr.get_knowledge_base_details = AsyncMock(
-            return_value={'uuid': 'kb1', 'name': 'KB1'}
-        )
+        mock_app.rag_mgr.get_knowledge_base_details = AsyncMock(return_value={'uuid': 'kb1', 'name': 'KB1'})
 
         service = knowledge_module.KnowledgeService(mock_app)
         result = await service.get_knowledge_base('kb1')
@@ -153,9 +150,7 @@ class TestCreateKnowledgeBase:
 
         service = knowledge_module.KnowledgeService(mock_app)
 
-        await service.create_knowledge_base({
-            'knowledge_engine_plugin_id': 'author/engine'
-        })
+        await service.create_knowledge_base({'knowledge_engine_plugin_id': 'author/engine'})
 
         # Check that default name 'Untitled' was used
         call_args = mock_app.rag_mgr.create_knowledge_base.call_args
@@ -170,20 +165,21 @@ class TestUpdateKnowledgeBase:
         """Test that only mutable fields are updated."""
         knowledge_module = get_knowledge_service_module()
         mock_app = create_mock_app()
-        mock_app.rag_mgr.get_knowledge_base_details = AsyncMock(
-            return_value={'uuid': 'kb1', 'name': 'Updated'}
-        )
+        mock_app.rag_mgr.get_knowledge_base_details = AsyncMock(return_value={'uuid': 'kb1', 'name': 'Updated'})
         mock_app.rag_mgr.remove_knowledge_base_from_runtime = AsyncMock()
         mock_app.rag_mgr.load_knowledge_base = AsyncMock()
 
         service = knowledge_module.KnowledgeService(mock_app)
 
         # Pass both mutable and immutable fields
-        await service.update_knowledge_base('kb1', {
-            'name': 'New Name',
-            'description': 'New desc',
-            'uuid': 'should_be_filtered',  # immutable
-        })
+        await service.update_knowledge_base(
+            'kb1',
+            {
+                'name': 'New Name',
+                'description': 'New desc',
+                'uuid': 'should_be_filtered',  # immutable
+            },
+        )
 
         # Check that only mutable fields were passed to update
         call_args = mock_app.persistence_mgr.execute_async.call_args
@@ -288,9 +284,7 @@ class TestListKnowledgeEngines:
         """Test that it returns empty list and logs warning on exception."""
         knowledge_module = get_knowledge_service_module()
         mock_app = create_mock_app()
-        mock_app.plugin_connector.list_knowledge_engines = AsyncMock(
-            side_effect=Exception('Connection error')
-        )
+        mock_app.plugin_connector.list_knowledge_engines = AsyncMock(side_effect=Exception('Connection error'))
 
         service = knowledge_module.KnowledgeService(mock_app)
         result = await service.list_knowledge_engines()
@@ -386,9 +380,7 @@ class TestGetEngineSchemas:
         """Test that it returns empty dict and logs warning on exception."""
         knowledge_module = get_knowledge_service_module()
         mock_app = create_mock_app()
-        mock_app.plugin_connector.get_rag_creation_schema = AsyncMock(
-            side_effect=Exception('Plugin error')
-        )
+        mock_app.plugin_connector.get_rag_creation_schema = AsyncMock(side_effect=Exception('Plugin error'))
 
         service = knowledge_module.KnowledgeService(mock_app)
         result = await service.get_engine_creation_schema('author/engine')

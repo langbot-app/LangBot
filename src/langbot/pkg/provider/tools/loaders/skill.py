@@ -72,6 +72,45 @@ def register_activated_skill(query: pipeline_query.Query, skill_data: dict) -> N
         activated[skill_name] = skill_data
 
 
+def normalize_skill_names(value: typing.Any) -> list[str]:
+    """Return a de-duplicated list of non-empty skill names."""
+    if not isinstance(value, list):
+        return []
+
+    names: list[str] = []
+    for item in value:
+        skill_name = str(item or '').strip()
+        if skill_name and skill_name not in names:
+            names.append(skill_name)
+    return names
+
+
+def get_activated_skill_names(query: pipeline_query.Query) -> list[str]:
+    """Return activated skill names for callers that own persistence policy."""
+    return normalize_skill_names(list(get_activated_skills(query).keys()))
+
+
+def restore_activated_skills(
+    ap: app.Application,
+    query: pipeline_query.Query,
+    skill_names: typing.Any,
+) -> list[str]:
+    """Restore caller-provided activated skill names into Query variables.
+
+    Persistence and state scope ownership belong to higher-level flows. This
+    helper only rebuilds current Query state from pipeline-visible skills, so
+    removed or unbound skills stay unavailable to native exec/write/edit.
+    """
+    restored: list[str] = []
+    for skill_name in normalize_skill_names(skill_names):
+        skill_data = get_visible_skill(ap, query, skill_name)
+        if skill_data is None:
+            continue
+        register_activated_skill(query, skill_data)
+        restored.append(skill_name)
+    return restored
+
+
 def parse_skill_mount_path(sandbox_path: str) -> tuple[str | None, str]:
     normalized_path = str(sandbox_path or '/workspace').strip() or '/workspace'
     if normalized_path == SKILL_MOUNT_PREFIX:

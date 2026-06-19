@@ -5,6 +5,7 @@ Tests cover:
 - datetime conversion to isoformat
 - masked_columns exclusion
 """
+
 from __future__ import annotations
 
 import datetime

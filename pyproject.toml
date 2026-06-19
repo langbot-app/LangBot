@@ -1,6 +1,6 @@
 [project]
 name = "langbot"
-version = "4.10.1"
+version = "4.10.2"
 description = "Production-grade platform for building agentic IM bots"
 readme = "README.md"
 license-files = ["LICENSE"]
@@ -70,7 +70,7 @@ dependencies = [
     "chromadb>=1.0.0,<2.0.0",
     "qdrant-client (>=1.15.1,<2.0.0)",
     "pyseekdb==1.1.0.post3",
-    "langbot-plugin==0.4.2",
+    "langbot-plugin==0.4.5",
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",
     "matrix-nio>=0.25.2",
@@ -79,6 +79,7 @@ dependencies = [
     "pymilvus>=2.6.4",
     "pgvector>=0.4.1",
     "botocore>=1.42.39",
+    "litellm>=1.0.0",
     "valkey-glide>=2.4.1,<3.0.0",
 ]
 keywords = [

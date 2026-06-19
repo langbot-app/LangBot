@@ -689,6 +689,16 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
     async def get_plugin_readme(self, plugin_author: str, plugin_name: str, language: str = 'en') -> str:
         return await self.handler.get_plugin_readme(plugin_author, plugin_name, language)
 
+    async def get_plugin_logs(
+        self,
+        plugin_author: str,
+        plugin_name: str,
+        limit: int = 200,
+        level: str | None = None,
+    ) -> list[dict[str, Any]]:
+        # Not cached: logs are live and change constantly.
+        return await self.handler.get_plugin_logs(plugin_author, plugin_name, limit, level)
+
     @alru_cache(ttl=5 * 60)
     async def get_plugin_assets(self, plugin_author: str, plugin_name: str, filepath: str) -> dict[str, Any]:
         return await self.handler.get_plugin_assets(plugin_author, plugin_name, filepath)

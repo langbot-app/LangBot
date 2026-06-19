@@ -186,13 +186,7 @@ class TestMCPServiceCreateMCPServer:
         ap = SimpleNamespace()
         ap.persistence_mgr = SimpleNamespace()
         ap.instance_config = SimpleNamespace()
-        ap.instance_config.data = {
-            'system': {
-                'limitation': {
-                    'max_extensions': 2
-                }
-            }
-        }
+        ap.instance_config.data = {'system': {'limitation': {'max_extensions': 2}}}
         ap.plugin_connector = SimpleNamespace()
         ap.plugin_connector.list_plugins = AsyncMock(return_value=[Mock(), Mock()])  # 2 plugins
 
@@ -252,6 +246,7 @@ class TestMCPServiceCreateMCPServer:
         server_entity = _create_mock_mcp_server(server_uuid='new-uuid', enable=True)
 
         call_count = 0
+
         async def mock_execute(query):
             nonlocal call_count
             call_count += 1
@@ -361,6 +356,7 @@ class TestMCPServiceUpdateMCPServer:
         old_server = _create_mock_mcp_server(name='Old Server', enable=True)
 
         call_count = 0
+
         async def mock_execute(query):
             nonlocal call_count
             call_count += 1
@@ -394,6 +390,7 @@ class TestMCPServiceUpdateMCPServer:
         updated_server = _create_mock_mcp_server(name='Old Server', enable=True)
 
         call_count = 0
+
         async def mock_execute(query):
             nonlocal call_count
             call_count += 1
@@ -432,6 +429,7 @@ class TestMCPServiceUpdateMCPServer:
 
         # Mock for: first select -> update -> second select (for updated server)
         call_count = 0
+
         async def mock_execute(query):
             nonlocal call_count
             call_count += 1
@@ -465,6 +463,7 @@ class TestMCPServiceUpdateMCPServer:
 
         # Mock execute for select and update
         call_count = 0
+
         async def mock_execute(query):
             nonlocal call_count
             call_count += 1
@@ -499,6 +498,7 @@ class TestMCPServiceDeleteMCPServer:
         server = _create_mock_mcp_server(name='Server to Delete')
 
         call_count = 0
+
         async def mock_execute(query):
             nonlocal call_count
             call_count += 1
@@ -530,6 +530,7 @@ class TestMCPServiceDeleteMCPServer:
         server = _create_mock_mcp_server(name='Not in Sessions')
 
         call_count = 0
+
         async def mock_execute(query):
             nonlocal call_count
             call_count += 1
@@ -559,6 +560,7 @@ class TestMCPServiceDeleteMCPServer:
 
         # No server found
         call_count = 0
+
         async def mock_execute(query):
             nonlocal call_count
             call_count += 1
@@ -596,9 +598,7 @@ class TestMCPServiceTestMCPServer:
         ap.tool_mgr.mcp_tool_loader.get_session = Mock(return_value=mock_session)
 
         ap.task_mgr = SimpleNamespace()
-        ap.task_mgr.create_user_task = Mock(
-            return_value=SimpleNamespace(id=123)
-        )
+        ap.task_mgr.create_user_task = Mock(return_value=SimpleNamespace(id=123))
 
         service = MCPService(ap)
 
@@ -634,9 +634,7 @@ class TestMCPServiceTestMCPServer:
         ap.tool_mgr.mcp_tool_loader.load_mcp_server = AsyncMock(return_value=mock_session)
 
         ap.task_mgr = SimpleNamespace()
-        ap.task_mgr.create_user_task = Mock(
-            return_value=SimpleNamespace(id=456)
-        )
+        ap.task_mgr.create_user_task = Mock(return_value=SimpleNamespace(id=456))
 
         service = MCPService(ap)
 

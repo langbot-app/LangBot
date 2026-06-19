@@ -193,6 +193,29 @@ class TestSkillPathHelpers:
 
         assert list(result.keys()) == ['visible']
 
+    def test_restore_activated_skills_uses_caller_provided_names_and_visibility(self):
+        from langbot.pkg.provider.tools.loaders.skill import (
+            ACTIVATED_SKILLS_KEY,
+            PIPELINE_BOUND_SKILLS_KEY,
+            get_activated_skill_names,
+            restore_activated_skills,
+        )
+
+        ap = _make_ap()
+        ap.skill_mgr = SimpleNamespace(
+            skills={
+                'visible': _make_skill_data(name='visible'),
+                'hidden': _make_skill_data(name='hidden'),
+            }
+        )
+        query = SimpleNamespace(variables={PIPELINE_BOUND_SKILLS_KEY: ['visible']})
+
+        restored = restore_activated_skills(ap, query, ['visible', 'hidden', 'visible', ''])
+
+        assert restored == ['visible']
+        assert list(query.variables[ACTIVATED_SKILLS_KEY].keys()) == ['visible']
+        assert get_activated_skill_names(query) == ['visible']
+
     def test_resolve_virtual_skill_path_allows_visible_skill_reads(self):
         from langbot.pkg.provider.tools.loaders.skill import (
             PIPELINE_BOUND_SKILLS_KEY,
@@ -245,7 +268,8 @@ class TestSkillPathHelpers:
 
         command = wrap_skill_command_with_python_env('python scripts/run.py')
 
-        assert 'python -m venv "$_LB_VENV_DIR"' in command
+        assert '_LB_SYSTEM_PYTHON="$(command -v python3 || command -v python || true)"' in command
+        assert '"$_LB_SYSTEM_PYTHON" -m venv "$_LB_VENV_DIR"' in command
         assert 'export VIRTUAL_ENV="$_LB_VENV_DIR"' in command
         assert command.rstrip().endswith('python scripts/run.py')
 
@@ -281,6 +305,7 @@ class TestSkillToolLoader:
         assert result['activated'] is True
         assert result['skill_name'] == 'demo'
         assert result['mount_path'] == '/workspace/.skills/demo'
+        assert result['activated_skill_names'] == ['demo']
         assert 'Step 1' in result['content']
         assert set(query.variables[ACTIVATED_SKILLS_KEY].keys()) == {'demo'}
 
@@ -456,7 +481,9 @@ class TestNativeToolLoaderSkillPaths:
                 SimpleNamespace(query_id='q1', variables={PIPELINE_BOUND_SKILLS_KEY: ['demo']}),
             )
 
-            assert result == {'ok': True, 'content': 'demo instructions'}
+            assert result['ok'] is True
+            assert result['content'] == 'demo instructions'
+            assert result['truncated'] is False
 
     @pytest.mark.asyncio
     async def test_exec_in_activated_skill_mount_rewrites_command_and_refreshes(self):
@@ -485,7 +512,7 @@ class TestNativeToolLoaderSkillPaths:
                 query,
             )
 
-            assert result == {'ok': True}
+            assert result['ok'] is True
             tool_parameters = ap.box_service.execute_tool.await_args.args[0]
             assert tool_parameters['command'] == 'python /workspace/.skills/demo/scripts/run.py'
             assert tool_parameters['workdir'] == '/workspace/.skills/demo'

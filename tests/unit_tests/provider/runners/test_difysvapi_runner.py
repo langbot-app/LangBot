@@ -26,7 +26,7 @@ class TestDifyExtractTextOutput:
                     'base-url': 'https://api.dify.ai',
                 }
             },
-            'output': {'misc': {}}
+            'output': {'misc': {}},
         }
 
         runner = DifyServiceAPIRunner(mock_app, pipeline_config)
@@ -111,7 +111,7 @@ class TestDifyRunnerConfigValidation:
                     'base-url': 'https://api.dify.ai',
                 }
             },
-            'output': {'misc': {}}
+            'output': {'misc': {}},
         }
 
         with pytest.raises(DifyAPIError, match='不支持'):
@@ -134,7 +134,7 @@ class TestDifyRunnerConfigValidation:
                         'base-url': 'https://api.dify.ai',
                     }
                 },
-                'output': {'misc': {}}
+                'output': {'misc': {}},
             }
 
             runner = DifyServiceAPIRunner(mock_app, pipeline_config)
@@ -160,7 +160,7 @@ class TestDifyRunnerInit:
                     'base-url': 'https://api.dify.ai',
                 }
             },
-            'output': {'misc': {}}
+            'output': {'misc': {}},
         }
 
         runner = DifyServiceAPIRunner(mock_app, pipeline_config)

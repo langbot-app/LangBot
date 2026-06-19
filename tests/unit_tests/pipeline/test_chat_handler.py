@@ -15,6 +15,7 @@ from tests.factories import FakeApp
 
 # ============== FIXTURE USING IMPORT ISOLATION UTILITY ==============
 
+
 @pytest.fixture(scope='module')
 def mock_circular_import_chain():
     """
@@ -36,9 +37,11 @@ def mock_circular_import_chain():
     # Create a default runner that yields a simple response
     class DefaultRunner:
         name = 'local-agent'
+
         def __init__(self, app, config):
             self.app = app
             self.config = config
+
         async def run(self, query):
             yield Message(role='assistant', content='fake response')
 
@@ -70,9 +73,12 @@ def mock_event_ctx():
 @pytest.fixture
 def set_runner():
     """Factory fixture to set a custom runner for tests."""
+
     def _set_runner(runner_class):
         import sys
+
         sys.modules['langbot.pkg.provider.runner'].preregistered_runners = [runner_class]
+
     return _set_runner
 
 
@@ -87,6 +93,7 @@ def get_chat_handler():
     global _chat_handler_module
     if _chat_handler_module is None:
         from importlib import import_module
+
         _chat_handler_module = import_module('langbot.pkg.pipeline.process.handlers.chat')
     return _chat_handler_module
 
@@ -96,11 +103,13 @@ def get_entities():
     global _entities_module
     if _entities_module is None:
         from importlib import import_module
+
         _entities_module = import_module('langbot.pkg.pipeline.entities')
     return _entities_module
 
 
 # ============== REAL ChatMessageHandler Tests ==============
+
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
 class TestChatMessageHandlerReal:
@@ -188,9 +197,11 @@ class TestChatMessageHandlerReal:
 
         class QuickRunner:
             name = 'local-agent'
+
             def __init__(self, app, config):
                 self.app = app
                 self.config = config
+
             async def run(self, query):
                 yield Message(role='assistant', content='ok')
 
@@ -222,9 +233,11 @@ class TestChatMessageHandlerReal:
 
         class SingleRunner:
             name = 'local-agent'
+
             def __init__(self, app, config):
                 self.app = app
                 self.config = config
+
             async def run(self, query):
                 yield Message(role='assistant', content='response')
 
@@ -262,9 +275,11 @@ class TestChatHandlerStreaming:
 
         class StreamRunner:
             name = 'local-agent'
+
             def __init__(self, app, config):
                 self.app = app
                 self.config = config
+
             async def run(self, query):
                 yield MessageChunk(role='assistant', content='Hello', is_final=False)
                 yield MessageChunk(role='assistant', content=' World', is_final=True)
@@ -303,14 +318,19 @@ class TestChatHandlerExceptions:
 
         query.pipeline_config = {
             'output': {'misc': {'exception-handling': 'show-hint', 'failure-hint': 'Request failed.'}},
-            'ai': {'runner': {'runner': 'local-agent'}, 'local-agent': {'prompt': 'default', 'model': {'primary': 'test'}}},
+            'ai': {
+                'runner': {'runner': 'local-agent'},
+                'local-agent': {'prompt': 'default', 'model': {'primary': 'test'}},
+            },
         }
 
         class FailingRunner:
             name = 'local-agent'
+
             def __init__(self, app, config):
                 self.app = app
                 self.config = config
+
             async def run(self, query):
                 raise ValueError('API error')
                 yield
@@ -346,14 +366,19 @@ class TestChatHandlerExceptions:
 
         query.pipeline_config = {
             'output': {'misc': {'exception-handling': 'show-error'}},
-            'ai': {'runner': {'runner': 'local-agent'}, 'local-agent': {'prompt': 'default', 'model': {'primary': 'test'}}},
+            'ai': {
+                'runner': {'runner': 'local-agent'},
+                'local-agent': {'prompt': 'default', 'model': {'primary': 'test'}},
+            },
         }
 
         class ErrorRunner:
             name = 'local-agent'
+
             def __init__(self, app, config):
                 self.app = app
                 self.config = config
+
             async def run(self, query):
                 raise ValueError('Custom error')
                 yield
@@ -386,14 +411,19 @@ class TestChatHandlerExceptions:
 
         query.pipeline_config = {
             'output': {'misc': {'exception-handling': 'hide'}},
-            'ai': {'runner': {'runner': 'local-agent'}, 'local-agent': {'prompt': 'default', 'model': {'primary': 'test'}}},
+            'ai': {
+                'runner': {'runner': 'local-agent'},
+                'local-agent': {'prompt': 'default', 'model': {'primary': 'test'}},
+            },
         }
 
         class HideErrorRunner:
             name = 'local-agent'
+
             def __init__(self, app, config):
                 self.app = app
                 self.config = config
+
             async def run(self, query):
                 raise RuntimeError('hidden')
                 yield
