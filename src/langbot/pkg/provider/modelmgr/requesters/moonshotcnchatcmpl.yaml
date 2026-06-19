@@ -1,10 +1,10 @@
 apiVersion: v1
 kind: LLMAPIRequester
 metadata:
-  name: moonshot-chat-completions
+  name: moonshot-cn-chat-completions
   label:
-    en_US: Moonshot / Kimi (Global · api.moonshot.ai)
-    zh_Hans: 月之暗面 / Kimi（国际站 · api.moonshot.ai）
+    en_US: Moonshot / Kimi (China · api.moonshot.cn)
+    zh_Hans: 月之暗面 / Kimi（国内站 · api.moonshot.cn）
   icon: moonshot.png
 spec:
   litellm_provider: openai
@@ -15,7 +15,7 @@ spec:
       zh_Hans: 基础 URL
     type: string
     required: true
-    default: https://api.moonshot.ai/v1
+    default: https://api.moonshot.cn/v1
   - name: timeout
     label:
       en_US: Timeout
@@ -23,7 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
-  alias: "moonshot Moonshot 月之暗面 月暗 kimi Kimi 月之 暗面 moonshot-v1 k2"
+  alias: "moonshot Moonshot 月之暗面 月暗 kimi Kimi 月之 暗面 moonshot-v1 k2 cn 国内 国内站"
   support_type:
   - llm
   provider_category: manufacturer
