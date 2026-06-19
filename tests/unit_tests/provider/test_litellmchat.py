@@ -352,6 +352,117 @@ class TestInvokeLLMStreamUsage:
         assert tool_chunks[1].tool_calls[0].function.arguments == '{"text":'
         assert tool_chunks[2].tool_calls[0].function.arguments == '"plugin-tool-ok"}'
 
+    @pytest.mark.asyncio
+    async def test_stream_tool_call_without_id_is_not_dropped(self):
+        """Regression for #2261.
+
+        Ollama's OpenAI-compatible streaming endpoint emits a tool-call delta
+        carrying an ``index`` and a ``function`` payload but never an
+        OpenAI-style ``id``. The requester used to drop any id-less tool call,
+        so a tool-only turn yielded nothing, the stream "completed" with 0
+        chars, and the chat got stuck. A stable per-index id must be
+        synthesized so the tool call survives.
+        """
+        import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+        import langbot_plugin.api.entities.builtin.provider.message as provider_message
+
+        mock_ap = Mock()
+        mock_ap.tool_mgr = Mock()
+        mock_ap.tool_mgr.generate_tools_for_openai = AsyncMock(
+            return_value=[{'type': 'function', 'function': {'name': 'zotero_search_items'}}]
+        )
+        requester = litellmchat.LiteLLMRequester(ap=mock_ap, config={'custom_llm_provider': 'openai'})
+        model = MockRuntimeModel('gpt-oss:20b', 'ollama')
+
+        # Ollama delivers the whole tool call in a single delta, with no id.
+        chunks = [
+            self._make_chunk(
+                tool_calls=[
+                    {
+                        'index': 0,
+                        'function': {'name': 'zotero_search_items', 'arguments': '{"query":"hello"}'},
+                    }
+                ]
+            ),
+            self._make_chunk(finish_reason='tool_calls'),
+        ]
+
+        async def _aiter(*args, **kwargs):
+            for c in chunks:
+                yield c
+
+        query = Mock(spec=pipeline_query.Query)
+        query.variables = {}
+        messages = [provider_message.Message(role='user', content='hello?')]
+        funcs = [Mock()]
+
+        with patch.object(litellmchat, 'acompletion', new=AsyncMock(side_effect=lambda **kw: _aiter())):
+            collected = [
+                chunk
+                async for chunk in requester.invoke_llm_stream(
+                    query=query,
+                    model=model,
+                    messages=messages,
+                    funcs=funcs,
+                )
+            ]
+
+        tool_chunks = [chunk for chunk in collected if chunk.tool_calls]
+        assert len(tool_chunks) == 1, 'id-less Ollama tool call must not be dropped'
+        tc = tool_chunks[0].tool_calls[0]
+        assert tc.id == 'call_0'
+        assert tc.function.name == 'zotero_search_items'
+        assert tc.function.arguments == '{"query":"hello"}'
+
+    @pytest.mark.asyncio
+    async def test_stream_multiple_tool_calls_without_id_get_distinct_ids(self):
+        """Two parallel id-less tool calls must keep distinct synthesized ids."""
+        import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+        import langbot_plugin.api.entities.builtin.provider.message as provider_message
+
+        mock_ap = Mock()
+        mock_ap.tool_mgr = Mock()
+        mock_ap.tool_mgr.generate_tools_for_openai = AsyncMock(
+            return_value=[{'type': 'function', 'function': {'name': 'zotero_search_items'}}]
+        )
+        requester = litellmchat.LiteLLMRequester(ap=mock_ap, config={'custom_llm_provider': 'openai'})
+        model = MockRuntimeModel('gpt-oss:20b', 'ollama')
+
+        chunks = [
+            self._make_chunk(
+                tool_calls=[
+                    {'index': 0, 'function': {'name': 'zotero_search_items', 'arguments': '{"q":"a"}'}},
+                    {'index': 1, 'function': {'name': 'zotero_get_notes', 'arguments': '{"q":"b"}'}},
+                ]
+            ),
+            self._make_chunk(finish_reason='tool_calls'),
+        ]
+
+        async def _aiter(*args, **kwargs):
+            for c in chunks:
+                yield c
+
+        query = Mock(spec=pipeline_query.Query)
+        query.variables = {}
+        messages = [provider_message.Message(role='user', content='hello?')]
+        funcs = [Mock()]
+
+        with patch.object(litellmchat, 'acompletion', new=AsyncMock(side_effect=lambda **kw: _aiter())):
+            collected = [
+                chunk
+                async for chunk in requester.invoke_llm_stream(
+                    query=query,
+                    model=model,
+                    messages=messages,
+                    funcs=funcs,
+                )
+            ]
+
+        tool_chunks = [chunk for chunk in collected if chunk.tool_calls]
+        assert len(tool_chunks) == 1
+        ids = {tc.id for tc in tool_chunks[0].tool_calls}
+        assert ids == {'call_0', 'call_1'}
+
 
 class TestProcessThinkingContent:
     """Test _process_thinking_content method"""

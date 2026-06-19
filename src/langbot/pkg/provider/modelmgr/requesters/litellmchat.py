@@ -392,6 +392,17 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             elif not isinstance(arguments, str):
                 arguments = str(arguments)
 
+            # Some OpenAI-compatible providers (notably Ollama's
+            # /v1/chat/completions) stream a tool-call delta with an `index` and
+            # a `function` payload but never emit an OpenAI-style `id`. Without
+            # an id the call used to be dropped here, so the whole tool call
+            # silently vanished: a tool-only turn then yielded no content and no
+            # tool call, the stream "completed" with 0 chars, and the chat
+            # appeared stuck. Synthesize a stable per-index id so named-but-idless
+            # tool calls survive. Providers that do send ids keep theirs.
+            if not state['id'] and state['name']:
+                state['id'] = f'call_{index}'
+
             if not state['id'] or not state['name']:
                 continue
 
