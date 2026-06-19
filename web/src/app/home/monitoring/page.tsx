@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import OverviewCards from './components/overview-cards/OverviewCards';
 import MonitoringFilters from './components/filters/MonitoringFilters';
+import TokenMonitoring from './components/TokenMonitoring';
 import { ExportDropdown } from './components/ExportDropdown';
 import { useMonitoringFilters } from './hooks/useMonitoringFilters';
 import { useMonitoringData } from './hooks/useMonitoringData';
@@ -318,6 +319,9 @@ function MonitoringPageContent() {
                 </TabsTrigger>
                 <TabsTrigger value="modelCalls" className="px-6 py-2">
                   {t('monitoring.tabs.modelCalls')}
+                </TabsTrigger>
+                <TabsTrigger value="tokens" className="px-6 py-2">
+                  {t('monitoring.tabs.tokens')}
                 </TabsTrigger>
                 <TabsTrigger value="feedback" className="px-6 py-2">
                   {t('monitoring.tabs.feedback')}
@@ -666,6 +670,24 @@ function MonitoringPageContent() {
                     </div>
                   )}
               </div>
+            </TabsContent>
+
+            <TabsContent value="tokens" className="p-6 m-0">
+              <TokenMonitoring
+                botIds={
+                  filterState.selectedBots.length > 0
+                    ? filterState.selectedBots
+                    : undefined
+                }
+                pipelineIds={
+                  filterState.selectedPipelines.length > 0
+                    ? filterState.selectedPipelines
+                    : undefined
+                }
+                startTime={feedbackTimeRange.startTime}
+                endTime={feedbackTimeRange.endTime}
+                refreshKey={feedbackRefreshKey}
+              />
             </TabsContent>
 
             <TabsContent value="feedback" className="p-6 m-0">

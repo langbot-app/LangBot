@@ -57,11 +57,12 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { LanguageSelector } from '@/components/ui/language-selector';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import AccountSettingsDialog from '@/app/home/components/account-settings-dialog/AccountSettingsDialog';
-import ApiIntegrationDialog from '@/app/home/components/api-integration-dialog/ApiIntegrationDialog';
 import NewVersionDialog from '@/app/home/components/new-version-dialog/NewVersionDialog';
-import ModelsDialog from '@/app/home/components/models-dialog/ModelsDialog';
-import StorageAnalysisDialog from '@/app/home/components/storage-analysis-dialog/StorageAnalysisDialog';
+import SettingsDialog, {
+  SettingsSection,
+  SETTINGS_ACTION_BY_SECTION,
+  SETTINGS_SECTION_BY_ACTION,
+} from '@/app/home/components/settings-dialog/SettingsDialog';
 import { GitHubRelease } from '@/app/infra/http/CloudServiceClient';
 import { useAsyncTask, AsyncTaskStatus } from '@/hooks/useAsyncTask';
 import { toast } from 'sonner';
@@ -1548,17 +1549,10 @@ export default function HomeSidebar({
   }, [pathname]);
 
   useEffect(() => {
-    if (searchParams.get('action') === 'showModelSettings') {
-      setModelsDialogOpen(true);
-    }
-    if (searchParams.get('action') === 'showAccountSettings') {
-      setAccountSettingsOpen(true);
-    }
-    if (searchParams.get('action') === 'showApiIntegrationSettings') {
-      setApiKeyDialogOpen(true);
-    }
-    if (searchParams.get('action') === 'showStorageAnalysis') {
-      setStorageAnalysisOpen(true);
+    const action = searchParams.get('action');
+    if (action && SETTINGS_SECTION_BY_ACTION[action]) {
+      setSettingsSection(SETTINGS_SECTION_BY_ACTION[action]);
+      setSettingsOpen(true);
     }
   }, [searchParams]);
 
@@ -1567,15 +1561,14 @@ export default function HomeSidebar({
     useState<Record<string, boolean>>(loadSectionState);
   const { theme, setTheme } = useTheme();
   const { t } = useTranslation();
-  const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
-  const [apiKeyDialogOpen, setApiKeyDialogOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] =
+    useState<SettingsSection>('models');
   const [latestRelease, setLatestRelease] = useState<GitHubRelease | null>(
     null,
   );
   const [hasNewVersion, setHasNewVersion] = useState(false);
   const [versionDialogOpen, setVersionDialogOpen] = useState(false);
-  const [modelsDialogOpen, setModelsDialogOpen] = useState(false);
-  const [storageAnalysisOpen, setStorageAnalysisOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string>('');
   const [starCount, setStarCount] = useState<number | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -1600,51 +1593,28 @@ export default function HomeSidebar({
       setShowScrollHint(false);
     }, 250);
   }
-  function handleModelsDialogChange(open: boolean) {
-    setModelsDialogOpen(open);
-    if (open) {
-      const params = new URLSearchParams(searchParams.toString());
-      params.set('action', 'showModelSettings');
-      navigate(`${pathname}?${params.toString()}`, {
-        preventScrollReset: true,
-      });
-    } else {
-      const params = new URLSearchParams(searchParams.toString());
-      params.delete('action');
-      const newUrl = params.toString()
-        ? `${pathname}?${params.toString()}`
-        : pathname;
-      navigate(newUrl, { preventScrollReset: true });
-    }
+  function openSettings(section: SettingsSection) {
+    setSettingsSection(section);
+    setSettingsOpen(true);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('action', SETTINGS_ACTION_BY_SECTION[section]);
+    navigate(`${pathname}?${params.toString()}`, {
+      preventScrollReset: true,
+    });
   }
 
-  function handleAccountSettingsChange(open: boolean) {
-    setAccountSettingsOpen(open);
-    if (open) {
-      const params = new URLSearchParams(searchParams.toString());
-      params.set('action', 'showAccountSettings');
-      navigate(`${pathname}?${params.toString()}`, {
-        preventScrollReset: true,
-      });
-    } else {
-      const params = new URLSearchParams(searchParams.toString());
-      params.delete('action');
-      const newUrl = params.toString()
-        ? `${pathname}?${params.toString()}`
-        : pathname;
-      navigate(newUrl, { preventScrollReset: true });
-    }
+  function handleSettingsSectionChange(section: SettingsSection) {
+    setSettingsSection(section);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('action', SETTINGS_ACTION_BY_SECTION[section]);
+    navigate(`${pathname}?${params.toString()}`, {
+      preventScrollReset: true,
+    });
   }
 
-  function handleStorageAnalysisChange(open: boolean) {
-    setStorageAnalysisOpen(open);
-    if (open) {
-      const params = new URLSearchParams(searchParams.toString());
-      params.set('action', 'showStorageAnalysis');
-      navigate(`${pathname}?${params.toString()}`, {
-        preventScrollReset: true,
-      });
-    } else {
+  function handleSettingsOpenChange(open: boolean) {
+    setSettingsOpen(open);
+    if (!open) {
       const params = new URLSearchParams(searchParams.toString());
       params.delete('action');
       const newUrl = params.toString()
@@ -1913,28 +1883,28 @@ export default function HomeSidebar({
 
         {/* Footer */}
         <SidebarFooter>
-          {/* API Integration entry */}
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => setApiKeyDialogOpen(true)}
-                tooltip={t('common.apiIntegration')}
-              >
-                <KeyRound className="size-4 text-blue-500" />
-                <span>{t('common.apiIntegration')}</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-
           {/* Models entry */}
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
-                onClick={() => handleModelsDialogChange(true)}
+                onClick={() => openSettings('models')}
                 tooltip={t('models.title')}
               >
                 <Sparkles className="text-blue-500" />
                 <span>{t('models.title')}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+
+          {/* API Integration entry */}
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => openSettings('apiIntegration')}
+                tooltip={t('common.apiIntegration')}
+              >
+                <KeyRound className="size-4 text-blue-500" />
+                <span>{t('common.apiIntegration')}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
@@ -2018,7 +1988,10 @@ export default function HomeSidebar({
                   {/* Account actions */}
                   <DropdownMenuGroup>
                     <DropdownMenuItem
-                      onClick={() => handleAccountSettingsChange(true)}
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        openSettings('account');
+                      }}
                     >
                       <Settings />
                       {t('account.settings')}
@@ -2026,7 +1999,7 @@ export default function HomeSidebar({
                     <DropdownMenuItem
                       onClick={() => {
                         setUserMenuOpen(false);
-                        handleStorageAnalysisChange(true);
+                        openSettings('storageAnalysis');
                       }}
                     >
                       <HardDrive />
@@ -2123,26 +2096,16 @@ export default function HomeSidebar({
         </SidebarFooter>
       </Sidebar>
 
-      <AccountSettingsDialog
-        open={accountSettingsOpen}
-        onOpenChange={handleAccountSettingsChange}
-      />
-      <ApiIntegrationDialog
-        open={apiKeyDialogOpen}
-        onOpenChange={setApiKeyDialogOpen}
+      <SettingsDialog
+        open={settingsOpen}
+        onOpenChange={handleSettingsOpenChange}
+        section={settingsSection}
+        onSectionChange={handleSettingsSectionChange}
       />
       <NewVersionDialog
         open={versionDialogOpen}
         onOpenChange={setVersionDialogOpen}
         release={latestRelease}
-      />
-      <ModelsDialog
-        open={modelsDialogOpen}
-        onOpenChange={handleModelsDialogChange}
-      />
-      <StorageAnalysisDialog
-        open={storageAnalysisOpen}
-        onOpenChange={handleStorageAnalysisChange}
       />
     </>
   );

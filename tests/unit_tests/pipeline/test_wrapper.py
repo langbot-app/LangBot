@@ -55,7 +55,7 @@ def make_session():
         launcher_type=provider_session.LauncherTypes.PERSON,
         launcher_id=12345,
         sender_id=12345,
-        use_prompt_name="default",
+        use_prompt_name='default',
         using_conversation=None,
         conversations=[],
     )
@@ -93,11 +93,9 @@ class TestResponseWrapperMessageChain:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.pipeline_config = pipeline_config
-        query.resp_messages = [
-            platform_message.MessageChain([platform_message.Plain(text="response")])
-        ]
+        query.resp_messages = [platform_message.MessageChain([platform_message.Plain(text='response')])]
         query.resp_message_chain = []
 
         results = []
@@ -125,7 +123,7 @@ class TestResponseWrapperCommand:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.pipeline_config = pipeline_config
         query.resp_message_chain = []
 
@@ -133,7 +131,7 @@ class TestResponseWrapperCommand:
         command_resp = Mock()
         command_resp.role = 'command'
         command_resp.get_content_platform_message_chain = Mock(
-            return_value=platform_message.MessageChain([platform_message.Plain(text="Help info")])
+            return_value=platform_message.MessageChain([platform_message.Plain(text='Help info')])
         )
         query.resp_messages = [command_resp]
 
@@ -163,7 +161,7 @@ class TestResponseWrapperPlugin:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.pipeline_config = pipeline_config
         query.resp_message_chain = []
 
@@ -171,7 +169,7 @@ class TestResponseWrapperPlugin:
         plugin_resp = Mock()
         plugin_resp.role = 'plugin'
         plugin_resp.get_content_platform_message_chain = Mock(
-            return_value=platform_message.MessageChain([platform_message.Plain(text="Plugin response")])
+            return_value=platform_message.MessageChain([platform_message.Plain(text='Plugin response')])
         )
         query.resp_messages = [plugin_resp]
 
@@ -211,17 +209,17 @@ class TestResponseWrapperAssistant:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.pipeline_config = pipeline_config
         query.resp_message_chain = []
 
         # Create assistant response with content
         assistant_resp = Mock()
         assistant_resp.role = 'assistant'
-        assistant_resp.content = "Hello back!"
+        assistant_resp.content = 'Hello back!'
         assistant_resp.tool_calls = None
         assistant_resp.get_content_platform_message_chain = Mock(
-            return_value=platform_message.MessageChain([platform_message.Plain(text="Hello back!")])
+            return_value=platform_message.MessageChain([platform_message.Plain(text='Hello back!')])
         )
         query.resp_messages = [assistant_resp]
 
@@ -247,7 +245,7 @@ class TestResponseWrapperAssistant:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.pipeline_config = pipeline_config
         query.resp_message_chain = []
 
@@ -292,7 +290,7 @@ class TestResponseWrapperAssistant:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.pipeline_config = pipeline_config
         query.resp_message_chain = []
 
@@ -303,10 +301,10 @@ class TestResponseWrapperAssistant:
 
         assistant_resp = Mock()
         assistant_resp.role = 'assistant'
-        assistant_resp.content = "Processing..."
+        assistant_resp.content = 'Processing...'
         assistant_resp.tool_calls = [mock_tool_call]
         assistant_resp.get_content_platform_message_chain = Mock(
-            return_value=platform_message.MessageChain([platform_message.Plain(text="Processing...")])
+            return_value=platform_message.MessageChain([platform_message.Plain(text='Processing...')])
         )
         query.resp_messages = [assistant_resp]
 
@@ -346,17 +344,17 @@ class TestResponseWrapperInterrupt:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.pipeline_config = pipeline_config
         query.resp_message_chain = []
 
         # Create assistant response with content
         assistant_resp = Mock()
         assistant_resp.role = 'assistant'
-        assistant_resp.content = "Hello!"
+        assistant_resp.content = 'Hello!'
         assistant_resp.tool_calls = None
         assistant_resp.get_content_platform_message_chain = Mock(
-            return_value=platform_message.MessageChain([platform_message.Plain(text="Hello!")])
+            return_value=platform_message.MessageChain([platform_message.Plain(text='Hello!')])
         )
         query.resp_messages = [assistant_resp]
 
@@ -384,7 +382,7 @@ class TestResponseWrapperCustomReply:
         app.sess_mgr.get_session = AsyncMock(return_value=session)
 
         # Mock plugin connector with custom reply
-        custom_chain = platform_message.MessageChain([platform_message.Plain(text="Custom reply")])
+        custom_chain = platform_message.MessageChain([platform_message.Plain(text='Custom reply')])
         mock_event_ctx = Mock()
         mock_event_ctx.is_prevented_default = Mock(return_value=False)
         mock_event_ctx.event = Mock()
@@ -397,17 +395,17 @@ class TestResponseWrapperCustomReply:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.pipeline_config = pipeline_config
         query.resp_message_chain = []
 
         # Create assistant response
         assistant_resp = Mock()
         assistant_resp.role = 'assistant'
-        assistant_resp.content = "Default reply"
+        assistant_resp.content = 'Default reply'
         assistant_resp.tool_calls = None
         assistant_resp.get_content_platform_message_chain = Mock(
-            return_value=platform_message.MessageChain([platform_message.Plain(text="Default reply")])
+            return_value=platform_message.MessageChain([platform_message.Plain(text='Default reply')])
         )
         query.resp_messages = [assistant_resp]
 
@@ -421,7 +419,7 @@ class TestResponseWrapperCustomReply:
         assert len(results[0].new_query.resp_message_chain) == 1
         # Should be the custom chain
         chain = results[0].new_query.resp_message_chain[0]
-        assert "Custom reply" in str(chain)
+        assert 'Custom reply' in str(chain)
 
 
 class TestResponseWrapperVariables:
@@ -452,7 +450,7 @@ class TestResponseWrapperVariables:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.pipeline_config = pipeline_config
         query.resp_message_chain = []
         query.variables['_pipeline_bound_plugins'] = ['plugin1', 'plugin2']
@@ -460,10 +458,10 @@ class TestResponseWrapperVariables:
         # Create assistant response
         assistant_resp = Mock()
         assistant_resp.role = 'assistant'
-        assistant_resp.content = "Hello"
+        assistant_resp.content = 'Hello'
         assistant_resp.tool_calls = None
         assistant_resp.get_content_platform_message_chain = Mock(
-            return_value=platform_message.MessageChain([platform_message.Plain(text="Hello")])
+            return_value=platform_message.MessageChain([platform_message.Plain(text='Hello')])
         )
         query.resp_messages = [assistant_resp]
 

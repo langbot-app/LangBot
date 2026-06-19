@@ -10,7 +10,7 @@ export interface Plugin {
   debug: boolean;
   enabled: boolean;
   install_source: string;
-  install_info: Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  install_info: Record<string, any>;
   components: PluginComponent[];
 }
 
@@ -19,6 +19,13 @@ export interface PluginComponent {
   manifest: {
     manifest: ComponentManifest;
   };
+}
+
+// A single log line captured from a running plugin's stderr.
+export interface PluginLogEntry {
+  ts: number;
+  level: string;
+  text: string;
 }
 
 // marketplace plugin v4

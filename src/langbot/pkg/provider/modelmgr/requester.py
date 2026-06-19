@@ -12,6 +12,19 @@ import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
 
+LLM_USAGE_QUERY_VARIABLE = '_llm_usage'
+STREAM_USAGE_QUERY_VARIABLE = '_stream_usage'
+
+
+def _store_llm_usage(query: pipeline_query.Query | None, usage_info: dict | None) -> None:
+    """Store the latest provider usage on the query for upstream action handlers."""
+    if query is None or not usage_info:
+        return
+    if query.variables is None:
+        query.variables = {}
+    query.variables[LLM_USAGE_QUERY_VARIABLE] = dict(usage_info)
+
+
 class RuntimeProvider:
     """运行时模型提供商"""
 
@@ -67,8 +80,9 @@ class RuntimeProvider:
             if isinstance(result, tuple):
                 msg, usage_info = result
                 if usage_info:
-                    input_tokens = usage_info.get('input_tokens', 0)
-                    output_tokens = usage_info.get('output_tokens', 0)
+                    _store_llm_usage(query, usage_info)
+                    input_tokens = usage_info.get('prompt_tokens', 0)
+                    output_tokens = usage_info.get('completion_tokens', 0)
                 return msg
             else:
                 return result
@@ -128,7 +142,6 @@ class RuntimeProvider:
         start_time = time.time()
         status = 'success'
         error_message = None
-        # Note: Stream doesn't easily provide token counts, set to 0
         input_tokens = 0
         output_tokens = 0
 
@@ -143,6 +156,16 @@ class RuntimeProvider:
                 remove_think=remove_think,
             ):
                 yield chunk
+            # Extract usage from stream if available (stored by LiteLLM requester)
+            if query:
+                if query.variables is None:
+                    query.variables = {}
+                if STREAM_USAGE_QUERY_VARIABLE in query.variables:
+                    usage_info = query.variables[STREAM_USAGE_QUERY_VARIABLE]
+                    _store_llm_usage(query, usage_info)
+                    input_tokens = usage_info.get('prompt_tokens', 0)
+                    output_tokens = usage_info.get('completion_tokens', 0)
+                    del query.variables[STREAM_USAGE_QUERY_VARIABLE]
         except Exception as e:
             status = 'error'
             error_message = str(e)

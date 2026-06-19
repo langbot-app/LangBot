@@ -1,6 +1,7 @@
 # LangBot Test Suite
 
-This directory contains the test suite for LangBot, with a focus on comprehensive unit testing of pipeline stages.
+This directory contains the LangBot backend test suite, including unit tests,
+integration tests, startup E2E tests, and container-backed Box runtime tests.
 
 ## Quality Gate Layers
 
@@ -10,10 +11,15 @@ LangBot uses a layered quality gate system for developers and CI:
 |-------|---------|--------------|-------------|
 | **Quick** | `make test-quick` or `bash scripts/test-quick.sh` | Ruff lint + Unit tests + Smoke tests | Before every commit |
 | **Fast Integration** | `make test-integration-fast` or `bash scripts/test-integration-fast.sh` | SQLite/API/Pipeline integration (no external services) | Before PR, weekly |
+| **Backend E2E** | `uv run --python 3.12 pytest tests/e2e -q --tb=short` | Starts a real LangBot process with minimal config | Before release, CI |
+| **Box Integration** | `uv run --python 3.12 pytest tests/integration_tests -q --tb=short` | Real Box sandbox/runtime integration | Before Box/runtime changes, CI |
+| **Frontend E2E** | `cd web && pnpm test:e2e` | Playwright smoke tests with mocked backend and Space APIs | Before web changes, CI |
 | **Coverage Gate** | `make test-coverage` or `bash scripts/test-coverage.sh` | All tests with coverage, threshold: 18% | Before merge, CI |
 | **Full Local** | `make test-all-local` | Quick + Integration + Coverage | Before major changes |
 
-**Note**: PostgreSQL migration tests and slow tests are NOT in local default gates. They run in separate CI workflows.
+**Note**: PostgreSQL migration tests and slow tests are NOT in local default
+gates. They run in separate CI workflows. Frontend Playwright tests live under
+`web/tests/e2e` and are documented in `web/README.md`.
 
 ### Developer Workflow
 
@@ -28,6 +34,9 @@ make test-all-local
 bash scripts/test-quick.sh           # ~2 min
 bash scripts/test-integration-fast.sh # ~3 min
 bash scripts/test-coverage.sh         # ~8 min
+uv run --python 3.12 pytest tests/e2e -q --tb=short
+uv run --python 3.12 pytest tests/integration_tests -q --tb=short
+cd web && pnpm test:e2e
 ```
 
 ### Coverage Baseline
@@ -70,6 +79,12 @@ tests/
 │   └── persistence/             # Database/persistence tests
 │       ├── __init__.py
 │       └── test_migrations.py   # Alembic migration tests
+├── e2e/                          # Real LangBot startup E2E tests
+│   ├── conftest.py
+│   ├── test_startup.py
+│   └── utils/
+├── integration_tests/            # Container-backed integration tests
+│   └── box/                      # Box runtime and MCP process tests
 ├── smoke/                        # Smoke tests (quick validation)
 │   └── test_fake_message_flow.py
 ├── unit_tests/                   # Unit tests
@@ -303,6 +318,44 @@ These tests:
 - Test prevent_default, exception handling, and full message flow
 - Do not require real LLM provider keys
 
+### Running backend E2E startup tests
+
+Backend E2E tests start a real LangBot process with a generated minimal
+`data/config.yaml`, SQLite database, local storage, and embedded Chroma path.
+They do not require provider keys or external services.
+
+```bash
+uv run --python 3.12 pytest tests/e2e -q --tb=short
+```
+
+These tests verify startup orchestration, migrations, API route registration,
+and the minimal no-LLM startup path. The E2E process manager disables ambient
+proxy variables for subprocess startup and uses direct localhost HTTP clients,
+so local proxy settings should not affect the health checks.
+
+### Running Box integration tests
+
+Box integration tests exercise the real sandbox runtime path, including command
+execution, session persistence, managed process WebSocket attachment, and
+cleanup behavior.
+
+```bash
+uv run --python 3.12 pytest tests/integration_tests -q --tb=short
+```
+
+These tests require a working Docker or Podman runtime. In CI, the dedicated
+Box integration job checks Docker availability before running the tests.
+
+### Running frontend E2E tests
+
+Frontend E2E tests live in `web/tests/e2e` and use Playwright. They start Vite
+and mock the LangBot backend and Space APIs, so no backend process is required.
+
+```bash
+cd web
+pnpm test:e2e
+```
+
 ### Known Issues
 
 Some tests may encounter circular import errors. This is a known issue with the current module structure. The test infrastructure is designed to work around this using lazy imports, but if you encounter issues:
@@ -320,6 +373,9 @@ Tests are automatically run on:
 - Push to master/develop branches
 
 The workflow runs tests on Python 3.11, 3.12, and 3.13 to ensure compatibility.
+Startup E2E and Box integration tests run as separate Python 3.12 jobs because
+they exercise process/container behavior instead of pure Python compatibility.
+Frontend Playwright smoke tests run in `.github/workflows/frontend-tests.yml`.
 
 ## Adding New Tests
 

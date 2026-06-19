@@ -514,6 +514,35 @@ class RuntimeConnectionHandler(handler.Handler):
             except Exception as e:
                 return _make_rag_error_response(e, 'EmbeddingError', embedding_model_uuid=embedding_model_uuid)
 
+        @self.action(PluginToRuntimeAction.INVOKE_RERANK)
+        async def invoke_rerank(data: dict[str, Any]) -> handler.ActionResponse:
+            rerank_model_uuid = data['rerank_model_uuid']
+            query = data['query']
+            documents = data['documents']
+            top_k = data.get('top_k')
+            extra_args = data.get('extra_args', {})
+
+            try:
+                rerank_model = await self.ap.model_mgr.get_rerank_model_by_uuid(rerank_model_uuid)
+            except ValueError:
+                return handler.ActionResponse.error(
+                    message=f'Rerank model with rerank_model_uuid {rerank_model_uuid} not found',
+                )
+
+            try:
+                scores = await rerank_model.provider.invoke_rerank(
+                    model=rerank_model,
+                    query=query,
+                    documents=documents[:64],
+                    extra_args=extra_args,
+                )
+                scored = sorted(scores, key=lambda x: x.get('relevance_score', 0), reverse=True)
+                if top_k is not None:
+                    scored = scored[: int(top_k)]
+                return handler.ActionResponse.success(data={'results': scored})
+            except Exception as e:
+                return _make_rag_error_response(e, 'RerankError', rerank_model_uuid=rerank_model_uuid)
+
         @self.action(PluginToRuntimeAction.VECTOR_UPSERT)
         async def vector_upsert(data: dict[str, Any]) -> handler.ActionResponse:
             collection_id = data['collection_id']
@@ -952,6 +981,31 @@ class RuntimeConnectionHandler(handler.Handler):
         await self.delete_local_file(readme_file_key)
 
         return readme_bytes.decode('utf-8')
+
+    async def get_plugin_logs(
+        self,
+        plugin_author: str,
+        plugin_name: str,
+        limit: int = 200,
+        level: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Get recent log lines captured from the plugin's stderr."""
+        try:
+            result = await self.call_action(
+                LangBotToRuntimeAction.GET_PLUGIN_LOGS,
+                {
+                    'plugin_author': plugin_author,
+                    'plugin_name': plugin_name,
+                    'limit': limit,
+                    'level': level,
+                },
+                timeout=20,
+            )
+        except Exception:
+            traceback.print_exc()
+            return []
+
+        return result.get('logs', [])
 
     async def get_plugin_assets(self, plugin_author: str, plugin_name: str, filepath: str) -> dict[str, Any]:
         """Get plugin assets"""

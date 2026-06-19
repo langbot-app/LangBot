@@ -34,14 +34,14 @@ def postgres_url():
     """Get PostgreSQL URL from environment."""
     url = os.environ.get('TEST_POSTGRES_URL')
     if not url:
-        pytest.skip("TEST_POSTGRES_URL not set")
+        pytest.skip('TEST_POSTGRES_URL not set')
     return url
 
 
 @pytest.fixture
 async def postgres_engine(postgres_url):
     """Create async PostgreSQL engine."""
-    engine = create_async_engine(postgres_url, isolation_level="AUTOCOMMIT")
+    engine = create_async_engine(postgres_url, isolation_level='AUTOCOMMIT')
     yield engine
     await engine.dispose()
 
@@ -66,7 +66,7 @@ async def clean_alembic_version(postgres_engine):
     async with postgres_engine.begin() as conn:
         # Drop alembic_version table if exists
         try:
-            await conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
+            await conn.execute(text('DROP TABLE IF EXISTS alembic_version'))
         except Exception:
             pass
 
@@ -74,7 +74,7 @@ async def clean_alembic_version(postgres_engine):
 
     async with postgres_engine.begin() as conn:
         try:
-            await conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
+            await conn.execute(text('DROP TABLE IF EXISTS alembic_version'))
         except Exception:
             pass
 
@@ -83,9 +83,7 @@ class TestPostgreSQLMigrationBaseline:
     """Tests for baseline stamp workflow on PostgreSQL."""
 
     @pytest.mark.asyncio
-    async def test_postgres_baseline_stamp_sets_revision(
-        self, postgres_engine, clean_tables, clean_alembic_version
-    ):
+    async def test_postgres_baseline_stamp_sets_revision(self, postgres_engine, clean_tables, clean_alembic_version):
         """
         Stamp baseline on existing tables sets correct revision.
 
@@ -106,9 +104,7 @@ class TestPostgreSQLMigrationBaseline:
         assert rev == '0001_baseline', f"Expected '0001_baseline', got {rev}"
 
     @pytest.mark.asyncio
-    async def test_postgres_baseline_stamp_on_empty_db(
-        self, postgres_engine, clean_tables, clean_alembic_version
-    ):
+    async def test_postgres_baseline_stamp_on_empty_db(self, postgres_engine, clean_tables, clean_alembic_version):
         """
         Stamp on empty database (no tables) still sets revision.
 
@@ -125,9 +121,7 @@ class TestPostgreSQLMigrationUpgrade:
     """Tests for upgrade to head workflow on PostgreSQL."""
 
     @pytest.mark.asyncio
-    async def test_postgres_upgrade_from_baseline_to_head(
-        self, postgres_engine, clean_tables, clean_alembic_version
-    ):
+    async def test_postgres_upgrade_from_baseline_to_head(self, postgres_engine, clean_tables, clean_alembic_version):
         """
         Upgrade from baseline to head applies all migrations.
 
@@ -149,14 +143,12 @@ class TestPostgreSQLMigrationUpgrade:
 
         # Verify revision
         rev = await get_alembic_current(postgres_engine)
-        assert rev is not None, "Expected a revision after upgrade"
-        # Head should be the latest migration (0004 for current state)
-        assert rev.startswith('0004'), f"Expected head to be 0004_*, got {rev}"
+        assert rev is not None, 'Expected a revision after upgrade'
+        # Head should be the latest migration (0005 for current state)
+        assert rev.startswith('0005'), f'Expected head to be 0005_*, got {rev}'
 
     @pytest.mark.asyncio
-    async def test_postgres_upgrade_idempotent(
-        self, postgres_engine, clean_tables, clean_alembic_version
-    ):
+    async def test_postgres_upgrade_idempotent(self, postgres_engine, clean_tables, clean_alembic_version):
         """
         Running upgrade to head multiple times is idempotent.
 
@@ -180,7 +172,7 @@ class TestPostgreSQLMigrationUpgrade:
         await run_alembic_upgrade(postgres_engine, 'head')
 
         rev2 = await get_alembic_current(postgres_engine)
-        assert rev2 == rev1, f"Expected {rev1}, got {rev2}"
+        assert rev2 == rev1, f'Expected {rev1}, got {rev2}'
 
 
 class TestPostgreSQLMigrationGetCurrent:
@@ -199,7 +191,7 @@ class TestPostgreSQLMigrationGetCurrent:
 
         # No stamp - should return None
         rev = await get_alembic_current(postgres_engine)
-        assert rev is None, f"Expected None for unstamped DB, got {rev}"
+        assert rev is None, f'Expected None for unstamped DB, got {rev}'
 
     @pytest.mark.asyncio
     async def test_postgres_get_current_after_stamp_returns_revision(

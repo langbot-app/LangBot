@@ -4,6 +4,7 @@ Tests cover:
 - execute_async() with mock database
 - get_db_engine() with mock database manager
 """
+
 from __future__ import annotations
 
 import pytest
@@ -85,7 +86,7 @@ class TestExecuteAsync:
         mock_db.get_engine = Mock(return_value=mock_engine)
         mgr.db = mock_db
 
-        result = await mgr.execute_async(sqlalchemy.text("SELECT 1"))
+        result = await mgr.execute_async(sqlalchemy.text('SELECT 1'))
 
         # Verify result is the same object returned by execute
         assert result is mock_result

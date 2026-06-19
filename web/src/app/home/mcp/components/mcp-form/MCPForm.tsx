@@ -450,6 +450,9 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
       testMcp: () => testMcp(),
       isTesting: mcpTesting,
     }),
+    // testMcp now reads everything via form.getValues(), so it does not need
+    // the latest stdioArgs/extraArgs closure — but keep mcpTesting so the
+    // exposed isTesting flag stays accurate.
     [mcpTesting],
   );
 
@@ -680,6 +683,17 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
 
     try {
       const mode = form.getValues('mode');
+      // Read every field via form.getValues() rather than the captured
+      // `stdioArgs` / `extraArgs` state. testMcp() is invoked through an
+      // imperative handle (formRef.current.testMcp()) whose closure is only
+      // refreshed when [mcpTesting] changes, so reading the React state here
+      // would use a stale snapshot — on the detail page that snapshot is the
+      // empty initial [], which dropped stdio args entirely and launched
+      // `uvx` with no package (exit 2 / "Connection closed", no detail).
+      // The form values are kept in sync on every edit and on load, so they
+      // are always current.
+      const formExtraArgs = form.getValues('extra_args') ?? [];
+      const formStdioArgs = form.getValues('args') ?? [];
       let extraArgsData:
         | MCPServerExtraArgsSSE
         | MCPServerExtraArgsHttp
@@ -690,7 +704,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
           url: form.getValues('url')!,
           timeout: form.getValues('timeout'),
           headers: Object.fromEntries(
-            extraArgs.map((arg) => [arg.key, arg.value]),
+            formExtraArgs.map((arg) => [arg.key, arg.value]),
           ),
           ssereadtimeout: form.getValues('ssereadtimeout'),
         };
@@ -699,14 +713,16 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
           url: form.getValues('url')!,
           timeout: form.getValues('timeout'),
           headers: Object.fromEntries(
-            extraArgs.map((arg) => [arg.key, arg.value]),
+            formExtraArgs.map((arg) => [arg.key, arg.value]),
           ),
         };
       } else {
         extraArgsData = {
           command: form.getValues('command')!,
-          args: stdioArgs.map((arg) => arg.value),
-          env: Object.fromEntries(extraArgs.map((arg) => [arg.key, arg.value])),
+          args: formStdioArgs.map((arg) => arg.value),
+          env: Object.fromEntries(
+            formExtraArgs.map((arg) => [arg.key, arg.value]),
+          ),
         };
       }
 

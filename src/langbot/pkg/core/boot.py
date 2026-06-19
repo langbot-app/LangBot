@@ -16,7 +16,6 @@ importutil.import_modules_in_pkg(stages)
 
 stage_order = [
     'LoadConfigStage',
-    'MigrationStage',
     'GenKeysStage',
     'SetupLoggerStage',
     'BuildAppStage',

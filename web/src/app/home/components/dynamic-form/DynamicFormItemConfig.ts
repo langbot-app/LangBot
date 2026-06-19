@@ -47,7 +47,6 @@ export function parseDynamicFormItemType(value: string): DynamicFormItemType {
 
 export function getDefaultValues(
   itemConfigList: IDynamicFormItemSchema[],
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Record<string, any> {
   return itemConfigList.reduce(
     (acc, item) => {
@@ -59,7 +58,7 @@ export function getDefaultValues(
       acc[item.name] = item.default;
       return acc;
     },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     {} as Record<string, any>,
   );
 }

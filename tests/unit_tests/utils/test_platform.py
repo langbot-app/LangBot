@@ -5,6 +5,7 @@ Tests cover:
 - Docker environment detection
 - WebSocket plugin runtime mode
 """
+
 from __future__ import annotations
 
 import os

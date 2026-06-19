@@ -7,6 +7,7 @@ Tests cover:
 - Dict type skipping
 - Missing key creation
 """
+
 from __future__ import annotations
 
 import os
@@ -248,15 +249,8 @@ class TestApplyEnvOverridesToConfig:
         """Test multiple env vars applied in order."""
         load_config = get_load_config_module()
 
-        cfg = {
-            'system': {'name': 'default', 'enable': True},
-            'concurrency': {'pipeline': 5}
-        }
-        env = {
-            'SYSTEM__NAME': 'custom',
-            'SYSTEM__ENABLE': 'false',
-            'CONCURRENCY__PIPELINE': '10'
-        }
+        cfg = {'system': {'name': 'default', 'enable': True}, 'concurrency': {'pipeline': 5}}
+        env = {'SYSTEM__NAME': 'custom', 'SYSTEM__ENABLE': 'false', 'CONCURRENCY__PIPELINE': '10'}
 
         with patch.dict(os.environ, env, clear=True):
             result = load_config._apply_env_overrides_to_config(cfg)

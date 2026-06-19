@@ -68,11 +68,7 @@ class TestNormalizeFilter:
 
     def test_normalize_filter_multiple_conditions(self):
         """Multiple top-level keys are AND-ed (returned as multiple triples)."""
-        result = normalize_filter({
-            'file_id': 'abc',
-            'status': {'$ne': 'deleted'},
-            'created_at': {'$gte': 1700000000}
-        })
+        result = normalize_filter({'file_id': 'abc', 'status': {'$ne': 'deleted'}, 'created_at': {'$gte': 1700000000}})
 
         assert len(result) == 3
         # Order should match dict iteration order
@@ -149,11 +145,7 @@ class TestStripUnsupportedFields:
             ('file_id', '$eq', 'def'),
         ]
 
-        result = strip_unsupported_fields(
-            triples,
-            {'file_id', 'chunk_uuid'},
-            field_aliases={'uuid': 'chunk_uuid'}
-        )
+        result = strip_unsupported_fields(triples, {'file_id', 'chunk_uuid'}, field_aliases={'uuid': 'chunk_uuid'})
 
         assert len(result) == 2
         # 'uuid' should be resolved to 'chunk_uuid'
@@ -169,7 +161,7 @@ class TestStripUnsupportedFields:
         result = strip_unsupported_fields(
             triples,
             {'file_id'},  # chunk_uuid not supported
-            field_aliases={'uuid': 'chunk_uuid'}
+            field_aliases={'uuid': 'chunk_uuid'},
         )
 
         assert result == []
@@ -207,4 +199,5 @@ class TestSupportedOpsConstant:
     def test_supported_ops_is_frozenset(self):
         """SUPPORTED_OPS is a frozenset for immutability."""
         from collections.abc import Set
+
         assert isinstance(SUPPORTED_OPS, Set)

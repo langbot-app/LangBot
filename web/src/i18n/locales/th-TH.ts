@@ -120,6 +120,8 @@ const thTH = {
     changePasswordSuccess: 'เปลี่ยนรหัสผ่านสำเร็จ',
     changePasswordFailed: 'เปลี่ยนรหัสผ่านล้มเหลว กรุณาตรวจสอบรหัสผ่านปัจจุบัน',
     apiIntegration: 'การเชื่อมต่อ API',
+    apiIntegrationDescription:
+      'จัดการ API key และ webhook สำหรับการเข้าถึงจากภายนอก',
     apiKeys: 'คีย์ API',
     manageApiIntegration: 'จัดการการเชื่อมต่อ API',
     manageApiKeys: 'จัดการคีย์ API',
@@ -199,6 +201,9 @@ const thTH = {
     selectModelAbilities: 'เลือกความสามารถของโมเดล',
     visionAbility: 'ความสามารถด้านภาพ',
     functionCallAbility: 'การเรียกฟังก์ชัน',
+    contextLength: 'หน้าต่างบริบท',
+    contextLengthPlaceholder: 'ไม่ทราบ',
+    contextLengthInvalid: 'หน้าต่างบริบทต้องเป็นจำนวนเต็มบวก',
     extraParameters: 'พารามิเตอร์เพิ่มเติม',
     addParameter: 'เพิ่มพารามิเตอร์',
     keyName: 'ชื่อคีย์',
@@ -255,6 +260,7 @@ const thTH = {
     selectProvider: 'เลือกผู้ให้บริการ',
     requester: 'ประเภทผู้ให้บริการ',
     selectRequester: 'เลือกประเภทผู้ให้บริการ',
+    searchProviders: 'ค้นหาผู้ให้บริการ...',
     langbotModelsDescription: 'โมเดลคลาวด์ขับเคลื่อนโดย LangBot Space',
     credits: 'เครดิต',
     loginWithSpace: 'เข้าสู่ระบบด้วย Space',
@@ -296,7 +302,7 @@ const thTH = {
     },
   },
   bots: {
-    title: 'Bot',
+    title: 'บอท',
     description:
       'สร้างและจัดการ Bot ซึ่งเป็นจุดเชื่อมต่อของ LangBot กับแพลตฟอร์มต่างๆ',
     createBot: 'สร้าง Bot',
@@ -565,6 +571,13 @@ const thTH = {
     viewSource: 'ดูซอร์สโค้ด',
     loadingReadme: 'กำลังโหลดเอกสาร...',
     noReadme: 'ปลั๊กอินนี้ไม่มีเอกสาร README',
+    tabDocs: 'เอกสาร',
+    tabLogs: 'บันทึก',
+    logsLevelAll: 'ทุกระดับ',
+    logsRefresh: 'รีเฟรช',
+    logsAutoRefreshOn: 'รีเฟรชอัตโนมัติ: เปิด',
+    logsAutoRefreshOff: 'รีเฟรชอัตโนมัติ: ปิด',
+    logsEmpty: 'ยังไม่มีบันทึก บันทึกที่ปลั๊กอินพิมพ์ผ่าน logger จะแสดงที่นี่',
     fileUpload: {
       tooLarge: 'ขนาดไฟล์เกินขีดจำกัด 10MB',
       success: 'อัปโหลดไฟล์สำเร็จ',
@@ -808,7 +821,7 @@ const thTH = {
       'เมื่อลบแล้ว การกำหนดค่าเซิร์ฟเวอร์ MCP นี้จะไม่สามารถกู้คืนได้',
   },
   pipelines: {
-    title: 'Pipeline',
+    title: 'ไปป์ไลน์',
     description:
       'Pipeline กำหนดกระบวนการประมวลผลเหตุการณ์ข้อความ ใช้เพื่อผูกกับ Bot',
     createPipeline: 'สร้าง Pipeline',
@@ -1119,6 +1132,7 @@ const thTH = {
   },
   account: {
     settings: 'การตั้งค่าบัญชี',
+    settingsDescription: 'จัดการรหัสผ่านและบัญชีที่เชื่อมโยงของคุณ',
     setPassword: 'ตั้งรหัสผ่าน',
     passwordSetSuccess: 'ตั้งรหัสผ่านสำเร็จ',
     passwordStatus: 'รหัสผ่านท้องถิ่น',
@@ -1180,6 +1194,7 @@ const thTH = {
       llmCalls: 'การเรียก LLM',
       embeddingCalls: 'การเรียก Embedding',
       modelCalls: 'การเรียกโมเดล',
+      tokens: 'การติดตาม Token',
       sessions: 'การวิเคราะห์เซสชัน',
       feedback: 'ความคิดเห็นผู้ใช้',
       errors: 'บันทึกข้อผิดพลาด',
@@ -1217,6 +1232,30 @@ const thTH = {
       totalTokens: 'โทเคนทั้งหมด',
       avgDuration: 'ระยะเวลาเฉลี่ย',
       calls: 'การเรียก',
+    },
+    tokens: {
+      totalTokens: 'Token ทั้งหมด',
+      inputTokens: 'Token อินพุต',
+      outputTokens: 'Token เอาต์พุต',
+      avgPerCall: 'เฉลี่ย / การเรียก',
+      throughput: 'ปริมาณงาน',
+      tokensPerSec: 'tokens/วินาที',
+      errorCalls: 'การเรียกที่ล้มเหลว',
+      acrossCalls: 'จาก {{count}} การเรียก',
+      ofTotal: 'จากทั้งหมด {{count}}',
+      usageOverTime: 'การใช้ Token ตามช่วงเวลา',
+      byModel: 'ตามโมเดล',
+      model: 'โมเดล',
+      calls: 'การเรียก',
+      avgLatency: 'เวลาแฝงเฉลี่ย',
+      noData: 'ไม่มีการใช้ Token ในช่วงเวลาที่เลือก',
+      loadError: 'โหลดสถิติ Token ล้มเหลว: {{error}}',
+      zeroTokenWarning:
+        'มีการเรียกที่สำเร็จ {{count}} ครั้งรายงานการใช้ Token เป็นศูนย์ โดยปกติหมายความว่าผู้ให้บริการต้นทางไม่ได้ส่งข้อมูลการใช้งานกลับมา โปรดตรวจสอบการตั้งค่าผู้ให้บริการโมเดล',
+      bucket: {
+        hour: 'รายชั่วโมง',
+        day: 'รายวัน',
+      },
     },
     embeddingCalls: {
       title: 'การเรียก Embedding',
@@ -1327,6 +1366,15 @@ const thTH = {
     boxSandboxes: 'แซนด์บ็อกซ์',
     boxSessionCreated: 'สร้างเมื่อ',
     boxSessionLastUsed: 'ใช้ล่าสุด',
+  },
+  settingsDialog: {
+    title: 'การตั้งค่า',
+    nav: {
+      models: 'โมเดล',
+      api: 'API',
+      storage: 'พื้นที่จัดเก็บ',
+      account: 'บัญชี',
+    },
   },
   storageAnalysis: {
     title: 'วิเคราะห์พื้นที่จัดเก็บ',

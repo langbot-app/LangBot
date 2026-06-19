@@ -6,6 +6,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "test:e2e": "playwright test",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
@@ -86,6 +87,7 @@
     "zod": "^3.24.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.0",
     "@types/debug": "^4.1.12",
     "@types/estree": "^1.0.8",
     "@types/estree-jsx": "^1.0.5",

@@ -31,6 +31,7 @@ interface ModelItemProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    contextLength?: number | null,
   ) => Promise<void>;
   onTestModel: (
     name: string,
@@ -92,6 +93,11 @@ export default function ModelItem({
   const [editAbilities, setEditAbilities] = useState<string[]>(
     modelType === 'llm' ? (model as LLMModel).abilities || [] : [],
   );
+  const [editContextLength, setEditContextLength] = useState(
+    modelType === 'llm' && (model as LLMModel).context_length
+      ? String((model as LLMModel).context_length)
+      : '',
+  );
   const [editExtraArgs, setEditExtraArgs] = useState<ExtraArg[]>(
     convertExtraArgsToArray(model.extra_args),
   );
@@ -106,13 +112,27 @@ export default function ModelItem({
       setEditAbilities(
         modelType === 'llm' ? (model as LLMModel).abilities || [] : [],
       );
+      setEditContextLength(
+        modelType === 'llm' && (model as LLMModel).context_length
+          ? String((model as LLMModel).context_length)
+          : '',
+      );
       setEditExtraArgs(convertExtraArgsToArray(model.extra_args));
       onResetTestResult();
     }
   }, [isEditOpen]);
 
   const handleSave = async () => {
-    await onUpdateModel(editName, editAbilities, editExtraArgs);
+    const parsedContextLength =
+      modelType === 'llm' && editContextLength.trim()
+        ? Number(editContextLength.trim())
+        : null;
+    await onUpdateModel(
+      editName,
+      editAbilities,
+      editExtraArgs,
+      parsedContextLength,
+    );
   };
 
   const handleTest = async () => {
@@ -284,6 +304,25 @@ export default function ModelItem({
                   </Label>
                 </div>
               </div>
+            </div>
+          )}
+
+          {modelType === 'llm' && (
+            <div className="space-y-2">
+              <Label htmlFor={`edit-context-length-${model.uuid}`}>
+                {t('models.contextLength')}
+              </Label>
+              <Input
+                id={`edit-context-length-${model.uuid}`}
+                type="number"
+                min={1}
+                step={1}
+                inputMode="numeric"
+                placeholder={t('models.contextLengthPlaceholder')}
+                value={editContextLength}
+                disabled={isLangBotModels}
+                onChange={(e) => setEditContextLength(e.target.value)}
+              />
             </div>
           )}
 

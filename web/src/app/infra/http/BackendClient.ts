@@ -55,6 +55,7 @@ import {
   ApiRespSkill,
 } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
+import type { PluginLogEntry } from '@/app/infra/entities/plugin';
 import type { I18nObject } from '@/app/infra/entities/common';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
 import { GetBotLogsResponse } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
@@ -601,6 +602,22 @@ export class BackendClient extends BaseHttpClient {
   ): Promise<{ readme: string }> {
     return this.get(
       `/api/v1/plugins/${author}/${name}/readme?language=${language}`,
+    );
+  }
+
+  public getPluginLogs(
+    author: string,
+    name: string,
+    limit: number = 200,
+    level?: string,
+  ): Promise<{ logs: PluginLogEntry[] }> {
+    const params = new URLSearchParams();
+    params.set('limit', String(limit));
+    if (level) {
+      params.set('level', level);
+    }
+    return this.get(
+      `/api/v1/plugins/${author}/${name}/logs?${params.toString()}`,
     );
   }
 
@@ -1222,6 +1239,68 @@ export class BackendClient extends BaseHttpClient {
     }
 
     return this.get(`/api/v1/monitoring/overview?${queryParams.toString()}`);
+  }
+
+  public getTokenStatistics(params: {
+    botId?: string[];
+    pipelineId?: string[];
+    startTime?: string;
+    endTime?: string;
+    bucket?: 'hour' | 'day';
+  }): Promise<{
+    summary: {
+      total_calls: number;
+      success_calls: number;
+      error_calls: number;
+      total_input_tokens: number;
+      total_output_tokens: number;
+      total_tokens: number;
+      total_cost: number;
+      avg_tokens_per_call: number;
+      avg_duration_ms: number;
+      avg_tokens_per_second: number;
+      zero_token_success_calls: number;
+    };
+    by_model: Array<{
+      model_name: string;
+      calls: number;
+      error_calls: number;
+      input_tokens: number;
+      output_tokens: number;
+      total_tokens: number;
+      cost: number;
+      avg_tokens_per_call: number;
+      avg_duration_ms: number;
+    }>;
+    timeseries: Array<{
+      bucket: string;
+      input_tokens: number;
+      output_tokens: number;
+      total_tokens: number;
+      calls: number;
+    }>;
+    bucket: string;
+  }> {
+    const queryParams = new URLSearchParams();
+    if (params.botId) {
+      params.botId.forEach((id) => queryParams.append('botId', id));
+    }
+    if (params.pipelineId) {
+      params.pipelineId.forEach((id) => queryParams.append('pipelineId', id));
+    }
+    if (params.startTime) {
+      queryParams.append('startTime', params.startTime);
+    }
+    if (params.endTime) {
+      queryParams.append('endTime', params.endTime);
+    }
+    if (params.bucket) {
+      queryParams.append('bucket', params.bucket);
+    }
+
+    return this.get(
+      `/api/v1/monitoring/token-statistics?${queryParams.toString()}`,
+    );
   }
 
   // ============ Survey API ============

@@ -26,6 +26,7 @@ from unittest.mock import MagicMock
 
 class MockLifecycleControlScope(enum.Enum):
     """Mock enum for breaking circular import in core.entities."""
+
     APPLICATION = 'application'
     PLATFORM = 'platform'
     PLUGIN = 'plugin'

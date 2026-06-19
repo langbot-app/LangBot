@@ -495,6 +495,7 @@ class TestUserServiceCreateOrUpdateSpaceUser:
 
         # First call (line 138) returns None, second call (line 194) returns new_user
         call_count = 0
+
         async def mock_get_by_space_uuid(uuid):
             nonlocal call_count
             call_count += 1
@@ -565,6 +566,7 @@ class TestUserServiceCreateOrUpdateSpaceUser:
 
         # First call (line 138) returns None, second call (line 194) returns new_user
         call_count = 0
+
         async def mock_get_by_space_uuid(uuid):
             nonlocal call_count
             call_count += 1

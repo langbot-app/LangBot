@@ -215,13 +215,7 @@ class TestPipelineServiceCreatePipeline:
         ap = SimpleNamespace()
         ap.persistence_mgr = SimpleNamespace()
         ap.instance_config = SimpleNamespace()
-        ap.instance_config.data = {
-            'system': {
-                'limitation': {
-                    'max_pipelines': 2
-                }
-            }
-        }
+        ap.instance_config.data = {'system': {'limitation': {'max_pipelines': 2}}}
         ap.pipeline_mgr = SimpleNamespace()
         ap.pipeline_mgr.load_pipeline = AsyncMock()
         ap.ver_mgr = SimpleNamespace()
@@ -229,9 +223,7 @@ class TestPipelineServiceCreatePipeline:
 
         mock_result = _create_mock_result([_create_mock_pipeline(), _create_mock_pipeline()])
         ap.persistence_mgr.execute_async = AsyncMock(return_value=mock_result)
-        ap.persistence_mgr.serialize_model = Mock(
-            return_value={'uuid': 'uuid-1', 'name': 'Pipeline 1'}
-        )
+        ap.persistence_mgr.serialize_model = Mock(return_value={'uuid': 'uuid-1', 'name': 'Pipeline 1'})
 
         service = PipelineService(ap)
 
@@ -258,14 +250,14 @@ class TestPipelineServiceCreatePipeline:
 
         # Mock persistence for insert
         ap.persistence_mgr.execute_async = AsyncMock()
-        ap.persistence_mgr.serialize_model = Mock(
-            return_value={'uuid': 'new-uuid', 'name': 'New Pipeline'}
-        )
+        ap.persistence_mgr.serialize_model = Mock(return_value={'uuid': 'new-uuid', 'name': 'New Pipeline'})
 
         # Mock the file read for default config - patch at the utils module level
         default_config = {'trigger': {}, 'safety': {}, 'ai': {}, 'output': {}}
         with patch('builtins.open', mock_open(read_data=json.dumps(default_config))):
-            with patch('langbot.pkg.utils.paths.get_resource_path', return_value='templates/default-pipeline-config.json'):
+            with patch(
+                'langbot.pkg.utils.paths.get_resource_path', return_value='templates/default-pipeline-config.json'
+            ):
                 bot_uuid = await service.create_pipeline({'name': 'New Pipeline'})
 
         # Verify
@@ -286,7 +278,9 @@ class TestPipelineServiceCreatePipeline:
 
         service = PipelineService(ap)
         service.get_pipelines = AsyncMock(return_value=[])
-        service.get_pipeline = AsyncMock(return_value={'uuid': 'new-uuid', 'name': 'Default Pipeline', 'is_default': True})
+        service.get_pipeline = AsyncMock(
+            return_value={'uuid': 'new-uuid', 'name': 'Default Pipeline', 'is_default': True}
+        )
 
         ap.persistence_mgr.execute_async = AsyncMock()
         ap.persistence_mgr.serialize_model = Mock(
@@ -296,7 +290,9 @@ class TestPipelineServiceCreatePipeline:
         # Mock the file read
         default_config = {}
         with patch('builtins.open', mock_open(read_data=json.dumps(default_config))):
-            with patch('langbot.pkg.utils.paths.get_resource_path', return_value='templates/default-pipeline-config.json'):
+            with patch(
+                'langbot.pkg.utils.paths.get_resource_path', return_value='templates/default-pipeline-config.json'
+            ):
                 await service.create_pipeline({'name': 'Default Pipeline'}, default=True)
 
         # Verify - execute was called
@@ -316,10 +312,12 @@ class TestPipelineServiceCreatePipeline:
 
         service = PipelineService(ap)
         service.get_pipelines = AsyncMock(return_value=[])
-        service.get_pipeline = AsyncMock(return_value={
-            'uuid': 'new-uuid',
-            'extensions_preferences': {},
-        })
+        service.get_pipeline = AsyncMock(
+            return_value={
+                'uuid': 'new-uuid',
+                'extensions_preferences': {},
+            }
+        )
 
         insert_params = []
 
@@ -339,7 +337,9 @@ class TestPipelineServiceCreatePipeline:
 
         default_config = {}
         with patch('builtins.open', mock_open(read_data=json.dumps(default_config))):
-            with patch('langbot.pkg.utils.paths.get_resource_path', return_value='templates/default-pipeline-config.json'):
+            with patch(
+                'langbot.pkg.utils.paths.get_resource_path', return_value='templates/default-pipeline-config.json'
+            ):
                 await service.create_pipeline({'name': 'New Pipeline'})
 
         assert len(insert_params) == 1
@@ -353,6 +353,7 @@ class TestPipelineServiceCreatePipeline:
 
 class _MockResultWithBots:
     """Helper class to mock SQLAlchemy result with iterable .all() method."""
+
     def __init__(self, bots_list):
         self._bots_list = bots_list
 
@@ -428,6 +429,7 @@ class TestPipelineServiceUpdatePipeline:
         # 1. UPDATE (line 125) - returns Mock (no result needed)
         # 2. SELECT bots (line 136) - returns bot_result with .all()
         call_count = 0
+
         async def mock_execute(query):
             nonlocal call_count
             call_count += 1
@@ -528,13 +530,7 @@ class TestPipelineServiceCopyPipeline:
         ap = SimpleNamespace()
         ap.persistence_mgr = SimpleNamespace()
         ap.instance_config = SimpleNamespace()
-        ap.instance_config.data = {
-            'system': {
-                'limitation': {
-                    'max_pipelines': 2
-                }
-            }
-        }
+        ap.instance_config.data = {'system': {'limitation': {'max_pipelines': 2}}}
         ap.pipeline_mgr = SimpleNamespace()
         ap.pipeline_mgr.load_pipeline = AsyncMock()
         ap.ver_mgr = SimpleNamespace()
@@ -542,10 +538,12 @@ class TestPipelineServiceCopyPipeline:
 
         service = PipelineService(ap)
         # Mock get_pipelines to return 2 pipelines
-        service.get_pipelines = AsyncMock(return_value=[
-            {'uuid': 'uuid-1', 'name': 'Pipeline 1'},
-            {'uuid': 'uuid-2', 'name': 'Pipeline 2'},
-        ])
+        service.get_pipelines = AsyncMock(
+            return_value=[
+                {'uuid': 'uuid-1', 'name': 'Pipeline 1'},
+                {'uuid': 'uuid-2', 'name': 'Pipeline 2'},
+            ]
+        )
 
         # Execute & Verify
         with pytest.raises(ValueError, match='Maximum number of pipelines'):
@@ -642,9 +640,7 @@ class TestPipelineServiceCopyPipeline:
         service = PipelineService(ap)
         service.get_pipelines = AsyncMock(return_value=[])
         ap.persistence_mgr.execute_async = AsyncMock(return_value=_create_mock_result(first_item=original))
-        ap.persistence_mgr.serialize_model = Mock(
-            return_value={'uuid': 'copy-uuid', 'is_default': False}
-        )
+        ap.persistence_mgr.serialize_model = Mock(return_value={'uuid': 'copy-uuid', 'is_default': False})
 
         service.get_pipeline = AsyncMock(return_value={'uuid': 'copy-uuid', 'is_default': False})
 
@@ -681,11 +677,10 @@ class TestPipelineServiceUpdatePipelineExtensions:
         ap.pipeline_mgr.remove_pipeline = AsyncMock()
         ap.pipeline_mgr.load_pipeline = AsyncMock()
 
-        original_pipeline = _create_mock_pipeline(
-            extensions_preferences={'enable_all_plugins': True, 'plugins': []}
-        )
+        original_pipeline = _create_mock_pipeline(extensions_preferences={'enable_all_plugins': True, 'plugins': []})
 
         call_count = 0
+
         async def mock_execute(query):
             nonlocal call_count
             call_count += 1
@@ -700,7 +695,7 @@ class TestPipelineServiceUpdatePipelineExtensions:
                 'extensions_preferences': {
                     'enable_all_plugins': False,
                     'plugins': [{'plugin_uuid': 'plugin-1'}],
-                }
+                },
             }
         )
 
@@ -711,7 +706,7 @@ class TestPipelineServiceUpdatePipelineExtensions:
                 'extensions_preferences': {
                     'enable_all_plugins': False,
                     'plugins': [{'plugin_uuid': 'plugin-1'}],
-                }
+                },
             }
         )
 
@@ -738,6 +733,7 @@ class TestPipelineServiceUpdatePipelineExtensions:
         original_pipeline = _create_mock_pipeline()
 
         call_count = 0
+
         async def mock_execute(query):
             nonlocal call_count
             call_count += 1
@@ -752,7 +748,7 @@ class TestPipelineServiceUpdatePipelineExtensions:
                 'extensions_preferences': {
                     'enable_all_mcp_servers': False,
                     'mcp_servers': ['mcp-server-1'],
-                }
+                },
             }
         )
 
@@ -794,6 +790,7 @@ class TestPipelineServiceUpdatePipelineExtensions:
         )
 
         call_count = 0
+
         async def mock_execute(query):
             nonlocal call_count
             call_count += 1

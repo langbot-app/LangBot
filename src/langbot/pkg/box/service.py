@@ -105,6 +105,7 @@ class BoxService:
                 f'LangBot Box runtime initialized: profile={self.profile.name} '
                 f'default_workspace={self.default_workspace or "(none)"}'
             )
+            await self._purge_attachment_dirs()
         except Exception as exc:
             self.ap.logger.warning(f'LangBot Box runtime unavailable, sandbox features disabled: {exc}')
             self._available = False
@@ -334,6 +335,507 @@ class BoxService:
             spec_payload['extra_mounts'] = self.build_skill_extra_mounts(query)
 
         return await self.execute_spec_payload(spec_payload, query)
+
+    # ── Attachment passthrough (inbound / outbound) ──────────────────
+    #
+    # IM/webchat attachments (images, voices, files) reach the LLM as
+    # multimodal content, but historically never landed on the sandbox
+    # filesystem, so the agent's exec/read/write tools could not operate on
+    # them. Conversely, files the agent produced inside the sandbox were
+    # never surfaced back to the user. These two helpers close both gaps:
+    #
+    #   inbound  : message_chain attachments -> /workspace/inbox/<query_id>/
+    #   outbound : /workspace/outbox/<query_id>/ -> reply MessageChain
+    #
+    # Transfer prefers DIRECT HOST FILESYSTEM access to the bind-mounted
+    # workspace (default_workspace on the host maps to /workspace inside the
+    # container), which has no size limit. This covers the local docker /
+    # nsjail / stdio backends. For backends where the workspace is NOT visible
+    # on the LangBot host (E2B, an external remote runtime.endpoint), it falls
+    # back to a base64-through-exec round-trip. The exec channel can only move
+    # small files reliably — the docker backend passes the command as a single
+    # argv (ARG_MAX) and exec stdout is truncated by output_limit_chars — so
+    # the host path is strongly preferred and used whenever available.
+
+    INBOX_MOUNT_DIR = '/workspace/inbox'
+    OUTBOX_MOUNT_DIR = '/workspace/outbox'
+    INBOX_SUBDIR = 'inbox'
+    OUTBOX_SUBDIR = 'outbox'
+    # Hard cap on a single attachment. The HTTP upload endpoints already cap
+    # uploads at 10MiB; keep parity.
+    _ATTACHMENT_MAX_BYTES = 10 * _MIB
+    # Conservative cap for the exec FALLBACK path only (ARG_MAX / stdout
+    # truncation). The host-filesystem path has no such limit.
+    _EXEC_FALLBACK_MAX_BYTES = 256 * 1024
+
+    def _host_query_dir(self, subdir: str, query_id) -> str | None:
+        """Host path for ``/workspace/<subdir>/<query_id>`` when LangBot can
+        access the bind-mounted workspace directly, else ``None``.
+
+        ``default_workspace`` is the host directory bind-mounted to
+        ``/workspace`` for the local docker/nsjail backends and shared
+        outright in stdio mode, so a file written there by LangBot is visible
+        to the sandbox (and vice-versa). It is ``None`` / not a local dir for
+        E2B and remote runtimes, where we must fall back to the exec channel.
+        """
+        root = self.default_workspace
+        if not root or not os.path.isdir(root):
+            return None
+        return os.path.join(root, subdir, str(query_id))
+
+    async def _purge_attachment_dirs(self) -> None:
+        """Remove leftover inbox/outbox directories on startup.
+
+        ``query_id`` is a process-local counter (see pipeline query pool) that
+        resets to 0 on every restart, so per-query attachment directories from
+        a previous process would otherwise be silently reused — leaking a prior
+        run's inbound files and re-sending stale outbound files.
+
+        Outbox files are written by the sandbox **container**, which runs as
+        root over the bind-mount, so the LangBot host process (a non-root user)
+        cannot ``rmtree`` them. We therefore try a host-side delete first (fast,
+        works for host-owned inbox files) and, for anything that survives,
+        delete from *inside* the sandbox via exec where the container's root can
+        remove its own files. Best-effort: never block startup.
+        """
+        root = self.default_workspace
+        if not root or not os.path.isdir(root):
+            return
+
+        import shutil
+
+        host_survivors: list[str] = []
+
+        def _host_purge() -> list[str]:
+            survivors: list[str] = []
+            for subdir in (self.INBOX_SUBDIR, self.OUTBOX_SUBDIR):
+                path = os.path.join(root, subdir)
+                if not os.path.isdir(path):
+                    continue
+                shutil.rmtree(path, ignore_errors=True)
+                if os.path.exists(path):
+                    survivors.append(subdir)
+            return survivors
+
+        try:
+            host_survivors = await asyncio.to_thread(_host_purge)
+        except Exception as exc:  # pragma: no cover - defensive
+            self.ap.logger.warning(f'Host-side purge of sandbox attachment dirs failed: {exc}')
+            host_survivors = [self.INBOX_SUBDIR, self.OUTBOX_SUBDIR]
+
+        if not host_survivors:
+            self.ap.logger.info('Purged leftover sandbox attachment dirs from a previous process.')
+            return
+
+        # Root-owned leftovers (container output): delete from inside the box.
+        targets = ' '.join(f'/workspace/{sub}' for sub in host_survivors)
+        try:
+            spec = self.build_spec({'cmd': f'rm -rf {targets}', 'session_id': '__startup_purge__', 'timeout_sec': 30})
+            await self.client.execute(spec)
+            self.ap.logger.info(
+                f'Purged root-owned leftover sandbox attachment dirs via sandbox exec: {host_survivors}'
+            )
+        except Exception as exc:
+            self.ap.logger.warning(
+                f'Failed to purge root-owned sandbox attachment dirs {host_survivors} via exec: {exc}'
+            )
+
+    @staticmethod
+    def _sanitize_attachment_name(name: str, fallback: str) -> str:
+        """Reduce an arbitrary attachment name to a safe basename.
+
+        Strips directory separators and parent refs so a crafted file name
+        can never escape the inbox/outbox directory.
+        """
+        base = os.path.basename(str(name or '').replace('\\', '/').strip())
+        base = base.lstrip('.') or ''
+        # Drop anything that is not a conservative filename charset.
+        cleaned = ''.join(c for c in base if c.isalnum() or c in ('.', '_', '-', ' ')).strip()
+        cleaned = cleaned.replace(' ', '_')
+        return cleaned or fallback
+
+    @staticmethod
+    async def _component_to_bytes(component) -> tuple[bytes, str] | None:
+        """Best-effort extraction of (bytes, mime) from a platform component.
+
+        Handles base64, http(s) url and local path sources. Returns None when
+        no payload can be resolved.
+        """
+        import base64 as _b64
+
+        b64 = getattr(component, 'base64', None)
+        if b64:
+            data = b64
+            mime = 'application/octet-stream'
+            if isinstance(data, str) and data.startswith('data:'):
+                split_index = data.find(';base64,')
+                if split_index != -1:
+                    mime = data[5:split_index]
+                    data = data[split_index + 8 :]
+            try:
+                return _b64.b64decode(data), mime
+            except Exception:
+                return None
+
+        url = getattr(component, 'url', None)
+        if url:
+            try:
+                import httpx
+
+                async with httpx.AsyncClient(timeout=30) as client:
+                    resp = await client.get(url)
+                    resp.raise_for_status()
+                    return resp.content, resp.headers.get('Content-Type', 'application/octet-stream')
+            except Exception:
+                return None
+
+        path = getattr(component, 'path', None)
+        if path:
+            try:
+                import aiofiles
+
+                async with aiofiles.open(path, 'rb') as f:
+                    return await f.read(), 'application/octet-stream'
+            except Exception:
+                return None
+
+        return None
+
+    async def _write_files_into_sandbox(
+        self,
+        query: pipeline_query.Query,
+        subdir: str,
+        target_mount_dir: str,
+        files: list[tuple[str, bytes]],
+    ) -> list[str]:
+        """Write *files* (name, bytes) into the per-query directory.
+
+        Prefers a direct host-filesystem write to the bind-mounted workspace
+        (no size limit). Falls back to a base64-through-exec round-trip only
+        when the workspace is not visible on the LangBot host (E2B / remote).
+        Returns the list of in-sandbox paths actually written.
+        """
+        if not files:
+            return []
+
+        host_dir = self._host_query_dir(subdir, query.query_id)
+        if host_dir is not None:
+            return await asyncio.to_thread(self._write_files_host, host_dir, target_mount_dir, files)
+
+        return await self._write_files_via_exec(query, target_mount_dir, files)
+
+    def _write_files_host(
+        self,
+        host_dir: str,
+        target_mount_dir: str,
+        files: list[tuple[str, bytes]],
+    ) -> list[str]:
+        """Write attachments straight onto the bind-mounted host directory.
+
+        Recreates the per-query directory from scratch so a reused query_id
+        (the webchat session uses small sequential ids) never inherits stale
+        files from an earlier turn.
+        """
+        import shutil
+
+        shutil.rmtree(host_dir, ignore_errors=True)
+        os.makedirs(host_dir, exist_ok=True)
+        written: list[str] = []
+        for name, data in files:
+            with open(os.path.join(host_dir, name), 'wb') as fh:
+                fh.write(data)
+            written.append(f'{target_mount_dir}/{name}')
+        return written
+
+    async def _write_files_via_exec(
+        self,
+        query: pipeline_query.Query,
+        target_dir: str,
+        files: list[tuple[str, bytes]],
+    ) -> list[str]:
+        """Fallback: ship files into the sandbox over the exec channel.
+
+        Only used for backends without host-filesystem access (E2B / remote).
+        Each file is base64-decoded inside the sandbox. Files larger than the
+        conservative exec cap are skipped (ARG_MAX / stdout limits).
+        """
+        import base64 as _b64
+        import json as _json
+
+        manifest = []
+        for name, data in files:
+            if len(data) > self._EXEC_FALLBACK_MAX_BYTES:
+                self.ap.logger.warning(
+                    f'Attachment "{name}" ({len(data)} bytes) exceeds the exec-channel '
+                    f'fallback limit ({self._EXEC_FALLBACK_MAX_BYTES} bytes); skipping. '
+                    f'Configure a host-shared workspace to transfer large files.'
+                )
+                continue
+            manifest.append({'name': name, 'b64': _b64.b64encode(data).decode('ascii')})
+        if not manifest:
+            return []
+
+        manifest_b64 = _b64.b64encode(_json.dumps(manifest).encode('utf-8')).decode('ascii')
+        script = (
+            'import base64, json, os, shutil\n'
+            f'target = {target_dir!r}\n'
+            'shutil.rmtree(target, ignore_errors=True)\n'
+            'os.makedirs(target, exist_ok=True)\n'
+            f'manifest = json.loads(base64.b64decode({manifest_b64!r}))\n'
+            'written = []\n'
+            'for item in manifest:\n'
+            "    p = os.path.join(target, item['name'])\n"
+            "    with open(p, 'wb') as f:\n"
+            "        f.write(base64.b64decode(item['b64']))\n"
+            '    written.append(p)\n'
+            'print(json.dumps(written))\n'
+        )
+        result = await self.execute_tool(
+            {'command': f"python3 - <<'LBPY'\n{script}\nLBPY", 'timeout_sec': 120},
+            query,
+        )
+        if not result.get('ok'):
+            self.ap.logger.warning(
+                f'Failed to write inbound attachments into sandbox via exec: '
+                f'query_id={query.query_id} stderr={result.get("stderr", "")[:200]}'
+            )
+            return []
+        try:
+            return _json.loads(str(result.get('stdout') or '').strip().splitlines()[-1])
+        except Exception:
+            return []
+
+    async def materialize_inbound_attachments(self, query: pipeline_query.Query) -> list[dict]:
+        """Persist message-chain attachments into the sandbox inbox.
+
+        Returns a list of ``{path, name, type, size}`` describing what was
+        written, so the runner can tell the LLM the exact in-sandbox paths.
+        Returns ``[]`` when sandbox is unavailable or there are no attachments.
+        """
+        if not self._available:
+            return []
+
+        import langbot_plugin.api.entities.builtin.platform.message as platform_message
+
+        message_chain = getattr(query, 'message_chain', None)
+        if not message_chain:
+            return []
+
+        type_map = [
+            (platform_message.Image, 'Image', 'image', 'png'),
+            (platform_message.Voice, 'Voice', 'voice', 'wav'),
+            (platform_message.File, 'File', 'file', 'bin'),
+        ]
+
+        pending: list[tuple[str, bytes]] = []
+        descriptors: list[dict] = []
+        index = 0
+        for component in message_chain:
+            matched = None
+            for cls, kind, prefix, default_ext in type_map:
+                if isinstance(component, cls):
+                    matched = (kind, prefix, default_ext)
+                    break
+            if matched is None:
+                continue
+            kind, prefix, default_ext = matched
+
+            payload = await self._component_to_bytes(component)
+            if payload is None:
+                continue
+            data, _mime = payload
+            if not data or len(data) > self._ATTACHMENT_MAX_BYTES:
+                continue
+
+            index += 1
+            raw_name = getattr(component, 'name', None) or f'{prefix}_{index}.{default_ext}'
+            safe_name = self._sanitize_attachment_name(raw_name, f'{prefix}_{index}.{default_ext}')
+            pending.append((safe_name, data))
+            descriptors.append(
+                {
+                    'name': safe_name,
+                    'type': kind,
+                    'size': len(data),
+                }
+            )
+
+        if not pending:
+            return []
+
+        target_dir = f'{self.INBOX_MOUNT_DIR}/{query.query_id}'
+        written = await self._write_files_into_sandbox(query, self.INBOX_SUBDIR, target_dir, pending)
+        written_basenames = {os.path.basename(p) for p in written}
+
+        result: list[dict] = []
+        for desc in descriptors:
+            if desc['name'] in written_basenames:
+                desc['path'] = f'{target_dir}/{desc["name"]}'
+                result.append(desc)
+        if result:
+            self.ap.logger.info(
+                f'Materialized {len(result)} inbound attachment(s) into sandbox: '
+                f'query_id={query.query_id} dir={target_dir}'
+            )
+        return result
+
+    async def collect_outbound_attachments(self, query: pipeline_query.Query) -> list[dict]:
+        """Collect files the agent produced in the sandbox outbox.
+
+        Reads ``/workspace/outbox/<query_id>/`` (recursively) — directly from
+        the bind-mounted host directory when available (no size limit), else
+        via the exec channel — returns a list of ``{type, name, base64}``
+        ready to become platform message components, then clears the outbox so
+        a later turn in the same session does not re-send stale files. Returns
+        ``[]`` when nothing was produced.
+        """
+        if not self._available:
+            return []
+
+        host_dir = self._host_query_dir(self.OUTBOX_SUBDIR, query.query_id)
+        if host_dir is not None:
+            entries = await asyncio.to_thread(self._read_outbox_host, host_dir)
+        else:
+            entries = await self._read_outbox_via_exec(query)
+
+        attachments = self._classify_outbound_entries(entries)
+
+        # Always clear the per-query outbox after reading — even when nothing
+        # was collected — so a later turn that reuses the same query_id (the
+        # counter resets across restarts) never inherits stale files.
+        await self._clear_outbox(query, host_dir)
+        if attachments:
+            self.ap.logger.info(
+                f'Collected {len(attachments)} outbound attachment(s) from sandbox: query_id={query.query_id}'
+            )
+        return attachments
+
+    def _read_outbox_host(self, host_dir: str) -> list[dict]:
+        """Read outbox files straight off the bind-mounted host directory."""
+        import base64 as _b64
+
+        entries: list[dict] = []
+        if not os.path.isdir(host_dir):
+            return entries
+        for root, _dirs, names in os.walk(host_dir):
+            for name in sorted(names):
+                path = os.path.join(root, name)
+                try:
+                    if os.path.getsize(path) > self._ATTACHMENT_MAX_BYTES:
+                        continue
+                    with open(path, 'rb') as fh:
+                        data = fh.read()
+                except OSError:
+                    continue
+                rel = os.path.relpath(path, host_dir)
+                entries.append({'name': rel, 'b64': _b64.b64encode(data).decode('ascii')})
+        return entries
+
+    async def _read_outbox_via_exec(self, query: pipeline_query.Query) -> list[dict]:
+        """Fallback: read the outbox over the exec channel (E2B / remote).
+
+        Note: exec stdout is truncated by ``output_limit_chars``, so this path
+        only reliably transfers small files. The host path is preferred.
+        """
+        import json as _json
+
+        target_dir = f'{self.OUTBOX_MOUNT_DIR}/{query.query_id}'
+        max_bytes = self._EXEC_FALLBACK_MAX_BYTES
+        script = (
+            'import base64, json, os\n'
+            f'target = {target_dir!r}\n'
+            f'max_bytes = {max_bytes}\n'
+            'out = []\n'
+            'if os.path.isdir(target):\n'
+            '    for root, _dirs, names in os.walk(target):\n'
+            '        for n in sorted(names):\n'
+            '            p = os.path.join(root, n)\n'
+            '            try:\n'
+            '                if os.path.getsize(p) > max_bytes:\n'
+            '                    continue\n'
+            "                with open(p, 'rb') as f:\n"
+            '                    data = f.read()\n'
+            '            except OSError:\n'
+            '                continue\n'
+            '            rel = os.path.relpath(p, target)\n'
+            "            out.append({'name': rel, 'b64': base64.b64encode(data).decode('ascii')})\n"
+            'print(json.dumps(out))\n'
+        )
+        result = await self.execute_tool(
+            {'command': f"python3 - <<'LBPY'\n{script}\nLBPY", 'timeout_sec': 120},
+            query,
+        )
+        if not result.get('ok'):
+            return []
+        try:
+            return _json.loads(str(result.get('stdout') or '').strip().splitlines()[-1])
+        except Exception:
+            return []
+
+    async def _clear_outbox(self, query: pipeline_query.Query, host_dir: str | None) -> None:
+        """Empty the per-query outbox after collection.
+
+        Tries a host-side ``rmtree`` first (fast, no container round-trip).
+        Outbox files are created by the sandbox container as root over the
+        bind-mount, so when LangBot runs as a non-root user the host delete
+        fails silently and the files survive — they would then be re-collected
+        on the next turn that reuses the same query_id. So if anything survives
+        the host delete, clear it from *inside* the sandbox via exec, where the
+        container's root can remove its own files. Best-effort: never raise
+        into the pipeline.
+        """
+        target_dir = f'{self.OUTBOX_MOUNT_DIR}/{query.query_id}'
+
+        if host_dir is not None:
+            import shutil
+
+            def _clear() -> bool:
+                shutil.rmtree(host_dir, ignore_errors=True)
+                survived = os.path.exists(host_dir) and bool(os.listdir(host_dir))
+                os.makedirs(host_dir, exist_ok=True)
+                return survived
+
+            survived = await asyncio.to_thread(_clear)
+            if not survived:
+                return
+            # Root-owned container files survived the host delete — fall through.
+
+        try:
+            await self.execute_tool(
+                {'command': f'rm -rf {target_dir} && mkdir -p {target_dir}', 'timeout_sec': 30},
+                query,
+            )
+        except Exception as exc:
+            self.ap.logger.warning(f'Failed to clear sandbox outbox {target_dir}: {exc}')
+
+    @staticmethod
+    def _classify_outbound_entries(entries: list[dict]) -> list[dict]:
+        """Classify outbox files into Image/Voice/File component descriptors."""
+        image_exts = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'}
+        voice_exts = {'wav', 'mp3', 'silk', 'amr', 'ogg', 'm4a', 'aac'}
+        mime_by_ext = {
+            'png': 'image/png',
+            'jpg': 'image/jpeg',
+            'jpeg': 'image/jpeg',
+            'gif': 'image/gif',
+            'webp': 'image/webp',
+            'bmp': 'image/bmp',
+        }
+        attachments: list[dict] = []
+        for entry in entries or []:
+            name = str(entry.get('name', '') or '')
+            b64 = entry.get('b64')
+            if not name or not b64:
+                continue
+            ext = name.rsplit('.', 1)[-1].lower() if '.' in name else ''
+            base_name = os.path.basename(name)
+            if ext in image_exts:
+                mime = mime_by_ext.get(ext, 'image/png')
+                attachments.append({'type': 'Image', 'name': base_name, 'base64': f'data:{mime};base64,{b64}'})
+            elif ext in voice_exts:
+                attachments.append({'type': 'Voice', 'name': base_name, 'base64': f'data:audio/{ext};base64,{b64}'})
+            else:
+                attachments.append({'type': 'File', 'name': base_name, 'base64': b64})
+        return attachments
 
     async def shutdown(self):
         await self.client.shutdown()
@@ -800,11 +1302,19 @@ class BoxService:
     def get_recent_errors(self) -> list[dict]:
         return list(self._recent_errors)
 
-    def get_system_guidance(self) -> str:
+    def get_system_guidance(self, query_id=None) -> str:
         """Return LLM system-prompt guidance for the exec tool.
 
         All execution-specific prompt text is kept here so that callers
         (e.g. LocalAgentRunner) stay free of box domain knowledge.
+
+        ``query_id`` is the current turn's pipeline query id. When provided,
+        the guidance ALWAYS advertises the per-query outbox path so the agent
+        knows how to deliver generated files back to the user — even on turns
+        where the user sent no inbound attachment (e.g. "generate a QR code"),
+        which is exactly when the inbound-attachment note never fires. Outbound
+        collection in the wrapper runs on every turn regardless of inbound
+        files, so without this the file would be produced and silently dropped.
         """
         guidance = (
             'When the exec tool is available, use it for exact calculations, statistics, structured data parsing, '
@@ -818,6 +1328,13 @@ class BoxService:
                 ' A default workspace is mounted at /workspace for file tasks. When the user asks to read, create, or '
                 'modify local files in the working directory, use exec with /workspace paths directly; do not ask the '
                 'user for directory parameters unless they explicitly need a different directory.'
+            )
+        if query_id is not None:
+            outbox_dir = f'{self.OUTBOX_MOUNT_DIR}/{query_id}'
+            guidance += (
+                f' If you produce any file (image, audio, document, etc.) that should be sent back to the user, '
+                f'write it into {outbox_dir}/ (create the directory if needed). Every file placed there will be '
+                'delivered to the user automatically; do not paste file contents or base64 into your reply.'
             )
         return guidance
 

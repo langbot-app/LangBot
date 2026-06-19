@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import sqlalchemy
 import traceback
 
@@ -37,11 +38,41 @@ class ModelManager:
         self.requester_components = []
         self.requester_dict = {}
 
+    @staticmethod
+    def _get_litellm_provider_from_manifest(component: engine.Component | None) -> str | None:
+        if component is None:
+            return None
+
+        spec = getattr(component, 'spec', None) or {}
+        litellm_provider = None
+
+        if isinstance(spec, dict):
+            litellm_provider = spec.get('litellm_provider')
+        else:
+            getter = getattr(spec, 'get', None)
+            if callable(getter):
+                try:
+                    litellm_provider = getter('litellm_provider')
+                except Exception:
+                    litellm_provider = None
+
+        if isinstance(litellm_provider, str) and litellm_provider:
+            return litellm_provider
+        return None
+
     async def initialize(self):
         self.requester_components = self.ap.discover.get_components_by_kind('LLMAPIRequester')
 
         requester_dict: dict[str, type[requester.ProviderAPIRequester]] = {}
         for component in self.requester_components:
+            # Skip components that use litellm_provider (they will use litellmchat.py instead)
+            litellm_provider = self._get_litellm_provider_from_manifest(component)
+            if litellm_provider:
+                self.ap.logger.debug(
+                    f'Skipping Python class loading for {component.metadata.name} '
+                    f'(uses litellm_provider={litellm_provider})'
+                )
+                continue
             requester_dict[component.metadata.name] = component.get_python_component_class()
 
         self.requester_dict = requester_dict
@@ -54,8 +85,17 @@ class ModelManager:
             self.ap.logger.info('LangBot Space Models service is disabled, skipping sync.')
             return
 
+        sync_timeout = space_config.get('models_sync_timeout')
         try:
-            await self.sync_new_models_from_space()
+            if sync_timeout:
+                await asyncio.wait_for(
+                    self.sync_new_models_from_space(),
+                    timeout=float(sync_timeout),
+                )
+            else:
+                await self.sync_new_models_from_space()
+        except asyncio.TimeoutError:
+            self.ap.logger.warning(f'LangBot Space model sync timed out after {sync_timeout}s, skipping startup sync.')
         except Exception as e:
             self.ap.logger.warning('Failed to sync new models from LangBot Space, model list may not be updated.')
             self.ap.logger.warning(f'  - Error: {e}')
@@ -236,6 +276,7 @@ class ModelManager:
                 name=model_info.get('name', ''),
                 provider_uuid='',
                 abilities=model_info.get('abilities', []),
+                context_length=model_info.get('context_length'),
                 extra_args=model_info.get('extra_args', {}),
             ),
             provider=runtime_provider,
@@ -294,13 +335,37 @@ class ModelManager:
         else:
             provider_entity = provider_info
 
-        if provider_entity.requester not in self.requester_dict:
-            raise provider_errors.RequesterNotFoundError(provider_entity.requester)
+        # Get requester manifest to check for litellm_provider
+        requester_manifest = self.get_available_requester_manifest_by_name(provider_entity.requester)
+        litellm_provider = self._get_litellm_provider_from_manifest(requester_manifest)
 
-        requester_inst = self.requester_dict[provider_entity.requester](
-            ap=self.ap,
-            config={'base_url': provider_entity.base_url},
-        )
+        # Build config from base_url
+        config = {'base_url': provider_entity.base_url}
+
+        # Check if requester manifest specifies litellm_provider
+        if litellm_provider:
+            from .requesters import litellmchat
+
+            # Use unified LiteLLMRequester with provider prefix
+            # Map litellm_provider (YAML spec) to custom_llm_provider (config)
+            config['custom_llm_provider'] = litellm_provider
+            requester_inst = litellmchat.LiteLLMRequester(
+                ap=self.ap,
+                config=config,
+            )
+            self.ap.logger.debug(
+                f'Using LiteLLMRequester for {provider_entity.requester} '
+                f'with custom_llm_provider={config["custom_llm_provider"]}'
+            )
+        else:
+            # Use original requester class (for backward compatibility)
+            if provider_entity.requester not in self.requester_dict:
+                raise provider_errors.RequesterNotFoundError(provider_entity.requester)
+            requester_inst = self.requester_dict[provider_entity.requester](
+                ap=self.ap,
+                config=config,
+            )
+
         await requester_inst.initialize()
 
         token_mgr = token.TokenManager(name=provider_entity.uuid, tokens=provider_entity.api_keys or [])
@@ -406,6 +471,7 @@ class ModelManager:
             name=model_info.get('name', ''),
             provider_uuid=model_info.get('provider_uuid', ''),
             abilities=model_info.get('abilities', []),
+            context_length=model_info.get('context_length'),
             extra_args=model_info.get('extra_args', {}),
         )
 

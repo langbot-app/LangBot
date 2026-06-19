@@ -9,7 +9,7 @@ export interface IPluginCardVO {
   enabled: boolean;
   priority: number;
   install_source: string;
-  install_info: Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  install_info: Record<string, any>;
   status: string;
   components: PluginComponent[];
   debug: boolean;
@@ -27,7 +27,7 @@ export class PluginCardVO implements IPluginCardVO {
   priority: number;
   debug: boolean;
   install_source: string;
-  install_info: Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  install_info: Record<string, any>;
   status: string;
   components: PluginComponent[];
   hasUpdate?: boolean;

@@ -3,6 +3,7 @@ from __future__ import annotations
 import typing
 import traceback
 
+from langbot_plugin.api.definition.components.manifest import ComponentManifest
 from langbot_plugin.api.entities.events import pipeline_query
 
 from .. import loader
@@ -39,7 +40,7 @@ class PluginToolLoader(loader.ToolLoader):
                 return True
         return False
 
-    async def _get_tool(self, name: str) -> resource_tool.LLMTool:
+    async def get_tool(self, name: str) -> ComponentManifest | None:
         for tool in await self.ap.plugin_connector.list_tools():
             if tool.metadata.name == name:
                 return tool

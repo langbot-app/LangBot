@@ -125,6 +125,14 @@ uv run python -m langbot.pkg.persistence.alembic_runner autogenerate "descriptio
 
 Review and edit the generated script before committing. Migrations execute automatically on startup. `autogenerate` detects schema changes (add/drop columns, tables, type changes) but **data migrations** (e.g. mutating JSON field contents) must be hand-written into the generated script. `env.py` sets `render_as_batch=True`, so SQLite's ALTER TABLE limits are handled automatically — no need to branch per database. More in the wiki ["开发配置"](https://docs.langbot.app/zh/develop/dev-config#数据库迁移).
 
+When writing a migration, follow these rules:
+
+- **Revision id ≤ 32 characters.** PostgreSQL stores `alembic_version.version_num` as `varchar(32)`; a longer id raises `StringDataRightTruncationError` at runtime. Prefer short, descriptive ids like `0005_add_llm_context_length`.
+- **Guard every operation against missing tables/columns.** Fresh installs build the schema via `create_all()` and then stamp the Alembic baseline, so a migration may run against a table that already has the change — or, in tests, against an empty database. Check `inspector.get_table_names()` / `inspector.get_columns(...)` before `add_column` / `drop_column`, mirroring the existing migrations.
+- **Keep a single linear head.** Chain `down_revision` to the current head; do not create branches. Run the migration tests after adding one: `uv run pytest tests/integration/persistence/ -q` (the PostgreSQL test needs a running PG via `TEST_POSTGRES_URL`).
+
+> **Legacy migration system (deprecated — do not extend).** The old 3.x migration system under `src/langbot/pkg/persistence/migrations/` (`DBMigration` subclasses in `dbmXXX_*.py`, run from `pkg/persistence/mgr.py`) is **frozen**. Do **not** add new `dbmXXX_*.py` files. The chain is capped at `required_database_version = 25` (`pkg/utils/constants.py`); those files only exist to upgrade pre-existing 3.x databases up to the Alembic baseline and are kept read-only. All new schema changes go through Alembic.
+
 ## Some Principles
 
 - Keep it simple, stupid.

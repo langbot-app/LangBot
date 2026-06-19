@@ -15,68 +15,68 @@ class TestI18nString:
 
     def test_create_with_english_only(self):
         """Create I18nString with only English."""
-        i18n = I18nString(en_US="Hello")
+        i18n = I18nString(en_US='Hello')
 
-        assert i18n.en_US == "Hello"
+        assert i18n.en_US == 'Hello'
         assert i18n.zh_Hans is None
 
     def test_create_with_multiple_languages(self):
         """Create I18nString with multiple languages."""
         i18n = I18nString(
-            en_US="Hello",
-            zh_Hans="你好",
-            zh_Hant="你好",
-            ja_JP="こんにちは",
+            en_US='Hello',
+            zh_Hans='你好',
+            zh_Hant='你好',
+            ja_JP='こんにちは',
         )
 
-        assert i18n.en_US == "Hello"
-        assert i18n.zh_Hans == "你好"
-        assert i18n.zh_Hant == "你好"
-        assert i18n.ja_JP == "こんにちは"
+        assert i18n.en_US == 'Hello'
+        assert i18n.zh_Hans == '你好'
+        assert i18n.zh_Hant == '你好'
+        assert i18n.ja_JP == 'こんにちは'
 
     def test_to_dict_with_english_only(self):
         """to_dict returns only non-None fields."""
-        i18n = I18nString(en_US="Hello")
+        i18n = I18nString(en_US='Hello')
 
         result = i18n.to_dict()
 
-        assert result == {"en_US": "Hello"}
+        assert result == {'en_US': 'Hello'}
 
     def test_to_dict_with_multiple_languages(self):
         """to_dict returns all non-None fields."""
         i18n = I18nString(
-            en_US="Hello",
-            zh_Hans="你好",
+            en_US='Hello',
+            zh_Hans='你好',
         )
 
         result = i18n.to_dict()
 
-        assert result == {"en_US": "Hello", "zh_Hans": "你好"}
+        assert result == {'en_US': 'Hello', 'zh_Hans': '你好'}
 
     def test_to_dict_excludes_none(self):
         """to_dict excludes None values."""
         i18n = I18nString(
-            en_US="Hello",
+            en_US='Hello',
             zh_Hans=None,
-            ja_JP="こんにちは",
+            ja_JP='こんにちは',
         )
 
         result = i18n.to_dict()
 
-        assert "zh_Hans" not in result
-        assert "en_US" in result
-        assert "ja_JP" in result
+        assert 'zh_Hans' not in result
+        assert 'en_US' in result
+        assert 'ja_JP' in result
 
     def test_to_dict_all_languages(self):
         """to_dict with all supported languages."""
         i18n = I18nString(
-            en_US="Hello",
-            zh_Hans="你好",
-            zh_Hant="你好",
-            ja_JP="こんにちは",
-            th_TH="สวัสดี",
-            vi_VN="Xin chào",
-            es_ES="Hola",
+            en_US='Hello',
+            zh_Hans='你好',
+            zh_Hant='你好',
+            ja_JP='こんにちは',
+            th_TH='สวัสดี',
+            vi_VN='Xin chào',
+            es_ES='Hola',
         )
 
         result = i18n.to_dict()
@@ -92,30 +92,30 @@ class TestMetadata:
         from langbot.pkg.discover.engine import I18nString
 
         metadata = Metadata(
-            name="test-component",
-            label=I18nString(en_US="Test Component"),
+            name='test-component',
+            label=I18nString(en_US='Test Component'),
         )
 
-        assert metadata.name == "test-component"
-        assert metadata.label.en_US == "Test Component"
+        assert metadata.name == 'test-component'
+        assert metadata.label.en_US == 'Test Component'
 
     def test_create_with_all_fields(self):
         """Create Metadata with all optional fields."""
         from langbot.pkg.discover.engine import I18nString
 
         metadata = Metadata(
-            name="test-component",
-            label=I18nString(en_US="Test"),
-            description=I18nString(en_US="A test component"),
-            version="1.0.0",
-            icon="test-icon",
-            author="Test Author",
-            repository="https://github.com/test/repo",
+            name='test-component',
+            label=I18nString(en_US='Test'),
+            description=I18nString(en_US='A test component'),
+            version='1.0.0',
+            icon='test-icon',
+            author='Test Author',
+            repository='https://github.com/test/repo',
         )
 
-        assert metadata.version == "1.0.0"
-        assert metadata.icon == "test-icon"
-        assert metadata.author == "Test Author"
+        assert metadata.version == '1.0.0'
+        assert metadata.icon == 'test-icon'
+        assert metadata.author == 'Test Author'
 
 
 class TestComponentManifest:

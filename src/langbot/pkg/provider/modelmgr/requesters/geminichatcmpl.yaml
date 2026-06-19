@@ -7,6 +7,7 @@ metadata:
     zh_Hans: Google Gemini
   icon: gemini.svg
 spec:
+  litellm_provider: gemini
   config:
   - name: base_url
     label:
@@ -22,8 +23,10 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "gemini Gemini 谷歌 google Google 双子座 bard flash pro text-embedding-004"
   support_type:
   - llm
+  - text-embedding
   provider_category: manufacturer
 execution:
   python:

@@ -7,6 +7,7 @@ metadata:
     zh_Hans: Ollama
   icon: ollama.svg
 spec:
+  litellm_provider: ollama
   config:
   - name: base_url
     label:
@@ -22,6 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "ollama Ollama 本地 local 本地部署 self-hosted llama gguf 私有化"
   support_type:
   - llm
   - text-embedding

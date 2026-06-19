@@ -60,10 +60,12 @@ class TestProxyManager:
 
     async def test_initialize_config_overrides_env(self):
         """Config proxy overrides environment variables."""
-        mock_app = self._create_mock_app(proxy_config={
-            'http': 'http://config-proxy:8080',
-            'https': 'https://config-proxy:8443',
-        })
+        mock_app = self._create_mock_app(
+            proxy_config={
+                'http': 'http://config-proxy:8080',
+                'https': 'https://config-proxy:8443',
+            }
+        )
 
         with patch.dict(os.environ, {'HTTP_PROXY': 'http://env-proxy:8080'}):
             pm = ProxyManager(mock_app)
@@ -74,10 +76,12 @@ class TestProxyManager:
 
     async def test_initialize_sets_env_variables(self):
         """initialize sets proxy to environment variables."""
-        mock_app = self._create_mock_app(proxy_config={
-            'http': 'http://test-proxy:8080',
-            'https': 'https://test-proxy:8443',
-        })
+        mock_app = self._create_mock_app(
+            proxy_config={
+                'http': 'http://test-proxy:8080',
+                'https': 'https://test-proxy:8443',
+            }
+        )
 
         pm = ProxyManager(mock_app)
         await pm.initialize()
@@ -143,9 +147,11 @@ class TestProxyManager:
 
     async def test_initialize_http_only_config(self):
         """initialize handles http-only config."""
-        mock_app = self._create_mock_app(proxy_config={
-            'http': 'http://http-only:8080',
-        })
+        mock_app = self._create_mock_app(
+            proxy_config={
+                'http': 'http://http-only:8080',
+            }
+        )
 
         # Clear any existing proxy env vars
         env_backup = {}

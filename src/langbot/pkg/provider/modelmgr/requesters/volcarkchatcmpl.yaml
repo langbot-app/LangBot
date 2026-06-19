@@ -7,6 +7,7 @@ metadata:
     zh_Hans: 火山方舟
   icon: volcark.svg
 spec:
+  litellm_provider: openai
   config:
   - name: base_url
     label:
@@ -22,8 +23,11 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "volcark volcengine 火山 火山方舟 火山引擎 ark 方舟 字节 bytedance doubao 豆包 seed embedding rerank"
   support_type:
   - llm
+  - text-embedding
+  - rerank
   provider_category: maas
 execution:
   python:

@@ -47,6 +47,7 @@ def mock_circular_import_chain():
         clear=clear,
     ):
         import langbot.pkg.api.http.controller.groups.pipelines.embed as _embed  # noqa: E402, F401
+
         yield
 
 
@@ -55,10 +56,12 @@ def fake_embed_app():
     """Create FakeApp with embed widget services (module scope)."""
     app = FakeApp()
 
-    app.instance_config.data.update({
-        'api': {'port': 5300},
-        'system': {'allow_modify_login_info': True, 'limitation': {}},
-    })
+    app.instance_config.data.update(
+        {
+            'api': {'port': 5300},
+            'system': {'allow_modify_login_info': True, 'limitation': {}},
+        }
+    )
 
     # Create mock web_page_bot with valid UUID format
     mock_bot_entity = Mock()
@@ -83,9 +86,7 @@ def fake_embed_app():
 
     # WebSocket proxy bot with adapter
     mock_websocket_adapter = Mock()
-    mock_websocket_adapter.get_websocket_messages = Mock(return_value=[
-        {'id': 'msg-1', 'content': 'test message'}
-    ])
+    mock_websocket_adapter.get_websocket_messages = Mock(return_value=[{'id': 'msg-1', 'content': 'test message'}])
     mock_websocket_adapter.reset_session = Mock()
     mock_websocket_adapter.handle_websocket_message = AsyncMock()
 
@@ -117,9 +118,7 @@ class TestEmbedWidgetEndpoint:
     @pytest.mark.asyncio
     async def test_get_widget_js_success(self, quart_test_client):
         """GET /api/v1/embed/{bot_uuid}/widget.js returns JS."""
-        response = await quart_test_client.get(
-            '/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/widget.js'
-        )
+        response = await quart_test_client.get('/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/widget.js')
 
         assert response.status_code == 200
         assert 'javascript' in response.content_type
@@ -127,18 +126,14 @@ class TestEmbedWidgetEndpoint:
     @pytest.mark.asyncio
     async def test_get_widget_js_invalid_uuid(self, quart_test_client):
         """GET widget.js with invalid UUID returns 400."""
-        response = await quart_test_client.get(
-            '/api/v1/embed/invalid-uuid/widget.js'
-        )
+        response = await quart_test_client.get('/api/v1/embed/invalid-uuid/widget.js')
 
         assert response.status_code == 400
 
     @pytest.mark.asyncio
     async def test_get_widget_js_bot_not_found(self, quart_test_client):
         """GET widget.js for non-existent bot returns 404."""
-        response = await quart_test_client.get(
-            '/api/v1/embed/00000000-0000-0000-0000-000000000000/widget.js'
-        )
+        response = await quart_test_client.get('/api/v1/embed/00000000-0000-0000-0000-000000000000/widget.js')
 
         assert response.status_code == 404
 
@@ -164,8 +159,7 @@ class TestEmbedTurnstileVerifyEndpoint:
     async def test_turnstile_verify_no_secret(self, quart_test_client):
         """POST turnstile verify without secret returns dummy token."""
         response = await quart_test_client.post(
-            '/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/turnstile/verify',
-            json={'token': 'test-token'}
+            '/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/turnstile/verify', json={'token': 'test-token'}
         )
 
         assert response.status_code == 200
@@ -177,8 +171,7 @@ class TestEmbedTurnstileVerifyEndpoint:
     async def test_turnstile_verify_invalid_uuid(self, quart_test_client):
         """POST turnstile verify with invalid UUID returns 400."""
         response = await quart_test_client.post(
-            '/api/v1/embed/invalid-uuid/turnstile/verify',
-            json={'token': 'test-token'}
+            '/api/v1/embed/invalid-uuid/turnstile/verify', json={'token': 'test-token'}
         )
 
         assert response.status_code == 400
@@ -187,8 +180,7 @@ class TestEmbedTurnstileVerifyEndpoint:
     async def test_turnstile_verify_missing_token(self, quart_test_client):
         """POST turnstile verify without token returns 400."""
         response = await quart_test_client.post(
-            '/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/turnstile/verify',
-            json={}
+            '/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/turnstile/verify', json={}
         )
 
         assert response.status_code == 400
@@ -203,7 +195,7 @@ class TestEmbedMessagesEndpoint:
         """GET messages/person returns messages."""
         response = await quart_test_client.get(
             '/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/messages/person',
-            headers={'Authorization': 'Bearer 1234567890.dummy'}
+            headers={'Authorization': 'Bearer 1234567890.dummy'},
         )
 
         assert response.status_code == 200
@@ -216,7 +208,7 @@ class TestEmbedMessagesEndpoint:
         """GET messages/group returns messages."""
         response = await quart_test_client.get(
             '/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/messages/group',
-            headers={'Authorization': 'Bearer 1234567890.dummy'}
+            headers={'Authorization': 'Bearer 1234567890.dummy'},
         )
 
         assert response.status_code == 200
@@ -226,7 +218,7 @@ class TestEmbedMessagesEndpoint:
         """GET messages with invalid session_type returns 400."""
         response = await quart_test_client.get(
             '/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/messages/invalid',
-            headers={'Authorization': 'Bearer 1234567890.dummy'}
+            headers={'Authorization': 'Bearer 1234567890.dummy'},
         )
 
         assert response.status_code == 400
@@ -241,7 +233,7 @@ class TestEmbedResetEndpoint:
         """POST reset/person resets session."""
         response = await quart_test_client.post(
             '/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/reset/person',
-            headers={'Authorization': 'Bearer 1234567890.dummy'}
+            headers={'Authorization': 'Bearer 1234567890.dummy'},
         )
 
         assert response.status_code == 200
@@ -252,8 +244,7 @@ class TestEmbedResetEndpoint:
     async def test_reset_session_invalid_uuid(self, quart_test_client):
         """POST reset with invalid UUID returns 400."""
         response = await quart_test_client.post(
-            '/api/v1/embed/invalid-uuid/reset/person',
-            headers={'Authorization': 'Bearer 1234567890.dummy'}
+            '/api/v1/embed/invalid-uuid/reset/person', headers={'Authorization': 'Bearer 1234567890.dummy'}
         )
 
         assert response.status_code == 400
@@ -269,7 +260,7 @@ class TestEmbedFeedbackEndpoint:
         response = await quart_test_client.post(
             '/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/feedback',
             headers={'Authorization': 'Bearer 1234567890.dummy'},
-            json={'message_id': 'msg-123', 'feedback_type': 1}
+            json={'message_id': 'msg-123', 'feedback_type': 1},
         )
 
         assert response.status_code == 200
@@ -283,7 +274,7 @@ class TestEmbedFeedbackEndpoint:
         response = await quart_test_client.post(
             '/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/feedback',
             headers={'Authorization': 'Bearer 1234567890.dummy'},
-            json={'message_id': 'msg-123', 'feedback_type': 2}
+            json={'message_id': 'msg-123', 'feedback_type': 2},
         )
 
         assert response.status_code == 200
@@ -294,7 +285,7 @@ class TestEmbedFeedbackEndpoint:
         response = await quart_test_client.post(
             '/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/feedback',
             headers={'Authorization': 'Bearer 1234567890.dummy'},
-            json={'message_id': 'msg-123', 'feedback_type': 99}
+            json={'message_id': 'msg-123', 'feedback_type': 99},
         )
 
         assert response.status_code == 400

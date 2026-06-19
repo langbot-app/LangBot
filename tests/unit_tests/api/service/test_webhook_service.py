@@ -132,6 +132,7 @@ class TestWebhookServiceCreateWebhook:
 
         # execute_async returns different results
         call_count = 0
+
         async def mock_execute(query):
             nonlocal call_count
             call_count += 1
@@ -181,6 +182,7 @@ class TestWebhookServiceCreateWebhook:
         )
 
         call_count = 0
+
         async def mock_execute(query):
             nonlocal call_count
             call_count += 1
@@ -217,6 +219,7 @@ class TestWebhookServiceCreateWebhook:
         created_webhook = _create_mock_webhook(webhook_id=1, enabled=False)
 
         call_count = 0
+
         async def mock_execute(query):
             nonlocal call_count
             call_count += 1
@@ -225,9 +228,7 @@ class TestWebhookServiceCreateWebhook:
             return _create_mock_result(first_item=created_webhook)
 
         ap.persistence_mgr.execute_async = AsyncMock(side_effect=mock_execute)
-        ap.persistence_mgr.serialize_model = Mock(
-            return_value={'id': 1, 'enabled': False}
-        )
+        ap.persistence_mgr.serialize_model = Mock(return_value={'id': 1, 'enabled': False})
 
         service = WebhookService(ap)
 

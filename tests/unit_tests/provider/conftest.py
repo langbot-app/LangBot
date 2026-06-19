@@ -88,7 +88,10 @@ class AnotherFakeRequester(requester.ProviderAPIRequester):
 
     async def invoke_llm(self, query, model, messages, funcs=None, extra_args={}, remove_think=False):
         import langbot_plugin.api.entities.builtin.provider.message as provider_message
-        return provider_message.Message(role='assistant', content=[provider_message.ContentElement(type='text', text='Another response')])
+
+        return provider_message.Message(
+            role='assistant', content=[provider_message.ContentElement(type='text', text='Another response')]
+        )
 
     async def invoke_rerank(self, model, query: str, documents: list, extra_args={}):
         """Return fake rerank results."""
@@ -135,8 +138,10 @@ def mock_app_for_modelmgr():
 
     # Fake persistence manager - returns empty results by default
     app.persistence_mgr = SimpleNamespace()
+
     async def default_execute(query):
         return _make_mock_result([])
+
     app.persistence_mgr.execute_async = AsyncMock(side_effect=default_execute)
 
     # Fake discover engine
@@ -165,9 +170,7 @@ def fake_requester_registry(mock_app_for_modelmgr):
     fake_component = _create_fake_component('fake-requester', FakeProviderAPIRequester)
     another_component = _create_fake_component('another-fake-requester', AnotherFakeRequester)
 
-    app.discover.get_components_by_kind = Mock(
-        return_value=[fake_component, another_component]
-    )
+    app.discover.get_components_by_kind = Mock(return_value=[fake_component, another_component])
 
     model_mgr = ModelManager(app)
     return model_mgr
