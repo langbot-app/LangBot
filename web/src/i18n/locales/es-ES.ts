@@ -144,6 +144,13 @@ const esES = {
     noApiKeys: 'No hay claves API configuradas',
     apiKeyHint:
       'Las claves API permiten a sistemas externos acceder a las API del servicio LangBot',
+    mcpTab: 'MCP',
+    mcpHint: 'LangBot exposes an MCP (Model Context Protocol) server so AI agents can manage this instance. It uses the same API keys as the Service API.',
+    mcpEndpoint: 'MCP Endpoint',
+    mcpAuthTitle: 'Authentication',
+    mcpAuthDesc: 'Authenticate with any API key from the API Keys tab, sent as a header:',
+    mcpGlobalKeyNote: 'You can also set a global API key in config.yaml (api.global_api_key) to use without logging in.',
+    mcpClientConfigTitle: 'Example MCP client config',
     webhooks: 'Webhooks',
     createWebhook: 'Crear Webhook',
     webhookName: 'Nombre del Webhook',

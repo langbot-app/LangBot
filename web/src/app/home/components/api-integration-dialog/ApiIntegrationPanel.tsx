@@ -86,6 +86,11 @@ export default function ApiIntegrationPanel({
   );
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
+  // MCP server endpoint, derived from the current origin. The backend serves
+  // the MCP server at /mcp on the same host/port as the HTTP API + web UI.
+  const mcpEndpoint =
+    typeof window !== 'undefined' ? `${window.location.origin}/mcp` : '/mcp';
+
   // 清理 body 样式，防止嵌套对话框关闭后页面无法交互
   useEffect(() => {
     if (!deleteKeyId && !deleteWebhookId) {
@@ -262,6 +267,7 @@ export default function ApiIntegrationPanel({
           <TabsList>
             <TabsTrigger value="apikeys">{t('common.apiKeys')}</TabsTrigger>
             <TabsTrigger value="webhooks">{t('common.webhooks')}</TabsTrigger>
+            <TabsTrigger value="mcp">{t('common.mcpTab')}</TabsTrigger>
           </TabsList>
           {activeTab === 'apikeys' ? (
             <Button
@@ -272,7 +278,7 @@ export default function ApiIntegrationPanel({
               <Plus className="h-4 w-4" />
               {t('common.createApiKey')}
             </Button>
-          ) : (
+          ) : activeTab === 'webhooks' ? (
             <Button
               onClick={() => setShowCreateWebhookDialog(true)}
               size="sm"
@@ -281,7 +287,7 @@ export default function ApiIntegrationPanel({
               <Plus className="h-4 w-4" />
               {t('common.createWebhook')}
             </Button>
-          )}
+          ) : null}
         </PanelToolbar>
 
         {/* API Keys Tab */}
@@ -454,6 +460,73 @@ export default function ApiIntegrationPanel({
               </Table>
             </div>
           )}
+        </TabsContent>
+
+        {/* MCP Tab */}
+        <TabsContent
+          value="mcp"
+          className="min-h-0 flex-1 space-y-4 overflow-auto px-6 py-5"
+        >
+          <p className="text-sm text-muted-foreground">
+            {t('common.mcpHint')}
+          </p>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">
+              {t('common.mcpEndpoint')}
+            </label>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 truncate rounded bg-muted px-3 py-2 text-sm">
+                {mcpEndpoint}
+              </code>
+              <Button
+                variant="ghost"
+                size="sm"
+                type="button"
+                onClick={() => handleCopyKey(mcpEndpoint)}
+                title={t('common.copy')}
+              >
+                {copiedKey === mcpEndpoint ? (
+                  <Check className="h-4 w-4 text-green-600" />
+                ) : (
+                  <Copy className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">
+              {t('common.mcpAuthTitle')}
+            </label>
+            <p className="text-sm text-muted-foreground">
+              {t('common.mcpAuthDesc')}
+            </p>
+            <pre className="overflow-auto rounded bg-muted px-3 py-2 text-xs">
+              {`X-API-Key: <your-api-key>
+# or
+Authorization: Bearer <your-api-key>`}
+            </pre>
+            <p className="text-sm text-muted-foreground">
+              {t('common.mcpGlobalKeyNote')}
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">
+              {t('common.mcpClientConfigTitle')}
+            </label>
+            <pre className="overflow-auto rounded bg-muted px-3 py-2 text-xs">
+              {`{
+  "mcpServers": {
+    "langbot": {
+      "url": "${mcpEndpoint}",
+      "headers": { "X-API-Key": "<your-api-key>" }
+    }
+  }
+}`}
+            </pre>
+          </div>
         </TabsContent>
       </Tabs>
 

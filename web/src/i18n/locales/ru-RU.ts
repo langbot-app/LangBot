@@ -140,6 +140,13 @@ const ruRU = {
     noApiKeys: 'API-ключи не настроены',
     apiKeyHint:
       'API-ключи позволяют внешним системам получать доступ к API сервисов LangBot',
+    mcpTab: 'MCP',
+    mcpHint: 'LangBot exposes an MCP (Model Context Protocol) server so AI agents can manage this instance. It uses the same API keys as the Service API.',
+    mcpEndpoint: 'MCP Endpoint',
+    mcpAuthTitle: 'Authentication',
+    mcpAuthDesc: 'Authenticate with any API key from the API Keys tab, sent as a header:',
+    mcpGlobalKeyNote: 'You can also set a global API key in config.yaml (api.global_api_key) to use without logging in.',
+    mcpClientConfigTitle: 'Example MCP client config',
     webhooks: 'Вебхуки',
     createWebhook: 'Создать вебхук',
     webhookName: 'Имя вебхука',
