@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Tool
+metadata:
+  name: qa_plugin_sleep
+  label:
+    en_US: QA Plugin Sleep
+    zh_Hans: QA 插件延迟
+  description:
+    en_US: Sleeps for a bounded number of seconds and returns deterministic text.
+    zh_Hans: 延迟指定秒数后返回确定性文本。
+spec:
+  parameters:
+    type: object
+    properties:
+      seconds:
+        type: number
+        description: Seconds to sleep, clamped to the 0-15 range.
+      text:
+        type: string
+        description: Text to include in the deterministic result.
+    required:
+      - seconds
+      - text
+  llm_prompt: Sleep for a bounded duration and return qa-plugin-smoke sleep text for steering tests.
+execution:
+  python:
+    path: qa_plugin_sleep.py
+    attr: QAPluginSleepTool

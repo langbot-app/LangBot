@@ -1,0 +1,93 @@
+[
+  {
+    "id": "qa-agent-runner-behaviors",
+    "title": "Deterministic AgentRunner behavior matrix",
+    "kind": "json",
+    "path": "fixtures/agent-runner/qa-runner-behaviors.json",
+    "related_cases": [
+      "agent-runner-behavior-matrix",
+      "agent-runner-ledger-invariants",
+      "agent-runner-runtime-chaos"
+    ],
+    "checks": ["exists"]
+  },
+  {
+    "id": "qa-agent-runner-source",
+    "title": "QA deterministic AgentRunner fixture source",
+    "kind": "plugin_source",
+    "path": "fixtures/plugins/qa-agent-runner/manifest.yaml",
+    "related_cases": [
+      "agent-runner-fixture-contract",
+      "agent-runner-behavior-matrix",
+      "agent-runner-live-install",
+      "agent-runner-qa-debug-chat"
+    ],
+    "checks": ["exists", "qa_agent_runner_source"]
+  },
+  {
+    "id": "qa-agent-runner-package",
+    "title": "QA deterministic AgentRunner prebuilt package",
+    "kind": "plugin_package",
+    "path": "fixtures/plugins/qa-agent-runner/dist/qa-agent-runner-0.1.0.lbpkg",
+    "related_cases": [
+      "agent-runner-fixture-contract",
+      "agent-runner-live-install",
+      "agent-runner-qa-debug-chat"
+    ],
+    "checks": ["exists", "zip_package"]
+  },
+  {
+    "id": "mcp-stdio-echo-server",
+    "title": "MCP stdio qa_mcp_echo server",
+    "kind": "python",
+    "path": "fixtures/mcp/qa_mcp_echo_server.py",
+    "related_cases": ["mcp-stdio-tool-call"],
+    "checks": ["exists", "direct_mcp_script", "langbot_registration_script"]
+  },
+  {
+    "id": "rag-sentinel-doc",
+    "title": "LangRAG sentinel text document",
+    "kind": "text",
+    "path": "fixtures/rag/sentinel-doc.txt",
+    "related_cases": ["langrag-kb-retrieve", "local-agent-rag-debug-chat"],
+    "checks": ["exists"]
+  },
+  {
+    "id": "rag-parser-golden-html",
+    "title": "LangRAG parser golden HTML document",
+    "kind": "html",
+    "path": "fixtures/rag/parser-golden.html",
+    "related_cases": ["langrag-parser-golden-e2e"],
+    "checks": ["exists"]
+  },
+  {
+    "id": "multimodal-red-square",
+    "title": "64x64 red-square image fixture",
+    "kind": "base64_png",
+    "path": "fixtures/multimodal/red-square.png.base64",
+    "related_cases": ["local-agent-multimodal-debug-chat", "local-agent-rag-multimodal-debug-chat"],
+    "checks": ["exists"]
+  },
+  {
+    "id": "qa-plugin-smoke-source",
+    "title": "QA plugin smoke fixture source",
+    "kind": "plugin_source",
+    "path": "fixtures/plugins/qa-plugin-smoke/manifest.yaml",
+    "related_cases": [
+      "qa-plugin-smoke-live-install",
+      "plugin-e2e-smoke",
+      "local-agent-effective-prompt-debug-chat",
+      "local-agent-plugin-tool-call-debug-chat",
+      "local-agent-steering-debug-chat"
+    ],
+    "checks": ["exists"]
+  },
+  {
+    "id": "qa-plugin-smoke-package",
+    "title": "QA plugin smoke prebuilt package",
+    "kind": "plugin_package",
+    "path": "fixtures/plugins/qa-plugin-smoke/dist/qa-plugin-smoke-0.1.0.lbpkg",
+    "related_cases": ["qa-plugin-smoke-live-install", "plugin-e2e-smoke"],
+    "checks": ["exists", "zip_package"]
+  }
+]

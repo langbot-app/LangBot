@@ -1,0 +1,76 @@
+id: local-agent-rag-debug-chat
+title: "Local Agent Debug Chat answers from a LangRAG knowledge base"
+mode: agent-browser
+area: pipeline
+type: regression
+priority: p1
+risk: high
+ci_eligible: false
+tags:
+  - local-agent
+  - langrag
+  - pipeline
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation: scripts/e2e/pipeline-debug-chat.mjs
+automation_env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+  - LANGBOT_LOCAL_AGENT_RAG_KB_UUID
+automation_pipeline_url_env: LANGBOT_LOCAL_AGENT_PIPELINE_URL
+automation_pipeline_name_env: LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_expected_runner_id: "plugin:langbot/local-agent/default"
+automation_runner_config_patch_json: '{"knowledge-bases":["${LANGBOT_LOCAL_AGENT_RAG_KB_UUID}"]}'
+automation_restore_runner_config: "1"
+automation_reset_debug_chat: "1"
+automation_prompt: "Using the knowledge base, what is the local agent runner retrieval sentinel? Return only the sentinel."
+automation_expected_text: "azalea-cobalt-7421"
+setup_automation:
+  - "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env"
+  - "node:scripts/e2e/ensure-langrag-sentinel-kb.mjs --write-env"
+setup_provides_env:
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+  - LANGBOT_LOCAL_AGENT_RAG_KB_UUID
+preconditions:
+  - "The target pipeline already has a text-capable model route that is available for this run."
+steps:
+  - "Ensure case langrag-kb-retrieve has produced a knowledge base containing sentinel azalea-cobalt-7421."
+  - "Open LANGBOT_FRONTEND_URL."
+  - "Navigate to Pipelines and open the target pipeline."
+  - "Open Configuration > AI."
+  - "Use runner Default and add the LangRAG knowledge base to Knowledge Bases."
+  - "Save the pipeline."
+  - "Open Debug Chat."
+  - "Send: Using the knowledge base, what is the local agent runner retrieval sentinel? Return only the sentinel."
+checks:
+  - "UI: The AI config shows the selected knowledge base under Knowledge Bases."
+  - "UI: The pipeline saves successfully."
+  - "UI: Debug Chat shows a Bot message containing azalea-cobalt-7421."
+  - "Console: No unexpected frontend errors appear during configuration or chat."
+  - "Logs: Backend logs show the debug chat request completed instead of plugin/runtime timeout."
+  - "API diagnostic: pipeline-config-diagnostic.json shows knowledge-bases and model were temporarily patched."
+  - "API diagnostic: pipeline-config-restore-diagnostic.json shows the original runner config was restored."
+evidence_required:
+  - ui
+  - screenshot
+  - console
+  - backend_log
+  - api_diagnostic
+diagnostics:
+  - "Use GET /api/v1/pipelines/{uuid} only to confirm the saved runner_config contains the knowledge base uuid."
+  - "If the bot ignores the knowledge base, rerun Retrieve Test before debugging the runner."
+troubleshooting:
+  - plugin-runtime-timeout
+  - proxy-env-mismatch
+  - survey-widget-blocks-debug-chat

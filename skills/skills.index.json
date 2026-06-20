@@ -1,0 +1,1472 @@
+{
+  "generated_by": "lbs",
+  "skills": [
+    {
+      "directory": "langbot-deploy",
+      "name": "langbot-deploy",
+      "description": "Deploy and configure a LangBot instance — Docker / Docker Compose, Kubernetes, the config.yaml model, the Box sandbox runtime, the plugin runtime, and the global API key. Use when installing, deploying, upgrading, or configuring LangBot in production or self-hosted environments. Triggers on \"deploy langbot\", \"langbot docker\", \"langbot compose\", \"langbot kubernetes\", \"langbot config.yaml\", \"langbot box runtime\", \"langbot global api key\".",
+      "references": [],
+      "cases": [],
+      "case_summaries": [],
+      "suites": [],
+      "suite_summaries": [],
+      "fixtures": [],
+      "troubleshooting": [],
+      "troubleshooting_summaries": []
+    },
+    {
+      "directory": "langbot-dev",
+      "name": "langbot-dev",
+      "description": "Develop, build, and debug the LangBot core backend and web frontend. Use when working inside the LangBot repository — backend (Python/Quart, src/langbot/pkg), the Vite/React web UI, HTTP API controllers/services, Alembic migrations, or the MCP server. Covers the dev environment (uv, pnpm), repo layout, the API auth model (user token / API key / global key), adding API endpoints, and the rule that API changes must update the MCP server and skills. Triggers on \"langbot backend\", \"langbot dev\", \"langbot api\", \"add langbot endpoint\", \"langbot migration\".",
+      "references": [],
+      "cases": [],
+      "case_summaries": [],
+      "suites": [],
+      "suite_summaries": [],
+      "fixtures": [],
+      "troubleshooting": [],
+      "troubleshooting_summaries": []
+    },
+    {
+      "directory": "langbot-eba-adapter-dev",
+      "name": "langbot-eba-adapter-dev",
+      "description": "Build, refactor, and test LangBot platform adapters for the Event-Based Agents architecture. Use when adding or migrating Telegram, Discord, or other messaging platform adapters to the EBA adapter layout, validating unified event/message conversion, writing live adapter probes, or using standalone plugin runtime plus Computer Use for end-to-end platform testing.",
+      "references": [],
+      "cases": [],
+      "case_summaries": [],
+      "suites": [],
+      "suite_summaries": [],
+      "fixtures": [],
+      "troubleshooting": [],
+      "troubleshooting_summaries": []
+    },
+    {
+      "directory": "langbot-env-setup",
+      "name": "langbot-env-setup",
+      "description": "Prepare a local LangBot development and testing environment for an AI agent. Use when setting up WSL or Linux development, shared local URL variables, proxy variables, backend/frontend startup, Playwright MCP browser access, GitHub OAuth browser login, persisted Chrome profiles, or future Codex computer-use environment paths.",
+      "references": [
+        "references/browser-access-selection.md",
+        "references/computer-use.md",
+        "references/oauth-browser-profile.md",
+        "references/playwright-mcp.md",
+        "references/proxy.md",
+        "references/service-startup.md",
+        "references/wsl-notes.md"
+      ],
+      "cases": [],
+      "case_summaries": [],
+      "suites": [],
+      "suite_summaries": [],
+      "fixtures": [],
+      "troubleshooting": [],
+      "troubleshooting_summaries": []
+    },
+    {
+      "directory": "langbot-mcp-ops",
+      "name": "langbot-mcp-ops",
+      "description": "Operate a LangBot instance through its built-in MCP (Model Context Protocol) server. Use when an AI agent needs to manage LangBot — list/create/update/delete bots, pipelines, models, knowledge bases, MCP servers, and skills — over MCP instead of raw HTTP. Covers the /mcp endpoint, API-key auth (web-UI lbk_ keys and the config.yaml global key), the tool surface, and client configuration. Triggers on \"langbot mcp\", \"manage langbot via mcp\", \"langbot /mcp\", \"langbot mcp server\".",
+      "references": [],
+      "cases": [],
+      "case_summaries": [],
+      "suites": [],
+      "suite_summaries": [],
+      "fixtures": [],
+      "troubleshooting": [],
+      "troubleshooting_summaries": []
+    },
+    {
+      "directory": "langbot-plugin-dev",
+      "name": "langbot-plugin-dev",
+      "description": "Develop, debug, and test LangBot plugins. Use when creating new LangBot plugins, fixing plugin bugs, setting up a LangBot test environment, or testing plugins via WebSocket. Covers plugin component architecture (EventListener, Command, Tool), the plugin SDK API (invoke_llm, get_llm_models, send_message, plugin storage), common pitfalls, and automated WebSocket-based testing. Triggers on \"langbot plugin\", \"lbp\", \"GroupChatSummary\", \"plugin debug\", \"langbot test\".",
+      "references": [
+        "references/test-env-setup.md"
+      ],
+      "cases": [],
+      "case_summaries": [],
+      "suites": [],
+      "suite_summaries": [],
+      "fixtures": [],
+      "troubleshooting": [],
+      "troubleshooting_summaries": []
+    },
+    {
+      "directory": "langbot-skills-maintenance",
+      "name": "langbot-skills-maintenance",
+      "description": "Maintain the langbot-skills repository with low duplication. Use when adding, editing, or auditing LangBot skills, references, cases, troubleshooting entries, indexes, or periodic entropy-control checks for this skills repository.",
+      "references": [
+        "references/curation-workflow.md"
+      ],
+      "cases": [],
+      "case_summaries": [],
+      "suites": [],
+      "suite_summaries": [],
+      "fixtures": [],
+      "troubleshooting": [],
+      "troubleshooting_summaries": []
+    },
+    {
+      "directory": "langbot-space-ops",
+      "name": "langbot-space-ops",
+      "description": "Browse and search the LangBot Space marketplaces (plugins, MCP servers, skills) through the Space MCP server. Use when an AI agent needs to discover LangBot extensions on space.langbot.app over MCP. Covers the /mcp endpoint, Personal Access Token (PAT) auth, the tool surface, and client configuration. Triggers on \"langbot space mcp\", \"search langbot plugins\", \"langbot marketplace mcp\", \"space.langbot.app mcp\".",
+      "references": [],
+      "cases": [],
+      "case_summaries": [],
+      "suites": [],
+      "suite_summaries": [],
+      "fixtures": [],
+      "troubleshooting": [],
+      "troubleshooting_summaries": []
+    },
+    {
+      "directory": "langbot-testing",
+      "name": "langbot-testing",
+      "description": "Test LangBot WebUI and core product flows with an automated browser and backend logs. Use when validating the configured LangBot frontend, pipeline Debug Chat, model provider setup and test buttons, bot and knowledge-base UI flows, or troubleshooting failed LangBot end-to-end tests.",
+      "references": [
+        "references/agent-runner-qa-workflow.md",
+        "references/agent-runner-release-gate.md",
+        "references/dify-agent-runner.md",
+        "references/langrag-knowledge-base.md",
+        "references/local-agent-runner-coverage.md",
+        "references/local-agent-runner.md",
+        "references/mcp-stdio-testing.md",
+        "references/model-provider-testing.md",
+        "references/pipeline-debug-chat.md",
+        "references/plugin-e2e-smoke.md",
+        "references/sandbox-skill-authoring.md",
+        "references/troubleshooting.md",
+        "references/web-ui-testing.md"
+      ],
+      "cases": [
+        "acp-agent-runner-debug-chat",
+        "agent-runner-async-db-readiness",
+        "agent-runner-behavior-matrix",
+        "agent-runner-fixture-contract",
+        "agent-runner-ledger-concurrency",
+        "agent-runner-ledger-contention",
+        "agent-runner-ledger-invariants",
+        "agent-runner-ledger-stress",
+        "agent-runner-live-install",
+        "agent-runner-qa-debug-chat",
+        "agent-runner-release-preflight",
+        "agent-runner-runtime-chaos",
+        "dify-agent-debug-chat",
+        "langrag-kb-retrieve",
+        "langrag-parser-golden-e2e",
+        "langrag-sentinel-kb-discover",
+        "local-agent-basic-debug-chat",
+        "local-agent-context-compaction-debug-chat",
+        "local-agent-effective-prompt-debug-chat",
+        "local-agent-multimodal-debug-chat",
+        "local-agent-nonstreaming-debug-chat",
+        "local-agent-plugin-tool-call-debug-chat",
+        "local-agent-rag-debug-chat",
+        "local-agent-rag-multimodal-debug-chat",
+        "local-agent-steering-debug-chat",
+        "mcp-stdio-register",
+        "mcp-stdio-tool-call",
+        "pipeline-debug-chat",
+        "plugin-e2e-smoke",
+        "provider-deepseek",
+        "qa-plugin-smoke-live-install",
+        "sandbox-skill-authoring-e2e",
+        "sandbox-skill-authoring-edit-existing-e2e",
+        "webui-login-state"
+      ],
+      "case_summaries": [
+        {
+          "id": "acp-agent-runner-debug-chat",
+          "title": "ACP AgentRunner can answer through Debug Chat using real remote Claude",
+          "mode": "agent-browser",
+          "area": "pipeline",
+          "type": "regression",
+          "priority": "p2",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "agent-runner",
+            "acp",
+            "claude",
+            "external-runner",
+            "pipeline"
+          ],
+          "automation": "scripts/e2e/pipeline-debug-chat.mjs",
+          "setup_automation": [
+            "node:scripts/e2e/ensure-acp-agent-runner-pipeline.mjs --write-env"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_ACP_AGENT_RUNNER_PIPELINE_URL",
+            "LANGBOT_ACP_AGENT_RUNNER_PIPELINE_NAME"
+          ],
+          "evidence_required": [
+            "ui",
+            "console",
+            "backend_log"
+          ]
+        },
+        {
+          "id": "agent-runner-async-db-readiness",
+          "title": "AgentRunner async DB readiness probe",
+          "mode": "probe",
+          "area": "release",
+          "type": "smoke",
+          "priority": "p0",
+          "risk": "high",
+          "ci_eligible": true,
+          "tags": [
+            "agent-runner",
+            "probe",
+            "async-db",
+            "aiosqlite"
+          ],
+          "automation": "skills/langbot-testing/probes/agent-runner-async-db-readiness.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "filesystem"
+          ]
+        },
+        {
+          "id": "agent-runner-behavior-matrix",
+          "title": "AgentRunner deterministic behavior matrix probe",
+          "mode": "probe",
+          "area": "release",
+          "type": "regression",
+          "priority": "p0",
+          "risk": "high",
+          "ci_eligible": true,
+          "tags": [
+            "agent-runner",
+            "probe",
+            "deterministic-runner",
+            "protocol"
+          ],
+          "automation": "skills/langbot-testing/probes/agent-runner-behavior-matrix.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "filesystem"
+          ]
+        },
+        {
+          "id": "agent-runner-fixture-contract",
+          "title": "QA AgentRunner fixture contract probe",
+          "mode": "probe",
+          "area": "release",
+          "type": "regression",
+          "priority": "p0",
+          "risk": "high",
+          "ci_eligible": true,
+          "tags": [
+            "agent-runner",
+            "probe",
+            "fixture",
+            "deterministic-runner"
+          ],
+          "automation": "skills/langbot-testing/probes/agent-runner-fixture-contract.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "filesystem"
+          ]
+        },
+        {
+          "id": "agent-runner-ledger-concurrency",
+          "title": "AgentRunner run ledger concurrency and auth pytest probe",
+          "mode": "probe",
+          "area": "release",
+          "type": "regression",
+          "priority": "p0",
+          "risk": "high",
+          "ci_eligible": true,
+          "tags": [
+            "agent-runner",
+            "probe",
+            "pytest",
+            "run-ledger",
+            "concurrency"
+          ],
+          "automation": "skills/langbot-testing/probes/agent-runner-ledger-concurrency.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "filesystem"
+          ]
+        },
+        {
+          "id": "agent-runner-ledger-contention",
+          "title": "AgentRunner ledger SQLite contention probe",
+          "mode": "probe",
+          "area": "release",
+          "type": "regression",
+          "priority": "p1",
+          "risk": "high",
+          "ci_eligible": true,
+          "tags": [
+            "agent-runner",
+            "probe",
+            "stress",
+            "ledger",
+            "concurrency"
+          ],
+          "automation": "skills/langbot-testing/probes/agent-runner-ledger-contention.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "filesystem"
+          ]
+        },
+        {
+          "id": "agent-runner-ledger-invariants",
+          "title": "AgentRunner ledger schema and status invariants probe",
+          "mode": "probe",
+          "area": "release",
+          "type": "regression",
+          "priority": "p0",
+          "risk": "high",
+          "ci_eligible": true,
+          "tags": [
+            "agent-runner",
+            "probe",
+            "ledger",
+            "invariant"
+          ],
+          "automation": "skills/langbot-testing/probes/agent-runner-ledger-invariants.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "filesystem"
+          ]
+        },
+        {
+          "id": "agent-runner-ledger-stress",
+          "title": "AgentRunner ledger lightweight stress probe",
+          "mode": "probe",
+          "area": "release",
+          "type": "regression",
+          "priority": "p1",
+          "risk": "high",
+          "ci_eligible": true,
+          "tags": [
+            "agent-runner",
+            "probe",
+            "stress",
+            "ledger"
+          ],
+          "automation": "skills/langbot-testing/probes/agent-runner-ledger-stress.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "filesystem"
+          ]
+        },
+        {
+          "id": "agent-runner-live-install",
+          "title": "QA AgentRunner package installs and registers in LangBot",
+          "mode": "probe",
+          "area": "release",
+          "type": "regression",
+          "priority": "p0",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "agent-runner",
+            "plugin",
+            "local-install",
+            "fixture"
+          ],
+          "automation": "scripts/e2e/install-qa-plugin-smoke.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "api_diagnostic",
+            "filesystem"
+          ]
+        },
+        {
+          "id": "agent-runner-qa-debug-chat",
+          "title": "QA AgentRunner returns deterministic output through Debug Chat",
+          "mode": "agent-browser",
+          "area": "pipeline",
+          "type": "regression",
+          "priority": "p0",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "agent-runner",
+            "pipeline",
+            "debug-chat",
+            "fixture"
+          ],
+          "automation": "scripts/e2e/pipeline-debug-chat.mjs",
+          "setup_automation": [
+            "case:agent-runner-live-install",
+            "node:scripts/e2e/ensure-qa-agent-runner-pipeline.mjs --write-env"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_QA_AGENT_RUNNER_PIPELINE_URL",
+            "LANGBOT_QA_AGENT_RUNNER_PIPELINE_NAME"
+          ],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "console",
+            "network",
+            "api_diagnostic"
+          ]
+        },
+        {
+          "id": "agent-runner-release-preflight",
+          "title": "Agent runner release gate preflight validates environment readiness",
+          "mode": "agent-browser",
+          "area": "release",
+          "type": "smoke",
+          "priority": "p0",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "agent-runner",
+            "release-gate",
+            "preflight",
+            "environment"
+          ],
+          "automation": "scripts/e2e/agent-runner-release-preflight.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "console",
+            "network",
+            "api_diagnostic"
+          ]
+        },
+        {
+          "id": "agent-runner-runtime-chaos",
+          "title": "AgentRunner SDK runtime chaos pytest probe",
+          "mode": "probe",
+          "area": "release",
+          "type": "regression",
+          "priority": "p0",
+          "risk": "high",
+          "ci_eligible": true,
+          "tags": [
+            "agent-runner",
+            "probe",
+            "pytest",
+            "runtime",
+            "sdk"
+          ],
+          "automation": "skills/langbot-testing/probes/agent-runner-runtime-chaos.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "filesystem"
+          ]
+        },
+        {
+          "id": "dify-agent-debug-chat",
+          "title": "Dify AgentRunner returns a response through Pipeline Debug Chat",
+          "mode": "agent-browser",
+          "area": "pipeline",
+          "type": "provider",
+          "priority": "p2",
+          "risk": "medium",
+          "ci_eligible": false,
+          "tags": [
+            "dify",
+            "agent-runner",
+            "pipeline"
+          ],
+          "automation": "",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "ui",
+            "console",
+            "backend_log"
+          ]
+        },
+        {
+          "id": "langrag-kb-retrieve",
+          "title": "LangRAG knowledge base ingests and retrieves a sentinel document",
+          "mode": "agent-browser",
+          "area": "knowledge",
+          "type": "feature",
+          "priority": "p1",
+          "risk": "medium",
+          "ci_eligible": false,
+          "tags": [
+            "langrag",
+            "knowledge",
+            "rag"
+          ],
+          "automation": "scripts/e2e/langrag-kb-retrieve.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "console",
+            "backend_log"
+          ]
+        },
+        {
+          "id": "langrag-parser-golden-e2e",
+          "title": "LangRAG and GeneralParsers retrieve a structured golden document",
+          "mode": "agent-browser",
+          "area": "knowledge",
+          "type": "regression",
+          "priority": "p1",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "golden",
+            "e2e",
+            "langrag",
+            "parser",
+            "knowledge"
+          ],
+          "automation": "",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "console",
+            "backend_log"
+          ]
+        },
+        {
+          "id": "langrag-sentinel-kb-discover",
+          "title": "Existing LangRAG sentinel knowledge base is discoverable",
+          "mode": "probe",
+          "area": "knowledge",
+          "type": "regression",
+          "priority": "p1",
+          "risk": "medium",
+          "ci_eligible": false,
+          "tags": [
+            "langrag",
+            "knowledge",
+            "rag",
+            "fixture"
+          ],
+          "automation": "scripts/e2e/ensure-langrag-sentinel-kb.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "api_diagnostic"
+          ]
+        },
+        {
+          "id": "local-agent-basic-debug-chat",
+          "title": "Local Agent Debug Chat returns a deterministic streaming response",
+          "mode": "agent-browser",
+          "area": "pipeline",
+          "type": "smoke",
+          "priority": "p0",
+          "risk": "medium",
+          "ci_eligible": false,
+          "tags": [
+            "local-agent",
+            "pipeline",
+            "streaming"
+          ],
+          "automation": "scripts/e2e/pipeline-debug-chat.mjs",
+          "setup_automation": [
+            "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_LOCAL_AGENT_PIPELINE_URL",
+            "LANGBOT_LOCAL_AGENT_PIPELINE_NAME"
+          ],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "console",
+            "backend_log"
+          ]
+        },
+        {
+          "id": "local-agent-context-compaction-debug-chat",
+          "title": "Local Agent compacts long Debug Chat history and preserves older facts",
+          "mode": "agent-browser",
+          "area": "pipeline",
+          "type": "regression",
+          "priority": "p1",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "local-agent",
+            "pipeline",
+            "context",
+            "compaction"
+          ],
+          "automation": "scripts/e2e/pipeline-debug-chat.mjs",
+          "setup_automation": [
+            "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_LOCAL_AGENT_PIPELINE_URL",
+            "LANGBOT_LOCAL_AGENT_PIPELINE_NAME"
+          ],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "console",
+            "backend_log",
+            "api_diagnostic"
+          ]
+        },
+        {
+          "id": "local-agent-effective-prompt-debug-chat",
+          "title": "Local Agent consumes host effective prompt after PromptPreProcessing",
+          "mode": "agent-browser",
+          "area": "pipeline",
+          "type": "regression",
+          "priority": "p1",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "local-agent",
+            "prompt",
+            "plugin",
+            "pipeline"
+          ],
+          "automation": "scripts/e2e/pipeline-debug-chat.mjs",
+          "setup_automation": [
+            "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env",
+            "case:qa-plugin-smoke-live-install"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_LOCAL_AGENT_PIPELINE_URL",
+            "LANGBOT_LOCAL_AGENT_PIPELINE_NAME"
+          ],
+          "evidence_required": [
+            "ui",
+            "console",
+            "backend_log"
+          ]
+        },
+        {
+          "id": "local-agent-multimodal-debug-chat",
+          "title": "Local Agent Debug Chat preserves uploaded image input",
+          "mode": "agent-browser",
+          "area": "pipeline",
+          "type": "regression",
+          "priority": "p2",
+          "risk": "medium",
+          "ci_eligible": false,
+          "tags": [
+            "local-agent",
+            "multimodal",
+            "pipeline"
+          ],
+          "automation": "scripts/e2e/pipeline-debug-chat.mjs",
+          "setup_automation": [
+            "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_LOCAL_AGENT_PIPELINE_URL",
+            "LANGBOT_LOCAL_AGENT_PIPELINE_NAME"
+          ],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "console",
+            "network",
+            "backend_log"
+          ]
+        },
+        {
+          "id": "local-agent-nonstreaming-debug-chat",
+          "title": "Local Agent Debug Chat returns a deterministic non-streaming response",
+          "mode": "agent-browser",
+          "area": "pipeline",
+          "type": "regression",
+          "priority": "p1",
+          "risk": "medium",
+          "ci_eligible": false,
+          "tags": [
+            "local-agent",
+            "pipeline",
+            "non-streaming"
+          ],
+          "automation": "scripts/e2e/pipeline-debug-chat.mjs",
+          "setup_automation": [
+            "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_LOCAL_AGENT_PIPELINE_URL",
+            "LANGBOT_LOCAL_AGENT_PIPELINE_NAME"
+          ],
+          "evidence_required": [
+            "ui",
+            "console",
+            "backend_log"
+          ]
+        },
+        {
+          "id": "local-agent-plugin-tool-call-debug-chat",
+          "title": "Local Agent can call a plugin-provided tool",
+          "mode": "agent-browser",
+          "area": "pipeline",
+          "type": "regression",
+          "priority": "p1",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "local-agent",
+            "plugin",
+            "tools",
+            "pipeline"
+          ],
+          "automation": "scripts/e2e/pipeline-debug-chat.mjs",
+          "setup_automation": [
+            "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env",
+            "case:qa-plugin-smoke-live-install"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_LOCAL_AGENT_PIPELINE_URL",
+            "LANGBOT_LOCAL_AGENT_PIPELINE_NAME"
+          ],
+          "evidence_required": [
+            "ui",
+            "console",
+            "backend_log",
+            "api_diagnostic"
+          ]
+        },
+        {
+          "id": "local-agent-rag-debug-chat",
+          "title": "Local Agent Debug Chat answers from a LangRAG knowledge base",
+          "mode": "agent-browser",
+          "area": "pipeline",
+          "type": "regression",
+          "priority": "p1",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "local-agent",
+            "langrag",
+            "pipeline"
+          ],
+          "automation": "scripts/e2e/pipeline-debug-chat.mjs",
+          "setup_automation": [
+            "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env",
+            "node:scripts/e2e/ensure-langrag-sentinel-kb.mjs --write-env"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_LOCAL_AGENT_PIPELINE_URL",
+            "LANGBOT_LOCAL_AGENT_PIPELINE_NAME",
+            "LANGBOT_LOCAL_AGENT_RAG_KB_UUID"
+          ],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "console",
+            "backend_log",
+            "api_diagnostic"
+          ]
+        },
+        {
+          "id": "local-agent-rag-multimodal-debug-chat",
+          "title": "Local Agent preserves image input while using RAG context",
+          "mode": "agent-browser",
+          "area": "pipeline",
+          "type": "regression",
+          "priority": "p2",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "local-agent",
+            "rag",
+            "multimodal",
+            "pipeline"
+          ],
+          "automation": "scripts/e2e/pipeline-debug-chat.mjs",
+          "setup_automation": [
+            "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env",
+            "node:scripts/e2e/ensure-langrag-sentinel-kb.mjs --write-env"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_LOCAL_AGENT_PIPELINE_URL",
+            "LANGBOT_LOCAL_AGENT_PIPELINE_NAME",
+            "LANGBOT_LOCAL_AGENT_RAG_KB_UUID"
+          ],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "console",
+            "backend_log"
+          ]
+        },
+        {
+          "id": "local-agent-steering-debug-chat",
+          "title": "Local Agent injects a follow-up into an active run",
+          "mode": "agent-browser",
+          "area": "pipeline",
+          "type": "regression",
+          "priority": "p1",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "local-agent",
+            "pipeline",
+            "steering",
+            "tools"
+          ],
+          "automation": "scripts/e2e/local-agent-steering-debug-chat.mjs",
+          "setup_automation": [
+            "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env",
+            "case:qa-plugin-smoke-live-install"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_LOCAL_AGENT_PIPELINE_URL",
+            "LANGBOT_LOCAL_AGENT_PIPELINE_NAME"
+          ],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "console",
+            "backend_log",
+            "api_diagnostic"
+          ]
+        },
+        {
+          "id": "mcp-stdio-register",
+          "title": "MCP stdio fixture is registered and exposes qa_mcp_echo",
+          "mode": "agent-browser",
+          "area": "mcp",
+          "type": "smoke",
+          "priority": "p1",
+          "risk": "medium",
+          "ci_eligible": false,
+          "tags": [
+            "mcp",
+            "tools",
+            "fixture",
+            "preflight"
+          ],
+          "automation": "scripts/e2e/mcp-stdio-register.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "screenshot",
+            "console",
+            "network",
+            "api_diagnostic"
+          ]
+        },
+        {
+          "id": "mcp-stdio-tool-call",
+          "title": "MCP stdio server exposes a tool that Local Agent can call",
+          "mode": "agent-browser",
+          "area": "mcp",
+          "type": "feature",
+          "priority": "p1",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "mcp",
+            "tools",
+            "local-agent"
+          ],
+          "automation": "scripts/e2e/pipeline-debug-chat.mjs",
+          "setup_automation": [
+            "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env",
+            "case:mcp-stdio-register"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_LOCAL_AGENT_PIPELINE_URL",
+            "LANGBOT_LOCAL_AGENT_PIPELINE_NAME"
+          ],
+          "evidence_required": [
+            "ui",
+            "console",
+            "backend_log",
+            "api_diagnostic"
+          ]
+        },
+        {
+          "id": "pipeline-debug-chat",
+          "title": "Pipeline Debug Chat returns a bot response",
+          "mode": "agent-browser",
+          "area": "pipeline",
+          "type": "smoke",
+          "priority": "p0",
+          "risk": "medium",
+          "ci_eligible": false,
+          "tags": [
+            "smoke",
+            "pipeline"
+          ],
+          "automation": "scripts/e2e/pipeline-debug-chat.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "console",
+            "backend_log"
+          ]
+        },
+        {
+          "id": "plugin-e2e-smoke",
+          "title": "Plugin system installs a local plugin and exposes tool/page APIs",
+          "mode": "agent-browser",
+          "area": "plugin",
+          "type": "smoke",
+          "priority": "p1",
+          "risk": "medium",
+          "ci_eligible": false,
+          "tags": [
+            "plugin",
+            "runtime",
+            "local-install",
+            "e2e"
+          ],
+          "automation": "",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "ui",
+            "console",
+            "backend_log",
+            "api_diagnostic"
+          ]
+        },
+        {
+          "id": "provider-deepseek",
+          "title": "DeepSeek provider can be configured and used",
+          "mode": "agent-browser",
+          "area": "provider",
+          "type": "provider",
+          "priority": "p2",
+          "risk": "medium",
+          "ci_eligible": false,
+          "tags": [
+            "provider",
+            "model"
+          ],
+          "automation": "",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "ui",
+            "console",
+            "backend_log"
+          ]
+        },
+        {
+          "id": "qa-plugin-smoke-live-install",
+          "title": "QA plugin smoke package installs and exposes tools",
+          "mode": "probe",
+          "area": "plugin",
+          "type": "regression",
+          "priority": "p1",
+          "risk": "medium",
+          "ci_eligible": false,
+          "tags": [
+            "plugin",
+            "local-install",
+            "fixture"
+          ],
+          "automation": "scripts/e2e/install-qa-plugin-smoke.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "api_diagnostic",
+            "filesystem"
+          ]
+        },
+        {
+          "id": "sandbox-skill-authoring-e2e",
+          "title": "Local Agent creates, registers, activates, and uses a sandbox skill",
+          "mode": "agent-browser",
+          "area": "sandbox",
+          "type": "regression",
+          "priority": "p2",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "sandbox",
+            "skills",
+            "local-agent",
+            "tools",
+            "e2b",
+            "nsjail"
+          ],
+          "automation": "",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "ui",
+            "backend_log",
+            "api_diagnostic",
+            "filesystem"
+          ]
+        },
+        {
+          "id": "sandbox-skill-authoring-edit-existing-e2e",
+          "title": "Local Agent modifies an activated sandbox skill package",
+          "mode": "agent-browser",
+          "area": "sandbox",
+          "type": "regression",
+          "priority": "p2",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "sandbox",
+            "skills",
+            "local-agent",
+            "tools",
+            "edit"
+          ],
+          "automation": "scripts/e2e/pipeline-debug-chat.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "ui",
+            "backend_log",
+            "api_diagnostic",
+            "filesystem"
+          ]
+        },
+        {
+          "id": "webui-login-state",
+          "title": "Configured frontend opens with authenticated LangBot WebUI state",
+          "mode": "agent-browser",
+          "area": "auth",
+          "type": "smoke",
+          "priority": "p0",
+          "risk": "low",
+          "ci_eligible": false,
+          "tags": [
+            "smoke",
+            "auth"
+          ],
+          "automation": "scripts/e2e/webui-login-state.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "console"
+          ]
+        }
+      ],
+      "suites": [
+        "agent-runner-release-gate",
+        "core-smoke",
+        "local-agent-gate"
+      ],
+      "suite_summaries": [
+        {
+          "id": "agent-runner-release-gate",
+          "title": "Agent runner externalization release gate",
+          "description": "Release gate for runner externalization: pytest probes, environment preflight, fixture registration, local-agent capability paths, and ACP external harness execution.",
+          "type": "release_gate",
+          "priority": "p0",
+          "tags": [
+            "agent-runner",
+            "release-gate",
+            "local-agent",
+            "external-runner"
+          ],
+          "cases": [
+            "agent-runner-fixture-contract",
+            "agent-runner-behavior-matrix",
+            "agent-runner-ledger-invariants",
+            "agent-runner-async-db-readiness",
+            "agent-runner-ledger-stress",
+            "agent-runner-ledger-contention",
+            "agent-runner-ledger-concurrency",
+            "agent-runner-runtime-chaos",
+            "agent-runner-live-install",
+            "agent-runner-qa-debug-chat",
+            "agent-runner-release-preflight",
+            "webui-login-state",
+            "pipeline-debug-chat",
+            "qa-plugin-smoke-live-install",
+            "plugin-e2e-smoke",
+            "langrag-kb-retrieve",
+            "local-agent-basic-debug-chat",
+            "local-agent-effective-prompt-debug-chat",
+            "local-agent-context-compaction-debug-chat",
+            "local-agent-rag-debug-chat",
+            "local-agent-plugin-tool-call-debug-chat",
+            "mcp-stdio-register",
+            "mcp-stdio-tool-call",
+            "local-agent-nonstreaming-debug-chat",
+            "local-agent-multimodal-debug-chat",
+            "local-agent-rag-multimodal-debug-chat",
+            "acp-agent-runner-debug-chat"
+          ]
+        },
+        {
+          "id": "core-smoke",
+          "title": "Core browser smoke suite",
+          "description": "Fast browser-first checks for login state, Pipeline Debug Chat, and the basic local-agent runner path.",
+          "type": "smoke",
+          "priority": "p0",
+          "tags": [
+            "smoke",
+            "browser",
+            "p0"
+          ],
+          "cases": [
+            "webui-login-state",
+            "pipeline-debug-chat",
+            "local-agent-basic-debug-chat"
+          ]
+        },
+        {
+          "id": "local-agent-gate",
+          "title": "Local Agent runner regression gate",
+          "description": "High-signal local-agent runner checks covering prompt bridge, RAG, context compaction, plugin tools, MCP tools, non-streaming, and multimodal paths.",
+          "type": "regression",
+          "priority": "p1",
+          "tags": [
+            "local-agent",
+            "agent-runner",
+            "regression"
+          ],
+          "cases": [
+            "local-agent-basic-debug-chat",
+            "qa-plugin-smoke-live-install",
+            "local-agent-effective-prompt-debug-chat",
+            "local-agent-context-compaction-debug-chat",
+            "local-agent-rag-debug-chat",
+            "local-agent-plugin-tool-call-debug-chat",
+            "local-agent-steering-debug-chat",
+            "mcp-stdio-tool-call",
+            "local-agent-nonstreaming-debug-chat",
+            "local-agent-multimodal-debug-chat",
+            "local-agent-rag-multimodal-debug-chat"
+          ]
+        }
+      ],
+      "fixtures": [
+        {
+          "id": "qa-agent-runner-behaviors",
+          "title": "Deterministic AgentRunner behavior matrix",
+          "kind": "json",
+          "path": "fixtures/agent-runner/qa-runner-behaviors.json",
+          "related_cases": [
+            "agent-runner-behavior-matrix",
+            "agent-runner-ledger-invariants",
+            "agent-runner-runtime-chaos"
+          ]
+        },
+        {
+          "id": "qa-agent-runner-source",
+          "title": "QA deterministic AgentRunner fixture source",
+          "kind": "plugin_source",
+          "path": "fixtures/plugins/qa-agent-runner/manifest.yaml",
+          "related_cases": [
+            "agent-runner-fixture-contract",
+            "agent-runner-behavior-matrix",
+            "agent-runner-live-install",
+            "agent-runner-qa-debug-chat"
+          ]
+        },
+        {
+          "id": "qa-agent-runner-package",
+          "title": "QA deterministic AgentRunner prebuilt package",
+          "kind": "plugin_package",
+          "path": "fixtures/plugins/qa-agent-runner/dist/qa-agent-runner-0.1.0.lbpkg",
+          "related_cases": [
+            "agent-runner-fixture-contract",
+            "agent-runner-live-install",
+            "agent-runner-qa-debug-chat"
+          ]
+        },
+        {
+          "id": "mcp-stdio-echo-server",
+          "title": "MCP stdio qa_mcp_echo server",
+          "kind": "python",
+          "path": "fixtures/mcp/qa_mcp_echo_server.py",
+          "related_cases": [
+            "mcp-stdio-tool-call"
+          ]
+        },
+        {
+          "id": "rag-sentinel-doc",
+          "title": "LangRAG sentinel text document",
+          "kind": "text",
+          "path": "fixtures/rag/sentinel-doc.txt",
+          "related_cases": [
+            "langrag-kb-retrieve",
+            "local-agent-rag-debug-chat"
+          ]
+        },
+        {
+          "id": "rag-parser-golden-html",
+          "title": "LangRAG parser golden HTML document",
+          "kind": "html",
+          "path": "fixtures/rag/parser-golden.html",
+          "related_cases": [
+            "langrag-parser-golden-e2e"
+          ]
+        },
+        {
+          "id": "multimodal-red-square",
+          "title": "64x64 red-square image fixture",
+          "kind": "base64_png",
+          "path": "fixtures/multimodal/red-square.png.base64",
+          "related_cases": [
+            "local-agent-multimodal-debug-chat",
+            "local-agent-rag-multimodal-debug-chat"
+          ]
+        },
+        {
+          "id": "qa-plugin-smoke-source",
+          "title": "QA plugin smoke fixture source",
+          "kind": "plugin_source",
+          "path": "fixtures/plugins/qa-plugin-smoke/manifest.yaml",
+          "related_cases": [
+            "qa-plugin-smoke-live-install",
+            "plugin-e2e-smoke",
+            "local-agent-effective-prompt-debug-chat",
+            "local-agent-plugin-tool-call-debug-chat",
+            "local-agent-steering-debug-chat"
+          ]
+        },
+        {
+          "id": "qa-plugin-smoke-package",
+          "title": "QA plugin smoke prebuilt package",
+          "kind": "plugin_package",
+          "path": "fixtures/plugins/qa-plugin-smoke/dist/qa-plugin-smoke-0.1.0.lbpkg",
+          "related_cases": [
+            "qa-plugin-smoke-live-install",
+            "plugin-e2e-smoke"
+          ]
+        }
+      ],
+      "troubleshooting": [
+        "agent-runner-actor-context-fields",
+        "aiosqlite-connect-hangs",
+        "ambiguous-runner-default-label",
+        "backend-not-listening",
+        "box-session-conflict-logical-metadata",
+        "debug-chat-history-contaminates-automation",
+        "dynamic-form-missing-config-id",
+        "e2b-extra-mount-sync-missing",
+        "local-agent-model-route-unavailable",
+        "marketplace-network-flaky",
+        "mcp-stdio-args-not-applied",
+        "nsjail-cli-compatibility",
+        "pipeline-form-controlled-warning",
+        "plugin-dependency-install-offline",
+        "plugin-runtime-timeout",
+        "provider-image-parse-error",
+        "proxy-env-mismatch",
+        "sandbox-native-tools-unavailable",
+        "socks-proxy-without-socksio",
+        "survey-widget-blocks-debug-chat",
+        "tool-name-collision-between-mcp-and-plugin",
+        "uv-run-resyncs-local-sdk"
+      ],
+      "troubleshooting_summaries": [
+        {
+          "id": "agent-runner-actor-context-fields",
+          "title": "AgentRunner reads old actor.type and actor.id fields",
+          "category": "product",
+          "related_cases": [
+            "dify-agent-debug-chat",
+            "pipeline-debug-chat"
+          ]
+        },
+        {
+          "id": "aiosqlite-connect-hangs",
+          "title": "aiosqlite connect hangs before ledger pytest starts",
+          "category": "env_issue",
+          "related_cases": [
+            "agent-runner-ledger-concurrency",
+            "agent-runner-ledger-invariants"
+          ]
+        },
+        {
+          "id": "ambiguous-runner-default-label",
+          "title": "AgentRunner selector shows multiple Default or 默认 options",
+          "category": "product",
+          "related_cases": [
+            "dify-agent-debug-chat",
+            "local-agent-rag-debug-chat"
+          ]
+        },
+        {
+          "id": "backend-not-listening",
+          "title": "LangBot backend URL has no listening service",
+          "category": "product",
+          "related_cases": [
+            "pipeline-debug-chat",
+            "webui-login-state",
+            "local-agent-basic-debug-chat"
+          ]
+        },
+        {
+          "id": "box-session-conflict-logical-metadata",
+          "title": "BoxSessionConflictError after a successful first exec",
+          "category": "product",
+          "related_cases": [
+            "sandbox-skill-authoring-e2e"
+          ]
+        },
+        {
+          "id": "debug-chat-history-contaminates-automation",
+          "title": "Old Debug Chat messages contaminate automation assertions",
+          "category": "product",
+          "related_cases": [
+            "pipeline-debug-chat",
+            "local-agent-plugin-tool-call-debug-chat",
+            "mcp-stdio-tool-call"
+          ]
+        },
+        {
+          "id": "dynamic-form-missing-config-id",
+          "title": "Dynamic form fields have no stable key",
+          "category": "product",
+          "related_cases": [
+            "langrag-kb-retrieve",
+            "local-agent-rag-debug-chat"
+          ]
+        },
+        {
+          "id": "e2b-extra-mount-sync-missing",
+          "title": "Activated skill files are missing or not written back on E2B",
+          "category": "product",
+          "related_cases": [
+            "sandbox-skill-authoring-e2e"
+          ]
+        },
+        {
+          "id": "local-agent-model-route-unavailable",
+          "title": "Local Agent model route is unavailable for the requested run shape",
+          "category": "env_issue",
+          "related_cases": [
+            "local-agent-basic-debug-chat",
+            "local-agent-plugin-tool-call-debug-chat",
+            "mcp-stdio-tool-call",
+            "local-agent-multimodal-debug-chat",
+            "local-agent-nonstreaming-debug-chat"
+          ]
+        },
+        {
+          "id": "marketplace-network-flaky",
+          "title": "Marketplace requests are flaky but plugin data may still load",
+          "category": "product",
+          "related_cases": [
+            "langrag-kb-retrieve"
+          ]
+        },
+        {
+          "id": "mcp-stdio-args-not-applied",
+          "title": "MCP Stdio test runs only the command without arguments",
+          "category": "product",
+          "related_cases": [
+            "mcp-stdio-tool-call"
+          ]
+        },
+        {
+          "id": "nsjail-cli-compatibility",
+          "title": "Installed nsjail CLI rejects generated sandbox arguments",
+          "category": "product",
+          "related_cases": [
+            "sandbox-skill-authoring-e2e"
+          ]
+        },
+        {
+          "id": "pipeline-form-controlled-warning",
+          "title": "Pipeline form input switches from uncontrolled to controlled",
+          "category": "product",
+          "related_cases": [
+            "pipeline-debug-chat",
+            "local-agent-rag-debug-chat"
+          ]
+        },
+        {
+          "id": "plugin-dependency-install-offline",
+          "title": "Local plugin dependency install fails in an offline or proxy-limited runtime",
+          "category": "product",
+          "related_cases": [
+            "langrag-parser-golden-e2e"
+          ]
+        },
+        {
+          "id": "plugin-runtime-timeout",
+          "title": "Plugin runtime actions time out",
+          "category": "product",
+          "related_cases": [
+            "pipeline-debug-chat",
+            "provider-deepseek",
+            "langrag-parser-golden-e2e"
+          ]
+        },
+        {
+          "id": "provider-image-parse-error",
+          "title": "Model provider rejects the uploaded image before runner behavior is exercised",
+          "category": "product",
+          "related_cases": [
+            "local-agent-multimodal-debug-chat"
+          ]
+        },
+        {
+          "id": "proxy-env-mismatch",
+          "title": "Uppercase and lowercase proxy variables differ",
+          "category": "product",
+          "related_cases": [
+            "pipeline-debug-chat",
+            "provider-deepseek",
+            "webui-login-state"
+          ]
+        },
+        {
+          "id": "sandbox-native-tools-unavailable",
+          "title": "Native sandbox tools are unavailable even though a backend is configured",
+          "category": "product",
+          "related_cases": [
+            "sandbox-skill-authoring-e2e"
+          ]
+        },
+        {
+          "id": "socks-proxy-without-socksio",
+          "title": "Python HTTP clients fail when ALL_PROXY uses SOCKS without socksio",
+          "category": "product",
+          "related_cases": [
+            "sandbox-skill-authoring-e2e",
+            "provider-deepseek"
+          ]
+        },
+        {
+          "id": "survey-widget-blocks-debug-chat",
+          "title": "Survey widget blocks Debug Chat controls",
+          "category": "product",
+          "related_cases": [
+            "pipeline-debug-chat",
+            "local-agent-rag-debug-chat",
+            "mcp-stdio-tool-call"
+          ]
+        },
+        {
+          "id": "tool-name-collision-between-mcp-and-plugin",
+          "title": "MCP and plugin expose the same tool name",
+          "category": "product",
+          "related_cases": [
+            "mcp-stdio-tool-call",
+            "local-agent-plugin-tool-call-debug-chat"
+          ]
+        },
+        {
+          "id": "uv-run-resyncs-local-sdk",
+          "title": "uv run resyncs the locked SDK instead of the local editable SDK",
+          "category": "product",
+          "related_cases": [
+            "plugin-e2e-smoke"
+          ]
+        }
+      ]
+    }
+  ]
+}

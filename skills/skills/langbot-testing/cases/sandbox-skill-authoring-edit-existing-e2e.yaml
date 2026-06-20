@@ -1,0 +1,71 @@
+id: sandbox-skill-authoring-edit-existing-e2e
+title: "Local Agent modifies an activated sandbox skill package"
+mode: agent-browser
+area: sandbox
+type: regression
+priority: p2
+risk: high
+ci_eligible: false
+tags:
+  - sandbox
+  - skills
+  - local-agent
+  - tools
+  - edit
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_REPO
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation: scripts/e2e/pipeline-debug-chat.mjs
+automation_env:
+  - LANGBOT_REPO
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_pipeline_url_env: LANGBOT_LOCAL_AGENT_PIPELINE_URL
+automation_pipeline_name_env: LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_expected_text: "UPDATED_MARKER_EDIT_REGRESSION"
+automation_prompts_json: '[{"prompt":"Skill name is lb-skill-edit-regression. Use exactly one exec tool call with workdir=/workspace. In that single command, remove old /workspace/lb-skill-edit-regression, create SKILL.md, scripts/use.py, and data/input.json. The JSON must contain numbers [1,2,3,4], factors [2,3,4], and marker CREATE_MARKER_EDIT_REGRESSION. The Python script must read data/input.json relative to __file__ and print exactly SANDBOX_SKILL_CREATE_OK sum=10 product=24 marker=CREATE_MARKER_EDIT_REGRESSION. Run python3 /workspace/lb-skill-edit-regression/scripts/use.py in the same command. After the exec succeeds, final answer exactly CREATE_OK:lb-skill-edit-regression.","expected_text":"CREATE_MARKER_EDIT_REGRESSION","response_timeout_ms":"180000"},{"prompt":"Continue with the same skill name lb-skill-edit-regression. Strictly call register_skill with path=/workspace/lb-skill-edit-regression and name=lb-skill-edit-regression, then call activate with skill_name=lb-skill-edit-regression. Do not call exec, read, write, edit, grep, or ls in this step. After both tools succeed, final answer exactly REGISTER_ACTIVATE_OK:lb-skill-edit-regression.","expected_text":"REGISTER_ACTIVATE_OK:lb-skill-edit-regression","response_timeout_ms":"180000"},{"prompt":"Continue with the same activated skill lb-skill-edit-regression. Use exactly one exec tool call with workdir=/workspace/.skills/lb-skill-edit-regression. In that single exec command, run exactly this shell logic: set -e; overwrite SKILL.md with a heading and UPDATED_MARKER_EDIT_REGRESSION; overwrite data/input.json with numbers [5,6], factors [7,8], and marker UPDATED_MARKER_EDIT_REGRESSION; overwrite scripts/use.py so it reads data/input.json relative to __file__ and prints exactly SANDBOX_SKILL_MODIFIED_OK sum=11 product=56 marker=UPDATED_MARKER_EDIT_REGRESSION; run python3 scripts/use.py. Do not write exit(1). Do not call find, ls, read, grep as separate tools. If the single exec exits successfully and prints SANDBOX_SKILL_MODIFIED_OK, do not call more tools. Final answer exactly E2E_OK:lb-skill-edit-regression:SANDBOX_SKILL_MODIFIED_OK.","expected_text":"UPDATED_MARKER_EDIT_REGRESSION","response_timeout_ms":"240000"}]'
+automation_filesystem_checks_json: '[{"path":"${LANGBOT_REPO}/data/box/skills/lb-skill-edit-regression/SKILL.md","contains":"UPDATED_MARKER_EDIT_REGRESSION"},{"path":"${LANGBOT_REPO}/data/box/skills/lb-skill-edit-regression/data/input.json","contains":["UPDATED_MARKER_EDIT_REGRESSION","\"numbers\": [5, 6]","\"factors\": [7, 8]"]},{"path":"${LANGBOT_REPO}/data/box/skills/lb-skill-edit-regression/scripts/use.py","contains":["SANDBOX_SKILL_MODIFIED_OK"],"not_contains":["SANDBOX_SKILL_CREATE_OK","exit(1)"]},{"argv":["python3","scripts/use.py"],"cwd":"${LANGBOT_REPO}/data/box/skills/lb-skill-edit-regression","stdout_contains":"SANDBOX_SKILL_MODIFIED_OK sum=11 product=56 marker=UPDATED_MARKER_EDIT_REGRESSION","exit_code":0}]'
+automation_stream_output: "0"
+automation_reset_debug_chat: "1"
+automation_response_timeout_ms: "420000"
+preconditions:
+  - "LANGBOT_LOCAL_AGENT_PIPELINE_URL or LANGBOT_LOCAL_AGENT_PIPELINE_NAME points to the local-agent pipeline under test."
+  - "LangBot is started with the sandbox backend intended for this run, such as e2b or nsjail."
+  - "The selected model route supports tool/function calling strongly enough to invoke sandbox tools."
+steps:
+  - "Start LangBot with the target sandbox backend and confirm native sandbox tools are available."
+  - "Open the target Local Agent pipeline in Debug Chat with a function-calling model."
+  - "Run the automation prompt or the equivalent prompt pattern from references/sandbox-skill-authoring.md."
+  - "Capture the visible final response, backend logs, and the registered skill-store files."
+checks:
+  - "UI: A Bot message, not only the user prompt, contains UPDATED_MARKER_EDIT_REGRESSION."
+  - "Logs: The model called exec, register_skill, activate, then a second exec whose workdir is /workspace/.skills/lb-skill-edit-regression."
+  - "Logs: The second exec stdout contains SANDBOX_SKILL_MODIFIED_OK and GREP_ALL_OK or equivalent grep success."
+  - "Automation: Filesystem checks pass for the registered skill-store files under LANGBOT_REPO/data/box/skills/lb-skill-edit-regression."
+  - "Skill store: SKILL.md and data/input.json contain UPDATED_MARKER_EDIT_REGRESSION."
+  - "Skill store: scripts/use.py is the modified script and prints SANDBOX_SKILL_MODIFIED_OK sum=11 product=56 marker=UPDATED_MARKER_EDIT_REGRESSION."
+evidence_required:
+  - ui
+  - backend_log
+  - api_diagnostic
+  - filesystem
+diagnostics:
+  - "If the model stops after activation and only reruns the original script, treat this as a failed edit-existing E2E even if create/register/activate succeeded."
+  - "If the expected marker appears only in the user prompt, treat the run as failed and inspect automation-result.json assistant counts."
+  - "If the browser opens /login or console shows 401, refresh the authenticated browser profile before diagnosing the runner."
+troubleshooting:
+  - sandbox-native-tools-unavailable
+  - e2b-extra-mount-sync-missing
+  - box-session-conflict-logical-metadata
+  - nsjail-cli-compatibility
+  - socks-proxy-without-socksio

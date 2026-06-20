@@ -1,0 +1,64 @@
+id: pipeline-debug-chat
+title: "Pipeline Debug Chat returns a bot response"
+mode: agent-browser
+area: pipeline
+type: smoke
+priority: p0
+risk: medium
+ci_eligible: false
+tags:
+  - smoke
+  - pipeline
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+env_any:
+  - LANGBOT_PIPELINE_URL|LANGBOT_PIPELINE_NAME
+automation: scripts/e2e/pipeline-debug-chat.mjs
+automation_env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+  - LANGBOT_E2E_PROMPT
+  - LANGBOT_E2E_EXPECTED_TEXT
+automation_env_any:
+  - LANGBOT_PIPELINE_URL|LANGBOT_PIPELINE_NAME
+automation_prompt: "请只回复 OK，用于前端调试测试。"
+automation_expected_text: "OK"
+preconditions:
+  - "LANGBOT_PIPELINE_URL or LANGBOT_PIPELINE_NAME points to the pipeline intended for this generic Debug Chat smoke run."
+  - "The target pipeline is safe to save or already configured with a known-good runner/model."
+steps:
+  - "Open LANGBOT_FRONTEND_URL."
+  - "Navigate to Pipelines."
+  - "Open the target pipeline."
+  - "Select Debug Chat."
+  - "Send a short deterministic prompt, such as 请只回复 OK，用于前端调试测试。"
+checks:
+  - "UI: The page shows a User message containing the prompt."
+  - "UI: The page shows a Bot message containing the expected response, such as OK."
+  - "Console: No unexpected frontend errors appear during the interaction."
+  - "Visual: If screenshot/vision is available, the chat panel is not blank, overlapped, or visually broken."
+  - "Logs: Backend logs include Processing request from person_websocket and Streaming completed."
+evidence_required:
+  - ui
+  - screenshot
+  - console
+  - backend_log
+diagnostics:
+  - "If the UI does not show a Bot response, inspect console/network and backend logs before using API/curl diagnostics."
+  - "Use API/curl only to distinguish frontend display failure from backend/runtime failure."
+success_patterns:
+  - "Processing request from person_websocket"
+  - "Streaming completed"
+failure_patterns:
+  - "Action invoke_llm_stream call timed out"
+  - "Task exception was never retrieved"
+troubleshooting:
+  - debug-chat-history-contaminates-automation
+  - local-agent-model-route-unavailable
+  - plugin-runtime-timeout
+  - proxy-env-mismatch

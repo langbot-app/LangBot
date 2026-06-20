@@ -1,0 +1,71 @@
+id: local-agent-multimodal-debug-chat
+title: "Local Agent Debug Chat preserves uploaded image input"
+mode: agent-browser
+area: pipeline
+type: regression
+priority: p2
+risk: medium
+ci_eligible: false
+tags:
+  - local-agent
+  - multimodal
+  - pipeline
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation: scripts/e2e/pipeline-debug-chat.mjs
+automation_env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_pipeline_url_env: LANGBOT_LOCAL_AGENT_PIPELINE_URL
+automation_pipeline_name_env: LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_prompt: "I attached an image. Reply only IMAGE_OK if you received the image."
+automation_expected_text: "IMAGE_OK"
+automation_image_base64_fixture: "skills/langbot-testing/fixtures/multimodal/red-square.png.base64"
+setup_automation:
+  - "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env"
+setup_provides_env:
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+preconditions:
+  - "The selected model route accepts image input, or the case is intentionally checking graceful provider rejection."
+steps:
+  - "Prepare a small PNG file for upload. The bundled fixture base64 is at skills/langbot-testing/fixtures/multimodal/red-square.png.base64 if a temporary file is needed."
+  - "Open LANGBOT_FRONTEND_URL."
+  - "Navigate to Pipelines and open the target local-agent pipeline."
+  - "Open Configuration > AI."
+  - "Use runner Default or the pluginized langbot/local-agent runner."
+  - "Select a model that supports image input in the current environment, or use a known model that at least accepts the uploaded image payload."
+  - "Save the pipeline."
+  - "Open Debug Chat."
+  - "Attach the PNG through the image/file upload control. Prefer the bundled 64x64 red-square fixture; 1x1 images may be rejected by some model providers before runner behavior is exercised."
+  - "Confirm the user compose area or sent message shows the image attachment."
+  - "Send: I attached an image. Reply only IMAGE_OK if you received the image."
+checks:
+  - "UI: The sent User message shows an image attachment, not just text."
+  - "UI: The Bot message contains IMAGE_OK."
+  - "Network or logs: The browser sends an image upload request, or backend logs show the local-agent input contains an image."
+  - "Console: No unexpected frontend runtime errors appear during upload or Debug Chat."
+evidence_required:
+  - ui
+  - screenshot
+  - console
+  - network
+  - backend_log
+diagnostics:
+  - "If the model cannot process image input, repeat with a multimodal-capable model before diagnosing local-agent."
+  - "For RAG plus multimodal coverage, keep a KB bound and verify the image remains visible while the answer uses the KB sentinel."
+troubleshooting:
+  - local-agent-model-route-unavailable
+  - plugin-runtime-timeout
+  - proxy-env-mismatch
+  - provider-image-parse-error
+  - survey-widget-blocks-debug-chat
