@@ -1,0 +1,57 @@
+# AgentRunner Pluginization Status
+
+本文档是 `docs/agent-runner-pluginization/` 的状态事实源。协议 schema 仍以 [PROTOCOL_V1.md](./PROTOCOL_V1.md) 为准；测试步骤以 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md) 为准；安全发布门槛以 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md) 为准。
+
+状态快照日期：2026-06-16。
+
+## 实现状态
+
+| 领域 | 状态 | 说明 |
+| --- | --- | --- |
+| SDK manifest schema | Done | `AgentRunnerManifest` 包含 typed `capabilities` / `permissions`；未知 capability / permission key 禁止进入 typed model。 |
+| Runner discovery | Done | Runtime 返回 typed manifest；Host registry 校验单个 runner，失败 warning + skip，不影响其它 runner。 |
+| Host resource authorization | Done | `ctx.resources` 和 `ctx.context.available_apis` 由 manifest permissions 与 binding policy / run scope 求交后生成。 |
+| Run authorization snapshot | Done | active run session 冻结 run-scoped resources 与 available APIs；runtime handler 按 snapshot 校验 pull API。 |
+| Result payload validation | Done | Wire 保持 `{type, data}`；Host 对投递/副作用类 payload 严格校验，tool-call telemetry 宽松，未知 type 忽略并 warning。 |
+| Old built-in runners | Done | 旧 `src/langbot/pkg/provider/runners/*` 与 `RequestRunner` 路径已从本分支删除。 |
+| Official runner manifests | Done | `local-agent`、ACP / Claude Code / Codex 外部 harness runner、外部服务 runner 已重新声明真实生效的 LangBot resource permissions。 |
+| Runtime Control Plane v2 foundation | Partial | Host-owned `AgentRun` / `AgentRunEvent` ledger、orchestrator 自动建账、result event persistence、run get/list/event page/cancel/append/finalize actions 已落地；`agent_run:admin` / `runtime:admin` 控制权限、最小 runtime register/heartbeat/list/reconcile 和 run claim/renew/release 原语已落地。完整 Agent Platform 产品形态、daemon supervisor、任务唤醒/长轮询/WebSocket、分布式 runtime 管控仍未完成。 |
+| Security boundary | Done | 当前口径降级为轻量边界：LangBot 保护自身持有资源；external harness 的 OS / process / network / workspace 风险由用户或部署环境承担；managed sandbox 不是当前承诺。 |
+| Steering control path | Done | claim 异常不再逃逸 consumer loop；queue 有上限；未 pull 的 claimed 输入在 run 结束时写 `steering.dropped` 审计终态。 |
+| SDK v1 contract closure | Done | SDK 提供 `AgentAPIError` / `AgentAPIException`、typed `SteeringPullResult`、未知 result type 宽容解析、result `sequence` 注入与取消传播。 |
+
+## Spec 与实现已知差距
+
+- `action.requested` 仍只作为 telemetry / reserved surface；platform action executor 不在本分支执行。
+- EventGateway / EventRouter 完整实现由外部 EBA 分支联调；本分支只提供 event-first host envelope / binding / run 入口。
+- State 与 storage 的长期类型边界仍可继续收窄；当前合同只要求 JSON-safe state 与受控 storage API。
+- EventLog / Transcript 已提供显式 cleanup primitive；长期 retention 默认值、TTL 调度接入和 sandbox/workspace 文件清理仍是运维收尾项，应在 Runtime Control Plane 产品化前补齐。
+- External harness 的 native shell / filesystem / CLI / MCP 权限不受 manifest permissions 约束；manifest permissions 只约束 LangBot 持有的资源访问。
+- LangBot 当前不承诺 managed sandbox；external harness 的 OS/process/network quota、workspace GC、provider-native tool 权限由用户或部署环境承担。
+- Runtime Control Plane v2 当前只落地 Host 事实源和控制原语；还没有内置 Agent Platform UI、业务队列、daemon 进程托管、runtime wakeup channel、跨 Host 分布式锁或 provider 登录态诊断。
+
+## Runner 验收状态
+
+| Runner | 状态 | 最近证据 |
+| --- | --- | --- |
+| `plugin:langbot/local-agent/default` | Unit-pass; UI smoke pending | 2026-06-10 本地 pytest / ruff 通过；WebUI smoke 由人工统一执行。 |
+| `plugin:langbot/acp-agent-runner/default` / `plugin:langbot/claude-code-agent/default` / `plugin:langbot/codex-agent/default` | Unit-pass; E2E pending | 通过 runner 仓库单测覆盖 session、run_id 注入和 LangBot MCP gateway；真实 harness E2E 取决于对应运行环境、CLI/daemon 可用性和 provider 登录态。 |
+| Dify / n8n / Coze / DashScope / Langflow / Tbox / DeerFlow / WeKnora | Unit-pass; credential smoke optional | 2026-06-13 plugin layout / parser tests 通过；真实服务凭据 smoke 非每轮必跑。 |
+
+## Host / SDK 验收状态
+
+| 范围 | 状态 | 最近证据 |
+| --- | --- | --- |
+| LangBot Runtime Control Plane v2 foundation | Unit-pass; product E2E pending | 2026-06-16 `tests/unit_tests/agent/test_run_ledger_store.py`、`test_run_ledger_api_auth.py`、`test_orchestrator_integration.py` 通过，覆盖 ledger、admin permissions、runtime heartbeat、claim/reconcile、orchestrator 持久化和取消传播。 |
+| SDK AgentRunner control entities / proxy | Unit-pass | 2026-06-16 SDK agent-runner 相关单测通过，覆盖 typed run ledger entities、AgentRunAPIProxy、MCP bridge、runtime manager 与 pull API handlers。 |
+
+## 历史高价值记录
+
+历史报告已合并为本状态页和 QA 指南，不再保留单独进度文档。后续若需要追溯，优先查看 `langbot-skills/reports/` 下的原始执行报告。
+
+截至 2026-05-29，已有本地 smoke 证明：
+
+- `local-agent` 可以通过 Pipeline Debug Chat 走插件化 `AgentRunOrchestrator` 主链路。
+- 外部 harness runner 可以通过同一条 `run(event, binding)` 路径执行；当前官方实现已收敛到 ACP / Claude Code / Codex 等直接 runner 插件。
+
+这些记录只证明本地协议闭环可用，不代表 LangBot 提供 managed sandbox 或 external harness OS 级隔离。

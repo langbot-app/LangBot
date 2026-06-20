@@ -237,12 +237,18 @@ class BoxService:
         if forced_template:
             template = forced_template
         else:
-            template = (
-                (query.pipeline_config or {})
-                .get('ai', {})
-                .get('local-agent', {})
-                .get('box-session-id-template', '{launcher_type}_{launcher_id}')
+            template = '{launcher_type}_{launcher_id}'
+            pipeline_config = query.pipeline_config or {}
+            ai_config = pipeline_config.get('ai', {}) if isinstance(pipeline_config, dict) else {}
+            runner_selector = ai_config.get('runner', {}) if isinstance(ai_config, dict) else {}
+            runner_id = runner_selector.get('id') if isinstance(runner_selector, dict) else None
+            runner_configs = ai_config.get('runner_config', {}) if isinstance(ai_config, dict) else {}
+            runner_config = runner_configs.get(runner_id, {}) if isinstance(runner_configs, dict) else {}
+            configured_template = (
+                runner_config.get('box-session-id-template') if isinstance(runner_config, dict) else None
             )
+            if isinstance(configured_template, str) and configured_template:
+                template = configured_template
         variables = dict(query.variables or {})
         launcher_type = getattr(query, 'launcher_type', None)
         if hasattr(launcher_type, 'value'):

@@ -251,11 +251,13 @@ export default function DynamicFormItemComponent({
   switch (config.type) {
     case DynamicFormItemType.INT:
     case DynamicFormItemType.FLOAT:
+    case DynamicFormItemType.NUMBER:
       return (
         <Input
           type="number"
           className="w-full max-w-xs"
           {...field}
+          value={field.value ?? ''}
           onChange={(e) => field.onChange(Number(e.target.value))}
         />
       );
@@ -264,7 +266,11 @@ export default function DynamicFormItemComponent({
       if (config.options && config.options.length > 0) {
         return (
           <div className="flex w-full max-w-md min-w-0 items-center gap-1.5">
-            <Input className="min-w-0 flex-1" {...field} />
+            <Input
+              className="min-w-0 flex-1"
+              {...field}
+              value={field.value ?? ''}
+            />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -295,18 +301,37 @@ export default function DynamicFormItemComponent({
           </div>
         );
       }
-      return <Input className="w-full max-w-md" {...field} />;
+      return (
+        <Input
+          className="w-full max-w-md"
+          {...field}
+          value={field.value ?? ''}
+        />
+      );
 
     case DynamicFormItemType.TEXT:
       return (
         <Textarea
           {...field}
+          value={field.value ?? ''}
           className="min-h-[120px] w-full max-w-full resize-y overflow-x-hidden break-all"
         />
       );
 
+    case DynamicFormItemType.JSON:
+      return (
+        <Textarea
+          {...field}
+          value={field.value ?? ''}
+          className="min-h-[200px] font-mono text-sm"
+          placeholder='{"key": "value"}'
+        />
+      );
+
     case DynamicFormItemType.BOOLEAN:
-      return <Switch checked={field.value} onCheckedChange={field.onChange} />;
+      return (
+        <Switch checked={!!field.value} onCheckedChange={field.onChange} />
+      );
 
     case DynamicFormItemType.STRING_ARRAY:
       return (
@@ -1428,7 +1453,7 @@ export default function DynamicFormItemComponent({
                 {/* 内容输入 */}
                 <Textarea
                   className="min-h-20 w-full min-w-0 flex-1 resize-y overflow-x-hidden break-all sm:w-[300px]"
-                  value={item.content}
+                  value={item.content ?? ''}
                   onChange={(e) => {
                     const newValue = [...(field.value ?? promptItems)];
                     newValue[index] = {
