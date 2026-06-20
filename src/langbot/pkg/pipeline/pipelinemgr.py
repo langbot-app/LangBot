@@ -28,7 +28,6 @@ from . import (
     wrapper,
     preproc,
     ratelimit,
-    msgtrun,
 )
 
 importutil.import_modules_in_pkgs(
@@ -42,7 +41,6 @@ importutil.import_modules_in_pkgs(
         wrapper,
         preproc,
         ratelimit,
-        msgtrun,
     ]
 )
 
@@ -289,8 +287,10 @@ class RuntimePipeline:
 
         # Get runner name from pipeline config
         runner_name = None
-        if query.pipeline_config and 'ai' in query.pipeline_config and 'runner' in query.pipeline_config['ai']:
-            runner_name = query.pipeline_config['ai']['runner'].get('runner')
+        if query.pipeline_config:
+            from ..agent.runner.config_migration import ConfigMigration
+
+            runner_name = ConfigMigration.resolve_runner_id(query.pipeline_config)
 
         # Record query start and store message_id
         message_id = ''
@@ -449,6 +449,9 @@ class PipelineManager:
         # initialize stage containers according to pipeline_entity.stages
         stage_containers: list[StageInstContainer] = []
         for stage_name in pipeline_entity.stages:
+            if stage_name not in self.stage_dict:
+                self.ap.logger.warning(f'Pipeline stage {stage_name} is not registered; skipping')
+                continue
             stage_containers.append(StageInstContainer(inst_name=stage_name, inst=self.stage_dict[stage_name](self.ap)))
 
         for stage_container in stage_containers:

@@ -39,6 +39,7 @@ from ...vector import mgr as vectordb_mgr
 from .. import taskmgr
 from ...telemetry import telemetry as telemetry_module
 from ...survey import manager as survey_module
+from ...agent.runner import AgentRunnerRegistry, AgentRunOrchestrator, AgentRunnerDefaultConfigService
 
 
 @stage.stage_class('BuildAppStage')
@@ -193,6 +194,16 @@ class BuildAppStage(stage.BootingStage):
         plugin_connector_inst = plugin_connector.PluginRuntimeConnector(ap, runtime_disconnect_callback)
         await plugin_connector_inst.initialize()
         ap.plugin_connector = plugin_connector_inst
+
+        # Initialize agent runner subsystem
+        agent_runner_registry_inst = AgentRunnerRegistry(ap)
+        ap.agent_runner_registry = agent_runner_registry_inst
+
+        agent_runner_default_config_service_inst = AgentRunnerDefaultConfigService(ap)
+        ap.agent_runner_default_config_service = agent_runner_default_config_service_inst
+
+        agent_run_orchestrator_inst = AgentRunOrchestrator(ap, agent_runner_registry_inst)
+        ap.agent_run_orchestrator = agent_run_orchestrator_inst
 
         ctrl = controller.Controller(ap)
         ap.ctrl = ctrl

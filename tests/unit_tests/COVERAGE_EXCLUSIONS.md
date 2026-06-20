@@ -18,14 +18,7 @@
 - **测试方式**: 需要 mock HTTP 响应或使用 fake LLM server
 - **状态**: 后续可补充 mock HTTP 测试
 
-### 3. Agent Runner (`provider/runners/`)
-- **路径**: `src/langbot/pkg/provider/runners/`
-- **模块**: cozeapi, difysvapi, n8nsvapi, langflowapi, dashscopeapi, localagent, tboxapi
-- **排除原因**: 需要真实 Agent 平台（Coze、Dify、n8n 等）的 API 连接
-- **测试方式**: 需要 mock Agent 平台响应
-- **状态**: 后续可补充 mock 测试
-
-### 4. 向量数据库 (`vector/vdbs/`)
+### 3. 向量数据库 (`vector/vdbs/`)
 - **路径**: `src/langbot/pkg/vector/vdbs/`
 - **模块**: chroma, milvus, pgvector, qdrant, seekdb, valkey_search
 - **排除原因**: 需要真实向量数据库实例运行
@@ -42,7 +35,7 @@
 # 排除外部适配器后计算覆盖率
 pytest tests/unit_tests/ --cov=langbot.pkg \
   --cov-fail-under=0 \
-  -o "cov_exclude_patterns=platform/sources/*,provider/modelmgr/requesters/*,provider/runners/*,vector/vdbs/*"
+  -o "cov_exclude_patterns=platform/sources/*,provider/modelmgr/requesters/*,vector/vdbs/*"
 ```
 
 ### 当前覆盖率（排除后）
@@ -77,15 +70,11 @@ pytest tests/unit_tests/ --cov=langbot.pkg \
    - 使用 `httpx` mock 测试 API 响应解析
    - 测试重试逻辑、错误处理
 
-2. **`provider/runners/`** (优先级：中)
-   - Mock Agent 平台响应
-   - 测试 session 管理、错误处理
-
-3. **`platform/sources/`** (优先级：低)
+2. **`platform/sources/`** (优先级：低)
    - Mock 平台 webhook 事件
    - 测试消息解析、事件处理
 
-4. **`vector/vdbs/`** (优先级：低)
+3. **`vector/vdbs/`** (优先级：低)
    - Mock 向量数据库操作
    - 测试 CRUD、查询逻辑
 

@@ -1,7 +1,7 @@
 import {
-  DynamicFormItemType,
   IDynamicFormItemSchema,
   SYSTEM_FIELD_PREFIX,
+  DynamicFormItemType,
 } from '@/app/infra/entities/form/dynamic';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -42,6 +42,7 @@ import {
 } from '@/components/ui/tooltip';
 import { systemInfo } from '@/app/infra/http';
 import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
+import { parseDynamicFormItemType } from './DynamicFormItemConfig';
 
 /**
  * Resolve the value referenced by a `show_if.field` string.
@@ -111,7 +112,7 @@ function getValueSchema(spec: DynamicFormValueSpec) {
     return z.array(z.any());
   }
 
-  switch (spec.type) {
+  switch (normalizeItemType(spec.type)) {
     case DynamicFormItemType.INT:
       return z.number();
     case DynamicFormItemType.FLOAT:
@@ -435,6 +436,13 @@ function DisabledTooltipIcon({ text }: { text: string }) {
   );
 }
 
+/**
+ * Normalize plugin manifest type names to frontend-compatible types
+ */
+function normalizeItemType(type: string): DynamicFormItemType {
+  return parseDynamicFormItemType(type);
+}
+
 export default function DynamicFormComponent({
   itemConfigList,
   onSubmit,
@@ -686,7 +694,14 @@ export default function DynamicFormComponent({
           }}
         />
 
-        {itemConfigList.map((config) => {
+        {itemConfigList.map((config, index) => {
+          // Create a normalized config with type converted to frontend format
+          const normalizedConfig = {
+            ...config,
+            type: normalizeItemType(config.type),
+          };
+          const fieldKey = config.id || config.name || `field-${index}`;
+
           if (config.show_if) {
             const dependValue = resolveShowIfValue(
               config.show_if.field,
@@ -781,7 +796,7 @@ export default function DynamicFormComponent({
           }
 
           // Webhook URL fields are display-only; render outside of form binding
-          if (config.type === 'webhook-url') {
+          if (normalizedConfig.type === 'webhook-url') {
             const webhookUrl = (systemContext?.webhook_url as string) || '';
             const extraWebhookUrl =
               (systemContext?.extra_webhook_url as string) || '';
@@ -790,7 +805,7 @@ export default function DynamicFormComponent({
 
             return (
               <WebhookUrlField
-                key={config.id}
+                key={fieldKey}
                 label={extractI18nObject(config.label)}
                 description={
                   config.description
@@ -803,7 +818,7 @@ export default function DynamicFormComponent({
             );
           }
 
-          if (config.type === 'embed-code') {
+          if (normalizedConfig.type === 'embed-code') {
             const botUuid = (systemContext?.bot_uuid as string) || '';
             if (!botUuid) return null;
 
@@ -821,7 +836,7 @@ export default function DynamicFormComponent({
 
             return (
               <EmbedCodeField
-                key={config.id}
+                key={fieldKey}
                 label={extractI18nObject(config.label)}
                 description={
                   config.description
@@ -860,7 +875,7 @@ export default function DynamicFormComponent({
           // QR code login button (e.g. Feishu one-click create, WeChat scan login)
           if (config.type === 'qr-code-login') {
             return (
-              <FormItem key={config.id}>
+              <FormItem key={fieldKey}>
                 <div
                   className="relative flex items-center gap-4 p-4 rounded-xl border-2 border-dashed cursor-pointer transition-all hover:border-solid hover:shadow-md group"
                   style={{
@@ -953,10 +968,10 @@ export default function DynamicFormComponent({
           }
 
           // Boolean fields use a special inline layout
-          if (config.type === 'boolean') {
+          if (normalizedConfig.type === 'boolean') {
             return (
               <FormField
-                key={config.id}
+                key={fieldKey}
                 control={form.control}
                 name={config.name as keyof FormValues}
                 render={({ field }) => (
@@ -980,7 +995,7 @@ export default function DynamicFormComponent({
                       </div>
                       <FormControl>
                         <DynamicFormItemComponent
-                          config={config}
+                          config={normalizedConfig}
                           field={field}
                           formValues={watchedValues as Record<string, unknown>}
                           onFileUploaded={onFileUploaded}
@@ -998,7 +1013,7 @@ export default function DynamicFormComponent({
 
           return (
             <FormField
-              key={config.id}
+              key={fieldKey}
               control={form.control}
               name={config.name as keyof FormValues}
               render={({ field }) => (
@@ -1020,7 +1035,7 @@ export default function DynamicFormComponent({
                       )}
                     >
                       <DynamicFormItemComponent
-                        config={config}
+                        config={normalizedConfig}
                         field={field}
                         formValues={watchedValues as Record<string, unknown>}
                         onFileUploaded={onFileUploaded}

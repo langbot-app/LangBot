@@ -10,6 +10,7 @@ if typing.TYPE_CHECKING:
     from langbot_plugin.api.entities.events import pipeline_query
 
 ACTIVATED_SKILLS_KEY = '_activated_skills'
+ACTIVATED_SKILL_NAMES_STATE_KEY = 'host.activated_skills'
 PIPELINE_BOUND_SKILLS_KEY = '_pipeline_bound_skills'
 SKILL_MOUNT_PREFIX = '/workspace/.skills'
 _SKILL_MOUNT_PATTERN = re.compile(r'/workspace/\.skills/([A-Za-z0-9_-]+)')
@@ -103,6 +104,29 @@ def restore_activated_skills(
     """
     restored: list[str] = []
     for skill_name in normalize_skill_names(skill_names):
+        skill_data = get_visible_skill(ap, query, skill_name)
+        if skill_data is None:
+            continue
+        register_activated_skill(query, skill_data)
+        restored.append(skill_name)
+    return restored
+
+
+def restore_activated_skills_from_state(
+    ap: app.Application,
+    query: pipeline_query.Query,
+    state: dict[str, dict[str, typing.Any]],
+) -> list[str]:
+    """Restore persisted activated skill names into Query variables.
+
+    The state value stores names only. Full skill metadata is rebuilt from the
+    current pipeline-visible skill cache so removed or unbound skills remain
+    unavailable to native exec/write/edit.
+    """
+    conversation_state = state.get('conversation', {}) if isinstance(state, dict) else {}
+    skill_names = normalize_skill_names(conversation_state.get(ACTIVATED_SKILL_NAMES_STATE_KEY))
+    restored: list[str] = []
+    for skill_name in skill_names:
         skill_data = get_visible_skill(ap, query, skill_name)
         if skill_data is None:
             continue

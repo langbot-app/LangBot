@@ -181,6 +181,23 @@ def make_app(
     )
 
 
+def test_resolve_box_session_id_reads_current_runner_config():
+    query = make_query(101)
+    query.pipeline_config = {
+        'ai': {
+            'runner': {'id': 'plugin:langbot/local-agent/default'},
+            'runner_config': {
+                'plugin:langbot/local-agent/default': {
+                    'box-session-id-template': 'bot-{launcher_id}-{sender_id}',
+                },
+            },
+        },
+    }
+    service = BoxService(make_app(Mock()), client=Mock(spec=BoxRuntimeClient))
+
+    assert service.resolve_box_session_id(query) == 'bot-test_user-test_user'
+
+
 @pytest.mark.asyncio
 async def test_box_service_without_explicit_client_initializes_internal_connector(monkeypatch: pytest.MonkeyPatch):
     connector = Mock()

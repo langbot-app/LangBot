@@ -6,9 +6,6 @@ import {
   PipelineConfigStage,
 } from '@/app/infra/entities/pipeline';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
-import N8nAuthFormComponent from '@/app/home/components/dynamic-form/N8nAuthFormComponent';
-import { useBoxStatus } from '@/app/infra/hooks/useBoxStatus';
-import { systemInfo } from '@/app/infra/http';
 import { Button } from '@/components/ui/button';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -77,7 +74,6 @@ export default function PipelineFormComponent({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCopyConfirm, setShowCopyConfirm] = useState(false);
   const [isDefaultPipeline, setIsDefaultPipeline] = useState<boolean>(false);
-  const { available: boxAvailable } = useBoxStatus();
 
   const formSchema = isEditMode
     ? z.object({
@@ -170,6 +166,8 @@ export default function PipelineFormComponent({
     resolver: zodResolver(formSchema),
     defaultValues: {
       basic: {
+        name: '',
+        description: '',
         emoji: '⚙️',
       },
       ai: {},
@@ -219,10 +217,11 @@ export default function PipelineFormComponent({
         .getPipeline(pipelineId || '')
         .then((resp: GetPipelineResponseData) => {
           setIsDefaultPipeline(resp.pipeline.is_default ?? false);
+
           const loadedValues = {
             basic: {
-              name: resp.pipeline.name,
-              description: resp.pipeline.description,
+              name: resp.pipeline.name ?? '',
+              description: resp.pipeline.description ?? '',
               emoji: resp.pipeline.emoji || '⚙️',
             },
             ai: resp.pipeline.config.ai,
@@ -235,7 +234,7 @@ export default function PipelineFormComponent({
           initializedStagesRef.current.clear();
         });
     }
-  }, []);
+  }, [form, isEditMode, pipelineId]);
 
   useEffect(() => {
     if (!isEditMode) {
@@ -308,7 +307,7 @@ export default function PipelineFormComponent({
       });
   }
 
-  // Called from DynamicFormComponent/N8nAuthFormComponent onSubmit callbacks.
+  // Called from DynamicFormComponent onSubmit callbacks.
   // On the first emission for a stage (mount-time default filling), the
   // snapshot is synchronously re-captured so that hasUnsavedChanges stays false.
   // However, if the form is already dirty (the user has made real changes),
@@ -323,7 +322,7 @@ export default function PipelineFormComponent({
     const isFirstEmission = !initializedStagesRef.current.has(stageKey);
 
     const currentValues =
-      (form.getValues(formName) as Record<string, any>) || {};
+      (form.getValues(formName) as Record<string, unknown>) || {};
     form.setValue(formName, {
       ...currentValues,
       [stageName]: values,
@@ -342,14 +341,34 @@ export default function PipelineFormComponent({
     }
   }
 
+  function handleRunnerConfigEmit(stageName: string, values: object) {
+    const stageKey = `ai.runner_config.${stageName}`;
+    const isFirstEmission = !initializedStagesRef.current.has(stageKey);
+
+    const currentRunnerConfigs =
+      (form.getValues('ai.runner_config') as Record<string, unknown>) || {};
+    form.setValue('ai.runner_config', {
+      ...currentRunnerConfigs,
+      [stageName]: values,
+    });
+
+    if (isFirstEmission) {
+      initializedStagesRef.current.add(stageKey);
+      const currentSnapshot = JSON.stringify(form.getValues());
+      if (savedSnapshotRef.current === '' || !hasUnsavedChangesRef.current) {
+        savedSnapshotRef.current = currentSnapshot;
+      }
+    }
+  }
+
   function renderDynamicForms(
     stage: PipelineConfigStage,
     formName: keyof FormValues,
   ) {
     // Special handling for AI config section
     if (formName === 'ai') {
-      // Get the currently selected runner
-      const currentRunner = form.watch('ai.runner.runner');
+      const runnerConfig = (form.watch('ai.runner') as any) || {};
+      const currentRunner = runnerConfig.id;
 
       // If this is the runner selector stage, render it directly
       if (stage.name === 'runner') {
@@ -367,8 +386,9 @@ export default function PipelineFormComponent({
               <DynamicFormComponent
                 itemConfigList={stage.config}
                 initialValues={
-                  (form.watch(formName) as Record<string, any>)?.[stage.name] ||
-                  {}
+                  (form.watch(formName) as Record<string, unknown>)?.[
+                    stage.name
+                  ] || {}
                 }
                 onSubmit={(values) => {
                   handleDynamicFormEmit(formName, stage.name, values);
@@ -384,8 +404,12 @@ export default function PipelineFormComponent({
         return null;
       }
 
-      // For n8n-service-api config, use N8nAuthFormComponent for form linkage
-      if (stage.name === 'n8n-service-api') {
+      // For plugin runner configs, store in ai.runner_config[runnerId]
+      const isPluginRunner =
+        currentRunner && currentRunner.startsWith('plugin:');
+      if (isPluginRunner) {
+        const runnerConfigs = (form.watch('ai.runner_config') as any) || {};
+        const stageInitialValues = runnerConfigs[stage.name] || {};
         return (
           <Card key={stage.name}>
             <CardHeader>
@@ -397,14 +421,11 @@ export default function PipelineFormComponent({
               )}
             </CardHeader>
             <CardContent className="space-y-6">
-              <N8nAuthFormComponent
+              <DynamicFormComponent
                 itemConfigList={stage.config}
-                initialValues={
-                  (form.watch(formName) as Record<string, any>)?.[stage.name] ||
-                  {}
-                }
+                initialValues={stageInitialValues}
                 onSubmit={(values) => {
-                  handleDynamicFormEmit(formName, stage.name, values);
+                  handleRunnerConfigEmit(stage.name, values);
                 }}
               />
             </CardContent>
@@ -413,60 +434,8 @@ export default function PipelineFormComponent({
       }
     }
 
-    // Box availability is exposed through ``systemContext.__system.box_available``
-    // so individual yaml-driven fields (e.g. ``box-session-id-template``) can
-    // opt-in via ``disable_if`` + ``disabled_tooltip`` rather than every page
-    // hard-coding a banner. Field-level gating keeps unrelated fields
-    // untouched.
-    //
-    // ``box_scope_editable`` folds the two reasons the Sandbox Scope selector
-    // can be locked into a single flag the yaml ``disable_if`` consumes:
-    //   1. Box sandbox is unavailable, or
-    //   2. the deployment pins all pipelines to a fixed scope via
-    //      ``system.limitation.force_box_session_id_template`` (SaaS).
-    const forcedBoxTemplate =
-      systemInfo.limitation?.force_box_session_id_template || '';
-    const boxScopeForced = !!forcedBoxTemplate;
-    const isLocalAgentStage = formName === 'ai' && stage.name === 'local-agent';
-    const stageSystemContext = isLocalAgentStage
-      ? {
-          box_available: boxAvailable,
-          box_scope_editable: boxAvailable && !boxScopeForced,
-          pipeline_id: pipelineId,
-        }
-      : undefined;
-
-    // When the deployment pins every pipeline to a fixed sandbox scope (SaaS
-    // ``force_box_session_id_template``), the Sandbox Scope selector is locked.
-    // The runtime already overrides the scope on every exec, but the stored
-    // pipeline value can be anything (e.g. the per-chat default), which would
-    // make the locked selector display a scope that is NOT the one actually in
-    // effect. Coerce the displayed/saved value to the forced template so the UI
-    // truthfully reflects runtime behavior.
-
     const stageInitialValues: Record<string, any> =
       (form.watch(formName) as Record<string, any>)?.[stage.name] || {};
-    const effectiveInitialValues =
-      isLocalAgentStage && boxScopeForced
-        ? {
-            ...stageInitialValues,
-            'box-session-id-template': forcedBoxTemplate,
-          }
-        : stageInitialValues;
-    const emitStageValues = (values: object) => {
-      if (!isLocalAgentStage) {
-        handleDynamicFormEmit(formName, stage.name, values);
-        return;
-      }
-
-      const latestStageValues =
-        ((form.getValues(formName) as Record<string, any>) || {})[stage.name] ||
-        {};
-      handleDynamicFormEmit(formName, stage.name, {
-        ...latestStageValues,
-        ...values,
-      });
-    };
 
     return (
       <Card key={stage.name}>
@@ -481,9 +450,10 @@ export default function PipelineFormComponent({
         <CardContent className="space-y-6">
           <DynamicFormComponent
             itemConfigList={stage.config}
-            initialValues={effectiveInitialValues}
-            onSubmit={emitStageValues}
-            systemContext={stageSystemContext}
+            initialValues={stageInitialValues}
+            onSubmit={(values) => {
+              handleDynamicFormEmit(formName, stage.name, values);
+            }}
           />
         </CardContent>
       </Card>
@@ -593,7 +563,7 @@ export default function PipelineFormComponent({
                                   <span className="text-destructive">*</span>
                                 </FormLabel>
                                 <FormControl>
-                                  <Input {...field} />
+                                  <Input {...field} value={field.value ?? ''} />
                                 </FormControl>
                                 <FormMessage />
                               </FormItem>
@@ -624,7 +594,7 @@ export default function PipelineFormComponent({
                             <FormItem>
                               <FormLabel>{t('common.description')}</FormLabel>
                               <FormControl>
-                                <Input {...field} />
+                                <Input {...field} value={field.value ?? ''} />
                               </FormControl>
                               <FormMessage />
                             </FormItem>

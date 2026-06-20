@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 import json
 import sqlalchemy
+import typing
 
 from ....core import app
 from ....entity.persistence import pipeline as persistence_pipeline
@@ -13,7 +14,6 @@ default_stage_order = [
     'BanSessionCheckStage',  # 封禁会话检查
     'PreContentFilterStage',  # 内容过滤前置阶段
     'PreProcessor',  # 预处理器
-    'ConversationMessageTruncator',  # 会话消息截断器
     'RequireRateLimitOccupancy',  # 请求速率限制占用
     'MessageProcessor',  # 处理器
     'ReleaseRateLimitOccupancy',  # 释放速率限制占用
@@ -30,11 +30,100 @@ class PipelineService:
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
 
+    def _get_default_values_from_schema(self, config_schema: list[dict[str, typing.Any]]) -> dict[str, typing.Any]:
+        """Build runner config defaults from a DynamicForm schema."""
+        defaults: dict[str, typing.Any] = {}
+        for item in config_schema:
+            name = item.get('name')
+            if not name:
+                continue
+            if 'default' in item:
+                defaults[name] = item['default']
+        return defaults
+
+    async def get_default_pipeline_config(self) -> dict[str, typing.Any]:
+        """Get the default pipeline config, rendering runner defaults from installed plugins."""
+        from ....utils import paths as path_utils
+
+        template_path = path_utils.get_resource_path('templates/default-pipeline-config.json')
+        with open(template_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+
+        agent_runner_registry = getattr(self.ap, 'agent_runner_registry', None)
+        if agent_runner_registry is None:
+            return config
+
+        try:
+            runners = await agent_runner_registry.list_runners(bound_plugins=None)
+        except Exception as e:
+            logger = getattr(self.ap, 'logger', None)
+            if logger:
+                logger.warning(f'Failed to load plugin agent runners for default pipeline config: {e}')
+            return config
+
+        if not runners:
+            return config
+
+        selected_runner = runners[0]
+        ai_config = config.setdefault('ai', {})
+        runner_config = ai_config.setdefault('runner', {})
+        runner_config['id'] = selected_runner.id
+        runner_config.setdefault('expire-time', 0)
+
+        ai_config['runner_config'] = {
+            selected_runner.id: self._get_default_values_from_schema(selected_runner.config_schema),
+        }
+
+        return config
+
     async def get_pipeline_metadata(self) -> list[dict]:
+        """Get pipeline metadata with dynamically loaded plugin runners from registry"""
+        import copy
+
+        # Deep copy AI metadata to avoid modifying the original
+        ai_metadata = copy.deepcopy(self.ap.pipeline_config_meta_ai)
+
+        # Find the runner stage
+        runner_stage = None
+        for stage in ai_metadata.get('stages', []):
+            if stage.get('name') == 'runner':
+                runner_stage = stage
+                break
+
+        if runner_stage:
+            # Find the runner select config (now uses 'id' field)
+            for config_item in runner_stage.get('config', []):
+                if config_item.get('name') == 'id':
+                    # Get plugin agent runners from registry
+                    try:
+                        (
+                            runner_options,
+                            runner_stages,
+                        ) = await self.ap.agent_runner_registry.get_runner_metadata_for_pipeline()
+
+                        # Replace options entirely with registry options
+                        # Only installed/available runners should be shown
+                        config_item['options'] = runner_options
+
+                        # Use the registry order as the default order. If no runner is available, leave
+                        # the default unset so the UI can recommend installing an AgentRunner plugin.
+                        if runner_options and 'default' not in config_item:
+                            config_item['default'] = runner_options[0]['name']
+
+                        # Add corresponding stage configuration for each runner
+                        for stage_config in runner_stages:
+                            # Avoid duplicate stages
+                            existing_stage_names = {s.get('name') for s in ai_metadata.get('stages', [])}
+                            if stage_config['name'] not in existing_stage_names:
+                                ai_metadata['stages'].append(stage_config)
+
+                    except Exception as e:
+                        self.ap.logger.warning(f'Failed to load plugin agent runners from registry: {e}')
+
         return [
             self.ap.pipeline_config_meta_trigger,
             self.ap.pipeline_config_meta_safety,
-            self.ap.pipeline_config_meta_ai,
+            ai_metadata,
             self.ap.pipeline_config_meta_output,
         ]
 
@@ -74,8 +163,6 @@ class PipelineService:
         return self.ap.persistence_mgr.serialize_model(persistence_pipeline.LegacyPipeline, pipeline)
 
     async def create_pipeline(self, pipeline_data: dict, default: bool = False) -> str:
-        from ....utils import paths as path_utils
-
         # Check limitation
         limitation = self.ap.instance_config.data.get('system', {}).get('limitation', {})
         max_pipelines = limitation.get('max_pipelines', -1)
@@ -89,9 +176,7 @@ class PipelineService:
         pipeline_data['stages'] = default_stage_order.copy()
         pipeline_data['is_default'] = default
 
-        template_path = path_utils.get_resource_path('templates/default-pipeline-config.json')
-        with open(template_path, 'r', encoding='utf-8') as f:
-            pipeline_data['config'] = json.load(f)
+        pipeline_data['config'] = await self.get_default_pipeline_config()
 
         # Ensure extensions_preferences is set with enable_all_plugins and enable_all_mcp_servers=True by default
         if 'extensions_preferences' not in pipeline_data:
@@ -115,9 +200,15 @@ class PipelineService:
         return pipeline_data['uuid']
 
     async def update_pipeline(self, pipeline_uuid: str, pipeline_data: dict) -> None:
+        from ....agent.runner.config_migration import ConfigMigration
+
         pipeline_data = pipeline_data.copy()
         for protected_field in ('uuid', 'for_version', 'stages', 'is_default'):
             pipeline_data.pop(protected_field, None)
+
+        # Migrate config to new format before saving
+        if 'config' in pipeline_data:
+            pipeline_data['config'] = ConfigMigration.migrate_pipeline_config(pipeline_data['config'])
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_pipeline.LegacyPipeline)
