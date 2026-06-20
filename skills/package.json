@@ -5,6 +5,13 @@
     "lbs": "./bin/lbs"
   },
   "scripts": {
+    "bootstrap": "node scripts/bootstrap-lbs.mjs",
+    "prepare": "node scripts/bootstrap-lbs.mjs",
+    "prevalidate": "node scripts/bootstrap-lbs.mjs",
+    "preindex": "node scripts/bootstrap-lbs.mjs",
+    "preindex:check": "node scripts/bootstrap-lbs.mjs",
+    "pretest": "node scripts/bootstrap-lbs.mjs",
+    "precheck": "node scripts/bootstrap-lbs.mjs",
     "lbs": "node src/lbs.ts",
     "test": "node test/lbs-cli.test.ts",
     "validate": "node src/lbs.ts validate",

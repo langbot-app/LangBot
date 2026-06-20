@@ -39,6 +39,7 @@ bin/lbs index
 ```
 
 Use `bin/lbs env show` to inspect defaults and `bin/lbs env doctor` when diagnosing local environment readiness. Env output is redacted by default; do not work around that by printing raw secrets.
+`bin/lbs` is a generated local wrapper. If it is missing on a fresh checkout, run `npm run bootstrap` from this directory first; `npm install` also regenerates it via `prepare`.
 Use `bin/lbs fixture check` before fixture-heavy cases such as MCP, RAG, multimodal, or plugin smoke tests.
 Use `bin/lbs case list --ready` for cases that have no missing machine inputs and no manual preconditions. Use `bin/lbs case list --machine-ready` when you want to keep `manual-check` candidates and confirm their preconditions yourself.
 

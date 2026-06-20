@@ -35,9 +35,13 @@ and LangBot's own Local Agent) working with the LangBot ecosystem.
 
 ## The `lbs` CLI
 
-The testing assets ship with a small CLI (`bin/lbs`, Node ≥ 22.6):
+The testing assets ship with a small CLI (`bin/lbs`, Node >= 22.6). The
+`bin/lbs` wrapper is a generated local entrypoint; on a fresh checkout, run
+`npm run bootstrap` once if it is missing. `npm install` also regenerates it via
+the `prepare` script.
 
 ```bash
+npm run bootstrap    # create bin/lbs if missing
 bin/lbs validate     # validate skills/cases/troubleshooting structure
 bin/lbs index        # regenerate skills.index.json
 bin/lbs env show     # inspect resolved env defaults (redacted)

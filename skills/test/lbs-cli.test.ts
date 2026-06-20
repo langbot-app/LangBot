@@ -15,6 +15,7 @@ import { commandTroubleSearch } from "../src/commands/trouble.ts";
 import { commandValidate } from "../src/commands/validate.ts";
 import { commandIndex } from "../src/commands/skill.ts";
 import { loadEnv } from "../src/fs.ts";
+import { repoRoot } from "../src/cli.ts";
 import {
   classifyDebugChatResult,
   findNewFailureSignal,
@@ -22,6 +23,19 @@ import {
 } from "../scripts/e2e/lib/debug-chat.mjs";
 
 const root = process.cwd();
+
+test("repo root detects the skills tree before generated bin exists", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "lbs-root-no-bin-"));
+  try {
+    mkdirSync(join(tmp, "schemas"), { recursive: true });
+    mkdirSync(join(tmp, "skills", "langbot-testing"), { recursive: true });
+    writeFileSync(join(tmp, "skills.index.json"), "{}");
+    writeFileSync(join(tmp, "schemas", "case.schema.json"), "{}");
+    assert.equal(repoRoot(join(tmp, "skills", "langbot-testing")), tmp);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
 
 function ctx(args: string[]): CommandContext {
   return { root, args };
@@ -73,6 +87,19 @@ function suiteResult(caseId: string, runId: string, status = "pass", evidence = 
     finished_at_local: "2026-05-21T10:31:00.000+08:00",
     evidence_collected: evidence,
   });
+}
+
+function withEnv<T>(values: Record<string, string>, fn: () => T): T {
+  const previous = new Map(Object.keys(values).map((key) => [key, process.env[key]]));
+  try {
+    for (const [key, value] of Object.entries(values)) process.env[key] = value;
+    return fn();
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 }
 
 async function captureAsync(fn: () => Promise<number>): Promise<{ code: number; output: string }> {
@@ -1417,15 +1444,20 @@ test("generic pipeline readiness accepts either URL or name target", () => {
   const originalUrl = process.env.LANGBOT_PIPELINE_URL;
   const originalName = process.env.LANGBOT_PIPELINE_NAME;
   try {
-    process.env.LANGBOT_PIPELINE_URL = "http://127.0.0.1:3000/home/pipelines?id=only-url";
-    process.env.LANGBOT_PIPELINE_NAME = "";
+    withEnv({
+      LANGBOT_BROWSER_PROFILE: "/tmp/langbot-test-profile",
+      LANGBOT_CHROMIUM_EXECUTABLE: "/tmp/langbot-test-chromium",
+    }, () => {
+      process.env.LANGBOT_PIPELINE_URL = "http://127.0.0.1:3000/home/pipelines?id=only-url";
+      process.env.LANGBOT_PIPELINE_NAME = "";
 
-    const ready = capture(() => commandTestPlan(ctx(["test", "plan", "pipeline-debug-chat", "--json"])));
-    assert.equal(ready.code, 0);
-    const plan = JSON.parse(ready.output);
-    assert.equal(plan.env_readiness.status, "ready");
-    assert.equal(plan.automation_readiness.status, "ready");
-    assert.ok(plan.automation_readiness.required.includes("LANGBOT_PIPELINE_URL|LANGBOT_PIPELINE_NAME"));
+      const ready = capture(() => commandTestPlan(ctx(["test", "plan", "pipeline-debug-chat", "--json"])));
+      assert.equal(ready.code, 0);
+      const plan = JSON.parse(ready.output);
+      assert.equal(plan.env_readiness.status, "ready");
+      assert.equal(plan.automation_readiness.status, "ready");
+      assert.ok(plan.automation_readiness.required.includes("LANGBOT_PIPELINE_URL|LANGBOT_PIPELINE_NAME"));
+    });
 
     process.env.LANGBOT_PIPELINE_URL = "";
     process.env.LANGBOT_PIPELINE_NAME = "";
@@ -2174,27 +2206,32 @@ test("local-agent effective prompt case has runnable automation defaults", () =>
 });
 
 test("local-agent basic case can setup the local-agent pipeline env", () => {
-  const result = capture(() => commandTestRun(ctx([
-    "test",
-    "run",
-    "local-agent-basic-debug-chat",
-    "--dry-run",
-    "--json",
-  ])));
-  assert.equal(result.code, 0);
-  const run = JSON.parse(result.output);
-  assert.deepEqual(run.setup_automation.map((item: { entry: string }) => item.entry), [
-    "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env",
-  ]);
+  withEnv({
+    LANGBOT_BROWSER_PROFILE: "/tmp/langbot-test-profile",
+    LANGBOT_CHROMIUM_EXECUTABLE: "/tmp/langbot-test-chromium",
+  }, () => {
+    const result = capture(() => commandTestRun(ctx([
+      "test",
+      "run",
+      "local-agent-basic-debug-chat",
+      "--dry-run",
+      "--json",
+    ])));
+    assert.equal(result.code, 0);
+    const run = JSON.parse(result.output);
+    assert.deepEqual(run.setup_automation.map((item: { entry: string }) => item.entry), [
+      "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env",
+    ]);
 
-  const planResult = capture(() => commandTestPlan(ctx(["test", "plan", "local-agent-basic-debug-chat", "--json"])));
-  assert.equal(planResult.code, 0);
-  const plan = JSON.parse(planResult.output);
-  assert.deepEqual(plan.setup_provides_env, [
-    "LANGBOT_LOCAL_AGENT_PIPELINE_URL",
-    "LANGBOT_LOCAL_AGENT_PIPELINE_NAME",
-  ]);
-  assert.equal(plan.automation_readiness.status, "ready");
+    const planResult = capture(() => commandTestPlan(ctx(["test", "plan", "local-agent-basic-debug-chat", "--json"])));
+    assert.equal(planResult.code, 0);
+    const plan = JSON.parse(planResult.output);
+    assert.deepEqual(plan.setup_provides_env, [
+      "LANGBOT_LOCAL_AGENT_PIPELINE_URL",
+      "LANGBOT_LOCAL_AGENT_PIPELINE_NAME",
+    ]);
+    assert.equal(plan.automation_readiness.status, "ready");
+  });
 });
 
 test("local-agent nonstreaming case disables stream output through automation defaults", () => {
@@ -2355,20 +2392,25 @@ test("AgentRunner QA Debug Chat case uses dedicated pipeline env", () => {
 });
 
 test("AgentRunner QA Debug Chat setup automation removes manual readiness", () => {
-  const planResult = capture(() => commandTestPlan(ctx(["test", "plan", "agent-runner-qa-debug-chat", "--json"])));
-  assert.equal(planResult.code, 0);
-  const plan = JSON.parse(planResult.output);
-  assert.equal(plan.manual_readiness.status, "not_required");
-  assert.deepEqual(plan.setup_provides_env, [
-    "LANGBOT_QA_AGENT_RUNNER_PIPELINE_URL",
-    "LANGBOT_QA_AGENT_RUNNER_PIPELINE_NAME",
-  ]);
-  assert.equal(plan.automation_readiness.status, "ready");
+  withEnv({
+    LANGBOT_BROWSER_PROFILE: "/tmp/langbot-test-profile",
+    LANGBOT_CHROMIUM_EXECUTABLE: "/tmp/langbot-test-chromium",
+  }, () => {
+    const planResult = capture(() => commandTestPlan(ctx(["test", "plan", "agent-runner-qa-debug-chat", "--json"])));
+    assert.equal(planResult.code, 0);
+    const plan = JSON.parse(planResult.output);
+    assert.equal(plan.manual_readiness.status, "not_required");
+    assert.deepEqual(plan.setup_provides_env, [
+      "LANGBOT_QA_AGENT_RUNNER_PIPELINE_URL",
+      "LANGBOT_QA_AGENT_RUNNER_PIPELINE_NAME",
+    ]);
+    assert.equal(plan.automation_readiness.status, "ready");
 
-  const suiteResult = capture(() => commandSuitePlan(ctx(["suite", "plan", "agent-runner-release-gate", "--json"])));
-  assert.equal(suiteResult.code, 0);
-  const suite = JSON.parse(suiteResult.output);
-  assert.ok(!suite.readiness.manual_check_cases.includes("agent-runner-qa-debug-chat"));
+    const suiteResult = capture(() => commandSuitePlan(ctx(["suite", "plan", "agent-runner-release-gate", "--json"])));
+    assert.equal(suiteResult.code, 0);
+    const suite = JSON.parse(suiteResult.output);
+    assert.ok(!suite.readiness.manual_check_cases.includes("agent-runner-qa-debug-chat"));
+  });
 });
 
 test("ACP AgentRunner Debug Chat case setups the ACP pipeline env", () => {

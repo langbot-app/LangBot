@@ -61,7 +61,7 @@ export function repoRoot(start: string): string {
     // root of this assets tree). Check it first so that when the tree lives
     // inside a larger repo (e.g. LangBot/skills/), we stop at the assets root
     // and not at the outer repo's .git/README.md.
-    if (existsSync(`${current}/skills.index.json`) && existsSync(`${current}/bin/lbs`)) {
+    if (existsSync(`${current}/skills.index.json`) && existsSync(`${current}/schemas/case.schema.json`)) {
       return current;
     }
     if (existsSync(`${current}/.git`) && existsSync(`${current}/README.md`)) {
