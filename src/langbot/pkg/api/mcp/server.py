@@ -168,10 +168,7 @@ class LangBotMCPServer:
             return _dump(await ap.knowledge_service.get_knowledge_base(kb_uuid))
 
         @mcp.tool(
-            description=(
-                'Retrieve (semantic search) from a knowledge base. Returns the '
-                'matched chunks for `query`.'
-            )
+            description=('Retrieve (semantic search) from a knowledge base. Returns the matched chunks for `query`.')
         )
         async def retrieve_knowledge_base(kb_uuid: str, query: str) -> str:
             return _dump(await ap.knowledge_service.retrieve_knowledge_base(kb_uuid, query))
@@ -179,8 +176,7 @@ class LangBotMCPServer:
         # ----- MCP servers (LangBot as MCP client) --------------------- #
         @mcp.tool(
             description=(
-                'List external MCP servers registered in LangBot (the servers '
-                'LangBot itself connects to as a client).'
+                'List external MCP servers registered in LangBot (the servers LangBot itself connects to as a client).'
             )
         )
         async def list_mcp_servers() -> str:

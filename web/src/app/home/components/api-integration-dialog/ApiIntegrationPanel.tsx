@@ -467,9 +467,7 @@ export default function ApiIntegrationPanel({
           value="mcp"
           className="min-h-0 flex-1 space-y-4 overflow-auto px-6 py-5"
         >
-          <p className="text-sm text-muted-foreground">
-            {t('common.mcpHint')}
-          </p>
+          <p className="text-sm text-muted-foreground">{t('common.mcpHint')}</p>
 
           <div className="space-y-2">
             <label className="text-sm font-medium">
