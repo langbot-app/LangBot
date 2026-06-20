@@ -21,6 +21,7 @@ Use this skill when an agent needs to verify LangBot behavior through the WebUI 
 - **Sandbox-backed skill authoring**: read `references/sandbox-skill-authoring.md`.
 - **LangRAG knowledge bases**: read `references/langrag-knowledge-base.md`.
 - **MCP stdio tool testing**: read `references/mcp-stdio-testing.md`.
+- **Drive a live instance over MCP (not raw HTTP)**: use the `langbot-mcp-ops` skill — the instance exposes an MCP server at `http://<host>:5300/mcp` (reuses API keys). Useful for setting up bots/pipelines/models as test fixtures programmatically.
 - **Known failures and fixes**: read `references/troubleshooting.md`.
 - **Reusable test groups**: run `bin/lbs suite list` and `bin/lbs suite plan <suite-id>` before manually assembling a case set.
 
