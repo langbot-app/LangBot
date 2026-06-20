@@ -3,6 +3,12 @@ api:
     port: 5300
     webhook_prefix: 'http://127.0.0.1:5300'
     extra_webhook_prefix: ''
+    # Global API key for the HTTP service API and the MCP server. When set to a
+    # non-empty string, this key is accepted anywhere a web-UI-created API key is
+    # accepted (X-API-Key header or "Authorization: Bearer <key>"), WITHOUT any
+    # login session and without a database record. Leave empty to disable.
+    # Keep this value secret; only enable it on trusted/internal deployments.
+    global_api_key: ''
 command:
     enable: true
     prefix:
