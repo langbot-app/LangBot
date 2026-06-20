@@ -133,6 +133,27 @@ When writing a migration, follow these rules:
 
 > **Legacy migration system (deprecated — do not extend).** The old 3.x migration system under `src/langbot/pkg/persistence/migrations/` (`DBMigration` subclasses in `dbmXXX_*.py`, run from `pkg/persistence/mgr.py`) is **frozen**. Do **not** add new `dbmXXX_*.py` files. The chain is capped at `required_database_version = 25` (`pkg/utils/constants.py`); those files only exist to upgrade pre-existing 3.x databases up to the Alembic baseline and are kept read-only. All new schema changes go through Alembic.
 
+## Agent-Facing Surfaces (MCP + Skills)
+
+LangBot is built to be **agent-friendly**. Three surfaces let AI agents work
+with LangBot, and they MUST be kept in lockstep with the HTTP API:
+
+1. **MCP server** — `src/langbot/pkg/api/mcp/` exposes a curated subset of the
+   API as MCP tools at `/mcp` (API-key authenticated, including the
+   `api.global_api_key` from config.yaml). `server.py` defines the tools (they
+   call the service layer directly); `mount.py` is the ASGI dispatcher.
+2. **In-repo skills** — `skills/` is the **single source of truth** for agent
+   skills (plugin/core/deploy/e2e/MCP-ops). Docs and the landing page link here
+   rather than embedding their own copies.
+3. **API-key auth** — `api.global_api_key` (config.yaml) authenticates the API
+   and MCP without a login session; see `docs/API_KEY_AUTH.md`.
+
+> **Maintenance rule (important).** When you add, remove, or change an HTTP API
+> endpoint that should be agent-accessible, you MUST update **both** the matching
+> MCP tool in `src/langbot/pkg/api/mcp/server.py` **and** the relevant skill under
+> `skills/` (especially `skills/skills/langbot-mcp-ops`). The API, the MCP tool
+> surface, and the skills are one system — drift between them is a bug.
+
 ## Some Principles
 
 - Keep it simple, stupid.
