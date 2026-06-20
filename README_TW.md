@@ -171,6 +171,17 @@ docker compose up -d
 
 *注意：公開演示環境，請不要在其中填入任何敏感資訊。*
 
+## 為 AI Agent 而生 🤖
+
+LangBot **從設計上就對 Agent 友善** —— 你的編碼 Agent（Claude Code、Codex、Copilot、Cursor 等）可以一等公民般地操作、擴充和部署 LangBot：
+
+- **MCP Server** —— LangBot 內建 [Model Context Protocol](https://modelcontextprotocol.io/) 端點 `/mcp`，與 HTTP API 對齊，Agent 可程式化管理機器人、流水線、外掛和模型。使用同一套 API Key 鑑權（可在 `config.yaml` 設定全域 Key，或使用使用者 Key），無需登入流程。在 Web 面板的 **API 與 MCP** 分頁中設定。
+- **倉庫內 Skills** —— [`skills/`](skills/) 目錄是使用 LangBot 的**唯一事實來源**：外掛開發、核心開發、端到端測試、部署，以及操作 LangBot / LangBot Space MCP Server。把 Agent 指向這個目錄，它就知道如何動手。
+- **AGENTS.md** —— 每個倉庫都提供 [`AGENTS.md`](AGENTS.md)（軟連結到 `CLAUDE.md`），描述架構、規範，以及「API 變更必須同步更新 MCP Server 和 skills」的約定。
+- **`llms.txt`** —— 面向 LLM 的機器可讀專案上下文已發布在官網。
+
+> **雲端 / 市集：** [LangBot Space](https://space.langbot.app) 同樣開放 MCP Server，Agent 可搜尋和檢視外掛 / MCP / Skill 市集，使用 Personal Access Token 鑑權。
+
 ---
 
 ## 社群

@@ -148,6 +148,19 @@ docker compose up -d
 
 ---
 
+## Built for AI Agents 🤖
+
+LangBot is **agent-friendly by design** — your coding agents (Claude Code, Codex, Copilot, Cursor, …) can operate, extend, and deploy LangBot with first-class support:
+
+- **MCP Server** — LangBot exposes a built-in [Model Context Protocol](https://modelcontextprotocol.io/) endpoint at `/mcp`, mirroring the HTTP API so an agent can manage bots, pipelines, plugins, and models programmatically. Authenticate with the same API key (set a global key in `config.yaml` or use a per-user key) — no login flow required. Configure it in the Web panel's **API & MCP** tab.
+- **In-repo Skills** — The [`skills/`](skills/) directory is the **single source of truth** for working with LangBot: plugin development, core development, end-to-end testing, deployment, and operating the LangBot / LangBot Space MCP servers. Point your agent at this directory and it knows how to build.
+- **AGENTS.md** — Every repo ships an [`AGENTS.md`](AGENTS.md) (symlinked to `CLAUDE.md`) describing architecture, conventions, and the rule that API changes must keep the MCP server and skills in sync.
+- **`llms.txt`** — Machine-readable project context for LLMs is published on the website.
+
+> **Cloud / Marketplace:** [LangBot Space](https://space.langbot.app) also exposes an MCP server so agents can search and inspect the plugin / MCP / skill marketplace, authenticated with a Personal Access Token.
+
+---
+
 ## Live Demo
 
 **Try it now:** https://demo.langbot.dev/

@@ -155,6 +155,17 @@ docker compose up -d
 
 *Lưu ý: Môi trường demo công khai. Không nhập thông tin nhạy cảm.*
 
+## Được xây dựng cho AI Agent 🤖
+
+LangBot **thân thiện với agent ngay từ thiết kế** —— các coding agent của bạn (Claude Code, Codex, Copilot, Cursor, …) có thể vận hành, mở rộng và triển khai LangBot với sự hỗ trợ hạng nhất:
+
+- **MCP Server** —— LangBot cung cấp endpoint [Model Context Protocol](https://modelcontextprotocol.io/) tích hợp tại `/mcp`, phản chiếu HTTP API để agent quản lý bot, pipeline, plugin và model theo cách lập trình. Xác thực bằng cùng một API key (đặt key toàn cục trong `config.yaml` hoặc dùng key theo người dùng) —— không cần luồng đăng nhập. Cấu hình tại tab **API & MCP** trong bảng điều khiển Web.
+- **Skills trong repo** —— Thư mục [`skills/`](skills/) là **nguồn sự thật duy nhất** để làm việc với LangBot: phát triển plugin, phát triển core, kiểm thử end-to-end, triển khai và vận hành MCP Server của LangBot / LangBot Space. Trỏ agent của bạn vào thư mục này và nó sẽ biết cách xây dựng.
+- **AGENTS.md** —— Mỗi repo đều có [`AGENTS.md`](AGENTS.md) (liên kết tượng trưng tới `CLAUDE.md`) mô tả kiến trúc, quy ước và quy tắc rằng thay đổi API phải giữ MCP Server và skills đồng bộ.
+- **`llms.txt`** —— Ngữ cảnh dự án có thể đọc bằng máy dành cho LLM được công bố trên website.
+
+> **Cloud / Marketplace:** [LangBot Space](https://space.langbot.app) cũng cung cấp MCP Server để agent tìm kiếm và kiểm tra marketplace plugin / MCP / skill, xác thực bằng Personal Access Token.
+
 ---
 
 ## Cộng đồng

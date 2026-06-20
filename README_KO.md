@@ -155,6 +155,17 @@ docker compose up -d
 
 *참고: 공개 데모 환경입니다. 민감한 정보를 입력하지 마세요.*
 
+## AI 에이전트를 위한 설계 🤖
+
+LangBot은 **설계 단계부터 에이전트 친화적**입니다 —— 코딩 에이전트(Claude Code, Codex, Copilot, Cursor 등)가 일급 지원으로 LangBot을 운영·확장·배포할 수 있습니다:
+
+- **MCP 서버** —— LangBot은 내장 [Model Context Protocol](https://modelcontextprotocol.io/) 엔드포인트 `/mcp`를 제공하며, HTTP API와 동일하게 미러링되어 에이전트가 봇·파이프라인·플러그인·모델을 프로그래밍 방식으로 관리할 수 있습니다. 동일한 API 키로 인증하며(`config.yaml`에 전역 키 설정 또는 사용자 키 사용) 로그인 절차가 필요 없습니다. 웹 패널의 **API & MCP** 탭에서 설정합니다.
+- **저장소 내 Skills** —— [`skills/`](skills/) 디렉터리는 LangBot 작업의 **단일 진실 공급원**입니다: 플러그인 개발, 코어 개발, E2E 테스트, 배포, LangBot / LangBot Space MCP 서버 운영. 에이전트를 이 디렉터리로 안내하면 빌드 방법을 알게 됩니다.
+- **AGENTS.md** —— 모든 저장소에는 [`AGENTS.md`](AGENTS.md)(`CLAUDE.md`로 심볼릭 링크)가 있으며 아키텍처, 규약, 그리고 API 변경 시 MCP 서버와 skills를 동기화해야 한다는 규칙을 설명합니다.
+- **`llms.txt`** —— LLM을 위한 기계 판독 가능한 프로젝트 컨텍스트가 웹사이트에 게시되어 있습니다.
+
+> **클라우드 / 마켓플레이스:** [LangBot Space](https://space.langbot.app)도 MCP 서버를 제공하여 에이전트가 Personal Access Token으로 인증해 플러그인 / MCP / Skill 마켓플레이스를 검색하고 조회할 수 있습니다.
+
 ---
 
 ## 커뮤니티

@@ -155,6 +155,17 @@ docker compose up -d
 
 *注意: 公開デモ環境です。機密情報を入力しないでください。*
 
+## AI エージェントのために 🤖
+
+LangBot は **設計段階からエージェントフレンドリー** です。お使いのコーディングエージェント（Claude Code、Codex、Copilot、Cursor など）が、ファーストクラスのサポートで LangBot を操作・拡張・デプロイできます：
+
+- **MCP サーバー** —— LangBot は組み込みの [Model Context Protocol](https://modelcontextprotocol.io/) エンドポイント `/mcp` を公開し、HTTP API とミラーリングされているため、エージェントがボット・パイプライン・プラグイン・モデルをプログラム的に管理できます。同じ API キーで認証（`config.yaml` でグローバルキーを設定、またはユーザーキーを使用）—— ログインフロー不要。Web パネルの **API & MCP** タブで設定します。
+- **リポジトリ内 Skills** —— [`skills/`](skills/) ディレクトリは LangBot を扱うための**唯一の信頼できる情報源**です：プラグイン開発、コア開発、E2E テスト、デプロイ、LangBot / LangBot Space MCP サーバーの操作。エージェントをこのディレクトリに向ければ、構築方法を理解します。
+- **AGENTS.md** —— すべてのリポジトリに [`AGENTS.md`](AGENTS.md)（`CLAUDE.md` へのシンボリックリンク）があり、アーキテクチャ・規約、そして「API 変更時は MCP サーバーと skills を同期する」というルールを記述しています。
+- **`llms.txt`** —— LLM 向けの機械可読なプロジェクトコンテキストを公式サイトで公開しています。
+
+> **クラウド / マーケット：** [LangBot Space](https://space.langbot.app) も MCP サーバーを公開しており、エージェントが Personal Access Token で認証してプラグイン / MCP / Skill マーケットを検索・確認できます。
+
 ---
 
 ## コミュニティ
