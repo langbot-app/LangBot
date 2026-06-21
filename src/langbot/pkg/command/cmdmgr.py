@@ -84,7 +84,13 @@ class CommandManager:
 
         privilege = 1
 
-        if f'{query.launcher_type.value}_{query.launcher_id}' in self.ap.instance_config.data['admins']:
+        admins = self.ap.instance_config.data['admins']
+        launcher_session_id = f'{query.launcher_type.value}_{query.launcher_id}'
+        sender_session_id = f'person_{query.sender_id}'
+
+        # 兼容老版本匹配 launcher_session_id（群管理: group_xxx 私聊管理: person_xxx）
+        # 新实现匹配 sender_session_id（个人管理员: person_xxx，在任何群聊中生效）
+        if launcher_session_id in admins or sender_session_id in admins:
             privilege = 2
 
         ctx = command_context.ExecuteContext(
