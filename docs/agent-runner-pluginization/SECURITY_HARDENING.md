@@ -74,6 +74,8 @@ Claude Code、Codex、OpenCode、Kimi Code、Gemini CLI 等外部工具继续使
 
 当前实现方向是正确的：`AgentRunSessionRegistry` 保存 run-scoped snapshot，`plugin/handler.py` 对模型、工具、知识库、history、state、storage 等 action 做运行期校验，sandbox/workspace 文件访问由 scoped tool 边界控制。
 
+**Skill 读写门控（不可弱化）**：pipeline-visible 的 skill 一次性以 `rw` 挂进同一 sandbox，mount 层不区分「可见」与「已激活」；写类 native 操作（write/edit/exec）只放行 activated skill，读类放行 visible + activated——这层区分等同资产授权语义，必须保留。skill 全 tool 化后尤其注意：「都是 tool」不等于「只控资产授权即可」，native 层的 visible/activated 门控不能砍。可弱化的只是 realpath 越界字符串检查（有 chroot/namespace 兜底）。
+
 ### MCP / Asset Gateway Boundary
 
 LangBot MCP / asset gateway 只暴露当前 run 授权的工具面：
@@ -158,7 +160,7 @@ LangBot 需要提供基本可控性：
 | Permission boundary | 必须保护 LangBot 资源；不约束外部 CLI native 能力。 | Required |
 | Secret handling | 基础不投影、基础 masking、run token 短期化。 | Basic required |
 | MCP policy | run-scoped token + scoped tool surface；无复杂审批。 | Required |
-| Skill access policy | 通过 Host 授权资源暴露；harness-native skill 文件不作为 LangBot 安全边界。 | Basic required |
+| Skill access policy | skill 通过 Host 授权 tool 暴露（发现 / activate / register / native exec 走统一 tool 授权）；**native 层 visible（只读）vs activated（可写）门控不可弱化**——所有 pipeline-visible skill 以 `rw` 挂进同一 sandbox，读写区分全靠 native 层；harness-native skill 文件不作为 LangBot 安全边界。 | Required |
 | Process isolation | 由 Docker/K8s/用户机器负责。 | Out of scope |
 | State lifecycle | scope 隔离、JSON size limit、基础 cleanup primitive。 | Basic required |
 | Audit | 记录运行事实和拒绝原因。 | Audit-lite |

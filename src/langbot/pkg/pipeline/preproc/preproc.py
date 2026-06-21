@@ -181,10 +181,6 @@ class PreProcessor(stage.PipelineStage):
 
         uses_host_models = config_schema.uses_host_models(descriptor)
         uses_host_tools = config_schema.uses_host_tools(descriptor)
-        include_skill_authoring = (
-            config_schema.supports_skill_authoring(descriptor)
-            and getattr(self.ap, 'skill_service', None) is not None
-        )
         llm_model = None
         if uses_host_models:
             primary_uuid, fallback_uuids = config_schema.extract_model_selection(descriptor, runner_config)
@@ -242,7 +238,6 @@ class PreProcessor(stage.PipelineStage):
                     query.use_funcs = await self.ap.tool_mgr.get_all_tools(
                         bound_plugins,
                         bound_mcp_servers,
-                        include_skill_authoring=include_skill_authoring,
                     )
 
                     self.ap.logger.debug(f'Bound plugins: {bound_plugins}')
@@ -255,13 +250,11 @@ class PreProcessor(stage.PipelineStage):
                 query.use_funcs = await self.ap.tool_mgr.get_all_tools(
                     bound_plugins,
                     bound_mcp_servers,
-                    include_skill_authoring=include_skill_authoring,
                 )
         elif uses_host_tools:
             query.use_funcs = await self.ap.tool_mgr.get_all_tools(
                 bound_plugins,
                 bound_mcp_servers,
-                include_skill_authoring=include_skill_authoring,
             )
 
             self.ap.logger.debug(f'Bound plugins: {bound_plugins}')
@@ -367,7 +360,7 @@ class PreProcessor(stage.PipelineStage):
         query.prompt.messages = event_ctx.event.default_prompt
         query.messages = event_ctx.event.prompt
 
-        if include_skill_authoring and getattr(self.ap, 'skill_mgr', None) is not None:
+        if getattr(self.ap, 'skill_mgr', None) is not None:
             pipeline_data = await self.ap.pipeline_service.get_pipeline(query.pipeline_uuid)
             extensions_prefs = (pipeline_data or {}).get('extensions_preferences', {})
             enable_all_skills = extensions_prefs.get('enable_all_skills', True)

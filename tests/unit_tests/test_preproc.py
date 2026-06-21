@@ -150,7 +150,7 @@ def _import_preproc_modules():
 
 
 @pytest.mark.asyncio
-async def test_preproc_enables_skill_authoring_tools_when_skill_service_available():
+async def test_preproc_loads_host_tools_for_runner():
     preproc_module, entities_module = _import_preproc_modules()
 
     app = _make_app(skill_service=SimpleNamespace())
@@ -159,7 +159,7 @@ async def test_preproc_enables_skill_authoring_tools_when_skill_service_availabl
     result = await stage.process(_make_query(), 'PreProcessor')
 
     assert result.result_type == entities_module.ResultType.CONTINUE
-    app.tool_mgr.get_all_tools.assert_awaited_once_with(None, None, include_skill_authoring=True)
+    app.tool_mgr.get_all_tools.assert_awaited_once_with(None, None)
 
 
 @pytest.mark.asyncio
@@ -180,12 +180,13 @@ async def test_preproc_puts_host_skill_tools_into_query_scope():
     result = await stage.process(query, 'PreProcessor')
 
     assert result.result_type == entities_module.ResultType.CONTINUE
-    app.tool_mgr.get_all_tools.assert_awaited_once_with(None, None, include_skill_authoring=True)
+    app.tool_mgr.get_all_tools.assert_awaited_once_with(None, None)
     assert [tool.name for tool in query.use_funcs] == ['activate', 'register_skill']
 
 
 @pytest.mark.asyncio
-async def test_preproc_disables_skill_authoring_tools_when_skill_service_missing():
+async def test_preproc_loads_host_tools_regardless_of_skill_service():
+    """Skill tooling no longer gates on skill_service at the preproc layer."""
     preproc_module, entities_module = _import_preproc_modules()
 
     app = _make_app(skill_service=None)
@@ -194,7 +195,7 @@ async def test_preproc_disables_skill_authoring_tools_when_skill_service_missing
     result = await stage.process(_make_query(), 'PreProcessor')
 
     assert result.result_type == entities_module.ResultType.CONTINUE
-    app.tool_mgr.get_all_tools.assert_awaited_once_with(None, None, include_skill_authoring=False)
+    app.tool_mgr.get_all_tools.assert_awaited_once_with(None, None)
 
 
 @pytest.mark.asyncio
@@ -237,10 +238,11 @@ async def test_preproc_respects_pipeline_bound_skills_subset():
 
 
 @pytest.mark.asyncio
-async def test_preproc_does_not_load_skill_preferences_without_skill_authoring_service():
+async def test_preproc_does_not_load_skill_preferences_without_skill_mgr():
     preproc_module, entities_module = _import_preproc_modules()
 
-    app = _make_app(skill_service=None)
+    app = _make_app(skill_service=SimpleNamespace())
+    app.skill_mgr = None  # no skill manager -> skill tooling unavailable
 
     query = _make_query()
     result = await stage_process_capture(preproc_module, app, query)

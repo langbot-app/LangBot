@@ -91,27 +91,6 @@ def get_activated_skill_names(query: pipeline_query.Query) -> list[str]:
     return normalize_skill_names(list(get_activated_skills(query).keys()))
 
 
-def restore_activated_skills(
-    ap: app.Application,
-    query: pipeline_query.Query,
-    skill_names: typing.Any,
-) -> list[str]:
-    """Restore caller-provided activated skill names into Query variables.
-
-    Persistence and state scope ownership belong to higher-level flows. This
-    helper only rebuilds current Query state from pipeline-visible skills, so
-    removed or unbound skills stay unavailable to native exec/write/edit.
-    """
-    restored: list[str] = []
-    for skill_name in normalize_skill_names(skill_names):
-        skill_data = get_visible_skill(ap, query, skill_name)
-        if skill_data is None:
-            continue
-        register_activated_skill(query, skill_data)
-        restored.append(skill_name)
-    return restored
-
-
 def restore_activated_skills_from_state(
     ap: app.Application,
     query: pipeline_query.Query,
@@ -133,6 +112,55 @@ def restore_activated_skills_from_state(
         register_activated_skill(query, skill_data)
         restored.append(skill_name)
     return restored
+
+
+async def persist_activated_skill(
+    ap: app.Application,
+    query: pipeline_query.Query,
+    skill_name: str,
+) -> None:
+    """Persist activated skill names into host-owned conversation state.
+
+    ``activate`` runs host-side. This writes the run's current activated skill
+    names to the conversation-scope ``host.activated_skills`` snapshot so a later
+    run can restore them via ``restore_activated_skills_from_state``. Host writes
+    here and a runner ``state.updated`` to the same key follow last-write-wins.
+
+    Best-effort: a persistence failure must not fail the activation itself. No-op
+    when the call is not inside an authorized agent run, or when conversation
+    state is unavailable (state disabled / scope not enabled / no conversation).
+    """
+    session = getattr(query, '_agent_run_session', None)
+    if not isinstance(session, dict):
+        return
+
+    state_context = session.get('state_context')
+    if not isinstance(state_context, dict):
+        return
+
+    scope_keys = state_context.get('scope_keys')
+    conversation_scope_key = scope_keys.get('conversation') if isinstance(scope_keys, dict) else None
+    if not conversation_scope_key:
+        return
+
+    try:
+        from ....agent.runner.persistent_state_store import get_persistent_state_store
+
+        store = get_persistent_state_store(ap.persistence_mgr.get_db_engine())
+        await store.state_set(
+            scope_key=conversation_scope_key,
+            state_key=ACTIVATED_SKILL_NAMES_STATE_KEY,
+            value=get_activated_skill_names(query),
+            runner_id=str(session.get('runner_id', '') or ''),
+            binding_identity=str(state_context.get('binding_identity', 'unknown') or 'unknown'),
+            scope='conversation',
+            context=state_context,
+            logger=getattr(ap, 'logger', None),
+        )
+    except Exception as e:  # noqa: BLE001 - persistence is best-effort, must not break activation
+        logger = getattr(ap, 'logger', None)
+        if logger is not None:
+            logger.warning(f'Failed to persist activated skill "{skill_name}": {e}')
 
 
 def parse_skill_mount_path(sandbox_path: str) -> tuple[str | None, str]:
