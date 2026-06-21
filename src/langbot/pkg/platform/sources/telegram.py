@@ -205,6 +205,8 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         typing.Callable[[platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None],
     ] = {}
 
+    _form_action_titles: typing.Dict[str, str] = {}  # action_id -> action_title mapping
+
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger):
         async def telegram_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if update.message.from_user.is_bot:
@@ -240,6 +242,19 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     w_suffix = data.get('w', '')
                     action_id = data.get('action_id') or data.get('a', '')
                     session_key = data.get('session_key') or data.get('s', '')
+
+                    # Show selected action feedback by editing the original message
+                    action_title = self._form_action_titles.get(action_id, action_id)
+                    try:
+                        original_text = query.message.text or ''
+                        selected_text = f'{original_text}\n\n✅ Selected: {action_title}'
+                        await query.edit_message_text(text=selected_text, reply_markup=None)
+                    except Exception:
+                        # If edit fails (e.g. message too long), just pass
+                        pass
+                    finally:
+                        # Clean up the stored title
+                        self._form_action_titles.pop(action_id, None)
 
                     if session_key.startswith('group_') or session_key.startswith('g:'):
                         launcher_type = provider_session.LauncherTypes.GROUP
@@ -548,6 +563,8 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         for action in actions:
             action_id = action.get('id', '')
             action_title = action.get('title', action_id)
+            # Store action_id -> title mapping for displaying selection feedback
+            self._form_action_titles[action_id] = action_title
             callback_payload = {'f': 1, 'a': action_id, 's': session_key}
             if w_suffix:
                 callback_payload['w'] = w_suffix
