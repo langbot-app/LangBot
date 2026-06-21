@@ -577,12 +577,16 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         prior = self.active_turn_text.get(session_key, '') if session_key else ''
         if prior.strip():
             parts.append(prior.rstrip())
-            parts.append('---')
+            parts.append('<hr>')
+        # DingTalk's card markdown widget strips `\n\n` paragraph breaks in
+        # template content slots, fusing inline siblings into a single line.
+        # Force visual line breaks with explicit HTML `<br>` tags so the
+        # title sits on its own line above form_content.
         if node_title:
             parts.append(f'**{node_title}**')
         if form_content:
             parts.append(form_content)
-        display_content = '\n\n'.join(parts) or '请选择一个操作以继续。'
+        display_content = '<br><br>'.join(parts) or '请选择一个操作以继续。'
 
         try:
             await self.bot.update_card_data(
@@ -666,7 +670,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             parts.append(f'**{node_title}**')
         if form_content:
             parts.append(form_content)
-        display_content = '\n\n'.join(parts) or '请选择一个操作以继续。'
+        display_content = '<br><br>'.join(parts) or '请选择一个操作以继续。'
 
         btns = []
         for idx, action in enumerate(actions):
@@ -980,8 +984,8 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             parts.append(f'**{node_title}**')
         if form_content:
             parts.append(form_content)
-        parts.append(f'---\n✅ 已选择：**{action_title}**')
-        content = '\n\n'.join(parts)
+        parts.append(f'<hr>✅ 已选择：**{action_title}**')
+        content = '<br><br>'.join(parts)
         if self.ap is not None:
             self.ap.logger.info(f'DingTalk _mark_card_resolved: out_track_id={out_track_id} action={action_title!r}')
         try:
