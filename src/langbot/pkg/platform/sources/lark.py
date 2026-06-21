@@ -802,6 +802,8 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     card_streaming_text: dict[str, str]
     # card_id → pre-pause streaming_txt text (captured when resume first chunk arrives)
     card_pre_pause_text: dict[str, str]
+    # card_id → form_content captured when the form is first shown (for resume notice)
+    card_form_content: dict[str, str]
     # set of card_ids that have already transitioned from "buttons visible" to "resume layout"
     card_resume_transitioned: set[str]
     _MONITORING_MAPPING_TTL = 600  # 10 minutes
@@ -1030,6 +1032,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             card_id_to_source_ids={},
             card_streaming_text={},
             card_pre_pause_text={},
+            card_form_content={},
             card_resume_transitioned=set(),
             seq=1,
             listeners={},
@@ -1295,6 +1298,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         self.card_sequence_dict.pop(card_id, None)
         self.card_streaming_text.pop(card_id, None)
         self.card_pre_pause_text.pop(card_id, None)
+        self.card_form_content.pop(card_id, None)
         self.card_resume_transitioned.discard(card_id)
 
     async def create_card_id(self, message_id):
@@ -1791,18 +1795,24 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         action_title = getattr(bot_message, '_resume_action_title', '')
         resume_node_title = getattr(bot_message, '_resume_node_title', '')
         open_new_card = getattr(bot_message, '_open_new_card', False)
-        if action_title:
-            if resume_node_title:
-                selected_notice = f'**{resume_node_title}**\n已选择：{action_title}'
-            else:
-                selected_notice = f'**已选择**：{action_title}'
-        else:
-            selected_notice = ''
 
         # ── decide whether this chunk needs a card update ────────────────────
         card_id = self.card_id_dict.get(message_id)
         if not card_id:
             return
+
+        if action_title:
+            # Build the selected notice with node_title, form_content, and action
+            notice_parts = []
+            if resume_node_title:
+                notice_parts.append(f'**{resume_node_title}**')
+            stored_form_content = self.card_form_content.get(card_id, '')
+            if stored_form_content:
+                notice_parts.append(stored_form_content)
+            notice_parts.append(f'---\n✅ 已选择：**{action_title}**')
+            selected_notice = '\n\n'.join(notice_parts)
+        else:
+            selected_notice = ''
 
         # ── convert message chain → text ─────────────────────────────────────
         text_elements, media_items = await self.message_converter.yiri2target(message, self.api_client)
@@ -1926,6 +1936,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                         )
                         self.card_streaming_text.pop(card_id, None)
                         self.card_pre_pause_text.pop(card_id, None)
+                        self.card_form_content.pop(card_id, None)
                     else:
                         # The old card is now a frozen snapshot; let go of its
                         # streaming-side state but keep its source registrations
@@ -1933,6 +1944,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                         # callbacks aimed at it can still be matched if needed.
                         self.card_streaming_text.pop(card_id, None)
                         self.card_pre_pause_text.pop(card_id, None)
+                        self.card_form_content.pop(card_id, None)
                         self.card_resume_transitioned.discard(card_id)
                 else:
                     # Initial pause path: render prompt + buttons in place on
@@ -1945,11 +1957,13 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                         form_data=form_data,
                         show_form_prompt=True,
                     )
-                    # The human-input prompt itself is rendered as buttons only
-                    # on Lark, so do not keep the hidden fallback text around;
-                    # otherwise it will resurface after the button click.
+                    # Preserve the pre-pause text so the main content can be
+                    # restored when the user clicks a button and the card
+                    # transitions to resume mode.
+                    self.card_pre_pause_text[card_id] = self.card_streaming_text.get(card_id, '')
                     self.card_streaming_text[card_id] = ''
-                    self.card_pre_pause_text[card_id] = ''
+                    # Store form_content for the resume notice
+                    self.card_form_content[card_id] = form_data.get('form_content', '') if form_data else ''
             else:
                 # Normal finish: keep pre-pause + resume content visible,
                 # remove buttons/notice, drop the resume placeholder.
