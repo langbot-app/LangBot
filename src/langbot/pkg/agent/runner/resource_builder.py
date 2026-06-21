@@ -147,13 +147,22 @@ class AgentResourceBuilder:
         allowed_names = resource_policy.allowed_tool_names
         tool_operations = [operation for operation in ('detail', 'call') if operation in tool_perms]
 
+        # Prefill full tool schema (best-effort) so runners can build LLM tool
+        # definitions without a per-tool get_tool_detail round-trip. Degrades to
+        # None when no tool manager is available.
+        get_tool_schema = getattr(getattr(self.ap, 'tool_mgr', None), 'get_tool_schema', None)
         if allowed_names:
             for tool_name in allowed_names:
+                if get_tool_schema is not None:
+                    description, parameters = await get_tool_schema(tool_name)
+                else:
+                    description, parameters = None, None
                 tools.append({
                     'tool_name': tool_name,
                     'tool_type': None,
-                    'description': None,
+                    'description': description,
                     'operations': tool_operations,
+                    'parameters': parameters,
                 })
 
         return tools
@@ -203,10 +212,13 @@ class AgentResourceBuilder:
         resource_policy: typing.Any,
         descriptor: AgentRunnerDescriptor,
     ) -> list[SkillResource]:
-        """Build pipeline-visible skill resource facts."""
-        if not config_schema.supports_skill_authoring(descriptor):
-            return []
+        """Build pipeline-visible skill resource facts.
 
+        Skills are exposed as authorized tools (activate / register_skill / native
+        exec), so skill facts are surfaced to every run that has a skill manager,
+        not gated by the ``skill_authoring`` capability. The capability is now a
+        semantic declaration only.
+        """
         skill_mgr = getattr(self.ap, 'skill_mgr', None)
         if skill_mgr is None:
             return []

@@ -214,15 +214,19 @@ run session、caller plugin identity、resource id、scope、payload size、rate
 limit 和 deadline。Handler 不应重新执行授权裁剪，否则 build-time 与 runtime
 授权逻辑会漂移。
 
-SDK 侧本地校验只用于开发体验，host 侧 run authorization snapshot 才是安全边界。`spec.capabilities` 只帮助 Host 判断 runner 是否需要 tool / knowledge / skill 等资源投影，不能替代 permissions 或 binding policy。
+SDK 侧本地校验只用于开发体验，host 侧 run authorization snapshot 才是安全边界。`spec.capabilities` 只帮助 Host 判断 runner 是否需要 tool / knowledge 等资源投影，不能替代 permissions 或 binding policy。skill 不由独立 capability 决定是否投影——它通过统一 tool 授权（`resource_policy.allowed_tool_names`）消费，`skill_authoring` 仅作为「一键授权这组 skill tool + sandbox」的便捷开关。
 
 资源裁剪应通用，不写死 local-agent。selector 与资源的映射示例：`model-fallback-selector` → primary/fallback LLM、`llm-model-selector` → LLM、`rerank-model-selector` → rerank 模型、`knowledge-base-multi-selector` → 知识库；新增 selector 时在 resource builder 中统一扩展。
 
-执行/文件/skill/MCP 等能力的接入方向：先由 Host / sandbox 封装成普通 scoped tool，再通过 `ctx.resources.tools` 和 SDK runtime 转发进入 runner；runner 不应识别或硬编码执行环境 provider。外部 harness 的 native tools 不能直接访问 LangBot 资源。
+构造 `ctx.resources.tools` 时，Host 一次塞齐每个工具的完整 schema（`ToolResource.parameters`），runner 不需再逐个 `get_tool_detail` 拉取，减少 N 次往返。
+
+执行/文件/skill/MCP 等能力的接入方向：先由 Host / sandbox 封装成普通 scoped tool，再通过 `ctx.resources.tools` 和 SDK runtime 转发进入 runner；runner 不应识别或硬编码执行环境 provider。外部 harness 的 native tools 不能直接访问 LangBot 资源。skill 的整个生命周期都走统一 tool：发现走 `list_skills` / `langbot_list_assets`，激活/注册走 `activate` / `register_skill`，包内操作走 native exec/read/write——runner 不需要独立的 skill 渲染或门控。
 
 ### 4.6 State / Storage
 
 LangBot 可提供 host-owned state 让 runner 寄宿状态（conversation / actor / subject / runner / binding / workspace state），但**不是强制**。Host 只需提供：授权开关、scope key、get/set/list/delete API（见 PROTOCOL_V1 §8）、持久化 backend、审计和清理策略。外部 agent runtime 可维护自己的 session 和 memory。进程内 state store 只能作为过渡实现，不能作为正式生产语义。
+
+部分 host-owned state 由 Host 自身直接写：例如 `activate` tool 在 Host 侧执行时，把已激活 skill 写入 conversation scope 的 `host.activated_skills`。host 直接写与 runner `state.updated` 写到同一 key 时按 **last-write-wins** 合并，runner 可覆盖。
 
 ### 4.7 EventLog / Transcript / Sandbox Files（事实源）
 

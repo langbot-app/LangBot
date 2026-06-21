@@ -97,6 +97,9 @@ def app():
     mock_app.model_mgr = Mock()
     mock_app.rag_mgr = Mock()
     mock_app.rag_mgr.get_knowledge_base_by_uuid = AsyncMock(return_value=None)
+    mock_app.skill_mgr = None
+    mock_app.tool_mgr = Mock()
+    mock_app.tool_mgr.get_tool_schema = AsyncMock(return_value=(None, None))
     return mock_app
 
 
@@ -278,7 +281,16 @@ async def test_build_models_deduplicates_query_and_config_models(app):
 
 @pytest.mark.asyncio
 async def test_build_tools_authorizes_query_declared_tools(app):
-    """Tools discovered by Pipeline preprocessing become run-scoped authorized resources."""
+    """Tools discovered by Pipeline preprocessing become run-scoped authorized
+    resources, with full parameters schema prefilled by the host."""
+    app.tool_mgr.get_tool_schema = AsyncMock(
+        side_effect=lambda name: {
+            'qa_plugin_echo': (
+                'Echo test tool',
+                {'type': 'object', 'properties': {'text': {'type': 'string'}}},
+            ),
+        }.get(name, (None, None))
+    )
     descriptor = make_descriptor(
         capabilities={'tool_calling': True},
     )
@@ -296,14 +308,16 @@ async def test_build_tools_authorizes_query_declared_tools(app):
         {
             'tool_name': 'qa_plugin_echo',
             'tool_type': None,
-            'description': None,
+            'description': 'Echo test tool',
             'operations': ['detail', 'call'],
+            'parameters': {'type': 'object', 'properties': {'text': {'type': 'string'}}},
         },
         {
             'tool_name': 'qa_mcp_echo',
             'tool_type': None,
             'description': None,
             'operations': ['detail', 'call'],
+            'parameters': None,
         },
     ]
 

@@ -59,14 +59,16 @@ class ToolManager:
         self,
         bound_plugins: list[str] | None = None,
         bound_mcp_servers: list[str] | None = None,
-        include_skill_authoring: bool = False,
         include_mcp_resource_tools: bool = True,
     ) -> list[resource_tool.LLMTool]:
         all_functions: list[resource_tool.LLMTool] = []
 
         all_functions.extend(await self.native_tool_loader.get_tools())
-        if include_skill_authoring:
-            all_functions.extend(await self.skill_tool_loader.get_tools())
+        # Skill tools (activate / register_skill) are exposed like native tools:
+        # the SkillToolLoader gates itself on sandbox + skill_mgr availability, so
+        # skill is just a group of authorized tools rather than a separate
+        # capability-gated surface.
+        all_functions.extend(await self.skill_tool_loader.get_tools())
         all_functions.extend(await self.plugin_tool_loader.get_tools(bound_plugins))
         all_functions.extend(
             await self.mcp_tool_loader.get_tools(
@@ -126,6 +128,23 @@ class ToolManager:
                 return tool
 
         return None
+
+    async def get_tool_schema(self, name: str) -> tuple[str | None, dict | None]:
+        """Return (description, parameters JSON schema) for a tool by name.
+
+        Used by the host to prefill ToolResource so a runner can build LLM tool
+        definitions without a separate get_tool_detail round-trip. Handles both
+        LLMTool (native/mcp/skill) and plugin ComponentManifest shapes. Returns
+        (None, None) when the tool is not found.
+        """
+        tool = await self.get_tool_by_name(name)
+        if tool is None:
+            return None, None
+        if hasattr(tool, 'spec') and hasattr(tool, 'metadata'):
+            spec = getattr(tool, 'spec', None) or {}
+            return spec.get('llm_prompt'), (spec.get('parameters') or None)
+        description = getattr(tool, 'description', None) or getattr(tool, 'human_desc', None)
+        return description, (getattr(tool, 'parameters', None) or None)
 
     async def generate_tools_for_openai(self, use_funcs: list[resource_tool.LLMTool]) -> list:
         tools = []
