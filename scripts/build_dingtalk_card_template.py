@@ -220,6 +220,56 @@ def button_group(node_id):
     }
 
 
+def avatar(node_id, *, name='LangBot', image_variable='bot_avatar'):
+    """Avatar component in `userInfo` mode — renders the bot's avatar
+    image and nickname as a header row above the response content.
+    Mirrors the layout from `I:\\下载\\dingtalk_1782120006374.json` where
+    Avatar sits at the top of the done-state AICardContent.
+
+    `imageUrl` is bound to a global variable (default `bot_avatar`) so
+    the adapter can populate it at runtime with a DingTalk media id
+    (``@xxx``) obtained from the /media/upload endpoint. DingTalk's
+    Avatar.imageUrl resolver rejects external URLs — it only accepts
+    DingTalk-hosted media ids, so this binding is the only path to
+    a custom avatar.
+    """
+    return {
+        'componentName': 'Avatar',
+        'id': node_id,
+        'props': {
+            'imageUrl': {
+                'value': '',
+                'valueType': 'variable',
+                'type': 'dynamicImage',
+                'variable': image_variable,
+                'variableType': 'global',
+            },
+            'name': {'i18n': False, 'type': 'dynamicString', 'content': name},
+            'sizeType': 'Standard',
+            'size': 'extraSmall',
+            'customSize': 48,
+            'marginLeft': 12,
+            'marginRight': 12,
+            'marginTop': 6,
+            'marginBottom': 6,
+            'visible': {
+                'type': 'dynamicVisible',
+                'value': True,
+                'valueType': 'fixed',
+                'condition': {'op': 'and', 'conditions': []},
+            },
+            'mode': 'userInfo',
+            'margin': -2,
+            'innerOffset': 0,
+        },
+        'title': '头像',
+        'hidden': False,
+        'isLocked': False,
+        'condition': True,
+        'conditionGroup': '',
+    }
+
+
 def build_editor_data():
     component_names = [
         'AIPending',
@@ -229,6 +279,7 @@ def build_editor_data():
         'AICardContainer',
         'ButtonGroup',
         'MarkdownBlock',
+        'Avatar',
     ]
     components_map = [
         {
@@ -344,6 +395,7 @@ def build_editor_data():
                 'condition': True,
                 'conditionGroup': '',
                 'children': [
+                    avatar('node_avatar', name='LangBot'),
                     markdown_block('node_text_content', variable='content'),
                     button_group('node_btn_group'),
                 ],
@@ -721,6 +773,15 @@ def build_editor_data():
                 'editorVarType': 'variables',
                 'disabled': True,
                 'visible': False,
+            },
+            {
+                'id': 'bot_avatar',
+                'type': 'string',
+                'name': 'bot_avatar',
+                'description': '机器人头像 DingTalk 媒体 ID（@xxx 格式，启动时由 /media/upload 拿到）',
+                'private': False,
+                'editorVarType': 'variables',
+                'disabled': False,
             },
             btns_var,
         ],

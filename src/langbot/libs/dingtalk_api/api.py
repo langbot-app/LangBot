@@ -2,7 +2,9 @@ import asyncio
 import base64
 import json
 import logging
+import os
 import time
+import typing
 import uuid
 import urllib.parse
 from typing import Awaitable, Callable, Optional
@@ -57,6 +59,12 @@ class DingTalkClient:
         self.access_token_expiry_time = ''
         self.markdown_card = markdown_card
         self.logger = logger
+        # Legacy access_token used by the OLD oapi.dingtalk.com endpoints
+        # (e.g. /media/upload, which is the only documented way to get an
+        # `@xxx` media_id usable in card Avatar.imageUrl). The new v1.0
+        # token doesn't work there — different auth domain.
+        self.legacy_access_token = ''
+        self.legacy_access_token_expiry_time: typing.Optional[float] = None
         self._stopped = False  # Flag to control the event loop
 
     async def _on_card_action(self, payload: dict) -> None:
@@ -759,6 +767,96 @@ class DingTalkClient:
             if self.logger:
                 await self.logger.error(f'DingTalk update card error: {traceback.format_exc()}')
             return False
+
+    async def get_legacy_access_token(self) -> Optional[str]:
+        """Fetch the LEGACY (oapi.dingtalk.com) access_token. This is a
+        different auth domain from the v1.0 token cached in
+        ``self.access_token`` — only the legacy token authorises the
+        ``/media/upload`` endpoint that returns an ``@xxx`` media_id
+        consumable by card components like Avatar.imageUrl.
+
+        Returns the token string on success, None on failure. Caches
+        with a 60s safety margin before the documented 7200s expiry.
+        """
+        now = time.time()
+        if (
+            self.legacy_access_token
+            and self.legacy_access_token_expiry_time
+            and now < self.legacy_access_token_expiry_time
+        ):
+            return self.legacy_access_token
+
+        url = 'https://oapi.dingtalk.com/gettoken'
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, params={'appkey': self.key, 'appsecret': self.secret}, timeout=15.0)
+            data = response.json() if response.status_code == 200 else {}
+            if data.get('errcode') == 0 and data.get('access_token'):
+                self.legacy_access_token = data['access_token']
+                expires_in = int(data.get('expires_in', 7200))
+                self.legacy_access_token_expiry_time = now + expires_in - 60
+                return self.legacy_access_token
+            if self.logger:
+                await self.logger.error(
+                    f'DingTalk legacy gettoken failed: status={response.status_code} body={response.text[:200]}'
+                )
+        except Exception:
+            _stdout_logger.exception('DingTalk legacy gettoken error')
+            if self.logger:
+                await self.logger.error(f'DingTalk legacy gettoken error: {traceback.format_exc()}')
+        return None
+
+    async def upload_image_media(self, file_path: str) -> Optional[str]:
+        """Upload an image file to DingTalk media storage and return the
+        ``@xxx`` media_id, which can be passed straight into card variables
+        like Avatar.imageUrl. Endpoint:
+
+            POST https://oapi.dingtalk.com/media/upload?access_token=…&type=image
+
+        Returns the media_id on success, None on any failure (caller
+        should handle a None gracefully — DingTalk falls back to a
+        default avatar when imageUrl is empty/unknown).
+        """
+        if not os.path.exists(file_path):
+            if self.logger:
+                await self.logger.error(f'DingTalk upload_image_media: file not found {file_path}')
+            return None
+
+        token = await self.get_legacy_access_token()
+        if not token:
+            return None
+
+        url = 'https://oapi.dingtalk.com/media/upload'
+        try:
+            with open(file_path, 'rb') as f:
+                file_bytes = f.read()
+            file_name = os.path.basename(file_path)
+            # Best-effort content-type guess; DingTalk accepts the major image
+            # mime types and otherwise infers from the bytes.
+            ext = os.path.splitext(file_name)[1].lower().lstrip('.')
+            mime = {'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'gif': 'image/gif'}.get(
+                ext, 'application/octet-stream'
+            )
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    url,
+                    params={'access_token': token, 'type': 'image'},
+                    files={'media': (file_name, file_bytes, mime)},
+                    timeout=30.0,
+                )
+            data = response.json() if response.status_code == 200 else {}
+            if data.get('errcode') == 0 and data.get('media_id'):
+                _stdout_logger.info('DingTalk upload_image_media OK: media_id=%s', data['media_id'])
+                return data['media_id']
+            if self.logger:
+                await self.logger.error(
+                    f'DingTalk upload_image_media failed: status={response.status_code} body={response.text[:300]}'
+                )
+        except Exception:
+            _stdout_logger.exception('DingTalk upload_image_media error')
+            if self.logger:
+                await self.logger.error(f'DingTalk upload_image_media error: {traceback.format_exc()}')
+        return None
 
     async def start(self):
         """启动 WebSocket 连接，监听消息"""
