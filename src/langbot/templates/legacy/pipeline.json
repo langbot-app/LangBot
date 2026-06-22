@@ -34,11 +34,5 @@
                 "limit": 60
             }
         }
-    },
-    "msg-truncate": {
-        "method": "round",
-        "round": {
-            "max-round": 10
-        }
     }
 }

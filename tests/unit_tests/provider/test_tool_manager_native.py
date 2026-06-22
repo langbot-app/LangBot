@@ -43,7 +43,8 @@ def make_tool(name: str) -> resource_tool.LLMTool:
 
 
 @pytest.mark.asyncio
-async def test_tool_manager_omits_skill_authoring_tools_by_default():
+async def test_tool_manager_includes_skill_tools_by_default():
+    """Skill tools are exposed like native tools; the SkillToolLoader self-gates."""
     manager = ToolManager(SimpleNamespace())
     manager.native_tool_loader = StubLoader([make_tool('exec')])
     manager.skill_tool_loader = StubLoader([make_tool('activate')])
@@ -52,20 +53,21 @@ async def test_tool_manager_omits_skill_authoring_tools_by_default():
 
     tools = await manager.get_all_tools()
 
-    assert [tool.name for tool in tools] == ['exec', 'plugin_tool', 'mcp_tool']
+    assert [tool.name for tool in tools] == ['exec', 'activate', 'plugin_tool', 'mcp_tool']
 
 
 @pytest.mark.asyncio
-async def test_tool_manager_includes_skill_authoring_tools_when_requested():
+async def test_tool_manager_omits_skill_tools_when_loader_unavailable():
+    """When the SkillToolLoader gate is closed (no sandbox / skill_mgr) it returns no tools."""
     manager = ToolManager(SimpleNamespace())
     manager.native_tool_loader = StubLoader([make_tool('exec')])
-    manager.skill_tool_loader = StubLoader([make_tool('activate')])
+    manager.skill_tool_loader = StubLoader([])
     manager.plugin_tool_loader = StubLoader([make_tool('plugin_tool')])
     manager.mcp_tool_loader = StubLoader([make_tool('mcp_tool')])
 
-    tools = await manager.get_all_tools(include_skill_authoring=True)
+    tools = await manager.get_all_tools()
 
-    assert [tool.name for tool in tools] == ['exec', 'activate', 'plugin_tool', 'mcp_tool']
+    assert [tool.name for tool in tools] == ['exec', 'plugin_tool', 'mcp_tool']
 
 
 @pytest.mark.asyncio

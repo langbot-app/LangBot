@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import typing
-from typing import Any
+from typing import Any, Union
 import base64
 import traceback
 
@@ -22,9 +22,19 @@ import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 
 from ..entity.persistence import plugin as persistence_plugin
 from ..entity.persistence import bstorage as persistence_bstorage
+from ..provider.modelmgr import requester as model_requester
 
 from ..core import app
 from ..utils import constants
+from ..agent.runner.session_registry import get_session_registry
+from ..agent.runner.config_migration import ConfigMigration
+from ..agent.runner import config_schema
+
+
+from . import agent_pull_actions, agent_runner_actions, agent_state_actions
+from .agent_run_support import (
+    _validate_agent_run_session,
+)
 
 
 def _serialize_plugin_api_result(value: Any) -> Any:
@@ -53,6 +63,169 @@ def _make_rag_error_response(error: Exception, error_type: str, **extra_context)
     context_str = f' [{", ".join(context_parts)}]' if context_parts else ''
     message = f'[{error_type}/{type(error).__name__}]{context_str} {str(error)}'
     return handler.ActionResponse.error(message=message)
+
+
+def _pop_query_llm_usage(query: Any) -> dict[str, Any] | None:
+    """Read provider usage stashed on a query by RuntimeProvider."""
+    if query is None or not getattr(query, 'variables', None):
+        return None
+    usage = query.variables.pop(model_requester.LLM_USAGE_QUERY_VARIABLE, None)
+    if usage is None:
+        return None
+    if isinstance(usage, dict):
+        return dict(usage)
+    return None
+
+
+def _normalize_uuid_list(values: Any) -> list[str]:
+    """Normalize a user/config supplied UUID list while preserving order."""
+    if not isinstance(values, list):
+        return []
+    return list(
+        dict.fromkeys(value for value in values if isinstance(value, str) and value not in config_schema.NONE_SENTINELS)
+    )
+
+
+async def _get_pipeline_knowledge_base_uuids(ap: app.Application, query: Any) -> list[str]:
+    """Resolve pipeline-scoped KBs from preprocessed variables or runner schema."""
+    variables = getattr(query, 'variables', {}) or {}
+    if '_knowledge_base_uuids' in variables:
+        return _normalize_uuid_list(variables.get('_knowledge_base_uuids'))
+
+    pipeline_config = getattr(query, 'pipeline_config', None)
+    if not pipeline_config:
+        return []
+
+    runner_id = ConfigMigration.resolve_runner_id(pipeline_config)
+    if not runner_id:
+        return []
+
+    runner_config = ConfigMigration.resolve_runner_config(pipeline_config, runner_id)
+    registry = getattr(ap, 'agent_runner_registry', None)
+    if registry is None:
+        return []
+
+    bound_plugins = variables.get('_pipeline_bound_plugins')
+    try:
+        descriptor = await registry.get(runner_id, bound_plugins)
+    except Exception as e:
+        ap.logger.warning(f'Failed to load AgentRunner descriptor for knowledge-base scope: {e}')
+        return []
+
+    return config_schema.extract_knowledge_base_uuids(descriptor, runner_config)
+
+
+async def _validate_run_authorization(
+    run_id: str,
+    resource_type: str,
+    resource_id: str,
+    ap: app.Application,
+    caller_plugin_identity: str | None = None,
+    operation: str | None = None,
+) -> Union[tuple[None, handler.ActionResponse], tuple[Any, None]]:
+    """Validate run_id authorization for a resource access.
+
+    Common validation logic for INVOKE_LLM, INVOKE_LLM_STREAM, CALL_TOOL,
+    RETRIEVE_KNOWLEDGE_BASE, RETRIEVE_KNOWLEDGE, and storage actions.
+
+    Args:
+        run_id: The run_id to validate.
+        resource_type: Resource type ('model', 'tool', 'knowledge_base', 'storage').
+        resource_id: Resource identifier (model_uuid, tool_name, kb_id, 'plugin'/'workspace').
+        ap: Application instance for logging.
+        caller_plugin_identity: Plugin identity (author/name) of the caller.
+            Required when the run session is bound to a plugin identity.
+        operation: Optional resource operation required by the runtime action.
+
+    Returns:
+        Tuple of (session, None) if validation passes.
+        Tuple of (None, error_response) if validation fails.
+    """
+    session_registry = get_session_registry()
+    session = await session_registry.get(run_id)
+    if not session:
+        ap.logger.warning(f'{resource_type.upper()}: run_id {run_id} not found in session registry')
+        return None, handler.ActionResponse.error(
+            message=f'Run session {run_id} not found or expired',
+        )
+
+    session_plugin_identity = session.get('plugin_identity')
+    if not isinstance(session_plugin_identity, str) or not session_plugin_identity.strip():
+        ap.logger.warning(f'{resource_type.upper()}: run_id {run_id} has no plugin_identity')
+        return None, handler.ActionResponse.error(
+            message=f'Run session {run_id} has no plugin_identity',
+        )
+    if not caller_plugin_identity:
+        return None, handler.ActionResponse.error(
+            message=f'caller_plugin_identity is required for run_id {run_id}',
+        )
+    if caller_plugin_identity != session_plugin_identity:
+        ap.logger.warning(
+            f'{resource_type.upper()}: caller_plugin_identity {caller_plugin_identity} '
+            f'does not match session plugin_identity {session_plugin_identity}'
+        )
+        return None, handler.ActionResponse.error(
+            message=f'Plugin identity mismatch: caller {caller_plugin_identity} is not authorized for run_id {run_id}',
+        )
+
+    if not session_registry.is_resource_allowed(session, resource_type, resource_id, operation):
+        ap.logger.warning(
+            f'{resource_type.upper()}: {resource_id} operation {operation or "*"} not allowed for run_id {run_id}'
+        )
+        operation_suffix = f' for operation {operation}' if operation else ''
+        return None, handler.ActionResponse.error(
+            message=f'{resource_type} {resource_id} is not authorized{operation_suffix} for this agent run',
+        )
+
+    return session, None
+
+
+def _get_cached_query(ap: app.Application, query_id: int | None) -> Any | None:
+    """Return a cached Query for query-based runtime actions when available."""
+    if query_id is None:
+        return None
+
+    try:
+        return ap.query_pool.cached_queries.get(query_id)
+    except Exception:
+        return None
+
+
+def _resolve_action_query(data: dict[str, Any], session: Any | None, ap: app.Application) -> Any | None:
+    """Resolve the current Query from internal run state or query-based action payload."""
+    query_id = None
+    if session:
+        query_id = session.get('query_id')
+    if query_id is None:
+        query_id = data.get('query_id')
+    query = _get_cached_query(ap, query_id)
+    if query is not None and session is not None:
+        object.__setattr__(query, '_agent_run_session', session)
+    return query
+
+
+def _resolve_remove_think(data: dict[str, Any], query: Any | None) -> bool:
+    """Resolve remove-think using explicit action override, then pipeline config."""
+    if 'remove_think' in data:
+        return bool(data.get('remove_think'))
+
+    if query and getattr(query, 'pipeline_config', None):
+        return bool(query.pipeline_config.get('output', {}).get('misc', {}).get('remove-think', False))
+
+    return False
+
+
+def _merge_model_extra_args(model: Any, call_extra_args: Any) -> dict[str, Any]:
+    """Merge persisted model extra_args with action-level overrides."""
+    merged: dict[str, Any] = {}
+
+    model_extra_args = getattr(getattr(model, 'model_entity', None), 'extra_args', None)
+    if isinstance(model_extra_args, dict):
+        merged.update(model_extra_args)
+    if isinstance(call_extra_args, dict):
+        merged.update(call_extra_args)
+
+    return merged
 
 
 class RuntimeConnectionHandler(handler.Handler):
@@ -385,11 +558,26 @@ class RuntimeConnectionHandler(handler.Handler):
 
         @self.action(PluginToRuntimeAction.INVOKE_LLM)
         async def invoke_llm(data: dict[str, Any]) -> handler.ActionResponse:
-            """Invoke llm"""
+            """Invoke llm
+
+            For AgentRunner calls: requires run_id and validates model_uuid against session.resources.models.
+            For regular plugin calls: no run_id, unrestricted access (backward compatibility).
+            """
             llm_model_uuid = data['llm_model_uuid']
             messages = data['messages']
             funcs = data.get('funcs', [])
             extra_args = data.get('extra_args', {})
+            run_id = data.get('run_id')  # Optional: present for AgentRunner calls
+            caller_plugin_identity = data.get('caller_plugin_identity')  # Optional: for cross-plugin validation
+            session = None
+
+            # Permission validation for AgentRunner calls
+            if run_id:
+                session, error = await _validate_run_authorization(
+                    run_id, 'model', llm_model_uuid, self.ap, caller_plugin_identity, operation='invoke'
+                )
+                if error:
+                    return error
 
             llm_model = await self.ap.model_mgr.get_model_by_uuid(llm_model_uuid)
             if llm_model is None:
@@ -406,28 +594,218 @@ class RuntimeConnectionHandler(handler.Handler):
                 pass
 
             funcs_obj = [resource_tool.LLMTool.model_validate({**func, 'func': _placeholder_func}) for func in funcs]
+            query = _resolve_action_query(data, session, self.ap)
+            effective_extra_args = _merge_model_extra_args(llm_model, extra_args)
+            remove_think = _resolve_remove_think(data, query)
+            effective_funcs = funcs_obj if 'func_call' in (llm_model.model_entity.abilities or []) else []
 
             result = await llm_model.provider.invoke_llm(
-                query=None,
+                query=query,
                 model=llm_model,
                 messages=messages_obj,
-                funcs=funcs_obj,
-                extra_args=extra_args,
+                funcs=effective_funcs,
+                extra_args=effective_extra_args,
+                remove_think=remove_think,
             )
 
+            usage = None
+            if isinstance(result, tuple):
+                result, usage = result
+            if usage is None:
+                usage = _pop_query_llm_usage(query)
+
+            response_data = {
+                'message': result.model_dump(),
+            }
+            if usage is not None:
+                response_data['usage'] = usage
+
             return handler.ActionResponse.success(
-                data={
-                    'message': result.model_dump(),
-                },
+                data=response_data,
             )
+
+        @self.action(PluginToRuntimeAction.INVOKE_LLM_STREAM)
+        async def invoke_llm_stream(data: dict[str, Any]):
+            """Invoke llm with streaming response
+
+            For AgentRunner calls: requires run_id and validates model_uuid against session.resources.models.
+            For regular plugin calls: no run_id, unrestricted access (backward compatibility).
+            """
+            llm_model_uuid = data['llm_model_uuid']
+            messages = data['messages']
+            funcs = data.get('funcs', [])
+            extra_args = data.get('extra_args', {})
+            run_id = data.get('run_id')  # Optional: present for AgentRunner calls
+            caller_plugin_identity = data.get('caller_plugin_identity')  # Optional: for cross-plugin validation
+            session = None
+
+            # Permission validation for AgentRunner calls
+            if run_id:
+                session, error = await _validate_run_authorization(
+                    run_id, 'model', llm_model_uuid, self.ap, caller_plugin_identity, operation='stream'
+                )
+                if error:
+                    yield error
+                    return
+
+            llm_model = await self.ap.model_mgr.get_model_by_uuid(llm_model_uuid)
+            if llm_model is None:
+                yield handler.ActionResponse.error(
+                    message=f'LLM model with llm_model_uuid {llm_model_uuid} not found',
+                )
+                return
+
+            messages_obj = [provider_message.Message.model_validate(message) for message in messages]
+
+            # The func field is excluded during model_dump() in plugin side
+            # but required by LLMTool validation on Host.
+            async def _placeholder_func(**kwargs):
+                pass
+
+            funcs_obj = [resource_tool.LLMTool.model_validate({**func, 'func': _placeholder_func}) for func in funcs]
+            query = _resolve_action_query(data, session, self.ap)
+            effective_extra_args = _merge_model_extra_args(llm_model, extra_args)
+            remove_think = _resolve_remove_think(data, query)
+            effective_funcs = funcs_obj if 'func_call' in (llm_model.model_entity.abilities or []) else []
+
+            async for chunk in llm_model.provider.invoke_llm_stream(
+                query=query,
+                model=llm_model,
+                messages=messages_obj,
+                funcs=effective_funcs,
+                extra_args=effective_extra_args,
+                remove_think=remove_think,
+            ):
+                if chunk is None:
+                    continue
+                yield handler.ActionResponse.success(
+                    data={
+                        'chunk': chunk.model_dump(),
+                    },
+                )
+            usage = _pop_query_llm_usage(query)
+            if usage is not None:
+                yield handler.ActionResponse.success(
+                    data={
+                        'usage': usage,
+                    },
+                )
+
+        @self.action(PluginToRuntimeAction.CALL_TOOL)
+        async def call_tool(data: dict[str, Any]) -> handler.ActionResponse:
+            """Call a tool
+
+            For AgentRunner calls: requires run_id and validates tool_name against session.resources.tools.
+            For regular plugin calls: no run_id, unrestricted access (backward compatibility).
+            """
+            tool_name = data['tool_name']
+            run_id = data.get('run_id')  # Optional: present for AgentRunner calls
+            caller_plugin_identity = data.get('caller_plugin_identity')  # Optional: for cross-plugin validation
+            session = None
+            is_agent_runner_call = bool(run_id)
+
+            if is_agent_runner_call:
+                if 'parameters' not in data:
+                    return handler.ActionResponse.error(
+                        message='parameters is required for AgentRunner tool calls',
+                    )
+                parameters = data.get('parameters') or {}
+            else:
+                parameters = data.get('tool_parameters') or {}
+
+            # Permission validation for AgentRunner calls
+            if run_id:
+                session, error = await _validate_run_authorization(
+                    run_id, 'tool', tool_name, self.ap, caller_plugin_identity, operation='call'
+                )
+                if error:
+                    return error
+
+            # Convert session_data to Session object (simplified)
+            # In real implementation, you would reconstruct the full session
+            # For now, we'll call the tool manager's execute method
+            try:
+                query = _resolve_action_query(data, session, self.ap)
+                result = await self.ap.tool_mgr.execute_func_call(
+                    name=tool_name,
+                    parameters=parameters,
+                    query=query,
+                )
+                if is_agent_runner_call:
+                    return handler.ActionResponse.success(data={'result': result})
+                return handler.ActionResponse.success(data={'tool_response': result})
+            except Exception as e:
+                traceback.print_exc()
+                return handler.ActionResponse.error(
+                    message=f'Failed to execute tool {tool_name}: {e}',
+                )
+
+        @self.action(PluginToRuntimeAction.GET_TOOL_DETAIL)
+        async def get_tool_detail(data: dict[str, Any]) -> handler.ActionResponse:
+            """Get tool detail for LLM function calling.
+
+            For AgentRunner calls: requires run_id and validates tool_name against session.resources.tools.
+            For regular plugin calls: no run_id, unrestricted access (backward compatibility).
+
+            Returns tool manifest including name, description, and parameters schema.
+            """
+            tool_name = data['tool_name']
+            run_id = data.get('run_id')  # Optional: present for AgentRunner calls
+            caller_plugin_identity = data.get('caller_plugin_identity')  # Optional: for cross-plugin validation
+
+            # Permission validation for AgentRunner calls
+            if run_id:
+                session, error = await _validate_run_authorization(
+                    run_id, 'tool', tool_name, self.ap, caller_plugin_identity, operation='detail'
+                )
+                if error:
+                    return error
+
+            try:
+                tool_detail = await self.ap.tool_mgr.get_tool_detail(tool_name)
+                if tool_detail is None:
+                    return handler.ActionResponse.error(
+                        message=f'Tool {tool_name} not found',
+                    )
+
+                return handler.ActionResponse.success(data={'tool': tool_detail})
+            except Exception as e:
+                traceback.print_exc()
+                return handler.ActionResponse.error(
+                    message=f'Failed to get tool detail for {tool_name}: {e}',
+                )
+
+        # ================= Binary Storage Handlers =================
+        # Permission validation:
+        # - For AgentRunner calls (with run_id): validates storage permission via session_registry
+        # - For regular plugin calls (no run_id): unrestricted access (backward compatibility)
+        # - Plugin storage: inherent isolation via owner = plugin identity (set by SDK runtime)
+        # - Workspace storage: requires ctx.resources.storage.workspace_storage for AgentRunner
 
         @self.action(RuntimeToLangBotAction.SET_BINARY_STORAGE)
         async def set_binary_storage(data: dict[str, Any]) -> handler.ActionResponse:
-            """Set binary storage"""
+            """Set binary storage
+
+            For AgentRunner calls: validates storage permission via session_registry.
+            For regular plugin calls: unrestricted access (backward compatibility).
+            """
             key = data['key']
             owner_type = data['owner_type']
             owner = data['owner']
             value = base64.b64decode(data['value_base64'])
+            run_id = data.get('run_id')  # Optional: present for AgentRunner calls
+            caller_plugin_identity = data.get('caller_plugin_identity')  # Optional: for cross-plugin validation
+
+            # Permission validation for AgentRunner calls
+            if run_id:
+                # Determine storage type from owner_type
+                storage_type = owner_type  # 'plugin' or 'workspace'
+                session, error = await _validate_run_authorization(
+                    run_id, 'storage', storage_type, self.ap, caller_plugin_identity
+                )
+                if error:
+                    return error
+
             max_value_bytes = (
                 self.ap.instance_config.data.get('plugin', {})
                 .get('binary_storage', {})
@@ -477,10 +855,25 @@ class RuntimeConnectionHandler(handler.Handler):
 
         @self.action(RuntimeToLangBotAction.GET_BINARY_STORAGE)
         async def get_binary_storage(data: dict[str, Any]) -> handler.ActionResponse:
-            """Get binary storage"""
+            """Get binary storage
+
+            For AgentRunner calls: validates storage permission via session_registry.
+            For regular plugin calls: unrestricted access (backward compatibility).
+            """
             key = data['key']
             owner_type = data['owner_type']
             owner = data['owner']
+            run_id = data.get('run_id')  # Optional: present for AgentRunner calls
+            caller_plugin_identity = data.get('caller_plugin_identity')  # Optional: for cross-plugin validation
+
+            # Permission validation for AgentRunner calls
+            if run_id:
+                storage_type = owner_type
+                session, error = await _validate_run_authorization(
+                    run_id, 'storage', storage_type, self.ap, caller_plugin_identity
+                )
+                if error:
+                    return error
 
             result = await self.ap.persistence_mgr.execute_async(
                 sqlalchemy.select(persistence_bstorage.BinaryStorage)
@@ -503,10 +896,25 @@ class RuntimeConnectionHandler(handler.Handler):
 
         @self.action(RuntimeToLangBotAction.DELETE_BINARY_STORAGE)
         async def delete_binary_storage(data: dict[str, Any]) -> handler.ActionResponse:
-            """Delete binary storage"""
+            """Delete binary storage
+
+            For AgentRunner calls: validates storage permission via session_registry.
+            For regular plugin calls: unrestricted access (backward compatibility).
+            """
             key = data['key']
             owner_type = data['owner_type']
             owner = data['owner']
+            run_id = data.get('run_id')  # Optional: present for AgentRunner calls
+            caller_plugin_identity = data.get('caller_plugin_identity')  # Optional: for cross-plugin validation
+
+            # Permission validation for AgentRunner calls
+            if run_id:
+                storage_type = owner_type
+                session, error = await _validate_run_authorization(
+                    run_id, 'storage', storage_type, self.ap, caller_plugin_identity
+                )
+                if error:
+                    return error
 
             await self.ap.persistence_mgr.execute_async(
                 sqlalchemy.delete(persistence_bstorage.BinaryStorage)
@@ -521,9 +929,24 @@ class RuntimeConnectionHandler(handler.Handler):
 
         @self.action(RuntimeToLangBotAction.GET_BINARY_STORAGE_KEYS)
         async def get_binary_storage_keys(data: dict[str, Any]) -> handler.ActionResponse:
-            """Get binary storage keys"""
+            """Get binary storage keys
+
+            For AgentRunner calls: validates storage permission via session_registry.
+            For regular plugin calls: unrestricted access (backward compatibility).
+            """
             owner_type = data['owner_type']
             owner = data['owner']
+            run_id = data.get('run_id')  # Optional: present for AgentRunner calls
+            caller_plugin_identity = data.get('caller_plugin_identity')  # Optional: for cross-plugin validation
+
+            # Permission validation for AgentRunner calls
+            if run_id:
+                storage_type = owner_type
+                session, error = await _validate_run_authorization(
+                    run_id, 'storage', storage_type, self.ap, caller_plugin_identity
+                )
+                if error:
+                    return error
 
             result = await self.ap.persistence_mgr.execute_async(
                 sqlalchemy.select(persistence_bstorage.BinaryStorage.key)
@@ -539,7 +962,11 @@ class RuntimeConnectionHandler(handler.Handler):
 
         @self.action(PluginToRuntimeAction.GET_CONFIG_FILE)
         async def get_config_file(data: dict[str, Any]) -> handler.ActionResponse:
-            """Get a config file by file key"""
+            """Get a config file by file key
+
+            Regular plugin config files are still host storage files. AgentRunner
+            file access goes through sandbox tools, not this action.
+            """
             file_key = data['file_key']
 
             try:
@@ -577,11 +1004,20 @@ class RuntimeConnectionHandler(handler.Handler):
 
         @self.action(PluginToRuntimeAction.INVOKE_RERANK)
         async def invoke_rerank(data: dict[str, Any]) -> handler.ActionResponse:
+            """Invoke rerank model, with run-scoped authorization for agent runner calls."""
+            run_id = data.get('run_id')
             rerank_model_uuid = data['rerank_model_uuid']
             query = data['query']
             documents = data['documents']
             top_k = data.get('top_k')
-            extra_args = data.get('extra_args', {})
+            caller_plugin_identity = data.get('caller_plugin_identity')
+
+            if run_id:
+                _, error = await _validate_run_authorization(
+                    run_id, 'model', rerank_model_uuid, self.ap, caller_plugin_identity, operation='rerank'
+                )
+                if error:
+                    return error
 
             try:
                 rerank_model = await self.ap.model_mgr.get_rerank_model_by_uuid(rerank_model_uuid)
@@ -591,11 +1027,12 @@ class RuntimeConnectionHandler(handler.Handler):
                 )
 
             try:
+                documents_capped = documents[:64]
                 scores = await rerank_model.provider.invoke_rerank(
                     model=rerank_model,
                     query=query,
-                    documents=documents[:64],
-                    extra_args=extra_args,
+                    documents=documents_capped,
+                    extra_args=_merge_model_extra_args(rerank_model, data.get('extra_args', {})),
                 )
                 scored = sorted(scores, key=lambda x: x.get('relevance_score', 0), reverse=True)
                 if top_k is not None:
@@ -737,11 +1174,27 @@ class RuntimeConnectionHandler(handler.Handler):
 
         @self.action(PluginToRuntimeAction.RETRIEVE_KNOWLEDGE)
         async def retrieve_knowledge(data: dict[str, Any]) -> handler.ActionResponse:
-            """Retrieve documents from any knowledge base (unrestricted)."""
+            """Retrieve documents from any knowledge base.
+
+            For AgentRunner calls: requires run_id and validates kb_id against session.resources.knowledge_bases.
+            For regular plugin calls: no run_id, unrestricted access (backward compatibility).
+
+            Note: SDK AgentRunAPIProxy.retrieve_knowledge calls this action with run_id.
+            """
             kb_id = data['kb_id']
             query_text = data['query_text']
             top_k = data.get('top_k', 5)
-            filters = data.get('filters', {})
+            filters = data.get('filters') or {}
+            run_id = data.get('run_id')  # Optional: present for AgentRunner calls
+            caller_plugin_identity = data.get('caller_plugin_identity')  # Optional: for cross-plugin validation
+
+            # Permission validation for AgentRunner calls
+            if run_id:
+                session, error = await _validate_run_authorization(
+                    run_id, 'knowledge_base', kb_id, self.ap, caller_plugin_identity, operation='retrieve'
+                )
+                if error:
+                    return error
 
             kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(kb_id)
             if not kb:
@@ -774,15 +1227,7 @@ class RuntimeConnectionHandler(handler.Handler):
 
             query = self.ap.query_pool.cached_queries[query_id]
 
-            kb_uuids = []
-            if query.pipeline_config:
-                local_agent_config = query.pipeline_config.get('ai', {}).get('local-agent', {})
-                kb_uuids = local_agent_config.get('knowledge-bases', [])
-                # Backward compatibility
-                if not kb_uuids:
-                    old_kb_uuid = local_agent_config.get('knowledge-base', '')
-                    if old_kb_uuid and old_kb_uuid != '__none__':
-                        kb_uuids = [old_kb_uuid]
+            kb_uuids = await _get_pipeline_knowledge_base_uuids(self.ap, query)
 
             knowledge_bases = []
             for kb_uuid in kb_uuids:
@@ -800,34 +1245,49 @@ class RuntimeConnectionHandler(handler.Handler):
 
         @self.action(PluginToRuntimeAction.RETRIEVE_KNOWLEDGE_BASE)
         async def retrieve_knowledge_base(data: dict[str, Any]) -> handler.ActionResponse:
-            """Retrieve documents from a knowledge base within the pipeline's scope."""
-            query_id = data['query_id']
+            """Retrieve documents from a knowledge base within the current run or query scope.
+
+            For AgentRunner calls: requires run_id and validates kb_id against session.resources.knowledge_bases.
+            For regular plugin calls: no run_id, validates against pipeline's configured knowledge bases.
+
+            Note: This action has dual validation paths:
+            - AgentRunner: uses session_registry for permission check
+            - Regular plugin: uses ConfigMigration.resolve_runner_config for pipeline-level check
+            """
             kb_id = data['kb_id']
             query_text = data['query_text']
             top_k = data.get('top_k', 5)
-            filters = data.get('filters', {})
+            filters = data.get('filters') or {}
+            run_id = data.get('run_id')  # Optional: present for AgentRunner calls
+            caller_plugin_identity = data.get('caller_plugin_identity')  # Optional: for cross-plugin validation
+            session = None
+            query = None
 
-            if query_id not in self.ap.query_pool.cached_queries:
-                return handler.ActionResponse.error(
-                    message=f'Query with query_id {query_id} not found',
+            # Permission validation for AgentRunner calls
+            if run_id:
+                session, error = await _validate_run_authorization(
+                    run_id, 'knowledge_base', kb_id, self.ap, caller_plugin_identity, operation='retrieve'
                 )
+                if error:
+                    return error
+                query = _resolve_action_query(data, session, self.ap)
+            else:
+                query_id = data['query_id']
+                if query_id not in self.ap.query_pool.cached_queries:
+                    return handler.ActionResponse.error(
+                        message=f'Query with query_id {query_id} not found',
+                    )
 
-            query = self.ap.query_pool.cached_queries[query_id]
+                query = self.ap.query_pool.cached_queries[query_id]
 
-            # Validate kb_id is in pipeline's allowed list
-            allowed_kb_uuids = []
-            if query.pipeline_config:
-                local_agent_config = query.pipeline_config.get('ai', {}).get('local-agent', {})
-                allowed_kb_uuids = local_agent_config.get('knowledge-bases', [])
-                if not allowed_kb_uuids:
-                    old_kb_uuid = local_agent_config.get('knowledge-base', '')
-                    if old_kb_uuid and old_kb_uuid != '__none__':
-                        allowed_kb_uuids = [old_kb_uuid]
+                # Regular plugin call: validate against the runner binding's
+                # schema-defined KB selectors or the preprocessed query scope.
+                allowed_kb_uuids = await _get_pipeline_knowledge_base_uuids(self.ap, query)
 
-            if kb_id not in allowed_kb_uuids:
-                return handler.ActionResponse.error(
-                    message=f'Knowledge base {kb_id} is not configured for this pipeline',
-                )
+                if kb_id not in allowed_kb_uuids:
+                    return handler.ActionResponse.error(
+                        message=f'Knowledge base {kb_id} is not configured for this pipeline',
+                    )
 
             kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(kb_id)
             if not kb:
@@ -836,21 +1296,69 @@ class RuntimeConnectionHandler(handler.Handler):
                 )
 
             try:
-                session_name = f'{query.session.launcher_type.value}_{query.session.launcher_id}'
+                settings: dict[str, Any] = {
+                    'top_k': top_k,
+                    'filters': filters,
+                }
+                if query is not None:
+                    session_name = f'{query.session.launcher_type.value}_{query.session.launcher_id}'
+                    settings.update(
+                        {
+                            'session_name': session_name,
+                            'bot_uuid': query.bot_uuid or '',
+                            'sender_id': str(query.sender_id),
+                        }
+                    )
                 entries = await kb.retrieve(
                     query_text,
-                    settings={
-                        'top_k': top_k,
-                        'filters': filters,
-                        'session_name': session_name,
-                        'bot_uuid': query.bot_uuid or '',
-                        'sender_id': str(query.sender_id),
-                    },
+                    settings=settings,
                 )
                 results = [entry.model_dump(mode='json') for entry in entries]
                 return handler.ActionResponse.success(data={'results': results})
             except Exception as e:
                 return _make_rag_error_response(e, 'RetrievalError', kb_id=kb_id)
+
+        # ================= Agent History/Event APIs =================
+
+        @self.action(PluginToRuntimeAction.GET_PROMPT)
+        async def get_prompt(data: dict[str, Any]) -> handler.ActionResponse:
+            """Return the current run's effective prompt after PromptPreProcessing."""
+            run_id = data.get('run_id')
+            caller_plugin_identity = data.get('caller_plugin_identity')
+
+            if not run_id:
+                return handler.ActionResponse.error(message='run_id is required')
+
+            session, error = await _validate_agent_run_session(
+                run_id,
+                caller_plugin_identity,
+                self.ap,
+                'Get prompt',
+                api_capability='prompt_get',
+            )
+            if error:
+                return error
+
+            query = _resolve_action_query(data, session, self.ap)
+            if query is None:
+                return handler.ActionResponse.error(
+                    message=f'Query for run_id {run_id} not found or expired',
+                )
+
+            prompt = getattr(query, 'prompt', None)
+            messages = getattr(prompt, 'messages', []) or []
+            return handler.ActionResponse.success(
+                data={
+                    'prompt': [
+                        message.model_dump(mode='json') if hasattr(message, 'model_dump') else message
+                        for message in messages
+                    ],
+                }
+            )
+
+        agent_pull_actions.register(self)
+        agent_runner_actions.register(self)
+        agent_state_actions.register(self)
 
         @self.action(CommonAction.PING)
         async def ping(data: dict[str, Any]) -> handler.ActionResponse:
@@ -995,6 +1503,66 @@ class RuntimeConnectionHandler(handler.Handler):
         )
 
         return result['tools']
+
+    async def list_agent_runners(self, include_plugins: list[str] | None = None) -> list[dict[str, Any]]:
+        """List agent runners from plugin runtime.
+
+        Returns list of dicts with:
+        - plugin_author
+        - plugin_name
+        - runner_name
+        - manifest
+        """
+        result = await self.call_action(
+            LangBotToRuntimeAction.LIST_AGENT_RUNNERS,
+            {
+                'include_plugins': include_plugins,
+            },
+            timeout=20,
+        )
+
+        return result['runners']
+
+    async def run_agent(
+        self,
+        plugin_author: str,
+        plugin_name: str,
+        runner_name: str,
+        context: dict[str, Any],
+    ) -> typing.AsyncGenerator[dict[str, Any], None]:
+        """Run an AgentRunner component.
+
+        Yields AgentRunResult dicts.
+        """
+        timeout = self._get_runner_action_timeout(context)
+        gen = self.call_action_generator(
+            LangBotToRuntimeAction.RUN_AGENT,
+            {
+                'plugin_author': plugin_author,
+                'plugin_name': plugin_name,
+                'runner_name': runner_name,
+                'context': context,
+            },
+            timeout=timeout,
+        )
+
+        async for ret in gen:
+            yield ret
+
+    def _get_runner_action_timeout(self, context: dict[str, Any]) -> float:
+        """Use the run deadline as the transport idle timeout when available."""
+        try:
+            import time
+
+            deadline_at = (context.get('runtime') or {}).get('deadline_at')
+            if deadline_at is None:
+                return 300
+            remaining = float(deadline_at) - time.time()
+            if remaining <= 0:
+                return 0.001
+            return max(remaining + 1.0, 0.001)
+        except (TypeError, ValueError):
+            return 300
 
     async def get_plugin_icon(self, plugin_author: str, plugin_name: str) -> dict[str, Any]:
         """Get plugin icon"""

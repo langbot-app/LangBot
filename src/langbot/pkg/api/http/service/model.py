@@ -7,7 +7,6 @@ from langbot_plugin.api.entities.builtin.provider import message as provider_mes
 
 from ....core import app
 from ....entity.persistence import model as persistence_model
-from ....entity.persistence import pipeline as persistence_pipeline
 from ....provider.modelmgr import requester as model_requester
 
 
@@ -151,23 +150,9 @@ class LLMModelsService:
         self.ap.model_mgr.llm_models.append(runtime_llm_model)
 
         if auto_set_to_default_pipeline:
-            # set the default pipeline model to this model
-            result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(
-                    persistence_pipeline.LegacyPipeline.is_default == True
-                )
-            )
-            pipeline = result.first()
-            if pipeline is not None:
-                model_config = pipeline.config.get('ai', {}).get('local-agent', {}).get('model', {})
-                if not model_config.get('primary', ''):
-                    pipeline_config = pipeline.config
-                    pipeline_config['ai']['local-agent']['model'] = {
-                        'primary': model_data['uuid'],
-                        'fallbacks': [],
-                    }
-                    pipeline_data = {'config': pipeline_config}
-                    await self.ap.pipeline_service.update_pipeline(pipeline.uuid, pipeline_data)
+            default_config_service = getattr(self.ap, 'agent_runner_default_config_service', None)
+            if default_config_service is not None:
+                await default_config_service.auto_set_default_pipeline_llm_model(model_data['uuid'])
 
         return model_data['uuid']
 

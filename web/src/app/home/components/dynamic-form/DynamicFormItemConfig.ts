@@ -42,6 +42,18 @@ export function isDynamicFormItemType(
 }
 
 export function parseDynamicFormItemType(value: string): DynamicFormItemType {
+  const typeMap: Record<string, DynamicFormItemType> = {
+    [DynamicFormItemType.SELECT_LLM_MODEL]:
+      DynamicFormItemType.LLM_MODEL_SELECTOR,
+    [DynamicFormItemType.SELECT_KNOWLEDGE_BASES]:
+      DynamicFormItemType.KNOWLEDGE_BASE_MULTI_SELECTOR,
+    [DynamicFormItemType.NUMBER]: DynamicFormItemType.FLOAT,
+    [DynamicFormItemType.JSON]: DynamicFormItemType.TEXT,
+  };
+  if (value in typeMap) {
+    return typeMap[value];
+  }
+
   return isDynamicFormItemType(value) ? value : DynamicFormItemType.UNKNOWN;
 }
 

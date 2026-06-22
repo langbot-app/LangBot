@@ -58,13 +58,15 @@ class ToolManager:
         self,
         bound_plugins: list[str] | None = None,
         bound_mcp_servers: list[str] | None = None,
-        include_skill_authoring: bool = False,
     ) -> list[resource_tool.LLMTool]:
         all_functions: list[resource_tool.LLMTool] = []
 
         all_functions.extend(await self.native_tool_loader.get_tools())
-        if include_skill_authoring:
-            all_functions.extend(await self.skill_tool_loader.get_tools())
+        # Skill tools (activate / register_skill) are exposed like native tools:
+        # the SkillToolLoader gates itself on sandbox + skill_mgr availability, so
+        # skill is just a group of authorized tools rather than a separate
+        # capability-gated surface.
+        all_functions.extend(await self.skill_tool_loader.get_tools())
         all_functions.extend(await self.plugin_tool_loader.get_tools(bound_plugins))
         all_functions.extend(await self.mcp_tool_loader.get_tools(bound_mcp_servers))
 
@@ -83,6 +85,36 @@ class ToolManager:
                 return tool
 
         return None
+
+    async def get_tool_schema(self, name: str) -> tuple[str | None, dict | None]:
+        """Return (description, parameters JSON schema) for a tool by name.
+
+        Used by the host to prefill ToolResource so a runner can build LLM tool
+        definitions without a separate get_tool_detail round-trip. All loaders
+        return resource_tool.LLMTool, so no per-shape branching is needed.
+        Returns (None, None) when the tool is not found.
+        """
+        tool = await self.get_tool_by_name(name)
+        if tool is None:
+            return None, None
+        return tool.description, (tool.parameters or None)
+
+    async def get_tool_detail(self, name: str) -> dict | None:
+        """Return the host-level tool detail shape for a tool by name.
+
+        All loaders return resource_tool.LLMTool, so the shape is uniform:
+        {name, description, human_desc, parameters}. Returns None when the tool
+        is not found.
+        """
+        tool = await self.get_tool_by_name(name)
+        if tool is None:
+            return None
+        return {
+            'name': tool.name,
+            'description': tool.description,
+            'human_desc': tool.human_desc,
+            'parameters': tool.parameters or {},
+        }
 
     async def generate_tools_for_openai(self, use_funcs: list[resource_tool.LLMTool]) -> list:
         tools = []
