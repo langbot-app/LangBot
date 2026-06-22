@@ -22,6 +22,12 @@ from langbot_plugin.api.entities.builtin.platform import message as platform_mes
 from langbot_plugin.api.entities import events as plugin_events
 
 
+@pytest.fixture(autouse=True)
+def clear_proxy_env(monkeypatch):
+    for key in ('ALL_PROXY', 'HTTPS_PROXY', 'HTTP_PROXY', 'all_proxy', 'https_proxy', 'http_proxy'):
+        monkeypatch.delenv(key, raising=False)
+
+
 class DummyLogger(AbstractEventLogger):
     async def info(self, text, images=None, message_session_id=None, no_throw=True):
         pass

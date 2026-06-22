@@ -35,6 +35,50 @@ def get_entities_module():
     return import_module('langbot.pkg.pipeline.entities')
 
 
+RUNNER_ID = 'plugin:langbot/local-agent/default'
+
+
+def attach_agent_runner_descriptor(app, *, multimodal_input=True, tool_calling=True):
+    """Attach a schema-backed AgentRunner descriptor to a FakeApp."""
+    from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
+
+    descriptor = AgentRunnerDescriptor(
+        id=RUNNER_ID,
+        source='plugin',
+        label={'en_US': 'Local Agent'},
+        plugin_author='langbot',
+        plugin_name='local-agent',
+        runner_name='default',
+        config_schema=[
+            {'name': 'model', 'type': 'model-fallback-selector'},
+            {'name': 'prompt', 'type': 'prompt-editor', 'default': []},
+        ],
+        capabilities={
+            'tool_calling': tool_calling,
+            'multimodal_input': multimodal_input,
+        },
+    )
+    app.agent_runner_registry = Mock()
+    app.agent_runner_registry.get = AsyncMock(return_value=descriptor)
+    return descriptor
+
+
+def agent_runner_pipeline_config(model_config, *, prompt='default'):
+    return {
+        'ai': {
+            'runner': {'id': RUNNER_ID},
+            'runner_config': {
+                RUNNER_ID: {
+                    'model': model_config,
+                    'prompt': prompt,
+                },
+            },
+        },
+        'output': {'misc': {'at-sender': False}},
+        'trigger': {'misc': {}},
+    }
+
+
 class TestPreProcessorNormalText:
     """Tests for normal text message preprocessing."""
 
@@ -274,6 +318,7 @@ class TestPreProcessorModelSelection:
         mock_model.model_entity = Mock(uuid='primary-model-uuid', abilities=['func_call'])
         app.model_mgr.get_model_by_uuid = AsyncMock(return_value=mock_model)
         app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
+        attach_agent_runner_descriptor(app)
 
         mock_event_ctx = Mock()
         mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
@@ -283,17 +328,9 @@ class TestPreProcessorModelSelection:
         query = text_query('hello')
 
         # Set pipeline config with primary model
-        query.pipeline_config = {
-            'ai': {
-                'runner': {'runner': 'local-agent'},
-                'local-agent': {
-                    'model': {'primary': 'primary-model-uuid', 'fallbacks': []},
-                    'prompt': 'default',
-                },
-            },
-            'output': {'misc': {'at-sender': False}},
-            'trigger': {'misc': {}},
-        }
+        query.pipeline_config = agent_runner_pipeline_config(
+            {'primary': 'primary-model-uuid', 'fallbacks': []},
+        )
 
         result = await stage.process(query, 'PreProcessor')
 
@@ -333,6 +370,7 @@ class TestPreProcessorModelSelection:
 
         app.model_mgr.get_model_by_uuid = AsyncMock(side_effect=mock_get_model)
         app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
+        attach_agent_runner_descriptor(app)
 
         mock_event_ctx = Mock()
         mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
@@ -341,17 +379,9 @@ class TestPreProcessorModelSelection:
         stage = preproc.PreProcessor(app)
         query = text_query('hello')
 
-        query.pipeline_config = {
-            'ai': {
-                'runner': {'runner': 'local-agent'},
-                'local-agent': {
-                    'model': {'primary': 'primary-uuid', 'fallbacks': ['fallback-uuid']},
-                    'prompt': 'default',
-                },
-            },
-            'output': {'misc': {'at-sender': False}},
-            'trigger': {'misc': {}},
-        }
+        query.pipeline_config = agent_runner_pipeline_config(
+            {'primary': 'primary-uuid', 'fallbacks': ['fallback-uuid']},
+        )
 
         result = await stage.process(query, 'PreProcessor')
 

@@ -9,6 +9,40 @@ import pytest
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
 
 
+RUNNER_ID = 'plugin:langbot/local-agent/default'
+
+
+def _attach_agent_runner_descriptor(app):
+    from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
+
+    descriptor = AgentRunnerDescriptor(
+        id=RUNNER_ID,
+        source='plugin',
+        label={'en_US': 'Local Agent'},
+        plugin_author='langbot',
+        plugin_name='local-agent',
+        runner_name='default',
+        config_schema=[
+            {'name': 'model', 'type': 'model-fallback-selector'},
+            {'name': 'prompt', 'type': 'prompt-editor', 'default': []},
+        ],
+        capabilities={'tool_calling': True, 'multimodal_input': True},
+    )
+    app.agent_runner_registry = Mock()
+    app.agent_runner_registry.get = AsyncMock(return_value=descriptor)
+
+
+def _pipeline_config(model_config):
+    return {
+        'ai': {
+            'runner': {'id': RUNNER_ID},
+            'runner_config': {RUNNER_ID: {'model': model_config, 'prompt': []}},
+        },
+        'trigger': {'misc': {'combine-quote-message': False}},
+        'output': {'misc': {'exception-handling': 'show-hint'}},
+    }
+
+
 def _conversation():
     prompt = Mock()
     prompt.messages = []
@@ -37,20 +71,14 @@ async def test_preprocessor_keeps_image_placeholder_for_text_only_local_agent(mo
     model.model_entity.abilities = []
 
     mock_app.model_mgr.get_model_by_uuid = AsyncMock(return_value=model)
+    _attach_agent_runner_descriptor(mock_app)
     mock_app.sess_mgr.get_session = AsyncMock(
         return_value=SimpleNamespace(launcher_type=sample_query.launcher_type, launcher_id=sample_query.launcher_id)
     )
     mock_app.sess_mgr.get_conversation = AsyncMock(return_value=_conversation())
     mock_app.plugin_connector.emit_event = AsyncMock(return_value=_prompt_preprocessing_context())
 
-    sample_query.pipeline_config = {
-        'ai': {
-            'runner': {'runner': 'local-agent'},
-            'local-agent': {'model': {'primary': 'text-only-model', 'fallbacks': []}, 'prompt': []},
-        },
-        'trigger': {'misc': {'combine-quote-message': False}},
-        'output': {'misc': {'exception-handling': 'show-hint'}},
-    }
+    sample_query.pipeline_config = _pipeline_config({'primary': 'text-only-model', 'fallbacks': []})
     sample_query.message_chain = platform_message.MessageChain(
         [platform_message.Image(base64='data:image/png;base64,AAAA')]
     )
