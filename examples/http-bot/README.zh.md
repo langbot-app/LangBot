@@ -6,7 +6,7 @@
 它们完整展示了整条链路:对请求签名、推送一条消息、在回调端点接收
 1→M 的多段回复。
 
-完整指南:[`docs/platforms/http-bot.md`](../../docs/platforms/http-bot.md)。
+完整指南:[docs.langbot.app —— HTTP Bot](https://docs.langbot.app/zh/usage/platforms/http-bot)。
 机器可读的接口契约:[`docs/http-bot-openapi.json`](../../docs/http-bot-openapi.json)。
 
 ## 文件清单

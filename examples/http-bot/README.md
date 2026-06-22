@@ -6,7 +6,7 @@ Minimal, dependency-light clients for the LangBot **HTTP Bot** platform adapter.
 They show the whole loop: signing a request, pushing a message, and receiving
 multi-part replies on a callback endpoint.
 
-Full guide: [`docs/platforms/http-bot.md`](../../docs/platforms/http-bot.md).
+Full guide: [docs.langbot.app — HTTP Bot](https://docs.langbot.app/en/usage/platforms/http-bot).
 Machine-readable contract: [`docs/http-bot-openapi.json`](../../docs/http-bot-openapi.json).
 
 ## Files
