@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 import traceback
 import typing
 import uuid
@@ -190,8 +191,29 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     # by _paint_form_on_card so the post-pause form keeps the streamed
     # context above the new prompt.
     active_turn_text: dict
+    # user_msg_id → monitoring_message_id, populated by
+    # on_monitoring_message_created and drained into feedback_state when
+    # a card is created for that user message.
+    pending_monitoring_msg: dict
+    # out_track_id → {monitoring_msg_id, session_id, user_id, voted}.
+    # Marks a card as feedback-enabled. _on_card_action looks here first
+    # for the synthetic feedback action ids and emits a FeedbackEvent.
+    feedback_state: dict
+    # event_type → callback. The abstract base class doesn't declare this,
+    # so we must do it here or pydantic silently drops `listeners={}` in
+    # super().__init__ and any access raises AttributeError.
+    listeners: typing.Dict[
+        typing.Type[platform_events.Event],
+        typing.Callable[[platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None],
+    ]
     ap: typing.Any = None
     bot_uuid: str = ''
+
+    # Synthetic action ids the user can't collide with — Dify actions are
+    # external strings, ours are namespaced. ClassVar so pydantic doesn't
+    # treat these constants as model fields.
+    FEEDBACK_ACTION_UP: typing.ClassVar[str] = '__lb_feedback_up__'
+    FEEDBACK_ACTION_DOWN: typing.ClassVar[str] = '__lb_feedback_down__'
 
     def __init__(self, config: dict, logger: EventLogger):
         required_keys = [
@@ -219,6 +241,8 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             card_state={},
             active_turn_card={},
             active_turn_text={},
+            pending_monitoring_msg={},
+            feedback_state={},
             bot_account_id=bot_account_id,
             bot=bot,
             listeners={},
@@ -290,6 +314,14 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     return
 
             card_instance, card_instance_id = chat_card_entry
+            # When this is the final chunk on a feedback-eligible card,
+            # paint 👍/👎 into the `btns` slot. Skip for non-final chunks
+            # and for non-form-template (legacy) cards which don't carry a
+            # `btns` slot in their template.
+            inject_feedback = is_final and bool(form_template_id) and card_instance_id in self.feedback_state
+            feedback_btns_json = (
+                json.dumps(self._build_feedback_btns(card_instance_id), ensure_ascii=False) if inject_feedback else '[]'
+            )
             if content:
                 if form_template_id:
                     # The card content has already been written via
@@ -305,10 +337,17 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                             out_track_id=card_instance_id,
                             card_param_map={
                                 'content': content,
-                                'btns': '[]',
+                                'btns': feedback_btns_json,
                                 'flowStatus': '3' if is_final else '1',
                             },
                         )
+                        # Cache the latest written content so the feedback
+                        # click handler can re-send it alongside the
+                        # disabled-buttons update — DingTalk update_card_data
+                        # with a partial cardParamMap clears unspecified
+                        # variables, so a btns-only update wipes the card body.
+                        if inject_feedback:
+                            self.feedback_state[card_instance_id]['last_content'] = content
                     except Exception:
                         if self.ap is not None:
                             self.ap.logger.exception('DingTalk: update card content failed')
@@ -317,11 +356,15 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             if is_final:
                 if form_template_id and not content:
                     # Empty final chunk still needs to leave the card with
-                    # flowStatus=3 so the spinner stops.
+                    # flowStatus=3 so the spinner stops. Paint feedback btns
+                    # here too — earlier chunks already wrote the content.
+                    empty_final_params: dict = {'flowStatus': '3'}
+                    if inject_feedback:
+                        empty_final_params['btns'] = feedback_btns_json
                     try:
                         await self.bot.update_card_data(
                             out_track_id=card_instance_id,
-                            card_param_map={'flowStatus': '3'},
+                            card_param_map=empty_final_params,
                         )
                     except Exception:
                         pass
@@ -386,6 +429,11 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             if session_key:
                 self.active_turn_card[session_key] = out_track_id
                 self.active_turn_text[session_key] = ''
+            # Register for feedback so the final streaming chunk can paint
+            # 👍/👎 buttons. If the turn later pauses for human input,
+            # _paint_form_on_card un-registers this so the form-prompt card
+            # doesn't accidentally show feedback buttons.
+            self._register_feedback_card(out_track_id, event)
             return True
 
         # Legacy chat-card path (no form template).
@@ -437,6 +485,21 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             self.bot.on_message('FriendMessage')(on_message)
         elif event_type == platform_events.GroupMessage:
             self.bot.on_message('GroupMessage')(on_message)
+        elif event_type == platform_events.FeedbackEvent:
+            # Stored only; _on_card_action looks it up by type when a
+            # feedback action id arrives.
+            self.listeners[platform_events.FeedbackEvent] = callback
+
+    async def on_monitoring_message_created(self, query, monitoring_message_id: str):
+        """Pipeline hook: stash monitoring_message_id keyed by the user's
+        inbound message id so the card created for this turn can carry it
+        forward as FeedbackEvent.stream_id."""
+        try:
+            user_msg_id = query.message_event.message_chain.message_id
+            if user_msg_id:
+                self.pending_monitoring_msg[str(user_msg_id)] = monitoring_message_id
+        except Exception as exc:
+            await self.logger.debug(f'DingTalk: failed to map monitoring message: {exc}')
 
     async def run_async(self):
         await self.bot.start()
@@ -571,6 +634,11 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             'node_title': node_title,
             'form_content': form_content,
         }
+        # This card is becoming a form-prompt card; thumbs feedback would
+        # collide visually with the action buttons (same `btns` slot) and
+        # semantically (feedback is for the answer, not an intermediate
+        # prompt). Drop the registration.
+        self.feedback_state.pop(out_track_id, None)
 
         btns = self._build_btns(actions, out_track_id)
         parts: list[str] = []
@@ -634,6 +702,92 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 }
             )
         return btns
+
+    @classmethod
+    def _build_feedback_btns(
+        cls,
+        out_track_id: str,
+        voted: typing.Optional[str] = None,
+    ) -> list:
+        """Two-button feedback pair posted to the `btns` slot.
+
+        The bundled `dingtalk_human_input_card.json` template's btns
+        ButtonGroup schema only declares ``text/color/status/event`` —
+        extra fields like ``icon`` are silently dropped by DingTalk's
+        renderer, so the buttons stay text-only. Emoji is inlined into
+        ``text`` for a glanceable like/dislike marker.
+
+        * Pre-click (``voted`` is None): 👍 in `blue`, 👎 in `gray`; both
+          clickable.
+        * Post-click (``voted`` matches one action id): the clicked button
+          keeps its color, the other goes flat `gray`; both `disabled`.
+        """
+        items = [
+            ('👍 有帮助', cls.FEEDBACK_ACTION_UP, 'blue'),
+            ('👎 无帮助', cls.FEEDBACK_ACTION_DOWN, 'gray'),
+        ]
+        btns = []
+        for text, action_id, default_color in items:
+            if voted is None:
+                color = default_color
+                status = 'normal'
+            else:
+                color = default_color if action_id == voted else 'gray'
+                status = 'disabled'
+            btns.append(
+                {
+                    'text': text,
+                    'color': color,
+                    'status': status,
+                    'event': {
+                        'type': 'sendCardRequest',
+                        'params': {
+                            'actionId': action_id,
+                            'params': {'action_id': action_id, 'out_track_id': out_track_id},
+                        },
+                    },
+                }
+            )
+        return btns
+
+    def _register_feedback_card(
+        self,
+        out_track_id: str,
+        message_source: platform_events.MessageEvent,
+    ) -> None:
+        """Mark a card as eligible for thumbs feedback by capturing session
+        + user + monitoring info. Pulls the monitoring_message_id from
+        ``pending_monitoring_msg`` keyed by the inbound DingTalk message id;
+        falls back to empty for synthetic events (resumed-workflow cards),
+        in which case the FeedbackEvent still fires but without a stream
+        id correlation."""
+        if not out_track_id or message_source is None:
+            return
+        user_msg_id = ''
+        monitoring_msg_id = ''
+        spo = getattr(message_source, 'source_platform_object', None)
+        if spo is not None:
+            inc = getattr(spo, 'incoming_message', None)
+            if inc is not None:
+                user_msg_id = str(getattr(inc, 'message_id', '') or '')
+                if user_msg_id:
+                    monitoring_msg_id = self.pending_monitoring_msg.pop(user_msg_id, '')
+        if isinstance(message_source, platform_events.GroupMessage):
+            session_id = f'group_{message_source.group.id}'
+            user_id = str(message_source.sender.id)
+        elif isinstance(message_source, platform_events.FriendMessage):
+            session_id = f'person_{message_source.sender.id}'
+            user_id = str(message_source.sender.id)
+        else:
+            return
+        self.feedback_state[out_track_id] = {
+            'monitoring_msg_id': monitoring_msg_id,
+            'session_id': session_id,
+            'user_id': user_id,
+            'user_msg_id': user_msg_id,
+            'created_at': time.time(),
+            'voted': False,
+        }
 
     async def _send_form_card(
         self,
@@ -769,6 +923,12 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if session_key:
             self.active_turn_card[session_key] = out_track_id
             self.active_turn_text[session_key] = ''
+        # Resumed cards are eligible for feedback too — the synthetic
+        # message_source has no source_platform_object so the helper
+        # records empty user_msg_id/monitoring_msg_id; FeedbackEvent fires
+        # without a stream_id correlation.
+        if form_template_id:
+            self._register_feedback_card(out_track_id, message_source)
         return entry
 
     async def send_message_text_form(
@@ -839,12 +999,20 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             or (params.get('actionId') or '').strip()
             or (params.get('id') or '').strip()
         )
+        if not raw_action_id:
+            await self.logger.warning(f'DingTalk: card action with no action_id, payload={payload}')
+            return
+
+        # Feedback path: handle 👍/👎 clicks before form-action lookup so a
+        # feedback click on a card that also happens to be tracked in
+        # card_state (it shouldn't, but defensively) is still routed right.
+        if raw_action_id in (self.FEEDBACK_ACTION_UP, self.FEEDBACK_ACTION_DOWN):
+            await self._handle_feedback_action(out_track_id, raw_action_id, payload)
+            return
+
         state = self.card_state.get(out_track_id)
         if state is None:
             await self.logger.warning(f'DingTalk: card action received for unknown out_track_id={out_track_id}')
-            return
-        if not raw_action_id:
-            await self.logger.warning(f'DingTalk: card action with no action_id, payload={payload}')
             return
 
         actions = state.get('actions', []) or []
@@ -964,6 +1132,71 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         # Once consumed, drop the state — the runner clears _PENDING_FORMS too.
         self.card_state.pop(out_track_id, None)
+
+    async def _handle_feedback_action(
+        self,
+        out_track_id: str,
+        action_id: str,
+        payload: dict,
+    ) -> None:
+        """Process a 👍/👎 click: dispatch FeedbackEvent to the registered
+        listener (LangBot's monitoring service records it), then repaint
+        the card's buttons in `disabled` state so the click is visibly
+        acknowledged and not re-issued."""
+        state = self.feedback_state.get(out_track_id)
+        if state is None:
+            await self.logger.warning(f'DingTalk: feedback action {action_id} for unknown out_track_id={out_track_id}')
+            return
+        if state.get('voted'):
+            # Already voted — ignore re-clicks (DingTalk may still deliver
+            # them despite the disabled status, depending on the client).
+            return
+
+        feedback_type = 1 if action_id == self.FEEDBACK_ACTION_UP else 2
+        feedback_content = '有帮助' if feedback_type == 1 else '无帮助'
+
+        listener = self.listeners.get(platform_events.FeedbackEvent)
+        if listener is not None:
+            feedback_event = platform_events.FeedbackEvent(
+                feedback_id=str(uuid.uuid4()),
+                feedback_type=feedback_type,
+                feedback_content=feedback_content,
+                user_id=state.get('user_id') or payload.get('user_id') or '',
+                session_id=state.get('session_id', ''),
+                message_id=state.get('user_msg_id', ''),
+                stream_id=state.get('monitoring_msg_id', '') or None,
+                source_platform_object=payload,
+            )
+            try:
+                await listener(feedback_event, self)
+            except Exception:
+                if self.ap is not None:
+                    self.ap.logger.exception('DingTalk: feedback listener raised')
+
+        state['voted'] = action_id
+        # Repaint the same `btns` slot: clicked button keeps its color +
+        # disabled (marks the user's choice), other goes gray + disabled.
+        # CRITICAL: DingTalk update_card_data with a partial cardParamMap
+        # clears unspecified template variables — sending only `btns` wipes
+        # the card body. Always re-send content + flowStatus too.
+        card_param_map: dict = {
+            'btns': json.dumps(
+                self._build_feedback_btns(out_track_id, voted=action_id),
+                ensure_ascii=False,
+            ),
+            'flowStatus': '3',
+        }
+        last_content = state.get('last_content')
+        if last_content:
+            card_param_map['content'] = last_content
+        try:
+            await self.bot.update_card_data(
+                out_track_id=out_track_id,
+                card_param_map=card_param_map,
+            )
+        except Exception:
+            if self.ap is not None:
+                self.ap.logger.exception('DingTalk: grey out feedback buttons failed')
 
     async def _mark_card_resolved(
         self,

@@ -18,9 +18,16 @@ OUTPUT = Path('src/langbot/templates/dingtalk_human_input_card.json')
 def markdown_block(node_id, variable='content'):
     """A MarkdownBlock whose content is bound to a global variable.
 
-    Unlike BaseText (whose `text` field requires editor-side manual binding),
-    MarkdownBlock's `content` accepts `variableValue` binding at JSON load
-    time — the imported template renders the variable straight away.
+    Critical: `content.varType: "markdown"` must be set, otherwise DingTalk
+    silently fails to render the bound variable (the card body stays blank
+    even though the variable is supplied via cardParamMap). The working
+    reference template in I:\\下载\\dingtalk_1782055283543.json confirms
+    this — its MarkdownBlock has the same varType marker.
+
+    isStreaming is left `false` because the adapter writes the variable via
+    `update_card_data` (the full-card PUT endpoint), not the streaming
+    `card/streaming` endpoint. Setting `isStreaming: true` here conflicts
+    with that path and can suppress the rendered body.
     """
     return {
         'componentName': 'MarkdownBlock',
@@ -28,16 +35,25 @@ def markdown_block(node_id, variable='content'):
         'props': {
             'mdVer': 0,
             'icon': {'type': 'icon', 'icon': '', 'iconType': 'emoji'},
-            'content': {'variable': variable, 'variableType': 'global', 'type': 'variableValue'},
+            'content': {
+                'variable': variable,
+                'variableType': 'global',
+                'type': 'variableValue',
+                'varType': 'markdown',
+            },
             'visible': {
                 'type': 'dynamicVisible',
                 'value': True,
                 'valueType': 'fixed',
                 'condition': {'op': 'and', 'conditions': []},
             },
-            'isStreaming': True,
+            'isStreaming': False,
             'enableLinkStatPoint': False,
-            'linkStatPoint': {'type': 'dynamicString', 'content': '', 'i18n': False},
+            'linkStatPoint': {
+                'type': 'dynamicString',
+                'content': 'Page_InteractiveCard__Click_markdownOpenlink',
+                'i18n': False,
+            },
             'linkStatPointParams': [],
             'marginTop': 6,
             'marginBottom': 6,
@@ -406,6 +422,82 @@ def build_editor_data():
         ],
     }
 
+    # Empty containers for flowStatus=2 (writing) and flowStatus=4 (doing).
+    # AICardContainer expects placeholders to exist for every enabled state;
+    # without them, the renderer can refuse to advance to flowStatus=3 (done)
+    # and the card body stays empty. They render nothing visible because
+    # they have no content children, but their presence satisfies the
+    # state-machine validation.
+    def _empty_status_container(node_id, status):
+        return {
+            'componentName': 'AICardStatusContainer',
+            'id': node_id,
+            'props': {
+                'status': status,
+                'marginLeft': 0,
+                'marginRight': 0,
+                'marginTop': 0,
+                'marginBottom': 0,
+                'enableExtend': False,
+                'autoFoldConfig': {
+                    'needFold': True,
+                    'heightLimit': 480,
+                    'foldStatusLocalDataKey': '_cardFoldStatusLocalDataKey',
+                },
+                'innerOffset': 0,
+                'enableCollapse': False,
+                'margin': -2,
+            },
+            'title': f'状态{status}占位',
+            'hidden': False,
+            'isLocked': False,
+            'condition': True,
+            'conditionGroup': '',
+            'children': [
+                {
+                    'componentName': 'AICardContent',
+                    'id': f'{node_id}_content',
+                    'props': {
+                        'marginLeft': 0,
+                        'marginRight': 0,
+                        'marginTop': 0,
+                        'marginBottom': 0,
+                        'visible': {
+                            'type': 'dynamicVisible',
+                            'value': True,
+                            'valueType': 'fixed',
+                            'condition': {'op': 'and', 'conditions': []},
+                        },
+                        'innerOffset': 0,
+                        'disabledWhileForward': False,
+                        'statPoint': {'type': 'dynamicString', 'content': '', 'i18n': False},
+                        'statPointParams': [
+                            {
+                                'type': 'fixed',
+                                'variable': '',
+                                'value': '',
+                                'name': '',
+                                'variableType': 'global',
+                                'id': '1',
+                            }
+                        ],
+                        'margin': -2,
+                        'transformToEventChain': False,
+                        'enableStatPoint': False,
+                    },
+                    'hidden': False,
+                    'title': '',
+                    'isLocked': False,
+                    'condition': True,
+                    'conditionGroup': '',
+                    'children': [],
+                }
+            ],
+        }
+
+    writing_state = _empty_status_container('node_status_writing', 2)
+    doing_state = _empty_status_container('node_status_doing', 4)
+
     root = {
         'componentName': 'AICardContainer',
         'id': 'node_root',
@@ -415,8 +507,12 @@ def build_editor_data():
             'marginTop': 0,
             'marginBottom': 0,
             'enablePending': True,
-            'enableWriting': False,
-            'enableDoing': False,
+            # writing/doing must be enabled so AICardContainer recognises
+            # flowStatus transitions through 2/4 — without this, the
+            # working reference template (I:\\下载\\dingtalk_1782055283543.json)
+            # never reaches the done state and the body stays empty.
+            'enableWriting': True,
+            'enableDoing': True,
             'enableFailed': True,
             'summaryContent': {'type': 'variableValue', 'variableType': 'global', 'variable': ''},
             'enableTitle': False,
@@ -449,7 +545,7 @@ def build_editor_data():
         'isLocked': False,
         'condition': True,
         'conditionGroup': '',
-        'children': [pending_state, done_state, failed_state],
+        'children': [pending_state, writing_state, doing_state, done_state, failed_state],
     }
 
     btns_var = {
@@ -552,7 +648,13 @@ def build_editor_data():
     return {
         'schemaVersion': '3.0.0',
         'schema': {
-            'config': {'update_multi': True, 'streaming_mode': True},
+            # Match the working reference template — leaving config null lets
+            # DingTalk pick defaults. Explicit `streaming_mode: true` would
+            # make the renderer wait for chunks on the streaming endpoint
+            # (PUT /v1.0/card/streaming), which our adapter does NOT use —
+            # it pushes content via update_card_data, so streaming_mode=true
+            # leaves the body empty.
+            'config': None,
             'componentsMap': components_map,
             'componentsTree': [root],
             'i18n': {},
@@ -629,7 +731,16 @@ def build_editor_data():
         'hsfList': [],
         'lwpList': [],
         'pageData': {},
-        'extension': {'extendType': 'AI', 'aiStatusList': [3, 1, 5], 'fileTypeList': []},
+        'extension': {
+            'extendType': 'AI',
+            # All 5 statuses listed — must mirror the enableX flags on
+            # AICardContainer. The working reference template's extension
+            # includes 2 (writing) and 4 (doing); omitting them while
+            # enableWriting/enableDoing are true makes the renderer reject
+            # transitions and leaves the card body empty.
+            'aiStatusList': [3, 1, 5, 2, 4],
+            'fileTypeList': [],
+        },
     }
 
 
