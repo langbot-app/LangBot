@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import struct
 from typing import Any
@@ -146,6 +147,9 @@ class ValkeySearchVectorDatabase(VectorDatabase):
         # Lazily-created client (created on first use so a down Valkey does not
         # block LangBot boot).
         self._client: GlideClient | None = None
+        # Serializes lazy client creation so concurrent first-use callers do not
+        # each construct (and leak) a separate GlideClient.
+        self._client_lock = asyncio.Lock()
         # Index names we have already ensured this process lifetime.
         self._ensured_indexes: set[str] = set()
         # Whether we have already warned about the non-honored vector_weight.
@@ -156,7 +160,14 @@ class ValkeySearchVectorDatabase(VectorDatabase):
     # ------------------------------------------------------------------ #
     async def _ensure_client(self) -> GlideClient:
         """Create the glide client on first use (lazy, non-blocking boot)."""
-        if self._client is None:
+        if self._client is not None:
+            return self._client
+        # Double-checked locking: serialize creation so two concurrent
+        # first-use callers don't both build a client and leak one.
+        async with self._client_lock:
+            if self._client is not None:
+                return self._client
+
             credentials = None
             if self._password is not None:
                 # username is optional alongside a password (ACL "user" vs default user).
@@ -299,13 +310,19 @@ class ValkeySearchVectorDatabase(VectorDatabase):
                 joined = '|'.join(self._encode_and_escape_tag(v) for v in value)
                 fragments.append(f'-@{field}:{{{joined}}}')
             elif op == '$gt':
-                fragments.append(f'@{field}:[({value} +inf]')
+                fragments.append(f'@{field}:[({float(value)} +inf]')
             elif op == '$gte':
-                fragments.append(f'@{field}:[{value} +inf]')
+                fragments.append(f'@{field}:[{float(value)} +inf]')
             elif op == '$lt':
-                fragments.append(f'@{field}:[-inf ({value}]')
+                fragments.append(f'@{field}:[-inf ({float(value)}]')
             elif op == '$lte':
-                fragments.append(f'@{field}:[-inf {value}]')
+                fragments.append(f'@{field}:[-inf {float(value)}]')
+            else:
+                # normalize_filter() already rejects unknown operators, so this
+                # only triggers if SUPPORTED_OPS grows without this chain being
+                # updated. Fail closed (rather than silently dropping the
+                # condition, which would widen delete_by_filter's match set).
+                raise ValueError(f'Valkey Search: unhandled filter operator {op!r} on field {field!r}')
 
         return ' '.join(fragments)
 

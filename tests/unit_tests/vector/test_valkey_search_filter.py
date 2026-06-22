@@ -7,6 +7,7 @@ CI lane and require NO running Valkey server.
 
 from __future__ import annotations
 
+import asyncio
 import struct
 from importlib import import_module
 from unittest.mock import AsyncMock
@@ -27,6 +28,9 @@ def make_backend():
     """
     mod = get_valkey_module()
     backend = object.__new__(mod.ValkeySearchVectorDatabase)
+    # _ensure_client serializes creation through this lock; set it here since
+    # __init__ (which normally creates it) is bypassed.
+    backend._client_lock = asyncio.Lock()
     return backend
 
 
@@ -138,10 +142,18 @@ class TestFilterToFt:
         backend = make_backend()
         # file_id is the only indexed field; numeric ops still render via the
         # generic range fragment, so use file_id to keep the field supported.
-        assert backend._triples_to_ft({'file_id': {'$gt': 5}}) == '@file_id:[(5 +inf]'
-        assert backend._triples_to_ft({'file_id': {'$gte': 5}}) == '@file_id:[5 +inf]'
-        assert backend._triples_to_ft({'file_id': {'$lt': 5}}) == '@file_id:[-inf (5]'
-        assert backend._triples_to_ft({'file_id': {'$lte': 5}}) == '@file_id:[-inf 5]'
+        # Values are cast to float (defensive against non-numeric input and a
+        # future NUMERIC field becoming an injection surface).
+        assert backend._triples_to_ft({'file_id': {'$gt': 5}}) == '@file_id:[(5.0 +inf]'
+        assert backend._triples_to_ft({'file_id': {'$gte': 5}}) == '@file_id:[5.0 +inf]'
+        assert backend._triples_to_ft({'file_id': {'$lt': 5}}) == '@file_id:[-inf (5.0]'
+        assert backend._triples_to_ft({'file_id': {'$lte': 5}}) == '@file_id:[-inf 5.0]'
+
+    def test_numeric_range_rejects_non_numeric(self):
+        backend = make_backend()
+        # A non-numeric range value fails closed rather than interpolating raw.
+        with pytest.raises((ValueError, TypeError)):
+            backend._triples_to_ft({'file_id': {'$gt': 'not-a-number'}})
 
     def test_unsupported_field_dropped(self):
         backend = make_backend()
