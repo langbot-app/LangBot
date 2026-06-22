@@ -52,6 +52,23 @@ def _create_mock_result(items: list = None, first_item=None):
     return result
 
 
+def _create_mock_discover(adapter_webhook_flags: dict[str, bool] = None):
+    """Create mock ComponentDiscoveryEngine exposing MessagePlatformAdapter manifests.
+
+    adapter_webhook_flags maps adapter name -> whether its manifest declares a
+    webhook-url config item (mirrors _adapter_declares_webhook_url's lookup).
+    """
+    components = []
+    for name, has_webhook in (adapter_webhook_flags or {}).items():
+        component = SimpleNamespace()
+        component.metadata = SimpleNamespace(name=name)
+        component.spec = {'config': ([{'name': 'webhook_url', 'type': 'webhook-url'}] if has_webhook else [])}
+        components.append(component)
+    discover = SimpleNamespace()
+    discover.get_components_by_kind = Mock(return_value=components)
+    return discover
+
+
 class TestBotServiceGetBots:
     """Tests for get_bots method."""
 
@@ -219,6 +236,7 @@ class TestBotServiceGetRuntimeBotInfo:
         }
         ap.platform_mgr = SimpleNamespace()
         ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=None)
+        ap.discover = _create_mock_discover({'wecom': True})
 
         bot_data = {
             'uuid': 'wecom-uuid',
@@ -245,6 +263,7 @@ class TestBotServiceGetRuntimeBotInfo:
         ap.instance_config.data = {'api': {}}
         ap.platform_mgr = SimpleNamespace()
         ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=None)
+        ap.discover = _create_mock_discover({'telegram': False})
 
         bot_data = {
             'uuid': 'telegram-uuid',
@@ -276,6 +295,7 @@ class TestBotServiceGetRuntimeBotInfo:
         runtime_bot.adapter = SimpleNamespace()
         runtime_bot.adapter.bot_account_id = 'runtime-account-123'
         ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=runtime_bot)
+        ap.discover = _create_mock_discover({'telegram': False})
 
         bot_data = {
             'uuid': 'runtime-uuid',

@@ -1,0 +1,89 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+
+metadata:
+  name: discord-eba
+  label:
+    en_US: Discord (EBA)
+    zh_Hans: Discord (EBA)
+  description:
+    en_US: Discord adapter (EBA architecture)
+    zh_Hans: Discord 适配器（EBA 架构版本）
+  icon: discord.svg
+
+spec:
+  categories:
+    - popular
+    - global
+  config:
+    - name: client_id
+      label:
+        en_US: Client ID
+        zh_Hans: 客户端 ID
+      type: string
+      required: true
+      default: ""
+    - name: token
+      label:
+        en_US: Token
+        zh_Hans: 令牌
+      type: string
+      required: true
+      default: ""
+
+  supported_events:
+    - message.received
+    - message.edited
+    - message.deleted
+    - message.reaction
+    - group.member_joined
+    - group.member_left
+    - bot.invited_to_group
+    - bot.removed_from_group
+    - platform.specific
+
+  supported_apis:
+    required:
+      - send_message
+      - reply_message
+    optional:
+      - edit_message
+      - delete_message
+      - forward_message
+      - get_group_info
+      - get_group_member_list
+      - get_group_member_info
+      - get_user_info
+      - get_file_url
+      - mute_member
+      - unmute_member
+      - kick_member
+      - leave_group
+      - call_platform_api
+
+  platform_specific_apis:
+    - action: get_channel
+      description: { en_US: "Get channel information", zh_Hans: "获取频道信息" }
+    - action: get_guild
+      description: { en_US: "Get guild information", zh_Hans: "获取服务器信息" }
+    - action: get_guild_channels
+      description: { en_US: "Get guild channels", zh_Hans: "获取服务器频道列表" }
+    - action: get_guild_roles
+      description: { en_US: "Get guild roles", zh_Hans: "获取服务器角色列表" }
+    - action: create_invite
+      description: { en_US: "Create channel invite", zh_Hans: "创建频道邀请链接" }
+    - action: pin_message
+      description: { en_US: "Pin a message", zh_Hans: "置顶消息" }
+    - action: unpin_message
+      description: { en_US: "Unpin a message", zh_Hans: "取消置顶消息" }
+    - action: add_reaction
+      description: { en_US: "Add a reaction", zh_Hans: "添加表情回应" }
+    - action: remove_reaction
+      description: { en_US: "Remove a reaction", zh_Hans: "移除表情回应" }
+    - action: typing
+      description: { en_US: "Send typing indicator", zh_Hans: "发送正在输入状态" }
+
+execution:
+  python:
+    path: ./adapter.py
+    attr: DiscordAdapter
