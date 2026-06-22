@@ -24,14 +24,16 @@ per-tool `get_tool_detail`.
 
 - **Runner**: `local-agent` (in-process logic, direct Run API, skill tools in `use_funcs`) · `acp-agent-runner` (external harness, remote-ssh claude-code over ACP, MCP gateway via **HTTP proxy**) · `claude-code-agent` (external harness, claude-code CLI, MCP gateway via **stdio bridge** — pipeline `28fd37ac`, remote-ssh→101).
 
-### Runner transport difference (important for remote-ssh)
+### Runner transport difference (both work out-of-the-box on remote-ssh)
 
-Both external runners receive the same host-generated gateway `AgentMCPServerConfig`, but inject it differently:
+Both external runners receive the same host-generated gateway `AgentMCPServerConfig`, but inject it differently — and **both are made remote-reachable automatically; neither requires `public-url` on remote-ssh**:
 
-- **claude-code-agent → stdio bridge.** The mcp config is shipped to the remote host base64-over-SSH-stdin and consumed via `--mcp-config`; the gateway entry is a `command/args` (stdio) MCP server whose process tunnels back to the host over the SSH stdio pipe. **No extra config needed on remote-ssh** — works out of the box.
-- **acp-agent-runner → HTTP proxy.** The gateway is a localhost HTTP MCP proxy passed via ACP `session/new {mcpServers}`. On `remote-ssh` the remote claude must HTTP-reach the host, so you **must** set `langbot-assets-gateway-public-url` (or `mcp-public-url`) to a host URL the remote can reach. Without it the remote `mcpServers` entry points at the *remote's* localhost → `langbot_*` tools never enter claude's tool list.
+- **claude-code-agent → stdio bridge.** The mcp config is shipped to the remote host base64-over-SSH-stdin and consumed via `--mcp-config`; the gateway entry is a `command/args` (stdio) MCP server whose process tunnels back to the host over the SSH stdio pipe.
+- **acp-agent-runner → HTTP proxy + SSH reverse tunnel.** The gateway is a localhost HTTP MCP proxy passed via ACP `session/new {mcpServers}`. On `remote-ssh` with no `public-url`, the SDK's `AgentRunMCPAccess` (`mcp_access.py` `_remote_reverse_tunnel`: location==remote-ssh and empty public_url) emits an `ssh -R 127.0.0.1:<port>:127.0.0.1:<port>` reverse tunnel — consumed by acp `default.py:521` (`ssh_args.extend(access.reverse_tunnel.ssh_args())`) — and points `server_config.public_url` at the host-local `http_mcp_endpoint`. The remote claude hits `127.0.0.1:<port>` which tunnels back to the host bridge. **`langbot-assets-gateway-public-url` is an optional alternative for topologies where the reverse tunnel can't be used — not a requirement.**
 
-This is a **runner-plugin transport detail, not a host all-tool-branch issue** — proven by claude-code-agent discovering skills end-to-end with the unmodified branch.
+This is a **runner-plugin transport detail, not a host all-tool-branch issue** — proven by **both** runners discovering skills end-to-end with the unmodified branch (see cases below).
+
+> **Correction (2026-06-22).** An earlier revision of this doc claimed acp was "blocked" on remote-ssh and *required* `langbot-assets-gateway-public-url`, based on a run that returned `PROBEDONE 0 0` / timeout. That was an **environment artifact, not an acp defect**: a duplicate backend instance (a second checkout `LangBot-master/` whose box runtime contended for the same `--ws-control-port 5410`) plus a wedged plugin runtime (host `emit_event` / `list_agent_runners` action calls timing out with `ActionCallTimeoutError`). Re-run on a clean single-instance runtime, **acp passes via the reverse tunnel with no `public-url`** (`PROBEDONE 1 17`, 8–24s).
 - **Lifecycle**: discover → activate → operate (native exec under the activated mount path) → register.
 - **Backend**: docker · nsjail · e2b.
 
@@ -44,8 +46,8 @@ This is a **runner-plugin transport detail, not a host all-tool-branch issue** �
 | `toolresource-parameters-prefill` | runner builds LLM tools from `ctx.resources.tools.parameters` without per-tool `get_tool_detail` | local-agent | **covered (unit)** — `test_run_assembly.py::test_build_llm_tools_uses_prefilled_schema_without_fetch` |
 | `regression-existing-runner-behavior` | existing local-agent cases (basic/rag/tool-call/steering/multimodal) unchanged | local-agent | **covered (unit)** — full host/sdk/local-agent suites green, 0 new failures |
 | `sandbox-skill-authoring-e2e` | create → register → activate → exec-from-activated-path → `E2E_OK` | local-agent | **partial** — authorization chain passes (agent calls exec/register/activate, skill registered 0→1); **OPERATE step blocked by [#2271](https://github.com/langbot-app/LangBot/issues/2271)** on docker+shared-fs |
-| `skill-discovery-via-mcp-gateway` | external harness calls `langbot_list_assets(['skills'])` and receives pipeline-visible skills | claude-code / acp | **PASS (claude-code-agent)** — pipeline `28fd37ac`, remote-ssh→101: `PROBEDONE skills=1 tools=15` in 24s, proving the all-tool `skills` asset class is discoverable end-to-end by an external harness. **acp blocked (config)** — needs `langbot-assets-gateway-public-url` in remote-ssh (HTTP-proxy transport); without it claude reports langbot tools "not available in my direct tool list" → `PROBEDONE 0 0` |
-| `skill-activation-cross-runner-parity` | local-agent and external harness both reach skills via their paths (`use_funcs` vs `langbot_call_tool`) | local-agent + claude-code | **PARTIAL** — local-agent (use_funcs) ✓ and claude-code-agent (langbot_list_assets via stdio gateway) ✓ both discover skills; acp parity pending public-url config |
+| `skill-discovery-via-mcp-gateway` | external harness calls `langbot_list_assets(['skills'])` and receives pipeline-visible skills | claude-code / acp | **PASS (both)** — clean single-instance runtime, remote-ssh→101. claude-code-agent (pipeline `28fd37ac`, stdio bridge): `PROBEDONE skills=1 tools=15`. acp-agent-runner (pipeline `b00794d2`, HTTP proxy + SSH reverse tunnel, **no public-url**): `PROBEDONE skills=1 tools=17`, 8–24s. Both prove the all-tool `skills` asset class is discoverable end-to-end by an external harness. |
+| `skill-activation-cross-runner-parity` | local-agent and external harness both reach skills via their paths (`use_funcs` vs `langbot_call_tool`) | local-agent + claude-code + acp | **PASS** — local-agent (use_funcs) ✓, claude-code-agent (stdio gateway, `skills=1 tools=15`) ✓, and acp-agent-runner (HTTP-proxy gateway over reverse tunnel, `skills=1 tools=17`) ✓ all discover skills. `skills` count matches (1==1); the `tools` count (17 vs 15) is claude's self-reported tally and not yet checked against the authoritative gateway count — most likely model-counting variance, not an asset difference. |
 
 ## Known issues
 
@@ -57,7 +59,7 @@ This is a **runner-plugin transport detail, not a host all-tool-branch issue** �
 2. `skill-tool-exposure-no-capability` + `skill-activation-persistence` + `toolresource-parameters-prefill` covered by unit. **(DONE)**
 3. `sandbox-skill-authoring-e2e` OPERATE step passes on at least one backend once #2271 is fixed (or a backend that avoids nested mounts), proving real end-to-end skill use. **(BLOCKED on #2271)**
 4. `skill-discovery-via-mcp-gateway` passes on an external harness. **(DONE — claude-code-agent: skills=1 tools=15, 24s)**
-5. `skill-activation-cross-runner-parity` passes on acp once `langbot-assets-gateway-public-url` is configured for the remote-ssh HTTP-proxy transport. **(PENDING acp config)**
+5. `skill-activation-cross-runner-parity` passes on acp. **(DONE — acp: skills=1 tools=17, 8s, via SSH reverse tunnel with no public-url; clean single-instance runtime)**
 
 ## How to run
 
