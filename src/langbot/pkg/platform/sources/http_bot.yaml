@@ -1,0 +1,153 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: http_bot
+  label:
+    en_US: HTTP Bot
+    zh_Hans: HTTP 通用接入
+    zh_Hant: HTTP 通用接入
+    ja_JP: HTTP ボット
+  description:
+    en_US: Integrate any backend over plain HTTP. Push messages in via a signed webhook, receive replies on a callback URL. Server-to-server, no long-lived connection. Preserves message aggregation (N->1) and multi-part replies (1->M).
+    zh_Hans: 通过 HTTP 接入任意后端系统。以签名 Webhook 推入消息，在回调地址接收回复。面向服务间集成，无需长连接。完整保留消息聚合（多条合一）与多段回复（一条问、多条回）能力。
+    zh_Hant: 透過 HTTP 接入任意後端系統。以簽名 Webhook 推入訊息，在回調地址接收回覆。面向服務間整合，無需長連線。完整保留訊息聚合（多條合一）與多段回覆（一條問、多條回）能力。
+    ja_JP: 任意のバックエンドを HTTP で接続。署名付き Webhook でメッセージを送信し、コールバック URL で返信を受信します。サーバー間連携、長時間接続不要。メッセージ集約（N→1）とマルチパート返信（1→M）に対応。
+  icon: http_bot.svg
+spec:
+  categories:
+    - popular
+    - global
+  help_links:
+    zh: https://docs.langbot.app/zh/platforms/http-bot
+    en: https://docs.langbot.app/en/platforms/http-bot
+    ja: https://docs.langbot.app/ja/platforms/http-bot
+  config:
+    - name: webhook_url
+      label:
+        en_US: Inbound Webhook URL
+        zh_Hans: 入站 Webhook 地址
+        zh_Hant: 入站 Webhook 地址
+        ja_JP: 受信 Webhook URL
+      description:
+        en_US: Copy this URL. Your backend POSTs messages here (signed with the inbound secret).
+        zh_Hans: 复制此地址。你的后端将消息以签名方式 POST 到这里。
+        zh_Hant: 複製此地址。你的後端將訊息以簽名方式 POST 到這裡。
+        ja_JP: この URL をコピーしてください。バックエンドは署名付きでここにメッセージを POST します。
+      type: webhook-url
+      required: false
+      default: ""
+    - name: inbound_secret
+      label:
+        en_US: Inbound Signing Secret
+        zh_Hans: 入站签名密钥
+        zh_Hant: 入站簽名密鑰
+        ja_JP: 受信署名シークレット
+      description:
+        en_US: HMAC-SHA256 secret your backend uses to sign inbound requests. LangBot verifies every inbound POST with it.
+        zh_Hans: 你的后端用于对入站请求做 HMAC-SHA256 签名的密钥；LangBot 据此校验每个入站 POST。
+        zh_Hant: 你的後端用於對入站請求做 HMAC-SHA256 簽名的密鑰；LangBot 據此校驗每個入站 POST。
+        ja_JP: バックエンドが受信リクエストの署名に使う HMAC-SHA256 シークレット。LangBot は受信 POST ごとに検証します。
+      type: string
+      required: true
+      default: ""
+    - name: callback_url
+      label:
+        en_US: Outbound Callback URL
+        zh_Hans: 出站回调地址
+        zh_Hant: 出站回調地址
+        ja_JP: 送信コールバック URL
+      description:
+        en_US: Where LangBot POSTs replies. One turn may trigger multiple callbacks (1->M). For security the callback URL is taken ONLY from this config and cannot be overridden per-message.
+        zh_Hans: LangBot 将回复 POST 到此地址。一轮对话可能触发多次回调（一问多答）。出于安全考虑，回调地址只取自此配置，不允许逐条消息覆盖。
+        zh_Hant: LangBot 將回覆 POST 到此地址。一輪對話可能觸發多次回調（一問多答）。出於安全考慮，回調地址只取自此配置，不允許逐條訊息覆蓋。
+        ja_JP: LangBot が返信を POST する先。1 ターンで複数回のコールバック（1→M）が発生し得ます。セキュリティ上、コールバック URL はこの設定からのみ取得し、メッセージ単位で上書きできません。
+      type: string
+      required: true
+      default: ""
+    - name: outbound_secret
+      label:
+        en_US: Outbound Signing Secret
+        zh_Hans: 出站签名密钥
+        zh_Hant: 出站簽名密鑰
+        ja_JP: 送信署名シークレット
+      description:
+        en_US: HMAC-SHA256 secret LangBot uses to sign outbound callbacks so your receiver can verify them. Falls back to the inbound secret when empty.
+        zh_Hans: LangBot 用于对出站回调签名的密钥，供你的接收端校验。留空时回退使用入站密钥。
+        zh_Hant: LangBot 用於對出站回調簽名的密鑰，供你的接收端校驗。留空時回退使用入站密鑰。
+        ja_JP: LangBot が送信コールバックの署名に使う HMAC-SHA256 シークレット。受信側で検証できます。空の場合は受信シークレットを使用します。
+      type: string
+      required: false
+      default: ""
+    - name: default_session_type
+      label:
+        en_US: Default Session Type
+        zh_Hans: 默认会话类型
+        zh_Hant: 預設會話類型
+        ja_JP: デフォルトセッションタイプ
+      description:
+        en_US: Session type used when an inbound message omits session_type.
+        zh_Hans: 入站消息未携带 session_type 时使用的会话类型。
+        zh_Hant: 入站訊息未攜帶 session_type 時使用的會話類型。
+        ja_JP: 受信メッセージに session_type がない場合に使用するセッションタイプ。
+      type: select
+      options:
+        - name: person
+          label:
+            en_US: Person (1-on-1)
+            zh_Hans: 个人（一对一）
+            zh_Hant: 個人（一對一）
+            ja_JP: 個人（1 対 1）
+        - name: group
+          label:
+            en_US: Group
+            zh_Hans: 群组
+            zh_Hant: 群組
+            ja_JP: グループ
+      required: false
+      default: person
+    - name: signature_required
+      label:
+        en_US: Require Inbound Signature
+        zh_Hans: 强制入站签名校验
+        zh_Hant: 強制入站簽名校驗
+        ja_JP: 受信署名を必須にする
+      description:
+        en_US: When enabled (recommended), every inbound POST must carry a valid signature. Disable ONLY for local development behind a trusted network.
+        zh_Hans: 开启（推荐）后，每个入站 POST 都必须带有效签名。仅在受信任内网的本地开发时关闭。
+        zh_Hant: 開啟（推薦）後，每個入站 POST 都必須帶有效簽名。僅在受信任內網的本地開發時關閉。
+        ja_JP: 有効（推奨）にすると、すべての受信 POST に有効な署名が必要です。信頼できるネットワーク内のローカル開発時のみ無効化してください。
+      type: boolean
+      required: false
+      default: true
+    - name: callback_timeout
+      label:
+        en_US: Callback Timeout (seconds)
+        zh_Hans: 回调超时（秒）
+        zh_Hant: 回調逾時（秒）
+        ja_JP: コールバックタイムアウト（秒）
+      description:
+        en_US: Per-callback HTTP timeout.
+        zh_Hans: 单次回调的 HTTP 超时时间。
+        zh_Hant: 單次回調的 HTTP 逾時時間。
+        ja_JP: コールバックごとの HTTP タイムアウト。
+      type: integer
+      required: false
+      default: 15
+    - name: callback_max_retries
+      label:
+        en_US: Callback Max Retries
+        zh_Hans: 回调最大重试次数
+        zh_Hant: 回調最大重試次數
+        ja_JP: コールバック最大リトライ回数
+      description:
+        en_US: Retries on timeout or 5xx, with exponential backoff.
+        zh_Hans: 超时或 5xx 时按指数退避重试的次数。
+        zh_Hant: 逾時或 5xx 時按指數退避重試的次數。
+        ja_JP: タイムアウトまたは 5xx 時に指数バックオフでリトライする回数。
+      type: integer
+      required: false
+      default: 3
+execution:
+  python:
+    path: ./http_bot.py
+    attr: HttpBotAdapter

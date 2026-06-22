@@ -1,13 +1,29 @@
 # HTTP Bot Adapter — Design Document
 
-> Status: **Draft / RFC** · Target branch: `feat/http-bot-adapter` · Author: LangBot core
+> Status: **Implemented** · Branch: `feat/http-bot-adapter` · Author: LangBot core
 >
-> A first-class, **standalone** message-platform adapter that lets any external
-> system (e.g. LangBot Space ticketing, an internal back-office, a CRM, a custom
-> web app) talk to a LangBot pipeline over plain HTTP — **inbound** by POSTing
-> messages in, **outbound** by receiving replies on a callback URL — with full
-> support for the pipeline's native N→1 aggregation and 1→M multi-reply
-> semantics, and **without** holding a long-lived WebSocket connection.
+> A first-class, **standalone** message-platform adapter (`http_bot`) that lets
+> any external system (e.g. LangBot Space ticketing, an internal back-office, a
+> CRM, a custom web app) talk to a LangBot pipeline over plain HTTP — **inbound**
+> by POSTing messages in, **outbound** by receiving replies on a callback URL —
+> with full support for the pipeline's native N→1 aggregation and 1→M
+> multi-reply semantics, and **without** holding a long-lived WebSocket
+> connection.
+>
+> **Shipped in this branch:**
+> - `src/langbot/pkg/platform/sources/http_bot.yaml` — adapter manifest (auto-discovered)
+> - `src/langbot/pkg/platform/sources/http_bot.py` — `HttpBotAdapter`
+> - `src/langbot/pkg/platform/sources/http_bot_signing.py` — HMAC helpers
+> - `src/langbot/pkg/platform/sources/http_bot.svg` — icon
+> - `docs/platforms/http-bot.md` — integration guide
+> - `docs/http-bot-openapi.json` — machine-readable contract
+> - `examples/http-bot/` — Python + TypeScript reference clients
+>
+> **Final decisions (resolving the original open questions):**
+> 1. Callback URL is **config-only** — never accepted per-message (SSRF closed).
+> 2. **Session reset is provided** — `POST /bots/<uuid>/reset` keyed by `session_id`.
+> 3. Reference **clients are provided** — `examples/http-bot/client.py` + `client.ts`.
+> 4. **Sync convenience mode is included** — `POST /bots/<uuid>/sync` (opt-in, lossy).
 
 ---
 
@@ -244,9 +260,8 @@ Body:
     "id": "user-5567",
     "name": "Alice"
   },
-  "callback_url": "https://space.langbot.app/api/lb/callback",  // optional; overrides config default
   "message": [                         // REQUIRED. A LangBot MessageChain (list of segments).
-    { "type": "Text", "text": "Export keeps failing on the dashboard." },
+    { "type": "Plain", "text": "Export keeps failing on the dashboard." },
     { "type": "Image", "url": "https://.../screenshot.png" }
   ]
 }
@@ -294,7 +309,7 @@ Body:
   "is_final": false,                    // false for intermediate/streamed parts
   "stream": false,                      // true when this is a streamed chunk
   "message": [
-    { "type": "Text", "text": "Looking into it — checking your export logs…" }
+    { "type": "Plain", "text": "Looking into it — checking your export logs…" }
   ],
   "timestamp": "2026-06-22T09:00:01Z"
 }
@@ -495,7 +510,7 @@ alone, push a message and observe a multi-part reply on their callback within
 ```bash
 BOT=https://your-langbot/bots/2f1c....
 SECRET=supersecret
-BODY='{"session_id":"ticket-10293","message":[{"type":"Text","text":"hello"}],"callback_url":"https://your-callback/recv"}'
+BODY='{"session_id":"ticket-10293","message":[{"type":"Plain","text":"hello"}]}'
 TS=$(date +%s)
 SIG="sha256=$(printf '%s.%s' "$TS" "$BODY" | openssl dgst -sha256 -hmac "$SECRET" -r | cut -d' ' -f1)"
 curl -sS -X POST "$BOT" \
@@ -537,15 +552,24 @@ pool, or the pipeline. That is the design's main payoff.
 
 ---
 
-## 15. Open questions
+## 15. Resolved decisions
 
-1. **Callback URL trust** — static (config-only) vs per-message override? Draft
-   allows both; per-message is convenient but widens SSRF surface. Lock to
-   config-only in prod?
-2. **Session lifecycle** — when does a `session_id` "end"? Do we expose a
-   `POST /bots/<uuid>/reset` keyed by `session_id` (mirrors the WS `reset`)?
-3. **Group semantics** — for `session_type: group`, what is the `sender`
-   identity model the Space ticket maps to?
-4. **Backpressure policy** — drop, block, or buffer when a caller's callback is
-   persistently down? (Draft: bounded per-session queue, then drop-oldest +
-   log.)
+1. **Callback URL trust** — **config-only.** The inbound message may not carry a
+   `callback_url`; replies always go to the bot-config URL. Closes the SSRF
+   vector where a leaked inbound secret could redirect replies.
+2. **Session lifecycle** — **`POST /bots/<uuid>/reset`** (body `{session_id,
+   session_type?}`) drops the matching session from the session manager; the
+   next message starts a fresh conversation. Implemented via sub-path routing in
+   `handle_unified_webhook`.
+3. **Group semantics** — for `session_type: group`, `session_id` is the group/
+   launcher id; `sender.id` (and optional `sender.group_name`) identify the
+   member. A Space ticket maps to one `session_id`.
+4. **Backpressure** — bounded per-session outbound queue (maxlen 1000); on
+   overflow the oldest reply is dropped and a warning logged, so a persistently
+   down callback can never exhaust memory.
+
+### Still open / deferred (see §13)
+
+- Durable outbound queue (persist + replay across restarts).
+- Per-caller API keys with rotation/scopes for multi-tenant Space usage.
+- SSE outbound option and a dashboard test console.
