@@ -1,17 +1,9 @@
 <svg width="800px" height="800px" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
   <rect x="2" y="2" width="60" height="60" rx="14" fill="#2563EB"/>
-  <g stroke="#FFFFFF" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
-    <!-- inbound arrow into a node -->
-    <path d="M12 24 H28"/>
-    <path d="M23 19 L28 24 L23 29"/>
-    <circle cx="34" cy="24" r="5.5" fill="#FFFFFF" stroke="none"/>
-    <!-- outbound fan-out: one node, multiple replies (1 to M) -->
-    <path d="M39.5 24 H46"/>
-    <path d="M46 24 C50 24 50 16 54 16"/>
-    <path d="M46 24 H54"/>
-    <path d="M46 24 C50 24 50 32 54 32"/>
-    <path d="M50 11 L54 16 L49 19"/>
-    <path d="M49 28 L54 32 L49 37"/>
+  <g stroke="#FFFFFF" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- </> code icon -->
+    <path d="M24 22 L14 32 L24 42"/>
+    <path d="M40 22 L50 32 L40 42"/>
+    <path d="M36 18 L28 46"/>
   </g>
-  <text x="32" y="50" font-family="monospace, monospace" font-size="11" font-weight="700" fill="#FFFFFF" text-anchor="middle" letter-spacing="1">HTTP</text>
 </svg>
