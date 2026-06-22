@@ -1,5 +1,7 @@
 # HTTP Bot Adapter — Reference Clients
 
+> English | [中文](./README.zh.md)
+
 Minimal, dependency-light clients for the LangBot **HTTP Bot** platform adapter.
 They show the whole loop: signing a request, pushing a message, and receiving
 multi-part replies on a callback endpoint.
