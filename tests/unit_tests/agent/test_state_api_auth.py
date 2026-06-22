@@ -90,7 +90,7 @@ class TestStateAPIHandlerAuthorization:
         async def fake_disconnect():
             return True
 
-        with patch('langbot.pkg.plugin.handler.get_session_registry', return_value=session_registry):
+        with patch('langbot.pkg.plugin.agent_run_support.get_session_registry', return_value=session_registry):
             handler = RuntimeConnectionHandler(FakeConnection(), fake_disconnect, fake_app)
 
             # Get the STATE_GET action handler (actions dict is keyed by action value string)
@@ -111,7 +111,7 @@ class TestStateAPIHandlerAuthorization:
         async def fake_disconnect():
             return True
 
-        with patch('langbot.pkg.plugin.handler.get_session_registry', return_value=session_registry):
+        with patch('langbot.pkg.plugin.agent_run_support.get_session_registry', return_value=session_registry):
             handler = RuntimeConnectionHandler(FakeConnection(), fake_disconnect, fake_app)
             state_get_handler = handler.actions[PluginToRuntimeAction.STATE_GET.value]
 
@@ -146,7 +146,7 @@ class TestStateAPIHandlerAuthorization:
         async def fake_disconnect():
             return True
 
-        with patch('langbot.pkg.plugin.handler.get_session_registry', return_value=session_registry):
+        with patch('langbot.pkg.plugin.agent_run_support.get_session_registry', return_value=session_registry):
             handler = RuntimeConnectionHandler(FakeConnection(), fake_disconnect, fake_app)
             state_get_handler = handler.actions[PluginToRuntimeAction.STATE_GET.value]
 
@@ -182,7 +182,7 @@ class TestStateAPIHandlerAuthorization:
         async def fake_disconnect():
             return True
 
-        with patch('langbot.pkg.plugin.handler.get_session_registry', return_value=session_registry):
+        with patch('langbot.pkg.plugin.agent_run_support.get_session_registry', return_value=session_registry):
             handler = RuntimeConnectionHandler(FakeConnection(), fake_disconnect, fake_app)
             state_get_handler = handler.actions[PluginToRuntimeAction.STATE_GET.value]
 
@@ -219,7 +219,7 @@ class TestStateAPIHandlerAuthorization:
         async def fake_disconnect():
             return True
 
-        with patch('langbot.pkg.plugin.handler.get_session_registry', return_value=session_registry):
+        with patch('langbot.pkg.plugin.agent_run_support.get_session_registry', return_value=session_registry):
             handler = RuntimeConnectionHandler(FakeConnection(), fake_disconnect, fake_app)
             state_get_handler = handler.actions[PluginToRuntimeAction.STATE_GET.value]
 
@@ -255,7 +255,7 @@ class TestStateAPIHandlerAuthorization:
         async def fake_disconnect():
             return True
 
-        with patch('langbot.pkg.plugin.handler.get_session_registry', return_value=session_registry):
+        with patch('langbot.pkg.plugin.agent_run_support.get_session_registry', return_value=session_registry):
             handler = RuntimeConnectionHandler(FakeConnection(), fake_disconnect, fake_app)
             state_get_handler = handler.actions[PluginToRuntimeAction.STATE_GET.value]
 
@@ -292,7 +292,7 @@ class TestStateAPIHandlerAuthorization:
         async def fake_disconnect():
             return True
 
-        with patch('langbot.pkg.plugin.handler.get_session_registry', return_value=session_registry):
+        with patch('langbot.pkg.plugin.agent_run_support.get_session_registry', return_value=session_registry):
             handler = RuntimeConnectionHandler(FakeConnection(), fake_disconnect, fake_app)
             state_get_handler = handler.actions[PluginToRuntimeAction.STATE_GET.value]
 
@@ -340,7 +340,7 @@ class TestStateAPIFullFlowWithRealDB:
         async def fake_disconnect():
             return True
 
-        with patch('langbot.pkg.plugin.handler.get_session_registry', return_value=session_registry):
+        with patch('langbot.pkg.plugin.agent_run_support.get_session_registry', return_value=session_registry):
             handler = RuntimeConnectionHandler(FakeConnection(), fake_disconnect, fake_app)
 
             # Verify session has correct state_context
@@ -446,7 +446,7 @@ class TestStateHandlerReadsFromAuthorizationSnapshot:
         async def fake_disconnect():
             return True
 
-        with patch('langbot.pkg.plugin.handler.get_session_registry', return_value=session_registry):
+        with patch('langbot.pkg.plugin.agent_run_support.get_session_registry', return_value=session_registry):
             handler = RuntimeConnectionHandler(FakeConnection(), fake_disconnect, fake_app)
             state_get_handler = handler.actions[PluginToRuntimeAction.STATE_GET.value]
 
@@ -490,7 +490,7 @@ class TestStateHandlerReadsFromAuthorizationSnapshot:
         async def fake_disconnect():
             return True
 
-        with patch('langbot.pkg.plugin.handler.get_session_registry', return_value=session_registry):
+        with patch('langbot.pkg.plugin.agent_run_support.get_session_registry', return_value=session_registry):
             handler = RuntimeConnectionHandler(FakeConnection(), fake_disconnect, fake_app)
             state_set_handler = handler.actions[PluginToRuntimeAction.STATE_SET.value]
 
