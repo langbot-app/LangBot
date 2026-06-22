@@ -133,18 +133,31 @@ class ToolManager:
         """Return (description, parameters JSON schema) for a tool by name.
 
         Used by the host to prefill ToolResource so a runner can build LLM tool
-        definitions without a separate get_tool_detail round-trip. Handles both
-        LLMTool (native/mcp/skill) and plugin ComponentManifest shapes. Returns
-        (None, None) when the tool is not found.
+        definitions without a separate get_tool_detail round-trip. All loaders
+        return resource_tool.LLMTool, so no per-shape branching is needed.
+        Returns (None, None) when the tool is not found.
         """
         tool = await self.get_tool_by_name(name)
         if tool is None:
             return None, None
-        if hasattr(tool, 'spec') and hasattr(tool, 'metadata'):
-            spec = getattr(tool, 'spec', None) or {}
-            return spec.get('llm_prompt'), (spec.get('parameters') or None)
-        description = getattr(tool, 'description', None) or getattr(tool, 'human_desc', None)
-        return description, (getattr(tool, 'parameters', None) or None)
+        return tool.description, (tool.parameters or None)
+
+    async def get_tool_detail(self, name: str) -> dict | None:
+        """Return the host-level tool detail shape for a tool by name.
+
+        All loaders return resource_tool.LLMTool, so the shape is uniform:
+        {name, description, human_desc, parameters}. Returns None when the tool
+        is not found.
+        """
+        tool = await self.get_tool_by_name(name)
+        if tool is None:
+            return None
+        return {
+            'name': tool.name,
+            'description': tool.description,
+            'human_desc': tool.human_desc,
+            'parameters': tool.parameters or {},
+        }
 
     async def generate_tools_for_openai(self, use_funcs: list[resource_tool.LLMTool]) -> list:
         tools = []

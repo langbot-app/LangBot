@@ -86,66 +86,6 @@ def _pop_query_llm_usage(query: Any) -> dict[str, Any] | None:
     return None
 
 
-def _i18n_to_dict(value: Any) -> dict[str, Any]:
-    """Convert SDK i18n values to plain dictionaries."""
-    if value is None:
-        return {}
-    if isinstance(value, dict):
-        return value
-    if hasattr(value, 'to_dict'):
-        return value.to_dict()
-    if hasattr(value, 'model_dump'):
-        return value.model_dump()
-    return {'en_US': str(value)}
-
-
-def _i18n_to_text(value: Any) -> str:
-    """Return a stable human-readable text from SDK i18n values."""
-    data = _i18n_to_dict(value)
-    for key in ('en_US', 'zh_Hans', 'zh_Hant'):
-        text = data.get(key)
-        if text:
-            return str(text)
-    for text in data.values():
-        if text:
-            return str(text)
-    return ''
-
-
-def _build_tool_detail(tool: Any, requested_tool_name: str | None = None) -> dict[str, Any]:
-    """Normalize LLMTool and plugin ComponentManifest objects for tool detail APIs."""
-    # TODO(litellm): This handler-local adapter is temporary. Once LiteLLM-backed
-    # tool schema normalization owns tool detail generation, simplify GET_TOOL_DETAIL
-    # and make ToolManager return one host-level tool detail shape.
-    if hasattr(tool, 'metadata') and hasattr(tool, 'spec'):
-        metadata = tool.metadata
-        spec = tool.spec or {}
-        description = spec.get('llm_prompt') or _i18n_to_text(getattr(metadata, 'description', None))
-        parameters = spec.get('parameters') or {}
-
-        return {
-            'name': requested_tool_name or getattr(metadata, 'name', ''),
-            'label': _i18n_to_dict(getattr(metadata, 'label', None)),
-            'description': description,
-            'human_desc': description,
-            'parameters': parameters,
-            'spec': spec,
-        }
-
-    name = getattr(tool, 'name', requested_tool_name or '')
-    description = getattr(tool, 'description', None) or getattr(tool, 'human_desc', '') or ''
-    parameters = getattr(tool, 'parameters', None) or {}
-
-    return {
-        'name': name,
-        'label': {},
-        'description': description,
-        'human_desc': getattr(tool, 'human_desc', description) or description,
-        'parameters': parameters,
-        'spec': {'parameters': parameters},
-    }
-
-
 def _normalize_uuid_list(values: Any) -> list[str]:
     """Normalize a user/config supplied UUID list while preserving order."""
     if not isinstance(values, list):
@@ -831,13 +771,11 @@ class RuntimeConnectionHandler(handler.Handler):
                     return error
 
             try:
-                tool = await self.ap.tool_mgr.get_tool_by_name(tool_name)
-                if tool is None:
+                tool_detail = await self.ap.tool_mgr.get_tool_detail(tool_name)
+                if tool_detail is None:
                     return handler.ActionResponse.error(
                         message=f'Tool {tool_name} not found',
                     )
-
-                tool_detail = _build_tool_detail(tool, requested_tool_name=tool_name)
 
                 return handler.ActionResponse.success(data={'tool': tool_detail})
             except Exception as e:
