@@ -11,14 +11,36 @@ Machine-readable contract: [`docs/http-bot-openapi.json`](../../docs/http-bot-op
 
 | File | What it is |
 |---|---|
+| `playground.py` | **Interactive browser debug console** — a single-file web app you open in a browser to chat with a running `http_bot` bot and watch signing / 202 / callbacks live. Zero extra deps. |
 | `client.py` | Python client + Flask callback receiver (`pip install flask requests`). |
 | `client.ts` | TypeScript/Node 18+ client + callback receiver, **zero deps** (`npx tsx client.ts`). |
 
-Both implement the identical HMAC-SHA256 scheme
+All three implement the identical HMAC-SHA256 scheme
 (`sha256=hex(HMAC(secret, "{timestamp}." + body))`) — verified byte-for-byte
 against the adapter.
 
-## Quickstart
+## Interactive playground (recommended first run)
+
+A self-contained web console: type a message in your browser, it is signed and
+POSTed to a **running** `http_bot` bot, and the bot's replies stream back into
+the page — with a debug panel showing the signature, the `202` ack, and each
+callback's `sequence` / signature-verification.
+
+```bash
+# From the LangBot repo root, with the backend already running:
+PUBLIC_IP=<your-host-ip> ./.venv/bin/python examples/http-bot/playground.py
+# then open  http://<your-host-ip>:8920/
+```
+
+On startup it reads the LangBot API key + the `http_bot` bot from
+`data/langbot.db`, and configures that bot (inbound/outbound secret +
+`callback_url`) to point back at itself via the LangBot API — the bot reloads
+live, no restart needed. Requirements: an enabled `http_bot` bot bound to a
+working pipeline, and port `8920` reachable from your browser.
+
+Env knobs: `PUBLIC_IP` (default `127.0.0.1`), `PLAYGROUND_PORT` (default `8920`).
+
+## Headless clients
 
 ```bash
 # Python — Terminal 1: callback receiver (your callback_url target)
