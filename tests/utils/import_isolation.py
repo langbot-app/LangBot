@@ -154,6 +154,7 @@ def make_pipeline_handler_import_mocks() -> dict[str, MagicMock]:
         'langbot.pkg.pipeline.controller': MagicMock(),
         'langbot.pkg.pipeline.pipelinemgr': MagicMock(),
         'langbot.pkg.pipeline.process.process': MagicMock(),
+        'langbot.pkg.provider.runner': MagicMock(preregistered_runners=[]),
         'langbot.pkg.utils.importutil': mock_importutil,
     }
 

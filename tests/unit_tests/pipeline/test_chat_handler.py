@@ -56,7 +56,25 @@ def mock_circular_import_chain():
 @pytest.fixture
 def fake_app():
     """Create FakeApp instance."""
-    return FakeApp()
+    import sys
+
+    app = FakeApp()
+
+    class FakeAgentRunOrchestrator:
+        async def try_claim_steering_from_query(self, query):
+            return False
+
+        async def run_from_query(self, query):
+            runner_cls = sys.modules['langbot.pkg.provider.runner'].preregistered_runners[0]
+            runner = runner_cls(app, {})
+            async for result in runner.run(query):
+                yield result
+
+        def resolve_runner_id_for_telemetry(self, query):
+            return 'local-agent'
+
+    app.agent_run_orchestrator = FakeAgentRunOrchestrator()
+    return app
 
 
 @pytest.fixture
