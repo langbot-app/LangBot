@@ -14,12 +14,11 @@ Authorization paths:
 from __future__ import annotations
 
 import pytest
-import types
 from unittest.mock import AsyncMock, MagicMock
 
 from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
 from langbot.pkg.agent.runner.session_registry import AgentRunSessionRegistry
-from langbot.pkg.plugin.handler import _build_tool_detail, _get_pipeline_knowledge_base_uuids
+from langbot.pkg.plugin.handler import _get_pipeline_knowledge_base_uuids
 
 # Import shared test fixtures from conftest.py
 from .conftest import make_resources, make_session
@@ -287,31 +286,39 @@ class TestInvokeLLMStreamAuthorization:
         assert run_id is None
 
 
-def test_build_tool_detail_normalizes_plugin_component_manifest():
-    """GET_TOOL_DETAIL returns a uniform schema for ordinary plugin Tool manifests."""
-    manifest_tool = types.SimpleNamespace(
-        metadata=types.SimpleNamespace(
-            name='search',
-            label={'en_US': 'Search'},
-            description={'en_US': 'Search public data'},
-        ),
-        spec={
-            'llm_prompt': 'Search test data',
-            'parameters': {
-                'type': 'object',
-                'properties': {'q': {'type': 'string'}},
-            },
-        },
+@pytest.mark.asyncio
+async def test_tool_manager_get_tool_detail_returns_uniform_schema():
+    """ToolManager.get_tool_detail returns a uniform host-level tool detail shape.
+
+    All loaders normalize to resource_tool.LLMTool, so GET_TOOL_DETAIL no longer
+    needs a handler-local adapter for plugin ComponentManifest objects.
+    """
+    import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
+    from langbot.pkg.provider.tools.toolmgr import ToolManager
+
+    tool = resource_tool.LLMTool(
+        name='search',
+        human_desc='Search public data',
+        description='Search test data',
+        parameters={'type': 'object', 'properties': {'q': {'type': 'string'}}},
+        func=lambda **kwargs: {},
     )
 
-    detail = _build_tool_detail(manifest_tool, requested_tool_name='author/plugin/search')
+    mgr = ToolManager.__new__(ToolManager)
 
-    assert detail['name'] == 'author/plugin/search'
-    assert detail['description'] == 'Search test data'
-    assert detail['human_desc'] == 'Search test data'
-    assert detail['parameters']['properties']['q']['type'] == 'string'
-    assert detail['label'] == {'en_US': 'Search'}
-    assert detail['spec'] == manifest_tool.spec
+    async def fake_get_tool_by_name(name):
+        return tool if name == 'search' else None
+
+    mgr.get_tool_by_name = fake_get_tool_by_name
+
+    detail = await mgr.get_tool_detail('search')
+    assert detail == {
+        'name': 'search',
+        'description': 'Search test data',
+        'human_desc': 'Search public data',
+        'parameters': {'type': 'object', 'properties': {'q': {'type': 'string'}}},
+    }
+    assert await mgr.get_tool_detail('missing') is None
 
 
 class TestCallToolAuthorization:
@@ -1508,7 +1515,6 @@ class TestStorageResourcePermissionHelper:
         # Should return False for both storage types
         assert registry.is_resource_allowed(session, 'storage', 'plugin') is False
         assert registry.is_resource_allowed(session, 'storage', 'workspace') is False
-
 
 
 class TestRealActionHandlerSimulation:
