@@ -343,6 +343,19 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if hasattr(self.bot, 'set_card_action_callback'):
             self.bot.set_card_action_callback(self._on_card_action)
 
+        # Hand the client a `source` block so every interactive
+        # template_card it emits carries the LangBot logo + name at the
+        # top — the WeCom analogue of DingTalk's Avatar header.
+        # Always on; icon_url accepts plain HTTPS URLs (no upload needed).
+        if hasattr(self.bot, 'set_card_source'):
+            self.bot.set_card_source(
+                {
+                    'icon_url': 'https://raw.githubusercontent.com/RockChinQ/LangBot/master/res/logo-blue.png',
+                    'desc': 'LangBot',
+                    'desc_color': 0,
+                }
+            )
+
     async def reply_message(
         self,
         message_source: platform_events.MessageEvent,
@@ -566,7 +579,8 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         import secrets as _secrets
 
         task_id = f'dify-{_secrets.token_hex(12)}'
-        payload = build_button_interaction_payload(form_data, task_id)
+        source = getattr(self.bot, 'card_source', None)
+        payload = build_button_interaction_payload(form_data, task_id, source=source)
 
         # Register task_id → form_data so the click callback can find it.
         # user_id / chat_id are required so _on_card_action can route the

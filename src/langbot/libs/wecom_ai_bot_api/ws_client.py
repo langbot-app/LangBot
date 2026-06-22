@@ -118,6 +118,10 @@ class WecomBotWsClient:
         # Signature mirrors the http-mode WecomBotClient:
         #   async def callback(session, action_id, task_id, raw_event) -> None
         self._card_action_callback: Optional[Callable] = None
+        # Optional `source` block injected into every interactive
+        # template_card the client builds via `push_form_pause`. Set via
+        # `set_card_source` from the adapter after reading config.
+        self.card_source: Optional[dict] = None
 
     # ── Public API ──────────────────────────────────────────────────
 
@@ -274,6 +278,11 @@ class WecomBotWsClient:
         """
         self._card_action_callback = callback
 
+    def set_card_source(self, source: Optional[dict]) -> None:
+        """Set the `source` block injected into every interactive
+        template_card pushed via `push_form_pause`. Pass None to clear."""
+        self.card_source = source
+
     async def push_form_pause(
         self, msg_id: str, form_data: dict, task_id: Optional[str] = None
     ) -> tuple[bool, Optional[str], Optional[str]]:
@@ -309,7 +318,7 @@ class WecomBotWsClient:
         }
         self._task_id_by_msg[msg_id] = task_id
 
-        card_payload = build_button_interaction_payload(form_data, task_id)
+        card_payload = build_button_interaction_payload(form_data, task_id, source=self.card_source)
         try:
             await self.reply_template_card(req_id, card_payload)
         except Exception:
@@ -389,6 +398,19 @@ class WecomBotWsClient:
             # Skip sending if content hasn't changed (e.g. during tool call argument streaming)
             if not is_final and content == self._stream_last_content.get(msg_id):
                 return True
+
+            # Skip empty/whitespace-only chunks — the runner injects a
+            # zero-width space ('​') as a pass-through when workflow_paused
+            # fires without any preceding LLM output.  WeCom renders that
+            # as an empty bubble that sits before the form card; skip it.
+            # NOTE: Python str.strip() does NOT strip ​, so we use
+            # a regex that treats any character with Unicode category Zs
+            # (separator space) or Cf (format char like ZWS) as blank.
+            if not is_final:
+                import re as _re
+
+                if not _re.sub(r'[\s​‌‍﻿]', '', content):
+                    return True
 
             # Generate feedback_id for final chunk
             feedback_id = ''

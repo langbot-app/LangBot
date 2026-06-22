@@ -770,7 +770,12 @@ async def parse_wecom_bot_message(
     return message_data
 
 
-def build_button_interaction_payload(form_data: dict, task_id: str) -> dict[str, Any]:
+def build_button_interaction_payload(
+    form_data: dict,
+    task_id: str,
+    *,
+    source: Optional[dict] = None,
+) -> dict[str, Any]:
     """Build a `template_card` (button_interaction) WeCom payload.
 
     Shared by both the webhook-mode client (returns the payload as the
@@ -784,6 +789,11 @@ def build_button_interaction_payload(form_data: dict, task_id: str) -> dict[str,
         task_id: Unique per-card identifier. WeCom requires this for
             button_interaction. The click callback returns it as TaskId so we
             can find the originating session.
+        source: Optional source header dict ``{icon_url, desc, desc_color}``
+            shown at the top of the card. WeCom accepts arbitrary HTTPS
+            URLs for ``icon_url`` (unlike DingTalk Avatar which requires
+            a uploaded media id), so the LangBot logo URL can be passed
+            straight through.
 
     Notes:
         * ``button.key`` is set directly to the Dify ``action_id``. The click
@@ -828,7 +838,7 @@ def build_button_interaction_payload(form_data: dict, task_id: str) -> dict[str,
             }
         )
 
-    card = {
+    card: dict[str, Any] = {
         'card_type': 'button_interaction',
         'main_title': {
             'title': node_title,
@@ -837,6 +847,8 @@ def build_button_interaction_payload(form_data: dict, task_id: str) -> dict[str,
         'button_list': button_list,
         'task_id': task_id,
     }
+    if source:
+        card['source'] = source
     return {
         'msgtype': 'template_card',
         'template_card': card,
@@ -882,6 +894,15 @@ class WecomBotClient:
 
         self._feedback_callback: Optional[Callable] = None
         self._card_action_callback: Optional[Callable] = None
+        # Optional `source` block injected into every interactive template_card
+        # the client builds. Set via `set_card_source` from the adapter after
+        # reading config. Format: {icon_url, desc, desc_color}.
+        self.card_source: Optional[dict] = None
+
+    def set_card_source(self, source: Optional[dict]) -> None:
+        """Set the `source` header dict injected into every
+        button_interaction template_card. Pass None to clear."""
+        self.card_source = source
 
     def set_feedback_callback(self, callback: Callable) -> None:
         """设置反馈回调函数。
@@ -934,11 +955,11 @@ class WecomBotClient:
             'stream': stream_payload,
         }
 
-    @staticmethod
-    def _build_button_interaction_payload(form_data: dict, task_id: str) -> dict[str, Any]:
-        """Class-level shim — delegates to module-level builder so ws_client
-        can reuse the exact same payload shape without importing the class."""
-        return build_button_interaction_payload(form_data, task_id)
+    def _build_button_interaction_payload(self, form_data: dict, task_id: str) -> dict[str, Any]:
+        """Class-level shim — delegates to module-level builder and auto-
+        injects the client's configured `source` block so every card emitted
+        through this client carries the LangBot header."""
+        return build_button_interaction_payload(form_data, task_id, source=self.card_source)
 
     async def _encrypt_and_reply(self, payload: dict[str, Any], nonce: str) -> tuple[Response, int]:
         """对响应进行加密封装并返回给企业微信。
