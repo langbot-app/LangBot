@@ -473,6 +473,18 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
     async def is_stream_output_supported(self) -> bool:
         return self.config.get('enable-stream-reply', False)
 
+    @staticmethod
+    def _is_form_placeholder_chunk(text: str) -> bool:
+        """Return True for invisible placeholder chunks used to carry forms."""
+
+        if not text:
+            return False
+
+        cleaned = text.replace('\u200b', '').replace('\u200c', '').replace('\u200d', '').replace('\ufeff', '').strip()
+        # Some Windows consoles/logs display the zero-width placeholder as
+        # mojibake. Treat those variants as the same non-user-facing marker.
+        return cleaned in {'', '鈥?', 'â€‹'}
+
     async def create_message_card(self, message_id: str, event: platform_events.MessageEvent) -> bool:
         source = event.source_platform_object
         # Synthetic events (button-click resume) have no source object —
@@ -546,6 +558,9 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
             if type(msg) is platform_message.Plain:
                 text_parts.append(msg.text)
         chunk_text = '\n\n'.join(text_parts)
+        if self._is_form_placeholder_chunk(chunk_text):
+            await self.logger.debug('QQ Official: skipped invisible form placeholder chunk')
+            return
 
         message_id = (
             bot_message.get('resp_message_id')
