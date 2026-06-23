@@ -57,6 +57,7 @@ services:
     container_name: langbot
     volumes:
       - ./data:/app/data
+      - ${LANGBOT_BOX_ROOT:-${PWD}/data/box}:${LANGBOT_BOX_ROOT:-${PWD}/data/box}
     restart: on-failure
     environment:
       - TZ=Asia/Shanghai
