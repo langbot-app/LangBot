@@ -2,7 +2,7 @@
 
 本文档是 `docs/agent-runner-pluginization/` 的状态事实源。协议 schema 仍以 [PROTOCOL_V1.md](./PROTOCOL_V1.md) 为准；测试步骤以 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md) 为准；安全发布门槛以 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md) 为准。
 
-状态快照日期：2026-06-20。
+状态快照日期：2026-06-23。
 
 ## 实现状态
 
@@ -15,7 +15,7 @@
 | Result payload validation | Done | Wire 保持 `{type, data}`；Host 对投递/副作用类 payload 严格校验，tool-call telemetry 宽松，未知 type 忽略并 warning。 |
 | Old built-in runners | Done | 旧 `src/langbot/pkg/provider/runners/*` 与 `RequestRunner` 路径已从本分支删除。 |
 | Official runner manifests | Done | `local-agent`、ACP / Claude Code / Codex 外部 harness runner、外部服务 runner 已重新声明真实生效的 LangBot resource permissions。 |
-| Skill 链路 | Broken → Redesigning | 分支上 skill 激活链端到端悬空：`activate` 调用未定义的 `persist_activated_skill`（运行即 `AttributeError`）、`host.activated_skills` 只读不写、skill awareness 既未注入也未被 runner 消费。已拍板改为 **skill 全 tool 化**：发现走 `list_skills` / `langbot_list_assets` 加 skills 一类，`activate` / `register_skill` 走统一 tool 授权，`skill_authoring` capability 降级为便捷开关，host 直接写 `host.activated_skills`（last-write-wins）。 |
+| Skill 链路 | Unit-pass; WebUI smoke pending | 已按 **skill 全 tool 化** 收敛：发现走 `list_skills` / `langbot_list_assets` 和 skill resources；`activate` / `register_skill` 走统一 tool 授权；`skill_authoring` capability 降级为便捷开关。`activate` 现在会 best-effort 写入 conversation-scope `host.activated_skills`，后续 run 通过当前 pipeline-visible skill cache 恢复，语义为 last-write-wins。 |
 | Runtime Control Plane v2 foundation | Partial | Host-owned `AgentRun` / `AgentRunEvent` ledger、orchestrator 自动建账、result event persistence、run get/list/event page/cancel/append/finalize actions 已落地；`agent_run:admin` / `runtime:admin` 控制权限、最小 runtime register/heartbeat/list/reconcile 和 run claim/renew/release 原语已落地。完整 Agent Platform 产品形态、daemon supervisor、任务唤醒/长轮询/WebSocket、分布式 runtime 管控仍未完成。 |
 | Security boundary | Done | 当前口径降级为轻量边界：LangBot 保护自身持有资源；external harness 的 OS / process / network / workspace 风险由用户或部署环境承担；managed sandbox 不是当前承诺。 |
 | Steering control path | Done | claim 异常不再逃逸 consumer loop；queue 有上限；未 pull 的 claimed 输入在 run 结束时写 `steering.dropped` 审计终态。 |
@@ -44,8 +44,8 @@
 
 | 范围 | 状态 | 最近证据 |
 | --- | --- | --- |
-| LangBot Runtime Control Plane v2 foundation | Unit-pass; product E2E pending | 2026-06-16 `tests/unit_tests/agent/test_run_ledger_store.py`、`test_run_ledger_api_auth.py`、`test_orchestrator_integration.py` 通过，覆盖 ledger、admin permissions、runtime heartbeat、claim/reconcile、orchestrator 持久化和取消传播。 |
-| SDK AgentRunner control entities / proxy | Unit-pass | 2026-06-16 SDK agent-runner 相关单测通过，覆盖 typed run ledger entities、AgentRunAPIProxy、MCP bridge、runtime manager 与 pull API handlers。 |
+| LangBot Runtime Control Plane v2 foundation | Unit-pass; product E2E pending | 2026-06-23 `tests/unit_tests/agent`、`tests/unit_tests/plugin/test_handler_actions.py`、`tests/unit_tests/provider/test_skill_tools.py`、pipeline preproc/chat handler tests 和 Telegram EBA adapter tests 通过，覆盖 ledger、admin permissions、runtime heartbeat、claim/reconcile、orchestrator 持久化、取消传播、skill activation persistence 和插件化 runner pipeline path。 |
+| SDK AgentRunner control entities / proxy | Unit-pass | 2026-06-23 SDK `tests/api/entities/builtin/agent_runner`、`tests/api/proxies`、`tests/api/test_agent_tools_mcp_bridge.py`、`tests/runtime/plugin/test_mgr_agent_runner.py`、`tests/runtime/test_pull_api_handlers.py`、`tests/runtime/io/handlers/test_plugin_handler.py`、EBA event entities 和 message tests 通过，覆盖 typed entities、AgentRunAPIProxy、MCP bridge、runtime manager 与 pull API handlers。 |
 
 ## 历史高价值记录
 
