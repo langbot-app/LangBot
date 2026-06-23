@@ -359,6 +359,27 @@ const enUS = {
     routingConnection: 'Routing & Connection',
     routingConnectionDescription:
       'Bind the pipeline that processes messages for this bot',
+    eventOrchestration: 'Event Orchestration',
+    eventOrchestrationDescription:
+      'Bind different handling logic to different bot events. Pipelines only support message events.',
+    eventBindings: 'Event Bindings',
+    addEventBinding: 'Add Event Binding',
+    eventPattern: 'Event',
+    eventPatternPlaceholder: 'Select event',
+    targetType: 'Target Type',
+    target: 'Handling Logic',
+    targetAgent: 'Agent Orchestration',
+    targetPipeline: 'Pipeline',
+    targetDiscard: 'Discard',
+    selectTarget: 'Select handling logic',
+    priority: 'Priority',
+    enabled: 'Enabled',
+    eventBindingDescriptionPlaceholder: 'Rule description',
+    noEventBindings: 'No event bindings',
+    unsupportedPipelineEvent: 'Pipelines can only be used for message.* events',
+    eventCustom: 'Custom event',
+    eventWildcard: 'All events',
+    eventNamespaceWildcard: '{{namespace}}.*',
     routingRules: 'Conditional Routing Rules',
     routingRulesDescription:
       'Rules are evaluated in order; first match routes to its pipeline. Fallback to the default pipeline above if none match.',
@@ -464,6 +485,50 @@ const enUS = {
       configureAdmins: 'Manage Admins',
       removeAdminTitle: 'Remove admin',
     },
+  },
+  agents: {
+    title: 'Agent',
+    description:
+      'Manage Agent orchestrations and Pipelines, then bind them to bot events',
+    create: 'Create Agent',
+    editAgent: 'Edit Agent Orchestration',
+    selectFromSidebar: 'Select an Agent or Pipeline from the sidebar',
+    agentOrchestration: 'Agent Orchestration',
+    agentOrchestrationDescription:
+      'Event-first handling logic for messages, group members, friends, feedback, and other EBA events.',
+    pipelineType: 'Pipeline',
+    pipelineTypeDescription:
+      'Keep the existing no-code message pipeline for backward compatibility. It only handles message events.',
+    allEvents: 'Supports all EBA events',
+    messageEventsOnly: 'Message events only',
+    basicInfo: 'Basic Information',
+    basicInfoDescription: 'Set the name, icon, description and enabled state',
+    runnerSettings: 'Runner',
+    eventCapability: 'Event Capability',
+    eventCapabilityDescription:
+      'Declare which events this Agent orchestration can be bound to. Use one event pattern per line; * and namespace.* are supported.',
+    supportedEvents: 'Supported Events',
+    supportedEventsDescription:
+      'Examples: *, message.received, group.*. Pipelines are fixed to message.*.',
+    enabled: 'Enable Agent',
+    enabledDescription:
+      'When disabled, this Agent should not be selected by event routing.',
+    nameRequired: 'Name cannot be empty',
+    createSuccess: 'Created successfully',
+    createError: 'Creation failed: ',
+    loadError: 'Load failed: ',
+    saveSuccess: 'Saved successfully',
+    saveError: 'Save failed: ',
+    deleteSuccess: 'Deleted successfully',
+    deleteError: 'Delete failed: ',
+    deleteConfirmation:
+      'Are you sure you want to delete this Agent orchestration?',
+    dangerZone: 'Danger Zone',
+    dangerZoneDescription: 'Irreversible and destructive actions',
+    deleteAgentAction: 'Delete this Agent orchestration',
+    deleteAgentHint:
+      'Once deleted, events bound to it can no longer be executed.',
+    noRunnerMetadata: 'No AgentRunner metadata is currently available.',
   },
   plugins: {
     title: 'Extensions',

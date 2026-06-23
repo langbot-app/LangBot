@@ -16,6 +16,7 @@ from langbot.pkg.entity.persistence.base import Base
 # Import all ORM models so they are registered with Base.metadata
 # This is required for autogenerate to detect model changes
 from langbot.pkg.entity.persistence import (
+    agent,  # noqa: F401
     agent_run,  # noqa: F401
     agent_runner_state,  # noqa: F401
     apikey,  # noqa: F401

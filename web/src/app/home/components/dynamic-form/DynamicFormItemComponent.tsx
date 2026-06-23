@@ -77,6 +77,51 @@ function hasUsableOptionName(option: { name?: string | null }): boolean {
   return typeof option.name === 'string' && option.name.trim().length > 0;
 }
 
+function getPluginComponentIconURL(value?: string): string | null {
+  if (!value?.startsWith('plugin:')) {
+    return null;
+  }
+
+  const match = value.match(/^plugin:([^/]+)\/([^/]+)(?:\/|$)/);
+  if (!match) {
+    return null;
+  }
+
+  return httpClient.getPluginIconURL(match[1], match[2]);
+}
+
+function SelectOptionContent({
+  label,
+  value,
+  showDescription = false,
+}: {
+  label: string;
+  value: string;
+  showDescription?: boolean;
+}) {
+  const iconURL = getPluginComponentIconURL(value);
+
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      {iconURL && (
+        <img
+          src={iconURL}
+          alt=""
+          className="size-5 shrink-0 rounded object-cover"
+        />
+      )}
+      <div className="min-w-0 flex flex-col">
+        <span className="truncate">{label}</span>
+        {showDescription && (
+          <span className="truncate text-xs text-muted-foreground">
+            {value}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function DynamicFormItemComponent({
   config,
   field,
@@ -416,10 +461,20 @@ export default function DynamicFormItemComponent({
       );
 
     case DynamicFormItemType.SELECT:
+      const selectedOption = config.options?.find(
+        (option) => option.name === field.value,
+      );
       return (
-        <Select value={field.value} onValueChange={field.onChange}>
+        <Select value={field.value ?? ''} onValueChange={field.onChange}>
           <SelectTrigger className="w-full max-w-md bg-[#ffffff] dark:bg-[#2a2a2e]">
-            <SelectValue placeholder={t('common.select')} />
+            {selectedOption ? (
+              <SelectOptionContent
+                label={extractI18nObject(selectedOption.label)}
+                value={selectedOption.name}
+              />
+            ) : (
+              <SelectValue placeholder={t('common.select')} />
+            )}
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
@@ -429,7 +484,11 @@ export default function DynamicFormItemComponent({
                   value={option.name}
                   description={option.name}
                 >
-                  {extractI18nObject(option.label)}
+                  <SelectOptionContent
+                    label={extractI18nObject(option.label)}
+                    value={option.name}
+                    showDescription
+                  />
                 </SelectItem>
               ))}
             </SelectGroup>

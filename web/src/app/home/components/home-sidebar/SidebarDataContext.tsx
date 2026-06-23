@@ -115,9 +115,9 @@ export function SidebarDataProvider({
 
   const refreshPipelines = useCallback(async () => {
     try {
-      const resp = await httpClient.getPipelines();
+      const resp = await httpClient.getAgents();
       setPipelines(
-        resp.pipelines.map((p) => ({
+        resp.agents.map((p) => ({
           id: p.uuid || '',
           name: p.name,
           description: p.description,
@@ -126,7 +126,7 @@ export function SidebarDataProvider({
         })),
       );
     } catch (error) {
-      console.error('Failed to fetch pipelines for sidebar:', error);
+      console.error('Failed to fetch agents for sidebar:', error);
     }
   }, []);
 
