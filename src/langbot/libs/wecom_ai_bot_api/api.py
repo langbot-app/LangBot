@@ -770,6 +770,15 @@ async def parse_wecom_bot_message(
     return message_data
 
 
+def _wecom_button_style(action: dict, *, selected: bool = False) -> int:
+    """Map Dify button style to WeCom button style."""
+
+    if not selected:
+        return 2
+
+    return 1
+
+
 def build_button_interaction_payload(
     form_data: dict,
     task_id: str,
@@ -823,17 +832,10 @@ def build_button_interaction_payload(
     for idx, action in enumerate(visible_actions):
         action_id = str(action.get('id') or '')
         title = str(action.get('title') or action_id or f'选项 {idx + 1}')
-        style_raw = (action.get('button_style') or '').lower()
-        if style_raw == 'primary' or (style_raw == '' and idx == 0):
-            style = 1
-        elif style_raw == 'danger':
-            style = 2
-        else:
-            style = 0
         button_list.append(
             {
                 'text': title,
-                'style': style,
+                'style': _wecom_button_style(action),
                 'key': action_id,
             }
         )
@@ -855,8 +857,112 @@ def build_button_interaction_payload(
     }
 
 
+def extract_template_card_action(tce: dict[str, Any]) -> tuple[str, str, str]:
+    """Extract task id, clicked button key, and card type from a WeCom callback."""
+
+    task_id = tce.get('TaskId') or tce.get('task_id') or tce.get('taskid') or tce.get('taskId') or ''
+    event_key = (
+        tce.get('EventKey')
+        or tce.get('event_key')
+        or tce.get('eventkey')
+        or tce.get('eventKey')
+        or tce.get('key')
+        or tce.get('Key')
+        or ''
+    )
+    card_type = tce.get('CardType') or tce.get('card_type') or tce.get('cardtype') or tce.get('cardType') or ''
+
+    for button_key in ('button', 'Button', 'selected_button', 'selectedButton'):
+        button = tce.get(button_key)
+        if isinstance(button, dict):
+            if not event_key:
+                event_key = (
+                    button.get('key')
+                    or button.get('Key')
+                    or button.get('event_key')
+                    or button.get('EventKey')
+                    or button.get('id')
+                    or button.get('Id')
+                    or ''
+                )
+            break
+
+    return str(task_id or ''), str(event_key or ''), str(card_type or '')
+
+
+def resolve_form_action_title(form_data: dict, action_id: str) -> str:
+    """Resolve a Dify form action title from its id."""
+
+    clean_action_id = str(action_id or '').strip()
+    for action in form_data.get('actions') or []:
+        if str(action.get('id', '')) == clean_action_id:
+            return str(action.get('title') or clean_action_id)
+    return clean_action_id
+
+
+def build_button_interaction_update_card(
+    form_data: dict,
+    task_id: str,
+    action_id: str,
+    source: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """Build the template_card body used to update a clicked form card."""
+
+    node_title = str(form_data.get('node_title') or '').strip() or '人工介入'
+    form_content = str(form_data.get('form_content') or '').strip()
+    action_title = resolve_form_action_title(form_data, action_id)
+    clean_action_id = str(action_id or '').strip()
+
+    button_list = []
+    matched = False
+    for idx, action in enumerate(list(form_data.get('actions') or [])[:6]):
+        action_key = str(action.get('id') or '')
+        button_title = str(action.get('title') or action_key or f'Option {idx + 1}')
+        button = {
+            'text': button_title,
+            'style': _wecom_button_style(action),
+            'key': action_key,
+        }
+        if action_key == clean_action_id:
+            button['style'] = _wecom_button_style(action, selected=True)
+            button['text'] = f'已选择：{button_title}'
+            button['replace_text'] = f'已选择：{button_title}'
+            matched = True
+        button_list.append(button)
+
+    if clean_action_id and not matched:
+        button_list.append(
+            {
+                'text': action_title or clean_action_id,
+                'style': 1,
+                'key': clean_action_id,
+                'replace_text': f'已选择：{action_title or clean_action_id}',
+            }
+        )
+
+    card: dict[str, Any] = {
+        'card_type': 'button_interaction',
+        'main_title': {
+            'title': node_title,
+        },
+        'sub_title_text': form_content,
+        'button_list': button_list,
+        'task_id': task_id,
+    }
+    if source:
+        card['source'] = source
+    return card
+
+
 class WecomBotClient:
-    def __init__(self, Token: str, EnCodingAESKey: str, Corpid: str, logger: EventLogger, unified_mode: bool = False):
+    def __init__(
+        self,
+        Token: str,
+        EnCodingAESKey: str,
+        Corpid: str,
+        logger: EventLogger,
+        unified_mode: bool = False,
+    ):
         """企业微信智能机器人客户端。
 
         Args:
@@ -1197,9 +1303,7 @@ class WecomBotClient:
         """
         try:
             tce = msg_json.get('event', {}).get('template_card_event', {})
-            task_id = tce.get('TaskId') or tce.get('task_id') or ''
-            event_key = tce.get('EventKey') or tce.get('event_key') or ''
-            card_type = tce.get('CardType') or tce.get('card_type') or ''
+            task_id, event_key, card_type = extract_template_card_action(tce)
 
             await self.logger.info(f'收到按钮点击: task_id={task_id} event_key={event_key!r} card_type={card_type}')
 

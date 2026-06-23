@@ -24,6 +24,8 @@ from langbot.libs.wecom_ai_bot_api.api import (
     parse_wecom_bot_message,
     StreamSession,
     build_button_interaction_payload,
+    build_button_interaction_update_card,
+    extract_template_card_action,
 )
 from langbot.pkg.platform.logger import EventLogger
 
@@ -268,6 +270,30 @@ class WecomBotWsClient:
             ACK frame dict, or None on failure.
         """
         return await self._send_reply(req_id, card_payload)
+
+    async def update_template_card(
+        self,
+        req_id: str,
+        template_card: dict[str, Any],
+    ) -> Optional[dict]:
+        """Update an existing template_card via WebSocket.
+
+        Uses the ``aibot_respond_update_msg`` command.  Must be called
+        within 5 seconds of receiving the ``template_card_event`` callback,
+        using the **same req_id** from that callback.
+
+        The ``template_card`` dict should contain ``card_type`` and the
+        new content fields (e.g. ``main_title``, ``button_list`` with
+        disabled buttons and ``replace_text``).
+
+        Returns:
+            ACK frame dict, or None on failure.
+        """
+        body: dict[str, Any] = {
+            'response_type': 'update_template_card',
+            'template_card': template_card,
+        }
+        return await self._send_reply(req_id, body, cmd=CMD_RESPOND_UPDATE)
 
     def set_card_action_callback(self, callback: Callable) -> None:
         """Register the button-click handler.
@@ -702,28 +728,57 @@ class WecomBotWsClient:
 
             if event_type == 'template_card_event':
                 tce = event_info.get('template_card_event', {})
-                task_id = tce.get('TaskId') or tce.get('task_id') or ''
-                event_key = tce.get('EventKey') or tce.get('event_key') or ''
-                card_type = tce.get('CardType') or tce.get('card_type') or ''
+                task_id, event_key, card_type = extract_template_card_action(tce)
                 await self.logger.info(
                     f'收到按钮点击 (ws): task_id={task_id} event_key={event_key!r} card_type={card_type}'
                 )
                 pending = self._pending_forms_by_task.get(task_id)
                 if pending is None:
                     await self.logger.warning(f'未找到 task_id={task_id} 对应的 pending_form (ws)，按钮点击被丢弃')
-                elif self._card_action_callback is not None:
+                else:
+                    # Update the card in-place to show which button was clicked.
+                    # Must happen within 5s of the event, using the same req_id.
+                    req_id_for_update = frame.get('headers', {}).get('req_id', '')
+                    form_data = pending.get('form_data', {}) or {}
+                    action_title = event_key
+                    node_title = form_data.get('node_title', '') or ''
+                    main_title_text = f'{node_title} - 已选择' if node_title else '已选择'
+                    main_title_desc = f'✅ {action_title}'
+                    update_card = {
+                        'card_type': 'button_interaction',
+                        'main_title': {
+                            'title': main_title_text,
+                            'desc': main_title_desc,
+                        },
+                        'button_list': [],
+                        'task_id': task_id,
+                    }
+                    if self.card_source:
+                        update_card['source'] = self.card_source
+                    update_card = build_button_interaction_update_card(
+                        form_data,
+                        task_id,
+                        event_key,
+                        source=self.card_source,
+                    )
                     try:
-                        session = StreamSession(
-                            stream_id=pending.get('stream_id', ''),
-                            msg_id=pending.get('msg_id', ''),
-                            chat_id=pending.get('chat_id') or None,
-                            user_id=pending.get('user_id') or None,
-                        )
-                        session.pending_form = pending.get('form_data')
-                        session.pending_form_task_id = task_id
-                        await self._card_action_callback(session, event_key, task_id, body)
+                        await self.update_template_card(req_id_for_update, update_card)
                     except Exception:
-                        await self.logger.error(f'card action callback raised (ws): {traceback.format_exc()}')
+                        await self.logger.warning(f'更新卡片失败 (ws): {traceback.format_exc()}')
+
+                    if self._card_action_callback is not None:
+                        try:
+                            session = StreamSession(
+                                stream_id=pending.get('stream_id', ''),
+                                msg_id=pending.get('msg_id', ''),
+                                chat_id=pending.get('chat_id') or None,
+                                user_id=pending.get('user_id') or None,
+                            )
+                            session.pending_form = pending.get('form_data')
+                            session.pending_form_task_id = task_id
+                            await self._card_action_callback(session, event_key, task_id, body)
+                        except Exception:
+                            await self.logger.error(f'card action callback raised (ws): {traceback.format_exc()}')
                     # Consume — drop bookkeeping so a stale click can't re-fire.
                     self._pending_forms_by_task.pop(task_id, None)
                     msg_id = pending.get('msg_id', '')
