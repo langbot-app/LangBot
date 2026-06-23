@@ -373,6 +373,8 @@ export interface ApiRespPluginSystemStatus {
 
 export interface ApiRespBoxStatus {
   available: boolean;
+  /** UI hint: hide the Box runtime status surface for this deployment. */
+  hidden?: boolean;
   /** Whether ``box.enabled`` is true in config. When false, the sandbox
    * is deliberately disabled — distinct from "configured but failed". */
   enabled?: boolean;
