@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: LLMAPIRequester
+metadata:
+  name: atlascloud-chat-completions
+  label:
+    en_US: Atlas Cloud
+    zh_Hans: Atlas Cloud
+  icon: atlascloud.svg
+spec:
+  litellm_provider: openai
+  config:
+  - name: base_url
+    label:
+      en_US: Base URL
+      zh_Hans: 基础 URL
+    type: string
+    required: true
+    default: https://api.atlascloud.ai/v1
+  - name: timeout
+    label:
+      en_US: Timeout
+      zh_Hans: 超时时间
+    type: integer
+    required: true
+    default: 120
+  alias: "atlascloud Atlas Cloud atlas-cloud atlas 阿特拉斯 deepseek qwen llama serverless maas"
+  support_type:
+  - llm
+  - text-embedding
+  - rerank
+  provider_category: maas
