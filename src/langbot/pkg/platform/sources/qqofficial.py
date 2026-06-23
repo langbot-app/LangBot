@@ -485,6 +485,12 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
         if source.t != 'C2C_MESSAGE_CREATE':
             return False
 
+        # The stream endpoint still consumes msg_seq for this inbound msg_id.
+        # Keep the passive-reply counter in sync so a follow-up form card uses
+        # msg_seq=2 instead of being deduplicated by QQ as another seq=1 send.
+        if source.d_id:
+            self._anchor_msg_seq[source.d_id] = max(self._anchor_msg_seq.get(source.d_id, 0), 1)
+
         ctx = {
             'user_openid': source.user_openid,
             'msg_id': source.d_id,
