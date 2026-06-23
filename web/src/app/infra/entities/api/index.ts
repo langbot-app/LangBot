@@ -138,6 +138,45 @@ export interface ApiRespPipelines {
   pipelines: Pipeline[];
 }
 
+export type AgentKind = 'agent' | 'pipeline';
+
+export interface AgentCapability {
+  supported_event_patterns: string[];
+  message_only: boolean;
+}
+
+export interface Agent {
+  uuid?: string;
+  name: string;
+  description: string;
+  emoji?: string;
+  kind: AgentKind;
+  component_ref?: string | null;
+  config?: Record<string, unknown>;
+  enabled?: boolean;
+  supported_event_patterns?: string[];
+  capability?: AgentCapability;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ApiRespAgents {
+  agents: Agent[];
+}
+
+export interface ApiRespAgent {
+  agent: Agent;
+}
+
+export interface GetAgentMetadataResponseData {
+  runner_config?: PipelineConfigTab;
+  kinds: Array<{
+    name: AgentKind;
+    supported_event_patterns: string[];
+    message_only: boolean;
+  }>;
+}
+
 export interface Pipeline {
   uuid?: string;
   name: string;
@@ -167,6 +206,8 @@ export interface Adapter {
   spec: {
     categories?: string[];
     help_links?: Record<string, string>;
+    supported_events?: string[];
+    supported_apis?: string[];
     config: IDynamicFormItemSchema[];
   };
 }
@@ -189,6 +230,7 @@ export interface Bot {
   use_pipeline_name?: string;
   use_pipeline_uuid?: string;
   pipeline_routing_rules?: PipelineRoutingRule[];
+  event_bindings?: EventBinding[];
   created_at?: string;
   updated_at?: string;
   adapter_runtime_values?: object;
@@ -211,6 +253,18 @@ export interface PipelineRoutingRule {
   operator: RoutingRuleOperator;
   value: string;
   pipeline_uuid: string;
+}
+
+export interface EventBinding {
+  id?: string;
+  event_pattern: string;
+  target_type: 'agent' | 'pipeline' | 'discard';
+  target_uuid: string;
+  filters?: Array<Record<string, unknown>>;
+  priority: number;
+  enabled: boolean;
+  description?: string;
+  order?: number;
 }
 
 export interface ApiRespKnowledgeBases {

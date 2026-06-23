@@ -27,6 +27,7 @@ from ..api.http.service import space as space_service
 from ..api.http.service import model as model_service
 from ..api.http.service import provider as provider_service
 from ..api.http.service import pipeline as pipeline_service
+from ..api.http.service import agent as agent_service
 from ..api.http.service import bot as bot_service
 from ..api.http.service import knowledge as knowledge_service
 from ..api.http.service import mcp as mcp_service
@@ -146,6 +147,8 @@ class Application:
     provider_service: provider_service.ModelProviderService = None
 
     pipeline_service: pipeline_service.PipelineService = None
+
+    agent_service: agent_service.AgentService = None
 
     bot_service: bot_service.BotService = None
 

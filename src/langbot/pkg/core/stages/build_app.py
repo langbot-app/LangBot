@@ -23,6 +23,7 @@ from ...api.http.service import space as space_service
 from ...api.http.service import model as model_service
 from ...api.http.service import provider as provider_service
 from ...api.http.service import pipeline as pipeline_service
+from ...api.http.service import agent as agent_service
 from ...api.http.service import bot as bot_service
 from ...api.http.service import knowledge as knowledge_service
 from ...api.http.service import mcp as mcp_service
@@ -74,6 +75,9 @@ class BuildAppStage(stage.BootingStage):
 
         pipeline_service_inst = pipeline_service.PipelineService(ap)
         ap.pipeline_service = pipeline_service_inst
+
+        agent_service_inst = agent_service.AgentService(ap)
+        ap.agent_service = agent_service_inst
 
         bot_service_inst = bot_service.BotService(ap)
         ap.bot_service = bot_service_inst

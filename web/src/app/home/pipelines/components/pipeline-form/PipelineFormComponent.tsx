@@ -325,7 +325,7 @@ export default function PipelineFormComponent({
     const isFirstEmission = !initializedStagesRef.current.has(stageKey);
 
     const currentValues =
-(form.getValues(formName) as Record<string, unknown>) || {};
+      (form.getValues(formName) as Record<string, unknown>) || {};
     form.setValue(formName, {
       ...currentValues,
       [stageName]: values,
@@ -402,7 +402,7 @@ export default function PipelineFormComponent({
               <DynamicFormComponent
                 itemConfigList={stage.config}
                 initialValues={
-(form.watch(formName) as Record<string, unknown>)?.[
+                  (form.watch(formName) as Record<string, unknown>)?.[
                     stage.name
                   ] || {}
                 }
@@ -451,7 +451,7 @@ export default function PipelineFormComponent({
             <CardContent className="space-y-6">
               <DynamicFormComponent
                 itemConfigList={stage.config}
-initialValues={effectiveInitialValues}
+                initialValues={effectiveInitialValues}
                 onSubmit={(values) => {
                   handleRunnerConfigEmit(stage.name, values);
                 }}

@@ -311,7 +311,7 @@ export default function DynamicFormComponent({
 }: {
   itemConfigList: IDynamicFormItemSchema[];
   onSubmit?: (val: object) => unknown;
-  initialValues?: Record<string, object>;
+  initialValues?: Record<string, any>;
   onFileUploaded?: (fileKey: string) => void;
   isEditing?: boolean;
   externalDependentValues?: Record<string, unknown>;

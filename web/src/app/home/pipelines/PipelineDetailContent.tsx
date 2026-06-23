@@ -9,7 +9,13 @@ import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataCo
 import { useTranslation } from 'react-i18next';
 import { Settings, Bug, BarChart3 } from 'lucide-react';
 
-export default function PipelineDetailContent({ id }: { id: string }) {
+export default function PipelineDetailContent({
+  id,
+  routeBase = '/home/pipelines',
+}: {
+  id: string;
+  routeBase?: string;
+}) {
   const isCreateMode = id === 'new';
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -36,7 +42,7 @@ export default function PipelineDetailContent({ id }: { id: string }) {
 
   function handleNewPipelineCreated(newPipelineId: string) {
     refreshPipelines();
-    navigate(`/home/pipelines?id=${encodeURIComponent(newPipelineId)}`);
+    navigate(`${routeBase}?id=${encodeURIComponent(newPipelineId)}`);
   }
 
   // ==================== Create Mode ====================
@@ -71,7 +77,7 @@ export default function PipelineDetailContent({ id }: { id: string }) {
 
   function handleDeletePipeline() {
     refreshPipelines();
-    navigate('/home/pipelines');
+    navigate(routeBase);
   }
 
   // ==================== Edit Mode ====================
@@ -132,7 +138,7 @@ export default function PipelineDetailContent({ id }: { id: string }) {
             onFinish={handleFinish}
             onNewPipelineCreated={handleNewPipelineCreated}
             onDeletePipeline={handleDeletePipeline}
-            onCancel={() => navigate('/home/pipelines')}
+            onCancel={() => navigate(routeBase)}
             onDirtyChange={setFormDirty}
           />
         </TabsContent>

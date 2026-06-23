@@ -195,7 +195,7 @@ const ENTITY_KEY_MAP: Record<
 // Route prefix map for entity detail pages
 const ENTITY_ROUTE_MAP: Record<EntityCategoryId, string> = {
   bots: '/home/bots',
-  pipelines: '/home/pipelines',
+  pipelines: '/home/agents',
   knowledge: '/home/knowledge',
   plugins: '/home/extensions',
   mcp: '/home/mcp',

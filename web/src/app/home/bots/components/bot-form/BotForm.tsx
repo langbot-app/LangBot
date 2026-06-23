@@ -14,10 +14,11 @@ import { UUID } from 'uuidjs';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { systemInfo } from '@/app/infra/http';
-import { Bot } from '@/app/infra/entities/api';
+import { Agent, Bot } from '@/app/infra/entities/api';
 import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
 import { ExternalLink } from 'lucide-react';
 import RoutingRulesEditor from './RoutingRulesEditor';
+import EventBindingsEditor from './EventBindingsEditor';
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
@@ -88,6 +89,21 @@ const getFormSchema = (t: (key: string) => string) =>
         }),
       )
       .optional(),
+    event_bindings: z
+      .array(
+        z.object({
+          id: z.string().optional(),
+          event_pattern: z.string(),
+          target_type: z.enum(['agent', 'pipeline', 'discard']),
+          target_uuid: z.string(),
+          filters: z.array(z.record(z.string(), z.any())).optional(),
+          priority: z.number(),
+          enabled: z.boolean(),
+          description: z.string().optional(),
+          order: z.number().optional(),
+        }),
+      )
+      .optional(),
   });
 
 export default function BotForm({
@@ -114,6 +130,7 @@ export default function BotForm({
       enable: true,
       use_pipeline_uuid: '',
       pipeline_routing_rules: [],
+      event_bindings: [],
     },
   });
 
@@ -133,10 +150,14 @@ export default function BotForm({
   const [adapterHelpLinks, setAdapterHelpLinks] = useState<
     Record<string, Record<string, string>>
   >({});
+  const [adapterSupportedEvents, setAdapterSupportedEvents] = useState<
+    Record<string, string[]>
+  >({});
 
   const [pipelineNameList, setPipelineNameList] = useState<IPipelineEntity[]>(
     [],
   );
+  const [agentNameList, setAgentNameList] = useState<Agent[]>([]);
 
   const [dynamicFormConfigList, setDynamicFormConfigList] = useState<
     IDynamicFormItemSchema[]
@@ -181,6 +202,7 @@ export default function BotForm({
               enable: val.enable,
               use_pipeline_uuid: val.use_pipeline_uuid || '',
               pipeline_routing_rules: val.pipeline_routing_rules || [],
+              event_bindings: val.event_bindings || [],
             });
             handleAdapterSelect(val.adapter);
 
@@ -220,6 +242,9 @@ export default function BotForm({
       }),
     );
 
+    const agentsRes = await httpClient.getAgents();
+    setAgentNameList(agentsRes.agents);
+
     const adaptersRes = await httpClient.getAdapters();
     setAdapterNameList(
       adaptersRes.adapters.map((item) => {
@@ -250,6 +275,16 @@ export default function BotForm({
           return acc;
         },
         {} as Record<string, Record<string, string>>,
+      ),
+    );
+
+    setAdapterSupportedEvents(
+      adaptersRes.adapters.reduce(
+        (acc, item) => {
+          acc[item.name] = item.spec.supported_events || [];
+          return acc;
+        },
+        {} as Record<string, string[]>,
       ),
     );
 
@@ -298,6 +333,7 @@ export default function BotForm({
             enable: bot.enable ?? true,
             use_pipeline_uuid: bot.use_pipeline_uuid ?? '',
             pipeline_routing_rules: bot.pipeline_routing_rules ?? [],
+            event_bindings: bot.event_bindings ?? [],
             webhook_full_url: runtimeValues?.webhook_full_url as
               | string
               | undefined,
@@ -343,6 +379,7 @@ export default function BotForm({
         enable: form.getValues().enable,
         use_pipeline_uuid: form.getValues().use_pipeline_uuid,
         pipeline_routing_rules: form.getValues().pipeline_routing_rules ?? [],
+        event_bindings: form.getValues().event_bindings ?? [],
       };
       httpClient
         .updateBot(initBotId, updateBot)
@@ -503,7 +540,26 @@ export default function BotForm({
           </Card>
         )}
 
-        {/* Card 3: Adapter Configuration */}
+        {/* Card 3: Event Orchestration (edit mode only) */}
+        {initBotId && (
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('bots.eventOrchestration')}</CardTitle>
+              <CardDescription>
+                {t('bots.eventOrchestrationDescription')}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <EventBindingsEditor
+                form={form}
+                supportedEvents={adapterSupportedEvents[currentAdapter] || []}
+                agentOptions={agentNameList}
+              />
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Card 4: Adapter Configuration */}
         <Card>
           <CardHeader>
             <CardTitle>{t('bots.adapterConfig')}</CardTitle>
@@ -561,7 +617,10 @@ export default function BotForm({
                                 </SelectLabel>
                               )}
                               {group.items.map((item) => (
-                                <SelectItem key={item.value} value={item.value}>
+                                <SelectItem
+                                  key={`${group.categoryId ?? 'uncategorized'}:${item.value}`}
+                                  value={item.value}
+                                >
                                   <div className="flex items-center gap-2">
                                     <img
                                       src={httpClient.getAdapterIconURL(

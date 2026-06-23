@@ -64,7 +64,7 @@
     {
       "directory": "langbot-mcp-ops",
       "name": "langbot-mcp-ops",
-      "description": "Operate a LangBot instance through its built-in MCP (Model Context Protocol) server. Use when an AI agent needs to manage LangBot — list/create/update/delete bots, pipelines, models, knowledge bases, MCP servers, and skills — over MCP instead of raw HTTP. Covers the /mcp endpoint, API-key auth (web-UI lbk_ keys and the config.yaml global key), the tool surface, and client configuration. Triggers on \"langbot mcp\", \"manage langbot via mcp\", \"langbot /mcp\", \"langbot mcp server\".",
+      "description": "Operate a LangBot instance through its built-in MCP (Model Context Protocol) server. Use when an AI agent needs to manage LangBot — list/create/update/delete bots, agents, pipelines, models, knowledge bases, MCP servers, and skills — over MCP instead of raw HTTP. Covers the /mcp endpoint, API-key auth (web-UI lbk_ keys and the config.yaml global key), the tool surface, and client configuration. Triggers on \"langbot mcp\", \"manage langbot via mcp\", \"langbot /mcp\", \"langbot mcp server\".",
       "references": [],
       "cases": [],
       "case_summaries": [],
@@ -133,6 +133,7 @@
         "references/pipeline-debug-chat.md",
         "references/plugin-e2e-smoke.md",
         "references/sandbox-skill-authoring.md",
+        "references/skill-all-tool-acceptance.md",
         "references/troubleshooting.md",
         "references/web-ui-testing.md"
       ],
@@ -170,6 +171,7 @@
         "qa-plugin-smoke-live-install",
         "sandbox-skill-authoring-e2e",
         "sandbox-skill-authoring-edit-existing-e2e",
+        "skill-discovery-via-mcp-gateway",
         "webui-login-state"
       ],
       "case_summaries": [
@@ -1031,6 +1033,31 @@
             "backend_log",
             "api_diagnostic",
             "filesystem"
+          ]
+        },
+        {
+          "id": "skill-discovery-via-mcp-gateway",
+          "title": "External harness discovers LangBot skills via langbot_list_assets (all-tool model)",
+          "mode": "agent-browser",
+          "area": "sandbox",
+          "type": "regression",
+          "priority": "p2",
+          "risk": "medium",
+          "ci_eligible": false,
+          "tags": [
+            "skills",
+            "mcp-gateway",
+            "acp-agent-runner",
+            "all-tool-model",
+            "tools"
+          ],
+          "automation": "scripts/e2e/pipeline-debug-chat.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "backend_log"
           ]
         },
         {

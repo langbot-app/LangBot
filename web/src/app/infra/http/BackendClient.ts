@@ -6,6 +6,9 @@ import {
   ApiRespProviderLLMModel,
   LLMModel,
   ApiRespPipelines,
+  ApiRespAgents,
+  ApiRespAgent,
+  Agent,
   Pipeline,
   ApiRespPlatformAdapters,
   ApiRespPlatformAdapter,
@@ -22,6 +25,7 @@ import {
   ApiRespUserToken,
   GetPipelineResponseData,
   GetPipelineMetadataResponseData,
+  GetAgentMetadataResponseData,
   AsyncTask,
   ApiRespWebChatMessages,
   ApiRespKnowledgeBases,
@@ -227,6 +231,37 @@ export class BackendClient extends BaseHttpClient {
   }
 
   // ============ Pipeline API ============
+  public getAgents(
+    sortBy?: string,
+    sortOrder?: string,
+  ): Promise<ApiRespAgents> {
+    const params = new URLSearchParams();
+    if (sortBy) params.append('sort_by', sortBy);
+    if (sortOrder) params.append('sort_order', sortOrder);
+    const queryString = params.toString();
+    return this.get(`/api/v1/agents${queryString ? `?${queryString}` : ''}`);
+  }
+
+  public getAgent(uuid: string): Promise<ApiRespAgent> {
+    return this.get(`/api/v1/agents/${uuid}`);
+  }
+
+  public getAgentMetadata(): Promise<GetAgentMetadataResponseData> {
+    return this.get('/api/v1/agents/_/metadata');
+  }
+
+  public createAgent(agent: Agent): Promise<{ uuid: string; kind: string }> {
+    return this.post('/api/v1/agents', agent);
+  }
+
+  public updateAgent(uuid: string, agent: Partial<Agent>): Promise<object> {
+    return this.put(`/api/v1/agents/${uuid}`, agent);
+  }
+
+  public deleteAgent(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/agents/${uuid}`);
+  }
+
   public getGeneralPipelineMetadata(): Promise<GetPipelineMetadataResponseData> {
     // as designed, this method will be deprecated, and only for developer to check the prefered config schema
     return this.get('/api/v1/pipelines/_/metadata');

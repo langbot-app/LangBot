@@ -6,6 +6,7 @@ import typing
 
 from ....core import app
 from ....discover import engine
+from ....entity.persistence import agent as persistence_agent
 from ....entity.persistence import bot as persistence_bot
 from ....entity.persistence import pipeline as persistence_pipeline
 
@@ -35,6 +36,84 @@ class BotService:
             if config_item.get('type') == 'webhook-url':
                 return True
         return False
+
+    @staticmethod
+    def _is_message_event_pattern(event_pattern: str) -> bool:
+        return event_pattern == 'message.*' or event_pattern.startswith('message.')
+
+    @staticmethod
+    def _event_pattern_covers(supported_pattern: str, binding_pattern: str) -> bool:
+        if supported_pattern == '*':
+            return True
+        if supported_pattern == binding_pattern:
+            return True
+        if binding_pattern == '*':
+            return False
+        if supported_pattern.endswith('.*'):
+            namespace = supported_pattern[:-2]
+            return binding_pattern == f'{namespace}.*' or binding_pattern.startswith(f'{namespace}.')
+        return False
+
+    @classmethod
+    def _agent_supports_event_pattern(cls, supported_patterns: list[str] | None, event_pattern: str) -> bool:
+        patterns = supported_patterns or ['*']
+        return any(cls._event_pattern_covers(pattern, event_pattern) for pattern in patterns)
+
+    async def _normalize_event_bindings(self, bindings: list[dict] | None) -> list[dict]:
+        """Validate and normalize Bot event bindings."""
+        if not bindings:
+            return []
+
+        normalized: list[dict] = []
+        for index, raw_binding in enumerate(bindings):
+            if not isinstance(raw_binding, dict):
+                continue
+
+            event_pattern = str(raw_binding.get('event_pattern') or '').strip()
+            target_type = str(raw_binding.get('target_type') or '').strip()
+            target_uuid = str(raw_binding.get('target_uuid') or '').strip()
+            if not event_pattern or not target_type:
+                continue
+
+            if target_type == 'pipeline':
+                if not self._is_message_event_pattern(event_pattern):
+                    raise ValueError('Pipeline can only be bound to message events')
+                result = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(persistence_pipeline.LegacyPipeline.uuid).where(
+                        persistence_pipeline.LegacyPipeline.uuid == target_uuid
+                    )
+                )
+                if result.first() is None:
+                    raise ValueError('Pipeline not found')
+            elif target_type == 'agent':
+                result = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(persistence_agent.Agent).where(persistence_agent.Agent.uuid == target_uuid)
+                )
+                agent = result.first()
+                if agent is None:
+                    raise ValueError('Agent not found')
+                if not self._agent_supports_event_pattern(agent.supported_event_patterns, event_pattern):
+                    raise ValueError('Agent does not support this event pattern')
+            elif target_type == 'discard':
+                target_uuid = ''
+            else:
+                raise ValueError(f'Unsupported event binding target type: {target_type}')
+
+            normalized.append(
+                {
+                    'id': raw_binding.get('id') or str(uuid.uuid4()),
+                    'event_pattern': event_pattern,
+                    'target_type': target_type,
+                    'target_uuid': target_uuid,
+                    'filters': raw_binding.get('filters') or [],
+                    'priority': int(raw_binding.get('priority') or 0),
+                    'enabled': bool(raw_binding.get('enabled', True)),
+                    'description': raw_binding.get('description') or '',
+                    'order': index,
+                }
+            )
+
+        return normalized
 
     async def get_bots(self, include_secret: bool = True) -> list[dict]:
         """获取所有机器人"""
@@ -136,6 +215,9 @@ class BotService:
 
         if 'uuid' in update_data:
             del update_data['uuid']
+
+        if 'event_bindings' in update_data:
+            update_data['event_bindings'] = await self._normalize_event_bindings(update_data.get('event_bindings'))
 
         # set use_pipeline_name
         if 'use_pipeline_uuid' in update_data:

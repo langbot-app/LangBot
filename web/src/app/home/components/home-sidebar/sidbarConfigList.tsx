@@ -57,10 +57,10 @@ export const sidebarConfigList = [
   }),
   new SidebarChildVO({
     id: 'pipelines',
-    name: t('pipelines.title'),
+    name: t('agents.title'),
     icon: <Workflow className="text-blue-500" />,
-    route: '/home/pipelines',
-    description: t('pipelines.description'),
+    route: '/home/agents',
+    description: t('agents.description'),
     helpLink: {
       en_US: 'https://link.langbot.app/en/docs/pipelines',
       zh_Hans: 'https://link.langbot.app/zh/docs/pipelines',
