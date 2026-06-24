@@ -1,0 +1,13 @@
+id: langbot-performance-contract-gate
+title: "LangBot performance contract gate"
+description: "Fast synthetic contract checks for performance metric accounting and non-destructive reliability fault taxonomy."
+type: contract
+priority: p1
+tags:
+  - performance
+  - reliability
+  - contract
+  - metrics
+cases:
+  - langbot-overhead-accounting-contract
+  - langbot-fault-taxonomy-contract

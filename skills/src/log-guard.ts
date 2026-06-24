@@ -91,6 +91,7 @@ export type AutomationResultEvidence = {
   path?: string;
   result?: string;
   reason?: string;
+  duration_ms?: number;
   started_at?: string;
   started_at_local?: string;
   finished_at?: string;
@@ -98,6 +99,9 @@ export type AutomationResultEvidence = {
   url?: string;
   prompt?: string;
   expected_text?: string;
+  metrics_summary?: Record<string, unknown>;
+  thresholds_summary?: Record<string, unknown>;
+  artifacts?: Record<string, unknown>;
 };
 
 type MutableScanState = {
@@ -594,6 +598,18 @@ function stringField(data: Record<string, unknown>, key: string): string | undef
   return typeof value === "string" && value.trim() ? value : undefined;
 }
 
+function numberField(data: Record<string, unknown>, key: string): number | undefined {
+  const value = data[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function objectField(data: Record<string, unknown>, key: string): Record<string, unknown> | undefined {
+  const value = data[key];
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
 function evidenceDirFromOptions(options: Record<string, string | boolean>): string | undefined {
   const explicit = typeof options["evidence-dir"] === "string" ? options["evidence-dir"] : undefined;
   if (explicit) return resolve(explicit);
@@ -628,6 +644,7 @@ export function readAutomationResultEvidence(options: Record<string, string | bo
       path: resultPath,
       result: stringField(result, "status"),
       reason: stringField(result, "reason"),
+      duration_ms: numberField(result, "duration_ms"),
       started_at: stringField(result, "started_at"),
       started_at_local: stringField(result, "started_at_local"),
       finished_at: stringField(result, "finished_at"),
@@ -635,6 +652,9 @@ export function readAutomationResultEvidence(options: Record<string, string | bo
       url: stringField(result, "url"),
       prompt: redactSecrets(stringField(result, "prompt") ?? ""),
       expected_text: stringField(result, "expected_text"),
+      metrics_summary: objectField(result, "metrics_summary"),
+      thresholds_summary: objectField(result, "thresholds_summary"),
+      artifacts: objectField(result, "artifacts"),
     };
   } catch (error) {
     return { status: "invalid", path: resultPath, reason: String(error) };

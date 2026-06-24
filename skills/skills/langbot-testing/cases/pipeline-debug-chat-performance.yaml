@@ -1,0 +1,75 @@
+id: pipeline-debug-chat-performance
+title: "Pipeline Debug Chat user-path performance probe"
+mode: agent-browser
+area: pipeline
+type: performance
+priority: p1
+risk: medium
+ci_eligible: false
+tags:
+  - performance
+  - pipeline
+  - debug-chat
+  - user-path
+  - metrics
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+env_any:
+  - LANGBOT_PIPELINE_URL|LANGBOT_PIPELINE_NAME
+automation: scripts/e2e/pipeline-debug-chat.mjs
+automation_env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+  - LANGBOT_E2E_PROMPT
+  - LANGBOT_E2E_EXPECTED_TEXT
+  - LANGBOT_E2E_RESPONSE_TIMEOUT_MS
+automation_env_any:
+  - LANGBOT_PIPELINE_URL|LANGBOT_PIPELINE_NAME
+automation_prompt: "请只回复 OK，用于性能测试。"
+automation_expected_text: "OK"
+automation_response_timeout_ms: "120000"
+automation_reset_debug_chat: "true"
+automation_debug_chat_response_p95_ms: "120000"
+automation_debug_chat_max_error_rate: "0"
+metrics_thresholds_json: '{"response_p95_ms":{"max":120000},"error_rate":{"max":0}}'
+load_profile_json: '{"prompts":1,"browser":true,"path":"Pipeline Debug Chat","metric":"send-to-visible-completion"}'
+preconditions:
+  - "LANGBOT_PIPELINE_URL or LANGBOT_PIPELINE_NAME points to the pipeline intended for this Debug Chat performance run."
+  - "The target pipeline is safe to reset Debug Chat history for this run."
+  - "The target pipeline has a known-good runner/model; provider latency should be interpreted separately from LangBot overhead."
+steps:
+  - "Open LANGBOT_FRONTEND_URL with the prepared browser profile."
+  - "Open the target pipeline and select Debug Chat."
+  - "Reset Debug Chat history through the backend API when configured."
+  - "Send the deterministic prompt and wait for the expected assistant response."
+checks:
+  - "automation-result.json status is pass when the expected assistant response appears."
+  - "metrics_summary includes response_p50_ms, response_p95_ms, error_rate, and total_duration_ms."
+  - "thresholds_summary shows response_p95_ms and error_rate pass."
+evidence_required:
+  - ui
+  - screenshot
+  - console
+  - network
+  - metrics
+diagnostics:
+  - "This case measures browser-visible send-to-completion latency; it does not split provider latency from LangBot overhead."
+  - "Use backend logs and provider diagnostics to explain slow runs before calling them LangBot regressions."
+success_patterns:
+  - "Processing request from person_websocket"
+  - "Streaming completed"
+failure_patterns:
+  - "Action invoke_llm_stream call timed out"
+  - "Task exception was never retrieved"
+  - "All models failed during streaming setup"
+troubleshooting:
+  - debug-chat-history-contaminates-automation
+  - local-agent-model-route-unavailable
+  - plugin-runtime-timeout
+  - proxy-env-mismatch

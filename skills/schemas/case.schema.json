@@ -48,7 +48,18 @@
     },
     "type": {
       "type": "string",
-      "enum": ["smoke", "regression", "feature", "provider", "exploratory"]
+      "enum": [
+        "smoke",
+        "regression",
+        "feature",
+        "provider",
+        "exploratory",
+        "contract",
+        "performance",
+        "reliability",
+        "chaos",
+        "security"
+      ]
     },
     "priority": {
       "type": "string",
@@ -102,7 +113,11 @@
           "backend_log",
           "frontend_log",
           "api_diagnostic",
-          "filesystem"
+          "filesystem",
+          "metrics",
+          "trace",
+          "profile",
+          "resource_log"
         ]
       },
       "minItems": 1
@@ -188,7 +203,22 @@
       "type": "string",
       "enum": ["person", "group"]
     },
+    "automation_debug_chat_response_p95_ms": {
+      "type": "string"
+    },
+    "automation_debug_chat_max_error_rate": {
+      "type": "string"
+    },
     "automation_filesystem_checks_json": {
+      "type": "string"
+    },
+    "metrics_thresholds_json": {
+      "type": "string"
+    },
+    "load_profile_json": {
+      "type": "string"
+    },
+    "fault_model_json": {
       "type": "string"
     },
     "automation_pipeline_url_env": {

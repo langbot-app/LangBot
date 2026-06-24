@@ -114,6 +114,8 @@ export function automationEnvDefaults(item: StructuredItem, env: EnvSource = pro
     ["automation_expected_runner_id", "LANGBOT_E2E_EXPECTED_RUNNER_ID"],
     ["automation_reset_debug_chat", "LANGBOT_E2E_RESET_DEBUG_CHAT"],
     ["automation_debug_chat_session_type", "LANGBOT_E2E_DEBUG_CHAT_SESSION_TYPE"],
+    ["automation_debug_chat_response_p95_ms", "LANGBOT_E2E_DEBUG_CHAT_RESPONSE_P95_MS"],
+    ["automation_debug_chat_max_error_rate", "LANGBOT_E2E_DEBUG_CHAT_MAX_ERROR_RATE"],
     ["automation_filesystem_checks_json", "LANGBOT_E2E_FILESYSTEM_CHECKS_JSON"],
     ["automation_plugin_package", "LANGBOT_E2E_PLUGIN_PACKAGE"],
     ["automation_expected_plugin_id", "LANGBOT_E2E_EXPECTED_PLUGIN_ID"],

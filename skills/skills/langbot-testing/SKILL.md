@@ -21,6 +21,7 @@ Use this skill when an agent needs to verify LangBot behavior through the WebUI 
 - **Sandbox-backed skill authoring**: read `references/sandbox-skill-authoring.md`.
 - **LangRAG knowledge bases**: read `references/langrag-knowledge-base.md`.
 - **MCP stdio tool testing**: read `references/mcp-stdio-testing.md`.
+- **Performance, reliability, or chaos probes**: read `references/performance-reliability-testing.md`.
 - **Drive a live instance over MCP (not raw HTTP)**: use the `langbot-mcp-ops` skill — the instance exposes an MCP server at `http://<host>:5300/mcp` (reuses API keys). Useful for setting up bots/pipelines/models as test fixtures programmatically.
 - **Known failures and fixes**: read `references/troubleshooting.md`.
 - **Reusable test groups**: run `bin/lbs suite list` and `bin/lbs suite plan <suite-id>` before manually assembling a case set.
@@ -36,6 +37,8 @@ Use this skill when an agent needs to verify LangBot behavior through the WebUI 
 - Use an authenticated browser profile prepared by `langbot-env-setup`.
 - Do not expose API keys, OAuth secrets, tokens, or localStorage token values in output.
 - A WebUI test is not complete until the visible UI result is checked against backend logs or network behavior.
+- A performance result is not complete without `metrics` evidence and a clear split between LangBot overhead and external provider/tool/network time.
+- A chaos or reliability result is not complete until the fault scope, cleanup, and recovery checks are recorded.
 - For a suite, use `bin/lbs suite start <suite-id>` to create the suite evidence root, per-case directories, and `suite-start.json`/`suite-start.md` handoff files; use `bin/lbs test result <case-id>` to write final per-case `result.json`, then run `bin/lbs suite report <suite-id> --evidence-dir <dir>`.
 - Do not mark a case `pass` until `test result --evidence` covers every value in the case's `evidence_required`.
 - For runner-specific Debug Chat cases, use the case-specific pipeline env declared by `automation_pipeline_url_env` / `automation_pipeline_name_env`; do not silently reuse a generic `LANGBOT_PIPELINE_URL`.

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { appendFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -671,6 +671,82 @@ test("suite run JSON captures failed case output", () => {
     assert.equal(payload.executions[0].status, "nonzero");
     assert.match(payload.executions[0].stderr, /child failure detail/);
     assert.equal(payload.report.status, "fail");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("suite run preserves classified env_issue automation results", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "lbs-suite-run-env-issue-"));
+  try {
+    const skillDir = join(tmp, "skills", "langbot-testing");
+    const casesDir = join(skillDir, "cases");
+    const suitesDir = join(skillDir, "suites");
+    const scriptsDir = join(tmp, "scripts");
+    mkdirSync(casesDir, { recursive: true });
+    mkdirSync(suitesDir, { recursive: true });
+    mkdirSync(scriptsDir, { recursive: true });
+    writeFileSync(join(skillDir, "SKILL.md"), "---\nname: langbot-testing\ndescription: Testing.\n---\n\n# Testing\n");
+    writeFileSync(join(tmp, "skills", ".env"), "");
+    writeFileSync(
+      join(casesDir, "env-case.yaml"),
+      [
+        "id: env-case",
+        "title: Env Case",
+        "mode: probe",
+        "area: qa",
+        "type: smoke",
+        "priority: p2",
+        "risk: low",
+        "ci_eligible: true",
+        "automation: scripts/env-issue.mjs",
+        "evidence_required:",
+        "  - filesystem",
+      ].join("\n"),
+    );
+    writeFileSync(
+      join(suitesDir, "mini.yaml"),
+      [
+        "id: mini",
+        "title: Mini",
+        "description: Mini suite.",
+        "type: smoke",
+        "priority: p2",
+        "tags:",
+        "  - qa",
+        "cases:",
+        "  - env-case",
+      ].join("\n"),
+    );
+    writeFileSync(
+      join(scriptsDir, "env-issue.mjs"),
+      [
+        "import { mkdirSync, writeFileSync } from 'node:fs';",
+        "import { join } from 'node:path';",
+        "mkdirSync(process.env.LBS_EVIDENCE_DIR, { recursive: true });",
+        "const result = {",
+        "  case_id: process.env.LBS_CASE_ID,",
+        "  run_id: process.env.LBS_RUN_ID,",
+        "  status: 'env_issue',",
+        "  reason: 'backend not reachable',",
+        "  evidence_collected: ['filesystem']",
+        "};",
+        "writeFileSync(join(process.env.LBS_EVIDENCE_DIR, 'result.json'), JSON.stringify(result));",
+        "writeFileSync(join(process.env.LBS_EVIDENCE_DIR, 'automation-result.json'), JSON.stringify({ ...result, source: 'automation' }));",
+        "process.exit(2);",
+      ].join("\n"),
+    );
+
+    const result = capture(() => commandSuiteRun({
+      root: tmp,
+      args: ["suite", "run", "mini", "--run-id", "mini-run", "--evidence-dir", join(tmp, "evidence"), "--json"],
+    }));
+
+    assert.equal(result.code, 2);
+    const payload = JSON.parse(result.output);
+    assert.equal(payload.executions[0].status, "classified");
+    assert.equal(payload.report.status, "env_issue");
+    assert.equal(payload.report.execution_status, "ok");
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
@@ -1365,6 +1441,56 @@ test("env doctor does not require proxy variables", async () => {
     assert.equal(result.code, 1);
     assert.doesNotMatch(result.output, /missing LANGBOT_PROXY|missing LANGBOT_NO_PROXY/);
   } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("env doctor reports missing socksio for active SOCKS proxy", async () => {
+  const tmp = mkdtempSync(join(tmpdir(), "lbs-env-doctor-socksio-"));
+  const originalAllProxy = process.env.ALL_PROXY;
+  const originalAllProxyLower = process.env.all_proxy;
+  try {
+    delete process.env.ALL_PROXY;
+    delete process.env.all_proxy;
+    const skillsDir = join(tmp, "skills");
+    const repoDir = join(tmp, "LangBot");
+    const webDir = join(repoDir, "web");
+    const venvBin = join(repoDir, ".venv", "bin");
+    const browserProfile = join(tmp, "browser-profile");
+    const chromium = join(tmp, "chromium");
+    mkdirSync(skillsDir, { recursive: true });
+    mkdirSync(webDir, { recursive: true });
+    mkdirSync(venvBin, { recursive: true });
+    mkdirSync(browserProfile, { recursive: true });
+    writeFileSync(chromium, "");
+    const python = join(venvBin, "python");
+    writeFileSync(python, "#!/bin/sh\nexit 1\n");
+    chmodSync(python, 0o755);
+    writeFileSync(
+      join(skillsDir, ".env"),
+      [
+        "LANGBOT_BACKEND_URL=http://127.0.0.1:59996",
+        "LANGBOT_FRONTEND_URL=http://127.0.0.1:59996",
+        "LANGBOT_DEV_FRONTEND_URL=http://127.0.0.1:59996",
+        `LANGBOT_REPO=${repoDir}`,
+        `LANGBOT_WEB_REPO=${webDir}`,
+        `LANGBOT_BROWSER_PROFILE=${browserProfile}`,
+        `LANGBOT_CHROMIUM_EXECUTABLE=${chromium}`,
+        "ALL_PROXY=socks5://127.0.0.1:7890",
+      ].join("\n"),
+    );
+
+    const result = await captureAsync(() => commandEnvDoctor({ root: tmp, args: ["env", "doctor"] }));
+
+    assert.equal(result.code, 1);
+    assert.match(result.output, /FAIL: SOCKS proxy ALL_PROXY is configured/);
+    assert.match(result.output, /cannot import socksio/);
+    assert.match(result.output, /-m pip install socksio/);
+  } finally {
+    if (originalAllProxy === undefined) delete process.env.ALL_PROXY;
+    else process.env.ALL_PROXY = originalAllProxy;
+    if (originalAllProxyLower === undefined) delete process.env.all_proxy;
+    else process.env.all_proxy = originalAllProxyLower;
     rmSync(tmp, { recursive: true, force: true });
   }
 });
@@ -2519,6 +2645,38 @@ test("test report renders a reusable evidence template", () => {
   assert.match(result.output, /## Automation Result/);
   assert.match(result.output, /## Required Evidence/);
   assert.match(result.output, /no log files provided/);
+});
+
+test("test report promotes loaded automation evidence into result section", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "lbs-report-automation-"));
+  try {
+    writeFileSync(
+      join(tmp, "automation-result.json"),
+      JSON.stringify({
+        status: "pass",
+        reason: "latency thresholds passed",
+        url: "http://127.0.0.1:5300",
+        artifacts: { metrics_json: join(tmp, "metrics.json") },
+      }),
+    );
+
+    const result = capture(() => commandTestReport(ctx([
+      "test",
+      "report",
+      "langbot-live-backend-latency",
+      "--evidence-dir",
+      tmp,
+      "--no-auto-log",
+    ])));
+
+    assert.equal(result.code, 0);
+    assert.match(result.output, /## Result\n- result: pass\n- reason: latency thresholds passed/);
+    assert.match(result.output, /- target_tested: http:\/\/127\.0\.0\.1:5300/);
+    assert.doesNotMatch(result.output, /target_tested: TODO/);
+    assert.match(result.output, /## Automation Result/);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 test("validate rejects dangling case references and missing automation scripts", () => {

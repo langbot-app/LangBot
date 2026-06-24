@@ -54,6 +54,7 @@ const debugChatSessionType = env.LANGBOT_E2E_DEBUG_CHAT_SESSION_TYPE || "person"
 const pipelineConfigDiagnosticPath = resolve(paths.evidenceDir, "pipeline-config-diagnostic.json");
 const debugChatResetDiagnosticPath = resolve(paths.evidenceDir, "debug-chat-reset-diagnostic.json");
 const pipelineConfigRestoreDiagnosticPath = resolve(paths.evidenceDir, "pipeline-config-restore-diagnostic.json");
+const metricsPath = resolve(paths.evidenceDir, "metrics.json");
 const startedAt = new Date();
 
 let browser;
@@ -80,10 +81,11 @@ let result = {
     console_log: paths.consoleLog,
     network_log: paths.networkLog,
     screenshot: paths.screenshot,
+    metrics_json: metricsPath,
     automation_result_json: paths.automationResultJson,
     result_json: paths.resultJson,
   },
-  evidence_collected: ["ui", "screenshot", "console", "network"],
+  evidence_collected: ["ui", "screenshot", "console", "network", "metrics"],
 };
 
 function boolFromEnv(value, defaultValue) {
@@ -101,6 +103,29 @@ function parseJsonEnv(key, fallback) {
   } catch (error) {
     throw new Error(`${key} must be valid JSON: ${error.message}`);
   }
+}
+
+function positiveNumberEnv(key, fallback) {
+  const value = Number(env[key] || "");
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+function percentile(values, percentileValue) {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.min(sorted.length - 1, Math.ceil((percentileValue / 100) * sorted.length) - 1);
+  return Number(sorted[index].toFixed(3));
+}
+
+function stats(values) {
+  if (values.length === 0) return { min: 0, p50: 0, p95: 0, p99: 0, max: 0 };
+  return {
+    min: Number(Math.min(...values).toFixed(3)),
+    p50: percentile(values, 50),
+    p95: percentile(values, 95),
+    p99: percentile(values, 99),
+    max: Number(Math.max(...values).toFixed(3)),
+  };
 }
 
 function promptStepsFromEnv() {
@@ -658,6 +683,7 @@ try {
       } else {
         for (let index = 0; index < promptSteps.length; index += 1) {
           const step = promptSteps[index];
+          const promptStartedAt = Date.now();
           const chatResult = await runDebugChatPrompt(page, {
             prompt: step.prompt,
             expectedText: step.expectedText,
@@ -665,11 +691,13 @@ try {
             imagePath: index === 0 ? imagePath : "",
             failureSignals: failureSignals.length > 0 ? failureSignals : undefined,
           });
+          const promptDurationMs = Date.now() - promptStartedAt;
           result.chat_results.push({
             index,
             expected_text: step.expectedText,
             status: chatResult.status,
             reason: chatResult.reason,
+            response_duration_ms: promptDurationMs,
             min_expected_count: chatResult.min_expected_count,
             final_count: chatResult.final_count,
             before_assistant_expected_count: chatResult.before_assistant_expected_count,
@@ -714,6 +742,56 @@ try {
   const finishedAt = new Date();
   result.finished_at = finishedAt.toISOString();
   result.finished_at_local = localIsoWithOffset(finishedAt);
+  result.duration_ms = finishedAt.getTime() - startedAt.getTime();
+  const responseDurations = result.chat_results
+    .map((item) => item.response_duration_ms)
+    .filter((value) => Number.isFinite(value));
+  const passedPrompts = result.chat_results.filter((item) => item.status === "pass").length;
+  const attemptedPrompts = result.chat_results.length;
+  const errorRate = attemptedPrompts === 0 ? 1 : Number(((attemptedPrompts - passedPrompts) / attemptedPrompts).toFixed(4));
+  const responseStats = stats(responseDurations);
+  const responseP95BudgetMs = positiveNumberEnv(
+    "LANGBOT_E2E_DEBUG_CHAT_RESPONSE_P95_MS",
+    positiveNumberEnv("LANGBOT_DEBUG_CHAT_RESPONSE_P95_MS", safeResponseTimeoutMs),
+  );
+  const maxErrorRate = positiveNumberEnv("LANGBOT_E2E_DEBUG_CHAT_MAX_ERROR_RATE", 0);
+  const metrics = {
+    probe: caseId,
+    url: result.url,
+    prompt_count: result.prompt_count,
+    attempted_prompt_count: attemptedPrompts,
+    passed_prompt_count: passedPrompts,
+    error_rate: errorRate,
+    response_duration_ms: responseStats,
+    total_duration_ms: result.duration_ms,
+    chat_results: result.chat_results,
+  };
+  result.metrics_summary = {
+    prompt_count: metrics.prompt_count,
+    attempted_prompt_count: metrics.attempted_prompt_count,
+    passed_prompt_count: metrics.passed_prompt_count,
+    error_rate: metrics.error_rate,
+    response_p50_ms: metrics.response_duration_ms.p50,
+    response_p95_ms: metrics.response_duration_ms.p95,
+    total_duration_ms: metrics.total_duration_ms,
+  };
+  result.thresholds_summary = {
+    response_p95_ms: {
+      actual: metrics.response_duration_ms.p95,
+      max: responseP95BudgetMs,
+      pass: attemptedPrompts > 0 && metrics.response_duration_ms.p95 <= responseP95BudgetMs,
+    },
+    error_rate: {
+      actual: metrics.error_rate,
+      max: maxErrorRate,
+      pass: metrics.error_rate <= maxErrorRate,
+    },
+  };
+  await writeFile(metricsPath, `${JSON.stringify(metrics, null, 2)}\n`, "utf8");
+  if (result.status === "pass" && !Object.values(result.thresholds_summary).every((item) => item.pass)) {
+    result.status = "fail";
+    result.reason = "Debug Chat performance breached response latency or error-rate thresholds.";
+  }
   const existingEvidence = {};
   for (const [key, value] of Object.entries(result.evidence)) {
     if (typeof value !== "string") continue;

@@ -9,7 +9,18 @@ export const requiredEnvKeys = [
 ];
 
 export const caseModeValues = ["agent-browser", "probe"];
-export const caseTypeValues = ["smoke", "regression", "feature", "provider", "exploratory"];
+export const caseTypeValues = [
+  "smoke",
+  "regression",
+  "feature",
+  "provider",
+  "exploratory",
+  "contract",
+  "performance",
+  "reliability",
+  "chaos",
+  "security",
+];
 export const casePriorityValues = ["p0", "p1", "p2"];
 export const caseRiskValues = ["low", "medium", "high"];
 export const caseEvidenceValues = [
@@ -21,10 +32,24 @@ export const caseEvidenceValues = [
   "frontend_log",
   "api_diagnostic",
   "filesystem",
+  "metrics",
+  "trace",
+  "profile",
+  "resource_log",
 ];
 export const testResultStatusValues = ["pass", "fail", "blocked", "env_issue", "flaky"];
 export const troubleshootingCategoryValues = ["product", "env_issue", "external_dependency", "blocked", "flaky"];
-export const suiteTypeValues = ["smoke", "regression", "release_gate", "exploratory"];
+export const suiteTypeValues = [
+  "smoke",
+  "regression",
+  "release_gate",
+  "exploratory",
+  "contract",
+  "performance",
+  "reliability",
+  "chaos",
+  "security",
+];
 export const suiteRequiredStrings = ["id", "title", "description", "type", "priority"];
 export const suiteRequiredLists = ["tags", "cases"];
 

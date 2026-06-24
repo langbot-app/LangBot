@@ -126,6 +126,9 @@ function validateCaseItem(root: string, item: StructuredItem, skillNames: Set<st
     ...validateEnvKeyScalar(item, "automation_pipeline_url_env"),
     ...validateEnvKeyScalar(item, "automation_pipeline_name_env"),
     ...validateJsonScalar(item, "automation_filesystem_checks_json"),
+    ...validateJsonScalar(item, "metrics_thresholds_json"),
+    ...validateJsonScalar(item, "load_profile_json"),
+    ...validateJsonScalar(item, "fault_model_json"),
     ...listValue(item.fields, "setup_automation").flatMap((entry) => (
       validateSetupAutomationEntry(root, entry, caseIds).map((error) => `${item.path}: ${error}`)
     )),

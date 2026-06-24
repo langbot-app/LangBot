@@ -130,6 +130,7 @@
         "references/local-agent-runner.md",
         "references/mcp-stdio-testing.md",
         "references/model-provider-testing.md",
+        "references/performance-reliability-testing.md",
         "references/pipeline-debug-chat.md",
         "references/plugin-e2e-smoke.md",
         "references/sandbox-skill-authoring.md",
@@ -150,6 +151,11 @@
         "agent-runner-release-preflight",
         "agent-runner-runtime-chaos",
         "dify-agent-debug-chat",
+        "langbot-fault-taxonomy-contract",
+        "langbot-live-backend-latency",
+        "langbot-live-backend-log-health",
+        "langbot-live-control-plane-api",
+        "langbot-overhead-accounting-contract",
         "langrag-kb-retrieve",
         "langrag-parser-golden-e2e",
         "langrag-sentinel-kb-discover",
@@ -165,6 +171,7 @@
         "mcp-stdio-register",
         "mcp-stdio-tool-call",
         "pipeline-debug-chat",
+        "pipeline-debug-chat-performance",
         "plugin-e2e-smoke",
         "provider-deepseek",
         "qa-plugin-smoke-live-install",
@@ -484,6 +491,128 @@
             "ui",
             "console",
             "backend_log"
+          ]
+        },
+        {
+          "id": "langbot-fault-taxonomy-contract",
+          "title": "LangBot fault taxonomy and cleanup contract",
+          "mode": "probe",
+          "area": "reliability",
+          "type": "chaos",
+          "priority": "p1",
+          "risk": "medium",
+          "ci_eligible": true,
+          "tags": [
+            "reliability",
+            "chaos",
+            "contract",
+            "synthetic"
+          ],
+          "automation": "skills/langbot-testing/probes/langbot-fault-taxonomy-contract.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "metrics",
+            "filesystem"
+          ]
+        },
+        {
+          "id": "langbot-live-backend-latency",
+          "title": "LangBot live backend basic latency probe",
+          "mode": "probe",
+          "area": "performance",
+          "type": "performance",
+          "priority": "p1",
+          "risk": "medium",
+          "ci_eligible": false,
+          "tags": [
+            "performance",
+            "live-backend",
+            "latency",
+            "metrics"
+          ],
+          "automation": "skills/langbot-testing/probes/langbot-live-backend-latency.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "metrics",
+            "network",
+            "api_diagnostic",
+            "filesystem"
+          ]
+        },
+        {
+          "id": "langbot-live-backend-log-health",
+          "title": "LangBot live backend log health probe",
+          "mode": "probe",
+          "area": "reliability",
+          "type": "reliability",
+          "priority": "p1",
+          "risk": "medium",
+          "ci_eligible": false,
+          "tags": [
+            "reliability",
+            "live-backend",
+            "backend-log",
+            "metrics"
+          ],
+          "automation": "skills/langbot-testing/probes/langbot-live-backend-log-health.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "metrics",
+            "backend_log",
+            "filesystem"
+          ]
+        },
+        {
+          "id": "langbot-live-control-plane-api",
+          "title": "LangBot live control-plane API probe",
+          "mode": "probe",
+          "area": "performance",
+          "type": "performance",
+          "priority": "p1",
+          "risk": "medium",
+          "ci_eligible": false,
+          "tags": [
+            "performance",
+            "reliability",
+            "live-backend",
+            "control-plane",
+            "metrics"
+          ],
+          "automation": "skills/langbot-testing/probes/langbot-live-control-plane-api.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "metrics",
+            "network",
+            "api_diagnostic",
+            "filesystem"
+          ]
+        },
+        {
+          "id": "langbot-overhead-accounting-contract",
+          "title": "LangBot overhead accounting metrics contract",
+          "mode": "probe",
+          "area": "performance",
+          "type": "performance",
+          "priority": "p1",
+          "risk": "medium",
+          "ci_eligible": true,
+          "tags": [
+            "performance",
+            "metrics",
+            "contract",
+            "synthetic"
+          ],
+          "automation": "skills/langbot-testing/probes/langbot-overhead-accounting-contract.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "metrics",
+            "resource_log",
+            "filesystem"
           ]
         },
         {
@@ -912,6 +1041,33 @@
           ]
         },
         {
+          "id": "pipeline-debug-chat-performance",
+          "title": "Pipeline Debug Chat user-path performance probe",
+          "mode": "agent-browser",
+          "area": "pipeline",
+          "type": "performance",
+          "priority": "p1",
+          "risk": "medium",
+          "ci_eligible": false,
+          "tags": [
+            "performance",
+            "pipeline",
+            "debug-chat",
+            "user-path",
+            "metrics"
+          ],
+          "automation": "scripts/e2e/pipeline-debug-chat.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "console",
+            "network",
+            "metrics"
+          ]
+        },
+        {
           "id": "plugin-e2e-smoke",
           "title": "Plugin system installs a local plugin and exposes tool/page APIs",
           "mode": "agent-browser",
@@ -1059,6 +1215,10 @@
       "suites": [
         "agent-runner-release-gate",
         "core-smoke",
+        "langbot-live-backend-gate",
+        "langbot-performance-contract-gate",
+        "langbot-performance-reliability-gate",
+        "langbot-user-path-performance-gate",
         "local-agent-gate"
       ],
       "suite_summaries": [
@@ -1119,6 +1279,77 @@
             "webui-login-state",
             "pipeline-debug-chat",
             "local-agent-basic-debug-chat"
+          ]
+        },
+        {
+          "id": "langbot-live-backend-gate",
+          "title": "LangBot live backend reliability gate",
+          "description": "Live backend control-plane responsiveness and runtime log health checks for a locally running LangBot instance.",
+          "type": "reliability",
+          "priority": "p1",
+          "tags": [
+            "performance",
+            "reliability",
+            "live-backend",
+            "metrics"
+          ],
+          "cases": [
+            "langbot-live-backend-latency",
+            "langbot-live-control-plane-api",
+            "langbot-live-backend-log-health"
+          ]
+        },
+        {
+          "id": "langbot-performance-contract-gate",
+          "title": "LangBot performance contract gate",
+          "description": "Fast synthetic contract checks for performance metric accounting and non-destructive reliability fault taxonomy.",
+          "type": "contract",
+          "priority": "p1",
+          "tags": [
+            "performance",
+            "reliability",
+            "contract",
+            "metrics"
+          ],
+          "cases": [
+            "langbot-overhead-accounting-contract",
+            "langbot-fault-taxonomy-contract"
+          ]
+        },
+        {
+          "id": "langbot-performance-reliability-gate",
+          "title": "LangBot performance and reliability starter gate",
+          "description": "Starter gate for LangBot performance accounting, live backend control-plane latency, and non-destructive fault taxonomy checks.",
+          "type": "reliability",
+          "priority": "p1",
+          "tags": [
+            "performance",
+            "reliability",
+            "metrics",
+            "chaos"
+          ],
+          "cases": [
+            "langbot-overhead-accounting-contract",
+            "langbot-fault-taxonomy-contract",
+            "langbot-live-backend-latency",
+            "langbot-live-control-plane-api",
+            "langbot-live-backend-log-health"
+          ]
+        },
+        {
+          "id": "langbot-user-path-performance-gate",
+          "title": "LangBot user-path performance gate",
+          "description": "Browser-visible performance checks for user-facing LangBot paths such as Pipeline Debug Chat.",
+          "type": "performance",
+          "priority": "p1",
+          "tags": [
+            "performance",
+            "browser",
+            "debug-chat",
+            "user-path"
+          ],
+          "cases": [
+            "pipeline-debug-chat-performance"
           ]
         },
         {
