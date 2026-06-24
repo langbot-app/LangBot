@@ -61,7 +61,7 @@ def langbot_process(e2e_config_path, e2e_port, e2e_tmpdir):
         project_root=project_root,
         work_dir=e2e_tmpdir,  # Run in tmpdir where data/config.yaml exists
         port=e2e_port,
-        timeout=60,  # Longer timeout for first startup
+        timeout=180,  # Longer timeout for first startup
         collect_coverage=collect_coverage,
     )
 

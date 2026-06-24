@@ -146,8 +146,10 @@ class AgentRunnerRegistry:
         Returns:
             List of runner descriptors
         """
-        if use_cache and self._cache is not None:
-            # Filter from cache
+        if use_cache and self._cache is not None and self._cache:
+            # Filter from cache. Do not treat an empty cache as final because the
+            # plugin runtime may still be launching installed plugins when the
+            # first metadata request arrives.
             return self._filter_runners_by_bound_plugins(self._cache, bound_plugins)
 
         # Discover fresh (always full list)

@@ -10,7 +10,7 @@ ssereadtimeout) live in ``extra_args`` and are left untouched — the
 auto-detecting remote transport consumes them regardless.
 
 Revision ID: 0006_normalize_mcp_remote_mode
-Revises: 0005_add_llm_context_length
+Revises: 8d3a1f2c4b6e
 Create Date: 2026-06-21
 """
 
@@ -18,7 +18,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = '0006_normalize_mcp_remote_mode'
-down_revision = '0005_add_llm_context_length'
+down_revision = '8d3a1f2c4b6e'
 branch_labels = None
 depends_on = None
 
