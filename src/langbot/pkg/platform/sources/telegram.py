@@ -429,28 +429,34 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             args['parse_mode'] = 'MarkdownV2'
         return args
 
+    async def _delete_group_stream_message(self, chat_mode: str, chat_id: int, stream_id: int | None):
+        if chat_mode != 'group' or stream_id is None:
+            return
+        try:
+            await self.bot.delete_message(chat_id=chat_id, message_id=stream_id)
+        except telegram.error.TelegramError:
+            pass
+
+    @staticmethod
+    def _is_form_placeholder_chunk(text: str) -> bool:
+        """Return True for invisible placeholder chunks used to carry forms."""
+
+        if not text:
+            return True
+
+        cleaned = text.replace('\u200b', '').replace('\u200c', '').replace('\u200d', '').replace('\ufeff', '').strip()
+        return cleaned == ''
+
     async def create_message_card(self, message_id, event):
         assert isinstance(event.source_platform_object, Update)
         update = event.source_platform_object
         chat_id = update.effective_chat.id
-        chat_type = update.effective_chat.type
         effective_message = update.effective_message
         message_thread_id = getattr(effective_message, 'message_thread_id', None) if effective_message else None
 
-        if chat_type == 'private':
-            import time as _time
-
-            draft_id = int(_time.time() * 1000)
-            self.msg_stream_id[message_id] = ('private', draft_id)
-            args = self._build_message_args(chat_id, 'Thinking...', message_thread_id, draft_id=draft_id)
-            try:
-                await self.bot.send_message_draft(**args)
-            except (telegram.error.RetryAfter, telegram.error.BadRequest):
-                pass
-        else:
-            args = self._build_message_args(chat_id, 'Thinking...', message_thread_id)
-            send_msg = await self.bot.send_message(**args)
-            self.msg_stream_id[message_id] = ('group', send_msg.message_id)
+        args = self._build_message_args(chat_id, 'Thinking...', message_thread_id)
+        send_msg = await self.bot.send_message(**args)
+        self.msg_stream_id[message_id] = ('message', send_msg.message_id, False)
 
         return True
 
@@ -473,7 +479,9 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if message_id not in self.msg_stream_id:
             return
 
-        chat_mode, stream_id = self.msg_stream_id[message_id]
+        stream_state = self.msg_stream_id[message_id]
+        chat_mode, stream_id = stream_state[:2]
+        has_visible_content = len(stream_state) > 2 and stream_state[2]
         components = await TelegramMessageConverter.yiri2target(message, self.bot)
 
         if not components or components[0]['type'] != 'text':
@@ -485,8 +493,17 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         form_data = getattr(bot_message, '_form_data', None)
 
         if form_data and is_final:
+            if not has_visible_content:
+                await self._send_form_action_buttons(message_source, form_data, edit_message_id=stream_id)
+            else:
+                await self._send_form_action_buttons(message_source, form_data)
             self.msg_stream_id.pop(message_id, None)
-            await self._send_form_action_buttons(message_source, form_data)
+            return
+
+        if self._is_form_placeholder_chunk(content):
+            if is_final and bot_message.tool_calls is None and not has_visible_content:
+                await self._delete_group_stream_message(chat_mode, chat_id, stream_id)
+                self.msg_stream_id.pop(message_id, None)
             return
 
         if chat_mode == 'private':
@@ -504,6 +521,7 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                             pass
                     else:
                         pass  # Ignore other draft errors (cosmetic)
+                self.msg_stream_id[message_id] = (chat_mode, stream_id, True)
             if is_final and bot_message.tool_calls is None:
                 # Finalise: send the real message, discard the draft
                 args = self._build_message_args(chat_id, content, message_thread_id)
@@ -518,7 +536,22 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 self.msg_stream_id.pop(message_id)
         else:
             # Streaming via edit_message_text (persistent message)
-            if (msg_seq - 1) % 8 == 0 or is_final:
+            if stream_id is None:
+                args = self._build_message_args(chat_id, content, message_thread_id)
+                try:
+                    send_msg = await self.bot.send_message(**args)
+                except telegram.error.BadRequest as exc:
+                    if 'Message_too_long' in str(exc):
+                        args['text'] = self._process_markdown(content[:4000] + '\n\n鈥?(truncated)')
+                        send_msg = await self.bot.send_message(**args)
+                    else:
+                        raise
+                self.msg_stream_id[message_id] = (chat_mode, send_msg.message_id, True)
+                if is_final and bot_message.tool_calls is None:
+                    self.msg_stream_id.pop(message_id, None)
+                return
+
+            if not has_visible_content or (msg_seq - 1) % 8 == 0 or is_final:
                 args = {
                     'message_id': stream_id,
                     'chat_id': chat_id,
@@ -534,6 +567,7 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                         await self.bot.edit_message_text(**args)
                     else:
                         raise
+                self.msg_stream_id[message_id] = (chat_mode, stream_id, True)
 
             if is_final and bot_message.tool_calls is None:
                 self.msg_stream_id.pop(message_id)
@@ -542,6 +576,7 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         self,
         message_source: platform_events.MessageEvent,
         form_data: dict,
+        edit_message_id: int | None = None,
     ):
         """Send inline keyboard buttons for Dify human_input_required form actions."""
         actions = form_data.get('actions', [])
@@ -603,6 +638,20 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         if message_thread_id:
             args['message_thread_id'] = message_thread_id
+
+        if edit_message_id is not None:
+            edit_args = {
+                'chat_id': chat_id,
+                'message_id': edit_message_id,
+                'text': args['text'],
+            }
+            if 'reply_markup' in args:
+                edit_args['reply_markup'] = args['reply_markup']
+            try:
+                await self.bot.edit_message_text(**edit_args)
+                return
+            except telegram.error.TelegramError:
+                await self._delete_group_stream_message('group', chat_id, edit_message_id)
 
         await self.bot.send_message(**args)
 
