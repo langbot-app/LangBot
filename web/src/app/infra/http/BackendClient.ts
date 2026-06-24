@@ -1332,6 +1332,19 @@ export class BackendClient extends BaseHttpClient {
     return this.post('/api/v1/survey/dismiss', { survey_id: surveyId });
   }
 
+  public submitFeedback(data: {
+    content: string;
+    page_url?: string;
+    user_agent?: string;
+    attachments?: Array<{
+      name: string;
+      mime_type: string;
+      data_url: string;
+    }>;
+  }): Promise<object> {
+    return this.post('/api/v1/survey/feedback', data);
+  }
+
   // ============ Skills API ============
 
   public getSkills(): Promise<ApiRespSkills> {

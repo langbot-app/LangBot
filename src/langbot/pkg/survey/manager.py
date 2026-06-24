@@ -159,6 +159,21 @@ class SurveyManager:
         """Clear the pending survey (after user responds or dismisses)."""
         self._pending_survey = None
 
+    async def _build_base_metadata(self, user_email: str | None = None) -> dict:
+        metadata = {
+            'version': constants.semantic_version,
+            'instance_id': constants.instance_id,
+        }
+        if user_email:
+            metadata['login_account'] = user_email
+            try:
+                user_obj = await self.ap.user_service.get_user_by_email(user_email)
+                metadata['account_type'] = getattr(user_obj, 'account_type', '') or 'local'
+                metadata['space_account_uuid'] = getattr(user_obj, 'space_account_uuid', '') or ''
+            except Exception:
+                pass
+        return metadata
+
     async def submit_response(self, survey_id: str, answers: dict, completed: bool = True) -> bool:
         """Submit a survey response to Space."""
         if not self._is_space_configured():
@@ -169,9 +184,7 @@ class SurveyManager:
                 'survey_id': survey_id,
                 'instance_id': constants.instance_id,
                 'answers': answers,
-                'metadata': {
-                    'version': constants.semantic_version,
-                },
+                'metadata': await self._build_base_metadata(),
                 'completed': completed,
             }
             async with httpx.AsyncClient(timeout=httpx.Timeout(10)) as client:
@@ -181,6 +194,41 @@ class SurveyManager:
                     return True
         except Exception as e:
             self.ap.logger.warning(f'Failed to submit survey response: {e}')
+        return False
+
+    async def submit_feedback(
+        self,
+        content: str,
+        attachments: list[dict],
+        page_url: str,
+        user_agent: str,
+        user_email: str | None = None,
+    ) -> bool:
+        """Submit an on-demand user feedback item to Space."""
+        if not self._is_space_configured():
+            return False
+        try:
+            url = f'{self._space_url}/api/v1/survey/feedback'
+            metadata = await self._build_base_metadata(user_email)
+            metadata.update(
+                {
+                    'page_url': page_url,
+                    'user_agent': user_agent,
+                }
+            )
+            payload = {
+                'instance_id': constants.instance_id,
+                'content': content,
+                'attachments': attachments,
+                'metadata': metadata,
+            }
+            async with httpx.AsyncClient(timeout=httpx.Timeout(30)) as client:
+                resp = await client.post(url, json=payload)
+                if resp.status_code == 200:
+                    return True
+                self.ap.logger.warning(f'Failed to submit feedback: {resp.status_code} {resp.text[:200]}')
+        except Exception as e:
+            self.ap.logger.warning(f'Failed to submit feedback: {e}')
         return False
 
     async def dismiss_survey(self, survey_id: str) -> bool:
