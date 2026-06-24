@@ -27,7 +27,7 @@
 
 ### 4. 向量数据库 (`vector/vdbs/`)
 - **路径**: `src/langbot/pkg/vector/vdbs/`
-- **模块**: chroma, milvus, pgvector, qdrant, seekdb
+- **模块**: chroma, milvus, pgvector, qdrant, seekdb, valkey_search
 - **排除原因**: 需要真实向量数据库实例运行
 - **测试方式**: 需要 Docker 启动测试数据库或 mock
 - **状态**: 后续可补充 mock 测试
