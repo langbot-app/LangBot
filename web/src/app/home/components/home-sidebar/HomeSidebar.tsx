@@ -100,6 +100,7 @@ import {
 } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { useSidebarData, SidebarEntityItem } from './SidebarDataContext';
+import { FeedbackPopoverContent } from './FeedbackPopover';
 
 // Compare two version strings, returns true if v1 > v2
 function compareVersions(v1: string, v2: string): boolean {
@@ -2039,17 +2040,21 @@ export default function HomeSidebar({
                       <CircleHelp />
                       {t('common.helpDocs')}
                     </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => {
-                        window.open(
-                          'https://github.com/langbot-app/LangBot/issues',
-                          '_blank',
-                        );
-                      }}
-                    >
-                      <Lightbulb />
-                      {t('common.featureRequest')}
-                    </DropdownMenuItem>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <DropdownMenuItem onSelect={(event) => event.preventDefault()}>
+                          <Lightbulb />
+                          {t('common.featureRequest')}
+                        </DropdownMenuItem>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        side={isMobile ? 'bottom' : 'right'}
+                        align="start"
+                        className="w-auto p-3"
+                      >
+                        <FeedbackPopoverContent onSubmitted={() => setUserMenuOpen(false)} />
+                      </PopoverContent>
+                    </Popover>
                     <DropdownMenuItem
                       onClick={() => {
                         window.open(
