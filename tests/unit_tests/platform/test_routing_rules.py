@@ -2,6 +2,7 @@
 RuntimeBot.resolve_pipeline_uuid and _match_operator unit tests
 """
 
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 
@@ -278,3 +279,108 @@ class TestResolvePipelineUuid:
         uuid, routed = bot.resolve_pipeline_uuid('person', '123', 'normal message')
         assert uuid == 'default-uuid'
         assert routed is False
+
+
+class TestEBAEventBindings:
+    """Test RuntimeBot EBA event binding helpers."""
+
+    @staticmethod
+    def _make_bot(bindings):
+        from langbot.pkg.platform.botmgr import RuntimeBot
+
+        bot = object.__new__(RuntimeBot)
+        bot.bot_entity = SimpleNamespace(event_bindings=bindings)
+        return bot
+
+    def test_resolve_eba_event_binding_uses_enabled_pattern_filters_priority_and_order(self):
+        """The selected binding is the first matching highest-priority binding."""
+        bot = self._make_bot(
+            [
+                {
+                    'id': 'disabled',
+                    'enabled': False,
+                    'event_pattern': 'platform.member.joined',
+                    'target_type': 'agent',
+                    'target_uuid': 'agent-disabled',
+                    'priority': 100,
+                    'order': 0,
+                },
+                {
+                    'id': 'wrong-room',
+                    'event_pattern': 'platform.member.joined',
+                    'target_type': 'agent',
+                    'target_uuid': 'agent-wrong-room',
+                    'filters': [{'field': 'room.id', 'operator': 'eq', 'value': 'room-2'}],
+                    'priority': 50,
+                    'order': 1,
+                },
+                {
+                    'id': 'first-high',
+                    'event_pattern': 'platform.member.joined',
+                    'target_type': 'agent',
+                    'target_uuid': 'agent-first',
+                    'filters': [{'field': 'room.id', 'operator': 'eq', 'value': 'room-1'}],
+                    'priority': 10,
+                    'order': 2,
+                },
+                {
+                    'id': 'second-high',
+                    'event_pattern': 'platform.member.*',
+                    'target_type': 'agent',
+                    'target_uuid': 'agent-second',
+                    'filters': [{'field': 'room.id', 'operator': 'eq', 'value': 'room-1'}],
+                    'priority': 10,
+                    'order': 3,
+                },
+                {
+                    'id': 'fallback',
+                    'event_pattern': '*',
+                    'target_type': 'discard',
+                    'priority': 1,
+                    'order': 4,
+                },
+            ]
+        )
+
+        selected = bot._resolve_eba_event_binding(
+            {'room': {'id': 'room-1'}},
+            'platform.member.joined',
+        )
+
+        assert selected['id'] == 'first-high'
+        assert selected['target_uuid'] == 'agent-first'
+
+    def test_agent_product_to_binding_projects_runner_config_and_policies(self):
+        """Agent products become bot-scoped runner bindings for EBA dispatch."""
+        from langbot.pkg.platform.botmgr import RuntimeBot
+
+        binding = RuntimeBot._agent_product_to_binding(
+            {
+                'uuid': 'agent-1',
+                'component_ref': 'plugin:test/fallback/default',
+                'config': {
+                    'runner': {'id': 'plugin:test/runner/default'},
+                    'runner_config': {
+                        'plugin:test/runner/default': {
+                            'temperature': 0.2,
+                            'max_tokens': 1000,
+                        }
+                    },
+                },
+            },
+            {'id': 'binding-1'},
+            'platform.member.joined',
+            'bot-1',
+        )
+
+        assert binding is not None
+        assert binding.binding_id == 'bot:bot-1:binding-1'
+        assert binding.scope.scope_type == 'bot'
+        assert binding.scope.scope_id == 'bot-1'
+        assert binding.event_types == ['platform.member.joined']
+        assert binding.runner_id == 'plugin:test/runner/default'
+        assert binding.runner_config == {'temperature': 0.2, 'max_tokens': 1000}
+        assert binding.delivery_policy.enable_streaming is False
+        assert binding.delivery_policy.enable_reply is True
+        assert binding.state_policy.state_scopes == ['conversation', 'actor', 'subject', 'runner']
+        assert binding.agent_id == 'agent-1'
