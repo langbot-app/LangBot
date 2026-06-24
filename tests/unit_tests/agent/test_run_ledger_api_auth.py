@@ -33,11 +33,12 @@ class FakeConnection:
 
 
 class FakeApplication:
-    def __init__(self, db_engine, admin_plugins=None, runner_registry=None):
+    def __init__(self, db_engine, admin_plugins=None, runner_registry=None, orchestrator=None):
         self.logger = MagicMock()
         self.persistence_mgr = MagicMock()
         self.persistence_mgr.get_db_engine = MagicMock(return_value=db_engine)
         self.agent_runner_registry = runner_registry
+        self.agent_run_orchestrator = orchestrator
         self.instance_config = SimpleNamespace(
             data={
                 'agent_runner': {
@@ -72,16 +73,66 @@ class FakeRunnerRegistry:
         self.runners = runners
         self.calls = []
 
+    async def get(self, runner_id, bound_plugins=None):
+        self.calls.append({'runner_id': runner_id, 'bound_plugins': bound_plugins})
+        if isinstance(self.runners, dict):
+            if runner_id not in self.runners:
+                raise KeyError(runner_id)
+            return self.runners[runner_id]
+        for runner in self.runners:
+            if getattr(runner, 'id', None) == runner_id:
+                return runner
+        raise KeyError(runner_id)
+
     async def list_runners(self, *, bound_plugins=None, use_cache=True):
         self.calls.append({'bound_plugins': bound_plugins, 'use_cache': use_cache})
         return self.runners
 
 
-def _handler(db_engine, admin_plugins=None, runner_registry=None):
+class FakeProgrammaticOrchestrator:
+    def __init__(self, db_engine):
+        self.db_engine = db_engine
+        self.calls = []
+
+    async def run(self, event, binding, bound_plugins=None, adapter_context=None, run_id=None):
+        self.calls.append(
+            {
+                'event': event,
+                'binding': binding,
+                'bound_plugins': bound_plugins,
+                'adapter_context': adapter_context,
+                'run_id': run_id,
+            }
+        )
+        store = RunLedgerStore(self.db_engine)
+        await store.create_run(
+            run_id=run_id,
+            event_id=event.event_id,
+            binding_id=binding.binding_id,
+            runner_id=binding.runner_id,
+            conversation_id=event.conversation_id,
+            thread_id=event.thread_id,
+            workspace_id=event.workspace_id,
+            bot_id=event.bot_id,
+            authorization={'available_apis': {}},
+            metadata={'event_type': event.event_type, 'source': event.source},
+            status='running',
+        )
+        await store.finalize_run(run_id=run_id, status='completed', status_reason='done')
+        if False:
+            yield None
+
+
+def _handler(db_engine, admin_plugins=None, runner_registry=None, orchestrator=None):
     async def fake_disconnect():
         return True
 
-    fake_app = FakeApplication(db_engine, admin_plugins=admin_plugins, runner_registry=runner_registry)
+    fake_app = FakeApplication(
+        db_engine,
+        admin_plugins=admin_plugins,
+        runner_registry=runner_registry,
+        orchestrator=orchestrator,
+    )
     return RuntimeConnectionHandler(FakeConnection(), fake_disconnect, fake_app)
 
 
@@ -1258,6 +1309,64 @@ async def test_runtime_register_heartbeat_and_list_actions(session_registry, db_
 
     assert page.code == 0
     assert [item['runtime_id'] for item in page.data['items']] == ['runtime_1']
+
+
+@pytest.mark.asyncio
+async def test_admin_run_create_starts_programmatic_run(db_engine):
+    orchestrator = FakeProgrammaticOrchestrator(db_engine)
+    runner_id = 'plugin:test/runner/default'
+    registry = FakeRunnerRegistry({runner_id: SimpleNamespace(id=runner_id)})
+    handler = _handler(
+        db_engine,
+        admin_plugins=[{'identity': 'admin/plugin', 'permissions': ['agent_run:admin']}],
+        runner_registry=registry,
+        orchestrator=orchestrator,
+    )
+    run_create = handler.actions[PluginToRuntimeAction.RUN_CREATE.value]
+
+    result = await run_create(
+        {
+            'caller_plugin_identity': 'admin/plugin',
+            'run_id': 'run_programmatic',
+            'runner_id': runner_id,
+            'input': {'text': 'work on issue 1', 'contents': [], 'attachments': []},
+            'conversation_id': 'conv_issue_board',
+            'event_type': 'api.invoked',
+            'wait_for_completion': True,
+        }
+    )
+
+    assert result.code == 0
+    assert result.data['run_id'] == 'run_programmatic'
+    assert result.data['runner_id'] == runner_id
+    assert result.data['status'] == 'completed'
+    assert len(orchestrator.calls) == 1
+    call = orchestrator.calls[0]
+    assert call['run_id'] == 'run_programmatic'
+    assert call['event'].event_type == 'api.invoked'
+    assert call['event'].source == 'api'
+    assert call['event'].conversation_id == 'conv_issue_board'
+    assert call['binding'].runner_id == runner_id
+    assert call['binding'].delivery_policy.enable_reply is False
+
+
+@pytest.mark.asyncio
+async def test_run_create_requires_admin_permission(db_engine):
+    orchestrator = FakeProgrammaticOrchestrator(db_engine)
+    handler = _handler(db_engine, orchestrator=orchestrator)
+    run_create = handler.actions[PluginToRuntimeAction.RUN_CREATE.value]
+
+    result = await run_create(
+        {
+            'caller_plugin_identity': 'regular/plugin',
+            'runner_id': 'plugin:test/runner/default',
+            'input': {'text': 'work'},
+        }
+    )
+
+    assert result.code != 0
+    assert 'not authorized' in result.message
+    assert orchestrator.calls == []
 
 
 @pytest.mark.asyncio

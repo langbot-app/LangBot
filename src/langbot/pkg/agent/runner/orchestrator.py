@@ -68,6 +68,7 @@ class AgentRunOrchestrator:
         binding: AgentBinding,
         bound_plugins: list[str] | None = None,
         adapter_context: dict[str, typing.Any] | None = None,
+        run_id: str | None = None,
     ) -> typing.AsyncGenerator[provider_message.Message | provider_message.MessageChunk, None]:
         """Run an AgentRunner from an event-first envelope."""
         runner_id = binding.runner_id
@@ -84,6 +85,7 @@ class AgentRunOrchestrator:
             binding=binding,
             descriptor=descriptor,
             resources=resources,
+            run_id=run_id,
         )
 
         session_query_id = None

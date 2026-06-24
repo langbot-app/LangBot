@@ -220,6 +220,7 @@ class AgentRunContextBuilder:
         binding: AgentBinding,
         descriptor: AgentRunnerDescriptor,
         resources: AgentResources,
+        run_id: str | None = None,
     ) -> AgentRunContextPayload:
         """Build AgentRunContext from event-first envelope.
 
@@ -235,8 +236,8 @@ class AgentRunContextBuilder:
         Returns:
             AgentRunContextPayload for the runner
         """
-        # Generate new run_id
-        run_id = str(uuid.uuid4())
+        # Generate new run_id unless an API caller already reserved one.
+        run_id = run_id or str(uuid.uuid4())
 
         # Build trigger from event
         trigger: AgentTrigger = {
