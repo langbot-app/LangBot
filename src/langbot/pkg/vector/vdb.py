@@ -126,12 +126,3 @@ class VectorDatabase(abc.ABC):
     async def delete_collection(self, collection: str):
         """Delete collection."""
         pass
-
-    async def close(self) -> None:
-        """Release any resources held by the backend (connections, clients).
-
-        Default is a no-op. Backends that hold long-lived connections (e.g.
-        Valkey Search, pgvector) should override this to close them cleanly.
-        Safe to call even when nothing was opened.
-        """
-        return None
