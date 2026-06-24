@@ -17,6 +17,10 @@ export class DynamicFormItemConfig implements IDynamicFormItemSchema {
   options?: IDynamicFormItemOption[];
   show_if?: IShowIfCondition;
   login_platform?: string;
+  url?: string;
+  download_filename?: string;
+  help_links?: Record<string, string>;
+  help_label?: I18nObject;
 
   constructor(params: IDynamicFormItemSchema) {
     this.id = params.id;
@@ -29,6 +33,10 @@ export class DynamicFormItemConfig implements IDynamicFormItemSchema {
     this.options = params.options;
     this.show_if = params.show_if;
     this.login_platform = params.login_platform;
+    this.url = params.url;
+    this.download_filename = params.download_filename;
+    this.help_links = params.help_links;
+    this.help_label = params.help_label;
   }
 }
 

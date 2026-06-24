@@ -22,6 +22,10 @@ export interface IDynamicFormItemSchema {
   scopes?: string[];
   accept?: string; // For file type: accepted MIME types
   login_platform?: string; // For qr-code-login type: platform identifier (e.g. 'feishu', 'weixin')
+  url?: string; // For download-link type: relative or absolute download URL
+  download_filename?: string; // Optional filename for download-link type
+  help_links?: Record<string, string>; // Optional docs links for display-only fields
+  help_label?: I18nObject; // Optional label for help_links
 }
 
 export enum DynamicFormItemType {
@@ -48,6 +52,7 @@ export enum DynamicFormItemType {
   WEBHOOK_URL = 'webhook-url',
   EMBED_CODE = 'embed-code',
   QR_CODE_LOGIN = 'qr-code-login',
+  DOWNLOAD_LINK = 'download-link',
 }
 
 export interface IFileConfig {

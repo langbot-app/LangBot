@@ -60,6 +60,15 @@ class AdaptersRouterGroup(group.RouterGroup):
                 importutil.read_resource_file_bytes(icon_path), mimetype=mimetypes.guess_type(icon_path)[0]
             )
 
+        @self.route('/dingtalk/human-input-card-template', methods=['GET'], auth_type=group.AuthType.NONE)
+        async def _() -> quart.Response:
+            filename = 'dingtalk_human_input_card.json'
+            response = quart.Response(
+                importutil.read_resource_file_bytes(f'templates/{filename}'), mimetype='application/json'
+            )
+            response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+            return response
+
         # In-memory session store for active registrations
         _create_app_sessions: dict = {}
         _SESSION_TTL = 900  # 15 minutes

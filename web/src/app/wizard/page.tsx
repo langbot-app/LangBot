@@ -229,6 +229,10 @@ export default function WizardPage() {
           options: item.options,
           show_if: item.show_if,
           login_platform: item.login_platform,
+          url: item.url,
+          download_filename: item.download_filename,
+          help_links: item.help_links,
+          help_label: item.help_label,
         }),
     );
   }, [adapters, selectedAdapter]);
@@ -249,6 +253,10 @@ export default function WizardPage() {
           options: item.options,
           show_if: item.show_if,
           login_platform: item.login_platform,
+          url: item.url,
+          download_filename: item.download_filename,
+          help_links: item.help_links,
+          help_label: item.help_label,
         }),
     );
   }, [selectedRunnerConfigStage]);
