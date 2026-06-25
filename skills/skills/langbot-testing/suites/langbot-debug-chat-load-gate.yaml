@@ -11,5 +11,6 @@ tags:
 cases:
   - langbot-fake-provider-debug-chat-load
   - langbot-fake-provider-debug-chat-slow-load
+  - langbot-fake-provider-debug-chat-cross-pipeline-isolation
   - langbot-fake-provider-debug-chat-fault-recovery
   - langbot-space-debug-chat-concurrency-smoke

@@ -144,8 +144,26 @@ request because Debug Chat broadcasts messages to every connection in the same
 session; unique tokens prevent one connection from counting another
 connection's response as its own.
 
+When the fake provider is used, reports also include provider-side timing in
+`metrics.json`:
+
+- `fake_provider.duration_ms` and `fake_provider.first_content_chunk_ms`
+  measure the controlled provider itself.
+- `provider_timing.send_to_provider_start_ms` estimates WebSocket ingress,
+  pipeline dispatch, runner setup, and requester time before the provider
+  receives the request.
+- `provider_timing.provider_finish_to_ws_final_ms` estimates the path from
+  provider completion back to the final Debug Chat WebSocket response.
+- `provider_timing.langbot_overhead_estimate_ms` is the sum of those two
+  LangBot-side segments when wall-clock timestamps can be matched by the
+  unique expected response token.
+
 After the baseline passes, run `langbot-fake-provider-debug-chat-slow-load` to
 keep the same live backend path while injecting deterministic streaming latency.
+Run `langbot-fake-provider-debug-chat-cross-pipeline-isolation` to open
+concurrent Debug Chat connections against two fake-provider pipelines and fail
+if one pipeline receives the other pipeline's response token. This targets
+global pipeline-state regressions in the WebSocket Debug Chat path.
 Run `langbot-fake-provider-debug-chat-fault-recovery` to inject bounded HTTP
 provider failures and require both observed failures and later successful
 requests. The fault-recovery case is deliberately sequential because failed
@@ -165,6 +183,7 @@ Useful commands:
 ```bash
 rtk bin/lbs test run langbot-fake-provider-debug-chat-load --run-id langbot-fake-load-local
 rtk bin/lbs test run langbot-fake-provider-debug-chat-slow-load --run-id langbot-fake-slow-local
+rtk bin/lbs test run langbot-fake-provider-debug-chat-cross-pipeline-isolation --run-id langbot-fake-cross-pipeline-local
 rtk bin/lbs test run langbot-fake-provider-debug-chat-fault-recovery --run-id langbot-fake-fault-local
 rtk bin/lbs test run langbot-space-debug-chat-concurrency-smoke --run-id langbot-space-smoke-local
 rtk bin/lbs suite run langbot-debug-chat-load-gate --run-id langbot-debug-chat-load-local --include-manual-check
@@ -184,8 +203,9 @@ Use the smallest gate that answers the quality question:
   starting with Pipeline Debug Chat send-to-visible-completion latency. Run it
   only when the browser profile and target pipeline are ready.
 - `langbot-debug-chat-load-gate`: WebSocket Debug Chat load checks, starting
-  with controlled fake-provider baseline, slow-provider, and fault-recovery
-  profiles, plus an optional low-volume real Space-provider smoke.
+  with controlled fake-provider baseline, slow-provider, cross-pipeline
+  isolation, and fault-recovery profiles, plus an optional low-volume real
+  Space-provider smoke.
 - `langbot-performance-reliability-gate`: combined starter gate for synthetic
   contracts plus live backend checks.
 

@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import net from "node:net";
 import tls from "node:tls";
 import { mkdir, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { env, exit } from "node:process";
 import {
   apiJson,
@@ -25,7 +25,7 @@ import {
 const DEFAULT_LOCAL_PASSWORD = "LangBotE2ELocalPass!2026";
 
 await loadEnvFiles();
-const caseId = env.LBS_CASE_ID || "langbot-debug-chat-concurrency";
+const caseId = env.LBS_CASE_ID || "langbot-debug-chat-cross-pipeline-isolation";
 const paths = evidencePaths(caseId);
 await ensureEvidence(paths);
 
@@ -36,26 +36,34 @@ const fakeProviderStatePath = resolve(paths.evidenceDir, "fake-provider-state.js
 const resetDiagnosticPath = resolve(paths.evidenceDir, "debug-chat-reset-diagnostic.json");
 const backendUrl = env.LANGBOT_BACKEND_URL || "";
 const fakeProviderUrl = env.LANGBOT_FAKE_PROVIDER_URL || "";
-const pipelineUrl = env.LANGBOT_E2E_PIPELINE_URL || env.LANGBOT_PIPELINE_URL || "";
-const pipelineName = env.LANGBOT_E2E_PIPELINE_NAME || env.LANGBOT_PIPELINE_NAME || "";
 const sessionType = env.LANGBOT_DEBUG_CHAT_LOAD_SESSION_TYPE || env.LANGBOT_E2E_DEBUG_CHAT_SESSION_TYPE || "person";
-const totalRequests = positiveInteger(env.LANGBOT_DEBUG_CHAT_LOAD_REQUESTS, defaultRequests(caseId));
-const concurrency = Math.min(totalRequests, positiveInteger(env.LANGBOT_DEBUG_CHAT_LOAD_CONCURRENCY, defaultConcurrency(caseId)));
-const timeoutMs = positiveInteger(env.LANGBOT_DEBUG_CHAT_LOAD_TIMEOUT_MS, defaultTimeout(caseId));
-const expectedPrefix = env.LANGBOT_DEBUG_CHAT_LOAD_EXPECTED_PREFIX || "LBQA";
-const promptTemplate = env.LANGBOT_DEBUG_CHAT_LOAD_PROMPT_TEMPLATE
-  || "请只回复 \"{expected}\"，不要解释，不要添加其他字符。";
+const requestsPerPipeline = positiveInteger(env.LANGBOT_DEBUG_CHAT_LOAD_REQUESTS, 6);
+const concurrency = Math.min(requestsPerPipeline * 2, positiveInteger(env.LANGBOT_DEBUG_CHAT_LOAD_CONCURRENCY, 4));
+const timeoutMs = positiveInteger(env.LANGBOT_DEBUG_CHAT_LOAD_TIMEOUT_MS, 30_000);
 const stream = bool(env.LANGBOT_DEBUG_CHAT_LOAD_STREAM, true);
 const resetBeforeRun = bool(env.LANGBOT_DEBUG_CHAT_LOAD_RESET, true);
-const responseP95BudgetMs = positiveNumber(env.LANGBOT_DEBUG_CHAT_LOAD_RESPONSE_P95_MS, defaultP95Budget(caseId));
-const firstResponseP95BudgetMs = positiveNumber(env.LANGBOT_DEBUG_CHAT_LOAD_FIRST_RESPONSE_P95_MS, 0);
+const responseP95BudgetMs = positiveNumber(env.LANGBOT_DEBUG_CHAT_LOAD_RESPONSE_P95_MS, 5_000);
 const maxErrorRate = positiveNumber(env.LANGBOT_DEBUG_CHAT_LOAD_MAX_ERROR_RATE, 0);
-const minErrorRate = positiveNumber(env.LANGBOT_DEBUG_CHAT_LOAD_MIN_ERROR_RATE, 0);
-const minErrorCount = nonNegativeInteger(env.LANGBOT_DEBUG_CHAT_LOAD_MIN_ERROR_COUNT, 0);
-const minOkCount = nonNegativeInteger(env.LANGBOT_DEBUG_CHAT_LOAD_MIN_OK_COUNT, 0);
-const minProviderFaultCount = nonNegativeInteger(env.LANGBOT_DEBUG_CHAT_LOAD_MIN_PROVIDER_FAULT_COUNT, 0);
-const failOnFinalMismatch = bool(env.LANGBOT_DEBUG_CHAT_LOAD_FAIL_ON_FINAL_MISMATCH, false);
+const promptTemplate = env.LANGBOT_DEBUG_CHAT_LOAD_PROMPT_TEMPLATE
+  || "请只回复 \"{expected}\"，不要解释，不要添加其他字符。";
 const failureSignals = textList(env.LANGBOT_E2E_FAILURE_SIGNALS || env.LANGBOT_DEBUG_CHAT_LOAD_FAILURE_SIGNALS || "");
+
+const pipelineTargets = [
+  {
+    label: "A",
+    expectedPrefix: "PIPEA",
+    otherPrefix: "PIPEB",
+    url: env.LANGBOT_FAKE_PROVIDER_PIPELINE_A_URL || "",
+    name: env.LANGBOT_FAKE_PROVIDER_PIPELINE_A_NAME || "",
+  },
+  {
+    label: "B",
+    expectedPrefix: "PIPEB",
+    otherPrefix: "PIPEA",
+    url: env.LANGBOT_FAKE_PROVIDER_PIPELINE_B_URL || "",
+    name: env.LANGBOT_FAKE_PROVIDER_PIPELINE_B_NAME || "",
+  },
+];
 
 const result = {
   source: "automation",
@@ -69,17 +77,15 @@ const result = {
   finished_at_local: "",
   duration_ms: 0,
   backend_url: backendUrl,
-  pipeline_url: pipelineUrl,
-  pipeline_name: pipelineName,
-  pipeline_id: "",
   session_type: sessionType,
+  pipelines: [],
   load_profile: {
-    requests: totalRequests,
+    requests_per_pipeline: requestsPerPipeline,
+    total_requests: requestsPerPipeline * 2,
     concurrency,
     timeout_ms: timeoutMs,
     stream,
     reset_before_run: resetBeforeRun,
-    fail_on_final_mismatch: failOnFinalMismatch,
   },
   evidence: {
     network_log: paths.networkLog,
@@ -101,6 +107,13 @@ try {
   if (!["person", "group"].includes(sessionType)) {
     throw new Error(`LANGBOT_DEBUG_CHAT_LOAD_SESSION_TYPE must be person or group, got ${sessionType}.`);
   }
+  for (const target of pipelineTargets) {
+    if (!target.url && !target.name) {
+      result.status = "env_issue";
+      throw new Error(`Set LANGBOT_FAKE_PROVIDER_PIPELINE_${target.label}_URL or LANGBOT_FAKE_PROVIDER_PIPELINE_${target.label}_NAME.`);
+    }
+  }
+
   const backendReady = await backendReachable(backendUrl);
   if (!backendReady) {
     result.status = "env_issue";
@@ -111,45 +124,67 @@ try {
   const password = env.LANGBOT_E2E_LOGIN_PASSWORD || DEFAULT_LOCAL_PASSWORD;
   if (!user) {
     result.status = "env_issue";
-    throw new Error("LANGBOT_E2E_LOGIN_USER is required so this probe can resolve/reset the Debug Chat session.");
+    throw new Error("LANGBOT_E2E_LOGIN_USER is required so this probe can resolve/reset Debug Chat sessions.");
   }
   const auth = await resetAndAuthLocalUser({ backendUrl, user, password });
-
-  const pipeline = await resolvePipeline({ backendUrl, token: auth.token, pipelineUrl, pipelineName });
-  result.pipeline_id = pipeline.id;
-  result.pipeline_name = pipeline.name || pipelineName;
-  if (!result.pipeline_url && env.LANGBOT_FRONTEND_URL) {
-    result.pipeline_url = `${env.LANGBOT_FRONTEND_URL.replace(/\/$/, "")}/home/pipelines?id=${encodeURIComponent(pipeline.id)}`;
+  const pipelines = [];
+  for (const target of pipelineTargets) {
+    const pipeline = await resolvePipeline({
+      backendUrl,
+      token: auth.token,
+      pipelineUrl: target.url,
+      pipelineName: target.name,
+    });
+    pipelines.push({
+      ...target,
+      id: pipeline.id,
+      name: pipeline.name || target.name,
+      wsUrl: websocketUrl(backendUrl, pipeline.id, sessionType),
+    });
   }
+  result.pipelines = pipelines.map((pipeline) => ({
+    label: pipeline.label,
+    id: pipeline.id,
+    name: pipeline.name,
+    url: pipeline.url,
+  }));
 
   if (resetBeforeRun) {
-    const reset = await apiJson(backendUrl, `/api/v1/pipelines/${encodeURIComponent(pipeline.id)}/ws/reset/${encodeURIComponent(sessionType)}`, {
-      method: "POST",
-      token: auth.token,
-    });
-    const resetDiagnostic = {
-      status: isApiFailure(reset) ? "fail" : "ready",
-      http_status: reset.status,
-      code: reset.json.code ?? null,
-      reason: isApiFailure(reset) ? reset.json.msg || "Debug Chat reset failed." : "Debug Chat session reset.",
-    };
-    await writeFile(resetDiagnosticPath, `${JSON.stringify(resetDiagnostic, null, 2)}\n`, "utf8");
-    if (resetDiagnostic.status === "fail") {
-      throw new Error(resetDiagnostic.reason);
+    const resetDiagnostics = [];
+    for (const pipeline of pipelines) {
+      const reset = await apiJson(backendUrl, `/api/v1/pipelines/${encodeURIComponent(pipeline.id)}/ws/reset/${encodeURIComponent(sessionType)}`, {
+        method: "POST",
+        token: auth.token,
+      });
+      resetDiagnostics.push({
+        pipeline_label: pipeline.label,
+        pipeline_id: pipeline.id,
+        status: isApiFailure(reset) ? "fail" : "ready",
+        http_status: reset.status,
+        code: reset.json.code ?? null,
+        reason: isApiFailure(reset) ? reset.json.msg || "Debug Chat reset failed." : "Debug Chat session reset.",
+      });
+    }
+    await writeFile(resetDiagnosticPath, `${JSON.stringify(resetDiagnostics, null, 2)}\n`, "utf8");
+    const failedReset = resetDiagnostics.find((item) => item.status === "fail");
+    if (failedReset) throw new Error(failedReset.reason);
+  }
+  await resetFakeProvider(fakeProviderUrl);
+
+  const jobs = [];
+  for (let index = 0; index < requestsPerPipeline; index += 1) {
+    for (const pipeline of pipelines) {
+      jobs.push({ ...pipeline, index });
     }
   }
 
-  const wsUrl = websocketUrl(backendUrl, pipeline.id, sessionType);
   const loadStartedAt = performance.now();
   const samples = await runLoad({
-    wsUrl,
-    totalRequests,
+    jobs,
     concurrency,
     timeoutMs,
     promptTemplate,
-    expectedPrefix,
     stream,
-    failOnFinalMismatch,
     failureSignals,
   });
   const loadDurationMs = performance.now() - loadStartedAt;
@@ -159,12 +194,11 @@ try {
   }
   const metrics = buildMetrics({
     samples,
-    totalRequests,
+    requestsPerPipeline,
     concurrency,
     timeoutMs,
     loadDurationMs,
     backendUrl,
-    pipelineId: pipeline.id,
     sessionType,
     fakeProviderState,
   });
@@ -172,29 +206,27 @@ try {
   const passed = Object.values(thresholds).every((item) => item.pass);
   result.status = passed ? "pass" : "fail";
   result.reason = passed
-    ? "Debug Chat WebSocket concurrency probe passed all thresholds."
-    : "Debug Chat WebSocket concurrency probe breached latency or error-rate thresholds.";
+    ? "Debug Chat cross-pipeline isolation probe passed all thresholds."
+    : "Debug Chat cross-pipeline isolation probe found leaks, errors, or latency threshold breaches.";
   result.metrics_summary = {
-    requests: metrics.total_requests,
+    requests_per_pipeline: metrics.requests_per_pipeline,
+    total_requests: metrics.total_requests,
     concurrency: metrics.concurrency,
     ok_count: metrics.ok_count,
     error_count: metrics.error_count,
+    cross_pipeline_leak_count: metrics.cross_pipeline_leak_count,
     timeout_count: metrics.timeout_count,
     error_rate: metrics.error_rate,
-    response_p50_ms: metrics.response_duration_ms.p50,
     response_p95_ms: metrics.response_duration_ms.p95,
-    first_assistant_event_p95_ms: metrics.first_assistant_event_ms.p95,
-    first_assistant_content_p95_ms: metrics.first_assistant_content_ms.p95,
     first_response_p95_ms: metrics.first_response_ms.p95,
     throughput_rps: metrics.throughput_rps,
     status_counts: metrics.status_counts,
+    by_pipeline: metrics.by_pipeline,
     fake_provider_request_count: metrics.fake_provider?.request_count ?? null,
-    fake_provider_fault_count: metrics.fake_provider?.fault_count ?? null,
     fake_provider_duration_p95_ms: metrics.provider_timing?.provider_duration_ms.p95 ?? null,
     langbot_overhead_estimate_p95_ms: metrics.provider_timing?.langbot_overhead_estimate_ms.p95 ?? null,
     send_to_provider_start_p95_ms: metrics.provider_timing?.send_to_provider_start_ms.p95 ?? null,
     provider_finish_to_ws_final_p95_ms: metrics.provider_timing?.provider_finish_to_ws_final_ms.p95 ?? null,
-    provider_timing_matched_request_count: metrics.provider_timing?.matched_request_count ?? null,
   };
   result.thresholds_summary = thresholds;
   result.artifacts = {
@@ -225,51 +257,6 @@ try {
 
 exit(result.status === "pass" ? 0 : result.status === "env_issue" || result.status === "blocked" ? 2 : 1);
 
-function defaultRequests(id) {
-  return id.includes("space") ? 3 : 12;
-}
-
-function defaultConcurrency(id) {
-  return id.includes("space") ? 1 : 4;
-}
-
-function defaultTimeout(id) {
-  return id.includes("space") ? 120_000 : 30_000;
-}
-
-function defaultP95Budget(id) {
-  return id.includes("space") ? 120_000 : 5_000;
-}
-
-function positiveInteger(value, fallback) {
-  const parsed = Number.parseInt(String(value || ""), 10);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-function nonNegativeInteger(value, fallback) {
-  const parsed = Number.parseInt(String(value ?? ""), 10);
-  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
-}
-
-function positiveNumber(value, fallback) {
-  const parsed = Number(value || "");
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
-}
-
-function bool(value, fallback) {
-  if (value === undefined || value === "") return fallback;
-  if (/^(1|true|yes|on)$/i.test(String(value))) return true;
-  if (/^(0|false|no|off)$/i.test(String(value))) return false;
-  return fallback;
-}
-
-function textList(value) {
-  return String(value || "")
-    .split(/\r?\n|,/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
 async function backendReachable(baseUrl) {
   try {
     const response = await fetch(`${baseUrl.replace(/\/$/, "")}/healthz`, {
@@ -278,6 +265,18 @@ async function backendReachable(baseUrl) {
     return response.status < 500;
   } catch {
     return false;
+  }
+}
+
+async function resetFakeProvider(rootUrl) {
+  if (!rootUrl) return;
+  try {
+    await fetch(`${normalizeProviderRootUrl(rootUrl)}/__qa/reset`, {
+      method: "POST",
+      signal: AbortSignal.timeout(3000),
+    });
+  } catch {
+    // Missing fake-provider diagnostics should not hide the isolation result.
   }
 }
 
@@ -334,7 +333,7 @@ async function resolvePipeline({ backendUrl, token, pipelineUrl, pipelineName })
     return { id: pipeline.uuid, name: pipeline.name || "" };
   }
   if (!pipelineName) {
-    throw new Error("Set LANGBOT_E2E_PIPELINE_URL or LANGBOT_E2E_PIPELINE_NAME before running this probe.");
+    throw new Error("Set pipeline URL or name before running this probe.");
   }
   const response = await apiJson(backendUrl, "/api/v1/pipelines", { token });
   if (isApiFailure(response)) {
@@ -351,27 +350,29 @@ function isApiFailure(response) {
   return response.status >= 400 || (response.json.code !== undefined && response.json.code !== 0);
 }
 
-function websocketUrl(baseUrl, pipelineId, sessionType) {
+function websocketUrl(baseUrl, pipelineId, sessionTypeValue) {
   const parsed = new URL(baseUrl);
   parsed.protocol = parsed.protocol === "https:" ? "wss:" : "ws:";
   parsed.pathname = `/api/v1/pipelines/${encodeURIComponent(pipelineId)}/ws/connect`;
-  parsed.search = `?session_type=${encodeURIComponent(sessionType)}`;
+  parsed.search = `?session_type=${encodeURIComponent(sessionTypeValue)}`;
   return parsed.toString();
 }
 
 async function runLoad(options) {
   const samples = [];
-  let nextIndex = 0;
+  const queue = [...options.jobs];
   const workers = Array.from({ length: options.concurrency }, async () => {
-    while (nextIndex < options.totalRequests) {
-      const index = nextIndex;
-      nextIndex += 1;
-      const sample = await runSingleRequest({ ...options, index });
+    while (queue.length > 0) {
+      const job = queue.shift();
+      if (!job) continue;
+      const sample = await runSingleRequest({ ...options, job });
       samples.push(sample);
     }
   });
   await Promise.all(workers);
-  return samples.sort((left, right) => left.index - right.index);
+  return samples.sort((left, right) => (
+    left.pipeline_label.localeCompare(right.pipeline_label) || left.index - right.index
+  ));
 }
 
 function expectedForIndex(prefix, index) {
@@ -383,23 +384,25 @@ function promptForIndex(template, expected) {
 }
 
 function runSingleRequest({
-  wsUrl,
-  index,
+  job,
   timeoutMs,
   promptTemplate,
-  expectedPrefix,
   stream,
-  failOnFinalMismatch,
   failureSignals,
 }) {
-  return new Promise((resolve) => {
-    const expected = expectedForIndex(expectedPrefix, index);
+  return new Promise((resolvePromise) => {
+    const expected = expectedForIndex(job.expectedPrefix, job.index);
     const prompt = promptForIndex(promptTemplate, expected);
     const sample = {
-      index,
+      index: job.index,
+      pipeline_label: job.label,
+      pipeline_id: job.id,
+      pipeline_name: job.name,
       status: "running",
       ok: false,
       expected_text: expected,
+      expected_prefix: job.expectedPrefix,
+      other_prefix: job.otherPrefix,
       prompt,
       response_text: "",
       started_at: new Date().toISOString(),
@@ -422,7 +425,8 @@ function runSingleRequest({
       finished_at: null,
       finished_epoch_ms: null,
       event_count: 0,
-      foreign_response_count: 0,
+      same_pipeline_foreign_response_count: 0,
+      cross_pipeline_leak_count: 0,
       last_foreign_response_text: "",
       error: "",
       close_code: null,
@@ -431,19 +435,19 @@ function runSingleRequest({
     let closed = false;
     let connectedAt = 0;
     let sentAt = 0;
-    const startedAt = performance.now();
+    const startedPerf = performance.now();
     let client = null;
     const timer = setTimeout(() => {
       finish("timeout", `Timed out after ${timeoutMs} ms.`);
     }, timeoutMs);
 
-    client = openRawWebSocket(wsUrl, {
+    client = openRawWebSocket(job.wsUrl, {
       onOpen() {
         connectedAt = performance.now();
         const now = Date.now();
         sample.connected_at = new Date(now).toISOString();
         sample.connected_epoch_ms = now;
-        sample.connected_ms = rounded(connectedAt - startedAt);
+        sample.connected_ms = rounded(connectedAt - startedPerf);
       },
       onMessage(text) {
         sample.event_count += 1;
@@ -455,7 +459,8 @@ function runSingleRequest({
           return;
         }
         appendLine(paths.networkLog, JSON.stringify({
-          request_index: index,
+          pipeline_label: job.label,
+          request_index: job.index,
           type: data.type,
           session_type: data.session_type || "",
           role: data.data?.role || "",
@@ -485,6 +490,11 @@ function runSingleRequest({
         markFirstAssistantEvent(sample, sentAt);
         if (content) sample.response_text = content;
         if (content) markFirstAssistantContent(sample, sentAt);
+        if (containsPipelineToken(content, job.otherPrefix)) {
+          sample.cross_pipeline_leak_count += 1;
+          finish("cross_pipeline_leak", `Pipeline ${job.label} received response from ${job.otherPrefix}: ${content}`);
+          return;
+        }
         if (content.includes(expected) && sample.first_response_ms === null && sentAt > 0) {
           const now = Date.now();
           sample.first_response_at = new Date(now).toISOString();
@@ -495,16 +505,19 @@ function runSingleRequest({
           const ok = sample.response_text.includes(expected);
           if (ok) {
             if (sample.first_response_ms === null && sentAt > 0) {
+              const now = Date.now();
+              sample.first_response_at = new Date(now).toISOString();
+              sample.first_response_epoch_ms = now;
               sample.first_response_ms = rounded(performance.now() - sentAt);
             }
             finish("pass", "");
           } else if (matchesFailureSignal(sample.response_text, failureSignals)) {
             finish("app_error", `Assistant final response matched a failure signal: ${sample.response_text}`);
-          } else if (failOnFinalMismatch && !containsLoadToken(sample.response_text, expectedPrefix)) {
-            finish("mismatch", `Final assistant response did not include ${expected}: ${sample.response_text}`);
-          } else {
-            sample.foreign_response_count += 1;
+          } else if (containsPipelineToken(sample.response_text, job.expectedPrefix)) {
+            sample.same_pipeline_foreign_response_count += 1;
             sample.last_foreign_response_text = sample.response_text;
+          } else {
+            finish("mismatch", `Final assistant response did not include ${expected}: ${sample.response_text}`);
           }
         }
       },
@@ -524,11 +537,11 @@ function runSingleRequest({
       clearTimeout(timer);
       sample.status = status;
       sample.ok = status === "pass";
-      sample.error = status === "timeout" && sample.foreign_response_count > 0
-        ? `${reason || ""} Saw ${sample.foreign_response_count} foreign assistant response(s); last=${sample.last_foreign_response_text}`
+      sample.error = status === "timeout" && sample.same_pipeline_foreign_response_count > 0
+        ? `${reason || ""} Saw ${sample.same_pipeline_foreign_response_count} same-pipeline foreign assistant response(s); last=${sample.last_foreign_response_text}`
         : reason || "";
       if (sentAt > 0) sample.response_duration_ms = rounded(performance.now() - sentAt);
-      else sample.response_duration_ms = rounded(performance.now() - startedAt);
+      else sample.response_duration_ms = rounded(performance.now() - startedPerf);
       const now = Date.now();
       sample.finished_at = new Date(now).toISOString();
       sample.finished_epoch_ms = now;
@@ -537,7 +550,7 @@ function runSingleRequest({
       } catch {
         // Closing a failed socket should not hide the sample result.
       }
-      resolve(sample);
+      resolvePromise(sample);
     }
   });
 }
@@ -558,7 +571,7 @@ function markFirstAssistantContent(sample, sentAt) {
   sample.first_assistant_content_ms = rounded(performance.now() - sentAt);
 }
 
-function containsLoadToken(text, prefix) {
+function containsPipelineToken(text, prefix) {
   const escaped = String(prefix).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`${escaped}-\\d{4}`).test(String(text || ""));
 }
@@ -723,6 +736,99 @@ function writeFrame(socket, opcode, payload) {
   socket.write(Buffer.concat([header, mask, masked]));
 }
 
+function buildMetrics({ samples, requestsPerPipeline, concurrency, timeoutMs, loadDurationMs, backendUrl, sessionType, fakeProviderState }) {
+  const okSamples = samples.filter((sample) => sample.ok);
+  const statusCounts = {};
+  const byPipeline = {};
+  for (const sample of samples) {
+    statusCounts[sample.status] = (statusCounts[sample.status] || 0) + 1;
+    if (!byPipeline[sample.pipeline_label]) {
+      byPipeline[sample.pipeline_label] = {
+        ok_count: 0,
+        error_count: 0,
+        cross_pipeline_leak_count: 0,
+        timeout_count: 0,
+      };
+    }
+    if (sample.ok) byPipeline[sample.pipeline_label].ok_count += 1;
+    else byPipeline[sample.pipeline_label].error_count += 1;
+    byPipeline[sample.pipeline_label].cross_pipeline_leak_count += sample.cross_pipeline_leak_count || 0;
+    if (sample.status === "timeout") byPipeline[sample.pipeline_label].timeout_count += 1;
+  }
+  const errorCount = samples.length - okSamples.length;
+  return {
+    probe: caseId,
+    backend_url: backendUrl,
+    session_type: sessionType,
+    requests_per_pipeline: requestsPerPipeline,
+    total_requests: requestsPerPipeline * 2,
+    completed_requests: samples.length,
+    concurrency,
+    timeout_ms: timeoutMs,
+    ok_count: okSamples.length,
+    error_count: errorCount,
+    timeout_count: samples.filter((sample) => sample.status === "timeout").length,
+    cross_pipeline_leak_count: samples.reduce((count, sample) => count + (sample.cross_pipeline_leak_count || 0), 0),
+    error_rate: samples.length === 0 ? 1 : rounded(errorCount / samples.length),
+    load_duration_ms: rounded(loadDurationMs),
+    throughput_rps: loadDurationMs <= 0 ? 0 : rounded(okSamples.length / (loadDurationMs / 1000)),
+    status_counts: statusCounts,
+    by_pipeline: byPipeline,
+    connected_ms: stats(samples.map((sample) => sample.connected_ms).filter(Number.isFinite)),
+    first_assistant_event_ms: stats(samples.map((sample) => sample.first_assistant_event_ms).filter(Number.isFinite)),
+    first_assistant_content_ms: stats(samples.map((sample) => sample.first_assistant_content_ms).filter(Number.isFinite)),
+    first_response_ms: stats(okSamples.map((sample) => sample.first_response_ms).filter(Number.isFinite)),
+    response_duration_ms: stats(okSamples.map((sample) => sample.response_duration_ms).filter(Number.isFinite)),
+    fake_provider: summarizeFakeProviderState(fakeProviderState),
+    provider_timing: buildProviderTimingMetrics(samples, fakeProviderState),
+    samples,
+  };
+}
+
+function buildThresholds(metrics) {
+  return {
+    cross_pipeline_leak_count: {
+      actual: metrics.cross_pipeline_leak_count,
+      max: 0,
+      pass: metrics.cross_pipeline_leak_count === 0,
+    },
+    error_rate: {
+      actual: metrics.error_rate,
+      max: maxErrorRate,
+      pass: metrics.error_rate <= maxErrorRate,
+    },
+    response_p95_ms: {
+      actual: metrics.response_duration_ms.p95,
+      max: responseP95BudgetMs,
+      pass: metrics.ok_count > 0 && metrics.response_duration_ms.p95 <= responseP95BudgetMs,
+    },
+  };
+}
+
+function positiveInteger(value, fallback) {
+  const parsed = Number.parseInt(String(value || ""), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function positiveNumber(value, fallback) {
+  const parsed = Number(value || "");
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function bool(value, fallback) {
+  if (value === undefined || value === "") return fallback;
+  if (/^(1|true|yes|on)$/i.test(String(value))) return true;
+  if (/^(0|false|no|off)$/i.test(String(value))) return false;
+  return fallback;
+}
+
+function textList(value) {
+  return String(value || "")
+    .split(/\r?\n|,/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function rounded(value) {
   return Number(value.toFixed(3));
 }
@@ -743,88 +849,6 @@ function stats(values) {
     p99: percentile(values, 99),
     max: rounded(Math.max(...values)),
   };
-}
-
-function buildMetrics({ samples, totalRequests, concurrency, timeoutMs, loadDurationMs, backendUrl, pipelineId, sessionType, fakeProviderState }) {
-  const okSamples = samples.filter((sample) => sample.ok);
-  const statusCounts = {};
-  for (const sample of samples) {
-    statusCounts[sample.status] = (statusCounts[sample.status] || 0) + 1;
-  }
-  const errorCount = samples.length - okSamples.length;
-  return {
-    probe: caseId,
-    backend_url: backendUrl,
-    pipeline_id: pipelineId,
-    session_type: sessionType,
-    total_requests: totalRequests,
-    completed_requests: samples.length,
-    concurrency,
-    timeout_ms: timeoutMs,
-    ok_count: okSamples.length,
-    error_count: errorCount,
-    timeout_count: samples.filter((sample) => sample.status === "timeout").length,
-    error_rate: samples.length === 0 ? 1 : rounded(errorCount / samples.length),
-    load_duration_ms: rounded(loadDurationMs),
-    throughput_rps: loadDurationMs <= 0 ? 0 : rounded(okSamples.length / (loadDurationMs / 1000)),
-    status_counts: statusCounts,
-    connected_ms: stats(samples.map((sample) => sample.connected_ms).filter(Number.isFinite)),
-    first_assistant_event_ms: stats(samples.map((sample) => sample.first_assistant_event_ms).filter(Number.isFinite)),
-    first_assistant_content_ms: stats(samples.map((sample) => sample.first_assistant_content_ms).filter(Number.isFinite)),
-    first_response_ms: stats(okSamples.map((sample) => sample.first_response_ms).filter(Number.isFinite)),
-    response_duration_ms: stats(okSamples.map((sample) => sample.response_duration_ms).filter(Number.isFinite)),
-    fake_provider: summarizeFakeProviderState(fakeProviderState),
-    provider_timing: buildProviderTimingMetrics(samples, fakeProviderState),
-    samples,
-  };
-}
-
-function buildThresholds(metrics) {
-  const thresholds = {
-    error_rate: { actual: metrics.error_rate, max: maxErrorRate, pass: metrics.error_rate <= maxErrorRate },
-    response_p95_ms: {
-      actual: metrics.response_duration_ms.p95,
-      max: responseP95BudgetMs,
-      pass: metrics.ok_count > 0 && metrics.response_duration_ms.p95 <= responseP95BudgetMs,
-    },
-  };
-  if (minErrorRate > 0) {
-    thresholds.error_rate_min = {
-      actual: metrics.error_rate,
-      min: minErrorRate,
-      pass: metrics.error_rate >= minErrorRate,
-    };
-  }
-  if (minErrorCount > 0) {
-    thresholds.error_count_min = {
-      actual: metrics.error_count,
-      min: minErrorCount,
-      pass: metrics.error_count >= minErrorCount,
-    };
-  }
-  if (minOkCount > 0) {
-    thresholds.ok_count_min = {
-      actual: metrics.ok_count,
-      min: minOkCount,
-      pass: metrics.ok_count >= minOkCount,
-    };
-  }
-  if (minProviderFaultCount > 0) {
-    const actual = metrics.fake_provider?.fault_count ?? 0;
-    thresholds.fake_provider_fault_count_min = {
-      actual,
-      min: minProviderFaultCount,
-      pass: actual >= minProviderFaultCount,
-    };
-  }
-  if (firstResponseP95BudgetMs > 0) {
-    thresholds.first_response_p95_ms = {
-      actual: metrics.first_response_ms.p95,
-      max: firstResponseP95BudgetMs,
-      pass: metrics.ok_count > 0 && metrics.first_response_ms.p95 <= firstResponseP95BudgetMs,
-    };
-  }
-  return thresholds;
 }
 
 function looksLikeEnvIssue(error) {

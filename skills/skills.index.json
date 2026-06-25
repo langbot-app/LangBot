@@ -151,6 +151,7 @@
         "agent-runner-release-preflight",
         "agent-runner-runtime-chaos",
         "dify-agent-debug-chat",
+        "langbot-fake-provider-debug-chat-cross-pipeline-isolation",
         "langbot-fake-provider-debug-chat-fault-recovery",
         "langbot-fake-provider-debug-chat-load",
         "langbot-fake-provider-debug-chat-slow-load",
@@ -495,6 +496,44 @@
             "ui",
             "console",
             "backend_log"
+          ]
+        },
+        {
+          "id": "langbot-fake-provider-debug-chat-cross-pipeline-isolation",
+          "title": "LangBot Debug Chat fake-provider cross-pipeline isolation probe",
+          "mode": "probe",
+          "area": "reliability",
+          "type": "reliability",
+          "priority": "p1",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "reliability",
+            "debug-chat",
+            "websocket",
+            "fake-provider",
+            "isolation",
+            "concurrency",
+            "metrics"
+          ],
+          "automation": "skills/langbot-testing/probes/langbot-debug-chat-cross-pipeline-isolation.mjs",
+          "setup_automation": [
+            "node:scripts/e2e/ensure-fake-provider-cross-pipelines.mjs --write-env"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_FAKE_PROVIDER_URL",
+            "LANGBOT_FAKE_PROVIDER_BASE_URL",
+            "LANGBOT_FAKE_PROVIDER_PID",
+            "LANGBOT_FAKE_PROVIDER_PIPELINE_A_URL",
+            "LANGBOT_FAKE_PROVIDER_PIPELINE_A_NAME",
+            "LANGBOT_FAKE_PROVIDER_PIPELINE_B_URL",
+            "LANGBOT_FAKE_PROVIDER_PIPELINE_B_NAME"
+          ],
+          "evidence_required": [
+            "metrics",
+            "network",
+            "api_diagnostic",
+            "filesystem"
           ]
         },
         {
@@ -1456,6 +1495,7 @@
           "cases": [
             "langbot-fake-provider-debug-chat-load",
             "langbot-fake-provider-debug-chat-slow-load",
+            "langbot-fake-provider-debug-chat-cross-pipeline-isolation",
             "langbot-fake-provider-debug-chat-fault-recovery",
             "langbot-space-debug-chat-concurrency-smoke"
           ]

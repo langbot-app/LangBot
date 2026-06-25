@@ -123,6 +123,7 @@ Controlled Debug Chat message-path load gate:
 bin/lbs suite plan langbot-debug-chat-load-gate
 bin/lbs test run langbot-fake-provider-debug-chat-load --run-id langbot-fake-load-local
 bin/lbs test run langbot-fake-provider-debug-chat-slow-load --run-id langbot-fake-slow-local
+bin/lbs test run langbot-fake-provider-debug-chat-cross-pipeline-isolation --run-id langbot-fake-cross-pipeline-local
 bin/lbs test run langbot-fake-provider-debug-chat-fault-recovery --run-id langbot-fake-fault-local
 bin/lbs test run langbot-space-debug-chat-concurrency-smoke --run-id langbot-space-smoke-local
 ```
@@ -132,6 +133,9 @@ OpenAI-compatible fake provider, creates the matching provider/model/pipeline,
 then sends concurrent WebSocket Debug Chat messages through the real backend.
 Use `langbot-fake-provider-debug-chat-slow-load` to measure the same path under
 deterministic streaming latency. Use
+`langbot-fake-provider-debug-chat-cross-pipeline-isolation` to verify that
+concurrent Debug Chat traffic on two pipelines does not leak assistant
+responses across pipeline boundaries. Use
 `langbot-fake-provider-debug-chat-fault-recovery` to inject bounded provider
 HTTP failures and confirm later Debug Chat requests recover.
 Use `langbot-space-debug-chat-concurrency-smoke` only as a low-volume live

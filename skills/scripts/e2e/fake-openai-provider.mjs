@@ -28,6 +28,8 @@ const recentRequests = [];
 
 const server = createServer(async (request, response) => {
   const startedAt = Date.now();
+  const startedPerf = performance.now();
+  let requestRecord = null;
   const url = new URL(request.url || "/", `http://${request.headers.host || `${host}:${port}`}`);
   try {
     if (request.method === "GET" && url.pathname === "/healthz") {
@@ -98,13 +100,24 @@ const server = createServer(async (request, response) => {
       const requestId = `chatcmpl-langbot-fake-${requestCount}`;
       const shouldFail = requestCount <= config.fail_first_n
         || (config.fail_every_n > 0 && requestCount % config.fail_every_n === 0);
-      recordRequest({
+      const replyText = responseTextForBody(body);
+      requestRecord = recordRequest({
         id: requestId,
+        request_number: requestCount,
         path: url.pathname,
         stream: Boolean(body.stream),
         model: body.model || "",
         message_count: Array.isArray(body.messages) ? body.messages.length : 0,
         should_fail: shouldFail,
+        status: "running",
+        http_status: null,
+        expected_text: replyText,
+        response_text_preview: previewText(replyText),
+        started_at: new Date(startedAt).toISOString(),
+        started_epoch_ms: startedAt,
+        configured_first_token_delay_ms: config.first_token_delay_ms,
+        configured_chunk_delay_ms: config.chunk_delay_ms,
+        configured_chunk_count: config.chunk_count,
       });
 
       if (shouldFail) {
@@ -116,10 +129,12 @@ const server = createServer(async (request, response) => {
             code: "fake_provider_fault",
           },
         });
+        finishRequestRecord(requestRecord, startedPerf, {
+          status: "http_fault",
+          http_status: config.fault_status,
+        });
         return;
       }
-
-      const replyText = responseTextForBody(body);
 
       if (body.stream) {
         await streamCompletion(response, {
@@ -127,6 +142,8 @@ const server = createServer(async (request, response) => {
           model: body.model || modelName,
           content: replyText,
           failAfterFirstChunk: config.fail_after_first_chunk,
+          requestRecord,
+          startedPerf,
         });
       } else {
         await sleep(config.first_token_delay_ms + config.chunk_delay_ms);
@@ -135,6 +152,13 @@ const server = createServer(async (request, response) => {
           model: body.model || modelName,
           content: replyText,
         }));
+        markRequestTiming(requestRecord, "first_chunk", startedPerf);
+        markRequestTiming(requestRecord, "first_content_chunk", startedPerf);
+        requestRecord.content_chunk_count = 1;
+        finishRequestRecord(requestRecord, startedPerf, {
+          status: "ok",
+          http_status: 200,
+        });
       }
       return;
     }
@@ -146,6 +170,13 @@ const server = createServer(async (request, response) => {
       },
     });
   } catch (error) {
+    if (requestRecord) {
+      finishRequestRecord(requestRecord, startedPerf, {
+        status: "fake_provider_error",
+        http_status: 500,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
     sendJson(response, 500, {
       error: {
         message: error instanceof Error ? error.message : String(error),
@@ -264,7 +295,14 @@ function completionPayload({ requestId, model, content }) {
   };
 }
 
-async function streamCompletion(response, { requestId, model, content, failAfterFirstChunk: failMidStream }) {
+async function streamCompletion(response, {
+  requestId,
+  model,
+  content,
+  failAfterFirstChunk: failMidStream,
+  requestRecord,
+  startedPerf,
+}) {
   response.writeHead(200, {
     "content-type": "text/event-stream; charset=utf-8",
     "cache-control": "no-cache",
@@ -272,6 +310,7 @@ async function streamCompletion(response, { requestId, model, content, failAfter
   });
 
   await sleep(config.first_token_delay_ms);
+  markRequestTiming(requestRecord, "first_chunk", startedPerf);
   writeSse(response, {
     id: requestId,
     object: "chat.completion.chunk",
@@ -283,6 +322,8 @@ async function streamCompletion(response, { requestId, model, content, failAfter
   const chunks = splitContent(content);
   for (let index = 0; index < chunks.length; index += 1) {
     await sleep(config.chunk_delay_ms);
+    if (index === 0) markRequestTiming(requestRecord, "first_content_chunk", startedPerf);
+    requestRecord.content_chunk_count = (requestRecord.content_chunk_count || 0) + 1;
     writeSse(response, {
       id: requestId,
       object: "chat.completion.chunk",
@@ -291,6 +332,10 @@ async function streamCompletion(response, { requestId, model, content, failAfter
       choices: [{ index: 0, delta: { content: chunks[index] }, finish_reason: null }],
     });
     if (failMidStream && index === 0) {
+      finishRequestRecord(requestRecord, startedPerf, {
+        status: "mid_stream_disconnect",
+        http_status: 200,
+      });
       response.destroy(new Error("LangBot fake provider injected mid-stream disconnect"));
       return;
     }
@@ -312,6 +357,10 @@ async function streamCompletion(response, { requestId, model, content, failAfter
   });
   response.write("data: [DONE]\n\n");
   response.end();
+  finishRequestRecord(requestRecord, startedPerf, {
+    status: "ok",
+    http_status: 200,
+  });
 }
 
 function writeSse(response, payload) {
@@ -365,11 +414,48 @@ function flattenContent(content) {
 }
 
 function recordRequest(entry) {
-  recentRequests.push({
+  const item = {
     ...entry,
     at: new Date().toISOString(),
-  });
+    finished_at: null,
+    finished_epoch_ms: null,
+    duration_ms: null,
+    first_chunk_at: null,
+    first_chunk_epoch_ms: null,
+    first_chunk_ms: null,
+    first_content_chunk_at: null,
+    first_content_chunk_epoch_ms: null,
+    first_content_chunk_ms: null,
+    content_chunk_count: 0,
+  };
+  recentRequests.push(item);
   while (recentRequests.length > config.request_log_limit) recentRequests.shift();
+  return item;
+}
+
+function markRequestTiming(entry, key, startedPerf) {
+  if (!entry || entry[`${key}_at`]) return;
+  const now = Date.now();
+  entry[`${key}_at`] = new Date(now).toISOString();
+  entry[`${key}_epoch_ms`] = now;
+  entry[`${key}_ms`] = rounded(performance.now() - startedPerf);
+}
+
+function finishRequestRecord(entry, startedPerf, updates = {}) {
+  if (!entry || entry.finished_at) return;
+  const now = Date.now();
+  Object.assign(entry, updates);
+  entry.finished_at = new Date(now).toISOString();
+  entry.finished_epoch_ms = now;
+  entry.duration_ms = rounded(performance.now() - startedPerf);
+}
+
+function rounded(value) {
+  return Number(value.toFixed(3));
+}
+
+function previewText(value) {
+  return String(value || "").slice(0, 120);
 }
 
 function resetRequestState() {
