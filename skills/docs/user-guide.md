@@ -117,6 +117,21 @@ bin/lbs suite plan langbot-user-path-performance-gate
 bin/lbs suite run langbot-user-path-performance-gate --run-id langbot-user-path-local --include-manual-check
 ```
 
+Controlled Debug Chat message-path load gate:
+
+```bash
+bin/lbs suite plan langbot-debug-chat-load-gate
+bin/lbs test run langbot-fake-provider-debug-chat-load --run-id langbot-fake-load-local
+bin/lbs test run langbot-space-debug-chat-concurrency-smoke --run-id langbot-space-smoke-local
+```
+
+Start with `langbot-fake-provider-debug-chat-load`. It launches a local
+OpenAI-compatible fake provider, creates the matching provider/model/pipeline,
+then sends concurrent WebSocket Debug Chat messages through the real backend.
+Use `langbot-space-debug-chat-concurrency-smoke` only as a low-volume live
+provider smoke; it includes Space/model/network latency and should be compared
+against the fake-provider baseline before attributing failures to LangBot.
+
 `manual_check` means the agent must confirm the declared preconditions for that
 run window. When setup automation is declared, run output may stop early with
 `env_issue`; fix that environment input before treating the product path as

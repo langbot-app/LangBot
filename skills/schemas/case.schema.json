@@ -209,6 +209,38 @@
     "automation_debug_chat_max_error_rate": {
       "type": "string"
     },
+    "automation_debug_chat_load_requests": {
+      "type": "string"
+    },
+    "automation_debug_chat_load_concurrency": {
+      "type": "string"
+    },
+    "automation_debug_chat_load_timeout_ms": {
+      "type": "string"
+    },
+    "automation_debug_chat_load_response_p95_ms": {
+      "type": "string"
+    },
+    "automation_debug_chat_load_first_response_p95_ms": {
+      "type": "string"
+    },
+    "automation_debug_chat_load_max_error_rate": {
+      "type": "string"
+    },
+    "automation_debug_chat_load_expected_prefix": {
+      "type": "string"
+    },
+    "automation_debug_chat_load_prompt_template": {
+      "type": "string"
+    },
+    "automation_debug_chat_load_stream": {
+      "type": "string",
+      "enum": ["0", "1", "false", "true"]
+    },
+    "automation_debug_chat_load_reset": {
+      "type": "string",
+      "enum": ["0", "1", "false", "true"]
+    },
     "automation_filesystem_checks_json": {
       "type": "string"
     },

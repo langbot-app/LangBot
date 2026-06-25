@@ -186,9 +186,31 @@ function validateCaseItem(root: string, item: StructuredItem, skillNames: Set<st
   if (timeout && (!/^\d+$/.test(timeout) || Number.parseInt(timeout, 10) <= 0)) {
     errors.push(`${item.path}: 'automation_response_timeout_ms' must be a positive integer string`);
   }
+  for (const key of [
+    "automation_debug_chat_load_requests",
+    "automation_debug_chat_load_concurrency",
+    "automation_debug_chat_load_timeout_ms",
+    "automation_debug_chat_load_response_p95_ms",
+    "automation_debug_chat_load_first_response_p95_ms",
+  ]) {
+    const value = scalar(item.fields, key);
+    if (value && (!/^\d+$/.test(value) || Number.parseInt(value, 10) <= 0)) {
+      errors.push(`${item.path}: '${key}' must be a positive integer string`);
+    }
+  }
+  const loadMaxErrorRate = scalar(item.fields, "automation_debug_chat_load_max_error_rate");
+  if (loadMaxErrorRate && (!/^(?:0(?:\.\d+)?|1(?:\.0+)?)$/.test(loadMaxErrorRate))) {
+    errors.push(`${item.path}: 'automation_debug_chat_load_max_error_rate' must be a number string between 0 and 1`);
+  }
   const streamOutput = scalar(item.fields, "automation_stream_output");
   if (streamOutput && !["0", "1", "false", "true"].includes(streamOutput)) {
     errors.push(`${item.path}: 'automation_stream_output' must be one of 0, 1, false, or true`);
+  }
+  for (const key of ["automation_debug_chat_load_stream", "automation_debug_chat_load_reset"]) {
+    const value = scalar(item.fields, key);
+    if (value && !["0", "1", "false", "true"].includes(value)) {
+      errors.push(`${item.path}: '${key}' must be one of 0, 1, false, or true`);
+    }
   }
   const imageBase64Fixture = scalar(item.fields, "automation_image_base64_fixture");
   if (imageBase64Fixture && !existsSync(join(root, imageBase64Fixture))) {

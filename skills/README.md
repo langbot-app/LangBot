@@ -48,6 +48,7 @@ bin/lbs env show     # inspect resolved env defaults (redacted)
 bin/lbs env doctor   # diagnose local environment readiness
 bin/lbs case list --ready
 bin/lbs test plan <case-id>
+bin/lbs suite plan langbot-debug-chat-load-gate
 ```
 
 ## Maintenance rule

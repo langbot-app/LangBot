@@ -121,6 +121,45 @@ Do not treat these starter live probes as Debug Chat or model-provider
 performance. They are control-plane readiness checks; user-facing performance
 needs browser/WebSocket/message-path measurements.
 
+## Debug Chat Load And Fake Provider Baseline
+
+Use `langbot-fake-provider-debug-chat-load` before real-provider load checks.
+The setup automation starts a local OpenAI-compatible fake provider, registers
+it as a normal LangBot provider/model, configures a local-agent pipeline, resets
+Debug Chat, and then drives concurrent WebSocket messages through the live
+backend.
+
+This is not a mocked backend test. It still exercises:
+
+- provider/model persistence and runtime reload;
+- LiteLLM OpenAI-compatible requester path;
+- local-agent runner selection and pipeline execution;
+- Debug Chat WebSocket adapter and broadcast behavior;
+- backend concurrency, timeout, and error-rate accounting.
+
+The fake provider is deterministic and can inject controlled latency or faults
+with `LANGBOT_FAKE_PROVIDER_*` variables, so it is the baseline for LangBot
+message-path overhead. The probe uses unique expected response tokens per
+request because Debug Chat broadcasts messages to every connection in the same
+session; unique tokens prevent one connection from counting another
+connection's response as its own.
+
+Use `langbot-space-debug-chat-concurrency-smoke` after the fake-provider
+baseline. It runs a deliberately small real Space-provider batch and reports
+user-visible latency, not pure LangBot overhead. Space/model/network failures
+are dependency findings until the fake baseline shows the same symptom.
+If a Space smoke passes but log guard finds telemetry posting Tracebacks,
+classify that separately as `telemetry-proxy-noise` instead of clearing the
+proxy or treating the Debug Chat path as failed.
+
+Useful commands:
+
+```bash
+rtk bin/lbs test run langbot-fake-provider-debug-chat-load --run-id langbot-fake-load-local
+rtk bin/lbs test run langbot-space-debug-chat-concurrency-smoke --run-id langbot-space-smoke-local
+rtk bin/lbs suite run langbot-debug-chat-load-gate --run-id langbot-debug-chat-load-local --include-manual-check
+```
+
 ## Gate Layers
 
 Use the smallest gate that answers the quality question:
@@ -134,6 +173,9 @@ Use the smallest gate that answers the quality question:
 - `langbot-user-path-performance-gate`: browser-visible user path performance,
   starting with Pipeline Debug Chat send-to-visible-completion latency. Run it
   only when the browser profile and target pipeline are ready.
+- `langbot-debug-chat-load-gate`: WebSocket Debug Chat load checks, starting
+  with a controlled fake-provider baseline and optionally a low-volume real
+  Space-provider smoke.
 - `langbot-performance-reliability-gate`: combined starter gate for synthetic
   contracts plus live backend checks.
 

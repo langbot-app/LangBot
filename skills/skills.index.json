@@ -151,11 +151,13 @@
         "agent-runner-release-preflight",
         "agent-runner-runtime-chaos",
         "dify-agent-debug-chat",
+        "langbot-fake-provider-debug-chat-load",
         "langbot-fault-taxonomy-contract",
         "langbot-live-backend-latency",
         "langbot-live-backend-log-health",
         "langbot-live-control-plane-api",
         "langbot-overhead-accounting-contract",
+        "langbot-space-debug-chat-concurrency-smoke",
         "langrag-kb-retrieve",
         "langrag-parser-golden-e2e",
         "langrag-sentinel-kb-discover",
@@ -494,6 +496,43 @@
           ]
         },
         {
+          "id": "langbot-fake-provider-debug-chat-load",
+          "title": "LangBot Debug Chat controlled fake-provider load probe",
+          "mode": "probe",
+          "area": "performance",
+          "type": "performance",
+          "priority": "p1",
+          "risk": "medium",
+          "ci_eligible": false,
+          "tags": [
+            "performance",
+            "debug-chat",
+            "websocket",
+            "fake-provider",
+            "load",
+            "metrics"
+          ],
+          "automation": "skills/langbot-testing/probes/langbot-debug-chat-concurrency.mjs",
+          "setup_automation": [
+            "node:scripts/e2e/ensure-fake-provider-pipeline.mjs --write-env"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_FAKE_PROVIDER_URL",
+            "LANGBOT_FAKE_PROVIDER_BASE_URL",
+            "LANGBOT_FAKE_PROVIDER_PID",
+            "LANGBOT_FAKE_PROVIDER_PROVIDER_UUID",
+            "LANGBOT_FAKE_PROVIDER_MODEL_UUID",
+            "LANGBOT_FAKE_PROVIDER_PIPELINE_URL",
+            "LANGBOT_FAKE_PROVIDER_PIPELINE_NAME"
+          ],
+          "evidence_required": [
+            "metrics",
+            "network",
+            "api_diagnostic",
+            "filesystem"
+          ]
+        },
+        {
           "id": "langbot-fault-taxonomy-contract",
           "title": "LangBot fault taxonomy and cleanup contract",
           "mode": "probe",
@@ -612,6 +651,43 @@
           "evidence_required": [
             "metrics",
             "resource_log",
+            "filesystem"
+          ]
+        },
+        {
+          "id": "langbot-space-debug-chat-concurrency-smoke",
+          "title": "LangBot Debug Chat real Space-provider concurrency smoke",
+          "mode": "probe",
+          "area": "performance",
+          "type": "performance",
+          "priority": "p1",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "performance",
+            "debug-chat",
+            "websocket",
+            "space",
+            "live-provider",
+            "smoke",
+            "metrics"
+          ],
+          "automation": "skills/langbot-testing/probes/langbot-debug-chat-concurrency.mjs",
+          "setup_automation": [
+            "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_PIPELINE_URL",
+            "LANGBOT_PIPELINE_NAME",
+            "LANGBOT_LOCAL_AGENT_PIPELINE_URL",
+            "LANGBOT_LOCAL_AGENT_PIPELINE_NAME",
+            "LANGBOT_LOCAL_AGENT_MODEL_UUID",
+            "LANGBOT_E2E_MODEL_UUID"
+          ],
+          "evidence_required": [
+            "metrics",
+            "network",
+            "api_diagnostic",
             "filesystem"
           ]
         },
@@ -1220,6 +1296,7 @@
       "suites": [
         "agent-runner-release-gate",
         "core-smoke",
+        "langbot-debug-chat-load-gate",
         "langbot-live-backend-gate",
         "langbot-performance-contract-gate",
         "langbot-performance-reliability-gate",
@@ -1284,6 +1361,23 @@
             "webui-login-state",
             "pipeline-debug-chat",
             "local-agent-basic-debug-chat"
+          ]
+        },
+        {
+          "id": "langbot-debug-chat-load-gate",
+          "title": "LangBot Debug Chat load gate",
+          "description": "Message-path load checks for Pipeline Debug Chat: controlled fake-provider baseline plus optional real Space-provider smoke.",
+          "type": "performance",
+          "priority": "p1",
+          "tags": [
+            "performance",
+            "debug-chat",
+            "websocket",
+            "load"
+          ],
+          "cases": [
+            "langbot-fake-provider-debug-chat-load",
+            "langbot-space-debug-chat-concurrency-smoke"
           ]
         },
         {
@@ -1501,6 +1595,7 @@
         "sandbox-native-tools-unavailable",
         "socks-proxy-without-socksio",
         "survey-widget-blocks-debug-chat",
+        "telemetry-proxy-noise",
         "tool-name-collision-between-mcp-and-plugin",
         "uv-run-resyncs-local-sdk"
       ],
@@ -1683,6 +1778,14 @@
             "pipeline-debug-chat",
             "local-agent-rag-debug-chat",
             "mcp-stdio-tool-call"
+          ]
+        },
+        {
+          "id": "telemetry-proxy-noise",
+          "title": "Telemetry posting fails through the proxy while the target flow succeeds",
+          "category": "env_issue",
+          "related_cases": [
+            "langbot-space-debug-chat-concurrency-smoke"
           ]
         },
         {
