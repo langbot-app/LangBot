@@ -159,6 +159,29 @@ provider latency, model route health, plugin/runtime logs, WebSocket behavior,
 and browser console/network evidence before attributing the whole duration to
 LangBot.
 
+### User-Path Gate Runbook
+
+1. Start the backend and frontend. The frontend must be launched with
+   `VITE_API_BASE_URL="$LANGBOT_BACKEND_URL"` so browser API calls reach the
+   backend.
+2. Run `node scripts/e2e/ensure-local-agent-pipeline.mjs --write-env`. The
+   setup refreshes the local QA login, skips the wizard, prepares a Debug Chat
+   pipeline, scans Space models, tests candidates, writes tested fallback
+   models, and writes the selected pipeline/model env values to
+   `skills/.env.local`.
+3. If setup returns `env_issue`, read `model_tests` and provider errors first.
+   A missing Space key, failed Space scan, or unavailable model route is not a
+   LangBot performance regression.
+4. Run
+   `bin/lbs suite run langbot-user-path-performance-gate --include-manual-check`.
+5. Interpret `response_p95_ms` as browser-visible send-to-completion time. It
+   includes provider latency; use backend logs and model test evidence to
+   separate LangBot overhead from the external model route.
+
+The setup keeps a `max-round` value in the generated pipeline config only
+because the current backend truncator still reads that field directly. Do not
+use it as a quality requirement for future local-agent behavior.
+
 ## Running The First Gate
 
 Start with the reusable suite:

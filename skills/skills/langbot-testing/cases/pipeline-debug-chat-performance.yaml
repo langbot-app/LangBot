@@ -39,6 +39,11 @@ automation_debug_chat_response_p95_ms: "120000"
 automation_debug_chat_max_error_rate: "0"
 metrics_thresholds_json: '{"response_p95_ms":{"max":120000},"error_rate":{"max":0}}'
 load_profile_json: '{"prompts":1,"browser":true,"path":"Pipeline Debug Chat","metric":"send-to-visible-completion"}'
+setup_automation:
+  - "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env"
+setup_provides_env:
+  - LANGBOT_PIPELINE_URL
+  - LANGBOT_PIPELINE_NAME
 preconditions:
   - "LANGBOT_PIPELINE_URL or LANGBOT_PIPELINE_NAME points to the pipeline intended for this Debug Chat performance run."
   - "The target pipeline is safe to reset Debug Chat history for this run."

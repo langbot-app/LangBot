@@ -1057,8 +1057,13 @@
             "metrics"
           ],
           "automation": "scripts/e2e/pipeline-debug-chat.mjs",
-          "setup_automation": [],
-          "setup_provides_env": [],
+          "setup_automation": [
+            "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_PIPELINE_URL",
+            "LANGBOT_PIPELINE_NAME"
+          ],
           "evidence_required": [
             "ui",
             "screenshot",
