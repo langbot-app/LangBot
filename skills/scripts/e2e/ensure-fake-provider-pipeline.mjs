@@ -16,8 +16,9 @@ import {
 
 const RUNNER_ID = "local-agent";
 const DEFAULT_LOCAL_PASSWORD = "LangBotE2ELocalPass!2026";
-const DEFAULT_PIPELINE_NAME = "Agent QA Fake Provider Debug Chat";
+const DEFAULT_PIPELINE_NAME = "LangBot QA Fake Provider Debug Chat";
 const DEFAULT_PROVIDER_NAME = "LangBot QA Fake OpenAI Provider";
+const QA_RESOURCE_DESCRIPTION = "Managed by LangBot skills QA automation for controlled fake-provider Debug Chat tests. Safe to delete when local QA fixtures are no longer needed.";
 const DEFAULT_MODEL_NAME = "gpt-4o-mini";
 const DEFAULT_REQUESTER = "openai-chat-completions";
 
@@ -90,6 +91,8 @@ const result = {
 };
 
 try {
+  console.error(`[langbot-qa] configuring QA-owned fake-provider fixtures: provider=\"${providerName}\", pipeline=\"${pipelineName}\"`);
+  console.error("[langbot-qa] this setup may create or update local QA provider/model/pipeline resources on the selected backend.");
   if (!backendUrl) {
     result.status = "env_issue";
     throw new Error("LANGBOT_BACKEND_URL is not configured.");
@@ -488,7 +491,7 @@ async function ensurePipeline({ backendUrl, token, name, modelUuid }) {
       token,
       body: {
         name,
-        description: "Local QA pipeline for controlled fake-provider Debug Chat load tests.",
+        description: QA_RESOURCE_DESCRIPTION,
         emoji: "QA",
       },
     });
@@ -555,7 +558,7 @@ async function ensurePipeline({ backendUrl, token, name, modelUuid }) {
     token,
     body: {
       name,
-      description: "Local QA pipeline for controlled fake-provider Debug Chat load tests.",
+      description: QA_RESOURCE_DESCRIPTION,
       emoji: "QA",
       config: updatedConfig,
     },

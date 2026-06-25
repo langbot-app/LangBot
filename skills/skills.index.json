@@ -1413,6 +1413,7 @@
       "suites": [
         "agent-runner-release-gate",
         "core-smoke",
+        "langbot-debug-chat-isolation-gate",
         "langbot-debug-chat-load-gate",
         "langbot-live-backend-gate",
         "langbot-performance-contract-gate",
@@ -1481,9 +1482,26 @@
           ]
         },
         {
+          "id": "langbot-debug-chat-isolation-gate",
+          "title": "LangBot Debug Chat isolation gate",
+          "description": "Manual/non-required cross-pipeline Debug Chat isolation gate. Current releases may fail this gate because of product bug #2286; use it as regression evidence after the routing fix lands.",
+          "type": "reliability",
+          "priority": "p1",
+          "tags": [
+            "reliability",
+            "debug-chat",
+            "websocket",
+            "isolation",
+            "concurrency"
+          ],
+          "cases": [
+            "langbot-fake-provider-debug-chat-cross-pipeline-isolation"
+          ]
+        },
+        {
           "id": "langbot-debug-chat-load-gate",
           "title": "LangBot Debug Chat load gate",
-          "description": "Message-path load checks for Pipeline Debug Chat: controlled fake-provider baseline, slow-provider and fault-recovery profiles, plus optional real Space-provider smoke.",
+          "description": "Manual/non-required message-path load checks for Pipeline Debug Chat: controlled fake-provider baseline, slow-provider and fault-recovery profiles, plus optional real Space-provider smoke. Cross-pipeline isolation is split into langbot-debug-chat-isolation-gate because current releases may fail it due to product bug #2286.",
           "type": "performance",
           "priority": "p1",
           "tags": [
@@ -1495,7 +1513,6 @@
           "cases": [
             "langbot-fake-provider-debug-chat-load",
             "langbot-fake-provider-debug-chat-slow-load",
-            "langbot-fake-provider-debug-chat-cross-pipeline-isolation",
             "langbot-fake-provider-debug-chat-fault-recovery",
             "langbot-space-debug-chat-concurrency-smoke"
           ]

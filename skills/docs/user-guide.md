@@ -117,15 +117,22 @@ bin/lbs suite plan langbot-user-path-performance-gate
 bin/lbs suite run langbot-user-path-performance-gate --run-id langbot-user-path-local --include-manual-check
 ```
 
-Controlled Debug Chat message-path load gate:
+Controlled Debug Chat message-path load gate (manual/non-required; run fake-provider cases serially when they share `LANGBOT_FAKE_PROVIDER_URL`):
 
 ```bash
 bin/lbs suite plan langbot-debug-chat-load-gate
 bin/lbs test run langbot-fake-provider-debug-chat-load --run-id langbot-fake-load-local
 bin/lbs test run langbot-fake-provider-debug-chat-slow-load --run-id langbot-fake-slow-local
-bin/lbs test run langbot-fake-provider-debug-chat-cross-pipeline-isolation --run-id langbot-fake-cross-pipeline-local
 bin/lbs test run langbot-fake-provider-debug-chat-fault-recovery --run-id langbot-fake-fault-local
 bin/lbs test run langbot-space-debug-chat-concurrency-smoke --run-id langbot-space-smoke-local
+```
+
+Cross-pipeline Debug Chat isolation is a separate manual regression gate because
+current releases may fail it due to product bug #2286:
+
+```bash
+bin/lbs suite plan langbot-debug-chat-isolation-gate
+bin/lbs suite run langbot-debug-chat-isolation-gate --run-id langbot-debug-chat-isolation-local --include-manual-check
 ```
 
 Start with `langbot-fake-provider-debug-chat-load`. It launches a local
@@ -133,11 +140,12 @@ OpenAI-compatible fake provider, creates the matching provider/model/pipeline,
 then sends concurrent WebSocket Debug Chat messages through the real backend.
 Use `langbot-fake-provider-debug-chat-slow-load` to measure the same path under
 deterministic streaming latency. Use
-`langbot-fake-provider-debug-chat-cross-pipeline-isolation` to verify that
-concurrent Debug Chat traffic on two pipelines does not leak assistant
-responses across pipeline boundaries. Use
 `langbot-fake-provider-debug-chat-fault-recovery` to inject bounded provider
-HTTP failures and confirm later Debug Chat requests recover.
+HTTP failures and confirm later Debug Chat requests recover. Use the separate
+`langbot-debug-chat-isolation-gate` to verify that concurrent Debug Chat traffic
+on two pipelines does not leak assistant responses across pipeline boundaries;
+current releases may fail that gate because of #2286, so keep it out of the
+normal load gate until the product fix lands.
 Use `langbot-space-debug-chat-concurrency-smoke` only as a low-volume live
 provider smoke; it includes Space/model/network latency and should be compared
 against the fake-provider baseline before attributing failures to LangBot.

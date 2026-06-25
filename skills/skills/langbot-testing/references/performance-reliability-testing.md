@@ -3,6 +3,12 @@
 Use this reference when a QA request asks whether LangBot is fast enough,
 stable under load, or resilient to controlled faults.
 
+These probes are manual/non-required QA gates unless a case or suite explicitly
+states otherwise. They depend on a live local backend, mutable QA fixtures, and
+operator-selected environment variables, so do not promote them to required CI
+checks until fake-provider isolation, ownership markers, and cleanup are in
+place.
+
 ## Scope
 
 Treat `skills/` as the QA control plane:
@@ -139,7 +145,12 @@ This is not a mocked backend test. It still exercises:
 
 The fake provider is deterministic and can inject controlled latency or faults
 with `LANGBOT_FAKE_PROVIDER_*` variables, so it is the baseline for LangBot
-message-path overhead. The probe uses unique expected response tokens per
+message-path overhead. A fake-provider process keeps process-global config,
+request counters, and recent request history; run fake-provider probes serially
+or give each run its own provider instance. Concurrent probes against the same
+fake-provider URL can reset or reconfigure each other's metrics.
+
+The probe uses unique expected response tokens per
 request because Debug Chat broadcasts messages to every connection in the same
 session; unique tokens prevent one connection from counting another
 connection's response as its own.
@@ -160,15 +171,18 @@ When the fake provider is used, reports also include provider-side timing in
 
 After the baseline passes, run `langbot-fake-provider-debug-chat-slow-load` to
 keep the same live backend path while injecting deterministic streaming latency.
-Run `langbot-fake-provider-debug-chat-cross-pipeline-isolation` to open
-concurrent Debug Chat connections against two fake-provider pipelines and fail
-if one pipeline receives the other pipeline's response token. This targets
-global pipeline-state regressions in the WebSocket Debug Chat path.
 Run `langbot-fake-provider-debug-chat-fault-recovery` to inject bounded HTTP
 provider failures and require both observed failures and later successful
 requests. The fault-recovery case is deliberately sequential because failed
 Debug Chat responses do not carry a unique success token that can be attributed
 to one concurrent connection.
+
+Run `langbot-fake-provider-debug-chat-cross-pipeline-isolation` separately via
+`langbot-debug-chat-isolation-gate`. Current LangBot releases may fail it because
+of product bug [#2286](https://github.com/langbot-app/LangBot/issues/2286), where
+Debug Chat replies can read singleton WebSocket proxy pipeline state after a
+later message overwrites it. Treat that failure as regression evidence for the
+product fix rather than as a fake-provider latency finding.
 
 Use `langbot-space-debug-chat-concurrency-smoke` after the fake-provider
 baseline. It runs a deliberately small real Space-provider batch and reports
@@ -183,8 +197,8 @@ Useful commands:
 ```bash
 rtk bin/lbs test run langbot-fake-provider-debug-chat-load --run-id langbot-fake-load-local
 rtk bin/lbs test run langbot-fake-provider-debug-chat-slow-load --run-id langbot-fake-slow-local
-rtk bin/lbs test run langbot-fake-provider-debug-chat-cross-pipeline-isolation --run-id langbot-fake-cross-pipeline-local
 rtk bin/lbs test run langbot-fake-provider-debug-chat-fault-recovery --run-id langbot-fake-fault-local
+rtk bin/lbs suite run langbot-debug-chat-isolation-gate --run-id langbot-debug-chat-isolation-local --include-manual-check
 rtk bin/lbs test run langbot-space-debug-chat-concurrency-smoke --run-id langbot-space-smoke-local
 rtk bin/lbs suite run langbot-debug-chat-load-gate --run-id langbot-debug-chat-load-local --include-manual-check
 ```
@@ -202,10 +216,13 @@ Use the smallest gate that answers the quality question:
 - `langbot-user-path-performance-gate`: browser-visible user path performance,
   starting with Pipeline Debug Chat send-to-visible-completion latency. Run it
   only when the browser profile and target pipeline are ready.
-- `langbot-debug-chat-load-gate`: WebSocket Debug Chat load checks, starting
-  with controlled fake-provider baseline, slow-provider, cross-pipeline
-  isolation, and fault-recovery profiles, plus an optional low-volume real
-  Space-provider smoke.
+- `langbot-debug-chat-load-gate`: manual WebSocket Debug Chat load checks,
+  starting with controlled fake-provider baseline, slow-provider, and
+  fault-recovery profiles, plus an optional low-volume real Space-provider
+  smoke. Run fake-provider cases serially when they share a provider URL.
+- `langbot-debug-chat-isolation-gate`: manual cross-pipeline Debug Chat
+  isolation regression gate. Current releases may fail because of #2286; keep it
+  separate from the normal load gate until that product fix lands.
 - `langbot-performance-reliability-gate`: combined starter gate for synthetic
   contracts plus live backend checks.
 

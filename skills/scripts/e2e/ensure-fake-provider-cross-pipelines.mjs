@@ -14,8 +14,8 @@ import {
 } from "./lib/langbot-e2e.mjs";
 
 const caseId = "ensure-fake-provider-cross-pipelines";
-const DEFAULT_PIPELINE_A_NAME = "Agent QA Fake Provider Debug Chat A";
-const DEFAULT_PIPELINE_B_NAME = "Agent QA Fake Provider Debug Chat B";
+const DEFAULT_PIPELINE_A_NAME = "LangBot QA Fake Provider Debug Chat A";
+const DEFAULT_PIPELINE_B_NAME = "LangBot QA Fake Provider Debug Chat B";
 
 await loadEnvFiles();
 const paths = evidencePaths(caseId);
@@ -57,6 +57,8 @@ const result = {
 };
 
 try {
+  console.error(`[langbot-qa] configuring cross-pipeline QA fixtures: pipeline_a=\"${pipelineAName}\", pipeline_b=\"${pipelineBName}\"`);
+  console.error("[langbot-qa] run these fake-provider setup/probe commands serially when they share LANGBOT_FAKE_PROVIDER_URL.");
   if (pipelineAName === pipelineBName) {
     throw new Error("LANGBOT_FAKE_PROVIDER_PIPELINE_A_NAME and LANGBOT_FAKE_PROVIDER_PIPELINE_B_NAME must be different.");
   }

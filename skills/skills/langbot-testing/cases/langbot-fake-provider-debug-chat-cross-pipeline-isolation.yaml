@@ -68,6 +68,9 @@ diagnostics:
   - "This probe targets Debug Chat isolation under concurrent traffic from two pipelines."
   - "It is designed to expose regressions where global pipeline state causes one pipeline's assistant response to be delivered to another pipeline's Debug Chat session."
   - "Same-pipeline foreign responses are tolerated because Debug Chat intentionally broadcasts within the same pipeline/session; cross-pipeline tokens are never tolerated."
+  - "Known product bug: current releases may fail this probe because Debug Chat replies can read singleton WebSocket proxy pipeline state after another pipeline overwrites it. See https://github.com/langbot-app/LangBot/issues/2286."
+expected_failures:
+  - "https://github.com/langbot-app/LangBot/issues/2286"
 success_patterns:
   - "Debug Chat cross-pipeline isolation probe passed"
 failure_patterns:
