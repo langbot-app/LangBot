@@ -54,6 +54,7 @@ const result = {
     base_url: "",
     pid: null,
     reused: false,
+    config: {},
     state_file: fakeStatePath,
     stdout_log: fakeStdoutPath,
     stderr_log: fakeStderrPath,
@@ -99,9 +100,11 @@ try {
   }
 
   const fakeProvider = await ensureFakeProvider();
+  const setupConfig = await configureFakeProvider(fakeProvider.url, healthyFakeProviderConfig(), true);
   result.fake_provider = {
     ...result.fake_provider,
     ...fakeProvider,
+    config: setupConfig.config || healthyFakeProviderConfig(),
   };
 
   const user = env.LANGBOT_E2E_LOGIN_USER || "";
@@ -144,6 +147,9 @@ try {
   Object.assign(result, pipeline);
   result.pipeline_url = `${frontendUrl.replace(/\/$/, "")}/home/pipelines?id=${encodeURIComponent(pipeline.pipeline_id)}`;
 
+  const runConfig = await configureFakeProvider(fakeProvider.url, targetFakeProviderConfig(), true);
+  result.fake_provider.config = runConfig.config || targetFakeProviderConfig();
+
   if (writeEnv) {
     await upsertEnvLocal(envLocalPath, {
       LANGBOT_E2E_LOGIN_USER: user,
@@ -172,7 +178,7 @@ process.exit(result.status === "pass" ? 0 : result.status === "env_issue" ? 2 : 
 
 async function ensureFakeProvider() {
   const envUrl = normalizeProviderRootUrl(env.LANGBOT_FAKE_PROVIDER_URL || "");
-  if (envUrl && await fakeProviderHealthy(envUrl)) {
+  if (envUrl && await fakeProviderHealthy(envUrl) && await fakeProviderConfigurable(envUrl)) {
     return {
       url: envUrl,
       base_url: `${envUrl}/v1`,
@@ -184,12 +190,15 @@ async function ensureFakeProvider() {
   const state = await readState(fakeStatePath);
   const stateUrl = normalizeProviderRootUrl(state.url || "");
   if (stateUrl && await fakeProviderHealthy(stateUrl)) {
-    return {
-      url: stateUrl,
-      base_url: state.base_url || `${stateUrl}/v1`,
-      pid: Number.isInteger(state.pid) ? state.pid : null,
-      reused: true,
-    };
+    if (await fakeProviderConfigurable(stateUrl)) {
+      return {
+        url: stateUrl,
+        base_url: state.base_url || `${stateUrl}/v1`,
+        pid: Number.isInteger(state.pid) ? state.pid : null,
+        reused: true,
+      };
+    }
+    if (Number.isInteger(state.pid)) await stopProcess(state.pid);
   }
 
   await mkdir(fakeStateDir, { recursive: true });
@@ -218,7 +227,7 @@ async function ensureFakeProvider() {
   await stderr.close();
 
   const started = await waitForFakeProviderState(fakeStatePath, child.pid, 10_000);
-  if (!started.url || !await fakeProviderHealthy(started.url)) {
+  if (!started.url || !await fakeProviderHealthy(started.url) || !await fakeProviderConfigurable(started.url)) {
     throw new Error(`Fake provider did not become healthy. See ${fakeStderrPath}`);
   }
 
@@ -228,6 +237,23 @@ async function ensureFakeProvider() {
     pid: child.pid ?? started.pid ?? null,
     reused: false,
   };
+}
+
+async function configureFakeProvider(rootUrl, config, resetRequestCount) {
+  const response = await fetch(`${normalizeProviderRootUrl(rootUrl)}/__qa/config`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      config,
+      reset_request_count: resetRequestCount,
+    }),
+    signal: AbortSignal.timeout(3000),
+  });
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok || json.ok !== true) {
+    throw new Error(`Fake provider config failed with HTTP ${response.status}.`);
+  }
+  return json;
 }
 
 async function fakeProviderHealthy(rootUrl) {
@@ -241,6 +267,28 @@ async function fakeProviderHealthy(rootUrl) {
   } catch {
     return false;
   }
+}
+
+async function fakeProviderConfigurable(rootUrl) {
+  try {
+    const response = await fetch(`${rootUrl.replace(/\/$/, "")}/__qa/config`, {
+      signal: AbortSignal.timeout(2000),
+    });
+    if (!response.ok) return false;
+    const json = await response.json().catch(() => ({}));
+    return json.ok === true && json.config && typeof json.config === "object";
+  } catch {
+    return false;
+  }
+}
+
+async function stopProcess(pid) {
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    return;
+  }
+  await sleep(500);
 }
 
 async function waitForFakeProviderState(path, expectedPid, timeoutMs) {
@@ -266,6 +314,34 @@ async function readState(path) {
 function normalizeProviderRootUrl(value) {
   const trimmed = String(value || "").trim().replace(/\/$/, "");
   return trimmed.endsWith("/v1") ? trimmed.slice(0, -3) : trimmed;
+}
+
+function healthyFakeProviderConfig() {
+  return {
+    response_text: "OK",
+    first_token_delay_ms: 25,
+    chunk_delay_ms: 10,
+    chunk_count: 0,
+    fault_status: 500,
+    fail_first_n: 0,
+    fail_every_n: 0,
+    fail_after_first_chunk: false,
+    dynamic_response: true,
+  };
+}
+
+function targetFakeProviderConfig() {
+  return {
+    response_text: env.LANGBOT_FAKE_PROVIDER_RESPONSE_TEXT || "OK",
+    first_token_delay_ms: nonNegativeInteger(env.LANGBOT_FAKE_PROVIDER_FIRST_TOKEN_DELAY_MS, 25),
+    chunk_delay_ms: nonNegativeInteger(env.LANGBOT_FAKE_PROVIDER_CHUNK_DELAY_MS, 10),
+    chunk_count: nonNegativeInteger(env.LANGBOT_FAKE_PROVIDER_CHUNK_COUNT, 0),
+    fault_status: httpFaultStatus(env.LANGBOT_FAKE_PROVIDER_FAULT_STATUS, 500),
+    fail_first_n: nonNegativeInteger(env.LANGBOT_FAKE_PROVIDER_FAIL_FIRST_N, 0),
+    fail_every_n: nonNegativeInteger(env.LANGBOT_FAKE_PROVIDER_FAIL_EVERY_N, 0),
+    fail_after_first_chunk: envBool(env.LANGBOT_FAKE_PROVIDER_FAIL_AFTER_FIRST_CHUNK, false),
+    dynamic_response: envBool(env.LANGBOT_FAKE_PROVIDER_DYNAMIC_RESPONSE, true),
+  };
 }
 
 async function skipWizard({ backendUrl, token }) {
@@ -503,6 +579,23 @@ function isApiFailure(response) {
 function positiveInteger(value, fallback) {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function nonNegativeInteger(value, fallback) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function httpFaultStatus(value, fallback) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 400 && parsed <= 599 ? parsed : fallback;
+}
+
+function envBool(value, fallback) {
+  if (value === undefined || value === "") return fallback;
+  if (/^(1|true|yes|on)$/i.test(String(value))) return true;
+  if (/^(0|false|no|off)$/i.test(String(value))) return false;
+  return fallback;
 }
 
 function sleep(ms) {

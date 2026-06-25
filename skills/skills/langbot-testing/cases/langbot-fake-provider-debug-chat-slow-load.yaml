@@ -1,0 +1,88 @@
+id: langbot-fake-provider-debug-chat-slow-load
+title: "LangBot Debug Chat slow fake-provider load probe"
+mode: probe
+area: performance
+type: performance
+priority: p1
+risk: medium
+ci_eligible: false
+tags:
+  - performance
+  - debug-chat
+  - websocket
+  - fake-provider
+  - slow-provider
+  - load
+  - metrics
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_E2E_LOGIN_USER
+automation: skills/langbot-testing/probes/langbot-debug-chat-concurrency.mjs
+automation_env:
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_E2E_LOGIN_USER
+  - LANGBOT_FAKE_PROVIDER_PIPELINE_URL
+  - LANGBOT_FAKE_PROVIDER_PIPELINE_NAME
+automation_pipeline_url_env: LANGBOT_FAKE_PROVIDER_PIPELINE_URL
+automation_pipeline_name_env: LANGBOT_FAKE_PROVIDER_PIPELINE_NAME
+automation_debug_chat_load_requests: "8"
+automation_debug_chat_load_concurrency: "4"
+automation_debug_chat_load_timeout_ms: "45000"
+automation_debug_chat_load_response_p95_ms: "10000"
+automation_debug_chat_load_first_response_p95_ms: "7000"
+automation_debug_chat_load_max_error_rate: "0"
+automation_debug_chat_load_expected_prefix: "SLOWQA"
+automation_debug_chat_load_prompt_template: '请只回复 "{expected}"，不要解释，不要添加其他字符。'
+automation_debug_chat_load_stream: "true"
+automation_debug_chat_load_reset: "true"
+automation_fake_provider_first_token_delay_ms: "1000"
+automation_fake_provider_chunk_delay_ms: "250"
+automation_fake_provider_chunk_count: "4"
+automation_fake_provider_fail_first_n: "0"
+automation_fake_provider_fail_every_n: "0"
+automation_fake_provider_fault_status: "500"
+metrics_thresholds_json: '{"response_p95_ms":{"max":10000},"first_response_p95_ms":{"max":7000},"error_rate":{"max":0}}'
+load_profile_json: '{"requests":8,"concurrency":4,"path":"Pipeline Debug Chat WebSocket","provider":"controlled slow fake OpenAI-compatible provider","metric":"send-to-final-assistant-response","provider_profile":{"first_token_delay_ms":1000,"chunk_delay_ms":250,"chunk_count":4}}'
+setup_automation:
+  - "node:scripts/e2e/ensure-fake-provider-pipeline.mjs --write-env"
+setup_provides_env:
+  - LANGBOT_FAKE_PROVIDER_URL
+  - LANGBOT_FAKE_PROVIDER_BASE_URL
+  - LANGBOT_FAKE_PROVIDER_PID
+  - LANGBOT_FAKE_PROVIDER_PROVIDER_UUID
+  - LANGBOT_FAKE_PROVIDER_MODEL_UUID
+  - LANGBOT_FAKE_PROVIDER_PIPELINE_URL
+  - LANGBOT_FAKE_PROVIDER_PIPELINE_NAME
+steps:
+  - "Configure the local fake provider with deterministic slow streaming latency."
+  - "Create or update the LangBot provider, model, and local-agent pipeline that points at the fake provider."
+  - "Reset the target Debug Chat session."
+  - "Open concurrent WebSocket Debug Chat connections and send unique deterministic prompts through the real backend pipeline."
+checks:
+  - "automation-result.json status is pass when every request receives its own expected assistant response."
+  - "metrics_summary shows zero errors under the slow-provider profile."
+  - "thresholds_summary shows response_p95_ms, first_response_p95_ms, and error_rate pass."
+evidence_required:
+  - metrics
+  - network
+  - api_diagnostic
+  - filesystem
+diagnostics:
+  - "This probe keeps the model deterministic while injecting provider latency, so it catches backend timeout, streaming, and WebSocket backpressure issues without Space variability."
+  - "Compare with langbot-fake-provider-debug-chat-load to separate fixed LangBot overhead from provider-latency amplification."
+success_patterns:
+  - "Debug Chat WebSocket concurrency probe passed"
+  - "Streaming completed"
+failure_patterns:
+  - "WebSocket connection error"
+  - "Timed out after"
+  - "Final assistant response did not include"
+  - "All models failed during streaming setup"
+troubleshooting:
+  - backend-not-listening
+  - debug-chat-history-contaminates-automation
+  - local-agent-model-route-unavailable

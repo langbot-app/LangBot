@@ -144,6 +144,14 @@ request because Debug Chat broadcasts messages to every connection in the same
 session; unique tokens prevent one connection from counting another
 connection's response as its own.
 
+After the baseline passes, run `langbot-fake-provider-debug-chat-slow-load` to
+keep the same live backend path while injecting deterministic streaming latency.
+Run `langbot-fake-provider-debug-chat-fault-recovery` to inject bounded HTTP
+provider failures and require both observed failures and later successful
+requests. The fault-recovery case is deliberately sequential because failed
+Debug Chat responses do not carry a unique success token that can be attributed
+to one concurrent connection.
+
 Use `langbot-space-debug-chat-concurrency-smoke` after the fake-provider
 baseline. It runs a deliberately small real Space-provider batch and reports
 user-visible latency, not pure LangBot overhead. Space/model/network failures
@@ -156,6 +164,8 @@ Useful commands:
 
 ```bash
 rtk bin/lbs test run langbot-fake-provider-debug-chat-load --run-id langbot-fake-load-local
+rtk bin/lbs test run langbot-fake-provider-debug-chat-slow-load --run-id langbot-fake-slow-local
+rtk bin/lbs test run langbot-fake-provider-debug-chat-fault-recovery --run-id langbot-fake-fault-local
 rtk bin/lbs test run langbot-space-debug-chat-concurrency-smoke --run-id langbot-space-smoke-local
 rtk bin/lbs suite run langbot-debug-chat-load-gate --run-id langbot-debug-chat-load-local --include-manual-check
 ```
@@ -174,8 +184,8 @@ Use the smallest gate that answers the quality question:
   starting with Pipeline Debug Chat send-to-visible-completion latency. Run it
   only when the browser profile and target pipeline are ready.
 - `langbot-debug-chat-load-gate`: WebSocket Debug Chat load checks, starting
-  with a controlled fake-provider baseline and optionally a low-volume real
-  Space-provider smoke.
+  with controlled fake-provider baseline, slow-provider, and fault-recovery
+  profiles, plus an optional low-volume real Space-provider smoke.
 - `langbot-performance-reliability-gate`: combined starter gate for synthetic
   contracts plus live backend checks.
 

@@ -1,6 +1,6 @@
 id: langbot-debug-chat-load-gate
 title: "LangBot Debug Chat load gate"
-description: "Message-path load checks for Pipeline Debug Chat: controlled fake-provider baseline plus optional real Space-provider smoke."
+description: "Message-path load checks for Pipeline Debug Chat: controlled fake-provider baseline, slow-provider and fault-recovery profiles, plus optional real Space-provider smoke."
 type: performance
 priority: p1
 tags:
@@ -10,4 +10,6 @@ tags:
   - load
 cases:
   - langbot-fake-provider-debug-chat-load
+  - langbot-fake-provider-debug-chat-slow-load
+  - langbot-fake-provider-debug-chat-fault-recovery
   - langbot-space-debug-chat-concurrency-smoke

@@ -28,8 +28,10 @@ await ensureEvidence(paths);
 const startedAt = new Date();
 const metricsPath = resolve(paths.evidenceDir, "metrics.json");
 const samplesPath = resolve(paths.evidenceDir, "samples.json");
+const fakeProviderStatePath = resolve(paths.evidenceDir, "fake-provider-state.json");
 const resetDiagnosticPath = resolve(paths.evidenceDir, "debug-chat-reset-diagnostic.json");
 const backendUrl = env.LANGBOT_BACKEND_URL || "";
+const fakeProviderUrl = env.LANGBOT_FAKE_PROVIDER_URL || "";
 const pipelineUrl = env.LANGBOT_E2E_PIPELINE_URL || env.LANGBOT_PIPELINE_URL || "";
 const pipelineName = env.LANGBOT_E2E_PIPELINE_NAME || env.LANGBOT_PIPELINE_NAME || "";
 const sessionType = env.LANGBOT_DEBUG_CHAT_LOAD_SESSION_TYPE || env.LANGBOT_E2E_DEBUG_CHAT_SESSION_TYPE || "person";
@@ -44,6 +46,12 @@ const resetBeforeRun = bool(env.LANGBOT_DEBUG_CHAT_LOAD_RESET, true);
 const responseP95BudgetMs = positiveNumber(env.LANGBOT_DEBUG_CHAT_LOAD_RESPONSE_P95_MS, defaultP95Budget(caseId));
 const firstResponseP95BudgetMs = positiveNumber(env.LANGBOT_DEBUG_CHAT_LOAD_FIRST_RESPONSE_P95_MS, 0);
 const maxErrorRate = positiveNumber(env.LANGBOT_DEBUG_CHAT_LOAD_MAX_ERROR_RATE, 0);
+const minErrorRate = positiveNumber(env.LANGBOT_DEBUG_CHAT_LOAD_MIN_ERROR_RATE, 0);
+const minErrorCount = nonNegativeInteger(env.LANGBOT_DEBUG_CHAT_LOAD_MIN_ERROR_COUNT, 0);
+const minOkCount = nonNegativeInteger(env.LANGBOT_DEBUG_CHAT_LOAD_MIN_OK_COUNT, 0);
+const minProviderFaultCount = nonNegativeInteger(env.LANGBOT_DEBUG_CHAT_LOAD_MIN_PROVIDER_FAULT_COUNT, 0);
+const failOnFinalMismatch = bool(env.LANGBOT_DEBUG_CHAT_LOAD_FAIL_ON_FINAL_MISMATCH, false);
+const failureSignals = textList(env.LANGBOT_E2E_FAILURE_SIGNALS || env.LANGBOT_DEBUG_CHAT_LOAD_FAILURE_SIGNALS || "");
 
 const result = {
   source: "automation",
@@ -67,11 +75,13 @@ const result = {
     timeout_ms: timeoutMs,
     stream,
     reset_before_run: resetBeforeRun,
+    fail_on_final_mismatch: failOnFinalMismatch,
   },
   evidence: {
     network_log: paths.networkLog,
     metrics_json: metricsPath,
     samples_json: samplesPath,
+    fake_provider_state_json: fakeProviderStatePath,
     debug_chat_reset_diagnostic_json: resetDiagnosticPath,
     automation_result_json: paths.automationResultJson,
     result_json: paths.resultJson,
@@ -135,8 +145,14 @@ try {
     promptTemplate,
     expectedPrefix,
     stream,
+    failOnFinalMismatch,
+    failureSignals,
   });
   const loadDurationMs = performance.now() - loadStartedAt;
+  const fakeProviderState = await readFakeProviderState(fakeProviderUrl);
+  if (fakeProviderState) {
+    await writeFile(fakeProviderStatePath, `${JSON.stringify(fakeProviderState, null, 2)}\n`, "utf8");
+  }
   const metrics = buildMetrics({
     samples,
     totalRequests,
@@ -146,6 +162,7 @@ try {
     backendUrl,
     pipelineId: pipeline.id,
     sessionType,
+    fakeProviderState,
   });
   const thresholds = buildThresholds(metrics);
   const passed = Object.values(thresholds).every((item) => item.pass);
@@ -165,11 +182,14 @@ try {
     first_response_p95_ms: metrics.first_response_ms.p95,
     throughput_rps: metrics.throughput_rps,
     status_counts: metrics.status_counts,
+    fake_provider_request_count: metrics.fake_provider?.request_count ?? null,
+    fake_provider_fault_count: metrics.fake_provider?.fault_count ?? null,
   };
   result.thresholds_summary = thresholds;
   result.artifacts = {
     metrics_json: metricsPath,
     samples_json: samplesPath,
+    fake_provider_state_json: fakeProviderState ? fakeProviderStatePath : "",
     network_log: paths.networkLog,
     automation_result_json: paths.automationResultJson,
     result_json: paths.resultJson,
@@ -215,6 +235,11 @@ function positiveInteger(value, fallback) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function nonNegativeInteger(value, fallback) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
 function positiveNumber(value, fallback) {
   const parsed = Number(value || "");
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
@@ -227,6 +252,13 @@ function bool(value, fallback) {
   return fallback;
 }
 
+function textList(value) {
+  return String(value || "")
+    .split(/\r?\n|,/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 async function backendReachable(baseUrl) {
   try {
     const response = await fetch(`${baseUrl.replace(/\/$/, "")}/healthz`, {
@@ -236,6 +268,38 @@ async function backendReachable(baseUrl) {
   } catch {
     return false;
   }
+}
+
+async function readFakeProviderState(rootUrl) {
+  if (!rootUrl) return null;
+  try {
+    const response = await fetch(`${normalizeProviderRootUrl(rootUrl)}/__qa/config`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    const json = await response.json().catch(() => ({}));
+    return {
+      status: response.ok && json.ok === true ? "loaded" : "unavailable",
+      url: normalizeProviderRootUrl(rootUrl),
+      http_status: response.status,
+      model: json.model || "",
+      config: json.config || {},
+      request_count: Number.isFinite(json.request_count) ? json.request_count : null,
+      recent_requests: Array.isArray(json.recent_requests) ? json.recent_requests : [],
+    };
+  } catch (error) {
+    return {
+      status: "unavailable",
+      url: normalizeProviderRootUrl(rootUrl),
+      reason: safeReason(error.message),
+      request_count: null,
+      recent_requests: [],
+    };
+  }
+}
+
+function normalizeProviderRootUrl(value) {
+  const trimmed = String(value || "").trim().replace(/\/$/, "");
+  return trimmed.endsWith("/v1") ? trimmed.slice(0, -3) : trimmed;
 }
 
 function pipelineIdFromUrl(url) {
@@ -314,6 +378,8 @@ function runSingleRequest({
   promptTemplate,
   expectedPrefix,
   stream,
+  failOnFinalMismatch,
+  failureSignals,
 }) {
   return new Promise((resolve) => {
     const expected = expectedForIndex(expectedPrefix, index);
@@ -384,18 +450,22 @@ function runSingleRequest({
 
         const content = String(data.data.content || "");
         if (content) sample.response_text = content;
-      if (data.data.is_final === true) {
-        const ok = sample.response_text.includes(expected);
-        if (ok) {
-          if (sample.first_response_ms === null && sentAt > 0) {
-            sample.first_response_ms = rounded(performance.now() - sentAt);
+        if (data.data.is_final === true) {
+          const ok = sample.response_text.includes(expected);
+          if (ok) {
+            if (sample.first_response_ms === null && sentAt > 0) {
+              sample.first_response_ms = rounded(performance.now() - sentAt);
+            }
+            finish("pass", "");
+          } else if (matchesFailureSignal(sample.response_text, failureSignals)) {
+            finish("app_error", `Assistant final response matched a failure signal: ${sample.response_text}`);
+          } else if (failOnFinalMismatch && !containsLoadToken(sample.response_text, expectedPrefix)) {
+            finish("mismatch", `Final assistant response did not include ${expected}: ${sample.response_text}`);
+          } else {
+            sample.foreign_response_count += 1;
+            sample.last_foreign_response_text = sample.response_text;
           }
-          finish("pass", "");
-        } else {
-          sample.foreign_response_count += 1;
-          sample.last_foreign_response_text = sample.response_text;
         }
-      }
       },
       onError(error) {
         finish("connection_error", `WebSocket connection error: ${error.message}`);
@@ -426,6 +496,16 @@ function runSingleRequest({
       resolve(sample);
     }
   });
+}
+
+function containsLoadToken(text, prefix) {
+  const escaped = String(prefix).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`${escaped}-\\d{4}`).test(String(text || ""));
+}
+
+function matchesFailureSignal(text, signals) {
+  const lower = String(text || "").toLowerCase();
+  return signals.some((signal) => lower.includes(signal.toLowerCase()));
 }
 
 function openRawWebSocket(wsUrl, handlers) {
@@ -605,7 +685,7 @@ function stats(values) {
   };
 }
 
-function buildMetrics({ samples, totalRequests, concurrency, timeoutMs, loadDurationMs, backendUrl, pipelineId, sessionType }) {
+function buildMetrics({ samples, totalRequests, concurrency, timeoutMs, loadDurationMs, backendUrl, pipelineId, sessionType, fakeProviderState }) {
   const okSamples = samples.filter((sample) => sample.ok);
   const statusCounts = {};
   for (const sample of samples) {
@@ -631,7 +711,22 @@ function buildMetrics({ samples, totalRequests, concurrency, timeoutMs, loadDura
     connected_ms: stats(samples.map((sample) => sample.connected_ms).filter(Number.isFinite)),
     first_response_ms: stats(okSamples.map((sample) => sample.first_response_ms).filter(Number.isFinite)),
     response_duration_ms: stats(okSamples.map((sample) => sample.response_duration_ms).filter(Number.isFinite)),
+    fake_provider: summarizeFakeProviderState(fakeProviderState),
     samples,
+  };
+}
+
+function summarizeFakeProviderState(state) {
+  if (!state) return null;
+  const recentRequests = Array.isArray(state.recent_requests) ? state.recent_requests : [];
+  return {
+    status: state.status || "unknown",
+    url: state.url || "",
+    request_count: Number.isFinite(state.request_count) ? state.request_count : recentRequests.length,
+    recent_request_count: recentRequests.length,
+    fault_count: recentRequests.filter((request) => request?.should_fail === true).length,
+    streamed_request_count: recentRequests.filter((request) => request?.stream === true).length,
+    config: state.config || {},
   };
 }
 
@@ -644,6 +739,35 @@ function buildThresholds(metrics) {
       pass: metrics.ok_count > 0 && metrics.response_duration_ms.p95 <= responseP95BudgetMs,
     },
   };
+  if (minErrorRate > 0) {
+    thresholds.error_rate_min = {
+      actual: metrics.error_rate,
+      min: minErrorRate,
+      pass: metrics.error_rate >= minErrorRate,
+    };
+  }
+  if (minErrorCount > 0) {
+    thresholds.error_count_min = {
+      actual: metrics.error_count,
+      min: minErrorCount,
+      pass: metrics.error_count >= minErrorCount,
+    };
+  }
+  if (minOkCount > 0) {
+    thresholds.ok_count_min = {
+      actual: metrics.ok_count,
+      min: minOkCount,
+      pass: metrics.ok_count >= minOkCount,
+    };
+  }
+  if (minProviderFaultCount > 0) {
+    const actual = metrics.fake_provider?.fault_count ?? 0;
+    thresholds.fake_provider_fault_count_min = {
+      actual,
+      min: minProviderFaultCount,
+      pass: actual >= minProviderFaultCount,
+    };
+  }
   if (firstResponseP95BudgetMs > 0) {
     thresholds.first_response_p95_ms = {
       actual: metrics.first_response_ms.p95,

@@ -10,14 +10,18 @@ const host = args.host || env.LANGBOT_FAKE_PROVIDER_HOST || "127.0.0.1";
 const port = integer(args.port ?? env.LANGBOT_FAKE_PROVIDER_PORT, 0);
 const stateFile = args["state-file"] || env.LANGBOT_FAKE_PROVIDER_STATE_FILE || "";
 const modelName = env.LANGBOT_FAKE_PROVIDER_MODEL_NAME || "gpt-4o-mini";
-const responseText = env.LANGBOT_FAKE_PROVIDER_RESPONSE_TEXT || "OK";
-const firstTokenDelayMs = integer(env.LANGBOT_FAKE_PROVIDER_FIRST_TOKEN_DELAY_MS, 25);
-const chunkDelayMs = integer(env.LANGBOT_FAKE_PROVIDER_CHUNK_DELAY_MS, 10);
-const faultStatus = integer(env.LANGBOT_FAKE_PROVIDER_FAULT_STATUS, 500);
-const failFirstN = integer(env.LANGBOT_FAKE_PROVIDER_FAIL_FIRST_N, 0);
-const failEveryN = integer(env.LANGBOT_FAKE_PROVIDER_FAIL_EVERY_N, 0);
-const failAfterFirstChunk = bool(env.LANGBOT_FAKE_PROVIDER_FAIL_AFTER_FIRST_CHUNK, false);
-const requestLogLimit = integer(env.LANGBOT_FAKE_PROVIDER_REQUEST_LOG_LIMIT, 500);
+const config = {
+  response_text: env.LANGBOT_FAKE_PROVIDER_RESPONSE_TEXT || "OK",
+  first_token_delay_ms: integer(env.LANGBOT_FAKE_PROVIDER_FIRST_TOKEN_DELAY_MS, 25),
+  chunk_delay_ms: integer(env.LANGBOT_FAKE_PROVIDER_CHUNK_DELAY_MS, 10),
+  chunk_count: integer(env.LANGBOT_FAKE_PROVIDER_CHUNK_COUNT, 0),
+  fault_status: integer(env.LANGBOT_FAKE_PROVIDER_FAULT_STATUS, 500),
+  fail_first_n: integer(env.LANGBOT_FAKE_PROVIDER_FAIL_FIRST_N, 0),
+  fail_every_n: integer(env.LANGBOT_FAKE_PROVIDER_FAIL_EVERY_N, 0),
+  fail_after_first_chunk: bool(env.LANGBOT_FAKE_PROVIDER_FAIL_AFTER_FIRST_CHUNK, false),
+  dynamic_response: !/^(0|false|no|off)$/i.test(env.LANGBOT_FAKE_PROVIDER_DYNAMIC_RESPONSE || ""),
+  request_log_limit: integer(env.LANGBOT_FAKE_PROVIDER_REQUEST_LOG_LIMIT, 500),
+};
 
 let requestCount = 0;
 const recentRequests = [];
@@ -30,8 +34,44 @@ const server = createServer(async (request, response) => {
       sendJson(response, 200, {
         ok: true,
         model: modelName,
+        config,
         request_count: requestCount,
         recent_request_count: recentRequests.length,
+      });
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/__qa/config") {
+      sendJson(response, 200, {
+        ok: true,
+        model: modelName,
+        config,
+        request_count: requestCount,
+        recent_requests: recentRequests,
+      });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/__qa/config") {
+      const body = await readJson(request);
+      applyConfig(body.config && typeof body.config === "object" ? body.config : body);
+      if (body.reset_request_count !== false) resetRequestState();
+      sendJson(response, 200, {
+        ok: true,
+        model: modelName,
+        config,
+        request_count: requestCount,
+      });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/__qa/reset") {
+      resetRequestState();
+      sendJson(response, 200, {
+        ok: true,
+        model: modelName,
+        config,
+        request_count: requestCount,
       });
       return;
     }
@@ -56,7 +96,8 @@ const server = createServer(async (request, response) => {
       requestCount += 1;
       const body = await readJson(request);
       const requestId = `chatcmpl-langbot-fake-${requestCount}`;
-      const shouldFail = requestCount <= failFirstN || (failEveryN > 0 && requestCount % failEveryN === 0);
+      const shouldFail = requestCount <= config.fail_first_n
+        || (config.fail_every_n > 0 && requestCount % config.fail_every_n === 0);
       recordRequest({
         id: requestId,
         path: url.pathname,
@@ -67,10 +108,10 @@ const server = createServer(async (request, response) => {
       });
 
       if (shouldFail) {
-        await sleep(firstTokenDelayMs);
-        sendJson(response, faultStatus, {
+        await sleep(config.first_token_delay_ms);
+        sendJson(response, config.fault_status, {
           error: {
-            message: `LangBot fake provider injected HTTP ${faultStatus}`,
+            message: `LangBot fake provider injected HTTP ${config.fault_status}`,
             type: "fake_provider_fault",
             code: "fake_provider_fault",
           },
@@ -85,10 +126,10 @@ const server = createServer(async (request, response) => {
           requestId,
           model: body.model || modelName,
           content: replyText,
-          failAfterFirstChunk,
+          failAfterFirstChunk: config.fail_after_first_chunk,
         });
       } else {
-        await sleep(firstTokenDelayMs + chunkDelayMs);
+        await sleep(config.first_token_delay_ms + config.chunk_delay_ms);
         sendJson(response, 200, completionPayload({
           requestId,
           model: body.model || modelName,
@@ -230,7 +271,7 @@ async function streamCompletion(response, { requestId, model, content, failAfter
     "connection": "keep-alive",
   });
 
-  await sleep(firstTokenDelayMs);
+  await sleep(config.first_token_delay_ms);
   writeSse(response, {
     id: requestId,
     object: "chat.completion.chunk",
@@ -241,7 +282,7 @@ async function streamCompletion(response, { requestId, model, content, failAfter
 
   const chunks = splitContent(content);
   for (let index = 0; index < chunks.length; index += 1) {
-    await sleep(chunkDelayMs);
+    await sleep(config.chunk_delay_ms);
     writeSse(response, {
       id: requestId,
       object: "chat.completion.chunk",
@@ -255,7 +296,7 @@ async function streamCompletion(response, { requestId, model, content, failAfter
     }
   }
 
-  await sleep(chunkDelayMs);
+  await sleep(config.chunk_delay_ms);
   const completionTokens = tokenEstimate(content);
   writeSse(response, {
     id: requestId,
@@ -279,7 +320,7 @@ function writeSse(response, payload) {
 
 function splitContent(content) {
   const text = String(content);
-  const requested = integer(env.LANGBOT_FAKE_PROVIDER_CHUNK_COUNT, 0);
+  const requested = config.chunk_count;
   if (requested <= 1 || text.length <= 1) return [text];
   const chunkSize = Math.max(1, Math.ceil(text.length / requested));
   const chunks = [];
@@ -294,8 +335,8 @@ function tokenEstimate(content) {
 }
 
 function responseTextForBody(body) {
-  if (/^(0|false|no|off)$/i.test(env.LANGBOT_FAKE_PROVIDER_DYNAMIC_RESPONSE || "")) {
-    return responseText;
+  if (!config.dynamic_response) {
+    return config.response_text;
   }
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const lastUser = [...messages].reverse().find((message) => message?.role === "user");
@@ -306,7 +347,7 @@ function responseTextForBody(body) {
   if (exact?.[1]) return exact[1].trim().replace(/[。.!?]+$/, "");
   const only = text.match(/只回复\s*([A-Za-z0-9_.:@-]{1,80})/);
   if (only?.[1]) return only[1].trim().replace(/[。.!?]+$/, "");
-  return responseText;
+  return config.response_text;
 }
 
 function flattenContent(content) {
@@ -328,5 +369,42 @@ function recordRequest(entry) {
     ...entry,
     at: new Date().toISOString(),
   });
-  while (recentRequests.length > requestLogLimit) recentRequests.shift();
+  while (recentRequests.length > config.request_log_limit) recentRequests.shift();
+}
+
+function resetRequestState() {
+  requestCount = 0;
+  recentRequests.length = 0;
+}
+
+function applyConfig(updates) {
+  if (!updates || typeof updates !== "object") return;
+  assignString(updates, "response_text");
+  assignNonNegativeInteger(updates, "first_token_delay_ms");
+  assignNonNegativeInteger(updates, "chunk_delay_ms");
+  assignNonNegativeInteger(updates, "chunk_count");
+  assignNonNegativeInteger(updates, "fail_first_n");
+  assignNonNegativeInteger(updates, "fail_every_n");
+  assignNonNegativeInteger(updates, "request_log_limit");
+  if (updates.fault_status !== undefined) {
+    const parsed = Number.parseInt(String(updates.fault_status), 10);
+    if (Number.isInteger(parsed) && parsed >= 400 && parsed <= 599) config.fault_status = parsed;
+  }
+  assignBoolean(updates, "fail_after_first_chunk");
+  assignBoolean(updates, "dynamic_response");
+}
+
+function assignString(updates, key) {
+  if (updates[key] !== undefined) config[key] = String(updates[key]);
+}
+
+function assignNonNegativeInteger(updates, key) {
+  if (updates[key] === undefined) return;
+  const parsed = Number.parseInt(String(updates[key]), 10);
+  if (Number.isInteger(parsed) && parsed >= 0) config[key] = parsed;
+}
+
+function assignBoolean(updates, key) {
+  if (updates[key] === undefined) return;
+  config[key] = bool(updates[key], config[key]);
 }

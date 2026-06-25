@@ -151,7 +151,9 @@
         "agent-runner-release-preflight",
         "agent-runner-runtime-chaos",
         "dify-agent-debug-chat",
+        "langbot-fake-provider-debug-chat-fault-recovery",
         "langbot-fake-provider-debug-chat-load",
+        "langbot-fake-provider-debug-chat-slow-load",
         "langbot-fault-taxonomy-contract",
         "langbot-live-backend-latency",
         "langbot-live-backend-log-health",
@@ -496,6 +498,44 @@
           ]
         },
         {
+          "id": "langbot-fake-provider-debug-chat-fault-recovery",
+          "title": "LangBot Debug Chat fake-provider fault recovery probe",
+          "mode": "probe",
+          "area": "reliability",
+          "type": "chaos",
+          "priority": "p1",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "reliability",
+            "chaos",
+            "debug-chat",
+            "websocket",
+            "fake-provider",
+            "fault-injection",
+            "metrics"
+          ],
+          "automation": "skills/langbot-testing/probes/langbot-debug-chat-concurrency.mjs",
+          "setup_automation": [
+            "node:scripts/e2e/ensure-fake-provider-pipeline.mjs --write-env"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_FAKE_PROVIDER_URL",
+            "LANGBOT_FAKE_PROVIDER_BASE_URL",
+            "LANGBOT_FAKE_PROVIDER_PID",
+            "LANGBOT_FAKE_PROVIDER_PROVIDER_UUID",
+            "LANGBOT_FAKE_PROVIDER_MODEL_UUID",
+            "LANGBOT_FAKE_PROVIDER_PIPELINE_URL",
+            "LANGBOT_FAKE_PROVIDER_PIPELINE_NAME"
+          ],
+          "evidence_required": [
+            "metrics",
+            "network",
+            "api_diagnostic",
+            "filesystem"
+          ]
+        },
+        {
           "id": "langbot-fake-provider-debug-chat-load",
           "title": "LangBot Debug Chat controlled fake-provider load probe",
           "mode": "probe",
@@ -509,6 +549,44 @@
             "debug-chat",
             "websocket",
             "fake-provider",
+            "load",
+            "metrics"
+          ],
+          "automation": "skills/langbot-testing/probes/langbot-debug-chat-concurrency.mjs",
+          "setup_automation": [
+            "node:scripts/e2e/ensure-fake-provider-pipeline.mjs --write-env"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_FAKE_PROVIDER_URL",
+            "LANGBOT_FAKE_PROVIDER_BASE_URL",
+            "LANGBOT_FAKE_PROVIDER_PID",
+            "LANGBOT_FAKE_PROVIDER_PROVIDER_UUID",
+            "LANGBOT_FAKE_PROVIDER_MODEL_UUID",
+            "LANGBOT_FAKE_PROVIDER_PIPELINE_URL",
+            "LANGBOT_FAKE_PROVIDER_PIPELINE_NAME"
+          ],
+          "evidence_required": [
+            "metrics",
+            "network",
+            "api_diagnostic",
+            "filesystem"
+          ]
+        },
+        {
+          "id": "langbot-fake-provider-debug-chat-slow-load",
+          "title": "LangBot Debug Chat slow fake-provider load probe",
+          "mode": "probe",
+          "area": "performance",
+          "type": "performance",
+          "priority": "p1",
+          "risk": "medium",
+          "ci_eligible": false,
+          "tags": [
+            "performance",
+            "debug-chat",
+            "websocket",
+            "fake-provider",
+            "slow-provider",
             "load",
             "metrics"
           ],
@@ -1366,7 +1444,7 @@
         {
           "id": "langbot-debug-chat-load-gate",
           "title": "LangBot Debug Chat load gate",
-          "description": "Message-path load checks for Pipeline Debug Chat: controlled fake-provider baseline plus optional real Space-provider smoke.",
+          "description": "Message-path load checks for Pipeline Debug Chat: controlled fake-provider baseline, slow-provider and fault-recovery profiles, plus optional real Space-provider smoke.",
           "type": "performance",
           "priority": "p1",
           "tags": [
@@ -1377,6 +1455,8 @@
           ],
           "cases": [
             "langbot-fake-provider-debug-chat-load",
+            "langbot-fake-provider-debug-chat-slow-load",
+            "langbot-fake-provider-debug-chat-fault-recovery",
             "langbot-space-debug-chat-concurrency-smoke"
           ]
         },
