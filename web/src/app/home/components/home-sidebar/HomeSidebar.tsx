@@ -777,15 +777,19 @@ function NavItems({
                         ) : null}
                         <span className="truncate">{item.name}</span>
                         {item.kind && (
-                          <span className="ml-auto flex shrink-0 items-center gap-0.5 text-[10px] text-muted-foreground">
+                          <span
+                            className="ml-auto flex shrink-0 items-center text-muted-foreground"
+                            title={
+                              item.kind === 'pipeline'
+                                ? t('agents.kindBadgePipeline')
+                                : t('agents.kindBadgeAgent')
+                            }
+                          >
                             {item.kind === 'pipeline' ? (
-                              <Workflow className="size-3" />
+                              <Workflow className="size-3.5" />
                             ) : (
-                              <Bot className="size-3" />
+                              <Bot className="size-3.5" />
                             )}
-                            {item.kind === 'pipeline'
-                              ? t('agents.kindBadgePipeline')
-                              : t('agents.kindBadgeAgent')}
                           </span>
                         )}
                         {item.debug && (
