@@ -34,6 +34,7 @@ import {
   RefreshCcw,
   Bot,
   Workflow,
+  Group,
 } from 'lucide-react';
 import { useTheme } from '@/components/providers/theme-provider';
 
@@ -560,6 +561,7 @@ function NavItems({
         const isSkill = categoryId === 'skills';
         const isBot = categoryId === 'bots';
         const isMCP = categoryId === 'mcp';
+        const isAgents = categoryId === 'pipelines';
 
         const resolveItemRoute = (item: SidebarEntityItem): string => {
           if (item.extensionType === 'mcp') {
@@ -641,6 +643,18 @@ function NavItems({
             isExtensionsCategory &&
             !inPopover &&
             sidebarData.extensionsGroupByType;
+
+          const showAgentGroupHeaders =
+            isAgents && !inPopover && sidebarData.agentsGroupByKind;
+
+          const agentGroupOrder: Array<'agent' | 'pipeline'> = [
+            'agent',
+            'pipeline',
+          ];
+          const agentGroupLabelKey: Record<'agent' | 'pipeline', string> = {
+            agent: 'agents.kindBadgeAgent',
+            pipeline: 'agents.kindBadgePipeline',
+          };
 
           const groupOrder: Array<'plugin' | 'mcp' | 'skill'> = [
             'plugin',
@@ -843,7 +857,25 @@ function NavItems({
                       </div>
                     );
                   })
-                : visibleItems.map((item) => renderItem(item))}
+                : showAgentGroupHeaders
+                  ? agentGroupOrder.map((kind) => {
+                      const groupItems = visibleItems.filter(
+                        (it) => (it.kind ?? 'agent') === kind,
+                      );
+                      if (groupItems.length === 0) return null;
+                      return (
+                        <div
+                          key={kind}
+                          className="flex flex-col gap-0.5 mt-0.5"
+                        >
+                          <div className="px-2 pt-1 pb-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                            {t(agentGroupLabelKey[kind])}
+                          </div>
+                          {groupItems.map((item) => renderItem(item))}
+                        </div>
+                      );
+                    })
+                  : visibleItems.map((item) => renderItem(item))}
               {/* Show more / less toggle when items exceed limit */}
               {sortedItems.length > maxItems && !inPopover && (
                 <SidebarMenuSubItem>
@@ -1081,6 +1113,26 @@ function NavItems({
                     {config.name}
                   </span>
                   <div className="ml-auto flex items-center gap-0.5 -mr-1">
+                    {isAgents && (
+                      <button
+                        type="button"
+                        title={t('agents.groupByKind')}
+                        className={cn(
+                          'p-1 rounded-sm transition-all',
+                          sidebarData.agentsGroupByKind
+                            ? 'text-sidebar-accent-foreground bg-sidebar-accent'
+                            : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100',
+                        )}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          sidebarData.setAgentsGroupByKind(
+                            !sidebarData.agentsGroupByKind,
+                          );
+                        }}
+                      >
+                        <Group className="size-3.5" />
+                      </button>
+                    )}
                     {isExtensionsCategory && (
                       <button
                         type="button"

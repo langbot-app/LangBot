@@ -66,6 +66,9 @@ export interface SidebarDataContextValue {
   // Whether the extensions list is grouped by type (shared between page and sidebar)
   extensionsGroupByType: boolean;
   setExtensionsGroupByType: (enabled: boolean) => void;
+  // Whether the Agent list is grouped by kind (Agent vs Pipeline)
+  agentsGroupByKind: boolean;
+  setAgentsGroupByKind: (enabled: boolean) => void;
 }
 
 const SidebarDataContext = createContext<SidebarDataContextValue | null>(null);
@@ -92,6 +95,21 @@ export function SidebarDataProvider({
     setExtensionsGroupByTypeState(enabled);
     try {
       localStorage.setItem('extensions_group_by_type', String(enabled));
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const [agentsGroupByKind, setAgentsGroupByKindState] = useState<boolean>(
+    () => {
+      if (typeof window === 'undefined') return false;
+      return localStorage.getItem('agents_group_by_kind') === 'true';
+    },
+  );
+  const setAgentsGroupByKind = useCallback((enabled: boolean) => {
+    setAgentsGroupByKindState(enabled);
+    try {
+      localStorage.setItem('agents_group_by_kind', String(enabled));
     } catch {
       // ignore
     }
@@ -311,6 +329,8 @@ export function SidebarDataProvider({
         setDetailEntityName,
         extensionsGroupByType,
         setExtensionsGroupByType,
+        agentsGroupByKind,
+        setAgentsGroupByKind,
       }}
     >
       {children}

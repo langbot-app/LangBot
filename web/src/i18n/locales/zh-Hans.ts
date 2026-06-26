@@ -518,6 +518,7 @@ const zhHans = {
     pipelineType: 'Pipeline',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: '流水线',
+    groupByKind: '按类型分组',
     pipelineTypeDescription:
       '保留现有无代码消息流水线，兼容旧配置，只能处理消息事件。',
     allEvents: '支持全部 EBA 事件',
