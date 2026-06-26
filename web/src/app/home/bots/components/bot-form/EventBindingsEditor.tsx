@@ -143,12 +143,17 @@ function agentSupportsEventPattern(agent: Agent, pattern: string) {
 }
 
 function eventNamespaces(events: string[]) {
-  const ns = new Set<string>();
+  // Only surface a `ns.*` wildcard when the namespace actually has 2+
+  // concrete events — otherwise the wildcard is redundant with the single event.
+  const counts = new Map<string, number>();
   events.forEach((e) => {
     const n = e.split('.')[0];
-    if (n) ns.add(`${n}.*`);
+    if (n) counts.set(n, (counts.get(n) ?? 0) + 1);
   });
-  return Array.from(ns).sort();
+  return Array.from(counts.entries())
+    .filter(([, c]) => c >= 2)
+    .map(([n]) => `${n}.*`)
+    .sort();
 }
 
 // Localized label for an event pattern. Concrete events look up
@@ -535,14 +540,30 @@ function BindingCardContent({
           }}
         >
           <SelectTrigger className="h-8 flex-1 min-w-0 text-sm">
-            <SelectValue placeholder={t('bots.eventPatternPlaceholder')} />
+            {binding.event_pattern ? (
+              <span className="truncate">
+                {eventLabel(binding.event_pattern, t)}
+              </span>
+            ) : (
+              <SelectValue placeholder={t('bots.eventPatternPlaceholder')} />
+            )}
           </SelectTrigger>
           <SelectContent>
-            {eventOptions.map((event) => (
-              <SelectItem key={event} value={event}>
-                {eventLabel(event, t)}
-              </SelectItem>
-            ))}
+            {eventOptions.map((event) => {
+              const label = eventLabel(event, t);
+              return (
+                <SelectItem key={event} value={event}>
+                  <span className="flex flex-col">
+                    <span>{label}</span>
+                    {label !== event && (
+                      <span className="text-[11px] text-muted-foreground font-mono">
+                        {event}
+                      </span>
+                    )}
+                  </span>
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
 
