@@ -109,6 +109,61 @@ class AsyncDifyServiceClient:
                     if chunk.startswith('data:'):
                         yield json.loads(chunk[5:])
 
+    async def workflow_submit(
+        self,
+        form_token: str,
+        workflow_run_id: str,
+        inputs: dict[str, typing.Any],
+        user: str,
+        action: str = '',
+        timeout: float = 120.0,
+    ) -> typing.AsyncGenerator[dict[str, typing.Any], None]:
+        """Submit human input to resume a paused workflow, then stream events.
+
+        1. POST /form/human_input/{form_token} to submit the form
+        2. GET /workflow/{task_id}/events to stream the resumed workflow events
+        """
+
+        headers = {
+            'Authorization': f'Bearer {self.api_key}',
+            'Content-Type': 'application/json',
+        }
+
+        async with httpx.AsyncClient(
+            base_url=self.base_url,
+            trust_env=True,
+            timeout=timeout,
+        ) as client:
+            # Step 1: Submit the form
+            payload: dict[str, typing.Any] = {
+                'inputs': inputs if isinstance(inputs, dict) else {},
+                'user': user,
+                'action': action,
+            }
+
+            submit_resp = await client.post(
+                f'/form/human_input/{form_token}',
+                headers=headers,
+                json=payload,
+            )
+            if submit_resp.status_code != 200:
+                raise DifyAPIError(f'{submit_resp.status_code} {submit_resp.text}')
+
+            # Step 2: Stream resumed workflow events
+            async with client.stream(
+                'GET',
+                f'/workflow/{workflow_run_id}/events',
+                headers={'Authorization': f'Bearer {self.api_key}'},
+                params={'user': user},
+            ) as r:
+                async for chunk in r.aiter_lines():
+                    if r.status_code != 200:
+                        raise DifyAPIError(f'{r.status_code} {chunk}')
+                    if chunk.strip() == '':
+                        continue
+                    if chunk.startswith('data:'):
+                        yield json.loads(chunk[5:])
+
     async def upload_file(
         self,
         file: httpx._types.FileTypes,
