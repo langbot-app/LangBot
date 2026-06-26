@@ -89,7 +89,7 @@ try {
   });
   Object.assign(result, prepared);
   if (result.pipeline_id) {
-    result.pipeline_url = `${frontendUrl.replace(/\/$/, "")}/home/pipelines?id=${encodeURIComponent(result.pipeline_id)}`;
+    result.pipeline_url = `${frontendUrl.replace(/\/$/, "")}/home/agents?id=${encodeURIComponent(result.pipeline_id)}`;
   }
 
   if (writeEnv && result.pipeline_id) {
