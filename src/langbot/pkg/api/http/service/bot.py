@@ -190,17 +190,6 @@ class BotService:
         # TODO: 检查配置信息格式
         bot_data['uuid'] = str(uuid.uuid4())
 
-        # bind the most recently updated pipeline if any exist
-        result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_pipeline.LegacyPipeline)
-            .order_by(persistence_pipeline.LegacyPipeline.updated_at.desc())
-            .limit(1)
-        )
-        pipeline = result.first()
-        if pipeline is not None:
-            bot_data['use_pipeline_uuid'] = pipeline.uuid
-            bot_data['use_pipeline_name'] = pipeline.name
-
         await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_bot.Bot).values(bot_data))
 
         bot = await self.get_bot(bot_data['uuid'])
@@ -219,18 +208,10 @@ class BotService:
         if 'event_bindings' in update_data:
             update_data['event_bindings'] = await self._normalize_event_bindings(update_data.get('event_bindings'))
 
-        # set use_pipeline_name
-        if 'use_pipeline_uuid' in update_data:
-            result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(
-                    persistence_pipeline.LegacyPipeline.uuid == update_data['use_pipeline_uuid']
-                )
-            )
-            pipeline = result.first()
-            if pipeline is not None:
-                update_data['use_pipeline_name'] = pipeline.name
-            else:
-                raise Exception('Pipeline not found')
+        # clear legacy routing fields — routing is now fully managed via event_bindings
+        update_data.pop('use_pipeline_uuid', None)
+        update_data.pop('use_pipeline_name', None)
+        update_data.pop('pipeline_routing_rules', None)
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_bot.Bot).values(update_data).where(persistence_bot.Bot.uuid == bot_uuid)

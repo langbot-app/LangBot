@@ -193,6 +193,25 @@ class RuntimeBot:
         return False
 
     @classmethod
+    def _augment_event_data(
+        cls,
+        event_data: dict[str, typing.Any],
+    ) -> dict[str, typing.Any]:
+        """Inject virtual computed fields to simplify common filter patterns."""
+        message_chain = event_data.get('message_chain')
+        if isinstance(message_chain, list):
+            text_parts = [
+                comp.get('text', '') for comp in message_chain if isinstance(comp, dict) and comp.get('type') == 'Plain'
+            ]
+            event_data['message_text'] = ''.join(text_parts)
+            event_data['message_element_types'] = [
+                comp.get('type', '') for comp in message_chain if isinstance(comp, dict)
+            ]
+        if 'group' in event_data:
+            event_data['chat_type'] = 'group' if event_data.get('group') is not None else 'person'
+        return event_data
+
+    @classmethod
     def _match_event_filters(
         cls,
         event: platform_events.EBAEvent,
@@ -203,7 +222,7 @@ class RuntimeBot:
         if not isinstance(filters, list):
             return False
 
-        event_data = cls._safe_model_dump(event)
+        event_data = cls._augment_event_data(cls._safe_model_dump(event))
         return all(
             cls._match_event_filter(event_data, event_filter)
             for event_filter in filters
@@ -854,11 +873,8 @@ class RuntimeBot:
                 launcher_id = custom_launcher_id
 
         if pipeline_uuid_override is None:
-            message_text = str(event.message_chain)
-            element_types = [comp.type for comp in event.message_chain]
-            pipeline_uuid, routed_by_rule = self.resolve_pipeline_uuid(
-                launcher_kind, launcher_id, message_text, element_types
-            )
+            pipeline_uuid = None
+            routed_by_rule = False
         else:
             pipeline_uuid = pipeline_uuid_override
             routed_by_rule = routed_by_event_binding

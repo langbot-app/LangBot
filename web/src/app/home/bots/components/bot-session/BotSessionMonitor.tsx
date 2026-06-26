@@ -28,7 +28,7 @@ import {
   Quote,
   Voice,
 } from '@/app/infra/entities/message';
-import { PIPELINE_DISCARD } from '@/app/home/bots/components/bot-form/RoutingRulesEditor';
+import { PIPELINE_DISCARD } from '@/app/home/bots/components/bot-form/EventBindingsEditor';
 
 interface SessionInfo {
   session_id: string;
