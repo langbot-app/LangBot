@@ -339,6 +339,9 @@ const enUS = {
     deleteConfirmation: 'Are you sure you want to delete this bot?',
     platformAdapter: 'Platform/Adapter Selection',
     selectAdapter: 'Select Adapter',
+    legacyAdapters: 'Legacy adapters',
+    legacyAdaptersHint:
+      'These adapters are superseded by their newer (EBA) versions. They are kept only for existing configurations and are not recommended for new bots.',
     adapterConfig: 'Adapter Configuration',
     viewAdapterDocs: 'View Docs',
     bindPipeline: 'Bind Pipeline',

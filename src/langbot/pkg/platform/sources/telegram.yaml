@@ -20,6 +20,7 @@ metadata:
     es_ES: Adaptador de Telegram, consulte la documentación para obtener instrucciones de uso
   icon: telegram.svg
 spec:
+  legacy: true
   categories:
     - popular
     - global

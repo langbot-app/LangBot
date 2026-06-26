@@ -7,6 +7,8 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  ChevronDown,
+  ChevronRight,
   Sparkles,
   PartyPopper,
   Loader2,
@@ -773,14 +775,24 @@ function StepPlatform({
   onSelect: (name: string) => void;
 }) {
   const { t } = useTranslation();
+  const [showLegacy, setShowLegacy] = useState(false);
+
+  const activeAdapters = useMemo(
+    () => adapters.filter((a) => !a.spec.legacy),
+    [adapters],
+  );
+  const legacyAdapters = useMemo(
+    () => adapters.filter((a) => a.spec.legacy),
+    [adapters],
+  );
 
   const groupedAdapters = useMemo(() => {
-    const withCategories = adapters.map((a) => ({
+    const withCategories = activeAdapters.map((a) => ({
       ...a,
       categories: a.spec.categories,
     }));
     return groupByCategory(withCategories);
-  }, [adapters]);
+  }, [activeAdapters]);
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -856,6 +868,66 @@ function StepPlatform({
           </div>
         </div>
       ))}
+      {legacyAdapters.length > 0 && (
+        <div className="border-t pt-4 space-y-3">
+          <button
+            type="button"
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+            onClick={() => setShowLegacy((v) => !v)}
+          >
+            {showLegacy ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )}
+            {t('bots.legacyAdapters')}
+            <span className="rounded bg-muted px-1.5 py-0.5 text-xs">
+              {legacyAdapters.length}
+            </span>
+          </button>
+          {showLegacy && (
+            <>
+              <p className="text-xs text-muted-foreground">
+                {t('bots.legacyAdaptersHint')}
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 opacity-60">
+                {legacyAdapters.map((adapter) => (
+                  <Card
+                    key={adapter.name}
+                    className={cn(
+                      'cursor-pointer transition-all hover:shadow-md',
+                      selected === adapter.name
+                        ? 'ring-2 ring-primary shadow-md'
+                        : 'hover:border-primary/50',
+                    )}
+                    onClick={() => onSelect(adapter.name)}
+                  >
+                    <CardHeader className="flex flex-row items-center gap-3 pb-2">
+                      <img
+                        src={httpClient.getAdapterIconURL(adapter.name)}
+                        alt=""
+                        className="w-10 h-10 rounded-lg shrink-0 grayscale"
+                      />
+                      <div className="min-w-0">
+                        <CardTitle className="text-base truncate">
+                          {extractI18nObject(adapter.label)}
+                        </CardTitle>
+                      </div>
+                      {selected === adapter.name && (
+                        <div className="ml-auto shrink-0">
+                          <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                            <Check className="w-3 h-3 text-primary-foreground" />
+                          </div>
+                        </div>
+                      )}
+                    </CardHeader>
+                  </Card>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

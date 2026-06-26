@@ -12,6 +12,7 @@ metadata:
     zh_Hant: QQ 官方 API，支援 Webhook 和 WebSocket 兩種連線模式
   icon: qqofficial.svg
 spec:
+  legacy: true
   categories:
     - china
   help_links:
