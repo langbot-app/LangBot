@@ -446,7 +446,8 @@ const enUS = {
     },
     admins: {
       title: 'Admins',
-      description: 'Launchers (person/group IDs) that have admin privilege for this bot\'s commands',
+      description:
+        "Launchers (person/group IDs) that have admin privilege for this bot's commands",
       addAdmin: 'Add Admin',
       launcherType: 'Type',
       launcherId: 'ID',
