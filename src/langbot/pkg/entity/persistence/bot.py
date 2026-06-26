@@ -14,9 +14,7 @@ class BotAdmin(Base):
     launcher_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
     created_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, server_default=sqlalchemy.func.now())
 
-    __table_args__ = (
-        sqlalchemy.UniqueConstraint('bot_uuid', 'launcher_type', 'launcher_id', name='uq_bot_admin'),
-    )
+    __table_args__ = (sqlalchemy.UniqueConstraint('bot_uuid', 'launcher_type', 'launcher_id', name='uq_bot_admin'),)
 
 
 class Bot(Base):

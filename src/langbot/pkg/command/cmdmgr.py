@@ -86,6 +86,7 @@ class CommandManager:
 
         import sqlalchemy as _sa
         from ..entity.persistence.bot import BotAdmin as _BotAdmin
+
         _admins = await self.ap.persistence_mgr.execute_async(
             _sa.select(_BotAdmin).where(
                 _BotAdmin.bot_uuid == (query.bot_uuid or ''),

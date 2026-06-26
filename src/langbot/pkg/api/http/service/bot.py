@@ -204,18 +204,15 @@ class BotService:
 
     async def get_bot_admins(self, bot_uuid: str) -> list[dict]:
         from ....entity.persistence import bot as persistence_bot
+
         result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_bot.BotAdmin).where(
-                persistence_bot.BotAdmin.bot_uuid == bot_uuid
-            )
+            sqlalchemy.select(persistence_bot.BotAdmin).where(persistence_bot.BotAdmin.bot_uuid == bot_uuid)
         )
-        return [
-            {'id': r.id, 'launcher_type': r.launcher_type, 'launcher_id': r.launcher_id}
-            for r in result.all()
-        ]
+        return [{'id': r.id, 'launcher_type': r.launcher_type, 'launcher_id': r.launcher_id} for r in result.all()]
 
     async def add_bot_admin(self, bot_uuid: str, launcher_type: str, launcher_id: str) -> int:
         from ....entity.persistence import bot as persistence_bot
+
         result = await self.ap.persistence_mgr.execute_async(
             sqlalchemy.insert(persistence_bot.BotAdmin).values(
                 bot_uuid=bot_uuid,
@@ -227,6 +224,7 @@ class BotService:
 
     async def delete_bot_admin(self, bot_uuid: str, admin_id: int) -> None:
         from ....entity.persistence import bot as persistence_bot
+
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.delete(persistence_bot.BotAdmin).where(
                 persistence_bot.BotAdmin.bot_uuid == bot_uuid,

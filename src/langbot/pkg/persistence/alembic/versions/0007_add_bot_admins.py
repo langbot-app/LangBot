@@ -44,13 +44,12 @@ def upgrade() -> None:
     # Read instance_config metadata key that holds the admins list
     if 'metadata' not in tables:
         return
-    meta_row = conn.execute(
-        sa.text("SELECT value FROM metadata WHERE key = 'instance_config'")
-    ).first()
+    meta_row = conn.execute(sa.text("SELECT value FROM metadata WHERE key = 'instance_config'")).first()
     if meta_row is None:
         return
 
     import json
+
     try:
         cfg = json.loads(meta_row[0])
     except Exception:
@@ -65,8 +64,7 @@ def upgrade() -> None:
         try:
             conn.execute(
                 sa.text(
-                    'INSERT OR IGNORE INTO bot_admins (bot_uuid, launcher_type, launcher_id)'
-                    ' VALUES (:bu, :lt, :li)'
+                    'INSERT OR IGNORE INTO bot_admins (bot_uuid, launcher_type, launcher_id) VALUES (:bu, :lt, :li)'
                 ),
                 {'bu': first_bot_uuid, 'lt': launcher_type, 'li': launcher_id},
             )

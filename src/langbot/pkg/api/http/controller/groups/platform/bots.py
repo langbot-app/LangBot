@@ -59,6 +59,7 @@ class BotsRouterGroup(group.RouterGroup):
                 return self.success(data={'sent': True})
             except Exception as e:
                 import traceback
+
                 traceback.print_exc()
                 return self.http_status(500, -1, f'Failed to send message: {str(e)}')
 
@@ -81,7 +82,9 @@ class BotsRouterGroup(group.RouterGroup):
                 except Exception as e:
                     return self.http_status(409, -1, str(e))
 
-        @self.route('/<bot_uuid>/admins/<int:admin_id>', methods=['DELETE'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
+        @self.route(
+            '/<bot_uuid>/admins/<int:admin_id>', methods=['DELETE'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY
+        )
         async def _(bot_uuid: str, admin_id: int) -> str:
             await self.ap.bot_service.delete_bot_admin(bot_uuid, admin_id)
             return self.success()

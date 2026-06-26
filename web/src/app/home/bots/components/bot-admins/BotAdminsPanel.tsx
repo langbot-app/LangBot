@@ -37,7 +37,9 @@ export default function BotAdminsPanel({ botId }: { botId: string }) {
     }
   }, [botId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   async function handleAdd() {
     if (!newId.trim()) return;
@@ -72,7 +74,9 @@ export default function BotAdminsPanel({ botId }: { botId: string }) {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="person">{t('bots.admins.typePerson')}</SelectItem>
+            <SelectItem value="person">
+              {t('bots.admins.typePerson')}
+            </SelectItem>
             <SelectItem value="group">{t('bots.admins.typeGroup')}</SelectItem>
           </SelectContent>
         </Select>
@@ -83,32 +87,49 @@ export default function BotAdminsPanel({ botId }: { botId: string }) {
           onChange={(e) => setNewId(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
         />
-        <Button size="sm" onClick={handleAdd} disabled={adding || !newId.trim()}>
+        <Button
+          size="sm"
+          onClick={handleAdd}
+          disabled={adding || !newId.trim()}
+        >
           <Plus className="size-4 mr-1" />
           {t('bots.admins.addAdmin')}
         </Button>
       </div>
 
       {loading ? (
-        <div className="text-sm text-muted-foreground py-4 text-center">{t('bots.sessionMonitor.loading')}</div>
+        <div className="text-sm text-muted-foreground py-4 text-center">
+          {t('bots.sessionMonitor.loading')}
+        </div>
       ) : admins.length === 0 ? (
-        <div className="text-sm text-muted-foreground py-4 text-center">{t('bots.admins.noAdmins')}</div>
+        <div className="text-sm text-muted-foreground py-4 text-center">
+          {t('bots.admins.noAdmins')}
+        </div>
       ) : (
         <div className="border rounded-md overflow-hidden">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/40">
-                <th className="text-left px-3 py-2 font-medium text-muted-foreground w-28">{t('bots.admins.launcherType')}</th>
-                <th className="text-left px-3 py-2 font-medium text-muted-foreground">{t('bots.admins.launcherId')}</th>
+                <th className="text-left px-3 py-2 font-medium text-muted-foreground w-28">
+                  {t('bots.admins.launcherType')}
+                </th>
+                <th className="text-left px-3 py-2 font-medium text-muted-foreground">
+                  {t('bots.admins.launcherId')}
+                </th>
                 <th className="w-10" />
               </tr>
             </thead>
             <tbody>
               {admins.map((admin) => (
-                <tr key={admin.id} className="border-b last:border-0 hover:bg-muted/30">
+                <tr
+                  key={admin.id}
+                  className="border-b last:border-0 hover:bg-muted/30"
+                >
                   <td className="px-3 py-2">
                     <span className="px-1.5 py-0.5 rounded bg-muted text-xs">
-                      {admin.launcher_type === 'person' ? t('bots.admins.typePerson') : t('bots.admins.typeGroup')}
+                      {admin.launcher_type === 'person'
+                        ? t('bots.admins.typePerson')
+                        : t('bots.admins.typeGroup')}
                     </span>
                   </td>
                   <td className="px-3 py-2 font-mono">{admin.launcher_id}</td>

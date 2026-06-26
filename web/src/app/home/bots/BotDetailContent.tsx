@@ -27,7 +27,14 @@ import type { BotSessionMonitorHandle } from '@/app/home/bots/components/bot-ses
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { useTranslation } from 'react-i18next';
-import { Settings, FileText, Users, RefreshCw, Trash2, ShieldCheck } from 'lucide-react';
+import {
+  Settings,
+  FileText,
+  Users,
+  RefreshCw,
+  Trash2,
+  ShieldCheck,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -298,7 +305,10 @@ export default function BotDetailContent({ id }: { id: string }) {
           </TabsContent>
 
           {/* Tab: Admins */}
-          <TabsContent value="admins" className="flex-1 min-h-0 overflow-y-auto mt-4">
+          <TabsContent
+            value="admins"
+            className="flex-1 min-h-0 overflow-y-auto mt-4"
+          >
             <div className="mx-auto max-w-3xl pb-8">
               <BotAdminsPanel botId={id} />
             </div>

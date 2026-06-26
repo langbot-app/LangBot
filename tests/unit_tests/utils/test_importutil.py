@@ -138,7 +138,7 @@ class TestReadResourceFile:
         from langbot.pkg.utils import importutil
 
         content = importutil.read_resource_file('templates/config.yaml')
-        assert 'admins:' in content
+        assert 'api:' in content
         assert 'edition: community' in content
 
     def test_raises_for_nonexistent_file(self):
@@ -157,7 +157,7 @@ class TestReadResourceFileBytes:
         from langbot.pkg.utils import importutil
 
         content = importutil.read_resource_file_bytes('templates/config.yaml')
-        assert b'admins:' in content
+        assert b'api:' in content
         assert b'edition: community' in content
 
     def test_raises_for_nonexistent_file_bytes(self):
