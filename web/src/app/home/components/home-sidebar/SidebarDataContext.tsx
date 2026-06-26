@@ -28,6 +28,8 @@ export interface SidebarEntityItem {
   debug?: boolean;
   // Set when this item appears in the unified extensions list
   extensionType?: 'plugin' | 'mcp' | 'skill';
+  // Agent-specific: distinguishes Agent orchestration from legacy Pipeline
+  kind?: 'agent' | 'pipeline';
 }
 
 // Plugin page registered by a plugin
@@ -123,6 +125,7 @@ export function SidebarDataProvider({
           description: p.description,
           emoji: p.emoji,
           updatedAt: p.updated_at,
+          kind: p.kind,
         })),
       );
     } catch (error) {
