@@ -1,9 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import i18n from 'i18next';
-import {
-  IChooseAdapterEntity,
-  IPipelineEntity,
-} from '@/app/home/bots/components/bot-form/ChooseEntity';
+import { IChooseAdapterEntity } from '@/app/home/bots/components/bot-form/ChooseEntity';
 import {
   DynamicFormItemConfig,
   getDefaultValues,
@@ -17,7 +14,6 @@ import { systemInfo } from '@/app/infra/http';
 import { Agent, Bot } from '@/app/infra/entities/api';
 import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
 import { ExternalLink } from 'lucide-react';
-import RoutingRulesEditor from './RoutingRulesEditor';
 import EventBindingsEditor from './EventBindingsEditor';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -66,29 +62,6 @@ const getFormSchema = (t: (key: string) => string) =>
     adapter: z.string().min(1, { message: t('bots.adapterRequired') }),
     adapter_config: z.record(z.string(), z.any()),
     enable: z.boolean().optional(),
-    use_pipeline_uuid: z.string().optional(),
-    pipeline_routing_rules: z
-      .array(
-        z.object({
-          type: z.enum([
-            'launcher_type',
-            'launcher_id',
-            'message_content',
-            'message_has_element',
-          ]),
-          operator: z.enum([
-            'eq',
-            'neq',
-            'contains',
-            'not_contains',
-            'starts_with',
-            'regex',
-          ]),
-          value: z.string(),
-          pipeline_uuid: z.string(),
-        }),
-      )
-      .optional(),
     event_bindings: z
       .array(
         z.object({
@@ -128,8 +101,6 @@ export default function BotForm({
       adapter: '',
       adapter_config: {},
       enable: true,
-      use_pipeline_uuid: '',
-      pipeline_routing_rules: [],
       event_bindings: [],
     },
   });
@@ -154,9 +125,6 @@ export default function BotForm({
     Record<string, string[]>
   >({});
 
-  const [pipelineNameList, setPipelineNameList] = useState<IPipelineEntity[]>(
-    [],
-  );
   const [agentNameList, setAgentNameList] = useState<Agent[]>([]);
 
   const [dynamicFormConfigList, setDynamicFormConfigList] = useState<
@@ -200,8 +168,6 @@ export default function BotForm({
               adapter: val.adapter,
               adapter_config: val.adapter_config,
               enable: val.enable,
-              use_pipeline_uuid: val.use_pipeline_uuid || '',
-              pipeline_routing_rules: val.pipeline_routing_rules || [],
               event_bindings: val.event_bindings || [],
             });
             handleAdapterSelect(val.adapter);
@@ -231,17 +197,6 @@ export default function BotForm({
   }
 
   async function initBotFormComponent() {
-    const pipelinesRes = await httpClient.getPipelines();
-    setPipelineNameList(
-      pipelinesRes.pipelines.map((item) => {
-        return {
-          label: item.name,
-          value: item.uuid ?? '',
-          emoji: item.emoji,
-        };
-      }),
-    );
-
     const agentsRes = await httpClient.getAgents();
     setAgentNameList(agentsRes.agents);
 
@@ -335,8 +290,6 @@ export default function BotForm({
             name: bot.name,
             adapter_config: bot.adapter_config,
             enable: bot.enable ?? true,
-            use_pipeline_uuid: bot.use_pipeline_uuid ?? '',
-            pipeline_routing_rules: bot.pipeline_routing_rules ?? [],
             event_bindings: bot.event_bindings ?? [],
             webhook_full_url: runtimeValues?.webhook_full_url as
               | string
@@ -381,8 +334,6 @@ export default function BotForm({
         adapter: form.getValues().adapter,
         adapter_config: form.getValues().adapter_config,
         enable: form.getValues().enable,
-        use_pipeline_uuid: form.getValues().use_pipeline_uuid,
-        pipeline_routing_rules: form.getValues().pipeline_routing_rules ?? [],
         event_bindings: form.getValues().event_bindings ?? [],
       };
       httpClient
@@ -472,79 +423,7 @@ export default function BotForm({
           </CardContent>
         </Card>
 
-        {/* Card 2: Pipeline Binding (edit mode only) */}
-        {initBotId && (
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('bots.routingConnection')}</CardTitle>
-              <CardDescription>
-                {t('bots.routingConnectionDescription')}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <FormField
-                control={form.control}
-                name="use_pipeline_uuid"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('bots.bindPipeline')}</FormLabel>
-                    <FormControl>
-                      <Select onValueChange={field.onChange} {...field}>
-                        <SelectTrigger>
-                          {field.value ? (
-                            (() => {
-                              const pipeline = pipelineNameList.find(
-                                (p) => p.value === field.value,
-                              );
-                              return (
-                                <div className="flex items-center gap-2">
-                                  {pipeline?.emoji && (
-                                    <span className="text-sm shrink-0">
-                                      {pipeline.emoji}
-                                    </span>
-                                  )}
-                                  <span>{pipeline?.label ?? field.value}</span>
-                                </div>
-                              );
-                            })()
-                          ) : (
-                            <SelectValue
-                              placeholder={t('bots.selectPipeline')}
-                            />
-                          )}
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectGroup>
-                            {pipelineNameList.map((item) => (
-                              <SelectItem key={item.value} value={item.value}>
-                                <div className="flex items-center gap-2">
-                                  {item.emoji && (
-                                    <span className="text-sm shrink-0">
-                                      {item.emoji}
-                                    </span>
-                                  )}
-                                  <span>{item.label}</span>
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-
-              {/* Pipeline Routing Rules */}
-              <RoutingRulesEditor
-                form={form}
-                pipelineNameList={pipelineNameList}
-              />
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Card 3: Event Orchestration (edit mode only) */}
+        {/* Card 2: Event Orchestration (edit mode only) */}
         {initBotId && (
           <Card>
             <CardHeader>
