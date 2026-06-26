@@ -34,7 +34,7 @@ import {
   RefreshCcw,
   Bot,
   Workflow,
-  Group,
+  ListTree,
 } from 'lucide-react';
 import { useTheme } from '@/components/providers/theme-provider';
 
@@ -1112,42 +1112,69 @@ function NavItems({
                   <span className="cursor-pointer select-none">
                     {config.name}
                   </span>
-                  <div className="ml-auto flex items-center gap-0.5 -mr-1">
-                    {isAgents && (
-                      <button
-                        type="button"
-                        title={t('agents.groupByKind')}
-                        className={cn(
-                          'p-1 rounded-sm transition-all',
-                          sidebarData.agentsGroupByKind
-                            ? 'text-sidebar-accent-foreground bg-sidebar-accent'
-                            : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100',
-                        )}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          sidebarData.setAgentsGroupByKind(
-                            !sidebarData.agentsGroupByKind,
-                          );
-                        }}
-                      >
-                        <Group className="size-3.5" />
-                      </button>
-                    )}
-                    {isExtensionsCategory && (
-                      <button
-                        type="button"
-                        title={t('common.refresh', '刷新')}
-                        className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all"
-                        onClick={handleRefreshExtensions}
-                      >
-                        <RefreshCcw
+                  {/* Group/refresh controls — left-aligned, hugging the title */}
+                  {(isAgents || isExtensionsCategory) && (
+                    <div className="flex items-center gap-0.5">
+                      {isAgents && (
+                        <button
+                          type="button"
+                          title={t('agents.groupByKind')}
                           className={cn(
-                            'size-3.5',
-                            extRefreshing && 'animate-spin',
+                            'flex items-center gap-1 px-1.5 py-1 rounded-sm text-[10px] transition-all',
+                            sidebarData.agentsGroupByKind
+                              ? 'text-sidebar-accent-foreground bg-sidebar-accent'
+                              : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
                           )}
-                        />
-                      </button>
-                    )}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            sidebarData.setAgentsGroupByKind(
+                              !sidebarData.agentsGroupByKind,
+                            );
+                          }}
+                        >
+                          <ListTree className="size-3.5" />
+                          <span>{t('agents.groupByKindShort')}</span>
+                        </button>
+                      )}
+                      {isExtensionsCategory && (
+                        <button
+                          type="button"
+                          title={t('plugins.groupByType')}
+                          className={cn(
+                            'flex items-center gap-1 px-1.5 py-1 rounded-sm text-[10px] transition-all',
+                            sidebarData.extensionsGroupByType
+                              ? 'text-sidebar-accent-foreground bg-sidebar-accent'
+                              : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                          )}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            sidebarData.setExtensionsGroupByType(
+                              !sidebarData.extensionsGroupByType,
+                            );
+                          }}
+                        >
+                          <ListTree className="size-3.5" />
+                          <span>{t('plugins.groupByTypeShort')}</span>
+                        </button>
+                      )}
+                      {isExtensionsCategory && (
+                        <button
+                          type="button"
+                          title={t('common.refresh', '刷新')}
+                          className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all"
+                          onClick={handleRefreshExtensions}
+                        >
+                          <RefreshCcw
+                            className={cn(
+                              'size-3.5',
+                              extRefreshing && 'animate-spin',
+                            )}
+                          />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  <div className="ml-auto flex items-center gap-0.5 -mr-1">
                     {canCreate &&
                       (isPlugin ? (
                         <DropdownMenu>

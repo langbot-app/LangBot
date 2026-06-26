@@ -519,6 +519,7 @@ const zhHans = {
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: '流水线',
     groupByKind: '按类型分组',
+    groupByKindShort: '分组',
     pipelineTypeDescription:
       '保留现有无代码消息流水线，兼容旧配置，只能处理消息事件。',
     allEvents: '支持全部 EBA 事件',
@@ -578,6 +579,7 @@ const zhHans = {
     noExtensionInstalled: '暂未安装任何扩展',
     loadingExtensions: '正在加载扩展...',
     groupByType: '按格式分组',
+    groupByTypeShort: '分组',
     pluginSort: '插件排序',
     pluginSortDescription:
       '插件顺序会影响同一事件内的处理顺序，请拖动插件卡片排序',
