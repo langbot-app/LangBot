@@ -1,4 +1,3 @@
-admins: []
 api:
     port: 5300
     webhook_prefix: 'http://127.0.0.1:5300'

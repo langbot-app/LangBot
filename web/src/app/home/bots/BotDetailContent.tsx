@@ -22,11 +22,12 @@ import {
 import BotForm from '@/app/home/bots/components/bot-form/BotForm';
 import { BotLogListComponent } from '@/app/home/bots/components/bot-log/view/BotLogListComponent';
 import BotSessionMonitor from '@/app/home/bots/components/bot-session/BotSessionMonitor';
+import BotAdminsPanel from '@/app/home/bots/components/bot-admins/BotAdminsPanel';
 import type { BotSessionMonitorHandle } from '@/app/home/bots/components/bot-session/BotSessionMonitor';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { useTranslation } from 'react-i18next';
-import { Settings, FileText, Users, RefreshCw, Trash2 } from 'lucide-react';
+import { Settings, FileText, Users, RefreshCw, Trash2, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -229,6 +230,10 @@ export default function BotDetailContent({ id }: { id: string }) {
                 </button>
               )}
             </TabsTrigger>
+            <TabsTrigger value="admins" className="gap-1.5">
+              <ShieldCheck className="size-3.5" />
+              {t('bots.admins.title')}
+            </TabsTrigger>
           </TabsList>
 
           {/* Tab: Configuration */}
@@ -290,6 +295,13 @@ export default function BotDetailContent({ id }: { id: string }) {
           {/* Tab: Sessions */}
           <TabsContent value="sessions" className="flex-1 min-h-0 mt-4">
             <BotSessionMonitor ref={sessionMonitorRef} botId={id} />
+          </TabsContent>
+
+          {/* Tab: Admins */}
+          <TabsContent value="admins" className="flex-1 min-h-0 overflow-y-auto mt-4">
+            <div className="mx-auto max-w-3xl pb-8">
+              <BotAdminsPanel botId={id} />
+            </div>
           </TabsContent>
         </Tabs>
       </div>

@@ -394,6 +394,18 @@ export class BackendClient extends BaseHttpClient {
     return this.delete(`/api/v1/platform/bots/${uuid}`);
   }
 
+  public getBotAdmins(botId: string): Promise<{ admins: Array<{ id: number; launcher_type: string; launcher_id: string }> }> {
+    return this.get(`/api/v1/platform/bots/${botId}/admins`);
+  }
+
+  public addBotAdmin(botId: string, launcher_type: string, launcher_id: string): Promise<{ id: number }> {
+    return this.post(`/api/v1/platform/bots/${botId}/admins`, { launcher_type, launcher_id });
+  }
+
+  public deleteBotAdmin(botId: string, adminId: number): Promise<object> {
+    return this.delete(`/api/v1/platform/bots/${botId}/admins/${adminId}`);
+  }
+
   public getBotLogs(
     botId: string,
     request: GetBotLogsRequest,
