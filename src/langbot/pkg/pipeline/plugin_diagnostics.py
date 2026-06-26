@@ -216,9 +216,7 @@ def _build_plugin_sources(
     if response_sources is not None:
         plugin_refs = [_extract_response_source_plugin_ref(source) for source in response_sources]
         return [
-            PluginResponseSource(plugin=plugin, event_name=event_name)
-            for plugin in plugin_refs
-            if plugin is not None
+            PluginResponseSource(plugin=plugin, event_name=event_name) for plugin in plugin_refs if plugin is not None
         ]
 
     if emitted_plugins:

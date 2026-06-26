@@ -51,13 +51,15 @@ class TestRagRerankAction:
         app.model_mgr.get_rerank_model_by_uuid = AsyncMock(return_value=rerank_model)
         runtime_handler = make_handler(app)
 
-        response = await runtime_handler.actions[PluginToRuntimeAction.INVOKE_RERANK.value]({
-            'rerank_model_uuid': 'rerank-1',
-            'query': 'hello',
-            'documents': ['a', 'b'],
-            'top_k': 1,
-            'extra_args': {'return_documents': False},
-        })
+        response = await runtime_handler.actions[PluginToRuntimeAction.INVOKE_RERANK.value](
+            {
+                'rerank_model_uuid': 'rerank-1',
+                'query': 'hello',
+                'documents': ['a', 'b'],
+                'top_k': 1,
+                'extra_args': {'return_documents': False},
+            }
+        )
 
         assert response.code == 0
         assert response.data['results'] == [{'index': 1, 'relevance_score': 0.9}]
@@ -72,16 +74,16 @@ class TestRagRerankAction:
     @pytest.mark.asyncio
     async def test_returns_error_when_rerank_model_missing(self, app):
         """Missing rerank model returns an action error."""
-        app.model_mgr.get_rerank_model_by_uuid = AsyncMock(
-            side_effect=ValueError('not found')
-        )
+        app.model_mgr.get_rerank_model_by_uuid = AsyncMock(side_effect=ValueError('not found'))
         runtime_handler = make_handler(app)
 
-        response = await runtime_handler.actions[PluginToRuntimeAction.INVOKE_RERANK.value]({
-            'rerank_model_uuid': 'missing',
-            'query': 'hello',
-            'documents': ['a'],
-        })
+        response = await runtime_handler.actions[PluginToRuntimeAction.INVOKE_RERANK.value](
+            {
+                'rerank_model_uuid': 'missing',
+                'query': 'hello',
+                'documents': ['a'],
+            }
+        )
 
         assert response.code != 0
         assert 'Rerank model with rerank_model_uuid missing not found' in response.message
