@@ -14,7 +14,7 @@ from langbot.pkg.agent.runner.resource_builder import AgentResourceBuilder
 
 RUNNER_ID = 'plugin:test/runner/default'
 FULL_PERMISSIONS = {
-    'models': ['invoke', 'stream', 'rerank'],
+    'models': ['count_tokens', 'invoke', 'stream', 'rerank'],
     'tools': ['detail', 'call'],
     'knowledge_bases': ['list', 'retrieve'],
     'history': ['page', 'search'],
@@ -139,9 +139,24 @@ async def test_build_models_authorizes_config_declared_llm_and_rerank_models(app
     resources = await build_resources(app, query, descriptor)
 
     assert resources['models'] == [
-        {'model_id': 'primary', 'model_type': 'llm', 'provider': 'test-provider', 'operations': ['invoke', 'stream']},
-        {'model_id': 'fallback', 'model_type': 'llm', 'provider': 'test-provider', 'operations': ['invoke', 'stream']},
-        {'model_id': 'aux', 'model_type': 'llm', 'provider': 'aux-provider', 'operations': ['invoke', 'stream']},
+        {
+            'model_id': 'primary',
+            'model_type': 'llm',
+            'provider': 'test-provider',
+            'operations': ['invoke', 'stream', 'count_tokens'],
+        },
+        {
+            'model_id': 'fallback',
+            'model_type': 'llm',
+            'provider': 'test-provider',
+            'operations': ['invoke', 'stream', 'count_tokens'],
+        },
+        {
+            'model_id': 'aux',
+            'model_type': 'llm',
+            'provider': 'aux-provider',
+            'operations': ['invoke', 'stream', 'count_tokens'],
+        },
         {'model_id': 'rerank', 'model_type': 'rerank', 'provider': 'rerank-provider', 'operations': ['rerank']},
     ]
 
@@ -189,7 +204,12 @@ async def test_build_models_authorizes_rerank_and_llm_refs_from_config(app):
     resources = await build_resources(app, query, descriptor)
 
     assert resources['models'] == [
-        {'model_id': 'llm', 'model_type': 'llm', 'provider': 'test-provider', 'operations': ['invoke', 'stream']},
+        {
+            'model_id': 'llm',
+            'model_type': 'llm',
+            'provider': 'test-provider',
+            'operations': ['invoke', 'stream', 'count_tokens'],
+        },
         {'model_id': 'rerank', 'model_type': 'rerank', 'provider': 'rerank-provider', 'operations': ['rerank']},
     ]
 
@@ -222,7 +242,12 @@ async def test_build_resources_accepts_dynamic_form_type_aliases(app):
     resources = await build_resources(app, query, descriptor)
 
     assert resources['models'] == [
-        {'model_id': 'llm_alias', 'model_type': 'llm', 'provider': 'test-provider', 'operations': ['invoke', 'stream']},
+        {
+            'model_id': 'llm_alias',
+            'model_type': 'llm',
+            'provider': 'test-provider',
+            'operations': ['invoke', 'stream', 'count_tokens'],
+        },
     ]
     assert resources['knowledge_bases'] == [
         {'kb_id': 'kb_alias', 'kb_name': 'name-kb_alias', 'kb_type': 'default', 'operations': ['list', 'retrieve']},

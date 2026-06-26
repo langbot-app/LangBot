@@ -556,6 +556,55 @@ class RuntimeConnectionHandler(handler.Handler):
                 },
             )
 
+        @self.action(PluginToRuntimeAction.COUNT_TOKENS)
+        async def count_tokens(data: dict[str, Any]) -> handler.ActionResponse:
+            """Count model input tokens.
+
+            For AgentRunner calls: requires run_id and validates model_uuid against session.resources.models.
+            For regular plugin calls: no run_id, unrestricted access (backward compatibility).
+            """
+            llm_model_uuid = data['llm_model_uuid']
+            messages = data['messages']
+            funcs = data.get('funcs', [])
+            extra_args = data.get('extra_args', {})
+            run_id = data.get('run_id')
+            caller_plugin_identity = data.get('caller_plugin_identity')
+
+            if run_id:
+                _session, error = await _validate_run_authorization(
+                    run_id, 'model', llm_model_uuid, self.ap, caller_plugin_identity, operation='count_tokens'
+                )
+                if error:
+                    return error
+
+            llm_model = await self.ap.model_mgr.get_model_by_uuid(llm_model_uuid)
+            if llm_model is None:
+                return handler.ActionResponse.error(
+                    message=f'LLM model with llm_model_uuid {llm_model_uuid} not found',
+                )
+
+            messages_obj = [provider_message.Message.model_validate(message) for message in messages]
+
+            async def _placeholder_func(**kwargs):
+                pass
+
+            funcs_obj = [resource_tool.LLMTool.model_validate({**func, 'func': _placeholder_func}) for func in funcs]
+            count_tokens_method = getattr(llm_model.provider.requester, 'count_tokens', None)
+            if not callable(count_tokens_method):
+                return handler.ActionResponse.error(message='LLM provider does not support token counting')
+
+            try:
+                tokens = await count_tokens_method(
+                    model=llm_model,
+                    messages=messages_obj,
+                    funcs=funcs_obj,
+                    extra_args=extra_args,
+                )
+            except Exception as exc:
+                return handler.ActionResponse.error(message=f'Token counting failed: {exc}')
+
+            return handler.ActionResponse.success(data={'tokens': tokens})
+
         @self.action(PluginToRuntimeAction.INVOKE_LLM)
         async def invoke_llm(data: dict[str, Any]) -> handler.ActionResponse:
             """Invoke llm

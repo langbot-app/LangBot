@@ -616,6 +616,94 @@ class TestAgentRunProxyActions:
         assert model_requester.LLM_USAGE_QUERY_VARIABLE not in query.variables
 
     @pytest.mark.asyncio
+    async def test_count_tokens_validates_run_authorization_and_calls_provider(self, app):
+        """COUNT_TOKENS is run-scoped and forwards messages/tools to the model requester."""
+        from langbot.pkg.agent.runner.session_registry import get_session_registry
+
+        run_id = 'run_proxy_count_tokens'
+        query = self.query()
+        app.query_pool.cached_queries[906] = query
+
+        registry = get_session_registry()
+        await registry.unregister(run_id)
+        await registry.register(
+            run_id=run_id,
+            runner_id='plugin:test/runner/default',
+            query_id=906,
+            plugin_identity='test/runner',
+            resources=make_agent_resources(
+                models=[{'model_id': 'llm_count_001', 'operations': ['count_tokens']}],
+            ),
+        )
+
+        requester = SimpleNamespace(count_tokens=AsyncMock(return_value=37))
+        model = SimpleNamespace(
+            model_entity=SimpleNamespace(abilities=[], extra_args={'temperature': 0.2}),
+            provider=SimpleNamespace(requester=requester),
+        )
+        app.model_mgr.get_model_by_uuid.return_value = model
+        runtime_handler = make_handler(app)
+
+        try:
+            response = await runtime_handler.actions[PluginToRuntimeAction.COUNT_TOKENS.value]({
+                'run_id': run_id,
+                'caller_plugin_identity': 'test/runner',
+                'llm_model_uuid': 'llm_count_001',
+                'messages': [{'role': 'user', 'content': 'hello'}],
+                'funcs': [{
+                    'name': 'search',
+                    'human_desc': 'Search',
+                    'description': 'Search',
+                    'parameters': {'type': 'object'},
+                }],
+                'extra_args': {'temperature': 0.7},
+            })
+        finally:
+            await registry.unregister(run_id)
+
+        assert response.code == 0
+        assert response.data == {'tokens': 37}
+        requester.count_tokens.assert_awaited_once()
+        kwargs = requester.count_tokens.await_args.kwargs
+        assert kwargs['model'] is model
+        assert kwargs['messages'][0].content == 'hello'
+        assert [tool.name for tool in kwargs['funcs']] == ['search']
+        assert kwargs['extra_args'] == {'temperature': 0.7}
+
+    @pytest.mark.asyncio
+    async def test_count_tokens_rejects_model_without_operation(self, app):
+        """COUNT_TOKENS requires the explicit model operation in the run snapshot."""
+        from langbot.pkg.agent.runner.session_registry import get_session_registry
+
+        run_id = 'run_proxy_count_tokens_denied'
+        registry = get_session_registry()
+        await registry.unregister(run_id)
+        await registry.register(
+            run_id=run_id,
+            runner_id='plugin:test/runner/default',
+            query_id=None,
+            plugin_identity='test/runner',
+            resources=make_agent_resources(
+                models=[{'model_id': 'llm_count_002', 'operations': ['invoke']}],
+            ),
+        )
+
+        runtime_handler = make_handler(app)
+        try:
+            response = await runtime_handler.actions[PluginToRuntimeAction.COUNT_TOKENS.value]({
+                'run_id': run_id,
+                'caller_plugin_identity': 'test/runner',
+                'llm_model_uuid': 'llm_count_002',
+                'messages': [{'role': 'user', 'content': 'hello'}],
+            })
+        finally:
+            await registry.unregister(run_id)
+
+        assert response.code != 0
+        assert 'operation count_tokens' in response.message
+        app.model_mgr.get_model_by_uuid.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_invoke_llm_stream_restores_query_and_options(self, app):
         """INVOKE_LLM_STREAM applies the same host context as non-streaming calls."""
         from langbot.pkg.agent.runner.session_registry import get_session_registry
