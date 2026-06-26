@@ -159,6 +159,36 @@ class TestHandlerRagErrorResponse:
         assert 'KeyError' in response.message
 
 
+class TestHandlerPluginDiagnostic:
+    @pytest.mark.asyncio
+    async def test_notify_plugin_diagnostic_falls_back_to_raw_protocol_action(self):
+        """Diagnostic forwarding works before the SDK enum exists."""
+        app = SimpleNamespace()
+        app.logger = SimpleNamespace(debug=MagicMock())
+        runtime_handler = make_handler(app)
+        runtime_handler.call_action = AsyncMock(return_value={})
+
+        payload = {'code': 'response_delivery_failed'}
+        await runtime_handler.notify_plugin_diagnostic(payload)
+
+        action = runtime_handler.call_action.await_args.args[0]
+        assert action.value == 'plugin_diagnostic'
+        assert runtime_handler.call_action.await_args.args[1] is payload
+        assert runtime_handler.call_action.await_args.kwargs['timeout'] == 5
+
+    def test_langbot_to_runtime_action_uses_enum_when_available(self):
+        """The compatibility helper should prefer SDK enums once available."""
+        from langbot.pkg.plugin import handler as plugin_handler
+
+        sentinel = object()
+        original = plugin_handler.LangBotToRuntimeAction
+        plugin_handler.LangBotToRuntimeAction = SimpleNamespace(PLUGIN_DIAGNOSTIC=sentinel)
+        try:
+            assert plugin_handler._langbot_to_runtime_action('PLUGIN_DIAGNOSTIC', 'plugin_diagnostic') is sentinel
+        finally:
+            plugin_handler.LangBotToRuntimeAction = original
+
+
 class TestConstantsSemanticVersion:
     """Tests for version constant access."""
 

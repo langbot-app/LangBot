@@ -13,6 +13,8 @@ import pytest
 from unittest.mock import Mock, AsyncMock
 from importlib import import_module
 
+from tests.factories import text_query
+
 
 def get_connector_module():
     """Lazy import to avoid circular import issues."""
@@ -130,6 +132,130 @@ class TestListPlugins:
 
         # Debug plugin should be first
         assert result[0]['debug'] is True
+
+
+class TestPluginDiagnostics:
+    @pytest.mark.asyncio
+    async def test_emit_event_preserves_response_sources(self):
+        connector = create_mock_connector()
+        query = text_query('hello')
+        event = query.message_event
+        object.__setattr__(event, 'query', query)
+        connector_module = get_connector_module()
+        original_from_event = connector_module.context.EventContext.from_event
+        original_model_validate = connector_module.context.EventContext.model_validate
+        response_sources = [
+            {
+                'kind': 'reply_message_chain',
+                'plugin': {'author': 'tester', 'name': 'demo'},
+            }
+        ]
+
+        async def emit_event_response(event_context, include_plugins=None):
+            return {
+                'event_context': event_context,
+                'emitted_plugins': [],
+                'response_sources': response_sources,
+            }
+
+        connector.handler = AsyncMock()
+        connector.handler.emit_event = AsyncMock(side_effect=emit_event_response)
+
+        fake_event_ctx = Mock()
+        event_dump = event.model_dump()
+        event_dump['event_name'] = 'FriendMessage'
+        fake_event_ctx.model_dump.return_value = {
+            'query_id': query.query_id,
+            'eid': 0,
+            'event_name': 'FriendMessage',
+            'event': event_dump,
+            'is_prevent_default': False,
+            'is_prevent_postorder': False,
+        }
+        connector_module.context.EventContext.from_event = Mock(return_value=fake_event_ctx)
+        parsed_event_ctx = Mock()
+        connector_module.context.EventContext.model_validate = Mock(return_value=parsed_event_ctx)
+        try:
+            event_ctx = await connector.emit_event(event)
+        finally:
+            connector_module.context.EventContext.from_event = original_from_event
+            connector_module.context.EventContext.model_validate = original_model_validate
+
+        assert event_ctx is parsed_event_ctx
+        assert event_ctx._response_sources == response_sources
+
+    @pytest.mark.asyncio
+    async def test_emit_event_leaves_response_sources_absent_for_old_runtime(self):
+        connector = create_mock_connector()
+        query = text_query('hello')
+        event = query.message_event
+        object.__setattr__(event, 'query', query)
+        connector_module = get_connector_module()
+        original_from_event = connector_module.context.EventContext.from_event
+        original_model_validate = connector_module.context.EventContext.model_validate
+
+        async def emit_event_response(event_context, include_plugins=None):
+            return {
+                'event_context': event_context,
+                'emitted_plugins': [
+                    {'manifest': {'metadata': {'author': 'tester', 'name': 'demo'}}},
+                ],
+            }
+
+        connector.handler = AsyncMock()
+        connector.handler.emit_event = AsyncMock(side_effect=emit_event_response)
+
+        fake_event_ctx = Mock()
+        event_dump = event.model_dump()
+        event_dump['event_name'] = 'FriendMessage'
+        fake_event_ctx.model_dump.return_value = {
+            'query_id': query.query_id,
+            'eid': 0,
+            'event_name': 'FriendMessage',
+            'event': event_dump,
+            'is_prevent_default': False,
+            'is_prevent_postorder': False,
+        }
+        connector_module.context.EventContext.from_event = Mock(return_value=fake_event_ctx)
+        parsed_event_ctx = Mock()
+        connector_module.context.EventContext.model_validate = Mock(return_value=parsed_event_ctx)
+        try:
+            event_ctx = await connector.emit_event(event)
+        finally:
+            connector_module.context.EventContext.from_event = original_from_event
+            connector_module.context.EventContext.model_validate = original_model_validate
+
+        assert '_response_sources' not in vars(event_ctx)
+        assert event_ctx._emitted_plugins == [
+            {'manifest': {'metadata': {'author': 'tester', 'name': 'demo'}}},
+        ]
+
+    @pytest.mark.asyncio
+    async def test_notify_plugin_diagnostic_skips_when_disabled(self):
+        connector_module = get_connector_module()
+
+        async def mock_disconnect(conn):
+            pass
+
+        mock_app = create_mock_app()
+        mock_app.instance_config.data = {'plugin': {'enable': False}}
+        connector = connector_module.PluginRuntimeConnector(mock_app, mock_disconnect)
+        connector.handler = AsyncMock()
+
+        await connector.notify_plugin_diagnostic({'code': 'response_delivery_failed'})
+
+        connector.handler.notify_plugin_diagnostic.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_notify_plugin_diagnostic_is_best_effort(self):
+        connector = create_mock_connector()
+        connector.handler = AsyncMock()
+        connector.handler.notify_plugin_diagnostic = AsyncMock(side_effect=RuntimeError('action not found'))
+
+        await connector.notify_plugin_diagnostic({'code': 'response_delivery_failed'})
+
+        connector.handler.notify_plugin_diagnostic.assert_awaited_once()
+        connector.ap.logger.debug.assert_called_once()
 
 
 class TestListKnowledgeEngines:

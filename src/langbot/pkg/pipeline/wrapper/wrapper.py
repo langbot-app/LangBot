@@ -3,6 +3,7 @@ from __future__ import annotations
 import typing
 
 from .. import entities
+from .. import plugin_diagnostics
 from .. import stage
 
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
@@ -78,6 +79,11 @@ class ResponseWrapper(stage.PipelineStage):
         # 如果 resp_messages[-1] 已经是 MessageChain 了
         if isinstance(query.resp_messages[-1], platform_message.MessageChain):
             query.resp_message_chain.append(query.resp_messages[-1])
+            plugin_diagnostics.consume_pending_plugin_response_source(
+                query,
+                query.resp_messages[-1],
+                len(query.resp_message_chain) - 1,
+            )
 
             yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
@@ -129,8 +135,10 @@ class ResponseWrapper(stage.PipelineStage):
                         else:
                             if event_ctx.event.reply_message_chain is not None:
                                 reply_chain = event_ctx.event.reply_message_chain
+                                is_plugin_reply = True
                             else:
                                 reply_chain = result.get_content_platform_message_chain()
+                                is_plugin_reply = False
 
                             # Attach files the agent produced in the sandbox
                             # outbox, but only on the terminal assistant message.
@@ -138,6 +146,13 @@ class ResponseWrapper(stage.PipelineStage):
                                 await self._append_outbound_attachments(query, reply_chain)
 
                             query.resp_message_chain.append(reply_chain)
+                            if is_plugin_reply:
+                                plugin_diagnostics.record_last_plugin_response_source(
+                                    query,
+                                    plugin_diagnostics.get_response_sources(event_ctx),
+                                    plugin_diagnostics.get_emitted_plugins(event_ctx),
+                                    event.event_name,
+                                )
 
                             yield entities.StageProcessResult(
                                 result_type=entities.ResultType.CONTINUE,
@@ -180,6 +195,12 @@ class ResponseWrapper(stage.PipelineStage):
                             else:
                                 if event_ctx.event.reply_message_chain is not None:
                                     query.resp_message_chain.append(event_ctx.event.reply_message_chain)
+                                    plugin_diagnostics.record_last_plugin_response_source(
+                                        query,
+                                        plugin_diagnostics.get_response_sources(event_ctx),
+                                        plugin_diagnostics.get_emitted_plugins(event_ctx),
+                                        event.event_name,
+                                    )
 
                                 else:
                                     query.resp_message_chain.append(

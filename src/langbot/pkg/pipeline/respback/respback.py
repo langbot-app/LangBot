@@ -9,6 +9,7 @@ import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
 from .. import stage, entities
+from .. import plugin_diagnostics
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 
@@ -39,20 +40,35 @@ class SendResponseBackStage(stage.PipelineStage):
 
         has_chunks = any(isinstance(msg, provider_message.MessageChunk) for msg in query.resp_messages)
         # TODO 命令与流式的兼容性问题
-        if await query.adapter.is_stream_output_supported() and has_chunks:
-            is_final = [msg.is_final for msg in query.resp_messages][0]
-            await query.adapter.reply_message_chunk(
-                message_source=query.message_event,
-                bot_message=query.resp_messages[-1],
-                message=query.resp_message_chain[-1],
-                quote_origin=quote_origin,
-                is_final=is_final,
+        response_index = len(query.resp_message_chain) - 1
+        message_chain = query.resp_message_chain[-1]
+
+        try:
+            if await query.adapter.is_stream_output_supported() and has_chunks:
+                is_final = [msg.is_final for msg in query.resp_messages][0]
+                await query.adapter.reply_message_chunk(
+                    message_source=query.message_event,
+                    bot_message=query.resp_messages[-1],
+                    message=message_chain,
+                    quote_origin=quote_origin,
+                    is_final=is_final,
+                )
+            else:
+                await query.adapter.reply_message(
+                    message_source=query.message_event,
+                    message=message_chain,
+                    quote_origin=quote_origin,
+                )
+        except Exception as e:
+            await plugin_diagnostics.notify_response_delivery_failure(
+                self.ap,
+                query,
+                response_index,
+                message_chain,
+                e,
             )
-        else:
-            await query.adapter.reply_message(
-                message_source=query.message_event,
-                message=query.resp_message_chain[-1],
-                quote_origin=quote_origin,
-            )
+            plugin_diagnostics.clear_response_source(query, response_index)
+            raise
+        plugin_diagnostics.clear_response_source(query, response_index)
 
         return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)

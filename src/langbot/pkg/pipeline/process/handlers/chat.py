@@ -9,6 +9,7 @@ from datetime import datetime
 
 from .. import handler
 from ... import entities
+from ... import plugin_diagnostics
 from ....provider import runner as runner_module
 
 import langbot_plugin.api.entities.events as events
@@ -58,6 +59,13 @@ class ChatMessageHandler(handler.MessageHandler):
         if event_ctx.is_prevented_default():
             if event_ctx.event.reply_message_chain is not None:
                 mc = event_ctx.event.reply_message_chain
+                plugin_diagnostics.record_pending_plugin_response_source(
+                    query,
+                    mc,
+                    plugin_diagnostics.get_response_sources(event_ctx),
+                    plugin_diagnostics.get_emitted_plugins(event_ctx),
+                    event.event_name,
+                )
                 query.resp_messages.append(mc)
 
                 yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
