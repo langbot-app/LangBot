@@ -12,6 +12,9 @@ metadata:
   icon: telegram.svg
 
 spec:
+  categories:
+    - popular
+    - global
   config:
     - name: token
       label:
