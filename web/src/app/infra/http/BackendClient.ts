@@ -394,9 +394,7 @@ export class BackendClient extends BaseHttpClient {
     return this.delete(`/api/v1/platform/bots/${uuid}`);
   }
 
-  public getBotAdmins(
-    botId: string,
-  ): Promise<{
+  public getBotAdmins(botId: string): Promise<{
     admins: Array<{ id: number; launcher_type: string; launcher_id: string }>;
   }> {
     return this.get(`/api/v1/platform/bots/${botId}/admins`);
