@@ -517,6 +517,8 @@ const enUS = {
     agentOrchestrationDescription:
       'Event-first handling logic for messages, group members, friends, feedback, and other EBA events.',
     pipelineType: 'Pipeline',
+    kindBadgeAgent: 'Agent',
+    kindBadgePipeline: 'Pipeline',
     pipelineTypeDescription:
       'Keep the existing no-code message pipeline for backward compatibility. It only handles message events.',
     allEvents: 'Supports all EBA events',

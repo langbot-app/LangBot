@@ -32,6 +32,8 @@ import {
   Server,
   Puzzle,
   RefreshCcw,
+  Bot,
+  Workflow,
 } from 'lucide-react';
 import { useTheme } from '@/components/providers/theme-provider';
 
@@ -723,6 +725,18 @@ function NavItems({
                           />
                         ) : null}
                         <span className="truncate">{item.name}</span>
+                        {item.kind && (
+                          <span className="ml-auto flex shrink-0 items-center gap-0.5 text-[10px] text-muted-foreground">
+                            {item.kind === 'pipeline' ? (
+                              <Workflow className="size-3" />
+                            ) : (
+                              <Bot className="size-3" />
+                            )}
+                            {item.kind === 'pipeline'
+                              ? t('agents.kindBadgePipeline')
+                              : t('agents.kindBadgeAgent')}
+                          </span>
+                        )}
                         {item.debug && (
                           <Bug className="size-3.5 shrink-0 text-orange-400" />
                         )}

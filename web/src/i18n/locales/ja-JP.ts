@@ -501,6 +501,8 @@ const jaJP = {
     agentOrchestrationDescription:
       'メッセージ、グループメンバー、友だち、フィードバックなどの EBA イベント向けの処理ロジックです。',
     pipelineType: 'Pipeline',
+    kindBadgeAgent: 'Agent',
+    kindBadgePipeline: 'パイプライン',
     pipelineTypeDescription:
       '既存のノーコードメッセージ Pipeline を互換性のため保持します。メッセージイベントのみ処理できます。',
     allEvents: 'すべての EBA イベントに対応',

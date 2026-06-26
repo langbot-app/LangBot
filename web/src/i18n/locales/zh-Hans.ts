@@ -497,6 +497,8 @@ const zhHans = {
     agentOrchestrationDescription:
       '面向 EBA 事件的处理逻辑，可用于消息、群成员、好友、反馈等事件。',
     pipelineType: 'Pipeline',
+    kindBadgeAgent: 'Agent',
+    kindBadgePipeline: '流水线',
     pipelineTypeDescription:
       '保留现有无代码消息流水线，兼容旧配置，只能处理消息事件。',
     allEvents: '支持全部 EBA 事件',
