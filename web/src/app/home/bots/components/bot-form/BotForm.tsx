@@ -13,7 +13,7 @@ import { httpClient } from '@/app/infra/http/HttpClient';
 import { systemInfo } from '@/app/infra/http';
 import { Agent, Bot } from '@/app/infra/entities/api';
 import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, ChevronDown, ChevronRight } from 'lucide-react';
 import EventBindingsEditor from './EventBindingsEditor';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -138,11 +138,35 @@ export default function BotForm({
   const currentAdapter = form.watch('adapter');
   const currentAdapterConfig = form.watch('adapter_config');
 
-  // Group adapters by category for the Select dropdown
-  const groupedAdapters = useMemo(
-    () => groupByCategory(adapterNameList),
+  // Group adapters by category for the Select dropdown. Legacy adapters
+  // (those superseded by an EBA implementation) are split out and shown in a
+  // collapsed group at the bottom so they're de-emphasized but still usable.
+  const activeAdapters = useMemo(
+    () => adapterNameList.filter((a) => !a.legacy),
     [adapterNameList],
   );
+  const legacyAdapters = useMemo(
+    () => adapterNameList.filter((a) => a.legacy),
+    [adapterNameList],
+  );
+  const groupedAdapters = useMemo(
+    () => groupByCategory(activeAdapters),
+    [activeAdapters],
+  );
+
+  // Whether the collapsed legacy adapter group is expanded in the Select.
+  const [showLegacyAdapters, setShowLegacyAdapters] = useState(false);
+
+  // Auto-expand the legacy group when the selected adapter is itself legacy,
+  // so editing an existing bot on a legacy adapter still reveals the choice.
+  useEffect(() => {
+    if (
+      currentAdapter &&
+      legacyAdapters.some((a) => a.value === currentAdapter)
+    ) {
+      setShowLegacyAdapters(true);
+    }
+  }, [currentAdapter, legacyAdapters]);
 
   // Notify parent when dirty state changes
   const { isDirty } = form.formState;
@@ -207,6 +231,7 @@ export default function BotForm({
           label: extractI18nObject(item.label),
           value: item.name,
           categories: item.spec.categories,
+          legacy: item.spec.legacy,
         };
       }),
     );
@@ -514,6 +539,62 @@ export default function BotForm({
                               ))}
                             </SelectGroup>
                           ))}
+                          {legacyAdapters.length > 0 && (
+                            <>
+                              <div
+                                role="button"
+                                tabIndex={0}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setShowLegacyAdapters((v) => !v);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    setShowLegacyAdapters((v) => !v);
+                                  }
+                                }}
+                                className="flex cursor-pointer items-center gap-1 px-2 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground border-t mt-1 pt-2"
+                              >
+                                {showLegacyAdapters ? (
+                                  <ChevronDown className="h-3.5 w-3.5" />
+                                ) : (
+                                  <ChevronRight className="h-3.5 w-3.5" />
+                                )}
+                                {t('bots.legacyAdapters')}
+                                <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-[10px]">
+                                  {legacyAdapters.length}
+                                </span>
+                              </div>
+                              {showLegacyAdapters && (
+                                <>
+                                  <p className="px-2 pb-1 text-[11px] leading-snug text-muted-foreground">
+                                    {t('bots.legacyAdaptersHint')}
+                                  </p>
+                                  <SelectGroup>
+                                    {legacyAdapters.map((item) => (
+                                      <SelectItem
+                                        key={`legacy:${item.value}`}
+                                        value={item.value}
+                                      >
+                                        <div className="flex items-center gap-2 opacity-70">
+                                          <img
+                                            src={httpClient.getAdapterIconURL(
+                                              item.value,
+                                            )}
+                                            alt=""
+                                            className="h-5 w-5 rounded grayscale"
+                                          />
+                                          <span>{item.label}</span>
+                                        </div>
+                                      </SelectItem>
+                                    ))}
+                                  </SelectGroup>
+                                </>
+                              )}
+                            </>
+                          )}
                         </SelectContent>
                       </Select>
                       {currentAdapter &&

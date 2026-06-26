@@ -324,6 +324,9 @@ const zhHans = {
     deleteConfirmation: '你确定要删除这个机器人吗？',
     platformAdapter: '平台/适配器选择',
     selectAdapter: '选择适配器',
+    legacyAdapters: '旧版适配器',
+    legacyAdaptersHint:
+      '这些适配器已被新版（EBA 架构）取代，仅为兼容存量配置保留，不建议新建机器人时使用。',
     adapterConfig: '适配器配置',
     viewAdapterDocs: '查看文档',
     bindPipeline: '绑定流水线',

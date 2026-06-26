@@ -205,6 +205,7 @@ export interface Adapter {
   icon?: string;
   spec: {
     categories?: string[];
+    legacy?: boolean;
     help_links?: Record<string, string>;
     supported_events?: string[];
     supported_apis?: string[];
