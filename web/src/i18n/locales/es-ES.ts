@@ -477,6 +477,56 @@ const esES = {
       configureAdmins: 'Manage Admins',
     },
   },
+  agents: {
+    title: 'Agent',
+    description:
+      'Gestiona orquestaciones de Agent y Pipelines, y vincúlalos a eventos de bot',
+    create: 'Crear Agent',
+    editAgent: 'Editar orquestación de Agent',
+    selectFromSidebar: 'Selecciona un Agent o Pipeline desde la barra lateral',
+    agentOrchestration: 'Orquestación de Agent',
+    agentOrchestrationDescription:
+      'Lógica de procesamiento orientada a eventos EBA para mensajes, miembros de grupo, amigos, retroalimentación y otros eventos.',
+    pipelineType: 'Pipeline',
+    kindBadgeAgent: 'Agent',
+    kindBadgePipeline: 'Pipeline',
+    groupByKind: 'Agrupar por tipo',
+    groupByKindShort: 'Agrupar',
+    pipelineTypeDescription:
+      'Mantiene el pipeline de mensajes sin código para compatibilidad con versiones anteriores. Solo procesa eventos de mensaje.',
+    allEvents: 'Compatible con todos los eventos EBA',
+    messageEventsOnly: 'Solo eventos de mensaje',
+    basicInfo: 'Información básica',
+    basicInfoDescription:
+      'Establece el nombre, icono, descripción y estado de habilitación',
+    runnerSettings: 'Runner',
+    eventCapability: 'Capacidad de eventos',
+    eventCapabilityDescription:
+      'Declara a qué eventos puede vincularse esta orquestación de Agent. Un patrón de evento por línea; se admiten * y namespace.*.',
+    supportedEvents: 'Eventos admitidos',
+    supportedEventsDescription:
+      'Ejemplos: *, message.received, group.*. Los Pipelines están fijos en message.*.',
+    enabled: 'Habilitar Agent',
+    enabledDescription:
+      'Cuando está deshabilitado, este Agent no debe ser seleccionado por el enrutamiento de eventos.',
+    nameRequired: 'El nombre no puede estar vacío',
+    createSuccess: 'Creado correctamente',
+    createError: 'Error al crear: ',
+    loadError: 'Error al cargar: ',
+    saveSuccess: 'Guardado correctamente',
+    saveError: 'Error al guardar: ',
+    deleteSuccess: 'Eliminado correctamente',
+    deleteError: 'Error al eliminar: ',
+    deleteConfirmation:
+      '¿Estás seguro de que deseas eliminar esta orquestación de Agent?',
+    dangerZone: 'Zona de peligro',
+    dangerZoneDescription: 'Acciones irreversibles y destructivas',
+    deleteAgentAction: 'Eliminar esta orquestación de Agent',
+    deleteAgentHint:
+      'Una vez eliminado, los eventos vinculados a él ya no podrán ejecutarse.',
+    noRunnerMetadata:
+      'No hay metadatos de AgentRunner disponibles actualmente.',
+  },
   plugins: {
     title: 'Extensiones',
     description:

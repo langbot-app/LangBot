@@ -461,6 +461,53 @@ const thTH = {
       configureAdmins: 'Manage Admins',
     },
   },
+  agents: {
+    title: 'Agent',
+    description:
+      'จัดการการประสาน Agent และ Pipeline แล้วเชื่อมกับเหตุการณ์ของบอท',
+    create: 'สร้าง Agent',
+    editAgent: 'แก้ไขการประสาน Agent',
+    selectFromSidebar: 'เลือก Agent หรือ Pipeline จากแถบด้านข้าง',
+    agentOrchestration: 'การประสาน Agent',
+    agentOrchestrationDescription:
+      'ตรรกะการประมวลผลที่เน้นเหตุการณ์ EBA สำหรับข้อความ สมาชิกกลุ่ม เพื่อน ฟีดแบ็ก และเหตุการณ์อื่นๆ',
+    pipelineType: 'Pipeline',
+    kindBadgeAgent: 'Agent',
+    kindBadgePipeline: 'Pipeline',
+    groupByKind: 'จัดกลุ่มตามประเภท',
+    groupByKindShort: 'จัดกลุ่ม',
+    pipelineTypeDescription:
+      'คงไว้ซึ่ง pipeline ข้อความแบบไม่ต้องเขียนโค้ดเพื่อความเข้ากันได้ย้อนหลัง รองรับเฉพาะเหตุการณ์ข้อความ',
+    allEvents: 'รองรับทุกเหตุการณ์ EBA',
+    messageEventsOnly: 'เฉพาะเหตุการณ์ข้อความ',
+    basicInfo: 'ข้อมูลพื้นฐาน',
+    basicInfoDescription: 'ตั้งชื่อ ไอคอน คำอธิบาย และสถานะการเปิดใช้งาน',
+    runnerSettings: 'Runner',
+    eventCapability: 'ความสามารถด้านเหตุการณ์',
+    eventCapabilityDescription:
+      'ประกาศว่าการประสาน Agent นี้สามารถเชื่อมกับเหตุการณ์ใดได้บ้าง หนึ่งรูปแบบเหตุการณ์ต่อบรรทัด รองรับ * และ namespace.*',
+    supportedEvents: 'เหตุการณ์ที่รองรับ',
+    supportedEventsDescription:
+      'ตัวอย่าง: *, message.received, group.* Pipeline ถูกกำหนดไว้ที่ message.*',
+    enabled: 'เปิดใช้งาน Agent',
+    enabledDescription:
+      'เมื่อปิดใช้งาน Agent นี้จะไม่ถูกเลือกโดยการกำหนดเส้นทางเหตุการณ์',
+    nameRequired: 'ชื่อต้องไม่ว่างเปล่า',
+    createSuccess: 'สร้างสำเร็จ',
+    createError: 'สร้างล้มเหลว: ',
+    loadError: 'โหลดล้มเหลว: ',
+    saveSuccess: 'บันทึกสำเร็จ',
+    saveError: 'บันทึกล้มเหลว: ',
+    deleteSuccess: 'ลบสำเร็จ',
+    deleteError: 'ลบล้มเหลว: ',
+    deleteConfirmation: 'คุณแน่ใจหรือว่าต้องการลบการประสาน Agent นี้?',
+    dangerZone: 'โซนอันตราย',
+    dangerZoneDescription: 'การดำเนินการที่ไม่สามารถย้อนกลับและทำลายข้อมูล',
+    deleteAgentAction: 'ลบการประสาน Agent นี้',
+    deleteAgentHint:
+      'เมื่อลบแล้ว เหตุการณ์ที่เชื่อมกับมันจะไม่สามารถดำเนินการต่อได้',
+    noRunnerMetadata: 'ขณะนี้ไม่มีข้อมูลเมตา AgentRunner ที่พร้อมใช้งาน',
+  },
   plugins: {
     title: 'ส่วนขยาย',
     description:
