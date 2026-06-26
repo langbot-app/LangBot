@@ -922,17 +922,31 @@ class RuntimeBot:
         )
 
     async def initialize(self):
+        def websocket_pipeline_uuid(event, adapter):
+            if adapter.__class__.__name__ != 'WebSocketAdapter':
+                return None
+            value = getattr(event, '_langbot_pipeline_uuid', None)
+            return value if isinstance(value, str) and value else None
+
         async def on_friend_message(
             event: platform_events.FriendMessage,
             adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         ):
-            await self._handle_legacy_message_event(event, adapter)
+            await self._handle_legacy_message_event(
+                event,
+                adapter,
+                pipeline_uuid_override=websocket_pipeline_uuid(event, adapter),
+            )
 
         async def on_group_message(
             event: platform_events.GroupMessage,
             adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         ):
-            await self._handle_legacy_message_event(event, adapter)
+            await self._handle_legacy_message_event(
+                event,
+                adapter,
+                pipeline_uuid_override=websocket_pipeline_uuid(event, adapter),
+            )
 
         self.adapter.register_listener(platform_events.FriendMessage, on_friend_message)
         self.adapter.register_listener(platform_events.GroupMessage, on_group_message)

@@ -1574,7 +1574,7 @@ test("generic pipeline readiness accepts either URL or name target", () => {
       LANGBOT_BROWSER_PROFILE: "/tmp/langbot-test-profile",
       LANGBOT_CHROMIUM_EXECUTABLE: "/tmp/langbot-test-chromium",
     }, () => {
-      process.env.LANGBOT_PIPELINE_URL = "http://127.0.0.1:3000/home/pipelines?id=only-url";
+      process.env.LANGBOT_PIPELINE_URL = "http://127.0.0.1:3000/home/agents?id=only-url";
       process.env.LANGBOT_PIPELINE_NAME = "";
 
       const ready = capture(() => commandTestPlan(ctx(["test", "plan", "pipeline-debug-chat", "--json"])));
