@@ -451,6 +451,53 @@ const viVN = {
       botMessage: 'Trợ lý',
     },
   },
+  agents: {
+    title: 'Agent',
+    description:
+      'Quản lý dàn dựng Agent và Pipeline, sau đó gắn chúng vào sự kiện của bot',
+    create: 'Tạo Agent',
+    editAgent: 'Chỉnh sửa dàn dựng Agent',
+    selectFromSidebar: 'Chọn một Agent hoặc Pipeline từ thanh bên',
+    agentOrchestration: 'Dàn dựng Agent',
+    agentOrchestrationDescription:
+      'Logic xử lý hướng sự kiện cho tin nhắn, thành viên nhóm, bạn bè, phản hồi và các sự kiện EBA khác.',
+    pipelineType: 'Pipeline',
+    kindBadgeAgent: 'Agent',
+    kindBadgePipeline: 'Pipeline',
+    groupByKind: 'Nhóm theo loại',
+    groupByKindShort: 'Nhóm',
+    pipelineTypeDescription:
+      'Giữ lại pipeline tin nhắn không cần mã hiện có để tương thích ngược. Chỉ xử lý sự kiện tin nhắn.',
+    allEvents: 'Hỗ trợ tất cả sự kiện EBA',
+    messageEventsOnly: 'Chỉ sự kiện tin nhắn',
+    basicInfo: 'Thông tin cơ bản',
+    basicInfoDescription: 'Đặt tên, biểu tượng, mô tả và trạng thái kích hoạt',
+    runnerSettings: 'Runner',
+    eventCapability: 'Khả năng sự kiện',
+    eventCapabilityDescription:
+      'Khai báo những sự kiện mà dàn dựng Agent này có thể được gắn vào. Mỗi dòng một mẫu sự kiện; hỗ trợ * và namespace.*.',
+    supportedEvents: 'Sự kiện được hỗ trợ',
+    supportedEventsDescription:
+      'Ví dụ: *, message.received, group.*. Pipeline cố định ở message.*.',
+    enabled: 'Kích hoạt Agent',
+    enabledDescription:
+      'Khi bị tắt, Agent này sẽ không được định tuyến sự kiện chọn.',
+    nameRequired: 'Tên không được để trống',
+    createSuccess: 'Tạo thành công',
+    createError: 'Tạo thất bại: ',
+    loadError: 'Tải thất bại: ',
+    saveSuccess: 'Lưu thành công',
+    saveError: 'Lưu thất bại: ',
+    deleteSuccess: 'Xóa thành công',
+    deleteError: 'Xóa thất bại: ',
+    deleteConfirmation: 'Bạn có chắc muốn xóa dàn dựng Agent này không?',
+    dangerZone: 'Vùng nguy hiểm',
+    dangerZoneDescription: 'Hành động không thể hoàn tác và mang tính phá hủy',
+    deleteAgentAction: 'Xóa dàn dựng Agent này',
+    deleteAgentHint:
+      'Sau khi xóa, các sự kiện đã gắn vào nó sẽ không thể thực thi được nữa.',
+    noRunnerMetadata: 'Hiện chưa có siêu dữ liệu AgentRunner khả dụng.',
+  },
   plugins: {
     title: 'Tiện ích mở rộng',
     description:

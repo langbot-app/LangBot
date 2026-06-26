@@ -455,6 +455,53 @@ const ruRU = {
       botMessage: 'Ассистент',
     },
   },
+  agents: {
+    title: 'Agent',
+    description:
+      'Управляйте оркестровками Agent и Pipeline, привязывая их к событиям бота',
+    create: 'Создать Agent',
+    editAgent: 'Редактировать оркестровку Agent',
+    selectFromSidebar: 'Выберите Agent или Pipeline на боковой панели',
+    agentOrchestration: 'Оркестровка Agent',
+    agentOrchestrationDescription:
+      'Логика обработки событий EBA для сообщений, участников групп, друзей, обратной связи и других событий.',
+    pipelineType: 'Pipeline',
+    kindBadgeAgent: 'Agent',
+    kindBadgePipeline: 'Pipeline',
+    groupByKind: 'Группировать по типу',
+    groupByKindShort: 'Группа',
+    pipelineTypeDescription:
+      'Сохраняет существующий no-code конвейер сообщений для обратной совместимости. Обрабатывает только события сообщений.',
+    allEvents: 'Поддерживает все события EBA',
+    messageEventsOnly: 'Только события сообщений',
+    basicInfo: 'Основная информация',
+    basicInfoDescription: 'Задайте имя, иконку, описание и статус активации',
+    runnerSettings: 'Runner',
+    eventCapability: 'Возможности событий',
+    eventCapabilityDescription:
+      'Объявите, к каким событиям может быть привязана эта оркестровка Agent. Один шаблон события в строке; поддерживаются * и namespace.*.',
+    supportedEvents: 'Поддерживаемые события',
+    supportedEventsDescription:
+      'Примеры: *, message.received, group.*. Pipeline фиксирован на message.*.',
+    enabled: 'Включить Agent',
+    enabledDescription:
+      'При отключении этот Agent не должен выбираться маршрутизацией событий.',
+    nameRequired: 'Имя не может быть пустым',
+    createSuccess: 'Успешно создано',
+    createError: 'Ошибка создания: ',
+    loadError: 'Ошибка загрузки: ',
+    saveSuccess: 'Успешно сохранено',
+    saveError: 'Ошибка сохранения: ',
+    deleteSuccess: 'Успешно удалено',
+    deleteError: 'Ошибка удаления: ',
+    deleteConfirmation: 'Вы уверены, что хотите удалить эту оркестровку Agent?',
+    dangerZone: 'Опасная зона',
+    dangerZoneDescription: 'Необратимые и деструктивные действия',
+    deleteAgentAction: 'Удалить эту оркестровку Agent',
+    deleteAgentHint:
+      'После удаления события, привязанные к ней, больше не смогут выполняться.',
+    noRunnerMetadata: 'Метаданные AgentRunner в данный момент недоступны.',
+  },
   plugins: {
     title: 'Расширения',
     description:
