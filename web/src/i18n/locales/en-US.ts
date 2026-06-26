@@ -520,6 +520,7 @@ const enUS = {
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: 'Pipeline',
     groupByKind: 'Group by type',
+    groupByKindShort: 'Group',
     pipelineTypeDescription:
       'Keep the existing no-code message pipeline for backward compatibility. It only handles message events.',
     allEvents: 'Supports all EBA events',
@@ -582,6 +583,7 @@ const enUS = {
     noExtensionInstalled: 'No extensions installed',
     loadingExtensions: 'Loading extensions...',
     groupByType: 'Group by format',
+    groupByTypeShort: 'Group',
     pluginConfig: 'Plugin Configuration',
     pluginSort: 'Plugin Sort',
     pluginSortDescription:

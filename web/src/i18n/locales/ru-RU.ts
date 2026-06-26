@@ -485,6 +485,7 @@ const ruRU = {
     noExtensionInstalled: 'Расширения не установлены',
     loadingExtensions: 'Загрузка расширений...',
     groupByType: 'Группировать по формату',
+    groupByTypeShort: 'Группа',
     pluginConfig: 'Настройка плагина',
     pluginSort: 'Порядок плагинов',
     pluginSortDescription:

@@ -470,6 +470,7 @@ const thTH = {
     noExtensionInstalled: 'ยังไม่มีส่วนขยายที่ติดตั้ง',
     loadingExtensions: 'กำลังโหลดส่วนขยาย...',
     groupByType: 'จัดกลุ่มตามรูปแบบ',
+    groupByTypeShort: 'จัดกลุ่ม',
     pluginConfig: 'การกำหนดค่าปลั๊กอิน',
     pluginSort: 'เรียงลำดับปลั๊กอิน',
     pluginSortDescription:

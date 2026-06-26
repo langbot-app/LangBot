@@ -504,6 +504,7 @@ const jaJP = {
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: 'パイプライン',
     groupByKind: 'タイプ別にグループ化',
+    groupByKindShort: 'グループ',
     pipelineTypeDescription:
       '既存のノーコードメッセージ Pipeline を互換性のため保持します。メッセージイベントのみ処理できます。',
     allEvents: 'すべての EBA イベントに対応',
@@ -564,6 +565,7 @@ const jaJP = {
     noExtensionInstalled: '拡張機能がインストールされていません',
     loadingExtensions: '拡張機能を読み込み中...',
     groupByType: '形式でグループ化',
+    groupByTypeShort: 'グループ',
     pluginConfig: 'プラグイン設定',
     pluginSort: 'プラグインの並び替え',
     pluginSortDescription:
