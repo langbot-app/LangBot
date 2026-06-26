@@ -519,6 +519,7 @@ const enUS = {
     pipelineType: 'Pipeline',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: 'Pipeline',
+    groupByKind: 'Group by type',
     pipelineTypeDescription:
       'Keep the existing no-code message pipeline for backward compatibility. It only handles message events.',
     allEvents: 'Supports all EBA events',

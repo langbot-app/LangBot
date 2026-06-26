@@ -503,6 +503,7 @@ const jaJP = {
     pipelineType: 'Pipeline',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: 'パイプライン',
+    groupByKind: 'タイプ別にグループ化',
     pipelineTypeDescription:
       '既存のノーコードメッセージ Pipeline を互換性のため保持します。メッセージイベントのみ処理できます。',
     allEvents: 'すべての EBA イベントに対応',
