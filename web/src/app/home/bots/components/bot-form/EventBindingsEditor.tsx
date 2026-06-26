@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { UseFormReturn } from 'react-hook-form';
 import {
   ArrowRight,
@@ -114,15 +115,9 @@ const ELEMENTS = [
   'Quote',
 ];
 
-const DEFAULT_EVENTS = [
-  'message.received',
-  'feedback.received',
-  'group.member_joined',
-  'group.member_left',
-  'friend.request_received',
-  'bot.invited_to_group',
-  'platform.specific',
-];
+// Adapters that don't declare `supported_events` (e.g. legacy adapters)
+// only emit message.received, so that's the sole fallback option.
+const DEFAULT_EVENTS = ['message.received'];
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -154,6 +149,20 @@ function eventNamespaces(events: string[]) {
     if (n) ns.add(`${n}.*`);
   });
   return Array.from(ns).sort();
+}
+
+// Localized label for an event pattern. Concrete events look up
+// `bots.eventNames.<event_with_underscores>`, falling back to the raw
+// string when no translation exists (e.g. custom/unknown events).
+function eventLabel(event: string, t: TFunction) {
+  if (event === '*') return t('bots.eventWildcard');
+  if (event.endsWith('.*'))
+    return t('bots.eventNamespaceWildcard', {
+      namespace: event.replace('.*', ''),
+    });
+  const key = `bots.eventNames.${event.replace(/\./g, '_')}`;
+  const label = t(key);
+  return label === key ? event : label;
 }
 
 function targetLabel(agent: Agent) {
@@ -509,10 +518,6 @@ function BindingCardContent({
           </button>
         )}
 
-        <span className="text-xs font-medium text-muted-foreground shrink-0">
-          IF
-        </span>
-
         <Select
           value={binding.event_pattern}
           onValueChange={(eventPattern) => {
@@ -535,31 +540,11 @@ function BindingCardContent({
           <SelectContent>
             {eventOptions.map((event) => (
               <SelectItem key={event} value={event}>
-                {event === '*'
-                  ? t('bots.eventWildcard')
-                  : event.endsWith('.*')
-                    ? t('bots.eventNamespaceWildcard', {
-                        namespace: event.replace('.*', ''),
-                      })
-                    : event}
+                {eventLabel(event, t)}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-
-        <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-
-        <TargetCombobox
-          binding={binding}
-          agentOptions={agentOptions}
-          onUpdate={(patch) => onUpdate(globalIndex, patch)}
-        />
-
-        {!pipelineAllowed && binding.target_type === 'pipeline' && (
-          <span className="text-xs text-destructive shrink-0">
-            {t('bots.unsupportedPipelineEvent')}
-          </span>
-        )}
 
         {/* conditions toggle */}
         <Button
@@ -581,6 +566,20 @@ function BindingCardContent({
             </Badge>
           )}
         </Button>
+
+        <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+
+        <TargetCombobox
+          binding={binding}
+          agentOptions={agentOptions}
+          onUpdate={(patch) => onUpdate(globalIndex, patch)}
+        />
+
+        {!pipelineAllowed && binding.target_type === 'pipeline' && (
+          <span className="text-xs text-destructive shrink-0">
+            {t('bots.unsupportedPipelineEvent')}
+          </span>
+        )}
 
         {/* disable/enable toggle */}
         <Button
@@ -669,7 +668,7 @@ export default function EventBindingsEditor({
   const eventOptions = useMemo(() => {
     const concrete =
       supportedEvents.length > 0 ? supportedEvents : DEFAULT_EVENTS;
-    return ['*', ...eventNamespaces(concrete), ...concrete].filter(
+    return [...eventNamespaces(concrete), ...concrete].filter(
       (e, i, a) => a.indexOf(e) === i,
     );
   }, [supportedEvents]);
