@@ -184,7 +184,7 @@ class AgentRunContextBuilder:
     def _is_llm_model_resource(model_resource: ModelResource) -> bool:
         operations = model_resource.get('operations')
         if isinstance(operations, list) and operations:
-            return bool({'invoke', 'stream'} & {str(operation) for operation in operations})
+            return bool({'invoke', 'stream', 'count_tokens'} & {str(operation) for operation in operations})
         return model_resource.get('model_type') != 'rerank'
 
     async def _build_model_context_window_tokens(self, resources: AgentResources) -> int | None:

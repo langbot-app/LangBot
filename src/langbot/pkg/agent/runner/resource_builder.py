@@ -101,9 +101,9 @@ class AgentResourceBuilder:
         seen_model_ids: set[str] = set()
 
         model_perms = set(manifest_perms.models)
-        include_llm = bool({'invoke', 'stream'} & model_perms)
+        include_llm = bool({'invoke', 'stream', 'count_tokens'} & model_perms)
         include_rerank = 'rerank' in model_perms
-        llm_operations = [operation for operation in ('invoke', 'stream') if operation in model_perms]
+        llm_operations = [operation for operation in ('invoke', 'stream', 'count_tokens') if operation in model_perms]
         if not include_llm and not include_rerank:
             return models
 

@@ -77,7 +77,7 @@ def make_session(
     }
     authorized_operations: dict[str, dict[str, set[str]]] = {
         'model': {
-            m.get('model_id'): set(m.get('operations') or ['invoke', 'stream', 'rerank'])
+            m.get('model_id'): set(m.get('operations') or ['invoke', 'stream', 'rerank', 'count_tokens'])
             for m in res.get('models', [])
             if m.get('model_id')
         },

@@ -13,7 +13,7 @@ from .context_builder import AgentResources
 MAX_STEERING_QUEUE_ITEMS = 100
 
 DEFAULT_RESOURCE_OPERATIONS: dict[str, set[str]] = {
-    'model': {'invoke', 'stream', 'rerank'},
+    'model': {'invoke', 'stream', 'rerank', 'count_tokens'},
     'tool': {'detail', 'call'},
     'knowledge_base': {'list', 'retrieve'},
     'skill': {'activate'},
