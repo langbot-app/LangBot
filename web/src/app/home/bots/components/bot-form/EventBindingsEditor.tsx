@@ -30,7 +30,6 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator,
 } from '@/components/ui/command';
 import {
   Select,
@@ -293,20 +292,6 @@ function TargetCombobox({
                 ))}
               </CommandGroup>
             )}
-            <CommandSeparator />
-            <CommandGroup>
-              <CommandItem
-                value="__discard__"
-                className="text-destructive"
-                onSelect={() => select('discard')}
-              >
-                <Ban className="mr-2 size-3.5 shrink-0" />
-                {t('bots.targetDiscard')}
-                {current === 'discard' && (
-                  <Check className="ml-auto size-3.5 shrink-0" />
-                )}
-              </CommandItem>
-            </CommandGroup>
           </CommandList>
         </Command>
       </PopoverContent>
