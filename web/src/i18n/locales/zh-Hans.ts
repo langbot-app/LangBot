@@ -440,6 +440,10 @@ const zhHans = {
       deleteSuccess: '已移除',
       deleteError: '移除失败：',
       noAdmins: '暂无管理员',
+      setAdminTitle: '设为管理员',
+      adminBadge: '管理员',
+      configureAdmins: '配置管理员',
+      removeAdminTitle: '移除管理员权限',
     },
   },
   plugins: {

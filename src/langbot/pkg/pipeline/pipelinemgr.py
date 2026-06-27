@@ -178,7 +178,7 @@ class RuntimePipeline:
                 bot_name = query.variables.get('_monitoring_bot_name', 'Unknown')
                 pipeline_name = query.variables.get('_monitoring_pipeline_name', 'Unknown')
                 message_id = query.variables.get('_monitoring_message_id', '')
-                session_id = f'{query.launcher_type}_{query.launcher_id}'
+                session_id = f'{query.launcher_type.value if hasattr(query.launcher_type, "value") else query.launcher_type}_{query.launcher_id}'
 
                 # Update message status to error
                 if message_id:

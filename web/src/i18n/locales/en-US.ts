@@ -459,6 +459,10 @@ const enUS = {
       deleteSuccess: 'Admin removed',
       deleteError: 'Failed to remove admin: ',
       noAdmins: 'No admins configured',
+      setAdminTitle: 'Set as admin',
+      adminBadge: 'Admin',
+      configureAdmins: 'Manage Admins',
+      removeAdminTitle: 'Remove admin',
     },
   },
   plugins: {
