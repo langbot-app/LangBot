@@ -92,6 +92,7 @@ spec:
 
   supported_events:
     - message.received
+    - feedback.received
     - platform.specific
 
   supported_apis:

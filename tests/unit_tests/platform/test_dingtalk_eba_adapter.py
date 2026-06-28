@@ -36,6 +36,7 @@ class DummyLogger(AbstractEventLogger):
 class DummyDingTalkClient(DingTalkClient):
     def __init__(self, *args, **kwargs):
         self._message_handlers = {}
+        self.client = SimpleNamespace(register_callback_handler=AsyncMock())
         self.markdown_card = kwargs.get('markdown_card', True)
         self.access_token = ''
         self.send_message = AsyncMock()
@@ -113,6 +114,30 @@ def dingtalk_event(conversation='GroupMessage', **overrides) -> DingTalkEvent:
     if 'rich_content' in overrides:
         payload['Rich_Content'] = overrides['rich_content']
     return DingTalkEvent.from_payload(payload)
+
+
+def dingtalk_card_callback_event(**overrides) -> DingTalkEvent:
+    return DingTalkEvent.from_payload(
+        {
+            'conversation_type': 'CardCallback',
+            'Type': 'card_callback',
+            'CardCallback': {
+                'extension': overrides.get('extension', {}),
+                'corp_id': overrides.get('corp_id', 'corp-1'),
+                'user_id': overrides.get('user_id', 'user-1'),
+                'content': overrides.get(
+                    'content',
+                    {
+                        'action': 'like',
+                        'feedback_id': 'feedback-1',
+                        'message_id': 'bot-msg-1',
+                    },
+                ),
+                'space_id': overrides.get('space_id', 'space-1'),
+                'card_instance_id': overrides.get('card_instance_id', 'card-1'),
+            },
+        }
+    )
 
 
 def test_dingtalk_supported_events_match_manifest():
@@ -195,7 +220,7 @@ async def test_dingtalk_event_converter_maps_group_and_private_message():
     group_event = await DingTalkEventConverter.target2yiri(dingtalk_event(), 'LangBot')
 
     assert isinstance(group_event, platform_events.MessageReceivedEvent)
-    assert group_event.adapter_name == 'dingtalk'
+    assert group_event.adapter_name == 'dingtalk-eba'
     assert group_event.chat_type == platform_entities.ChatType.GROUP
     assert group_event.chat_id == 'group-1'
     assert group_event.group.name == 'LangBot Team'
@@ -210,6 +235,42 @@ async def test_dingtalk_event_converter_maps_group_and_private_message():
     assert private_event.chat_type == platform_entities.ChatType.PRIVATE
     assert private_event.chat_id == 'user-1'
     assert private_event.group is None
+
+
+@pytest.mark.asyncio
+async def test_dingtalk_event_converter_maps_card_feedback():
+    feedback = await DingTalkEventConverter.target2yiri(dingtalk_card_callback_event(), 'LangBot')
+    callback = await DingTalkEventConverter.target2yiri(
+        dingtalk_card_callback_event(content={'action': 'open_details'}),
+        'LangBot',
+    )
+
+    assert isinstance(feedback, platform_events.FeedbackReceivedEvent)
+    assert feedback.adapter_name == 'dingtalk-eba'
+    assert feedback.feedback_id == 'feedback-1'
+    assert feedback.feedback_type == 1
+    assert feedback.user_id == 'user-1'
+    assert feedback.session_id == 'space-1'
+    assert feedback.message_id == 'bot-msg-1'
+
+    assert isinstance(callback, platform_events.PlatformSpecificEvent)
+    assert callback.action == 'card.callback'
+
+
+@pytest.mark.asyncio
+async def test_dingtalk_adapter_dispatches_card_feedback_event():
+    adapter = make_adapter()
+    calls: list[platform_events.Event] = []
+
+    async def listener(event, adapter):
+        calls.append(event)
+
+    adapter.register_listener(platform_events.FeedbackReceivedEvent, listener)
+    await adapter._handle_native_event(dingtalk_card_callback_event())
+
+    assert len(calls) == 1
+    assert isinstance(calls[0], platform_events.FeedbackReceivedEvent)
+    assert calls[0].feedback_type == 1
 
 
 @pytest.mark.asyncio

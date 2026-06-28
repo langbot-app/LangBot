@@ -44,7 +44,6 @@ Discord declares these EBA events:
 - `message.reaction`
 - `group.member_joined`
 - `group.member_left`
-- `group.member_banned`
 - `bot.invited_to_group`
 - `bot.removed_from_group`
 - `platform.specific`

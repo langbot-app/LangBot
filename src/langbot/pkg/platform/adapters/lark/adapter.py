@@ -161,7 +161,11 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
         )
 
     def get_supported_events(self) -> list[str]:
-        return ['message.received', 'bot.invited_to_group', 'platform.specific']
+        return [
+            'message.received',
+            'bot.invited_to_group',
+            'platform.specific',
+        ]
 
     def get_supported_apis(self) -> list[str]:
         return [

@@ -10,7 +10,7 @@ The DingTalk adapter now has an Event-Based Agents adapter package with:
 
 - `manifest.yaml` for adapter metadata, configuration, events, common APIs, and platform-specific APIs.
 - `adapter.py` for DingTalk client startup, native callback handling, legacy compatibility, and EBA dispatch.
-- `event_converter.py` for native DingTalk events to common EBA events.
+- `event_converter.py` for native DingTalk events and card callbacks to common EBA events.
 - `message_converter.py` for DingTalk message payloads to/from common `MessageChain` components.
 - `api_impl.py` for common EBA API implementations.
 - `platform_api.py` for DingTalk-specific `call_platform_api` actions.
@@ -33,7 +33,8 @@ The legacy DingTalk HTTP client now returns successful JSON response bodies from
 | Event | Support | Evidence |
 |-------|---------|----------|
 | `message.received` | implemented | `plugin-e2e-ui` private text and emoji-as-text. |
-| `platform.specific` | implemented | Not reproduced in the latest UI run. |
+| `feedback.received` | unit covered | DingTalk card callback actions with feedback-like values (`like`, `dislike`, `cancel`, or `1`/`2`/`3`) map to `FeedbackReceivedEvent`. Other card actions remain `platform.specific`. |
+| `platform.specific` | implemented | Non-feedback card callbacks and unmapped callback/message shapes are emitted as structured platform-specific events. |
 
 ## Receive Components
 

@@ -11,7 +11,16 @@ from langbot.libs.qq_official_api.api import QQOfficialClient
 from langbot.libs.qq_official_api.qqofficialevent import QQOfficialEvent
 from langbot.pkg.platform.adapters.qqofficial.api_impl import QQOfficialAPIMixin
 from langbot.pkg.platform.adapters.qqofficial.errors import NotSupportedError
-from langbot.pkg.platform.adapters.qqofficial.event_converter import QQOfficialEventConverter
+from langbot.pkg.platform.adapters.qqofficial.event_converter import (
+    BOT_INVITED_EVENT_TYPES,
+    BOT_REMOVED_EVENT_TYPES,
+    MEMBER_JOINED_EVENT_TYPES,
+    MEMBER_LEFT_EVENT_TYPES,
+    MESSAGE_EVENT_TYPES,
+    REACTION_ADD_EVENT_TYPES,
+    REACTION_REMOVE_EVENT_TYPES,
+    QQOfficialEventConverter,
+)
 from langbot.pkg.platform.adapters.qqofficial.message_converter import QQOfficialMessageConverter
 from langbot.pkg.platform.adapters.qqofficial.platform_api import PLATFORM_API_MAP
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
@@ -89,6 +98,11 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
     def get_supported_events(self) -> list[str]:
         return [
             'message.received',
+            'message.reaction',
+            'group.member_joined',
+            'group.member_left',
+            'bot.invited_to_group',
+            'bot.removed_from_group',
             'platform.specific',
         ]
 
@@ -111,7 +125,9 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
         target_id: str,
         message: platform_message.MessageChain,
     ) -> platform_events.MessageResult:
-        raw = await self._send_content_list(str(target_type), str(target_id), await QQOfficialMessageConverter.yiri2target(message))
+        raw = await self._send_content_list(
+            str(target_type), str(target_id), await QQOfficialMessageConverter.yiri2target(message)
+        )
         return platform_events.MessageResult(raw={'results': raw})
 
     async def reply_message(
@@ -212,8 +228,14 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
         is_final: bool = False,
     ):
         await self._cleanup_stale_streams()
-        chunk_text = '\n\n'.join(component.text for component in message if isinstance(component, platform_message.Plain))
-        message_id = bot_message.get('resp_message_id') if isinstance(bot_message, dict) else getattr(bot_message, 'resp_message_id', None)
+        chunk_text = '\n\n'.join(
+            component.text for component in message if isinstance(component, platform_message.Plain)
+        )
+        message_id = (
+            bot_message.get('resp_message_id')
+            if isinstance(bot_message, dict)
+            else getattr(bot_message, 'resp_message_id', None)
+        )
         if not message_id or message_id not in self._stream_ctx:
             if chunk_text:
                 self._fallback_text[message_id] = self._fallback_text.get(message_id, '') + chunk_text
@@ -221,7 +243,11 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
             if is_final:
                 full_text = self._fallback_text.pop(message_id, '')
                 if full_text:
-                    await self.reply_message(message_source, platform_message.MessageChain([platform_message.Plain(text=full_text)]), quote_origin)
+                    await self.reply_message(
+                        message_source,
+                        platform_message.MessageChain([platform_message.Plain(text=full_text)]),
+                        quote_origin,
+                    )
             return
 
         ctx = self._stream_ctx[message_id]
@@ -259,7 +285,15 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
             self._stream_ctx_ts.pop(message_id, None)
 
     def _register_native_handlers(self):
-        for event_type in ('C2C_MESSAGE_CREATE', 'DIRECT_MESSAGE_CREATE', 'GROUP_AT_MESSAGE_CREATE', 'AT_MESSAGE_CREATE'):
+        for event_type in (
+            MESSAGE_EVENT_TYPES
+            | REACTION_ADD_EVENT_TYPES
+            | REACTION_REMOVE_EVENT_TYPES
+            | MEMBER_JOINED_EVENT_TYPES
+            | MEMBER_LEFT_EVENT_TYPES
+            | BOT_INVITED_EVENT_TYPES
+            | BOT_REMOVED_EVENT_TYPES
+        ):
             self.bot.on_message(event_type)(self._handle_native_event)
 
     async def _handle_native_event(self, event: QQOfficialEvent):
@@ -305,11 +339,11 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
             await self.logger.info('QQ Official WebSocket connected and ready')
 
         async def on_event(event_type: str, event_data: dict):
-            if event_type not in {'C2C_MESSAGE_CREATE', 'DIRECT_MESSAGE_CREATE', 'GROUP_AT_MESSAGE_CREATE', 'AT_MESSAGE_CREATE'}:
-                await self._dispatch_eba_event(QQOfficialEventConverter.platform_specific(QQOfficialEvent({'t': event_type, **(event_data or {})}), f'qqofficial.{event_type}'))
-                return
             if not isinstance(event_data, dict):
                 await self.logger.warning(f'Event data is not dict, skipping: {event_type} -> {type(event_data)}')
+                return
+            if event_type not in MESSAGE_EVENT_TYPES:
+                await self._handle_native_event(QQOfficialEvent({'t': event_type, **event_data}))
                 return
             payload = {'t': event_type, 'd': event_data}
             message_data = await self.bot.get_message(payload)
@@ -337,7 +371,9 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
             return 'channel_private', event.guild_id
         raise NotSupportedError(f'reply_message:{event.t or "unknown_event"}')
 
-    async def _send_content_list(self, target_type: str, target_id: str, content_list: list[dict], msg_id: str | None = None) -> list[dict]:
+    async def _send_content_list(
+        self, target_type: str, target_id: str, content_list: list[dict], msg_id: str | None = None
+    ) -> list[dict]:
         target_type = self._normalize_target_type(target_type)
         results: list[dict] = []
         for content in content_list:
@@ -361,10 +397,14 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
                     raise NotSupportedError(f'send_message:{target_type}')
                 results.append({'type': content_type, 'raw': raw})
             elif content_type == 'image':
-                raw = await self.bot.send_image_msg(target_type, target_id, file_url=content.get('url'), file_data=content.get('base64'), msg_id=msg_id)
+                raw = await self.bot.send_image_msg(
+                    target_type, target_id, file_url=content.get('url'), file_data=content.get('base64'), msg_id=msg_id
+                )
                 results.append({'type': content_type, 'raw': raw})
             elif content_type == 'voice':
-                raw = await self.bot.send_voice_msg(target_type, target_id, file_url=content.get('url'), file_data=content.get('base64'), msg_id=msg_id)
+                raw = await self.bot.send_voice_msg(
+                    target_type, target_id, file_url=content.get('url'), file_data=content.get('base64'), msg_id=msg_id
+                )
                 results.append({'type': content_type, 'raw': raw})
             elif content_type == 'file':
                 raw = await self.bot.send_file_msg(

@@ -143,6 +143,7 @@ def qq_event(event_type: str = 'C2C_MESSAGE_CREATE', **overrides) -> QQOfficialE
         'image_attachments': overrides.get('image_attachments'),
         'content_type': overrides.get('content_type', 'image/png'),
     }
+    payload.update(overrides.get('extra', {}))
     return QQOfficialEvent(payload)
 
 
@@ -194,7 +195,7 @@ async def test_qqofficial_event_converter_maps_private_group_and_platform_specif
     private_event = await QQOfficialEventConverter().target2yiri(qq_event('C2C_MESSAGE_CREATE'))
     group_event = await QQOfficialEventConverter().target2yiri(qq_event('GROUP_AT_MESSAGE_CREATE'))
     channel_event = await QQOfficialEventConverter().target2yiri(qq_event('AT_MESSAGE_CREATE'))
-    platform_event = await QQOfficialEventConverter().target2yiri(qq_event('GUILD_CREATE'))
+    platform_event = await QQOfficialEventConverter().target2yiri(qq_event('UNKNOWN_EVENT'))
 
     assert isinstance(private_event, platform_events.MessageReceivedEvent)
     assert private_event.adapter_name == 'qqofficial-eba'
@@ -209,7 +210,67 @@ async def test_qqofficial_event_converter_maps_private_group_and_platform_specif
 
     assert channel_event.chat_id == 'channel-1'
     assert isinstance(platform_event, platform_events.PlatformSpecificEvent)
-    assert platform_event.action == 'qqofficial.GUILD_CREATE'
+    assert platform_event.action == 'qqofficial.UNKNOWN_EVENT'
+
+
+@pytest.mark.asyncio
+async def test_qqofficial_event_converter_maps_declared_lifecycle_events():
+    converter = QQOfficialEventConverter()
+
+    reaction_add = await converter.target2yiri(
+        qq_event(
+            'MESSAGE_REACTION_ADD',
+            extra={
+                'message_id': 'reacted-msg',
+                'emoji': 'thumbs_up',
+                'group_openid': 'group-openid',
+                'openid': 'reactor-openid',
+            },
+        )
+    )
+    reaction_remove = await converter.target2yiri(
+        qq_event('MESSAGE_REACTION_REMOVE', extra={'message_id': 'reacted-msg', 'emoji_id': '1'})
+    )
+    member_joined = await converter.target2yiri(
+        qq_event('GROUP_MEMBER_ADD', extra={'openid': 'new-member', 'group_openid': 'group-openid'})
+    )
+    member_left = await converter.target2yiri(
+        qq_event('GROUP_MEMBER_REMOVE', extra={'openid': 'old-member', 'operator_openid': 'operator-openid'})
+    )
+    bot_invited = await converter.target2yiri(
+        qq_event('GROUP_ADD_ROBOT', extra={'group_openid': 'group-openid', 'op_user_id': 'inviter-openid'})
+    )
+    bot_removed = await converter.target2yiri(
+        qq_event('GROUP_DEL_ROBOT', extra={'group_openid': 'group-openid', 'op_user_id': 'operator-openid'})
+    )
+
+    assert isinstance(reaction_add, platform_events.MessageReactionEvent)
+    assert reaction_add.type == 'message.reaction'
+    assert reaction_add.is_add is True
+    assert reaction_add.message_id == 'reacted-msg'
+    assert reaction_add.reaction == 'thumbs_up'
+    assert reaction_add.chat_type == platform_entities.ChatType.GROUP
+
+    assert isinstance(reaction_remove, platform_events.MessageReactionEvent)
+    assert reaction_remove.is_add is False
+
+    assert isinstance(member_joined, platform_events.MemberJoinedEvent)
+    assert member_joined.type == 'group.member_joined'
+    assert member_joined.group.id == 'group-openid'
+    assert member_joined.member.id == 'new-member'
+
+    assert isinstance(member_left, platform_events.MemberLeftEvent)
+    assert member_left.type == 'group.member_left'
+    assert member_left.member.id == 'old-member'
+    assert member_left.operator.id == 'operator-openid'
+
+    assert isinstance(bot_invited, platform_events.BotInvitedToGroupEvent)
+    assert bot_invited.type == 'bot.invited_to_group'
+    assert bot_invited.inviter.id == 'inviter-openid'
+
+    assert isinstance(bot_removed, platform_events.BotRemovedFromGroupEvent)
+    assert bot_removed.type == 'bot.removed_from_group'
+    assert bot_removed.operator.id == 'operator-openid'
 
 
 @pytest.mark.asyncio
@@ -237,6 +298,24 @@ async def test_qqofficial_adapter_dispatches_eba_and_legacy_and_caches_group_eve
 
 
 @pytest.mark.asyncio
+async def test_qqofficial_adapter_dispatches_non_message_eba_events():
+    adapter = make_adapter()
+    calls: list[platform_events.Event] = []
+
+    async def member_listener(event, adapter):
+        calls.append(event)
+
+    adapter.register_listener(platform_events.MemberJoinedEvent, member_listener)
+    await adapter._handle_native_event(
+        qq_event('GROUP_MEMBER_ADD', extra={'openid': 'new-member', 'group_openid': 'group-openid'})
+    )
+
+    assert len(calls) == 1
+    assert isinstance(calls[0], platform_events.MemberJoinedEvent)
+    assert calls[0].member.id == 'new-member'
+
+
+@pytest.mark.asyncio
 async def test_qqofficial_send_reply_stream_platform_api_and_unsupported():
     adapter = make_adapter()
     message = platform_message.MessageChain(
@@ -252,7 +331,9 @@ async def test_qqofficial_send_reply_stream_platform_api_and_unsupported():
     assert ('private_text', 'user-openid', 'reply', 'msg-1') in adapter.bot.sent
     assert any(call[0] == 'image' and call[1] == 'c2c' for call in adapter.bot.sent)
 
-    await adapter.send_message('group', 'group-openid', platform_message.MessageChain([platform_message.Plain(text='hello group')]))
+    await adapter.send_message(
+        'group', 'group-openid', platform_message.MessageChain([platform_message.Plain(text='hello group')])
+    )
     assert ('group_text', 'group-openid', 'hello group', None) in adapter.bot.sent
 
     assert await adapter.call_platform_api('get_mode', {}) == {

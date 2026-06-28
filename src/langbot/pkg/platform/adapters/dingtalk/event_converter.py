@@ -19,6 +19,11 @@ class DingTalkEventConverter(abstract_platform_adapter.AbstractEventConverter):
     async def target2yiri(event: DingTalkEvent, bot_name: str) -> platform_events.Event | None:
         if event.conversation in {'FriendMessage', 'GroupMessage'}:
             return await DingTalkEventConverter.message_to_eba(event, bot_name)
+        if event.conversation == 'CardCallback':
+            feedback = DingTalkEventConverter.card_callback_to_feedback(event)
+            if feedback is not None:
+                return feedback
+            return DingTalkEventConverter.platform_specific(event, 'card.callback')
         return DingTalkEventConverter.platform_specific(event, f'message.{event.conversation or "unknown"}')
 
     @staticmethod
@@ -56,6 +61,54 @@ class DingTalkEventConverter(abstract_platform_adapter.AbstractEventConverter):
             timestamp=DingTalkEventConverter._timestamp(incoming_message),
             source_platform_object=event,
         )
+
+    @staticmethod
+    def card_callback_to_feedback(event: DingTalkEvent) -> platform_events.FeedbackReceivedEvent | None:
+        callback = event.get('CardCallback') or {}
+        content = callback.get('content') or {}
+        extension = callback.get('extension') or {}
+        action = str(
+            content.get('action') or content.get('actionKey') or content.get('value') or extension.get('action') or ''
+        ).lower()
+        feedback_type = DingTalkEventConverter._feedback_type(
+            action or content.get('feedback_type') or content.get('feedbackType')
+        )
+        if feedback_type is None:
+            return None
+        feedback_id = str(
+            content.get('feedback_id')
+            or content.get('feedbackId')
+            or callback.get('card_instance_id')
+            or callback.get('user_id')
+            or ''
+        )
+        return platform_events.FeedbackReceivedEvent(
+            type='feedback.received',
+            adapter_name=ADAPTER_NAME,
+            feedback_id=feedback_id,
+            feedback_type=feedback_type,
+            feedback_content=content.get('feedback_content') or content.get('feedbackContent') or content.get('reason'),
+            inaccurate_reasons=content.get('inaccurate_reasons') or content.get('inaccurateReasons'),
+            user_id=callback.get('user_id') or None,
+            session_id=callback.get('space_id') or None,
+            message_id=content.get('message_id') or content.get('messageId'),
+            stream_id=content.get('stream_id') or content.get('streamId'),
+            timestamp=0.0,
+            source_platform_object=event,
+        )
+
+    @staticmethod
+    def _feedback_type(value: typing.Any) -> int | None:
+        if isinstance(value, int) and value in {1, 2, 3}:
+            return value
+        normalized = str(value or '').lower()
+        if normalized in {'1', 'like', 'liked', 'thumb_up', 'thumbup', 'up', 'good'}:
+            return 1
+        if normalized in {'2', 'dislike', 'disliked', 'thumb_down', 'thumbdown', 'down', 'bad'}:
+            return 2
+        if normalized in {'3', 'cancel', 'remove', 'removed', 'clear'}:
+            return 3
+        return None
 
     @staticmethod
     def user_from_event(event: DingTalkEvent) -> platform_entities.User:

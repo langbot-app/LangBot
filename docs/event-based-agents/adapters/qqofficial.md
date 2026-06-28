@@ -22,7 +22,12 @@ Status: partial migration. The EBA adapter structure, manifest, converters, cach
 | Event | Evidence | Notes |
 | --- | --- | --- |
 | `message.received` | adapter-live, unit | `C2C_MESSAGE_CREATE`, `DIRECT_MESSAGE_CREATE`, `GROUP_AT_MESSAGE_CREATE`, and `AT_MESSAGE_CREATE` map to common `MessageReceivedEvent`. A real WebSocket-mode QQ Official bot reached the LangBot pipeline on `dev.rockchin.top`; plugin JSONL evidence remains pending. |
-| `platform.specific` | unit, blocked | Unmapped gateway events are emitted as structured `PlatformSpecificEvent`; live evidence is pending. |
+| `message.reaction` | unit | `MESSAGE_REACTION_ADD` and `MESSAGE_REACTION_REMOVE` map to common `MessageReactionEvent`. Live gateway evidence is pending. |
+| `group.member_joined` | unit | `GUILD_MEMBER_ADD` and `GROUP_MEMBER_ADD` map to common `MemberJoinedEvent` when the gateway payload carries a group/guild/channel ID and member openid. |
+| `group.member_left` | unit | `GUILD_MEMBER_REMOVE` and `GROUP_MEMBER_REMOVE` map to common `MemberLeftEvent`. Live gateway evidence is pending. |
+| `bot.invited_to_group` | unit | `GUILD_CREATE` and `GROUP_ADD_ROBOT` map to common `BotInvitedToGroupEvent`. |
+| `bot.removed_from_group` | unit | `GUILD_DELETE` and `GROUP_DEL_ROBOT` map to common `BotRemovedFromGroupEvent`. |
+| `platform.specific` | unit | Unmapped gateway events are emitted as structured `PlatformSpecificEvent`; live evidence is pending. |
 
 ## Common APIs
 

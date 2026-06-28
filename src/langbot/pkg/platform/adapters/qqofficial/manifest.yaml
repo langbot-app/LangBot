@@ -88,6 +88,11 @@ spec:
 
   supported_events:
     - message.received
+    - message.reaction
+    - group.member_joined
+    - group.member_left
+    - bot.invited_to_group
+    - bot.removed_from_group
     - platform.specific
 
   supported_apis:

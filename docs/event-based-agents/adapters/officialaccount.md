@@ -24,7 +24,7 @@ Status: partial migration. Unit/API-shape coverage is present, and private text 
 | Event | Evidence | Notes |
 | --- | --- | --- |
 | `message.received` | plugin-e2e-ui, unit | Text UI message verified through WeChat Official Account on `dev.rockchin.top`; image and voice webhook payloads are covered by unit tests. |
-| `platform.specific` | unit | Subscribe/menu/etc. native events are emitted as structured `PlatformSpecificEvent`. |
+| `platform.specific` | unit | Subscribe/unsubscribe/menu/etc. native events are emitted as structured `PlatformSpecificEvent`. |
 
 ## Common APIs
 
