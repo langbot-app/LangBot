@@ -3,6 +3,7 @@ from __future__ import annotations
 import traceback
 import typing
 
+import dingtalk_stream
 import pydantic
 
 from langbot.libs.dingtalk_api.api import DingTalkClient
@@ -17,6 +18,32 @@ from langbot_plugin.api.entities.builtin.platform import entities as platform_en
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
 from langbot_plugin.api.entities.builtin.platform.errors import NotSupportedError
+
+
+class DingTalkCardCallbackHandler(dingtalk_stream.CallbackHandler):
+    def __init__(self, adapter: 'DingTalkAdapter'):
+        super().__init__()
+        self.adapter = adapter
+
+    async def process(self, message: dingtalk_stream.CallbackMessage):
+        callback = dingtalk_stream.CardCallbackMessage.from_dict(message.data or {})
+        event = DingTalkEvent.from_payload(
+            {
+                'conversation_type': 'CardCallback',
+                'Type': 'card_callback',
+                'CardCallback': {
+                    'extension': callback.extension,
+                    'corp_id': callback.corp_id,
+                    'user_id': callback.user_id,
+                    'content': callback.content,
+                    'space_id': callback.space_id,
+                    'card_instance_id': callback.card_instance_id,
+                },
+            }
+        )
+        if event is not None:
+            await self.adapter._handle_native_event(event)
+        return dingtalk_stream.AckMessage.STATUS_OK, 'OK'
 
 
 class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapter):
@@ -68,6 +95,7 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
     def get_supported_events(self) -> list[str]:
         return [
             'message.received',
+            'feedback.received',
             'platform.specific',
         ]
 
@@ -198,6 +226,10 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
 
         self.bot.on_message('FriendMessage')(on_message)
         self.bot.on_message('GroupMessage')(on_message)
+        self.bot.client.register_callback_handler(
+            dingtalk_stream.CallbackHandler.TOPIC_CARD_CALLBACK,
+            DingTalkCardCallbackHandler(self),
+        )
 
     async def _handle_native_event(self, event: DingTalkEvent):
         try:

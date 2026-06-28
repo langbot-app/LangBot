@@ -1,3 +1,3 @@
 from __future__ import annotations
 
-ADAPTER_NAME = 'dingtalk'
+ADAPTER_NAME = 'dingtalk-eba'
