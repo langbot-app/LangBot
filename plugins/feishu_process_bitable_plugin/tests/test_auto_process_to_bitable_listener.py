@@ -483,6 +483,476 @@ class AutoProcessToBitableListenerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(records[0].batch_id, "S20-CP-DA2605-100-A2")
         self.assertEqual(records[0].fields["残碱(Li+)"], 271.0)
 
+    async def test_parse_product_extracts_live_single_metric_tables_from_feishu_ocr(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_product(
+            "9.3-11.25\n"
+            "m2/g\n"
+            "11.2500\n"
+            "内控标准\n"
+            "9.7500\n"
+            "检测时间\n"
+            "班次\n"
+            "供应商内部批次号\n"
+            "麦克比表\n"
+            "夜班\n"
+            "2026.05.22\n"
+            "11.3186\n"
+            "S18-CP-DC2605-056-C1\n"
+            "供应商内部批次号\n"
+            "粉末电阻\n"
+            "9.31\n"
+            "S18-CP-DB2605-110-B1\n"
+            "9.01\n"
+            "S18-CP-DB2605-111-B2\n"
+            "9.33\n"
+            "S18-CP-DB2605-112-B1\n"
+            "客户标准\n"
+            "%w/w\n"
+            "1.440\n"
+            "内控标准\n"
+            "1.200\n"
+            "碳含量\n"
+            "供应商内部批次号\n"
+            "1.319\n"
+            "S18-CP-DC2605-062-C2\n"
+            "1.317\n"
+            "S18-CP-DC2605-063-C1\n"
+            "1.318\n"
+            "S18-CP-DC2605-064-C1",
+            "2026-05-22 15:10:00",
+        )
+
+        by_batch = {record.batch_id: record for record in records}
+        self.assertEqual(by_batch["S18-CP-DC2605-056-C1"].fields["比表(麦克比表)"], 11.3186)
+        self.assertEqual(by_batch["S18-CP-DB2605-110-B1"].fields["粉阻(粉末电阻)"], 9.31)
+        self.assertEqual(by_batch["S18-CP-DB2605-111-B2"].fields["粉阻(粉末电阻)"], 9.01)
+        self.assertEqual(by_batch["S18-CP-DB2605-112-B1"].fields["粉阻(粉末电阻)"], 9.33)
+        self.assertEqual(by_batch["S18-CP-DC2605-062-C2"].fields["碳含量"], 1.319)
+        self.assertEqual(by_batch["S18-CP-DC2605-063-C1"].fields["碳含量"], 1.317)
+        self.assertEqual(by_batch["S18-CP-DC2605-064-C1"].fields["碳含量"], 1.318)
+
+    async def test_parse_product_extracts_residual_lithium_ocr_variants(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_product(
+            "供应商内部批次号\n"
+            "u+1L\n"
+            "0.0250\n"
+            "S18-CP-DB2605-110-B1\n"
+            "0.0265\n"
+            "S18-CP-DB2605-111-B2\n"
+            "0.0273\n"
+            "S18-CP-DB2605-112-B1\n",
+            "2026-05-22 13:40:00",
+        )
+
+        by_batch = {record.batch_id: record for record in records}
+        self.assertEqual(by_batch["S18-CP-DB2605-110-B1"].fields["残碱(Li+)"], 250.0)
+        self.assertEqual(by_batch["S18-CP-DB2605-111-B2"].fields["残碱(Li+)"], 265.0)
+        self.assertEqual(by_batch["S18-CP-DB2605-112-B1"].fields["残碱(Li+)"], 273.0)
+
+    async def test_parse_product_normalizes_broken_ocr_batch_and_metric_tokens(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_records_with_text_priority(
+            "",
+            "供应商内部批次号\n"
+            "Li＋含量\n"
+            "0.0268\n"
+            "S18- CP - D B 2605 - 113 - B2\n"
+            "Hp\n"
+            "9.18\n"
+            "2026／05／23",
+            "2026-05-23 09:10:00",
+        )
+
+        self.assertEqual(len(records), 1)
+        record = records[0]
+        self.assertEqual(record.batch_id, "S18-CP-DB2605-113-B2")
+        self.assertEqual(record.route_key, "product.S18")
+        self.assertEqual(record.fields["残碱(Li+)"], 268.0)
+        self.assertEqual(record.fields["pH"], 9.18)
+        self.assertEqual(record.fields["检测日期"], "2026.05.23")
+
+    async def test_parse_product_normalizes_ocr_battery_rate_variants(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_records_with_text_priority(
+            "",
+            "样品批号\n"
+            "充放电制度\n"
+            "首充均值\n"
+            "首放均值\n"
+            "首效均值\n"
+            "恒流比均值\n"
+            "3.2V平台比容量均值\n"
+            "平台占比均值\n"
+            "O.1 C\n"
+            "161.88\n"
+            "158.66\n"
+            "98.01\n"
+            "99.12\n"
+            "153.42\n"
+            "95.76\n"
+            "S18-CP-D C2605-066-C2\n"
+            "IC\n"
+            "160.30\n"
+            "136.20\n"
+            "84.97\n"
+            "94.10\n"
+            "120.11\n"
+            "87.66",
+            "2026-05-23 09:20:00",
+        )
+
+        self.assertEqual(len(records), 1)
+        fields = records[0].fields
+        self.assertEqual(records[0].batch_id, "S18-CP-DC2605-066-C2")
+        self.assertEqual(fields["送检项目"], "扣电")
+        self.assertEqual(fields["0.1C首充均值"], 161.88)
+        self.assertEqual(fields["0.1C放电"], 158.66)
+        self.assertEqual(fields["1C首放均值"], 136.20)
+        self.assertEqual(fields["1C平台占比均值"], 87.66)
+
+    async def test_parse_product_extracts_live_ocr_particle_table_metrics(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_records_with_text_priority(
+            "",
+            "单位\n"
+            "USL\n"
+            "0.55\n"
+            "1.60\n"
+            "10.00\n"
+            "59.00\n"
+            "SL\n"
+            "0.40\n"
+            "1.00\n"
+            "5.6\n"
+            "LSL\n"
+            "0.15\n"
+            "0.25\n"
+            "0.60\n"
+            "1.20\n"
+            "班次\n"
+            "批号\n"
+            "D0\n"
+            "D10Δ\n"
+            "D50\n"
+            "D90\n"
+            "Dmax4\n"
+            "检测时间\n"
+            "夜班\n"
+            "2026.6.28\n"
+            "0.214\n"
+            "0.374\n"
+            "0.825\n"
+            "4.24\n"
+            "34.4\n"
+            "S20-CP-DB2606-152-B2",
+            "2026-06-28 23:00:00",
+        )
+
+        self.assertEqual(len(records), 1)
+        fields = records[0].fields
+        self.assertEqual(records[0].batch_id, "S20-CP-DB2606-152-B2")
+        self.assertEqual(fields["粒度D0"], 0.214)
+        self.assertEqual(fields["粒度D10"], 0.374)
+        self.assertEqual(fields["粒度D50"], 0.825)
+        self.assertEqual(fields["粒度D90"], 4.24)
+        self.assertEqual(fields["粒度Dmax"], 34.4)
+        self.assertEqual(fields["检测日期"], "2026.06.28")
+
+    async def test_parse_product_extracts_particle_table_with_material_marker_and_suffix(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_records_with_text_priority(
+            "",
+            "品名\n"
+            "委托批号\n"
+            "D0(um)\n"
+            "D10(um)\n"
+            "D50(um)\n"
+            "D90(um)\n"
+            "D99(um)\n"
+            "D100(um)\n"
+            "9.17\n"
+            "18.5\n"
+            "S20\n"
+            "0.215\n"
+            "0.39\n"
+            "0.963\n"
+            "3.48\n"
+            "S20-CP-DA2606-098-A2-FC\n"
+            "S20\n"
+            "0.214\n"
+            "0.38\n"
+            "0.907\n"
+            "3.41\n"
+            "9.42\n"
+            "20.7\n"
+            "S20-CP-DA2606-100-A2-FC",
+            "2026-06-28 23:00:00",
+        )
+
+        by_batch = {record.batch_id: record for record in records}
+        first = by_batch["S20-CP-DA2606-098-A2"]
+        self.assertEqual(first.fields["粒度D0"], 0.215)
+        self.assertEqual(first.fields["粒度D10"], 0.39)
+        self.assertEqual(first.fields["粒度D50"], 0.963)
+        self.assertEqual(first.fields["粒度D90"], 3.48)
+        second = by_batch["S20-CP-DA2606-100-A2"]
+        self.assertEqual(second.fields["粒度D0"], 0.214)
+        self.assertEqual(second.fields["粒度D10"], 0.38)
+        self.assertEqual(second.fields["粒度D50"], 0.907)
+        self.assertEqual(second.fields["粒度D90"], 3.41)
+
+    async def test_parse_product_extracts_particle_table_with_prefixed_headers(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_records_with_text_priority(
+            "",
+            "供应商内部批次号\n"
+            "粒度D10(um)\n"
+            "粒度D50(um)\n"
+            "粒度D90(um)\n"
+            "粒度D99(um)\n"
+            "夜班\n"
+            "0.403\n"
+            "2.56\n"
+            "4.90\n"
+            "0.984\n"
+            "2026.06.27\n"
+            "S18-CP-DC2606-099-C1",
+            "2026-06-28 23:00:00",
+        )
+
+        fields = records[0].fields
+        self.assertEqual(records[0].batch_id, "S18-CP-DC2606-099-C1")
+        self.assertEqual(fields["粒度D10"], 0.403)
+        self.assertEqual(fields["粒度D50"], 2.56)
+        self.assertEqual(fields["粒度D90"], 4.90)
+        self.assertEqual(fields["粒度D99"], 0.984)
+        self.assertEqual(fields["检测日期"], "2026.06.27")
+
+    async def test_parse_product_extracts_live_ocr_tap_density_table_metrics(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_records_with_text_priority(
+            "",
+            "单位\n"
+            "g/cm3\n"
+            "USL\n"
+            "1.67\n"
+            "SL\n"
+            "1.47\n"
+            "LSL\n"
+            "1.27\n"
+            "批号\n"
+            "振实\n"
+            "1.00\n"
+            "S20-CP-DA2606-092-A2\n"
+            "1.05\n"
+            "S20-CP-DA2606-093-A1\n"
+            "0.95\n"
+            "S20-CP-DA2606-091-A1",
+            "2026-06-28 23:00:00",
+        )
+
+        by_batch = {record.batch_id: record for record in records}
+        self.assertEqual(by_batch["S20-CP-DA2606-092-A2"].fields["振实"], 1.00)
+        self.assertEqual(by_batch["S20-CP-DA2606-093-A1"].fields["振实"], 1.05)
+        self.assertEqual(by_batch["S20-CP-DA2606-091-A1"].fields["振实"], 0.95)
+
+    async def test_parse_product_extracts_single_metric_iron_dissolution_for_cp_only(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_product(
+            "样品批号\n"
+            "铁溶出,ppm\n"
+            "2026.05.22\n"
+            "29.415\n"
+            "S18-CP-DC2605-065-C2\n"
+            "2026.05.22\n"
+            "S18-FS-DC2605-065-100HZ-(小粉碎机)\n"
+            "39.221\n"
+            "2026.05.22\n"
+            "29.233\n"
+            "S18-SC-DC2605-066-C2\n",
+            "2026-05-22 15:06:00",
+        )
+
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].batch_id, "S18-CP-DC2605-065-C2")
+        self.assertEqual(records[0].fields["铁溶出"], 29.415)
+
+    async def test_parse_product_ignores_fs_sc_single_metric_tables(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_product(
+            "样品批号\n"
+            "Li+含量,%\n"
+            "0.0238\n"
+            "S18-FS-DC2605-064-C1\n"
+            "0.0243\n"
+            "S18-FS-DC2605-065-C2\n"
+            "样品批号\n"
+            "粉末电阻\n"
+            "18.53\n"
+            "S18-SC-DC2605-064-C1\n"
+            "17.38\n"
+            "S18-SC-DC2605-065-C2",
+            "2026-05-22 13:40:00",
+        )
+
+        self.assertEqual(records, [])
+
+    async def test_parse_product_extracts_live_ocr_ph_header_variants(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_records_with_text_priority(
+            "",
+            "8.0-9.2\n"
+            "客户标准\n"
+            "9.00\n"
+            "内控标准\n"
+            "8.20\n"
+            "班次\n"
+            "供应商内部批次号\n"
+            "Hq\n"
+            "白班\n"
+            "8.60\n"
+            "S18-CP-DC2606-094-D2\n"
+            "白班\n"
+            "8.62\n"
+            "S18-CP-DC2606-096-C1\n"
+            "夜班\n"
+            "8.71\n"
+            "S18-CP-DC2606-097-C1\n"
+            "夜班\n"
+            "8.62\n"
+            "S18-CP-DC2606-095-D2",
+            "2026-06-28 13:17:00",
+        )
+
+        by_batch = {record.batch_id: record for record in records}
+        self.assertEqual(by_batch["S18-CP-DC2606-094-D2"].fields["pH"], 8.60)
+        self.assertEqual(by_batch["S18-CP-DC2606-096-C1"].fields["pH"], 8.62)
+        self.assertEqual(by_batch["S18-CP-DC2606-097-C1"].fields["pH"], 8.71)
+        self.assertEqual(by_batch["S18-CP-DC2606-095-D2"].fields["pH"], 8.62)
+
+    async def test_parse_product_extracts_live_ocr_ph_pha_header_variant(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_records_with_text_priority(
+            "",
+            "单位\n"
+            "USL\n"
+            "10.00\n"
+            "SL\n"
+            "9.00\n"
+            "LSL\n"
+            "8.00\n"
+            "班次\n"
+            "批号\n"
+            "PHA\n"
+            "27\n"
+            "夜班\n"
+            "9.11\n"
+            "S20-CP-DB2606-144-B2\n"
+            "27\n"
+            "夜班\n"
+            "9.15\n"
+            "S20-CP-DB2606-145-B1\n",
+            "2026-06-28 13:14:00",
+        )
+
+        by_batch = {record.batch_id: record for record in records}
+        self.assertEqual(by_batch["S20-CP-DB2606-144-B2"].fields["pH"], 9.11)
+        self.assertEqual(by_batch["S20-CP-DB2606-145-B1"].fields["pH"], 9.15)
+
+    async def test_parse_product_extracts_live_ocr_main_element_tables_without_iron_dissolution(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_records_with_text_priority(
+            "",
+            "主元素\n"
+            "主元素\n"
+            "主元素\n"
+            "批号\n"
+            "Ni\n"
+            "Na\n"
+            "K\n"
+            "Li%\n"
+            "Fe%\n"
+            "P%\n"
+            "Li/Fe\n"
+            "P/Fe\n"
+            "4.58\n"
+            "34.75\n"
+            "19.88\n"
+            "1.06\n"
+            "1.03\n"
+            "12.54\n"
+            "66.52\n"
+            "1685.85\n"
+            "42.14\n"
+            "S20-CP-DA2606-094-A2\n"
+            "4.58\n"
+            "34.66\n"
+            "19.87\n"
+            "1.03\n"
+            "12.77\n"
+            "67.51\n"
+            "1687.66\n"
+            "42.88\n"
+            "S20-CP-DA2606-095-A1",
+            "2026-06-28 16:53:00",
+        )
+
+        by_batch = {record.batch_id: record for record in records}
+        first = by_batch["S20-CP-DA2606-094-A2"].fields
+        self.assertAlmostEqual(first["Li含量"], 4.58)
+        self.assertAlmostEqual(first["Fe含量"], 34.75)
+        self.assertAlmostEqual(first["P含量"], 19.88)
+        second = by_batch["S20-CP-DA2606-095-A1"].fields
+        self.assertAlmostEqual(second["Li含量"], 4.58)
+        self.assertAlmostEqual(second["Fe含量"], 34.66)
+        self.assertAlmostEqual(second["P含量"], 19.87)
+        self.assertNotIn("铁溶出", first)
+
+    async def test_parse_product_extracts_live_ocr_magnetic_material_tables(self) -> None:
+        listener = self._build_listener()
+
+        records = listener._parse_records_with_text_priority(
+            "",
+            "MI\n"
+            "MI\n"
+            "批号\n"
+            "(Cr+Ni+Z\n"
+            "(Fe+Cr+\n"
+            "n)\n"
+            "Ni+Zn)\n"
+            "2\n"
+            "665\n"
+            "S20-CP-DA2606-094-A2\n"
+            "2\n"
+            "546\n"
+            "S20-CP-DA2606-095-A1\n"
+            "2\n"
+            "560\n"
+            "S20-CP-DA2606-096-A2",
+            "2026-06-28 16:36:00",
+        )
+
+        by_batch = {record.batch_id: record for record in records}
+        self.assertEqual(by_batch["S20-CP-DA2606-094-A2"].fields["杂质含量"], 2.0)
+        self.assertEqual(by_batch["S20-CP-DA2606-094-A2"].fields["铁溶出"], 665.0)
+        self.assertEqual(by_batch["S20-CP-DA2606-095-A1"].fields["杂质含量"], 2.0)
+        self.assertEqual(by_batch["S20-CP-DA2606-095-A1"].fields["铁溶出"], 546.0)
+
     async def test_parse_product_extracts_feishu_ocr_battery_table(self) -> None:
         listener = self._build_listener()
 
@@ -930,6 +1400,34 @@ class AutoProcessToBitableListenerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(args[1]["产线"], "A")
         self.assertEqual(args[1]["批次号"], "S20-CP-DA2605-100-A2")
         self.assertEqual(args[1]["OCR文本"], "S20-CP-DA2605-100-A2\n全检已送检")
+
+    async def test_image_ocr_failure_feedback_reports_product_batch_without_fields(self) -> None:
+        listener = self._build_listener({"enable_ocr_for_images": True, "reply_on_error": True})
+        source_time = datetime.datetime(2026, 5, 23, 14, 42, tzinfo=ZoneInfo("Asia/Shanghai"))
+        image_path = Path(__file__)
+        ctx = DummyEventContext(
+            DummyEvent(
+                "",
+                message_id="msg-product-image-no-fields",
+                source_time=source_time,
+                images=[platform_message.Image(path=str(image_path))],
+            )
+        )
+
+        listener._extract_recall_meta = AsyncMock(return_value=None)  # type: ignore[method-assign]
+        listener._recognize_image_bytes = AsyncMock(  # type: ignore[method-assign]
+            return_value="样品批号\nS18-CP-DB2605-114-B1"
+        )
+        listener._send_feedback = AsyncMock()  # type: ignore[method-assign]
+
+        await listener._handle_normal_message(ctx)
+
+        listener._send_feedback.assert_awaited_once()  # type: ignore[attr-defined]
+        feedback_text = listener._send_feedback.await_args.args[1]  # type: ignore[attr-defined]
+        self.assertIn("识别到成品批号但未提取成品指标", feedback_text)
+        self.assertIn("S18-CP-DB2605-114-B1", feedback_text)
+        self.assertTrue(ctx.default_prevented)
+        self.assertTrue(ctx.postorder_prevented)
 
     async def test_default_auto_create_fields_is_strict(self) -> None:
         listener = self._build_listener()
