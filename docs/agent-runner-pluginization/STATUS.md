@@ -26,7 +26,7 @@
 - `action.requested` 仍只作为 telemetry / reserved surface；platform action executor 不在本分支执行。
 - EventGateway / EventRouter 完整实现由外部 EBA 分支联调；本分支只提供 event-first host envelope / binding / run 入口。
 - State 与 storage 的长期类型边界仍可继续收窄；当前合同只要求 JSON-safe state 与受控 storage API。
-- `ToolResource` 当前只带 `tool_name` / `tool_type` / `description` / `operations`，不含 `parameters` full schema；runner（如 local-agent `build_llm_tools`）需逐个 `get_tool_detail` 往返。拟在 `ToolResource` 增补 `parameters`，由 Host 在构造 `ctx.resources` 时一次塞齐。
+- `ToolResource.parameters` 已作为 best-effort full schema 由 Host 在构造 `ctx.resources` 时一次塞齐；无 schema 时 runner 仍需兼容 `parameters=None` 或按需调用 detail API。
 - EventLog / Transcript 已提供显式 cleanup primitive；长期 retention 默认值、TTL 调度接入和 sandbox/workspace 文件清理仍是运维收尾项，应在 Runtime Control Plane 产品化前补齐。
 - External harness 的 native shell / filesystem / CLI / MCP 权限不受 manifest permissions 约束；manifest permissions 只约束 LangBot 持有的资源访问。
 - LangBot 当前不承诺 managed sandbox；external harness 的 OS/process/network quota、workspace GC、provider-native tool 权限由用户或部署环境承担。
