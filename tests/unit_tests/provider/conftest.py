@@ -7,6 +7,8 @@ without calling real LLM APIs or network requests.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from unittest.mock import AsyncMock, Mock
 from types import SimpleNamespace
@@ -30,6 +32,25 @@ class FakeProviderAPIRequester(requester.ProviderAPIRequester):
         self._invoke_count = 0
         self._last_messages = None
         self._last_model = None
+        self._last_count_tokens_payload = None
+
+    @staticmethod
+    def _content_to_text(content) -> str:
+        if content is None:
+            return ''
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts: list[str] = []
+            for item in content:
+                if isinstance(item, dict):
+                    text = item.get('text')
+                else:
+                    text = getattr(item, 'text', None)
+                if text:
+                    parts.append(str(text))
+            return ''.join(parts)
+        return str(content)
 
     async def invoke_llm(
         self,
@@ -69,6 +90,37 @@ class FakeProviderAPIRequester(requester.ProviderAPIRequester):
             role='assistant',
             content=[provider_message.ContentElement(type='text', text='Fake stream chunk')],
         )
+
+    async def count_tokens(
+        self,
+        model: requester.RuntimeLLMModel,
+        messages: list,
+        funcs=None,
+        extra_args={},
+    ) -> int:
+        """Return deterministic token estimates for token-free integration tests."""
+        payload: list[dict] = []
+        for message in messages:
+            payload.append(
+                {
+                    'role': getattr(message, 'role', ''),
+                    'content': self._content_to_text(getattr(message, 'content', None)),
+                    'tool_calls': getattr(message, 'tool_calls', None),
+                }
+            )
+
+        for func in funcs or []:
+            payload.append(
+                {
+                    'name': getattr(func, 'name', ''),
+                    'description': getattr(func, 'description', ''),
+                    'parameters': getattr(func, 'parameters', {}),
+                }
+            )
+
+        self._last_count_tokens_payload = payload
+        text = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
+        return max(1, (len(text) + 3) // 4)
 
     async def invoke_embedding(self, model, input_text: list, extra_args={}):
         """Return fake embedding vectors."""
