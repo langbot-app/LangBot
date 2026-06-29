@@ -1,7 +1,7 @@
 import pytest
 
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
-from src.langbot.pkg.platform.sources.aiocqhttp import AiocqhttpAdapter, AiocqhttpMessageConverter
+from langbot.pkg.platform.sources.aiocqhttp import AiocqhttpAdapter, AiocqhttpMessageConverter
 
 
 async def _convert_single(component: platform_message.MessageComponent):
