@@ -48,7 +48,7 @@ Agent / binding 的持久化形态。
 - 新增可选字段保持向后兼容。
 - 删除字段或改变既有字段语义，需要在 SDK 发布前完成；发布后应走新的显式兼容方案。
 - 结果流演进：Host **必须忽略未知 result type 并记录 warning**（除非该 type 明确要求强校验）。SDK envelope 接收入站未知 `type` 字符串，runner 侧可按原字符串转发或忽略；新增 result type 不提升大版本。
-- SDK 入站 context 类实体偏宽松，用于兼容 Host 附加的非核心字段；manifest、result payload、page/result 返回与错误模型偏严格，未知字段默认禁止。安全边界仍在 Host，SDK 校验只提升开发体验。
+- SDK 入站 context 类实体偏宽松，用于兼容 Host 附加的非核心字段；Host 返回 DTO（history/event/steering/run/runtime/stats/error 等）忽略未知字段，保证 Host 增加可选返回字段时旧 SDK 不会解析失败；manifest、runner result payload 等由插件/runner 提交给 Host 的输入合同仍偏严格。安全边界仍在 Host，SDK 校验只提升开发体验。
 
 ## 4. Discovery 协议
 
