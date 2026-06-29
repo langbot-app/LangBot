@@ -1,6 +1,7 @@
 import re
 import time
 import asyncio
+import collections
 from quart import request
 import httpx
 from quart import Quart
@@ -35,6 +36,11 @@ class QQOfficialClient:
         self.access_token_expiry_time = None
         self.logger = logger
         self._msg_seq_counter = 0
+        # Per-inbound-msg_id 回复序号分配器。QQ 官方 v2 API 通过 (msg_id, msg_seq)
+        # 对被动消息去重，同一 msg_id 复用 msg_seq 会被拒绝 (40054005 消息被去重)。
+        self._reply_msg_seq: 'collections.OrderedDict[str, int]' = collections.OrderedDict()
+        self._reply_msg_seq_lock = asyncio.Lock()
+        self._reply_msg_seq_max_keys = 1024
         self._token_refresh_task: Optional[asyncio.Task] = None
 
     async def check_access_token(self):
@@ -177,6 +183,27 @@ class QQOfficialClient:
         content_type = attachment.get('content_type', '')
         return content_type.startswith('image/')
 
+    async def next_reply_msg_seq(self, msg_id: Optional[str]) -> int:
+        """为同一条入站 msg_id 关联的每次被动下发分配递增的 msg_seq。
+
+        QQ 官方 v2 API 通过 (msg_id, msg_seq) 去重，同一 msg_id 复用 msg_seq 会被
+        拒绝 (40054005 消息被去重)。多段文本、富媒体、重试等场景下每次发送都需要
+        新的 msg_seq。无 msg_id（主动消息等）时回退到全局自增计数器。
+        """
+        if not msg_id:
+            self._msg_seq_counter += 1
+            return self._msg_seq_counter
+
+        key = str(msg_id)
+        async with self._reply_msg_seq_lock:
+            seq = self._reply_msg_seq.get(key, 0) + 1
+            self._reply_msg_seq[key] = seq
+            self._reply_msg_seq.move_to_end(key)
+            # 限制字典大小，避免长期运行的内存增长
+            while len(self._reply_msg_seq) > self._reply_msg_seq_max_keys:
+                self._reply_msg_seq.popitem(last=False)
+            return seq
+
     async def send_private_text_msg(self, user_openid: str, content: str, msg_id: str):
         """发送私聊消息"""
         if not await self.check_access_token():
@@ -192,6 +219,7 @@ class QQOfficialClient:
                 'content': content,
                 'msg_type': 0,
                 'msg_id': msg_id,
+                'msg_seq': await self.next_reply_msg_seq(msg_id),
             }
             response = await client.post(url, headers=headers, json=data)
             response_data = response.json()
@@ -216,6 +244,7 @@ class QQOfficialClient:
                 'content': content,
                 'msg_type': 0,
                 'msg_id': msg_id,
+                'msg_seq': await self.next_reply_msg_seq(msg_id),
             }
             response = await client.post(url, headers=headers, json=data)
             if response.status_code == 200:
@@ -363,8 +392,7 @@ class QQOfficialClient:
         else:
             raise ValueError(f'Unsupported target_type: {target_type}')
 
-        self._msg_seq_counter += 1
-        msg_seq = self._msg_seq_counter
+        msg_seq = await self.next_reply_msg_seq(msg_id)
         body = {
             'msg_type': 7,
             'media': {'file_info': file_info},
