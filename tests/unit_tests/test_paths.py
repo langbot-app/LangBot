@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from src.langbot.pkg.utils import paths
+from langbot.pkg.utils import paths
 
 
 def test_get_data_root_uses_source_root_in_repo_checkout():
