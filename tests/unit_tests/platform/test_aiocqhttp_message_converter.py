@@ -35,6 +35,35 @@ async def test_voice_data_uri_base64_payload_is_normalized():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('component', 'expected'),
+    [
+        (
+            platform_message.File(name='report.txt', base64='data:text/plain;base64,raw-file'),
+            {'file': 'base64://raw-file', 'name': 'report.txt'},
+        ),
+        (
+            platform_message.File(name='report.txt', base64='raw-file'),
+            {'file': 'base64://raw-file', 'name': 'report.txt'},
+        ),
+        (
+            platform_message.File(name='a.txt', url='http://example.com/a.txt'),
+            {'file': 'http://example.com/a.txt', 'name': 'a.txt'},
+        ),
+        (
+            platform_message.File(name='a.txt', path='/tmp/a.txt'),
+            {'file': '/tmp/a.txt', 'name': 'a.txt'},
+        ),
+    ],
+)
+async def test_file_message_uses_available_file_source(component, expected):
+    segment = await _convert_single(component)
+
+    assert segment.type == 'file'
+    assert segment.data == expected
+
+
+@pytest.mark.asyncio
 async def test_forward_image_base64_payload_is_normalized():
     forward = platform_message.Forward(
         node_list=[

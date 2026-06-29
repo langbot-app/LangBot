@@ -70,7 +70,10 @@ class AiocqhttpMessageConverter(abstract_platform_adapter.AbstractMessageConvert
                 for node in msg.node_list:
                     msg_list.extend((await AiocqhttpMessageConverter.yiri2target(node.message_chain))[0])
             elif isinstance(msg, platform_message.File):
-                msg_list.append({'type': 'file', 'data': {'file': msg.url, 'name': msg.name}})
+                file = msg.url or msg.path
+                if not file and msg.base64:
+                    file = f'base64://{_normalize_base64_payload(msg.base64)}'
+                msg_list.append({'type': 'file', 'data': {'file': file, 'name': msg.name}})
             elif isinstance(msg, platform_message.Face):
                 if msg.face_type == 'face':
                     msg_list.append(aiocqhttp.MessageSegment.face(msg.face_id))
