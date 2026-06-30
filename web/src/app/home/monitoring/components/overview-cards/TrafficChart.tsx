@@ -34,14 +34,16 @@ export default function TrafficChart({
   const { t } = useTranslation();
 
   const chartData = useMemo(() => {
-    if (!messages.length && !llmCalls.length) {
+    const safeMessages = Array.isArray(messages) ? messages : [];
+    const safeLlmCalls = Array.isArray(llmCalls) ? llmCalls : [];
+    if (!safeMessages.length && !safeLlmCalls.length) {
       return [];
     }
 
     // Combine all timestamps and find the range
     const allTimestamps = [
-      ...messages.map((m) => m.timestamp.getTime()),
-      ...llmCalls.map((c) => c.timestamp.getTime()),
+      ...safeMessages.map((m) => m.timestamp.getTime()),
+      ...safeLlmCalls.map((c) => c.timestamp.getTime()),
     ];
 
     if (allTimestamps.length === 0) return [];
@@ -99,7 +101,7 @@ export default function TrafficChart({
     }
 
     // Count messages per bucket
-    messages.forEach((msg) => {
+    safeMessages.forEach((msg) => {
       const bucket =
         Math.floor(msg.timestamp.getTime() / bucketSize) * bucketSize;
       const point = buckets.get(bucket);
@@ -109,7 +111,7 @@ export default function TrafficChart({
     });
 
     // Count LLM calls per bucket
-    llmCalls.forEach((call) => {
+    safeLlmCalls.forEach((call) => {
       const bucket =
         Math.floor(call.timestamp.getTime() / bucketSize) * bucketSize;
       const point = buckets.get(bucket);

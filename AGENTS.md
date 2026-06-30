@@ -1,160 +1,105 @@
 # AGENTS.md
 
-This file guides code agents (Claude Code, GitHub Copilot, OpenAI Codex, etc.) working in the LangBot project. `CLAUDE.md` is a symlink to this file.
+This file guides code agents working in the LangBot main repository. `CLAUDE.md` is a symlink to this file.
 
-## Project Overview
+Read `ARCHITECTURE.md` before non-trivial backend, frontend, runtime, plugin, Box, MCP, persistence, or cross-repo SDK changes. This file is the working checklist; `ARCHITECTURE.md` is the system map.
 
-LangBot is an open-source, LLM-native instant-messaging bot development platform. It aims to provide an out-of-the-box IM bot development experience with Agent, RAG, MCP and other LLM application capabilities, supporting mainstream global IM platforms and exposing rich APIs for custom development.
+## Quick Facts
 
-LangBot has a comprehensive web frontend — almost every operation can be performed through it.
+- Python backend: `>=3.11,<4.0`, dependencies managed by `uv`.
+- Frontend: `web/` is Vite + React Router 7 + shadcn/ui + Tailwind, managed by `pnpm`.
+- Backend framework: Quart served by Hypercorn on `api.port`, default `5300`.
+- Frontend dev server: `web/` on `3000`, with `VITE_API_BASE_URL` pointing at the backend.
+- Plugin/Box/runtime contracts live in sibling repo `langbot-plugin-sdk`, pinned as `langbot-plugin` in `pyproject.toml`.
 
-- **Python**: `>=3.11,<4.0`, dependencies managed by `uv`. Package version is in `pyproject.toml`.
-- **Frontend**: `web/` is a **Vite + React Router 7 + shadcn/ui + Tailwind CSS** SPA, managed by `pnpm`. (Note: this is NOT Next.js — the `dev` script is `vite`.)
-- **Backend framework**: Quart (the async flavour of Flask). The HTTP API and the pre-built web UI are both served by the backend on `http://127.0.0.1:5300`.
-
-## Repository Layout
-
-```
-LangBot/
-├── main.py                     # Entrypoint shim -> langbot.__main__.main()
-├── pyproject.toml              # Python project + deps (uv), pins langbot-plugin==<x.y.z>
-├── src/langbot/
-│   ├── __main__.py             # Real entrypoint, CLI args (--standalone-runtime, --standalone-box, --debug)
-│   ├── pkg/                    # Core backend package
-│   │   ├── api/                # HTTP API controllers + services (Quart)
-│   │   ├── core/               # App bootstrap, stages, task manager
-│   │   ├── platform/           # IM platform adapters, bot managers, session managers
-│   │   ├── provider/           # LLM providers, requesters, tool providers
-│   │   ├── pipeline/           # Pipelines, stages, query pool
-│   │   ├── plugin/             # Bridge connecting LangBot to the plugin runtime (see below)
-│   │   ├── box/                # Code-sandbox subsystem (Docker / nsjail / E2B backends)
-│   │   ├── skill/              # Skill subsystem
-│   │   ├── rag/ , vector/      # RAG + vector store
-│   │   ├── command/            # Built-in commands
-│   │   ├── persistence/        # ORM models + Alembic migrations (SQLite & PostgreSQL)
-│   │   ├── storage/            # Object/file storage abstractions
-│   │   ├── config/, entity/, discover/, utils/, telemetry/, survey/
-│   ├── libs/                   # Vendored SDKs (qq_official_api, wecom_api, etc.)
-│   └── templates/              # Config/component templates (e.g. templates/config.yaml)
-├── web/                        # Frontend SPA (Vite + React Router 7 + shadcn + Tailwind)
-└── docker/                     # docker-compose deployment files
-```
-
-## Development Environment Setup
-
-Full guide lives in the wiki: **["开发配置" / Dev Config](https://docs.langbot.app/zh/develop/dev-config)**. Summary:
-
-### Backend
+## Essential Commands
 
 ```bash
-pip install uv
-uv sync --dev          # uv creates a .venv/ for you; point your editor's interpreter at it
-uv run main.py         # serves API + web UI on http://127.0.0.1:5300
-```
-
-On first run the config file is generated at `data/config.yaml`. DB is SQLite by default (zero setup); PostgreSQL is supported. Migrations run automatically on startup.
-
-### Frontend
-
-Requires Node.js + [pnpm](https://pnpm.io/installation).
-
-```bash
-cd web
-cp .env.example .env   # Windows: copy .env.example .env
-pnpm install
-pnpm dev               # http://127.0.0.1:3000  (npm install / npm run dev also work)
-```
-
-`pnpm dev` reads `VITE_API_BASE_URL` from `web/.env` so the dev frontend can reach the backend on port `5300`. In production the frontend is pre-built into static files served by the backend on the same origin.
-
-### Code formatting
-
-The repo runs lint + format checks in CI. Install the pre-commit hooks so the same checks run locally before each commit:
-
-```bash
+uv sync --dev
+uv run main.py
 uv run pre-commit install
+
+cd web
+pnpm install
+pnpm dev
+pnpm build
 ```
 
-## Plugin System
-
-LangBot's plugin system (Plugin SDK, CLI `lbp`, Plugin Runtime, and the shared entity/API definitions) lives in a **separate repository**: [`langbot-plugin-sdk`](https://github.com/langbot-app/langbot-plugin-sdk). LangBot depends on it via the pinned `langbot-plugin` package in `pyproject.toml`.
-
-### Architecture (what to know inside this repo)
-
-- Plugins run as independent processes managed by the **Plugin Runtime**. The Runtime supports two control transports: `stdio` and `websocket`.
-- When LangBot is started directly by a user (not in a container), it spawns and connects to the Runtime over **stdio** (lightweight/personal use).
-- When LangBot runs in a container, it connects to a standalone Runtime over **WebSocket** (production).
-- The bridge code lives in `src/langbot/pkg/plugin/` (`connector.py`, `handler.py`).
-- Relevant config (`data/config.yaml`): `plugin.runtime_ws_url` (e.g. `ws://langbot_plugin_runtime:5400/control/ws`). Start LangBot with `--standalone-runtime` to make it connect to an externally-launched Runtime over WebSocket instead of spawning one over stdio.
-
-### Debugging the Plugin Runtime / CLI / SDK
-
-This is documented in detail in the **SDK repo's `AGENTS.md`** and in the wiki page **["调试插件运行时、CLI、SDK" / Plugin Runtime](https://docs.langbot.app/zh/develop/plugin-runtime)**. The short version:
-
-- Clone `LangBot` and `langbot-plugin-sdk` as siblings under one parent dir so the editor resolves shared entities.
-- Start a standalone Runtime from the SDK repo: `uv run --no-sync lbp rt` (control port `5400`, debug port `5401`).
-- To make LangBot use a locally-modified SDK: from the SDK dir, with LangBot's `.venv` active, run `uv pip install .`, then launch LangBot with `uv run --no-sync main.py --standalone-runtime` (keep `--no-sync` so your local SDK isn't overwritten).
-
-### Debugging the Box (sandbox) runtime
-
-The Box subsystem (`src/langbot/pkg/box/`) is the code sandbox. It picks the first available backend among **Docker / nsjail / E2B**. The standalone Box runtime is launched via the SDK CLI: `lbp box`. Backend selection details, the `lbp box` flags, and the SDK-side architecture are documented in the SDK repo's `AGENTS.md`.
-
-Relevant config (`data/config.yaml`, `box:` section): `box.enabled` (master switch — disabling it also disables the native sandbox tools, skill add/edit, and stdio-mode MCP servers), `box.backend` (`'local'` = Docker/nsjail auto-pick, or `'docker'` / `'nsjail'` / `'e2b'`; also settable via `BOX__BACKEND`), and `box.runtime.endpoint` (external Box runtime base URL, e.g. `ws://127.0.0.1:5410`; empty = local auto-managed runtime). Like the plugin runtime, LangBot can connect to an externally-launched Box runtime by setting that endpoint and starting with `--standalone-box`.
-
-> A common false "No supported sandbox backend (Docker / nsjail / E2B) is available" comes from Docker being installed and running but the current user not being in the `docker` group → `docker info` gets `permission denied` on the socket. Fix: `sudo usermod -aG docker <user>` and restart the backend in a shell that has the new group.
-
-## Development Standards
-
-- LangBot is a global project: **all code comments and docstrings must be in English**, and every user-facing string must support **i18n** (`en_US` + `zh_Hans` at minimum, plus `ja_JP` where the repo already has it).
-- LangBot is adopted in both toC and toB scenarios — always consider compatibility and security.
-- **Commit message format**: `<type>(<scope>): <subject>`
-  - `type`: one of `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`, etc.
-  - `scope`: the affected package/module/file/class.
-  - `subject`: concise description of the change.
-
-### Database migrations (Alembic)
-
-LangBot uses [Alembic](https://alembic.sqlalchemy.org/) for migrations, supporting both SQLite and PostgreSQL from a single set of scripts. Migration files live in `src/langbot/pkg/persistence/alembic/versions/`.
-
-If you change ORM model definitions, generate a migration:
+Useful focused tests:
 
 ```bash
-# Run from the project root (requires data/config.yaml to exist)
-uv run python -m langbot.pkg.persistence.alembic_runner autogenerate "description of your change"
+uv run pytest tests/unit_tests -q
+uv run pytest tests/integration -q
+uv run pytest tests/integration/persistence -q
+uv run pytest tests/manual/mcp_smoke.py
+
+cd web
+pnpm lint
+pnpm test:e2e
 ```
 
-Review and edit the generated script before committing. Migrations execute automatically on startup. `autogenerate` detects schema changes (add/drop columns, tables, type changes) but **data migrations** (e.g. mutating JSON field contents) must be hand-written into the generated script. `env.py` sets `render_as_batch=True`, so SQLite's ALTER TABLE limits are handled automatically — no need to branch per database. More in the wiki ["开发配置"](https://docs.langbot.app/zh/develop/dev-config#数据库迁移).
+Run the narrowest useful test first, then broader checks when confidence is needed.
 
-When writing a migration, follow these rules:
+## Where to Look
 
-- **Revision id ≤ 32 characters.** PostgreSQL stores `alembic_version.version_num` as `varchar(32)`; a longer id raises `StringDataRightTruncationError` at runtime. Prefer short, descriptive ids like `0005_add_llm_context_length`.
-- **Guard every operation against missing tables/columns.** Fresh installs build the schema via `create_all()` and then stamp the Alembic baseline, so a migration may run against a table that already has the change — or, in tests, against an empty database. Check `inspector.get_table_names()` / `inspector.get_columns(...)` before `add_column` / `drop_column`, mirroring the existing migrations.
-- **Keep a single linear head.** Chain `down_revision` to the current head; do not create branches. Run the migration tests after adding one: `uv run pytest tests/integration/persistence/ -q` (the PostgreSQL test needs a running PG via `TEST_POSTGRES_URL`).
+- Architecture map: `ARCHITECTURE.md`.
+- Dev environment guide: https://docs.langbot.app/zh/develop/dev-config.
+- Plugin runtime / CLI / SDK debugging: https://docs.langbot.app/zh/develop/plugin-runtime.
+- API-key auth: `docs/API_KEY_AUTH.md`.
+- Box deep-dive notes: `docs/review/box-architecture.md` and related files.
+- In-repo skills: `skills/` is the single source of truth for LangBot agent skills.
+- SDK repo: `../langbot-plugin-sdk/` when changing shared entities, plugin APIs, action protocol, `lbp rt`, or `lbp box`.
 
-> **Legacy migration system (deprecated — do not extend).** The old 3.x migration system under `src/langbot/pkg/persistence/migrations/` (`DBMigration` subclasses in `dbmXXX_*.py`, run from `pkg/persistence/mgr.py`) is **frozen**. Do **not** add new `dbmXXX_*.py` files. The chain is capped at `required_database_version = 25` (`pkg/utils/constants.py`); those files only exist to upgrade pre-existing 3.x databases up to the Alembic baseline and are kept read-only. All new schema changes go through Alembic.
+## Cross-Repo SDK Work
 
-## Agent-Facing Surfaces (MCP + Skills)
+When changing SDK contracts used by LangBot:
 
-LangBot is built to be **agent-friendly**. Three surfaces let AI agents work
-with LangBot, and they MUST be kept in lockstep with the HTTP API:
+```bash
+# from langbot-plugin-sdk, with LangBot's .venv active
+uv pip install .
 
-1. **MCP server** — `src/langbot/pkg/api/mcp/` exposes a curated subset of the
-   API as MCP tools at `/mcp` (API-key authenticated, including the
-   `api.global_api_key` from config.yaml). `server.py` defines the tools (they
-   call the service layer directly); `mount.py` is the ASGI dispatcher.
-2. **In-repo skills** — `skills/` is the **single source of truth** for agent
-   skills (plugin/core/deploy/e2e/MCP-ops). Docs and the landing page link here
-   rather than embedding their own copies.
-3. **API-key auth** — `api.global_api_key` (config.yaml) authenticates the API
-   and MCP without a login session; see `docs/API_KEY_AUTH.md`.
+# from LangBot, preserve the locally installed SDK
+uv run --no-sync main.py
+```
 
-> **Maintenance rule (important).** When you add, remove, or change an HTTP API
-> endpoint that should be agent-accessible, you MUST update **both** the matching
-> MCP tool in `src/langbot/pkg/api/mcp/server.py` **and** the relevant skill under
-> `skills/` (especially `skills/skills/langbot-mcp-ops`). The API, the MCP tool
-> surface, and the skills are one system — drift between them is a bug.
+For standalone runtime debugging:
 
-## Some Principles
+```bash
+# in langbot-plugin-sdk
+uv run --no-sync lbp rt
+uv run --no-sync lbp box
+
+# in LangBot
+uv run --no-sync main.py --standalone-runtime
+uv run --no-sync main.py --standalone-box
+```
+
+Config keys to verify in `data/config.yaml` / `src/langbot/templates/config.yaml`:
+
+- Plugin runtime: `plugin.runtime_ws_url`, default Docker host `langbot_plugin_runtime:5400/control/ws`.
+- Box runtime: `box.enabled`, `box.backend`, `box.runtime.endpoint`, Docker host `langbot_box:5410`.
+- API/MCP auth: `api.global_api_key`.
+
+## Change Rules
+
+- HTTP API changes that should be agent-accessible must update the matching MCP tool in `src/langbot/pkg/api/mcp/server.py` and the relevant skill under `skills/` in the same pass.
+- New schema changes use Alembic under `src/langbot/pkg/persistence/alembic/versions/`; do not add legacy `dbmXXX` migrations.
+- New platform behavior belongs in platform adapters only for platform translation; pipeline/business logic belongs in `pkg/pipeline/` or services.
+- User-facing strings must support i18n (`en_US`, `zh_Hans`; include `ja_JP` where the repo already does).
+- Code comments and docstrings must be English.
+- Keep compatibility and security in mind; LangBot is used in both self-hosted/community and toB deployments.
+- Commit message format: `<type>(<scope>): <subject>`.
+
+## Runtime Pitfalls
+
+- Local stdio Plugin Runtime disconnects do not auto-reconnect; restart LangBot if that path breaks.
+- Orphan runtime processes on `5400`/`5401` commonly break plugin debugging.
+- Use `uv run --no-sync` after locally installing the SDK, or `uv` may restore the pinned package.
+- A false Box “no backend” often means Docker is running but the current user lacks Docker socket permission.
+- Do not confuse external MCP servers LangBot connects to (`pkg/provider/tools/loaders/mcp.py`) with LangBot's own `/mcp` server (`pkg/api/mcp/`).
+- `CLAUDE.md` is a symlink to this file; edit `AGENTS.md`, not the symlink.
+
+## Principles
 
 - Keep it simple, stupid.
 - Entities should not be multiplied unnecessarily.

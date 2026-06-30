@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.langbot.pkg.plugin.connector import PluginRuntimeConnector
+from langbot.pkg.plugin.connector import PluginRuntimeConnector
 
 
 def test_parse_plugin_id_accepts_author_name():

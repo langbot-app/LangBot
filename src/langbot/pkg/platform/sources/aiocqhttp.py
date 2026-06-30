@@ -16,6 +16,14 @@ from ...utils import image
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
 
 
+def _normalize_base64_payload(value: str) -> str:
+    if value.startswith('base64://'):
+        return value.removeprefix('base64://')
+    if value.startswith('data:') and ';base64,' in value:
+        return value.split(';base64,', 1)[1]
+    return value
+
+
 class AiocqhttpMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     @staticmethod
     async def yiri2target(
@@ -35,7 +43,7 @@ class AiocqhttpMessageConverter(abstract_platform_adapter.AbstractMessageConvert
             elif type(msg) is platform_message.Image:
                 arg = ''
                 if msg.base64:
-                    arg = msg.base64
+                    arg = _normalize_base64_payload(msg.base64)
                     msg_list.append(aiocqhttp.MessageSegment.image(f'base64://{arg}'))
                 elif msg.url:
                     arg = msg.url
@@ -50,7 +58,7 @@ class AiocqhttpMessageConverter(abstract_platform_adapter.AbstractMessageConvert
             elif type(msg) is platform_message.Voice:
                 arg = ''
                 if msg.base64:
-                    arg = msg.base64
+                    arg = _normalize_base64_payload(msg.base64)
                     msg_list.append(aiocqhttp.MessageSegment.record(f'base64://{arg}'))
                 elif msg.url:
                     arg = msg.url
@@ -62,7 +70,10 @@ class AiocqhttpMessageConverter(abstract_platform_adapter.AbstractMessageConvert
                 for node in msg.node_list:
                     msg_list.extend((await AiocqhttpMessageConverter.yiri2target(node.message_chain))[0])
             elif isinstance(msg, platform_message.File):
-                msg_list.append({'type': 'file', 'data': {'file': msg.url, 'name': msg.name}})
+                file = msg.url or msg.path
+                if not file and msg.base64:
+                    file = f'base64://{_normalize_base64_payload(msg.base64)}'
+                msg_list.append({'type': 'file', 'data': {'file': file, 'name': msg.name}})
             elif isinstance(msg, platform_message.Face):
                 if msg.face_type == 'face':
                     msg_list.append(aiocqhttp.MessageSegment.face(msg.face_id))
@@ -433,9 +444,7 @@ class AiocqhttpAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                     elif isinstance(component, platform_message.Image):
                         img_data = {}
                         if component.base64:
-                            b64 = component.base64
-                            if b64.startswith('data:'):
-                                b64 = b64.split(',', 1)[-1] if ',' in b64 else b64
+                            b64 = _normalize_base64_payload(component.base64)
                             img_data['file'] = f'base64://{b64}'
                         elif component.url:
                             img_data['file'] = component.url

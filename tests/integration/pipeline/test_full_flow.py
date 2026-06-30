@@ -662,6 +662,100 @@ class TestSendResponseBackStage:
         assert len(outbound) == 1
         assert outbound[0]['type'] == 'reply'
 
+    @pytest.mark.asyncio
+    async def test_send_response_failure_notifies_plugin_diagnostic(self, pipeline_app):
+        """Plugin-provided deferred replies should report delivery failures."""
+        from langbot.pkg.pipeline import plugin_diagnostics
+        from langbot.pkg.pipeline.respback import respback
+        from tests.factories.message import text_chain
+        from langbot_plugin.api.entities.builtin.provider.message import Message
+
+        query = text_query('hello')
+        query.adapter.reply_message.side_effect = RuntimeError('send failed')
+        query.pipeline_config = create_minimal_pipeline_config()
+        query.current_stage_name = 'SendResponseBackStage'
+        query.resp_messages = [Message(role='assistant', content='test response')]
+        query.resp_message_chain = [text_chain('test response')]
+        plugin_diagnostics.record_plugin_response_source(
+            query,
+            0,
+            [
+                {
+                    'kind': 'reply_message_chain',
+                    'plugin': {'author': 'tester', 'name': 'demo'},
+                }
+            ],
+            [{'manifest': {'metadata': {'author': 'observer', 'name': 'not-reply-source'}}}],
+            'NormalMessageResponded',
+        )
+        pipeline_app.plugin_connector.notify_plugin_diagnostic = AsyncMock()
+
+        respback_stage = respback.SendResponseBackStage(pipeline_app)
+
+        with pytest.raises(RuntimeError, match='send failed'):
+            await respback_stage.process(query, 'SendResponseBackStage')
+
+        pipeline_app.plugin_connector.notify_plugin_diagnostic.assert_awaited_once()
+        payload = pipeline_app.plugin_connector.notify_plugin_diagnostic.await_args.args[0]
+        assert payload['code'] == 'response_delivery_failed'
+        assert payload['plugin'] == {'author': 'tester', 'name': 'demo'}
+        assert payload['query']['event_name'] == 'NormalMessageResponded'
+        assert payload['delivery']['error_type'] == 'RuntimeError'
+        assert 'attribution_warning' not in payload['details']
+
+    @pytest.mark.asyncio
+    async def test_send_response_failure_warns_for_old_runtime_attribution(self, pipeline_app):
+        """Older plugin runtimes without response_sources should get approximate diagnostics."""
+        from langbot.pkg.pipeline import plugin_diagnostics
+        from langbot.pkg.pipeline.respback import respback
+        from tests.factories.message import text_chain
+        from langbot_plugin.api.entities.builtin.provider.message import Message
+
+        query = text_query('hello')
+        query.adapter.reply_message.side_effect = RuntimeError('send failed')
+        query.pipeline_config = create_minimal_pipeline_config()
+        query.resp_messages = [Message(role='assistant', content='test response')]
+        query.resp_message_chain = [text_chain('test response')]
+        plugin_diagnostics.record_plugin_response_source(
+            query,
+            0,
+            None,
+            [{'manifest': {'metadata': {'author': 'tester', 'name': 'demo'}}}],
+            'NormalMessageResponded',
+        )
+        pipeline_app.plugin_connector.notify_plugin_diagnostic = AsyncMock()
+
+        respback_stage = respback.SendResponseBackStage(pipeline_app)
+
+        with pytest.raises(RuntimeError, match='send failed'):
+            await respback_stage.process(query, 'SendResponseBackStage')
+
+        payload = pipeline_app.plugin_connector.notify_plugin_diagnostic.await_args.args[0]
+        assert payload['plugin'] == {'author': 'tester', 'name': 'demo'}
+        assert 'attribution_warning' in payload['details']
+
+    @pytest.mark.asyncio
+    async def test_send_response_failure_ignores_query_variable_spoofing(self, pipeline_app):
+        """Plugin-controlled query variables must not mask delivery failures."""
+        from langbot.pkg.pipeline.respback import respback
+        from tests.factories.message import text_chain
+        from langbot_plugin.api.entities.builtin.provider.message import Message
+
+        query = text_query('hello')
+        query.adapter.reply_message.side_effect = RuntimeError('send failed')
+        query.pipeline_config = create_minimal_pipeline_config()
+        query.resp_messages = [Message(role='assistant', content='test response')]
+        query.resp_message_chain = [text_chain('test response')]
+        query.variables['_plugin_response_sources'] = {0: ['malformed']}
+        pipeline_app.plugin_connector.notify_plugin_diagnostic = AsyncMock()
+
+        respback_stage = respback.SendResponseBackStage(pipeline_app)
+
+        with pytest.raises(RuntimeError, match='send failed'):
+            await respback_stage.process(query, 'SendResponseBackStage')
+
+        pipeline_app.plugin_connector.notify_plugin_diagnostic.assert_not_called()
+
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
 class TestStageChainIntegration:

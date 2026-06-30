@@ -45,6 +45,8 @@ import MCPReadme from '@/app/home/mcp/components/mcp-form/MCPReadme';
 import {
   MCPServerRuntimeInfo,
   MCPTool,
+  MCPResource,
+  MCPResourceContent,
   MCPServer,
   MCPSessionStatus,
   MCPServerExtraArgsRemote,
@@ -244,13 +246,121 @@ function ToolsList({ tools, t }: { tools: MCPTool[]; t: TFunction }) {
   );
 }
 
+function ResourcesList({
+  resources,
+  serverName,
+  t,
+}: {
+  resources: MCPResource[];
+  serverName: string;
+  t: (key: string) => string;
+}) {
+  const [expandedUri, setExpandedUri] = React.useState<string | null>(null);
+  const [resourceContent, setResourceContent] =
+    React.useState<MCPResourceContent | null>(null);
+  const [loadingContent, setLoadingContent] = React.useState(false);
+
+  const handleToggleResource = async (uri: string) => {
+    if (expandedUri === uri) {
+      setExpandedUri(null);
+      setResourceContent(null);
+      return;
+    }
+
+    setExpandedUri(uri);
+    setResourceContent(null);
+    setLoadingContent(true);
+
+    try {
+      const resp = await httpClient.readMCPServerResource(
+        serverName,
+        uri,
+        65536,
+      );
+      if (resp.contents && resp.contents.length > 0) {
+        setResourceContent(resp.contents[0]);
+      }
+    } catch {
+      setResourceContent(null);
+    } finally {
+      setLoadingContent(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2 pb-6">
+      {resources.map((resource, index) => (
+        <Card key={index} className="py-3 shadow-none">
+          <CardHeader
+            className="cursor-pointer"
+            onClick={() => handleToggleResource(resource.uri)}
+          >
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm">{resource.name}</CardTitle>
+              {resource.mime_type && (
+                <span className="text-xs text-muted-foreground font-mono">
+                  {resource.mime_type}
+                </span>
+              )}
+            </div>
+            {resource.description && (
+              <CardDescription className="text-xs">
+                {resource.description}
+              </CardDescription>
+            )}
+            <div className="text-xs text-muted-foreground font-mono break-all">
+              {resource.uri}
+            </div>
+          </CardHeader>
+          {expandedUri === resource.uri && (
+            <CardContent>
+              {loadingContent ? (
+                <div className="text-xs text-muted-foreground">
+                  {t('mcp.loading')}
+                </div>
+              ) : resourceContent?.type === 'text' && resourceContent.text ? (
+                <div className="space-y-2">
+                  <pre className="text-xs bg-muted p-3 rounded-md overflow-auto max-h-[200px] whitespace-pre-wrap break-all">
+                    {resourceContent.text}
+                  </pre>
+                  {resourceContent.truncated && (
+                    <div className="text-xs text-muted-foreground">
+                      {t('mcp.resourceTruncated')}
+                    </div>
+                  )}
+                </div>
+              ) : resourceContent?.type === 'blob' ? (
+                <div className="text-xs text-muted-foreground">
+                  {resourceContent.binary_omitted
+                    ? t('mcp.resourceBinaryOmitted')
+                    : t('mcp.resourceBinaryContent')}
+                </div>
+              ) : (
+                <div className="text-xs text-muted-foreground">
+                  {t('mcp.resourceReadFailed')}
+                </div>
+              )}
+            </CardContent>
+          )}
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+type RuntimePanelContent = 'all' | 'tools' | 'resources';
+
 function RuntimePanel({
   mcpTesting,
   runtimeInfo,
+  serverName,
+  content = 'all',
   t,
 }: {
   mcpTesting: boolean;
   runtimeInfo: MCPServerRuntimeInfo | null;
+  serverName: string;
+  content?: RuntimePanelContent;
   t: TFunction;
 }) {
   // Show tools whenever we have runtime info — either an edit-mode server or a
@@ -259,7 +369,9 @@ function RuntimePanel({
   if (!runtimeInfo) {
     return (
       <div className="flex min-h-[280px] items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
-        {t('mcp.noToolsFound')}
+        {content === 'resources'
+          ? t('mcp.noResourcesFound')
+          : t('mcp.noToolsFound')}
       </div>
     );
   }
@@ -267,6 +379,15 @@ function RuntimePanel({
   const isConnected =
     !mcpTesting && runtimeInfo.status === MCPSessionStatus.CONNECTED;
   const tools = runtimeInfo.tools || [];
+  const resources = runtimeInfo.resources || [];
+  const showTools = content === 'all' || content === 'tools';
+  const showResources = content === 'all' || content === 'resources';
+  const empty =
+    content === 'tools'
+      ? tools.length === 0
+      : content === 'resources'
+        ? resources.length === 0
+        : tools.length === 0 && resources.length === 0;
 
   return (
     <section className="space-y-4">
@@ -276,11 +397,26 @@ function RuntimePanel({
         </div>
       )}
 
-      {isConnected && tools.length > 0 && <ToolsList tools={tools} t={t} />}
+      {isConnected && showTools && tools.length > 0 && (
+        <ToolsList tools={tools} t={t} />
+      )}
 
-      {isConnected && tools.length === 0 && (
+      {isConnected && showResources && resources.length > 0 && (
+        <div className="space-y-2">
+          {content === 'all' && (
+            <div className="text-sm font-medium">
+              {t('mcp.resourceCount', { count: resources.length })}
+            </div>
+          )}
+          <ResourcesList resources={resources} serverName={serverName} t={t} />
+        </div>
+      )}
+
+      {isConnected && empty && (
         <div className="flex min-h-[220px] items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
-          {t('mcp.noToolsFound')}
+          {content === 'resources'
+            ? t('mcp.noResourcesFound')
+            : t('mcp.noToolsFound')}
         </div>
       )}
     </section>
@@ -732,6 +868,8 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
                 error_message: errorMsg,
                 tool_count: 0,
                 tools: [],
+                resource_count: 0,
+                resources: [],
               });
             } else {
               if (isEditMode) {
@@ -1026,20 +1164,29 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
   );
 
   const runtimePanel = (
-    <RuntimePanel mcpTesting={mcpTesting} runtimeInfo={runtimeInfo} t={t} />
+    <RuntimePanel
+      mcpTesting={mcpTesting}
+      runtimeInfo={runtimeInfo}
+      serverName={form.getValues('name')}
+      t={t}
+    />
   );
 
   // In edit mode the right side shows a tablist switching between the live
-  // Tools list and the Docs (README captured from LangBot Space at install).
+  // Tools/resources lists and the Docs (README captured from LangBot Space at install).
   // Create mode has neither, so it falls back to the bare runtime placeholder.
-  // The tool count lives in the tab label (only when connected); the panel
+  // Counts live in the tab labels (only when connected); the panel
   // body itself no longer repeats a title/subtitle.
-  const toolsConnected =
+  const runtimeConnected =
     !mcpTesting && runtimeInfo?.status === MCPSessionStatus.CONNECTED;
   const toolsCount = runtimeInfo?.tools?.length ?? 0;
-  const toolsTabLabel = toolsConnected
+  const resourcesCount = runtimeInfo?.resources?.length ?? 0;
+  const toolsTabLabel = runtimeConnected
     ? `${t('mcp.tabTools')} ${toolsCount}`
     : t('mcp.tabTools');
+  const resourcesTabLabel = runtimeConnected
+    ? `${t('mcp.tabResources')} ${resourcesCount}`
+    : t('mcp.tabResources');
 
   const detailPanel = isEditMode ? (
     <Tabs defaultValue="tools" className="flex h-full min-h-0 flex-col">
@@ -1050,6 +1197,9 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
         <TabsTrigger value="tools" className="flex-none px-4">
           {toolsTabLabel}
         </TabsTrigger>
+        <TabsTrigger value="resources" className="flex-none px-4">
+          {resourcesTabLabel}
+        </TabsTrigger>
       </TabsList>
       <TabsContent value="docs" className="mt-4 min-h-0 flex-1 overflow-y-auto">
         <MCPReadme readme={readme} />
@@ -1058,7 +1208,25 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
         value="tools"
         className="mt-4 min-h-0 flex-1 overflow-y-auto"
       >
-        {runtimePanel}
+        <RuntimePanel
+          mcpTesting={mcpTesting}
+          runtimeInfo={runtimeInfo}
+          serverName={form.getValues('name')}
+          content="tools"
+          t={t}
+        />
+      </TabsContent>
+      <TabsContent
+        value="resources"
+        className="mt-4 min-h-0 flex-1 overflow-y-auto"
+      >
+        <RuntimePanel
+          mcpTesting={mcpTesting}
+          runtimeInfo={runtimeInfo}
+          serverName={form.getValues('name')}
+          content="resources"
+          t={t}
+        />
       </TabsContent>
     </Tabs>
   ) : (

@@ -53,7 +53,7 @@ Start the new frontend from the web repo:
 
 ```bash
 cd "$LANGBOT_WEB_REPO"
-npm run dev
+VITE_API_BASE_URL="$LANGBOT_BACKEND_URL" pnpm dev --host 0.0.0.0
 ```
 
 Healthy startup includes:
@@ -67,6 +67,10 @@ Quick check:
 ```bash
 curl -I --max-time 3 "$LANGBOT_FRONTEND_URL"
 ```
+
+If `VITE_API_BASE_URL` is missing, Vite still serves the page but frontend API
+calls may go to the frontend port instead of the backend port. That produces
+false browser failures in login, wizard, pipeline, and Debug Chat cases.
 
 ## Completion Signal
 

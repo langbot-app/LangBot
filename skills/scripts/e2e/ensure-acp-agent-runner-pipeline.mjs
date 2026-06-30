@@ -24,13 +24,19 @@ await ensureEvidence(paths);
 const writeEnv = process.argv.includes("--write-env");
 const frontendUrl = env.LANGBOT_FRONTEND_URL || "";
 const backendUrl = env.LANGBOT_BACKEND_URL || "";
-const pipelineName = env.LANGBOT_E2E_CREATE_PIPELINE_NAME || env.LANGBOT_ACP_AGENT_RUNNER_PIPELINE_NAME || DEFAULT_PIPELINE_NAME;
+const pipelineName =
+  env.LANGBOT_E2E_CREATE_PIPELINE_NAME ||
+  env.LANGBOT_ACP_AGENT_RUNNER_PIPELINE_NAME ||
+  DEFAULT_PIPELINE_NAME;
 const sshTarget = env.LANGBOT_ACP_AGENT_RUNNER_SSH_TARGET || "yhh@101.34.71.12";
-const sshConnectTimeout = env.LANGBOT_ACP_AGENT_RUNNER_SSH_CONNECT_TIMEOUT || "8";
+const sshConnectTimeout =
+  env.LANGBOT_ACP_AGENT_RUNNER_SSH_CONNECT_TIMEOUT || "8";
 const sshPort = env.LANGBOT_ACP_AGENT_RUNNER_SSH_PORT || "22";
 const sshIdentityFile = env.LANGBOT_ACP_AGENT_RUNNER_SSH_IDENTITY_FILE || "";
 const sshExtraOptions = env.LANGBOT_ACP_AGENT_RUNNER_SSH_EXTRA_OPTIONS || "";
-const remoteWorkspace = env.LANGBOT_ACP_AGENT_RUNNER_REMOTE_WORKSPACE || "/home/yhh/langbot-e2e/acp-workspace";
+const remoteWorkspace =
+  env.LANGBOT_ACP_AGENT_RUNNER_REMOTE_WORKSPACE ||
+  "/home/yhh/langbot-e2e/acp-workspace";
 const envLocalPath = resolve("skills/.env.local");
 
 const result = {
@@ -64,7 +70,9 @@ try {
   const user = env.LANGBOT_E2E_LOGIN_USER || "";
   const password = env.LANGBOT_E2E_LOGIN_PASSWORD || DEFAULT_LOCAL_PASSWORD;
   if (!user) {
-    throw new Error("LANGBOT_E2E_LOGIN_USER is required so this setup can create/update the pipeline via backend API.");
+    throw new Error(
+      "LANGBOT_E2E_LOGIN_USER is required so this setup can create/update the pipeline via backend API.",
+    );
   }
 
   const auth = await resetAndAuthLocalUser({ backendUrl, user, password });
@@ -114,7 +122,8 @@ try {
       LANGBOT_ACP_AGENT_RUNNER_SSH_EXTRA_OPTIONS: sshExtraOptions,
       LANGBOT_ACP_AGENT_RUNNER_REMOTE_WORKSPACE: remoteWorkspace,
       LANGBOT_ACP_AGENT_RUNNER_PIPELINE_URL: result.pipeline_url,
-      LANGBOT_ACP_AGENT_RUNNER_PIPELINE_NAME: result.pipeline_name || pipelineName,
+      LANGBOT_ACP_AGENT_RUNNER_PIPELINE_NAME:
+        result.pipeline_name || pipelineName,
     });
     result.wrote_env = true;
   }
@@ -125,10 +134,20 @@ try {
   console.log(JSON.stringify(result, null, 2));
 }
 
-process.exit(result.status === "pass" ? 0 : result.status === "env_issue" ? 2 : 1);
+process.exit(
+  result.status === "pass" ? 0 : result.status === "env_issue" ? 2 : 1,
+);
 
-async function ensurePipeline({ backendUrl, token, pipelineName, runnerId, runnerConfig }) {
-  const pipelineList = await apiJson(backendUrl, "/api/v1/pipelines", { token });
+async function ensurePipeline({
+  backendUrl,
+  token,
+  pipelineName,
+  runnerId,
+  runnerConfig,
+}) {
+  const pipelineList = await apiJson(backendUrl, "/api/v1/pipelines", {
+    token,
+  });
   if (isApiFailure(pipelineList)) {
     return {
       status: "fail",
@@ -147,7 +166,8 @@ async function ensurePipeline({ backendUrl, token, pipelineName, runnerId, runne
       token,
       body: {
         name: pipelineName,
-        description: "Local QA pipeline for real ACP Claude AgentRunner Debug Chat smoke tests.",
+        description:
+          "Local QA pipeline for real ACP Claude AgentRunner Debug Chat smoke tests.",
         emoji: "QA",
       },
     });
@@ -159,7 +179,11 @@ async function ensurePipeline({ backendUrl, token, pipelineName, runnerId, runne
       };
     }
     const pipelineId = createdResponse.json.data?.uuid || "";
-    const loaded = await apiJson(backendUrl, `/api/v1/pipelines/${encodeURIComponent(pipelineId)}`, { token });
+    const loaded = await apiJson(
+      backendUrl,
+      `/api/v1/pipelines/${encodeURIComponent(pipelineId)}`,
+      { token },
+    );
     pipeline = loaded.json.data?.pipeline || null;
     created = true;
   }
@@ -171,7 +195,11 @@ async function ensurePipeline({ backendUrl, token, pipelineName, runnerId, runne
     };
   }
 
-  const loaded = await apiJson(backendUrl, `/api/v1/pipelines/${encodeURIComponent(pipeline.uuid)}`, { token });
+  const loaded = await apiJson(
+    backendUrl,
+    `/api/v1/pipelines/${encodeURIComponent(pipeline.uuid)}`,
+    { token },
+  );
   if (isApiFailure(loaded) || !loaded.json.data?.pipeline) {
     return {
       status: "fail",
@@ -182,9 +210,15 @@ async function ensurePipeline({ backendUrl, token, pipelineName, runnerId, runne
   }
   pipeline = loaded.json.data.pipeline;
 
-  const config = pipeline.config && typeof pipeline.config === "object" ? pipeline.config : {};
+  const config =
+    pipeline.config && typeof pipeline.config === "object"
+      ? pipeline.config
+      : {};
   const ai = config.ai && typeof config.ai === "object" ? config.ai : {};
-  const runnerConfigs = ai.runner_config && typeof ai.runner_config === "object" ? ai.runner_config : {};
+  const runnerConfigs =
+    ai.runner_config && typeof ai.runner_config === "object"
+      ? ai.runner_config
+      : {};
   const updatedConfig = {
     ...config,
     ai: {
@@ -201,16 +235,21 @@ async function ensurePipeline({ backendUrl, token, pipelineName, runnerId, runne
     },
   };
 
-  const updateResponse = await apiJson(backendUrl, `/api/v1/pipelines/${encodeURIComponent(pipeline.uuid)}`, {
-    method: "PUT",
-    token,
-    body: {
-      name: pipelineName,
-      description: "Local QA pipeline for real ACP Claude AgentRunner Debug Chat smoke tests.",
-      emoji: "QA",
-      config: updatedConfig,
+  const updateResponse = await apiJson(
+    backendUrl,
+    `/api/v1/pipelines/${encodeURIComponent(pipeline.uuid)}`,
+    {
+      method: "PUT",
+      token,
+      body: {
+        name: pipelineName,
+        description:
+          "Local QA pipeline for real ACP Claude AgentRunner Debug Chat smoke tests.",
+        emoji: "QA",
+        config: updatedConfig,
+      },
     },
-  });
+  );
   if (isApiFailure(updateResponse)) {
     return {
       status: "fail",
@@ -222,7 +261,9 @@ async function ensurePipeline({ backendUrl, token, pipelineName, runnerId, runne
 
   return {
     status: "pass",
-    reason: created ? "ACP AgentRunner pipeline created and configured." : "ACP AgentRunner pipeline updated.",
+    reason: created
+      ? "ACP AgentRunner pipeline created and configured."
+      : "ACP AgentRunner pipeline updated.",
     pipeline_id: pipeline.uuid,
     pipeline_name: pipelineName,
     created,
@@ -231,7 +272,12 @@ async function ensurePipeline({ backendUrl, token, pipelineName, runnerId, runne
 }
 
 function isApiFailure(response) {
-  return response.status >= 400 || (response.json && response.json.code !== undefined && response.json.code !== 0);
+  return (
+    response.status >= 400 ||
+    (response.json &&
+      response.json.code !== undefined &&
+      response.json.code !== 0)
+  );
 }
 
 async function upsertEnvLocal(path, values) {

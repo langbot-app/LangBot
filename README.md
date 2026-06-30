@@ -5,7 +5,7 @@
 
 <div align="center">
 
-<a href="https://www.producthunt.com/products/langbot?utm_source=badge-follow&utm_medium=badge&utm_source=badge-langbot" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/follow.svg?product_id=1077185&theme=light" alt="LangBot - Production&#0045;grade&#0032;IM&#0032;bot&#0032;made&#0032;easy&#0046; | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" /></a>
+<a href="https://www.producthunt.com/products/langbot/launches/langbot?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-langbot" target="_blank" rel="noopener noreferrer"><img alt="LangBot - Easy-to-use global IM bot platform designed for the LLM era | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=979554&amp;theme=light&amp;t=1782822143403"></a>
 
 <h3>Production-grade platform for building agentic IM bots.</h3>
 <h4>Quickly build, debug, and ship AI bots to Slack, Discord, Telegram, WeChat, and more.</h4>
@@ -136,7 +136,7 @@ docker compose --profile all up -d
 | [PPIO](https://ppinfra.com/user/register?invited_by=QJKFYD&utm_source=github_langbot)                             | GPU Platform | ✅     |
 | [ShengSuanYun](https://www.shengsuanyun.com/?from=CH_KYIPP758)                                                    | GPU Platform | ✅     |
 | [接口 AI](https://jiekou.ai/)                                                                                     | Gateway      | ✅     |
-| [302.AI](https://share.302.ai/SuTG99)                                                                             | Gateway      | ✅     |
+| [302.AI](https://share.302ai.cn/SuTG99)                                                                             | Gateway      | ✅     |
 | [Qiniu](https://www.qiniu.com/ai/agent)                                                                           | Gateway      | ✅     |
 
 [→ View all integrations](https://link.langbot.app/en/docs/features)

@@ -348,6 +348,8 @@ class TestPipelineServiceCreatePipeline:
             'enable_all_mcp_servers': True,
             'plugins': [],
             'mcp_servers': [],
+            'mcp_resources': [],
+            'mcp_resource_agent_read_enabled': True,
         }
 
 
@@ -813,6 +815,47 @@ class TestPipelineServiceUpdatePipelineExtensions:
 
         # Verify - persistence was called
         ap.persistence_mgr.execute_async.assert_called()
+
+    async def test_update_extensions_preserves_mcp_resource_agent_read_when_omitted(self):
+        """Does not reset mcp_resource_agent_read_enabled when omitted by older clients."""
+        ap = SimpleNamespace()
+        ap.persistence_mgr = SimpleNamespace()
+        ap.pipeline_mgr = SimpleNamespace()
+        ap.pipeline_mgr.remove_pipeline = AsyncMock()
+        ap.pipeline_mgr.load_pipeline = AsyncMock()
+
+        original_pipeline = _create_mock_pipeline(
+            extensions_preferences={
+                'enable_all_plugins': True,
+                'enable_all_mcp_servers': True,
+                'plugins': [],
+                'mcp_servers': [],
+                'mcp_resources': [{'server_uuid': 'srv-1', 'uri': 'file:///README.md'}],
+                'mcp_resource_agent_read_enabled': False,
+            }
+        )
+
+        call_count = 0
+
+        async def mock_execute(query):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return _create_mock_result(first_item=original_pipeline)
+            return Mock()
+
+        ap.persistence_mgr.execute_async = AsyncMock(side_effect=mock_execute)
+        ap.persistence_mgr.serialize_model = Mock(return_value={'uuid': 'test-uuid'})
+
+        service = PipelineService(ap)
+        service.get_pipeline = AsyncMock(return_value={'uuid': 'test-uuid'})
+
+        await service.update_pipeline_extensions('test-uuid', bound_plugins=[])
+
+        assert original_pipeline.extensions_preferences['mcp_resource_agent_read_enabled'] is False
+        assert original_pipeline.extensions_preferences['mcp_resources'] == [
+            {'server_uuid': 'srv-1', 'uri': 'file:///README.md'}
+        ]
 
 
 class TestDefaultStageOrder:

@@ -273,6 +273,31 @@ class TestSharesFilesystemWithBox:
         assert service.shares_filesystem_with_box is False
 
 
+def test_separated_box_runtime_does_not_create_default_workspace_in_langbot(tmp_path):
+    logger = Mock()
+    runtime = BoxRuntime(logger=logger, backends=[FakeBackend(logger)], session_ttl_sec=300)
+    host_root = tmp_path / 'box'
+    service = BoxService(make_app(logger, host_root=str(host_root)), client=_InProcessBoxRuntimeClient(logger, runtime))
+    service._shares_filesystem_with_box_override = False
+
+    service._ensure_default_workspace()
+
+    assert not (host_root / 'default').exists()
+
+
+def test_separated_box_runtime_allows_box_owned_missing_host_path(tmp_path):
+    logger = Mock()
+    runtime = BoxRuntime(logger=logger, backends=[FakeBackend(logger)], session_ttl_sec=300)
+    host_root = tmp_path / 'box'
+    service = BoxService(make_app(logger, host_root=str(host_root)), client=_InProcessBoxRuntimeClient(logger, runtime))
+    service._shares_filesystem_with_box_override = False
+
+    spec = service.build_spec({'cmd': 'echo hi', 'session_id': 'missing-host-path'})
+
+    assert spec.host_path == str(host_root / 'default')
+    assert not (host_root / 'default').exists()
+
+
 @pytest.mark.asyncio
 async def test_box_service_get_sessions_delegates_to_client():
     client = Mock()
@@ -517,6 +542,7 @@ async def test_box_service_creates_default_workspace_on_initialize(tmp_path):
     app = make_app(logger, [str(allowed_root)])
     app.instance_config.data['box']['local']['default_workspace'] = str(default_workspace)
     service = BoxService(app, client=_InProcessBoxRuntimeClient(logger, runtime))
+    service._shares_filesystem_with_box_override = True
 
     await service.initialize()
 
@@ -531,6 +557,7 @@ async def test_box_service_derives_workspace_and_allowed_root_from_host_root(tmp
     shared_root = tmp_path / 'shared-box-root'
     app = make_app(logger, host_root=str(shared_root))
     service = BoxService(app, client=_InProcessBoxRuntimeClient(logger, runtime))
+    service._shares_filesystem_with_box_override = True
 
     await service.initialize()
 

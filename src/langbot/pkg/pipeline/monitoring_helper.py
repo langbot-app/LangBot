@@ -32,7 +32,7 @@ class MonitoringHelper:
         """Record the start of query processing, returns message_id"""
         try:
             # Check if session exists, if not, record session start
-            session_id = f'{query.launcher_type}_{query.launcher_id}'
+            session_id = f'{query.launcher_type.value if hasattr(query.launcher_type, "value") else query.launcher_type}_{query.launcher_id}'
 
             # Get sender name from message event
             sender_name = None
@@ -137,7 +137,7 @@ class MonitoringHelper:
     ):
         """Record bot response message to monitoring"""
         try:
-            session_id = f'{query.launcher_type}_{query.launcher_id}'
+            session_id = f'{query.launcher_type.value if hasattr(query.launcher_type, "value") else query.launcher_type}_{query.launcher_id}'
 
             # Get sender name from message event
             sender_name = None
@@ -202,7 +202,7 @@ class MonitoringHelper:
     ) -> str:
         """Record query processing error, returns message_id"""
         try:
-            session_id = f'{query.launcher_type}_{query.launcher_id}'
+            session_id = f'{query.launcher_type.value if hasattr(query.launcher_type, "value") else query.launcher_type}_{query.launcher_id}'
 
             # Get sender name from message event
             sender_name = None
@@ -268,7 +268,7 @@ class MonitoringHelper:
     ):
         """Record LLM call"""
         try:
-            session_id = f'{query.launcher_type}_{query.launcher_id}'
+            session_id = f'{query.launcher_type.value if hasattr(query.launcher_type, "value") else query.launcher_type}_{query.launcher_id}'
 
             await ap.monitoring_service.record_llm_call(
                 bot_id=bot_id,

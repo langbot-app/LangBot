@@ -271,7 +271,7 @@ function reportTemplate(mode: string): Record<string, string> {
       target_tested: "Probe target, endpoint, file, command, or service actually checked",
       execution_path: "automation script | shell command | direct API | other",
       probe_result: "What the probe observed",
-      logs_or_artifacts: "Log, filesystem, API, or other artifact paths collected",
+      metrics_or_artifacts: "Metrics, logs, filesystem artifacts, traces, or profiles collected",
       diagnostics: "Extra diagnostics used, if any",
       matched_troubleshooting: "Troubleshooting ids matched, if any",
       assets_to_update: "New case/reference/troubleshooting entries to add",
@@ -320,7 +320,7 @@ function manualEvidenceTemplate(mode: string): ManualEvidenceTemplate {
       target_tested: "TODO: probe target, endpoint, file, command, or service actually checked",
       execution_path: "TODO: automation script | shell command | direct API | other",
       probe_result: "TODO: observed probe result",
-      logs_or_artifacts: "TODO: evidence paths or skipped reason",
+      metrics_or_artifacts: "TODO: metrics, logs, filesystem artifacts, traces, or profiles collected",
       diagnostics: "TODO: additional diagnostics used, if any",
       matched_troubleshooting: "TODO: troubleshooting ids matched, if any",
       assets_to_update: "TODO: case/reference/troubleshooting updates to make",
@@ -1099,6 +1099,41 @@ function executionTail(value: string | Buffer | null | undefined): string {
   return String(value ?? "").trim().slice(-4000);
 }
 
+function exitStatusFromResultStatus(status: string): number {
+  if (status === "pass") return 0;
+  if (status === "blocked" || status === "env_issue" || status === "flaky") return 2;
+  return 1;
+}
+
+function executionStatusFromExitStatus(status: number): string {
+  if (status === 0) return "ok";
+  if (status === 2) return "classified";
+  return "nonzero";
+}
+
+function executionFromAutomationResultFile(
+  evidenceDir: string,
+  caseId: string,
+  runId: string,
+): { status: string; exit_status: number; reason: string; result_status: string; path: string } | null {
+  const resultPath = join(evidenceDir, "automation-result.json");
+  if (!existsSync(resultPath)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(resultPath, "utf8")) as Record<string, unknown>;
+    if (parsed.case_id !== caseId || parsed.run_id !== runId || typeof parsed.status !== "string") return null;
+    const exitStatus = exitStatusFromResultStatus(parsed.status);
+    return {
+      status: executionStatusFromExitStatus(exitStatus),
+      exit_status: exitStatus,
+      reason: typeof parsed.reason === "string" ? parsed.reason : "automation-result.json completed",
+      result_status: parsed.status,
+      path: resultPath,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function runSetupAutomation(
   ctx: CommandContext,
   item: StructuredItem,
@@ -1224,6 +1259,30 @@ export function commandTestRun(ctx: CommandContext): number {
   });
 
   if (result.error) {
+    const fileExecution = executionFromAutomationResultFile(
+      run.automation.evidence_dir,
+      String(run.case.id),
+      run.run_id,
+    );
+    if (fileExecution) {
+      if (options.json !== true) {
+        console.error(`WARN: automation spawn reported an error, but ${fileExecution.path} completed: ${result.error.message}`);
+      }
+      if (options.json === true) {
+        console.log(JSON.stringify({
+          run,
+          setup_executions: setupExecutions,
+          automation_execution: {
+            ...fileExecution,
+            spawn_error: result.error.message,
+            stdout: executionTail(result.stdout),
+            stderr: executionTail(result.stderr),
+          },
+          exit_status: fileExecution.exit_status,
+        }, null, 2));
+      }
+      return fileExecution.exit_status;
+    }
     if (options.json !== true) console.error(`ERROR: failed to run automation: ${result.error.message}`);
     if (options.json === true) {
       console.log(JSON.stringify({
@@ -1247,7 +1306,7 @@ export function commandTestRun(ctx: CommandContext): number {
       run,
       setup_executions: setupExecutions,
       automation_execution: {
-        status: status === 0 ? "ok" : "nonzero",
+        status: executionStatusFromExitStatus(status),
         exit_status: status,
         stdout: executionTail(result.stdout),
         stderr: executionTail(result.stderr),
@@ -1311,6 +1370,7 @@ function renderMarkdownReport(report: TestReport): string {
   const environment = report.environment;
   const logGuard = report.log_guard;
   const troubleshooting = report.troubleshooting;
+  const automation = report.automation_result;
   const lines: string[] = [];
 
   lines.push(`# Test Report: ${reportCase.id}`);
@@ -1323,20 +1383,41 @@ function renderMarkdownReport(report: TestReport): string {
   lines.push(`Type: ${reportCase.type}`);
   lines.push("");
   lines.push("## Result");
-  lines.push(`- result: ${evidence.result}`);
-  for (const [key, value] of Object.entries(evidence)) {
-    if (key !== "result") lines.push(`- ${key}: ${value}`);
+  if (automation.status === "loaded" && automation.result) {
+    lines.push(`- result: ${automation.result}`);
+    if (automation.reason) lines.push(`- reason: ${automation.reason}`);
+    if (automation.url) lines.push(`- target_tested: ${automation.url}`);
+    if (automation.path) lines.push(`- automation_result: ${automation.path}`);
+    if (automation.artifacts) lines.push(`- artifacts: ${JSON.stringify(automation.artifacts)}`);
+  } else {
+    lines.push(`- result: ${evidence.result}`);
+    for (const [key, value] of Object.entries(evidence)) {
+      if (key !== "result") lines.push(`- ${key}: ${value}`);
+    }
   }
   lines.push("");
   lines.push("## Automation Result");
-  lines.push(`- status: ${report.automation_result.status}`);
-  if (report.automation_result.path) lines.push(`- path: ${report.automation_result.path}`);
-  if (report.automation_result.result) lines.push(`- result: ${report.automation_result.result}`);
-  if (report.automation_result.reason) lines.push(`- reason: ${report.automation_result.reason}`);
-  if (report.automation_result.started_at_local) lines.push(`- started_at_local: ${report.automation_result.started_at_local}`);
-  if (report.automation_result.finished_at_local) lines.push(`- finished_at_local: ${report.automation_result.finished_at_local}`);
-  if (report.automation_result.url) lines.push(`- url: ${report.automation_result.url}`);
-  if (report.automation_result.expected_text) lines.push(`- expected_text: ${report.automation_result.expected_text}`);
+  lines.push(`- status: ${automation.status}`);
+  if (automation.path) lines.push(`- path: ${automation.path}`);
+  if (automation.result) lines.push(`- result: ${automation.result}`);
+  if (automation.reason) lines.push(`- reason: ${automation.reason}`);
+  if (automation.duration_ms !== undefined) lines.push(`- duration_ms: ${automation.duration_ms}`);
+  if (automation.started_at_local) lines.push(`- started_at_local: ${automation.started_at_local}`);
+  if (automation.finished_at_local) lines.push(`- finished_at_local: ${automation.finished_at_local}`);
+  if (automation.url) lines.push(`- url: ${automation.url}`);
+  if (automation.expected_text) lines.push(`- expected_text: ${automation.expected_text}`);
+  if (automation.metrics_summary) {
+    lines.push("- metrics_summary:");
+    lines.push(`  ${JSON.stringify(automation.metrics_summary)}`);
+  }
+  if (automation.thresholds_summary) {
+    lines.push("- thresholds_summary:");
+    lines.push(`  ${JSON.stringify(automation.thresholds_summary)}`);
+  }
+  if (automation.artifacts) {
+    lines.push("- artifacts:");
+    lines.push(`  ${JSON.stringify(automation.artifacts)}`);
+  }
   lines.push("");
   lines.push("## Environment");
   for (const [key, value] of Object.entries(environment)) lines.push(`- ${key}=${value}`);

@@ -465,6 +465,41 @@ function outputTail(value: string | Buffer | null | undefined): string {
   return String(value ?? "").trim().slice(-4000);
 }
 
+function exitStatusFromResultStatus(status: string): number {
+  if (status === "pass") return 0;
+  if (status === "blocked" || status === "env_issue" || status === "flaky") return 2;
+  return 1;
+}
+
+function executionStatusFromExitStatus(status: number): string {
+  if (status === 0) return "ok";
+  if (status === 2) return "classified";
+  return "nonzero";
+}
+
+function executionFromCaseResultFile(caseItem: Record<string, unknown>): Record<string, unknown> | null {
+  const resultPath = join(String(caseItem.evidence_dir), "result.json");
+  if (!existsSync(resultPath)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(resultPath, "utf8")) as Record<string, unknown>;
+    if (
+      parsed.case_id !== caseItem.id ||
+      parsed.run_id !== caseItem.run_id ||
+      typeof parsed.status !== "string"
+    ) return null;
+    const exitStatus = exitStatusFromResultStatus(parsed.status);
+    return {
+      status: executionStatusFromExitStatus(exitStatus),
+      exit_status: exitStatus,
+      reason: typeof parsed.reason === "string" ? parsed.reason : "result.json completed",
+      result_status: parsed.status,
+      result_json: resultPath,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function executionProblemStatus(executions: Array<Record<string, unknown>>): string {
   const statuses = executions.map((item) => String(item.status));
   if (statuses.includes("nonzero")) return "fail";
@@ -523,12 +558,18 @@ export function commandSuiteRun(ctx: CommandContext): number {
       encoding: "utf8",
       stdio: options.json === true ? "pipe" : "inherit",
     });
-    const status = result.error ? 1 : result.status ?? 1;
+    const fileExecution = result.error ? executionFromCaseResultFile(caseItem) : null;
+    const status = typeof fileExecution?.exit_status === "number"
+      ? fileExecution.exit_status
+      : result.error ? 1 : result.status ?? 1;
     executions.push({
       id: caseItem.id,
-      status: status === 0 ? "ok" : "nonzero",
+      status: fileExecution?.status ?? executionStatusFromExitStatus(status),
       exit_status: status,
-      reason: result.error?.message || "",
+      reason: fileExecution?.reason ?? result.error?.message ?? "",
+      result_status: fileExecution?.result_status,
+      result_json: fileExecution?.result_json,
+      spawn_error: fileExecution && result.error ? result.error.message : undefined,
       stdout: outputTail(result.stdout),
       stderr: outputTail(result.stderr),
     });

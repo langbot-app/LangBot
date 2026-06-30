@@ -14,6 +14,7 @@ import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.events as events
 from ..utils import importutil
 from .config_coercion import coerce_pipeline_config
+from ..agent.runner.config_migration import ConfigMigration
 
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -95,6 +96,34 @@ class RuntimePipeline:
         self.enable_all_plugins = extensions_prefs.get('enable_all_plugins', True)
         self.enable_all_mcp_servers = extensions_prefs.get('enable_all_mcp_servers', True)
 
+        pipeline_config = pipeline_entity.config or {}
+        ai_config = pipeline_config.get('ai', {}) if isinstance(pipeline_config, dict) else {}
+        legacy_local_agent_config = ai_config.get('local-agent', {}) if isinstance(ai_config, dict) else {}
+        if not isinstance(legacy_local_agent_config, dict):
+            legacy_local_agent_config = {}
+
+        runner_config: dict[str, typing.Any] = {}
+        runner_id = ConfigMigration.resolve_runner_id(pipeline_config) if isinstance(pipeline_config, dict) else None
+        if runner_id:
+            resolved_runner_config = ConfigMigration.resolve_runner_config(pipeline_config, runner_id)
+            if isinstance(resolved_runner_config, dict):
+                runner_config = resolved_runner_config
+
+        self.mcp_resource_attachments = runner_config.get(
+            'mcp-resources',
+            legacy_local_agent_config.get(
+                'mcp-resources',
+                extensions_prefs.get('mcp_resources', []),
+            ),
+        )
+        self.mcp_resource_agent_read_enabled = runner_config.get(
+            'mcp-resource-agent-read-enabled',
+            legacy_local_agent_config.get(
+                'mcp-resource-agent-read-enabled',
+                extensions_prefs.get('mcp_resource_agent_read_enabled', True),
+            ),
+        )
+
         if self.enable_all_plugins:
             # None indicates to use all available plugins
             self.bound_plugins = None
@@ -114,6 +143,8 @@ class RuntimePipeline:
         # Store bound plugins and MCP servers in query for filtering
         query.variables['_pipeline_bound_plugins'] = self.bound_plugins
         query.variables['_pipeline_bound_mcp_servers'] = self.bound_mcp_servers
+        query.variables['_pipeline_mcp_resource_attachments'] = self.mcp_resource_attachments
+        query.variables['_pipeline_mcp_resource_agent_read_enabled'] = self.mcp_resource_agent_read_enabled
 
         # Record query start for monitoring
         try:
@@ -176,7 +207,7 @@ class RuntimePipeline:
                 bot_name = query.variables.get('_monitoring_bot_name', 'Unknown')
                 pipeline_name = query.variables.get('_monitoring_pipeline_name', 'Unknown')
                 message_id = query.variables.get('_monitoring_message_id', '')
-                session_id = f'{query.launcher_type}_{query.launcher_id}'
+                session_id = f'{query.launcher_type.value if hasattr(query.launcher_type, "value") else query.launcher_type}_{query.launcher_id}'
 
                 # Update message status to error
                 if message_id:

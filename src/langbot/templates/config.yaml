@@ -1,4 +1,3 @@
-admins: []
 api:
     port: 5300
     webhook_prefix: 'http://127.0.0.1:5300'
@@ -157,6 +156,8 @@ box:
             - './data/box'
             - '/tmp'
         workspace_quota_mb: null  # Optional disk quota override (>= 0). null = profile default.
+    docker:
+        cpu_limit_enabled: true  # When false, Docker sandbox containers are started without --cpus. Memory and PID limits still apply.
     e2b:
         api_key: ''  # Can also be set via E2B_API_KEY env var.
         api_url: ''  # Custom API URL for self-hosted deployments.

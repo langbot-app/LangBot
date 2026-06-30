@@ -15,12 +15,34 @@ from langbot.pkg.provider.tools.toolmgr import ToolManager
 
 
 class StubLoader:
-    def __init__(self, tools: list[resource_tool.LLMTool] | None = None, invoke_result=None):
+    def __init__(
+        self,
+        tools: list[resource_tool.LLMTool] | None = None,
+        invoke_result=None,
+        catalog_source: str = 'mcp',
+        catalog_source_name: str = 'fixture-server',
+    ):
         self._tools = tools or []
         self._invoke_result = invoke_result
+        self._catalog_source = catalog_source
+        self._catalog_source_name = catalog_source_name
 
     async def get_tools(self, *_args, **_kwargs):
         return self._tools
+
+    async def get_tool_catalog(self, *_args, **_kwargs):
+        return [
+            {
+                'name': tool.name,
+                'description': tool.description,
+                'human_desc': tool.human_desc,
+                'parameters': tool.parameters,
+                'source': self._catalog_source,
+                'source_name': self._catalog_source_name,
+                'source_id': self._catalog_source_name,
+            }
+            for tool in self._tools
+        ]
 
     async def has_tool(self, name: str) -> bool:
         return any(tool.name == name for tool in self._tools)
@@ -68,6 +90,28 @@ async def test_tool_manager_omits_skill_tools_when_loader_unavailable():
     tools = await manager.get_all_tools()
 
     assert [tool.name for tool in tools] == ['exec', 'plugin_tool', 'mcp_tool']
+
+
+@pytest.mark.asyncio
+async def test_tool_manager_catalog_labels_tool_sources():
+    manager = ToolManager(SimpleNamespace())
+    manager.native_tool_loader = StubLoader([make_tool('exec')])
+    manager.skill_tool_loader = StubLoader([make_tool('activate')])
+    manager.plugin_tool_loader = StubLoader(
+        [make_tool('plugin_tool')],
+        catalog_source='plugin',
+        catalog_source_name='fixture-plugin',
+    )
+    manager.mcp_tool_loader = StubLoader([make_tool('mcp_tool')])
+
+    catalog = await manager.get_tool_catalog(include_skill_authoring=True)
+
+    assert [(item['name'], item['source'], item['source_name']) for item in catalog] == [
+        ('exec', 'builtin', 'LangBot'),
+        ('activate', 'skill', 'LangBot'),
+        ('plugin_tool', 'plugin', 'fixture-plugin'),
+        ('mcp_tool', 'mcp', 'fixture-server'),
+    ]
 
 
 @pytest.mark.asyncio

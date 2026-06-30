@@ -68,6 +68,13 @@ export function getDefaultValues(
         return acc;
       }
       acc[item.name] = item.default;
+      if (item.type === DynamicFormItemType.RICH_TOOLS_SELECTOR) {
+        acc['enable-all-tools'] = true;
+      }
+      if (item.type === DynamicFormItemType.RESOURCES_SELECTOR) {
+        acc['mcp-resources'] = [];
+        acc['mcp-resource-agent-read-enabled'] = true;
+      }
       return acc;
     },
 

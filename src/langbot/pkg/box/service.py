@@ -82,7 +82,6 @@ class BoxService:
         return self._enabled
 
     async def initialize(self):
-        self._ensure_default_workspace()
         if not self._enabled:
             # Disabled by config: do NOT connect to a remote runtime, do NOT
             # fork a stdio subprocess. Every consumer of box_service should
@@ -99,6 +98,7 @@ class BoxService:
                 await self._runtime_connector.initialize()
             else:
                 await self.client.initialize()
+            self._ensure_default_workspace()
             self._available = True
             self._connector_error = ''
             self.ap.logger.info(
@@ -1158,6 +1158,9 @@ class BoxService:
         if self.default_workspace is None:
             return
 
+        if not self.shares_filesystem_with_box:
+            return
+
         if os.path.isdir(self.default_workspace):
             return
 
@@ -1182,7 +1185,7 @@ class BoxService:
             return
 
         host_path = os.path.realpath(spec.host_path)
-        if not os.path.isdir(host_path):
+        if self.shares_filesystem_with_box and not os.path.isdir(host_path):
             raise BoxValidationError('host_path must point to an existing directory on the host')
 
         if not self.allowed_mount_roots:

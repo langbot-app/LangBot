@@ -51,6 +51,15 @@ def _serialize_plugin_api_result(value: Any) -> Any:
     return value
 
 
+class _RawAction:
+    def __init__(self, value: str):
+        self.value = value
+
+
+def _langbot_to_runtime_action(enum_name: str, fallback_value: str) -> Any:
+    return getattr(LangBotToRuntimeAction, enum_name, _RawAction(fallback_value))
+
+
 def _make_rag_error_response(error: Exception, error_type: str, **extra_context) -> handler.ActionResponse:
     """Create a clean error response for RAG operations.
 
@@ -1540,6 +1549,18 @@ class RuntimeConnectionHandler(handler.Handler):
         )
 
         return result
+
+    async def notify_plugin_diagnostic(self, diagnostic: dict[str, Any]) -> dict[str, Any]:
+        """Notify the plugin runtime about a best-effort plugin diagnostic.
+
+        This intentionally uses the raw protocol string instead of a SDK enum so
+        LangBot can keep running with older langbot-plugin versions.
+        """
+        return await self.call_action(
+            _langbot_to_runtime_action('PLUGIN_DIAGNOSTIC', 'plugin_diagnostic'),
+            diagnostic,
+            timeout=5,
+        )
 
     async def list_tools(self, include_plugins: list[str] | None = None) -> list[dict[str, Any]]:
         """List tools"""

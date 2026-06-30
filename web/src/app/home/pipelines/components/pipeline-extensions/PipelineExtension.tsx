@@ -12,15 +12,39 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, X, Server, Wrench, Sparkles } from 'lucide-react';
+import { CircleHelp, Plus, X, Server, Wrench, Sparkles } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { Plugin } from '@/app/infra/entities/plugin';
 import { MCPServer, Skill } from '@/app/infra/entities/api';
 import PluginComponentList from '@/app/home/plugins/components/plugin-installed/PluginComponentList';
 import { BoxUnavailableNotice } from '@/app/home/components/BoxUnavailableNotice';
 import { useBoxStatus } from '@/app/infra/hooks/useBoxStatus';
+
+function InfoTooltip({ label }: { label: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex size-4 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          aria-label={label}
+        >
+          <CircleHelp className="size-3.5" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-[280px]">
+        {label}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 export default function PipelineExtension({
   pipelineId,
@@ -418,9 +442,14 @@ export default function PipelineExtension({
       {/* MCP Servers Section */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-foreground">
-            {t('pipelines.extensions.mcpServersTitle')}
-          </h3>
+          <div className="flex items-center gap-1.5">
+            <h3 className="text-sm font-semibold text-foreground">
+              {t('pipelines.extensions.mcpServersTitle')}
+            </h3>
+            <InfoTooltip
+              label={t('pipelines.extensions.mcpServersScopeTooltip')}
+            />
+          </div>
           <div className="flex items-center gap-2">
             <Label
               htmlFor="enable-all-mcp-servers"
@@ -428,6 +457,9 @@ export default function PipelineExtension({
             >
               {t('pipelines.extensions.enableAllMCPServers')}
             </Label>
+            <InfoTooltip
+              label={t('pipelines.extensions.enableAllMCPServersTooltip')}
+            />
             <Switch
               id="enable-all-mcp-servers"
               checked={enableAllMCPServers}

@@ -26,7 +26,7 @@ and LangBot's own Local Agent) working with the LangBot ecosystem.
 
 ## Quick start (for an AI agent)
 
-1. Read this README, `AGENTS.md`, and `qa-agent-docs/` to understand the layout.
+1. Read this README, `AGENTS.md`, and `docs/user-guide.md` to understand the layout.
 2. Read `skills/.env` for shared local defaults. On a new machine, copy
    `skills/.env.example` to `skills/.env.local` (gitignored) and override
    machine-specific values there. Never commit secrets.
@@ -48,6 +48,7 @@ bin/lbs env show     # inspect resolved env defaults (redacted)
 bin/lbs env doctor   # diagnose local environment readiness
 bin/lbs case list --ready
 bin/lbs test plan <case-id>
+bin/lbs suite plan langbot-debug-chat-load-gate
 ```
 
 ## Maintenance rule

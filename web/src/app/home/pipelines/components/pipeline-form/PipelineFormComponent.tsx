@@ -374,10 +374,12 @@ export default function PipelineFormComponent({
     const isLocalAgentRunner =
       stage.name === 'local-agent' ||
       stage.name === 'plugin:langbot/local-agent/default';
+    const isLocalAgentStage = formName === 'ai' && isLocalAgentRunner;
     const stageSystemContext = isLocalAgentRunner
       ? {
           box_available: boxAvailable,
           box_scope_editable: boxAvailable && !boxScopeForced,
+          pipeline_id: pipelineId,
         }
       : undefined;
 
@@ -424,10 +426,6 @@ export default function PipelineFormComponent({
 
       const isPluginRunner =
         currentRunner && currentRunner.startsWith('plugin:');
-      const stageSystemContext =
-        stage.name === 'plugin:langbot/local-agent/default'
-          ? { box_available: boxAvailable }
-          : undefined;
       if (isPluginRunner) {
         const runnerConfigs = (form.watch('ai.runner_config') as any) || {};
         const stageInitialValues = runnerConfigs[stage.name] || {};
@@ -468,6 +466,11 @@ export default function PipelineFormComponent({
     // opt-in via ``disable_if`` + ``disabled_tooltip`` rather than every page
     // hard-coding a banner. Field-level gating keeps unrelated fields
     // untouched.
+    // ``box_scope_editable`` folds the two reasons the Sandbox Scope selector
+    // can be locked into a single flag the yaml ``disable_if`` consumes:
+    //   1. Box sandbox is unavailable, or
+    //   2. the deployment pins all pipelines to a fixed scope via
+    //      ``system.limitation.force_box_session_id_template`` (SaaS).
     // When the deployment pins every pipeline to a fixed sandbox scope (SaaS
     // ``force_box_session_id_template``), the Sandbox Scope selector is locked.
     // The runtime already overrides the scope on every exec, but the stored
@@ -479,12 +482,26 @@ export default function PipelineFormComponent({
     const stageInitialValues: Record<string, any> =
       (form.watch(formName) as Record<string, any>)?.[stage.name] || {};
     const effectiveInitialValues =
-      isLocalAgentRunner && boxScopeForced
+      isLocalAgentStage && boxScopeForced
         ? {
             ...stageInitialValues,
             'box-session-id-template': forcedBoxTemplate,
           }
         : stageInitialValues;
+    const emitStageValues = (values: object) => {
+      if (!isLocalAgentStage) {
+        handleDynamicFormEmit(formName, stage.name, values);
+        return;
+      }
+
+      const latestStageValues =
+        ((form.getValues(formName) as Record<string, any>) || {})[stage.name] ||
+        {};
+      handleDynamicFormEmit(formName, stage.name, {
+        ...latestStageValues,
+        ...values,
+      });
+    };
 
     return (
       <Card key={stage.name}>
@@ -500,9 +517,7 @@ export default function PipelineFormComponent({
           <DynamicFormComponent
             itemConfigList={stage.config}
             initialValues={effectiveInitialValues}
-            onSubmit={(values) => {
-              handleDynamicFormEmit(formName, stage.name, values);
-            }}
+            onSubmit={emitStageValues}
             systemContext={stageSystemContext}
           />
         </CardContent>

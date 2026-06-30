@@ -68,13 +68,15 @@ class TestRagRerankAction:
         app.model_mgr.get_rerank_model_by_uuid = AsyncMock(return_value=rerank_model)
         runtime_handler = make_handler(app)
 
-        response = await runtime_handler.actions[PluginToRuntimeAction.INVOKE_RERANK.value]({
-            'rerank_model_uuid': 'rerank-1',
-            'query': 'hello',
-            'documents': ['a', 'b'],
-            'top_k': 1,
-            'extra_args': {'return_documents': False},
-        })
+        response = await runtime_handler.actions[PluginToRuntimeAction.INVOKE_RERANK.value](
+            {
+                'rerank_model_uuid': 'rerank-1',
+                'query': 'hello',
+                'documents': ['a', 'b'],
+                'top_k': 1,
+                'extra_args': {'return_documents': False},
+            }
+        )
 
         assert response.code == 0
         assert response.data['results'] == [{'index': 1, 'relevance_score': 0.9}]
@@ -89,16 +91,16 @@ class TestRagRerankAction:
     @pytest.mark.asyncio
     async def test_returns_error_when_rerank_model_missing(self, app):
         """Missing rerank model returns an action error."""
-        app.model_mgr.get_rerank_model_by_uuid = AsyncMock(
-            side_effect=ValueError('not found')
-        )
+        app.model_mgr.get_rerank_model_by_uuid = AsyncMock(side_effect=ValueError('not found'))
         runtime_handler = make_handler(app)
 
-        response = await runtime_handler.actions[PluginToRuntimeAction.INVOKE_RERANK.value]({
-            'rerank_model_uuid': 'missing',
-            'query': 'hello',
-            'documents': ['a'],
-        })
+        response = await runtime_handler.actions[PluginToRuntimeAction.INVOKE_RERANK.value](
+            {
+                'rerank_model_uuid': 'missing',
+                'query': 'hello',
+                'documents': ['a'],
+            }
+        )
 
         assert response.code != 0
         assert 'Rerank model with rerank_model_uuid missing not found' in response.message
@@ -461,9 +463,7 @@ class TestAgentRunProxyActions:
         return SimpleNamespace(
             pipeline_config={'output': {'misc': {'remove-think': remove_think}}},
             variables={},
-            prompt=SimpleNamespace(
-                messages=[provider_message.Message(role='system', content='effective prompt')]
-            ),
+            prompt=SimpleNamespace(messages=[provider_message.Message(role='system', content='effective prompt')]),
         )
 
     @pytest.mark.asyncio
@@ -489,10 +489,12 @@ class TestAgentRunProxyActions:
         runtime_handler = make_handler(app)
 
         try:
-            response = await runtime_handler.actions[PluginToRuntimeAction.GET_PROMPT.value]({
-                'run_id': run_id,
-                'caller_plugin_identity': 'test/runner',
-            })
+            response = await runtime_handler.actions[PluginToRuntimeAction.GET_PROMPT.value](
+                {
+                    'run_id': run_id,
+                    'caller_plugin_identity': 'test/runner',
+                }
+            )
         finally:
             await registry.unregister(run_id)
 
@@ -533,19 +535,23 @@ class TestAgentRunProxyActions:
         runtime_handler = make_handler(app)
 
         try:
-            response = await runtime_handler.actions[PluginToRuntimeAction.INVOKE_LLM.value]({
-                'run_id': run_id,
-                'caller_plugin_identity': 'test/runner',
-                'llm_model_uuid': 'llm_001',
-                'messages': [{'role': 'user', 'content': 'hello'}],
-                'funcs': [{
-                    'name': 'search',
-                    'human_desc': 'Search',
-                    'description': 'Search',
-                    'parameters': {'type': 'object'},
-                }],
-                'extra_args': {'temperature': 0.7, 'presence_penalty': 0.1},
-            })
+            response = await runtime_handler.actions[PluginToRuntimeAction.INVOKE_LLM.value](
+                {
+                    'run_id': run_id,
+                    'caller_plugin_identity': 'test/runner',
+                    'llm_model_uuid': 'llm_001',
+                    'messages': [{'role': 'user', 'content': 'hello'}],
+                    'funcs': [
+                        {
+                            'name': 'search',
+                            'human_desc': 'Search',
+                            'description': 'Search',
+                            'parameters': {'type': 'object'},
+                        }
+                    ],
+                    'extra_args': {'temperature': 0.7, 'presence_penalty': 0.1},
+                }
+            )
         finally:
             await registry.unregister(run_id)
 
@@ -601,12 +607,14 @@ class TestAgentRunProxyActions:
         runtime_handler = make_handler(app)
 
         try:
-            response = await runtime_handler.actions[PluginToRuntimeAction.INVOKE_LLM.value]({
-                'run_id': run_id,
-                'caller_plugin_identity': 'test/runner',
-                'llm_model_uuid': 'llm_usage_001',
-                'messages': [{'role': 'user', 'content': 'hello'}],
-            })
+            response = await runtime_handler.actions[PluginToRuntimeAction.INVOKE_LLM.value](
+                {
+                    'run_id': run_id,
+                    'caller_plugin_identity': 'test/runner',
+                    'llm_model_uuid': 'llm_usage_001',
+                    'messages': [{'role': 'user', 'content': 'hello'}],
+                }
+            )
         finally:
             await registry.unregister(run_id)
 
@@ -645,19 +653,23 @@ class TestAgentRunProxyActions:
         runtime_handler = make_handler(app)
 
         try:
-            response = await runtime_handler.actions[PluginToRuntimeAction.COUNT_TOKENS.value]({
-                'run_id': run_id,
-                'caller_plugin_identity': 'test/runner',
-                'llm_model_uuid': 'llm_count_001',
-                'messages': [{'role': 'user', 'content': 'hello'}],
-                'funcs': [{
-                    'name': 'search',
-                    'human_desc': 'Search',
-                    'description': 'Search',
-                    'parameters': {'type': 'object'},
-                }],
-                'extra_args': {'temperature': 0.7},
-            })
+            response = await runtime_handler.actions[PluginToRuntimeAction.COUNT_TOKENS.value](
+                {
+                    'run_id': run_id,
+                    'caller_plugin_identity': 'test/runner',
+                    'llm_model_uuid': 'llm_count_001',
+                    'messages': [{'role': 'user', 'content': 'hello'}],
+                    'funcs': [
+                        {
+                            'name': 'search',
+                            'human_desc': 'Search',
+                            'description': 'Search',
+                            'parameters': {'type': 'object'},
+                        }
+                    ],
+                    'extra_args': {'temperature': 0.7},
+                }
+            )
         finally:
             await registry.unregister(run_id)
 
@@ -690,12 +702,14 @@ class TestAgentRunProxyActions:
 
         runtime_handler = make_handler(app)
         try:
-            response = await runtime_handler.actions[PluginToRuntimeAction.COUNT_TOKENS.value]({
-                'run_id': run_id,
-                'caller_plugin_identity': 'test/runner',
-                'llm_model_uuid': 'llm_count_002',
-                'messages': [{'role': 'user', 'content': 'hello'}],
-            })
+            response = await runtime_handler.actions[PluginToRuntimeAction.COUNT_TOKENS.value](
+                {
+                    'run_id': run_id,
+                    'caller_plugin_identity': 'test/runner',
+                    'llm_model_uuid': 'llm_count_002',
+                    'messages': [{'role': 'user', 'content': 'hello'}],
+                }
+            )
         finally:
             await registry.unregister(run_id)
 
@@ -740,20 +754,24 @@ class TestAgentRunProxyActions:
 
         responses = []
         try:
-            stream = runtime_handler.actions[PluginToRuntimeAction.INVOKE_LLM_STREAM.value]({
-                'run_id': run_id,
-                'caller_plugin_identity': 'test/runner',
-                'llm_model_uuid': 'llm_stream_001',
-                'messages': [{'role': 'user', 'content': 'hello'}],
-                'funcs': [{
-                    'name': 'search',
-                    'human_desc': 'Search',
-                    'description': 'Search',
-                    'parameters': {'type': 'object'},
-                }],
-                'extra_args': {'max_tokens': 256},
-                'remove_think': True,
-            })
+            stream = runtime_handler.actions[PluginToRuntimeAction.INVOKE_LLM_STREAM.value](
+                {
+                    'run_id': run_id,
+                    'caller_plugin_identity': 'test/runner',
+                    'llm_model_uuid': 'llm_stream_001',
+                    'messages': [{'role': 'user', 'content': 'hello'}],
+                    'funcs': [
+                        {
+                            'name': 'search',
+                            'human_desc': 'Search',
+                            'description': 'Search',
+                            'parameters': {'type': 'object'},
+                        }
+                    ],
+                    'extra_args': {'max_tokens': 256},
+                    'remove_think': True,
+                }
+            )
             async for response in stream:
                 responses.append(response)
         finally:
@@ -799,12 +817,14 @@ class TestAgentRunProxyActions:
 
         responses = []
         try:
-            stream = runtime_handler.actions[PluginToRuntimeAction.INVOKE_LLM_STREAM.value]({
-                'run_id': run_id,
-                'caller_plugin_identity': 'test/runner',
-                'llm_model_uuid': 'llm_stream_002',
-                'messages': [{'role': 'user', 'content': 'hello'}],
-            })
+            stream = runtime_handler.actions[PluginToRuntimeAction.INVOKE_LLM_STREAM.value](
+                {
+                    'run_id': run_id,
+                    'caller_plugin_identity': 'test/runner',
+                    'llm_model_uuid': 'llm_stream_002',
+                    'messages': [{'role': 'user', 'content': 'hello'}],
+                }
+            )
             async for response in stream:
                 responses.append(response)
         finally:
@@ -854,12 +874,14 @@ class TestAgentRunProxyActions:
 
         responses = []
         try:
-            stream = runtime_handler.actions[PluginToRuntimeAction.INVOKE_LLM_STREAM.value]({
-                'run_id': run_id,
-                'caller_plugin_identity': 'test/runner',
-                'llm_model_uuid': 'llm_stream_usage_001',
-                'messages': [{'role': 'user', 'content': 'hello'}],
-            })
+            stream = runtime_handler.actions[PluginToRuntimeAction.INVOKE_LLM_STREAM.value](
+                {
+                    'run_id': run_id,
+                    'caller_plugin_identity': 'test/runner',
+                    'llm_model_uuid': 'llm_stream_usage_001',
+                    'messages': [{'role': 'user', 'content': 'hello'}],
+                }
+            )
             async for response in stream:
                 responses.append(response)
         finally:
@@ -892,12 +914,14 @@ class TestAgentRunProxyActions:
         runtime_handler = make_handler(app)
 
         try:
-            response = await runtime_handler.actions[PluginToRuntimeAction.CALL_TOOL.value]({
-                'run_id': run_id,
-                'caller_plugin_identity': 'test/runner',
-                'tool_name': 'test/search',
-                'parameters': {'q': 'langbot'},
-            })
+            response = await runtime_handler.actions[PluginToRuntimeAction.CALL_TOOL.value](
+                {
+                    'run_id': run_id,
+                    'caller_plugin_identity': 'test/runner',
+                    'tool_name': 'test/search',
+                    'parameters': {'q': 'langbot'},
+                }
+            )
         finally:
             await registry.unregister(run_id)
 
@@ -926,10 +950,12 @@ class TestAgentRunProxyActions:
         )
 
         provider = SimpleNamespace(
-            invoke_rerank=AsyncMock(return_value=[
-                {'index': 0, 'relevance_score': 0.2},
-                {'index': 1, 'relevance_score': 0.9},
-            ]),
+            invoke_rerank=AsyncMock(
+                return_value=[
+                    {'index': 0, 'relevance_score': 0.2},
+                    {'index': 1, 'relevance_score': 0.9},
+                ]
+            ),
         )
         rerank_model = SimpleNamespace(
             model_entity=SimpleNamespace(extra_args={'top_n': 5, 'return_documents': False}),
@@ -939,15 +965,17 @@ class TestAgentRunProxyActions:
         runtime_handler = make_handler(app)
 
         try:
-            response = await runtime_handler.actions[PluginToRuntimeAction.INVOKE_RERANK.value]({
-                'run_id': run_id,
-                'caller_plugin_identity': 'test/runner',
-                'rerank_model_uuid': 'rerank_001',
-                'query': 'hello',
-                'documents': ['a', 'b'],
-                'top_k': 1,
-                'extra_args': {'top_n': 2},
-            })
+            response = await runtime_handler.actions[PluginToRuntimeAction.INVOKE_RERANK.value](
+                {
+                    'run_id': run_id,
+                    'caller_plugin_identity': 'test/runner',
+                    'rerank_model_uuid': 'rerank_001',
+                    'query': 'hello',
+                    'documents': ['a', 'b'],
+                    'top_k': 1,
+                    'extra_args': {'top_n': 2},
+                }
+            )
         finally:
             await registry.unregister(run_id)
 

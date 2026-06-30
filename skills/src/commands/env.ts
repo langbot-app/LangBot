@@ -1,5 +1,7 @@
 import { existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { Socket } from "node:net";
+import { join } from "node:path";
 import type { CommandContext } from "../types.ts";
 import { parseOptions } from "../cli.ts";
 import { loadEnv } from "../fs.ts";
@@ -88,6 +90,37 @@ function compareProxyPair(env: Record<string, string>, upper: string, lower: str
   return null;
 }
 
+function envValue(env: Record<string, string>, key: string): string {
+  return process.env[key] ?? env[key] ?? "";
+}
+
+function activeSocksProxy(env: Record<string, string>): { key: string; value: string } | null {
+  for (const key of ["ALL_PROXY", "all_proxy", "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"]) {
+    const value = envValue(env, key);
+    if (/^socks/i.test(value)) return { key, value };
+  }
+  return null;
+}
+
+function checkSocksio(env: Record<string, string>): string | null {
+  const proxy = activeSocksProxy(env);
+  if (!proxy) return null;
+
+  const repo = env.LANGBOT_REPO;
+  const python = repo ? join(repo, ".venv", "bin", "python") : "";
+  if (!python || !existsSync(python)) {
+    return `SOCKS proxy ${proxy.key} is configured (${redactEnvValue(proxy.key, proxy.value)}), but LangBot venv python was not found; after creating the venv, verify it can import socksio.`;
+  }
+
+  const result = spawnSync(python, ["-c", "import socksio"], {
+    encoding: "utf8",
+    timeout: 5000,
+  });
+  if (result.status === 0) return null;
+
+  return `SOCKS proxy ${proxy.key} is configured (${redactEnvValue(proxy.key, proxy.value)}), but ${python} cannot import socksio; run \`${python} -m pip install socksio\` or start LangBot without SOCKS proxy env.`;
+}
+
 export async function commandEnvDoctor(ctx: CommandContext): Promise<number> {
   const env = loadEnv(ctx.root);
   const failures: string[] = [];
@@ -117,6 +150,8 @@ export async function commandEnvDoctor(ctx: CommandContext): Promise<number> {
   ]) {
     if (mismatch) failures.push(mismatch);
   }
+  const socksioFailure = checkSocksio(env);
+  if (socksioFailure) failures.push(socksioFailure);
 
   for (const [label, result] of await Promise.all([
     checkUrl("LANGBOT_BACKEND_URL", env.LANGBOT_BACKEND_URL).then((result) => ["LANGBOT_BACKEND_URL", result] as const),

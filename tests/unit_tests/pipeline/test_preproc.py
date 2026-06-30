@@ -14,6 +14,7 @@ from __future__ import annotations
 import pytest
 from unittest.mock import AsyncMock, Mock
 from importlib import import_module
+from types import SimpleNamespace
 
 from tests.factories import (
     FakeApp,
@@ -461,3 +462,60 @@ class TestPreProcessorVariables:
         variables = result.new_query.variables
         assert 'group_name' in variables
         assert 'sender_name' in variables
+
+
+class TestPreProcessorToolSelection:
+    """Tests for Local Agent tool selection."""
+
+    @pytest.mark.asyncio
+    async def test_local_agent_filters_selected_tools(self):
+        """Only selected tools should be exposed when all-tools mode is off."""
+        preproc = get_preproc_module()
+
+        app = FakeApp()
+        mock_session = Mock()
+        mock_session.launcher_type = Mock(value='person')
+        mock_session.launcher_id = 12345
+        app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
+
+        mock_conversation = Mock()
+        mock_conversation.prompt = Mock(messages=[])
+        mock_conversation.prompt.copy = Mock(return_value=Mock(messages=[]))
+        mock_conversation.messages = []
+        mock_conversation.uuid = None
+        app.sess_mgr.get_conversation = AsyncMock(return_value=mock_conversation)
+
+        mock_model = Mock()
+        mock_model.model_entity = Mock(uuid='primary-model-uuid', abilities=['func_call'])
+        app.model_mgr.get_model_by_uuid = AsyncMock(return_value=mock_model)
+        app.tool_mgr.get_all_tools = AsyncMock(
+            return_value=[
+                SimpleNamespace(name='exec'),
+                SimpleNamespace(name='plugin_tool'),
+                SimpleNamespace(name='mcp_tool'),
+            ]
+        )
+
+        mock_event_ctx = Mock()
+        mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
+        app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
+
+        stage = preproc.PreProcessor(app)
+        query = text_query('hello')
+        query.pipeline_config = {
+            'ai': {
+                'runner': {'runner': 'local-agent'},
+                'local-agent': {
+                    'model': {'primary': 'primary-model-uuid', 'fallbacks': []},
+                    'prompt': 'default',
+                    'enable-all-tools': False,
+                    'tools': ['plugin_tool'],
+                },
+            },
+            'output': {'misc': {'at-sender': False}},
+            'trigger': {'misc': {}},
+        }
+
+        result = await stage.process(query, 'PreProcessor')
+
+        assert [tool.name for tool in result.new_query.use_funcs] == ['plugin_tool']

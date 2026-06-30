@@ -103,6 +103,7 @@ import {
 } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { useSidebarData, SidebarEntityItem } from './SidebarDataContext';
+import { FeedbackPopoverContent } from './FeedbackPopover';
 
 // Compare two version strings, returns true if v1 > v2
 function compareVersions(v1: string, v2: string): boolean {
@@ -1666,6 +1667,7 @@ export default function HomeSidebar({
   );
   const [hasNewVersion, setHasNewVersion] = useState(false);
   const [versionDialogOpen, setVersionDialogOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string>('');
   const [starCount, setStarCount] = useState<number | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -2138,10 +2140,8 @@ export default function HomeSidebar({
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={() => {
-                        window.open(
-                          'https://github.com/langbot-app/LangBot/issues',
-                          '_blank',
-                        );
+                        setUserMenuOpen(false);
+                        setFeedbackOpen(true);
                       }}
                     >
                       <Lightbulb />
@@ -2192,6 +2192,18 @@ export default function HomeSidebar({
           </SidebarMenu>
         </SidebarFooter>
       </Sidebar>
+
+      <Dialog open={feedbackOpen} onOpenChange={setFeedbackOpen}>
+        <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-[380px]">
+          <DialogHeader className="sr-only">
+            <DialogTitle>{t('monitoring.feedback.title')}</DialogTitle>
+            <DialogDescription>
+              {t('monitoring.feedback.description')}
+            </DialogDescription>
+          </DialogHeader>
+          <FeedbackPopoverContent onSubmitted={() => setFeedbackOpen(false)} />
+        </DialogContent>
+      </Dialog>
 
       <SettingsDialog
         open={settingsOpen}

@@ -136,9 +136,7 @@ class PreProcessor(stage.PipelineStage):
                 strict_thread=True,
             )
         except Exception as e:
-            self.ap.logger.warning(
-                f'Unable to load Transcript history view for conversation {conversation_uuid}: {e}'
-            )
+            self.ap.logger.warning(f'Unable to load Transcript history view for conversation {conversation_uuid}: {e}')
             return None
 
         return messages or None
@@ -161,6 +159,21 @@ class PreProcessor(stage.PipelineStage):
             return transcript_messages
         return conversation.messages.copy()
 
+    @staticmethod
+    def _filter_selected_tools(
+        tools: list,
+        runner_config: dict,
+    ) -> list:
+        if runner_config.get('enable-all-tools', True) is not False:
+            return tools
+
+        selected_tools = runner_config.get('tools', [])
+        if not isinstance(selected_tools, list):
+            return []
+
+        selected_tool_names = {tool for tool in selected_tools if isinstance(tool, str)}
+        return [tool for tool in tools if tool.name in selected_tool_names]
+
     async def process(
         self,
         query: pipeline_query.Query,
@@ -181,6 +194,7 @@ class PreProcessor(stage.PipelineStage):
 
         uses_host_models = config_schema.uses_host_models(descriptor)
         uses_host_tools = config_schema.uses_host_tools(descriptor)
+        include_mcp_resource_tools = query.variables.get('_pipeline_mcp_resource_agent_read_enabled', True)
         llm_model = None
         if uses_host_models:
             primary_uuid, fallback_uuids = config_schema.extract_model_selection(descriptor, runner_config)
@@ -235,10 +249,12 @@ class PreProcessor(stage.PipelineStage):
                 query.use_llm_model_uuid = llm_model.model_entity.uuid
 
                 if uses_host_tools and 'func_call' in (llm_model.model_entity.abilities or []):
-                    query.use_funcs = await self.ap.tool_mgr.get_all_tools(
+                    all_tools = await self.ap.tool_mgr.get_all_tools(
                         bound_plugins,
                         bound_mcp_servers,
+                        include_mcp_resource_tools=include_mcp_resource_tools,
                     )
+                    query.use_funcs = self._filter_selected_tools(all_tools, runner_config)
 
                     self.ap.logger.debug(f'Bound plugins: {bound_plugins}')
                     self.ap.logger.debug(f'Bound MCP servers: {bound_mcp_servers}')
@@ -247,15 +263,19 @@ class PreProcessor(stage.PipelineStage):
             # If primary model doesn't support func_call but fallback models exist,
             # load tools anyway since fallback models may support them
             if uses_host_tools and not query.use_funcs and query.variables.get('_fallback_model_uuids'):
-                query.use_funcs = await self.ap.tool_mgr.get_all_tools(
+                all_tools = await self.ap.tool_mgr.get_all_tools(
                     bound_plugins,
                     bound_mcp_servers,
+                    include_mcp_resource_tools=include_mcp_resource_tools,
                 )
+                query.use_funcs = self._filter_selected_tools(all_tools, runner_config)
         elif uses_host_tools:
-            query.use_funcs = await self.ap.tool_mgr.get_all_tools(
+            all_tools = await self.ap.tool_mgr.get_all_tools(
                 bound_plugins,
                 bound_mcp_servers,
+                include_mcp_resource_tools=include_mcp_resource_tools,
             )
+            query.use_funcs = self._filter_selected_tools(all_tools, runner_config)
 
             self.ap.logger.debug(f'Bound plugins: {bound_plugins}')
             self.ap.logger.debug(f'Bound MCP servers: {bound_mcp_servers}')

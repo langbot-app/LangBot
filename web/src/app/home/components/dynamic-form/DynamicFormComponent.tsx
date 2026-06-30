@@ -1,7 +1,7 @@
 import {
+  DynamicFormItemType,
   IDynamicFormItemSchema,
   SYSTEM_FIELD_PREFIX,
-  DynamicFormItemType,
 } from '@/app/infra/entities/form/dynamic';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -57,6 +57,97 @@ function resolveShowIfValue(
     return watchedValues[field];
   }
   return externalDependentValues?.[field];
+}
+
+type DynamicFormValueSpec = Pick<
+  IDynamicFormItemSchema,
+  'default' | 'name' | 'required' | 'type'
+>;
+
+function getValueSpecs(item: IDynamicFormItemSchema): DynamicFormValueSpec[] {
+  if (item.type === DynamicFormItemType.RICH_TOOLS_SELECTOR) {
+    return [
+      item,
+      {
+        name: 'enable-all-tools',
+        type: DynamicFormItemType.BOOLEAN,
+        required: false,
+        default: true,
+      },
+    ];
+  }
+
+  if (item.type === DynamicFormItemType.RESOURCES_SELECTOR) {
+    return [
+      item,
+      {
+        name: 'mcp-resources',
+        type: DynamicFormItemType.UNKNOWN,
+        required: false,
+        default: [],
+      },
+      {
+        name: 'mcp-resource-agent-read-enabled',
+        type: DynamicFormItemType.BOOLEAN,
+        required: false,
+        default: true,
+      },
+    ];
+  }
+
+  return [item];
+}
+
+function getValueSchema(spec: DynamicFormValueSpec) {
+  if (spec.name === 'mcp-resources') {
+    return z.array(z.any());
+  }
+
+  const normalizedType = normalizeItemType(spec.type);
+
+  switch (normalizedType) {
+    case DynamicFormItemType.INT:
+      return z.number();
+    case DynamicFormItemType.FLOAT:
+      return z.number();
+    case DynamicFormItemType.BOOLEAN:
+      return z.boolean();
+    case DynamicFormItemType.STRING:
+      return z.string();
+    case DynamicFormItemType.STRING_ARRAY:
+      return z.array(z.string());
+    case DynamicFormItemType.SELECT:
+      return z.string();
+    case DynamicFormItemType.LLM_MODEL_SELECTOR:
+      return z.string();
+    case DynamicFormItemType.EMBEDDING_MODEL_SELECTOR:
+      return z.string();
+    case DynamicFormItemType.RERANK_MODEL_SELECTOR:
+      return z.string();
+    case DynamicFormItemType.KNOWLEDGE_BASE_SELECTOR:
+      return z.string();
+    case DynamicFormItemType.KNOWLEDGE_BASE_MULTI_SELECTOR:
+    case DynamicFormItemType.RESOURCES_SELECTOR:
+    case DynamicFormItemType.RICH_TOOLS_SELECTOR:
+    case DynamicFormItemType.TOOLS_SELECTOR:
+      return z.array(z.string());
+    case DynamicFormItemType.BOT_SELECTOR:
+      return z.string();
+    case DynamicFormItemType.MODEL_FALLBACK_SELECTOR:
+      return z.object({
+        primary: z.string(),
+        fallbacks: z.array(z.string()),
+      });
+    case DynamicFormItemType.PROMPT_EDITOR:
+      return z.array(
+        z.object({
+          content: z.string(),
+          role: z.string(),
+        }),
+      );
+    default:
+      return z.string();
+  }
 }
 
 /**
@@ -331,9 +422,16 @@ export default function DynamicFormComponent({
   // model-fallback-selector) is coerced to the expected shape
   // so that downstream components never crash.
   const normalizeFieldValue = (
-    item: IDynamicFormItemSchema,
+    item: DynamicFormValueSpec,
     value: unknown,
   ): unknown => {
+    if (
+      item.name === 'mcp-resources' ||
+      item.type === DynamicFormItemType.RESOURCES_SELECTOR ||
+      item.type === DynamicFormItemType.RICH_TOOLS_SELECTOR
+    ) {
+      return Array.isArray(value) ? value : [];
+    }
     if (item.type === 'model-fallback-selector') {
       if (value != null && typeof value === 'object' && !Array.isArray(value)) {
         const obj = value as Record<string, unknown>;
@@ -377,74 +475,16 @@ export default function DynamicFormComponent({
     [itemConfigList],
   );
 
+  const editableValueSpecs = useMemo(
+    () => editableItems.flatMap(getValueSpecs),
+    [editableItems],
+  );
+
   // 根据 itemConfigList 动态生成 zod schema
   const formSchema = z.object(
-    editableItems.reduce(
+    editableValueSpecs.reduce(
       (acc, item) => {
-        // Normalize type to handle plugin manifest type names
-        const normalizedType = normalizeItemType(item.type);
-
-        let fieldSchema;
-        switch (normalizedType) {
-          case 'integer':
-            fieldSchema = z.number();
-            break;
-          case 'float':
-            fieldSchema = z.number();
-            break;
-          case 'boolean':
-            fieldSchema = z.boolean();
-            break;
-          case 'string':
-            fieldSchema = z.string();
-            break;
-          case 'array[string]':
-            fieldSchema = z.array(z.string());
-            break;
-          case 'select':
-            fieldSchema = z.string();
-            break;
-          case 'llm-model-selector':
-            fieldSchema = z.string();
-            break;
-          case 'embedding-model-selector':
-            fieldSchema = z.string();
-            break;
-          case 'rerank-model-selector':
-            fieldSchema = z.string();
-            break;
-          case 'knowledge-base-selector':
-            fieldSchema = z.string();
-            break;
-          case 'knowledge-base-multi-selector':
-            fieldSchema = z.array(z.string());
-            break;
-          case 'bot-selector':
-            fieldSchema = z.string();
-            break;
-          case 'tools-selector':
-            fieldSchema = z.array(z.string());
-            break;
-          case 'model-fallback-selector':
-            fieldSchema = z.object({
-              primary: z.string(),
-              fallbacks: z.array(z.string()),
-            });
-            break;
-          case 'prompt-editor':
-            fieldSchema = z.array(
-              z.object({
-                content: z.string(),
-                role: z.string(),
-              }),
-            );
-            break;
-          case 'text':
-            fieldSchema = z.string();
-            break;
-          default:
-            fieldSchema = z.string();
-        }
+        let fieldSchema = getValueSchema(item);
 
         if (
           item.required &&
@@ -469,7 +509,7 @@ export default function DynamicFormComponent({
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: editableItems.reduce((acc, item) => {
+    defaultValues: editableValueSpecs.reduce((acc, item) => {
       // 优先使用 initialValues，如果没有则使用默认值
       const rawValue = initialValues?.[item.name] ?? item.default;
       return {
@@ -508,7 +548,7 @@ export default function DynamicFormComponent({
 
     if (initialValues && hasRealChange) {
       // 合并默认值和初始值
-      const mergedValues = editableItems.reduce(
+      const mergedValues = editableValueSpecs.reduce(
         (acc, item) => {
           const rawValue = initialValues[item.name] ?? item.default;
           acc[item.name] = normalizeFieldValue(item, rawValue) as object;
@@ -523,10 +563,16 @@ export default function DynamicFormComponent({
 
       previousInitialValues.current = initialValues;
     }
-  }, [initialValues, form, editableItems]);
+  }, [initialValues, form, editableValueSpecs]);
 
   // Get reactive form values for conditional rendering
   const watchedValues = form.watch();
+  const setFormValue = (name: string, value: unknown) => {
+    form.setValue(name as keyof FormValues, value as never, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  };
 
   // Stable ref for onSubmit to avoid re-triggering the effect when the
   // parent passes a new closure on every render.
@@ -539,7 +585,7 @@ export default function DynamicFormComponent({
     // even if the user saves without modifying any field.
     // form.watch(callback) only fires on subsequent changes, not on mount.
     const formValues = form.getValues();
-    const initialFinalValues = editableItems.reduce(
+    const initialFinalValues = editableValueSpecs.reduce(
       (acc, item) => {
         acc[item.name] = formValues[item.name] ?? item.default;
         return acc;
@@ -559,7 +605,7 @@ export default function DynamicFormComponent({
 
     const subscription = form.watch(() => {
       const formValues = form.getValues();
-      const finalValues = editableItems.reduce(
+      const finalValues = editableValueSpecs.reduce(
         (acc, item) => {
           acc[item.name] = formValues[item.name] ?? item.default;
           return acc;
@@ -570,7 +616,7 @@ export default function DynamicFormComponent({
       previousInitialValues.current = finalValues as Record<string, object>;
     });
     return () => subscription.unsubscribe();
-  }, [form, editableItems]);
+  }, [form, editableValueSpecs]);
 
   // State for QR code login dialog
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
@@ -808,6 +854,41 @@ export default function DynamicFormComponent({
             );
           }
 
+          if (
+            normalizedConfig.type === DynamicFormItemType.RICH_TOOLS_SELECTOR ||
+            normalizedConfig.type === DynamicFormItemType.RESOURCES_SELECTOR
+          ) {
+            return (
+              <FormField
+                key={config.id}
+                control={form.control}
+                name={config.name as keyof FormValues}
+                render={({ field }) => (
+                  <FormItem className="min-w-0">
+                    <FormControl>
+                      <div
+                        className={cn(
+                          'min-w-0 max-w-full overflow-x-hidden',
+                          isFieldDisabled && 'pointer-events-none opacity-60',
+                        )}
+                      >
+                        <DynamicFormItemComponent
+                          config={normalizedConfig}
+                          field={field}
+                          formValues={watchedValues as Record<string, unknown>}
+                          onFileUploaded={onFileUploaded}
+                          setFormValue={setFormValue}
+                          systemContext={systemContext}
+                        />
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            );
+          }
+
           // Boolean fields use a special inline layout
           if (normalizedConfig.type === 'boolean') {
             return (
@@ -838,7 +919,10 @@ export default function DynamicFormComponent({
                         <DynamicFormItemComponent
                           config={normalizedConfig}
                           field={field}
+                          formValues={watchedValues as Record<string, unknown>}
                           onFileUploaded={onFileUploaded}
+                          setFormValue={setFormValue}
+                          systemContext={systemContext}
                         />
                       </FormControl>
                     </div>
@@ -875,7 +959,10 @@ export default function DynamicFormComponent({
                       <DynamicFormItemComponent
                         config={normalizedConfig}
                         field={field}
+                        formValues={watchedValues as Record<string, unknown>}
                         onFileUploaded={onFileUploaded}
+                        setFormValue={setFormValue}
+                        systemContext={systemContext}
                       />
                     </div>
                   </FormControl>

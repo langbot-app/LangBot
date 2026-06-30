@@ -126,6 +126,9 @@ function validateCaseItem(root: string, item: StructuredItem, skillNames: Set<st
     ...validateEnvKeyScalar(item, "automation_pipeline_url_env"),
     ...validateEnvKeyScalar(item, "automation_pipeline_name_env"),
     ...validateJsonScalar(item, "automation_filesystem_checks_json"),
+    ...validateJsonScalar(item, "metrics_thresholds_json"),
+    ...validateJsonScalar(item, "load_profile_json"),
+    ...validateJsonScalar(item, "fault_model_json"),
     ...listValue(item.fields, "setup_automation").flatMap((entry) => (
       validateSetupAutomationEntry(root, entry, caseIds).map((error) => `${item.path}: ${error}`)
     )),
@@ -183,9 +186,61 @@ function validateCaseItem(root: string, item: StructuredItem, skillNames: Set<st
   if (timeout && (!/^\d+$/.test(timeout) || Number.parseInt(timeout, 10) <= 0)) {
     errors.push(`${item.path}: 'automation_response_timeout_ms' must be a positive integer string`);
   }
+  for (const key of [
+    "automation_debug_chat_load_requests",
+    "automation_debug_chat_load_concurrency",
+    "automation_debug_chat_load_timeout_ms",
+    "automation_debug_chat_load_response_p95_ms",
+    "automation_debug_chat_load_first_response_p95_ms",
+  ]) {
+    const value = scalar(item.fields, key);
+    if (value && (!/^\d+$/.test(value) || Number.parseInt(value, 10) <= 0)) {
+      errors.push(`${item.path}: '${key}' must be a positive integer string`);
+    }
+  }
+  for (const key of [
+    "automation_debug_chat_load_min_error_count",
+    "automation_debug_chat_load_min_ok_count",
+    "automation_debug_chat_load_min_provider_fault_count",
+    "automation_fake_provider_first_token_delay_ms",
+    "automation_fake_provider_chunk_delay_ms",
+    "automation_fake_provider_chunk_count",
+    "automation_fake_provider_fail_first_n",
+    "automation_fake_provider_fail_every_n",
+  ]) {
+    const value = scalar(item.fields, key);
+    if (value && (!/^\d+$/.test(value) || Number.parseInt(value, 10) < 0)) {
+      errors.push(`${item.path}: '${key}' must be a non-negative integer string`);
+    }
+  }
+  for (const key of ["automation_debug_chat_load_max_error_rate", "automation_debug_chat_load_min_error_rate"]) {
+    const value = scalar(item.fields, key);
+    if (value && (!/^(?:0(?:\.\d+)?|1(?:\.0+)?)$/.test(value))) {
+      errors.push(`${item.path}: '${key}' must be a number string between 0 and 1`);
+    }
+  }
+  const fakeProviderFaultStatus = scalar(item.fields, "automation_fake_provider_fault_status");
+  if (fakeProviderFaultStatus) {
+    const parsed = Number.parseInt(fakeProviderFaultStatus, 10);
+    if (!/^\d+$/.test(fakeProviderFaultStatus) || parsed < 400 || parsed > 599) {
+      errors.push(`${item.path}: 'automation_fake_provider_fault_status' must be an HTTP 4xx or 5xx status string`);
+    }
+  }
   const streamOutput = scalar(item.fields, "automation_stream_output");
   if (streamOutput && !["0", "1", "false", "true"].includes(streamOutput)) {
     errors.push(`${item.path}: 'automation_stream_output' must be one of 0, 1, false, or true`);
+  }
+  for (const key of [
+    "automation_debug_chat_load_stream",
+    "automation_debug_chat_load_reset",
+    "automation_debug_chat_load_fail_on_final_mismatch",
+    "automation_fake_provider_fail_after_first_chunk",
+    "automation_fake_provider_dynamic_response",
+  ]) {
+    const value = scalar(item.fields, key);
+    if (value && !["0", "1", "false", "true"].includes(value)) {
+      errors.push(`${item.path}: '${key}' must be one of 0, 1, false, or true`);
+    }
   }
   const imageBase64Fixture = scalar(item.fields, "automation_image_base64_fixture");
   if (imageBase64Fixture && !existsSync(join(root, imageBase64Fixture))) {

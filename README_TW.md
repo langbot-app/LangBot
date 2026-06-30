@@ -137,7 +137,7 @@ docker compose --profile all up -d
 | [優雲智算](https://www.compshare.cn/?ytag=GPU_YY-gh_langbot) | GPU 平台 | ✅ |
 | [PPIO](https://ppinfra.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | GPU 平台 | ✅ |
 | [接口 AI](https://jiekou.ai/) | 聚合平台 | ✅ |
-| [302.AI](https://share.302.ai/SuTG99) | 聚合平台 | ✅ |
+| [302.AI](https://share.302ai.cn/SuTG99) | 聚合平台 | ✅ |
 | [Qiniu](https://www.qiniu.com/ai/agent) | 聚合平台 | ✅ |
 
 ### TTS（語音合成）

@@ -136,6 +136,32 @@ class MCPService:
             if server_name in self.ap.tool_mgr.mcp_tool_loader.sessions:
                 await self.ap.tool_mgr.mcp_tool_loader.remove_mcp_server(server_name)
 
+    async def get_mcp_server_resources(self, server_name: str) -> list[dict]:
+        """Get resources from a specific MCP server."""
+        return await self.ap.tool_mgr.mcp_tool_loader.get_resources(server_name)
+
+    async def get_mcp_server_resource_templates(self, server_name: str) -> list[dict]:
+        """Get resource templates from a specific MCP server."""
+        return await self.ap.tool_mgr.mcp_tool_loader.get_resource_templates(server_name)
+
+    async def read_mcp_server_resource_envelope(
+        self,
+        server_name: str,
+        uri: str,
+        *,
+        max_bytes: int | None = None,
+        include_blob: bool = False,
+    ) -> dict:
+        """Read a resource from a specific MCP server with metadata."""
+        kwargs = {'include_blob': include_blob, 'source': 'ui_preview'}
+        if max_bytes is not None:
+            kwargs['max_bytes'] = max_bytes
+        return await self.ap.tool_mgr.mcp_tool_loader.read_resource_envelope(server_name, uri, **kwargs)
+
+    async def read_mcp_server_resource(self, server_name: str, uri: str) -> list[dict]:
+        """Read a resource from a specific MCP server."""
+        return await self.ap.tool_mgr.mcp_tool_loader.read_resource(server_name, uri)
+
     async def test_mcp_server(self, server_name: str, server_data: dict) -> int:
         """测试 MCP 服务器连接并返回任务 ID"""
 

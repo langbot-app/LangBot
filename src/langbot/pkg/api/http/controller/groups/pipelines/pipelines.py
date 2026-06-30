@@ -86,6 +86,10 @@ class PipelinesRouterGroup(group.RouterGroup):
                         'available_plugins': plugins,
                         'bound_mcp_servers': extensions_prefs.get('mcp_servers', []),
                         'available_mcp_servers': mcp_servers,
+                        'bound_mcp_resources': extensions_prefs.get('mcp_resources', []),
+                        'mcp_resource_agent_read_enabled': extensions_prefs.get(
+                            'mcp_resource_agent_read_enabled', True
+                        ),
                         'bound_skills': extensions_prefs.get('skills', []),
                         'available_skills': available_skills,
                     }
@@ -99,6 +103,8 @@ class PipelinesRouterGroup(group.RouterGroup):
                 bound_plugins = json_data.get('bound_plugins', [])
                 bound_mcp_servers = json_data.get('bound_mcp_servers', [])
                 bound_skills = json_data.get('bound_skills', [])
+                bound_mcp_resources = json_data.get('bound_mcp_resources')
+                mcp_resource_agent_read_enabled = json_data.get('mcp_resource_agent_read_enabled')
 
                 await self.ap.pipeline_service.update_pipeline_extensions(
                     pipeline_uuid,
@@ -108,6 +114,8 @@ class PipelinesRouterGroup(group.RouterGroup):
                     enable_all_mcp_servers,
                     bound_skills=bound_skills,
                     enable_all_skills=enable_all_skills,
+                    bound_mcp_resources=bound_mcp_resources,
+                    mcp_resource_agent_read_enabled=mcp_resource_agent_read_enabled,
                 )
 
                 return self.success()

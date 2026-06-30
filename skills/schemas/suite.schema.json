@@ -18,7 +18,17 @@
     },
     "type": {
       "type": "string",
-      "enum": ["smoke", "regression", "release_gate", "exploratory"]
+      "enum": [
+        "smoke",
+        "regression",
+        "release_gate",
+        "exploratory",
+        "contract",
+        "performance",
+        "reliability",
+        "chaos",
+        "security"
+      ]
     },
     "priority": {
       "type": "string",

@@ -74,7 +74,7 @@ export default function SystemStatusCard({
         : await httpClient.getBoxSessions().catch(() => [] as BoxSessionInfo[]);
       setPluginStatus(plugin);
       setBoxStatus(box);
-      setBoxSessions(sessions);
+      setBoxSessions(Array.isArray(sessions) ? sessions : []);
     } finally {
       setLoading(false);
     }

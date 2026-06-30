@@ -164,7 +164,7 @@ export default function TokenMonitoring({
   }, [fetchStats]);
 
   const chartData = useMemo(() => {
-    if (!stats) return [];
+    if (!stats || !Array.isArray(stats.timeseries)) return [];
     return stats.timeseries.map((p) => ({
       bucket: p.bucket,
       input: p.input_tokens,
@@ -198,7 +198,7 @@ export default function TokenMonitoring({
     );
   }
 
-  if (!stats || stats.summary.total_calls === 0) {
+  if (!stats || !stats.summary || stats.summary.total_calls === 0) {
     return (
       <div className="bg-card rounded-xl border p-6">
         <div className="h-[260px] flex flex-col items-center justify-center text-muted-foreground gap-2">
@@ -209,7 +209,8 @@ export default function TokenMonitoring({
     );
   }
 
-  const { summary, by_model } = stats;
+  const summary = stats.summary;
+  const by_model = Array.isArray(stats.by_model) ? stats.by_model : [];
 
   return (
     <div className="space-y-6">

@@ -72,6 +72,7 @@ export async function writeResult(paths, result) {
 }
 
 export async function loadEnvFiles(paths = ["skills/.env", "skills/.env.local"]) {
+  const processEnvKeys = new Set(Object.keys(env));
   for (const path of paths) {
     let text = "";
     try {
@@ -86,7 +87,7 @@ export async function loadEnvFiles(paths = ["skills/.env", "skills/.env.local"])
       if (equals <= 0) continue;
       const key = trimmed.slice(0, equals).trim();
       const value = trimmed.slice(equals + 1).trim().replace(/^["']|["']$/g, "");
-      if (!(key in env)) env[key] = value;
+      if (!processEnvKeys.has(key)) env[key] = value;
     }
   }
 }

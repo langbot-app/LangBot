@@ -751,6 +751,8 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         event_ctx = context.EventContext.from_event(event)
 
         if not self.is_enable_plugin:
+            event_ctx._emitted_plugins = []
+            event_ctx._response_sources = []
             return event_ctx
 
         # Pass include_plugins to runtime for filtering
@@ -759,8 +761,20 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         )
 
         event_ctx = context.EventContext.model_validate(event_ctx_result['event_context'])
+        event_ctx._emitted_plugins = event_ctx_result.get('emitted_plugins', [])
+        if 'response_sources' in event_ctx_result:
+            event_ctx._response_sources = event_ctx_result['response_sources']
 
         return event_ctx
+
+    async def notify_plugin_diagnostic(self, diagnostic: dict[str, Any]) -> None:
+        """Best-effort diagnostic forwarding to the plugin runtime."""
+        if not self.is_enable_plugin:
+            return
+        try:
+            await self.handler.notify_plugin_diagnostic(diagnostic)
+        except Exception as e:
+            self.ap.logger.debug(f'Plugin diagnostic forwarding skipped: {e}')
 
     async def list_tools(self, bound_plugins: list[str] | None = None) -> list[ComponentManifest]:
         if not self.is_enable_plugin:
