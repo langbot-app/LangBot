@@ -64,15 +64,22 @@ import {
 import SettingsDialog, {
   SettingsSection,
 } from '@/app/home/components/settings-dialog/SettingsDialog';
+import ToolResourceSelectors from '@/app/home/components/dynamic-form/ToolResourceSelectors';
 
 export default function DynamicFormItemComponent({
   config,
   field,
+  formValues,
   onFileUploaded,
+  setFormValue,
+  systemContext,
 }: {
   config: IDynamicFormItemSchema;
   field: ControllerRenderProps<any, any>;
+  formValues?: Record<string, unknown>;
   onFileUploaded?: (fileKey: string) => void;
+  setFormValue?: (name: string, value: unknown) => void;
+  systemContext?: Record<string, unknown>;
 }) {
   const [llmModels, setLlmModels] = useState<LLMModel[]>([]);
   const [embeddingModels, setEmbeddingModels] = useState<EmbeddingModel[]>([]);
@@ -247,6 +254,16 @@ export default function DynamicFormItemComponent({
         });
     }
   }, [config.type]);
+
+  const handleCompositePatch = (patch: Record<string, unknown>) => {
+    for (const [name, value] of Object.entries(patch)) {
+      if (setFormValue) {
+        setFormValue(name, value);
+      } else if (name === field.name) {
+        field.onChange(value);
+      }
+    }
+  };
 
   switch (config.type) {
     case DynamicFormItemType.INT:
@@ -1381,6 +1398,32 @@ export default function DynamicFormItemComponent({
             </DialogContent>
           </Dialog>
         </>
+      );
+
+    case DynamicFormItemType.RICH_TOOLS_SELECTOR:
+      return (
+        <ToolResourceSelectors
+          mode="tools"
+          pipelineId={systemContext?.pipeline_id as string | undefined}
+          value={{
+            ...(formValues || {}),
+            [field.name]: field.value,
+          }}
+          onChange={handleCompositePatch}
+        />
+      );
+
+    case DynamicFormItemType.RESOURCES_SELECTOR:
+      return (
+        <ToolResourceSelectors
+          mode="resources"
+          pipelineId={systemContext?.pipeline_id as string | undefined}
+          value={{
+            ...(formValues || {}),
+            [field.name]: field.value,
+          }}
+          onChange={handleCompositePatch}
+        />
       );
 
     case DynamicFormItemType.PROMPT_EDITOR: {

@@ -930,6 +930,40 @@ const thTH = {
       addSkill: 'เพิ่มสกิล',
       selectSkills: 'เลือกสกิล',
       noSkillsAvailable: 'ไม่มีสกิลที่พร้อมใช้งาน',
+      mcpServersScopeTooltip:
+        'ส่วนนี้ใช้ควบคุมว่า Pipeline ผูกกับเซิร์ฟเวอร์ MCP ใดเท่านั้น ส่วนเครื่องมือและทรัพยากร MCP รายตัวให้เลือกใน AI Feature > Local Agent',
+      enableAllMCPServersTooltip:
+        'เมื่อเปิดใช้ เซิร์ฟเวอร์ MCP ที่ตั้งค่าและเปิดใช้งานทั้งหมดจะเป็นตัวเลือกสำหรับเครื่องมือและทรัพยากร MCP ใน AI Feature',
+    },
+    localAgent: {
+      toolsTitle: 'เครื่องมือ',
+      toolsDescription:
+        'เลือกเครื่องมือจากปลั๊กอิน MCP และเครื่องมือในตัวสำหรับ Local Agent นี้',
+      toolsScopeTooltip:
+        'เครื่องมือ MCP จะแสดงจากเซิร์ฟเวอร์ MCP ที่ผูกไว้ในส่วนขยายเท่านั้น หากต้องการเพิ่มแหล่งเครื่องมือ ให้ไปผูกเซิร์ฟเวอร์ที่นั่นก่อน',
+      enableAllTools: 'เปิดใช้เครื่องมือทั้งหมด',
+      allToolsEnabled: 'เปิดใช้เครื่องมือที่มีทั้งหมดแล้ว',
+      noToolsSelected: 'ยังไม่ได้เลือกเครื่องมือ',
+      editTools: 'แก้ไขเครื่องมือ',
+      builtinTools: 'เครื่องมือในตัว',
+      pluginTools: 'เครื่องมือปลั๊กอิน',
+      skillTools: 'เครื่องมือสกิล',
+      mcpTools: 'เครื่องมือ MCP',
+      mcpToolsScopeTooltip:
+        'ที่นี่จะแสดงเฉพาะเครื่องมือจากเซิร์ฟเวอร์ MCP ที่อนุญาตอยู่ในส่วนขยาย',
+      selectTools: 'เลือกเครื่องมือ',
+      resourcesTitle: 'ทรัพยากร',
+      resourcesDescription:
+        'เลือกทรัพยากร MCP และคลังความรู้สำหรับ Local Agent นี้',
+      knowledgeBases: 'คลังความรู้',
+      mcpResources: 'ทรัพยากร MCP',
+      mcpResourcesScopeTooltip:
+        'ที่นี่จะแสดงเฉพาะทรัพยากรจากเซิร์ฟเวอร์ MCP ที่อนุญาตอยู่ในส่วนขยาย',
+      enableMCPResourceRead: 'อนุญาตให้โมเดลอ่านทรัพยากร MCP',
+      mcpResourceReadTooltip:
+        'เมื่อปิด ทรัพยากร MCP ที่เลือกไว้จะไม่ถูกใส่เข้าไปในบริบทของโมเดล',
+      noMCPResourcesAvailable: 'ไม่มีทรัพยากร MCP ที่พร้อมใช้งาน',
+      selectKnowledgeBases: 'เลือกคลังความรู้',
     },
     debugDialog: {
       title: 'แชท Pipeline',

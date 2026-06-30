@@ -427,13 +427,14 @@ export default function PipelineFormComponent({
     const forcedBoxTemplate =
       systemInfo.limitation?.force_box_session_id_template || '';
     const boxScopeForced = !!forcedBoxTemplate;
-    const stageSystemContext =
-      stage.name === 'local-agent'
-        ? {
-            box_available: boxAvailable,
-            box_scope_editable: boxAvailable && !boxScopeForced,
-          }
-        : undefined;
+    const isLocalAgentStage = formName === 'ai' && stage.name === 'local-agent';
+    const stageSystemContext = isLocalAgentStage
+      ? {
+          box_available: boxAvailable,
+          box_scope_editable: boxAvailable && !boxScopeForced,
+          pipeline_id: pipelineId,
+        }
+      : undefined;
 
     // When the deployment pins every pipeline to a fixed sandbox scope (SaaS
     // ``force_box_session_id_template``), the Sandbox Scope selector is locked.
@@ -446,12 +447,26 @@ export default function PipelineFormComponent({
     const stageInitialValues: Record<string, any> =
       (form.watch(formName) as Record<string, any>)?.[stage.name] || {};
     const effectiveInitialValues =
-      stage.name === 'local-agent' && boxScopeForced
+      isLocalAgentStage && boxScopeForced
         ? {
             ...stageInitialValues,
             'box-session-id-template': forcedBoxTemplate,
           }
         : stageInitialValues;
+    const emitStageValues = (values: object) => {
+      if (!isLocalAgentStage) {
+        handleDynamicFormEmit(formName, stage.name, values);
+        return;
+      }
+
+      const latestStageValues =
+        ((form.getValues(formName) as Record<string, any>) || {})[stage.name] ||
+        {};
+      handleDynamicFormEmit(formName, stage.name, {
+        ...latestStageValues,
+        ...values,
+      });
+    };
 
     return (
       <Card key={stage.name}>
@@ -467,9 +482,7 @@ export default function PipelineFormComponent({
           <DynamicFormComponent
             itemConfigList={stage.config}
             initialValues={effectiveInitialValues}
-            onSubmit={(values) => {
-              handleDynamicFormEmit(formName, stage.name, values);
-            }}
+            onSubmit={emitStageValues}
             systemContext={stageSystemContext}
           />
         </CardContent>

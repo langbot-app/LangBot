@@ -25,6 +25,21 @@ class PreProcessor(stage.PipelineStage):
         - use_funcs
     """
 
+    @staticmethod
+    def _filter_selected_tools(
+        tools: list,
+        local_agent_config: dict,
+    ) -> list:
+        if local_agent_config.get('enable-all-tools', True) is not False:
+            return tools
+
+        selected_tools = local_agent_config.get('tools', [])
+        if not isinstance(selected_tools, list):
+            return []
+
+        selected_tool_names = {tool for tool in selected_tools if isinstance(tool, str)}
+        return [tool for tool in tools if tool.name in selected_tool_names]
+
     async def process(
         self,
         query: pipeline_query.Query,
@@ -32,6 +47,7 @@ class PreProcessor(stage.PipelineStage):
     ) -> entities.StageProcessResult:
         """Process"""
         selected_runner = query.pipeline_config['ai']['runner']['runner']
+        local_agent_config = query.pipeline_config.get('ai', {}).get('local-agent', {})
         include_skill_authoring = (
             selected_runner == 'local-agent' and getattr(self.ap, 'skill_service', None) is not None
         )
@@ -43,7 +59,7 @@ class PreProcessor(stage.PipelineStage):
         if selected_runner == 'local-agent':
             # Read model config — new format is { primary: str, fallbacks: [str] },
             # but handle legacy plain string for backward compatibility
-            model_config = query.pipeline_config['ai']['local-agent'].get('model', {})
+            model_config = local_agent_config.get('model', {})
             if isinstance(model_config, str):
                 # Legacy format: plain UUID string
                 primary_uuid = model_config
@@ -114,12 +130,13 @@ class PreProcessor(stage.PipelineStage):
                     bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
                     bound_mcp_servers = query.variables.get('_pipeline_bound_mcp_servers', None)
                     include_mcp_resource_tools = query.variables.get('_pipeline_mcp_resource_agent_read_enabled', True)
-                    query.use_funcs = await self.ap.tool_mgr.get_all_tools(
+                    all_tools = await self.ap.tool_mgr.get_all_tools(
                         bound_plugins,
                         bound_mcp_servers,
                         include_skill_authoring=include_skill_authoring,
                         include_mcp_resource_tools=include_mcp_resource_tools,
                     )
+                    query.use_funcs = self._filter_selected_tools(all_tools, local_agent_config)
 
                     self.ap.logger.debug(f'Bound plugins: {bound_plugins}')
                     self.ap.logger.debug(f'Bound MCP servers: {bound_mcp_servers}')
@@ -131,12 +148,13 @@ class PreProcessor(stage.PipelineStage):
                 bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
                 bound_mcp_servers = query.variables.get('_pipeline_bound_mcp_servers', None)
                 include_mcp_resource_tools = query.variables.get('_pipeline_mcp_resource_agent_read_enabled', True)
-                query.use_funcs = await self.ap.tool_mgr.get_all_tools(
+                all_tools = await self.ap.tool_mgr.get_all_tools(
                     bound_plugins,
                     bound_mcp_servers,
                     include_skill_authoring=include_skill_authoring,
                     include_mcp_resource_tools=include_mcp_resource_tools,
                 )
+                query.use_funcs = self._filter_selected_tools(all_tools, local_agent_config)
 
         sender_name = ''
 

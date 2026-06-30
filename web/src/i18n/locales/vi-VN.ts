@@ -946,6 +946,40 @@ const viVN = {
       addSkill: 'Thêm kỹ năng',
       selectSkills: 'Chọn kỹ năng',
       noSkillsAvailable: 'Không có kỹ năng khả dụng',
+      mcpServersScopeTooltip:
+        'Tại đây chỉ kiểm soát máy chủ MCP được liên kết với Pipeline. Công cụ và tài nguyên MCP cụ thể được chọn trong AI Feature > Local Agent.',
+      enableAllMCPServersTooltip:
+        'Khi bật, mọi máy chủ MCP đã cấu hình và bật sẽ trở thành ứng viên cho công cụ và tài nguyên MCP trong AI Feature.',
+    },
+    localAgent: {
+      toolsTitle: 'Công cụ',
+      toolsDescription:
+        'Chọn công cụ plugin, MCP và công cụ tích hợp sẵn cho Local Agent này.',
+      toolsScopeTooltip:
+        'Công cụ MCP chỉ đến từ máy chủ MCP đã liên kết trong Tiện ích mở rộng. Hãy liên kết máy chủ tại đó trước nếu muốn chọn thêm tại đây.',
+      enableAllTools: 'Bật tất cả công cụ',
+      allToolsEnabled: 'Tất cả công cụ khả dụng đã được bật',
+      noToolsSelected: 'Chưa chọn công cụ nào',
+      editTools: 'Sửa công cụ',
+      builtinTools: 'Công cụ tích hợp sẵn',
+      pluginTools: 'Công cụ plugin',
+      skillTools: 'Công cụ kỹ năng',
+      mcpTools: 'Công cụ MCP',
+      mcpToolsScopeTooltip:
+        'Tại đây chỉ hiển thị công cụ từ máy chủ MCP hiện được cho phép trong Tiện ích mở rộng.',
+      selectTools: 'Chọn công cụ',
+      resourcesTitle: 'Tài nguyên',
+      resourcesDescription:
+        'Chọn tài nguyên MCP và kho tri thức cho Local Agent này.',
+      knowledgeBases: 'Kho tri thức',
+      mcpResources: 'Tài nguyên MCP',
+      mcpResourcesScopeTooltip:
+        'Tại đây chỉ hiển thị tài nguyên từ máy chủ MCP hiện được cho phép trong Tiện ích mở rộng.',
+      enableMCPResourceRead: 'Cho phép mô hình đọc tài nguyên MCP',
+      mcpResourceReadTooltip:
+        'Khi tắt, tài nguyên MCP đã chọn sẽ không được đưa vào ngữ cảnh mô hình.',
+      noMCPResourcesAvailable: 'Không có tài nguyên MCP nào',
+      selectKnowledgeBases: 'Chọn kho tri thức',
     },
     debugDialog: {
       title: 'Trò chuyện Pipeline',

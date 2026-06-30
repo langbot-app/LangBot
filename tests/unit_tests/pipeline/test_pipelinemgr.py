@@ -162,3 +162,46 @@ async def test_runtime_pipeline_execute(mock_app, sample_query):
 
     # Verify stage was called
     mock_stage.process.assert_called_once()
+
+
+def test_runtime_pipeline_prefers_local_agent_mcp_resources(mock_app):
+    """Local Agent resource selection should override legacy extension prefs."""
+    pipelinemgr = get_pipelinemgr_module()
+    persistence_pipeline = get_persistence_pipeline_module()
+
+    pipeline_entity = Mock(spec=persistence_pipeline.LegacyPipeline)
+    pipeline_entity.config = {
+        'ai': {
+            'local-agent': {
+                'mcp-resources': [{'server_uuid': 'srv-new', 'uri': 'file:///new.md'}],
+                'mcp-resource-agent-read-enabled': False,
+            }
+        }
+    }
+    pipeline_entity.extensions_preferences = {
+        'mcp_resources': [{'server_uuid': 'srv-old', 'uri': 'file:///old.md'}],
+        'mcp_resource_agent_read_enabled': True,
+    }
+
+    runtime_pipeline = pipelinemgr.RuntimePipeline(mock_app, pipeline_entity, [])
+
+    assert runtime_pipeline.mcp_resource_attachments == [{'server_uuid': 'srv-new', 'uri': 'file:///new.md'}]
+    assert runtime_pipeline.mcp_resource_agent_read_enabled is False
+
+
+def test_runtime_pipeline_falls_back_to_extension_mcp_resources(mock_app):
+    """Existing extension prefs remain compatible until a Local Agent value exists."""
+    pipelinemgr = get_pipelinemgr_module()
+    persistence_pipeline = get_persistence_pipeline_module()
+
+    pipeline_entity = Mock(spec=persistence_pipeline.LegacyPipeline)
+    pipeline_entity.config = {'ai': {'local-agent': {}}}
+    pipeline_entity.extensions_preferences = {
+        'mcp_resources': [{'server_uuid': 'srv-old', 'uri': 'file:///old.md'}],
+        'mcp_resource_agent_read_enabled': False,
+    }
+
+    runtime_pipeline = pipelinemgr.RuntimePipeline(mock_app, pipeline_entity, [])
+
+    assert runtime_pipeline.mcp_resource_attachments == [{'server_uuid': 'srv-old', 'uri': 'file:///old.md'}]
+    assert runtime_pipeline.mcp_resource_agent_read_enabled is False

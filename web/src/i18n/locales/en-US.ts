@@ -943,6 +943,40 @@ const enUS = {
       addSkill: 'Add Skill',
       selectSkills: 'Select Skills',
       noSkillsAvailable: 'No skills available',
+      mcpServersScopeTooltip:
+        'This only controls which MCP servers are bound to the pipeline. Choose exact MCP tools and resources in AI Feature > Local Agent.',
+      enableAllMCPServersTooltip:
+        'When enabled, all configured and enabled MCP servers become candidates for MCP tools and resources in AI Feature.',
+    },
+    localAgent: {
+      toolsTitle: 'Tools',
+      toolsDescription:
+        'Select plugin, MCP, and built-in tools available to this Local Agent.',
+      toolsScopeTooltip:
+        'MCP tools only come from MCP servers bound in Extensions. Bind another MCP server there to make its tools selectable here.',
+      enableAllTools: 'Enable all tools',
+      allToolsEnabled: 'All available tools are enabled',
+      noToolsSelected: 'No tools selected',
+      editTools: 'Edit tools',
+      builtinTools: 'Built-in tools',
+      pluginTools: 'Plugin tools',
+      skillTools: 'Skill tools',
+      mcpTools: 'MCP tools',
+      mcpToolsScopeTooltip:
+        'Only tools from MCP servers currently allowed in Extensions are shown here.',
+      selectTools: 'Select tools',
+      resourcesTitle: 'Resources',
+      resourcesDescription:
+        'Select MCP resources and knowledge bases available to this Local Agent.',
+      knowledgeBases: 'Knowledge bases',
+      mcpResources: 'MCP resources',
+      mcpResourcesScopeTooltip:
+        'Only resources exposed by MCP servers currently allowed in Extensions are shown here.',
+      enableMCPResourceRead: 'Allow model to read MCP resources',
+      mcpResourceReadTooltip:
+        'When disabled, selected MCP resources are not injected into model context.',
+      noMCPResourcesAvailable: 'No MCP resources available',
+      selectKnowledgeBases: 'Select knowledge bases',
     },
     debugDialog: {
       title: 'Pipeline Chat',

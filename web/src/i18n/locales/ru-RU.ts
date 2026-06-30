@@ -954,6 +954,40 @@ const ruRU = {
       addSkill: 'Добавить навык',
       selectSkills: 'Выбрать навыки',
       noSkillsAvailable: 'Нет доступных навыков',
+      mcpServersScopeTooltip:
+        'Здесь задаётся только привязка MCP-серверов к конвейеру. Конкретные MCP-инструменты и ресурсы выбираются в AI Feature > Local Agent.',
+      enableAllMCPServersTooltip:
+        'Если включено, все настроенные и включённые MCP-серверы станут кандидатами для инструментов и ресурсов MCP в AI Feature.',
+    },
+    localAgent: {
+      toolsTitle: 'Инструменты',
+      toolsDescription:
+        'Выберите инструменты плагинов, MCP и встроенные инструменты для этого Local Agent.',
+      toolsScopeTooltip:
+        'MCP-инструменты берутся только из MCP-серверов, привязанных в Расширениях. Чтобы добавить источник, сначала привяжите там сервер.',
+      enableAllTools: 'Включить все инструменты',
+      allToolsEnabled: 'Все доступные инструменты включены',
+      noToolsSelected: 'Инструменты не выбраны',
+      editTools: 'Редактировать инструменты',
+      builtinTools: 'Встроенные инструменты',
+      pluginTools: 'Инструменты плагинов',
+      skillTools: 'Инструменты навыков',
+      mcpTools: 'Инструменты MCP',
+      mcpToolsScopeTooltip:
+        'Здесь показаны только инструменты MCP-серверов, разрешённых сейчас в Расширениях.',
+      selectTools: 'Выбрать инструменты',
+      resourcesTitle: 'Ресурсы',
+      resourcesDescription:
+        'Выберите MCP-ресурсы и базы знаний для этого Local Agent.',
+      knowledgeBases: 'Базы знаний',
+      mcpResources: 'MCP-ресурсы',
+      mcpResourcesScopeTooltip:
+        'Здесь показаны только ресурсы MCP-серверов, разрешённых сейчас в Расширениях.',
+      enableMCPResourceRead: 'Разрешить модели читать MCP-ресурсы',
+      mcpResourceReadTooltip:
+        'Если выключено, выбранные MCP-ресурсы не будут добавляться в контекст модели.',
+      noMCPResourcesAvailable: 'Нет доступных MCP-ресурсов',
+      selectKnowledgeBases: 'Выбрать базы знаний',
     },
     debugDialog: {
       title: 'Чат конвейера',

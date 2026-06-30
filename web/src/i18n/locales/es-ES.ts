@@ -961,6 +961,40 @@ const esES = {
       addSkill: 'Añadir skill',
       selectSkills: 'Seleccionar skills',
       noSkillsAvailable: 'No hay skills disponibles',
+      mcpServersScopeTooltip:
+        'Aquí solo se controla qué servidores MCP se vinculan al Pipeline. Las herramientas y recursos MCP concretos se eligen en AI Feature > Local Agent.',
+      enableAllMCPServersTooltip:
+        'Al activarlo, todos los servidores MCP configurados y habilitados serán candidatos para herramientas y recursos MCP en AI Feature.',
+    },
+    localAgent: {
+      toolsTitle: 'Herramientas',
+      toolsDescription:
+        'Selecciona las herramientas de plugins, MCP e integradas disponibles para este Local Agent.',
+      toolsScopeTooltip:
+        'Las herramientas MCP solo provienen de servidores MCP vinculados en Extensiones. Vincula allí otro servidor para poder seleccionarlo aquí.',
+      enableAllTools: 'Activar todas las herramientas',
+      allToolsEnabled: 'Todas las herramientas disponibles están activadas',
+      noToolsSelected: 'No hay herramientas seleccionadas',
+      editTools: 'Editar herramientas',
+      builtinTools: 'Herramientas integradas',
+      pluginTools: 'Herramientas de plugin',
+      skillTools: 'Herramientas de skill',
+      mcpTools: 'Herramientas MCP',
+      mcpToolsScopeTooltip:
+        'Aquí solo se muestran herramientas de servidores MCP permitidos actualmente en Extensiones.',
+      selectTools: 'Seleccionar herramientas',
+      resourcesTitle: 'Recursos',
+      resourcesDescription:
+        'Selecciona los recursos MCP y bases de conocimiento disponibles para este Local Agent.',
+      knowledgeBases: 'Bases de conocimiento',
+      mcpResources: 'Recursos MCP',
+      mcpResourcesScopeTooltip:
+        'Aquí solo se muestran recursos expuestos por servidores MCP permitidos actualmente en Extensiones.',
+      enableMCPResourceRead: 'Permitir que el modelo lea recursos MCP',
+      mcpResourceReadTooltip:
+        'Si se desactiva, los recursos MCP seleccionados no se inyectarán en el contexto del modelo.',
+      noMCPResourcesAvailable: 'No hay recursos MCP disponibles',
+      selectKnowledgeBases: 'Seleccionar bases de conocimiento',
     },
     debugDialog: {
       title: 'Chat del Pipeline',

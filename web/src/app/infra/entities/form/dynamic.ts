@@ -67,6 +67,8 @@ export enum DynamicFormItemType {
   PLUGIN_SELECTOR = 'plugin-selector',
   BOT_SELECTOR = 'bot-selector',
   TOOLS_SELECTOR = 'tools-selector',
+  RICH_TOOLS_SELECTOR = 'rich-tools-selector',
+  RESOURCES_SELECTOR = 'resources-selector',
   WEBHOOK_URL = 'webhook-url',
   EMBED_CODE = 'embed-code',
   QR_CODE_LOGIN = 'qr-code-login',

@@ -76,6 +76,42 @@ class ToolManager:
 
         return all_functions
 
+    async def get_tool_catalog(
+        self,
+        bound_plugins: list[str] | None = None,
+        bound_mcp_servers: list[str] | None = None,
+        include_skill_authoring: bool = False,
+        include_mcp_resource_tools: bool = False,
+    ) -> list[dict[str, typing.Any]]:
+        catalog: list[dict[str, typing.Any]] = []
+
+        def append_tools(source: str, source_name: str, tools: list[resource_tool.LLMTool]) -> None:
+            for tool in tools:
+                catalog.append(
+                    {
+                        'name': tool.name,
+                        'description': tool.description,
+                        'human_desc': tool.human_desc,
+                        'parameters': tool.parameters,
+                        'source': source,
+                        'source_name': source_name,
+                    }
+                )
+
+        append_tools('builtin', 'LangBot', await self.native_tool_loader.get_tools())
+        if include_skill_authoring:
+            append_tools('builtin', 'LangBot', await self.skill_tool_loader.get_tools())
+        catalog.extend(await self.plugin_tool_loader.get_tool_catalog(bound_plugins))
+
+        if self.mcp_tool_loader:
+            for item in await self.mcp_tool_loader.get_tool_catalog(
+                bound_mcp_servers,
+                include_resource_tools=include_mcp_resource_tools,
+            ):
+                catalog.append(item)
+
+        return catalog
+
     async def get_tool_by_name(self, name: str) -> tool_loader.ToolLookupResult | None:
         """Get tool by name from any active loader."""
         for active_loader in (

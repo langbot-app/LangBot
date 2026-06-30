@@ -118,20 +118,6 @@ stages:
         default:
           - role: system
             content: "You are a helpful assistant."
-      - name: knowledge-bases
-        label:
-          en_US: Knowledge Bases
-          zh_Hans: 知识库
-        description:
-          en_US: Configure the knowledge bases to use for the agent, if not selected, the agent will directly use the LLM to reply
-          zh_Hans: 配置用于提升回复质量的知识库，若不选择，则直接使用大模型回复
-        type: knowledge-base-multi-selector
-        required: false
-        default: []
-        show_if:
-          field: __system.is_wizard
-          operator: neq
-          value: true
       - name: box-session-id-template
         label:
           en_US: Sandbox Scope
@@ -254,6 +240,34 @@ stages:
           field: rerank-model
           operator: neq
           value: ''
+      - name: tools
+        label:
+          en_US: Tools
+          zh_Hans: 工具
+        description:
+          en_US: Select plugin, MCP, and built-in tools available to this Local Agent.
+          zh_Hans: 选择此内置 Agent 可以调用的插件、MCP 和内置工具。
+        type: rich-tools-selector
+        required: false
+        default: []
+        show_if:
+          field: __system.is_wizard
+          operator: neq
+          value: true
+      - name: knowledge-bases
+        label:
+          en_US: Resources
+          zh_Hans: 资源
+        description:
+          en_US: Select MCP resources and knowledge bases available to this Local Agent.
+          zh_Hans: 选择此内置 Agent 可以读取的 MCP 资源和知识库。
+        type: resources-selector
+        required: false
+        default: []
+        show_if:
+          field: __system.is_wizard
+          operator: neq
+          value: true
   - name: dify-service-api
     label:
       en_US: Dify Service API

@@ -1236,6 +1236,46 @@ class MCPLoader(loader.ToolLoader):
 
         return all_functions
 
+    async def get_tool_catalog(
+        self,
+        bound_mcp_servers: list[str] | None = None,
+        *,
+        include_resource_tools: bool = False,
+    ) -> list[dict[str, typing.Any]]:
+        items: list[dict[str, typing.Any]] = []
+
+        for session in self.sessions.values():
+            if bound_mcp_servers is not None and session.server_uuid not in bound_mcp_servers:
+                continue
+            for tool in session.get_tools():
+                items.append(
+                    {
+                        'name': tool.name,
+                        'description': tool.description,
+                        'human_desc': tool.human_desc,
+                        'parameters': tool.parameters,
+                        'source': 'mcp',
+                        'source_name': session.server_name,
+                        'source_id': session.server_uuid,
+                    }
+                )
+
+        if include_resource_tools and self._eligible_resource_sessions_for_bound(bound_mcp_servers):
+            for tool in self._mcp_synthetic_resource_tools():
+                items.append(
+                    {
+                        'name': tool.name,
+                        'description': tool.description,
+                        'human_desc': tool.human_desc,
+                        'parameters': tool.parameters,
+                        'source': 'mcp',
+                        'source_name': 'MCP resources',
+                        'source_id': '',
+                    }
+                )
+
+        return items
+
     async def has_tool(self, name: str) -> bool:
         """检查工具是否存在"""
         if name in (MCP_TOOL_LIST_RESOURCES, MCP_TOOL_READ_RESOURCE):
@@ -1344,6 +1384,9 @@ class MCPLoader(loader.ToolLoader):
         default_max_bytes: int = MCP_RESOURCE_CONTEXT_MAX_BYTES,
     ) -> str:
         """Build host-controlled MCP resource context for the current query."""
+        if getattr(query, 'variables', {}).get('_pipeline_mcp_resource_agent_read_enabled', True) is False:
+            return ''
+
         attachments = (query.variables or {}).get('_pipeline_mcp_resource_attachments', [])
         if not isinstance(attachments, list) or not attachments:
             return ''

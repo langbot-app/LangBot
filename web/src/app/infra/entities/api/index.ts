@@ -678,6 +678,9 @@ export interface PluginTool {
   description: string;
   human_desc: string;
   parameters: object;
+  source?: 'builtin' | 'plugin' | 'mcp' | 'skill';
+  source_name?: string;
+  source_id?: string;
 }
 
 export interface ApiRespTools {

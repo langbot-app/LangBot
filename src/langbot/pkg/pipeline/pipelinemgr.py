@@ -96,8 +96,15 @@ class RuntimePipeline:
         extensions_prefs = pipeline_entity.extensions_preferences or {}
         self.enable_all_plugins = extensions_prefs.get('enable_all_plugins', True)
         self.enable_all_mcp_servers = extensions_prefs.get('enable_all_mcp_servers', True)
-        self.mcp_resource_attachments = extensions_prefs.get('mcp_resources', [])
-        self.mcp_resource_agent_read_enabled = extensions_prefs.get('mcp_resource_agent_read_enabled', True)
+        local_agent_config = (pipeline_entity.config or {}).get('ai', {}).get('local-agent', {})
+        self.mcp_resource_attachments = local_agent_config.get(
+            'mcp-resources',
+            extensions_prefs.get('mcp_resources', []),
+        )
+        self.mcp_resource_agent_read_enabled = local_agent_config.get(
+            'mcp-resource-agent-read-enabled',
+            extensions_prefs.get('mcp_resource_agent_read_enabled', True),
+        )
 
         if self.enable_all_plugins:
             # None indicates to use all available plugins

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import quart
+
 from ... import group
 
 
@@ -9,20 +11,30 @@ class ToolsRouterGroup(group.RouterGroup):
         @self.route('', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:
             """获取所有可用工具列表"""
-            tools = await self.ap.tool_mgr.get_all_tools()
+            pipeline_uuid = quart.request.args.get('pipeline_uuid') or quart.request.args.get('pipeline_id')
+            bound_plugins: list[str] | None = None
+            bound_mcp_servers: list[str] | None = None
 
-            tool_list = []
-            for tool in tools:
-                tool_list.append(
-                    {
-                        'name': tool.name,
-                        'description': tool.description,
-                        'human_desc': tool.human_desc,
-                        'parameters': tool.parameters,
-                    }
-                )
+            if pipeline_uuid:
+                pipeline = await self.ap.pipeline_service.get_pipeline(pipeline_uuid)
+                if pipeline is None:
+                    return self.http_status(404, -1, 'pipeline not found')
 
-            return self.success(data={'tools': tool_list})
+                extensions_prefs = pipeline.get('extensions_preferences', {}) or {}
+                if not extensions_prefs.get('enable_all_plugins', True):
+                    bound_plugins = [
+                        f'{plugin.get("author", "")}/{plugin.get("name", "")}'
+                        for plugin in extensions_prefs.get('plugins', [])
+                        if isinstance(plugin, dict) and plugin.get('name')
+                    ]
+                if not extensions_prefs.get('enable_all_mcp_servers', True):
+                    bound_mcp_servers = [
+                        server for server in (extensions_prefs.get('mcp_servers', []) or []) if isinstance(server, str)
+                    ]
+
+            return self.success(
+                data={'tools': await self.ap.tool_mgr.get_tool_catalog(bound_plugins, bound_mcp_servers)}
+            )
 
         @self.route('/<tool_name>', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
         async def _(tool_name: str) -> str:

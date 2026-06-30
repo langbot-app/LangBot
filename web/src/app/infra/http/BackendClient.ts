@@ -299,7 +299,7 @@ export class BackendClient extends BaseHttpClient {
     enable_all_mcp_servers: boolean = true,
     bound_skills: string[] = [],
     enable_all_skills: boolean = true,
-    bound_mcp_resources: Array<{
+    bound_mcp_resources?: Array<{
       server_uuid?: string;
       server_name?: string;
       uri: string;
@@ -307,19 +307,24 @@ export class BackendClient extends BaseHttpClient {
       enabled?: boolean;
       max_bytes?: number;
       max_tokens?: number;
-    }> = [],
-    mcp_resource_agent_read_enabled: boolean = true,
+    }>,
+    mcp_resource_agent_read_enabled?: boolean,
   ): Promise<object> {
-    return this.put(`/api/v1/pipelines/${uuid}/extensions`, {
+    const payload: Record<string, unknown> = {
       bound_plugins,
       bound_mcp_servers,
       enable_all_plugins,
       enable_all_mcp_servers,
       bound_skills,
       enable_all_skills,
-      bound_mcp_resources,
-      mcp_resource_agent_read_enabled,
-    });
+    };
+    if (bound_mcp_resources !== undefined) {
+      payload.bound_mcp_resources = bound_mcp_resources;
+    }
+    if (mcp_resource_agent_read_enabled !== undefined) {
+      payload.mcp_resource_agent_read_enabled = mcp_resource_agent_read_enabled;
+    }
+    return this.put(`/api/v1/pipelines/${uuid}/extensions`, payload);
   }
 
   // ============ WebSocket Chat API ============
@@ -868,8 +873,11 @@ export class BackendClient extends BaseHttpClient {
 
   // ========== Tools ==========
 
-  public getTools(): Promise<ApiRespTools> {
-    return this.get('/api/v1/tools');
+  public getTools(pipelineId?: string): Promise<ApiRespTools> {
+    return this.get(
+      '/api/v1/tools',
+      pipelineId ? { pipeline_uuid: pipelineId } : undefined,
+    );
   }
 
   public getToolDetail(toolName: string): Promise<ApiRespToolDetail> {

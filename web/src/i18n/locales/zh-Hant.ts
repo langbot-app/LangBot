@@ -903,6 +903,38 @@ const zhHant = {
       addSkill: '新增技能',
       selectSkills: '選擇技能',
       noSkillsAvailable: '暫無可用技能',
+      mcpServersScopeTooltip:
+        '這裡僅控制此流程線綁定哪些 MCP 伺服器；具體 MCP 工具和資源在 AI 能力的內建 Agent 表單中選擇。',
+      enableAllMCPServersTooltip:
+        '啟用後，所有已配置且啟用的 MCP 伺服器都會進入 AI 能力中的 MCP 工具和資源候選範圍。',
+    },
+    localAgent: {
+      toolsTitle: '工具',
+      toolsDescription: '選擇此內建 Agent 可以調用的插件、MCP 和內建工具。',
+      toolsScopeTooltip:
+        'MCP 工具只會從擴展集成中已綁定的 MCP 伺服器裡出現；如需增加 MCP 工具來源，請先到擴展集成綁定對應伺服器。',
+      enableAllTools: '啟用所有工具',
+      allToolsEnabled: '已啟用所有可用工具',
+      noToolsSelected: '未選擇任何工具',
+      editTools: '編輯工具',
+      builtinTools: '內建工具',
+      pluginTools: '插件工具',
+      skillTools: '技能工具',
+      mcpTools: 'MCP 工具',
+      mcpToolsScopeTooltip:
+        '這裡僅展示擴展集成目前允許的 MCP 伺服器提供的工具。',
+      selectTools: '選擇工具',
+      resourcesTitle: '資源',
+      resourcesDescription: '選擇此內建 Agent 可以讀取的 MCP 資源和知識庫。',
+      knowledgeBases: '知識庫',
+      mcpResources: 'MCP 資源',
+      mcpResourcesScopeTooltip:
+        '這裡僅展示擴展集成目前允許的 MCP 伺服器暴露的資源。',
+      enableMCPResourceRead: '允許模型讀取 MCP 資源',
+      mcpResourceReadTooltip:
+        '關閉後，即使已選擇資源，也不會把 MCP 資源內容注入給模型。',
+      noMCPResourcesAvailable: '暫無可用 MCP 資源',
+      selectKnowledgeBases: '選擇知識庫',
     },
     debugDialog: {
       title: '流程線對話',

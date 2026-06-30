@@ -948,6 +948,40 @@ const jaJP = {
       addSkill: 'スキルを追加',
       selectSkills: 'スキルを選択',
       noSkillsAvailable: '利用可能なスキルがありません',
+      mcpServersScopeTooltip:
+        'ここでは、このパイプラインに紐付ける MCP サーバーだけを管理します。個別の MCP ツールとリソースは AI 機能の Local Agent で選択します。',
+      enableAllMCPServersTooltip:
+        '有効にすると、設定済みで有効なすべての MCP サーバーが AI 機能の MCP ツールとリソース候補になります。',
+    },
+    localAgent: {
+      toolsTitle: 'ツール',
+      toolsDescription:
+        'この Local Agent が使用できるプラグイン、MCP、組み込みツールを選択します。',
+      toolsScopeTooltip:
+        'MCP ツールは拡張機能で紐付けられた MCP サーバーからのみ表示されます。追加するには先に拡張機能でサーバーを紐付けてください。',
+      enableAllTools: 'すべてのツールを有効化',
+      allToolsEnabled: '利用可能なすべてのツールが有効です',
+      noToolsSelected: 'ツールが選択されていません',
+      editTools: 'ツールを編集',
+      builtinTools: '組み込みツール',
+      pluginTools: 'プラグインツール',
+      skillTools: 'スキルツール',
+      mcpTools: 'MCP ツール',
+      mcpToolsScopeTooltip:
+        '拡張機能で現在許可されている MCP サーバーのツールだけが表示されます。',
+      selectTools: 'ツールを選択',
+      resourcesTitle: 'リソース',
+      resourcesDescription:
+        'この Local Agent が読み取れる MCP リソースとナレッジベースを選択します。',
+      knowledgeBases: 'ナレッジベース',
+      mcpResources: 'MCP リソース',
+      mcpResourcesScopeTooltip:
+        '拡張機能で現在許可されている MCP サーバーのリソースだけが表示されます。',
+      enableMCPResourceRead: 'モデルによる MCP リソース読み取りを許可',
+      mcpResourceReadTooltip:
+        '無効にすると、選択済みの MCP リソースもモデルコンテキストに注入されません。',
+      noMCPResourcesAvailable: '利用可能な MCP リソースがありません',
+      selectKnowledgeBases: 'ナレッジベースを選択',
     },
     debugDialog: {
       title: 'パイプラインのチャット',
