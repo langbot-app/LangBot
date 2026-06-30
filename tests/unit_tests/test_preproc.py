@@ -118,7 +118,12 @@ async def test_preproc_enables_skill_authoring_tools_when_skill_service_availabl
     result = await stage.process(_make_query(), 'PreProcessor')
 
     assert result.result_type == entities_module.ResultType.CONTINUE
-    app.tool_mgr.get_all_tools.assert_awaited_once_with(None, None, include_skill_authoring=True)
+    app.tool_mgr.get_all_tools.assert_awaited_once_with(
+        None,
+        None,
+        include_skill_authoring=True,
+        include_mcp_resource_tools=True,
+    )
 
 
 @pytest.mark.asyncio
@@ -131,7 +136,32 @@ async def test_preproc_disables_skill_authoring_tools_when_skill_service_missing
     result = await stage.process(_make_query(), 'PreProcessor')
 
     assert result.result_type == entities_module.ResultType.CONTINUE
-    app.tool_mgr.get_all_tools.assert_awaited_once_with(None, None, include_skill_authoring=False)
+    app.tool_mgr.get_all_tools.assert_awaited_once_with(
+        None,
+        None,
+        include_skill_authoring=False,
+        include_mcp_resource_tools=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_preproc_disables_mcp_resource_tools_when_agent_reading_is_disabled():
+    preproc_module, entities_module = _import_preproc_modules()
+
+    app = _make_app(skill_service=SimpleNamespace())
+    stage = preproc_module.PreProcessor(app)
+    query = _make_query()
+    query.variables['_pipeline_mcp_resource_agent_read_enabled'] = False
+
+    result = await stage.process(query, 'PreProcessor')
+
+    assert result.result_type == entities_module.ResultType.CONTINUE
+    app.tool_mgr.get_all_tools.assert_awaited_once_with(
+        None,
+        None,
+        include_skill_authoring=True,
+        include_mcp_resource_tools=False,
+    )
 
 
 @pytest.mark.asyncio
