@@ -417,6 +417,30 @@ class LocalAgentRunner(runner.RequestRunner):
                     ce.text = final_user_message_text
                     break
 
+        mcp_loader = getattr(getattr(self.ap, 'tool_mgr', None), 'mcp_tool_loader', None)
+        if mcp_loader is not None:
+            resource_context = await mcp_loader.build_resource_context_for_query(query)
+            if resource_context:
+                resource_addition = (
+                    '\n\nMCP resource context selected by LangBot host:\n'
+                    f'{resource_context}\n\n'
+                    'Use this context as read-only reference material. If it conflicts with the user message, '
+                    'ask for clarification before taking external actions.'
+                )
+                if isinstance(user_message.content, str):
+                    user_message.content += resource_addition
+                elif isinstance(user_message.content, list):
+                    appended = False
+                    for ce in user_message.content:
+                        if ce.type == 'text':
+                            ce.text = (ce.text or '') + resource_addition
+                            appended = True
+                            break
+                    if not appended:
+                        user_message.content.append(
+                            provider_message.ContentElement.from_text(resource_addition.strip())
+                        )
+
         req_messages = self._build_request_messages(query, user_message)
 
         try:

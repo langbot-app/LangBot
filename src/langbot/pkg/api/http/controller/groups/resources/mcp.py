@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import quart
 import traceback
+from urllib.parse import unquote
 
 
 from ... import group
@@ -70,21 +71,46 @@ class MCPRouterGroup(group.RouterGroup):
         @self.route('/servers/<server_name>/resources', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
         async def _(server_name: str) -> str:
             """Get resources from an MCP server"""
+            server_name = unquote(server_name)
             try:
                 resources = await self.ap.mcp_service.get_mcp_server_resources(server_name)
-                return self.success(data={'resources': resources})
+                templates = await self.ap.mcp_service.get_mcp_server_resource_templates(server_name)
+                runtime_info = await self.ap.mcp_service.get_runtime_info(server_name)
+                return self.success(
+                    data={
+                        'resources': resources,
+                        'resource_templates': templates,
+                        'resource_capabilities': (runtime_info or {}).get('resource_capabilities', {}),
+                    }
+                )
             except Exception as e:
                 return self.http_status(500, -1, f'Failed to get resources: {str(e)}')
+
+        @self.route('/servers/<server_name>/resource-templates', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
+        async def _(server_name: str) -> str:
+            """Get resource templates from an MCP server"""
+            server_name = unquote(server_name)
+            try:
+                templates = await self.ap.mcp_service.get_mcp_server_resource_templates(server_name)
+                return self.success(data={'resource_templates': templates})
+            except Exception as e:
+                return self.http_status(500, -1, f'Failed to get resource templates: {str(e)}')
 
         @self.route('/servers/<server_name>/resources/read', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
         async def _(server_name: str) -> str:
             """Read a resource from an MCP server"""
+            server_name = unquote(server_name)
             data = await quart.request.json
             uri = data.get('uri')
             if not uri:
                 return self.http_status(400, -1, 'URI is required')
             try:
-                contents = await self.ap.mcp_service.read_mcp_server_resource(server_name, uri)
-                return self.success(data={'contents': contents})
+                envelope = await self.ap.mcp_service.read_mcp_server_resource_envelope(
+                    server_name,
+                    uri,
+                    max_bytes=data.get('max_bytes'),
+                    include_blob=bool(data.get('include_blob', False)),
+                )
+                return self.success(data=envelope)
             except Exception as e:
                 return self.http_status(500, -1, f'Failed to read resource: {str(e)}')

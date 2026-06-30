@@ -90,6 +90,56 @@ class TestMCPServiceGetRuntimeInfo:
         assert result is None
 
 
+class TestMCPServiceResources:
+    """Tests for MCP resource helpers."""
+
+    async def test_get_resource_templates_delegates_to_loader(self):
+        ap = SimpleNamespace()
+        ap.tool_mgr = SimpleNamespace()
+        ap.tool_mgr.mcp_tool_loader = SimpleNamespace()
+        ap.tool_mgr.mcp_tool_loader.get_resource_templates = AsyncMock(
+            return_value=[{'uri_template': 'file:///{path}', 'name': 'files'}]
+        )
+
+        service = MCPService(ap)
+
+        result = await service.get_mcp_server_resource_templates('docs')
+
+        assert result == [{'uri_template': 'file:///{path}', 'name': 'files'}]
+        ap.tool_mgr.mcp_tool_loader.get_resource_templates.assert_awaited_once_with('docs')
+
+    async def test_read_resource_envelope_uses_ui_preview_source(self):
+        ap = SimpleNamespace()
+        ap.tool_mgr = SimpleNamespace()
+        ap.tool_mgr.mcp_tool_loader = SimpleNamespace()
+        ap.tool_mgr.mcp_tool_loader.read_resource_envelope = AsyncMock(
+            return_value={
+                'server_name': 'docs',
+                'uri': 'file:///README.md',
+                'contents': [],
+                'source': 'ui_preview',
+            }
+        )
+
+        service = MCPService(ap)
+
+        result = await service.read_mcp_server_resource_envelope(
+            'docs',
+            'file:///README.md',
+            max_bytes=4096,
+            include_blob=True,
+        )
+
+        assert result['source'] == 'ui_preview'
+        ap.tool_mgr.mcp_tool_loader.read_resource_envelope.assert_awaited_once_with(
+            'docs',
+            'file:///README.md',
+            include_blob=True,
+            source='ui_preview',
+            max_bytes=4096,
+        )
+
+
 class TestMCPServiceGetMCPServers:
     """Tests for get_mcp_servers method."""
 

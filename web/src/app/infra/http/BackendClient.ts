@@ -271,10 +271,20 @@ export class BackendClient extends BaseHttpClient {
     enable_all_plugins: boolean;
     enable_all_mcp_servers: boolean;
     enable_all_skills: boolean;
+    mcp_resource_agent_read_enabled: boolean;
     bound_plugins: Array<{ author: string; name: string }>;
     available_plugins: Plugin[];
     bound_mcp_servers: string[];
     available_mcp_servers: MCPServer[];
+    bound_mcp_resources: Array<{
+      server_uuid?: string;
+      server_name?: string;
+      uri: string;
+      mode?: string;
+      enabled?: boolean;
+      max_bytes?: number;
+      max_tokens?: number;
+    }>;
     bound_skills: string[];
     available_skills: Skill[];
   }> {
@@ -289,6 +299,16 @@ export class BackendClient extends BaseHttpClient {
     enable_all_mcp_servers: boolean = true,
     bound_skills: string[] = [],
     enable_all_skills: boolean = true,
+    bound_mcp_resources: Array<{
+      server_uuid?: string;
+      server_name?: string;
+      uri: string;
+      mode?: string;
+      enabled?: boolean;
+      max_bytes?: number;
+      max_tokens?: number;
+    }> = [],
+    mcp_resource_agent_read_enabled: boolean = true,
   ): Promise<object> {
     return this.put(`/api/v1/pipelines/${uuid}/extensions`, {
       bound_plugins,
@@ -297,6 +317,8 @@ export class BackendClient extends BaseHttpClient {
       enable_all_mcp_servers,
       bound_skills,
       enable_all_skills,
+      bound_mcp_resources,
+      mcp_resource_agent_read_enabled,
     });
   }
 
@@ -910,16 +932,23 @@ export class BackendClient extends BaseHttpClient {
   public getMCPServerResources(
     serverName: string,
   ): Promise<ApiRespMCPResources> {
-    return this.get(`/api/v1/mcp/servers/${serverName}/resources`);
+    return this.get(
+      `/api/v1/mcp/servers/${encodeURIComponent(serverName)}/resources`,
+    );
   }
 
   public readMCPServerResource(
     serverName: string,
     uri: string,
+    maxBytes?: number,
   ): Promise<ApiRespMCPResourceContents> {
-    return this.post(`/api/v1/mcp/servers/${serverName}/resources/read`, {
-      uri,
-    });
+    return this.post(
+      `/api/v1/mcp/servers/${encodeURIComponent(serverName)}/resources/read`,
+      {
+        uri,
+        max_bytes: maxBytes,
+      },
+    );
   }
 
   // ============ System API ============

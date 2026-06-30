@@ -59,6 +59,7 @@ class ToolManager:
         bound_plugins: list[str] | None = None,
         bound_mcp_servers: list[str] | None = None,
         include_skill_authoring: bool = False,
+        include_mcp_resource_tools: bool = True,
     ) -> list[resource_tool.LLMTool]:
         all_functions: list[resource_tool.LLMTool] = []
 
@@ -66,7 +67,12 @@ class ToolManager:
         if include_skill_authoring:
             all_functions.extend(await self.skill_tool_loader.get_tools())
         all_functions.extend(await self.plugin_tool_loader.get_tools(bound_plugins))
-        all_functions.extend(await self.mcp_tool_loader.get_tools(bound_mcp_servers))
+        all_functions.extend(
+            await self.mcp_tool_loader.get_tools(
+                bound_mcp_servers,
+                include_resource_tools=include_mcp_resource_tools,
+            )
+        )
 
         return all_functions
 

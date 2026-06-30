@@ -96,6 +96,8 @@ class RuntimePipeline:
         extensions_prefs = pipeline_entity.extensions_preferences or {}
         self.enable_all_plugins = extensions_prefs.get('enable_all_plugins', True)
         self.enable_all_mcp_servers = extensions_prefs.get('enable_all_mcp_servers', True)
+        self.mcp_resource_attachments = extensions_prefs.get('mcp_resources', [])
+        self.mcp_resource_agent_read_enabled = extensions_prefs.get('mcp_resource_agent_read_enabled', True)
 
         if self.enable_all_plugins:
             # None indicates to use all available plugins
@@ -116,6 +118,8 @@ class RuntimePipeline:
         # Store bound plugins and MCP servers in query for filtering
         query.variables['_pipeline_bound_plugins'] = self.bound_plugins
         query.variables['_pipeline_bound_mcp_servers'] = self.bound_mcp_servers
+        query.variables['_pipeline_mcp_resource_attachments'] = self.mcp_resource_attachments
+        query.variables['_pipeline_mcp_resource_agent_read_enabled'] = self.mcp_resource_agent_read_enabled
 
         # Record query start for monitoring
         try:

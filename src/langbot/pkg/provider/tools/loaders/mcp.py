@@ -3,6 +3,8 @@ from __future__ import annotations
 import base64
 import enum
 import json
+import re
+import time
 import typing
 from contextlib import AsyncExitStack
 import traceback
@@ -31,6 +33,30 @@ from .mcp_stdio import BoxStdioSessionRuntime, MCPServerBoxConfig, MCPSessionErr
 MCP_TOOL_LIST_RESOURCES = 'langbot_mcp_list_resources'
 MCP_TOOL_READ_RESOURCE = 'langbot_mcp_read_resource'
 
+MCP_RESOURCE_DISCOVERY_MAX_PAGES = 20
+MCP_RESOURCE_CACHE_TTL_SECONDS = 30
+MCP_RESOURCE_PREVIEW_MAX_BYTES = 64 * 1024
+MCP_RESOURCE_AGENT_READ_MAX_BYTES = 64 * 1024
+MCP_RESOURCE_AGENT_READ_MAX_TOKENS = 12000
+MCP_RESOURCE_CONTEXT_MAX_TOKENS = 8000
+MCP_RESOURCE_CONTEXT_MAX_BYTES = 96 * 1024
+MCP_RESOURCE_TRACE_QUERY_KEY = '_mcp_resource_reads'
+MCP_RESOURCE_LINKS_QUERY_KEY = '_mcp_resource_links'
+MCP_RESOURCE_CONTEXT_QUERY_KEY = '_mcp_resource_context'
+
+TEXT_LIKE_MIME_TYPES = {
+    'application/json',
+    'application/ld+json',
+    'application/xml',
+    'application/yaml',
+    'application/x-yaml',
+    'application/toml',
+    'application/javascript',
+    'application/typescript',
+    'application/sql',
+    'application/graphql',
+}
+
 MCP_LIST_RESOURCES_SCHEMA: dict[str, typing.Any] = {
     'type': 'object',
     'properties': {
@@ -51,11 +77,101 @@ MCP_READ_RESOURCE_SCHEMA: dict[str, typing.Any] = {
         },
         'uri': {
             'type': 'string',
-            'description': 'Resource URI from langbot_mcp_list_resources output, or from MCP documentation.',
+            'description': 'Resource URI from langbot_mcp_list_resources output or a listed resource template.',
         },
     },
     'required': ['server_name', 'uri'],
 }
+
+
+def _mcp_model_dump(obj: typing.Any) -> typing.Any:
+    if obj is None:
+        return None
+    if hasattr(obj, 'model_dump'):
+        return obj.model_dump(mode='json', by_alias=True, exclude_none=True)
+    if isinstance(obj, (str, int, float, bool)):
+        return obj
+    if isinstance(obj, list):
+        return [_mcp_model_dump(item) for item in obj]
+    if isinstance(obj, dict):
+        return {str(k): _mcp_model_dump(v) for k, v in obj.items()}
+    return str(obj)
+
+
+def _truncate_text(text: str, max_bytes: int, max_tokens: int | None = None) -> tuple[str, bool, int]:
+    raw = text.encode('utf-8')
+    original_bytes = len(raw)
+    truncated = False
+
+    if max_bytes > 0 and len(raw) > max_bytes:
+        raw = raw[:max_bytes]
+        text = raw.decode('utf-8', errors='ignore')
+        truncated = True
+
+    if max_tokens is not None and max_tokens > 0:
+        max_chars = max_tokens * 4
+        if len(text) > max_chars:
+            text = text[:max_chars]
+            truncated = True
+
+    return text, truncated, original_bytes
+
+
+def _blob_size(blob: str) -> int:
+    try:
+        return len(base64.b64decode(blob, validate=False))
+    except Exception:
+        return len(blob.encode('utf-8', errors='ignore'))
+
+
+def _resource_to_dict(resource: mcp_types.Resource | mcp_types.ResourceLink) -> dict:
+    return {
+        'uri': str(resource.uri),
+        'name': resource.name,
+        'title': resource.title or '',
+        'description': resource.description or '',
+        'mime_type': resource.mimeType or '',
+        'size': resource.size,
+        'icons': _mcp_model_dump(resource.icons) or [],
+        'annotations': _mcp_model_dump(resource.annotations) or {},
+        '_meta': _mcp_model_dump(getattr(resource, 'meta', None)) or {},
+    }
+
+
+def _resource_template_to_dict(resource_template: mcp_types.ResourceTemplate) -> dict:
+    return {
+        'uri_template': resource_template.uriTemplate,
+        'name': resource_template.name,
+        'title': resource_template.title or '',
+        'description': resource_template.description or '',
+        'mime_type': resource_template.mimeType or '',
+        'icons': _mcp_model_dump(resource_template.icons) or [],
+        'annotations': _mcp_model_dump(resource_template.annotations) or {},
+        '_meta': _mcp_model_dump(getattr(resource_template, 'meta', None)) or {},
+    }
+
+
+def _is_text_like_mime(mime_type: str) -> bool:
+    if not mime_type:
+        return False
+    normalized = mime_type.split(';', 1)[0].strip().lower()
+    return normalized.startswith('text/') or normalized in TEXT_LIKE_MIME_TYPES or normalized.endswith('+json')
+
+
+def _uri_matches_template(uri: str, uri_template: str) -> bool:
+    if uri_template == uri:
+        return True
+    if not uri_template or '{' not in uri_template:
+        return False
+
+    pattern_parts: list[str] = []
+    pos = 0
+    for match in re.finditer(r'\{[^{}]+\}', uri_template):
+        pattern_parts.append(re.escape(uri_template[pos : match.start()]))
+        pattern_parts.append(r'[^\s]+')
+        pos = match.end()
+    pattern_parts.append(re.escape(uri_template[pos:]))
+    return re.fullmatch(''.join(pattern_parts), uri) is not None
 
 
 async def _mcp_resource_tool_placeholder(**kwargs: typing.Any) -> list[provider_message.ContentElement]:
@@ -87,6 +203,10 @@ class RuntimeMCPSession:
     functions: list[resource_tool.LLMTool] = []
 
     resources: list[dict] = []
+
+    resource_templates: list[dict] = []
+
+    resource_capabilities: dict = {}
 
     enable: bool
 
@@ -125,6 +245,9 @@ class RuntimeMCPSession:
         self.exit_stack = AsyncExitStack()
         self.functions = []
         self.resources = []
+        self.resource_templates = []
+        self.resource_capabilities = {}
+        self._resource_cache: dict[tuple[str, int, int | None, bool], dict] = {}
 
         self.status = MCPSessionStatus.CONNECTING
 
@@ -393,6 +516,14 @@ class RuntimeMCPSession:
 
         self.functions.clear()
         self.resources.clear()
+        self.resource_templates.clear()
+        self._resource_cache.clear()
+
+        try:
+            capabilities = self.session.get_server_capabilities()
+            self.resource_capabilities = _mcp_model_dump(getattr(capabilities, 'resources', None)) or {}
+        except Exception:
+            self.resource_capabilities = {}
 
         tools = await self.session.list_tools()
 
@@ -401,31 +532,7 @@ class RuntimeMCPSession:
         for tool in tools.tools:
 
             async def func(*, _tool=tool, **kwargs):
-                if not self.session:
-                    raise Exception('MCP session is not connected')
-
-                result = await self.session.call_tool(_tool.name, kwargs)
-                if result.isError:
-                    error_texts = []
-                    for content in result.content:
-                        if content.type == 'text':
-                            error_texts.append(content.text)
-                    raise Exception('\n'.join(error_texts) if error_texts else 'Unknown error from MCP tool')
-
-                result_contents: list[provider_message.ContentElement] = []
-                for content in result.content:
-                    if content.type == 'text':
-                        result_contents.append(provider_message.ContentElement.from_text(content.text))
-                    elif content.type == 'image':
-                        result_contents.append(provider_message.ContentElement.from_image_base64(content.image_base64))
-                    elif content.type == 'resource':
-                        if isinstance(content.resource, mcp_types.TextResourceContents):
-                            result_contents.append(provider_message.ContentElement.from_text(content.resource.text))
-                        elif isinstance(content.resource, mcp_types.BlobResourceContents):
-                            decoded = base64.b64decode(content.resource.blob)
-                            result_contents.append(provider_message.ContentElement.from_text(decoded.decode('utf-8', errors='replace')))
-
-                return result_contents
+                return await self.invoke_mcp_tool(_tool.name, kwargs)
 
             func.__name__ = tool.name
 
@@ -439,18 +546,168 @@ class RuntimeMCPSession:
                 )
             )
 
+        await self._refresh_resources()
+
+    async def _refresh_resources(self):
+        if not self.session:
+            return
+
         try:
-            resources_result = await self.session.list_resources()
-            for resource in resources_result.resources:
-                self.resources.append({
-                    'uri': str(resource.uri),
-                    'name': resource.name,
-                    'description': resource.description or '',
-                    'mime_type': resource.mimeType or '',
-                })
+            cursor: str | None = None
+            for _ in range(MCP_RESOURCE_DISCOVERY_MAX_PAGES):
+                resources_result = await self.session.list_resources(cursor)
+                for resource in resources_result.resources:
+                    self.resources.append(_resource_to_dict(resource))
+                cursor = getattr(resources_result, 'nextCursor', None)
+                if not cursor:
+                    break
             self.ap.logger.debug(f'Refresh MCP resources: {len(self.resources)} resources found')
         except Exception as e:
             self.ap.logger.debug(f'MCP server {self.server_name} does not support resources or failed to list: {e}')
+
+        try:
+            cursor = None
+            for _ in range(MCP_RESOURCE_DISCOVERY_MAX_PAGES):
+                templates_result = await self.session.list_resource_templates(cursor)
+                for template in templates_result.resourceTemplates:
+                    self.resource_templates.append(_resource_template_to_dict(template))
+                cursor = getattr(templates_result, 'nextCursor', None)
+                if not cursor:
+                    break
+            self.ap.logger.debug(f'Refresh MCP resource templates: {len(self.resource_templates)} templates found')
+        except Exception as e:
+            self.ap.logger.debug(
+                f'MCP server {self.server_name} does not support resource templates or failed to list: {e}'
+            )
+
+    def _record_query_resource_link(
+        self,
+        query: pipeline_query.Query | None,
+        resource_link: dict,
+        source_tool: str,
+    ) -> None:
+        if query is None:
+            return
+        try:
+            link = {
+                **resource_link,
+                'server_name': self.server_name,
+                'server_uuid': self.server_uuid,
+                'source_tool': source_tool,
+            }
+            query.variables.setdefault(MCP_RESOURCE_LINKS_QUERY_KEY, []).append(link)
+        except Exception:
+            pass
+
+    def _content_to_provider_elements(
+        self,
+        content: typing.Any,
+        *,
+        query: pipeline_query.Query | None = None,
+        source_tool: str = '',
+    ) -> list[provider_message.ContentElement]:
+        content_type = getattr(content, 'type', '')
+        if content_type == 'text':
+            return [provider_message.ContentElement.from_text(content.text)]
+
+        if content_type == 'image':
+            image_data = getattr(content, 'data', None) or getattr(content, 'image_base64', None)
+            if image_data:
+                return [provider_message.ContentElement.from_image_base64(image_data)]
+            return []
+
+        if content_type == 'audio':
+            return [
+                provider_message.ContentElement.from_text(
+                    json.dumps(
+                        {
+                            'type': 'audio',
+                            'mime_type': getattr(content, 'mimeType', ''),
+                            'message': 'Audio content returned by MCP tool is available to the host but not inlined.',
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+            ]
+
+        if content_type == 'resource_link':
+            resource_link = _resource_to_dict(content)
+            self._record_query_resource_link(query, resource_link, source_tool)
+            return [
+                provider_message.ContentElement.from_text(
+                    json.dumps(
+                        {
+                            'type': 'resource_link',
+                            'server_name': self.server_name,
+                            'server_uuid': self.server_uuid,
+                            'resource': resource_link,
+                            'message': 'Resource link captured. Read it only if the task needs this additional context.',
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                )
+            ]
+
+        if content_type == 'resource':
+            resource = getattr(content, 'resource', None)
+            if isinstance(resource, mcp_types.TextResourceContents):
+                text, truncated, original_bytes = _truncate_text(
+                    resource.text,
+                    MCP_RESOURCE_AGENT_READ_MAX_BYTES,
+                    MCP_RESOURCE_AGENT_READ_MAX_TOKENS,
+                )
+                header = {
+                    'type': 'embedded_resource',
+                    'server_name': self.server_name,
+                    'server_uuid': self.server_uuid,
+                    'uri': str(resource.uri),
+                    'mime_type': resource.mimeType or '',
+                    'bytes': original_bytes,
+                    'truncated': truncated,
+                }
+                return [provider_message.ContentElement.from_text(f'{json.dumps(header, ensure_ascii=False)}\n{text}')]
+            if isinstance(resource, mcp_types.BlobResourceContents):
+                return [
+                    provider_message.ContentElement.from_text(
+                        json.dumps(
+                            {
+                                'type': 'embedded_resource',
+                                'server_name': self.server_name,
+                                'server_uuid': self.server_uuid,
+                                'uri': str(resource.uri),
+                                'mime_type': resource.mimeType or '',
+                                'bytes': _blob_size(resource.blob),
+                                'binary_omitted': True,
+                            },
+                            ensure_ascii=False,
+                        )
+                    )
+                ]
+
+        return []
+
+    async def invoke_mcp_tool(
+        self,
+        tool_name: str,
+        arguments: dict,
+        query: pipeline_query.Query | None = None,
+    ) -> list[provider_message.ContentElement]:
+        if not self.session:
+            raise Exception('MCP session is not connected')
+
+        result = await self.session.call_tool(tool_name, arguments)
+        if result.isError:
+            error_texts = []
+            for content in result.content:
+                if getattr(content, 'type', '') == 'text':
+                    error_texts.append(content.text)
+            raise Exception('\n'.join(error_texts) if error_texts else 'Unknown error from MCP tool')
+
+        result_contents: list[provider_message.ContentElement] = []
+        for content in result.content:
+            result_contents.extend(self._content_to_provider_elements(content, query=query, source_tool=tool_name))
+        return result_contents
 
     def get_tools(self) -> list[resource_tool.LLMTool]:
         return self.functions
@@ -458,29 +715,165 @@ class RuntimeMCPSession:
     def get_resources(self) -> list[dict]:
         return self.resources
 
-    async def read_resource(self, uri: str) -> list[dict]:
-        """Read a resource by URI and return its contents."""
+    def get_resource_templates(self) -> list[dict]:
+        return self.resource_templates
+
+    def has_resource_support(self) -> bool:
+        return bool(self.resources or self.resource_templates or self.resource_capabilities)
+
+    def invalidate_resource_cache(self, uri: str | None = None) -> None:
+        if uri is None:
+            self._resource_cache.clear()
+            return
+        for key in list(self._resource_cache.keys()):
+            if key[0] == uri:
+                self._resource_cache.pop(key, None)
+
+    def resource_uri_allowed(self, uri: str) -> bool:
+        if any(item.get('uri') == uri for item in self.resources):
+            return True
+
+        for template in self.resource_templates:
+            uri_template = template.get('uri_template', '')
+            if _uri_matches_template(uri, uri_template):
+                return True
+
+        return False
+
+    async def read_resource_envelope(
+        self,
+        uri: str,
+        *,
+        max_bytes: int = MCP_RESOURCE_PREVIEW_MAX_BYTES,
+        max_tokens: int | None = None,
+        include_blob: bool = False,
+        source: str = 'api',
+        query: pipeline_query.Query | None = None,
+    ) -> dict:
+        """Read a resource by URI with safety limits and audit metadata."""
         if not self.session:
             raise Exception('MCP session is not connected')
 
+        if not self.resource_uri_allowed(uri):
+            raise ValueError(
+                f'Resource URI is not available from MCP server {self.server_name!r}: {uri!r}. '
+                'Use listed resources or resource templates.'
+            )
+
+        cache_key = (uri, max_bytes, max_tokens, include_blob)
+        now = time.time()
+        cached = self._resource_cache.get(cache_key)
+        if cached and now - cached.get('cached_at', 0) <= MCP_RESOURCE_CACHE_TTL_SECONDS:
+            envelope = {
+                **cached['envelope'],
+                'cache_hit': True,
+                'source': source,
+            }
+            self._record_resource_read_trace(query, envelope)
+            return envelope
+
         result = await self.session.read_resource(AnyUrl(uri))
-        contents = []
+        contents: list[dict] = []
+        total_bytes = 0
+        truncated_any = False
+        warnings: list[str] = []
+        remaining_bytes = max_bytes if max_bytes > 0 else None
+        remaining_tokens = max_tokens if max_tokens is not None and max_tokens > 0 else None
+
         for content in result.contents:
             if isinstance(content, mcp_types.TextResourceContents):
-                contents.append({
-                    'uri': str(content.uri),
-                    'mime_type': content.mimeType or '',
-                    'type': 'text',
-                    'text': content.text,
-                })
+                if (remaining_bytes is not None and remaining_bytes <= 0) or (
+                    remaining_tokens is not None and remaining_tokens <= 0
+                ):
+                    text = ''
+                    truncated = True
+                    original_bytes = len(content.text.encode('utf-8'))
+                else:
+                    text, truncated, original_bytes = _truncate_text(
+                        content.text,
+                        remaining_bytes if remaining_bytes is not None else 0,
+                        remaining_tokens,
+                    )
+                total_bytes += original_bytes
+                truncated_any = truncated_any or truncated
+                if remaining_bytes is not None:
+                    remaining_bytes = max(0, remaining_bytes - len(text.encode('utf-8')))
+                if remaining_tokens is not None:
+                    remaining_tokens = max(0, remaining_tokens - (max(1, len(text) // 4) if text else 0))
+                contents.append(
+                    {
+                        'uri': str(content.uri),
+                        'mime_type': content.mimeType or '',
+                        'type': 'text',
+                        'text': text,
+                        'bytes': original_bytes,
+                        'truncated': truncated,
+                        '_meta': _mcp_model_dump(getattr(content, 'meta', None)) or {},
+                    }
+                )
             elif isinstance(content, mcp_types.BlobResourceContents):
-                contents.append({
-                    'uri': str(content.uri),
-                    'mime_type': content.mimeType or '',
-                    'type': 'blob',
-                    'blob': content.blob,
-                })
-        return contents
+                original_bytes = _blob_size(content.blob)
+                total_bytes += original_bytes
+                include_this_blob = include_blob and (remaining_bytes is None or original_bytes <= remaining_bytes)
+                if not include_this_blob:
+                    truncated_any = True
+                    warnings.append('Binary resource content omitted from response.')
+                elif remaining_bytes is not None:
+                    remaining_bytes = max(0, remaining_bytes - original_bytes)
+                contents.append(
+                    {
+                        'uri': str(content.uri),
+                        'mime_type': content.mimeType or '',
+                        'type': 'blob',
+                        'blob': content.blob if include_this_blob else None,
+                        'bytes': original_bytes,
+                        'truncated': not include_this_blob,
+                        'binary_omitted': not include_this_blob,
+                        '_meta': _mcp_model_dump(getattr(content, 'meta', None)) or {},
+                    }
+                )
+
+        envelope = {
+            'server_name': self.server_name,
+            'server_uuid': self.server_uuid,
+            'uri': uri,
+            'source': source,
+            'contents': contents,
+            'bytes': total_bytes,
+            'truncated': truncated_any,
+            'cache_hit': False,
+            'warnings': warnings,
+        }
+        self._resource_cache[cache_key] = {'cached_at': now, 'envelope': envelope}
+        self._record_resource_read_trace(query, envelope)
+        return envelope
+
+    def _record_resource_read_trace(self, query: pipeline_query.Query | None, envelope: dict) -> None:
+        if query is None:
+            return
+        try:
+            from langbot.pkg.telemetry import features as telemetry_features
+
+            telemetry_features.increment(query, 'mcp_resource_reads', envelope.get('source') or 'unknown')
+            query.variables.setdefault(MCP_RESOURCE_TRACE_QUERY_KEY, []).append(
+                {
+                    'server_name': envelope.get('server_name'),
+                    'server_uuid': envelope.get('server_uuid'),
+                    'uri': envelope.get('uri'),
+                    'source': envelope.get('source'),
+                    'bytes': envelope.get('bytes', 0),
+                    'truncated': envelope.get('truncated', False),
+                    'cache_hit': envelope.get('cache_hit', False),
+                    'content_types': [item.get('type') for item in envelope.get('contents', [])],
+                }
+            )
+        except Exception:
+            pass
+
+    async def read_resource(self, uri: str) -> list[dict]:
+        """Read a resource by URI and return its capped contents."""
+        envelope = await self.read_resource_envelope(uri)
+        return envelope['contents']
 
     def get_runtime_info_dict(self) -> dict:
         info = {
@@ -499,6 +892,9 @@ class RuntimeMCPSession:
             ],
             'resource_count': len(self.get_resources()),
             'resources': self.get_resources(),
+            'resource_template_count': len(self.get_resource_templates()),
+            'resource_templates': self.get_resource_templates(),
+            'resource_capabilities': self.resource_capabilities,
         }
         if self._uses_box_stdio():
             info['box_session_id'] = self._build_box_session_id()
@@ -684,6 +1080,13 @@ class MCPLoader(loader.ToolLoader):
             out.append(session)
         return out
 
+    def _eligible_resource_sessions_for_bound(self, bound_mcp_servers: list[str] | None) -> list[RuntimeMCPSession]:
+        return [
+            session
+            for session in self._eligible_sessions_for_bound(bound_mcp_servers)
+            if session.has_resource_support()
+        ]
+
     @staticmethod
     def _mcp_synthetic_resource_tools() -> list[resource_tool.LLMTool]:
         return [
@@ -691,8 +1094,8 @@ class MCPLoader(loader.ToolLoader):
                 name=MCP_TOOL_LIST_RESOURCES,
                 human_desc='List MCP resource URIs for a server (MCP resources/list).',
                 description=(
-                    'Lists static resources (URI, name, description, mime type) exposed by the MCP server. '
-                    'Call langbot_mcp_read_resource with a URI to fetch content. '
+                    'Lists resources and resource templates exposed by an MCP server. '
+                    'Call langbot_mcp_read_resource with a listed resource URI or a URI constructed from a listed template. '
                     'Use the server name from LangBot pipeline MCP bindings or admin configuration.'
                 ),
                 parameters=MCP_LIST_RESOURCES_SCHEMA,
@@ -702,8 +1105,8 @@ class MCPLoader(loader.ToolLoader):
                 name=MCP_TOOL_READ_RESOURCE,
                 human_desc='Read a single MCP resource by URI (MCP resources/read).',
                 description=(
-                    'Fetches the body of a resource. Discover URIs via langbot_mcp_list_resources or MCP docs. '
-                    'The businessId, env, and other parameters in downstream tools must match the selected environment.'
+                    'Fetches capped text content for a resource. Binary resources return metadata only. '
+                    'Only read URIs exposed by langbot_mcp_list_resources for the bound server.'
                 ),
                 parameters=MCP_READ_RESOURCE_SCHEMA,
                 func=_mcp_resource_tool_placeholder,
@@ -716,7 +1119,7 @@ class MCPLoader(loader.ToolLoader):
             return [provider_message.ContentElement.from_text('Error: "server_name" (string) is required.')]
 
         bound = self._get_bound_mcp_from_query(query)
-        allowed = {s.server_name for s in self._eligible_sessions_for_bound(bound)}
+        allowed = {s.server_name for s in self._eligible_resource_sessions_for_bound(bound)}
         if server_name not in allowed:
             return [
                 provider_message.ContentElement.from_text(
@@ -731,10 +1134,14 @@ class MCPLoader(loader.ToolLoader):
             return [provider_message.ContentElement.from_text(f'Error: MCP server not connected: {server_name!r}')]
 
         data = session.get_resources()
+        templates = session.get_resource_templates()
         body = {
             'server_name': server_name,
             'resource_count': len(data),
             'resources': data,
+            'resource_template_count': len(templates),
+            'resource_templates': templates,
+            'resource_capabilities': session.resource_capabilities,
         }
         return [provider_message.ContentElement.from_text(json.dumps(body, ensure_ascii=False, indent=2))]
 
@@ -747,7 +1154,7 @@ class MCPLoader(loader.ToolLoader):
             return [provider_message.ContentElement.from_text('Error: "uri" (string) is required.')]
 
         bound = self._get_bound_mcp_from_query(query)
-        allowed = {s.server_name for s in self._eligible_sessions_for_bound(bound)}
+        allowed = {s.server_name for s in self._eligible_resource_sessions_for_bound(bound)}
         if server_name not in allowed:
             return [
                 provider_message.ContentElement.from_text(
@@ -761,33 +1168,56 @@ class MCPLoader(loader.ToolLoader):
             return [provider_message.ContentElement.from_text(f'Error: MCP server not connected: {server_name!r}')]
 
         try:
-            parts = await session.read_resource(uri)
+            envelope = await session.read_resource_envelope(
+                uri,
+                max_bytes=MCP_RESOURCE_AGENT_READ_MAX_BYTES,
+                max_tokens=MCP_RESOURCE_AGENT_READ_MAX_TOKENS,
+                include_blob=False,
+                source='agent_tool',
+                query=query,
+            )
         except Exception as e:
             self.ap.logger.error(f'read_resource {uri!r} on {server_name}: {e}\n{traceback.format_exc()}')
             return [provider_message.ContentElement.from_text(f'Error reading resource: {e!s}')]
 
         out_chunks: list[str] = []
-        for item in parts:
+        for item in envelope.get('contents', []):
             if not isinstance(item, dict):
                 continue
             t = item.get('type', '')
             if t == 'text' and 'text' in item:
-                out_chunks.append(typing.cast(str, item['text']))
-            elif t == 'blob' and 'blob' in item:
-                try:
-                    raw = base64.b64decode(typing.cast(str, item['blob']))
-                    out_chunks.append(raw.decode('utf-8', errors='replace'))
-                except Exception as be:
-                    out_chunks.append(f'[Binary decode error: {be}]')
-        if not out_chunks:
-            return [
-                provider_message.ContentElement.from_text(
-                    json.dumps({'uri': uri, 'contents': parts}, ensure_ascii=False, indent=2)
+                header = {
+                    'uri': item.get('uri'),
+                    'mime_type': item.get('mime_type', ''),
+                    'bytes': item.get('bytes', 0),
+                    'truncated': item.get('truncated', False),
+                }
+                out_chunks.append(f'{json.dumps(header, ensure_ascii=False)}\n{typing.cast(str, item["text"])}')
+            elif t == 'blob':
+                out_chunks.append(
+                    json.dumps(
+                        {
+                            'uri': item.get('uri'),
+                            'mime_type': item.get('mime_type', ''),
+                            'bytes': item.get('bytes', 0),
+                            'binary_omitted': True,
+                        },
+                        ensure_ascii=False,
+                    )
                 )
-            ]
-        return [provider_message.ContentElement.from_text('\n\n'.join(out_chunks))]
+        if not out_chunks:
+            return [provider_message.ContentElement.from_text(json.dumps(envelope, ensure_ascii=False, indent=2))]
+        suffix = ''
+        if envelope.get('truncated'):
+            suffix = '\n\n[LangBot: resource content was truncated by configured byte/token limits.]'
+        return [provider_message.ContentElement.from_text('\n\n'.join(out_chunks) + suffix)]
 
-    async def get_tools(self, bound_mcp_servers: list[str] | None = None) -> list[resource_tool.LLMTool]:
+    async def get_tools(
+        self,
+        bound_mcp_servers: list[str] | None = None,
+        *,
+        include_resource_tools: bool = True,
+    ) -> list[resource_tool.LLMTool]:
         all_functions: list[resource_tool.LLMTool] = []
 
         for session in self.sessions.values():
@@ -799,7 +1229,7 @@ class MCPLoader(loader.ToolLoader):
                 # If no bound servers specified, include all tools
                 all_functions.extend(session.get_tools())
 
-        if self._eligible_sessions_for_bound(bound_mcp_servers):
+        if include_resource_tools and self._eligible_resource_sessions_for_bound(bound_mcp_servers):
             all_functions.extend(self._mcp_synthetic_resource_tools())
 
         self._last_listed_functions = all_functions
@@ -809,7 +1239,7 @@ class MCPLoader(loader.ToolLoader):
     async def has_tool(self, name: str) -> bool:
         """检查工具是否存在"""
         if name in (MCP_TOOL_LIST_RESOURCES, MCP_TOOL_READ_RESOURCE):
-            return bool(self._eligible_sessions_for_bound(None))
+            return bool(self._eligible_resource_sessions_for_bound(None))
         for session in self.sessions.values():
             for function in session.get_tools():
                 if function.name == name:
@@ -826,8 +1256,12 @@ class MCPLoader(loader.ToolLoader):
     async def invoke_tool(self, name: str, parameters: dict, query: pipeline_query.Query) -> typing.Any:
         """执行工具调用"""
         if name == MCP_TOOL_LIST_RESOURCES:
+            if getattr(query, 'variables', {}).get('_pipeline_mcp_resource_agent_read_enabled', True) is False:
+                return [provider_message.ContentElement.from_text('Error: MCP resource agent reads are disabled.')]
             return await self._invoke_mcp_list_resources(parameters, query)
         if name == MCP_TOOL_READ_RESOURCE:
+            if getattr(query, 'variables', {}).get('_pipeline_mcp_resource_agent_read_enabled', True) is False:
+                return [provider_message.ContentElement.from_text('Error: MCP resource agent reads are disabled.')]
             return await self._invoke_mcp_read_resource(parameters, query)
 
         for session in self.sessions.values():
@@ -835,7 +1269,7 @@ class MCPLoader(loader.ToolLoader):
                 if function.name == name:
                     self.ap.logger.debug(f'Invoking MCP tool: {name} with parameters: {parameters}')
                     try:
-                        result = await function.func(**parameters)
+                        result = await session.invoke_mcp_tool(name, parameters, query=query)
                         self.ap.logger.debug(f'MCP tool {name} executed successfully')
                         return result
                     except Exception as e:
@@ -851,12 +1285,148 @@ class MCPLoader(loader.ToolLoader):
             raise ValueError(f'MCP server not found: {server_name}')
         return session.get_resources()
 
-    async def read_resource(self, server_name: str, uri: str) -> list[dict]:
-        """Read a resource from a specific MCP server."""
+    async def get_resource_templates(self, server_name: str) -> list[dict]:
+        """Get resource templates from a specific MCP server."""
         session = self.get_session(server_name)
         if session is None:
             raise ValueError(f'MCP server not found: {server_name}')
-        return await session.read_resource(uri)
+        return session.get_resource_templates()
+
+    async def read_resource_envelope(
+        self,
+        server_name: str,
+        uri: str,
+        *,
+        max_bytes: int = MCP_RESOURCE_PREVIEW_MAX_BYTES,
+        max_tokens: int | None = None,
+        include_blob: bool = False,
+        source: str = 'api',
+        query: pipeline_query.Query | None = None,
+    ) -> dict:
+        """Read a resource from a specific MCP server and return metadata plus contents."""
+        session = self.get_session(server_name)
+        if session is None:
+            raise ValueError(f'MCP server not found: {server_name}')
+        return await session.read_resource_envelope(
+            uri,
+            max_bytes=max_bytes,
+            max_tokens=max_tokens,
+            include_blob=include_blob,
+            source=source,
+            query=query,
+        )
+
+    async def read_resource(self, server_name: str, uri: str) -> list[dict]:
+        """Read a resource from a specific MCP server."""
+        envelope = await self.read_resource_envelope(server_name, uri)
+        return envelope['contents']
+
+    def get_session_by_uuid(self, server_uuid: str) -> RuntimeMCPSession | None:
+        for session in self.sessions.values():
+            if session.server_uuid == server_uuid:
+                return session
+        return None
+
+    def _resolve_attachment_session(self, attachment: dict) -> RuntimeMCPSession | None:
+        server_uuid = attachment.get('server_uuid') or attachment.get('server_id')
+        server_name = attachment.get('server_name')
+        if server_uuid:
+            return self.get_session_by_uuid(server_uuid)
+        if server_name:
+            return self.get_session(server_name)
+        return None
+
+    async def build_resource_context_for_query(
+        self,
+        query: pipeline_query.Query,
+        *,
+        default_max_tokens: int = MCP_RESOURCE_CONTEXT_MAX_TOKENS,
+        default_max_bytes: int = MCP_RESOURCE_CONTEXT_MAX_BYTES,
+    ) -> str:
+        """Build host-controlled MCP resource context for the current query."""
+        attachments = (query.variables or {}).get('_pipeline_mcp_resource_attachments', [])
+        if not isinstance(attachments, list) or not attachments:
+            return ''
+
+        bound = self._get_bound_mcp_from_query(query)
+        eligible = self._eligible_resource_sessions_for_bound(bound)
+        eligible_by_uuid = {session.server_uuid: session for session in eligible}
+        eligible_by_name = {session.server_name: session for session in eligible}
+
+        blocks: list[str] = []
+        remaining_tokens = default_max_tokens
+
+        for raw_attachment in attachments:
+            if remaining_tokens <= 0:
+                break
+            if not isinstance(raw_attachment, dict) or raw_attachment.get('enabled') is False:
+                continue
+
+            attachment = raw_attachment.copy()
+            mode = attachment.get('mode', 'pinned')
+            if mode not in ('pinned', 'manual', 'auto'):
+                continue
+
+            uri = attachment.get('uri')
+            if not uri or not isinstance(uri, str):
+                continue
+
+            session = self._resolve_attachment_session(attachment)
+            if session is None:
+                continue
+            if session.server_uuid not in eligible_by_uuid and session.server_name not in eligible_by_name:
+                continue
+
+            max_tokens = min(int(attachment.get('max_tokens') or remaining_tokens), remaining_tokens)
+            max_bytes = int(attachment.get('max_bytes') or default_max_bytes)
+
+            try:
+                envelope = await session.read_resource_envelope(
+                    uri,
+                    max_bytes=max_bytes,
+                    max_tokens=max_tokens,
+                    include_blob=False,
+                    source='preloaded',
+                    query=query,
+                )
+            except Exception as e:
+                self.ap.logger.warning(f'Failed to preload MCP resource {uri!r} from {session.server_name!r}: {e}')
+                continue
+
+            for item in envelope.get('contents', []):
+                if item.get('type') != 'text':
+                    continue
+                mime_type = item.get('mime_type', '')
+                text = item.get('text') or ''
+                if not text:
+                    continue
+                approx_tokens = max(1, len(text) // 4)
+                remaining_tokens -= approx_tokens
+                header_attrs = {
+                    'server': session.server_name,
+                    'server_uuid': session.server_uuid,
+                    'uri': item.get('uri') or uri,
+                    'mime_type': mime_type,
+                    'bytes': item.get('bytes', 0),
+                    'truncated': item.get('truncated', False),
+                    'mode': mode,
+                }
+                attr_text = ' '.join(f'{k}={json.dumps(v, ensure_ascii=False)}' for k, v in header_attrs.items())
+                blocks.append(f'<mcp_resource {attr_text}>\n{text}\n</mcp_resource>')
+                if remaining_tokens <= 0:
+                    break
+
+        context = '\n\n'.join(blocks)
+        if context:
+            try:
+                query.variables[MCP_RESOURCE_CONTEXT_QUERY_KEY] = {
+                    'resource_count': len(blocks),
+                    'max_tokens': default_max_tokens,
+                    'traces': query.variables.get(MCP_RESOURCE_TRACE_QUERY_KEY, []),
+                }
+            except Exception:
+                pass
+        return context
 
     async def remove_mcp_server(self, server_name: str):
         """移除 MCP 服务器"""

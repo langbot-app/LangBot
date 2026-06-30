@@ -563,6 +563,9 @@ export interface MCPServerRuntimeInfo {
   box_enabled?: boolean;
   resource_count: number;
   resources: MCPResource[];
+  resource_template_count?: number;
+  resource_templates?: MCPResourceTemplate[];
+  resource_capabilities?: Record<string, unknown>;
 }
 
 export type MCPServer =
@@ -620,8 +623,24 @@ export interface MCPTool {
 export interface MCPResource {
   uri: string;
   name: string;
+  title?: string;
   description: string;
   mime_type: string;
+  size?: number;
+  icons?: object[];
+  annotations?: Record<string, unknown>;
+  _meta?: Record<string, unknown>;
+}
+
+export interface MCPResourceTemplate {
+  uri_template: string;
+  name: string;
+  title?: string;
+  description: string;
+  mime_type: string;
+  icons?: object[];
+  annotations?: Record<string, unknown>;
+  _meta?: Record<string, unknown>;
 }
 
 export interface MCPResourceContent {
@@ -629,15 +648,29 @@ export interface MCPResourceContent {
   mime_type: string;
   type: 'text' | 'blob';
   text?: string;
-  blob?: string;
+  blob?: string | null;
+  bytes?: number;
+  truncated?: boolean;
+  binary_omitted?: boolean;
+  _meta?: Record<string, unknown>;
 }
 
 export interface ApiRespMCPResources {
   resources: MCPResource[];
+  resource_templates?: MCPResourceTemplate[];
+  resource_capabilities?: Record<string, unknown>;
 }
 
 export interface ApiRespMCPResourceContents {
   contents: MCPResourceContent[];
+  server_name?: string;
+  server_uuid?: string;
+  uri?: string;
+  source?: string;
+  bytes?: number;
+  truncated?: boolean;
+  cache_hit?: boolean;
+  warnings?: string[];
 }
 
 export interface PluginTool {

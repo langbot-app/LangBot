@@ -272,7 +272,11 @@ function ResourcesList({
     setLoadingContent(true);
 
     try {
-      const resp = await httpClient.readMCPServerResource(serverName, uri);
+      const resp = await httpClient.readMCPServerResource(
+        serverName,
+        uri,
+        65536,
+      );
       if (resp.contents && resp.contents.length > 0) {
         setResourceContent(resp.contents[0]);
       }
@@ -315,12 +319,21 @@ function ResourcesList({
                   {t('mcp.loading')}
                 </div>
               ) : resourceContent?.type === 'text' && resourceContent.text ? (
-                <pre className="text-xs bg-muted p-3 rounded-md overflow-auto max-h-[200px] whitespace-pre-wrap break-all">
-                  {resourceContent.text}
-                </pre>
+                <div className="space-y-2">
+                  <pre className="text-xs bg-muted p-3 rounded-md overflow-auto max-h-[200px] whitespace-pre-wrap break-all">
+                    {resourceContent.text}
+                  </pre>
+                  {resourceContent.truncated && (
+                    <div className="text-xs text-muted-foreground">
+                      {t('mcp.resourceTruncated')}
+                    </div>
+                  )}
+                </div>
               ) : resourceContent?.type === 'blob' ? (
                 <div className="text-xs text-muted-foreground">
-                  {t('mcp.resourceBinaryContent')}
+                  {resourceContent.binary_omitted
+                    ? t('mcp.resourceBinaryOmitted')
+                    : t('mcp.resourceBinaryContent')}
                 </div>
               ) : (
                 <div className="text-xs text-muted-foreground">

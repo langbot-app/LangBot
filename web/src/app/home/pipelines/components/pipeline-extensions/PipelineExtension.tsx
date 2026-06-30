@@ -12,7 +12,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, X, Server, Wrench, Sparkles } from 'lucide-react';
+import { FileText, Plus, X, Server, Wrench, Sparkles } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -21,6 +21,16 @@ import { MCPServer, Skill } from '@/app/infra/entities/api';
 import PluginComponentList from '@/app/home/plugins/components/plugin-installed/PluginComponentList';
 import { BoxUnavailableNotice } from '@/app/home/components/BoxUnavailableNotice';
 import { useBoxStatus } from '@/app/infra/hooks/useBoxStatus';
+
+type BoundMCPResource = {
+  server_uuid?: string;
+  server_name?: string;
+  uri: string;
+  mode?: string;
+  enabled?: boolean;
+  max_bytes?: number;
+  max_tokens?: number;
+};
 
 export default function PipelineExtension({
   pipelineId,
@@ -37,10 +47,15 @@ export default function PipelineExtension({
   const [enableAllPlugins, setEnableAllPlugins] = useState(true);
   const [enableAllMCPServers, setEnableAllMCPServers] = useState(true);
   const [enableAllSkills, setEnableAllSkills] = useState(true);
+  const [enableMCPResourceAgentRead, setEnableMCPResourceAgentRead] =
+    useState(true);
   const [selectedPlugins, setSelectedPlugins] = useState<Plugin[]>([]);
   const [allPlugins, setAllPlugins] = useState<Plugin[]>([]);
   const [selectedMCPServers, setSelectedMCPServers] = useState<MCPServer[]>([]);
   const [allMCPServers, setAllMCPServers] = useState<MCPServer[]>([]);
+  const [selectedMCPResources, setSelectedMCPResources] = useState<
+    BoundMCPResource[]
+  >([]);
   const [selectedSkills, setSelectedSkills] = useState<Skill[]>([]);
   const [allSkills, setAllSkills] = useState<Skill[]>([]);
   const [pluginDialogOpen, setPluginDialogOpen] = useState(false);
@@ -72,6 +87,10 @@ export default function PipelineExtension({
       setEnableAllPlugins(data.enable_all_plugins ?? true);
       setEnableAllMCPServers(data.enable_all_mcp_servers ?? true);
       setEnableAllSkills(data.enable_all_skills ?? true);
+      setEnableMCPResourceAgentRead(
+        data.mcp_resource_agent_read_enabled ?? true,
+      );
+      setSelectedMCPResources(data.bound_mcp_resources || []);
 
       const boundPluginIds = new Set(
         data.bound_plugins.map((p) => `${p.author}/${p.name}`),
@@ -116,6 +135,8 @@ export default function PipelineExtension({
     newEnableAllPlugins?: boolean,
     newEnableAllMCPServers?: boolean,
     newEnableAllSkills?: boolean,
+    nextMCPResources: BoundMCPResource[] = selectedMCPResources,
+    nextMCPResourceAgentRead: boolean = enableMCPResourceAgentRead,
   ) => {
     try {
       const boundPluginsArray = plugins.map((plugin) => {
@@ -137,6 +158,8 @@ export default function PipelineExtension({
         newEnableAllMCPServers ?? enableAllMCPServers,
         boundSkillIds,
         newEnableAllSkills ?? enableAllSkills,
+        nextMCPResources,
+        nextMCPResourceAgentRead,
       );
       toast.success(t('pipelines.extensions.saveSuccess'));
     } catch (error) {
@@ -157,8 +180,20 @@ export default function PipelineExtension({
 
   const handleRemoveMCPServer = async (serverUuid: string) => {
     const newServers = selectedMCPServers.filter((s) => s.uuid !== serverUuid);
+    const newResources = selectedMCPResources.filter(
+      (resource) => resource.server_uuid !== serverUuid,
+    );
     setSelectedMCPServers(newServers);
-    await saveToBackend(selectedPlugins, newServers, selectedSkills);
+    setSelectedMCPResources(newResources);
+    await saveToBackend(
+      selectedPlugins,
+      newServers,
+      selectedSkills,
+      undefined,
+      undefined,
+      undefined,
+      newResources,
+    );
   };
 
   const handleRemoveSkill = async (skillName: string) => {
@@ -289,6 +324,78 @@ export default function PipelineExtension({
       selectedSkills,
       undefined,
       undefined,
+      checked,
+    );
+  };
+
+  const getMCPResourceKey = (server: MCPServer, uri: string) =>
+    `${server.uuid || server.name}:${uri}`;
+
+  const isMCPResourceSelected = (server: MCPServer, uri: string) =>
+    selectedMCPResources.some(
+      (resource) =>
+        (resource.server_uuid === server.uuid ||
+          (!resource.server_uuid && resource.server_name === server.name)) &&
+        resource.uri === uri &&
+        resource.enabled !== false,
+    );
+
+  const handleToggleMCPResource = async (
+    server: MCPServer,
+    uri: string,
+    checked: boolean,
+  ) => {
+    const next = checked
+      ? [
+          ...selectedMCPResources.filter(
+            (resource) =>
+              !(
+                (resource.server_uuid === server.uuid ||
+                  (!resource.server_uuid &&
+                    resource.server_name === server.name)) &&
+                resource.uri === uri
+              ),
+          ),
+          {
+            server_uuid: server.uuid,
+            server_name: server.name,
+            uri,
+            mode: 'pinned',
+            enabled: true,
+          },
+        ]
+      : selectedMCPResources.filter(
+          (resource) =>
+            !(
+              (resource.server_uuid === server.uuid ||
+                (!resource.server_uuid &&
+                  resource.server_name === server.name)) &&
+              resource.uri === uri
+            ),
+        );
+
+    setSelectedMCPResources(next);
+    await saveToBackend(
+      selectedPlugins,
+      selectedMCPServers,
+      selectedSkills,
+      undefined,
+      undefined,
+      undefined,
+      next,
+    );
+  };
+
+  const handleToggleMCPResourceAgentRead = async (checked: boolean) => {
+    setEnableMCPResourceAgentRead(checked);
+    await saveToBackend(
+      selectedPlugins,
+      selectedMCPServers,
+      selectedSkills,
+      undefined,
+      undefined,
+      undefined,
+      selectedMCPResources,
       checked,
     );
   };
@@ -507,6 +614,97 @@ export default function PipelineExtension({
           <Plus className="mr-2 h-4 w-4" />
           {t('pipelines.extensions.addMCPServer')}
         </Button>
+      </div>
+
+      {/* MCP Resources Section */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-foreground">
+            {t('pipelines.extensions.mcpResourcesTitle')}
+          </h3>
+          <div className="flex items-center gap-2">
+            <Label
+              htmlFor="enable-mcp-resource-agent-read"
+              className="text-sm font-normal cursor-pointer"
+            >
+              {t('pipelines.extensions.enableMCPResourceAgentRead')}
+            </Label>
+            <Switch
+              id="enable-mcp-resource-agent-read"
+              checked={enableMCPResourceAgentRead}
+              onCheckedChange={handleToggleMCPResourceAgentRead}
+            />
+          </div>
+        </div>
+        <div className="space-y-2">
+          {(() => {
+            const resourceServers = (
+              enableAllMCPServers ? allMCPServers : selectedMCPServers
+            ).filter(
+              (server) =>
+                server.runtime_info?.status === 'connected' &&
+                (server.runtime_info.resources || []).length > 0,
+            );
+
+            if (resourceServers.length === 0) {
+              return (
+                <div className="flex h-32 items-center justify-center rounded-lg border-2 border-dashed border-border">
+                  <p className="text-sm text-muted-foreground">
+                    {t('pipelines.extensions.noMCPResourcesAvailable')}
+                  </p>
+                </div>
+              );
+            }
+
+            return resourceServers.map((server) => (
+              <div
+                key={server.uuid || server.name}
+                className="rounded-lg border"
+              >
+                <div className="flex items-center gap-2 border-b px-3 py-2">
+                  <Server className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">{server.name}</span>
+                  <Badge variant="outline" className="ml-auto">
+                    {server.runtime_info?.resources?.length || 0}
+                  </Badge>
+                </div>
+                <div className="divide-y">
+                  {(server.runtime_info?.resources || []).map((resource) => (
+                    <label
+                      key={getMCPResourceKey(server, resource.uri)}
+                      className="flex cursor-pointer items-start gap-3 px-3 py-2 hover:bg-accent"
+                    >
+                      <Checkbox
+                        checked={isMCPResourceSelected(server, resource.uri)}
+                        onCheckedChange={(checked) =>
+                          handleToggleMCPResource(
+                            server,
+                            resource.uri,
+                            checked === true,
+                          )
+                        }
+                      />
+                      <FileText className="mt-0.5 h-4 w-4 flex-none text-muted-foreground" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium">
+                          {resource.title || resource.name || resource.uri}
+                        </div>
+                        <div className="truncate font-mono text-xs text-muted-foreground">
+                          {resource.uri}
+                        </div>
+                        {resource.mime_type && (
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {resource.mime_type}
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ));
+          })()}
+        </div>
       </div>
 
       {/* Skills Section */}
