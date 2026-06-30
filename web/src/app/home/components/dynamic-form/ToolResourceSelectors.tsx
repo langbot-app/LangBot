@@ -915,6 +915,13 @@ export default function ToolResourceSelectors({
                           label={t('pipelines.localAgent.mcpToolsScopeTooltip')}
                         />
                       )}
+                      {sourceGroup.key === 'skill' && (
+                        <InfoTooltip
+                          label={t(
+                            'pipelines.localAgent.skillToolsScopeTooltip',
+                          )}
+                        />
+                      )}
                       <Badge variant="outline" className="ml-auto">
                         {sourceGroup.total}
                       </Badge>

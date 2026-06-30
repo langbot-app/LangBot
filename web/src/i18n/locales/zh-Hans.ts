@@ -911,7 +911,8 @@ const zhHans = {
     },
     localAgent: {
       toolsTitle: '工具',
-      toolsDescription: '选择此内置 Agent 可以调用的插件、MCP 和内置工具。',
+      toolsDescription:
+        '选择此内置 Agent 可以调用的插件、MCP、技能和内置工具。',
       toolsScopeTooltip:
         'MCP 工具只会从扩展集成中已绑定的 MCP 服务器里出现；如需增加 MCP 工具来源，请先到扩展集成绑定对应服务器。',
       enableAllTools: '启用所有工具',
@@ -924,6 +925,8 @@ const zhHans = {
       mcpTools: 'MCP 工具',
       mcpToolsScopeTooltip:
         '这里仅展示扩展集成当前允许的 MCP 服务器提供的工具。',
+      skillToolsScopeTooltip:
+        '技能工具会在 LangBot 技能服务和 Box 沙箱后端可用时出现，用于让 Agent 激活或注册技能。',
       selectTools: '选择工具',
       resourcesTitle: '资源',
       resourcesDescription: '选择此内置 Agent 可以读取的 MCP 资源和知识库。',

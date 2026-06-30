@@ -245,8 +245,8 @@ stages:
           en_US: Tools
           zh_Hans: 工具
         description:
-          en_US: Select plugin, MCP, and built-in tools available to this Local Agent.
-          zh_Hans: 选择此内置 Agent 可以调用的插件、MCP 和内置工具。
+          en_US: Select plugin, MCP, skill, and built-in tools available to this Local Agent.
+          zh_Hans: 选择此内置 Agent 可以调用的插件、MCP、技能和内置工具。
         type: rich-tools-selector
         required: false
         default: []

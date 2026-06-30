@@ -951,7 +951,7 @@ const enUS = {
     localAgent: {
       toolsTitle: 'Tools',
       toolsDescription:
-        'Select plugin, MCP, and built-in tools available to this Local Agent.',
+        'Select plugin, MCP, skill, and built-in tools available to this Local Agent.',
       toolsScopeTooltip:
         'MCP tools only come from MCP servers bound in Extensions. Bind another MCP server there to make its tools selectable here.',
       enableAllTools: 'Enable all tools',
@@ -964,6 +964,8 @@ const enUS = {
       mcpTools: 'MCP tools',
       mcpToolsScopeTooltip:
         'Only tools from MCP servers currently allowed in Extensions are shown here.',
+      skillToolsScopeTooltip:
+        'Skill tools are available when LangBot skill service and the Box sandbox backend are ready. They let the agent activate or register skills.',
       selectTools: 'Select tools',
       resourcesTitle: 'Resources',
       resourcesDescription:

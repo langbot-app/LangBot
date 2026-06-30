@@ -100,7 +100,7 @@ class ToolManager:
 
         append_tools('builtin', 'LangBot', await self.native_tool_loader.get_tools())
         if include_skill_authoring:
-            append_tools('builtin', 'LangBot', await self.skill_tool_loader.get_tools())
+            append_tools('skill', 'LangBot', await self.skill_tool_loader.get_tools())
         catalog.extend(await self.plugin_tool_loader.get_tool_catalog(bound_plugins))
 
         if self.mcp_tool_loader:

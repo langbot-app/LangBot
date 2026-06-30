@@ -106,7 +106,7 @@ async def test_tool_manager_catalog_labels_tool_sources():
 
     assert [(item['name'], item['source'], item['source_name']) for item in catalog] == [
         ('exec', 'builtin', 'LangBot'),
-        ('activate', 'builtin', 'LangBot'),
+        ('activate', 'skill', 'LangBot'),
         ('plugin_tool', 'plugin', 'fixture-plugin'),
         ('mcp_tool', 'mcp', 'fixture-server'),
     ]

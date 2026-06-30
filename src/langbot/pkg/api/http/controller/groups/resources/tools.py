@@ -33,13 +33,19 @@ class ToolsRouterGroup(group.RouterGroup):
                     ]
 
             return self.success(
-                data={'tools': await self.ap.tool_mgr.get_tool_catalog(bound_plugins, bound_mcp_servers)}
+                data={
+                    'tools': await self.ap.tool_mgr.get_tool_catalog(
+                        bound_plugins,
+                        bound_mcp_servers,
+                        include_skill_authoring=True,
+                    )
+                }
             )
 
         @self.route('/<tool_name>', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
         async def _(tool_name: str) -> str:
             """获取特定工具详情"""
-            tools = await self.ap.tool_mgr.get_all_tools()
+            tools = await self.ap.tool_mgr.get_all_tools(include_skill_authoring=True)
 
             for tool in tools:
                 if tool.name == tool_name:
