@@ -509,7 +509,7 @@ export default function DynamicFormItemComponent({
                           </div>
                         ))}
                       {/* Blurred remaining models with login overlay */}
-                      <div className="relative">
+                      <div className="relative min-h-10">
                         <div
                           className="select-none overflow-hidden"
                           style={{ maxHeight: '3rem' }}
@@ -700,7 +700,7 @@ export default function DynamicFormItemComponent({
                             {name}
                           </div>
                         ))}
-                      <div className="relative">
+                      <div className="relative min-h-10">
                         <div
                           className="select-none overflow-hidden"
                           style={{ maxHeight: '3rem' }}
@@ -963,7 +963,7 @@ export default function DynamicFormItemComponent({
                       </div>
                     ))}
                   {/* Blurred remaining models with login overlay */}
-                  <div className="relative">
+                  <div className="relative min-h-10">
                     <div
                       className="select-none overflow-hidden"
                       style={{ maxHeight: '3rem' }}
