@@ -19,6 +19,7 @@ export interface SidebarEntityItem {
   updatedAt?: string; // ISO timestamp for sorting by most recently edited
   // Bot-specific fields
   enabled?: boolean;
+  legacyAdapter?: boolean;
   // MCP-specific fields
   runtimeStatus?: 'connecting' | 'connected' | 'error';
   // Plugin-specific fields
@@ -117,7 +118,15 @@ export function SidebarDataProvider({
 
   const refreshBots = useCallback(async () => {
     try {
-      const resp = await httpClient.getBots();
+      const [resp, adaptersResp] = await Promise.all([
+        httpClient.getBots(),
+        httpClient.getAdapters().catch(() => ({ adapters: [] })),
+      ]);
+      const legacyAdapterNames = new Set(
+        adaptersResp.adapters
+          .filter((adapter) => adapter.spec.legacy)
+          .map((adapter) => adapter.name),
+      );
       setBots(
         resp.bots.map((bot) => ({
           id: bot.uuid || '',
@@ -126,6 +135,7 @@ export function SidebarDataProvider({
           iconURL: httpClient.getAdapterIconURL(bot.adapter),
           updatedAt: bot.updated_at,
           enabled: bot.enable ?? true,
+          legacyAdapter: legacyAdapterNames.has(bot.adapter),
         })),
       );
     } catch (error) {
