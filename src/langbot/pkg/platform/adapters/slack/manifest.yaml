@@ -4,13 +4,13 @@ kind: MessagePlatformAdapter
 metadata:
   name: slack-eba
   label:
-    en_US: Slack (EBA)
-    zh_Hans: Slack (EBA)
-    zh_Hant: Slack (EBA)
+    en_US: Slack
+    zh_Hans: Slack
+    zh_Hant: Slack
   description:
-    en_US: Slack adapter with Event-Based Agents support, using LangBot's unified webhook endpoint.
-    zh_Hans: Slack 适配器（EBA 架构版本），通过 LangBot 统一 Webhook 接收 Slack 事件订阅消息。
-    zh_Hant: Slack 適配器（EBA 架構版本），透過 LangBot 統一 Webhook 接收 Slack 事件訂閱訊息。
+    en_US: Slack adapter with event-driven orchestration support, using LangBot's unified webhook endpoint.
+    zh_Hans: Slack 适配器，支持事件驱动编排，通过 LangBot 统一 Webhook 接收 Slack 事件订阅消息。
+    zh_Hant: Slack 適配器，支援事件驅動編排，透過 LangBot 統一 Webhook 接收 Slack 事件訂閱訊息。
   icon: slack.png
 
 spec:

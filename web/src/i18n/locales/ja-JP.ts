@@ -345,6 +345,10 @@ const jaJP = {
     deleteConfirmation: '本当にこのボットを削除しますか？',
     platformAdapter: 'プラットフォーム/アダプター選択',
     selectAdapter: 'アダプターを選択',
+    legacyAdapters: '旧式アダプター',
+    legacyAdapterBadge: '旧式',
+    legacyAdaptersHint:
+      'これらのアダプターには新しいイベント駆動の接続方式があります。既存設定との互換性のために残しており、新規ボットには推奨されません。',
     adapterConfig: 'アダプター設定',
     viewAdapterDocs: 'ドキュメントを見る',
     bindPipeline: 'パイプラインを紐付け',
@@ -519,7 +523,7 @@ const jaJP = {
       'サイドバーから Agent または Pipeline を選択してください',
     agentOrchestration: 'Agent 編成',
     agentOrchestrationDescription:
-      'メッセージ、グループメンバー、友だち、フィードバックなどの EBA イベント向けの処理ロジックです。',
+      'メッセージ、グループメンバー、友だち、フィードバックなどのプラットフォームイベント向けの処理ロジックです。',
     pipelineType: 'Pipeline',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: 'パイプライン',
@@ -527,7 +531,7 @@ const jaJP = {
     groupByKindShort: 'グループ',
     pipelineTypeDescription:
       '既存のノーコードメッセージ Pipeline を互換性のため保持します。メッセージイベントのみ処理できます。',
-    allEvents: 'すべての EBA イベントに対応',
+    allEvents: 'すべてのイベントに対応',
     messageEventsOnly: 'メッセージイベントのみ',
     basicInfo: '基本情報',
     basicInfoDescription: '名前、アイコン、説明、有効状態を設定します',

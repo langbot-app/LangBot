@@ -4,13 +4,13 @@ kind: MessagePlatformAdapter
 metadata:
   name: qqofficial-eba
   label:
-    en_US: QQ Official API (EBA)
-    zh_Hans: QQ 官方 API (EBA)
-    zh_Hant: QQ 官方 API (EBA)
+    en_US: QQ Official API
+    zh_Hans: QQ 官方 API
+    zh_Hant: QQ 官方 API
   description:
-    en_US: QQ Official API adapter with Event-Based Agents support, using Webhook or WebSocket mode.
-    zh_Hans: QQ 官方 API 适配器（EBA 架构版本），支持 Webhook 和 WebSocket 两种连接模式。
-    zh_Hant: QQ 官方 API 適配器（EBA 架構版本），支援 Webhook 和 WebSocket 兩種連線模式。
+    en_US: QQ Official API adapter with event-driven orchestration support, using Webhook or WebSocket mode.
+    zh_Hans: QQ 官方 API 适配器，支持事件驱动编排、Webhook 和 WebSocket 两种连接模式。
+    zh_Hant: QQ 官方 API 適配器，支援事件驅動編排、Webhook 和 WebSocket 兩種連線模式。
   icon: qqofficial.svg
 
 spec:
@@ -122,4 +122,3 @@ execution:
   python:
     path: ./adapter.py
     attr: QQOfficialAdapter
-

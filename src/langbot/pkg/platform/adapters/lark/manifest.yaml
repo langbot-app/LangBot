@@ -4,15 +4,15 @@ kind: MessagePlatformAdapter
 metadata:
   name: lark-eba
   label:
-    en_US: Lark / Feishu (EBA)
-    zh_Hans: 飞书 (EBA)
-    zh_Hant: 飛書 (EBA)
-    ja_JP: Lark (EBA)
+    en_US: Lark / Feishu
+    zh_Hans: 飞书
+    zh_Hant: 飛書
+    ja_JP: Lark
   description:
-    en_US: Lark/Feishu adapter (EBA architecture), supporting self-built/store apps and WebSocket/Webhook modes.
-    zh_Hans: 飞书适配器（EBA 架构版本），支持自建/商店应用和长连接/Webhook 两种通信模式。
-    zh_Hant: 飛書適配器（EBA 架構版本），支援自建/商店應用和長連線/Webhook 兩種通訊模式。
-    ja_JP: Lark アダプター（EBA アーキテクチャ）、カスタム/ストアアプリと WebSocket/Webhook モードをサポートします。
+    en_US: Lark/Feishu adapter with event-driven orchestration support, supporting self-built/store apps and WebSocket/Webhook modes.
+    zh_Hans: 飞书适配器，支持事件驱动编排、自建/商店应用和长连接/Webhook 两种通信模式。
+    zh_Hant: 飛書適配器，支援事件驅動編排、自建/商店應用和長連線/Webhook 兩種通訊模式。
+    ja_JP: イベント駆動の編成に対応した Lark アダプター。カスタム/ストアアプリと WebSocket/Webhook モードをサポートします。
   icon: lark.svg
 
 spec:

@@ -335,6 +335,10 @@ const thTH = {
     deleteConfirmation: 'คุณแน่ใจหรือไม่ว่าต้องการลบ Bot นี้?',
     platformAdapter: 'การเลือกแพลตฟอร์ม/อะแดปเตอร์',
     selectAdapter: 'เลือกอะแดปเตอร์',
+    legacyAdapters: 'อะแดปเตอร์รุ่นเก่า',
+    legacyAdapterBadge: 'เก่า',
+    legacyAdaptersHint:
+      'อะแดปเตอร์เหล่านี้มีรุ่นใหม่แบบขับเคลื่อนด้วยเหตุการณ์แล้ว และเก็บไว้เพื่อความเข้ากันได้กับการตั้งค่าเดิมเท่านั้น ไม่แนะนำสำหรับ Bot ใหม่',
     adapterConfig: 'การกำหนดค่าอะแดปเตอร์',
     viewAdapterDocs: 'ดูเอกสาร',
     bindPipeline: 'ผูก Pipeline',
@@ -470,7 +474,7 @@ const thTH = {
     selectFromSidebar: 'เลือก Agent หรือ Pipeline จากแถบด้านข้าง',
     agentOrchestration: 'การประสาน Agent',
     agentOrchestrationDescription:
-      'ตรรกะการประมวลผลที่เน้นเหตุการณ์ EBA สำหรับข้อความ สมาชิกกลุ่ม เพื่อน ฟีดแบ็ก และเหตุการณ์อื่นๆ',
+      'ตรรกะการประมวลผลที่เน้นเหตุการณ์สำหรับข้อความ สมาชิกกลุ่ม เพื่อน ฟีดแบ็ก และเหตุการณ์แพลตฟอร์มอื่นๆ',
     pipelineType: 'Pipeline',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: 'Pipeline',
@@ -478,7 +482,7 @@ const thTH = {
     groupByKindShort: 'จัดกลุ่ม',
     pipelineTypeDescription:
       'คงไว้ซึ่ง pipeline ข้อความแบบไม่ต้องเขียนโค้ดเพื่อความเข้ากันได้ย้อนหลัง รองรับเฉพาะเหตุการณ์ข้อความ',
-    allEvents: 'รองรับทุกเหตุการณ์ EBA',
+    allEvents: 'รองรับทุกเหตุการณ์',
     messageEventsOnly: 'เฉพาะเหตุการณ์ข้อความ',
     basicInfo: 'ข้อมูลพื้นฐาน',
     basicInfoDescription: 'ตั้งชื่อ ไอคอน คำอธิบาย และสถานะการเปิดใช้งาน',

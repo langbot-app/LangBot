@@ -4,13 +4,13 @@ kind: MessagePlatformAdapter
 metadata:
   name: kook-eba
   label:
-    en_US: KOOK (EBA)
-    zh_Hans: KOOK (EBA)
-    zh_Hant: KOOK (EBA)
+    en_US: KOOK
+    zh_Hans: KOOK
+    zh_Hant: KOOK
   description:
-    en_US: KOOK adapter (EBA architecture), supporting channel and direct messages.
-    zh_Hans: KOOK 适配器（EBA 架构版本），支持频道消息和私聊消息。
-    zh_Hant: KOOK 適配器（EBA 架構版本），支援頻道訊息和私聊訊息。
+    en_US: KOOK adapter with event-driven orchestration support, supporting channel and direct messages.
+    zh_Hans: KOOK 适配器，支持事件驱动编排、频道消息和私聊消息。
+    zh_Hant: KOOK 適配器，支援事件驅動編排、頻道訊息和私聊訊息。
   icon: kook.png
   docs:
     zh: https://link.langbot.app/zh/platforms/kook
