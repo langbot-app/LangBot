@@ -427,9 +427,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
                 timeout=_GROUP_MEMBER_INFO_LOOKUP_TIMEOUT_SECONDS,
             )
         except Exception:
-            self._group_member_info_negative_cache[cache_key] = (
-                now + _GROUP_MEMBER_INFO_NEGATIVE_CACHE_TTL_SECONDS
-            )
+            self._group_member_info_negative_cache[cache_key] = now + _GROUP_MEMBER_INFO_NEGATIVE_CACHE_TTL_SECONDS
             return {}
         if isinstance(member_info, dict) and member_info:
             self._group_member_info_cache[cache_key] = (
