@@ -93,11 +93,9 @@ function getPluginComponentIconURL(value?: string): string | null {
 function SelectOptionContent({
   label,
   value,
-  showDescription = false,
 }: {
   label: string;
   value: string;
-  showDescription?: boolean;
 }) {
   const iconURL = getPluginComponentIconURL(value);
 
@@ -112,11 +110,6 @@ function SelectOptionContent({
       )}
       <div className="min-w-0 flex flex-col">
         <span className="truncate">{label}</span>
-        {showDescription && (
-          <span className="truncate text-xs text-muted-foreground">
-            {value}
-          </span>
-        )}
       </div>
     </div>
   );
@@ -487,7 +480,6 @@ export default function DynamicFormItemComponent({
                   <SelectOptionContent
                     label={extractI18nObject(option.label)}
                     value={option.name}
-                    showDescription
                   />
                 </SelectItem>
               ))}
