@@ -340,8 +340,9 @@ const enUS = {
     platformAdapter: 'Platform/Adapter Selection',
     selectAdapter: 'Select Adapter',
     legacyAdapters: 'Legacy adapters',
+    legacyAdapterBadge: 'Legacy',
     legacyAdaptersHint:
-      'These adapters are superseded by their newer (EBA) versions. They are kept only for existing configurations and are not recommended for new bots.',
+      'These adapters have newer event-driven counterparts. They are kept only for existing configurations and are not recommended for new bots.',
     adapterConfig: 'Adapter Configuration',
     viewAdapterDocs: 'View Docs',
     bindPipeline: 'Bind Pipeline',
@@ -535,7 +536,7 @@ const enUS = {
     selectFromSidebar: 'Select an Agent or Pipeline from the sidebar',
     agentOrchestration: 'Agent Orchestration',
     agentOrchestrationDescription:
-      'Event-first handling logic for messages, group members, friends, feedback, and other EBA events.',
+      'Event-first handling logic for messages, group members, friends, feedback, and other platform events.',
     pipelineType: 'Pipeline',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: 'Pipeline',
@@ -543,7 +544,7 @@ const enUS = {
     groupByKindShort: 'Group',
     pipelineTypeDescription:
       'Keep the existing no-code message pipeline for backward compatibility. It only handles message events.',
-    allEvents: 'Supports all EBA events',
+    allEvents: 'Supports all events',
     messageEventsOnly: 'Message events only',
     basicInfo: 'Basic Information',
     basicInfoDescription: 'Set the name, icon, description and enabled state',

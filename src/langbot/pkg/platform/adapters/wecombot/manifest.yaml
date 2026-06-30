@@ -4,13 +4,13 @@ kind: MessagePlatformAdapter
 metadata:
   name: wecombot-eba
   label:
-    en_US: WeComBot (EBA)
-    zh_Hans: 企业微信智能机器人 (EBA)
-    zh_Hant: 企業微信智慧機器人 (EBA)
+    en_US: WeComBot
+    zh_Hans: 企业微信智能机器人
+    zh_Hant: 企業微信智慧機器人
   description:
-    en_US: WeCom AI Bot adapter with Event-Based Agents support
-    zh_Hans: 企业微信智能机器人适配器（EBA 架构版本），支持长连接和 Webhook 两种接入方式
-    zh_Hant: 企業微信智慧機器人適配器（EBA 架構版本），支援長連線和 Webhook 兩種接入方式
+    en_US: WeCom AI Bot adapter with event-driven orchestration support
+    zh_Hans: 企业微信智能机器人适配器，支持事件驱动编排、长连接和 Webhook 两种接入方式
+    zh_Hant: 企業微信智慧機器人適配器，支援事件驅動編排、長連線和 Webhook 兩種接入方式
   icon: wecombot.png
 
 spec:

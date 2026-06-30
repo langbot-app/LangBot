@@ -4,11 +4,11 @@ kind: MessagePlatformAdapter
 metadata:
   name: telegram-eba
   label:
-    en_US: Telegram (EBA)
-    zh_Hans: 电报 (EBA)
+    en_US: Telegram
+    zh_Hans: 电报
   description:
-    en_US: Telegram Bot adapter (EBA architecture)
-    zh_Hans: 电报 Bot 适配器（EBA 架构版本）
+    en_US: Telegram Bot adapter with event-driven orchestration support
+    zh_Hans: 电报 Bot 适配器，支持事件驱动编排
   icon: telegram.svg
 
 spec:

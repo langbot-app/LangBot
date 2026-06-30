@@ -4,13 +4,13 @@ kind: MessagePlatformAdapter
 metadata:
   name: wecom-eba
   label:
-    en_US: WeCom (EBA)
-    zh_Hans: 企业微信 (EBA)
-    zh_Hant: 企業微信 (EBA)
+    en_US: WeCom
+    zh_Hans: 企业微信
+    zh_Hant: 企業微信
   description:
-    en_US: WeCom application message adapter (EBA architecture)
-    zh_Hans: 企业微信内部应用消息适配器（EBA 架构版本）
-    zh_Hant: 企業微信內部應用訊息適配器（EBA 架構版本）
+    en_US: WeCom application message adapter with event-driven orchestration support
+    zh_Hans: 企业微信内部应用消息适配器，支持事件驱动编排
+    zh_Hant: 企業微信內部應用訊息適配器，支援事件驅動編排
   icon: wecom.png
 
 spec:

@@ -349,6 +349,10 @@ const ruRU = {
     deleteConfirmation: 'Вы уверены, что хотите удалить этого бота?',
     platformAdapter: 'Выбор платформы/адаптера',
     selectAdapter: 'Выберите адаптер',
+    legacyAdapters: 'Устаревшие адаптеры',
+    legacyAdapterBadge: 'Устаревший',
+    legacyAdaptersHint:
+      'У этих адаптеров есть новые событийные версии. Они сохранены только для существующих конфигураций и не рекомендуются для новых ботов.',
     adapterConfig: 'Настройка адаптера',
     viewAdapterDocs: 'Документация',
     bindPipeline: 'Привязать конвейер',
@@ -484,7 +488,7 @@ const ruRU = {
     selectFromSidebar: 'Выберите Agent или Pipeline на боковой панели',
     agentOrchestration: 'Оркестровка Agent',
     agentOrchestrationDescription:
-      'Логика обработки событий EBA для сообщений, участников групп, друзей, обратной связи и других событий.',
+      'Логика обработки сообщений, участников групп, друзей, обратной связи и других событий платформы.',
     pipelineType: 'Pipeline',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: 'Pipeline',
@@ -492,7 +496,7 @@ const ruRU = {
     groupByKindShort: 'Группа',
     pipelineTypeDescription:
       'Сохраняет существующий no-code конвейер сообщений для обратной совместимости. Обрабатывает только события сообщений.',
-    allEvents: 'Поддерживает все события EBA',
+    allEvents: 'Поддерживает все события',
     messageEventsOnly: 'Только события сообщений',
     basicInfo: 'Основная информация',
     basicInfoDescription: 'Задайте имя, иконку, описание и статус активации',

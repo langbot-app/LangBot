@@ -350,6 +350,10 @@ const esES = {
     deleteConfirmation: '¿Estás seguro de que deseas eliminar este Bot?',
     platformAdapter: 'Selección de plataforma/adaptador',
     selectAdapter: 'Seleccionar adaptador',
+    legacyAdapters: 'Adaptadores heredados',
+    legacyAdapterBadge: 'Heredado',
+    legacyAdaptersHint:
+      'Estos adaptadores tienen versiones nuevas orientadas a eventos. Se mantienen solo para configuraciones existentes y no se recomiendan para Bots nuevos.',
     adapterConfig: 'Configuración del adaptador',
     viewAdapterDocs: 'Ver documentación',
     bindPipeline: 'Vincular Pipeline',
@@ -486,7 +490,7 @@ const esES = {
     selectFromSidebar: 'Selecciona un Agent o Pipeline desde la barra lateral',
     agentOrchestration: 'Orquestación de Agent',
     agentOrchestrationDescription:
-      'Lógica de procesamiento orientada a eventos EBA para mensajes, miembros de grupo, amigos, retroalimentación y otros eventos.',
+      'Lógica de procesamiento orientada a eventos para mensajes, miembros de grupo, amigos, retroalimentación y otros eventos de plataforma.',
     pipelineType: 'Pipeline',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: 'Pipeline',
@@ -494,7 +498,7 @@ const esES = {
     groupByKindShort: 'Agrupar',
     pipelineTypeDescription:
       'Mantiene el pipeline de mensajes sin código para compatibilidad con versiones anteriores. Solo procesa eventos de mensaje.',
-    allEvents: 'Compatible con todos los eventos EBA',
+    allEvents: 'Compatible con todos los eventos',
     messageEventsOnly: 'Solo eventos de mensaje',
     basicInfo: 'Información básica',
     basicInfoDescription:

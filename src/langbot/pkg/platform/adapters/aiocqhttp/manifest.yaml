@@ -4,13 +4,13 @@ kind: MessagePlatformAdapter
 metadata:
   name: aiocqhttp-eba
   label:
-    en_US: OneBot v11 (EBA)
-    zh_Hans: OneBot v11 (EBA)
-    zh_Hant: OneBot v11 (EBA)
+    en_US: OneBot v11
+    zh_Hans: OneBot v11
+    zh_Hant: OneBot v11
   description:
-    en_US: OneBot v11 adapter for QQ-compatible protocol endpoints (EBA architecture)
-    zh_Hans: OneBot v11 适配器，用于接入 QQ 兼容协议端（EBA 架构版本）
-    zh_Hant: OneBot v11 適配器，用於接入 QQ 相容協定端（EBA 架構版本）
+    en_US: OneBot v11 adapter for QQ-compatible protocol endpoints with event-driven orchestration support
+    zh_Hans: OneBot v11 适配器，用于接入 QQ 兼容协议端，支持事件驱动编排
+    zh_Hant: OneBot v11 適配器，用於接入 QQ 相容協定端，支援事件驅動編排
   icon: onebot.svg
 
 spec:

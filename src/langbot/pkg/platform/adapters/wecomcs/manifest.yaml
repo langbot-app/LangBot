@@ -4,13 +4,13 @@ kind: MessagePlatformAdapter
 metadata:
   name: wecomcs-eba
   label:
-    en_US: WeCom Customer Service (EBA)
-    zh_Hans: 企业微信客服 (EBA)
-    zh_Hant: 企業微信客服 (EBA)
+    en_US: WeCom Customer Service
+    zh_Hans: 企业微信客服
+    zh_Hant: 企業微信客服
   description:
-    en_US: WeCom Customer Service adapter with Event-Based Agents support
-    zh_Hans: 企业微信客服适配器（EBA 架构版本），通过统一 Webhook 接收客服会话消息
-    zh_Hant: 企業微信客服適配器（EBA 架構版本），透過統一 Webhook 接收客服會話訊息
+    en_US: WeCom Customer Service adapter with event-driven orchestration support
+    zh_Hans: 企业微信客服适配器，支持事件驱动编排，通过统一 Webhook 接收客服会话消息
+    zh_Hant: 企業微信客服適配器，支援事件驅動編排，透過統一 Webhook 接收客服會話訊息
   icon: wecom.png
 
 spec:

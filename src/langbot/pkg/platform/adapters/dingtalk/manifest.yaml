@@ -4,13 +4,13 @@ kind: MessagePlatformAdapter
 metadata:
   name: dingtalk-eba
   label:
-    en_US: DingTalk (EBA)
-    zh_Hans: 钉钉 (EBA)
-    zh_Hant: 釘釘 (EBA)
+    en_US: DingTalk
+    zh_Hans: 钉钉
+    zh_Hant: 釘釘
   description:
-    en_US: DingTalk adapter (EBA architecture)
-    zh_Hans: 钉钉适配器（EBA 架构版本）
-    zh_Hant: 釘釘適配器（EBA 架構版本）
+    en_US: DingTalk adapter with event-driven orchestration support
+    zh_Hans: 钉钉适配器，支持事件驱动编排
+    zh_Hant: 釘釘適配器，支援事件驅動編排
   icon: dingtalk.svg
 
 spec:

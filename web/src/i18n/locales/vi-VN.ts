@@ -345,6 +345,10 @@ const viVN = {
     deleteConfirmation: 'Bạn có chắc chắn muốn xóa Bot này không?',
     platformAdapter: 'Nền tảng/Lựa chọn Adapter',
     selectAdapter: 'Chọn Adapter',
+    legacyAdapters: 'Adapter cũ',
+    legacyAdapterBadge: 'Cũ',
+    legacyAdaptersHint:
+      'Các adapter này đã có phiên bản hướng sự kiện mới hơn. Chúng chỉ được giữ lại để tương thích với cấu hình hiện có và không được khuyến nghị cho Bot mới.',
     adapterConfig: 'Cấu hình Adapter',
     viewAdapterDocs: 'Xem tài liệu',
     bindPipeline: 'Liên kết Pipeline',
@@ -480,7 +484,7 @@ const viVN = {
     selectFromSidebar: 'Chọn một Agent hoặc Pipeline từ thanh bên',
     agentOrchestration: 'Dàn dựng Agent',
     agentOrchestrationDescription:
-      'Logic xử lý hướng sự kiện cho tin nhắn, thành viên nhóm, bạn bè, phản hồi và các sự kiện EBA khác.',
+      'Logic xử lý hướng sự kiện cho tin nhắn, thành viên nhóm, bạn bè, phản hồi và các sự kiện nền tảng khác.',
     pipelineType: 'Pipeline',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: 'Pipeline',
@@ -488,7 +492,7 @@ const viVN = {
     groupByKindShort: 'Nhóm',
     pipelineTypeDescription:
       'Giữ lại pipeline tin nhắn không cần mã hiện có để tương thích ngược. Chỉ xử lý sự kiện tin nhắn.',
-    allEvents: 'Hỗ trợ tất cả sự kiện EBA',
+    allEvents: 'Hỗ trợ tất cả sự kiện',
     messageEventsOnly: 'Chỉ sự kiện tin nhắn',
     basicInfo: 'Thông tin cơ bản',
     basicInfoDescription: 'Đặt tên, biểu tượng, mô tả và trạng thái kích hoạt',

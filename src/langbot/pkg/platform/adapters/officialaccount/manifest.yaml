@@ -4,13 +4,13 @@ kind: MessagePlatformAdapter
 metadata:
   name: officialaccount-eba
   label:
-    en_US: Official Account (EBA)
-    zh_Hans: 微信公众号 (EBA)
-    zh_Hant: 微信公眾號 (EBA)
+    en_US: Official Account
+    zh_Hans: 微信公众号
+    zh_Hant: 微信公眾號
   description:
-    en_US: WeChat Official Account adapter with Event-Based Agents support
-    zh_Hans: 微信公众号适配器（EBA 架构版本），通过统一 Webhook 接收公众号消息
-    zh_Hant: 微信公眾號適配器（EBA 架構版本），透過統一 Webhook 接收公眾號訊息
+    en_US: WeChat Official Account adapter with event-driven orchestration support
+    zh_Hans: 微信公众号适配器，支持事件驱动编排，通过统一 Webhook 接收公众号消息
+    zh_Hant: 微信公眾號適配器，支援事件驅動編排，透過統一 Webhook 接收公眾號訊息
   icon: officialaccount.png
 
 spec:

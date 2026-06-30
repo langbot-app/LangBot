@@ -324,6 +324,10 @@ const zhHant = {
     deleteConfirmation: '您確定要刪除這個機器人嗎？',
     platformAdapter: '平台/適配器選擇',
     selectAdapter: '選擇適配器',
+    legacyAdapters: '舊版適配器',
+    legacyAdapterBadge: '過時',
+    legacyAdaptersHint:
+      '這些適配器已有對應的事件驅動接入版本，僅為相容既有設定保留，不建議新建機器人時使用。',
     adapterConfig: '適配器設定',
     viewAdapterDocs: '查看文檔',
     bindPipeline: '綁定流程線',
@@ -454,7 +458,7 @@ const zhHant = {
     selectFromSidebar: '從側邊欄選擇一個 Agent 或 Pipeline',
     agentOrchestration: 'Agent 編排',
     agentOrchestrationDescription:
-      '面向 EBA 事件的處理邏輯，可用於訊息、群成員、好友、回饋等事件。',
+      '面向平台事件的處理邏輯，可用於訊息、群成員、好友、回饋等事件。',
     pipelineType: 'Pipeline',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: '流水線',
@@ -462,7 +466,7 @@ const zhHant = {
     groupByKindShort: '分組',
     pipelineTypeDescription:
       '保留現有無程式碼訊息流水線，相容舊設定，只能處理訊息事件。',
-    allEvents: '支援全部 EBA 事件',
+    allEvents: '支援全部事件',
     messageEventsOnly: '僅支援訊息事件',
     basicInfo: '基本資訊',
     basicInfoDescription: '設定名稱、圖示、描述和啟用狀態',

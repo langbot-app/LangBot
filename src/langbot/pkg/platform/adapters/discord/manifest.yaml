@@ -4,11 +4,11 @@ kind: MessagePlatformAdapter
 metadata:
   name: discord-eba
   label:
-    en_US: Discord (EBA)
-    zh_Hans: Discord (EBA)
+    en_US: Discord
+    zh_Hans: Discord
   description:
-    en_US: Discord adapter (EBA architecture)
-    zh_Hans: Discord 适配器（EBA 架构版本）
+    en_US: Discord adapter with event-driven orchestration support
+    zh_Hans: Discord 适配器，支持事件驱动编排
   icon: discord.svg
 
 spec:

@@ -325,8 +325,9 @@ const zhHans = {
     platformAdapter: '平台/适配器选择',
     selectAdapter: '选择适配器',
     legacyAdapters: '旧版适配器',
+    legacyAdapterBadge: '过时',
     legacyAdaptersHint:
-      '这些适配器已被新版（EBA 架构）取代，仅为兼容存量配置保留，不建议新建机器人时使用。',
+      '这些适配器已有对应的事件驱动接入版本，仅为兼容存量配置保留，不建议新建机器人时使用。',
     adapterConfig: '适配器配置',
     viewAdapterDocs: '查看文档',
     bindPipeline: '绑定流水线',
@@ -514,7 +515,7 @@ const zhHans = {
     selectFromSidebar: '从侧边栏选择一个 Agent 或 Pipeline',
     agentOrchestration: 'Agent 编排',
     agentOrchestrationDescription:
-      '面向 EBA 事件的处理逻辑，可用于消息、群成员、好友、反馈等事件。',
+      '面向平台事件的处理逻辑，可用于消息、群成员、好友、反馈等事件。',
     pipelineType: 'Pipeline',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: '流水线',
@@ -522,7 +523,7 @@ const zhHans = {
     groupByKindShort: '分组',
     pipelineTypeDescription:
       '保留现有无代码消息流水线，兼容旧配置，只能处理消息事件。',
-    allEvents: '支持全部 EBA 事件',
+    allEvents: '支持全部事件',
     messageEventsOnly: '仅支持消息事件',
     basicInfo: '基础信息',
     basicInfoDescription: '设置名称、图标、描述和启用状态',

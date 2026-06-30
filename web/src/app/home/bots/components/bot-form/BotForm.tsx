@@ -138,9 +138,9 @@ export default function BotForm({
   const currentAdapter = form.watch('adapter');
   const currentAdapterConfig = form.watch('adapter_config');
 
-  // Group adapters by category for the Select dropdown. Legacy adapters
-  // (those superseded by an EBA implementation) are split out and shown in a
-  // collapsed group at the bottom so they're de-emphasized but still usable.
+  // Group adapters by category for the Select dropdown. Legacy adapters are
+  // split out and shown in a collapsed group at the bottom so they're
+  // de-emphasized but still usable for existing configurations.
   const activeAdapters = useMemo(
     () => adapterNameList.filter((a) => !a.legacy),
     [adapterNameList],
@@ -490,19 +490,32 @@ export default function BotForm({
                         }}
                         value={field.value}
                       >
-                        <SelectTrigger className="w-[240px]">
+                        <SelectTrigger className="w-[240px] overflow-hidden">
                           {field.value ? (
-                            <div className="flex items-center gap-2">
+                            <div className="flex min-w-0 items-center gap-2">
                               <img
                                 src={httpClient.getAdapterIconURL(field.value)}
                                 alt=""
-                                className="h-5 w-5 rounded"
+                                className="h-5 w-5 shrink-0 rounded"
                               />
-                              <span>
-                                {adapterNameList.find(
+                              {(() => {
+                                const selectedAdapter = adapterNameList.find(
                                   (a) => a.value === field.value,
-                                )?.label ?? field.value}
-                              </span>
+                                );
+
+                                return (
+                                  <>
+                                    <span className="min-w-0 truncate">
+                                      {selectedAdapter?.label ?? field.value}
+                                    </span>
+                                    {selectedAdapter?.legacy && (
+                                      <span className="shrink-0 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
+                                        {t('bots.legacyAdapterBadge')}
+                                      </span>
+                                    )}
+                                  </>
+                                );
+                              })()}
                             </div>
                           ) : (
                             <SelectValue
@@ -525,15 +538,17 @@ export default function BotForm({
                                   key={`${group.categoryId ?? 'uncategorized'}:${item.value}`}
                                   value={item.value}
                                 >
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex min-w-0 w-full items-center gap-2">
                                     <img
                                       src={httpClient.getAdapterIconURL(
                                         item.value,
                                       )}
                                       alt=""
-                                      className="h-5 w-5 rounded"
+                                      className="h-5 w-5 shrink-0 rounded"
                                     />
-                                    <span>{item.label}</span>
+                                    <span className="min-w-0 truncate">
+                                      {item.label}
+                                    </span>
                                   </div>
                                 </SelectItem>
                               ))}
@@ -578,15 +593,20 @@ export default function BotForm({
                                         key={`legacy:${item.value}`}
                                         value={item.value}
                                       >
-                                        <div className="flex items-center gap-2 opacity-70">
+                                        <div className="flex min-w-0 w-full items-center gap-2 opacity-70">
                                           <img
                                             src={httpClient.getAdapterIconURL(
                                               item.value,
                                             )}
                                             alt=""
-                                            className="h-5 w-5 rounded grayscale"
+                                            className="h-5 w-5 shrink-0 rounded grayscale"
                                           />
-                                          <span>{item.label}</span>
+                                          <span className="min-w-0 truncate">
+                                            {item.label}
+                                          </span>
+                                          <span className="ml-auto shrink-0 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
+                                            {t('bots.legacyAdapterBadge')}
+                                          </span>
                                         </div>
                                       </SelectItem>
                                     ))}
