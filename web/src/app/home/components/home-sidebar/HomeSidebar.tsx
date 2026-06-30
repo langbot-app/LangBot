@@ -83,6 +83,7 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
+  SidebarRail,
   useSidebar,
 } from '@/components/ui/sidebar';
 import {
@@ -726,7 +727,12 @@ function NavItems({
                       )}
                     />
                   ) : null}
-                  <span className="truncate">{item.name}</span>
+                  <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                  {isBot && item.legacyAdapter && (
+                    <span className="ml-auto shrink-0 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
+                      {t('bots.legacyAdapterBadge')}
+                    </span>
+                  )}
                 </button>
               );
             }
@@ -789,7 +795,14 @@ function NavItems({
                             )}
                           />
                         ) : null}
-                        <span className="truncate">{item.name}</span>
+                        <span className="min-w-0 flex-1 truncate">
+                          {item.name}
+                        </span>
+                        {isBot && item.legacyAdapter && (
+                          <span className="shrink-0 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
+                            {t('bots.legacyAdapterBadge')}
+                          </span>
+                        )}
                         {item.kind && (
                           <span
                             className="ml-auto flex shrink-0 items-center text-muted-foreground"
@@ -2241,6 +2254,7 @@ export default function HomeSidebar({
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarFooter>
+        <SidebarRail />
       </Sidebar>
 
       <Dialog open={feedbackOpen} onOpenChange={setFeedbackOpen}>
