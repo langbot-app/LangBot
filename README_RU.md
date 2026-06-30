@@ -121,7 +121,7 @@ docker compose up -d
 | [Volc Engine Ark](https://console.volcengine.com/ark/region:ark+cn-beijing/model?vendor=Bytedance&view=LIST_VIEW) | Шлюз | ✅ |
 | [ModelScope](https://modelscope.cn/docs/model-service/API-Inference/intro) | Шлюз | ✅ |
 | [GiteeAI](https://ai.gitee.com/) | Шлюз | ✅ |
-| [302.AI](https://share.302.ai/SuTG99) | Шлюз | ✅ |
+| [302.AI](https://share.302ai.cn/SuTG99) | Шлюз | ✅ |
 | [接口 AI](https://jiekou.ai/) | Шлюз | ✅ |
 | [CompShare](https://www.compshare.cn/?ytag=GPU_YY-gh_langbot) | Платформа GPU | ✅ |
 | [PPIO](https://ppinfra.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | Платформа GPU | ✅ |

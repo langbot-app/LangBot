@@ -126,7 +126,7 @@ docker compose up -d
 | [优云智算](https://www.compshare.cn/?ytag=GPU_YY-gh_langbot) | GPU 平台 | ✅ |
 | [PPIO](https://ppinfra.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | GPU 平台 | ✅ |
 | [接口 AI](https://jiekou.ai/) | 聚合平台 | ✅ |
-| [302.AI](https://share.302.ai/SuTG99) | 聚合平台 | ✅ |
+| [302.AI](https://share.302ai.cn/SuTG99) | 聚合平台 | ✅ |
 | [小马算力](https://www.tokenpony.cn/453z1) | 聚合平台 | ✅ |
 | [百宝箱Tbox](https://www.tbox.cn/open) | 智能体平台 | ✅ |
 | [七牛云Qiniu](https://www.qiniu.com/ai/agent) | 聚合平台 | ✅ |
