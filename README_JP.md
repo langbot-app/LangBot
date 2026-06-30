@@ -125,7 +125,7 @@ docker compose up -d
 | [PPIO](https://ppinfra.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | GPUプラットフォーム | ✅ |
 | [ShengSuanYun](https://www.shengsuanyun.com/?from=CH_KYIPP758) | GPUプラットフォーム | ✅ |
 | [接口 AI](https://jiekou.ai/) | ゲートウェイ | ✅ |
-| [302.AI](https://share.302ai.cn/SuTG99) | ゲートウェイ | ✅ |
+| [302.AI](https://share.302.ai/SuTG99) | ゲートウェイ | ✅ |
 | [Qiniu](https://www.qiniu.com/ai/agent) | ゲートウェイ | ✅ |
 
 [→ すべての統合を表示](https://link.langbot.app/en/docs/features)

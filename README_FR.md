@@ -122,7 +122,7 @@ docker compose up -d
 | [ModelScope](https://modelscope.cn/docs/model-service/API-Inference/intro) | Passerelle | ✅ |
 | [GiteeAI](https://ai.gitee.com/) | Passerelle | ✅ |
 | [接口 AI](https://jiekou.ai/) | Passerelle | ✅ |
-| [302.AI](https://share.302ai.cn/SuTG99) | Passerelle | ✅ |
+| [302.AI](https://share.302.ai/SuTG99) | Passerelle | ✅ |
 | [CompShare](https://www.compshare.cn/?ytag=GPU_YY-gh_langbot) | Plateforme GPU | ✅ |
 | [PPIO](https://ppinfra.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | Plateforme GPU | ✅ |
 | [ShengSuanYun](https://www.shengsuanyun.com/?from=CH_KYIPP758) | Plateforme GPU | ✅ |
