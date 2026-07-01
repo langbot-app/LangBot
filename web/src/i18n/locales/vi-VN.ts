@@ -337,8 +337,7 @@ const viVN = {
     getBotConfigError: 'Lấy cấu hình Bot thất bại: ',
     saveSuccess: 'Lưu thành công',
     saveError: 'Lưu thất bại: ',
-    createSuccess:
-      'Tạo thành công. Vui lòng bật hoặc sửa đổi Pipeline đã liên kết',
+    createSuccess: 'Tạo thành công. Vui lòng cấu hình định tuyến sự kiện',
     createError: 'Tạo thất bại: ',
     deleteSuccess: 'Xóa thành công',
     deleteError: 'Xóa thất bại: ',
@@ -369,6 +368,9 @@ const viVN = {
     routingConnection: 'Định tuyến & Kết nối',
     routingConnectionDescription:
       'Liên kết Pipeline xử lý tin nhắn cho Bot này',
+    eventRouting: 'Định tuyến sự kiện',
+    eventRoutingDescription:
+      'Chọn bộ xử lý sẽ nhận từng sự kiện của Bot này. Chỉnh sửa logic xử lý trong trang Agent. Pipeline chỉ hỗ trợ sự kiện tin nhắn.',
     routingRules: 'Quy tắc định tuyến có điều kiện',
     routingRulesDescription:
       'Các quy tắc được đánh giá theo thứ tự; kết quả khớp đầu tiên sẽ định tuyến đến pipeline tương ứng. Nếu không khớp, pipeline mặc định ở trên sẽ được sử dụng.',
@@ -478,13 +480,13 @@ const viVN = {
   agents: {
     title: 'Agent',
     description:
-      'Quản lý dàn dựng Agent và Pipeline, sau đó gắn chúng vào sự kiện của bot',
-    create: 'Tạo Agent',
-    editAgent: 'Chỉnh sửa dàn dựng Agent',
+      'Tạo bộ xử lý có thể tái sử dụng và dùng chúng trong định tuyến sự kiện của bot',
+    create: 'Tạo bộ xử lý',
+    editAgent: 'Chỉnh sửa Agent',
     selectFromSidebar: 'Chọn một Agent hoặc Pipeline từ thanh bên',
-    agentOrchestration: 'Dàn dựng Agent',
-    agentOrchestrationDescription:
-      'Logic xử lý hướng sự kiện cho tin nhắn, thành viên nhóm, bạn bè, phản hồi và các sự kiện nền tảng khác.',
+    agentType: 'Agent',
+    agentTypeDescription:
+      'Dùng runner để xử lý tin nhắn, thành viên nhóm, bạn bè, phản hồi và các sự kiện nền tảng khác.',
     pipelineType: 'Pipeline',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: 'Pipeline',
@@ -497,12 +499,13 @@ const viVN = {
     basicInfo: 'Thông tin cơ bản',
     basicInfoDescription: 'Đặt tên, biểu tượng, mô tả và trạng thái kích hoạt',
     runnerSettings: 'Runner',
-    eventCapability: 'Khả năng sự kiện',
-    eventCapabilityDescription:
-      'Khai báo những sự kiện mà dàn dựng Agent này có thể được gắn vào. Mỗi dòng một mẫu sự kiện; hỗ trợ * và namespace.*.',
-    supportedEvents: 'Sự kiện được hỗ trợ',
+    advanced: 'Nâng cao',
+    bindableEvents: 'Phạm vi sự kiện có thể gắn',
+    bindableEventsDescription:
+      'Giới hạn những tuyến sự kiện bot có thể chọn Agent này. Mặc định phù hợp với hầu hết trường hợp.',
+    supportedEvents: 'Phạm vi sự kiện',
     supportedEventsDescription:
-      'Ví dụ: *, message.received, group.*. Pipeline cố định ở message.*.',
+      'Mỗi dòng một mẫu sự kiện, ví dụ *, message.received, group.*. Pipeline cố định ở message.*.',
     enabled: 'Kích hoạt Agent',
     enabledDescription:
       'Khi bị tắt, Agent này sẽ không được định tuyến sự kiện chọn.',
@@ -514,10 +517,10 @@ const viVN = {
     saveError: 'Lưu thất bại: ',
     deleteSuccess: 'Xóa thành công',
     deleteError: 'Xóa thất bại: ',
-    deleteConfirmation: 'Bạn có chắc muốn xóa dàn dựng Agent này không?',
+    deleteConfirmation: 'Bạn có chắc muốn xóa Agent này không?',
     dangerZone: 'Vùng nguy hiểm',
     dangerZoneDescription: 'Hành động không thể hoàn tác và mang tính phá hủy',
-    deleteAgentAction: 'Xóa dàn dựng Agent này',
+    deleteAgentAction: 'Xóa Agent này',
     deleteAgentHint:
       'Sau khi xóa, các sự kiện đã gắn vào nó sẽ không thể thực thi được nữa.',
     noRunnerMetadata: 'Hiện chưa có siêu dữ liệu AgentRunner khả dụng.',

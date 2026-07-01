@@ -486,7 +486,17 @@ export default function WizardPage() {
         adapter: existingBot.adapter,
         adapter_config: existingBot.adapter_config,
         enable: existingBot.enable,
-        use_pipeline_uuid: pipelineResp.uuid,
+        event_bindings: [
+          {
+            event_pattern: 'message.received',
+            target_type: 'pipeline',
+            target_uuid: pipelineResp.uuid,
+            filters: [],
+            priority: 0,
+            enabled: true,
+            description: '',
+          },
+        ],
       });
 
       setCurrentStep(3);

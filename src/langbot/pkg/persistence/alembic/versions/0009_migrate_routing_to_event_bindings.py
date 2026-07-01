@@ -16,6 +16,16 @@ down_revision = '0008_agent_product_surface'
 depends_on = None
 
 
+def _table_exists(table_name: str) -> bool:
+    return table_name in sa.inspect(op.get_bind()).get_table_names()
+
+
+def _column_exists(table_name: str, column_name: str) -> bool:
+    if not _table_exists(table_name):
+        return False
+    return column_name in {column['name'] for column in sa.inspect(op.get_bind()).get_columns(table_name)}
+
+
 def _rule_to_filters(rule: dict) -> list[dict] | None:
     """Convert a pipeline_routing_rule to event_binding filters (best effort).
 
@@ -38,6 +48,11 @@ def _rule_to_filters(rule: dict) -> list[dict] | None:
 
 
 def upgrade() -> None:
+    if not _table_exists('bots') or not _column_exists('bots', 'event_bindings'):
+        return
+    if not _column_exists('bots', 'use_pipeline_uuid') or not _column_exists('bots', 'pipeline_routing_rules'):
+        return
+
     bind = op.get_bind()
     rows = bind.execute(
         sa.text('SELECT uuid, use_pipeline_uuid, pipeline_routing_rules, event_bindings FROM bots')

@@ -448,13 +448,13 @@ export default function BotForm({
           </CardContent>
         </Card>
 
-        {/* Card 2: Event Orchestration (edit mode only) */}
+        {/* Card 2: Event Routing (edit mode only) */}
         {initBotId && (
           <Card>
             <CardHeader>
-              <CardTitle>{t('bots.eventOrchestration')}</CardTitle>
+              <CardTitle>{t('bots.eventRouting')}</CardTitle>
               <CardDescription>
-                {t('bots.eventOrchestrationDescription')}
+                {t('bots.eventRoutingDescription')}
               </CardDescription>
             </CardHeader>
             <CardContent>

@@ -84,8 +84,8 @@ export default function AgentCreateContent({
     {
       kind: 'agent',
       icon: Bot,
-      title: t('agents.agentOrchestration'),
-      description: t('agents.agentOrchestrationDescription'),
+      title: t('agents.agentType'),
+      description: t('agents.agentTypeDescription'),
       badge: t('agents.allEvents'),
     },
     {

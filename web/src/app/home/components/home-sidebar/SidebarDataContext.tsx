@@ -29,7 +29,7 @@ export interface SidebarEntityItem {
   debug?: boolean;
   // Set when this item appears in the unified extensions list
   extensionType?: 'plugin' | 'mcp' | 'skill';
-  // Agent-specific: distinguishes Agent orchestration from legacy Pipeline
+  // Agent-specific: distinguishes Agent processors from Pipelines
   kind?: 'agent' | 'pipeline';
 }
 

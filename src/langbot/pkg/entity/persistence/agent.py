@@ -4,7 +4,7 @@ from .base import Base
 
 
 class Agent(Base):
-    """Product-level Agent orchestration instance."""
+    """Product-level Agent processor."""
 
     __tablename__ = 'agents'
 

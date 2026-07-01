@@ -14,8 +14,6 @@ from ..core import app, entities as core_entities, taskmgr
 from ..discover import engine
 
 from ..entity.persistence import bot as persistence_bot
-from ..entity.persistence import pipeline as persistence_pipeline
-
 from ..entity.errors import platform as platform_errors
 from ..agent.runner.host_models import (
     AgentBinding,
@@ -32,6 +30,7 @@ import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.events as plugin_events
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
+import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 from langbot_plugin.api.entities.builtin.agent_runner.event import (
@@ -73,26 +72,6 @@ class RuntimeBot:
         self.adapter = adapter
         self.task_context = taskmgr.TaskContext()
         self.logger = logger
-
-    @staticmethod
-    def _match_operator(actual: str, operator: str, expected: str) -> bool:
-        """Evaluate a single operator condition."""
-        if operator == 'eq':
-            return actual == expected
-        elif operator == 'neq':
-            return actual != expected
-        elif operator == 'contains':
-            return expected in actual
-        elif operator == 'not_contains':
-            return expected not in actual
-        elif operator == 'starts_with':
-            return actual.startswith(expected)
-        elif operator == 'regex':
-            try:
-                return bool(re.search(expected, actual))
-            except re.error:
-                return False
-        return False
 
     PIPELINE_DISCARD = '__discard__'
     PIPELINE_DISCARD_DISPLAY_NAME = 'Discarded'
@@ -229,12 +208,7 @@ class RuntimeBot:
             if isinstance(event_filter, dict)
         )
 
-    def _resolve_eba_event_binding(
-        self,
-        event: platform_events.EBAEvent,
-        event_type: str,
-    ) -> dict[str, typing.Any] | None:
-        """Resolve the highest priority Bot event binding for a platform event."""
+    def _get_event_bindings(self) -> list[dict[str, typing.Any]]:
         raw_bindings = self.bot_entity.event_bindings or []
         if isinstance(raw_bindings, str):
             try:
@@ -242,11 +216,18 @@ class RuntimeBot:
             except json.JSONDecodeError:
                 raw_bindings = []
         if not isinstance(raw_bindings, list):
-            return None
+            return []
+        return [binding for binding in raw_bindings if isinstance(binding, dict)]
 
+    def _resolve_eba_event_binding(
+        self,
+        event: platform_events.EBAEvent,
+        event_type: str,
+    ) -> dict[str, typing.Any] | None:
+        """Resolve the highest priority Bot event binding for a platform event."""
         matched: list[tuple[int, int, dict[str, typing.Any]]] = []
-        for index, binding in enumerate(raw_bindings):
-            if not isinstance(binding, dict) or not binding.get('enabled', True):
+        for index, binding in enumerate(self._get_event_bindings()):
+            if not binding.get('enabled', True):
                 continue
 
             event_pattern = str(binding.get('event_pattern') or '')
@@ -258,6 +239,29 @@ class RuntimeBot:
             priority = int(binding.get('priority') or 0)
             order = int(binding.get('order', index))
             matched.append((priority, -order, binding))
+
+        if not matched:
+            return None
+
+        matched.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        return matched[0][2]
+
+    def get_pipeline_target_for_event_type(self, event_type: str = 'message.received') -> str | None:
+        """Return the first Pipeline target configured for an event type."""
+        matched: list[tuple[int, int, str]] = []
+        for index, binding in enumerate(self._get_event_bindings()):
+            if not binding.get('enabled', True):
+                continue
+            if binding.get('target_type') != 'pipeline':
+                continue
+            target_uuid = str(binding.get('target_uuid') or '')
+            if not target_uuid:
+                continue
+            if not self._match_event_pattern(event_type, str(binding.get('event_pattern') or '')):
+                continue
+            priority = int(binding.get('priority') or 0)
+            order = int(binding.get('order', index))
+            matched.append((priority, -order, target_uuid))
 
         if not matched:
             return None
@@ -451,6 +455,56 @@ class RuntimeBot:
 
         return None, None, metadata
 
+    @staticmethod
+    def _extract_message_id(message_chain: platform_message.MessageChain) -> str:
+        for component in message_chain:
+            if isinstance(component, platform_message.Source):
+                value = getattr(component, 'id', '')
+                return str(value) if value is not None else ''
+        return ''
+
+    def _legacy_message_to_eba_event(
+        self,
+        event: platform_events.FriendMessage | platform_events.GroupMessage,
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+    ) -> platform_events.MessageReceivedEvent:
+        if isinstance(event, platform_events.GroupMessage):
+            group = platform_entities.UserGroup(
+                id=event.group.id,
+                name=event.group.name,
+            )
+            return platform_events.MessageReceivedEvent(
+                message_id=self._extract_message_id(event.message_chain),
+                message_chain=event.message_chain,
+                sender=platform_entities.User(
+                    id=event.sender.id,
+                    nickname=event.sender.member_name,
+                ),
+                chat_type=platform_entities.ChatType.GROUP,
+                chat_id=event.group.id,
+                group=group,
+                timestamp=event.time or time.time(),
+                bot_uuid=self.bot_entity.uuid,
+                adapter_name=adapter.__class__.__name__,
+                source_platform_object=event.source_platform_object,
+            )
+
+        return platform_events.MessageReceivedEvent(
+            message_id=self._extract_message_id(event.message_chain),
+            message_chain=event.message_chain,
+            sender=platform_entities.User(
+                id=event.sender.id,
+                nickname=event.sender.nickname,
+                remark=event.sender.remark,
+            ),
+            chat_type=platform_entities.ChatType.PRIVATE,
+            chat_id=event.sender.id,
+            timestamp=event.time or time.time(),
+            bot_uuid=self.bot_entity.uuid,
+            adapter_name=adapter.__class__.__name__,
+            source_platform_object=event.source_platform_object,
+        )
+
     @classmethod
     def _build_agent_input(cls, event: platform_events.EBAEvent) -> AgentInput:
         text = None
@@ -635,6 +689,22 @@ class RuntimeBot:
             platform_message.MessageChain([platform_message.Plain(text=final_text)]),
         )
 
+    async def _handle_platform_event(
+        self,
+        event: platform_events.EBAEvent,
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+    ) -> None:
+        event.bot_uuid = self.bot_entity.uuid
+        plugin_event = self._eba_event_to_plugin_event(event)
+
+        if plugin_event is not None:
+            try:
+                await self.ap.plugin_connector.emit_event(plugin_event)
+            except Exception:
+                await self.logger.error(f'Failed to dispatch platform event to plugins: {traceback.format_exc()}')
+
+        await self._dispatch_eba_event_to_agent(event, adapter)
+
     async def _dispatch_eba_event_to_agent(
         self,
         event: platform_events.EBAEvent,
@@ -644,8 +714,7 @@ class RuntimeBot:
 
         event_binding = self._resolve_eba_event_binding(event, event_type)
         if event_binding is None:
-            if isinstance(event, platform_events.MessageReceivedEvent):
-                await self._dispatch_eba_message_to_pipeline(event, adapter)
+            await self.logger.info(f'Platform event {event_type} ignored: no event route matched')
             return
 
         target_type = event_binding.get('target_type')
@@ -707,64 +776,6 @@ class RuntimeBot:
             await self.logger.error(
                 f'Failed to deliver Agent output for EBA event {event_type}: {traceback.format_exc()}'
             )
-
-    def resolve_pipeline_uuid(
-        self,
-        launcher_type: str,
-        launcher_id: str,
-        message_text: str,
-        message_element_types: list[str] | None = None,
-    ) -> tuple[str | None, bool]:
-        """Resolve pipeline UUID based on routing rules.
-
-        Rules are evaluated in order; first match wins.
-        Falls back to use_pipeline_uuid if no rule matches.
-
-        Rule types:
-          - launcher_type: session type ("person" / "group")
-          - launcher_id: session / group id
-          - message_content: message text content
-          - message_has_element: message contains element of given type
-            (Image, Voice, File, Forward, Face, At, AtAll, Quote)
-            Operators: eq (has), neq (doesn't have)
-
-        Operators: eq, neq, contains, not_contains, starts_with, regex
-
-        When pipeline_uuid is ``__discard__``, the message should be
-        silently dropped by the caller.
-
-        Returns:
-            tuple: (pipeline_uuid, routed_by_rule) - routed_by_rule is True
-            when a routing rule matched, False when falling back to default.
-        """
-        rules = self.bot_entity.pipeline_routing_rules or []
-        element_type_set = set(message_element_types or [])
-
-        for rule in rules:
-            rule_type = rule.get('type')
-            operator = rule.get('operator', 'eq')
-            rule_value = rule.get('value', '')
-            target_uuid = rule.get('pipeline_uuid')
-            if not rule_type or not target_uuid:
-                continue
-
-            if rule_type == 'launcher_type':
-                if self._match_operator(launcher_type, operator, rule_value):
-                    return target_uuid, True
-            elif rule_type == 'launcher_id':
-                if self._match_operator(str(launcher_id), operator, str(rule_value)):
-                    return target_uuid, True
-            elif rule_type == 'message_content':
-                if self._match_operator(message_text, operator, rule_value):
-                    return target_uuid, True
-            elif rule_type == 'message_has_element':
-                has_element = rule_value in element_type_set
-                if operator == 'eq' and has_element:
-                    return target_uuid, True
-                elif operator == 'neq' and not has_element:
-                    return target_uuid, True
-
-        return self.bot_entity.use_pipeline_uuid, False
 
     async def _record_discarded_message(
         self,
@@ -932,21 +943,21 @@ class RuntimeBot:
             event: platform_events.FriendMessage,
             adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         ):
-            await self._handle_legacy_message_event(
-                event,
-                adapter,
-                pipeline_uuid_override=websocket_pipeline_uuid(event, adapter),
-            )
+            pipeline_uuid = websocket_pipeline_uuid(event, adapter)
+            if pipeline_uuid:
+                await self._handle_legacy_message_event(event, adapter, pipeline_uuid_override=pipeline_uuid)
+                return
+            await self._handle_platform_event(self._legacy_message_to_eba_event(event, adapter), adapter)
 
         async def on_group_message(
             event: platform_events.GroupMessage,
             adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         ):
-            await self._handle_legacy_message_event(
-                event,
-                adapter,
-                pipeline_uuid_override=websocket_pipeline_uuid(event, adapter),
-            )
+            pipeline_uuid = websocket_pipeline_uuid(event, adapter)
+            if pipeline_uuid:
+                await self._handle_legacy_message_event(event, adapter, pipeline_uuid_override=pipeline_uuid)
+                return
+            await self._handle_platform_event(self._legacy_message_to_eba_event(event, adapter), adapter)
 
         self.adapter.register_listener(platform_events.FriendMessage, on_friend_message)
         self.adapter.register_listener(platform_events.GroupMessage, on_group_message)
@@ -957,20 +968,11 @@ class RuntimeBot:
             adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         ):
             try:
-                # Resolve pipeline name
+                pipeline_id = self.get_pipeline_target_for_event_type('message.received') or ''
                 pipeline_name = ''
-                if self.bot_entity.use_pipeline_uuid:
-                    try:
-                        pipeline_result = await self.ap.persistence_mgr.execute_async(
-                            sqlalchemy.select(persistence_pipeline.LegacyPipeline.name).where(
-                                persistence_pipeline.LegacyPipeline.uuid == self.bot_entity.use_pipeline_uuid
-                            )
-                        )
-                        pipeline_row = pipeline_result.first()
-                        if pipeline_row:
-                            pipeline_name = pipeline_row[0]
-                    except Exception:
-                        pass
+                if pipeline_id:
+                    pipeline = await self.ap.pipeline_service.get_pipeline(pipeline_id)
+                    pipeline_name = pipeline.get('name', '') if pipeline else ''
 
                 await self.ap.monitoring_service.record_feedback(
                     feedback_id=event.feedback_id,
@@ -979,7 +981,7 @@ class RuntimeBot:
                     inaccurate_reasons=event.inaccurate_reasons,
                     bot_id=self.bot_entity.uuid,
                     bot_name=self.bot_entity.name,
-                    pipeline_id=self.bot_entity.use_pipeline_uuid or '',
+                    pipeline_id=pipeline_id,
                     pipeline_name=pipeline_name,
                     session_id=event.session_id,
                     message_id=event.message_id,
@@ -999,16 +1001,7 @@ class RuntimeBot:
             event: platform_events.EBAEvent,
             adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         ):
-            event.bot_uuid = self.bot_entity.uuid
-            plugin_event = self._eba_event_to_plugin_event(event)
-
-            if plugin_event is not None:
-                try:
-                    await self.ap.plugin_connector.emit_event(plugin_event)
-                except Exception:
-                    await self.logger.error(f'Failed to dispatch EBA event to plugins: {traceback.format_exc()}')
-
-            await self._dispatch_eba_event_to_agent(event, adapter)
+            await self._handle_platform_event(event, adapter)
 
         self.adapter.register_listener(platform_events.EBAEvent, on_eba_event)
 

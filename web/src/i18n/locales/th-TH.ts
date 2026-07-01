@@ -328,7 +328,7 @@ const thTH = {
     getBotConfigError: 'ไม่สามารถดึงการกำหนดค่า Bot ได้: ',
     saveSuccess: 'บันทึกสำเร็จ',
     saveError: 'บันทึกล้มเหลว: ',
-    createSuccess: 'สร้างสำเร็จ กรุณาเปิดใช้งานหรือแก้ไข Pipeline ที่ผูกไว้',
+    createSuccess: 'สร้างสำเร็จ กรุณากำหนดเส้นทางเหตุการณ์',
     createError: 'สร้างล้มเหลว: ',
     deleteSuccess: 'ลบสำเร็จ',
     deleteError: 'ลบล้มเหลว: ',
@@ -359,6 +359,9 @@ const thTH = {
     routingConnection: 'การกำหนดเส้นทางและการเชื่อมต่อ',
     routingConnectionDescription:
       'ผูก Pipeline ที่ประมวลผลข้อความสำหรับ Bot นี้',
+    eventRouting: 'การกำหนดเส้นทางเหตุการณ์',
+    eventRoutingDescription:
+      'เลือกตัวประมวลผลที่จะจัดการแต่ละเหตุการณ์ที่ Bot นี้ได้รับ แก้ไขตรรกะการประมวลผลในหน้า Agent และ Pipeline รองรับเฉพาะเหตุการณ์ข้อความ',
     routingRules: 'กฎการกำหนดเส้นทางตามเงื่อนไข',
     routingRulesDescription:
       'กฎจะถูกประเมินตามลำดับ การจับคู่แรกจะกำหนดเส้นทางไปยัง Pipeline ที่เกี่ยวข้อง หากไม่ตรงกันจะใช้ Pipeline เริ่มต้นด้านบน',
@@ -467,14 +470,13 @@ const thTH = {
   },
   agents: {
     title: 'Agent',
-    description:
-      'จัดการการประสาน Agent และ Pipeline แล้วเชื่อมกับเหตุการณ์ของบอท',
-    create: 'สร้าง Agent',
-    editAgent: 'แก้ไขการประสาน Agent',
+    description: 'สร้างตัวประมวลผลที่ใช้ซ้ำได้และใช้ในเส้นทางเหตุการณ์ของบอท',
+    create: 'สร้างตัวประมวลผล',
+    editAgent: 'แก้ไข Agent',
     selectFromSidebar: 'เลือก Agent หรือ Pipeline จากแถบด้านข้าง',
-    agentOrchestration: 'การประสาน Agent',
-    agentOrchestrationDescription:
-      'ตรรกะการประมวลผลที่เน้นเหตุการณ์สำหรับข้อความ สมาชิกกลุ่ม เพื่อน ฟีดแบ็ก และเหตุการณ์แพลตฟอร์มอื่นๆ',
+    agentType: 'Agent',
+    agentTypeDescription:
+      'ใช้ runner เพื่อประมวลผลข้อความ สมาชิกกลุ่ม เพื่อน ฟีดแบ็ก และเหตุการณ์แพลตฟอร์มอื่นๆ',
     pipelineType: 'Pipeline',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: 'Pipeline',
@@ -487,12 +489,13 @@ const thTH = {
     basicInfo: 'ข้อมูลพื้นฐาน',
     basicInfoDescription: 'ตั้งชื่อ ไอคอน คำอธิบาย และสถานะการเปิดใช้งาน',
     runnerSettings: 'Runner',
-    eventCapability: 'ความสามารถด้านเหตุการณ์',
-    eventCapabilityDescription:
-      'ประกาศว่าการประสาน Agent นี้สามารถเชื่อมกับเหตุการณ์ใดได้บ้าง หนึ่งรูปแบบเหตุการณ์ต่อบรรทัด รองรับ * และ namespace.*',
-    supportedEvents: 'เหตุการณ์ที่รองรับ',
+    advanced: 'ขั้นสูง',
+    bindableEvents: 'ช่วงเหตุการณ์ที่ผูกได้',
+    bindableEventsDescription:
+      'จำกัดว่าเส้นทางเหตุการณ์ของบอทใดสามารถเลือก Agent นี้ได้ ค่าเริ่มต้นเหมาะกับกรณีส่วนใหญ่',
+    supportedEvents: 'ช่วงเหตุการณ์',
     supportedEventsDescription:
-      'ตัวอย่าง: *, message.received, group.* Pipeline ถูกกำหนดไว้ที่ message.*',
+      'หนึ่งรูปแบบเหตุการณ์ต่อบรรทัด เช่น *, message.received, group.* Pipeline ถูกกำหนดไว้ที่ message.*',
     enabled: 'เปิดใช้งาน Agent',
     enabledDescription:
       'เมื่อปิดใช้งาน Agent นี้จะไม่ถูกเลือกโดยการกำหนดเส้นทางเหตุการณ์',
@@ -504,10 +507,10 @@ const thTH = {
     saveError: 'บันทึกล้มเหลว: ',
     deleteSuccess: 'ลบสำเร็จ',
     deleteError: 'ลบล้มเหลว: ',
-    deleteConfirmation: 'คุณแน่ใจหรือว่าต้องการลบการประสาน Agent นี้?',
+    deleteConfirmation: 'คุณแน่ใจหรือว่าต้องการลบ Agent นี้?',
     dangerZone: 'โซนอันตราย',
     dangerZoneDescription: 'การดำเนินการที่ไม่สามารถย้อนกลับและทำลายข้อมูล',
-    deleteAgentAction: 'ลบการประสาน Agent นี้',
+    deleteAgentAction: 'ลบ Agent นี้',
     deleteAgentHint:
       'เมื่อลบแล้ว เหตุการณ์ที่เชื่อมกับมันจะไม่สามารถดำเนินการต่อได้',
     noRunnerMetadata: 'ขณะนี้ไม่มีข้อมูลเมตา AgentRunner ที่พร้อมใช้งาน',
