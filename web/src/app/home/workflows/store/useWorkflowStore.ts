@@ -128,6 +128,7 @@ interface WorkflowState {
   onNodesChange: (changes: NodeChange<WorkflowNode>[]) => void;
   onEdgesChange: (changes: EdgeChange<WorkflowEdge>[]) => void;
   onConnect: (connection: Connection) => void;
+  isConnectionValid: (connection: Connection) => boolean;
 
   addNode: (type: string, position: { x: number; y: number }) => string;
   updateNodeConfig: (nodeId: string, config: Record<string, unknown>) => void;
@@ -205,6 +206,91 @@ const generateEdgeId = () => `edge_${generateUuidLikeId()}`;
 
 const getWorkflowEdgeType = (edge: WorkflowEdge): WorkflowEdgeType =>
   normalizeWorkflowEdgeType(edge.data?.edgeType);
+
+const isControlOrderEdge = (edge: WorkflowEdge): boolean => {
+  const edgeType = getWorkflowEdgeType(edge);
+  return edgeType === 'control' || edgeType === 'legacy';
+};
+
+const hasForwardControlPath = (
+  sourceNodeId: string,
+  targetNodeId: string,
+  edges: WorkflowEdge[],
+): boolean => {
+  if (!sourceNodeId || !targetNodeId || sourceNodeId === targetNodeId) {
+    return false;
+  }
+
+  const adjacency = new Map<string, string[]>();
+  edges.forEach((edge) => {
+    if (!isControlOrderEdge(edge)) {
+      return;
+    }
+    if (!edge.source || !edge.target) {
+      return;
+    }
+
+    const targets = adjacency.get(edge.source) || [];
+    targets.push(edge.target);
+    adjacency.set(edge.source, targets);
+  });
+
+  const visited = new Set<string>();
+  const stack = [...(adjacency.get(sourceNodeId) || [])];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || visited.has(current)) {
+      continue;
+    }
+    if (current === targetNodeId) {
+      return true;
+    }
+
+    visited.add(current);
+    stack.push(...(adjacency.get(current) || []));
+  }
+
+  return false;
+};
+
+const isWorkflowConnectionValid = (
+  connection: Connection,
+  edges: WorkflowEdge[],
+): boolean => {
+  if (!connection.source || !connection.target) {
+    return false;
+  }
+  if (connection.source === connection.target) {
+    return false;
+  }
+
+  const edgeType = inferWorkflowEdgeType(
+    connection.sourceHandle,
+    connection.targetHandle,
+  );
+  if (!edgeType) {
+    return false;
+  }
+
+  const duplicateEdge = edges.some(
+    (edge) =>
+      edge.source === connection.source &&
+      edge.target === connection.target &&
+      (edge.sourceHandle || null) === (connection.sourceHandle || null) &&
+      (edge.targetHandle || null) === (connection.targetHandle || null) &&
+      getWorkflowEdgeType(edge) === edgeType,
+  );
+  if (duplicateEdge) {
+    return false;
+  }
+
+  if (edgeType === 'data') {
+    return hasForwardControlPath(connection.source, connection.target, edges);
+  }
+
+  return true;
+};
 
 const withWorkflowEdgeStyle = (edge: WorkflowEdge): WorkflowEdge => {
   const edgeType = getWorkflowEdgeType(edge);
@@ -327,6 +413,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   },
 
   onConnect: (connection) => {
+    if (!get().isConnectionValid(connection)) {
+      return;
+    }
+
     const edgeType = inferWorkflowEdgeType(
       connection.sourceHandle,
       connection.targetHandle,
@@ -353,6 +443,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       isDirty: true,
     }));
     get().pushHistory();
+  },
+
+  isConnectionValid: (connection) => {
+    return isWorkflowConnectionValid(connection, get().edges);
   },
 
   // Add new node

@@ -116,6 +116,16 @@ class WorkflowService:
 
         workflow_uuid = str(uuid.uuid4())
 
+        definition = workflow_data.get(
+            'definition',
+            {
+                'nodes': [],
+                'edges': [],
+                'variables': {},
+            },
+        )
+        self._validate_workflow_definition(definition)
+
         # Prepare workflow data
         new_workflow = {
             'uuid': workflow_uuid,
@@ -124,14 +134,7 @@ class WorkflowService:
             'emoji': workflow_data.get('emoji', '💼'),
             'version': 1,
             'is_enabled': workflow_data.get('is_enabled', True),
-            'definition': workflow_data.get(
-                'definition',
-                {
-                    'nodes': [],
-                    'edges': [],
-                    'variables': {},
-                },
-            ),
+            'definition': definition,
             'global_config': workflow_data.get('global_config', {}),
             'extensions_preferences': workflow_data.get(
                 'extensions_preferences',
@@ -190,6 +193,7 @@ class WorkflowService:
 
         # Increment version if definition changed
         if 'definition' in workflow_data:
+            self._validate_workflow_definition(workflow_data['definition'])
             workflow_data['version'] = current.get('version', 0) + 1
 
             # Save version history
@@ -876,6 +880,79 @@ class WorkflowService:
             result['variables'] = {}
 
         return result
+
+    @staticmethod
+    def _definition_edge_type(edge: dict) -> str:
+        edge_type = edge.get('edge_type')
+        if not edge_type:
+            edge_type = (edge.get('data', {}) or {}).get('edgeType')
+        if edge_type in {'control', 'data', 'legacy'}:
+            return edge_type
+        return 'legacy'
+
+    @staticmethod
+    def _definition_edge_source(edge: dict) -> str:
+        return edge.get('source_node', '') or edge.get('source', '')
+
+    @staticmethod
+    def _definition_edge_target(edge: dict) -> str:
+        return edge.get('target_node', '') or edge.get('target', '')
+
+    @classmethod
+    def _definition_has_control_path(
+        cls,
+        source_node: str,
+        target_node: str,
+        edges: list[dict],
+    ) -> bool:
+        if not source_node or not target_node or source_node == target_node:
+            return False
+
+        adjacency: dict[str, list[str]] = {}
+        for edge in edges:
+            if cls._definition_edge_type(edge) not in {'control', 'legacy'}:
+                continue
+            source = cls._definition_edge_source(edge)
+            target = cls._definition_edge_target(edge)
+            if not source or not target:
+                continue
+            adjacency.setdefault(source, []).append(target)
+
+        visited: set[str] = set()
+        stack = list(adjacency.get(source_node, []))
+        while stack:
+            current = stack.pop()
+            if current in visited:
+                continue
+            if current == target_node:
+                return True
+
+            visited.add(current)
+            stack.extend(adjacency.get(current, []))
+
+        return False
+
+    def _validate_workflow_definition(self, definition: dict) -> None:
+        if not isinstance(definition, dict):
+            raise ValueError('Workflow definition must be an object')
+
+        edges = definition.get('edges', [])
+        if not isinstance(edges, list):
+            raise ValueError('Workflow definition edges must be a list')
+
+        for edge in edges:
+            if not isinstance(edge, dict):
+                continue
+            if self._definition_edge_type(edge) != 'data':
+                continue
+
+            source = self._definition_edge_source(edge)
+            target = self._definition_edge_target(edge)
+            if not self._definition_has_control_path(source, target, edges):
+                raise ValueError(
+                    'Invalid data edge: data outputs can only connect from a node '
+                    'that appears earlier in the control flow to a later node input'
+                )
 
     def _serialize_execution(self, execution) -> dict:
         data = self.ap.persistence_mgr.serialize_model(

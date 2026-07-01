@@ -11,7 +11,12 @@ import {
   SelectionMode,
   MarkerType,
 } from '@xyflow/react';
-import type { Node, NodeTypes, OnSelectionChangeParams } from '@xyflow/react';
+import type {
+  Connection,
+  Node,
+  NodeTypes,
+  OnSelectionChangeParams,
+} from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
   useWorkflowStore,
@@ -78,6 +83,7 @@ function WorkflowEditorInner() {
     onNodesChange,
     onEdgesChange,
     onConnect,
+    isConnectionValid,
     addNode,
     selectNode,
     selectEdge,
@@ -388,6 +394,17 @@ function WorkflowEditorInner() {
     return categoryColors[category] || '#6b7280';
   }, []);
 
+  const handleIsValidConnection = useCallback(
+    (connection: Connection | WorkflowEdge) =>
+      isConnectionValid({
+        source: connection.source,
+        target: connection.target,
+        sourceHandle: connection.sourceHandle ?? null,
+        targetHandle: connection.targetHandle ?? null,
+      }),
+    [isConnectionValid],
+  );
+
   const displayNodes = nodes.map((node) => {
     const executionResult = nodeExecutionResults[node.id];
 
@@ -441,6 +458,7 @@ function WorkflowEditorInner() {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
+            isValidConnection={handleIsValidConnection}
             onNodeClick={handleNodeClick}
             onEdgeClick={handleEdgeClick}
             onPaneClick={handlePaneClick}
@@ -452,8 +470,8 @@ function WorkflowEditorInner() {
             snapToGrid
             snapGrid={[15, 15]}
             selectionMode={SelectionMode.Partial}
-            selectionOnDrag
-            panOnDrag={[2]} // Right click to pan (left click is for node selection)
+            selectionOnDrag={false}
+            panOnDrag
             selectNodesOnDrag={false}
             defaultEdgeOptions={{
               type: 'default',
