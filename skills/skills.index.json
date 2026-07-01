@@ -64,7 +64,7 @@
     {
       "directory": "langbot-mcp-ops",
       "name": "langbot-mcp-ops",
-      "description": "Operate a LangBot instance through its built-in MCP (Model Context Protocol) server. Use when an AI agent needs to manage LangBot — list/create/update/delete bots, pipelines, models, knowledge bases, MCP servers, and skills — over MCP instead of raw HTTP. Covers the /mcp endpoint, API-key auth (web-UI lbk_ keys and the config.yaml global key), the tool surface, and client configuration. Triggers on \"langbot mcp\", \"manage langbot via mcp\", \"langbot /mcp\", \"langbot mcp server\".",
+      "description": "Operate a LangBot instance through its built-in MCP (Model Context Protocol) server. Use when an AI agent needs to manage LangBot — list/create/update/delete bots, agents, pipelines, models, knowledge bases, MCP servers, and skills — over MCP instead of raw HTTP. Covers the /mcp endpoint, API-key auth (web-UI lbk_ keys and the config.yaml global key), the tool surface, and client configuration. Triggers on \"langbot mcp\", \"manage langbot via mcp\", \"langbot /mcp\", \"langbot mcp server\".",
       "references": [],
       "cases": [],
       "case_summaries": [],
@@ -134,6 +134,7 @@
         "references/pipeline-debug-chat.md",
         "references/plugin-e2e-smoke.md",
         "references/sandbox-skill-authoring.md",
+        "references/skill-all-tool-acceptance.md",
         "references/troubleshooting.md",
         "references/web-ui-testing.md"
       ],
@@ -165,14 +166,19 @@
         "langrag-parser-golden-e2e",
         "langrag-sentinel-kb-discover",
         "local-agent-basic-debug-chat",
+        "local-agent-combo-rag-compaction-tool-debug-chat",
         "local-agent-context-compaction-debug-chat",
         "local-agent-effective-prompt-debug-chat",
         "local-agent-multimodal-debug-chat",
+        "local-agent-multitool-rag-compaction-debug-chat",
         "local-agent-nonstreaming-debug-chat",
+        "local-agent-parallel-tools-rag-compaction-debug-chat",
         "local-agent-plugin-tool-call-debug-chat",
         "local-agent-rag-debug-chat",
         "local-agent-rag-multimodal-debug-chat",
         "local-agent-steering-debug-chat",
+        "local-agent-tool-error-recovery-debug-chat",
+        "local-agent-tool-loop-limit-debug-chat",
         "mcp-stdio-register",
         "mcp-stdio-tool-call",
         "pipeline-debug-chat",
@@ -182,6 +188,7 @@
         "qa-plugin-smoke-live-install",
         "sandbox-skill-authoring-e2e",
         "sandbox-skill-authoring-edit-existing-e2e",
+        "skill-discovery-via-mcp-gateway",
         "webui-login-state"
       ],
       "case_summaries": [
@@ -910,6 +917,43 @@
           ]
         },
         {
+          "id": "local-agent-combo-rag-compaction-tool-debug-chat",
+          "title": "Local Agent preserves RAG, compacted history, and plugin tool result in one Debug Chat run",
+          "mode": "agent-browser",
+          "area": "pipeline",
+          "type": "regression",
+          "priority": "p1",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "local-agent",
+            "langrag",
+            "context",
+            "compaction",
+            "plugin",
+            "tools",
+            "pipeline"
+          ],
+          "automation": "scripts/e2e/pipeline-debug-chat.mjs",
+          "setup_automation": [
+            "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env",
+            "node:scripts/e2e/ensure-langrag-sentinel-kb.mjs --write-env",
+            "case:qa-plugin-smoke-live-install"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_LOCAL_AGENT_PIPELINE_URL",
+            "LANGBOT_LOCAL_AGENT_PIPELINE_NAME",
+            "LANGBOT_LOCAL_AGENT_RAG_KB_UUID"
+          ],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "console",
+            "backend_log",
+            "api_diagnostic"
+          ]
+        },
+        {
           "id": "local-agent-context-compaction-debug-chat",
           "title": "Local Agent compacts long Debug Chat history and preserves older facts",
           "mode": "agent-browser",
@@ -1001,8 +1045,46 @@
           ]
         },
         {
+          "id": "local-agent-multitool-rag-compaction-debug-chat",
+          "title": "Local Agent preserves RAG, compacted history, and two-step plugin tool loop",
+          "mode": "agent-browser",
+          "area": "pipeline",
+          "type": "regression",
+          "priority": "p1",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "local-agent",
+            "langrag",
+            "context",
+            "compaction",
+            "plugin",
+            "tools",
+            "tool-loop",
+            "pipeline"
+          ],
+          "automation": "scripts/e2e/pipeline-debug-chat.mjs",
+          "setup_automation": [
+            "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env",
+            "node:scripts/e2e/ensure-langrag-sentinel-kb.mjs --write-env",
+            "case:qa-plugin-smoke-live-install"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_LOCAL_AGENT_PIPELINE_URL",
+            "LANGBOT_LOCAL_AGENT_PIPELINE_NAME",
+            "LANGBOT_LOCAL_AGENT_RAG_KB_UUID"
+          ],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "console",
+            "backend_log",
+            "api_diagnostic"
+          ]
+        },
+        {
           "id": "local-agent-nonstreaming-debug-chat",
-          "title": "Local Agent Debug Chat returns a deterministic non-streaming response",
+          "title": "Local Agent Debug Chat returns a deterministic response with UI streaming disabled",
           "mode": "agent-browser",
           "area": "pipeline",
           "type": "regression",
@@ -1026,6 +1108,44 @@
             "ui",
             "console",
             "backend_log"
+          ]
+        },
+        {
+          "id": "local-agent-parallel-tools-rag-compaction-debug-chat",
+          "title": "Local Agent preserves RAG, compacted history, and parallel plugin tools",
+          "mode": "agent-browser",
+          "area": "pipeline",
+          "type": "regression",
+          "priority": "p1",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "local-agent",
+            "langrag",
+            "context",
+            "compaction",
+            "plugin",
+            "tools",
+            "parallel-tools",
+            "pipeline"
+          ],
+          "automation": "scripts/e2e/pipeline-debug-chat.mjs",
+          "setup_automation": [
+            "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env",
+            "node:scripts/e2e/ensure-langrag-sentinel-kb.mjs --write-env",
+            "case:qa-plugin-smoke-live-install"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_LOCAL_AGENT_PIPELINE_URL",
+            "LANGBOT_LOCAL_AGENT_PIPELINE_NAME",
+            "LANGBOT_LOCAL_AGENT_RAG_KB_UUID"
+          ],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "console",
+            "backend_log",
+            "api_diagnostic"
           ]
         },
         {
@@ -1156,6 +1276,73 @@
           ]
         },
         {
+          "id": "local-agent-tool-error-recovery-debug-chat",
+          "title": "Local Agent feeds plugin tool errors back to the model",
+          "mode": "agent-browser",
+          "area": "pipeline",
+          "type": "regression",
+          "priority": "p1",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "local-agent",
+            "plugin",
+            "tools",
+            "tool-error",
+            "pipeline"
+          ],
+          "automation": "scripts/e2e/pipeline-debug-chat.mjs",
+          "setup_automation": [
+            "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env",
+            "case:qa-plugin-smoke-live-install"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_LOCAL_AGENT_PIPELINE_URL",
+            "LANGBOT_LOCAL_AGENT_PIPELINE_NAME"
+          ],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "console",
+            "backend_log",
+            "api_diagnostic"
+          ]
+        },
+        {
+          "id": "local-agent-tool-loop-limit-debug-chat",
+          "title": "Local Agent stops repeated tool calls at max-tool-iterations",
+          "mode": "agent-browser",
+          "area": "pipeline",
+          "type": "regression",
+          "priority": "p1",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "local-agent",
+            "plugin",
+            "tools",
+            "tool-loop",
+            "limit",
+            "pipeline"
+          ],
+          "automation": "scripts/e2e/pipeline-debug-chat.mjs",
+          "setup_automation": [
+            "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env",
+            "case:qa-plugin-smoke-live-install"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_LOCAL_AGENT_PIPELINE_URL",
+            "LANGBOT_LOCAL_AGENT_PIPELINE_NAME"
+          ],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "console",
+            "backend_log",
+            "api_diagnostic"
+          ]
+        },
+        {
           "id": "mcp-stdio-register",
           "title": "MCP stdio fixture is registered and exposes qa_mcp_echo",
           "mode": "agent-browser",
@@ -1201,7 +1388,8 @@
           ],
           "setup_provides_env": [
             "LANGBOT_LOCAL_AGENT_PIPELINE_URL",
-            "LANGBOT_LOCAL_AGENT_PIPELINE_NAME"
+            "LANGBOT_LOCAL_AGENT_PIPELINE_NAME",
+            "LANGBOT_MCP_QA_STDIO_SERVER_UUID"
           ],
           "evidence_required": [
             "ui",
@@ -1388,6 +1576,31 @@
           ]
         },
         {
+          "id": "skill-discovery-via-mcp-gateway",
+          "title": "External harness discovers LangBot skills via langbot_list_assets (all-tool model)",
+          "mode": "agent-browser",
+          "area": "sandbox",
+          "type": "regression",
+          "priority": "p2",
+          "risk": "medium",
+          "ci_eligible": false,
+          "tags": [
+            "skills",
+            "mcp-gateway",
+            "acp-agent-runner",
+            "all-tool-model",
+            "tools"
+          ],
+          "automation": "scripts/e2e/pipeline-debug-chat.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "backend_log"
+          ]
+        },
+        {
           "id": "webui-login-state",
           "title": "Configured frontend opens with authenticated LangBot WebUI state",
           "mode": "agent-browser",
@@ -1456,6 +1669,11 @@
             "local-agent-context-compaction-debug-chat",
             "local-agent-rag-debug-chat",
             "local-agent-plugin-tool-call-debug-chat",
+            "local-agent-tool-error-recovery-debug-chat",
+            "local-agent-tool-loop-limit-debug-chat",
+            "local-agent-combo-rag-compaction-tool-debug-chat",
+            "local-agent-multitool-rag-compaction-debug-chat",
+            "local-agent-parallel-tools-rag-compaction-debug-chat",
             "mcp-stdio-register",
             "mcp-stdio-tool-call",
             "local-agent-nonstreaming-debug-chat",
@@ -1606,6 +1824,11 @@
             "local-agent-context-compaction-debug-chat",
             "local-agent-rag-debug-chat",
             "local-agent-plugin-tool-call-debug-chat",
+            "local-agent-tool-error-recovery-debug-chat",
+            "local-agent-tool-loop-limit-debug-chat",
+            "local-agent-combo-rag-compaction-tool-debug-chat",
+            "local-agent-multitool-rag-compaction-debug-chat",
+            "local-agent-parallel-tools-rag-compaction-debug-chat",
             "local-agent-steering-debug-chat",
             "mcp-stdio-tool-call",
             "local-agent-nonstreaming-debug-chat",
@@ -1665,7 +1888,10 @@
           "path": "fixtures/rag/sentinel-doc.txt",
           "related_cases": [
             "langrag-kb-retrieve",
-            "local-agent-rag-debug-chat"
+            "local-agent-rag-debug-chat",
+            "local-agent-combo-rag-compaction-tool-debug-chat",
+            "local-agent-multitool-rag-compaction-debug-chat",
+            "local-agent-parallel-tools-rag-compaction-debug-chat"
           ]
         },
         {
@@ -1697,6 +1923,11 @@
             "plugin-e2e-smoke",
             "local-agent-effective-prompt-debug-chat",
             "local-agent-plugin-tool-call-debug-chat",
+            "local-agent-tool-error-recovery-debug-chat",
+            "local-agent-tool-loop-limit-debug-chat",
+            "local-agent-combo-rag-compaction-tool-debug-chat",
+            "local-agent-multitool-rag-compaction-debug-chat",
+            "local-agent-parallel-tools-rag-compaction-debug-chat",
             "local-agent-steering-debug-chat"
           ]
         },
@@ -1707,7 +1938,8 @@
           "path": "fixtures/plugins/qa-plugin-smoke/dist/qa-plugin-smoke-0.1.0.lbpkg",
           "related_cases": [
             "qa-plugin-smoke-live-install",
-            "plugin-e2e-smoke"
+            "plugin-e2e-smoke",
+            "local-agent-tool-error-recovery-debug-chat"
           ]
         }
       ],

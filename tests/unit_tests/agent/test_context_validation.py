@@ -1,0 +1,428 @@
+"""Test that LangBot context builder output validates against SDK AgentRunContext."""
+from __future__ import annotations
+
+import pytest
+from types import SimpleNamespace
+from unittest.mock import MagicMock, AsyncMock, patch
+
+# SDK imports for validation
+from langbot_plugin.api.entities.builtin.agent_runner.context import AgentRunContext
+from langbot_plugin.api.entities.builtin.agent_runner.event import AgentEventContext
+from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
+from langbot_plugin.api.entities.builtin.agent_runner.context_access import ContextAccess
+from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput
+from langbot_plugin.api.entities.builtin.agent_runner.resources import AgentResources
+from langbot_plugin.api.entities.builtin.agent_runner.runtime import AgentRuntimeContext
+
+# LangBot imports
+from langbot.pkg.agent.runner.context_builder import (
+    AgentRunContextBuilder,
+    AgentResources as BuilderResources,
+)
+from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
+from langbot.pkg.agent.runner.host_models import AgentEventEnvelope, AgentBinding, BindingScope
+from langbot.pkg.core import app
+
+
+class TestContextValidation:
+    """Test that context builder output validates against SDK AgentRunContext."""
+
+    def _make_mock_app(self):
+        """Create a mock application."""
+        mock_app = MagicMock(spec=app.Application)
+        mock_app.ver_mgr = MagicMock()
+        mock_app.ver_mgr.get_current_version = MagicMock(return_value="1.0.0")
+        mock_app.persistence_mgr = MagicMock()
+        mock_app.persistence_mgr.get_db_engine = MagicMock()
+        mock_app.logger = MagicMock()
+        return mock_app
+
+    def _make_event_envelope(self) -> AgentEventEnvelope:
+        """Create a test event envelope."""
+        from langbot_plugin.api.entities.builtin.agent_runner.event import ActorContext
+        from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput as EventInput
+        from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
+
+        return AgentEventEnvelope(
+            event_id="evt_1",
+            event_type="message.received",
+            event_time=1700000000,
+            source="platform",
+            source_event_type="platform.message",
+            bot_id="bot_1",
+            workspace_id="workspace_1",
+            conversation_id="conv_1",
+            thread_id=None,
+            actor=ActorContext(
+                actor_type="user",
+                actor_id="user_1",
+                actor_name="Test User",
+            ),
+            subject=None,
+            input=EventInput(text="Hello world"),
+            delivery=DeliveryContext(surface="test"),
+            data={"platform_event_id": "source_evt_1"},
+        )
+
+    def _make_binding(self) -> AgentBinding:
+        """Create a test binding."""
+        return AgentBinding(
+            binding_id="binding_1",
+            scope=BindingScope(scope_type="agent", scope_id="pipeline_1"),
+            event_types=["message.received"],
+            runner_id="plugin:test/plugin/runner",
+            runner_config={"timeout": 300},
+            agent_id="pipeline_1",
+            enabled=True,
+        )
+
+    def _make_resources(self) -> BuilderResources:
+        """Create test resources."""
+        return {
+            'models': [],
+            'tools': [],
+            'knowledge_bases': [],
+            'skills': [],
+            'files': [],
+            'storage': {'plugin_storage': True, 'workspace_storage': True},
+            'platform_capabilities': {},
+        }
+
+    def _make_descriptor(self):
+        """Create a mock runner descriptor."""
+        return AgentRunnerDescriptor(
+            id="plugin:test/plugin/runner",
+            source="plugin",
+            label={"en_US": "Test Runner"},
+            plugin_author="test",
+            plugin_name="plugin",
+            runner_name="runner",
+            permissions={
+                "history": ["page", "search"],
+                "events": ["get", "page"],
+                "storage": ["plugin", "workspace"],
+            },
+        )
+
+    @pytest.mark.asyncio
+    async def test_build_context_from_event_validates(self):
+        """Test that build_context_from_event output validates against SDK AgentRunContext."""
+        mock_app = self._make_mock_app()
+        builder = AgentRunContextBuilder(mock_app)
+
+        event = self._make_event_envelope()
+        binding = self._make_binding()
+        resources = self._make_resources()
+        descriptor = self._make_descriptor()
+
+        # Mock persistent state store to return empty state snapshot
+        with patch('langbot.pkg.agent.runner.context_builder.get_persistent_state_store') as mock_get_store:
+            mock_store = AsyncMock()
+            mock_store.build_snapshot_from_event = AsyncMock(return_value={
+                'conversation': {},
+                'actor': {},
+                'subject': {},
+                'runner': {},
+            })
+            mock_get_store.return_value = mock_store
+
+            # Build context
+            context_dict = await builder.build_context_from_event(
+                event=event,
+                binding=binding,
+                descriptor=descriptor,
+                resources=resources,
+            )
+
+        # Validate it can be parsed by SDK AgentRunContext
+        # This will raise ValidationError if invalid
+        validated = AgentRunContext.model_validate(context_dict)
+
+        # Verify required fields
+        assert validated.run_id is not None
+        assert validated.event is not None
+        assert isinstance(validated.event, AgentEventContext)
+        assert validated.delivery is not None
+        assert isinstance(validated.delivery, DeliveryContext)
+        assert validated.context is not None
+        assert isinstance(validated.context, ContextAccess)
+        assert validated.input is not None
+        assert isinstance(validated.input, AgentInput)
+        assert validated.resources is not None
+        assert isinstance(validated.resources, AgentResources)
+        assert validated.runtime is not None
+        assert isinstance(validated.runtime, AgentRuntimeContext)
+        assert "protocol_version" not in validated.runtime.model_dump()
+        assert "sdk_protocol_version" not in validated.runtime.model_dump()
+        assert "sdk_protocol_version" not in context_dict["runtime"]
+
+        # Verify event context
+        assert validated.event.event_id == "evt_1"
+        assert validated.event.event_type == "message.received"
+        assert validated.event.source == "platform"
+        assert validated.event.source_event_type == "platform.message"
+        assert validated.event.data == {"platform_event_id": "source_evt_1"}
+
+        # Verify conversation context uses SDK field names
+        assert validated.conversation is not None
+        assert validated.conversation.bot_id == "bot_1"
+        assert validated.conversation.workspace_id == "workspace_1"
+
+        # Verify delivery context
+        assert validated.delivery.surface == "test"
+
+        # Verify input
+        assert validated.input.text == "Hello world"
+
+    @pytest.mark.asyncio
+    async def test_build_context_from_event_populates_model_context_window(self):
+        """Runtime metadata should expose the selected LLM model context window."""
+        mock_app = self._make_mock_app()
+        mock_app.model_mgr = MagicMock()
+        mock_app.model_mgr.get_model_by_uuid = AsyncMock(
+            return_value=SimpleNamespace(
+                model_entity=SimpleNamespace(context_length=128000),
+            )
+        )
+        builder = AgentRunContextBuilder(mock_app)
+
+        event = self._make_event_envelope()
+        binding = self._make_binding()
+        resources = self._make_resources()
+        resources['models'] = [
+            {
+                'model_id': 'rerank-model',
+                'model_type': 'rerank',
+                'provider': 'test-provider',
+                'operations': ['rerank'],
+            },
+            {
+                'model_id': 'llm-model',
+                'model_type': 'llm',
+                'provider': 'test-provider',
+                'operations': ['invoke', 'stream'],
+            },
+        ]
+        descriptor = self._make_descriptor()
+
+        with patch('langbot.pkg.agent.runner.context_builder.get_persistent_state_store') as mock_get_store:
+            mock_store = AsyncMock()
+            mock_store.build_snapshot_from_event = AsyncMock(return_value={
+                'conversation': {},
+                'actor': {},
+                'subject': {},
+                'runner': {},
+            })
+            mock_get_store.return_value = mock_store
+
+            context_dict = await builder.build_context_from_event(
+                event=event,
+                binding=binding,
+                descriptor=descriptor,
+                resources=resources,
+            )
+
+        assert context_dict['runtime']['metadata']['model_context_window_tokens'] == 128000
+        mock_app.model_mgr.get_model_by_uuid.assert_awaited_once_with('llm-model')
+
+    @pytest.mark.asyncio
+    async def test_model_context_window_uses_primary_llm_only(self):
+        """Fallback model windows should not replace missing primary model metadata."""
+        mock_app = self._make_mock_app()
+        mock_app.model_mgr = MagicMock()
+        mock_app.model_mgr.get_model_by_uuid = AsyncMock(
+            return_value=SimpleNamespace(
+                model_entity=SimpleNamespace(context_length=None),
+            )
+        )
+        builder = AgentRunContextBuilder(mock_app)
+        resources = self._make_resources()
+        resources['models'] = [
+            {
+                'model_id': 'primary-model',
+                'model_type': 'llm',
+                'provider': 'test-provider',
+                'operations': ['invoke', 'stream'],
+            },
+            {
+                'model_id': 'fallback-model',
+                'model_type': 'llm',
+                'provider': 'test-provider',
+                'operations': ['invoke', 'stream'],
+            },
+        ]
+
+        assert await builder._build_model_context_window_tokens(resources) is None
+        mock_app.model_mgr.get_model_by_uuid.assert_awaited_once_with('primary-model')
+
+    @pytest.mark.asyncio
+    async def test_build_context_preserves_subject_data_for_non_message_events(self):
+        """Non-message EBA events keep subject.data instead of relying on message text."""
+        from langbot_plugin.api.entities.builtin.agent_runner.event import ActorContext, SubjectContext
+        from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput as EventInput
+        from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
+
+        mock_app = self._make_mock_app()
+        builder = AgentRunContextBuilder(mock_app)
+        event = AgentEventEnvelope(
+            event_id="evt_recall_1",
+            event_type="message.recalled",
+            event_time=1700000001,
+            source="platform",
+            source_event_type="platform.message.recall",
+            bot_id="bot_1",
+            workspace_id="workspace_1",
+            conversation_id="conv_1",
+            actor=ActorContext(actor_type="user", actor_id="user_1"),
+            subject=SubjectContext(
+                subject_type="message",
+                subject_id="message_1",
+                data={"recalled_message_id": "message_1", "reason": "user_recall"},
+            ),
+            input=EventInput(text=None),
+            delivery=DeliveryContext(surface="test"),
+            data={"source_event_id": "source_recall_1"},
+        )
+        binding = self._make_binding()
+        binding.event_types = ["message.recalled"]
+        resources = self._make_resources()
+        descriptor = self._make_descriptor()
+
+        with patch('langbot.pkg.agent.runner.context_builder.get_persistent_state_store') as mock_get_store:
+            mock_store = AsyncMock()
+            mock_store.build_snapshot_from_event = AsyncMock(return_value={
+                'conversation': {},
+                'actor': {},
+                'subject': {},
+                'runner': {},
+            })
+            mock_get_store.return_value = mock_store
+
+            context_dict = await builder.build_context_from_event(
+                event=event,
+                binding=binding,
+                descriptor=descriptor,
+                resources=resources,
+            )
+
+        validated = AgentRunContext.model_validate(context_dict)
+
+        assert validated.event.event_type == "message.recalled"
+        assert validated.input.text is None
+        assert validated.subject is not None
+        assert validated.subject.subject_type == "message"
+        assert validated.subject.subject_id == "message_1"
+        assert validated.subject.data == {"recalled_message_id": "message_1", "reason": "user_recall"}
+
+    @pytest.mark.asyncio
+    async def test_build_context_from_event_has_no_legacy_top_level_fields(self):
+        """Test that build_context_from_event does NOT have top-level messages/prompt/params."""
+        mock_app = self._make_mock_app()
+        builder = AgentRunContextBuilder(mock_app)
+
+        event = self._make_event_envelope()
+        binding = self._make_binding()
+        resources = self._make_resources()
+        descriptor = self._make_descriptor()
+
+        # Mock persistent state store to return empty state snapshot
+        with patch('langbot.pkg.agent.runner.context_builder.get_persistent_state_store') as mock_get_store:
+            mock_store = AsyncMock()
+            mock_store.build_snapshot_from_event = AsyncMock(return_value={
+                'conversation': {},
+                'actor': {},
+                'subject': {},
+                'runner': {},
+            })
+            mock_get_store.return_value = mock_store
+
+            context_dict = await builder.build_context_from_event(
+                event=event,
+                binding=binding,
+                descriptor=descriptor,
+                resources=resources,
+            )
+
+        # Protocol v1 does NOT have these as core fields
+        assert 'messages' not in context_dict, "messages should not be top-level in Protocol v1"
+        assert 'prompt' not in context_dict, "prompt should not be top-level in Protocol v1"
+        assert 'params' not in context_dict, "params should not be top-level in Protocol v1"
+
+        # Protocol v1 DOES have these
+        assert 'delivery' in context_dict, "delivery is REQUIRED in Protocol v1"
+        assert 'context' in context_dict, "context (ContextAccess) is REQUIRED in Protocol v1"
+        assert 'bootstrap' not in context_dict, "Host must not inline bootstrap/history windows"
+        assert 'adapter' in context_dict, "adapter should exist"
+        assert 'metadata' in context_dict, "metadata should exist"
+
+    @pytest.mark.asyncio
+    async def test_build_context_from_event_event_is_not_none(self):
+        """Test that event field is NOT None in Protocol v1."""
+        mock_app = self._make_mock_app()
+        builder = AgentRunContextBuilder(mock_app)
+
+        event = self._make_event_envelope()
+        binding = self._make_binding()
+        resources = self._make_resources()
+        descriptor = self._make_descriptor()
+
+        # Mock persistent state store to return empty state snapshot
+        with patch('langbot.pkg.agent.runner.context_builder.get_persistent_state_store') as mock_get_store:
+            mock_store = AsyncMock()
+            mock_store.build_snapshot_from_event = AsyncMock(return_value={
+                'conversation': {},
+                'actor': {},
+                'subject': {},
+                'runner': {},
+            })
+            mock_get_store.return_value = mock_store
+
+            context_dict = await builder.build_context_from_event(
+                event=event,
+                binding=binding,
+                descriptor=descriptor,
+                resources=resources,
+            )
+
+        # event is REQUIRED in Protocol v1
+        assert context_dict.get('event') is not None, "event is REQUIRED for Protocol v1"
+
+        # Validate
+        validated = AgentRunContext.model_validate(context_dict)
+        assert validated.event is not None
+
+    @pytest.mark.asyncio
+    async def test_build_context_from_event_delivery_is_not_none(self):
+        """Test that delivery field is NOT None in Protocol v1."""
+        mock_app = self._make_mock_app()
+        builder = AgentRunContextBuilder(mock_app)
+
+        event = self._make_event_envelope()
+        binding = self._make_binding()
+        resources = self._make_resources()
+        descriptor = self._make_descriptor()
+
+        # Mock persistent state store to return empty state snapshot
+        with patch('langbot.pkg.agent.runner.context_builder.get_persistent_state_store') as mock_get_store:
+            mock_store = AsyncMock()
+            mock_store.build_snapshot_from_event = AsyncMock(return_value={
+                'conversation': {},
+                'actor': {},
+                'subject': {},
+                'runner': {},
+            })
+            mock_get_store.return_value = mock_store
+
+            context_dict = await builder.build_context_from_event(
+                event=event,
+                binding=binding,
+                descriptor=descriptor,
+                resources=resources,
+            )
+
+        # delivery is REQUIRED in Protocol v1
+        assert context_dict.get('delivery') is not None, "delivery is REQUIRED for Protocol v1"
+
+        # Validate
+        validated = AgentRunContext.model_validate(context_dict)
+        assert validated.delivery is not None

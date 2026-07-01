@@ -19,6 +19,8 @@ env:
   - LANGBOT_BACKEND_URL
   - LANGBOT_LOCAL_AGENT_PIPELINE_URL
   - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+env_optional:
+  - LANGBOT_E2E_FAKE_PROVIDER_BASE_URL
 automation: scripts/e2e/pipeline-debug-chat.mjs
 automation_env:
   - LANGBOT_FRONTEND_URL
@@ -31,7 +33,9 @@ automation_pipeline_url_env: LANGBOT_LOCAL_AGENT_PIPELINE_URL
 automation_pipeline_name_env: LANGBOT_LOCAL_AGENT_PIPELINE_NAME
 automation_expected_runner_id: "plugin:langbot/local-agent/default"
 automation_runner_config_patch_json: '{"context-window-tokens":225,"context-reserve-tokens":50,"context-keep-recent-tokens":30,"context-summary-tokens":105,"knowledge-bases":[]}'
+automation_extensions_patch_json: '{"enable_all_plugins":false,"bound_plugins":[{"author":"langbot","name":"local-agent"}],"enable_all_mcp_servers":false,"bound_mcp_servers":[],"enable_all_skills":false,"bound_skills":[]}'
 automation_restore_runner_config: "1"
+automation_restore_extensions: "1"
 automation_reset_debug_chat: "1"
 automation_debug_chat_session_type: "person"
 automation_expected_text: "qa_compaction_sentinel_7391"
@@ -43,12 +47,13 @@ setup_provides_env:
   - LANGBOT_LOCAL_AGENT_PIPELINE_URL
   - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
 preconditions:
-  - "The selected model route can follow short deterministic instructions across multiple Debug Chat turns."
+  - "The selected model route can follow short deterministic instructions across multiple Debug Chat turns, or LANGBOT_E2E_FAKE_PROVIDER_BASE_URL points to scripts/e2e/fake-openai-provider.mjs."
 steps:
   - "Open the target local-agent pipeline through LANGBOT_FRONTEND_URL."
   - "Use the authenticated browser token only inside automation to GET and PUT /api/v1/pipelines/{uuid}."
   - "Assert the saved runner is plugin:langbot/local-agent/default."
   - "Temporarily set context-window-tokens, context-reserve-tokens, context-keep-recent-tokens, and context-summary-tokens to force compaction, and clear knowledge-bases so RAG does not answer the memory question."
+  - "Temporarily bind only the local-agent plugin, disable MCP servers, and disable skills so unrelated visible tools cannot answer or distract the memory question."
   - "Reset the person Debug Chat session for the target pipeline."
   - "Send the sentinel memory prompt and wait for MEMORY_SET."
   - "Send the long padding prompt and wait for CONTEXT_PRESSURE_READY."
@@ -59,6 +64,8 @@ checks:
   - "UI: The final Bot message contains qa_compaction_sentinel_7391."
   - "API diagnostic: pipeline-config-diagnostic.json shows patched=true and patch_keys include the four token context compaction fields plus knowledge-bases."
   - "API diagnostic: pipeline-config-restore-diagnostic.json shows the original runner config was restored."
+  - "API diagnostic: pipeline-extensions-diagnostic.json shows enable_all_plugins=false, bound_plugins contains langbot/local-agent, enable_all_mcp_servers=false, and enable_all_skills=false."
+  - "API diagnostic: pipeline-extensions-restore-diagnostic.json shows the original extension bindings were restored."
   - "Logs: Backend completes the multi-turn Debug Chat path without runner timeout or model setup failure."
   - "Console: No unexpected frontend runtime errors appear during the run."
 evidence_required:
@@ -68,7 +75,8 @@ evidence_required:
   - backend_log
   - api_diagnostic
 diagnostics:
-  - "If the final sentinel is missing, inspect whether pipeline-config-diagnostic.json targeted ai.runner_config[runnerId], cleared knowledge-bases, and whether the backend log shows the local-agent runner loading the small context settings."
+  - "For token-free deterministic UI coverage, start scripts/e2e/fake-openai-provider.mjs and pass LANGBOT_E2E_FAKE_PROVIDER_BASE_URL to this case; setup will bind the local-agent pipeline to that fake OpenAI-compatible model."
+  - "If the final sentinel is missing, inspect whether pipeline-config-diagnostic.json targeted ai.runner_config[runnerId], cleared knowledge-bases, whether pipeline-extensions-diagnostic.json isolated unrelated tools, and whether the backend log shows the local-agent runner loading the small context settings."
   - "If the model ignores deterministic replies, rerun with a known-good model route before diagnosing ContextAssembler."
   - "If restore fails, use pipeline-config-restore-diagnostic.json and GET /api/v1/pipelines/{uuid} to confirm the current saved config before retrying."
 success_patterns:

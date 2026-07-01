@@ -12,6 +12,7 @@ metadata:
     zh_Hant: KOOK 適配器（原開黑啦），支援頻道訊息和私聊訊息
   icon: kook.png
 spec:
+  legacy: true
   categories:
     - china
   help_links:

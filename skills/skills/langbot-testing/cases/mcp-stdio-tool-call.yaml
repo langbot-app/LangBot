@@ -18,15 +18,23 @@ env:
   - LANGBOT_BACKEND_URL
   - LANGBOT_LOCAL_AGENT_PIPELINE_URL
   - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+env_optional:
+  - LANGBOT_E2E_FAKE_PROVIDER_BASE_URL
 automation: scripts/e2e/pipeline-debug-chat.mjs
 automation_env:
   - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
   - LANGBOT_BROWSER_PROFILE
   - LANGBOT_CHROMIUM_EXECUTABLE
   - LANGBOT_LOCAL_AGENT_PIPELINE_URL
   - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+  - LANGBOT_MCP_QA_STDIO_SERVER_UUID
 automation_pipeline_url_env: LANGBOT_LOCAL_AGENT_PIPELINE_URL
 automation_pipeline_name_env: LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_expected_runner_id: "plugin:langbot/local-agent/default"
+automation_extensions_patch_json: '{"enable_all_plugins":false,"bound_plugins":[{"author":"langbot","name":"local-agent"}],"enable_all_mcp_servers":false,"bound_mcp_servers":["${LANGBOT_MCP_QA_STDIO_SERVER_UUID}"],"enable_all_skills":false,"bound_skills":[]}'
+automation_restore_extensions: "1"
+automation_reset_debug_chat: "1"
 automation_prompt: "Call the qa_mcp_echo MCP tool with exactly this text: mcp-ok-local-agent. Return only the tool result."
 automation_expected_text: "qa_mcp_echo:mcp-ok-local-agent"
 automation_response_timeout_ms: "180000"
@@ -36,6 +44,7 @@ setup_automation:
 setup_provides_env:
   - LANGBOT_LOCAL_AGENT_PIPELINE_URL
   - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+  - LANGBOT_MCP_QA_STDIO_SERVER_UUID
 failure_patterns:
   - "qa-plugin-smoke:mcp-ok-local-agent"
   - "qa_echo:mcp-ok-local-agent"
@@ -45,7 +54,7 @@ failure_patterns:
   - "no available channel for model"
 preconditions:
   - "box.local.allowed_mount_roots includes the bundled MCP fixture directory when LangBot runs stdio MCP servers through Box."
-  - "The selected model route supports function/tool calling."
+  - "The selected model route supports function/tool calling, or LANGBOT_E2E_FAKE_PROVIDER_BASE_URL points to scripts/e2e/fake-openai-provider.mjs."
 steps:
   - "Open LANGBOT_FRONTEND_URL."
   - "Navigate to MCP Servers."
@@ -66,6 +75,7 @@ checks:
   - "API diagnostic: /api/v1/tools contains qa_mcp_echo."
   - "UI: Debug Chat bot response contains qa_mcp_echo:mcp-ok-local-agent."
   - "Logs: Backend logs show the MCP tool call was executed, not only listed."
+  - "API diagnostic: pipeline-extensions-diagnostic.json shows the qa-local-stdio server UUID is the only bound MCP server for the run."
   - "Console: No unexpected frontend errors appear during MCP form use or Debug Chat."
 evidence_required:
   - ui
@@ -73,6 +83,7 @@ evidence_required:
   - backend_log
   - api_diagnostic
 diagnostics:
+  - "For token-free deterministic UI coverage, start scripts/e2e/fake-openai-provider.mjs and pass LANGBOT_E2E_FAKE_PROVIDER_BASE_URL to this case; setup will bind the local-agent pipeline to that fake OpenAI-compatible model."
   - "Run node scripts/e2e/mcp-stdio-fixture.mjs to verify the bundled stdio fixture can list and call qa_mcp_echo without involving a model provider."
   - "Run node scripts/e2e/mcp-stdio-register.mjs to upsert qa-local-stdio in LangBot and verify /api/v1/tools exposes qa_mcp_echo."
   - "If backend logs show host_path is outside allowed_mount_roots, add the fixture directory to box.local.allowed_mount_roots in the local LangBot data config."

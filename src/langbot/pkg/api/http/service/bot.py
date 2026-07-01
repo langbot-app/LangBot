@@ -5,6 +5,8 @@ import sqlalchemy
 import typing
 
 from ....core import app
+from ....discover import engine
+from ....entity.persistence import agent as persistence_agent
 from ....entity.persistence import bot as persistence_bot
 from ....entity.persistence import pipeline as persistence_pipeline
 
@@ -13,9 +15,125 @@ class BotService:
     """Bot service"""
 
     ap: app.Application
+    BOT_FIELDS = {
+        'uuid',
+        'name',
+        'description',
+        'adapter',
+        'adapter_config',
+        'enable',
+        'event_bindings',
+    }
 
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
+
+    def _get_adapter_component(self, adapter_name: str) -> engine.Component | None:
+        """Return the discovered platform adapter component for an adapter name."""
+        for component in self.ap.discover.get_components_by_kind('MessagePlatformAdapter'):
+            if component.metadata.name == adapter_name:
+                return component
+        return None
+
+    def _adapter_declares_webhook_url(self, adapter_name: str) -> bool:
+        """Whether the adapter manifest declares a generated webhook URL config item."""
+        component = self._get_adapter_component(adapter_name)
+        if component is None:
+            return False
+
+        for config_item in component.spec.get('config', []):
+            if config_item.get('type') == 'webhook-url':
+                return True
+        return False
+
+    @staticmethod
+    def _is_message_event_pattern(event_pattern: str) -> bool:
+        return event_pattern == 'message.*' or event_pattern.startswith('message.')
+
+    @staticmethod
+    def _event_pattern_covers(supported_pattern: str, binding_pattern: str) -> bool:
+        if supported_pattern == '*':
+            return True
+        if supported_pattern == binding_pattern:
+            return True
+        if binding_pattern == '*':
+            return False
+        if supported_pattern.endswith('.*'):
+            namespace = supported_pattern[:-2]
+            return binding_pattern == f'{namespace}.*' or binding_pattern.startswith(f'{namespace}.')
+        return False
+
+    @classmethod
+    def _agent_supports_event_pattern(cls, supported_patterns: list[str] | None, event_pattern: str) -> bool:
+        patterns = supported_patterns or ['*']
+        return any(cls._event_pattern_covers(pattern, event_pattern) for pattern in patterns)
+
+    async def _normalize_event_bindings(self, bindings: list[dict] | None) -> list[dict]:
+        """Validate and normalize Bot event bindings."""
+        if not bindings:
+            return []
+
+        normalized: list[dict] = []
+        for index, raw_binding in enumerate(bindings):
+            if not isinstance(raw_binding, dict):
+                continue
+
+            event_pattern = str(raw_binding.get('event_pattern') or '').strip()
+            target_type = str(raw_binding.get('target_type') or '').strip()
+            target_uuid = str(raw_binding.get('target_uuid') or '').strip()
+            if not event_pattern or not target_type:
+                continue
+
+            if target_type == 'pipeline':
+                if not self._is_message_event_pattern(event_pattern):
+                    raise ValueError('Pipeline can only be bound to message events')
+                result = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(persistence_pipeline.LegacyPipeline.uuid).where(
+                        persistence_pipeline.LegacyPipeline.uuid == target_uuid
+                    )
+                )
+                if result.first() is None:
+                    raise ValueError('Pipeline not found')
+            elif target_type == 'agent':
+                result = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(persistence_agent.Agent).where(persistence_agent.Agent.uuid == target_uuid)
+                )
+                agent = result.first()
+                if agent is None:
+                    raise ValueError('Agent not found')
+                if not self._agent_supports_event_pattern(agent.supported_event_patterns, event_pattern):
+                    raise ValueError('Agent does not support this event pattern')
+            elif target_type == 'discard':
+                target_uuid = ''
+            else:
+                raise ValueError(f'Unsupported event binding target type: {target_type}')
+
+            normalized.append(
+                {
+                    'id': raw_binding.get('id') or str(uuid.uuid4()),
+                    'event_pattern': event_pattern,
+                    'target_type': target_type,
+                    'target_uuid': target_uuid,
+                    'filters': raw_binding.get('filters') or [],
+                    'priority': int(raw_binding.get('priority') or 0),
+                    'enabled': bool(raw_binding.get('enabled', True)),
+                    'description': raw_binding.get('description') or '',
+                    'order': index,
+                }
+            )
+
+        return normalized
+
+    async def _prepare_bot_data(self, bot_data: dict, *, include_uuid: bool) -> dict:
+        """Normalize Bot write payloads to the current event-routing model."""
+        update_data = bot_data.copy()
+        if not include_uuid:
+            update_data.pop('uuid', None)
+
+        update_data = {key: value for key, value in update_data.items() if key in self.BOT_FIELDS}
+        if 'event_bindings' in update_data:
+            update_data['event_bindings'] = await self._normalize_event_bindings(update_data.get('event_bindings'))
+        return update_data
 
     async def get_bots(self, include_secret: bool = True) -> list[dict]:
         """获取所有机器人"""
@@ -58,17 +176,10 @@ class BotService:
         if runtime_bot is not None:
             adapter_runtime_values['bot_account_id'] = runtime_bot.adapter.bot_account_id
 
-        # Webhook URL for unified webhook adapters (independent of bot running state)
-        if persistence_bot['adapter'] in [
-            'wecom',
-            'wecombot',
-            'officialaccount',
-            'qqofficial',
-            'slack',
-            'wecomcs',
-            'LINE',
-            'lark',
-        ]:
+        # Webhook URL for adapters that declare a generated webhook config item.
+        # This is manifest-driven so EBA adapters do not need to be mirrored in a
+        # second hard-coded list.
+        if self._adapter_declares_webhook_url(persistence_bot['adapter']):
             webhook_prefix = self.ap.instance_config.data['api'].get('webhook_prefix', 'http://127.0.0.1:5300')
             extra_webhook_prefix = self.ap.instance_config.data['api'].get('extra_webhook_prefix', '')
             webhook_url = f'/bots/{bot_uuid}'
@@ -97,18 +208,9 @@ class BotService:
                 raise ValueError(f'Maximum number of bots ({max_bots}) reached')
 
         # TODO: 检查配置信息格式
+        bot_data = await self._prepare_bot_data(bot_data, include_uuid=True)
         bot_data['uuid'] = str(uuid.uuid4())
-
-        # bind the most recently updated pipeline if any exist
-        result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_pipeline.LegacyPipeline)
-            .order_by(persistence_pipeline.LegacyPipeline.updated_at.desc())
-            .limit(1)
-        )
-        pipeline = result.first()
-        if pipeline is not None:
-            bot_data['use_pipeline_uuid'] = pipeline.uuid
-            bot_data['use_pipeline_name'] = pipeline.name
+        bot_data.setdefault('event_bindings', [])
 
         await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_bot.Bot).values(bot_data))
 
@@ -120,23 +222,7 @@ class BotService:
 
     async def update_bot(self, bot_uuid: str, bot_data: dict) -> None:
         """Update bot"""
-        update_data = bot_data.copy()
-
-        if 'uuid' in update_data:
-            del update_data['uuid']
-
-        # set use_pipeline_name
-        if 'use_pipeline_uuid' in update_data:
-            result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(
-                    persistence_pipeline.LegacyPipeline.uuid == update_data['use_pipeline_uuid']
-                )
-            )
-            pipeline = result.first()
-            if pipeline is not None:
-                update_data['use_pipeline_name'] = pipeline.name
-            else:
-                raise Exception('Pipeline not found')
+        update_data = await self._prepare_bot_data(bot_data, include_uuid=False)
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_bot.Bot).values(update_data).where(persistence_bot.Bot.uuid == bot_uuid)

@@ -1,0 +1,131 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+
+metadata:
+  name: aiocqhttp-eba
+  label:
+    en_US: OneBot v11
+    zh_Hans: OneBot v11
+    zh_Hant: OneBot v11
+  description:
+    en_US: OneBot v11 adapter for QQ-compatible protocol endpoints with event-driven orchestration support
+    zh_Hans: OneBot v11 适配器，用于接入 QQ 兼容协议端，支持事件驱动编排
+    zh_Hant: OneBot v11 適配器，用於接入 QQ 相容協定端，支援事件驅動編排
+  icon: onebot.svg
+
+spec:
+  categories:
+    - protocol
+  help_links:
+    zh: https://link.langbot.app/zh/platforms/aiocqhttp
+    en: https://link.langbot.app/en/platforms/aiocqhttp
+    ja: https://link.langbot.app/ja/platforms/aiocqhttp
+  config:
+    - name: host
+      label:
+        en_US: Host
+        zh_Hans: 主机
+        zh_Hant: 主機
+      description:
+        en_US: The host that OneBot v11 listens on for reverse WebSocket connections. Unless you know what you're doing, use 0.0.0.0
+        zh_Hans: OneBot v11 反向 WebSocket 监听主机，除非你知道自己在做什么，否则请写 0.0.0.0
+        zh_Hant: OneBot v11 反向 WebSocket 監聽主機，除非你知道自己在做什麼，否則請填 0.0.0.0
+      type: string
+      required: true
+      default: 0.0.0.0
+    - name: port
+      label:
+        en_US: Port
+        zh_Hans: 端口
+        zh_Hant: 連接埠
+      description:
+        en_US: Reverse WebSocket listen port
+        zh_Hans: 反向 WebSocket 监听端口
+        zh_Hant: 反向 WebSocket 監聽連接埠
+      type: integer
+      required: true
+      default: 2280
+    - name: access-token
+      label:
+        en_US: Access Token
+        zh_Hans: 访问令牌
+        zh_Hant: 存取令牌
+      description:
+        en_US: Custom connection token for the protocol endpoint. Leave empty if the endpoint has no token configured
+        zh_Hans: 自定义的协议端连接令牌；若协议端未设置，则不填
+        zh_Hant: 自訂的協定端連線令牌；若協定端未設定，則不填
+      type: string
+      required: false
+      default: ""
+
+  supported_events:
+    - message.received
+    - message.deleted
+    - group.member_joined
+    - group.member_left
+    - group.member_banned
+    - friend.request_received
+    - friend.added
+    - bot.invited_to_group
+    - bot.removed_from_group
+    - bot.muted
+    - bot.unmuted
+    - platform.specific
+
+  supported_apis:
+    required:
+      - send_message
+      - reply_message
+    optional:
+      - delete_message
+      - forward_message
+      - get_message
+      - get_group_info
+      - get_group_list
+      - get_group_member_list
+      - get_group_member_info
+      - set_group_name
+      - get_user_info
+      - get_friend_list
+      - approve_friend_request
+      - approve_group_invite
+      - mute_member
+      - unmute_member
+      - kick_member
+      - leave_group
+      - call_platform_api
+
+  platform_specific_apis:
+    - action: get_login_info
+      description: { en_US: "Get current bot account information", zh_Hans: "获取当前机器人账号信息" }
+    - action: get_status
+      description: { en_US: "Get endpoint status", zh_Hans: "获取协议端状态" }
+    - action: get_version_info
+      description: { en_US: "Get endpoint version information", zh_Hans: "获取协议端版本信息" }
+    - action: get_group_honor_info
+      description: { en_US: "Get group honor information", zh_Hans: "获取群荣誉信息" }
+    - action: set_group_card
+      description: { en_US: "Set a member group card", zh_Hans: "设置群名片" }
+    - action: set_group_special_title
+      description: { en_US: "Set a member special title", zh_Hans: "设置群专属头衔" }
+    - action: set_group_admin
+      description: { en_US: "Set group administrator status", zh_Hans: "设置群管理员" }
+    - action: set_group_whole_ban
+      description: { en_US: "Enable or disable whole-group mute", zh_Hans: "设置全员禁言" }
+    - action: send_group_forward_msg
+      description: { en_US: "Send a merged forward message", zh_Hans: "发送合并转发消息" }
+    - action: get_forward_msg
+      description: { en_US: "Get merged forward message content", zh_Hans: "获取合并转发消息内容" }
+    - action: get_record
+      description: { en_US: "Get voice file", zh_Hans: "获取语音文件" }
+    - action: get_image
+      description: { en_US: "Get image file", zh_Hans: "获取图片文件" }
+    - action: can_send_image
+      description: { en_US: "Check whether images can be sent", zh_Hans: "检查是否可以发送图片" }
+    - action: can_send_record
+      description: { en_US: "Check whether voice messages can be sent", zh_Hans: "检查是否可以发送语音" }
+
+execution:
+  python:
+    path: ./adapter.py
+    attr: AiocqhttpAdapter

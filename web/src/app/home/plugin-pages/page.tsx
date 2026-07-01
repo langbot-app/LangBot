@@ -1,6 +1,6 @@
 import { useSearchParams } from 'react-router-dom';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/components/providers/theme-provider';
@@ -24,7 +24,10 @@ export default function PluginPagesPage() {
   const [searchParams] = useSearchParams();
   const id = searchParams.get('id');
   const { t } = useTranslation();
-  const { setDetailEntityName, pluginPages } = useSidebarData();
+  const { setDetailEntityName, pluginPages, refreshPlugins } = useSidebarData();
+  const [lookupCompleteForId, setLookupCompleteForId] = useState<string | null>(
+    null,
+  );
 
   // Find the matching page for breadcrumb
   const page = pluginPages.find((p) => p.id === id);
@@ -33,6 +36,18 @@ export default function PluginPagesPage() {
     setDetailEntityName(page?.name ?? id ?? '');
     return () => setDetailEntityName(null);
   }, [page, id, setDetailEntityName]);
+
+  useEffect(() => {
+    if (!id || page) return;
+    let cancelled = false;
+    setLookupCompleteForId(null);
+    refreshPlugins().finally(() => {
+      if (!cancelled) setLookupCompleteForId(id);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, page, refreshPlugins]);
 
   if (!id) {
     return (
@@ -54,9 +69,23 @@ export default function PluginPagesPage() {
 
   const author = parts[0];
   const pluginName = parts[1];
-  // Use the asset path from the page manifest, not the page ID
-  const assetPath = page?.path ?? parts.slice(2).join('/');
-  const pageId = parts.slice(2).join('/');
+  if (!page) {
+    if (lookupCompleteForId === id) {
+      return (
+        <div className="flex items-center justify-center h-full text-muted-foreground">
+          {t('pluginPages.invalidPage')}
+        </div>
+      );
+    }
+    return (
+      <div className="flex items-center justify-center h-full text-muted-foreground">
+        Loading...
+      </div>
+    );
+  }
+
+  const assetPath = page.path;
+  const pageId = page.pageId;
 
   return (
     <PluginPageIframe
@@ -84,7 +113,11 @@ function PluginPageIframe({
   const { resolvedTheme } = useTheme();
   const { i18n } = useTranslation();
 
-  const assetUrl = httpClient.getPluginAssetURL(author, pluginName, pagePath);
+  const assetUrl = useMemo(() => {
+    const url = httpClient.getPluginAssetURL(author, pluginName, pagePath);
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}_lb_page_v=${Date.now()}`;
+  }, [author, pluginName, pagePath]);
 
   // Send context (theme + language) to iframe
   // Use '*' as targetOrigin because sandboxed iframe has opaque (null) origin

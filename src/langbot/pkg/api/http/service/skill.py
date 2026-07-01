@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import inspect
+import logging
 import os
 import posixpath
 import zipfile
@@ -9,6 +10,8 @@ from typing import Optional
 from urllib.parse import quote, unquote, urlparse
 
 import httpx
+from langbot_plugin.box.errors import BoxError
+from langbot_plugin.entities.io.errors import ActionCallError, ActionCallTimeoutError
 
 from ....core import app
 from ....skill.utils import parse_frontmatter
@@ -32,6 +35,8 @@ _GITHUB_ASSET_HOSTS = {
     'raw.githubusercontent.com',
     'codeload.github.com',
 }
+
+logger = logging.getLogger(__name__)
 
 
 class SkillService:
@@ -81,12 +86,16 @@ class SkillService:
 
     async def list_skills(self) -> list[dict]:
         # When Box is unavailable, surface an empty list rather than raising —
-        # the skills page should render cleanly, and the UI separately renders
-        # a "Box disabled / unavailable" banner via useBoxStatus.
+        # the skills page and unrelated extension surfaces should render
+        # cleanly, and the UI separately renders Box status via useBoxStatus.
         box_service = self._box_service()
         if box_service is None:
             return []
-        return [self._serialize_skill(skill) for skill in await box_service.list_skills()]
+        try:
+            return [self._serialize_skill(skill) for skill in await box_service.list_skills()]
+        except (ActionCallTimeoutError, ActionCallError, BoxError, TimeoutError, ConnectionError) as exc:
+            logger.warning('Box skill list unavailable; returning an empty skill list: %s', exc)
+            return []
 
     async def get_skill(self, skill_name: str) -> Optional[dict]:
         box_service = self._box_service()

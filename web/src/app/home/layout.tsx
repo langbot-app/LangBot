@@ -60,6 +60,7 @@ const EXTENSIONS_ROUTES = [
 const HOME_TITLE_KEYS: { match: (path: string) => boolean; key: string }[] = [
   { match: (p) => p.startsWith('/home/monitoring'), key: 'monitoring.title' },
   { match: (p) => p.startsWith('/home/bots'), key: 'bots.title' },
+  { match: (p) => p.startsWith('/home/agents'), key: 'agents.title' },
   { match: (p) => p.startsWith('/home/pipelines'), key: 'pipelines.title' },
   {
     match: (p) => p.startsWith('/home/add-extension'),

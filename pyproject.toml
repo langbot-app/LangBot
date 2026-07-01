@@ -1,6 +1,6 @@
 [project]
 name = "langbot"
-version = "4.10.4"
+version = "4.11.0"
 description = "Production-grade platform for building agentic IM bots"
 readme = "README.md"
 license-files = ["LICENSE"]
@@ -70,7 +70,7 @@ dependencies = [
     "chromadb>=1.0.0,<2.0.0",
     "qdrant-client (>=1.15.1,<2.0.0)",
     "pyseekdb==1.1.0.post3",
-    "langbot-plugin==0.4.6",
+    "langbot-plugin==0.5.0a2",
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",
     "matrix-nio>=0.25.2",
@@ -119,7 +119,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-package-data = { "langbot" = ["templates/**", "pkg/provider/modelmgr/requesters/*", "pkg/platform/sources/*", "web/dist/**", "pkg/persistence/alembic/**"] }
+package-data = { "langbot" = ["templates/**", "pkg/provider/modelmgr/requesters/*", "pkg/platform/sources/*", "pkg/platform/adapters/**", "web/dist/**", "pkg/persistence/alembic/**"] }
 
 [dependency-groups]
 dev = [

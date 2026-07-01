@@ -337,14 +337,17 @@ const viVN = {
     getBotConfigError: 'Lấy cấu hình Bot thất bại: ',
     saveSuccess: 'Lưu thành công',
     saveError: 'Lưu thất bại: ',
-    createSuccess:
-      'Tạo thành công. Vui lòng bật hoặc sửa đổi Pipeline đã liên kết',
+    createSuccess: 'Tạo thành công. Vui lòng cấu hình định tuyến sự kiện',
     createError: 'Tạo thất bại: ',
     deleteSuccess: 'Xóa thành công',
     deleteError: 'Xóa thất bại: ',
     deleteConfirmation: 'Bạn có chắc chắn muốn xóa Bot này không?',
     platformAdapter: 'Nền tảng/Lựa chọn Adapter',
     selectAdapter: 'Chọn Adapter',
+    legacyAdapters: 'Adapter cũ',
+    legacyAdapterBadge: 'Cũ',
+    legacyAdaptersHint:
+      'Các adapter này đã có phiên bản hướng sự kiện mới hơn. Chúng chỉ được giữ lại để tương thích với cấu hình hiện có và không được khuyến nghị cho Bot mới.',
     adapterConfig: 'Cấu hình Adapter',
     viewAdapterDocs: 'Xem tài liệu',
     bindPipeline: 'Liên kết Pipeline',
@@ -365,6 +368,9 @@ const viVN = {
     routingConnection: 'Định tuyến & Kết nối',
     routingConnectionDescription:
       'Liên kết Pipeline xử lý tin nhắn cho Bot này',
+    eventRouting: 'Định tuyến sự kiện',
+    eventRoutingDescription:
+      'Chọn bộ xử lý sẽ nhận từng sự kiện của Bot này. Chỉnh sửa logic xử lý trong trang Agent. Pipeline chỉ hỗ trợ sự kiện tin nhắn.',
     routingRules: 'Quy tắc định tuyến có điều kiện',
     routingRulesDescription:
       'Các quy tắc được đánh giá theo thứ tự; kết quả khớp đầu tiên sẽ định tuyến đến pipeline tương ứng. Nếu không khớp, pipeline mặc định ở trên sẽ được sử dụng.',
@@ -471,6 +477,54 @@ const viVN = {
       configureAdmins: 'Manage Admins',
     },
   },
+  agents: {
+    title: 'Agent',
+    description:
+      'Tạo bộ xử lý có thể tái sử dụng và dùng chúng trong định tuyến sự kiện của bot',
+    create: 'Tạo bộ xử lý',
+    editAgent: 'Chỉnh sửa Agent',
+    selectFromSidebar: 'Chọn một Agent hoặc Pipeline từ thanh bên',
+    agentType: 'Agent',
+    agentTypeDescription:
+      'Dùng runner để xử lý tin nhắn, thành viên nhóm, bạn bè, phản hồi và các sự kiện nền tảng khác.',
+    pipelineType: 'Pipeline',
+    kindBadgeAgent: 'Agent',
+    kindBadgePipeline: 'Pipeline',
+    groupByKind: 'Nhóm theo loại',
+    groupByKindShort: 'Nhóm',
+    pipelineTypeDescription:
+      'Giữ lại pipeline tin nhắn không cần mã hiện có để tương thích ngược. Chỉ xử lý sự kiện tin nhắn.',
+    allEvents: 'Hỗ trợ tất cả sự kiện',
+    messageEventsOnly: 'Chỉ sự kiện tin nhắn',
+    basicInfo: 'Thông tin cơ bản',
+    basicInfoDescription: 'Đặt tên, biểu tượng, mô tả và trạng thái kích hoạt',
+    runnerSettings: 'Runner',
+    advanced: 'Nâng cao',
+    bindableEvents: 'Phạm vi sự kiện có thể gắn',
+    bindableEventsDescription:
+      'Giới hạn những tuyến sự kiện bot có thể chọn Agent này. Mặc định phù hợp với hầu hết trường hợp.',
+    supportedEvents: 'Phạm vi sự kiện',
+    supportedEventsDescription:
+      'Mỗi dòng một mẫu sự kiện, ví dụ *, message.received, group.*. Pipeline cố định ở message.*.',
+    enabled: 'Kích hoạt Agent',
+    enabledDescription:
+      'Khi bị tắt, Agent này sẽ không được định tuyến sự kiện chọn.',
+    nameRequired: 'Tên không được để trống',
+    createSuccess: 'Tạo thành công',
+    createError: 'Tạo thất bại: ',
+    loadError: 'Tải thất bại: ',
+    saveSuccess: 'Lưu thành công',
+    saveError: 'Lưu thất bại: ',
+    deleteSuccess: 'Xóa thành công',
+    deleteError: 'Xóa thất bại: ',
+    deleteConfirmation: 'Bạn có chắc muốn xóa Agent này không?',
+    dangerZone: 'Vùng nguy hiểm',
+    dangerZoneDescription: 'Hành động không thể hoàn tác và mang tính phá hủy',
+    deleteAgentAction: 'Xóa Agent này',
+    deleteAgentHint:
+      'Sau khi xóa, các sự kiện đã gắn vào nó sẽ không thể thực thi được nữa.',
+    noRunnerMetadata: 'Hiện chưa có siêu dữ liệu AgentRunner khả dụng.',
+  },
   plugins: {
     title: 'Tiện ích mở rộng',
     description:
@@ -500,6 +554,7 @@ const viVN = {
     noExtensionInstalled: 'Chưa cài đặt tiện ích mở rộng nào',
     loadingExtensions: 'Đang tải tiện ích mở rộng...',
     groupByType: 'Nhóm theo định dạng',
+    groupByTypeShort: 'Nhóm',
     pluginConfig: 'Cấu hình Plugin',
     pluginSort: 'Sắp xếp Plugin',
     pluginSortDescription:
@@ -563,6 +618,7 @@ const viVN = {
       KnowledgeEngine: 'Công cụ tri thức',
       Parser: 'Trình phân tích',
       Page: 'Trang',
+      AgentRunner: 'Trình chạy tác tử',
     },
     uploadLocal: 'Tải lên cục bộ',
     debugging: 'Gỡ lỗi',
@@ -739,6 +795,7 @@ const viVN = {
       KnowledgeEngine: 'Công cụ tri thức',
       Parser: 'Trình phân tích',
       Page: 'Trang',
+      AgentRunner: 'Trình chạy tác tử',
     },
     filterByType: 'Loại',
     allTypes: 'Tất cả loại',

@@ -3,7 +3,7 @@
 All user-facing URLs are keyed by **bot_uuid** (not pipeline_uuid) so that
 internal pipeline identifiers are never exposed to end-users.  Each handler
 resolves the bot_uuid to the owning ``web_page_bot`` RuntimeBot and extracts
-the bound pipeline_uuid for internal routing.
+the message event route's Pipeline target for internal routing.
 """
 
 import asyncio
@@ -62,16 +62,17 @@ class EmbedRouterGroup(group.RouterGroup):
         """Resolve *bot_uuid* to ``(runtime_bot, pipeline_uuid)``.
 
         Returns ``(None, None)`` when the bot does not exist, is not a
-        ``web_page_bot``, is disabled, or has no pipeline bound.
+        ``web_page_bot``, is disabled, or has no Pipeline target for messages.
         """
         for bot in self.ap.platform_mgr.bots:
+            pipeline_uuid = bot.get_pipeline_target_for_event_type('message.received')
             if (
                 bot.bot_entity.uuid == bot_uuid
                 and bot.bot_entity.adapter == 'web_page_bot'
                 and bot.bot_entity.enable
-                and bot.bot_entity.use_pipeline_uuid
+                and pipeline_uuid
             ):
-                return bot, bot.bot_entity.use_pipeline_uuid
+                return bot, pipeline_uuid
         return None, None
 
     def _get_bot_config(self, bot_uuid: str) -> dict:

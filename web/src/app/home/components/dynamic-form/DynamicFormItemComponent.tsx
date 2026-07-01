@@ -67,6 +67,44 @@ import SettingsDialog, {
 import ToolResourceSelectors from '@/app/home/components/dynamic-form/ToolResourceSelectors';
 import { LANGBOT_MODELS_PROVIDER_REQUESTER } from '@/app/home/components/models-dialog/types';
 
+function getPluginComponentIconURL(value?: string): string | null {
+  if (!value?.startsWith('plugin:')) {
+    return null;
+  }
+
+  const match = value.match(/^plugin:([^/]+)\/([^/]+)(?:\/|$)/);
+  if (!match) {
+    return null;
+  }
+
+  return httpClient.getPluginIconURL(match[1], match[2]);
+}
+
+function SelectOptionContent({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  const iconURL = getPluginComponentIconURL(value);
+
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      {iconURL && (
+        <img
+          src={iconURL}
+          alt=""
+          className="size-5 shrink-0 rounded object-cover"
+        />
+      )}
+      <div className="min-w-0 flex flex-col">
+        <span className="truncate">{label}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function DynamicFormItemComponent({
   config,
   field,
@@ -279,11 +317,13 @@ export default function DynamicFormItemComponent({
   switch (config.type) {
     case DynamicFormItemType.INT:
     case DynamicFormItemType.FLOAT:
+    case DynamicFormItemType.NUMBER:
       return (
         <Input
           type="number"
           className="w-full max-w-xs"
           {...field}
+          value={field.value ?? ''}
           onChange={(e) => field.onChange(Number(e.target.value))}
         />
       );
@@ -292,7 +332,11 @@ export default function DynamicFormItemComponent({
       if (config.options && config.options.length > 0) {
         return (
           <div className="flex w-full max-w-md min-w-0 items-center gap-1.5">
-            <Input className="min-w-0 flex-1" {...field} />
+            <Input
+              className="min-w-0 flex-1"
+              {...field}
+              value={field.value ?? ''}
+            />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -323,18 +367,37 @@ export default function DynamicFormItemComponent({
           </div>
         );
       }
-      return <Input className="w-full max-w-md" {...field} />;
+      return (
+        <Input
+          className="w-full max-w-md"
+          {...field}
+          value={field.value ?? ''}
+        />
+      );
 
     case DynamicFormItemType.TEXT:
       return (
         <Textarea
           {...field}
+          value={field.value ?? ''}
           className="min-h-[120px] w-full max-w-full resize-y overflow-x-hidden break-all"
         />
       );
 
+    case DynamicFormItemType.JSON:
+      return (
+        <Textarea
+          {...field}
+          value={field.value ?? ''}
+          className="min-h-[200px] font-mono text-sm"
+          placeholder='{"key": "value"}'
+        />
+      );
+
     case DynamicFormItemType.BOOLEAN:
-      return <Switch checked={field.value} onCheckedChange={field.onChange} />;
+      return (
+        <Switch checked={!!field.value} onCheckedChange={field.onChange} />
+      );
 
     case DynamicFormItemType.STRING_ARRAY:
       return (
@@ -381,10 +444,20 @@ export default function DynamicFormItemComponent({
       );
 
     case DynamicFormItemType.SELECT:
+      const selectedOption = config.options?.find(
+        (option) => option.name === field.value,
+      );
       return (
-        <Select value={field.value} onValueChange={field.onChange}>
+        <Select value={field.value ?? ''} onValueChange={field.onChange}>
           <SelectTrigger className="w-full max-w-md bg-[#ffffff] dark:bg-[#2a2a2e]">
-            <SelectValue placeholder={t('common.select')} />
+            {selectedOption ? (
+              <SelectOptionContent
+                label={extractI18nObject(selectedOption.label)}
+                value={selectedOption.name}
+              />
+            ) : (
+              <SelectValue placeholder={t('common.select')} />
+            )}
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
@@ -394,7 +467,10 @@ export default function DynamicFormItemComponent({
                   value={option.name}
                   description={option.name}
                 >
-                  {extractI18nObject(option.label)}
+                  <SelectOptionContent
+                    label={extractI18nObject(option.label)}
+                    value={option.name}
+                  />
                 </SelectItem>
               ))}
             </SelectGroup>
@@ -1631,7 +1707,7 @@ export default function DynamicFormItemComponent({
                 {/* 内容输入 */}
                 <Textarea
                   className="min-h-20 w-full min-w-0 flex-1 resize-y overflow-x-hidden break-all sm:w-[300px]"
-                  value={item.content}
+                  value={item.content ?? ''}
                   onChange={(e) => {
                     const newValue = [...(field.value ?? promptItems)];
                     newValue[index] = {

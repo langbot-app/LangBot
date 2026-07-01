@@ -342,14 +342,17 @@ const esES = {
     getBotConfigError: 'Error al obtener la configuración del Bot: ',
     saveSuccess: 'Guardado correctamente',
     saveError: 'Error al guardar: ',
-    createSuccess:
-      'Creado correctamente. Por favor, activa o modifica el Pipeline vinculado',
+    createSuccess: 'Creado correctamente. Configura el enrutamiento de eventos',
     createError: 'Error al crear: ',
     deleteSuccess: 'Eliminado correctamente',
     deleteError: 'Error al eliminar: ',
     deleteConfirmation: '¿Estás seguro de que deseas eliminar este Bot?',
     platformAdapter: 'Selección de plataforma/adaptador',
     selectAdapter: 'Seleccionar adaptador',
+    legacyAdapters: 'Adaptadores heredados',
+    legacyAdapterBadge: 'Heredado',
+    legacyAdaptersHint:
+      'Estos adaptadores tienen versiones nuevas orientadas a eventos. Se mantienen solo para configuraciones existentes y no se recomiendan para Bots nuevos.',
     adapterConfig: 'Configuración del adaptador',
     viewAdapterDocs: 'Ver documentación',
     bindPipeline: 'Vincular Pipeline',
@@ -370,6 +373,9 @@ const esES = {
     routingConnection: 'Enrutamiento y conexión',
     routingConnectionDescription:
       'Vincula el Pipeline que procesa los mensajes de este Bot',
+    eventRouting: 'Enrutamiento de eventos',
+    eventRoutingDescription:
+      'Elige qué procesador maneja cada evento recibido por este Bot. Edita la lógica de procesamiento en la página Agent. Los Pipelines solo admiten eventos de mensaje.',
     routingRules: 'Reglas de enrutamiento condicional',
     routingRulesDescription:
       'Las reglas se evalúan en orden; la primera coincidencia enruta a su pipeline. Si ninguna coincide, se usa el pipeline predeterminado.',
@@ -477,6 +483,56 @@ const esES = {
       configureAdmins: 'Manage Admins',
     },
   },
+  agents: {
+    title: 'Agent',
+    description:
+      'Crea procesadores reutilizables y úsalos en el enrutamiento de eventos del bot',
+    create: 'Crear procesador',
+    editAgent: 'Editar Agent',
+    selectFromSidebar: 'Selecciona un Agent o Pipeline desde la barra lateral',
+    agentType: 'Agent',
+    agentTypeDescription:
+      'Usa un runner para procesar mensajes, miembros de grupo, amigos, retroalimentación y otros eventos de plataforma.',
+    pipelineType: 'Pipeline',
+    kindBadgeAgent: 'Agent',
+    kindBadgePipeline: 'Pipeline',
+    groupByKind: 'Agrupar por tipo',
+    groupByKindShort: 'Agrupar',
+    pipelineTypeDescription:
+      'Mantiene el pipeline de mensajes sin código para compatibilidad con versiones anteriores. Solo procesa eventos de mensaje.',
+    allEvents: 'Compatible con todos los eventos',
+    messageEventsOnly: 'Solo eventos de mensaje',
+    basicInfo: 'Información básica',
+    basicInfoDescription:
+      'Establece el nombre, icono, descripción y estado de habilitación',
+    runnerSettings: 'Runner',
+    advanced: 'Avanzado',
+    bindableEvents: 'Rango de eventos vinculables',
+    bindableEventsDescription:
+      'Limita qué rutas de eventos del bot pueden seleccionar este Agent. El valor predeterminado sirve para la mayoría de los casos.',
+    supportedEvents: 'Rango de eventos',
+    supportedEventsDescription:
+      'Usa un patrón de evento por línea, por ejemplo *, message.received, group.*. Los Pipelines están fijos en message.*.',
+    enabled: 'Habilitar Agent',
+    enabledDescription:
+      'Cuando está deshabilitado, este Agent no debe ser seleccionado por el enrutamiento de eventos.',
+    nameRequired: 'El nombre no puede estar vacío',
+    createSuccess: 'Creado correctamente',
+    createError: 'Error al crear: ',
+    loadError: 'Error al cargar: ',
+    saveSuccess: 'Guardado correctamente',
+    saveError: 'Error al guardar: ',
+    deleteSuccess: 'Eliminado correctamente',
+    deleteError: 'Error al eliminar: ',
+    deleteConfirmation: '¿Estás seguro de que deseas eliminar este Agent?',
+    dangerZone: 'Zona de peligro',
+    dangerZoneDescription: 'Acciones irreversibles y destructivas',
+    deleteAgentAction: 'Eliminar este Agent',
+    deleteAgentHint:
+      'Una vez eliminado, los eventos vinculados a él ya no podrán ejecutarse.',
+    noRunnerMetadata:
+      'No hay metadatos de AgentRunner disponibles actualmente.',
+  },
   plugins: {
     title: 'Extensiones',
     description:
@@ -506,6 +562,7 @@ const esES = {
     noExtensionInstalled: 'No hay extensiones instaladas',
     loadingExtensions: 'Cargando extensiones...',
     groupByType: 'Agrupar por formato',
+    groupByTypeShort: 'Agrupar',
     pluginConfig: 'Configuración del plugin',
     pluginSort: 'Orden de plugins',
     pluginSortDescription:
@@ -570,6 +627,7 @@ const esES = {
       KnowledgeEngine: 'Motor de conocimiento',
       Parser: 'Analizador',
       Page: 'Página',
+      AgentRunner: 'Ejecutor de agentes',
     },
     uploadLocal: 'Subir local',
     debugging: 'Depuración',
@@ -747,6 +805,7 @@ const esES = {
       KnowledgeEngine: 'Motor de conocimiento',
       Parser: 'Analizador',
       Page: 'Página',
+      AgentRunner: 'Ejecutor de agentes',
     },
     filterByType: 'Tipo',
     allTypes: 'Todos los tipos',

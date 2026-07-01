@@ -28,7 +28,7 @@ if typing.TYPE_CHECKING:
 
 INSTRUCTIONS = """\
 This MCP server manages a LangBot instance. LangBot is an LLM-native instant
-messaging bot platform. Use these tools to inspect and manage bots, pipelines,
+messaging bot platform. Use these tools to inspect and manage bots, agents, pipelines,
 models, knowledge bases, MCP servers, and skills.
 
 Authentication uses a LangBot API key (web-UI-created `lbk_...` key or the
@@ -139,6 +139,34 @@ class LangBotMCPServer:
         @mcp.tool(description='Delete a pipeline by UUID.')
         async def delete_pipeline(pipeline_uuid: str) -> str:
             await ap.pipeline_service.delete_pipeline(pipeline_uuid)
+            return _dump({'ok': True})
+
+        # ----- Agents -------------------------------------------------- #
+        @mcp.tool(description='List product-level processors, including Agents and Pipelines.')
+        async def list_agents() -> str:
+            return _dump(await ap.agent_service.get_agents())
+
+        @mcp.tool(description='Get a product-level Agent or Pipeline by UUID.')
+        async def get_agent(agent_uuid: str) -> str:
+            return _dump(await ap.agent_service.get_agent(agent_uuid))
+
+        @mcp.tool(
+            description=(
+                'Create an Agent processor or Pipeline. `agent_data` matches '
+                'POST /api/v1/agents; set kind to `agent` or `pipeline`. Returns the new UUID and kind.'
+            )
+        )
+        async def create_agent(agent_data: dict) -> str:
+            return _dump(await ap.agent_service.create_agent(agent_data))
+
+        @mcp.tool(description='Update an Agent processor or Pipeline by UUID.')
+        async def update_agent(agent_uuid: str, agent_data: dict) -> str:
+            await ap.agent_service.update_agent(agent_uuid, agent_data)
+            return _dump({'ok': True})
+
+        @mcp.tool(description='Delete an Agent processor or Pipeline by UUID.')
+        async def delete_agent(agent_uuid: str) -> str:
+            await ap.agent_service.delete_agent(agent_uuid)
             return _dump({'ok': True})
 
         # ----- Models -------------------------------------------------- #

@@ -3,7 +3,6 @@ from __future__ import annotations
 import typing
 import traceback
 
-from langbot_plugin.api.definition.components.manifest import ComponentManifest
 from langbot_plugin.api.entities.events import pipeline_query
 
 from .. import loader
@@ -57,12 +56,6 @@ class PluginToolLoader(loader.ToolLoader):
             if tool.metadata.name == name:
                 return True
         return False
-
-    async def get_tool(self, name: str) -> ComponentManifest | None:
-        for tool in await self.ap.plugin_connector.list_tools():
-            if tool.metadata.name == name:
-                return tool
-        return None
 
     async def invoke_tool(self, name: str, parameters: dict, query: pipeline_query.Query) -> typing.Any:
         try:

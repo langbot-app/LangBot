@@ -122,11 +122,9 @@ class FakeApp:
         return cmd_mgr
 
     def _create_mock_skill_mgr(self):
-        """Mock SkillManager that returns no skill index addition by default."""
+        """Mock SkillManager with no loaded skills by default."""
         skill_mgr = Mock()
         skill_mgr.skills = {}
-        skill_mgr.build_skill_aware_prompt_addition = Mock(return_value='')
-        skill_mgr.get_skill_index = Mock(return_value=[])
         return skill_mgr
 
     def _create_mock_pipeline_service(self):

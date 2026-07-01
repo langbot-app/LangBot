@@ -19,6 +19,7 @@ export interface SidebarEntityItem {
   updatedAt?: string; // ISO timestamp for sorting by most recently edited
   // Bot-specific fields
   enabled?: boolean;
+  legacyAdapter?: boolean;
   // MCP-specific fields
   runtimeStatus?: 'connecting' | 'connected' | 'error';
   // Plugin-specific fields
@@ -28,6 +29,8 @@ export interface SidebarEntityItem {
   debug?: boolean;
   // Set when this item appears in the unified extensions list
   extensionType?: 'plugin' | 'mcp' | 'skill';
+  // Agent-specific: distinguishes Agent processors from Pipelines
+  kind?: 'agent' | 'pipeline';
 }
 
 // Plugin page registered by a plugin
@@ -64,6 +67,9 @@ export interface SidebarDataContextValue {
   // Whether the extensions list is grouped by type (shared between page and sidebar)
   extensionsGroupByType: boolean;
   setExtensionsGroupByType: (enabled: boolean) => void;
+  // Whether the Agent list is grouped by kind (Agent vs Pipeline)
+  agentsGroupByKind: boolean;
+  setAgentsGroupByKind: (enabled: boolean) => void;
 }
 
 const SidebarDataContext = createContext<SidebarDataContextValue | null>(null);
@@ -95,9 +101,32 @@ export function SidebarDataProvider({
     }
   }, []);
 
+  const [agentsGroupByKind, setAgentsGroupByKindState] = useState<boolean>(
+    () => {
+      if (typeof window === 'undefined') return false;
+      return localStorage.getItem('agents_group_by_kind') === 'true';
+    },
+  );
+  const setAgentsGroupByKind = useCallback((enabled: boolean) => {
+    setAgentsGroupByKindState(enabled);
+    try {
+      localStorage.setItem('agents_group_by_kind', String(enabled));
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const refreshBots = useCallback(async () => {
     try {
-      const resp = await httpClient.getBots();
+      const [resp, adaptersResp] = await Promise.all([
+        httpClient.getBots(),
+        httpClient.getAdapters().catch(() => ({ adapters: [] })),
+      ]);
+      const legacyAdapterNames = new Set(
+        adaptersResp.adapters
+          .filter((adapter) => adapter.spec.legacy)
+          .map((adapter) => adapter.name),
+      );
       setBots(
         resp.bots.map((bot) => ({
           id: bot.uuid || '',
@@ -106,6 +135,7 @@ export function SidebarDataProvider({
           iconURL: httpClient.getAdapterIconURL(bot.adapter),
           updatedAt: bot.updated_at,
           enabled: bot.enable ?? true,
+          legacyAdapter: legacyAdapterNames.has(bot.adapter),
         })),
       );
     } catch (error) {
@@ -115,18 +145,19 @@ export function SidebarDataProvider({
 
   const refreshPipelines = useCallback(async () => {
     try {
-      const resp = await httpClient.getPipelines();
+      const resp = await httpClient.getAgents();
       setPipelines(
-        resp.pipelines.map((p) => ({
+        resp.agents.map((p) => ({
           id: p.uuid || '',
           name: p.name,
           description: p.description,
           emoji: p.emoji,
           updatedAt: p.updated_at,
+          kind: p.kind,
         })),
       );
     } catch (error) {
-      console.error('Failed to fetch pipelines for sidebar:', error);
+      console.error('Failed to fetch agents for sidebar:', error);
     }
   }, []);
 
@@ -308,6 +339,8 @@ export function SidebarDataProvider({
         setDetailEntityName,
         extensionsGroupByType,
         setExtensionsGroupByType,
+        agentsGroupByKind,
+        setAgentsGroupByKind,
       }}
     >
       {children}

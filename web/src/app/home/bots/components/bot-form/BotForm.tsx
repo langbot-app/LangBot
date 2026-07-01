@@ -1,9 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import i18n from 'i18next';
-import {
-  IChooseAdapterEntity,
-  IPipelineEntity,
-} from '@/app/home/bots/components/bot-form/ChooseEntity';
+import { IChooseAdapterEntity } from '@/app/home/bots/components/bot-form/ChooseEntity';
 import {
   DynamicFormItemConfig,
   getDefaultValues,
@@ -14,10 +11,10 @@ import { UUID } from 'uuidjs';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { systemInfo } from '@/app/infra/http';
-import { Bot } from '@/app/infra/entities/api';
+import { Agent, Bot } from '@/app/infra/entities/api';
 import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
-import { ExternalLink } from 'lucide-react';
-import RoutingRulesEditor from './RoutingRulesEditor';
+import { ExternalLink, ChevronDown, ChevronRight } from 'lucide-react';
+import EventBindingsEditor from './EventBindingsEditor';
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
@@ -65,26 +62,18 @@ const getFormSchema = (t: (key: string) => string) =>
     adapter: z.string().min(1, { message: t('bots.adapterRequired') }),
     adapter_config: z.record(z.string(), z.any()),
     enable: z.boolean().optional(),
-    use_pipeline_uuid: z.string().optional(),
-    pipeline_routing_rules: z
+    event_bindings: z
       .array(
         z.object({
-          type: z.enum([
-            'launcher_type',
-            'launcher_id',
-            'message_content',
-            'message_has_element',
-          ]),
-          operator: z.enum([
-            'eq',
-            'neq',
-            'contains',
-            'not_contains',
-            'starts_with',
-            'regex',
-          ]),
-          value: z.string(),
-          pipeline_uuid: z.string(),
+          id: z.string().optional(),
+          event_pattern: z.string(),
+          target_type: z.enum(['agent', 'pipeline', 'discard']),
+          target_uuid: z.string(),
+          filters: z.array(z.record(z.string(), z.any())).optional(),
+          priority: z.number(),
+          enabled: z.boolean(),
+          description: z.string().optional(),
+          order: z.number().optional(),
         }),
       )
       .optional(),
@@ -112,8 +101,7 @@ export default function BotForm({
       adapter: '',
       adapter_config: {},
       enable: true,
-      use_pipeline_uuid: '',
-      pipeline_routing_rules: [],
+      event_bindings: [],
     },
   });
 
@@ -133,10 +121,11 @@ export default function BotForm({
   const [adapterHelpLinks, setAdapterHelpLinks] = useState<
     Record<string, Record<string, string>>
   >({});
+  const [adapterSupportedEvents, setAdapterSupportedEvents] = useState<
+    Record<string, string[]>
+  >({});
 
-  const [pipelineNameList, setPipelineNameList] = useState<IPipelineEntity[]>(
-    [],
-  );
+  const [agentNameList, setAgentNameList] = useState<Agent[]>([]);
 
   const [dynamicFormConfigList, setDynamicFormConfigList] = useState<
     IDynamicFormItemSchema[]
@@ -149,11 +138,35 @@ export default function BotForm({
   const currentAdapter = form.watch('adapter');
   const currentAdapterConfig = form.watch('adapter_config');
 
-  // Group adapters by category for the Select dropdown
-  const groupedAdapters = useMemo(
-    () => groupByCategory(adapterNameList),
+  // Group adapters by category for the Select dropdown. Legacy adapters are
+  // split out and shown in a collapsed group at the bottom so they're
+  // de-emphasized but still usable for existing configurations.
+  const activeAdapters = useMemo(
+    () => adapterNameList.filter((a) => !a.legacy),
     [adapterNameList],
   );
+  const legacyAdapters = useMemo(
+    () => adapterNameList.filter((a) => a.legacy),
+    [adapterNameList],
+  );
+  const groupedAdapters = useMemo(
+    () => groupByCategory(activeAdapters),
+    [activeAdapters],
+  );
+
+  // Whether the collapsed legacy adapter group is expanded in the Select.
+  const [showLegacyAdapters, setShowLegacyAdapters] = useState(false);
+
+  // Auto-expand the legacy group when the selected adapter is itself legacy,
+  // so editing an existing bot on a legacy adapter still reveals the choice.
+  useEffect(() => {
+    if (
+      currentAdapter &&
+      legacyAdapters.some((a) => a.value === currentAdapter)
+    ) {
+      setShowLegacyAdapters(true);
+    }
+  }, [currentAdapter, legacyAdapters]);
 
   // Notify parent when dirty state changes
   const { isDirty } = form.formState;
@@ -179,8 +192,7 @@ export default function BotForm({
               adapter: val.adapter,
               adapter_config: val.adapter_config,
               enable: val.enable,
-              use_pipeline_uuid: val.use_pipeline_uuid || '',
-              pipeline_routing_rules: val.pipeline_routing_rules || [],
+              event_bindings: val.event_bindings || [],
             });
             handleAdapterSelect(val.adapter);
 
@@ -209,16 +221,8 @@ export default function BotForm({
   }
 
   async function initBotFormComponent() {
-    const pipelinesRes = await httpClient.getPipelines();
-    setPipelineNameList(
-      pipelinesRes.pipelines.map((item) => {
-        return {
-          label: item.name,
-          value: item.uuid ?? '',
-          emoji: item.emoji,
-        };
-      }),
-    );
+    const agentsRes = await httpClient.getAgents();
+    setAgentNameList(agentsRes.agents);
 
     const adaptersRes = await httpClient.getAdapters();
     setAdapterNameList(
@@ -227,6 +231,7 @@ export default function BotForm({
           label: extractI18nObject(item.label),
           value: item.name,
           categories: item.spec.categories,
+          legacy: item.spec.legacy,
         };
       }),
     );
@@ -250,6 +255,16 @@ export default function BotForm({
           return acc;
         },
         {} as Record<string, Record<string, string>>,
+      ),
+    );
+
+    setAdapterSupportedEvents(
+      adaptersRes.adapters.reduce(
+        (acc, item) => {
+          acc[item.name] = item.spec.supported_events || [];
+          return acc;
+        },
+        {} as Record<string, string[]>,
       ),
     );
 
@@ -296,8 +311,7 @@ export default function BotForm({
             name: bot.name,
             adapter_config: bot.adapter_config,
             enable: bot.enable ?? true,
-            use_pipeline_uuid: bot.use_pipeline_uuid ?? '',
-            pipeline_routing_rules: bot.pipeline_routing_rules ?? [],
+            event_bindings: bot.event_bindings ?? [],
             webhook_full_url: runtimeValues?.webhook_full_url as
               | string
               | undefined,
@@ -341,8 +355,7 @@ export default function BotForm({
         adapter: form.getValues().adapter,
         adapter_config: form.getValues().adapter_config,
         enable: form.getValues().enable,
-        use_pipeline_uuid: form.getValues().use_pipeline_uuid,
-        pipeline_routing_rules: form.getValues().pipeline_routing_rules ?? [],
+        event_bindings: form.getValues().event_bindings ?? [],
       };
       httpClient
         .updateBot(initBotId, updateBot)
@@ -431,79 +444,26 @@ export default function BotForm({
           </CardContent>
         </Card>
 
-        {/* Card 2: Pipeline Binding (edit mode only) */}
+        {/* Card 2: Event Routing (edit mode only) */}
         {initBotId && (
           <Card>
             <CardHeader>
-              <CardTitle>{t('bots.routingConnection')}</CardTitle>
+              <CardTitle>{t('bots.eventRouting')}</CardTitle>
               <CardDescription>
-                {t('bots.routingConnectionDescription')}
+                {t('bots.eventRoutingDescription')}
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <FormField
-                control={form.control}
-                name="use_pipeline_uuid"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('bots.bindPipeline')}</FormLabel>
-                    <FormControl>
-                      <Select onValueChange={field.onChange} {...field}>
-                        <SelectTrigger>
-                          {field.value ? (
-                            (() => {
-                              const pipeline = pipelineNameList.find(
-                                (p) => p.value === field.value,
-                              );
-                              return (
-                                <div className="flex items-center gap-2">
-                                  {pipeline?.emoji && (
-                                    <span className="text-sm shrink-0">
-                                      {pipeline.emoji}
-                                    </span>
-                                  )}
-                                  <span>{pipeline?.label ?? field.value}</span>
-                                </div>
-                              );
-                            })()
-                          ) : (
-                            <SelectValue
-                              placeholder={t('bots.selectPipeline')}
-                            />
-                          )}
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectGroup>
-                            {pipelineNameList.map((item) => (
-                              <SelectItem key={item.value} value={item.value}>
-                                <div className="flex items-center gap-2">
-                                  {item.emoji && (
-                                    <span className="text-sm shrink-0">
-                                      {item.emoji}
-                                    </span>
-                                  )}
-                                  <span>{item.label}</span>
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-
-              {/* Pipeline Routing Rules */}
-              <RoutingRulesEditor
+              <EventBindingsEditor
                 form={form}
-                pipelineNameList={pipelineNameList}
+                supportedEvents={adapterSupportedEvents[currentAdapter] || []}
+                agentOptions={agentNameList}
               />
             </CardContent>
           </Card>
         )}
 
-        {/* Card 3: Adapter Configuration */}
+        {/* Card 4: Adapter Configuration */}
         <Card>
           <CardHeader>
             <CardTitle>{t('bots.adapterConfig')}</CardTitle>
@@ -530,19 +490,32 @@ export default function BotForm({
                         }}
                         value={field.value}
                       >
-                        <SelectTrigger className="w-[240px]">
+                        <SelectTrigger className="w-[240px] overflow-hidden">
                           {field.value ? (
-                            <div className="flex items-center gap-2">
+                            <div className="flex min-w-0 items-center gap-2">
                               <img
                                 src={httpClient.getAdapterIconURL(field.value)}
                                 alt=""
-                                className="h-5 w-5 rounded"
+                                className="h-5 w-5 shrink-0 rounded"
                               />
-                              <span>
-                                {adapterNameList.find(
+                              {(() => {
+                                const selectedAdapter = adapterNameList.find(
                                   (a) => a.value === field.value,
-                                )?.label ?? field.value}
-                              </span>
+                                );
+
+                                return (
+                                  <>
+                                    <span className="min-w-0 truncate">
+                                      {selectedAdapter?.label ?? field.value}
+                                    </span>
+                                    {selectedAdapter?.legacy && (
+                                      <span className="shrink-0 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
+                                        {t('bots.legacyAdapterBadge')}
+                                      </span>
+                                    )}
+                                  </>
+                                );
+                              })()}
                             </div>
                           ) : (
                             <SelectValue
@@ -561,21 +534,87 @@ export default function BotForm({
                                 </SelectLabel>
                               )}
                               {group.items.map((item) => (
-                                <SelectItem key={item.value} value={item.value}>
-                                  <div className="flex items-center gap-2">
+                                <SelectItem
+                                  key={`${group.categoryId ?? 'uncategorized'}:${item.value}`}
+                                  value={item.value}
+                                >
+                                  <div className="flex min-w-0 w-full items-center gap-2">
                                     <img
                                       src={httpClient.getAdapterIconURL(
                                         item.value,
                                       )}
                                       alt=""
-                                      className="h-5 w-5 rounded"
+                                      className="h-5 w-5 shrink-0 rounded"
                                     />
-                                    <span>{item.label}</span>
+                                    <span className="min-w-0 truncate">
+                                      {item.label}
+                                    </span>
                                   </div>
                                 </SelectItem>
                               ))}
                             </SelectGroup>
                           ))}
+                          {legacyAdapters.length > 0 && (
+                            <>
+                              <div
+                                role="button"
+                                tabIndex={0}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setShowLegacyAdapters((v) => !v);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    setShowLegacyAdapters((v) => !v);
+                                  }
+                                }}
+                                className="flex cursor-pointer items-center gap-1 px-2 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground border-t mt-1 pt-2"
+                              >
+                                {showLegacyAdapters ? (
+                                  <ChevronDown className="h-3.5 w-3.5" />
+                                ) : (
+                                  <ChevronRight className="h-3.5 w-3.5" />
+                                )}
+                                {t('bots.legacyAdapters')}
+                                <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-[10px]">
+                                  {legacyAdapters.length}
+                                </span>
+                              </div>
+                              {showLegacyAdapters && (
+                                <>
+                                  <p className="px-2 pb-1 text-[11px] leading-snug text-muted-foreground">
+                                    {t('bots.legacyAdaptersHint')}
+                                  </p>
+                                  <SelectGroup>
+                                    {legacyAdapters.map((item) => (
+                                      <SelectItem
+                                        key={`legacy:${item.value}`}
+                                        value={item.value}
+                                      >
+                                        <div className="flex min-w-0 w-full items-center gap-2 opacity-70">
+                                          <img
+                                            src={httpClient.getAdapterIconURL(
+                                              item.value,
+                                            )}
+                                            alt=""
+                                            className="h-5 w-5 shrink-0 rounded grayscale"
+                                          />
+                                          <span className="min-w-0 truncate">
+                                            {item.label}
+                                          </span>
+                                          <span className="ml-auto shrink-0 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
+                                            {t('bots.legacyAdapterBadge')}
+                                          </span>
+                                        </div>
+                                      </SelectItem>
+                                    ))}
+                                  </SelectGroup>
+                                </>
+                              )}
+                            </>
+                          )}
                         </SelectContent>
                       </Select>
                       {currentAdapter &&

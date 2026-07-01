@@ -2008,7 +2008,7 @@ wheels = [
 
 [[package]]
 name = "langbot"
-version = "4.10.4"
+version = "4.11.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiocqhttp" },
@@ -2123,7 +2123,7 @@ requires-dist = [
     { name = "ebooklib", specifier = ">=0.18" },
     { name = "gewechat-client", specifier = ">=0.1.5" },
     { name = "html2text", specifier = ">=2024.2.26" },
-    { name = "langbot-plugin", specifier = "==0.4.6" },
+    { name = "langbot-plugin", specifier = "==0.5.0a2" },
     { name = "langchain", specifier = ">=1.3.9" },
     { name = "langchain-core", specifier = ">=1.3.3" },
     { name = "langchain-text-splitters", specifier = ">=1.1.2" },
@@ -2187,7 +2187,7 @@ dev = [
 
 [[package]]
 name = "langbot-plugin"
-version = "0.4.6"
+version = "0.5.0a2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
@@ -2208,9 +2208,9 @@ dependencies = [
     { name = "watchdog" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b4/6a/5fdb5365ad04aaa61344e92578d73eb1577af35783b80767c7d6c51cb8b9/langbot_plugin-0.4.6.tar.gz", hash = "sha256:838e3cd45ed795ed4c3299c73f141b217adfa05f09937a01694e7158619e4f6e", size = 334171, upload-time = "2026-06-22T15:06:56.565Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/00/2f/b4848b565f5321bfae785dae6b783d111288d027f6e8fa41449c35d7467b/langbot_plugin-0.5.0a2.tar.gz", hash = "sha256:168484e5ad00d168adc6abb2548df3a52a08c59b148438a61173290dc65afb1b", size = 315950, upload-time = "2026-06-10T17:06:13.802Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6b/55/7adc2e180a299ed58613e159c64195477e09c05136f949942c6cec5219e8/langbot_plugin-0.4.6-py3-none-any.whl", hash = "sha256:30eb47efc0b703818ac003a5cd67caf720d9749dd503155eb65cce0c28b194a7", size = 217434, upload-time = "2026-06-22T15:06:55.237Z" },
+    { url = "https://files.pythonhosted.org/packages/99/e8/57d7395746ac08927dbecd198551fe73feb0dd9a5ee9d098d42eda30bf52/langbot_plugin-0.5.0a2-py3-none-any.whl", hash = "sha256:7eaeeabb07416c72cce3666d00b99d77e084e88acd0c0865d3010e140e2c308f", size = 215401, upload-time = "2026-06-10T17:06:15.032Z" },
 ]
 
 [[package]]

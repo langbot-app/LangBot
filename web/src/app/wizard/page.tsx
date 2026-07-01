@@ -7,6 +7,8 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  ChevronDown,
+  ChevronRight,
   Sparkles,
   PartyPopper,
   Loader2,
@@ -86,7 +88,6 @@ export default function WizardPage() {
   const [selectedAdapter, setSelectedAdapter] = useState<string | null>(null);
   const [selectedRunner, setSelectedRunner] = useState<string | null>(null);
   const [botName, setBotName] = useState('');
-
   const [botDescription, _setBotDescription] = useState('');
   const [adapterConfig, setAdapterConfig] = useState<Record<string, unknown>>(
     {},
@@ -202,7 +203,7 @@ export default function WizardPage() {
 
   const runnerOptions = useMemo(() => {
     if (!runnerStage) return [];
-    const runnerField = runnerStage.config.find((c) => c.name === 'runner');
+    const runnerField = runnerStage.config.find((c) => c.name === 'id');
     return runnerField?.options ?? [];
   }, [runnerStage]);
 
@@ -257,9 +258,11 @@ export default function WizardPage() {
   const handleSelectRunner = useCallback(
     (runner: string) => {
       setSelectedRunner(runner);
+      const configStage = aiConfigTab?.stages.find((s) => s.name === runner);
+      setRunnerConfig(configStage ? getDefaultValues(configStage.config) : {});
       saveProgress({ step: 2, selected_runner: runner });
     },
-    [saveProgress],
+    [aiConfigTab, saveProgress],
   );
 
   // ---- Navigation helpers ----
@@ -427,14 +430,36 @@ export default function WizardPage() {
       //    (includes trigger, safety, ai, output sections).
       //    Then merge only the AI section with the wizard's runner config.
       const createdPipeline = await httpClient.getPipeline(pipelineResp.uuid);
-      const fullConfig = createdPipeline.pipeline.config;
+      const fullConfig = createdPipeline.pipeline.config as unknown as Record<
+        string,
+        unknown
+      >;
+      const fullAiConfig =
+        fullConfig.ai && typeof fullConfig.ai === 'object'
+          ? (fullConfig.ai as Record<string, unknown>)
+          : {};
+      const existingRunner =
+        fullAiConfig.runner && typeof fullAiConfig.runner === 'object'
+          ? (fullAiConfig.runner as Record<string, unknown>)
+          : {};
+      const existingRunnerConfigs =
+        fullAiConfig.runner_config &&
+        typeof fullAiConfig.runner_config === 'object'
+          ? (fullAiConfig.runner_config as Record<string, unknown>)
+          : {};
 
       const mergedConfig = {
         ...fullConfig,
         ai: {
-          ...fullConfig.ai,
-          runner: { runner: selectedRunner },
-          [selectedRunner]: runnerConfig,
+          ...fullAiConfig,
+          runner: {
+            ...existingRunner,
+            id: selectedRunner,
+          },
+          runner_config: {
+            ...existingRunnerConfigs,
+            [selectedRunner]: runnerConfig,
+          },
         },
       };
 
@@ -453,7 +478,17 @@ export default function WizardPage() {
         adapter: existingBot.adapter,
         adapter_config: existingBot.adapter_config,
         enable: existingBot.enable,
-        use_pipeline_uuid: pipelineResp.uuid,
+        event_bindings: [
+          {
+            event_pattern: 'message.received',
+            target_type: 'pipeline',
+            target_uuid: pipelineResp.uuid,
+            filters: [],
+            priority: 0,
+            enabled: true,
+            description: '',
+          },
+        ],
       });
 
       setCurrentStep(3);
@@ -742,14 +777,24 @@ function StepPlatform({
   onSelect: (name: string) => void;
 }) {
   const { t } = useTranslation();
+  const [showLegacy, setShowLegacy] = useState(false);
+
+  const activeAdapters = useMemo(
+    () => adapters.filter((a) => !a.spec.legacy),
+    [adapters],
+  );
+  const legacyAdapters = useMemo(
+    () => adapters.filter((a) => a.spec.legacy),
+    [adapters],
+  );
 
   const groupedAdapters = useMemo(() => {
-    const withCategories = adapters.map((a) => ({
+    const withCategories = activeAdapters.map((a) => ({
       ...a,
       categories: a.spec.categories,
     }));
     return groupByCategory(withCategories);
-  }, [adapters]);
+  }, [activeAdapters]);
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -825,6 +870,66 @@ function StepPlatform({
           </div>
         </div>
       ))}
+      {legacyAdapters.length > 0 && (
+        <div className="border-t pt-4 space-y-3">
+          <button
+            type="button"
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+            onClick={() => setShowLegacy((v) => !v)}
+          >
+            {showLegacy ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )}
+            {t('bots.legacyAdapters')}
+            <span className="rounded bg-muted px-1.5 py-0.5 text-xs">
+              {legacyAdapters.length}
+            </span>
+          </button>
+          {showLegacy && (
+            <>
+              <p className="text-xs text-muted-foreground">
+                {t('bots.legacyAdaptersHint')}
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 opacity-60">
+                {legacyAdapters.map((adapter) => (
+                  <Card
+                    key={adapter.name}
+                    className={cn(
+                      'cursor-pointer transition-all hover:shadow-md',
+                      selected === adapter.name
+                        ? 'ring-2 ring-primary shadow-md'
+                        : 'hover:border-primary/50',
+                    )}
+                    onClick={() => onSelect(adapter.name)}
+                  >
+                    <CardHeader className="flex flex-row items-center gap-3 pb-2">
+                      <img
+                        src={httpClient.getAdapterIconURL(adapter.name)}
+                        alt=""
+                        className="w-10 h-10 rounded-lg shrink-0 grayscale"
+                      />
+                      <div className="min-w-0">
+                        <CardTitle className="text-base truncate">
+                          {extractI18nObject(adapter.label)}
+                        </CardTitle>
+                      </div>
+                      {selected === adapter.name && (
+                        <div className="ml-auto shrink-0">
+                          <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                            <Check className="w-3 h-3 text-primary-foreground" />
+                          </div>
+                        </div>
+                      )}
+                    </CardHeader>
+                  </Card>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1113,26 +1218,27 @@ function StepAIEngine({
             })}
 
             {/* Space promotion banner */}
-            {selected === 'local-agent' && isLocalAccount && (
-              <div className="animate-in fade-in slide-in-from-left-2 duration-300">
-                <div className="relative rounded-lg p-[2px] bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500">
-                  <div className="rounded-[calc(0.5rem-2px)] bg-background p-3 flex flex-col items-center gap-2 text-center">
-                    <Sparkles className="w-6 h-6 text-purple-500 shrink-0" />
-                    <p className="text-xs font-medium">
-                      {t('wizard.spaceBanner.message')}
-                    </p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={onSpaceAuth}
-                      className="w-full"
-                    >
-                      {t('wizard.spaceBanner.action')}
-                    </Button>
+            {selected === 'plugin:langbot/local-agent/default' &&
+              isLocalAccount && (
+                <div className="animate-in fade-in slide-in-from-left-2 duration-300">
+                  <div className="relative rounded-lg p-[2px] bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500">
+                    <div className="rounded-[calc(0.5rem-2px)] bg-background p-3 flex flex-col items-center gap-2 text-center">
+                      <Sparkles className="w-6 h-6 text-purple-500 shrink-0" />
+                      <p className="text-xs font-medium">
+                        {t('wizard.spaceBanner.message')}
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={onSpaceAuth}
+                        className="w-full"
+                      >
+                        {t('wizard.spaceBanner.action')}
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
           </div>
         </div>
 

@@ -21,7 +21,7 @@ await ensureEvidence(paths);
 const backendUrl = env.LANGBOT_BACKEND_URL || "";
 const user = env.LANGBOT_E2E_LOGIN_USER || "";
 const password = env.LANGBOT_E2E_LOGIN_PASSWORD || "LangBotE2ELocalPass!2026";
-const expectedText = env.LANGBOT_E2E_EXPECTED_TEXT || "azalea-cobalt-7421";
+const expectedText = env.LANGBOT_E2E_RAG_EXPECTED_TEXT || "azalea-cobalt-7421";
 const query = env.LANGBOT_E2E_RETRIEVE_QUERY || "What is the local agent runner retrieval sentinel?";
 const writeEnv = process.argv.includes("--write-env");
 const checkOnly = process.argv.includes("--check-only");
