@@ -137,6 +137,8 @@ tests/unit_tests/
 │   └── ...
 ├── pipeline/
 │   ├── test_ratelimit.py               # 12 tests ✅ (新增真实算法)
+│   ├── test_valkey_fixwin_unit.py      # 10 tests ✅ (Valkey 分布式限速算法, mock client)
+│   ├── test_ratelimit_algo_selection.py # 4 tests ✅ (限速算法选择)
 │   ├── test_msgtrun.py                 # 9 tests ✅ (强化断言)
 │   └── ...
 └── persistence/

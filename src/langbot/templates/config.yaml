@@ -59,6 +59,18 @@ database:
         user: 'postgres'
         password: 'postgres'
         database: 'postgres'
+# Optional shared Valkey connection. Inert by default; only used when a feature
+# selects a Valkey-backed implementation (e.g. the pipeline rate-limit algorithm
+# 'valkey_fixwin'). Integration tests use host port 6380 -> valkey/valkey-bundle:9.1.0.
+valkey:
+    host: 'localhost'
+    port: 6379
+    db: 0
+    password: ''          # optional auth password (toB). Never logged.
+    username: ''          # optional ACL username (toB).
+    tls: false            # optional TLS (toB/SaaS).
+    key_prefix: ''        # optional rate-limit key namespace; defaults to 'langbot:ratelimit:fixwin'. Set a unique value per deployment when multiple LangBot instances share one Valkey instance/db.
+    fail_strategy: 'open' # 'open' (default) allows requests when Valkey errors (throttle); 'closed' denies them (abuse-prevention).
 vdb:
     use: chroma
     qdrant:
