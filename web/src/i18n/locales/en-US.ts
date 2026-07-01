@@ -1769,6 +1769,16 @@ const enUS = {
     loginSuccess: 'Login successful! Token has been filled in',
     loginFailed: 'Login failed',
   },
+  itchat: {
+    scanLogin: 'Scan QR Login',
+    scanQRCode: 'Scan the QR code below with WeChat to login',
+    loginSuccess:
+      'Login successful! Session cached. Save config to start using.',
+    loginFailed: 'Login failed',
+    connecting: 'Starting WeChat login...',
+    waitingForScan: 'Waiting for scan',
+    retry: 'Retry',
+  },
   dingtalk: {
     createApp: 'One-Click Create DingTalk App',
     scanQRCode:

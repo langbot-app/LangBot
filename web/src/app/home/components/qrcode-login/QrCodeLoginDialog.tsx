@@ -16,7 +16,12 @@ import {
 } from 'lucide-react';
 import QRCode from 'qrcode';
 
-export type QrLoginPlatform = 'feishu' | 'weixin' | 'dingtalk' | 'wecombot';
+export type QrLoginPlatform =
+  | 'feishu'
+  | 'weixin'
+  | 'dingtalk'
+  | 'wecombot'
+  | 'itchat';
 
 interface PlatformConfig {
   titleKey: string;
@@ -92,6 +97,20 @@ const PLATFORM_CONFIGS: Record<QrLoginPlatform, PlatformConfig> = {
     }),
     successNoteKey: 'wecombot.robotNameNote',
   },
+  itchat: {
+    titleKey: 'itchat.scanLogin',
+    connectingKey: 'itchat.connecting',
+    scanQRCodeKey: 'itchat.scanQRCode',
+    waitingKey: 'itchat.waitingForScan',
+    successKey: 'itchat.loginSuccess',
+    failedKey: 'itchat.loginFailed',
+    retryKey: 'itchat.retry',
+    apiBase: '/api/v1/platform/adapters/itchat/login',
+    extractSuccess: (data) => ({
+      account_id: data.wxid || '',
+      nickname: data.nickname || '',
+    }),
+  },
 };
 
 interface QrCodeLoginDialogProps {
@@ -116,6 +135,7 @@ export default function QrCodeLoginDialog({
 
   const [state, setState] = useState<DialogState>('connecting');
   const [qrDataUrl, setQrDataUrl] = useState('');
+  const qrDataUrlRef = useRef('');
   const [expireIn, setExpireIn] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -176,6 +196,7 @@ export default function QrCodeLoginDialog({
     cleanedRef.current = false;
     setState('connecting');
     setQrDataUrl('');
+    qrDataUrlRef.current = '';
     setExpireIn(0);
     setErrorMessage('');
 
@@ -204,12 +225,14 @@ export default function QrCodeLoginDialog({
 
       if (qr_data_url) {
         setQrDataUrl(qr_data_url);
+        qrDataUrlRef.current = qr_data_url;
       } else if (qr_url) {
         const dataUrl = await QRCode.toDataURL(qr_url, {
           width: 224,
           margin: 2,
         });
         setQrDataUrl(dataUrl);
+        qrDataUrlRef.current = dataUrl;
       }
       setState('waiting');
 
@@ -289,6 +312,19 @@ export default function QrCodeLoginDialog({
             cleanup();
             setExpireIn(0);
             setState('expired');
+          } else if (status === 'waiting') {
+            // Update QR data URL if regenerated (e.g. itchat QR expiry)
+            if (rest.qr_data_url && rest.qr_data_url !== qrDataUrlRef.current) {
+              setQrDataUrl(rest.qr_data_url);
+              qrDataUrlRef.current = rest.qr_data_url;
+            }
+            if (rest.expire_at) {
+              const remaining = Math.max(
+                0,
+                Math.floor(rest.expire_at - Date.now() / 1000),
+              );
+              setExpireIn(remaining);
+            }
           }
         } catch {
           // ignore poll errors

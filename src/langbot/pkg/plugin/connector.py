@@ -736,7 +736,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
     ) -> context.EventContext:
         event_ctx = context.EventContext.from_event(event)
 
-        if not self.is_enable_plugin:
+        if not self.is_enable_plugin or not hasattr(self, 'handler'):
             event_ctx._emitted_plugins = []
             event_ctx._response_sources = []
             return event_ctx

@@ -1691,6 +1691,15 @@ const zhHans = {
     loginSuccess: '登录成功！令牌已自动填入',
     loginFailed: '登录失败',
   },
+  itchat: {
+    scanLogin: '扫码登录微信',
+    scanQRCode: '请使用微信扫描以下二维码登录',
+    loginSuccess: '登录成功！会话已缓存，保存配置后即可使用',
+    loginFailed: '登录失败',
+    connecting: '正在启动微信登录...',
+    waitingForScan: '等待扫码中',
+    retry: '重试',
+  },
   dingtalk: {
     createApp: '一键创建钉钉应用',
     scanQRCode: '请使用钉钉扫描以下二维码，授权后将自动创建应用并填写凭据',

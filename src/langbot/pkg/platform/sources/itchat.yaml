@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: itchat
+  label:
+    en_US: Itchat WeChat
+    zh_Hans: 个人微信 (itchat)
+    zh_Hant: 個人微信 (itchat)
+    ja_JP: 個人WeChat (itchat)
+  description:
+    en_US: Personal WeChat adapter via itchat-uos, supports QR code login and text/image/voice messages
+    zh_Hans: 基于 itchat-uos 的个人微信适配器，扫码登录，支持文本/图片/语音消息
+    zh_Hant: 基於 itchat-uos 的個人微信適配器，掃碼登入，支援文字/圖片/語音訊息
+  icon: wechat.png
+spec:
+  categories:
+    - china
+  help_links:
+    zh: https://github.com/littlecodersh/ItChat
+    en: https://github.com/littlecodersh/ItChat
+  config:
+    - name: qr-login
+      label:
+        en_US: Scan QR Login
+        zh_Hans: 扫码登录
+        zh_Hant: 掃碼登入
+      description:
+        en_US: Scan QR code with WeChat to login. The session will be cached for the adapter to reuse.
+        zh_Hans: 使用微信扫码登录，登录状态将被缓存供适配器复用
+        zh_Hant: 使用微信掃碼登入，登入狀態將被快取供適配器復用
+      type: qr-code-login
+      login_platform: itchat
+      required: false
+    - name: account_id
+      label:
+        en_US: Bot Account ID
+        zh_Hans: 机器人账号标识
+        zh_Hant: 機器人帳號標識
+      description:
+        en_US: Used for @-mention matching in groups. Auto-filled after QR login (wxid). You can change it to match your bot's display nickname if needed.
+        zh_Hans: 用于群聊 @ 检测匹配。扫码登录后自动填入（微信ID），可手动改为机器人昵称
+        zh_Hant: 用於群聊 @ 檢測匹配。掃碼登入後自動填入（微信ID），可手動改為機器人暱稱
+      type: string
+      required: false
+      default: ""
+    - name: nickname
+      label:
+        en_US: Bot Nickname
+        zh_Hans: 机器人昵称
+        zh_Hant: 機器人暱稱
+      description:
+        en_US: The display nickname of the bot. Used to strip @nickname from incoming group messages. Auto-filled after QR login.
+        zh_Hans: 机器人的微信昵称。用于删除群聊消息中的 @昵称 前缀。扫码登录后自动填入
+        zh_Hant: 機器人的微信暱稱。用於刪除群聊訊息中的 @暱稱 前綴。掃碼登入後自動填入
+      type: string
+      required: false
+      default: ""
+    - name: hot_reload
+      label:
+        en_US: Hot Reload
+        zh_Hans: 登录缓存
+        zh_Hant: 登入快取
+      description:
+        en_US: Persist login session to avoid repeated QR code scans on restart
+        zh_Hans: 保存登录状态到本地，重启后无需重新扫码
+        zh_Hant: 儲存登入狀態到本機，重啟後無需重新掃碼
+      type: boolean
+      required: false
+      default: true
+execution:
+  python:
+    path: ./itchat.py
+    attr: ItchatAdapter

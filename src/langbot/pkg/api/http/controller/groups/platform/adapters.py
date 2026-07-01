@@ -650,3 +650,223 @@ class AdaptersRouterGroup(group.RouterGroup):
             if session and session.get('task') and not session['task'].done():
                 session['task'].cancel()
             return self.success(data={})
+
+        # -----------------------------------------------------------------------
+        # Itchat WeChat QR Code Login
+        # -----------------------------------------------------------------------
+
+        _itchat_login_sessions: dict = {}
+        _ITCHAT_SESSION_TTL = 600  # 10 minutes (allows multiple QR regenerations)
+
+        def _cleanup_expired_itchat_sessions():
+            import time
+
+            now = time.time()
+            expired = [
+                sid for sid, s in _itchat_login_sessions.items() if now - s.get('created_at', 0) > _ITCHAT_SESSION_TTL
+            ]
+            for sid in expired:
+                session = _itchat_login_sessions.pop(sid, None)
+                if session:
+                    core = session.get('core')
+                    if core:
+                        try:
+                            core.alive = False
+                            core.isLogging = False
+                        except Exception:
+                            pass
+
+        @self.route('/itchat/login', methods=['POST'])
+        async def _() -> str:
+            """Start itchat WeChat QR code login. Returns session_id + QR code data URL."""
+            import uuid
+            import time
+            import base64
+            import threading
+
+            _cleanup_expired_itchat_sessions()
+
+            session_id = str(uuid.uuid4())
+            loop = asyncio.get_running_loop()
+
+            session = {
+                'status': 'pending',
+                'qr_data_url': None,
+                'expire_at': None,
+                'nickname': None,
+                'error': None,
+                'created_at': time.time(),
+                'thread': None,
+                'logged_in': threading.Event(),
+                'core': None,
+            }
+            _itchat_login_sessions[session_id] = session
+
+            def _run_itchat_login():
+                try:
+                    import os
+
+                    from itchat.core import Core
+                    from itchat.content import TEXT as _TEXT
+
+                    for f in ('itchat.pkl', 'QR.png'):
+                        try:
+                            os.remove(f)
+                        except OSError:
+                            pass
+
+                    _core = Core()
+                    session['core'] = _core
+
+                    def on_login():
+                        try:
+                            _core.get_friends(update=True)
+                            user_info = _core.loginInfo.get('User', {})
+                            nick = (
+                                getattr(user_info, 'NickName', '') or user_info.get('NickName', '')
+                                if isinstance(user_info, dict)
+                                else 'unknown'
+                            )
+                            wxid = (
+                                getattr(user_info, 'UserName', '') or user_info.get('UserName', '')
+                                if isinstance(user_info, dict)
+                                else ''
+                            )
+                        except Exception:
+                            nick = 'unknown'
+                            wxid = ''
+                        session['nickname'] = nick
+                        session['wxid'] = wxid
+                        session['status'] = 'success'
+                        session['logged_in'].set()
+                        print(f'[itchat-login] Login success: {nick}', flush=True)
+                        # Dump login status so the adapter can hot-reload it
+                        try:
+                            _core.dump_login_status('itchat.pkl')
+                            print('[itchat-login] Session saved to itchat.pkl', flush=True)
+                        except Exception:
+                            pass
+                        # Stop the message loop - we only needed the session for QR login
+                        _core.alive = False
+
+                    def on_qr(**kwargs):
+                        qr_bytes = kwargs.get('qrcode', b'')
+                        status = kwargs.get('status', '')
+                        print(f'[itchat-login] QR callback: status={status}, bytes={len(qr_bytes)}', flush=True)
+                        if status == '200':
+                            return
+                        # Only update QR image on new QR generation (status='0')
+                        # or when status changes to '408' (timeout, QR may refresh)
+                        if qr_bytes and status == '0':
+                            b64 = base64.b64encode(qr_bytes).decode('utf-8')
+
+                            def _update():
+                                session['qr_data_url'] = f'data:image/png;base64,{b64}'
+                                session['expire_at'] = time.time() + 120
+                                session['status'] = 'waiting'
+
+                            loop.call_soon_threadsafe(_update)
+
+                    # Register a dummy text handler
+                    @_core.msg_register([_TEXT])
+                    def _dummy(msg):
+                        pass
+
+                    print('[itchat-login] Step 3: Calling auto_login...', flush=True)
+                    _core.auto_login(
+                        hotReload=False,
+                        loginCallback=on_login,
+                        qrCallback=on_qr,
+                    )
+                    print('[itchat-login] Step 4: auto_login returned, starting run...', flush=True)
+                    _core.run(blockThread=True)
+                    print('[itchat-login] Step 5: run() returned', flush=True)
+                except SystemExit as e:
+                    print(f'[itchat-login] SystemExit: {e}', flush=True)
+                    session['status'] = 'error'
+                    session['error'] = f'itchat exited: {e}'
+                    session['logged_in'].set()
+                except Exception as e:
+                    import traceback
+
+                    print(f'[itchat-login] Exception: {traceback.format_exc()}', flush=True)
+                    session['status'] = 'error'
+                    session['error'] = str(e)
+                    session['logged_in'].set()
+
+            t = threading.Thread(target=_run_itchat_login, daemon=True)
+            t.start()
+            session['thread'] = t
+
+            # Wait for QR code to be ready (max 15 seconds)
+            for _ in range(30):
+                if session['qr_data_url'] or session['error'] or session['status'] == 'success':
+                    break
+                await asyncio.sleep(0.5)
+
+            if session['error']:
+                return self.http_status(502, -1, session['error'])
+
+            if session['status'] == 'success':
+                return self.success(
+                    data={
+                        'session_id': session_id,
+                        'status': 'success',
+                        'nickname': session['nickname'],
+                    }
+                )
+
+            if not session['qr_data_url']:
+                session['status'] = 'error'
+                session['error'] = 'Timeout waiting for QR code'
+                return self.http_status(504, -1, 'Timeout waiting for QR code')
+
+            return self.success(
+                data={
+                    'session_id': session_id,
+                    'qr_data_url': session['qr_data_url'],
+                    'expire_at': session['expire_at'],
+                }
+            )
+
+        @self.route('/itchat/login/status/<session_id>', methods=['GET'])
+        async def _(session_id: str) -> str:
+            """Poll itchat login status."""
+            session = _itchat_login_sessions.get(session_id)
+            if not session:
+                return self.http_status(404, -1, 'Session not found')
+
+            data = {
+                'status': session['status'],
+                'qr_data_url': session['qr_data_url'],
+                'expire_at': session['expire_at'],
+            }
+
+            if session['status'] == 'success':
+                data['nickname'] = session.get('nickname', '')
+                data['wxid'] = session.get('wxid', '')
+                # Keep session alive (don't pop) - itchat thread keeps running
+                # so the pickle file is valid for the adapter to reuse
+            elif session['status'] == 'error':
+                data['error'] = session['error']
+                _itchat_login_sessions.pop(session_id, None)
+
+            return self.success(data=data)
+
+        @self.route('/itchat/login/<session_id>', methods=['DELETE'])
+        async def _(session_id: str) -> str:
+            """Cancel and clean up an itchat login session."""
+            session = _itchat_login_sessions.pop(session_id, None)
+            if session:
+                core = session.get('core')
+                if core:
+                    try:
+                        core.alive = False
+                        core.isLogging = False
+                    except Exception:
+                        pass
+                thread = session.get('thread')
+                if thread and thread.is_alive():
+                    # Thread is daemon, will die with the process
+                    pass
+            return self.success(data={})
