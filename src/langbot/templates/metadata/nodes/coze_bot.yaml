@@ -1,0 +1,122 @@
+# Coze Bot Node Configuration
+name: coze_bot
+label:
+  en_US: Coze Bot
+  zh_Hans: Coze Bot
+description:
+  en_US: Call Coze API bot
+  zh_Hans: 调用扣子 API 机器人
+category: integration
+icon: MessageSquare
+color: '#3b82f6'
+
+inputs:
+  - name: query
+    type: string
+    label:
+      en_US: Query
+      zh_Hans: 查询
+    description:
+      en_US: User input/query
+      zh_Hans: 用户输入/查询
+    required: true
+  - name: conversation_id
+    type: string
+    label:
+      en_US: Conversation ID
+      zh_Hans: 会话 ID
+    description:
+      en_US: Conversation ID
+      zh_Hans: 会话 ID
+    required: false
+
+outputs:
+  - name: answer
+    type: string
+    label:
+      en_US: Answer
+      zh_Hans: 答案
+    description:
+      en_US: Bot response
+      zh_Hans: 机器人回复
+  - name: conversation_id
+    type: string
+    label:
+      en_US: Conversation ID
+      zh_Hans: 会话 ID
+    description:
+      en_US: Conversation ID
+      zh_Hans: 会话 ID
+  - name: success
+    type: boolean
+    label:
+      en_US: Success
+      zh_Hans: 成功
+    description:
+      en_US: Whether the call was successful
+      zh_Hans: 调用是否成功
+
+config:
+  - name: api-key
+    label:
+      en_US: API Key
+      zh_Hans: API 密钥
+    description:
+      en_US: Coze API key
+      zh_Hans: Coze API 密钥
+    type: string
+    required: true
+    default: ''
+
+  - name: bot-id
+    label:
+      en_US: Bot ID
+      zh_Hans: 机器人 ID
+    description:
+      en_US: ID of the bot to run
+      zh_Hans: 要运行的机器人 ID
+    type: string
+    required: true
+    default: ''
+
+  - name: api-base
+    label:
+      en_US: API Base URL
+      zh_Hans: API 基础 URL
+    description:
+      en_US: Base URL for Coze API
+      zh_Hans: Coze API 基础 URL
+    type: string
+    required: true
+    default: 'https://api.coze.cn'
+    options:
+      - name: 'https://api.coze.cn'
+        label:
+          en_US: Coze China
+          zh_Hans: Coze 中国版
+      - name: 'https://api.coze.com'
+        label:
+          en_US: Coze Global
+          zh_Hans: Coze 全球版
+
+  - name: auto-save-history
+    label:
+      en_US: Auto Save History
+      zh_Hans: 自动保存历史
+    description:
+      en_US: Whether to automatically save conversation history
+      zh_Hans: 是否自动保存对话历史
+    type: boolean
+    required: false
+    default: true
+
+  - name: timeout
+    label:
+      en_US: Request Timeout (seconds)
+      zh_Hans: 请求超时（秒）
+    description:
+      en_US: Timeout in seconds for API requests
+      zh_Hans: API 请求超时时间（秒）
+    type: number
+    required: false
+    default: 120

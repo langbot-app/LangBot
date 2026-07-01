@@ -471,7 +471,7 @@ async def on_msg(event_context: context.EventContext):
         if isinstance(component, platform_message.Plain):
             text_parts.append(component.text)
     text = "".join(text_parts).strip()
-    
+
     if should_handle(text):
         event_context.prevent_default()
         event_context.prevent_postorder()

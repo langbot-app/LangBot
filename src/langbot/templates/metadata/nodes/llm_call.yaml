@@ -1,0 +1,230 @@
+# LLM Call Node Configuration
+# This file defines the metadata for the LLM Call workflow node
+# The corresponding Python implementation is in: pkg/workflow/nodes/llm_call.py
+
+name: llm_call
+label:
+  en_US: LLM Call
+  zh_Hans: LLM 调用
+category: process
+icon: Brain
+color: '#8b5cf6'
+description:
+  en_US: Call a large language model to generate responses
+  zh_Hans: 调用大语言模型生成响应
+
+inputs:
+  - name: input
+    type: string
+    required: false
+    label:
+      en_US: Input
+      zh_Hans: 输入
+    description:
+      en_US: Input text to send to the model
+      zh_Hans: 发送到模型的输入文本
+  - name: context
+    type: object
+    required: false
+    label:
+      en_US: Context
+      zh_Hans: 上下文
+    description:
+      en_US: Additional context data
+      zh_Hans: 额外的上下文数据
+
+outputs:
+  - name: response
+    type: string
+    label:
+      en_US: Response
+      zh_Hans: 响应
+    description:
+      en_US: Model response text
+      zh_Hans: 模型响应文本
+  - name: usage
+    type: object
+    label:
+      en_US: Usage
+      zh_Hans: 使用量
+    description:
+      en_US: Token usage information
+      zh_Hans: Token 使用量信息
+  - name: parsed
+    type: object
+    label:
+      en_US: Parsed
+      zh_Hans: 解析结果
+    description:
+      en_US: Parsed output (if output format is JSON)
+      zh_Hans: 解析后的输出（如果输出格式为 JSON）
+
+config:
+  - name: model_config
+    type: model-fallback-selector
+    required: true
+    default:
+      primary: ''
+      fallbacks: []
+    label:
+      en_US: Model Configuration
+      zh_Hans: 模型配置
+    description:
+      en_US: Configure the primary model and optional fallback models
+      zh_Hans: 配置主模型和可选的备用模型
+
+  - name: prompt
+    label:
+      en_US: Prompt
+      zh_Hans: 提示词
+    description:
+      en_US: Unless you understand the message structure, please only use a single system prompt
+      zh_Hans: 除非您了解消息结构，否则请只使用 system 单提示词
+    type: prompt-editor
+    required: true
+    default:
+      - role: system
+        content: "You are a helpful assistant."
+
+  - name: max_round
+    type: integer
+    required: false
+    default: 10
+    label:
+      en_US: Max Round
+      zh_Hans: 最大回合数
+    description:
+      en_US: The maximum number of previous messages that the agent can remember
+      zh_Hans: 最大前文消息回合数
+
+  - name: knowledge_bases
+    type: knowledge-base-multi-selector
+    required: false
+    default: []
+    label:
+      en_US: Knowledge Bases
+      zh_Hans: 知识库
+    description:
+      en_US: Configure the knowledge bases to use for the agent, if not selected, the agent will directly use the LLM to reply
+      zh_Hans: 配置用于提升回复质量的知识库，若不选择，则直接使用大模型回复
+
+  - name: rerank_model
+    type: rerank-model-selector
+    required: false
+    default: ''
+    label:
+      en_US: Rerank Model
+      zh_Hans: 重排序模型
+    description:
+      en_US: Optional rerank model to improve retrieval quality by re-scoring retrieved chunks
+      zh_Hans: 可选的重排序模型，通过重新评分检索结果来提升检索质量
+
+  - name: rerank_top_k
+    type: integer
+    required: false
+    default: 5
+    label:
+      en_US: Rerank Top K
+      zh_Hans: 重排序保留数量
+    description:
+      en_US: Number of top results to keep after reranking
+      zh_Hans: 重排序后保留的最相关结果数量
+
+  - name: temperature
+    type: number
+    default: 0.7
+    label:
+      en_US: Temperature
+      zh_Hans: 温度
+    description:
+      en_US: Controls randomness in responses
+      zh_Hans: 控制响应的随机性
+
+  - name: max_tokens
+    type: integer
+    default: 0
+    label:
+      en_US: Max Tokens
+      zh_Hans: 最大令牌数
+    description:
+      en_US: Maximum number of tokens to generate
+      zh_Hans: 生成的最大令牌数
+
+  - name: output_format
+    type: select
+    default: text
+    options:
+      - text
+      - json
+      - markdown
+    label:
+      en_US: Output Format
+      zh_Hans: 输出格式
+    description:
+      en_US: Expected format of the model output
+      zh_Hans: 模型输出的预期格式
+
+  - name: json_schema
+    type: textarea
+    default: ""
+    label:
+      en_US: JSON Schema
+      zh_Hans: JSON Schema
+    description:
+      en_US: JSON schema for structured output validation
+      zh_Hans: 用于结构化输出验证的 JSON Schema
+
+  - name: exception_handling
+    type: select
+    required: true
+    default: show-hint
+    options:
+      - name: show-error
+        label:
+          en_US: Show Full Error
+          zh_Hans: 显示完整报错信息
+      - name: show-hint
+        label:
+          en_US: Show Failure Hint
+          zh_Hans: 仅文字提示
+      - name: hide
+        label:
+          en_US: Hide All
+          zh_Hans: 不显示任何异常信息
+    label:
+      en_US: Exception Handling Strategy
+      zh_Hans: 异常处理策略
+    description:
+      en_US: Controls how error messages are displayed to the user when an AI request fails
+      zh_Hans: 控制 AI 请求失败时向用户展示错误信息的方式
+
+  - name: failure_hint
+    type: string
+    required: false
+    default: 'Request failed.'
+    label:
+      en_US: Failure Hint Text
+      zh_Hans: 失败提示文本
+    description:
+      en_US: The text to display when a request fails. Only effective when Exception Handling Strategy is set to "Show Failure Hint"
+      zh_Hans: 请求失败时显示的提示文本，仅在异常处理策略设置为"仅文字提示"时生效
+
+  - name: remove_think
+    type: boolean
+    default: false
+    label:
+      en_US: Remove CoT
+      zh_Hans: 删除思维链
+    description:
+      en_US: 'If enabled, the model thinking content in the response will be automatically removed. Note: When using streaming response, removing CoT may cause the first token to wait for a long time.'
+      zh_Hans: '如果启用，将自动删除大模型回复中的模型思考内容。注意：当您使用流式响应时，删除思维链可能会导致首个 Token 的等待时间过长'
+
+  - name: track_function_calls
+    type: boolean
+    default: false
+    label:
+      en_US: Track Function Calls
+      zh_Hans: 跟踪函数调用
+    description:
+      en_US: If enabled, the Agent will output a hint to the user each time a tool is called
+      zh_Hans: 启用后，Agent 每次调用工具时都会输出一个提示给用户

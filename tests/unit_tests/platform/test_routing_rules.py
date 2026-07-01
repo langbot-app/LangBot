@@ -1,8 +1,17 @@
 """
 RuntimeBot.resolve_pipeline_uuid and _match_operator unit tests
+
+NOTE: These tests are for the deprecated routing rules feature.
+Routing rules have been removed in favor of direct Pipeline/Workflow binding.
+These tests are kept for backward compatibility but are skipped.
 """
 
+import pytest
 from unittest.mock import Mock
+
+
+# Mark all tests in this module as skipped since routing rules are deprecated
+pytestmark = pytest.mark.skip(reason="Routing rules feature has been removed. Bots now directly bind to Pipeline/Workflow.")
 
 
 class TestMatchOperator:

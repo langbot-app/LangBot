@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
+import logging
 import traceback
 import sqlalchemy
 
 from ..core import app, entities as core_entities, taskmgr
+
+logger = logging.getLogger(__name__)
 
 from ..discover import engine
 
@@ -54,28 +56,23 @@ class RuntimeBot:
         self.task_context = taskmgr.TaskContext()
         self.logger = logger
 
-    @staticmethod
-    def _match_operator(actual: str, operator: str, expected: str) -> bool:
-        """Evaluate a single operator condition."""
-        if operator == 'eq':
-            return actual == expected
-        elif operator == 'neq':
-            return actual != expected
-        elif operator == 'contains':
-            return expected in actual
-        elif operator == 'not_contains':
-            return expected not in actual
-        elif operator == 'starts_with':
-            return actual.startswith(expected)
-        elif operator == 'regex':
-            try:
-                return bool(re.search(expected, actual))
-            except re.error:
-                return False
-        return False
-
     PIPELINE_DISCARD = '__discard__'
     PIPELINE_DISCARD_DISPLAY_NAME = 'Discarded'
+
+    def get_binding_info(self) -> tuple[str, str | None]:
+        """Get the binding type and UUID for this bot.
+
+        Returns:
+            tuple: (binding_type, binding_uuid) where binding_type is 'pipeline' or 'workflow'
+        """
+        binding_type = getattr(self.bot_entity, 'binding_type', 'pipeline') or 'pipeline'
+        binding_uuid = getattr(self.bot_entity, 'binding_uuid', None)
+
+        # Fallback to use_pipeline_uuid for backward compatibility
+        if not binding_uuid and binding_type == 'pipeline':
+            binding_uuid = self.bot_entity.use_pipeline_uuid
+
+        return binding_type, binding_uuid
 
     def resolve_pipeline_uuid(
         self,
@@ -84,56 +81,94 @@ class RuntimeBot:
         message_text: str,
         message_element_types: list[str] | None = None,
     ) -> tuple[str | None, bool]:
-        """Resolve pipeline UUID based on routing rules.
+        """Resolve pipeline UUID for message processing.
 
-        Rules are evaluated in order; first match wins.
-        Falls back to use_pipeline_uuid if no rule matches.
-
-        Rule types:
-          - launcher_type: session type ("person" / "group")
-          - launcher_id: session / group id
-          - message_content: message text content
-          - message_has_element: message contains element of given type
-            (Image, Voice, File, Forward, Face, At, AtAll, Quote)
-            Operators: eq (has), neq (doesn't have)
-
-        Operators: eq, neq, contains, not_contains, starts_with, regex
-
-        When pipeline_uuid is ``__discard__``, the message should be
-        silently dropped by the caller.
+        NOTE: Routing rules have been removed. Bot now directly binds to a
+        Pipeline or Workflow. This method is kept for backward compatibility
+        but only returns the direct binding.
 
         Returns:
-            tuple: (pipeline_uuid, routed_by_rule) - routed_by_rule is True
-            when a routing rule matched, False when falling back to default.
+            tuple: (pipeline_uuid, routed_by_rule) - routed_by_rule is always False
+            as routing rules are no longer used.
         """
-        rules = self.bot_entity.pipeline_routing_rules or []
-        element_type_set = set(message_element_types or [])
+        binding_type, binding_uuid = self.get_binding_info()
 
-        for rule in rules:
-            rule_type = rule.get('type')
-            operator = rule.get('operator', 'eq')
-            rule_value = rule.get('value', '')
-            target_uuid = rule.get('pipeline_uuid')
-            if not rule_type or not target_uuid:
-                continue
+        # If bound to workflow, return None for pipeline_uuid
+        # The caller should check binding_type and handle accordingly
+        if binding_type == 'workflow':
+            # For workflow binding, we still need to return something
+            # The actual workflow handling should be done by the caller
+            return None, False
 
-            if rule_type == 'launcher_type':
-                if self._match_operator(launcher_type, operator, rule_value):
-                    return target_uuid, True
-            elif rule_type == 'launcher_id':
-                if self._match_operator(str(launcher_id), operator, str(rule_value)):
-                    return target_uuid, True
-            elif rule_type == 'message_content':
-                if self._match_operator(message_text, operator, rule_value):
-                    return target_uuid, True
-            elif rule_type == 'message_has_element':
-                has_element = rule_value in element_type_set
-                if operator == 'eq' and has_element:
-                    return target_uuid, True
-                elif operator == 'neq' and not has_element:
-                    return target_uuid, True
+        return binding_uuid, False
 
-        return self.bot_entity.use_pipeline_uuid, False
+    async def _handle_workflow_message(
+        self,
+        event: platform_events.MessageEvent,
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+        workflow_uuid: str,
+        launcher_type: str,
+        launcher_id: str | int,
+        sender_id: str | int,
+    ) -> None:
+        """Handle message by executing the bound workflow directly."""
+        message_content = str(event.message_chain)
+        message_chain_obj = event.message_chain
+
+        # Build message context
+        sender_name = None
+        if hasattr(event, 'sender'):
+            sender = event.sender
+            if hasattr(sender, 'nickname'):
+                sender_name = sender.nickname
+            elif hasattr(sender, 'member_name'):
+                sender_name = sender.member_name
+
+        is_group = launcher_type == 'group'
+        message_context = {
+            'message_id': str(getattr(event, 'message_id', '')),
+            'message_content': message_content,
+            'sender_id': str(sender_id),
+            'sender_name': sender_name or 'User',
+            'platform': adapter.__class__.__name__,
+            'conversation_id': str(launcher_id),
+            'is_group': is_group,
+            'group_id': str(launcher_id) if is_group else None,
+            'mentions': [],
+            'reply_to': None,
+            'raw_message': {
+                'message': message_chain_obj.model_dump() if hasattr(message_chain_obj, 'model_dump') else str(message_chain_obj),
+                'launcher_id': launcher_id,
+                'session_type': launcher_type,
+            },
+        }
+
+        trigger_data = {
+            'message': message_content,
+            'message_chain': message_chain_obj.model_dump() if hasattr(message_chain_obj, 'model_dump') else str(message_chain_obj),
+            'session_type': launcher_type,
+            'connection_id': str(launcher_id),
+            'message_context': message_context,
+        }
+
+        session_id = f'{launcher_type}_{launcher_id}'
+        logger.info(f'Processing workflow message from {session_id}: {message_content}')
+
+        try:
+            from ..api.http.service.workflow import WorkflowExecutionFailedError
+
+            execution_id = await self.ap.workflow_service.execute_workflow(
+                workflow_uuid=workflow_uuid,
+                trigger_type='message',
+                trigger_data=trigger_data,
+                session_id=session_id,
+                user_id=str(sender_id),
+                bot_id=self.bot_entity.uuid,
+            )
+        except WorkflowExecutionFailedError as e:
+            await self.logger.error(f'Workflow execution failed: {e.message}')
+        except Exception as e:
+            await self.logger.error(f'Workflow execution error: {e}')
 
     async def _record_discarded_message(
         self,
@@ -229,6 +264,20 @@ class RuntimeBot:
 
                 message_text = str(event.message_chain)
                 element_types = [comp.type for comp in event.message_chain]
+                binding_type, binding_uuid = self.get_binding_info()
+
+                # Handle workflow binding separately from pipeline
+                if binding_type == 'workflow':
+                    await self._handle_workflow_message(
+                        event=event,
+                        adapter=adapter,
+                        workflow_uuid=binding_uuid,
+                        launcher_type='person',
+                        launcher_id=launcher_id,
+                        sender_id=event.sender.id,
+                    )
+                    return
+
                 pipeline_uuid, routed_by_rule = self.resolve_pipeline_uuid(
                     'person', launcher_id, message_text, element_types
                 )
@@ -290,6 +339,20 @@ class RuntimeBot:
 
                 message_text = str(event.message_chain)
                 element_types = [comp.type for comp in event.message_chain]
+                binding_type, binding_uuid = self.get_binding_info()
+
+                # Handle workflow binding separately from pipeline
+                if binding_type == 'workflow':
+                    await self._handle_workflow_message(
+                        event=event,
+                        adapter=adapter,
+                        workflow_uuid=binding_uuid,
+                        launcher_type='group',
+                        launcher_id=launcher_id,
+                        sender_id=event.sender.id,
+                    )
+                    return
+
                 pipeline_uuid, routed_by_rule = self.resolve_pipeline_uuid(
                     'group', launcher_id, message_text, element_types
                 )

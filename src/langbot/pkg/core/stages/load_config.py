@@ -231,3 +231,34 @@ class LoadConfigStage(stage.BootingStage):
         ap.pipeline_config_meta_safety = await load_resource_yaml_template_data('metadata/pipeline/safety.yaml')
         ap.pipeline_config_meta_ai = await load_resource_yaml_template_data('metadata/pipeline/ai.yaml')
         ap.pipeline_config_meta_output = await load_resource_yaml_template_data('metadata/pipeline/output.yaml')
+
+        # Load workflow node metadata from YAML files. YAML is the source of
+        # truth for workflow editor metadata; Python classes provide execution
+        # logic and are bound through the registry.
+        from langbot.pkg.workflow.metadata import NodeMetadataLoader
+        from langbot.pkg.workflow.registry import NodeTypeRegistry
+
+        workflow_metadata_loader = NodeMetadataLoader()
+        workflow_node_count = await workflow_metadata_loader.load_core_metadata()
+        ap.workflow_node_configs = workflow_metadata_loader.get_all_metadata()
+        ap.workflow_node_metadata_loader = workflow_metadata_loader
+
+        workflow_registry = NodeTypeRegistry.instance()
+        for node_config in ap.workflow_node_configs.values():
+            workflow_registry.register_metadata(node_config, source=node_config.get('_source', 'core'))
+
+        # Auto-discover and register workflow nodes using discovery engine
+        if hasattr(ap, 'discover') and ap.discover is not None:
+            workflow_registry.discover_nodes(ap.discover)
+
+        workflow_load_errors = workflow_metadata_loader.get_load_errors()
+        if workflow_load_errors:
+            print(f'Workflow node metadata load errors: {len(workflow_load_errors)}')
+            for error in workflow_load_errors:
+                print(f"  - {error.get('file')}: {error.get('error')}")
+
+        print(
+            f'Loaded {workflow_node_count} workflow node metadata files; '
+            f'registered {workflow_registry.metadata_count()} metadata definitions, '
+            f'{workflow_registry.count()} node types'
+        )

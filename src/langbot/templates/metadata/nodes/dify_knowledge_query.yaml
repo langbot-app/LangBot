@@ -1,0 +1,74 @@
+# Dify Knowledge Base Query Node Configuration
+name: dify_knowledge_query
+label:
+  en_US: Dify Knowledge Base
+  zh_Hans: Dify 知识库
+description:
+  en_US: Query Dify knowledge base
+  zh_Hans: 查询 Dify 知识库
+category: integration
+icon: BookOpen
+color: '#3b82f6'
+
+inputs:
+  - name: query
+    type: string
+    label:
+      en_US: Query
+      zh_Hans: 查询
+    description:
+      en_US: Query content
+      zh_Hans: 查询内容
+    required: true
+
+outputs:
+  - name: results
+    type: array
+    label:
+      en_US: Results
+      zh_Hans: 结果
+    description:
+      en_US: Search results
+      zh_Hans: 检索结果
+  - name: success
+    type: boolean
+    label:
+      en_US: Success
+      zh_Hans: 成功
+    description:
+      en_US: Whether the call was successful
+      zh_Hans: 调用是否成功
+
+config:
+  - name: base-url
+    label:
+      en_US: Base URL
+      zh_Hans: 基础 URL
+    description:
+      en_US: Dify service base URL
+      zh_Hans: Dify 服务基础 URL
+    type: string
+    required: true
+    default: 'https://api.dify.ai/v1'
+
+  - name: api-key
+    label:
+      en_US: API Key
+      zh_Hans: API 密钥
+    description:
+      en_US: Dify API key
+      zh_Hans: Dify API 密钥
+    type: string
+    required: true
+    default: ''
+
+  - name: dataset_id
+    label:
+      en_US: Dataset ID
+      zh_Hans: 知识库 ID
+    description:
+      en_US: Knowledge base ID
+      zh_Hans: 知识库 ID
+    type: string
+    required: true
+    default: ''

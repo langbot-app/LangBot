@@ -73,6 +73,20 @@ class PipelineService:
 
         return self.ap.persistence_mgr.serialize_model(persistence_pipeline.LegacyPipeline, pipeline)
 
+    async def get_pipeline_by_name(self, pipeline_name: str) -> dict | None:
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(
+                persistence_pipeline.LegacyPipeline.name == pipeline_name
+            )
+        )
+
+        pipeline = result.first()
+
+        if pipeline is None:
+            return None
+
+        return self.ap.persistence_mgr.serialize_model(persistence_pipeline.LegacyPipeline, pipeline)
+
     async def create_pipeline(self, pipeline_data: dict, default: bool = False) -> str:
         from ....utils import paths as path_utils
 
