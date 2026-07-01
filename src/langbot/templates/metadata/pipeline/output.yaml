@@ -37,6 +37,10 @@ stages:
             label:
               en_US: Convert to Image
               zh_Hans: 转换为图片
+          - name: split
+            label:
+              en_US: Split into Multiple Messages
+              zh_Hans: 分割为多条消息发送
           - name: none
             label:
               en_US: None
