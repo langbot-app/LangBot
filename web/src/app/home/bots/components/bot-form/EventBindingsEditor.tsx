@@ -59,7 +59,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Input } from '@/components/ui/input';
-import { EventBinding, Agent, AgentKind } from '@/app/infra/entities/api';
+import { EventBinding, Agent } from '@/app/infra/entities/api';
 
 export const PIPELINE_DISCARD = '__discard__';
 
@@ -496,18 +496,6 @@ function BindingCardContent({
   const isExpanded = expandedIds.has(id);
   const filterCount = (binding.filters as FilterRow[] | undefined)?.length ?? 0;
   const pipelineAllowed = isMessageEventPattern(binding.event_pattern);
-  const targetType = binding.target_type || 'agent';
-
-  function getTargetOptions(kind: AgentKind): Agent[] {
-    return agentOptions.filter((agent) => {
-      if (agent.kind !== kind) return false;
-      if (kind === 'pipeline')
-        return isMessageEventPattern(binding.event_pattern);
-      if (kind === 'agent')
-        return agentSupportsEventPattern(agent, binding.event_pattern);
-      return true;
-    });
-  }
 
   return (
     <div className="rounded-lg border bg-card">

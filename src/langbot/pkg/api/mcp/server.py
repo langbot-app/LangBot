@@ -142,7 +142,7 @@ class LangBotMCPServer:
             return _dump({'ok': True})
 
         # ----- Agents -------------------------------------------------- #
-        @mcp.tool(description='List product-level Agents, including Agent orchestrations and Pipelines.')
+        @mcp.tool(description='List product-level processors, including Agents and Pipelines.')
         async def list_agents() -> str:
             return _dump(await ap.agent_service.get_agents())
 
@@ -152,19 +152,19 @@ class LangBotMCPServer:
 
         @mcp.tool(
             description=(
-                'Create an Agent orchestration or Pipeline. `agent_data` matches '
+                'Create an Agent processor or Pipeline. `agent_data` matches '
                 'POST /api/v1/agents; set kind to `agent` or `pipeline`. Returns the new UUID and kind.'
             )
         )
         async def create_agent(agent_data: dict) -> str:
             return _dump(await ap.agent_service.create_agent(agent_data))
 
-        @mcp.tool(description='Update an Agent orchestration or Pipeline by UUID.')
+        @mcp.tool(description='Update an Agent processor or Pipeline by UUID.')
         async def update_agent(agent_uuid: str, agent_data: dict) -> str:
             await ap.agent_service.update_agent(agent_uuid, agent_data)
             return _dump({'ok': True})
 
-        @mcp.tool(description='Delete an Agent orchestration or Pipeline by UUID.')
+        @mcp.tool(description='Delete an Agent processor or Pipeline by UUID.')
         async def delete_agent(agent_uuid: str) -> str:
             await ap.agent_service.delete_agent(agent_uuid)
             return _dump({'ok': True})

@@ -337,8 +337,7 @@ const jaJP = {
     getBotConfigError: 'ボット設定の取得に失敗しました：',
     saveSuccess: '保存に成功しました',
     saveError: '保存に失敗しました：',
-    createSuccess:
-      '作成が完了しました。有効化するか、パイプラインの設定を行ってください',
+    createSuccess: '作成が完了しました。イベントルーティングを設定してください',
     createError: '作成に失敗しました：',
     deleteSuccess: '削除に成功しました',
     deleteError: '削除に失敗しました：',
@@ -369,23 +368,23 @@ const jaJP = {
     routingConnection: 'ルーティングと接続',
     routingConnectionDescription:
       'このボットのメッセージを処理するパイプラインを紐付け',
-    eventOrchestration: 'イベント編成',
-    eventOrchestrationDescription:
-      'このボットのイベントごとに異なる処理ロジックを紐付けます。Pipeline はメッセージイベントのみ対応します。',
-    eventBindings: 'イベントバインディング',
-    addEventBinding: 'イベントバインディングを追加',
+    eventRouting: 'イベントルーティング',
+    eventRoutingDescription:
+      'このボットが受信した各イベントをどのプロセッサーに渡すかを選択します。処理ロジックは Agent ページで編集します。Pipeline はメッセージイベントのみ対応します。',
+    eventBindings: 'イベントルート',
+    addEventBinding: 'ルートを追加',
     eventPattern: 'イベント',
     eventPatternPlaceholder: 'イベントを選択',
     targetType: 'ターゲットタイプ',
-    target: '処理ロジック',
-    targetAgent: 'Agent 編成',
+    target: 'プロセッサー',
+    targetAgent: 'Agent',
     targetPipeline: 'Pipeline',
     targetDiscard: '破棄',
-    selectTarget: '処理ロジックを選択',
+    selectTarget: 'プロセッサーを選択',
     priority: '優先度',
     enabled: '有効',
     eventBindingDescriptionPlaceholder: 'ルール説明',
-    noEventBindings: 'イベントバインディングはありません',
+    noEventBindings: 'イベントルートはありません',
     unsupportedPipelineEvent:
       'Pipeline は message.* イベントにのみ使用できます',
     eventCustom: 'カスタムイベント',
@@ -516,14 +515,15 @@ const jaJP = {
   },
   agents: {
     title: 'Agent',
-    description: 'Agent 編成と Pipeline を管理し、ボットのイベントに紐付けます',
-    create: 'Agent を作成',
-    editAgent: 'Agent 編成を編集',
+    description:
+      '再利用可能なプロセッサーを作成し、ボットのイベントルーティングで使用します',
+    create: 'プロセッサーを作成',
+    editAgent: 'Agent を編集',
     selectFromSidebar:
       'サイドバーから Agent または Pipeline を選択してください',
-    agentOrchestration: 'Agent 編成',
-    agentOrchestrationDescription:
-      'メッセージ、グループメンバー、友だち、フィードバックなどのプラットフォームイベント向けの処理ロジックです。',
+    agentType: 'Agent',
+    agentTypeDescription:
+      'Runner を使ってメッセージ、グループメンバー、友だち、フィードバックなどのプラットフォームイベントを処理します。',
     pipelineType: 'Pipeline',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: 'パイプライン',
@@ -536,12 +536,13 @@ const jaJP = {
     basicInfo: '基本情報',
     basicInfoDescription: '名前、アイコン、説明、有効状態を設定します',
     runnerSettings: 'Runner',
-    eventCapability: 'イベント能力',
-    eventCapabilityDescription:
-      'この Agent 編成をどのイベントに紐付けられるかを宣言します。1 行に 1 つのイベントパターンを指定し、* と namespace.* を利用できます。',
-    supportedEvents: '対応イベント',
+    advanced: '詳細',
+    bindableEvents: '紐付け可能なイベント範囲',
+    bindableEventsDescription:
+      'この Agent を選択できるボットイベントルートの範囲を制限します。通常は既定値のままで問題ありません。',
+    supportedEvents: 'イベント範囲',
     supportedEventsDescription:
-      '例: *、message.received、group.*。Pipeline は message.* 固定です。',
+      '1 行に 1 つのイベントパターンを指定します。例: *、message.received、group.*。Pipeline は message.* 固定です。',
     enabled: 'Agent を有効化',
     enabledDescription:
       '無効化すると、この Agent はイベントルーティングで選択されません。',
@@ -553,10 +554,10 @@ const jaJP = {
     saveError: '保存に失敗しました：',
     deleteSuccess: '削除に成功しました',
     deleteError: '削除に失敗しました：',
-    deleteConfirmation: 'この Agent 編成を削除してもよろしいですか？',
+    deleteConfirmation: 'この Agent を削除してもよろしいですか？',
     dangerZone: '危険ゾーン',
     dangerZoneDescription: '元に戻せない操作',
-    deleteAgentAction: 'この Agent 編成を削除',
+    deleteAgentAction: 'この Agent を削除',
     deleteAgentHint: '削除すると、紐付けられたイベントは実行できなくなります。',
     noRunnerMetadata: '現在利用可能な AgentRunner メタデータはありません。',
   },

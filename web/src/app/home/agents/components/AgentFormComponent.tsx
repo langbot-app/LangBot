@@ -148,7 +148,7 @@ export default function AgentFormComponent({
   const sections: SectionItem[] = [
     { label: t('agents.basicInfo'), name: 'basic', icon: Info },
     { label: t('agents.runnerSettings'), name: 'runner', icon: Brain },
-    { label: t('agents.eventCapability'), name: 'events', icon: FileJson2 },
+    { label: t('agents.advanced'), name: 'events', icon: FileJson2 },
   ];
 
   const currentRunner = (form.watch('runner') as Record<string, any>)?.id;
@@ -450,9 +450,9 @@ export default function AgentFormComponent({
                 {activeSection === 'events' && (
                   <Card>
                     <CardHeader>
-                      <CardTitle>{t('agents.eventCapability')}</CardTitle>
+                      <CardTitle>{t('agents.bindableEvents')}</CardTitle>
                       <CardDescription>
-                        {t('agents.eventCapabilityDescription')}
+                        {t('agents.bindableEventsDescription')}
                       </CardDescription>
                     </CardHeader>
                     <CardContent>

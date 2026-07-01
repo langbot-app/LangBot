@@ -342,8 +342,7 @@ const esES = {
     getBotConfigError: 'Error al obtener la configuración del Bot: ',
     saveSuccess: 'Guardado correctamente',
     saveError: 'Error al guardar: ',
-    createSuccess:
-      'Creado correctamente. Por favor, activa o modifica el Pipeline vinculado',
+    createSuccess: 'Creado correctamente. Configura el enrutamiento de eventos',
     createError: 'Error al crear: ',
     deleteSuccess: 'Eliminado correctamente',
     deleteError: 'Error al eliminar: ',
@@ -374,6 +373,9 @@ const esES = {
     routingConnection: 'Enrutamiento y conexión',
     routingConnectionDescription:
       'Vincula el Pipeline que procesa los mensajes de este Bot',
+    eventRouting: 'Enrutamiento de eventos',
+    eventRoutingDescription:
+      'Elige qué procesador maneja cada evento recibido por este Bot. Edita la lógica de procesamiento en la página Agent. Los Pipelines solo admiten eventos de mensaje.',
     routingRules: 'Reglas de enrutamiento condicional',
     routingRulesDescription:
       'Las reglas se evalúan en orden; la primera coincidencia enruta a su pipeline. Si ninguna coincide, se usa el pipeline predeterminado.',
@@ -484,13 +486,13 @@ const esES = {
   agents: {
     title: 'Agent',
     description:
-      'Gestiona orquestaciones de Agent y Pipelines, y vincúlalos a eventos de bot',
-    create: 'Crear Agent',
-    editAgent: 'Editar orquestación de Agent',
+      'Crea procesadores reutilizables y úsalos en el enrutamiento de eventos del bot',
+    create: 'Crear procesador',
+    editAgent: 'Editar Agent',
     selectFromSidebar: 'Selecciona un Agent o Pipeline desde la barra lateral',
-    agentOrchestration: 'Orquestación de Agent',
-    agentOrchestrationDescription:
-      'Lógica de procesamiento orientada a eventos para mensajes, miembros de grupo, amigos, retroalimentación y otros eventos de plataforma.',
+    agentType: 'Agent',
+    agentTypeDescription:
+      'Usa un runner para procesar mensajes, miembros de grupo, amigos, retroalimentación y otros eventos de plataforma.',
     pipelineType: 'Pipeline',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: 'Pipeline',
@@ -504,12 +506,13 @@ const esES = {
     basicInfoDescription:
       'Establece el nombre, icono, descripción y estado de habilitación',
     runnerSettings: 'Runner',
-    eventCapability: 'Capacidad de eventos',
-    eventCapabilityDescription:
-      'Declara a qué eventos puede vincularse esta orquestación de Agent. Un patrón de evento por línea; se admiten * y namespace.*.',
-    supportedEvents: 'Eventos admitidos',
+    advanced: 'Avanzado',
+    bindableEvents: 'Rango de eventos vinculables',
+    bindableEventsDescription:
+      'Limita qué rutas de eventos del bot pueden seleccionar este Agent. El valor predeterminado sirve para la mayoría de los casos.',
+    supportedEvents: 'Rango de eventos',
     supportedEventsDescription:
-      'Ejemplos: *, message.received, group.*. Los Pipelines están fijos en message.*.',
+      'Usa un patrón de evento por línea, por ejemplo *, message.received, group.*. Los Pipelines están fijos en message.*.',
     enabled: 'Habilitar Agent',
     enabledDescription:
       'Cuando está deshabilitado, este Agent no debe ser seleccionado por el enrutamiento de eventos.',
@@ -521,11 +524,10 @@ const esES = {
     saveError: 'Error al guardar: ',
     deleteSuccess: 'Eliminado correctamente',
     deleteError: 'Error al eliminar: ',
-    deleteConfirmation:
-      '¿Estás seguro de que deseas eliminar esta orquestación de Agent?',
+    deleteConfirmation: '¿Estás seguro de que deseas eliminar este Agent?',
     dangerZone: 'Zona de peligro',
     dangerZoneDescription: 'Acciones irreversibles y destructivas',
-    deleteAgentAction: 'Eliminar esta orquestación de Agent',
+    deleteAgentAction: 'Eliminar este Agent',
     deleteAgentHint:
       'Una vez eliminado, los eventos vinculados a él ya no podrán ejecutarse.',
     noRunnerMetadata:

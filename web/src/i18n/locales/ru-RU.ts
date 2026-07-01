@@ -341,8 +341,7 @@ const ruRU = {
     getBotConfigError: 'Не удалось получить конфигурацию бота: ',
     saveSuccess: 'Успешно сохранено',
     saveError: 'Ошибка сохранения: ',
-    createSuccess:
-      'Успешно создано. Пожалуйста, включите или измените привязанный конвейер',
+    createSuccess: 'Успешно создано. Настройте маршрутизацию событий',
     createError: 'Ошибка создания: ',
     deleteSuccess: 'Успешно удалено',
     deleteError: 'Ошибка удаления: ',
@@ -373,6 +372,9 @@ const ruRU = {
     routingConnection: 'Маршрутизация и подключение',
     routingConnectionDescription:
       'Привяжите конвейер, обрабатывающий сообщения для этого бота',
+    eventRouting: 'Маршрутизация событий',
+    eventRoutingDescription:
+      'Выберите, какой обработчик будет получать каждое событие этого бота. Логика обработки редактируется на странице Agent. Pipeline поддерживает только события сообщений.',
     routingRules: 'Правила условной маршрутизации',
     routingRulesDescription:
       'Правила проверяются по порядку; первое совпадение направляет в соответствующий конвейер. При отсутствии совпадений используется конвейер по умолчанию.',
@@ -482,13 +484,13 @@ const ruRU = {
   agents: {
     title: 'Agent',
     description:
-      'Управляйте оркестровками Agent и Pipeline, привязывая их к событиям бота',
-    create: 'Создать Agent',
-    editAgent: 'Редактировать оркестровку Agent',
+      'Создавайте переиспользуемые обработчики и используйте их в маршрутизации событий бота',
+    create: 'Создать обработчик',
+    editAgent: 'Редактировать Agent',
     selectFromSidebar: 'Выберите Agent или Pipeline на боковой панели',
-    agentOrchestration: 'Оркестровка Agent',
-    agentOrchestrationDescription:
-      'Логика обработки сообщений, участников групп, друзей, обратной связи и других событий платформы.',
+    agentType: 'Agent',
+    agentTypeDescription:
+      'Используйте runner для обработки сообщений, участников групп, друзей, обратной связи и других событий платформы.',
     pipelineType: 'Pipeline',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: 'Pipeline',
@@ -501,12 +503,13 @@ const ruRU = {
     basicInfo: 'Основная информация',
     basicInfoDescription: 'Задайте имя, иконку, описание и статус активации',
     runnerSettings: 'Runner',
-    eventCapability: 'Возможности событий',
-    eventCapabilityDescription:
-      'Объявите, к каким событиям может быть привязана эта оркестровка Agent. Один шаблон события в строке; поддерживаются * и namespace.*.',
-    supportedEvents: 'Поддерживаемые события',
+    advanced: 'Дополнительно',
+    bindableEvents: 'Диапазон привязываемых событий',
+    bindableEventsDescription:
+      'Ограничьте, какие маршруты событий бота могут выбирать этот Agent. Обычно достаточно значения по умолчанию.',
+    supportedEvents: 'Диапазон событий',
     supportedEventsDescription:
-      'Примеры: *, message.received, group.*. Pipeline фиксирован на message.*.',
+      'Один шаблон события в строке, например *, message.received, group.*. Pipeline фиксирован на message.*.',
     enabled: 'Включить Agent',
     enabledDescription:
       'При отключении этот Agent не должен выбираться маршрутизацией событий.',
@@ -518,10 +521,10 @@ const ruRU = {
     saveError: 'Ошибка сохранения: ',
     deleteSuccess: 'Успешно удалено',
     deleteError: 'Ошибка удаления: ',
-    deleteConfirmation: 'Вы уверены, что хотите удалить эту оркестровку Agent?',
+    deleteConfirmation: 'Вы уверены, что хотите удалить этот Agent?',
     dangerZone: 'Опасная зона',
     dangerZoneDescription: 'Необратимые и деструктивные действия',
-    deleteAgentAction: 'Удалить эту оркестровку Agent',
+    deleteAgentAction: 'Удалить этот Agent',
     deleteAgentHint:
       'После удаления события, привязанные к ней, больше не смогут выполняться.',
     noRunnerMetadata: 'Метаданные AgentRunner в данный момент недоступны.',

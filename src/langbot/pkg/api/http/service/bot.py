@@ -15,6 +15,15 @@ class BotService:
     """Bot service"""
 
     ap: app.Application
+    BOT_FIELDS = {
+        'uuid',
+        'name',
+        'description',
+        'adapter',
+        'adapter_config',
+        'enable',
+        'event_bindings',
+    }
 
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
@@ -115,6 +124,17 @@ class BotService:
 
         return normalized
 
+    async def _prepare_bot_data(self, bot_data: dict, *, include_uuid: bool) -> dict:
+        """Normalize Bot write payloads to the current event-routing model."""
+        update_data = bot_data.copy()
+        if not include_uuid:
+            update_data.pop('uuid', None)
+
+        update_data = {key: value for key, value in update_data.items() if key in self.BOT_FIELDS}
+        if 'event_bindings' in update_data:
+            update_data['event_bindings'] = await self._normalize_event_bindings(update_data.get('event_bindings'))
+        return update_data
+
     async def get_bots(self, include_secret: bool = True) -> list[dict]:
         """获取所有机器人"""
         result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_bot.Bot))
@@ -188,7 +208,9 @@ class BotService:
                 raise ValueError(f'Maximum number of bots ({max_bots}) reached')
 
         # TODO: 检查配置信息格式
+        bot_data = await self._prepare_bot_data(bot_data, include_uuid=True)
         bot_data['uuid'] = str(uuid.uuid4())
+        bot_data.setdefault('event_bindings', [])
 
         await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_bot.Bot).values(bot_data))
 
@@ -200,18 +222,7 @@ class BotService:
 
     async def update_bot(self, bot_uuid: str, bot_data: dict) -> None:
         """Update bot"""
-        update_data = bot_data.copy()
-
-        if 'uuid' in update_data:
-            del update_data['uuid']
-
-        if 'event_bindings' in update_data:
-            update_data['event_bindings'] = await self._normalize_event_bindings(update_data.get('event_bindings'))
-
-        # clear legacy routing fields — routing is now fully managed via event_bindings
-        update_data.pop('use_pipeline_uuid', None)
-        update_data.pop('use_pipeline_name', None)
-        update_data.pop('pipeline_routing_rules', None)
+        update_data = await self._prepare_bot_data(bot_data, include_uuid=False)
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_bot.Bot).values(update_data).where(persistence_bot.Bot.uuid == bot_uuid)

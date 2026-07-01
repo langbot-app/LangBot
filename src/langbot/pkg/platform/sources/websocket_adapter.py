@@ -77,6 +77,9 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
     stream_enabled: bool = pydantic.Field(default=True, exclude=True)
     """是否启用流式输出"""
 
+    current_pipeline_uuid: str = pydantic.Field(default='', exclude=True)
+    """Pipeline currently associated with the active WebSocket exchange."""
+
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger, **kwargs):
         super().__init__(
             config=config,
@@ -90,6 +93,18 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         self.bot_account_id = 'websocketbot'
         self.outbound_message_queue = asyncio.Queue()
         self.stream_enabled = True
+        self.current_pipeline_uuid = ''
+
+    def _resolve_pipeline_uuid(
+        self,
+        message_source: platform_events.MessageEvent | None = None,
+        target_id: str = '',
+    ) -> str:
+        if message_source is not None:
+            event_pipeline_uuid = getattr(message_source, '_langbot_pipeline_uuid', '')
+            if isinstance(event_pipeline_uuid, str) and event_pipeline_uuid:
+                return event_pipeline_uuid
+        return self.current_pipeline_uuid or target_id
 
     async def send_message(
         self,
@@ -103,8 +118,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         target_id 可能是 launcher_id（如 websocket_xxx）或 pipeline_uuid。
         我们需要尝试两种方式来确保消息能够送达。
         """
-        # 获取当前的 pipeline_uuid
-        pipeline_uuid = self.ap.platform_mgr.websocket_proxy_bot.bot_entity.use_pipeline_uuid
+        pipeline_uuid = self._resolve_pipeline_uuid(target_id=str(target_id))
         session_type = 'group' if target_type == 'group' else 'person'
 
         # 选择会话
@@ -152,8 +166,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             else self.websocket_person_session
         )
 
-        # 从message_source获取pipeline_uuid和connection_id
-        pipeline_uuid = self.ap.platform_mgr.websocket_proxy_bot.bot_entity.use_pipeline_uuid
+        pipeline_uuid = self._resolve_pipeline_uuid(message_source)
         session_type = 'group' if isinstance(message_source, platform_events.GroupMessage) else 'person'
 
         # 生成新的消息ID
@@ -200,7 +213,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             else self.websocket_person_session
         )
 
-        pipeline_uuid = self.ap.platform_mgr.websocket_proxy_bot.bot_entity.use_pipeline_uuid
+        pipeline_uuid = self._resolve_pipeline_uuid(message_source)
         session_type = 'group' if isinstance(message_source, platform_events.GroupMessage) else 'person'
         message_list = session.get_message_list(pipeline_uuid)
         stream_message_indexes = session.get_stream_message_indexes(pipeline_uuid)
@@ -380,6 +393,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                        When provided, its identity is used for logging and session tracking.
         """
         pipeline_uuid = connection.pipeline_uuid
+        self.current_pipeline_uuid = pipeline_uuid
         session_type = connection.session_type
 
         # 获取stream参数，默认为True
@@ -448,11 +462,6 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             )
 
         object.__setattr__(event, '_langbot_pipeline_uuid', pipeline_uuid)
-
-        # 设置流水线UUID (proxy bot always needs it for reply_message routing)
-        self.ap.platform_mgr.websocket_proxy_bot.bot_entity.use_pipeline_uuid = pipeline_uuid
-        if owner_bot is not None:
-            owner_bot.bot_entity.use_pipeline_uuid = pipeline_uuid
 
         # 异步触发事件处理
         # Use owner_bot's listeners if available, otherwise fall back to proxy bot
