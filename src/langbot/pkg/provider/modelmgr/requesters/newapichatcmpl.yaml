@@ -7,6 +7,7 @@ metadata:
     zh_Hans: New API
   icon: newapi.png
 spec:
+  litellm_provider: openai
   config:
   - name: base_url
     label:
@@ -22,9 +23,11 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "newapi new-api New API one-api oneapi 中转 中转站 aggregator 聚合 网关 gateway rerank"
   support_type:
   - llm
   - text-embedding
+  - rerank
   provider_category: maas
 execution:
   python:

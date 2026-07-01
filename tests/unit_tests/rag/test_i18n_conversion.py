@@ -3,6 +3,7 @@
 Tests cover:
 - _to_i18n_name() static method
 """
+
 from __future__ import annotations
 
 from importlib import import_module

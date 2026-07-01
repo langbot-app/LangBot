@@ -121,10 +121,12 @@ class TestRAGRuntimeServiceVectorSearch:
         """Create mock app."""
         mock_app = MagicMock()
         mock_app.vector_db_mgr = MagicMock()
-        mock_app.vector_db_mgr.search = AsyncMock(return_value=[
-            {'id': 'id1', 'distance': 0.1, 'metadata': {'file_id': 'abc'}},
-            {'id': 'id2', 'distance': 0.2, 'metadata': {'file_id': 'def'}},
-        ])
+        mock_app.vector_db_mgr.search = AsyncMock(
+            return_value=[
+                {'id': 'id1', 'distance': 0.1, 'metadata': {'file_id': 'abc'}},
+                {'id': 'id2', 'distance': 0.2, 'metadata': {'file_id': 'def'}},
+            ]
+        )
         return mock_app
 
     def _make_rag_import_mocks(self):
@@ -301,10 +303,7 @@ class TestRAGRuntimeServiceVectorList:
         mock_app = MagicMock()
         mock_app.vector_db_mgr = MagicMock()
         mock_app.vector_db_mgr.list_by_filter = AsyncMock(
-            return_value=(
-                [{'id': 'id1', 'metadata': {'file_id': 'abc'}}],
-                10
-            )
+            return_value=([{'id': 'id1', 'metadata': {'file_id': 'abc'}}], 10)
         )
         return mock_app
 

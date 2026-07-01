@@ -1,0 +1,74 @@
+id: agent-runner-release-preflight
+title: "Agent runner release gate preflight validates environment readiness"
+mode: agent-browser
+area: release
+type: smoke
+priority: p0
+risk: high
+ci_eligible: false
+tags:
+  - agent-runner
+  - release-gate
+  - preflight
+  - environment
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+env_any:
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL|LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+  - LANGBOT_ACP_AGENT_RUNNER_PIPELINE_URL|LANGBOT_ACP_AGENT_RUNNER_PIPELINE_NAME
+automation: scripts/e2e/agent-runner-release-preflight.mjs
+automation_env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+automation_env_any:
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL|LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+  - LANGBOT_ACP_AGENT_RUNNER_PIPELINE_URL|LANGBOT_ACP_AGENT_RUNNER_PIPELINE_NAME
+preconditions:
+  - "LANGBOT_LOCAL_AGENT_PIPELINE_URL or LANGBOT_LOCAL_AGENT_PIPELINE_NAME points to the local-agent release pipeline."
+  - "LANGBOT_ACP_AGENT_RUNNER_PIPELINE_URL or LANGBOT_ACP_AGENT_RUNNER_PIPELINE_NAME points to the ACP AgentRunner release pipeline."
+  - "The active browser profile is authenticated for the same LangBot backend."
+  - "By default the preflight performs a cheap model test for the local-agent primary model; set LANGBOT_PREFLIGHT_TEST_MODELS=0 only when deliberately classifying model credentials outside this run."
+steps:
+  - "Open LANGBOT_FRONTEND_URL with the configured browser profile."
+  - "Use the browser token to call LangBot backend readiness APIs without printing token values."
+  - "Check plugin runtime status, Box status, required runner plugins, qa-plugin-smoke, and qa_plugin_echo."
+  - "Resolve the local-agent and ACP AgentRunner QA pipelines from their case-specific env vars."
+  - "Assert each pipeline uses the expected runner id."
+  - "Assert the external runner pipeline uses the expected runner id."
+  - "Assert the local-agent primary model advertises func_call and vision for the full release gate."
+  - "Run the local-agent primary model test endpoint unless LANGBOT_PREFLIGHT_TEST_MODELS=0."
+checks:
+  - "API diagnostic: api-diagnostic.json has no blockers and no env_issues."
+  - "API diagnostic: required pipelines resolve to plugin:langbot/local-agent/default and plugin:langbot/acp-agent-runner/default."
+  - "API diagnostic: qa_plugin_echo is exposed by /api/v1/tools."
+  - "API diagnostic: local-agent model check catches invalid credentials or missing func_call/vision before release E2E starts."
+  - "Secret safety: token values, api keys, and provider secrets are not printed."
+evidence_required:
+  - ui
+  - screenshot
+  - console
+  - network
+  - api_diagnostic
+diagnostics:
+  - "blocked means the test instance is not configured for the full release gate: missing pipeline, wrong runner id, or missing plugin."
+  - "env_issue means the runtime or upstream dependency is not usable: backend unavailable, plugin runtime down, Box down, or the local-agent model cannot pass a model test."
+  - "If qa_mcp_echo is absent here, continue to mcp-stdio-register before mcp-stdio-tool-call; qa_mcp_echo is not required before registration."
+  - "If the model check fails with invalid api key, switch the local-agent release pipeline to a known-good func_call model before diagnosing runner code."
+success_patterns:
+  - "Release gate preflight passed"
+failure_patterns:
+  - "Preflight blocked"
+  - "Preflight environment issue"
+  - "invalid api key"
+  - "runner.llm_error"
+troubleshooting:
+  - backend-not-listening
+  - plugin-runtime-timeout
+  - local-agent-model-route-unavailable
+  - proxy-env-mismatch

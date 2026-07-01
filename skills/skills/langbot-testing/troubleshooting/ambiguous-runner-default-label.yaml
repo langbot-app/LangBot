@@ -1,0 +1,22 @@
+id: ambiguous-runner-default-label
+title: "AgentRunner selector shows multiple Default or 默认 options"
+date: 2026-05-17
+symptoms:
+  - "The Pipeline AI runner selector shows multiple options named Default or 默认."
+  - "Users must inspect plugin ids to distinguish Dify, Local Agent, or other runners."
+patterns:
+  - "metadata.name: default"
+  - "label.zh_Hans: 默认"
+  - "label.en_US: Default"
+likely_causes:
+  - "AgentRunner component ids are commonly named default, but the user-facing metadata.label was also left generic."
+  - "The frontend displays metadata.label as the primary option label."
+fix_steps:
+  - "Keep metadata.name as default if the plugin component id is intended to remain stable."
+  - "Change metadata.label to the provider or runner family name, such as Dify, Local Agent, Coze, DashScope, Langflow, n8n, or Tbox."
+  - "Restart LangBot or plugin runtime to refresh runner metadata cache."
+  - "Check /api/v1/pipelines/_/metadata and the WebUI runner selector."
+verification: "Runner options are distinguishable by visible label while their ids remain stable, such as plugin:langbot/dify-agent/default."
+related_cases:
+  - dify-agent-debug-chat
+  - local-agent-rag-debug-chat

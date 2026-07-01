@@ -7,6 +7,7 @@ metadata:
     zh_Hans: 魔搭社区
   icon: modelscope.svg
 spec:
+  litellm_provider: openai
   config:
   - name: base_url
     label:
@@ -29,8 +30,11 @@ spec:
     type: int
     required: true
     default: 120
+  alias: "modelscope ModelScope 魔搭 魔塔 摩搭 阿里 modelscope-aigc qwen bge"
   support_type:
   - llm
+  - text-embedding
+  - rerank
   provider_category: maas
 execution:
   python:

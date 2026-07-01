@@ -34,6 +34,46 @@ def _runtime_model_data(model_uuid: str, model_data: dict) -> dict:
     return {**model_data, 'uuid': model_uuid}
 
 
+async def _validate_provider_supports(ap: app.Application, provider_uuid: str, model_type: str) -> None:
+    """Validate that the provider's requester declares support for ``model_type``.
+
+    ``model_type`` is one of the manifest ``support_type`` values:
+    'llm', 'text-embedding', 'rerank'. Raises ValueError when the requester
+    manifest does not list the requested type. This is a server-side guard so
+    a model cannot be attached to a provider that does not support it, even if
+    the frontend tab restriction is bypassed.
+    """
+    model_mgr = getattr(ap, 'model_mgr', None)
+    if model_mgr is None:
+        return
+
+    provider_dict = getattr(model_mgr, 'provider_dict', None)
+    if not provider_dict:
+        return
+    runtime_provider = provider_dict.get(provider_uuid)
+    if runtime_provider is None:
+        return
+
+    requester_name = getattr(getattr(runtime_provider, 'provider_entity', None), 'requester', None)
+    if not requester_name:
+        return
+
+    get_manifest = getattr(model_mgr, 'get_available_requester_manifest_by_name', None)
+    if not callable(get_manifest):
+        return
+    manifest = get_manifest(requester_name)
+    if manifest is None:
+        return
+
+    spec = getattr(manifest, 'spec', None) or {}
+    support_type = spec.get('support_type') if isinstance(spec, dict) else None
+    # When a manifest omits support_type, do not block (backward compatible).
+    if not support_type:
+        return
+    if model_type not in support_type:
+        raise ValueError(f'Provider requester "{requester_name}" does not support {model_type} models')
+
+
 class LLMModelsService:
     ap: app.Application
 
@@ -95,6 +135,8 @@ class LLMModelsService:
                     api_keys=provider_data.get('api_keys', []),
                 )
                 model_data['provider_uuid'] = provider_uuid
+
+        await _validate_provider_supports(self.ap, model_data['provider_uuid'], 'llm')
 
         await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_model.LLMModel).values(**model_data))
 
@@ -274,6 +316,8 @@ class EmbeddingModelsService:
                 )
                 model_data['provider_uuid'] = provider_uuid
 
+        await _validate_provider_supports(self.ap, model_data['provider_uuid'], 'text-embedding')
+
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.insert(persistence_model.EmbeddingModel).values(**model_data)
         )
@@ -433,6 +477,8 @@ class RerankModelsService:
                     api_keys=provider_data.get('api_keys', []),
                 )
                 model_data['provider_uuid'] = provider_uuid
+
+        await _validate_provider_supports(self.ap, model_data['provider_uuid'], 'rerank')
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.insert(persistence_model.RerankModel).values(**model_data)

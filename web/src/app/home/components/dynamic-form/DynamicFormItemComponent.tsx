@@ -68,7 +68,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import ModelsDialog from '@/app/home/components/models-dialog/ModelsDialog';
+import SettingsDialog, {
+  SettingsSection,
+} from '@/app/home/components/settings-dialog/SettingsDialog';
+import ToolResourceSelectors from '@/app/home/components/dynamic-form/ToolResourceSelectors';
+import { LANGBOT_MODELS_PROVIDER_REQUESTER } from '@/app/home/components/models-dialog/types';
 
 const resolveOptionLabel = (label: unknown, fallback: string): string => {
   if (!label || typeof label !== 'object') return fallback;
@@ -101,12 +105,17 @@ const resolveModelLabel = (model: {
 export default function DynamicFormItemComponent({
   config,
   field,
+  formValues,
   onFileUploaded,
+  setFormValue,
+  systemContext,
 }: {
   config: IDynamicFormItemSchema;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   field: ControllerRenderProps<any, any>;
+  formValues?: Record<string, unknown>;
   onFileUploaded?: (fileKey: string) => void;
+  setFormValue?: (name: string, value: unknown) => void;
+  systemContext?: Record<string, unknown>;
 }) {
   const [llmModels, setLlmModels] = useState<LLMModel[]>([]);
   const [embeddingModels, setEmbeddingModels] = useState<EmbeddingModel[]>([]);
@@ -126,6 +135,8 @@ export default function DynamicFormItemComponent({
   const { t } = useTranslation();
   const [modelsDialogOpen, setModelsDialogOpen] = useState(false);
   const [secretVisible, setSecretVisible] = useState(false);
+  const [settingsSection, setSettingsSection] =
+    useState<SettingsSection>('models');
 
   const fetchLlmModels = () => {
     httpClient
@@ -138,10 +149,34 @@ export default function DynamicFormItemComponent({
       });
   };
 
+  const fetchEmbeddingModels = () => {
+    httpClient
+      .getProviderEmbeddingModels()
+      .then((resp) => {
+        setEmbeddingModels(resp.models);
+      })
+      .catch((err) => {
+        toast.error(t('embedding.getModelListError') + err.msg);
+      });
+  };
+
+  const fetchRerankModels = () => {
+    httpClient
+      .getProviderRerankModels()
+      .then((resp) => {
+        setRerankModels(resp.models);
+      })
+      .catch((err) => {
+        toast.error('Failed to load rerank models: ' + err.msg);
+      });
+  };
+
   const handleModelsDialogChange = (open: boolean) => {
     setModelsDialogOpen(open);
     if (!open) {
       fetchLlmModels();
+      fetchEmbeddingModels();
+      fetchRerankModels();
     }
   };
 
@@ -209,27 +244,13 @@ export default function DynamicFormItemComponent({
 
   useEffect(() => {
     if (config.type === DynamicFormItemType.EMBEDDING_MODEL_SELECTOR) {
-      httpClient
-        .getProviderEmbeddingModels()
-        .then((resp) => {
-          setEmbeddingModels(resp.models);
-        })
-        .catch((err) => {
-          toast.error(t('embedding.getModelListError') + err.msg);
-        });
+      fetchEmbeddingModels();
     }
   }, [config.type]);
 
   useEffect(() => {
     if (config.type === DynamicFormItemType.RERANK_MODEL_SELECTOR) {
-      httpClient
-        .getProviderRerankModels()
-        .then((resp) => {
-          setRerankModels(resp.models);
-        })
-        .catch((err) => {
-          toast.error('Failed to load rerank models: ' + err.msg);
-        });
+      fetchRerankModels();
     }
   }, [config.type]);
 
@@ -309,13 +330,23 @@ export default function DynamicFormItemComponent({
     }
   }, [config.type]);
 
+  const handleCompositePatch = (patch: Record<string, unknown>) => {
+    for (const [name, value] of Object.entries(patch)) {
+      if (setFormValue) {
+        setFormValue(name, value);
+      } else if (name === field.name) {
+        field.onChange(value);
+      }
+    }
+  };
+
   switch (config.type) {
     case DynamicFormItemType.INT:
     case DynamicFormItemType.FLOAT:
       return (
         <Input
           type="number"
-          className="max-w-xs"
+          className="w-full max-w-xs"
           {...field}
           onChange={(e) => field.onChange(Number(e.target.value))}
         />
@@ -324,8 +355,8 @@ export default function DynamicFormItemComponent({
     case DynamicFormItemType.STRING:
       if (config.options && config.options.length > 0) {
         return (
-          <div className="flex items-center gap-1.5 max-w-md">
-            <Input className="flex-1" {...field} />
+          <div className="flex w-full max-w-md min-w-0 items-center gap-1.5">
+            <Input className="min-w-0 flex-1" {...field} />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -359,7 +390,11 @@ export default function DynamicFormItemComponent({
         );
       }
       return (
-        <Input className="max-w-md" {...field} value={field.value ?? ''} />
+        <Input
+          className="w-full max-w-md"
+          {...field}
+          value={field.value ?? ''}
+        />
       );
 
     case DynamicFormItemType.SECRET:
@@ -408,7 +443,7 @@ export default function DynamicFormItemComponent({
           {...field}
           value={textValue}
           onChange={(e) => field.onChange(e.target.value)}
-          className="min-h-[120px] max-w-2xl"
+          className="min-h-[120px] w-full max-w-full resize-y overflow-x-hidden break-all"
         />
       );
 
@@ -420,11 +455,11 @@ export default function DynamicFormItemComponent({
     case DynamicFormItemType.STRING_ARRAY:
       const arrayValue = Array.isArray(field.value) ? field.value : [];
       return (
-        <div className="space-y-2 max-w-md">
+        <div className="w-full max-w-md min-w-0 space-y-2">
           {arrayValue.map((item: string, index: number) => (
-            <div key={index} className="flex gap-1.5 items-center">
+            <div key={index} className="flex min-w-0 items-center gap-1.5">
               <Input
-                className="flex-1"
+                className="min-w-0 flex-1"
                 value={item ?? ''}
                 onChange={(e) => {
                   const newValue = [
@@ -477,7 +512,7 @@ export default function DynamicFormItemComponent({
           value={typeof field.value === 'string' ? field.value : ''}
           onValueChange={field.onChange}
         >
-          <SelectTrigger className="max-w-md bg-[#ffffff] dark:bg-[#2a2a2e] hover:bg-muted/60 transition-colors">
+          <SelectTrigger className="w-full max-w-md bg-[#ffffff] dark:bg-[#2a2a2e] hover:bg-muted/60 transition-colors">
             {selectedOptionLabel ? (
               <span className="truncate">{selectedOptionLabel}</span>
             ) : (
@@ -499,10 +534,10 @@ export default function DynamicFormItemComponent({
     case DynamicFormItemType.LLM_MODEL_SELECTOR:
       // Separate space models from regular models
       const spaceModels = llmModels.filter(
-        (m) => m.provider?.requester === 'space-chat-completions',
+        (m) => m.provider?.requester === LANGBOT_MODELS_PROVIDER_REQUESTER,
       );
       const regularModels = llmModels.filter(
-        (m) => m.provider?.requester !== 'space-chat-completions',
+        (m) => m.provider?.requester !== LANGBOT_MODELS_PROVIDER_REQUESTER,
       );
 
       // Group regular models by provider
@@ -539,10 +574,10 @@ export default function DynamicFormItemComponent({
       ];
 
       return (
-        <div className="max-w-md flex items-center gap-1.5">
-          <div className="flex-1">
+        <div className="flex w-full max-w-md min-w-0 items-center gap-1.5">
+          <div className="min-w-0 flex-1">
             <Select value={field.value ?? ''} onValueChange={field.onChange}>
-              <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
+              <SelectTrigger className="min-w-0 bg-[#ffffff] dark:bg-[#2a2a2e]">
                 <SelectValue placeholder={t('models.selectModel')} />
               </SelectTrigger>
               <SelectContent>
@@ -603,7 +638,7 @@ export default function DynamicFormItemComponent({
                           </div>
                         ))}
                       {/* Blurred remaining models with login overlay */}
-                      <div className="relative">
+                      <div className="relative min-h-10">
                         <div
                           className="select-none overflow-hidden"
                           style={{ maxHeight: '3rem' }}
@@ -680,23 +715,34 @@ export default function DynamicFormItemComponent({
                 variant="ghost"
                 size="icon"
                 className="h-9 w-9 shrink-0"
-                onClick={() => setModelsDialogOpen(true)}
+                onClick={() => {
+                  setSettingsSection('models');
+                  setModelsDialogOpen(true);
+                }}
               >
                 <Settings className="h-4 w-4 text-muted-foreground" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="right">{t('models.title')}</TooltipContent>
           </Tooltip>
-          <ModelsDialog
+          <SettingsDialog
             open={modelsDialogOpen}
             onOpenChange={handleModelsDialogChange}
+            section={settingsSection}
+            onSectionChange={setSettingsSection}
           />
         </div>
       );
 
-    case DynamicFormItemType.EMBEDDING_MODEL_SELECTOR:
-      // Group embedding models by provider
-      const groupedEmbeddingModels = embeddingModels.reduce(
+    case DynamicFormItemType.EMBEDDING_MODEL_SELECTOR: {
+      const spaceEmbeddingModels = embeddingModels.filter(
+        (m) => m.provider?.requester === LANGBOT_MODELS_PROVIDER_REQUESTER,
+      );
+      const regularEmbeddingModels = embeddingModels.filter(
+        (m) => m.provider?.requester !== LANGBOT_MODELS_PROVIDER_REQUESTER,
+      );
+
+      const groupedEmbeddingModels = regularEmbeddingModels.reduce(
         (acc, model) => {
           const providerName = model.provider?.name || 'Unknown';
           if (!acc[providerName]) acc[providerName] = [];
@@ -706,29 +752,169 @@ export default function DynamicFormItemComponent({
         {} as Record<string, EmbeddingModel[]>,
       );
 
+      const groupedSpaceEmbeddingModels = spaceEmbeddingModels.reduce(
+        (acc, model) => {
+          const providerName =
+            model.provider?.name || model.provider?.requester || 'Unknown';
+          if (!acc[providerName]) acc[providerName] = [];
+          acc[providerName].push(model);
+          return acc;
+        },
+        {} as Record<string, EmbeddingModel[]>,
+      );
+
+      const previewEmbeddingModelNames = [
+        'text-embedding-3-large',
+        'text-embedding-3-small',
+        'bge-m3',
+        'jina-embeddings-v3',
+        'qwen3-embedding-8b',
+      ];
+
       return (
-        <div className="max-w-md">
-          <Select value={field.value ?? ''} onValueChange={field.onChange}>
-            <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
-              <SelectValue placeholder={t('knowledge.selectEmbeddingModel')} />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(groupedEmbeddingModels).map(
-                ([providerName, models]) => (
-                  <SelectGroup key={`embedding-${providerName}`}>
-                    <SelectLabel>{providerName}</SelectLabel>
-                    {models.map((model) => (
-                      <SelectItem key={model.uuid} value={model.uuid}>
-                        {resolveModelLabel(model)}
-                      </SelectItem>
-                    ))}
+        <div className="flex w-full max-w-md min-w-0 items-center gap-1.5">
+          <div className="min-w-0 flex-1">
+            <Select value={field.value ?? ''} onValueChange={field.onChange}>
+              <SelectTrigger className="min-w-0 bg-[#ffffff] dark:bg-[#2a2a2e]">
+                <SelectValue
+                  placeholder={t('knowledge.selectEmbeddingModel')}
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(groupedEmbeddingModels).map(
+                  ([providerName, models]) => (
+                    <SelectGroup key={`embedding-${providerName}`}>
+                      <SelectLabel>{providerName}</SelectLabel>
+                      {models.map((model) => (
+                        <SelectItem key={model.uuid} value={model.uuid}>
+                          {resolveModelLabel(model)}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  ),
+                )}
+                {showSpaceLoginCTA ? (
+                  <SelectGroup>
+                    <SelectLabel>
+                      <span className="inline-flex items-center gap-1.5">
+                        <Sparkles className="h-3.5 w-3.5 text-purple-500" />
+                        {t('models.langbotModels')}
+                        <Tooltip>
+                          <TooltipTrigger
+                            asChild
+                            onMouseDown={(e) => e.preventDefault()}
+                          >
+                            <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-[240px]">
+                            {t('models.spaceTrialTooltip')}
+                          </TooltipContent>
+                        </Tooltip>
+                      </span>
+                    </SelectLabel>
+                    <div
+                      className="relative"
+                      onMouseDown={(e) => e.preventDefault()}
+                    >
+                      {(spaceEmbeddingModels.length > 0
+                        ? spaceEmbeddingModels.map((m) => m.name)
+                        : previewEmbeddingModelNames
+                      )
+                        .slice(0, 3)
+                        .map((name, index) => (
+                          <div
+                            key={`embedding-preview-${name}-${index}`}
+                            className="relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm text-muted-foreground/60"
+                          >
+                            {maybeTranslateKey(name) || name}
+                          </div>
+                        ))}
+                      <div className="relative min-h-10">
+                        <div
+                          className="select-none overflow-hidden"
+                          style={{ maxHeight: '3rem' }}
+                        >
+                          {(spaceEmbeddingModels.length > 0
+                            ? spaceEmbeddingModels.map((m) => m.name)
+                            : previewEmbeddingModelNames
+                          )
+                            .slice(3)
+                            .map((name, index) => (
+                              <div
+                                key={`embedding-preview-blur-${name}-${index}`}
+                                className="flex w-full items-center py-1.5 pl-8 pr-2 text-sm text-muted-foreground/40 blur-[2px]"
+                              >
+                                {maybeTranslateKey(name) || name}
+                              </div>
+                            ))}
+                        </div>
+                        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-transparent to-background/80">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs px-3 gap-1.5 shadow-sm"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleSpaceLogin();
+                            }}
+                          >
+                            <Sparkles className="h-3 w-3" />
+                            {t('models.unlockModels')}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
                   </SelectGroup>
-                ),
-              )}
-            </SelectContent>
-          </Select>
+                ) : !systemInfo.disable_models_service ? (
+                  Object.entries(groupedSpaceEmbeddingModels).map(
+                    ([providerName, models]) => (
+                      <SelectGroup key={`embedding-space-${providerName}`}>
+                        <SelectLabel>
+                          <span className="inline-flex items-center gap-1.5">
+                            <Sparkles className="h-3.5 w-3.5 text-purple-500" />
+                            {providerName}
+                          </span>
+                        </SelectLabel>
+                        {models.map((model) => (
+                          <SelectItem key={model.uuid} value={model.uuid}>
+                            {resolveModelLabel(model)}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    ),
+                  )
+                ) : null}
+              </SelectContent>
+            </Select>
+          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 shrink-0"
+                onClick={() => {
+                  setSettingsSection('models');
+                  setModelsDialogOpen(true);
+                }}
+              >
+                <Settings className="h-4 w-4 text-muted-foreground" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">{t('models.title')}</TooltipContent>
+          </Tooltip>
+          <SettingsDialog
+            open={modelsDialogOpen}
+            onOpenChange={handleModelsDialogChange}
+            section={settingsSection}
+            onSectionChange={setSettingsSection}
+          />
         </div>
       );
+    }
 
     case DynamicFormItemType.RERANK_MODEL_SELECTOR:
       const groupedRerankModels = rerankModels.reduce(
@@ -742,12 +928,12 @@ export default function DynamicFormItemComponent({
       );
 
       return (
-        <div className="max-w-md">
+        <div className="w-full max-w-md min-w-0">
           <Select
             value={field.value || '__none__'}
             onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}
           >
-            <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
+            <SelectTrigger className="min-w-0 bg-[#ffffff] dark:bg-[#2a2a2e]">
               <SelectValue placeholder={t('models.rerank')} />
             </SelectTrigger>
             <SelectContent>
@@ -772,10 +958,10 @@ export default function DynamicFormItemComponent({
     case DynamicFormItemType.MODEL_FALLBACK_SELECTOR: {
       // Separate space models from regular models
       const fbSpaceModels = llmModels.filter(
-        (m) => m.provider?.requester === 'space-chat-completions',
+        (m) => m.provider?.requester === LANGBOT_MODELS_PROVIDER_REQUESTER,
       );
       const fbRegularModels = llmModels.filter(
-        (m) => m.provider?.requester !== 'space-chat-completions',
+        (m) => m.provider?.requester !== LANGBOT_MODELS_PROVIDER_REQUESTER,
       );
 
       // Group regular models by provider
@@ -843,7 +1029,7 @@ export default function DynamicFormItemComponent({
         placeholder: string,
       ) => (
         <Select value={value ?? ''} onValueChange={onChange}>
-          <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
+          <SelectTrigger className="min-w-0 bg-[#ffffff] dark:bg-[#2a2a2e]">
             <SelectValue placeholder={placeholder} />
           </SelectTrigger>
           <SelectContent>
@@ -906,7 +1092,7 @@ export default function DynamicFormItemComponent({
                       </div>
                     ))}
                   {/* Blurred remaining models with login overlay */}
-                  <div className="relative">
+                  <div className="relative min-h-10">
                     <div
                       className="select-none overflow-hidden"
                       style={{ maxHeight: '3rem' }}
@@ -1009,14 +1195,14 @@ export default function DynamicFormItemComponent({
       };
 
       return (
-        <div className="space-y-3">
+        <div className="w-full min-w-0 space-y-3">
           {/* Primary model selector */}
           <div>
             <p className="text-xs text-muted-foreground mb-1">
               {t('models.fallback.primary')}
             </p>
-            <div className="flex items-center gap-1.5">
-              <div className="flex-1">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <div className="min-w-0 flex-1">
                 {renderModelSelect(
                   modelValue.primary,
                   (val) => updateValue({ primary: val }),
@@ -1039,25 +1225,27 @@ export default function DynamicFormItemComponent({
                   {t('models.title')}
                 </TooltipContent>
               </Tooltip>
-              <ModelsDialog
+              <SettingsDialog
                 open={modelsDialogOpen}
                 onOpenChange={handleModelsDialogChange}
+                section={settingsSection}
+                onSectionChange={setSettingsSection}
               />
             </div>
           </div>
 
           {/* Fallback models */}
           {modelValue.fallbacks.length > 0 && (
-            <div className="space-y-2">
+            <div className="min-w-0 space-y-2">
               <p className="text-xs text-muted-foreground">
                 {t('models.fallback.fallbackList')}
               </p>
               {modelValue.fallbacks.map((fbUuid: string, index: number) => (
-                <div key={index} className="flex items-center gap-2">
+                <div key={index} className="flex min-w-0 items-center gap-2">
                   <span className="text-xs text-muted-foreground w-4 shrink-0">
                     {index + 1}.
                   </span>
-                  <div className="flex-1">
+                  <div className="min-w-0 flex-1">
                     {renderModelSelect(
                       fbUuid,
                       (val) => updateFallbackModel(index, val),
@@ -1137,20 +1325,22 @@ export default function DynamicFormItemComponent({
           value={field.value ?? '__none__'}
           onValueChange={field.onChange}
         >
-          <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
+          <SelectTrigger className="min-w-0 bg-[#ffffff] dark:bg-[#2a2a2e]">
             {field.value && field.value !== '__none__' ? (
               (() => {
                 const selectedKb = knowledgeBases.find(
                   (kb) => kb.uuid === field.value,
                 );
                 return (
-                  <div className="flex items-center gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
                     {selectedKb?.emoji && (
                       <span className="text-sm shrink-0">
                         {selectedKb.emoji}
                       </span>
                     )}
-                    <span>{selectedKb?.name ?? field.value}</span>
+                    <span className="truncate">
+                      {selectedKb?.name ?? field.value}
+                    </span>
                   </div>
                 );
               })()
@@ -1204,9 +1394,9 @@ export default function DynamicFormItemComponent({
 
       return (
         <>
-          <div className="space-y-2">
+          <div className="min-w-0 space-y-2">
             {safeValue.length > 0 ? (
-              <div className="space-y-2">
+              <div className="min-w-0 space-y-2">
                 {safeValue.map((kbId: string) => {
                   const currentKb = knowledgeBases.find(
                     (base) => base.uuid === kbId,
@@ -1216,17 +1406,17 @@ export default function DynamicFormItemComponent({
                   return (
                     <div
                       key={kbId}
-                      className="flex items-center justify-between rounded-lg border p-3 hover:bg-accent"
+                      className="flex min-w-0 items-center justify-between rounded-lg border p-3 hover:bg-accent"
                     >
-                      <div className="flex items-center gap-2 flex-1">
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium flex items-center gap-2">
+                          <div className="flex min-w-0 items-center gap-2 font-medium">
                             {currentKb.emoji && (
                               <span className="text-sm shrink-0">
                                 {currentKb.emoji}
                               </span>
                             )}
-                            {currentKb.name}
+                            <span className="truncate">{currentKb.name}</span>
                             {currentKb.knowledge_engine?.name && (
                               <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300">
                                 {resolveI18nLabel(
@@ -1236,7 +1426,7 @@ export default function DynamicFormItemComponent({
                             )}
                           </div>
                           {currentKb.description && (
-                            <div className="text-sm text-muted-foreground">
+                            <div className="text-sm break-words text-muted-foreground">
                               {currentKb.description}
                             </div>
                           )}
@@ -1359,7 +1549,7 @@ export default function DynamicFormItemComponent({
     case DynamicFormItemType.BOT_SELECTOR:
       return (
         <Select value={field.value ?? ''} onValueChange={field.onChange}>
-          <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
+          <SelectTrigger className="min-w-0 bg-[#ffffff] dark:bg-[#2a2a2e]">
             <SelectValue placeholder={t('bots.selectBot')} />
           </SelectTrigger>
           <SelectContent>
@@ -1451,9 +1641,9 @@ export default function DynamicFormItemComponent({
     case DynamicFormItemType.TOOLS_SELECTOR:
       return (
         <>
-          <div className="space-y-2">
+          <div className="min-w-0 space-y-2">
             {field.value && field.value.length > 0 ? (
-              <div className="space-y-2">
+              <div className="min-w-0 space-y-2">
                 {field.value.map((toolName: string) => {
                   const currentTool = tools.find(
                     (tool) => tool.name === toolName,
@@ -1462,12 +1652,12 @@ export default function DynamicFormItemComponent({
                   return (
                     <div
                       key={toolName}
-                      className="flex items-center justify-between rounded-lg border p-3 hover:bg-accent"
+                      className="flex min-w-0 items-center justify-between rounded-lg border p-3 hover:bg-accent"
                     >
-                      <div className="flex items-center gap-2 flex-1">
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
                         <Wrench className="h-4 w-4 shrink-0 text-muted-foreground" />
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium">{toolName}</div>
+                          <div className="truncate font-medium">{toolName}</div>
                           {currentTool?.human_desc && (
                             <div className="text-sm text-muted-foreground truncate">
                               {currentTool.human_desc}
@@ -1581,6 +1771,32 @@ export default function DynamicFormItemComponent({
         </>
       );
 
+    case DynamicFormItemType.RICH_TOOLS_SELECTOR:
+      return (
+        <ToolResourceSelectors
+          mode="tools"
+          pipelineId={systemContext?.pipeline_id as string | undefined}
+          value={{
+            ...(formValues || {}),
+            [field.name]: field.value,
+          }}
+          onChange={handleCompositePatch}
+        />
+      );
+
+    case DynamicFormItemType.RESOURCES_SELECTOR:
+      return (
+        <ToolResourceSelectors
+          mode="resources"
+          pipelineId={systemContext?.pipeline_id as string | undefined}
+          value={{
+            ...(formValues || {}),
+            [field.name]: field.value,
+          }}
+          onChange={handleCompositePatch}
+        />
+      );
+
     case DynamicFormItemType.PROMPT_EDITOR: {
       // Guard: field.value may be undefined when the form resets or
       // initialValues haven't propagated yet. Fall back to a default
@@ -1591,13 +1807,16 @@ export default function DynamicFormItemComponent({
         ? field.value
         : [{ role: 'system', content: '' }];
       return (
-        <div className="space-y-2">
+        <div className="min-w-0 space-y-2">
           {promptItems.map(
             (item: { role: string; content: string }, index: number) => (
-              <div key={index} className="flex gap-2 items-center">
+              <div
+                key={index}
+                className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center"
+              >
                 {/* 角色选择 */}
                 {index === 0 ? (
-                  <div className="w-[120px] px-3 py-2 border rounded bg-gray-50 dark:bg-[#2a292e] text-gray-500 dark:text-white dark:border-gray-600">
+                  <div className="w-full shrink-0 rounded border bg-gray-50 px-3 py-2 text-gray-500 sm:w-[120px] dark:border-gray-600 dark:bg-[#2a292e] dark:text-white">
                     system
                   </div>
                 ) : (
@@ -1622,7 +1841,7 @@ export default function DynamicFormItemComponent({
                 )}
                 {/* 内容输入 */}
                 <Textarea
-                  className="w-[300px]"
+                  className="min-h-20 w-full min-w-0 flex-1 resize-y overflow-x-hidden break-all sm:w-[300px]"
                   value={item.content}
                   onChange={(e) => {
                     const newValue = [...(field.value ?? promptItems)];
@@ -1640,20 +1859,12 @@ export default function DynamicFormItemComponent({
                     className="p-2 hover:bg-gray-100 rounded"
                     onClick={() => {
                       const newValue = (field.value ?? promptItems).filter(
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         (_: any, i: number) => i !== index,
                       );
                       field.onChange(newValue);
                     }}
                   >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                      className="w-5 h-5 text-red-500"
-                    >
-                      <path d="M7 4V2H17V4H22V6H20V21C20 21.5523 19.5523 22 19 22H5C4.44772 22 4 21.5523 4 21V6H2V4H7ZM6 6V20H18V6H6ZM9 9H11V17H9V9ZM13 9H15V17H13V9Z"></path>
-                    </svg>
+                    <Trash2 className="w-5 h-5 text-red-500" />
                   </button>
                 )}
               </div>
@@ -1704,14 +1915,7 @@ export default function DynamicFormItemComponent({
                   }}
                   title={t('common.delete')}
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                    className="w-4 h-4 text-destructive"
-                  >
-                    <path d="M7 4V2H17V4H22V6H20V21C20 21.5523 19.5523 22 19 22H5C4.44772 22 4 21.5523 4 21V6H2V4H7ZM6 6V20H18V6H6ZM9 9H11V17H9V9ZM13 9H15V17H13V9Z"></path>
-                  </svg>
+                  <Trash2 className="w-4 h-4 text-destructive" />
                 </Button>
               </CardContent>
             </Card>
@@ -1743,14 +1947,7 @@ export default function DynamicFormItemComponent({
                   document.getElementById(`file-input-${config.name}`)?.click()
                 }
               >
-                <svg
-                  className="w-4 h-4 mr-2"
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                >
-                  <path d="M11 11V5H13V11H19V13H13V19H11V13H5V11H11Z"></path>
-                </svg>
+                <Plus className="w-4 h-4 mr-2" />
                 {uploading
                   ? t('plugins.fileUpload.uploading')
                   : t('plugins.fileUpload.chooseFile')}
@@ -1796,14 +1993,7 @@ export default function DynamicFormItemComponent({
                     }}
                     title={t('common.delete')}
                   >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                      className="w-4 h-4 text-destructive"
-                    >
-                      <path d="M7 4V2H17V4H22V6H20V21C20 21.5523 19.5523 22 19 22H5C4.44772 22 4 21.5523 4 21V6H2V4H7ZM6 6V20H18V6H6ZM9 9H11V17H9V9ZM13 9H15V17H13V9Z"></path>
-                    </svg>
+                    <Trash2 className="w-4 h-4 text-destructive" />
                   </Button>
                 </CardContent>
               </Card>
@@ -1838,14 +2028,7 @@ export default function DynamicFormItemComponent({
                   ?.click()
               }
             >
-              <svg
-                className="w-4 h-4 mr-2"
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
-                <path d="M11 11V5H13V11H19V13H13V19H11V13H5V11H11Z"></path>
-              </svg>
+              <Plus className="w-4 h-4 mr-2" />
               {uploading
                 ? t('plugins.fileUpload.uploading')
                 : t('plugins.fileUpload.addFile')}

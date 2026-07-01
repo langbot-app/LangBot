@@ -49,6 +49,7 @@ def mock_circular_import_chain():
         clear=clear,
     ):
         import langbot.pkg.api.http.controller.groups.knowledge.base as _knowledge  # noqa: E402, F401
+
         yield
 
 
@@ -57,10 +58,12 @@ def fake_knowledge_app():
     """Create FakeApp with knowledge services (module scope for reuse)."""
     app = FakeApp()
 
-    app.instance_config.data.update({
-        'api': {'port': 5300},
-        'system': {'allow_modify_login_info': True, 'limitation': {}},
-    })
+    app.instance_config.data.update(
+        {
+            'api': {'port': 5300},
+            'system': {'allow_modify_login_info': True, 'limitation': {}},
+        }
+    )
 
     # Auth services
     app.user_service = Mock()
@@ -72,33 +75,35 @@ def fake_knowledge_app():
 
     # Knowledge service
     app.knowledge_service = Mock()
-    app.knowledge_service.get_knowledge_bases = AsyncMock(return_value=[
-        {
+    app.knowledge_service.get_knowledge_bases = AsyncMock(
+        return_value=[
+            {
+                'uuid': 'test-kb-uuid',
+                'name': 'Test Knowledge Base',
+                'description': 'Test KB description',
+                'engine_plugin_id': 'test/engine',
+                'created_at': '2024-01-01T00:00:00',
+                'updated_at': '2024-01-01T00:00:00',
+            }
+        ]
+    )
+    app.knowledge_service.get_knowledge_base = AsyncMock(
+        return_value={
             'uuid': 'test-kb-uuid',
             'name': 'Test Knowledge Base',
             'description': 'Test KB description',
             'engine_plugin_id': 'test/engine',
-            'created_at': '2024-01-01T00:00:00',
-            'updated_at': '2024-01-01T00:00:00',
         }
-    ])
-    app.knowledge_service.get_knowledge_base = AsyncMock(return_value={
-        'uuid': 'test-kb-uuid',
-        'name': 'Test Knowledge Base',
-        'description': 'Test KB description',
-        'engine_plugin_id': 'test/engine',
-    })
+    )
     app.knowledge_service.create_knowledge_base = AsyncMock(return_value={'uuid': 'new-kb-uuid'})
     app.knowledge_service.update_knowledge_base = AsyncMock(return_value={})
     app.knowledge_service.delete_knowledge_base = AsyncMock()
-    app.knowledge_service.get_files_by_knowledge_base = AsyncMock(return_value=[
-        {'uuid': 'test-file-uuid', 'filename': 'test.pdf'}
-    ])
+    app.knowledge_service.get_files_by_knowledge_base = AsyncMock(
+        return_value=[{'uuid': 'test-file-uuid', 'filename': 'test.pdf'}]
+    )
     app.knowledge_service.store_file = AsyncMock(return_value={'task_id': 'test-task-id'})
     app.knowledge_service.delete_file = AsyncMock()
-    app.knowledge_service.retrieve_knowledge_base = AsyncMock(return_value=[
-        {'content': 'test result', 'score': 0.95}
-    ])
+    app.knowledge_service.retrieve_knowledge_base = AsyncMock(return_value=[{'content': 'test result', 'score': 0.95}])
 
     # RAG manager
     app.rag_mgr = Mock()
@@ -124,8 +129,7 @@ class TestKnowledgeBaseEndpoints:
     async def test_get_knowledge_bases_success(self, quart_test_client):
         """GET /api/v1/knowledge/bases returns knowledge base list."""
         response = await quart_test_client.get(
-            '/api/v1/knowledge/bases',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/knowledge/bases', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -140,7 +144,7 @@ class TestKnowledgeBaseEndpoints:
         response = await quart_test_client.post(
             '/api/v1/knowledge/bases',
             headers={'Authorization': 'Bearer test_token'},
-            json={'name': 'New KB', 'engine_plugin_id': 'test/engine'}
+            json={'name': 'New KB', 'engine_plugin_id': 'test/engine'},
         )
 
         assert response.status_code == 200
@@ -152,8 +156,7 @@ class TestKnowledgeBaseEndpoints:
     async def test_get_single_knowledge_base_success(self, quart_test_client):
         """GET /api/v1/knowledge/bases/{uuid} returns knowledge base."""
         response = await quart_test_client.get(
-            '/api/v1/knowledge/bases/test-kb-uuid',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/knowledge/bases/test-kb-uuid', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -167,7 +170,7 @@ class TestKnowledgeBaseEndpoints:
         response = await quart_test_client.put(
             '/api/v1/knowledge/bases/test-kb-uuid',
             headers={'Authorization': 'Bearer test_token'},
-            json={'name': 'Updated KB'}
+            json={'name': 'Updated KB'},
         )
 
         assert response.status_code == 200
@@ -178,8 +181,7 @@ class TestKnowledgeBaseEndpoints:
     async def test_delete_knowledge_base_success(self, quart_test_client):
         """DELETE /api/v1/knowledge/bases/{uuid} deletes knowledge base."""
         response = await quart_test_client.delete(
-            '/api/v1/knowledge/bases/test-kb-uuid',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/knowledge/bases/test-kb-uuid', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -193,8 +195,7 @@ class TestKnowledgeBaseFilesEndpoints:
     async def test_get_files_success(self, quart_test_client):
         """GET /api/v1/knowledge/bases/{uuid}/files returns files."""
         response = await quart_test_client.get(
-            '/api/v1/knowledge/bases/test-kb-uuid/files',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/knowledge/bases/test-kb-uuid/files', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -208,7 +209,7 @@ class TestKnowledgeBaseFilesEndpoints:
         response = await quart_test_client.post(
             '/api/v1/knowledge/bases/test-kb-uuid/files',
             headers={'Authorization': 'Bearer test_token'},
-            json={'file_id': 'test-file-id', 'parser_plugin_id': 'test/parser'}
+            json={'file_id': 'test-file-id', 'parser_plugin_id': 'test/parser'},
         )
 
         assert response.status_code == 200
@@ -220,8 +221,7 @@ class TestKnowledgeBaseFilesEndpoints:
     async def test_delete_file_from_knowledge_base(self, quart_test_client):
         """DELETE /api/v1/knowledge/bases/{uuid}/files/{file_id}."""
         response = await quart_test_client.delete(
-            '/api/v1/knowledge/bases/test-kb-uuid/files/test-file-uuid',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/knowledge/bases/test-kb-uuid/files/test-file-uuid', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -237,7 +237,7 @@ class TestKnowledgeBaseRetrieveEndpoint:
         response = await quart_test_client.post(
             '/api/v1/knowledge/bases/test-kb-uuid/retrieve',
             headers={'Authorization': 'Bearer test_token'},
-            json={'query': 'test query', 'retrieval_settings': {'top_k': 5}}
+            json={'query': 'test query', 'retrieval_settings': {'top_k': 5}},
         )
 
         assert response.status_code == 200
@@ -249,9 +249,7 @@ class TestKnowledgeBaseRetrieveEndpoint:
     async def test_retrieve_without_query_returns_error(self, quart_test_client):
         """POST retrieve without query returns 400."""
         response = await quart_test_client.post(
-            '/api/v1/knowledge/bases/test-kb-uuid/retrieve',
-            headers={'Authorization': 'Bearer test_token'},
-            json={}
+            '/api/v1/knowledge/bases/test-kb-uuid/retrieve', headers={'Authorization': 'Bearer test_token'}, json={}
         )
 
         assert response.status_code == 400

@@ -20,6 +20,15 @@ class UserService:
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
         self._create_user_lock = asyncio.Lock()
+        self._password_hash_lock = asyncio.Semaphore(1)
+
+    async def _hash_password(self, password: str) -> str:
+        async with self._password_hash_lock:
+            return await asyncio.to_thread(argon2.PasswordHasher().hash, password)
+
+    async def _verify_password(self, hashed_password: str, password: str) -> None:
+        async with self._password_hash_lock:
+            await asyncio.to_thread(argon2.PasswordHasher().verify, hashed_password, password)
 
     async def is_initialized(self) -> bool:
         result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(user.User).limit(1))
@@ -28,9 +37,7 @@ class UserService:
         return result_list is not None and len(result_list) > 0
 
     async def create_user(self, user_email: str, password: str) -> None:
-        ph = argon2.PasswordHasher()
-
-        hashed_password = ph.hash(password)
+        hashed_password = await self._hash_password(password)
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.insert(user.User).values(user=user_email, password=hashed_password, account_type='local')
@@ -69,9 +76,7 @@ class UserService:
         if not user_obj.password:
             raise ValueError('请使用 Space 账户登录')
 
-        ph = argon2.PasswordHasher()
-
-        ph.verify(user_obj.password, password)
+        await self._verify_password(user_obj.password, password)
 
         return await self.generate_jwt_token(user_email)
 
@@ -82,7 +87,7 @@ class UserService:
         payload = {
             'user': user_email,
             'iss': 'LangBot-' + constants.edition,
-            'exp': datetime.datetime.now() + datetime.timedelta(seconds=jwt_expire),
+            'exp': datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=jwt_expire),
         }
 
         return jwt.encode(payload, jwt_secret, algorithm='HS256')
@@ -93,17 +98,13 @@ class UserService:
         return jwt.decode(token, jwt_secret, algorithms=['HS256'])['user']
 
     async def reset_password(self, user_email: str, new_password: str) -> None:
-        ph = argon2.PasswordHasher()
-
-        hashed_password = ph.hash(new_password)
+        hashed_password = await self._hash_password(new_password)
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(user.User).where(user.User.user == user_email).values(password=hashed_password)
         )
 
     async def change_password(self, user_email: str, current_password: str, new_password: str) -> None:
-        ph = argon2.PasswordHasher()
-
         user_obj = await self.get_user_by_email(user_email)
         if user_obj is None:
             raise ValueError('User not found')
@@ -111,9 +112,9 @@ class UserService:
         if not user_obj.password:
             raise ValueError('No local password set, please set a password first')
 
-        ph.verify(user_obj.password, current_password)
+        await self._verify_password(user_obj.password, current_password)
 
-        hashed_password = ph.hash(new_password)
+        hashed_password = await self._hash_password(new_password)
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(user.User).where(user.User.user == user_email).values(password=hashed_password)
@@ -232,7 +233,6 @@ class UserService:
 
     async def set_password(self, user_email: str, new_password: str, current_password: str | None = None) -> None:
         """Set or change password for a user"""
-        ph = argon2.PasswordHasher()
         user_obj = await self.get_user_by_email(user_email)
 
         if user_obj is None:
@@ -243,9 +243,9 @@ class UserService:
         if has_password:
             if not current_password:
                 raise ValueError('Current password is required')
-            ph.verify(user_obj.password, current_password)
+            await self._verify_password(user_obj.password, current_password)
 
-        hashed_password = ph.hash(new_password)
+        hashed_password = await self._hash_password(new_password)
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(user.User).where(user.User.user == user_email).values(password=hashed_password)
         )

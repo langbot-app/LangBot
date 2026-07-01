@@ -22,8 +22,11 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "qiniu 七牛 七牛云 qiniu-cloud kodo ai推理 bge embedding rerank"
   support_type:
   - llm
+  - text-embedding
+  - rerank
   provider_category: maas
 execution:
   python:

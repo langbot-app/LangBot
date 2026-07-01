@@ -1,0 +1,70 @@
+id: agent-runner-qa-debug-chat
+title: "QA AgentRunner returns deterministic output through Debug Chat"
+mode: agent-browser
+area: pipeline
+type: regression
+priority: p0
+risk: high
+ci_eligible: false
+tags:
+  - agent-runner
+  - pipeline
+  - debug-chat
+  - fixture
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_QA_AGENT_RUNNER_PIPELINE_URL
+  - LANGBOT_QA_AGENT_RUNNER_PIPELINE_NAME
+automation: scripts/e2e/pipeline-debug-chat.mjs
+automation_env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+  - LANGBOT_QA_AGENT_RUNNER_PIPELINE_URL
+  - LANGBOT_QA_AGENT_RUNNER_PIPELINE_NAME
+automation_pipeline_url_env: LANGBOT_QA_AGENT_RUNNER_PIPELINE_URL
+automation_pipeline_name_env: LANGBOT_QA_AGENT_RUNNER_PIPELINE_NAME
+automation_expected_runner_id: "plugin:qa/agent-runner/default"
+automation_prompt: "hello-live"
+automation_expected_text: "QA_AGENT_RUNNER_OK:hello-live"
+automation_response_timeout_ms: "120000"
+automation_reset_debug_chat: "1"
+setup_automation:
+  - "case:agent-runner-live-install"
+  - "node:scripts/e2e/ensure-qa-agent-runner-pipeline.mjs --write-env"
+setup_provides_env:
+  - LANGBOT_QA_AGENT_RUNNER_PIPELINE_URL
+  - LANGBOT_QA_AGENT_RUNNER_PIPELINE_NAME
+steps:
+  - "Open LANGBOT_FRONTEND_URL."
+  - "Open the pipeline from LANGBOT_QA_AGENT_RUNNER_PIPELINE_URL or LANGBOT_QA_AGENT_RUNNER_PIPELINE_NAME."
+  - "Confirm the pipeline AI runner is plugin:qa/agent-runner/default."
+  - "Open Debug Chat."
+  - "Send: hello-live."
+checks:
+  - "UI: The user message appears in Debug Chat."
+  - "UI: A Bot message appears and contains QA_AGENT_RUNNER_OK:hello-live."
+  - "API diagnostic: pipeline config uses plugin:qa/agent-runner/default."
+  - "Console: No unexpected frontend runtime errors appear during the send/receive path."
+evidence_required:
+  - ui
+  - screenshot
+  - console
+  - network
+  - api_diagnostic
+diagnostics:
+  - "This is the deterministic live execution proof that sits after fixture contract and live install."
+  - "If the runner id mismatch is reported, rerun ensure-qa-agent-runner-pipeline.mjs --write-env."
+success_patterns:
+  - "QA_AGENT_RUNNER_OK:hello-live"
+failure_patterns:
+  - "plugin:qa/agent-runner/default execution failed"
+  - "Action invoke_llm_stream call timed out"
+  - "Agent runner temporarily unavailable"
+troubleshooting:
+  - plugin-runtime-timeout

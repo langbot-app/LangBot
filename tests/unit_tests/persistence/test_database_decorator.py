@@ -7,6 +7,7 @@ Tests cover:
 
 Note: Uses import isolation to break circular import chains.
 """
+
 from __future__ import annotations
 
 import sys
@@ -86,6 +87,7 @@ def get_database_module():
     """Get database module with import isolation."""
     with isolated_database_import():
         from langbot.pkg.persistence import database
+
         return database
 
 

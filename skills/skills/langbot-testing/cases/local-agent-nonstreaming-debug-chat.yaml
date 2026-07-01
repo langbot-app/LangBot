@@ -1,0 +1,64 @@
+id: local-agent-nonstreaming-debug-chat
+title: "Local Agent Debug Chat returns a deterministic non-streaming response"
+mode: agent-browser
+area: pipeline
+type: regression
+priority: p1
+risk: medium
+ci_eligible: false
+tags:
+  - local-agent
+  - pipeline
+  - non-streaming
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation: scripts/e2e/pipeline-debug-chat.mjs
+automation_env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_pipeline_url_env: LANGBOT_LOCAL_AGENT_PIPELINE_URL
+automation_pipeline_name_env: LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_prompt: "Reply only NONSTREAM_OK."
+automation_expected_text: "NONSTREAM_OK"
+automation_stream_output: "0"
+setup_automation:
+  - "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env"
+setup_provides_env:
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+steps:
+  - "Open LANGBOT_FRONTEND_URL."
+  - "Navigate to Pipelines and open the target local-agent pipeline."
+  - "Open Configuration > AI."
+  - "Use runner Default or the pluginized langbot/local-agent runner."
+  - "Select a model that is known to answer Debug Chat in the current environment."
+  - "Save the pipeline."
+  - "Open Debug Chat."
+  - "Disable the stream switch when the UI exposes it."
+  - "Send: Reply only NONSTREAM_OK."
+checks:
+  - "UI: The user message appears in Debug Chat."
+  - "UI: A Bot message appears and contains NONSTREAM_OK."
+  - "Logs: Backend completes the request as a normal response rather than only relying on the streaming-completed path."
+  - "Console: No unexpected frontend runtime errors appear during the send/receive path."
+evidence_required:
+  - ui
+  - console
+  - backend_log
+diagnostics:
+  - "If the UI still streams after the switch is disabled, inspect the adapter streaming capability and runner config before diagnosing the model."
+  - "Use GET /api/v1/pipelines/{uuid} only to confirm the saved runner and model config."
+troubleshooting:
+  - local-agent-model-route-unavailable
+  - plugin-runtime-timeout
+  - proxy-env-mismatch
+  - survey-widget-blocks-debug-chat

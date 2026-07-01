@@ -3,6 +3,7 @@ from __future__ import annotations
 import typing
 import traceback
 
+from langbot_plugin.api.definition.components.manifest import ComponentManifest
 from langbot_plugin.api.entities.events import pipeline_query
 
 from .. import loader
@@ -32,6 +33,24 @@ class PluginToolLoader(loader.ToolLoader):
 
         return all_functions
 
+    async def get_tool_catalog(self, bound_plugins: list[str] | None = None) -> list[dict[str, typing.Any]]:
+        catalog: list[dict[str, typing.Any]] = []
+
+        for tool in await self.ap.plugin_connector.list_tools(bound_plugins):
+            catalog.append(
+                {
+                    'name': tool.metadata.name,
+                    'description': tool.spec['llm_prompt'],
+                    'human_desc': tool.metadata.description.en_US,
+                    'parameters': tool.spec['parameters'],
+                    'source': 'plugin',
+                    'source_name': tool.owner,
+                    'source_id': tool.owner,
+                }
+            )
+
+        return catalog
+
     async def has_tool(self, name: str) -> bool:
         """检查工具是否存在"""
         for tool in await self.ap.plugin_connector.list_tools():
@@ -39,7 +58,7 @@ class PluginToolLoader(loader.ToolLoader):
                 return True
         return False
 
-    async def _get_tool(self, name: str) -> resource_tool.LLMTool:
+    async def get_tool(self, name: str) -> ComponentManifest | None:
         for tool in await self.ap.plugin_connector.list_tools():
             if tool.metadata.name == name:
                 return tool

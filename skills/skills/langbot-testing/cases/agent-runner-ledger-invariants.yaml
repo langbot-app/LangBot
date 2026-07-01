@@ -1,0 +1,35 @@
+id: agent-runner-ledger-invariants
+title: "AgentRunner ledger schema and status invariants probe"
+mode: probe
+area: release
+type: regression
+priority: p0
+risk: high
+ci_eligible: true
+tags:
+  - agent-runner
+  - probe
+  - ledger
+  - invariant
+skills:
+  - langbot-testing
+env:
+automation: skills/langbot-testing/probes/agent-runner-ledger-invariants.mjs
+steps:
+  - "Run `rtk bin/lbs test run agent-runner-ledger-invariants --dry-run` first; remove `--dry-run` after checking the planned evidence directory."
+  - "Automation resolves LANGBOT_REPO, defaulting to ../LangBot, and imports the sibling SDK from LANGBOT_PLUGIN_SDK_REPO or ../langbot-plugin-sdk/src."
+  - "Automation checks run status sets, terminal status validation, ledger table/index DDL, and a minimal synchronous insert/read path."
+checks:
+  - "automation-result.json status is pass."
+  - "probe-stdout.log contains LEDGER_INVARIANTS_OK."
+  - "The probe does not require aiosqlite or browser UI."
+evidence_required:
+  - filesystem
+diagnostics:
+  - "env_issue means LANGBOT_REPO/default ../LangBot did not resolve or Python dependencies are unavailable."
+  - "fail means a ledger schema/status invariant changed and the release gate needs review."
+success_patterns:
+  - "LEDGER_INVARIANTS_OK"
+failure_patterns:
+  - "AssertionError"
+  - "ledger invariant probe exited"

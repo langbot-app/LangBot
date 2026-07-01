@@ -3,10 +3,12 @@ from __future__ import annotations
 import typing
 
 from .. import entities
+from .. import plugin_diagnostics
 from .. import stage
 
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.events as events
 
 
@@ -23,6 +25,50 @@ class ResponseWrapper(stage.PipelineStage):
     async def initialize(self, pipeline_config: dict):
         pass
 
+    def _is_final_assistant_message(self, result) -> bool:
+        """Whether *result* is the agent's final, tool-call-free answer.
+
+        Intermediate streaming chunks and tool-call rounds must NOT trigger
+        outbound attachment collection — only the terminal assistant message.
+        """
+        if getattr(result, 'role', None) != 'assistant':
+            return False
+        if result.tool_calls:
+            return False
+        if isinstance(result, provider_message.MessageChunk):
+            return bool(result.is_final)
+        return True
+
+    async def _append_outbound_attachments(
+        self,
+        query: pipeline_query.Query,
+        message_chain: platform_message.MessageChain,
+    ) -> None:
+        """Collect sandbox outbox files and append them to *message_chain*.
+
+        Runs at most once per query (guarded by a query variable) and never
+        raises into the pipeline — attachment delivery is best-effort.
+        """
+        if query.variables.get('_sandbox_outbound_collected'):
+            return
+        box_service = getattr(self.ap, 'box_service', None)
+        if box_service is None or not getattr(box_service, 'available', False):
+            return
+        query.variables['_sandbox_outbound_collected'] = True
+        try:
+            attachments = await box_service.collect_outbound_attachments(query)
+        except Exception as e:
+            self.ap.logger.warning(f'Outbound attachment collection failed: {e}')
+            return
+        for att in attachments:
+            att_type = att.get('type')
+            if att_type == 'Image':
+                message_chain.append(platform_message.Image(base64=att['base64']))
+            elif att_type == 'Voice':
+                message_chain.append(platform_message.Voice(base64=att['base64']))
+            else:
+                message_chain.append(platform_message.File(name=att.get('name', 'file'), base64=att['base64']))
+
     async def process(
         self,
         query: pipeline_query.Query,
@@ -33,6 +79,11 @@ class ResponseWrapper(stage.PipelineStage):
         # 如果 resp_messages[-1] 已经是 MessageChain 了
         if isinstance(query.resp_messages[-1], platform_message.MessageChain):
             query.resp_message_chain.append(query.resp_messages[-1])
+            plugin_diagnostics.consume_pending_plugin_response_source(
+                query,
+                query.resp_messages[-1],
+                len(query.resp_message_chain) - 1,
+            )
 
             yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
@@ -83,10 +134,25 @@ class ResponseWrapper(stage.PipelineStage):
                             )
                         else:
                             if event_ctx.event.reply_message_chain is not None:
-                                query.resp_message_chain.append(event_ctx.event.reply_message_chain)
-
+                                reply_chain = event_ctx.event.reply_message_chain
+                                is_plugin_reply = True
                             else:
-                                query.resp_message_chain.append(result.get_content_platform_message_chain())
+                                reply_chain = result.get_content_platform_message_chain()
+                                is_plugin_reply = False
+
+                            # Attach files the agent produced in the sandbox
+                            # outbox, but only on the terminal assistant message.
+                            if self._is_final_assistant_message(result):
+                                await self._append_outbound_attachments(query, reply_chain)
+
+                            query.resp_message_chain.append(reply_chain)
+                            if is_plugin_reply:
+                                plugin_diagnostics.record_last_plugin_response_source(
+                                    query,
+                                    plugin_diagnostics.get_response_sources(event_ctx),
+                                    plugin_diagnostics.get_emitted_plugins(event_ctx),
+                                    event.event_name,
+                                )
 
                             yield entities.StageProcessResult(
                                 result_type=entities.ResultType.CONTINUE,
@@ -129,6 +195,12 @@ class ResponseWrapper(stage.PipelineStage):
                             else:
                                 if event_ctx.event.reply_message_chain is not None:
                                     query.resp_message_chain.append(event_ctx.event.reply_message_chain)
+                                    plugin_diagnostics.record_last_plugin_response_source(
+                                        query,
+                                        plugin_diagnostics.get_response_sources(event_ctx),
+                                        plugin_diagnostics.get_emitted_plugins(event_ctx),
+                                        event.event_name,
+                                    )
 
                                 else:
                                     query.resp_message_chain.append(

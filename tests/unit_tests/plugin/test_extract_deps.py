@@ -6,6 +6,7 @@ Tests cover:
 - Handling missing requirements.txt
 - Handling empty/malformed requirements.txt
 """
+
 from __future__ import annotations
 
 import zipfile
@@ -82,13 +83,13 @@ class TestExtractDepsMetadata:
         """Test that comments and empty lines are filtered."""
         connector_instance = create_mock_connector()
 
-        requirements = '''# This is a comment
+        requirements = """# This is a comment
 requests>=2.0
 
 # Another comment
 flask==1.0
 
-numpy'''
+numpy"""
         zip_bytes = create_zip_with_requirements(requirements)
 
         task_context = Mock()
@@ -147,9 +148,9 @@ numpy'''
         """Test handling requirements.txt with only comments."""
         connector_instance = create_mock_connector()
 
-        requirements = '''# Comment 1
+        requirements = """# Comment 1
 # Comment 2
-# Comment 3'''
+# Comment 3"""
         zip_bytes = create_zip_with_requirements(requirements)
 
         task_context = Mock()

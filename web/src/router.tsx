@@ -19,148 +19,182 @@ import BotsPage from '@/app/home/bots/page';
 import PipelinesPage from '@/app/home/pipelines/page';
 import WorkflowsPage from '@/app/home/workflows/page';
 import PluginsPage from '@/app/home/plugins/page';
-import MarketPage from '@/app/home/market/page';
+import AddExtensionPage from '@/app/home/add-extension/page';
 import MCPPage from '@/app/home/mcp/page';
 import KnowledgePage from '@/app/home/knowledge/page';
+import SkillsPage from '@/app/home/skills/page';
+import ErrorPage from '@/components/ErrorPage';
+import BackendUnavailablePage from '@/components/BackendUnavailablePage';
 import PluginPagesPage from '@/app/home/plugin-pages/page';
+import RootLayout from '@/app/RootLayout';
 
 const Loading = () => <div>Loading...</div>;
 
 export const router = createBrowserRouter([
   {
-    path: '/',
-    element: <Navigate to="/login" replace />,
-  },
-  {
-    path: '/login',
-    element: (
-      <LoginLayout>
-        <LoginPage />
-      </LoginLayout>
-    ),
-  },
-  {
-    path: '/register',
-    element: (
-      <RegisterLayout>
-        <RegisterPage />
-      </RegisterLayout>
-    ),
-  },
-  {
-    path: '/reset-password',
-    element: (
-      <ResetPasswordLayout>
-        <ResetPasswordPage />
-      </ResetPasswordLayout>
-    ),
-  },
-  {
-    path: '/wizard',
-    element: <WizardPage />,
-  },
-  {
-    path: '/auth/space/callback',
-    element: <SpaceCallbackPage />,
-  },
-  {
-    path: '/home',
-    element: (
-      <Suspense fallback={<Loading />}>
-        <HomeLayout>
-          <HomePage />
-        </HomeLayout>
-      </Suspense>
-    ),
-  },
-  {
-    path: '/home/monitoring',
-    element: (
-      <Suspense fallback={<Loading />}>
-        <HomeLayout>
-          <MonitoringPage />
-        </HomeLayout>
-      </Suspense>
-    ),
-  },
-  {
-    path: '/home/bots',
-    element: (
-      <Suspense fallback={<Loading />}>
-        <HomeLayout>
-          <BotsPage />
-        </HomeLayout>
-      </Suspense>
-    ),
-  },
-  {
-    path: '/home/pipelines',
-    element: (
-      <Suspense fallback={<Loading />}>
-        <HomeLayout>
-          <PipelinesPage />
-        </HomeLayout>
-      </Suspense>
-    ),
-  },
-  {
-    path: '/home/workflows',
-    element: (
-      <Suspense fallback={<Loading />}>
-        <HomeLayout>
-          <WorkflowsPage />
-        </HomeLayout>
-      </Suspense>
-    ),
-  },
-  {
-    path: '/home/plugins',
-    element: (
-      <Suspense fallback={<Loading />}>
-        <HomeLayout>
-          <PluginsPage />
-        </HomeLayout>
-      </Suspense>
-    ),
-  },
-  {
-    path: '/home/market',
-    element: (
-      <Suspense fallback={<Loading />}>
-        <HomeLayout>
-          <MarketPage />
-        </HomeLayout>
-      </Suspense>
-    ),
-  },
-  {
-    path: '/home/mcp',
-    element: (
-      <Suspense fallback={<Loading />}>
-        <HomeLayout>
-          <MCPPage />
-        </HomeLayout>
-      </Suspense>
-    ),
-  },
-  {
-    path: '/home/knowledge',
-    element: (
-      <Suspense fallback={<Loading />}>
-        <HomeLayout>
-          <KnowledgePage />
-        </HomeLayout>
-      </Suspense>
-    ),
-  },
-  {
-    path: '/home/plugin-pages',
-    element: (
-      <Suspense fallback={<Loading />}>
-        <HomeLayout>
-          <PluginPagesPage />
-        </HomeLayout>
-      </Suspense>
-    ),
+    element: <RootLayout />,
+    errorElement: <ErrorPage />,
+    children: [
+      {
+        path: '/',
+        element: <Navigate to="/login" replace />,
+      },
+      {
+        path: '/login',
+        element: (
+          <LoginLayout>
+            <LoginPage />
+          </LoginLayout>
+        ),
+      },
+      {
+        path: '/register',
+        element: (
+          <RegisterLayout>
+            <RegisterPage />
+          </RegisterLayout>
+        ),
+      },
+      {
+        path: '/reset-password',
+        element: (
+          <ResetPasswordLayout>
+            <ResetPasswordPage />
+          </ResetPasswordLayout>
+        ),
+      },
+      {
+        path: '/wizard',
+        element: <WizardPage />,
+      },
+      {
+        path: '/backend-unavailable',
+        element: <BackendUnavailablePage />,
+      },
+      {
+        path: '/auth/space/callback',
+        element: <SpaceCallbackPage />,
+      },
+      {
+        path: '/home',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <HomeLayout>
+              <HomePage />
+            </HomeLayout>
+          </Suspense>
+        ),
+      },
+      {
+        path: '/home/monitoring',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <HomeLayout>
+              <MonitoringPage />
+            </HomeLayout>
+          </Suspense>
+        ),
+      },
+      {
+        path: '/home/bots',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <HomeLayout>
+              <BotsPage />
+            </HomeLayout>
+          </Suspense>
+        ),
+      },
+      {
+        path: '/home/pipelines',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <HomeLayout>
+              <PipelinesPage />
+            </HomeLayout>
+          </Suspense>
+        ),
+      },
+      {
+        path: '/home/workflows',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <HomeLayout>
+              <WorkflowsPage />
+            </HomeLayout>
+          </Suspense>
+        ),
+      },
+      {
+        path: '/home/extensions',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <HomeLayout>
+              <PluginsPage />
+            </HomeLayout>
+          </Suspense>
+        ),
+      },
+      {
+        path: '/home/plugins',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <HomeLayout>
+              <PluginsPage />
+            </HomeLayout>
+          </Suspense>
+        ),
+      },
+      {
+        path: '/home/add-extension',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <HomeLayout>
+              <AddExtensionPage />
+            </HomeLayout>
+          </Suspense>
+        ),
+      },
+      {
+        path: '/home/mcp',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <HomeLayout>
+              <MCPPage />
+            </HomeLayout>
+          </Suspense>
+        ),
+      },
+      {
+        path: '/home/knowledge',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <HomeLayout>
+              <KnowledgePage />
+            </HomeLayout>
+          </Suspense>
+        ),
+      },
+      {
+        path: '/home/skills',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <HomeLayout>
+              <SkillsPage />
+            </HomeLayout>
+          </Suspense>
+        ),
+      },
+      {
+        path: '/home/plugin-pages',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <HomeLayout>
+              <PluginPagesPage />
+            </HomeLayout>
+          </Suspense>
+        ),
+      },
+    ],
   },
 ]);

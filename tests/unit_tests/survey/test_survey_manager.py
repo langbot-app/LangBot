@@ -7,6 +7,7 @@ Tests cover:
 - Survey response submission
 - Survey dismissal
 """
+
 from __future__ import annotations
 
 import pytest
@@ -127,9 +128,7 @@ class TestLoadTriggeredEvents:
         """Test that empty set is used when no events stored."""
         survey_module = get_survey_module()
         mock_app = create_mock_app()
-        mock_app.persistence_mgr.execute_async = AsyncMock(
-            return_value=Mock(first=Mock(return_value=None))
-        )
+        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=Mock(first=Mock(return_value=None)))
 
         manager = survey_module.SurveyManager(mock_app)
         await manager._load_triggered_events()
@@ -219,9 +218,7 @@ class TestTriggerEvent:
         """Test that new event is added and saved."""
         survey_module = get_survey_module()
         mock_app = create_mock_app()
-        mock_app.persistence_mgr.execute_async = AsyncMock(
-            return_value=Mock(first=Mock(return_value=None))
-        )
+        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=Mock(first=Mock(return_value=None)))
 
         manager = survey_module.SurveyManager(mock_app)
         manager._space_url = 'https://space.example.com'
@@ -229,6 +226,104 @@ class TestTriggerEvent:
         await manager.trigger_event('new_event')
 
         assert 'new_event' in manager._triggered_events
+
+
+class TestRecordBotResponseSuccess:
+    """Tests for the bot_response_success_100 milestone counter."""
+
+    def _make_manager(self, survey_module, mock_app):
+        manager = survey_module.SurveyManager(mock_app)
+        manager._space_url = 'https://space.example.com'
+        # No existing metadata rows: select returns no row
+        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=Mock(first=Mock(return_value=None)))
+        return manager
+
+    @pytest.mark.asyncio
+    async def test_increments_and_persists_count(self):
+        survey_module = get_survey_module()
+        mock_app = create_mock_app()
+        manager = self._make_manager(survey_module, mock_app)
+
+        await manager.record_bot_response_success()
+
+        assert manager._bot_response_count == 1
+        # select + insert for the count key
+        assert mock_app.persistence_mgr.execute_async.call_count >= 2
+
+    @pytest.mark.asyncio
+    async def test_fires_milestone_event_at_threshold(self):
+        survey_module = get_survey_module()
+        mock_app = create_mock_app()
+        manager = self._make_manager(survey_module, mock_app)
+        manager._bot_response_count = survey_module.BOT_RESPONSE_MILESTONE - 1
+
+        await manager.record_bot_response_success()
+
+        assert manager._bot_response_count == survey_module.BOT_RESPONSE_MILESTONE
+        assert survey_module.BOT_RESPONSE_MILESTONE_EVENT in manager._triggered_events
+
+    @pytest.mark.asyncio
+    async def test_does_not_fire_below_threshold(self):
+        survey_module = get_survey_module()
+        mock_app = create_mock_app()
+        manager = self._make_manager(survey_module, mock_app)
+        manager._bot_response_count = 5
+
+        await manager.record_bot_response_success()
+
+        assert survey_module.BOT_RESPONSE_MILESTONE_EVENT not in manager._triggered_events
+
+    @pytest.mark.asyncio
+    async def test_stops_counting_after_milestone_triggered(self):
+        survey_module = get_survey_module()
+        mock_app = create_mock_app()
+        manager = self._make_manager(survey_module, mock_app)
+        manager._triggered_events.add(survey_module.BOT_RESPONSE_MILESTONE_EVENT)
+        manager._bot_response_count = survey_module.BOT_RESPONSE_MILESTONE
+
+        await manager.record_bot_response_success()
+
+        # No persistence write, count unchanged
+        mock_app.persistence_mgr.execute_async.assert_not_called()
+        assert manager._bot_response_count == survey_module.BOT_RESPONSE_MILESTONE
+
+    @pytest.mark.asyncio
+    async def test_skips_when_space_not_configured(self):
+        survey_module = get_survey_module()
+        mock_app = create_mock_app()
+        manager = self._make_manager(survey_module, mock_app)
+        manager._space_url = ''
+
+        await manager.record_bot_response_success()
+
+        assert manager._bot_response_count == 0
+        mock_app.persistence_mgr.execute_async.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_count_loaded_on_initialize(self):
+        survey_module = get_survey_module()
+        mock_app = create_mock_app()
+
+        count_row = Mock()
+        count_row.value = '42'
+
+        def execute_side_effect(stmt):
+            result = Mock()
+            # Both _load_triggered_events and _load_bot_response_count select
+            # from Metadata; return the count row only for the count key.
+            stmt_str = str(stmt.compile(compile_kwargs={'literal_binds': True}))
+            if survey_module.BOT_RESPONSE_COUNT_KEY in stmt_str:
+                result.first.return_value = (count_row,)
+            else:
+                result.first.return_value = None
+            return result
+
+        mock_app.persistence_mgr.execute_async = AsyncMock(side_effect=execute_side_effect)
+
+        manager = survey_module.SurveyManager(mock_app)
+        await manager.initialize()
+
+        assert manager._bot_response_count == 42
 
 
 class TestPendingSurvey:
@@ -296,14 +391,19 @@ class TestSubmitResponse:
 
         # Mock successful HTTP response
         import httpx
+
         mock_response = Mock()
         mock_response.status_code = 200
 
         with pytest.MonkeyPatch().context() as m:
-            m.setattr(httpx, 'AsyncClient', lambda **kwargs: MagicMock(
-                __aenter__=AsyncMock(return_value=Mock(post=AsyncMock(return_value=mock_response))),
-                __aexit__=AsyncMock(return_value=None)
-            ))
+            m.setattr(
+                httpx,
+                'AsyncClient',
+                lambda **kwargs: MagicMock(
+                    __aenter__=AsyncMock(return_value=Mock(post=AsyncMock(return_value=mock_response))),
+                    __aexit__=AsyncMock(return_value=None),
+                ),
+            )
             result = await manager.submit_response('survey123', {'q1': 'answer1'})
 
         assert result is True
@@ -338,14 +438,19 @@ class TestDismissSurvey:
 
         # Mock successful HTTP response
         import httpx
+
         mock_response = Mock()
         mock_response.status_code = 200
 
         with pytest.MonkeyPatch().context() as m:
-            m.setattr(httpx, 'AsyncClient', lambda **kwargs: MagicMock(
-                __aenter__=AsyncMock(return_value=Mock(post=AsyncMock(return_value=mock_response))),
-                __aexit__=AsyncMock(return_value=None)
-            ))
+            m.setattr(
+                httpx,
+                'AsyncClient',
+                lambda **kwargs: MagicMock(
+                    __aenter__=AsyncMock(return_value=Mock(post=AsyncMock(return_value=mock_response))),
+                    __aexit__=AsyncMock(return_value=None),
+                ),
+            )
             result = await manager.dismiss_survey('survey123')
 
         assert result is True

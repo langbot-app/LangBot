@@ -7,6 +7,7 @@ Tests cover:
 
 Note: Uses import_isolation to break circular import chains.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -19,15 +20,17 @@ from typing import Generator
 
 class MockLifecycleControlScopeEnum:
     """Mock enum value for LifecycleControlScope with .value attribute."""
+
     def __init__(self, value: str):
         self.value = value
 
     def __repr__(self):
-        return f"LifecycleControlScope.{self.value.upper()}"
+        return f'LifecycleControlScope.{self.value.upper()}'
 
 
 class MockLifecycleControlScope:
     """Mock enum for LifecycleControlScope."""
+
     APPLICATION = MockLifecycleControlScopeEnum('application')
     PLATFORM = MockLifecycleControlScopeEnum('platform')
     PIPELINE = MockLifecycleControlScopeEnum('pipeline')
@@ -40,17 +43,17 @@ def isolated_taskmgr_import() -> Generator[None, None, None]:
     # Mock modules that cause circular imports
     mock_entities = MagicMock()
     mock_entities.LifecycleControlScope = MockLifecycleControlScope
-    
+
     mock_app = MagicMock()
-    
+
     mock_importutil = MagicMock()
     mock_importutil.import_modules_in_pkg = lambda pkg: None
     mock_importutil.import_modules_in_pkgs = lambda pkgs: None
-    
+
     mock_http_controller = MagicMock()
-    
+
     mock_rag_mgr = MagicMock()
-    
+
     mocks = {
         'langbot.pkg.core.entities': mock_entities,
         'langbot.pkg.core.app': mock_app,
@@ -58,26 +61,26 @@ def isolated_taskmgr_import() -> Generator[None, None, None]:
         'langbot.pkg.rag.knowledge.kbmgr': mock_rag_mgr,
         'langbot.pkg.utils.importutil': mock_importutil,
     }
-    
+
     # Save original state
     saved = {}
     for name in mocks:
         if name in sys.modules:
             saved[name] = sys.modules[name]
-    
+
     # Clear taskmgr to force re-import
     taskmgr_name = 'langbot.pkg.core.taskmgr'
     if taskmgr_name in sys.modules:
         saved[taskmgr_name] = sys.modules[taskmgr_name]
-    
+
     try:
         # Apply mocks
         for name, module in mocks.items():
             sys.modules[name] = module
-        
+
         # Clear taskmgr
         sys.modules.pop(taskmgr_name, None)
-        
+
         yield
     finally:
         # Restore
@@ -86,7 +89,7 @@ def isolated_taskmgr_import() -> Generator[None, None, None]:
                 sys.modules[name] = saved[name]
             else:
                 sys.modules.pop(name, None)
-        
+
         if taskmgr_name in saved:
             sys.modules[taskmgr_name] = saved[taskmgr_name]
         else:
@@ -97,6 +100,7 @@ def get_taskmgr_classes():
     """Get TaskContext, TaskWrapper, AsyncTaskManager classes."""
     with isolated_taskmgr_import():
         from langbot.pkg.core.taskmgr import TaskContext, TaskWrapper, AsyncTaskManager
+
         return TaskContext, TaskWrapper, AsyncTaskManager
 
 
@@ -194,9 +198,10 @@ class TestTaskContext:
         """Test TaskContext.placeholder() returns singleton."""
         with isolated_taskmgr_import():
             from langbot.pkg.core.taskmgr import TaskContext
-            
+
             # Reset global placeholder
             import langbot.pkg.core.taskmgr as taskmgr_module
+
             taskmgr_module.placeholder_context = None
 
             ctx1 = TaskContext.placeholder()
@@ -269,7 +274,8 @@ class TestTaskWrapper:
             return 'result'
 
         wrapper = TaskWrapper(
-            mock_app, immediate_coro(),
+            mock_app,
+            immediate_coro(),
             name='test_task',
             label='Test Task',
         )
@@ -414,7 +420,7 @@ class TestAsyncTaskManager:
     async def test_cancel_by_scope(self):
         """Test cancel_by_scope cancels matching tasks."""
         _, _, AsyncTaskManager = get_taskmgr_classes()
-        
+
         mock_app = create_mock_app()
         manager = AsyncTaskManager(mock_app)
 
@@ -422,16 +428,10 @@ class TestAsyncTaskManager:
             await asyncio.sleep(10)
 
         # Create task with APPLICATION scope
-        w1 = manager.create_task(
-            long_coro(),
-            scopes=[MockLifecycleControlScope.APPLICATION]
-        )
+        w1 = manager.create_task(long_coro(), scopes=[MockLifecycleControlScope.APPLICATION])
 
         # Create task with different scope
-        w2 = manager.create_task(
-            long_coro(),
-            scopes=[MockLifecycleControlScope.PIPELINE]
-        )
+        w2 = manager.create_task(long_coro(), scopes=[MockLifecycleControlScope.PIPELINE])
 
         manager.cancel_by_scope(MockLifecycleControlScope.APPLICATION)
 

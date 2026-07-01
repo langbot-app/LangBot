@@ -310,6 +310,7 @@ function SingleSelectField({
       {options.map((opt) => (
         <div key={opt.id}>
           <button
+            type="button"
             onClick={() => onChange(opt.id)}
             className={`w-full text-left text-sm px-3 py-2 rounded-lg border transition-colors ${
               value === opt.id
@@ -361,8 +362,16 @@ function MultiSelectField({
         const selected = value.includes(opt.id);
         return (
           <div key={opt.id}>
-            <button
+            <div
+              role="button"
+              tabIndex={0}
               onClick={() => toggle(opt.id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  toggle(opt.id);
+                }
+              }}
               className={`w-full text-left text-sm px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 ${
                 selected
                   ? 'border-primary bg-primary/5 text-primary'
@@ -371,7 +380,7 @@ function MultiSelectField({
             >
               <Checkbox checked={selected} className="pointer-events-none" />
               {getI18nText(opt.label)}
-            </button>
+            </div>
             {opt.has_input && selected && (
               <input
                 type="text"

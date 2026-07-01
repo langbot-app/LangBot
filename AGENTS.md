@@ -1,81 +1,108 @@
 # AGENTS.md
 
-This file is for guiding code agents (like Claude Code, GitHub Copilot, OpenAI Codex, etc.) to work in LangBot project.
+This file guides code agents working in the LangBot main repository. `CLAUDE.md` is a symlink to this file.
 
-## Project Overview
+Read `ARCHITECTURE.md` before non-trivial backend, frontend, runtime, plugin, Box, MCP, persistence, or cross-repo SDK changes. This file is the working checklist; `ARCHITECTURE.md` is the system map.
 
-LangBot is a open-source LLM native instant messaging bot development platform, aiming to provide an out-of-the-box IM robot development experience, with Agent, RAG, MCP and other LLM application functions, supporting global instant messaging platforms, and providing rich API interfaces, supporting custom development.
+## Quick Facts
 
-LangBot has a comprehensive frontend, all operations can be performed through the frontend. The project splited into these major parts:
+- Python backend: `>=3.11,<4.0`, dependencies managed by `uv`.
+- Frontend: `web/` is Vite + React Router 7 + shadcn/ui + Tailwind, managed by `pnpm`.
+- Backend framework: Quart served by Hypercorn on `api.port`, default `5300`.
+- Frontend dev server: `web/` on `3000`, with `VITE_API_BASE_URL` pointing at the backend.
+- Plugin/Box/runtime contracts live in sibling repo `langbot-plugin-sdk`, pinned as `langbot-plugin` in `pyproject.toml`.
 
-- `./src/langbot`: The main python package of the project, below are the main modules in this package:
-    - `./pkg`: The core python package of the project backend.
-        - `./pkg/platform`: The platform module of the project, containing the logic of message platform adapters, bot managers, message session managers, etc.
-        - `./pkg/provider`: The provider module of the project, containing the logic of LLM providers, tool providers, etc.
-        - `./pkg/pipeline`: The pipeline module of the project, containing the logic of pipelines, stages, query pool, etc.
-        - `./pkg/api`: The api module of the project, containing the http api controllers and services.
-        - `./pkg/plugin`: LangBot bridge for connecting with plugin system.
-    - `./libs`: Some SDKs we previously developed for the project, such as `qq_official_api`, `wecom_api`, etc.
-    - `./templates`: Templates of config files, components, etc.
-    - `./web`: Frontend codebase, built with Next.js + **shadcn** + **Tailwind CSS**.
-    - `./docker`: docker-compose deployment files.
-
-## Backend Development
-
-We use `uv` to manage dependencies.
+## Essential Commands
 
 ```bash
-pip install uv
 uv sync --dev
-```
-
-Start the backend and run the project in development mode.
-
-```bash
 uv run main.py
-```
+uv run pre-commit install
 
-Then you can access the project at `http://127.0.0.1:5300`.
-
-## Frontend Development
-
-We use `pnpm` to manage dependencies.
-
-```bash
 cd web
-cp .env.example .env
 pnpm install
 pnpm dev
+pnpm build
 ```
 
-Then you can access the project at `http://127.0.0.1:3000`.
+Useful focused tests:
 
-## Plugin System Architecture
+```bash
+uv run pytest tests/unit_tests -q
+uv run pytest tests/integration -q
+uv run pytest tests/integration/persistence -q
+uv run pytest tests/manual/mcp_smoke.py
 
-LangBot is composed of various internal components such as Large Language Model tools, commands, messaging platform adapters, LLM requesters, and more. To meet extensibility and flexibility requirements, we have implemented a production-grade plugin system.
+cd web
+pnpm lint
+pnpm test:e2e
+```
 
-Each plugin runs in an independent process, managed uniformly by the Plugin Runtime. It has two operating modes: `stdio` and `websocket`. When LangBot is started directly by users (not running in a container), it uses `stdio` mode, which is common for personal users or lightweight environments. When LangBot runs in a container, it uses `websocket` mode, designed specifically for production environments.
+Run the narrowest useful test first, then broader checks when confidence is needed.
 
-Plugin Runtime automatically starts each installed plugin and interacts through stdio. In plugin development scenarios, developers can use the lbp command-line tool to start plugins and connect to the running Runtime via WebSocket for debugging.
+## Where to Look
 
-> Plugin SDK, CLI, Runtime, and entities definitions shared between LangBot and plugins are contained in the [`langbot-plugin-sdk`](https://github.com/langbot-app/langbot-plugin-sdk) repository.
+- Architecture map: `ARCHITECTURE.md`.
+- Dev environment guide: https://docs.langbot.app/zh/develop/dev-config.
+- Plugin runtime / CLI / SDK debugging: https://docs.langbot.app/zh/develop/plugin-runtime.
+- API-key auth: `docs/API_KEY_AUTH.md`.
+- Box deep-dive notes: `docs/review/box-architecture.md` and related files.
+- In-repo skills: `skills/` is the single source of truth for LangBot agent skills.
+- SDK repo: `../langbot-plugin-sdk/` when changing shared entities, plugin APIs, action protocol, `lbp rt`, or `lbp box`.
 
-## Some Development Tips and Standards
+## Cross-Repo SDK Work
 
-- LangBot is a global project, any comments in code should be in English, and user experience should be considered in all aspects.
-- Thus you should consider the i18n support in all aspects.
-- LangBot is widely adopted in both toC and toB scenarios, so you should consider the compatibility and security in all aspects.
-- If you were asked to make a commit, please follow the commit message format: 
-    - format: <type>(<scope>): <subject>
-    - type: must be a specific type, such as feat (new feature), fix (bug fix), docs (documentation), style (code style), refactor (refactoring), perf (performance optimization), etc.
-    - scope: the scope of the commit, such as the package name, the file name, the function name, the class name, the module name, etc.
-    - subject: the subject of the commit, such as the description of the commit, the reason for the commit, the impact of the commit, etc.
-- LangBot uses [Alembic](https://alembic.sqlalchemy.org/) to manage database migrations, supporting both SQLite and PostgreSQL. Migration files are located in `src/langbot/pkg/persistence/alembic/versions/`. If you changed the definition of database entities (ORM models), generate a new migration script by running `uv run python -m langbot.pkg.persistence.alembic_runner autogenerate "description of your change"` in the project root (requires `data/config.yaml` to exist). Review and edit the generated script before committing. Migrations are executed automatically on LangBot startup. For data migrations (e.g. modifying JSON field content), you need to manually add the migration code in the generated script.
+When changing SDK contracts used by LangBot:
 
-## Some Principles
+```bash
+# from langbot-plugin-sdk, with LangBot's .venv active
+uv pip install .
+
+# from LangBot, preserve the locally installed SDK
+uv run --no-sync main.py
+```
+
+For standalone runtime debugging:
+
+```bash
+# in langbot-plugin-sdk
+uv run --no-sync lbp rt
+uv run --no-sync lbp box
+
+# in LangBot
+uv run --no-sync main.py --standalone-runtime
+uv run --no-sync main.py --standalone-box
+```
+
+Config keys to verify in `data/config.yaml` / `src/langbot/templates/config.yaml`:
+
+- Plugin runtime: `plugin.runtime_ws_url`, default Docker host `langbot_plugin_runtime:5400/control/ws`.
+- Box runtime: `box.enabled`, `box.backend`, `box.runtime.endpoint`, Docker host `langbot_box:5410`.
+- API/MCP auth: `api.global_api_key`.
+
+## Change Rules
+
+- HTTP API changes that should be agent-accessible must update the matching MCP tool in `src/langbot/pkg/api/mcp/server.py` and the relevant skill under `skills/` in the same pass.
+- New schema changes use Alembic under `src/langbot/pkg/persistence/alembic/versions/`; do not add legacy `dbmXXX` migrations.
+- New platform behavior belongs in platform adapters only for platform translation; pipeline/business logic belongs in `pkg/pipeline/` or services.
+- User-facing strings must support i18n (`en_US`, `zh_Hans`; include `ja_JP` where the repo already does).
+- Code comments and docstrings must be English.
+- Keep compatibility and security in mind; LangBot is used in both self-hosted/community and toB deployments.
+- Commit message format: `<type>(<scope>): <subject>`.
+
+## Runtime Pitfalls
+
+- Local stdio Plugin Runtime disconnects do not auto-reconnect; restart LangBot if that path breaks.
+- Orphan runtime processes on `5400`/`5401` commonly break plugin debugging.
+- Use `uv run --no-sync` after locally installing the SDK, or `uv` may restore the pinned package.
+- A false Box “no backend” often means Docker is running but the current user lacks Docker socket permission.
+- Do not confuse external MCP servers LangBot connects to (`pkg/provider/tools/loaders/mcp.py`) with LangBot's own `/mcp` server (`pkg/api/mcp/`).
+- `CLAUDE.md` is a symlink to this file; edit `AGENTS.md`, not the symlink.
+
+## Principles
 
 - Keep it simple, stupid.
-- Entities should not be multiplied unnecessarily
+- Entities should not be multiplied unnecessarily.
 - 八荣八耻
 
     以瞎猜接口为耻，以认真查询为荣。

@@ -9,10 +9,12 @@ from datetime import datetime
 
 from .. import handler
 from ... import entities
+from ... import plugin_diagnostics
 from ....provider import runner as runner_module
 
 import langbot_plugin.api.entities.events as events
 from ....utils import importutil, constants, runner as runner_utils
+from ....telemetry import features as telemetry_features
 from ....provider import runners
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -57,6 +59,13 @@ class ChatMessageHandler(handler.MessageHandler):
         if event_ctx.is_prevented_default():
             if event_ctx.event.reply_message_chain is not None:
                 mc = event_ctx.event.reply_message_chain
+                plugin_diagnostics.record_pending_plugin_response_source(
+                    query,
+                    mc,
+                    plugin_diagnostics.get_response_sources(event_ctx),
+                    plugin_diagnostics.get_emitted_plugins(event_ctx),
+                    event.event_name,
+                )
                 query.resp_messages.append(mc)
 
                 yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
@@ -113,9 +122,11 @@ class ChatMessageHandler(handler.MessageHandler):
                         # This prevents memory overflow from thousands of log entries per conversation
                         # First chunk uses INFO level to confirm connection establishment
                         if chunk_count == 1:
-                            self.ap.logger.info(
-                                f'Conversation({query.query_id}) Streaming started: {self.cut_str(result.readable_str())}'
-                            )
+                            summary = self.format_result_log(result)
+                            if summary is not None:
+                                self.ap.logger.info(f'Conversation({query.query_id}) Streaming started: {summary}')
+                            else:
+                                self.ap.logger.info(f'Conversation({query.query_id}) Streaming started')
                         elif chunk_count % 10 == 0:
                             self.ap.logger.debug(
                                 f'Conversation({query.query_id}) Streaming chunk {chunk_count}: {self.cut_str(result.readable_str())}'
@@ -135,9 +146,9 @@ class ChatMessageHandler(handler.MessageHandler):
                     async for result in runner.run(query):
                         query.resp_messages.append(result)
 
-                        self.ap.logger.info(
-                            f'Conversation({query.query_id}) Response: {self.cut_str(result.readable_str())}'
-                        )
+                        summary = self.format_result_log(result)
+                        if summary is not None:
+                            self.ap.logger.info(f'Conversation({query.query_id}) Response: {summary}')
 
                         if result.content is not None:
                             text_length += len(result.content)
@@ -199,7 +210,12 @@ class ChatMessageHandler(handler.MessageHandler):
                         runner_name, runner, query.pipeline_config
                     )
 
+                    # Feature usage collected during query processing (tool calls,
+                    # knowledge base usage, sandbox executions, activated skills, ...)
+                    features = telemetry_features.collect_features(query)
+
                     payload = {
+                        'event_type': 'query',
                         'query_id': query.query_id,
                         'adapter': adapter_name,
                         'runner': runner_name,
@@ -210,6 +226,7 @@ class ChatMessageHandler(handler.MessageHandler):
                         'instance_id': constants.instance_id,
                         'edition': constants.edition,
                         'pipeline_plugins': pipeline_plugins,
+                        'features': features,
                         'error': locals().get('error_info', None),
                         'timestamp': datetime.utcnow().isoformat(),
                     }
@@ -217,10 +234,12 @@ class ChatMessageHandler(handler.MessageHandler):
                     # Send telemetry asynchronously and do not block pipeline via app's telemetry manager
                     await self.ap.telemetry.start_send_task(payload)
 
-                    # Trigger survey event on first successful non-WebSocket response
+                    # Trigger survey events on successful non-WebSocket responses
                     if not locals().get('error_info') and adapter_name and 'WebSocket' not in adapter_name:
                         if self.ap.survey:
                             await self.ap.survey.trigger_event('first_bot_response_success')
+                            # Counts toward the bot_response_success_100 milestone event
+                            await self.ap.survey.record_bot_response_success()
                 except Exception as ex:
                     # Ensure telemetry issues do not affect normal flow
                     self.ap.logger.warning(f'Failed to send telemetry: {ex}')

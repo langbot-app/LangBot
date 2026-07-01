@@ -1,0 +1,46 @@
+name: Frontend Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'web/**'
+      - '.github/workflows/frontend-tests.yml'
+  push:
+    branches:
+      - master
+      - develop
+    paths:
+      - 'web/**'
+      - '.github/workflows/frontend-tests.yml'
+
+jobs:
+  playwright-smoke:
+    name: Playwright Smoke
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '25'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8.9.2
+
+      - name: Install dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        working-directory: web
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run Playwright smoke tests
+        working-directory: web
+        run: pnpm test:e2e

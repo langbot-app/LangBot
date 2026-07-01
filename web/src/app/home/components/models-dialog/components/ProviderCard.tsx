@@ -39,6 +39,7 @@ import AddModelPopover from './AddModelPopover';
 interface ProviderCardProps {
   provider: ModelProvider;
   isLangBotModels?: boolean;
+  supportTypes?: string[];
   isExpanded: boolean;
   isLoading: boolean;
   models?: ProviderModels;
@@ -60,6 +61,7 @@ interface ProviderCardProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    contextLength?: number | null,
   ) => Promise<void>;
   onScanModels: (modelType?: ModelType) => Promise<ScanModelsResult>;
   onAddScannedModels: (
@@ -74,6 +76,7 @@ interface ProviderCardProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    contextLength?: number | null,
   ) => Promise<void>;
   onOpenDeleteConfirm: (modelId: string) => void;
   onCloseDeleteConfirm: () => void;
@@ -99,6 +102,7 @@ function maskApiKey(key: string): string {
 export default function ProviderCard({
   provider,
   isLangBotModels = false,
+  supportTypes,
   isExpanded,
   isLoading,
   models,
@@ -146,9 +150,9 @@ export default function ProviderCard({
   return (
     <Card className="mb-2">
       <Collapsible open={isExpanded} onOpenChange={onToggle}>
-        <CardHeader className="py-0 px-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 flex-1">
+        <CardHeader className="py-0 px-4 min-w-0 [&]:grid-cols-[minmax(0,1fr)]">
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
               {isLangBotModels ? (
                 <div className="w-9 h-9 rounded-lg overflow-hidden flex-shrink-0">
                   <img
@@ -167,9 +171,11 @@ export default function ProviderCard({
                 />
               )}
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <CardTitle className="text-base">{provider.name}</CardTitle>
-                  <Badge variant="outline" className="text-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <CardTitle className="text-base truncate">
+                    {provider.name}
+                  </CardTitle>
+                  <Badge variant="outline" className="text-xs shrink-0">
                     {t('models.modelsCount', { count: totalModels })}
                   </Badge>
                 </div>
@@ -189,7 +195,7 @@ export default function ProviderCard({
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-1 ml-2">
+            <div className="flex items-center gap-1 ml-2 shrink-0">
               {isLangBotModels && accountType !== 'space' && (
                 <Button
                   variant="outline"
@@ -319,6 +325,7 @@ export default function ProviderCard({
                     addModelMode === 'manual'
                   }
                   initialMode="manual"
+                  supportTypes={supportTypes}
                   trigger={
                     <Button
                       variant="ghost"
@@ -353,6 +360,7 @@ export default function ProviderCard({
                     addModelMode === 'scan'
                   }
                   initialMode="scan"
+                  supportTypes={supportTypes}
                   trigger={
                     <Button
                       variant="ghost"
@@ -405,13 +413,19 @@ export default function ProviderCard({
                     onOpenDeleteConfirm={onOpenDeleteConfirm}
                     onCloseDeleteConfirm={onCloseDeleteConfirm}
                     onDeleteModel={() => onDeleteModel(model.uuid, 'llm')}
-                    onUpdateModel={(name, abilities, extraArgs) =>
+                    onUpdateModel={(
+                      name,
+                      abilities,
+                      extraArgs,
+                      contextLength,
+                    ) =>
                       onUpdateModel(
                         model.uuid,
                         'llm',
                         name,
                         abilities,
                         extraArgs,
+                        contextLength,
                       )
                     }
                     onTestModel={(name, abilities, extraArgs) =>

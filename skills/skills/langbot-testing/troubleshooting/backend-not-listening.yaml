@@ -1,0 +1,29 @@
+id: backend-not-listening
+title: "LangBot backend URL has no listening service"
+date: 2026-05-30
+symptoms:
+  - "The frontend URL opens, but backend-dependent WebUI cases are blocked."
+  - "env doctor fails only for LANGBOT_BACKEND_URL."
+  - "curl to the backend port fails before receiving an HTTP status."
+patterns:
+  - "LANGBOT_BACKEND_URL"
+  - "no HTTP service reachable"
+  - "Failed to connect to 127.0.0.1 port 5300"
+  - "TypeError: fetch failed"
+  - "Couldn't connect to server"
+likely_causes:
+  - "The LangBot backend process is not running."
+  - "The frontend dev server is running by itself, so the browser opens but API calls cannot work."
+  - "The backend was started in a disposable foreground session and stopped when that session ended."
+  - "A detached startup command exited early and no process remains bound to the configured port."
+fix_steps:
+  - "Run bin/lbs env doctor and confirm whether LANGBOT_BACKEND_URL reports no listener."
+  - "Start the backend from LANGBOT_REPO with uv run main.py."
+  - "Wait for Running on http://0.0.0.0:5300 and Connected to plugin runtime."
+  - "Verify ss -ltnp shows the configured backend port."
+  - "Re-run bin/lbs env doctor before starting browser QA."
+verification: "LANGBOT_BACKEND_URL returns an HTTP status, env doctor passes the backend check, and backend logs show Connected to plugin runtime."
+related_cases:
+  - pipeline-debug-chat
+  - webui-login-state
+  - local-agent-basic-debug-chat

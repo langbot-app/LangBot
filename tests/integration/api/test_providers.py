@@ -49,6 +49,7 @@ def mock_circular_import_chain():
     ):
         import langbot.pkg.api.http.controller.groups.provider.providers as _providers  # noqa: E402, F401
         import langbot.pkg.api.http.controller.groups.provider.models as _models  # noqa: E402, F401
+
         yield
 
 
@@ -57,10 +58,12 @@ def fake_provider_app():
     """Create FakeApp with provider/model services (module scope for reuse)."""
     app = FakeApp()
 
-    app.instance_config.data.update({
-        'api': {'port': 5300},
-        'system': {'allow_modify_login_info': True, 'limitation': {}},
-    })
+    app.instance_config.data.update(
+        {
+            'api': {'port': 5300},
+            'system': {'allow_modify_login_info': True, 'limitation': {}},
+        }
+    )
 
     # Auth services
     app.user_service = Mock()
@@ -72,27 +75,23 @@ def fake_provider_app():
 
     # Provider service
     app.provider_service = Mock()
-    app.provider_service.get_providers = AsyncMock(return_value=[
-        {'uuid': 'test-provider-uuid', 'name': 'OpenAI', 'requester': 'chatcmpl'}
-    ])
-    app.provider_service.get_provider = AsyncMock(return_value={
-        'uuid': 'test-provider-uuid', 'name': 'OpenAI', 'requester': 'chatcmpl'
-    })
+    app.provider_service.get_providers = AsyncMock(
+        return_value=[{'uuid': 'test-provider-uuid', 'name': 'OpenAI', 'requester': 'chatcmpl'}]
+    )
+    app.provider_service.get_provider = AsyncMock(
+        return_value={'uuid': 'test-provider-uuid', 'name': 'OpenAI', 'requester': 'chatcmpl'}
+    )
     app.provider_service.create_provider = AsyncMock(return_value='new-provider-uuid')
     app.provider_service.update_provider = AsyncMock(return_value={})
     app.provider_service.delete_provider = AsyncMock()
-    app.provider_service.get_provider_model_counts = AsyncMock(return_value={
-        'llm_count': 2, 'embedding_count': 1, 'rerank_count': 0
-    })
+    app.provider_service.get_provider_model_counts = AsyncMock(
+        return_value={'llm_count': 2, 'embedding_count': 1, 'rerank_count': 0}
+    )
 
     # LLM model service
     app.llm_model_service = Mock()
-    app.llm_model_service.get_llm_models = AsyncMock(return_value=[
-        {'uuid': 'test-model-uuid', 'name': 'gpt-4'}
-    ])
-    app.llm_model_service.get_llm_model = AsyncMock(return_value={
-        'uuid': 'test-model-uuid', 'name': 'gpt-4'
-    })
+    app.llm_model_service.get_llm_models = AsyncMock(return_value=[{'uuid': 'test-model-uuid', 'name': 'gpt-4'}])
+    app.llm_model_service.get_llm_model = AsyncMock(return_value={'uuid': 'test-model-uuid', 'name': 'gpt-4'})
     app.llm_model_service.create_llm_model = AsyncMock(return_value={'uuid': 'new-model-uuid'})
     app.llm_model_service.update_llm_model = AsyncMock(return_value={})
     app.llm_model_service.delete_llm_model = AsyncMock()
@@ -133,8 +132,7 @@ class TestProviderEndpoints:
     async def test_get_providers_success(self, quart_test_client):
         """GET /api/v1/provider/providers returns provider list with complete structure."""
         response = await quart_test_client.get(
-            '/api/v1/provider/providers',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/provider/providers', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -157,8 +155,7 @@ class TestProviderEndpoints:
     async def test_get_single_provider_success(self, quart_test_client):
         """GET /api/v1/provider/providers/{uuid} returns complete provider structure."""
         response = await quart_test_client.get(
-            '/api/v1/provider/providers/test-provider-uuid',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/provider/providers/test-provider-uuid', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -177,7 +174,7 @@ class TestProviderEndpoints:
         response = await quart_test_client.post(
             '/api/v1/provider/providers',
             headers={'Authorization': 'Bearer test_token'},
-            json={'name': 'New Provider', 'requester': 'chatcmpl'}
+            json={'name': 'New Provider', 'requester': 'chatcmpl'},
         )
 
         assert response.status_code == 200
@@ -194,7 +191,7 @@ class TestProviderEndpoints:
         response = await quart_test_client.put(
             '/api/v1/provider/providers/test-provider-uuid',
             headers={'Authorization': 'Bearer test_token'},
-            json={'name': 'Updated Provider'}
+            json={'name': 'Updated Provider'},
         )
 
         assert response.status_code == 200
@@ -205,8 +202,7 @@ class TestProviderEndpoints:
     async def test_delete_provider_success(self, quart_test_client):
         """DELETE /api/v1/provider/providers/{uuid} deletes provider."""
         response = await quart_test_client.delete(
-            '/api/v1/provider/providers/test-provider-uuid',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/provider/providers/test-provider-uuid', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -215,8 +211,7 @@ class TestProviderEndpoints:
     async def test_get_provider_includes_model_counts(self, quart_test_client):
         """GET provider response includes model counts."""
         response = await quart_test_client.get(
-            '/api/v1/provider/providers/test-provider-uuid',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/provider/providers/test-provider-uuid', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -237,8 +232,7 @@ class TestModelEndpoints:
     async def test_get_llm_models_success(self, quart_test_client):
         """GET /api/v1/provider/models/llm returns model list."""
         response = await quart_test_client.get(
-            '/api/v1/provider/models/llm',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/provider/models/llm', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -250,8 +244,7 @@ class TestModelEndpoints:
     async def test_get_single_llm_model_success(self, quart_test_client):
         """GET /api/v1/provider/models/llm/{uuid} returns model."""
         response = await quart_test_client.get(
-            '/api/v1/provider/models/llm/test-model-uuid',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/provider/models/llm/test-model-uuid', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -264,7 +257,7 @@ class TestModelEndpoints:
         response = await quart_test_client.post(
             '/api/v1/provider/models/llm',
             headers={'Authorization': 'Bearer test_token'},
-            json={'name': 'New Model', 'provider_uuid': 'test-provider-uuid'}
+            json={'name': 'New Model', 'provider_uuid': 'test-provider-uuid'},
         )
 
         assert response.status_code == 200
@@ -276,8 +269,7 @@ class TestModelEndpoints:
     async def test_delete_llm_model_success(self, quart_test_client):
         """DELETE /api/v1/provider/models/llm/{uuid} deletes model."""
         response = await quart_test_client.delete(
-            '/api/v1/provider/models/llm/test-model-uuid',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/provider/models/llm/test-model-uuid', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -291,8 +283,7 @@ class TestEmbeddingModelEndpoints:
     async def test_get_embedding_models_success(self, quart_test_client):
         """GET /api/v1/provider/models/embedding returns model list."""
         response = await quart_test_client.get(
-            '/api/v1/provider/models/embedding',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/provider/models/embedding', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -306,7 +297,7 @@ class TestEmbeddingModelEndpoints:
         response = await quart_test_client.post(
             '/api/v1/provider/models/embedding',
             headers={'Authorization': 'Bearer test_token'},
-            json={'name': 'New Embedding Model', 'provider_uuid': 'test-provider-uuid'}
+            json={'name': 'New Embedding Model', 'provider_uuid': 'test-provider-uuid'},
         )
 
         assert response.status_code == 200
@@ -323,8 +314,7 @@ class TestRerankModelEndpoints:
     async def test_get_rerank_models_success(self, quart_test_client):
         """GET /api/v1/provider/models/rerank returns model list."""
         response = await quart_test_client.get(
-            '/api/v1/provider/models/rerank',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/provider/models/rerank', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -338,7 +328,7 @@ class TestRerankModelEndpoints:
         response = await quart_test_client.post(
             '/api/v1/provider/models/rerank',
             headers={'Authorization': 'Bearer test_token'},
-            json={'name': 'New Rerank Model', 'provider_uuid': 'test-provider-uuid'}
+            json={'name': 'New Rerank Model', 'provider_uuid': 'test-provider-uuid'},
         )
 
         assert response.status_code == 200

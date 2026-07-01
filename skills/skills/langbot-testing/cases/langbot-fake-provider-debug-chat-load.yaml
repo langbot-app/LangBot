@@ -1,0 +1,81 @@
+id: langbot-fake-provider-debug-chat-load
+title: "LangBot Debug Chat controlled fake-provider load probe"
+mode: probe
+area: performance
+type: performance
+priority: p1
+risk: medium
+ci_eligible: false
+tags:
+  - performance
+  - debug-chat
+  - websocket
+  - fake-provider
+  - load
+  - metrics
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_E2E_LOGIN_USER
+automation: skills/langbot-testing/probes/langbot-debug-chat-concurrency.mjs
+automation_env:
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_E2E_LOGIN_USER
+  - LANGBOT_FAKE_PROVIDER_PIPELINE_URL
+  - LANGBOT_FAKE_PROVIDER_PIPELINE_NAME
+automation_pipeline_url_env: LANGBOT_FAKE_PROVIDER_PIPELINE_URL
+automation_pipeline_name_env: LANGBOT_FAKE_PROVIDER_PIPELINE_NAME
+automation_debug_chat_load_requests: "12"
+automation_debug_chat_load_concurrency: "4"
+automation_debug_chat_load_timeout_ms: "30000"
+automation_debug_chat_load_response_p95_ms: "5000"
+automation_debug_chat_load_first_response_p95_ms: "3000"
+automation_debug_chat_load_max_error_rate: "0"
+automation_debug_chat_load_expected_prefix: "FAKEQA"
+automation_debug_chat_load_prompt_template: '请只回复 "{expected}"，不要解释，不要添加其他字符。'
+automation_debug_chat_load_stream: "true"
+automation_debug_chat_load_reset: "true"
+metrics_thresholds_json: '{"response_p95_ms":{"max":5000},"first_response_p95_ms":{"max":3000},"error_rate":{"max":0}}'
+load_profile_json: '{"requests":12,"concurrency":4,"path":"Pipeline Debug Chat WebSocket","provider":"controlled fake OpenAI-compatible provider","metric":"send-to-final-assistant-response"}'
+setup_automation:
+  - "node:scripts/e2e/ensure-fake-provider-pipeline.mjs --write-env"
+setup_provides_env:
+  - LANGBOT_FAKE_PROVIDER_URL
+  - LANGBOT_FAKE_PROVIDER_BASE_URL
+  - LANGBOT_FAKE_PROVIDER_PID
+  - LANGBOT_FAKE_PROVIDER_PROVIDER_UUID
+  - LANGBOT_FAKE_PROVIDER_MODEL_UUID
+  - LANGBOT_FAKE_PROVIDER_PIPELINE_URL
+  - LANGBOT_FAKE_PROVIDER_PIPELINE_NAME
+steps:
+  - "Start or reuse the local fake OpenAI-compatible provider."
+  - "Create or update the LangBot provider, model, and local-agent pipeline that points at the fake provider."
+  - "Reset the target Debug Chat session."
+  - "Open concurrent WebSocket Debug Chat connections and send unique deterministic prompts through the real backend pipeline."
+checks:
+  - "automation-result.json status is pass when every request receives its own expected assistant response."
+  - "metrics_summary includes request count, concurrency, p50/p95 response latency, first response latency, throughput, and error rate."
+  - "thresholds_summary shows response_p95_ms, first_response_p95_ms, and error_rate pass."
+evidence_required:
+  - metrics
+  - network
+  - api_diagnostic
+  - filesystem
+diagnostics:
+  - "This probe removes external model latency from the measurement; it still exercises the live LangBot backend, provider requester, local-agent runner, pipeline, and Debug Chat WebSocket adapter."
+  - "Use this as the repeatable message-path baseline before comparing against Space or another real provider."
+success_patterns:
+  - "Debug Chat WebSocket concurrency probe passed"
+  - "Streaming completed"
+failure_patterns:
+  - "WebSocket connection error"
+  - "Timed out after"
+  - "Final assistant response did not include"
+  - "All models failed during streaming setup"
+troubleshooting:
+  - backend-not-listening
+  - debug-chat-history-contaminates-automation
+  - local-agent-model-route-unavailable

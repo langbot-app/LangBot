@@ -30,32 +30,36 @@ def _next_query_id() -> int:
 # ============== Message Chain Factories ==============
 
 
-def text_chain(text: str = "hello") -> platform_message.MessageChain:
+def text_chain(text: str = 'hello') -> platform_message.MessageChain:
     """Create a simple text message chain."""
-    return platform_message.MessageChain([
-        platform_message.Plain(text=text),
-    ])
+    return platform_message.MessageChain(
+        [
+            platform_message.Plain(text=text),
+        ]
+    )
 
 
-def group_text_chain(text: str = "hello") -> platform_message.MessageChain:
+def group_text_chain(text: str = 'hello') -> platform_message.MessageChain:
     """Create a group text message chain (same as text_chain, context provided by event)."""
     return text_chain(text)
 
 
 def mention_chain(
-    text: str = "hello",
+    text: str = 'hello',
     target: typing.Union[int, str] = 12345,
 ) -> platform_message.MessageChain:
     """Create a message chain with @mention."""
-    return platform_message.MessageChain([
-        platform_message.At(target=target),
-        platform_message.Plain(text=f" {text}"),
-    ])
+    return platform_message.MessageChain(
+        [
+            platform_message.At(target=target),
+            platform_message.Plain(text=f' {text}'),
+        ]
+    )
 
 
 def image_chain(
-    text: str = "",
-    url: str = "https://example.com/image.png",
+    text: str = '',
+    url: str = 'https://example.com/image.png',
 ) -> platform_message.MessageChain:
     """Create a message chain with an image."""
     components = []
@@ -66,13 +70,15 @@ def image_chain(
 
 
 def command_chain(
-    command: str = "help",
-    prefix: str = "/",
+    command: str = 'help',
+    prefix: str = '/',
 ) -> platform_message.MessageChain:
     """Create a command message chain."""
-    return platform_message.MessageChain([
-        platform_message.Plain(text=f"{prefix}{command}"),
-    ])
+    return platform_message.MessageChain(
+        [
+            platform_message.Plain(text=f'{prefix}{command}'),
+        ]
+    )
 
 
 # ============== Message Event Factories ==============
@@ -81,7 +87,7 @@ def command_chain(
 def friend_message_event(
     message_chain: platform_message.MessageChain,
     sender_id: typing.Union[int, str] = 12345,
-    nickname: str = "TestUser",
+    nickname: str = 'TestUser',
 ) -> platform_events.FriendMessage:
     """Create a friend (private) message event."""
     sender = platform_entities.Friend(
@@ -90,7 +96,7 @@ def friend_message_event(
         remark=None,
     )
     return platform_events.FriendMessage(
-        type="FriendMessage",
+        type='FriendMessage',
         sender=sender,
         message_chain=message_chain,
         time=1609459200,
@@ -100,9 +106,9 @@ def friend_message_event(
 def group_message_event(
     message_chain: platform_message.MessageChain,
     sender_id: typing.Union[int, str] = 12345,
-    sender_name: str = "TestUser",
+    sender_name: str = 'TestUser',
     group_id: typing.Union[int, str] = 99999,
-    group_name: str = "TestGroup",
+    group_name: str = 'TestGroup',
 ) -> platform_events.GroupMessage:
     """Create a group message event."""
     group = platform_entities.Group(
@@ -117,7 +123,7 @@ def group_message_event(
         group=group,
     )
     return platform_events.GroupMessage(
-        type="GroupMessage",
+        type='GroupMessage',
         sender=sender,
         message_chain=message_chain,
         time=1609459200,
@@ -152,36 +158,36 @@ def _base_query(
     query_id = _next_query_id()
 
     base_data = {
-        "query_id": query_id,
-        "launcher_type": launcher_type,
-        "launcher_id": launcher_id,
-        "sender_id": sender_id,
-        "message_chain": message_chain,
-        "message_event": message_event,
-        "adapter": adapter,
-        "pipeline_uuid": "test-pipeline-uuid",
-        "bot_uuid": "test-bot-uuid",
-        "pipeline_config": {
-            "ai": {
-                "runner": {"runner": "local-agent"},
-                "local-agent": {
-                    "model": {"primary": "test-model-uuid", "fallbacks": []},
-                    "prompt": "test-prompt",
+        'query_id': query_id,
+        'launcher_type': launcher_type,
+        'launcher_id': launcher_id,
+        'sender_id': sender_id,
+        'message_chain': message_chain,
+        'message_event': message_event,
+        'adapter': adapter,
+        'pipeline_uuid': 'test-pipeline-uuid',
+        'bot_uuid': 'test-bot-uuid',
+        'pipeline_config': {
+            'ai': {
+                'runner': {'runner': 'local-agent'},
+                'local-agent': {
+                    'model': {'primary': 'test-model-uuid', 'fallbacks': []},
+                    'prompt': 'test-prompt',
                 },
             },
-            "output": {"misc": {"at-sender": False, "quote-origin": False}},
-            "trigger": {"misc": {"combine-quote-message": False}},
+            'output': {'misc': {'at-sender': False, 'quote-origin': False}},
+            'trigger': {'misc': {'combine-quote-message': False}},
         },
-        "session": None,
-        "prompt": None,
-        "messages": [],
-        "user_message": None,
-        "use_funcs": [],
-        "use_llm_model_uuid": None,
-        "variables": {},
-        "resp_messages": [],
-        "resp_message_chain": None,
-        "current_stage_name": None,
+        'session': None,
+        'prompt': None,
+        'messages': [],
+        'user_message': None,
+        'use_funcs': [],
+        'use_llm_model_uuid': None,
+        'variables': {},
+        'resp_messages': [],
+        'resp_message_chain': None,
+        'current_stage_name': None,
     }
 
     # Apply overrides
@@ -192,7 +198,7 @@ def _base_query(
 
 
 def text_query(
-    text: str = "hello",
+    text: str = 'hello',
     sender_id: typing.Union[int, str] = 12345,
     **overrides,
 ) -> pipeline_query.Query:
@@ -212,7 +218,7 @@ def text_query(
 
 
 def private_text_query(
-    text: str = "hello",
+    text: str = 'hello',
     sender_id: typing.Union[int, str] = 12345,
     **overrides,
 ) -> pipeline_query.Query:
@@ -221,7 +227,7 @@ def private_text_query(
 
 
 def group_text_query(
-    text: str = "hello",
+    text: str = 'hello',
     sender_id: typing.Union[int, str] = 12345,
     group_id: typing.Union[int, str] = 99999,
     **overrides,
@@ -242,8 +248,8 @@ def group_text_query(
 
 
 def command_query(
-    command: str = "help",
-    prefix: str = "/",
+    command: str = 'help',
+    prefix: str = '/',
     sender_id: typing.Union[int, str] = 12345,
     **overrides,
 ) -> pipeline_query.Query:
@@ -263,7 +269,7 @@ def command_query(
 
 
 def mention_query(
-    text: str = "hello",
+    text: str = 'hello',
     target: typing.Union[int, str] = 12345,
     sender_id: typing.Union[int, str] = 12345,
     group_id: typing.Union[int, str] = 99999,
@@ -301,8 +307,8 @@ def empty_query(**overrides) -> pipeline_query.Query:
 
 
 def image_query(
-    text: str = "",
-    url: str = "https://example.com/image.png",
+    text: str = '',
+    url: str = 'https://example.com/image.png',
     sender_id: typing.Union[int, str] = 12345,
     **overrides,
 ) -> pipeline_query.Query:
@@ -322,9 +328,9 @@ def image_query(
 
 
 def file_query(
-    url: str = "https://example.com/document.pdf",
-    name: str = "document.pdf",
-    text: str = "",
+    url: str = 'https://example.com/document.pdf',
+    name: str = 'document.pdf',
+    text: str = '',
     sender_id: typing.Union[int, str] = 12345,
     **overrides,
 ) -> pipeline_query.Query:
@@ -348,8 +354,8 @@ def file_query(
 
 
 def unsupported_query(
-    unsupported_type: str = "CustomComponent",
-    text: str = "",
+    unsupported_type: str = 'CustomComponent',
+    text: str = '',
     sender_id: typing.Union[int, str] = 12345,
     **overrides,
 ) -> pipeline_query.Query:
@@ -358,7 +364,7 @@ def unsupported_query(
     if text:
         components.append(platform_message.Plain(text=text))
     # Use Unknown component for unsupported types
-    components.append(platform_message.Unknown(text=f"Unsupported: {unsupported_type}"))
+    components.append(platform_message.Unknown(text=f'Unsupported: {unsupported_type}'))
     chain = platform_message.MessageChain(components)
     event = friend_message_event(chain, sender_id)
     adapter = mock_adapter()
@@ -374,7 +380,7 @@ def unsupported_query(
 
 
 def query_with_session(
-    text: str = "hello",
+    text: str = 'hello',
     sender_id: typing.Union[int, str] = 12345,
     session: provider_session.Session = None,
     **overrides,
@@ -389,7 +395,7 @@ def query_with_session(
             launcher_type=provider_session.LauncherTypes.PERSON,
             launcher_id=sender_id,
             sender_id=sender_id,
-            use_prompt_name="default",
+            use_prompt_name='default',
             using_conversation=None,
             conversations=[],
         )
@@ -398,7 +404,7 @@ def query_with_session(
 
 
 def query_with_config(
-    text: str = "hello",
+    text: str = 'hello',
     sender_id: typing.Union[int, str] = 12345,
     pipeline_config: dict = None,
     **overrides,
@@ -410,22 +416,22 @@ def query_with_config(
     """
     if pipeline_config is None:
         pipeline_config = {
-            "ai": {
-                "runner": {"runner": "local-agent"},
-                "local-agent": {
-                    "model": {"primary": "test-model-uuid", "fallbacks": []},
-                    "prompt": "test-prompt",
+            'ai': {
+                'runner': {'runner': 'local-agent'},
+                'local-agent': {
+                    'model': {'primary': 'test-model-uuid', 'fallbacks': []},
+                    'prompt': 'test-prompt',
                 },
             },
-            "output": {"misc": {"at-sender": False, "quote-origin": False}},
-            "trigger": {"misc": {"combine-quote-message": False}},
+            'output': {'misc': {'at-sender': False, 'quote-origin': False}},
+            'trigger': {'misc': {'combine-quote-message': False}},
         }
 
     return text_query(text, sender_id, pipeline_config=pipeline_config, **overrides)
 
 
 def voice_query(
-    url: str = "https://example.com/audio.mp3",
+    url: str = 'https://example.com/audio.mp3',
     sender_id: typing.Union[int, str] = 12345,
     **overrides,
 ) -> pipeline_query.Query:
@@ -448,7 +454,7 @@ def voice_query(
 
 
 def at_all_query(
-    text: str = "hello",
+    text: str = 'hello',
     sender_id: typing.Union[int, str] = 12345,
     group_id: typing.Union[int, str] = 99999,
     **overrides,
@@ -456,7 +462,7 @@ def at_all_query(
     """Create a group query with @All mention."""
     components = [
         platform_message.AtAll(),
-        platform_message.Plain(text=f" {text}"),
+        platform_message.Plain(text=f' {text}'),
     ]
     chain = platform_message.MessageChain(components)
     event = group_message_event(chain, sender_id, group_id=group_id)

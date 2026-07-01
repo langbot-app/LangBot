@@ -73,15 +73,25 @@ class PipelinesRouterGroup(group.RouterGroup):
                 plugins = await self.ap.plugin_connector.list_plugins(component_kinds=pipeline_component_kinds)
                 mcp_servers = await self.ap.mcp_service.get_mcp_servers(contain_runtime_info=True)
 
+                # Get available skills
+                available_skills = await self.ap.skill_service.list_skills()
+
                 extensions_prefs = pipeline.get('extensions_preferences', {})
                 return self.success(
                     data={
                         'enable_all_plugins': extensions_prefs.get('enable_all_plugins', True),
                         'enable_all_mcp_servers': extensions_prefs.get('enable_all_mcp_servers', True),
+                        'enable_all_skills': extensions_prefs.get('enable_all_skills', True),
                         'bound_plugins': extensions_prefs.get('plugins', []),
                         'available_plugins': plugins,
                         'bound_mcp_servers': extensions_prefs.get('mcp_servers', []),
                         'available_mcp_servers': mcp_servers,
+                        'bound_mcp_resources': extensions_prefs.get('mcp_resources', []),
+                        'mcp_resource_agent_read_enabled': extensions_prefs.get(
+                            'mcp_resource_agent_read_enabled', True
+                        ),
+                        'bound_skills': extensions_prefs.get('skills', []),
+                        'available_skills': available_skills,
                     }
                 )
             elif quart.request.method == 'PUT':
@@ -89,11 +99,23 @@ class PipelinesRouterGroup(group.RouterGroup):
                 json_data = await quart.request.json
                 enable_all_plugins = json_data.get('enable_all_plugins', True)
                 enable_all_mcp_servers = json_data.get('enable_all_mcp_servers', True)
+                enable_all_skills = json_data.get('enable_all_skills', True)
                 bound_plugins = json_data.get('bound_plugins', [])
                 bound_mcp_servers = json_data.get('bound_mcp_servers', [])
+                bound_skills = json_data.get('bound_skills', [])
+                bound_mcp_resources = json_data.get('bound_mcp_resources')
+                mcp_resource_agent_read_enabled = json_data.get('mcp_resource_agent_read_enabled')
 
                 await self.ap.pipeline_service.update_pipeline_extensions(
-                    pipeline_uuid, bound_plugins, bound_mcp_servers, enable_all_plugins, enable_all_mcp_servers
+                    pipeline_uuid,
+                    bound_plugins,
+                    bound_mcp_servers,
+                    enable_all_plugins,
+                    enable_all_mcp_servers,
+                    bound_skills=bound_skills,
+                    enable_all_skills=enable_all_skills,
+                    bound_mcp_resources=bound_mcp_resources,
+                    mcp_resource_agent_read_enabled=mcp_resource_agent_read_enabled,
                 )
 
                 return self.success()

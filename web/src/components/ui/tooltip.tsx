@@ -3,6 +3,34 @@ import * as TooltipPrimitive from '@radix-ui/react-tooltip';
 
 import { cn } from '@/lib/utils';
 
+// Radix tooltips open on hover/focus only and deliberately stay closed on
+// touch input. To make every tooltip usable on mobile, we expose a small
+// context so the trigger can toggle the tooltip open on tap when the device
+// has no hover capability (coarse / touch pointer).
+interface TooltipTouchContextValue {
+  isTouch: boolean;
+  open: boolean;
+  setOpen: (open: boolean) => void;
+}
+
+const TooltipTouchContext =
+  React.createContext<TooltipTouchContextValue | null>(null);
+
+function useIsTouchDevice(): boolean {
+  const [isTouch, setIsTouch] = React.useState(false);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(hover: none), (pointer: coarse)');
+    const update = () => setIsTouch(mq.matches);
+    update();
+    mq.addEventListener?.('change', update);
+    return () => mq.removeEventListener?.('change', update);
+  }, []);
+
+  return isTouch;
+}
+
 function TooltipProvider({
   delayDuration = 0,
   ...props
@@ -17,19 +45,66 @@ function TooltipProvider({
 }
 
 function Tooltip({
+  open: openProp,
+  onOpenChange,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Root>) {
+  const isTouch = useIsTouchDevice();
+  const [openState, setOpenState] = React.useState(false);
+  const isControlled = openProp !== undefined;
+  const open = isControlled ? (openProp ?? false) : openState;
+
+  const setOpen = React.useCallback(
+    (next: boolean) => {
+      if (!isControlled) setOpenState(next);
+      onOpenChange?.(next);
+    },
+    [isControlled, onOpenChange],
+  );
+
   return (
     <TooltipProvider>
-      <TooltipPrimitive.Root data-slot="tooltip" {...props} />
+      <TooltipTouchContext.Provider value={{ isTouch, open, setOpen }}>
+        {/* Drive open state ourselves so we can toggle on tap for touch
+            devices while still forwarding Radix's hover/focus changes on
+            desktop. */}
+        <TooltipPrimitive.Root
+          data-slot="tooltip"
+          open={open}
+          onOpenChange={setOpen}
+          {...props}
+        />
+      </TooltipTouchContext.Provider>
     </TooltipProvider>
   );
 }
 
 function TooltipTrigger({
+  onClick,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
-  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />;
+  const ctx = React.useContext(TooltipTouchContext);
+
+  const handleClick = React.useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      // On touch devices Radix never opens the tooltip via hover, so a tap on
+      // the trigger toggles it. The underlying element's own onClick still
+      // fires (e.g. an actionable button keeps working).
+      if (ctx?.isTouch) {
+        ctx.setOpen(!ctx.open);
+      }
+      onClick?.(event);
+    },
+    [ctx, onClick],
+  );
+
+  return (
+    <TooltipPrimitive.Trigger
+      data-slot="tooltip-trigger"
+      onClick={handleClick}
+      {...props}
+    />
+  );
 }
 
 function TooltipContent({

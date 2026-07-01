@@ -1,0 +1,22 @@
+id: uv-run-resyncs-local-sdk
+title: "uv run resyncs the locked SDK instead of the local editable SDK"
+date: 2026-05-17
+symptoms:
+  - "LangBot was expected to use a local langbot-plugin SDK checkout, but import inspection points to .venv/site-packages."
+  - "uv output shows langbot-plugin was uninstalled and installed again immediately before a test or startup command."
+  - "A test appears to pass but is actually using the PyPI SDK from uv.lock."
+patterns:
+  - "uv run python -c import langbot_plugin prints .venv/lib/python*/site-packages/langbot_plugin"
+  - "Uninstalled 1 package"
+  - "Installed 1 package"
+  - "langbot-plugin==0.3.11 without file:/// local source"
+likely_causes:
+  - "Plain uv run synchronizes the environment to uv.lock before executing the command."
+  - "The editable local SDK was installed with uv pip install -e, but the next uv run reverted it."
+fix_steps:
+  - "Install the local SDK into the LangBot worktree with uv pip install -e /absolute/path/to/langbot-plugin-sdk-test-build."
+  - "Run validation and startup commands with uv run --no-sync."
+  - "Before trusting results, print pathlib.Path(langbot_plugin.__file__).resolve() and confirm it points to the local SDK source tree."
+verification: "uv run --no-sync python -c import inspection prints the local SDK source path, and plugin-e2e-smoke passes with that same process environment."
+related_cases:
+  - plugin-e2e-smoke

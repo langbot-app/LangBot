@@ -6,11 +6,14 @@ Tests cover:
 - RAG methods (ingest, retrieve, schema)
 - Disabled plugin early returns
 """
+
 from __future__ import annotations
 
 import pytest
 from unittest.mock import Mock, AsyncMock
 from importlib import import_module
+
+from tests.factories import text_query
 
 
 def get_connector_module():
@@ -86,16 +89,12 @@ class TestListPlugins:
             return_value=[
                 {
                     'manifest': {'manifest': {'metadata': {'author': 'a', 'name': 'p1'}}},
-                    'components': [
-                        {'manifest': {'manifest': {'kind': 'Command'}}}
-                    ],
+                    'components': [{'manifest': {'manifest': {'kind': 'Command'}}}],
                     'debug': False,
                 },
                 {
                     'manifest': {'manifest': {'metadata': {'author': 'b', 'name': 'p2'}}},
-                    'components': [
-                        {'manifest': {'manifest': {'kind': 'Tool'}}}
-                    ],
+                    'components': [{'manifest': {'manifest': {'kind': 'Tool'}}}],
                     'debug': False,
                 },
             ]
@@ -127,14 +126,136 @@ class TestListPlugins:
                 },
             ]
         )
-        connector.ap.persistence_mgr.execute_async = AsyncMock(
-            return_value=Mock(__iter__=lambda self: iter([]))
-        )
+        connector.ap.persistence_mgr.execute_async = AsyncMock(return_value=Mock(__iter__=lambda self: iter([])))
 
         result = await connector.list_plugins()
 
         # Debug plugin should be first
         assert result[0]['debug'] is True
+
+
+class TestPluginDiagnostics:
+    @pytest.mark.asyncio
+    async def test_emit_event_preserves_response_sources(self):
+        connector = create_mock_connector()
+        query = text_query('hello')
+        event = query.message_event
+        object.__setattr__(event, 'query', query)
+        connector_module = get_connector_module()
+        original_from_event = connector_module.context.EventContext.from_event
+        original_model_validate = connector_module.context.EventContext.model_validate
+        response_sources = [
+            {
+                'kind': 'reply_message_chain',
+                'plugin': {'author': 'tester', 'name': 'demo'},
+            }
+        ]
+
+        async def emit_event_response(event_context, include_plugins=None):
+            return {
+                'event_context': event_context,
+                'emitted_plugins': [],
+                'response_sources': response_sources,
+            }
+
+        connector.handler = AsyncMock()
+        connector.handler.emit_event = AsyncMock(side_effect=emit_event_response)
+
+        fake_event_ctx = Mock()
+        event_dump = event.model_dump()
+        event_dump['event_name'] = 'FriendMessage'
+        fake_event_ctx.model_dump.return_value = {
+            'query_id': query.query_id,
+            'eid': 0,
+            'event_name': 'FriendMessage',
+            'event': event_dump,
+            'is_prevent_default': False,
+            'is_prevent_postorder': False,
+        }
+        connector_module.context.EventContext.from_event = Mock(return_value=fake_event_ctx)
+        parsed_event_ctx = Mock()
+        connector_module.context.EventContext.model_validate = Mock(return_value=parsed_event_ctx)
+        try:
+            event_ctx = await connector.emit_event(event)
+        finally:
+            connector_module.context.EventContext.from_event = original_from_event
+            connector_module.context.EventContext.model_validate = original_model_validate
+
+        assert event_ctx is parsed_event_ctx
+        assert event_ctx._response_sources == response_sources
+
+    @pytest.mark.asyncio
+    async def test_emit_event_leaves_response_sources_absent_for_old_runtime(self):
+        connector = create_mock_connector()
+        query = text_query('hello')
+        event = query.message_event
+        object.__setattr__(event, 'query', query)
+        connector_module = get_connector_module()
+        original_from_event = connector_module.context.EventContext.from_event
+        original_model_validate = connector_module.context.EventContext.model_validate
+
+        async def emit_event_response(event_context, include_plugins=None):
+            return {
+                'event_context': event_context,
+                'emitted_plugins': [
+                    {'manifest': {'metadata': {'author': 'tester', 'name': 'demo'}}},
+                ],
+            }
+
+        connector.handler = AsyncMock()
+        connector.handler.emit_event = AsyncMock(side_effect=emit_event_response)
+
+        fake_event_ctx = Mock()
+        event_dump = event.model_dump()
+        event_dump['event_name'] = 'FriendMessage'
+        fake_event_ctx.model_dump.return_value = {
+            'query_id': query.query_id,
+            'eid': 0,
+            'event_name': 'FriendMessage',
+            'event': event_dump,
+            'is_prevent_default': False,
+            'is_prevent_postorder': False,
+        }
+        connector_module.context.EventContext.from_event = Mock(return_value=fake_event_ctx)
+        parsed_event_ctx = Mock()
+        connector_module.context.EventContext.model_validate = Mock(return_value=parsed_event_ctx)
+        try:
+            event_ctx = await connector.emit_event(event)
+        finally:
+            connector_module.context.EventContext.from_event = original_from_event
+            connector_module.context.EventContext.model_validate = original_model_validate
+
+        assert '_response_sources' not in vars(event_ctx)
+        assert event_ctx._emitted_plugins == [
+            {'manifest': {'metadata': {'author': 'tester', 'name': 'demo'}}},
+        ]
+
+    @pytest.mark.asyncio
+    async def test_notify_plugin_diagnostic_skips_when_disabled(self):
+        connector_module = get_connector_module()
+
+        async def mock_disconnect(conn):
+            pass
+
+        mock_app = create_mock_app()
+        mock_app.instance_config.data = {'plugin': {'enable': False}}
+        connector = connector_module.PluginRuntimeConnector(mock_app, mock_disconnect)
+        connector.handler = AsyncMock()
+
+        await connector.notify_plugin_diagnostic({'code': 'response_delivery_failed'})
+
+        connector.handler.notify_plugin_diagnostic.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_notify_plugin_diagnostic_is_best_effort(self):
+        connector = create_mock_connector()
+        connector.handler = AsyncMock()
+        connector.handler.notify_plugin_diagnostic = AsyncMock(side_effect=RuntimeError('action not found'))
+
+        await connector.notify_plugin_diagnostic({'code': 'response_delivery_failed'})
+
+        connector.handler.notify_plugin_diagnostic.assert_awaited_once()
+        connector.ap.logger.debug.assert_called_once()
 
 
 class TestListKnowledgeEngines:
@@ -230,7 +351,8 @@ class TestCallParser:
         )
 
         connector.handler.parse_document.assert_called_once_with(
-            'author', 'parser',
+            'author',
+            'parser',
             {'mime_type': 'text/plain', 'filename': 'test.txt'},
             b'file content',
         )
@@ -251,9 +373,7 @@ class TestRAGMethods:
 
         result = await connector.call_rag_ingest('author/engine', {'file': 'test.pdf'})
 
-        connector.handler.rag_ingest_document.assert_called_once_with(
-            'author', 'engine', {'file': 'test.pdf'}
-        )
+        connector.handler.rag_ingest_document.assert_called_once_with('author', 'engine', {'file': 'test.pdf'})
         assert result['status'] == 'success'
 
     @pytest.mark.asyncio
@@ -264,14 +384,16 @@ class TestRAGMethods:
 
         connector.handler = AsyncMock()
         connector.handler.retrieve_knowledge = AsyncMock(
-            return_value={'results': [{'id': 'doc1', 'content': [{'type': 'text', 'text': 'test'}], 'metadata': {}, 'distance': 0.1}]}
+            return_value={
+                'results': [
+                    {'id': 'doc1', 'content': [{'type': 'text', 'text': 'test'}], 'metadata': {}, 'distance': 0.1}
+                ]
+            }
         )
 
         result = await connector.call_rag_retrieve('author/engine', {'query': 'test'})
 
-        connector.handler.retrieve_knowledge.assert_called_once_with(
-            'author', 'engine', '', {'query': 'test'}
-        )
+        connector.handler.retrieve_knowledge.assert_called_once_with('author', 'engine', '', {'query': 'test'})
         assert result == {
             'results': [
                 {
@@ -290,9 +412,7 @@ class TestRAGMethods:
         connector = create_mock_connector()
 
         connector.handler = AsyncMock()
-        connector.handler.get_rag_creation_schema = AsyncMock(
-            return_value={'properties': {'name': {'type': 'string'}}}
-        )
+        connector.handler.get_rag_creation_schema = AsyncMock(return_value={'properties': {'name': {'type': 'string'}}})
 
         result = await connector.get_rag_creation_schema('author/engine')
 
@@ -326,9 +446,7 @@ class TestRAGMethods:
 
         await connector.rag_on_kb_create('author/engine', 'kb-uuid', {'model': 'test'})
 
-        connector.handler.rag_on_kb_create.assert_called_once_with(
-            'author', 'engine', 'kb-uuid', {'model': 'test'}
-        )
+        connector.handler.rag_on_kb_create.assert_called_once_with('author', 'engine', 'kb-uuid', {'model': 'test'})
 
     @pytest.mark.asyncio
     async def test_rag_on_kb_delete(self):
@@ -354,9 +472,7 @@ class TestRAGMethods:
 
         result = await connector.call_rag_delete_document('author/engine', 'doc-uuid', 'kb-uuid')
 
-        connector.handler.rag_delete_document.assert_called_once_with(
-            'author', 'engine', 'doc-uuid', 'kb-uuid'
-        )
+        connector.handler.rag_delete_document.assert_called_once_with('author', 'engine', 'doc-uuid', 'kb-uuid')
         assert result is True
 
 
@@ -446,9 +562,7 @@ class TestGetPluginInfo:
         connector = create_mock_connector()
 
         connector.handler = AsyncMock()
-        connector.handler.get_plugin_info = AsyncMock(
-            return_value={'manifest': {'metadata': {'name': 'plugin'}}}
-        )
+        connector.handler.get_plugin_info = AsyncMock(return_value={'manifest': {'metadata': {'name': 'plugin'}}})
 
         result = await connector.get_plugin_info('author', 'plugin')
 
@@ -470,9 +584,7 @@ class TestSetPluginConfig:
 
         await connector.set_plugin_config('author', 'plugin', {'setting': 'value'})
 
-        connector.handler.set_plugin_config.assert_called_once_with(
-            'author', 'plugin', {'setting': 'value'}
-        )
+        connector.handler.set_plugin_config.assert_called_once_with('author', 'plugin', {'setting': 'value'})
 
 
 class TestPingPluginRuntime:

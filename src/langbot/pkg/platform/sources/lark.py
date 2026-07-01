@@ -881,7 +881,8 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         bot_account_id = config['bot_name']
 
-        bot = lark_oapi.ws.Client(config['app_id'], config['app_secret'], event_handler=event_handler)
+        domain = self._resolve_domain(config)
+        bot = lark_oapi.ws.Client(config['app_id'], config['app_secret'], event_handler=event_handler, domain=domain)
         api_client = self.build_api_client(config)
         cipher = AESCipher(config.get('encrypt-key', ''))
         self.request_app_ticket(api_client, config)
@@ -1014,13 +1015,28 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         return None
 
+    @staticmethod
+    def _resolve_domain(config) -> str:
+        domain = config.get('domain', lark_oapi.FEISHU_DOMAIN)
+        if domain == 'custom':
+            domain = config.get('custom_domain', '')
+            if not domain:
+                raise ValueError('Custom domain is required when domain is set to "custom"')
+        return domain.rstrip('/')
+
     def build_api_client(self, config):
         app_id = config['app_id']
         app_secret = config['app_secret']
-        api_client = lark_oapi.Client.builder().app_id(app_id).app_secret(app_secret).build()
+        domain = self._resolve_domain(config)
+        api_client = lark_oapi.Client.builder().app_id(app_id).app_secret(app_secret).domain(domain).build()
         if 'isv' == config.get('app_type', 'self'):
             api_client = (
-                lark_oapi.Client.builder().app_id(app_id).app_secret(app_secret).app_type(lark_oapi.AppType.ISV).build()
+                lark_oapi.Client.builder()
+                .app_id(app_id)
+                .app_secret(app_secret)
+                .app_type(lark_oapi.AppType.ISV)
+                .domain(domain)
+                .build()
             )
         return api_client
 

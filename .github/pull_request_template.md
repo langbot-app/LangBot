@@ -21,6 +21,7 @@
 *请在方括号间写`x`以打勾 / Please tick the box with `x`*
 
 - [ ] 阅读仓库[贡献指引](https://github.com/langbot-app/LangBot/blob/master/CONTRIBUTING.md)了吗？ / Have you read the [contribution guide](https://github.com/langbot-app/LangBot/blob/master/CONTRIBUTING.md)?
+- [ ] 我已签署或将在机器人提示后签署 [CLA](https://github.com/langbot-app/LangBot/blob/master/CLA.md)。 / I have signed, or will sign when prompted by the bot, the [CLA](https://github.com/langbot-app/LangBot/blob/master/CLA.md).
 - [ ] 与项目所有者沟通过了吗？ / Have you communicated with the project maintainer?
 - [ ] 我确定已自行测试所作的更改，确保功能符合预期。 / I have tested the changes and ensured they work as expected.
 

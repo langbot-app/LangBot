@@ -12,6 +12,7 @@ metadata:
   icon: chroma.svg
 spec:
   config: []
+  alias: "chroma Chroma 向量 vector embedding 嵌入 chromadb"
   support_type:
   - text-embedding
   provider_category: builtin

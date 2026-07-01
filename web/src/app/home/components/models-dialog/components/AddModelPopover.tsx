@@ -18,7 +18,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useTranslation } from 'react-i18next';
 import { ScannedProviderModel } from '@/app/infra/entities/api';
 import {
@@ -34,6 +34,7 @@ interface AddModelPopoverProps {
   isOpen: boolean;
   initialMode?: 'manual' | 'scan';
   trigger?: React.ReactNode;
+  supportTypes?: string[];
   onOpen: () => void;
   onClose: () => void;
   onAddModel: (
@@ -41,6 +42,7 @@ interface AddModelPopoverProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    contextLength?: number | null,
   ) => Promise<void>;
   onScanModels: (modelType?: ModelType) => Promise<ScanModelsResult>;
   onAddScannedModels: (
@@ -63,6 +65,7 @@ export default function AddModelPopover({
   isOpen,
   initialMode = 'manual',
   trigger,
+  supportTypes,
   onOpen,
   onClose,
   onAddModel,
@@ -77,10 +80,26 @@ export default function AddModelPopover({
   const { t } = useTranslation();
   const prevIsOpenRef = useRef(false);
 
-  const [tab, setTab] = useState<ModelType>('llm');
+  // Map manifest support_type values to UI tab values.
+  // Manifest uses 'text-embedding'; the UI tab uses 'embedding'.
+  const tabSupport: Record<ModelType, string> = {
+    llm: 'llm',
+    embedding: 'text-embedding',
+    rerank: 'rerank',
+  };
+  const allTabs: ModelType[] = ['llm', 'embedding', 'rerank'];
+  // When supportTypes is undefined (unknown requester), show all tabs for
+  // backward compatibility. Otherwise only show supported tabs.
+  const visibleTabs: ModelType[] = supportTypes
+    ? allTabs.filter((tabKey) => supportTypes.includes(tabSupport[tabKey]))
+    : allTabs;
+  const defaultTab: ModelType = visibleTabs[0] ?? 'llm';
+
+  const [tab, setTab] = useState<ModelType>(defaultTab);
   const [mode, setMode] = useState<'manual' | 'scan'>('manual');
   const [name, setName] = useState('');
   const [abilities, setAbilities] = useState<string[]>([]);
+  const [contextLength, setContextLength] = useState('');
   const [extraArgs, setExtraArgs] = useState<ExtraArg[]>([]);
   const [scanLoading, setScanLoading] = useState(false);
   const [scannedModels, setScannedModels] = useState<ScannedProviderModel[]>(
@@ -94,10 +113,11 @@ export default function AddModelPopover({
   useEffect(() => {
     const wasOpen = prevIsOpenRef.current;
     if (isOpen && !wasOpen) {
-      setTab('llm');
+      setTab(defaultTab);
       setMode(initialMode);
       setName('');
       setAbilities([]);
+      setContextLength('');
       setExtraArgs([]);
       setScanLoading(false);
       setScannedModels([]);
@@ -119,7 +139,11 @@ export default function AddModelPopover({
   }, [tab, mode]);
 
   const handleAdd = async () => {
-    await onAddModel(tab, name, abilities, extraArgs);
+    const parsedContextLength =
+      tab === 'llm' && contextLength.trim()
+        ? Number(contextLength.trim())
+        : null;
+    await onAddModel(tab, name, abilities, extraArgs, parsedContextLength);
   };
 
   const handleTest = async () => {
@@ -130,32 +154,6 @@ export default function AddModelPopover({
     setScanLoading(true);
     try {
       const result = await onScanModels(trigger ? undefined : tab);
-
-      const debugData = (
-        result.debug?.response as { data?: Record<string, unknown>[] }
-      )?.data;
-      if (Array.isArray(debugData)) {
-        const debugMap = new Map<string, Record<string, unknown>>();
-        for (const item of debugData) {
-          if (typeof item?.id === 'string') {
-            debugMap.set(item.id, item);
-          }
-        }
-        for (const model of result.models) {
-          const debugItem = debugMap.get(model.id);
-          if (!debugItem) continue;
-          const features = debugItem.features as
-            | Record<string, unknown>
-            | undefined;
-          const tools = features?.tools as Record<string, unknown> | undefined;
-          if (tools?.function_calling === true) {
-            const nextAbilities = new Set(model.abilities || []);
-            nextAbilities.add('func_call');
-            model.abilities = [...nextAbilities];
-          }
-        }
-      }
-
       setScannedModels(result.models);
       setSelectedScannedModels({});
     } finally {
@@ -279,39 +277,38 @@ export default function AddModelPopover({
           className="flex flex-col min-h-0 flex-1"
         >
           <div className="flex-shrink-0">
-            {!(trigger && initialMode === 'scan') && (
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="llm">
-                  <MessageSquareText className="h-4 w-4 mr-1" />
-                  {t('models.chat')}
-                </TabsTrigger>
-                <TabsTrigger value="embedding">
-                  <Cpu className="h-4 w-4 mr-1" />
-                  {t('models.embedding')}
-                </TabsTrigger>
-                <TabsTrigger value="rerank">
-                  <ArrowUpDown className="h-4 w-4 mr-1" />
-                  {t('models.rerank')}
-                </TabsTrigger>
+            {!(trigger && initialMode === 'scan') && visibleTabs.length > 1 && (
+              <TabsList
+                className="grid w-full"
+                style={{
+                  gridTemplateColumns: `repeat(${visibleTabs.length}, minmax(0, 1fr))`,
+                }}
+              >
+                {visibleTabs.includes('llm') && (
+                  <TabsTrigger value="llm">
+                    <MessageSquareText className="h-4 w-4 mr-1" />
+                    {t('models.chat')}
+                  </TabsTrigger>
+                )}
+                {visibleTabs.includes('embedding') && (
+                  <TabsTrigger value="embedding">
+                    <Cpu className="h-4 w-4 mr-1" />
+                    {t('models.embedding')}
+                  </TabsTrigger>
+                )}
+                {visibleTabs.includes('rerank') && (
+                  <TabsTrigger value="rerank">
+                    <ArrowUpDown className="h-4 w-4 mr-1" />
+                    {t('models.rerank')}
+                  </TabsTrigger>
+                )}
               </TabsList>
             )}
           </div>
 
           <div className="overflow-y-auto flex-1 min-h-0">
-            <Tabs
-              value={mode}
-              onValueChange={(v) => setMode(v as 'manual' | 'scan')}
-            >
-              {!trigger && (
-                <TabsList className="grid w-full grid-cols-2 mt-3">
-                  <TabsTrigger value="manual">
-                    {t('models.manualAdd')}
-                  </TabsTrigger>
-                  <TabsTrigger value="scan">{t('models.scanAdd')}</TabsTrigger>
-                </TabsList>
-              )}
-
-              <TabsContent value="manual" className="mt-3">
+            {mode === 'manual' ? (
+              <div className="mt-3">
                 <div className="space-y-3">
                   <div className="space-y-2">
                     <Label>{t('models.modelName')}</Label>
@@ -356,6 +353,24 @@ export default function AddModelPopover({
                     </div>
                   )}
 
+                  {tab === 'llm' && (
+                    <div className="space-y-2">
+                      <Label htmlFor="add-context-length">
+                        {t('models.contextLength')}
+                      </Label>
+                      <Input
+                        id="add-context-length"
+                        type="number"
+                        min={1}
+                        step={1}
+                        inputMode="numeric"
+                        placeholder={t('models.contextLengthPlaceholder')}
+                        value={contextLength}
+                        onChange={(e) => setContextLength(e.target.value)}
+                      />
+                    </div>
+                  )}
+
                   <ExtraArgsEditor
                     args={extraArgs}
                     onChange={setExtraArgs}
@@ -390,9 +405,9 @@ export default function AddModelPopover({
                     </Button>
                   </div>
                 </div>
-              </TabsContent>
-
-              <TabsContent value="scan" className="space-y-2 mt-0 pt-0">
+              </div>
+            ) : (
+              <div className="space-y-2 mt-3">
                 {scanLoading ? (
                   <div className="flex items-center justify-center py-4">
                     <RefreshCw className="h-4 w-4 mr-2 animate-spin text-muted-foreground" />
@@ -565,8 +580,8 @@ export default function AddModelPopover({
                     />
                   </Button>
                 </div>
-              </TabsContent>
-            </Tabs>
+              </div>
+            )}
           </div>
         </Tabs>
       </PopoverContent>

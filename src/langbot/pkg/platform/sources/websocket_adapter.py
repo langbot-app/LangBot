@@ -312,12 +312,18 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
 
     async def _process_image_components(self, message_chain_obj: list):
         """
-        处理消息链中的图片和文件组件，将path转换为base64
+        处理消息链中的图片、语音和文件组件，将 path 转换为 base64
+
+        Image / Voice / File components uploaded from the web client carry a
+        storage key in ``path``. Resolve it to a base64 data URI so downstream
+        stages (multimodal LLM input and the Box sandbox inbox) have a usable
+        payload, then drop the now-consumed storage object.
 
         Args:
             message_chain_obj: 消息链对象列表
         """
         import base64
+        import mimetypes
 
         storage_mgr = self.ap.storage_mgr
 
@@ -325,31 +331,33 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             comp_type = component.get('type', '')
             comp_path = component.get('path', '')
 
-            if not comp_path:
+            if not comp_path or comp_type not in ('Image', 'Voice', 'File'):
                 continue
 
-            if comp_type == 'Image':
-                try:
-                    file_content = await storage_mgr.storage_provider.load(comp_path)
-                    base64_str = base64.b64encode(file_content).decode('utf-8')
+            try:
+                file_content = await storage_mgr.storage_provider.load(comp_path)
+                base64_str = base64.b64encode(file_content).decode('utf-8')
 
-                    file_key = comp_path
-                    if file_key.lower().endswith(('.jpg', '.jpeg')):
+                lowered = comp_path.lower()
+                if comp_type == 'Image':
+                    if lowered.endswith(('.jpg', '.jpeg')):
                         mime_type = 'image/jpeg'
-                    elif file_key.lower().endswith('.png'):
-                        mime_type = 'image/png'
-                    elif file_key.lower().endswith('.gif'):
+                    elif lowered.endswith('.gif'):
                         mime_type = 'image/gif'
-                    elif file_key.lower().endswith('.webp'):
+                    elif lowered.endswith('.webp'):
                         mime_type = 'image/webp'
                     else:
                         mime_type = 'image/png'
+                elif comp_type == 'Voice':
+                    mime_type = mimetypes.guess_type(comp_path)[0] or 'audio/wav'
+                else:  # File
+                    mime_type = mimetypes.guess_type(comp_path)[0] or 'application/octet-stream'
 
-                    component['base64'] = f'data:{mime_type};base64,{base64_str}'
-                    await storage_mgr.storage_provider.delete(comp_path)
-                    component['path'] = ''
-                except Exception as e:
-                    await self.logger.error(f'Failed to load image file {comp_path}: {e}')
+                component['base64'] = f'data:{mime_type};base64,{base64_str}'
+                await storage_mgr.storage_provider.delete(comp_path)
+                component['path'] = ''
+            except Exception as e:
+                await self.logger.error(f'Failed to load {comp_type} file {comp_path}: {e}')
 
     async def handle_websocket_message(
         self,

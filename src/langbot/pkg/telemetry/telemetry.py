@@ -68,9 +68,20 @@ class TelemetryManager:
                     'edition',
                     'error',
                     'timestamp',
+                    'event_type',
                 ):
+                    if sfield not in sanitized:
+                        continue
                     v = sanitized.get(sfield)
                     sanitized[sfield] = '' if v is None else str(v)
+
+                # event_type defaults to 'query' for backward compatibility
+                if not sanitized.get('event_type'):
+                    sanitized['event_type'] = 'query'
+
+                # features must be a JSON object
+                if 'features' in sanitized and not isinstance(sanitized['features'], dict):
+                    sanitized['features'] = {}
 
                 if 'duration_ms' in sanitized:
                     try:

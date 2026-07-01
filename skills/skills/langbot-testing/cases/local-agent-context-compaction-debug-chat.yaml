@@ -1,0 +1,87 @@
+id: local-agent-context-compaction-debug-chat
+title: "Local Agent compacts long Debug Chat history and preserves older facts"
+mode: agent-browser
+area: pipeline
+type: regression
+priority: p1
+risk: high
+ci_eligible: false
+tags:
+  - local-agent
+  - pipeline
+  - context
+  - compaction
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation: scripts/e2e/pipeline-debug-chat.mjs
+automation_env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_pipeline_url_env: LANGBOT_LOCAL_AGENT_PIPELINE_URL
+automation_pipeline_name_env: LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_expected_runner_id: "plugin:langbot/local-agent/default"
+automation_runner_config_patch_json: '{"context-window-tokens":225,"context-reserve-tokens":50,"context-keep-recent-tokens":30,"context-summary-tokens":105,"knowledge-bases":[]}'
+automation_restore_runner_config: "1"
+automation_reset_debug_chat: "1"
+automation_debug_chat_session_type: "person"
+automation_expected_text: "qa_compaction_sentinel_7391"
+automation_response_timeout_ms: "180000"
+automation_prompts_json: '[{"prompt":"请记住这个用于 local-agent context compaction 回归测试的暗号：qa_compaction_sentinel_7391。请只回复 MEMORY_SET。","expected_text":"MEMORY_SET","response_timeout_ms":"180000"},{"prompt":"下面这轮只用于制造长历史压力，内容没有业务含义。请忽略填充内容，最后只回复 CONTEXT_PRESSURE_READY。填充片段 A001 context padding for local-agent compaction. A002 context padding for local-agent compaction. A003 context padding for local-agent compaction. A004 context padding for local-agent compaction. A005 context padding for local-agent compaction. A006 context padding for local-agent compaction. A007 context padding for local-agent compaction. A008 context padding for local-agent compaction. A009 context padding for local-agent compaction. A010 context padding for local-agent compaction. A011 context padding for local-agent compaction. A012 context padding for local-agent compaction. A013 context padding for local-agent compaction. A014 context padding for local-agent compaction. A015 context padding for local-agent compaction. A016 context padding for local-agent compaction. A017 context padding for local-agent compaction. A018 context padding for local-agent compaction. A019 context padding for local-agent compaction. A020 context padding for local-agent compaction. A021 context padding for local-agent compaction. A022 context padding for local-agent compaction. A023 context padding for local-agent compaction. A024 context padding for local-agent compaction. A025 context padding for local-agent compaction. A026 context padding for local-agent compaction. A027 context padding for local-agent compaction. A028 context padding for local-agent compaction. A029 context padding for local-agent compaction. A030 context padding for local-agent compaction. A031 context padding for local-agent compaction. A032 context padding for local-agent compaction. A033 context padding for local-agent compaction. A034 context padding for local-agent compaction. A035 context padding for local-agent compaction. A036 context padding for local-agent compaction. A037 context padding for local-agent compaction. A038 context padding for local-agent compaction. A039 context padding for local-agent compaction. A040 context padding for local-agent compaction.","expected_text":"CONTEXT_PRESSURE_READY","response_timeout_ms":"180000"},{"prompt":"刚才第一轮我要求你记住的测试暗号是什么？请只回复暗号本身，不要解释。","expected_text":"qa_compaction_sentinel_7391","response_timeout_ms":"180000"}]'
+setup_automation:
+  - "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env"
+setup_provides_env:
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+preconditions:
+  - "The selected model route can follow short deterministic instructions across multiple Debug Chat turns."
+steps:
+  - "Open the target local-agent pipeline through LANGBOT_FRONTEND_URL."
+  - "Use the authenticated browser token only inside automation to GET and PUT /api/v1/pipelines/{uuid}."
+  - "Assert the saved runner is plugin:langbot/local-agent/default."
+  - "Temporarily set context-window-tokens, context-reserve-tokens, context-keep-recent-tokens, and context-summary-tokens to force compaction, and clear knowledge-bases so RAG does not answer the memory question."
+  - "Reset the person Debug Chat session for the target pipeline."
+  - "Send the sentinel memory prompt and wait for MEMORY_SET."
+  - "Send the long padding prompt and wait for CONTEXT_PRESSURE_READY."
+  - "Ask for the original sentinel and wait for qa_compaction_sentinel_7391."
+  - "Restore the original runner config."
+checks:
+  - "UI: All three user messages appear in Debug Chat."
+  - "UI: The final Bot message contains qa_compaction_sentinel_7391."
+  - "API diagnostic: pipeline-config-diagnostic.json shows patched=true and patch_keys include the four token context compaction fields plus knowledge-bases."
+  - "API diagnostic: pipeline-config-restore-diagnostic.json shows the original runner config was restored."
+  - "Logs: Backend completes the multi-turn Debug Chat path without runner timeout or model setup failure."
+  - "Console: No unexpected frontend runtime errors appear during the run."
+evidence_required:
+  - ui
+  - screenshot
+  - console
+  - backend_log
+  - api_diagnostic
+diagnostics:
+  - "If the final sentinel is missing, inspect whether pipeline-config-diagnostic.json targeted ai.runner_config[runnerId], cleared knowledge-bases, and whether the backend log shows the local-agent runner loading the small context settings."
+  - "If the model ignores deterministic replies, rerun with a known-good model route before diagnosing ContextAssembler."
+  - "If restore fails, use pipeline-config-restore-diagnostic.json and GET /api/v1/pipelines/{uuid} to confirm the current saved config before retrying."
+success_patterns:
+  - "Processing request from person_websocket"
+  - "Streaming completed"
+failure_patterns:
+  - "Action invoke_llm_stream call timed out"
+  - "All models failed during streaming setup"
+  - "Task exception was never retrieved"
+  - "survey widget blocks debug chat"
+troubleshooting:
+  - local-agent-model-route-unavailable
+  - plugin-runtime-timeout
+  - proxy-env-mismatch
+  - survey-widget-blocks-debug-chat
+  - debug-chat-history-contaminates-automation

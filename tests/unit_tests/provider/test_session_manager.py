@@ -5,6 +5,7 @@ Tests cover:
 - Conversation creation with prompts
 - Session concurrency semaphore
 """
+
 from __future__ import annotations
 
 import pytest
@@ -60,11 +61,7 @@ class TestSessionManagerGetSession:
         """Create mock app with instance config."""
         mock_app = Mock()
         mock_app.instance_config = Mock()
-        mock_app.instance_config.data = {
-            'concurrency': {
-                'session': 5
-            }
-        }
+        mock_app.instance_config.data = {'concurrency': {'session': 5}}
         return mock_app
 
     @pytest.fixture
@@ -173,11 +170,7 @@ class TestSessionManagerGetConversation:
         """Create mock app with instance config."""
         mock_app = Mock()
         mock_app.instance_config = Mock()
-        mock_app.instance_config.data = {
-            'concurrency': {
-                'session': 5
-            }
-        }
+        mock_app.instance_config.data = {'concurrency': {'session': 5}}
         return mock_app
 
     @pytest.fixture
@@ -201,17 +194,13 @@ class TestSessionManagerGetConversation:
         return query
 
     @pytest.mark.asyncio
-    async def test_creates_conversation_with_prompt(
-        self, mock_app_with_config, sample_query, sample_session
-    ):
+    async def test_creates_conversation_with_prompt(self, mock_app_with_config, sample_query, sample_session):
         """Test that get_conversation creates conversation with prompt."""
         sessionmgr = get_session_module()
 
         manager = sessionmgr.SessionManager(mock_app_with_config)
 
-        prompt_config = [
-            {'role': 'system', 'content': 'You are a helpful assistant.'}
-        ]
+        prompt_config = [{'role': 'system', 'content': 'You are a helpful assistant.'}]
         pipeline_uuid = 'pipeline-123'
         bot_uuid = 'bot-123'
 
@@ -234,21 +223,15 @@ class TestSessionManagerGetConversation:
 
         manager = sessionmgr.SessionManager(mock_app_with_config)
 
-        prompt_config = [
-            {'role': 'system', 'content': 'You are a helpful assistant.'}
-        ]
+        prompt_config = [{'role': 'system', 'content': 'You are a helpful assistant.'}]
         pipeline_uuid = 'pipeline-123'
         bot_uuid = 'bot-123'
 
         # First call creates conversation
-        conv1 = await manager.get_conversation(
-            sample_query, sample_session, prompt_config, pipeline_uuid, bot_uuid
-        )
+        conv1 = await manager.get_conversation(sample_query, sample_session, prompt_config, pipeline_uuid, bot_uuid)
 
         # Second call with same pipeline should return same conversation
-        conv2 = await manager.get_conversation(
-            sample_query, sample_session, prompt_config, pipeline_uuid, bot_uuid
-        )
+        conv2 = await manager.get_conversation(sample_query, sample_session, prompt_config, pipeline_uuid, bot_uuid)
 
         assert conv1 is conv2
         assert len(sample_session.conversations) == 1
@@ -262,36 +245,26 @@ class TestSessionManagerGetConversation:
 
         manager = sessionmgr.SessionManager(mock_app_with_config)
 
-        prompt_config = [
-            {'role': 'system', 'content': 'You are a helpful assistant.'}
-        ]
+        prompt_config = [{'role': 'system', 'content': 'You are a helpful assistant.'}]
 
         # First call with pipeline1
-        conv1 = await manager.get_conversation(
-            sample_query, sample_session, prompt_config, 'pipeline-1', 'bot-1'
-        )
+        conv1 = await manager.get_conversation(sample_query, sample_session, prompt_config, 'pipeline-1', 'bot-1')
 
         # Second call with different pipeline should create new conversation
-        conv2 = await manager.get_conversation(
-            sample_query, sample_session, prompt_config, 'pipeline-2', 'bot-2'
-        )
+        conv2 = await manager.get_conversation(sample_query, sample_session, prompt_config, 'pipeline-2', 'bot-2')
 
         assert conv1 is not conv2
         assert len(sample_session.conversations) == 2
         assert sample_session.using_conversation is conv2
 
     @pytest.mark.asyncio
-    async def test_conversation_has_empty_messages(
-        self, mock_app_with_config, sample_query, sample_session
-    ):
+    async def test_conversation_has_empty_messages(self, mock_app_with_config, sample_query, sample_session):
         """Test that created conversation has empty messages list."""
         sessionmgr = get_session_module()
 
         manager = sessionmgr.SessionManager(mock_app_with_config)
 
-        prompt_config = [
-            {'role': 'system', 'content': 'You are a helpful assistant.'}
-        ]
+        prompt_config = [{'role': 'system', 'content': 'You are a helpful assistant.'}]
 
         conversation = await manager.get_conversation(
             sample_query, sample_session, prompt_config, 'pipeline-123', 'bot-123'
@@ -300,18 +273,13 @@ class TestSessionManagerGetConversation:
         assert conversation.messages == []
 
     @pytest.mark.asyncio
-    async def test_prompt_messages_from_config(
-        self, mock_app_with_config, sample_query, sample_session
-    ):
+    async def test_prompt_messages_from_config(self, mock_app_with_config, sample_query, sample_session):
         """Test that prompt messages are created from prompt_config."""
         sessionmgr = get_session_module()
 
         manager = sessionmgr.SessionManager(mock_app_with_config)
 
-        prompt_config = [
-            {'role': 'system', 'content': 'System message'},
-            {'role': 'user', 'content': 'User message'}
-        ]
+        prompt_config = [{'role': 'system', 'content': 'System message'}, {'role': 'user', 'content': 'User message'}]
 
         conversation = await manager.get_conversation(
             sample_query, sample_session, prompt_config, 'pipeline-123', 'bot-123'

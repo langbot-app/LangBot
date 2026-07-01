@@ -1,0 +1,326 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://langbot.app/schemas/langbot-skills/case.schema.json",
+  "title": "LangBot Skill Test Case",
+  "type": "object",
+  "required": [
+    "id",
+    "title",
+    "mode",
+    "area",
+    "type",
+    "priority",
+    "risk",
+    "ci_eligible",
+    "tags",
+    "skills",
+    "steps",
+    "checks",
+    "evidence_required"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "mode": { "const": "agent-browser" }
+        }
+      },
+      "then": {
+        "required": ["env"]
+      }
+    }
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$"
+    },
+    "title": {
+      "type": "string"
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["agent-browser", "probe"]
+    },
+    "area": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "smoke",
+        "regression",
+        "feature",
+        "provider",
+        "exploratory",
+        "contract",
+        "performance",
+        "reliability",
+        "chaos",
+        "security"
+      ]
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["p0", "p1", "p2"]
+    },
+    "risk": {
+      "type": "string",
+      "enum": ["low", "medium", "high"]
+    },
+    "ci_eligible": {
+      "type": "boolean"
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "skills": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "env": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "env_any": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]*(\\|[A-Z][A-Z0-9_]*)+$"
+      }
+    },
+    "steps": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "checks": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "evidence_required": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "ui",
+          "screenshot",
+          "console",
+          "network",
+          "backend_log",
+          "frontend_log",
+          "api_diagnostic",
+          "filesystem",
+          "metrics",
+          "trace",
+          "profile",
+          "resource_log"
+        ]
+      },
+      "minItems": 1
+    },
+    "preconditions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "setup": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "setup_automation": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(?:case:[a-z0-9][a-z0-9_-]*|node:scripts/[A-Za-z0-9_./-]+\\.(?:mjs|js|ts)(?:\\s+--[A-Za-z0-9][A-Za-z0-9_-]*(?:=[A-Za-z0-9_./:@-]+)?)*)$"
+      }
+    },
+    "setup_provides_env": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]*$"
+      }
+    },
+    "cleanup": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "automation": {
+      "type": "string"
+    },
+    "automation_env": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "automation_env_any": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]*(\\|[A-Z][A-Z0-9_]*)+$"
+      }
+    },
+    "automation_prompt": {
+      "type": "string"
+    },
+    "automation_prompts_json": {
+      "type": "string"
+    },
+    "automation_expected_text": {
+      "type": "string"
+    },
+    "automation_response_timeout_ms": {
+      "type": "string"
+    },
+    "automation_stream_output": {
+      "type": "string",
+      "enum": ["0", "1", "false", "true"]
+    },
+    "automation_image_base64_fixture": {
+      "type": "string"
+    },
+    "automation_runner_config_patch_json": {
+      "type": "string"
+    },
+    "automation_restore_runner_config": {
+      "type": "string",
+      "enum": ["0", "1", "false", "true"]
+    },
+    "automation_expected_runner_id": {
+      "type": "string"
+    },
+    "automation_reset_debug_chat": {
+      "type": "string",
+      "enum": ["0", "1", "false", "true"]
+    },
+    "automation_debug_chat_session_type": {
+      "type": "string",
+      "enum": ["person", "group"]
+    },
+    "automation_debug_chat_response_p95_ms": {
+      "type": "string"
+    },
+    "automation_debug_chat_max_error_rate": {
+      "type": "string"
+    },
+    "automation_debug_chat_load_requests": {
+      "type": "string"
+    },
+    "automation_debug_chat_load_concurrency": {
+      "type": "string"
+    },
+    "automation_debug_chat_load_timeout_ms": {
+      "type": "string"
+    },
+    "automation_debug_chat_load_response_p95_ms": {
+      "type": "string"
+    },
+    "automation_debug_chat_load_first_response_p95_ms": {
+      "type": "string"
+    },
+    "automation_debug_chat_load_max_error_rate": {
+      "type": "string"
+    },
+    "automation_debug_chat_load_min_error_rate": {
+      "type": "string"
+    },
+    "automation_debug_chat_load_min_error_count": {
+      "type": "string"
+    },
+    "automation_debug_chat_load_min_ok_count": {
+      "type": "string"
+    },
+    "automation_debug_chat_load_min_provider_fault_count": {
+      "type": "string"
+    },
+    "automation_debug_chat_load_expected_prefix": {
+      "type": "string"
+    },
+    "automation_debug_chat_load_prompt_template": {
+      "type": "string"
+    },
+    "automation_debug_chat_load_stream": {
+      "type": "string",
+      "enum": ["0", "1", "false", "true"]
+    },
+    "automation_debug_chat_load_reset": {
+      "type": "string",
+      "enum": ["0", "1", "false", "true"]
+    },
+    "automation_debug_chat_load_fail_on_final_mismatch": {
+      "type": "string",
+      "enum": ["0", "1", "false", "true"]
+    },
+    "automation_fake_provider_response_text": {
+      "type": "string"
+    },
+    "automation_fake_provider_first_token_delay_ms": {
+      "type": "string"
+    },
+    "automation_fake_provider_chunk_delay_ms": {
+      "type": "string"
+    },
+    "automation_fake_provider_chunk_count": {
+      "type": "string"
+    },
+    "automation_fake_provider_fail_first_n": {
+      "type": "string"
+    },
+    "automation_fake_provider_fail_every_n": {
+      "type": "string"
+    },
+    "automation_fake_provider_fault_status": {
+      "type": "string"
+    },
+    "automation_fake_provider_fail_after_first_chunk": {
+      "type": "string",
+      "enum": ["0", "1", "false", "true"]
+    },
+    "automation_fake_provider_dynamic_response": {
+      "type": "string",
+      "enum": ["0", "1", "false", "true"]
+    },
+    "automation_filesystem_checks_json": {
+      "type": "string"
+    },
+    "metrics_thresholds_json": {
+      "type": "string"
+    },
+    "load_profile_json": {
+      "type": "string"
+    },
+    "fault_model_json": {
+      "type": "string"
+    },
+    "automation_pipeline_url_env": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$"
+    },
+    "automation_pipeline_name_env": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$"
+    },
+    "success_patterns": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "failure_patterns": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "expected_failures": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "troubleshooting": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

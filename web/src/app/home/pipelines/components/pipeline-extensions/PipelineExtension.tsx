@@ -12,13 +12,39 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, X, Server, Wrench } from 'lucide-react';
+import { CircleHelp, Plus, X, Server, Wrench, Sparkles } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { Plugin } from '@/app/infra/entities/plugin';
-import { MCPServer } from '@/app/infra/entities/api';
+import { MCPServer, Skill } from '@/app/infra/entities/api';
 import PluginComponentList from '@/app/home/plugins/components/plugin-installed/PluginComponentList';
+import { BoxUnavailableNotice } from '@/app/home/components/BoxUnavailableNotice';
+import { useBoxStatus } from '@/app/infra/hooks/useBoxStatus';
+
+function InfoTooltip({ label }: { label: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex size-4 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          aria-label={label}
+        >
+          <CircleHelp className="size-3.5" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-[280px]">
+        {label}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 export default function PipelineExtension({
   pipelineId,
@@ -26,19 +52,31 @@ export default function PipelineExtension({
   pipelineId: string;
 }) {
   const { t } = useTranslation();
+  const {
+    available: boxAvailable,
+    hint: boxHint,
+    reason: boxReason,
+  } = useBoxStatus();
   const [loading, setLoading] = useState(true);
   const [enableAllPlugins, setEnableAllPlugins] = useState(true);
   const [enableAllMCPServers, setEnableAllMCPServers] = useState(true);
+  const [enableAllSkills, setEnableAllSkills] = useState(true);
   const [selectedPlugins, setSelectedPlugins] = useState<Plugin[]>([]);
   const [allPlugins, setAllPlugins] = useState<Plugin[]>([]);
   const [selectedMCPServers, setSelectedMCPServers] = useState<MCPServer[]>([]);
   const [allMCPServers, setAllMCPServers] = useState<MCPServer[]>([]);
+  const [selectedSkills, setSelectedSkills] = useState<Skill[]>([]);
+  const [allSkills, setAllSkills] = useState<Skill[]>([]);
   const [pluginDialogOpen, setPluginDialogOpen] = useState(false);
   const [mcpDialogOpen, setMcpDialogOpen] = useState(false);
+  const [skillDialogOpen, setSkillDialogOpen] = useState(false);
   const [tempSelectedPluginIds, setTempSelectedPluginIds] = useState<string[]>(
     [],
   );
   const [tempSelectedMCPIds, setTempSelectedMCPIds] = useState<string[]>([]);
+  const [tempSelectedSkillIds, setTempSelectedSkillIds] = useState<string[]>(
+    [],
+  );
 
   useEffect(() => {
     loadExtensions();
@@ -57,6 +95,7 @@ export default function PipelineExtension({
 
       setEnableAllPlugins(data.enable_all_plugins ?? true);
       setEnableAllMCPServers(data.enable_all_mcp_servers ?? true);
+      setEnableAllSkills(data.enable_all_skills ?? true);
 
       const boundPluginIds = new Set(
         data.bound_plugins.map((p) => `${p.author}/${p.name}`),
@@ -77,6 +116,15 @@ export default function PipelineExtension({
 
       setSelectedMCPServers(selectedMCP);
       setAllMCPServers(data.available_mcp_servers);
+
+      // Load Skills
+      const boundSkillNames = new Set(data.bound_skills || []);
+      const selectedSkill = (data.available_skills || []).filter((skill) =>
+        boundSkillNames.has(skill.name),
+      );
+
+      setSelectedSkills(selectedSkill);
+      setAllSkills(data.available_skills || []);
     } catch (error) {
       console.error('Failed to load extensions:', error);
       toast.error(t('pipelines.extensions.loadError'));
@@ -88,8 +136,10 @@ export default function PipelineExtension({
   const saveToBackend = async (
     plugins: Plugin[],
     mcpServers: MCPServer[],
+    skills: Skill[],
     newEnableAllPlugins?: boolean,
     newEnableAllMCPServers?: boolean,
+    newEnableAllSkills?: boolean,
   ) => {
     try {
       const boundPluginsArray = plugins.map((plugin) => {
@@ -101,6 +151,7 @@ export default function PipelineExtension({
       });
 
       const boundMCPServerIds = mcpServers.map((server) => server.uuid || '');
+      const boundSkillIds = skills.map((skill) => skill.name);
 
       await backendClient.updatePipelineExtensions(
         pipelineId,
@@ -108,6 +159,8 @@ export default function PipelineExtension({
         boundMCPServerIds,
         newEnableAllPlugins ?? enableAllPlugins,
         newEnableAllMCPServers ?? enableAllMCPServers,
+        boundSkillIds,
+        newEnableAllSkills ?? enableAllSkills,
       );
       toast.success(t('pipelines.extensions.saveSuccess'));
     } catch (error) {
@@ -123,13 +176,19 @@ export default function PipelineExtension({
       (p) => getPluginId(p) !== pluginId,
     );
     setSelectedPlugins(newPlugins);
-    await saveToBackend(newPlugins, selectedMCPServers);
+    await saveToBackend(newPlugins, selectedMCPServers, selectedSkills);
   };
 
   const handleRemoveMCPServer = async (serverUuid: string) => {
     const newServers = selectedMCPServers.filter((s) => s.uuid !== serverUuid);
     setSelectedMCPServers(newServers);
-    await saveToBackend(selectedPlugins, newServers);
+    await saveToBackend(selectedPlugins, newServers, selectedSkills);
+  };
+
+  const handleRemoveSkill = async (skillName: string) => {
+    const newSkills = selectedSkills.filter((s) => s.name !== skillName);
+    setSelectedSkills(newSkills);
+    await saveToBackend(selectedPlugins, selectedMCPServers, newSkills);
   };
 
   const handleOpenPluginDialog = () => {
@@ -140,6 +199,11 @@ export default function PipelineExtension({
   const handleOpenMCPDialog = () => {
     setTempSelectedMCPIds(selectedMCPServers.map((s) => s.uuid || ''));
     setMcpDialogOpen(true);
+  };
+
+  const handleOpenSkillDialog = () => {
+    setTempSelectedSkillIds(selectedSkills.map((s) => s.name));
+    setSkillDialogOpen(true);
   };
 
   const handleTogglePlugin = (pluginId: string) => {
@@ -158,23 +222,35 @@ export default function PipelineExtension({
     );
   };
 
+  const handleToggleSkill = (skillName: string) => {
+    setTempSelectedSkillIds((prev) =>
+      prev.includes(skillName)
+        ? prev.filter((id) => id !== skillName)
+        : [...prev, skillName],
+    );
+  };
+
   const handleToggleAllPlugins = () => {
     if (tempSelectedPluginIds.length === allPlugins.length) {
-      // Deselect all
       setTempSelectedPluginIds([]);
     } else {
-      // Select all
       setTempSelectedPluginIds(allPlugins.map((p) => getPluginId(p)));
     }
   };
 
   const handleToggleAllMCPServers = () => {
     if (tempSelectedMCPIds.length === allMCPServers.length) {
-      // Deselect all
       setTempSelectedMCPIds([]);
     } else {
-      // Select all
       setTempSelectedMCPIds(allMCPServers.map((s) => s.uuid || ''));
+    }
+  };
+
+  const handleToggleAllSkills = () => {
+    if (tempSelectedSkillIds.length === allSkills.length) {
+      setTempSelectedSkillIds([]);
+    } else {
+      setTempSelectedSkillIds(allSkills.map((s) => s.name));
     }
   };
 
@@ -184,7 +260,7 @@ export default function PipelineExtension({
     );
     setSelectedPlugins(newSelected);
     setPluginDialogOpen(false);
-    await saveToBackend(newSelected, selectedMCPServers);
+    await saveToBackend(newSelected, selectedMCPServers, selectedSkills);
   };
 
   const handleConfirmMCPSelection = async () => {
@@ -193,7 +269,16 @@ export default function PipelineExtension({
     );
     setSelectedMCPServers(newSelected);
     setMcpDialogOpen(false);
-    await saveToBackend(selectedPlugins, newSelected);
+    await saveToBackend(selectedPlugins, newSelected, selectedSkills);
+  };
+
+  const handleConfirmSkillSelection = async () => {
+    const newSelected = allSkills.filter((s) =>
+      tempSelectedSkillIds.includes(s.name),
+    );
+    setSelectedSkills(newSelected);
+    setSkillDialogOpen(false);
+    await saveToBackend(selectedPlugins, selectedMCPServers, newSelected);
   };
 
   const handleToggleEnableAllPlugins = async (checked: boolean) => {
@@ -201,7 +286,9 @@ export default function PipelineExtension({
     await saveToBackend(
       selectedPlugins,
       selectedMCPServers,
+      selectedSkills,
       checked,
+      undefined,
       undefined,
     );
   };
@@ -211,6 +298,20 @@ export default function PipelineExtension({
     await saveToBackend(
       selectedPlugins,
       selectedMCPServers,
+      selectedSkills,
+      undefined,
+      checked,
+      undefined,
+    );
+  };
+
+  const handleToggleEnableAllSkills = async (checked: boolean) => {
+    setEnableAllSkills(checked);
+    await saveToBackend(
+      selectedPlugins,
+      selectedMCPServers,
+      selectedSkills,
+      undefined,
       undefined,
       checked,
     );
@@ -341,9 +442,14 @@ export default function PipelineExtension({
       {/* MCP Servers Section */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-foreground">
-            {t('pipelines.extensions.mcpServersTitle')}
-          </h3>
+          <div className="flex items-center gap-1.5">
+            <h3 className="text-sm font-semibold text-foreground">
+              {t('pipelines.extensions.mcpServersTitle')}
+            </h3>
+            <InfoTooltip
+              label={t('pipelines.extensions.mcpServersScopeTooltip')}
+            />
+          </div>
           <div className="flex items-center gap-2">
             <Label
               htmlFor="enable-all-mcp-servers"
@@ -351,6 +457,9 @@ export default function PipelineExtension({
             >
               {t('pipelines.extensions.enableAllMCPServers')}
             </Label>
+            <InfoTooltip
+              label={t('pipelines.extensions.enableAllMCPServersTooltip')}
+            />
             <Switch
               id="enable-all-mcp-servers"
               checked={enableAllMCPServers}
@@ -429,6 +538,88 @@ export default function PipelineExtension({
         >
           <Plus className="mr-2 h-4 w-4" />
           {t('pipelines.extensions.addMCPServer')}
+        </Button>
+      </div>
+
+      {/* Skills Section */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-foreground">
+            {t('pipelines.extensions.skillsTitle')}
+          </h3>
+          <div className="flex items-center gap-2">
+            <Label
+              htmlFor="enable-all-skills"
+              className="text-sm font-normal cursor-pointer"
+            >
+              {t('pipelines.extensions.enableAllSkills')}
+            </Label>
+            <Switch
+              id="enable-all-skills"
+              checked={enableAllSkills}
+              onCheckedChange={handleToggleEnableAllSkills}
+              disabled={!boxAvailable}
+            />
+          </div>
+        </div>
+        {!boxAvailable && (
+          <BoxUnavailableNotice hint={boxHint} reason={boxReason} />
+        )}
+        <div className="space-y-2">
+          {enableAllSkills ? (
+            <div className="flex h-32 items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted/30">
+              <p className="text-sm text-muted-foreground">
+                {t('pipelines.extensions.allSkillsEnabled')}
+              </p>
+            </div>
+          ) : selectedSkills.length === 0 ? (
+            <div className="flex h-32 items-center justify-center rounded-lg border-2 border-dashed border-border">
+              <p className="text-sm text-muted-foreground">
+                {t('pipelines.extensions.noSkillsSelected')}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {selectedSkills.map((skill) => (
+                <div
+                  key={skill.name}
+                  className="flex items-center justify-between rounded-lg border p-3 hover:bg-accent"
+                >
+                  <div className="flex-1 flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg border bg-muted flex items-center justify-center flex-shrink-0">
+                      <Sparkles className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-medium">
+                        {skill.display_name || skill.name}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {skill.description}
+                      </div>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleRemoveSkill(skill.name)}
+                    disabled={!boxAvailable}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <Button
+          onClick={handleOpenSkillDialog}
+          variant="outline"
+          className="w-full"
+          disabled={enableAllSkills || !boxAvailable}
+        >
+          <Plus className="mr-2 h-4 w-4" />
+          {t('pipelines.extensions.addSkill')}
         </Button>
       </div>
 
@@ -615,6 +806,73 @@ export default function PipelineExtension({
               {t('common.cancel')}
             </Button>
             <Button onClick={handleConfirmMCPSelection}>
+              {t('common.confirm')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Skill Selection Dialog */}
+      <Dialog open={skillDialogOpen} onOpenChange={setSkillDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>{t('pipelines.extensions.selectSkills')}</DialogTitle>
+          </DialogHeader>
+          {allSkills.length > 0 && (
+            <div
+              className="flex items-center gap-3 px-1 py-2 border-b cursor-pointer"
+              onClick={handleToggleAllSkills}
+            >
+              <Checkbox
+                checked={
+                  tempSelectedSkillIds.length === allSkills.length &&
+                  allSkills.length > 0
+                }
+                onCheckedChange={handleToggleAllSkills}
+              />
+              <span className="text-sm font-medium">
+                {t('pipelines.extensions.selectAll')}
+              </span>
+            </div>
+          )}
+          <div className="flex-1 overflow-y-auto space-y-2 pr-2">
+            {allSkills.length === 0 ? (
+              <div className="flex h-full items-center justify-center">
+                <p className="text-sm text-muted-foreground">
+                  {t('pipelines.extensions.noSkillsAvailable')}
+                </p>
+              </div>
+            ) : (
+              allSkills.map((skill) => {
+                const isSelected = tempSelectedSkillIds.includes(skill.name);
+                return (
+                  <div
+                    key={skill.name}
+                    className="flex items-center gap-3 rounded-lg border p-3 hover:bg-accent cursor-pointer"
+                    onClick={() => handleToggleSkill(skill.name)}
+                  >
+                    <Checkbox checked={isSelected} />
+                    <div className="w-10 h-10 rounded-lg border bg-muted flex items-center justify-center flex-shrink-0">
+                      <Sparkles className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-medium">
+                        {skill.display_name || skill.name}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {skill.description}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSkillDialogOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button onClick={handleConfirmSkillSelection}>
               {t('common.confirm')}
             </Button>
           </DialogFooter>

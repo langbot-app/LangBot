@@ -31,6 +31,18 @@ class SystemRouterGroup(group.RouterGroup):
             except Exception:
                 pass
 
+            # ``system.outbound_ips`` may be a comma-separated string instead of
+            # a list when injected via the SYSTEM__OUTBOUND_IPS env var into a
+            # pre-existing data/config.yaml that lacks the key (env overrides
+            # only coerce to list when the key already holds one).
+            outbound_ips = self.ap.instance_config.data.get('system', {}).get('outbound_ips', [])
+            if isinstance(outbound_ips, str):
+                outbound_ips = [ip.strip() for ip in outbound_ips.split(',') if ip.strip()]
+            elif isinstance(outbound_ips, list):
+                outbound_ips = [str(ip).strip() for ip in outbound_ips if str(ip).strip()]
+            else:
+                outbound_ips = []
+
             return self.success(
                 data={
                     'version': constants.semantic_version,
@@ -49,6 +61,7 @@ class SystemRouterGroup(group.RouterGroup):
                         'disable_models_service', False
                     ),
                     'limitation': self.ap.instance_config.data.get('system', {}).get('limitation', {}),
+                    'outbound_ips': outbound_ips,
                     'wizard_status': wizard_status,
                     'wizard_progress': wizard_progress,
                 }

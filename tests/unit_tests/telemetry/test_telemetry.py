@@ -8,6 +8,7 @@ Tests cover:
 - HTTP request success/failure scenarios
 - Source code bug: send_tasks should be instance variable
 """
+
 from __future__ import annotations
 
 import pytest
@@ -37,6 +38,7 @@ class TestTelemetryManagerInit:
         mock_app = Mock()
         manager = telemetry.TelemetryManager(mock_app)
         assert manager.telemetry_config == {}
+
 
 class TestTelemetryManagerInitialize:
     """Tests for initialize() method."""
@@ -218,7 +220,7 @@ class TestPayloadSanitization:
 
         # All null string fields should be empty strings
         for field in ['adapter', 'runner', 'runner_category', 'model_name', 'version', 'edition', 'error', 'timestamp']:
-            assert result[field] == '', f"Field {field} should be empty string, got {result[field]}"
+            assert result[field] == '', f'Field {field} should be empty string, got {result[field]}'
 
     @pytest.mark.asyncio
     async def test_sanitize_string_fields_preserve_values(self):
@@ -418,9 +420,7 @@ class TestHTTPScenarios:
         manager.telemetry_config = {'url': 'https://example.com'}
 
         mock_response = Mock(
-            status_code=200,
-            text='{"code": 0, "msg": "success"}',
-            json=Mock(return_value={'code': 0, 'msg': 'success'})
+            status_code=200, text='{"code": 0, "msg": "success"}', json=Mock(return_value={'code': 0, 'msg': 'success'})
         )
 
         mock_client = Mock()
@@ -448,9 +448,7 @@ class TestHTTPScenarios:
         manager.telemetry_config = {'url': 'https://example.com'}
 
         mock_response = Mock(
-            status_code=500,
-            text='Internal Server Error',
-            json=Mock(return_value={'code': 500, 'msg': 'error'})
+            status_code=500, text='Internal Server Error', json=Mock(return_value={'code': 500, 'msg': 'error'})
         )
 
         mock_client = Mock()
@@ -478,7 +476,7 @@ class TestHTTPScenarios:
         mock_response = Mock(
             status_code=200,
             text='{"code": 400, "msg": "Bad Request"}',
-            json=Mock(return_value={'code': 400, 'msg': 'Bad Request'})
+            json=Mock(return_value={'code': 400, 'msg': 'Bad Request'}),
         )
 
         mock_client = Mock()
@@ -493,7 +491,7 @@ class TestHTTPScenarios:
         assert mock_app.logger.warning.call_count >= 1
         # Check that one of the calls contains application error info
         all_warnings = [call[0][0] for call in mock_app.logger.warning.call_args_list]
-        assert any('400' in w for w in all_warnings), f"No warning contained error code 400: {all_warnings}"
+        assert any('400' in w for w in all_warnings), f'No warning contained error code 400: {all_warnings}'
 
     @pytest.mark.asyncio
     async def test_send_timeout_logs_warning(self):

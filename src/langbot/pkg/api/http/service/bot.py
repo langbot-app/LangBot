@@ -225,3 +225,35 @@ class BotService:
 
         # Send message via adapter
         await runtime_bot.adapter.send_message(target_type, str(target_id), message_chain)
+
+    # ============ Bot Admins ============
+
+    async def get_bot_admins(self, bot_uuid: str) -> list[dict]:
+        from ....entity.persistence import bot as persistence_bot
+
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_bot.BotAdmin).where(persistence_bot.BotAdmin.bot_uuid == bot_uuid)
+        )
+        return [{'id': r.id, 'launcher_type': r.launcher_type, 'launcher_id': r.launcher_id} for r in result.all()]
+
+    async def add_bot_admin(self, bot_uuid: str, launcher_type: str, launcher_id: str) -> int:
+        from ....entity.persistence import bot as persistence_bot
+
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.insert(persistence_bot.BotAdmin).values(
+                bot_uuid=bot_uuid,
+                launcher_type=launcher_type,
+                launcher_id=launcher_id,
+            )
+        )
+        return result.inserted_primary_key[0]
+
+    async def delete_bot_admin(self, bot_uuid: str, admin_id: int) -> None:
+        from ....entity.persistence import bot as persistence_bot
+
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.delete(persistence_bot.BotAdmin).where(
+                persistence_bot.BotAdmin.bot_uuid == bot_uuid,
+                persistence_bot.BotAdmin.id == admin_id,
+            )
+        )

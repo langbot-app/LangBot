@@ -26,10 +26,9 @@ export interface SidebarEntityItem {
   installInfo?: Record<string, unknown>;
   hasUpdate?: boolean;
   debug?: boolean;
+  // Set when this item appears in the unified extensions list
+  extensionType?: 'plugin' | 'mcp' | 'skill';
 }
-
-// Install action types that can be triggered from sidebar
-export type PluginInstallAction = 'local' | 'github' | null;
 
 // Plugin page registered by a plugin
 export interface PluginPageItem {
@@ -51,6 +50,7 @@ export interface SidebarDataContextValue {
   knowledgeBases: SidebarEntityItem[];
   plugins: SidebarEntityItem[];
   mcpServers: SidebarEntityItem[];
+  skills: SidebarEntityItem[];
   pluginPages: PluginPageItem[];
   refreshBots: () => Promise<void>;
   refreshPipelines: () => Promise<void>;
@@ -58,13 +58,14 @@ export interface SidebarDataContextValue {
   refreshKnowledgeBases: () => Promise<void>;
   refreshPlugins: () => Promise<void>;
   refreshMCPServers: () => Promise<void>;
+  refreshSkills: () => Promise<void>;
   refreshAll: () => Promise<void>;
   // Breadcrumb: entity name shown when viewing a detail page
   detailEntityName: string | null;
   setDetailEntityName: (name: string | null) => void;
-  // Pending plugin install action triggered from sidebar
-  pendingPluginInstallAction: PluginInstallAction;
-  setPendingPluginInstallAction: (action: PluginInstallAction) => void;
+  // Whether the extensions list is grouped by type (shared between page and sidebar)
+  extensionsGroupByType: boolean;
+  setExtensionsGroupByType: (enabled: boolean) => void;
 }
 
 const SidebarDataContext = createContext<SidebarDataContextValue | null>(null);
@@ -80,10 +81,22 @@ export function SidebarDataProvider({
   const [knowledgeBases, setKnowledgeBases] = useState<SidebarEntityItem[]>([]);
   const [plugins, setPlugins] = useState<SidebarEntityItem[]>([]);
   const [mcpServers, setMCPServers] = useState<SidebarEntityItem[]>([]);
+  const [skills, setSkills] = useState<SidebarEntityItem[]>([]);
   const [pluginPages, setPluginPages] = useState<PluginPageItem[]>([]);
   const [detailEntityName, setDetailEntityName] = useState<string | null>(null);
-  const [pendingPluginInstallAction, setPendingPluginInstallAction] =
-    useState<PluginInstallAction>(null);
+  const [extensionsGroupByType, setExtensionsGroupByTypeState] =
+    useState<boolean>(() => {
+      if (typeof window === 'undefined') return false;
+      return localStorage.getItem('extensions_group_by_type') === 'true';
+    });
+  const setExtensionsGroupByType = useCallback((enabled: boolean) => {
+    setExtensionsGroupByTypeState(enabled);
+    try {
+      localStorage.setItem('extensions_group_by_type', String(enabled));
+    } catch {
+      // ignore
+    }
+  }, []);
 
   const refreshBots = useCallback(async () => {
     try {
@@ -245,14 +258,30 @@ export function SidebarDataProvider({
       const resp = await httpClient.getMCPServers();
       setMCPServers(
         resp.servers.map((server) => ({
-          id: server.name,
-          name: server.name,
+          id: server.name, // Keep __ for API calls
+          name: server.name.replace(/__/g, '/'), // Display with / for readability
           enabled: server.enable,
           runtimeStatus: server.runtime_info?.status,
         })),
       );
     } catch (error) {
       console.error('Failed to fetch MCP servers for sidebar:', error);
+    }
+  }, []);
+
+  const refreshSkills = useCallback(async () => {
+    try {
+      const resp = await httpClient.getSkills();
+      setSkills(
+        resp.skills.map((skill) => ({
+          id: skill.name,
+          name: skill.display_name || skill.name,
+          description: skill.description,
+          updatedAt: skill.updated_at,
+        })),
+      );
+    } catch (error) {
+      console.error('Failed to fetch skills for sidebar:', error);
     }
   }, []);
 
@@ -264,6 +293,7 @@ export function SidebarDataProvider({
       refreshKnowledgeBases(),
       refreshPlugins(),
       refreshMCPServers(),
+      refreshSkills(),
     ]);
   }, [
     refreshBots,
@@ -272,6 +302,7 @@ export function SidebarDataProvider({
     refreshKnowledgeBases,
     refreshPlugins,
     refreshMCPServers,
+    refreshSkills,
   ]);
 
   // Fetch all entity lists on mount
@@ -288,6 +319,7 @@ export function SidebarDataProvider({
         knowledgeBases,
         plugins,
         mcpServers,
+        skills,
         pluginPages,
         refreshBots,
         refreshPipelines,
@@ -295,11 +327,12 @@ export function SidebarDataProvider({
         refreshKnowledgeBases,
         refreshPlugins,
         refreshMCPServers,
+        refreshSkills,
         refreshAll,
         detailEntityName,
         setDetailEntityName,
-        pendingPluginInstallAction,
-        setPendingPluginInstallAction,
+        extensionsGroupByType,
+        setExtensionsGroupByType,
       }}
     >
       {children}

@@ -10,6 +10,38 @@ API keys can be managed through the web interface:
 2. Click the "API Keys" button at the bottom of the sidebar
 3. Create, view, copy, or delete API keys as needed
 
+## Global API Key (config.yaml)
+
+In addition to web-UI-created keys (stored in the database, prefixed `lbk_`),
+LangBot supports a **global API key** defined directly in `data/config.yaml`.
+This is useful for automated deployments, infrastructure-as-code, and AI agents
+that need API/MCP access **without a login session and without creating a
+database record first**.
+
+```yaml
+api:
+    port: 5300
+    # ...
+    global_api_key: 'your-strong-secret-here'   # leave empty to disable
+```
+
+Behavior:
+
+- When `api.global_api_key` is a non-empty string, that exact value is accepted
+  anywhere a normal API key is accepted — the `X-API-Key` header or
+  `Authorization: Bearer <key>` — across the HTTP service API **and the MCP
+  server**.
+- The global key does **not** require the `lbk_` prefix; use any sufficiently
+  strong secret.
+- Leave it empty (`''`, the default) to disable it entirely; only database-backed
+  `lbk_` keys will then be accepted.
+- Existing installs are unaffected until you add the key — config completion only
+  backfills top-level keys, and the lookup is defensive when the field is absent.
+
+> **Security:** the global key is stored in plaintext in `config.yaml`. Only
+> enable it on trusted/internal deployments, keep the file permissions tight,
+> always serve over HTTPS, and rotate the value if it may have leaked.
+
 ## Using API Keys
 
 ### Authentication Headers

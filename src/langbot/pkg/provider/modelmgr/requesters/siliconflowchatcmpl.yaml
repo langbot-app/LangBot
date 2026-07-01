@@ -7,6 +7,7 @@ metadata:
     zh_Hans: 硅基流动
   icon: siliconflow.svg
 spec:
+  litellm_provider: openai
   config:
   - name: base_url
     label:
@@ -22,6 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "siliconflow SiliconFlow 硅基流动 硅基 silicon flow guiji bge BAAI embedding rerank qwen deepseek"
   support_type:
   - llm
   - text-embedding

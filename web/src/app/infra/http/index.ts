@@ -16,6 +16,7 @@ export const systemInfo: ApiRespSystemInfo = {
     max_pipelines: -1,
     max_extensions: -1,
   },
+  outbound_ips: [],
   wizard_status: 'none',
   wizard_progress: null,
 };
@@ -90,12 +91,17 @@ export const getCloudServiceClientSync = (): CloudServiceClient => {
  * 手动初始化系统信息
  * 可以在应用启动时调用此方法预先获取系统信息
  */
-export const initializeSystemInfo = async (): Promise<void> => {
+export const initializeSystemInfo = async (options?: {
+  throwOnError?: boolean;
+}): Promise<void> => {
   try {
     Object.assign(systemInfo, await backendClient.getSystemInfo());
     cloudServiceClient.updateBaseURL(systemInfo.cloud_service_url);
   } catch (error) {
     console.error('Failed to initialize system info:', error);
+    if (options?.throwOnError) {
+      throw error;
+    }
   }
 };
 
