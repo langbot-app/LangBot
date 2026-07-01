@@ -278,3 +278,17 @@ class TestPipelineExtensionsEndpoint:
         assert response.status_code == 200
         data = await response.get_json()
         assert data['code'] == 0
+
+    @pytest.mark.asyncio
+    async def test_get_extensions_tolerates_skill_list_failure(self, quart_test_client, fake_pipeline_app):
+        """Pipeline plugin/MCP binding UI should not fail when Box skill listing is unavailable."""
+        fake_pipeline_app.skill_service.list_skills = AsyncMock(side_effect=TimeoutError('box_list_skills timeout'))
+
+        response = await quart_test_client.get(
+            '/api/v1/pipelines/test-pipeline-uuid/extensions', headers={'Authorization': 'Bearer test_token'}
+        )
+
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert data['code'] == 0
+        assert data['data']['available_skills'] == []

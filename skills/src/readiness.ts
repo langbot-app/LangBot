@@ -111,6 +111,8 @@ export function automationEnvDefaults(item: StructuredItem, env: EnvSource = pro
     ["automation_image_base64_fixture", "LANGBOT_E2E_IMAGE_BASE64_PATH"],
     ["automation_runner_config_patch_json", "LANGBOT_E2E_RUNNER_CONFIG_PATCH_JSON"],
     ["automation_restore_runner_config", "LANGBOT_E2E_RESTORE_RUNNER_CONFIG"],
+    ["automation_extensions_patch_json", "LANGBOT_E2E_EXTENSIONS_PATCH_JSON"],
+    ["automation_restore_extensions", "LANGBOT_E2E_RESTORE_EXTENSIONS"],
     ["automation_expected_runner_id", "LANGBOT_E2E_EXPECTED_RUNNER_ID"],
     ["automation_reset_debug_chat", "LANGBOT_E2E_RESET_DEBUG_CHAT"],
     ["automation_debug_chat_session_type", "LANGBOT_E2E_DEBUG_CHAT_SESSION_TYPE"],

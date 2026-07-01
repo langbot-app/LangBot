@@ -11,6 +11,7 @@ import {
 } from "./lib/debug-chat.mjs";
 import {
   createBrowser,
+  ensureAuthenticatedBrowser,
   ensureEvidence,
   evidencePaths,
   exitCode,
@@ -74,6 +75,7 @@ const result = {
   pipeline_config: null,
   debug_chat_reset: null,
   tool_diagnostic: null,
+  browser_auth: null,
   steering: null,
   evidence: {
     console_log: paths.consoleLog,
@@ -94,6 +96,18 @@ try {
 
   browser = await createBrowser(paths);
   const { page } = browser;
+
+  const authDiagnostic = await ensureAuthenticatedBrowser(page, {
+    frontendUrl: env.LANGBOT_FRONTEND_URL || "",
+    backendUrl,
+  });
+  result.browser_auth = authDiagnostic;
+  if (!result.evidence_collected.includes("api_diagnostic")) result.evidence_collected.push("api_diagnostic");
+  if (authDiagnostic.status === "env_issue" || authDiagnostic.status === "blocked" || authDiagnostic.status === "fail") {
+    result.status = authDiagnostic.status;
+    result.reason = authDiagnostic.reason || "Browser authentication failed.";
+    throw new Error(result.reason);
+  }
 
   const openResult = await openPipelineDebugChat(page, {
     pipelineUrl,

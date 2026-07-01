@@ -73,8 +73,13 @@ class PipelinesRouterGroup(group.RouterGroup):
                 plugins = await self.ap.plugin_connector.list_plugins(component_kinds=pipeline_component_kinds)
                 mcp_servers = await self.ap.mcp_service.get_mcp_servers(contain_runtime_info=True)
 
-                # Get available skills
-                available_skills = await self.ap.skill_service.list_skills()
+                # Skill listing depends on Box. Pipeline plugin/MCP binding
+                # must remain usable when Box is slow or unavailable.
+                try:
+                    available_skills = await self.ap.skill_service.list_skills()
+                except Exception as exc:
+                    self.ap.logger.warning('Unable to list skills for pipeline extensions: %s', exc)
+                    available_skills = []
 
                 extensions_prefs = pipeline.get('extensions_preferences', {})
                 return self.success(

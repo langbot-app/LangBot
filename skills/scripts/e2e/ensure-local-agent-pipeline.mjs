@@ -18,12 +18,14 @@ import {
   writeResult,
 } from "./lib/langbot-e2e.mjs";
 
-const RUNNER_ID = "local-agent";
+const RUNNER_ID = "plugin:langbot/local-agent/default";
 const SPACE_PROVIDER_UUID = "00000000-0000-0000-0000-000000000000";
 const DEFAULT_PIPELINE_NAME = "Agent QA Local Agent Debug Chat";
 const DEFAULT_LOCAL_PASSWORD = "LangBotE2ELocalPass!2026";
 const DEFAULT_MODEL_TEST_LIMIT = 8;
 const DEFAULT_MODEL_FALLBACK_COUNT = 3;
+const DEFAULT_FAKE_MODEL_UUID = "langbot-e2e-fake-local-agent-model";
+const DEFAULT_FAKE_PROVIDER_NAME = "LangBot E2E Fake OpenAI Provider";
 const caseId = "ensure-local-agent-pipeline";
 
 await loadEnvFiles();
@@ -31,7 +33,10 @@ const paths = evidencePaths(caseId);
 await ensureEvidence(paths);
 
 const writeEnv = process.argv.includes("--write-env");
-const pipelineName = env.LANGBOT_E2E_CREATE_PIPELINE_NAME || env.LANGBOT_LOCAL_AGENT_PIPELINE_NAME || DEFAULT_PIPELINE_NAME;
+const pipelineName =
+  env.LANGBOT_E2E_CREATE_PIPELINE_NAME ||
+  env.LANGBOT_LOCAL_AGENT_PIPELINE_NAME ||
+  DEFAULT_PIPELINE_NAME;
 const frontendUrl = env.LANGBOT_FRONTEND_URL || "";
 const backendUrl = env.LANGBOT_BACKEND_URL || "";
 const envLocalPath = resolve("skills/.env.local");
@@ -51,6 +56,7 @@ const result = {
   selected_model_id: "",
   selected_model_name: "",
   fallback_model_ids: [],
+  fake_provider: null,
   model_count: 0,
   space_model_count: 0,
   scanned_space_model_count: 0,
@@ -83,7 +89,9 @@ try {
   const password = env.LANGBOT_E2E_LOGIN_PASSWORD || DEFAULT_LOCAL_PASSWORD;
   if (!user) {
     result.status = "env_issue";
-    throw new Error("LANGBOT_E2E_LOGIN_USER is required so this setup can create/update the pipeline via backend API.");
+    throw new Error(
+      "LANGBOT_E2E_LOGIN_USER is required so this setup can create/update the pipeline via backend API.",
+    );
   }
 
   const auth = await resetAndAuthLocalUser({ backendUrl, user, password });
@@ -97,7 +105,9 @@ try {
   result.wizard = wizard;
   if (wizard.status !== "pass") {
     result.status = "fail";
-    throw new Error(wizard.reason || "Failed to mark the local QA wizard as skipped.");
+    throw new Error(
+      wizard.reason || "Failed to mark the local QA wizard as skipped.",
+    );
   }
 
   const prepared = await ensureLocalAgentPipeline({
@@ -118,10 +128,12 @@ try {
       LANGBOT_PIPELINE_NAME: result.pipeline_name || pipelineName,
       LANGBOT_LOCAL_AGENT_PIPELINE_URL: result.pipeline_url,
       LANGBOT_LOCAL_AGENT_PIPELINE_NAME: result.pipeline_name || pipelineName,
-      ...(result.selected_model_id ? {
-        LANGBOT_LOCAL_AGENT_MODEL_UUID: result.selected_model_id,
-        LANGBOT_E2E_MODEL_UUID: result.selected_model_id,
-      } : {}),
+      ...(result.selected_model_id
+        ? {
+            LANGBOT_LOCAL_AGENT_MODEL_UUID: result.selected_model_id,
+            LANGBOT_E2E_MODEL_UUID: result.selected_model_id,
+          }
+        : {}),
     });
     result.wrote_env = true;
   }
@@ -132,12 +144,21 @@ try {
   const browserCheck = await verifyBrowserToken(page, backendUrl);
   result.browser_token_check = browserCheck;
   if (!browserCheck.authenticated) {
-    throw new Error(browserCheck.reason || "Browser token check failed after setup.");
+    throw new Error(
+      browserCheck.reason || "Browser token check failed after setup.",
+    );
   }
-  await page.goto(result.pipeline_url || frontendUrl, { waitUntil: "domcontentloaded" });
-  await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
+  await page.goto(result.pipeline_url || frontendUrl, {
+    waitUntil: "domcontentloaded",
+  });
+  await page
+    .waitForLoadState("networkidle", { timeout: 10_000 })
+    .catch(() => {});
   const text = await bodyText(page);
-  result.page_signal = ["Pipelines", "流水线", pipelineName].find((signal) => text.includes(signal)) || "";
+  result.page_signal =
+    ["Pipelines", "流水线", pipelineName].find((signal) =>
+      text.includes(signal),
+    ) || "";
 } catch (error) {
   result.status = result.status === "env_issue" ? "env_issue" : "fail";
   result.reason = result.reason || error.message;
@@ -148,24 +169,51 @@ try {
   console.log(JSON.stringify(result, null, 2));
 }
 
-process.exit(result.status === "pass" ? 0 : result.status === "env_issue" ? 2 : 1);
+process.exit(
+  result.status === "pass" ? 0 : result.status === "env_issue" ? 2 : 1,
+);
 
 async function skipWizard({ backendUrl, token }) {
-  const response = await apiJson(backendUrl, "/api/v1/system/wizard/completed", {
-    method: "POST",
-    token,
-    body: { status: "skipped" },
-  });
+  const response = await apiJson(
+    backendUrl,
+    "/api/v1/system/wizard/completed",
+    {
+      method: "POST",
+      token,
+      body: { status: "skipped" },
+    },
+  );
   const ok = response.status < 400 && response.json.code === 0;
   return {
     status: ok ? "pass" : "fail",
     http_status: response.status,
     code: response.json.code ?? null,
-    reason: ok ? "Wizard marked skipped for local QA." : response.json.msg || "Wizard status update failed.",
+    reason: ok
+      ? "Wizard marked skipped for local QA."
+      : response.json.msg || "Wizard status update failed.",
   };
 }
 
-async function ensureLocalAgentPipeline({ backendUrl, token, pipelineName, runnerId }) {
+async function ensureLocalAgentPipeline({
+  backendUrl,
+  token,
+  pipelineName,
+  runnerId,
+}) {
+  const fakeProviderBaseUrl =
+    env.LANGBOT_E2E_FAKE_PROVIDER_BASE_URL ||
+    env.LANGBOT_FAKE_PROVIDER_BASE_URL ||
+    "";
+  let fakeModel = null;
+  if (fakeProviderBaseUrl) {
+    fakeModel = await ensureFakeProviderModel({
+      backendUrl,
+      token,
+      baseUrl: fakeProviderBaseUrl,
+    });
+    if (fakeModel.status !== "pass") return fakeModel;
+  }
+
   const [pipelineList, modelList] = await Promise.all([
     apiJson(backendUrl, "/api/v1/pipelines", { token }),
     apiJson(backendUrl, "/api/v1/provider/models/llm", { token }),
@@ -199,7 +247,9 @@ async function ensureLocalAgentPipeline({ backendUrl, token, pipelineName, runne
       .map((item) => item.trim())
       .filter(Boolean),
   );
-  const spaceModels = models.filter((model) => isSpaceModel(model) && !skippedModelIds.has(model.uuid));
+  const spaceModels = models.filter(
+    (model) => isSpaceModel(model) && !skippedModelIds.has(model.uuid),
+  );
   const pipelines = pipelineList.json.data?.pipelines || [];
   let pipeline = pipelines.find((item) => item.name === pipelineName) || null;
   let created = false;
@@ -210,7 +260,8 @@ async function ensureLocalAgentPipeline({ backendUrl, token, pipelineName, runne
       token,
       body: {
         name: pipelineName,
-        description: "Local QA pipeline for AgentRunner Debug Chat smoke tests.",
+        description:
+          "Local QA pipeline for AgentRunner Debug Chat smoke tests.",
         emoji: "QA",
       },
     });
@@ -224,7 +275,11 @@ async function ensureLocalAgentPipeline({ backendUrl, token, pipelineName, runne
       };
     }
     const pipelineId = createdResponse.json.data?.uuid || "";
-    const loaded = await apiJson(backendUrl, `/api/v1/pipelines/${encodeURIComponent(pipelineId)}`, { token });
+    const loaded = await apiJson(
+      backendUrl,
+      `/api/v1/pipelines/${encodeURIComponent(pipelineId)}`,
+      { token },
+    );
     pipeline = loaded.json.data?.pipeline || null;
     created = true;
   }
@@ -238,7 +293,11 @@ async function ensureLocalAgentPipeline({ backendUrl, token, pipelineName, runne
     };
   }
 
-  const loaded = await apiJson(backendUrl, `/api/v1/pipelines/${encodeURIComponent(pipeline.uuid)}`, { token });
+  const loaded = await apiJson(
+    backendUrl,
+    `/api/v1/pipelines/${encodeURIComponent(pipeline.uuid)}`,
+    { token },
+  );
   if (isApiFailure(loaded) || !loaded.json.data?.pipeline) {
     return {
       status: "fail",
@@ -251,32 +310,53 @@ async function ensureLocalAgentPipeline({ backendUrl, token, pipelineName, runne
   }
   pipeline = loaded.json.data.pipeline;
 
-  const config = pipeline.config && typeof pipeline.config === "object" ? pipeline.config : {};
+  const config =
+    pipeline.config && typeof pipeline.config === "object"
+      ? pipeline.config
+      : {};
   const ai = config.ai && typeof config.ai === "object" ? config.ai : {};
-  const rawExistingLocalAgentConfig = ai["local-agent"] && typeof ai["local-agent"] === "object"
-    ? ai["local-agent"]
-    : {};
+  const runnerConfigs =
+    ai.runner_config && typeof ai.runner_config === "object"
+      ? ai.runner_config
+      : {};
+  const rawExistingLocalAgentConfig =
+    runnerConfigs[runnerId] && typeof runnerConfigs[runnerId] === "object"
+      ? runnerConfigs[runnerId]
+      : {};
   const existingLocalAgentConfig = rawExistingLocalAgentConfig;
-  const existingModel = existingLocalAgentConfig.model && typeof existingLocalAgentConfig.model === "object"
-    ? existingLocalAgentConfig.model
-    : {};
-  const requestedModelId = env.LANGBOT_LOCAL_AGENT_MODEL_UUID || env.LANGBOT_E2E_MODEL_UUID || "";
-  const selected = await selectWorkingSpaceModel({
-    backendUrl,
-    token,
-    models,
-    skippedModelIds,
-    skippedModelNames,
-    requestedModelId,
-    existingModelId: existingModel.primary || "",
-  });
+  const existingModel =
+    existingLocalAgentConfig.model &&
+    typeof existingLocalAgentConfig.model === "object"
+      ? existingLocalAgentConfig.model
+      : {};
+  const requestedModelId =
+    env.LANGBOT_LOCAL_AGENT_MODEL_UUID || env.LANGBOT_E2E_MODEL_UUID || "";
+  const selected = fakeModel
+    ? {
+        status: "pass",
+        reason: "",
+        selected_model_id: fakeModel.model_uuid,
+        selected_model_name: fakeModel.model_name,
+        fallback_model_ids: [],
+        scanned_space_model_count: 0,
+        tested_model_count: 0,
+        model_tests: [],
+      }
+    : await selectWorkingSpaceModel({
+        backendUrl,
+        token,
+        models,
+        skippedModelIds,
+        skippedModelNames,
+        requestedModelId,
+        existingModelId: existingModel.primary || "",
+      });
   const selectedModelId = selected.selected_model_id || "";
   const localAgentConfig = {
     timeout: 300,
     prompt: [{ role: "system", content: "You are a helpful assistant." }],
     "remove-think": false,
     "knowledge-bases": [],
-    "box-session-id-template": "{launcher_type}_{launcher_id}",
     "retrieval-top-k": 5,
     "rerank-model": "",
     "rerank-top-k": 5,
@@ -288,7 +368,6 @@ async function ensureLocalAgentPipeline({ backendUrl, token, pipelineName, runne
     "context-reserve-tokens": 16384,
     "context-keep-recent-tokens": 20000,
     "context-summary-tokens": 8000,
-    ...existingLocalAgentConfig,
     // Current backend truncation still reads this field directly.
     "max-round": positiveInteger(existingLocalAgentConfig["max-round"], 10),
     model: {
@@ -303,23 +382,30 @@ async function ensureLocalAgentPipeline({ backendUrl, token, pipelineName, runne
       runner: {
         ...(ai.runner && typeof ai.runner === "object" ? ai.runner : {}),
         id: runnerId,
-        runner: runnerId,
         "expire-time": 0,
       },
-      "local-agent": localAgentConfig,
+      runner_config: {
+        ...runnerConfigs,
+        [runnerId]: localAgentConfig,
+      },
     },
   };
 
-  const updateResponse = await apiJson(backendUrl, `/api/v1/pipelines/${encodeURIComponent(pipeline.uuid)}`, {
-    method: "PUT",
-    token,
-    body: {
-      name: pipelineName,
-      description: "Local QA pipeline for AgentRunner Debug Chat smoke tests.",
-      emoji: "QA",
-      config: updatedConfig,
+  const updateResponse = await apiJson(
+    backendUrl,
+    `/api/v1/pipelines/${encodeURIComponent(pipeline.uuid)}`,
+    {
+      method: "PUT",
+      token,
+      body: {
+        name: pipelineName,
+        description:
+          "Local QA pipeline for AgentRunner Debug Chat smoke tests.",
+        emoji: "QA",
+        config: updatedConfig,
+      },
     },
-  });
+  );
   if (isApiFailure(updateResponse)) {
     return {
       status: "fail",
@@ -341,7 +427,8 @@ async function ensureLocalAgentPipeline({ backendUrl, token, pipelineName, runne
     status: selectedModelId ? "pass" : "env_issue",
     reason: selectedModelId
       ? `Local-agent pipeline is configured for Debug Chat with Space model ${selected.selected_model_name || selectedModelId} and ${selected.fallback_model_ids.length} fallback(s).`
-      : selected.reason || "No working Space LLM model is configured in this LangBot instance.",
+      : selected.reason ||
+        "No working Space LLM model is configured in this LangBot instance.",
     pipeline_id: pipeline.uuid,
     pipeline_name: pipelineName,
     model_count: models.length,
@@ -352,21 +439,214 @@ async function ensureLocalAgentPipeline({ backendUrl, token, pipelineName, runne
     selected_model_id: selectedModelId,
     selected_model_name: selected.selected_model_name,
     fallback_model_ids: selected.fallback_model_ids,
+    fake_provider: fakeModel,
     created,
     updated: true,
   };
 }
 
+async function ensureFakeProviderModel({ backendUrl, token, baseUrl }) {
+  const modelUuid = env.LANGBOT_E2E_FAKE_MODEL_UUID || DEFAULT_FAKE_MODEL_UUID;
+  const modelName =
+    env.LANGBOT_E2E_FAKE_MODEL_NAME ||
+    env.LANGBOT_FAKE_PROVIDER_MODEL ||
+    env.LANGBOT_FAKE_PROVIDER_MODEL_NAME ||
+    "langbot-e2e-fake-model";
+  const providerName =
+    env.LANGBOT_E2E_FAKE_PROVIDER_NAME || DEFAULT_FAKE_PROVIDER_NAME;
+  const providerRequester =
+    env.LANGBOT_E2E_FAKE_PROVIDER_REQUESTER || "openai-chat-completions";
+  const apiKey =
+    env.LANGBOT_E2E_FAKE_PROVIDER_API_KEY ||
+    env.LANGBOT_FAKE_PROVIDER_API_KEY ||
+    "fake-key";
+
+  const providersResponse = await apiJson(
+    backendUrl,
+    "/api/v1/provider/providers",
+    { token },
+  );
+  if (isApiFailure(providersResponse)) {
+    return {
+      status: "fail",
+      reason:
+        providersResponse.json.msg ||
+        "Failed to list providers before creating fake provider.",
+      provider_status: providersResponse.status,
+    };
+  }
+
+  const normalizedBaseUrl = String(baseUrl || "").replace(/\/$/, "");
+  const providers = providersResponse.json.data?.providers || [];
+  let provider = providers.find(
+    (item) =>
+      item.name === providerName ||
+      (item.requester === providerRequester &&
+        String(item.base_url || "").replace(/\/$/, "") === normalizedBaseUrl),
+  );
+  const providerBody = {
+    name: providerName,
+    requester: providerRequester,
+    base_url: normalizedBaseUrl,
+    api_keys: [apiKey],
+  };
+
+  if (provider?.uuid) {
+    const updateResponse = await apiJson(
+      backendUrl,
+      `/api/v1/provider/providers/${encodeURIComponent(provider.uuid)}`,
+      {
+        method: "PUT",
+        token,
+        body: providerBody,
+      },
+    );
+    if (isApiFailure(updateResponse)) {
+      return {
+        status: "fail",
+        reason: updateResponse.json.msg || "Failed to update fake provider.",
+        provider_status: updateResponse.status,
+      };
+    }
+  } else {
+    const createProviderResponse = await apiJson(
+      backendUrl,
+      "/api/v1/provider/providers",
+      {
+        method: "POST",
+        token,
+        body: providerBody,
+      },
+    );
+    if (isApiFailure(createProviderResponse)) {
+      return {
+        status: "fail",
+        reason:
+          createProviderResponse.json.msg || "Failed to create fake provider.",
+        provider_status: createProviderResponse.status,
+      };
+    }
+    provider = { uuid: createProviderResponse.json.data?.uuid || "" };
+  }
+
+  if (!provider?.uuid) {
+    return {
+      status: "fail",
+      reason: "Fake provider did not return a provider uuid.",
+    };
+  }
+
+  let resolvedModelUuid = modelUuid;
+  let modelResponse = await apiJson(
+    backendUrl,
+    `/api/v1/provider/models/llm/${encodeURIComponent(modelUuid)}`,
+    {
+      token,
+    },
+  );
+  if (modelResponse.status === 404) {
+    const providerModelsResponse = await apiJson(
+      backendUrl,
+      `/api/v1/provider/models/llm?provider_uuid=${encodeURIComponent(provider.uuid)}`,
+      { token },
+    );
+    if (!isApiFailure(providerModelsResponse)) {
+      const existingModel = (
+        providerModelsResponse.json.data?.models || []
+      ).find((item) => item.name === modelName);
+      if (existingModel?.uuid) {
+        resolvedModelUuid = existingModel.uuid;
+        modelResponse = await apiJson(
+          backendUrl,
+          `/api/v1/provider/models/llm/${encodeURIComponent(resolvedModelUuid)}`,
+          {
+            token,
+          },
+        );
+      }
+    }
+  }
+
+  const modelBody = {
+    name: modelName,
+    provider_uuid: provider.uuid,
+    abilities: ["func_call", "vision"],
+    context_length: 8192,
+    extra_args: {},
+    prefered_ranking: 0,
+  };
+  if (modelResponse.status === 404) {
+    const createModelResponse = await apiJson(
+      backendUrl,
+      "/api/v1/provider/models/llm",
+      {
+        method: "POST",
+        token,
+        body: {
+          uuid: modelUuid,
+          ...modelBody,
+        },
+      },
+    );
+    if (isApiFailure(createModelResponse)) {
+      return {
+        status: "fail",
+        reason: createModelResponse.json.msg || "Failed to create fake model.",
+        model_status: createModelResponse.status,
+      };
+    }
+    resolvedModelUuid = createModelResponse.json.data?.uuid || modelUuid;
+  } else if (isApiFailure(modelResponse)) {
+    return {
+      status: "fail",
+      reason: modelResponse.json.msg || "Failed to load fake model.",
+      model_status: modelResponse.status,
+    };
+  } else {
+    const updateModelResponse = await apiJson(
+      backendUrl,
+      `/api/v1/provider/models/llm/${encodeURIComponent(resolvedModelUuid)}`,
+      {
+        method: "PUT",
+        token,
+        body: modelBody,
+      },
+    );
+    if (isApiFailure(updateModelResponse)) {
+      return {
+        status: "fail",
+        reason: updateModelResponse.json.msg || "Failed to update fake model.",
+        model_status: updateModelResponse.status,
+      };
+    }
+  }
+
+  return {
+    status: "pass",
+    provider_uuid: provider.uuid,
+    provider_requester: providerRequester,
+    base_url: normalizedBaseUrl,
+    model_uuid: resolvedModelUuid,
+    model_name: modelName,
+  };
+}
+
 function isApiFailure(response) {
-  return response.status >= 400 || (response.json.code !== undefined && response.json.code !== 0);
+  return (
+    response.status >= 400 ||
+    (response.json.code !== undefined && response.json.code !== 0)
+  );
 }
 
 function isSpaceModel(model) {
-  const provider = model?.provider && typeof model.provider === "object" ? model.provider : {};
-  return model?.provider_uuid === SPACE_PROVIDER_UUID
-    || provider.uuid === SPACE_PROVIDER_UUID
-    || provider.requester === "space-chat-completions"
-    || provider.name === "LangBot Models";
+  const provider =
+    model?.provider && typeof model.provider === "object" ? model.provider : {};
+  return (
+    model?.provider_uuid === SPACE_PROVIDER_UUID ||
+    provider.uuid === SPACE_PROVIDER_UUID ||
+    provider.requester === "space-chat-completions" ||
+    provider.name === "LangBot Models"
+  );
 }
 
 async function selectWorkingSpaceModel({
@@ -379,15 +659,24 @@ async function selectWorkingSpaceModel({
   existingModelId,
 }) {
   const modelTests = [];
-  const testLimit = positiveInteger(env.LANGBOT_E2E_MODEL_TEST_LIMIT, DEFAULT_MODEL_TEST_LIMIT);
-  const fallbackCount = positiveInteger(env.LANGBOT_E2E_MODEL_FALLBACK_COUNT, DEFAULT_MODEL_FALLBACK_COUNT);
+  const testLimit = positiveInteger(
+    env.LANGBOT_E2E_MODEL_TEST_LIMIT,
+    DEFAULT_MODEL_TEST_LIMIT,
+  );
+  const fallbackCount = positiveInteger(
+    env.LANGBOT_E2E_MODEL_FALLBACK_COUNT,
+    DEFAULT_MODEL_FALLBACK_COUNT,
+  );
   const workingModels = [];
-  const spaceModels = rankModels(models.filter((model) => (
-    model.uuid
-      && isSpaceModel(model)
-      && !skippedModelIds.has(model.uuid)
-      && !skippedModelNames.has(model.name)
-  )));
+  const spaceModels = rankModels(
+    models.filter(
+      (model) =>
+        model.uuid &&
+        isSpaceModel(model) &&
+        !skippedModelIds.has(model.uuid) &&
+        !skippedModelNames.has(model.name),
+    ),
+  );
   const requestedModel = requestedModelId
     ? spaceModels.find((model) => model.uuid === requestedModelId) || null
     : null;
@@ -396,7 +685,9 @@ async function selectWorkingSpaceModel({
     : null;
   const candidates = uniqueCandidates([
     ...(requestedModel ? [existingCandidate(requestedModel, "requested")] : []),
-    ...(existingModel ? [existingCandidate(existingModel, "existing-pipeline")] : []),
+    ...(existingModel
+      ? [existingCandidate(existingModel, "existing-pipeline")]
+      : []),
     ...spaceModels.map((model) => existingCandidate(model, "configured-space")),
   ]);
 
@@ -405,9 +696,16 @@ async function selectWorkingSpaceModel({
     scanResult = await scanSpaceModels({ backendUrl, token });
     if (scanResult.status === "pass") {
       const knownNames = new Set(spaceModels.map((model) => model.name));
-      candidates.push(...scanResult.models
-        .filter((model) => model.name && !knownNames.has(model.name) && !skippedModelNames.has(model.name))
-        .map((model) => scannedCandidate(model)));
+      candidates.push(
+        ...scanResult.models
+          .filter(
+            (model) =>
+              model.name &&
+              !knownNames.has(model.name) &&
+              !skippedModelNames.has(model.name),
+          )
+          .map((model) => scannedCandidate(model)),
+      );
     }
   }
 
@@ -435,14 +733,16 @@ async function selectWorkingSpaceModel({
     };
   }
 
-  const baseReason = unique.length === 0
-    ? scanResult.reason || "No Space LLM model candidates are available."
-    : `No working Space LLM model found after testing ${modelTests.length} candidate(s).`;
+  const baseReason =
+    unique.length === 0
+      ? scanResult.reason || "No Space LLM model candidates are available."
+      : `No working Space LLM model found after testing ${modelTests.length} candidate(s).`;
   return {
     status: "env_issue",
-    reason: requestedModelId && !requestedModel
-      ? `Requested Space LLM model ${requestedModelId} is missing or skipped; ${baseReason}`
-      : baseReason,
+    reason:
+      requestedModelId && !requestedModel
+        ? `Requested Space LLM model ${requestedModelId} is missing or skipped; ${baseReason}`
+        : baseReason,
     selected_model_id: "",
     selected_model_name: "",
     fallback_model_ids: [],
@@ -462,7 +762,11 @@ async function scanSpaceModels({ backendUrl, token }) {
     return {
       status: "env_issue",
       models: [],
-      reason: safeReason(response.json.msg || response.json.message || "Failed to scan Space LLM models."),
+      reason: safeReason(
+        response.json.msg ||
+          response.json.message ||
+          "Failed to scan Space LLM models.",
+      ),
     };
   }
   return {
@@ -492,28 +796,42 @@ async function ensureAndTestModel({ backendUrl, token, candidate }) {
     if (isApiFailure(create) || !modelUuid) {
       return modelTestResult(candidate, {
         status: "fail",
-        reason: safeReason(create.json.msg || "Failed to create scanned Space model."),
+        reason: safeReason(
+          create.json.msg || "Failed to create scanned Space model.",
+        ),
         http_status: create.status,
       });
     }
     created = true;
   }
 
-  const test = await apiJson(backendUrl, `/api/v1/provider/models/llm/${encodeURIComponent(modelUuid)}/test`, {
-    method: "POST",
-    token,
-    body: { extra_args: {} },
-  });
+  const test = await apiJson(
+    backendUrl,
+    `/api/v1/provider/models/llm/${encodeURIComponent(modelUuid)}/test`,
+    {
+      method: "POST",
+      token,
+      body: { extra_args: {} },
+    },
+  );
   const passed = !isApiFailure(test);
   if (!passed && created) {
-    await apiJson(backendUrl, `/api/v1/provider/models/llm/${encodeURIComponent(modelUuid)}`, {
-      method: "DELETE",
-      token,
-    }).catch(() => {});
+    await apiJson(
+      backendUrl,
+      `/api/v1/provider/models/llm/${encodeURIComponent(modelUuid)}`,
+      {
+        method: "DELETE",
+        token,
+      },
+    ).catch(() => {});
   }
   return modelTestResult(candidate, {
     status: passed ? "pass" : "fail",
-    reason: passed ? "" : safeReason(test.json.msg || test.json.message || "Space model test failed."),
+    reason: passed
+      ? ""
+      : safeReason(
+          test.json.msg || test.json.message || "Space model test failed.",
+        ),
     http_status: test.status,
     model_uuid: modelUuid,
     created,
@@ -558,7 +876,9 @@ function uniqueCandidates(candidates) {
   const seen = new Set();
   const result = [];
   for (const candidate of candidates) {
-    const key = candidate.uuid ? `uuid:${candidate.uuid}` : `name:${candidate.name}`;
+    const key = candidate.uuid
+      ? `uuid:${candidate.uuid}`
+      : `name:${candidate.name}`;
     if (!candidate.name || seen.has(key)) continue;
     seen.add(key);
     result.push(candidate);
@@ -568,8 +888,12 @@ function uniqueCandidates(candidates) {
 
 function rankModels(models) {
   return [...models].sort((left, right) => {
-    const leftRank = Number.isFinite(Number(left.prefered_ranking)) ? Number(left.prefered_ranking) : 9999;
-    const rightRank = Number.isFinite(Number(right.prefered_ranking)) ? Number(right.prefered_ranking) : 9999;
+    const leftRank = Number.isFinite(Number(left.prefered_ranking))
+      ? Number(left.prefered_ranking)
+      : 9999;
+    const rightRank = Number.isFinite(Number(right.prefered_ranking))
+      ? Number(right.prefered_ranking)
+      : 9999;
     if (leftRank !== rightRank) return leftRank - rightRank;
     return String(left.name || "").localeCompare(String(right.name || ""));
   });
@@ -605,5 +929,9 @@ async function upsertEnvLocal(path, updates) {
   for (const [key, value] of Object.entries(updates)) {
     if (!seen.has(key)) next.push(`${key}=${value}`);
   }
-  await writeFile(path, `${next.filter((line, index) => line !== "" || index < next.length - 1).join("\n")}\n`, "utf8");
+  await writeFile(
+    path,
+    `${next.filter((line, index) => line !== "" || index < next.length - 1).join("\n")}\n`,
+    "utf8",
+  );
 }

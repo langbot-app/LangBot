@@ -14,6 +14,11 @@ cases:
   - local-agent-context-compaction-debug-chat
   - local-agent-rag-debug-chat
   - local-agent-plugin-tool-call-debug-chat
+  - local-agent-tool-error-recovery-debug-chat
+  - local-agent-tool-loop-limit-debug-chat
+  - local-agent-combo-rag-compaction-tool-debug-chat
+  - local-agent-multitool-rag-compaction-debug-chat
+  - local-agent-parallel-tools-rag-compaction-debug-chat
   - local-agent-steering-debug-chat
   - mcp-stdio-tool-call
   - local-agent-nonstreaming-debug-chat

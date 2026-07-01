@@ -49,7 +49,13 @@
     "title": "LangRAG sentinel text document",
     "kind": "text",
     "path": "fixtures/rag/sentinel-doc.txt",
-    "related_cases": ["langrag-kb-retrieve", "local-agent-rag-debug-chat"],
+    "related_cases": [
+      "langrag-kb-retrieve",
+      "local-agent-rag-debug-chat",
+      "local-agent-combo-rag-compaction-tool-debug-chat",
+      "local-agent-multitool-rag-compaction-debug-chat",
+      "local-agent-parallel-tools-rag-compaction-debug-chat"
+    ],
     "checks": ["exists"]
   },
   {
@@ -78,6 +84,11 @@
       "plugin-e2e-smoke",
       "local-agent-effective-prompt-debug-chat",
       "local-agent-plugin-tool-call-debug-chat",
+      "local-agent-tool-error-recovery-debug-chat",
+      "local-agent-tool-loop-limit-debug-chat",
+      "local-agent-combo-rag-compaction-tool-debug-chat",
+      "local-agent-multitool-rag-compaction-debug-chat",
+      "local-agent-parallel-tools-rag-compaction-debug-chat",
       "local-agent-steering-debug-chat"
     ],
     "checks": ["exists"]
@@ -87,7 +98,7 @@
     "title": "QA plugin smoke prebuilt package",
     "kind": "plugin_package",
     "path": "fixtures/plugins/qa-plugin-smoke/dist/qa-plugin-smoke-0.1.0.lbpkg",
-    "related_cases": ["qa-plugin-smoke-live-install", "plugin-e2e-smoke"],
+    "related_cases": ["qa-plugin-smoke-live-install", "plugin-e2e-smoke", "local-agent-tool-error-recovery-debug-chat"],
     "checks": ["exists", "zip_package"]
   }
 ]
