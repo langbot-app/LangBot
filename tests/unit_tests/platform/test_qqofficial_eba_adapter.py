@@ -346,3 +346,92 @@ async def test_qqofficial_send_reply_stream_platform_api_and_unsupported():
 
     with pytest.raises(NotSupportedError):
         await adapter.call_platform_api('missing', {})
+
+
+@pytest.mark.asyncio
+async def test_qqofficial_client_next_reply_msg_seq_allocator():
+    """msg_seq must increment per inbound msg_id to avoid 40054005 dedup (issue #2290)."""
+    from langbot.libs.qq_official_api.api import QQOfficialClient
+
+    client = QQOfficialClient(secret='s', token='t', app_id='a', logger=DummyLogger())
+
+    # same msg_id -> strictly increasing 1, 2, 3
+    assert [await client.next_reply_msg_seq('m1') for _ in range(3)] == [1, 2, 3]
+    # a different msg_id is tracked independently
+    assert await client.next_reply_msg_seq('m2') == 1
+    # missing msg_id falls back to the global proactive counter, independent of per-id seqs
+    assert [await client.next_reply_msg_seq(None) for _ in range(2)] == [1, 2]
+    # concurrent allocations under the same msg_id are unique and gap-free
+    import asyncio as _asyncio
+
+    concurrent = await _asyncio.gather(*[client.next_reply_msg_seq('m3') for _ in range(50)])
+    assert sorted(concurrent) == list(range(1, 51))
+
+
+@pytest.mark.asyncio
+async def test_qqofficial_text_send_carries_incrementing_msg_seq(monkeypatch):
+    """Multiple text replies under one inbound msg_id get distinct msg_seq values."""
+    from langbot.libs.qq_official_api.api import QQOfficialClient
+
+    client = QQOfficialClient(secret='s', token='t', app_id='a', logger=DummyLogger())
+    client.access_token = 'token'
+    client.access_token_expiry_time = 9999999999
+
+    captured = []
+
+    class _Resp:
+        status_code = 200
+
+        def json(self):
+            return {'id': 'ok'}
+
+    class _DummyAsyncClient:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, url, headers=None, json=None):
+            captured.append(json)
+            return _Resp()
+
+    monkeypatch.setattr('langbot.libs.qq_official_api.api.httpx.AsyncClient', _DummyAsyncClient)
+
+    await client.send_private_text_msg('user-1', 'first', 'inbound-1')
+    await client.send_private_text_msg('user-1', 'second', 'inbound-1')
+    await client.send_group_text_msg('group-1', 'third', 'inbound-1')
+
+    seqs = [body['msg_seq'] for body in captured]
+    assert seqs == [1, 2, 3]
+    assert all(body['msg_id'] == 'inbound-1' for body in captured)
+
+
+@pytest.mark.asyncio
+async def test_qqofficial_stream_chunks_increment_msg_seq():
+    """Each stream chunk must advance msg_seq so QQ does not dedup later chunks (issue #2290)."""
+    adapter = make_adapter()
+    source_event = await QQOfficialEventConverter().target2yiri(qq_event('C2C_MESSAGE_CREATE'))
+
+    assert await adapter.create_message_card('msg-1', source_event) is True
+    bot_message = {'resp_message_id': 'msg-1'}
+
+    for idx, text in enumerate(['hello ', 'world ', 'done']):
+        # reset the per-chunk rate limiter so each chunk actually sends
+        adapter._stream_ctx['msg-1']['last_update_ts'] = 0
+        await adapter.reply_message_chunk(
+            source_event,
+            bot_message,
+            platform_message.MessageChain([platform_message.Plain(text=text)]),
+            is_final=(idx == 2),
+        )
+
+    stream_calls = [call[1] for call in adapter.bot.sent if call[0] == 'stream']
+    seqs = [kwargs['msg_seq'] for kwargs in stream_calls]
+    # strictly increasing, no duplicates
+    assert seqs == sorted(set(seqs))
+    assert len(seqs) == len(set(seqs))
+    assert seqs[0] == 1
