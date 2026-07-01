@@ -18,7 +18,15 @@ import {
   Workflow,
   ThumbsUp,
   ThumbsDown,
+  ShieldCheck,
+  ShieldOff,
 } from 'lucide-react';
+import { toast } from 'sonner';
+import BotAdminsDialog, {
+  useBotAdmins,
+} from '@/app/home/bots/components/bot-admins/BotAdminsDialog';
+import type { BotAdmin } from '@/app/home/bots/components/bot-admins/BotAdminsDialog';
+import { copyToClipboard } from '@/app/utils/clipboard';
 import {
   MessageChainComponent,
   Plain,
@@ -93,13 +101,58 @@ const BotSessionMonitor = forwardRef<
     Record<string, SessionFeedback>
   >({});
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const { admins, reload: reloadAdmins } = useBotAdmins(botId);
+  const [adminsDialogOpen, setAdminsDialogOpen] = useState(false);
+  const [togglingAdmin, setTogglingAdmin] = useState<string | null>(null);
 
   const parseSessionType = (sessionId: string): string | null => {
-    const idx = sessionId.indexOf('_');
-    if (idx === -1) return null;
-    const type = sessionId.slice(0, idx);
-    if (type === 'person' || type === 'group') return type;
+    const lower = sessionId.toLowerCase();
+    if (lower.includes('person')) return 'person';
+    if (lower.includes('group')) return 'group';
     return null;
+  };
+
+  const isSessionAdmin = (session: SessionInfo): boolean => {
+    const type = parseSessionType(session.session_id);
+    const lid =
+      session.user_id ??
+      session.session_id.replace(
+        /^.*?[._](?:PERSON|GROUP|person|group)[._]/i,
+        '',
+      );
+    return admins.some(
+      (a: BotAdmin) => a.launcher_type === type && a.launcher_id === lid,
+    );
+  };
+
+  const toggleAdmin = async (session: SessionInfo) => {
+    const type = parseSessionType(session.session_id);
+    if (!type) return;
+    const lid =
+      session.user_id ??
+      session.session_id.replace(
+        /^.*?[._](?:PERSON|GROUP|person|group)[._]/i,
+        '',
+      );
+    const key = session.session_id;
+    setTogglingAdmin(key);
+    try {
+      const existing = admins.find(
+        (a: BotAdmin) => a.launcher_type === type && a.launcher_id === lid,
+      );
+      if (existing) {
+        await httpClient.deleteBotAdmin(botId, existing.id);
+        toast.success(t('bots.admins.deleteSuccess'));
+      } else {
+        await httpClient.addBotAdmin(botId, type, lid);
+        toast.success(t('bots.admins.addSuccess'));
+      }
+      await reloadAdmins();
+    } catch {
+      toast.error(t('bots.admins.addError'));
+    } finally {
+      setTogglingAdmin(null);
+    }
   };
 
   const abbreviateId = (id: string): string => {
@@ -108,10 +161,9 @@ const BotSessionMonitor = forwardRef<
   };
 
   const copyUserId = (userId: string) => {
-    navigator.clipboard.writeText(userId).then(() => {
-      setCopiedUserId(true);
-      setTimeout(() => setCopiedUserId(false), 2000);
-    });
+    copyToClipboard(userId).catch(() => {});
+    setCopiedUserId(true);
+    setTimeout(() => setCopiedUserId(false), 2000);
   };
 
   const loadSessions = useCallback(async () => {
@@ -379,294 +431,312 @@ const BotSessionMonitor = forwardRef<
     return `${diffDays}d`;
   };
 
-  const getSessionDisplayId = (session: SessionInfo): string => {
-    if (session.session_id.startsWith('LauncherTypes.GROUP_')) {
-      const groupId = session.session_id.slice('LauncherTypes.GROUP_'.length);
-      return groupId || session.session_id.slice(0, 12);
-    }
-
-    if (session.session_id.startsWith('LauncherTypes.PERSON_')) {
-      const personId = session.session_id.slice('LauncherTypes.PERSON_'.length);
-      return personId || session.user_id || session.session_id.slice(0, 12);
-    }
-
-    if (session.session_id.startsWith('group_')) {
-      const groupId = session.session_id.slice('group_'.length);
-      return groupId || session.session_id.slice(0, 12);
-    }
-
-    if (session.session_id.startsWith('person_')) {
-      const personId = session.session_id.slice('person_'.length);
-      return personId || session.user_id || session.session_id.slice(0, 12);
-    }
-
-    return session.user_id || session.session_id.slice(0, 12);
-  };
-
-  const isLikelyPlatformId = (value: string): boolean =>
-    /^(on|ou|oc|open_id|union_id|chat_id|user_id)_/i.test(value);
-
-  const getSessionDisplayName = (session: SessionInfo): string => {
-    const rawName = session.user_name?.trim() || '';
-    const userName = rawName && !isLikelyPlatformId(rawName) ? rawName : '';
-    const displayId = getSessionDisplayId(session);
-    return userName ? `${userName} (${displayId})` : displayId;
-  };
-
   const selectedSession = sessions.find(
     (s) => s.session_id === selectedSessionId,
   );
 
   return (
-    <div className="flex flex-col md:flex-row h-full min-h-0 rounded-lg border overflow-hidden">
-      {/* Left Panel: Session List */}
-      <div className="max-h-48 md:max-h-none md:w-60 flex-shrink-0 border-b md:border-b-0 md:border-r flex flex-col min-h-0">
-        {/* Session List */}
-        <ScrollArea className="flex-1 min-h-0">
-          {loadingSessions && sessions.length === 0 ? (
-            <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
-              {t('bots.sessionMonitor.loading')}
-            </div>
-          ) : sessions.length === 0 ? (
-            <div className="text-center text-muted-foreground py-12 text-sm">
-              {t('bots.sessionMonitor.noSessions')}
+    <>
+      <div className="flex flex-col md:flex-row h-full min-h-0 rounded-lg border overflow-hidden">
+        {/* Left Panel: Session List */}
+        <div className="max-h-48 md:max-h-none md:w-60 flex-shrink-0 border-b md:border-b-0 md:border-r flex flex-col min-h-0">
+          {/* Admin header */}
+          <div className="px-2 py-1.5 border-b shrink-0 flex items-center justify-between">
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 text-sm font-medium hover:text-foreground transition-colors"
+              onClick={() => setAdminsDialogOpen(true)}
+            >
+              <ShieldCheck className="size-4" />
+              <span>
+                {t('bots.admins.configureAdmins')}
+                {admins.length > 0 && (
+                  <span className="ml-1 tabular-nums text-xs text-muted-foreground">
+                    ({admins.length})
+                  </span>
+                )}
+              </span>
+            </button>
+          </div>
+          {/* Session List */}
+          <ScrollArea className="flex-1 min-h-0">
+            {loadingSessions && sessions.length === 0 ? (
+              <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+                {t('bots.sessionMonitor.loading')}
+              </div>
+            ) : sessions.length === 0 ? (
+              <div className="text-center text-muted-foreground py-12 text-sm">
+                {t('bots.sessionMonitor.noSessions')}
+              </div>
+            ) : (
+              <div className="p-1.5">
+                {sessions.map((session) => {
+                  const isSelected = selectedSessionId === session.session_id;
+                  const sessionType = parseSessionType(session.session_id);
+                  const sessionIsAdmin = isSessionAdmin(session);
+                  return (
+                    <div
+                      key={session.session_id}
+                      role="button"
+                      tabIndex={0}
+                      className={cn(
+                        'w-full text-left px-2.5 py-2 rounded-md transition-colors cursor-pointer',
+                        isSelected ? 'bg-accent' : 'hover:bg-accent/50',
+                      )}
+                      onClick={() => setSelectedSessionId(session.session_id)}
+                    >
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="text-sm font-medium truncate mr-2">
+                          {session.user_name ||
+                            session.user_id ||
+                            session.session_id.slice(0, 12)}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground tabular-nums flex-shrink-0">
+                          {formatRelativeTime(session.last_activity)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        {sessionType && (
+                          <span className="px-1 py-0.5 rounded bg-muted text-[10px]">
+                            {sessionType}
+                          </span>
+                        )}
+
+                        {session.user_id && (
+                          <span className="truncate text-[10px]">
+                            {abbreviateId(session.user_id)}
+                          </span>
+                        )}
+                        {session.is_active && (
+                          <span className="flex items-center gap-0.5 text-green-600 dark:text-green-400">
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </ScrollArea>
+        </div>
+
+        {/* Right Panel: Messages */}
+        <div className="flex-1 flex flex-col min-h-0 min-w-0">
+          {!selectedSessionId ? (
+            <div className="text-center text-muted-foreground text-sm flex-1 flex items-center justify-center">
+              {t('bots.sessionMonitor.selectSession')}
             </div>
           ) : (
-            <div className="p-1.5">
-              {sessions.map((session) => {
-                const isSelected = selectedSessionId === session.session_id;
-                return (
-                  <button
-                    key={session.session_id}
-                    type="button"
-                    className={cn(
-                      'w-full text-left px-2.5 py-2 rounded-md transition-colors',
-                      isSelected ? 'bg-accent' : 'hover:bg-accent/50',
+            <>
+              {/* Chat Header */}
+              <div className="px-4 py-2.5 border-b shrink-0 flex items-center justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium truncate">
+                    {selectedSession?.user_name ||
+                      selectedSession?.user_id ||
+                      selectedSessionId.slice(0, 20)}
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
+                    {parseSessionType(selectedSessionId) && (
+                      <span>{parseSessionType(selectedSessionId)}</span>
                     )}
-                    onClick={() => setSelectedSessionId(session.session_id)}
-                  >
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-sm font-medium truncate mr-2">
-                        {getSessionDisplayName(session)}
-                      </span>
-                      <span className="text-[11px] text-muted-foreground tabular-nums flex-shrink-0">
-                        {formatRelativeTime(session.last_activity)}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      {parseSessionType(session.session_id) && (
-                        <span className="px-1 py-0.5 rounded bg-muted text-[10px]">
-                          {parseSessionType(session.session_id)}
+                    {selectedSession?.user_id && (
+                      <>
+                        <span>·</span>
+                        <span className="font-mono">
+                          {selectedSession.user_id}
                         </span>
-                      )}
-                      {session.platform && (
-                        <span className="px-1 py-0.5 rounded bg-muted text-[10px]">
-                          {session.platform}
-                        </span>
-                      )}
-                      {session.user_id && (
-                        <span className="truncate text-[10px]">
-                          {abbreviateId(session.user_id)}
-                        </span>
-                      )}
-                      {session.is_active && (
-                        <span className="flex items-center gap-0.5 text-green-600 dark:text-green-400">
+                        <button
+                          type="button"
+                          onClick={() => copyUserId(selectedSession.user_id!)}
+                          className="inline-flex items-center text-muted-foreground hover:text-foreground transition-colors"
+                          title={t('common.copy')}
+                        >
+                          {copiedUserId ? (
+                            <Check className="w-3 h-3 text-green-600" />
+                          ) : (
+                            <Copy className="w-3 h-3" />
+                          )}
+                        </button>
+                      </>
+                    )}
+                    {selectedSession?.is_active && (
+                      <>
+                        <span>·</span>
+                        <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
                           <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                          Active
                         </span>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </ScrollArea>
-      </div>
-
-      {/* Right Panel: Messages */}
-      <div className="flex-1 flex flex-col min-h-0 min-w-0">
-        {!selectedSessionId ? (
-          <div className="text-center text-muted-foreground text-sm flex-1 flex items-center justify-center">
-            {t('bots.sessionMonitor.selectSession')}
-          </div>
-        ) : (
-          <>
-            {/* Chat Header */}
-            <div className="px-4 py-2.5 border-b shrink-0">
-              <div className="min-w-0">
-                <div className="text-sm font-medium truncate">
-                  {selectedSession
-                    ? getSessionDisplayName(selectedSession)
-                    : selectedSessionId.slice(0, 20)}
-                </div>
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
-                  {parseSessionType(selectedSessionId) && (
-                    <span>{parseSessionType(selectedSessionId)}</span>
-                  )}
-                  {selectedSession?.platform && (
-                    <>
-                      {parseSessionType(selectedSessionId) && <span>·</span>}
-                      <span>{selectedSession.platform}</span>
-                    </>
-                  )}
-                  {selectedSession?.user_id && (
-                    <>
-                      <span>·</span>
-                      <span className="font-mono">
-                        {selectedSession.user_id}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => copyUserId(selectedSession.user_id!)}
-                        className="inline-flex items-center text-muted-foreground hover:text-foreground transition-colors"
-                        title={t('common.copy')}
-                      >
-                        {copiedUserId ? (
-                          <Check className="w-3 h-3 text-green-600" />
-                        ) : (
-                          <Copy className="w-3 h-3" />
-                        )}
-                      </button>
-                    </>
-                  )}
-                  {selectedSession?.is_active && (
-                    <>
-                      <span>·</span>
-                      <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
-                        Active
-                      </span>
-                    </>
-                  )}
+                      </>
+                    )}
+                    {selectedSession && parseSessionType(selectedSessionId) && (
+                      <>
+                        <span>·</span>
+                        <button
+                          type="button"
+                          className={cn(
+                            'inline-flex items-center gap-1 transition-colors',
+                            isSessionAdmin(selectedSession)
+                              ? 'text-blue-500'
+                              : 'text-muted-foreground hover:text-blue-500',
+                          )}
+                          disabled={togglingAdmin === selectedSessionId}
+                          title={
+                            isSessionAdmin(selectedSession)
+                              ? t('bots.admins.removeAdminTitle')
+                              : t('bots.admins.setAdminTitle')
+                          }
+                          onClick={() => toggleAdmin(selectedSession)}
+                        >
+                          {isSessionAdmin(selectedSession) ? (
+                            <ShieldCheck className="size-3.5" />
+                          ) : (
+                            <ShieldOff className="size-3.5" />
+                          )}
+                          <span>{t('bots.admins.adminBadge')}</span>
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Messages Area */}
-            <ScrollArea
-              ref={messagesContainerRef}
-              className="flex-1 px-4 py-4 overflow-y-auto min-h-0"
-            >
-              <div className="space-y-4">
-                {loadingMessages ? (
-                  <div className="text-center text-muted-foreground py-12 text-sm">
-                    {t('bots.sessionMonitor.loading')}
-                  </div>
-                ) : messages.length === 0 ? (
-                  <div className="text-center text-muted-foreground py-12 text-sm">
-                    {t('bots.sessionMonitor.noMessages')}
-                  </div>
-                ) : (
-                  messages.map((msg, msgIndex) => {
-                    const isUser = isUserMessage(msg);
-                    const isDiscarded =
-                      msg.status === 'discarded' ||
-                      msg.pipeline_id === PIPELINE_DISCARD;
-                    // For bot replies, find feedback linked to the preceding user message
-                    let msgFeedback: SessionFeedback | undefined;
-                    if (!isUser) {
-                      for (let i = msgIndex - 1; i >= 0; i--) {
-                        if (isUserMessage(messages[i])) {
-                          msgFeedback = feedbackMap[messages[i].id];
-                          break;
+              {/* Messages Area */}
+              <ScrollArea
+                ref={messagesContainerRef}
+                className="flex-1 px-4 py-4 overflow-y-auto min-h-0"
+              >
+                <div className="space-y-4">
+                  {loadingMessages ? (
+                    <div className="text-center text-muted-foreground py-12 text-sm">
+                      {t('bots.sessionMonitor.loading')}
+                    </div>
+                  ) : messages.length === 0 ? (
+                    <div className="text-center text-muted-foreground py-12 text-sm">
+                      {t('bots.sessionMonitor.noMessages')}
+                    </div>
+                  ) : (
+                    messages.map((msg, msgIndex) => {
+                      const isUser = isUserMessage(msg);
+                      const isDiscarded =
+                        msg.status === 'discarded' ||
+                        msg.pipeline_id === PIPELINE_DISCARD;
+                      // For bot replies, find feedback linked to the preceding user message
+                      let msgFeedback: SessionFeedback | undefined;
+                      if (!isUser) {
+                        for (let i = msgIndex - 1; i >= 0; i--) {
+                          if (isUserMessage(messages[i])) {
+                            msgFeedback = feedbackMap[messages[i].id];
+                            break;
+                          }
                         }
                       }
-                    }
-                    return (
-                      <div
-                        key={msg.id}
-                        className={cn(
-                          'flex',
-                          isUser ? 'justify-end' : 'justify-start',
-                        )}
-                      >
+                      return (
                         <div
+                          key={msg.id}
                           className={cn(
-                            'max-w-3xl px-4 py-2.5 rounded-2xl text-sm',
-                            isUser
-                              ? 'bg-primary/10 rounded-br-sm'
-                              : 'bg-muted rounded-bl-sm',
-                            msg.status === 'error' && 'ring-1 ring-red-400/50',
-                            isDiscarded && 'opacity-60',
+                            'flex',
+                            isUser ? 'justify-end' : 'justify-start',
                           )}
                         >
-                          {renderMessageContent(msg)}
-                          {/* Role label + pipeline + timestamp */}
                           <div
                             className={cn(
-                              'text-[11px] mt-1.5 flex items-center gap-1.5 text-muted-foreground',
+                              'max-w-3xl px-4 py-2.5 rounded-2xl text-sm',
+                              isUser
+                                ? 'bg-primary/10 rounded-br-sm'
+                                : 'bg-muted rounded-bl-sm',
+                              msg.status === 'error' &&
+                                'ring-1 ring-red-400/50',
+                              isDiscarded && 'opacity-60',
                             )}
                           >
-                            <span>
-                              {isUser
-                                ? t('bots.sessionMonitor.userMessage', {
-                                    defaultValue: 'User',
-                                  })
-                                : t('bots.sessionMonitor.botMessage', {
-                                    defaultValue: 'Assistant',
+                            {renderMessageContent(msg)}
+                            {/* Role label + pipeline + timestamp */}
+                            <div
+                              className={cn(
+                                'text-[11px] mt-1.5 flex items-center gap-1.5 text-muted-foreground',
+                              )}
+                            >
+                              <span>
+                                {isUser
+                                  ? t('bots.sessionMonitor.userMessage', {
+                                      defaultValue: 'User',
+                                    })
+                                  : t('bots.sessionMonitor.botMessage', {
+                                      defaultValue: 'Assistant',
+                                    })}
+                              </span>
+                              <span className="tabular-nums">
+                                {formatTime(msg.timestamp)}
+                              </span>
+                              {isDiscarded ? (
+                                <span className="inline-flex items-center gap-0.5 text-destructive">
+                                  <Ban className="w-3 h-3" />
+                                  {t('bots.sessionMonitor.discarded', {
+                                    defaultValue: 'Discarded',
                                   })}
-                            </span>
-                            <span className="tabular-nums">
-                              {formatTime(msg.timestamp)}
-                            </span>
-                            {isDiscarded ? (
-                              <span className="inline-flex items-center gap-0.5 text-destructive">
-                                <Ban className="w-3 h-3" />
-                                {t('bots.sessionMonitor.discarded', {
-                                  defaultValue: 'Discarded',
-                                })}
-                              </span>
-                            ) : msg.pipeline_name ? (
-                              <span className="inline-flex items-center gap-0.5 opacity-70">
-                                <Workflow className="w-3 h-3" />
-                                {msg.pipeline_name}
-                              </span>
-                            ) : null}
-                            {msg.status === 'error' && (
-                              <span className="text-red-500">error</span>
-                            )}
-                            {msg.runner_name && (
-                              <span className="inline-flex items-center gap-0.5 opacity-70">
-                                <Bot className="w-3 h-3" />
-                                {msg.runner_name}
-                              </span>
-                            )}
-                            {/* Feedback indicator — same line, pushed right */}
-                            {!isUser &&
-                              msgFeedback &&
-                              (msgFeedback.feedback_type === 1 ? (
-                                <span className="inline-flex items-center gap-1 ml-auto text-green-600 dark:text-green-400 cursor-default relative group">
-                                  <ThumbsUp className="w-3 h-3 flex-shrink-0" />
-                                  {t('monitoring.feedback.like')}
-                                  {msgFeedback.feedback_content && (
-                                    <span className="hidden group-hover:block absolute bottom-full right-0 mb-1 px-3 py-1.5 rounded-lg bg-popover border text-popover-foreground text-xs whitespace-nowrap shadow-md z-10">
-                                      {msgFeedback.feedback_content}
-                                    </span>
-                                  )}
                                 </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 ml-auto text-red-500 dark:text-red-400 cursor-default relative group">
-                                  <ThumbsDown className="w-3 h-3 flex-shrink-0" />
-                                  {t('monitoring.feedback.dislike')}
-                                  {msgFeedback.feedback_content && (
-                                    <span className="hidden group-hover:block absolute bottom-full right-0 mb-1 px-3 py-1.5 rounded-lg bg-popover border text-popover-foreground text-xs whitespace-nowrap shadow-md z-10">
-                                      {msgFeedback.feedback_content}
-                                    </span>
-                                  )}
+                              ) : msg.pipeline_name ? (
+                                <span className="inline-flex items-center gap-0.5 opacity-70">
+                                  <Workflow className="w-3 h-3" />
+                                  {msg.pipeline_name}
                                 </span>
-                              ))}
+                              ) : null}
+                              {msg.status === 'error' && (
+                                <span className="text-red-500">error</span>
+                              )}
+                              {msg.runner_name && (
+                                <span className="inline-flex items-center gap-0.5 opacity-70">
+                                  <Bot className="w-3 h-3" />
+                                  {msg.runner_name}
+                                </span>
+                              )}
+                              {/* Feedback indicator — same line, pushed right */}
+                              {!isUser &&
+                                msgFeedback &&
+                                (msgFeedback.feedback_type === 1 ? (
+                                  <span className="inline-flex items-center gap-1 ml-auto text-green-600 dark:text-green-400 cursor-default relative group">
+                                    <ThumbsUp className="w-3 h-3 flex-shrink-0" />
+                                    {t('monitoring.feedback.like')}
+                                    {msgFeedback.feedback_content && (
+                                      <span className="hidden group-hover:block absolute bottom-full right-0 mb-1 px-3 py-1.5 rounded-lg bg-popover border text-popover-foreground text-xs whitespace-nowrap shadow-md z-10">
+                                        {msgFeedback.feedback_content}
+                                      </span>
+                                    )}
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 ml-auto text-red-500 dark:text-red-400 cursor-default relative group">
+                                    <ThumbsDown className="w-3 h-3 flex-shrink-0" />
+                                    {t('monitoring.feedback.dislike')}
+                                    {msgFeedback.feedback_content && (
+                                      <span className="hidden group-hover:block absolute bottom-full right-0 mb-1 px-3 py-1.5 rounded-lg bg-popover border text-popover-foreground text-xs whitespace-nowrap shadow-md z-10">
+                                        {msgFeedback.feedback_content}
+                                      </span>
+                                    )}
+                                  </span>
+                                ))}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </ScrollArea>
-          </>
-        )}
+                      );
+                    })
+                  )}
+                </div>
+              </ScrollArea>
+            </>
+          )}
+        </div>
       </div>
-    </div>
+
+      <BotAdminsDialog
+        botId={botId}
+        open={adminsDialogOpen}
+        onOpenChange={setAdminsDialogOpen}
+        admins={admins}
+        onAdminsChange={reloadAdmins}
+      />
+    </>
   );
 });
 

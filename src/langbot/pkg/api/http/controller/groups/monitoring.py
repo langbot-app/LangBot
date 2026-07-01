@@ -46,6 +46,30 @@ class MonitoringRouterGroup(group.RouterGroup):
 
             return self.success(data=metrics)
 
+        @self.route('/token-statistics', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
+        async def get_token_statistics() -> str:
+            """Get detailed token usage statistics (summary, per-model, timeseries)."""
+            bot_ids = quart.request.args.getlist('botId')
+            pipeline_ids = quart.request.args.getlist('pipelineId')
+            start_time_str = quart.request.args.get('startTime')
+            end_time_str = quart.request.args.get('endTime')
+            bucket = quart.request.args.get('bucket', 'hour')
+            if bucket not in ('hour', 'day'):
+                bucket = 'hour'
+
+            start_time = parse_iso_datetime(start_time_str)
+            end_time = parse_iso_datetime(end_time_str)
+
+            stats = await self.ap.monitoring_service.get_token_statistics(
+                bot_ids=bot_ids if bot_ids else None,
+                pipeline_ids=pipeline_ids if pipeline_ids else None,
+                start_time=start_time,
+                end_time=end_time,
+                bucket=bucket,
+            )
+
+            return self.success(data=stats)
+
         @self.route('/messages', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
         async def get_messages() -> str:
             """Get message logs"""

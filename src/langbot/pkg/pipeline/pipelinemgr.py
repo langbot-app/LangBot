@@ -96,6 +96,15 @@ class RuntimePipeline:
         extensions_prefs = pipeline_entity.extensions_preferences or {}
         self.enable_all_plugins = extensions_prefs.get('enable_all_plugins', True)
         self.enable_all_mcp_servers = extensions_prefs.get('enable_all_mcp_servers', True)
+        local_agent_config = (pipeline_entity.config or {}).get('ai', {}).get('local-agent', {})
+        self.mcp_resource_attachments = local_agent_config.get(
+            'mcp-resources',
+            extensions_prefs.get('mcp_resources', []),
+        )
+        self.mcp_resource_agent_read_enabled = local_agent_config.get(
+            'mcp-resource-agent-read-enabled',
+            extensions_prefs.get('mcp_resource_agent_read_enabled', True),
+        )
 
         if self.enable_all_plugins:
             # None indicates to use all available plugins
@@ -116,6 +125,8 @@ class RuntimePipeline:
         # Store bound plugins and MCP servers in query for filtering
         query.variables['_pipeline_bound_plugins'] = self.bound_plugins
         query.variables['_pipeline_bound_mcp_servers'] = self.bound_mcp_servers
+        query.variables['_pipeline_mcp_resource_attachments'] = self.mcp_resource_attachments
+        query.variables['_pipeline_mcp_resource_agent_read_enabled'] = self.mcp_resource_agent_read_enabled
 
         # Record query start for monitoring
         try:
@@ -178,7 +189,7 @@ class RuntimePipeline:
                 bot_name = query.variables.get('_monitoring_bot_name', 'Unknown')
                 pipeline_name = query.variables.get('_monitoring_pipeline_name', 'Unknown')
                 message_id = query.variables.get('_monitoring_message_id', '')
-                session_id = f'{query.launcher_type}_{query.launcher_id}'
+                session_id = f'{query.launcher_type.value if hasattr(query.launcher_type, "value") else query.launcher_type}_{query.launcher_id}'
 
                 # Update message status to error
                 if message_id:

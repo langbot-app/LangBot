@@ -146,6 +146,7 @@ class UserRouterGroup(group.RouterGroup):
                 return self.fail(3, str(e))
             except ValueError as e:
                 traceback.print_exc()
+                self.ap.logger.warning(f'Space OAuth callback failed: {e}')
                 return self.fail(1, str(e))
             except Exception as e:
                 traceback.print_exc()
@@ -194,6 +195,13 @@ class UserRouterGroup(group.RouterGroup):
         @self.route('/set-password', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
         async def _(user_email: str) -> str:
             """Set password for Space account (first time) or change password"""
+            # Check if modifying login info is allowed
+            allow_modify_login_info = self.ap.instance_config.data.get('system', {}).get(
+                'allow_modify_login_info', True
+            )
+            if not allow_modify_login_info:
+                return self.http_status(403, -1, 'Modifying login info is disabled')
+
             json_data = await quart.request.json
             new_password = json_data.get('new_password')
             current_password = json_data.get('current_password')

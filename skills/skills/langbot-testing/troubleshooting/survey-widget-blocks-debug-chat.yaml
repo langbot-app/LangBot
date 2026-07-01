@@ -1,0 +1,22 @@
+id: survey-widget-blocks-debug-chat
+title: "Survey widget blocks Debug Chat controls"
+date: 2026-05-17
+symptoms:
+  - "Debug Chat input is filled but the Send button cannot be clicked."
+  - "Playwright reports that a fixed bottom-right widget intercepts pointer events."
+patterns:
+  - "subtree intercepts pointer events"
+  - "Help us improve"
+  - "fixed bottom-6 right-6"
+likely_causes:
+  - "The survey widget overlaps the Debug Chat action area at the current viewport size."
+  - "The test viewport is narrow enough that the floating widget covers the Send button."
+fix_steps:
+  - "Close or minimize the survey widget before interacting with Debug Chat."
+  - "Alternatively, resize the browser wider or use keyboard submission if the UI supports it."
+  - "Continue the browser test after confirming the widget is gone."
+verification: "The Send button can be clicked and Debug Chat shows both the User message and Bot response."
+related_cases:
+  - pipeline-debug-chat
+  - local-agent-rag-debug-chat
+  - mcp-stdio-tool-call

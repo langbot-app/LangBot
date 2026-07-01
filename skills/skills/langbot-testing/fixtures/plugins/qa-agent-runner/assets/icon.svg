@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="QA AgentRunner icon">
+  <rect width="64" height="64" rx="12" fill="#111827"/>
+  <path d="M16 20h32v22H35l-7 8v-8H16z" fill="#22c55e"/>
+  <path d="M24 30h16" stroke="#111827" stroke-width="4" stroke-linecap="round"/>
+</svg>

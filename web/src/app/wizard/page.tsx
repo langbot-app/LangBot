@@ -86,7 +86,7 @@ export default function WizardPage() {
   const [selectedAdapter, setSelectedAdapter] = useState<string | null>(null);
   const [selectedRunner, setSelectedRunner] = useState<string | null>(null);
   const [botName, setBotName] = useState('');
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
   const [botDescription, _setBotDescription] = useState('');
   const [adapterConfig, setAdapterConfig] = useState<Record<string, unknown>>(
     {},
@@ -228,6 +228,7 @@ export default function WizardPage() {
           type: parseDynamicFormItemType(item.type),
           options: item.options,
           show_if: item.show_if,
+          login_platform: item.login_platform,
         }),
     );
   }, [adapters, selectedAdapter]);
@@ -247,6 +248,7 @@ export default function WizardPage() {
           type: parseDynamicFormItemType(item.type),
           options: item.options,
           show_if: item.show_if,
+          login_platform: item.login_platform,
         }),
     );
   }, [selectedRunnerConfigStage]);
@@ -572,9 +574,9 @@ export default function WizardPage() {
                   className={cn(
                     'w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-xs font-medium transition-colors',
                     idx < currentStep
-                      ? 'bg-primary text-primary-foreground'
+                      ? 'bg-blue-600 text-white'
                       : idx === currentStep
-                        ? 'bg-primary text-primary-foreground'
+                        ? 'bg-blue-600 text-white'
                         : 'bg-muted text-muted-foreground',
                   )}
                 >
@@ -588,7 +590,7 @@ export default function WizardPage() {
                   className={cn(
                     'text-sm hidden sm:inline',
                     idx === currentStep
-                      ? 'font-medium text-foreground'
+                      ? 'font-medium text-blue-600'
                       : 'text-muted-foreground',
                   )}
                 >
@@ -599,7 +601,7 @@ export default function WizardPage() {
                 <div
                   className={cn(
                     'w-4 sm:w-8 h-px',
-                    idx < currentStep ? 'bg-primary' : 'bg-border',
+                    idx < currentStep ? 'bg-blue-600' : 'bg-border',
                   )}
                 />
               )}
@@ -937,6 +939,7 @@ function StepBotConfig({
                     is_wizard: true,
                     webhook_url: webhookUrl,
                     extra_webhook_url: extraWebhookUrl,
+                    outbound_ips: systemInfo.outbound_ips,
                   }}
                 />
               </CardContent>

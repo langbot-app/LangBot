@@ -1,0 +1,87 @@
+id: local-agent-steering-debug-chat
+title: "Local Agent injects a follow-up into an active run"
+mode: agent-browser
+area: pipeline
+type: regression
+priority: p1
+risk: high
+ci_eligible: false
+tags:
+  - local-agent
+  - pipeline
+  - steering
+  - tools
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation: scripts/e2e/local-agent-steering-debug-chat.mjs
+automation_env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_pipeline_url_env: LANGBOT_LOCAL_AGENT_PIPELINE_URL
+automation_pipeline_name_env: LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_expected_runner_id: "plugin:langbot/local-agent/default"
+automation_reset_debug_chat: "1"
+automation_stream_output: "1"
+automation_prompt: "You are running the LangBot steering E2E test. First call the qa_plugin_sleep tool with seconds=8 and text=steering-e2e-anchor. Do not answer before the tool result is available. After the tool returns, answer the latest user follow-up. If no follow-up was injected, reply only STEERING_NO_FOLLOWUP."
+automation_expected_text: "qa_steering_sentinel_6194"
+automation_response_timeout_ms: "240000"
+setup_automation:
+  - "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env"
+  - "case:qa-plugin-smoke-live-install"
+setup_provides_env:
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+preconditions:
+  - "The selected model route supports function/tool calling and can call qa_plugin_sleep."
+steps:
+  - "Open the target local-agent pipeline."
+  - "Assert the saved runner is plugin:langbot/local-agent/default."
+  - "Reset the person Debug Chat session for the target pipeline."
+  - "Assert /api/v1/tools contains qa_plugin_sleep."
+  - "Send the first prompt that instructs the model to call qa_plugin_sleep for 8 seconds."
+  - "After 1 second, send a second Debug Chat message containing qa_steering_sentinel_6194 while the first run is still active."
+  - "Wait for the final assistant response."
+checks:
+  - "UI: Debug Chat shows two new user messages but only one new assistant response."
+  - "UI: The only new assistant response contains qa_steering_sentinel_6194."
+  - "API diagnostic: pipeline-config-diagnostic.json confirms the local-agent runner id."
+  - "API diagnostic: tool-diagnostic.json confirms qa_plugin_sleep is exposed."
+  - "Logs: Backend handles the follow-up without starting an independent second assistant response."
+  - "Console: No unexpected frontend runtime errors appear during Debug Chat."
+evidence_required:
+  - ui
+  - screenshot
+  - console
+  - backend_log
+  - api_diagnostic
+diagnostics:
+  - "If qa_plugin_sleep is missing, rebuild and reinstall or resync the qa-plugin-smoke fixture plugin, then restart the backend."
+  - "If the UI cannot send the follow-up because the input is disabled during a run, the WebUI path does not yet support steering."
+  - "If two assistant responses appear, the follow-up likely started a separate run instead of being claimed as steering."
+  - "If the model replies STEERING_NO_FOLLOWUP, inspect Host steering claim logs and local-agent steering_pull calls."
+success_patterns:
+  - "Processing request from person_websocket"
+  - "Steering"
+  - "Streaming completed"
+failure_patterns:
+  - "STEERING_NO_FOLLOWUP"
+  - "Action invoke_llm_stream call timed out"
+  - "All models failed during streaming setup"
+  - "Task exception was never retrieved"
+  - "survey widget blocks debug chat"
+troubleshooting:
+  - local-agent-model-route-unavailable
+  - plugin-runtime-timeout
+  - proxy-env-mismatch
+  - survey-widget-blocks-debug-chat
+  - debug-chat-history-contaminates-automation

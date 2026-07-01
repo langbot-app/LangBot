@@ -9,7 +9,8 @@ import {
 
 export type ExtraArg = {
   key: string;
-  type: 'string' | 'number' | 'boolean';
+  type: 'string' | 'number' | 'boolean' | 'object';
+  // For 'object' type, value holds a JSON string that will be parsed on save.
   value: string;
 };
 
@@ -52,6 +53,7 @@ export interface ModelItemProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    contextLength?: number | null,
   ) => Promise<void>;
   onTest: (
     name: string,
@@ -88,8 +90,9 @@ export interface ProviderCardProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    contextLength?: number | null,
   ) => Promise<void>;
-  onScanModels: (modelType: ModelType) => Promise<ScanModelsResult>;
+  onScanModels: (modelType?: ModelType) => Promise<ScanModelsResult>;
   onAddScannedModels: (
     modelType: ModelType,
     models: SelectedScannedModel[],
@@ -102,6 +105,7 @@ export interface ProviderCardProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    contextLength?: number | null,
   ) => Promise<void>;
   onOpenDeleteConfirm: (modelId: string) => void;
   onCloseDeleteConfirm: () => void;

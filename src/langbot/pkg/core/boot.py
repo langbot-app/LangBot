@@ -16,7 +16,6 @@ importutil.import_modules_in_pkg(stages)
 
 stage_order = [
     'LoadConfigStage',
-    'MigrationStage',
     'GenKeysStage',
     'SetupLoggerStage',
     'BuildAppStage',
@@ -46,12 +45,14 @@ async def make_app(loop: asyncio.AbstractEventLoop) -> app.Application:
 
 
 async def main(loop: asyncio.AbstractEventLoop):
+    app_inst: app.Application | None = None
     try:
         # Hang system signal processing
         import signal
 
         def signal_handler(sig, frame):
-            app_inst.dispose()
+            if app_inst is not None:
+                app_inst.dispose()
             print('[Signal] Program exit.')
             os._exit(0)
 
@@ -60,4 +61,6 @@ async def main(loop: asyncio.AbstractEventLoop):
         app_inst = await make_app(loop)
         await app_inst.run()
     except Exception:
+        if app_inst is not None:
+            app_inst.dispose()
         traceback.print_exc()

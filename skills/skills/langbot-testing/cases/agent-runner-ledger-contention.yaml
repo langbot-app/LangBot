@@ -1,0 +1,34 @@
+id: agent-runner-ledger-contention
+title: "AgentRunner ledger SQLite contention probe"
+mode: probe
+area: release
+type: regression
+priority: p1
+risk: high
+ci_eligible: true
+tags:
+  - agent-runner
+  - probe
+  - stress
+  - ledger
+  - concurrency
+skills:
+  - langbot-testing
+env:
+automation: skills/langbot-testing/probes/agent-runner-ledger-contention.mjs
+steps:
+  - "Run `rtk bin/lbs test run agent-runner-ledger-contention --dry-run` first; remove `--dry-run` after checking the planned evidence directory."
+  - "Automation creates 120 queued runs in a file-backed SQLite database and uses eight worker threads to claim runs under write contention."
+checks:
+  - "automation-result.json status is pass."
+  - "probe-stdout.log contains LEDGER_CONTENTION_OK."
+  - "Every run is claimed once, reaches completed status, and has dispatch_attempts = 1."
+evidence_required:
+  - filesystem
+diagnostics:
+  - "This probe catches obvious exactly-once claim regressions under local SQLite contention; it does not replace async Host pytest or PostgreSQL concurrency checks."
+success_patterns:
+  - "LEDGER_CONTENTION_OK"
+failure_patterns:
+  - "AssertionError"
+  - "ledger contention exited"

@@ -1,0 +1,88 @@
+id: mcp-stdio-tool-call
+title: "MCP stdio server exposes a tool that Local Agent can call"
+mode: agent-browser
+area: mcp
+type: feature
+priority: p1
+risk: high
+ci_eligible: false
+tags:
+  - mcp
+  - tools
+  - local-agent
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation: scripts/e2e/pipeline-debug-chat.mjs
+automation_env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_pipeline_url_env: LANGBOT_LOCAL_AGENT_PIPELINE_URL
+automation_pipeline_name_env: LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_prompt: "Call the qa_mcp_echo MCP tool with exactly this text: mcp-ok-local-agent. Return only the tool result."
+automation_expected_text: "qa_mcp_echo:mcp-ok-local-agent"
+automation_response_timeout_ms: "180000"
+setup_automation:
+  - "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env"
+  - "case:mcp-stdio-register"
+setup_provides_env:
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+failure_patterns:
+  - "qa-plugin-smoke:mcp-ok-local-agent"
+  - "qa_echo:mcp-ok-local-agent"
+  - "Agent runner temporarily unavailable"
+  - "runner.llm_error"
+  - "model_not_found"
+  - "no available channel for model"
+preconditions:
+  - "box.local.allowed_mount_roots includes the bundled MCP fixture directory when LangBot runs stdio MCP servers through Box."
+  - "The selected model route supports function/tool calling."
+steps:
+  - "Open LANGBOT_FRONTEND_URL."
+  - "Navigate to MCP Servers."
+  - "Create a Stdio MCP server named qa-local-stdio."
+  - "Set command to python."
+  - "Add one argument: the absolute path to skills/langbot-testing/fixtures/mcp/qa_mcp_echo_server.py."
+  - "Click Test and wait for the test task to finish."
+  - "Submit the server."
+  - "Confirm the server detail page shows Tools: 1 and qa_mcp_echo."
+  - "Open the target local-agent pipeline."
+  - "Use runner Default or the pluginized langbot/local-agent runner."
+  - "Select a model with function-calling ability that is known to work with tools in the current environment."
+  - "Open Debug Chat."
+  - "Send: Call the qa_mcp_echo tool with exactly this text: mcp-ok-local-agent. Return only the tool result."
+checks:
+  - "UI: The MCP server is connected after submit."
+  - "UI: The MCP detail page shows qa_mcp_echo."
+  - "API diagnostic: /api/v1/tools contains qa_mcp_echo."
+  - "UI: Debug Chat bot response contains qa_mcp_echo:mcp-ok-local-agent."
+  - "Logs: Backend logs show the MCP tool call was executed, not only listed."
+  - "Console: No unexpected frontend errors appear during MCP form use or Debug Chat."
+evidence_required:
+  - ui
+  - console
+  - backend_log
+  - api_diagnostic
+diagnostics:
+  - "Run node scripts/e2e/mcp-stdio-fixture.mjs to verify the bundled stdio fixture can list and call qa_mcp_echo without involving a model provider."
+  - "Run node scripts/e2e/mcp-stdio-register.mjs to upsert qa-local-stdio in LangBot and verify /api/v1/tools exposes qa_mcp_echo."
+  - "If backend logs show host_path is outside allowed_mount_roots, add the fixture directory to box.local.allowed_mount_roots in the local LangBot data config."
+  - "If backend logs show uv: not found, refresh qa-local-stdio with command python instead of uv."
+  - "If /api/v1/tools still shows qa_echo instead of qa_mcp_echo, refresh qa-local-stdio with the register diagnostic or restart the backend."
+  - "If Debug Chat cannot click Send, close the survey widget or other overlays before retrying."
+  - "If the model returns model_not_found or no available channel only when tools are provided, switch to a known-good function-calling model before diagnosing MCP or local-agent."
+troubleshooting:
+  - mcp-stdio-args-not-applied
+  - tool-name-collision-between-mcp-and-plugin
+  - local-agent-model-route-unavailable
+  - survey-widget-blocks-debug-chat
+  - plugin-runtime-timeout

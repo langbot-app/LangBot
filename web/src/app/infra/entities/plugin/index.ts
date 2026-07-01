@@ -10,7 +10,7 @@ export interface Plugin {
   debug: boolean;
   enabled: boolean;
   install_source: string;
-  install_info: Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  install_info: Record<string, any>;
   components: PluginComponent[];
 }
 
@@ -19,6 +19,13 @@ export interface PluginComponent {
   manifest: {
     manifest: ComponentManifest;
   };
+}
+
+// A single log line captured from a running plugin's stderr.
+export interface PluginLogEntry {
+  ts: number;
+  level: string;
+  text: string;
 }
 
 // marketplace plugin v4
@@ -31,6 +38,8 @@ export enum PluginV4Status {
 export interface PluginV4 {
   id: number;
   plugin_id: string;
+  mcp_id?: string;
+  skill_id?: string;
   author: string;
   name: string;
   label: I18nObject;
@@ -42,6 +51,7 @@ export interface PluginV4 {
   latest_version: string;
   components: Record<string, number>;
   status: PluginV4Status;
+  type?: 'plugin' | 'mcp' | 'skill';
   created_at: string;
   updated_at: string;
 }

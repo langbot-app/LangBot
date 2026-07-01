@@ -44,7 +44,7 @@ export function TagsFilter({
 
   return (
     <Select open={open} onOpenChange={setOpen}>
-      <SelectTrigger className="w-[140px]">
+      <SelectTrigger className="w-[140px] cursor-pointer">
         <div className="flex items-center gap-2 w-full">
           <TagIcon className="h-4 w-4 flex-shrink-0" />
           {selectedTags.length === 0 ? (

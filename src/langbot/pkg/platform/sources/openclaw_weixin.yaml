@@ -32,6 +32,20 @@ spec:
       type: string
       required: true
       default: "https://ilinkai.weixin.qq.com"
+    - name: qr-login
+      label:
+        en_US: Scan QR Login
+        zh_Hans: 扫码登录
+        zh_Hant: 掃碼登入
+        ja_JP: QRコードでログイン
+      description:
+        en_US: Scan QR code with WeChat to authorize and automatically fill in the token
+        zh_Hans: 使用微信扫码授权，自动填写令牌
+        zh_Hant: 使用微信掃碼授權，自動填寫令牌
+        ja_JP: WeChatでQRコードをスキャンし、トークンを自動入力
+      type: qr-code-login
+      login_platform: weixin
+      required: false
     - name: token
       label:
         en_US: Token

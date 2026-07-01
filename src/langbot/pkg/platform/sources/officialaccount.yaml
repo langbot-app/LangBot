@@ -31,6 +31,18 @@ spec:
       type: webhook-url
       required: false
       default: ""
+    - name: __system.outbound_ips
+      label:
+        en_US: IP Whitelist
+        zh_Hans: IP 白名单
+        zh_Hant: IP 白名單
+      description:
+        en_US: Add these outbound IPs of the LangBot server to the IP whitelist in the "Basic Configuration" of the WeChat Official Account platform
+        zh_Hans: 请将这些 LangBot 服务器的出网 IP 添加到微信公众平台「基本配置」中的 IP 白名单
+        zh_Hant: 請將這些 LangBot 伺服器的出網 IP 加入微信公眾平台「基本配置」中的 IP 白名單
+      type: array[string]
+      required: false
+      default: []
     - name: token
       label:
         en_US: Token

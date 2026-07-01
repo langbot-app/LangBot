@@ -26,11 +26,7 @@ class MonitoringHelper:
 
     @staticmethod
     def _extract_sender_name(query: pipeline_query.Query) -> str | None:
-        """Extract session display name from query message event.
-
-        For group sessions, prefer group name.
-        For person sessions, use sender display name.
-        """
+        """Extract session display name from query message event."""
         sender_name: str | None = None
 
         message_event = getattr(query, 'message_event', None)
@@ -40,7 +36,6 @@ class MonitoringHelper:
             return group_name.strip()
 
         sender = getattr(message_event, 'sender', None)
-
         if sender is not None:
             get_name = getattr(sender, 'get_name', None)
             if callable(get_name):
@@ -49,10 +44,7 @@ class MonitoringHelper:
                 except Exception:
                     sender_name = None
                 else:
-                    if isinstance(sender_name, str):
-                        sender_name = sender_name.strip() or None
-                    else:
-                        sender_name = None
+                    sender_name = sender_name.strip() if isinstance(sender_name, str) else None
 
             if not sender_name:
                 for attr in ('member_name', 'nickname', 'remark', 'name'):
@@ -86,15 +78,6 @@ class MonitoringHelper:
             session_id = MonitoringHelper._build_session_id(query)
             platform = query.launcher_type.value if hasattr(query.launcher_type, 'value') else str(query.launcher_type)
             sender_name = MonitoringHelper._extract_sender_name(query)
-
-            # Get sender name from message event
-            sender_name = None
-            if hasattr(query, 'message_event'):
-                if hasattr(query.message_event, 'sender'):
-                    if hasattr(query.message_event.sender, 'nickname'):
-                        sender_name = query.message_event.sender.nickname
-                    elif hasattr(query.message_event.sender, 'member_name'):
-                        sender_name = query.message_event.sender.member_name
 
             # Try to record message
             # Use JSON serialization to preserve message chain structure (including image URLs, etc.)
@@ -190,15 +173,7 @@ class MonitoringHelper:
         """Record bot response message to monitoring"""
         try:
             session_id = MonitoringHelper._build_session_id(query)
-
-            # Get sender name from message event
-            sender_name = None
-            if hasattr(query, 'message_event'):
-                if hasattr(query.message_event, 'sender'):
-                    if hasattr(query.message_event.sender, 'nickname'):
-                        sender_name = query.message_event.sender.nickname
-                    elif hasattr(query.message_event.sender, 'member_name'):
-                        sender_name = query.message_event.sender.member_name
+            sender_name = MonitoringHelper._extract_sender_name(query)
 
             # Extract response content from resp_message_chain
             if hasattr(query, 'resp_message_chain') and query.resp_message_chain:
@@ -255,15 +230,7 @@ class MonitoringHelper:
         """Record query processing error, returns message_id"""
         try:
             session_id = MonitoringHelper._build_session_id(query)
-
-            # Get sender name from message event
-            sender_name = None
-            if hasattr(query, 'message_event'):
-                if hasattr(query.message_event, 'sender'):
-                    if hasattr(query.message_event.sender, 'nickname'):
-                        sender_name = query.message_event.sender.nickname
-                    elif hasattr(query.message_event.sender, 'member_name'):
-                        sender_name = query.message_event.sender.member_name
+            sender_name = MonitoringHelper._extract_sender_name(query)
 
             # Record error message
             message_id = await ap.monitoring_service.record_message(

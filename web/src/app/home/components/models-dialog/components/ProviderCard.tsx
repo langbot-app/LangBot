@@ -6,6 +6,7 @@ import {
   Trash2,
   Settings,
   LogIn,
+  Radar,
 } from 'lucide-react';
 import { httpClient, systemInfo } from '@/app/infra/http/HttpClient';
 import { ModelProvider } from '@/app/infra/entities/api';
@@ -38,6 +39,7 @@ import AddModelPopover from './AddModelPopover';
 interface ProviderCardProps {
   provider: ModelProvider;
   isLangBotModels?: boolean;
+  supportTypes?: string[];
   isExpanded: boolean;
   isLoading: boolean;
   models?: ProviderModels;
@@ -59,8 +61,9 @@ interface ProviderCardProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    contextLength?: number | null,
   ) => Promise<void>;
-  onScanModels: (modelType: ModelType) => Promise<ScanModelsResult>;
+  onScanModels: (modelType?: ModelType) => Promise<ScanModelsResult>;
   onAddScannedModels: (
     modelType: ModelType,
     models: SelectedScannedModel[],
@@ -73,6 +76,7 @@ interface ProviderCardProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    contextLength?: number | null,
   ) => Promise<void>;
   onOpenDeleteConfirm: (modelId: string) => void;
   onCloseDeleteConfirm: () => void;
@@ -98,6 +102,7 @@ function maskApiKey(key: string): string {
 export default function ProviderCard({
   provider,
   isLangBotModels = false,
+  supportTypes,
   isExpanded,
   isLoading,
   models,
@@ -130,6 +135,7 @@ export default function ProviderCard({
   const { t } = useTranslation();
   const [deleteProviderConfirmOpen, setDeleteProviderConfirmOpen] =
     useState(false);
+  const [addModelMode, setAddModelMode] = useState<'manual' | 'scan'>('manual');
 
   const canDelete =
     !isLangBotModels &&
@@ -144,9 +150,9 @@ export default function ProviderCard({
   return (
     <Card className="mb-2">
       <Collapsible open={isExpanded} onOpenChange={onToggle}>
-        <CardHeader className="py-0 px-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 flex-1">
+        <CardHeader className="py-0 px-4 min-w-0 [&]:grid-cols-[minmax(0,1fr)]">
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
               {isLangBotModels ? (
                 <div className="w-9 h-9 rounded-lg overflow-hidden flex-shrink-0">
                   <img
@@ -165,9 +171,11 @@ export default function ProviderCard({
                 />
               )}
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <CardTitle className="text-base">{provider.name}</CardTitle>
-                  <Badge variant="outline" className="text-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <CardTitle className="text-base truncate">
+                    {provider.name}
+                  </CardTitle>
+                  <Badge variant="outline" className="text-xs shrink-0">
                     {t('models.modelsCount', { count: totalModels })}
                   </Badge>
                 </div>
@@ -187,7 +195,7 @@ export default function ProviderCard({
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-1 ml-2">
+            <div className="flex items-center gap-1 ml-2 shrink-0">
               {isLangBotModels && accountType !== 'space' && (
                 <Button
                   variant="outline"
@@ -310,19 +318,77 @@ export default function ProviderCard({
               <div />
             )}
             {!isLangBotModels && (
-              <AddModelPopover
-                isOpen={addModelPopoverOpen === provider.uuid}
-                onOpen={onOpenAddModel}
-                onClose={onCloseAddModel}
-                onAddModel={onAddModel}
-                onScanModels={onScanModels}
-                onAddScannedModels={onAddScannedModels}
-                onTestModel={onTestModel}
-                isSubmitting={isSubmitting}
-                isTesting={isTesting}
-                testResult={testResult}
-                onResetTestResult={onResetTestResult}
-              />
+              <div className="flex items-center gap-1">
+                <AddModelPopover
+                  isOpen={
+                    addModelPopoverOpen === provider.uuid &&
+                    addModelMode === 'manual'
+                  }
+                  initialMode="manual"
+                  supportTypes={supportTypes}
+                  trigger={
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 text-xs"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setAddModelMode('manual');
+                      }}
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      {t('models.addModel')}
+                    </Button>
+                  }
+                  onOpen={() => {
+                    setAddModelMode('manual');
+                    onOpenAddModel();
+                  }}
+                  onClose={onCloseAddModel}
+                  onAddModel={onAddModel}
+                  onScanModels={onScanModels}
+                  onAddScannedModels={onAddScannedModels}
+                  onTestModel={onTestModel}
+                  isSubmitting={isSubmitting}
+                  isTesting={isTesting}
+                  testResult={testResult}
+                  onResetTestResult={onResetTestResult}
+                />
+                <AddModelPopover
+                  isOpen={
+                    addModelPopoverOpen === provider.uuid &&
+                    addModelMode === 'scan'
+                  }
+                  initialMode="scan"
+                  supportTypes={supportTypes}
+                  trigger={
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setAddModelMode('scan');
+                      }}
+                    >
+                      <Radar className="h-3 w-3" />
+                    </Button>
+                  }
+                  onOpen={() => {
+                    setAddModelMode('scan');
+                    onOpenAddModel();
+                  }}
+                  onClose={onCloseAddModel}
+                  onAddModel={onAddModel}
+                  onScanModels={onScanModels}
+                  onAddScannedModels={onAddScannedModels}
+                  onTestModel={onTestModel}
+                  isSubmitting={isSubmitting}
+                  isTesting={isTesting}
+                  testResult={testResult}
+                  onResetTestResult={onResetTestResult}
+                />
+              </div>
             )}
           </div>
         </CardHeader>
@@ -347,13 +413,19 @@ export default function ProviderCard({
                     onOpenDeleteConfirm={onOpenDeleteConfirm}
                     onCloseDeleteConfirm={onCloseDeleteConfirm}
                     onDeleteModel={() => onDeleteModel(model.uuid, 'llm')}
-                    onUpdateModel={(name, abilities, extraArgs) =>
+                    onUpdateModel={(
+                      name,
+                      abilities,
+                      extraArgs,
+                      contextLength,
+                    ) =>
                       onUpdateModel(
                         model.uuid,
                         'llm',
                         name,
                         abilities,
                         extraArgs,
+                        contextLength,
                       )
                     }
                     onTestModel={(name, abilities, extraArgs) =>

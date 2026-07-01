@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://langbot.app/schemas/langbot-skills/skill-index.schema.json",
+  "title": "LangBot Skills Index",
+  "type": "object",
+  "required": ["generated_by", "skills"],
+  "additionalProperties": false,
+  "properties": {
+    "generated_by": {
+      "type": "string"
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "directory",
+          "name",
+          "description",
+          "references",
+          "cases",
+          "case_summaries",
+          "suites",
+          "suite_summaries",
+          "fixtures",
+          "troubleshooting",
+          "troubleshooting_summaries"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "directory": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "references": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "cases": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "case_summaries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "title", "mode", "area", "type", "priority", "risk", "ci_eligible", "tags", "automation", "setup_automation", "setup_provides_env", "evidence_required"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "type": "string" },
+                "title": { "type": "string" },
+                "mode": { "type": "string", "enum": ["agent-browser", "probe"] },
+                "area": { "type": "string" },
+                "type": { "type": "string" },
+                "priority": { "type": "string" },
+                "risk": { "type": "string" },
+                "ci_eligible": { "type": "boolean" },
+                "tags": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "automation": { "type": "string" },
+                "setup_automation": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "setup_provides_env": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "evidence_required": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                }
+              }
+            }
+          },
+          "suites": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "suite_summaries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "title", "description", "type", "priority", "tags", "cases"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "type": "string" },
+                "title": { "type": "string" },
+                "description": { "type": "string" },
+                "type": { "type": "string" },
+                "priority": { "type": "string" },
+                "tags": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "cases": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                }
+              }
+            }
+          },
+          "fixtures": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "title", "kind", "path", "related_cases"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "type": "string" },
+                "title": { "type": "string" },
+                "kind": { "type": "string" },
+                "path": { "type": "string" },
+                "related_cases": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                }
+              }
+            }
+          },
+          "troubleshooting": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "troubleshooting_summaries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "title", "category", "related_cases"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "type": "string" },
+                "title": { "type": "string" },
+                "category": { "type": "string" },
+                "related_cases": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

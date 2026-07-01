@@ -481,6 +481,12 @@ class DingTalkClient:
         card_data['config'] = json.dumps({'autoLayout': card_auto_layout})
         card_data['content'] = ''
 
+        # 将用户的消息内容作为卡片的查询参数，方便后续处理
+        if incoming_message.message_type == 'text':
+            card_data['query'] = incoming_message.get_text_list()[0]
+        else:
+            card_data['query'] = '...'
+
         card_instance = dingtalk_stream.AICardReplier(self.client, incoming_message)
         # print(card_instance)
         # 先投放卡片: https://open.dingtalk.com/document/orgapp/create-and-deliver-cards

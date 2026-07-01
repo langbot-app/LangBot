@@ -7,6 +7,7 @@ metadata:
     zh_Hans: Anthropic
   icon: anthropic.svg
 spec:
+  litellm_provider: anthropic
   config:
   - name: base_url
     label:
@@ -22,6 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "anthropic Anthropic 克劳德 claude Claude Opus Sonnet Haiku 安thropic"
   support_type:
   - llm
   provider_category: manufacturer

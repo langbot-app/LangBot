@@ -136,25 +136,83 @@ class MCPService:
             if server_name in self.ap.tool_mgr.mcp_tool_loader.sessions:
                 await self.ap.tool_mgr.mcp_tool_loader.remove_mcp_server(server_name)
 
+    async def get_mcp_server_resources(self, server_name: str) -> list[dict]:
+        """Get resources from a specific MCP server."""
+        return await self.ap.tool_mgr.mcp_tool_loader.get_resources(server_name)
+
+    async def get_mcp_server_resource_templates(self, server_name: str) -> list[dict]:
+        """Get resource templates from a specific MCP server."""
+        return await self.ap.tool_mgr.mcp_tool_loader.get_resource_templates(server_name)
+
+    async def read_mcp_server_resource_envelope(
+        self,
+        server_name: str,
+        uri: str,
+        *,
+        max_bytes: int | None = None,
+        include_blob: bool = False,
+    ) -> dict:
+        """Read a resource from a specific MCP server with metadata."""
+        kwargs = {'include_blob': include_blob, 'source': 'ui_preview'}
+        if max_bytes is not None:
+            kwargs['max_bytes'] = max_bytes
+        return await self.ap.tool_mgr.mcp_tool_loader.read_resource_envelope(server_name, uri, **kwargs)
+
+    async def read_mcp_server_resource(self, server_name: str, uri: str) -> list[dict]:
+        """Read a resource from a specific MCP server."""
+        return await self.ap.tool_mgr.mcp_tool_loader.read_resource(server_name, uri)
+
     async def test_mcp_server(self, server_name: str, server_data: dict) -> int:
         """测试 MCP 服务器连接并返回任务 ID"""
 
         runtime_mcp_session: RuntimeMCPSession | None = None
+
+        ctx = taskmgr.TaskContext.new()
 
         if server_name != '_':
             runtime_mcp_session = self.ap.tool_mgr.mcp_tool_loader.get_session(server_name)
             if runtime_mcp_session is None:
                 raise ValueError(f'Server not found: {server_name}')
 
-            if runtime_mcp_session.status == MCPSessionStatus.ERROR:
-                coroutine = runtime_mcp_session.start()
-            else:
-                coroutine = runtime_mcp_session.refresh()
+            persisted_session = runtime_mcp_session
+
+            async def _refresh_and_report() -> None:
+                if persisted_session.status == MCPSessionStatus.ERROR:
+                    await persisted_session.start()
+                else:
+                    await persisted_session.refresh()
+                # Surface the discovered tools so the config page can render them
+                # even for an already-hosted server.
+                ctx.metadata['runtime_info'] = persisted_session.get_runtime_info_dict()
+
+            coroutine = _refresh_and_report()
         else:
             runtime_mcp_session = await self.ap.tool_mgr.mcp_tool_loader.load_mcp_server(server_config=server_data)
-            coroutine = runtime_mcp_session.start()
 
-        ctx = taskmgr.TaskContext.new()
+            # A transient test owns an isolated Box session. Always tear it down
+            # after the test completes (success or failure) so it does not leak.
+            test_session = runtime_mcp_session
+
+            async def _run_and_cleanup() -> None:
+                try:
+                    await test_session.start()
+                    # Capture the runtime info (status + discovered tools) BEFORE
+                    # shutting the transient session down. The create/edit config
+                    # page has no persisted server to reload from, so without this
+                    # a successful test could only show "no tools found". The
+                    # frontend reads ctx.metadata.runtime_info to render the tools.
+                    ctx.metadata['runtime_info'] = test_session.get_runtime_info_dict()
+                finally:
+                    try:
+                        await test_session.shutdown()
+                    except Exception as exc:
+                        self.ap.logger.warning(
+                            f'Failed to tear down transient MCP test session '
+                            f'{test_session.server_name}: {type(exc).__name__}: {exc}'
+                        )
+
+            coroutine = _run_and_cleanup()
+
         wrapper = self.ap.task_mgr.create_user_task(
             coroutine,
             kind='mcp-operation',

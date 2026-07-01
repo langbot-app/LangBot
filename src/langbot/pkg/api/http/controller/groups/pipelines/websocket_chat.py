@@ -43,6 +43,13 @@ class WebSocketChatRouterGroup(group.RouterGroup):
                     await quart.websocket.send(json.dumps({'type': 'error', 'message': 'WebSocket adapter not found'}))
                     return
 
+                # Dashboard pipeline-debug sessions must always run under the
+                # built-in websocket_proxy_bot identity. We deliberately do NOT
+                # resolve a web_page_bot owner here — even if one is bound to
+                # the same pipeline, debug requests must not be attributed to
+                # it. The embed widget path (`/api/v1/embed/<bot>/ws/connect`)
+                # is the one that carries the page-bot identity.
+
                 # 注册连接
                 connection = await ws_connection_manager.add_connection(
                     websocket=quart.websocket._get_current_object(),
@@ -203,6 +210,9 @@ class WebSocketChatRouterGroup(group.RouterGroup):
                         logger.debug(f'收到消息: {data} from {connection.connection_id}')
 
                         # 处理消息（不等待响应，响应会通过broadcast异步发送）
+                        # owner_bot is intentionally NOT passed: the dashboard
+                        # debug WebSocket must always run under the proxy bot,
+                        # never under a coincidentally-bound web_page_bot.
                         await websocket_adapter.handle_websocket_message(connection, data)
 
                     elif message_type == 'disconnect':

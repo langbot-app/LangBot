@@ -7,6 +7,7 @@ metadata:
     zh_Hans: 小马算力
   icon: tokenpony.svg
 spec:
+  litellm_provider: openai
   config:
   - name: base_url
     label:
@@ -22,9 +23,11 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "tokenpony TokenPony token-pony 小马 token 小马算力 中转"
   support_type:
   - llm
   - text-embedding
+  - rerank
   provider_category: maas
 execution:
   python:

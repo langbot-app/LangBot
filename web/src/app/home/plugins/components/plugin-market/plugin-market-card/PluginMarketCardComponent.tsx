@@ -1,16 +1,15 @@
 import { PluginMarketCardVO } from './PluginMarketCardVO';
+import { useRef, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import PluginComponentList from '../PluginComponentList';
 import { Badge } from '@/components/ui/badge';
+import { Info, Package, ExternalLink } from 'lucide-react';
 import {
-  Wrench,
-  AudioWaveform,
-  Hash,
-  Download,
-  ExternalLink,
-  Book,
-  FileText,
-} from 'lucide-react';
-import { useState, useRef, useEffect } from 'react';
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 
 export default function PluginMarketCardComponent({
@@ -19,15 +18,40 @@ export default function PluginMarketCardComponent({
   tagNames = {},
 }: {
   cardVO: PluginMarketCardVO;
-  onInstall?: (author: string, pluginName: string) => void;
+  onInstall?: (cardVO: PluginMarketCardVO) => void;
   tagNames?: Record<string, string>;
 }) {
   const { t } = useTranslation();
-  const [isHovered, setIsHovered] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [visibleTags, setVisibleTags] = useState(2);
+  const [iconFailed, setIconFailed] = useState(!cardVO.iconURL);
 
-  // Measure how many tags fit in the bottom row
+  const pluginDetailUrl = `https://space.langbot.app/market/${cardVO.author}/${cardVO.pluginName}`;
+
+  const isDeprecated = (() => {
+    if (!cardVO.components) return false;
+    const keys = Object.keys(cardVO.components);
+    return keys.length > 0 && keys.every((k) => k === 'KnowledgeRetriever');
+  })();
+
+  const showTypeBadge = cardVO.type;
+  const typeLabel =
+    cardVO.type === 'mcp'
+      ? t('market.typeMCP')
+      : cardVO.type === 'skill'
+        ? t('market.typeSkill')
+        : t('market.typePlugin');
+  const typeDotClass =
+    cardVO.type === 'mcp'
+      ? 'bg-sky-500/70'
+      : cardVO.type === 'skill'
+        ? 'bg-emerald-500/70'
+        : 'bg-violet-500/70';
+
+  useEffect(() => {
+    setIconFailed(!cardVO.iconURL);
+  }, [cardVO.iconURL]);
+
   useEffect(() => {
     const tags = cardVO.tags;
     if (!bottomRef.current || !tags || tags.length === 0) return;
@@ -61,44 +85,43 @@ export default function PluginMarketCardComponent({
   }, [cardVO.tags]);
 
   const remainingTags = cardVO.tags ? cardVO.tags.length - visibleTags : 0;
-
-  function handleInstallClick(e: React.MouseEvent) {
-    e.stopPropagation();
-    if (onInstall) {
-      onInstall(cardVO.author, cardVO.pluginName);
-    }
-  }
-
-  function handleViewDetailsClick(e: React.MouseEvent) {
-    e.stopPropagation();
-    const detailUrl = `https://space.langbot.app/market/${cardVO.author}/${cardVO.pluginName}`;
-    window.open(detailUrl, '_blank');
-  }
-
-  const kindIconMap: Record<string, React.ReactNode> = {
-    Tool: <Wrench className="w-4 h-4" />,
-    EventListener: <AudioWaveform className="w-4 h-4" />,
-    Command: <Hash className="w-4 h-4" />,
-    KnowledgeEngine: <Book className="w-4 h-4" />,
-    Parser: <FileText className="w-4 h-4" />,
+  const handleInstallClick = () => {
+    onInstall?.(cardVO);
   };
 
   return (
     <div
-      className="w-[100%] h-auto min-h-[8rem] sm:min-h-[9rem] bg-white rounded-[10px] border border-[#e4e4e7] dark:border-[#27272a] p-3 sm:p-[1rem] hover:border-[#a1a1aa] dark:hover:border-[#3f3f46] transition-all duration-200 dark:bg-[#1f1f22] relative"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      role="button"
+      tabIndex={0}
+      aria-label={t('market.installCard', { name: cardVO.label })}
+      className="w-[100%] h-[10rem] cursor-pointer bg-white rounded-[10px] border border-border shadow-[0px_1px_2px_0_rgba(0,0,0,0.06)] p-3 sm:p-[1rem] hover:shadow-[0px_2px_5px_0_rgba(0,0,0,0.08)] transition-shadow duration-200 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-[#1f1f22] dark:shadow-[0px_1px_2px_0_rgba(255,255,255,0.04)] dark:hover:shadow-[0px_2px_5px_0_rgba(255,255,255,0.07)] relative"
+      onClick={handleInstallClick}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          handleInstallClick();
+        }
+      }}
     >
-      <div className="w-full h-full flex flex-col justify-between gap-3">
-        {/* 上部分：插件信息 */}
-        <div className="flex flex-row items-start justify-start gap-2 sm:gap-[1.2rem] min-h-0">
-          <img
-            src={cardVO.iconURL}
-            alt="plugin icon"
-            className="w-12 h-12 sm:w-16 sm:h-16 flex-shrink-0 rounded-[8%]"
-          />
+      <div className="w-full h-full flex flex-col justify-between">
+        <div className="flex flex-row items-start justify-start gap-2 sm:gap-[1.2rem] min-h-0 flex-1 overflow-hidden">
+          {iconFailed ? (
+            <div className="w-12 h-12 sm:w-16 sm:h-16 flex-shrink-0 rounded-[8%] border bg-muted text-muted-foreground flex items-center justify-center">
+              <Package className="w-6 h-6 sm:w-8 sm:h-8" />
+            </div>
+          ) : (
+            <img
+              src={cardVO.iconURL}
+              alt="plugin icon"
+              className="w-12 h-12 sm:w-16 sm:h-16 flex-shrink-0 rounded-[8%] object-cover"
+              loading="lazy"
+              decoding="async"
+              fetchPriority="low"
+              onError={() => setIconFailed(true)}
+            />
+          )}
 
-          <div className="flex-1 flex flex-col items-start justify-start gap-[0.4rem] sm:gap-[0.6rem] min-w-0 overflow-hidden">
+          <div className="flex-1 flex flex-col items-start justify-start gap-[0.4rem] sm:gap-[0.6rem] min-w-0 pr-1 overflow-hidden">
             <div className="flex flex-col items-start justify-start w-full min-w-0">
               <div className="text-[0.65rem] sm:text-[0.7rem] text-[#666] dark:text-[#999] truncate w-full">
                 {cardVO.pluginId}
@@ -107,6 +130,44 @@ export default function PluginMarketCardComponent({
                 <div className="text-base sm:text-[1.2rem] text-black dark:text-[#f0f0f0] truncate">
                   {cardVO.label}
                 </div>
+                {isDeprecated && (
+                  <TooltipProvider delayDuration={200}>
+                    <Tooltip>
+                      <TooltipTrigger
+                        asChild
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                      >
+                        <Badge
+                          variant="outline"
+                          className="text-[0.6rem] px-1.5 py-0 h-4 flex-shrink-0 border-red-400 text-red-500 dark:border-red-500 dark:text-red-400 gap-0.5 cursor-help"
+                        >
+                          {t('market.deprecated')}
+                          <Info className="w-2.5 h-2.5" />
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent
+                        side="top"
+                        className="max-w-[240px] text-xs"
+                      >
+                        {t('market.deprecatedTooltip')}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+                {showTypeBadge && (
+                  <Badge
+                    variant="outline"
+                    className="h-4 max-w-[4.5rem] flex-shrink-0 gap-1 border-border/60 bg-muted/30 px-1.5 py-0 text-[0.58rem] font-normal text-muted-foreground"
+                  >
+                    <span
+                      className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${typeDotClass}`}
+                    />
+                    <span className="truncate">{typeLabel}</span>
+                  </Badge>
+                )}
               </div>
             </div>
 
@@ -115,31 +176,53 @@ export default function PluginMarketCardComponent({
             </div>
           </div>
 
-          <div className="flex flex-row items-start justify-center gap-[0.4rem] flex-shrink-0">
+          <div className="flex flex-row items-start justify-center gap-1 flex-shrink-0">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              title={t('market.viewDetails')}
+              aria-label={t('market.viewDetails')}
+              className="h-7 w-7 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(pluginDetailUrl, '_blank');
+              }}
+            >
+              <ExternalLink className="h-4 w-4" />
+            </Button>
             {cardVO.githubURL && (
-              <svg
-                className="w-5 h-5 sm:w-[1.4rem] sm:h-[1.4rem] text-black cursor-pointer hover:text-gray-600 dark:text-[#f0f0f0] flex-shrink-0"
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="currentColor"
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                title="GitHub"
+                aria-label="GitHub"
+                className="h-7 w-7 rounded-md text-foreground hover:bg-muted hover:text-foreground"
                 onClick={(e) => {
+                  e.preventDefault();
                   e.stopPropagation();
                   window.open(cardVO.githubURL, '_blank');
                 }}
               >
-                <path d="M12.001 2C6.47598 2 2.00098 6.475 2.00098 12C2.00098 16.425 4.86348 20.1625 8.83848 21.4875C9.33848 21.575 9.52598 21.275 9.52598 21.0125C9.52598 20.775 9.51348 19.9875 9.51348 19.15C7.00098 19.6125 6.35098 18.5375 6.15098 17.975C6.03848 17.6875 5.55098 16.8 5.12598 16.5625C4.77598 16.375 4.27598 15.9125 5.11348 15.9C5.90098 15.8875 6.46348 16.625 6.65098 16.925C7.55098 18.4375 8.98848 18.0125 9.56348 17.75C9.65098 17.1 9.91348 16.6625 10.201 16.4125C7.97598 16.1625 5.65098 15.3 5.65098 11.475C5.65098 10.3875 6.03848 9.4875 6.67598 8.7875C6.57598 8.5375 6.22598 7.5125 6.77598 6.1375C6.77598 6.1375 7.61348 5.875 9.52598 7.1625C10.326 6.9375 11.176 6.825 12.026 6.825C12.876 6.825 13.726 6.9375 14.526 7.1625C16.4385 5.8625 17.276 6.1375 17.276 6.1375C17.826 7.5125 17.476 8.5375 17.376 8.7875C18.0135 9.4875 18.401 10.375 18.401 11.475C18.401 15.3125 16.0635 16.1625 13.8385 16.4125C14.201 16.725 14.5135 17.325 14.5135 18.2625C14.5135 19.6 14.501 20.675 14.501 21.0125C14.501 21.275 14.6885 21.5875 15.1885 21.4875C19.259 20.1133 21.9999 16.2963 22.001 12C22.001 6.475 17.526 2 12.001 2Z"></path>
-              </svg>
+                <svg
+                  className="h-4 w-4"
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path d="M12.001 2C6.47598 2 2.00098 6.475 2.00098 12C2.00098 16.425 4.86348 20.1625 8.83848 21.4875C9.33848 21.575 9.52598 21.275 9.52598 21.0125C9.52598 20.775 9.51348 19.9875 9.51348 19.15C7.00098 19.6125 6.35098 18.5375 6.15098 17.975C6.03848 17.6875 5.55098 16.8 5.12598 16.5625C4.77598 16.375 4.27598 15.9125 5.11348 15.9C5.90098 15.8875 6.46348 16.625 6.65098 16.925C7.55098 18.4375 8.98848 18.0125 9.56348 17.75C9.65098 17.1 9.91348 16.6625 10.201 16.4125C7.97598 16.1625 5.65098 15.3 5.65098 11.475C5.65098 10.3875 6.03848 9.4875 6.67598 8.7875C6.57598 8.5375 6.22598 7.5125 6.77598 6.1375C6.77598 6.1375 7.61348 5.875 9.52598 7.1625C10.326 6.9375 11.176 6.825 12.026 6.825C12.876 6.825 13.726 6.9375 14.526 7.1625C16.4385 5.8625 17.276 6.1375 17.276 6.1375C17.826 7.5125 17.476 8.5375 17.376 8.7875C18.0135 9.4875 18.401 10.375 18.401 11.475C18.401 15.3125 16.0635 16.1625 13.8385 16.4125C14.201 16.725 14.5135 17.325 14.5135 18.2625C14.5135 19.6 14.501 20.675 14.501 21.0125C14.501 21.275 14.6885 21.5875 15.1885 21.4875C19.259 20.1133 21.9999 16.2963 22.001 12C22.001 6.475 17.526 2 12.001 2Z"></path>
+                </svg>
+              </Button>
             )}
           </div>
         </div>
 
-        {/* 下部分：下载量、标签和组件列表 */}
         <div
           ref={bottomRef}
           className="w-full flex flex-row items-center justify-between gap-2 px-0 sm:px-[0.4rem] flex-shrink-0 overflow-hidden"
         >
           <div className="flex flex-row items-center justify-start gap-2 min-w-0 overflow-hidden">
-            {/* 下载数量 */}
             <div className="flex flex-row items-center gap-[0.3rem] sm:gap-[0.4rem] flex-shrink-0">
               <svg
                 className="w-4 h-4 sm:w-[1.2rem] sm:h-[1.2rem] text-[#2563eb] dark:text-[#5b8def] flex-shrink-0"
@@ -158,7 +241,6 @@ export default function PluginMarketCardComponent({
               </div>
             </div>
 
-            {/* Tags - adaptive */}
             {cardVO.tags && cardVO.tags.length > 0 && visibleTags > 0 && (
               <div className="flex flex-row items-center gap-1.5 overflow-hidden flex-shrink min-w-0">
                 {cardVO.tags.slice(0, visibleTags).map((tag) => (
@@ -197,51 +279,19 @@ export default function PluginMarketCardComponent({
             )}
           </div>
 
-          {/* 组件列表 */}
           {cardVO.components && Object.keys(cardVO.components).length > 0 && (
-            <div className="flex flex-row items-center gap-1">
-              {Object.entries(cardVO.components).map(([kind, count]) => (
-                <Badge
-                  key={kind}
-                  variant="outline"
-                  className="flex items-center gap-1"
-                >
-                  {kindIconMap[kind]}
-                  <span className="ml-1">{count}</span>
-                </Badge>
-              ))}
+            <div className="flex flex-row items-center gap-1 flex-shrink-0">
+              <PluginComponentList
+                components={cardVO.components}
+                showComponentName={false}
+                showTitle={false}
+                useBadge={true}
+                t={t}
+                responsive={false}
+              />
             </div>
           )}
         </div>
-      </div>
-
-      {/* Hover overlay with action buttons */}
-      <div
-        className={`absolute inset-0 bg-gray-100/55 dark:bg-black/35 rounded-[10px] flex items-center justify-center gap-3 transition-all duration-200 ${
-          isHovered ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        }`}
-      >
-        <Button
-          onClick={handleInstallClick}
-          className={`bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-sm flex items-center gap-2 transition-all duration-200 ${
-            isHovered ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0'
-          }`}
-          style={{ transitionDelay: isHovered ? '10ms' : '0ms' }}
-        >
-          <Download className="w-4 h-4" />
-          {t('market.install')}
-        </Button>
-        <Button
-          onClick={handleViewDetailsClick}
-          variant="outline"
-          className={`bg-white hover:bg-gray-100 text-gray-900 dark:bg-white dark:hover:bg-gray-100 dark:text-gray-900 px-4 py-2 rounded-lg shadow-sm flex items-center gap-2 transition-all duration-200 ${
-            isHovered ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0'
-          }`}
-          style={{ transitionDelay: isHovered ? '20ms' : '0ms' }}
-        >
-          <ExternalLink className="w-4 h-4" />
-          {t('market.viewDetails')}
-        </Button>
       </div>
     </div>
   );

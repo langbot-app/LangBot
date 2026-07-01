@@ -26,7 +26,14 @@ class LegacyPipeline(Base):
     extensions_preferences = sqlalchemy.Column(
         sqlalchemy.JSON,
         nullable=False,
-        default={'enable_all_plugins': True, 'enable_all_mcp_servers': True, 'plugins': [], 'mcp_servers': []},
+        default={
+            'enable_all_plugins': True,
+            'enable_all_mcp_servers': True,
+            'plugins': [],
+            'mcp_servers': [],
+            'mcp_resources': [],
+            'mcp_resource_agent_read_enabled': True,
+        },
     )
 
 

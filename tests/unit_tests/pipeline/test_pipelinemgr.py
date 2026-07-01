@@ -119,30 +119,24 @@ async def test_remove_pipeline(mock_app):
 
 @pytest.mark.asyncio
 async def test_runtime_pipeline_execute(mock_app, sample_query):
-    """Test runtime pipeline execution"""
+    """Test runtime pipeline execution with real Pydantic models."""
     pipelinemgr = get_pipelinemgr_module()
     stage = get_stage_module()
     persistence_pipeline = get_persistence_pipeline_module()
+    entities = get_entities_module()
 
-    # Create mock stage that returns a simple result dict (avoiding Pydantic validation)
-    mock_result = Mock()
-    mock_result.result_type = Mock()
-    mock_result.result_type.value = 'CONTINUE'  # Simulate enum value
-    mock_result.new_query = sample_query
-    mock_result.user_notice = ''
-    mock_result.console_notice = ''
-    mock_result.debug_notice = ''
-    mock_result.error_notice = ''
-
-    # Make it look like ResultType.CONTINUE
-    from unittest.mock import MagicMock
-
-    CONTINUE = MagicMock()
-    CONTINUE.__eq__ = lambda self, other: True  # Always equal for comparison
-    mock_result.result_type = CONTINUE
+    # Create result using real Pydantic model (not Mock) to ensure validation
+    real_result = entities.StageProcessResult(
+        result_type=entities.ResultType.CONTINUE,
+        new_query=sample_query,
+        user_notice='',
+        console_notice='',
+        debug_notice='',
+        error_notice='',
+    )
 
     mock_stage = Mock(spec=stage.PipelineStage)
-    mock_stage.process = AsyncMock(return_value=mock_result)
+    mock_stage.process = AsyncMock(return_value=real_result)
 
     # Create stage container
     stage_container = pipelinemgr.StageInstContainer(inst_name='TestStage', inst=mock_stage)
@@ -168,3 +162,46 @@ async def test_runtime_pipeline_execute(mock_app, sample_query):
 
     # Verify stage was called
     mock_stage.process.assert_called_once()
+
+
+def test_runtime_pipeline_prefers_local_agent_mcp_resources(mock_app):
+    """Local Agent resource selection should override legacy extension prefs."""
+    pipelinemgr = get_pipelinemgr_module()
+    persistence_pipeline = get_persistence_pipeline_module()
+
+    pipeline_entity = Mock(spec=persistence_pipeline.LegacyPipeline)
+    pipeline_entity.config = {
+        'ai': {
+            'local-agent': {
+                'mcp-resources': [{'server_uuid': 'srv-new', 'uri': 'file:///new.md'}],
+                'mcp-resource-agent-read-enabled': False,
+            }
+        }
+    }
+    pipeline_entity.extensions_preferences = {
+        'mcp_resources': [{'server_uuid': 'srv-old', 'uri': 'file:///old.md'}],
+        'mcp_resource_agent_read_enabled': True,
+    }
+
+    runtime_pipeline = pipelinemgr.RuntimePipeline(mock_app, pipeline_entity, [])
+
+    assert runtime_pipeline.mcp_resource_attachments == [{'server_uuid': 'srv-new', 'uri': 'file:///new.md'}]
+    assert runtime_pipeline.mcp_resource_agent_read_enabled is False
+
+
+def test_runtime_pipeline_falls_back_to_extension_mcp_resources(mock_app):
+    """Existing extension prefs remain compatible until a Local Agent value exists."""
+    pipelinemgr = get_pipelinemgr_module()
+    persistence_pipeline = get_persistence_pipeline_module()
+
+    pipeline_entity = Mock(spec=persistence_pipeline.LegacyPipeline)
+    pipeline_entity.config = {'ai': {'local-agent': {}}}
+    pipeline_entity.extensions_preferences = {
+        'mcp_resources': [{'server_uuid': 'srv-old', 'uri': 'file:///old.md'}],
+        'mcp_resource_agent_read_enabled': False,
+    }
+
+    runtime_pipeline = pipelinemgr.RuntimePipeline(mock_app, pipeline_entity, [])
+
+    assert runtime_pipeline.mcp_resource_attachments == [{'server_uuid': 'srv-old', 'uri': 'file:///old.md'}]
+    assert runtime_pipeline.mcp_resource_agent_read_enabled is False

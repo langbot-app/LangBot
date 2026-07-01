@@ -14,8 +14,15 @@
   padding-top: 2rem;
   padding-bottom: 2rem;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(30rem, 1fr));
-  gap: 2rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr));
+  gap: 1.25rem;
   justify-items: stretch;
   align-items: start;
+}
+
+@media (min-width: 640px) {
+  .pluginListContainer {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 28rem), 1fr));
+    gap: 2rem;
+  }
 }

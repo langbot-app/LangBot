@@ -8,28 +8,49 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Separator } from '@/components/ui/separator';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
   Search,
+  Puzzle,
+  Server,
+  Sparkles,
   Wrench,
   AudioWaveform,
   Hash,
   Book,
   FileText,
+  AppWindow,
+  SlidersHorizontal,
+  X,
+  Info,
 } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import PluginMarketCardComponent from './plugin-market-card/PluginMarketCardComponent';
 import { PluginMarketCardVO } from './plugin-market-card/PluginMarketCardVO';
-import { getCloudServiceClientSync } from '@/app/infra/http';
+import { RecommendationLists } from './RecommendationLists';
+import type { RecommendationList } from './RecommendationLists';
+import {
+  getCloudServiceClient,
+  getCloudServiceClientSync,
+} from '@/app/infra/http';
 import { useTranslation } from 'react-i18next';
-import { PluginV4 } from '@/app/infra/entities/plugin';
+import { PluginV4, PluginV4Status } from '@/app/infra/entities/plugin';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { toast } from 'sonner';
 import { ApiRespMarketplacePlugins } from '@/app/infra/entities/api';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { TagsFilter } from './TagsFilter';
+import { Button } from '@/components/ui/button';
 import { PluginTag } from '@/app/infra/http/CloudServiceClient';
-
-import { RecommendationLists, RecommendationList } from './RecommendationLists';
 
 interface SortOption {
   value: string;
@@ -38,46 +59,95 @@ interface SortOption {
   sortOrder: string;
 }
 
+// Persist the market filter conditions (type / component / tags / sort) across
+// visits via localStorage.
+const MARKET_FILTERS_KEY = 'langbot_market_filters';
+interface MarketFilters {
+  typeFilter?: string;
+  componentFilter?: string;
+  selectedTags?: string[];
+  sortOption?: string;
+}
+function loadMarketFilters(): MarketFilters {
+  try {
+    return JSON.parse(localStorage.getItem(MARKET_FILTERS_KEY) || '{}');
+  } catch {
+    return {};
+  }
+}
+
 // 内部组件，用于处理搜索参数
 function MarketPageContent({
   installPlugin,
+  headerActions,
 }: {
   installPlugin: (plugin: PluginV4) => void;
+  headerActions?: React.ReactNode;
 }) {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
 
-  const validCategories = [
-    'Tool',
-    'Command',
-    'EventListener',
-    'KnowledgeEngine',
-    'Parser',
+  const validTypes = ['plugin', 'mcp', 'skill'];
+
+  const extensionTypeOptions = [
+    { value: 'all', label: t('market.filters.allFormats'), icon: null },
+    { value: 'plugin', label: t('market.typePlugin'), icon: Puzzle },
+    { value: 'mcp', label: t('market.typeMCP'), icon: Server },
+    { value: 'skill', label: t('market.typeSkill'), icon: Sparkles },
   ];
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [componentFilter, setComponentFilter] = useState<string>(() => {
-    const category = searchParams.get('category');
-    if (category && validCategories.includes(category)) {
-      return category;
+  const [componentFilter, setComponentFilter] = useState<string>(
+    () => loadMarketFilters().componentFilter ?? 'all',
+  );
+  const [typeFilter, setTypeFilter] = useState<string>(() => {
+    const type = searchParams.get('type');
+    if (type && validTypes.includes(type)) {
+      return type;
     }
-    return 'all';
+    const saved = loadMarketFilters().typeFilter;
+    return saved && validTypes.includes(saved) ? saved : 'all';
   });
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const activeAdvancedFilters =
+    (typeFilter === 'all' ? 0 : 1) + (componentFilter === 'all' ? 0 : 1);
+  const [selectedTags, setSelectedTags] = useState<string[]>(
+    () => loadMarketFilters().selectedTags ?? [],
+  );
   const [availableTags, setAvailableTags] = useState<PluginTag[]>([]);
   const [tagNames, setTagNames] = useState<Record<string, string>>({});
+  const [recommendationLists, setRecommendationLists] = useState<
+    RecommendationList[]
+  >([]);
   const [plugins, setPlugins] = useState<PluginMarketCardVO[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [total, setTotal] = useState(0);
-  const [sortOption, setSortOption] = useState('install_count_desc');
-  const [recommendationLists, setRecommendationLists] = useState<
-    RecommendationList[]
-  >([]);
+  // Per-format extension counts shown next to the type filter options.
+  const [typeCounts, setTypeCounts] = useState<Record<string, number>>({});
+  const [sortOption, setSortOption] = useState<string>(
+    () => loadMarketFilters().sortOption ?? 'install_count_desc',
+  );
 
-  const pageSize = 12; // 每页12个
+  // Persist filter conditions so they survive navigation / reload.
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        MARKET_FILTERS_KEY,
+        JSON.stringify({
+          typeFilter,
+          componentFilter,
+          selectedTags,
+          sortOption,
+        }),
+      );
+    } catch {
+      // ignore storage errors
+    }
+  }, [typeFilter, componentFilter, selectedTags, sortOption]);
+
+  const pageSize = 24; // 每页24个
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const isComposingRef = useRef(false);
@@ -110,6 +180,32 @@ function MarketPageContent({
     },
   ];
 
+  const componentOptions = [
+    { value: 'all', label: t('market.allComponents'), icon: null },
+    { value: 'Tool', label: t('market.componentName.Tool'), icon: Wrench },
+    { value: 'Command', label: t('market.componentName.Command'), icon: Hash },
+    {
+      value: 'EventListener',
+      label: t('market.componentName.EventListener'),
+      icon: AudioWaveform,
+    },
+    {
+      value: 'KnowledgeEngine',
+      label: t('market.componentName.KnowledgeEngine'),
+      icon: Book,
+    },
+    {
+      value: 'Parser',
+      label: t('market.componentName.Parser'),
+      icon: FileText,
+    },
+    {
+      value: 'Page',
+      label: t('market.componentName.Page'),
+      icon: AppWindow,
+    },
+  ];
+
   // 获取当前排序参数
   const getCurrentSort = useCallback(() => {
     const option = sortOptions.find((opt) => opt.value === sortOption);
@@ -119,29 +215,43 @@ function MarketPageContent({
   }, [sortOption]);
 
   // 将API响应转换为VO对象
-  const transformToVO = useCallback((plugin: PluginV4): PluginMarketCardVO => {
-    return new PluginMarketCardVO({
-      pluginId: plugin.author + ' / ' + plugin.name,
-      author: plugin.author,
-      pluginName: plugin.name,
-      label: extractI18nObject(plugin.label),
-      description:
-        extractI18nObject(plugin.description) || t('market.noDescription'),
-      installCount: plugin.install_count,
-      iconURL: getCloudServiceClientSync().getPluginIconURL(
+  const transformToVO = useCallback(
+    (plugin: PluginV4): PluginMarketCardVO => {
+      const cloudClient = getCloudServiceClientSync();
+      const iconURL = cloudClient.resolveMarketplaceIconURL(
+        plugin.type,
         plugin.author,
         plugin.name,
-      ),
-      githubURL: plugin.repository,
-      version: plugin.latest_version,
-      components: plugin.components,
-      tags: plugin.tags || [],
-    });
-  }, []);
+        plugin.icon,
+      );
+
+      return new PluginMarketCardVO({
+        pluginId: plugin.author + ' / ' + plugin.name,
+        author: plugin.author,
+        pluginName: plugin.name,
+        label: extractI18nObject(plugin.label),
+        description:
+          extractI18nObject(plugin.description) || t('market.noDescription'),
+        installCount: plugin.install_count || 0,
+        iconURL,
+        githubURL: plugin.repository,
+        version: plugin.latest_version,
+        components: plugin.components || {},
+        tags: plugin.tags || [],
+        type: plugin.type,
+      });
+    },
+    [t],
+  );
 
   // 获取插件列表
   const fetchPlugins = useCallback(
-    async (page: number, isSearch: boolean = false, reset: boolean = false) => {
+    async (
+      page: number,
+      isSearch: boolean = false,
+      reset: boolean = false,
+      queryOverride?: string,
+    ) => {
       if (page === 1) {
         setIsLoading(true);
       } else {
@@ -150,31 +260,23 @@ function MarketPageContent({
 
       try {
         const { sortBy, sortOrder } = getCurrentSort();
-        const filterValue =
-          componentFilter === 'all' ? undefined : componentFilter;
+        const query = (queryOverride ?? searchQuery).trim();
 
-        // Always use searchMarketplacePlugins to support component filtering and tags filtering
         const response =
-          await getCloudServiceClientSync().searchMarketplacePlugins(
-            isSearch && searchQuery.trim() ? searchQuery.trim() : '',
+          await getCloudServiceClientSync().searchMarketplaceExtensions({
+            query: isSearch ? query : '',
             page,
-            pageSize,
-            sortBy,
-            sortOrder,
-            filterValue,
-            selectedTags.length > 0 ? selectedTags : undefined,
-          );
+            page_size: pageSize,
+            sort_by: sortBy,
+            sort_order: sortOrder,
+            type_filter: typeFilter === 'all' ? undefined : typeFilter,
+            component_filter:
+              componentFilter === 'all' ? undefined : componentFilter,
+            tags_filter: selectedTags.length > 0 ? selectedTags : undefined,
+          });
 
         const data: ApiRespMarketplacePlugins = response;
-        const newPlugins = data.plugins
-          .filter((plugin) => {
-            // Hide plugins that only contain deprecated KnowledgeRetriever components
-            const keys = Object.keys(plugin.components || {});
-            return !(
-              keys.length > 0 && keys.every((k) => k === 'KnowledgeRetriever')
-            );
-          })
-          .map(transformToVO);
+        const newPlugins = data.plugins.map(transformToVO);
         const total = data.total;
 
         if (reset || page === 1) {
@@ -185,8 +287,10 @@ function MarketPageContent({
 
         setTotal(total);
         setHasMore(
-          data.plugins.length === pageSize &&
-            plugins.length + newPlugins.length < total,
+          newPlugins.length > 0 &&
+            (reset || page === 1
+              ? newPlugins.length
+              : plugins.length + newPlugins.length) < total,
         );
       } catch (error) {
         console.error('Failed to fetch plugins:', error);
@@ -204,15 +308,35 @@ function MarketPageContent({
       transformToVO,
       plugins.length,
       getCurrentSort,
+      typeFilter,
     ],
   );
 
   // 初始加载
   useEffect(() => {
-    fetchPlugins(1, false, true);
-    fetchAvailableTags();
+    // Resolve the cloud service base URL (from system info) before any
+    // marketplace fetch — otherwise the sync client may still hold the default
+    // URL and hit space.langbot.app instead of the configured instance.
+    (async () => {
+      await getCloudServiceClient();
+      fetchPlugins(1, false, true);
+      fetchAvailableTags();
+      fetchRecommendationLists();
+      fetchTypeCounts();
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 获取推荐列表（精选，混合插件/MCP/Skill）
+  const fetchRecommendationLists = async () => {
+    try {
+      const client = await getCloudServiceClient();
+      const { lists } = await client.getRecommendationLists();
+      setRecommendationLists(lists || []);
+    } catch (error) {
+      console.error('Failed to fetch recommendation lists:', error);
+    }
+  };
 
   // 获取可用标签
   const fetchAvailableTags = async () => {
@@ -238,19 +362,31 @@ function MarketPageContent({
     }
   };
 
-  // Fetch recommendation lists
-  useEffect(() => {
-    async function fetchRecommendationLists() {
-      try {
-        const response =
-          await getCloudServiceClientSync().getRecommendationLists();
-        setRecommendationLists(response.lists || []);
-      } catch (error) {
-        console.error('Failed to fetch recommendation lists:', error);
-      }
+  // 获取各扩展格式的数量（用于筛选器标签上的计数）
+  const fetchTypeCounts = async () => {
+    const types = ['plugin', 'mcp', 'skill'];
+    try {
+      const results = await Promise.all(
+        types.map((type) =>
+          getCloudServiceClientSync()
+            .searchMarketplaceExtensions({
+              page: 1,
+              page_size: 1,
+              type_filter: type,
+            })
+            .then((res) => res.total)
+            .catch(() => 0),
+        ),
+      );
+      const counts: Record<string, number> = {};
+      types.forEach((type, i) => {
+        counts[type] = results[i];
+      });
+      setTypeCounts(counts);
+    } catch (error) {
+      console.error('Failed to fetch extension type counts:', error);
     }
-    fetchRecommendationLists();
-  }, []);
+  };
 
   // 搜索功能
   const handleSearch = useCallback(
@@ -258,7 +394,7 @@ function MarketPageContent({
       setSearchQuery(query);
       setCurrentPage(1);
       setPlugins([]);
-      fetchPlugins(1, !!query.trim(), true);
+      fetchPlugins(1, !!query.trim(), true, query);
     },
     [fetchPlugins],
   );
@@ -290,33 +426,52 @@ function MarketPageContent({
     setSortOption(value);
     setCurrentPage(1);
     setPlugins([]);
-    // fetchPlugins will be called by useEffect when sortOption changes
   }, []);
 
-  // 组件筛选变化处理
-  const handleComponentFilterChange = useCallback((value: string) => {
-    setComponentFilter(value);
+  // Handle type filter change
+  const handleTypeFilterChange = useCallback((value: string) => {
+    setTypeFilter(value);
+    if (value !== 'plugin') {
+      setComponentFilter('all');
+    }
     setCurrentPage(1);
+    setSelectedTags([]);
     setPlugins([]);
 
     // Update URL query param to keep it in sync
     const params = new URLSearchParams(window.location.search);
     if (value === 'all') {
-      params.delete('category');
+      params.delete('type');
     } else {
-      params.set('category', value);
+      params.set('type', value);
     }
     const newUrl = params.toString()
       ? `${window.location.pathname}?${params.toString()}`
       : window.location.pathname;
     window.history.replaceState({}, '', newUrl);
-    // fetchPlugins will be called by useEffect when componentFilter changes
   }, []);
 
-  // 当排序选项或组件筛选变化时重新加载数据
+  const handleComponentFilterChange = useCallback((value: string) => {
+    setComponentFilter(value);
+    setCurrentPage(1);
+    setPlugins([]);
+
+    if (value !== 'all') {
+      setTypeFilter('plugin');
+
+      const params = new URLSearchParams(window.location.search);
+      params.set('type', 'plugin');
+      const newUrl = params.toString()
+        ? `${window.location.pathname}?${params.toString()}`
+        : window.location.pathname;
+      window.history.replaceState({}, '', newUrl);
+    }
+  }, []);
+
+  // 当排序选项或组件筛选或类型筛选变化时重新加载数据
   useEffect(() => {
     fetchPlugins(1, !!searchQuery.trim(), true);
-  }, [sortOption, componentFilter]);
+  }, [sortOption, componentFilter, typeFilter]);
 
   // Tags 筛选变化时重新搜索
   useEffect(() => {
@@ -334,13 +489,56 @@ function MarketPageContent({
 
   // 处理安装插件
   const handleInstallPlugin = useCallback(
-    async (author: string, pluginName: string) => {
+    async (cardVO: PluginMarketCardVO) => {
       try {
-        // Fetch full plugin details to get PluginV4 object
+        if (cardVO.type === 'mcp' || cardVO.type === 'skill') {
+          // For MCP and Skill, directly pass the data - backend will fetch from Space
+          const pluginV4: PluginV4 = {
+            id: 0,
+            plugin_id: `${cardVO.author}/${cardVO.pluginName}`,
+            mcp_id:
+              cardVO.type === 'mcp'
+                ? `${cardVO.author}/${cardVO.pluginName}`
+                : undefined,
+            skill_id:
+              cardVO.type === 'skill'
+                ? `${cardVO.author}/${cardVO.pluginName}`
+                : undefined,
+            author: cardVO.author,
+            name: cardVO.pluginName,
+            label: { en_US: cardVO.label, zh_Hans: cardVO.label },
+            description: {
+              en_US: cardVO.description,
+              zh_Hans: cardVO.description,
+            },
+            icon: cardVO.iconURL,
+            repository: cardVO.githubURL,
+            tags: cardVO.tags || [],
+            install_count: cardVO.installCount,
+            latest_version: cardVO.version,
+            components: cardVO.components || {},
+            status: PluginV4Status.Live,
+            type: cardVO.type,
+            created_at: '',
+            updated_at: '',
+          };
+          installPlugin(pluginV4);
+          return;
+        }
+
+        // For plugin type, fetch full details via API
         const response = await getCloudServiceClientSync().getPluginDetail(
-          author,
-          pluginName,
+          cardVO.author,
+          cardVO.pluginName,
         );
+        if (!response?.plugin) {
+          console.error('Failed to install plugin: plugin not found', {
+            author: cardVO.author,
+            pluginName: cardVO.pluginName,
+          });
+          toast.error(t('market.installFailed'));
+          return;
+        }
         const pluginV4: PluginV4 = response.plugin;
 
         // Call the install function passed from parent
@@ -350,7 +548,7 @@ function MarketPageContent({
         toast.error(t('market.installFailed'));
       }
     },
-    [plugins, installPlugin, t],
+    [installPlugin, t],
   );
 
   // 清理定时器
@@ -427,14 +625,18 @@ function MarketPageContent({
 
   return (
     <div className="h-full flex flex-col">
-      {/* Fixed header with search and sort controls */}
-      <div className="flex-shrink-0 space-y-4 px-3 sm:px-4 py-4 sm:py-6">
-        {/* Search box and Tags filter */}
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <div className="relative w-full max-w-2xl">
+      {/* Fixed header section with search, sort, and status */}
+      <div className="flex-none px-3 sm:px-4 py-2 sm:py-4 space-y-4 sm:space-y-6 container mx-auto">
+        {/* 搜索、排序和筛选入口 */}
+        <div className="flex w-full items-center justify-center gap-2 sm:gap-3">
+          <div className="relative min-w-0 flex-1 lg:max-w-xl">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
             <Input
-              placeholder={t('market.searchPlaceholder')}
+              placeholder={
+                total > 0
+                  ? t('market.searchPlaceholderCount', { count: total })
+                  : t('market.searchPlaceholder')
+              }
               value={searchQuery}
               onChange={(e) => handleSearchInputChange(e.target.value)}
               onCompositionStart={() => {
@@ -446,101 +648,19 @@ function MarketPageContent({
               }}
               onKeyPress={(e) => {
                 if (e.key === 'Enter') {
-                  // Immediately search, clear debounce timer
                   if (searchTimeoutRef.current) {
                     clearTimeout(searchTimeoutRef.current);
                   }
                   handleSearch(searchQuery);
                 }
               }}
-              className="pl-10 pr-4 text-sm sm:text-base"
+              className="min-w-0 pl-10 pr-4 text-sm sm:text-base"
             />
           </div>
 
-          {/* Tags filter */}
-          <TagsFilter
-            availableTags={availableTags}
-            selectedTags={selectedTags}
-            onTagsChange={handleTagsChange}
-          />
-        </div>
-
-        {/* Component filter and sort */}
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 px-3 sm:px-4">
-          {/* Component filter */}
-          <div className="flex flex-col sm:flex-row items-center gap-2 min-w-0 max-w-full">
-            <span className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">
-              {t('market.filterByComponent')}:
-            </span>
-            <div className="overflow-x-auto max-w-full [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-              <ToggleGroup
-                type="single"
-                spacing={2}
-                size="sm"
-                value={componentFilter}
-                onValueChange={(value) => {
-                  if (value) handleComponentFilterChange(value);
-                }}
-                className="justify-start flex-nowrap"
-              >
-                <ToggleGroupItem
-                  value="all"
-                  aria-label="All components"
-                  className="text-xs sm:text-sm cursor-pointer"
-                >
-                  {t('market.allComponents')}
-                </ToggleGroupItem>
-                <ToggleGroupItem
-                  value="Tool"
-                  aria-label="Tool"
-                  className="text-xs sm:text-sm cursor-pointer"
-                >
-                  <Wrench className="h-4 w-4 mr-1" />
-                  {t('plugins.componentName.Tool')}
-                </ToggleGroupItem>
-                <ToggleGroupItem
-                  value="Command"
-                  aria-label="Command"
-                  className="text-xs sm:text-sm cursor-pointer"
-                >
-                  <Hash className="h-4 w-4 mr-1" />
-                  {t('plugins.componentName.Command')}
-                </ToggleGroupItem>
-                <ToggleGroupItem
-                  value="EventListener"
-                  aria-label="EventListener"
-                  className="text-xs sm:text-sm cursor-pointer"
-                >
-                  <AudioWaveform className="h-4 w-4 mr-1" />
-                  {t('plugins.componentName.EventListener')}
-                </ToggleGroupItem>
-                <ToggleGroupItem
-                  value="KnowledgeEngine"
-                  aria-label="KnowledgeEngine"
-                  className="text-xs sm:text-sm cursor-pointer"
-                >
-                  <Book className="h-4 w-4 mr-1" />
-                  {t('plugins.componentName.KnowledgeEngine')}
-                </ToggleGroupItem>
-                <ToggleGroupItem
-                  value="Parser"
-                  aria-label="Parser"
-                  className="text-xs sm:text-sm cursor-pointer"
-                >
-                  <FileText className="h-4 w-4 mr-1" />
-                  {t('plugins.componentName.Parser')}
-                </ToggleGroupItem>
-              </ToggleGroup>
-            </div>
-          </div>
-
-          {/* Sort dropdown */}
-          <div className="flex items-center gap-2 sm:gap-3">
-            <span className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">
-              {t('market.sortBy')}:
-            </span>
+          <div className="flex shrink-0 items-center gap-2">
             <Select value={sortOption} onValueChange={handleSortChange}>
-              <SelectTrigger className="w-40 sm:w-48 text-xs sm:text-sm">
+              <SelectTrigger className="w-28 shrink-0 text-xs sm:w-40 sm:text-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -551,35 +671,176 @@ function MarketPageContent({
                 ))}
               </SelectContent>
             </Select>
+
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="relative shrink-0 px-3 sm:px-4"
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                  <span className="hidden sm:inline">
+                    {t('market.filters.more')}
+                  </span>
+                  {activeAdvancedFilters > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] leading-none text-primary-foreground">
+                      {activeAdvancedFilters}
+                    </span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-[320px] space-y-4">
+                <div>
+                  <div className="text-sm font-medium">
+                    {t('market.filters.advancedTitle')}
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {t('market.filters.advancedDescription')}
+                  </div>
+                </div>
+                <Separator />
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-muted-foreground">
+                    {t('market.filters.technicalType')}
+                  </div>
+                  <ToggleGroup
+                    type="single"
+                    spacing={2}
+                    size="sm"
+                    value={typeFilter}
+                    onValueChange={(value) => {
+                      if (value) handleTypeFilterChange(value);
+                    }}
+                    className="flex flex-wrap justify-start gap-2"
+                  >
+                    {extensionTypeOptions.map((option) => {
+                      const Icon = option.icon;
+                      const count = typeCounts[option.value];
+                      return (
+                        <ToggleGroupItem
+                          key={option.value}
+                          value={option.value}
+                          aria-label={option.label}
+                          className="cursor-pointer text-xs"
+                        >
+                          {Icon && <Icon className="mr-1 h-3.5 w-3.5" />}
+                          {option.label}
+                          {typeof count === 'number' && (
+                            <span className="ml-1 text-muted-foreground">
+                              ({count})
+                            </span>
+                          )}
+                        </ToggleGroupItem>
+                      );
+                    })}
+                  </ToggleGroup>
+                </div>
+                <Separator />
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                    {t('market.filterByComponent')}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          className="inline-flex text-muted-foreground/70 hover:text-foreground"
+                          aria-label={t('market.filterByComponentHint')}
+                        >
+                          <Info className="size-3.5" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-64">
+                        {t('market.filterByComponentHint')}
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <ToggleGroup
+                    type="single"
+                    spacing={2}
+                    size="sm"
+                    value={componentFilter}
+                    onValueChange={(value) => {
+                      if (value) handleComponentFilterChange(value);
+                    }}
+                    className="flex flex-wrap justify-start gap-2"
+                  >
+                    {componentOptions.map((option) => {
+                      const Icon = option.icon;
+                      return (
+                        <ToggleGroupItem
+                          key={option.value}
+                          value={option.value}
+                          aria-label={option.label}
+                          className="cursor-pointer text-xs"
+                        >
+                          {Icon && <Icon className="mr-1 h-3.5 w-3.5" />}
+                          {option.label}
+                        </ToggleGroupItem>
+                      );
+                    })}
+                  </ToggleGroup>
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            {headerActions}
           </div>
         </div>
 
-        {/* Search results stats */}
-        {total > 0 && (
-          <div className="text-center text-muted-foreground text-sm">
-            {searchQuery
-              ? t('market.searchResults', { count: total })
-              : t('market.totalPlugins', { count: total })}
+        {/* 用真实标签做快速筛选 —— 始终单行横向滚动，避免标签变多时换行错位 */}
+        <div className="relative mx-auto w-full max-w-4xl">
+          <div className="scrollbar-hide flex items-center gap-1.5 overflow-x-auto pb-1 pr-6">
+            <Button
+              type="button"
+              variant={selectedTags.length === 0 ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7 shrink-0 px-2.5 text-xs"
+              onClick={() => handleTagsChange([])}
+            >
+              {t('market.allExtensions')}
+            </Button>
+            {availableTags.map((tag) => {
+              const selected = selectedTags.includes(tag.tag);
+              return (
+                <Button
+                  key={tag.tag}
+                  type="button"
+                  variant={selected ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-7 shrink-0 px-2.5 text-xs"
+                  onClick={() => {
+                    const newTags = selected
+                      ? selectedTags.filter((t) => t !== tag.tag)
+                      : [...selectedTags, tag.tag];
+                    handleTagsChange(newTags);
+                  }}
+                >
+                  {tagNames[tag.tag] || tag.tag}
+                  {selected && <X className="h-3 w-3" />}
+                </Button>
+              );
+            })}
           </div>
-        )}
+          {/* 右侧渐隐，提示还有更多标签可横向滚动查看 */}
+          <div className="pointer-events-none absolute right-0 top-0 bottom-1 w-8 bg-gradient-to-l from-background to-transparent" />
+        </div>
       </div>
 
-      {/* Scrollable content area */}
+      {/* Scrollable extension list section */}
       <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto px-3 sm:px-4"
+        className="flex-1 overflow-y-auto px-3 sm:px-4 pb-6 container mx-auto"
       >
-        {/* Recommendation Lists */}
+        {/* 推荐列表（仅在无搜索/筛选时展示，混合插件/MCP/Skill） */}
         {!searchQuery &&
+          typeFilter === 'all' &&
           componentFilter === 'all' &&
           selectedTags.length === 0 && (
-            <div className="pt-4">
-              <RecommendationLists
-                lists={recommendationLists}
-                tagNames={tagNames}
-                onInstall={handleInstallPlugin}
-              />
-            </div>
+            <RecommendationLists
+              lists={recommendationLists}
+              tagNames={tagNames}
+              onInstall={handleInstallPlugin}
+            />
           )}
 
         {isLoading ? (
@@ -601,7 +862,7 @@ function MarketPageContent({
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-6 pb-6 pt-4">
+            <div className="grid gap-6 mt-6 [grid-template-columns:repeat(auto-fill,minmax(min(100%,24rem),1fr))]">
               {visiblePlugins.map((plugin) => (
                 <PluginMarketCardComponent
                   key={plugin.pluginId}
@@ -622,7 +883,9 @@ function MarketPageContent({
             {/* No more data hint */}
             {!hasMore && plugins.length > 0 && (
               <div className="text-center text-muted-foreground py-6">
-                {t('market.allLoaded')}
+                {searchQuery
+                  ? t('market.allLoadedCount', { count: total })
+                  : t('market.allLoaded')}
                 {' · '}
                 <a
                   href="https://github.com/langbot-app/langbot-plugin-demo/issues/new?template=plugin-request.yml"
@@ -644,8 +907,10 @@ function MarketPageContent({
 // 主组件，包装在 Suspense 中
 export default function MarketPage({
   installPlugin,
+  headerActions,
 }: {
   installPlugin: (plugin: PluginV4) => void;
+  headerActions?: React.ReactNode;
 }) {
   return (
     <Suspense
@@ -657,7 +922,10 @@ export default function MarketPage({
         </div>
       }
     >
-      <MarketPageContent installPlugin={installPlugin} />
+      <MarketPageContent
+        installPlugin={installPlugin}
+        headerActions={headerActions}
+      />
     </Suspense>
   );
 }

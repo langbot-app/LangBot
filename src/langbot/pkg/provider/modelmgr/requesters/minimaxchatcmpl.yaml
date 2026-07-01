@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: LLMAPIRequester
+metadata:
+  name: minimax-chat-completions
+  label:
+    en_US: MiniMax
+    zh_Hans: MiniMax
+  icon: minimax.svg
+spec:
+  litellm_provider: openai
+  config:
+  - name: base_url
+    label:
+      en_US: Base URL
+      zh_Hans: 基础 URL
+    type: string
+    required: true
+    default: https://api.minimax.chat/v1
+  - name: timeout
+    label:
+      en_US: Timeout
+      zh_Hans: 超时时间
+    type: integer
+    required: true
+    default: 120
+  alias: "minimax MiniMax 名之梦 海螺 hailuo abab embo embedding"
+  support_type:
+  - llm
+  - text-embedding
+  - rerank
+  provider_category: manufacturer

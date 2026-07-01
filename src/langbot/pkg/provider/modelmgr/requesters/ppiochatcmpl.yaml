@@ -7,6 +7,7 @@ metadata:
     zh_Hans: 派欧云
   icon: ppio.svg
 spec:
+  litellm_provider: openai
   config:
   - name: base_url
     label:
@@ -29,9 +30,11 @@ spec:
     type: int
     required: true
     default: 120
+  alias: "ppio PPIO 派欧 派欧云 paiou ppinfra 派欧算力 bge embedding rerank"
   support_type:
   - llm
   - text-embedding
+  - rerank
   provider_category: maas
 execution:
   python:

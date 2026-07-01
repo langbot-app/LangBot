@@ -7,6 +7,8 @@ import {
 } from '@/app/infra/entities/pipeline';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import N8nAuthFormComponent from '@/app/home/components/dynamic-form/N8nAuthFormComponent';
+import { useBoxStatus } from '@/app/infra/hooks/useBoxStatus';
+import { systemInfo } from '@/app/infra/http';
 import { Button } from '@/components/ui/button';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -75,6 +77,7 @@ export default function PipelineFormComponent({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCopyConfirm, setShowCopyConfirm] = useState(false);
   const [isDefaultPipeline, setIsDefaultPipeline] = useState<boolean>(false);
+  const { available: boxAvailable } = useBoxStatus();
 
   const formSchema = isEditMode
     ? z.object({
@@ -185,6 +188,10 @@ export default function PipelineFormComponent({
     if (!isEditMode || !savedSnapshotRef.current) return false;
     return JSON.stringify(watchedValues) !== savedSnapshotRef.current;
   }, [isEditMode, watchedValues]);
+  // Keep a ref so that non-reactive callbacks (handleDynamicFormEmit) can
+  // read the latest dirty state without stale closures.
+  const hasUnsavedChangesRef = useRef(hasUnsavedChanges);
+  hasUnsavedChangesRef.current = hasUnsavedChanges;
 
   // Notify parent when dirty state changes
   useEffect(() => {
@@ -304,6 +311,9 @@ export default function PipelineFormComponent({
   // Called from DynamicFormComponent/N8nAuthFormComponent onSubmit callbacks.
   // On the first emission for a stage (mount-time default filling), the
   // snapshot is synchronously re-captured so that hasUnsavedChanges stays false.
+  // However, if the form is already dirty (the user has made real changes),
+  // we must NOT re-capture the snapshot — otherwise we would silently absorb
+  // those real changes and flip hasUnsavedChanges back to false.
   function handleDynamicFormEmit(
     formName: keyof FormValues,
     stageName: string,
@@ -313,7 +323,6 @@ export default function PipelineFormComponent({
     const isFirstEmission = !initializedStagesRef.current.has(stageKey);
 
     const currentValues =
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (form.getValues(formName) as Record<string, any>) || {};
     form.setValue(formName, {
       ...currentValues,
@@ -322,9 +331,14 @@ export default function PipelineFormComponent({
 
     if (isFirstEmission) {
       initializedStagesRef.current.add(stageKey);
-      // Synchronously re-capture snapshot so that the useMemo comparison
-      // in the same render cycle still returns false.
-      savedSnapshotRef.current = JSON.stringify(form.getValues());
+      // Only re-capture the snapshot when the form has no other pending
+      // changes.  If the user already modified something (e.g. switched
+      // runner), the snapshot must remain at the last-saved state so that
+      // hasUnsavedChanges stays true.
+      const currentSnapshot = JSON.stringify(form.getValues());
+      if (savedSnapshotRef.current === '' || !hasUnsavedChangesRef.current) {
+        savedSnapshotRef.current = currentSnapshot;
+      }
     }
   }
 
@@ -353,7 +367,6 @@ export default function PipelineFormComponent({
               <DynamicFormComponent
                 itemConfigList={stage.config}
                 initialValues={
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   (form.watch(formName) as Record<string, any>)?.[stage.name] ||
                   {}
                 }
@@ -387,7 +400,6 @@ export default function PipelineFormComponent({
               <N8nAuthFormComponent
                 itemConfigList={stage.config}
                 initialValues={
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   (form.watch(formName) as Record<string, any>)?.[stage.name] ||
                   {}
                 }
@@ -400,6 +412,61 @@ export default function PipelineFormComponent({
         );
       }
     }
+
+    // Box availability is exposed through ``systemContext.__system.box_available``
+    // so individual yaml-driven fields (e.g. ``box-session-id-template``) can
+    // opt-in via ``disable_if`` + ``disabled_tooltip`` rather than every page
+    // hard-coding a banner. Field-level gating keeps unrelated fields
+    // untouched.
+    //
+    // ``box_scope_editable`` folds the two reasons the Sandbox Scope selector
+    // can be locked into a single flag the yaml ``disable_if`` consumes:
+    //   1. Box sandbox is unavailable, or
+    //   2. the deployment pins all pipelines to a fixed scope via
+    //      ``system.limitation.force_box_session_id_template`` (SaaS).
+    const forcedBoxTemplate =
+      systemInfo.limitation?.force_box_session_id_template || '';
+    const boxScopeForced = !!forcedBoxTemplate;
+    const isLocalAgentStage = formName === 'ai' && stage.name === 'local-agent';
+    const stageSystemContext = isLocalAgentStage
+      ? {
+          box_available: boxAvailable,
+          box_scope_editable: boxAvailable && !boxScopeForced,
+          pipeline_id: pipelineId,
+        }
+      : undefined;
+
+    // When the deployment pins every pipeline to a fixed sandbox scope (SaaS
+    // ``force_box_session_id_template``), the Sandbox Scope selector is locked.
+    // The runtime already overrides the scope on every exec, but the stored
+    // pipeline value can be anything (e.g. the per-chat default), which would
+    // make the locked selector display a scope that is NOT the one actually in
+    // effect. Coerce the displayed/saved value to the forced template so the UI
+    // truthfully reflects runtime behavior.
+
+    const stageInitialValues: Record<string, any> =
+      (form.watch(formName) as Record<string, any>)?.[stage.name] || {};
+    const effectiveInitialValues =
+      isLocalAgentStage && boxScopeForced
+        ? {
+            ...stageInitialValues,
+            'box-session-id-template': forcedBoxTemplate,
+          }
+        : stageInitialValues;
+    const emitStageValues = (values: object) => {
+      if (!isLocalAgentStage) {
+        handleDynamicFormEmit(formName, stage.name, values);
+        return;
+      }
+
+      const latestStageValues =
+        ((form.getValues(formName) as Record<string, any>) || {})[stage.name] ||
+        {};
+      handleDynamicFormEmit(formName, stage.name, {
+        ...latestStageValues,
+        ...values,
+      });
+    };
 
     return (
       <Card key={stage.name}>
@@ -414,13 +481,9 @@ export default function PipelineFormComponent({
         <CardContent className="space-y-6">
           <DynamicFormComponent
             itemConfigList={stage.config}
-            initialValues={
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (form.watch(formName) as Record<string, any>)?.[stage.name] || {}
-            }
-            onSubmit={(values) => {
-              handleDynamicFormEmit(formName, stage.name, values);
-            }}
+            initialValues={effectiveInitialValues}
+            onSubmit={emitStageValues}
+            systemContext={stageSystemContext}
           />
         </CardContent>
       </Card>

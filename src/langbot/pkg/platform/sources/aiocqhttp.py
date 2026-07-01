@@ -3,6 +3,7 @@ import typing
 import asyncio
 import traceback
 import datetime
+import json
 
 import aiocqhttp
 import pydantic
@@ -13,6 +14,14 @@ import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 from ...utils import image
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
+
+
+def _normalize_base64_payload(value: str) -> str:
+    if value.startswith('base64://'):
+        return value.removeprefix('base64://')
+    if value.startswith('data:') and ';base64,' in value:
+        return value.split(';base64,', 1)[1]
+    return value
 
 
 class AiocqhttpMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
@@ -34,7 +43,7 @@ class AiocqhttpMessageConverter(abstract_platform_adapter.AbstractMessageConvert
             elif type(msg) is platform_message.Image:
                 arg = ''
                 if msg.base64:
-                    arg = msg.base64
+                    arg = _normalize_base64_payload(msg.base64)
                     msg_list.append(aiocqhttp.MessageSegment.image(f'base64://{arg}'))
                 elif msg.url:
                     arg = msg.url
@@ -49,7 +58,7 @@ class AiocqhttpMessageConverter(abstract_platform_adapter.AbstractMessageConvert
             elif type(msg) is platform_message.Voice:
                 arg = ''
                 if msg.base64:
-                    arg = msg.base64
+                    arg = _normalize_base64_payload(msg.base64)
                     msg_list.append(aiocqhttp.MessageSegment.record(f'base64://{arg}'))
                 elif msg.url:
                     arg = msg.url
@@ -61,7 +70,10 @@ class AiocqhttpMessageConverter(abstract_platform_adapter.AbstractMessageConvert
                 for node in msg.node_list:
                     msg_list.extend((await AiocqhttpMessageConverter.yiri2target(node.message_chain))[0])
             elif isinstance(msg, platform_message.File):
-                msg_list.append({'type': 'file', 'data': {'file': msg.url, 'name': msg.name}})
+                file = msg.url or msg.path
+                if not file and msg.base64:
+                    file = f'base64://{_normalize_base64_payload(msg.base64)}'
+                msg_list.append({'type': 'file', 'data': {'file': file, 'name': msg.name}})
             elif isinstance(msg, platform_message.Face):
                 if msg.face_type == 'face':
                     msg_list.append(aiocqhttp.MessageSegment.face(msg.face_id))
@@ -293,6 +305,29 @@ class AiocqhttpMessageConverter(abstract_platform_adapter.AbstractMessageConvert
             elif msg.type == 'dice':
                 face_id = msg.data['result']
                 yiri_msg_list.append(platform_message.Face(face_type='dice', face_id=int(face_id), face_name='骰子'))
+            elif msg.type == 'json':
+                try:
+                    raw = msg.data.get('data', {})
+                    if isinstance(raw, str):
+                        raw = json.loads(raw)
+                    if isinstance(raw, dict):
+                        _meta = raw.get('meta', {}) or {}
+                        if isinstance(_meta, dict):
+                            _detail = _meta.get('detail_1') or _meta.get('music') or _meta.get('news') or {}
+                        else:
+                            _detail = {}
+                        if isinstance(_detail, dict):
+                            preview = _detail.get('preview', '')
+                            title = _detail.get('desc', '') or _detail.get('title', '')
+                            url = _detail.get('qqdocurl', '') or _detail.get('jumpUrl', '')
+                        else:
+                            preview = title = url = ''
+                        text = ' '.join([f'[{raw.get("app", "")}]', preview, title, url]).strip()
+                        yiri_msg_list.append(platform_message.Plain(text=text or '[收到一张JSON卡片]'))
+                    else:
+                        yiri_msg_list.append(platform_message.Plain(text=str(raw)))
+                except Exception:
+                    yiri_msg_list.append(platform_message.Plain(text='[收到一张JSON卡片]'))
 
         chain = platform_message.MessageChain(yiri_msg_list)
 
@@ -409,9 +444,7 @@ class AiocqhttpAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                     elif isinstance(component, platform_message.Image):
                         img_data = {}
                         if component.base64:
-                            b64 = component.base64
-                            if b64.startswith('data:'):
-                                b64 = b64.split(',', 1)[-1] if ',' in b64 else b64
+                            b64 = _normalize_base64_payload(component.base64)
                             img_data['file'] = f'base64://{b64}'
                         elif component.url:
                             img_data['file'] = component.url

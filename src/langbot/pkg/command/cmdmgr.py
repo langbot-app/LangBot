@@ -84,7 +84,17 @@ class CommandManager:
 
         privilege = 1
 
-        if f'{query.launcher_type.value}_{query.launcher_id}' in self.ap.instance_config.data['admins']:
+        import sqlalchemy as _sa
+        from ..entity.persistence.bot import BotAdmin as _BotAdmin
+
+        _admins = await self.ap.persistence_mgr.execute_async(
+            _sa.select(_BotAdmin).where(
+                _BotAdmin.bot_uuid == (query.bot_uuid or ''),
+                _BotAdmin.launcher_type == query.launcher_type.value,
+                _BotAdmin.launcher_id == str(query.launcher_id),
+            )
+        )
+        if _admins.first() is not None:
             privilege = 2
 
         ctx = command_context.ExecuteContext(

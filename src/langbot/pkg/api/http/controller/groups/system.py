@@ -4,6 +4,7 @@ import quart
 import sqlalchemy
 
 from .. import group
+from .....utils import constants
 from .....entity.persistence.metadata import Metadata
 
 
@@ -30,16 +31,41 @@ class SystemRouterGroup(group.RouterGroup):
             except Exception:
                 pass
 
-            info = self.ap.system_service.get_system_info()
-            info['wizard_status'] = wizard_status
-            info['wizard_progress'] = wizard_progress
-            return self.success(data=info)
+            # ``system.outbound_ips`` may be a comma-separated string instead of
+            # a list when injected via the SYSTEM__OUTBOUND_IPS env var into a
+            # pre-existing data/config.yaml that lacks the key (env overrides
+            # only coerce to list when the key already holds one).
+            outbound_ips = self.ap.instance_config.data.get('system', {}).get('outbound_ips', [])
+            if isinstance(outbound_ips, str):
+                outbound_ips = [ip.strip() for ip in outbound_ips.split(',') if ip.strip()]
+            elif isinstance(outbound_ips, list):
+                outbound_ips = [str(ip).strip() for ip in outbound_ips if str(ip).strip()]
+            else:
+                outbound_ips = []
 
-        @self.route('/settings/auto-cleanup', methods=['PUT'], auth_type=group.AuthType.USER_TOKEN)
-        async def _() -> str:
-            data = await quart.request.get_json()
-            settings = await self.ap.system_service.update_auto_cleanup_settings(data)
-            return self.success(data={'auto_cleanup': settings})
+            return self.success(
+                data={
+                    'version': constants.semantic_version,
+                    'debug': constants.debug_mode,
+                    'edition': constants.edition,
+                    'enable_marketplace': self.ap.instance_config.data.get('plugin', {}).get(
+                        'enable_marketplace', True
+                    ),
+                    'cloud_service_url': (
+                        self.ap.instance_config.data.get('space', {}).get('url', 'https://space.langbot.app')
+                    ),
+                    'allow_modify_login_info': self.ap.instance_config.data.get('system', {}).get(
+                        'allow_modify_login_info', True
+                    ),
+                    'disable_models_service': self.ap.instance_config.data.get('space', {}).get(
+                        'disable_models_service', False
+                    ),
+                    'limitation': self.ap.instance_config.data.get('system', {}).get('limitation', {}),
+                    'outbound_ips': outbound_ips,
+                    'wizard_status': wizard_status,
+                    'wizard_progress': wizard_progress,
+                }
+            )
 
         @self.route('/wizard/completed', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:
@@ -123,16 +149,9 @@ class SystemRouterGroup(group.RouterGroup):
 
             return self.success(data=task.to_dict())
 
-        @self.route('/debug/exec', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
+        @self.route('/storage-analysis', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:
-            if not constants.debug_mode:
-                return self.http_status(403, 403, 'Forbidden')
-
-            py_code = await quart.request.data
-
-            ap = self.ap
-
-            return self.success(data=exec(py_code, {'ap': ap}))
+            return self.success(data=await self.ap.maintenance_service.get_storage_analysis())
 
         @self.route(
             '/debug/plugin/action',

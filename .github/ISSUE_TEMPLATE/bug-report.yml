@@ -10,6 +10,15 @@ body:
       placeholder: 例如：v3.3.0、CentOS x64 Python 3.10.3、Docker
     validations:
       required: true
+  - type: dropdown
+    attributes:
+      label: 部署版本
+      description: 请选择您使用的 LangBot 部署版本。
+      options:
+        - 社区版
+        - 云服务
+    validations:
+      required: true
   - type: textarea
     attributes:
       label: 异常情况

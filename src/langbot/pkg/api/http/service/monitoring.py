@@ -18,54 +18,118 @@ class MonitoringService:
 
     # ========== Cleanup Methods ==========
 
-    async def cleanup_expired_records(self, retention_days: int) -> dict[str, int]:
+    async def cleanup_expired_records(self, retention_days: int, batch_size: int = 1000) -> dict[str, int]:
         """Delete monitoring records older than the specified retention period.
 
         Args:
             retention_days: Number of days to retain records.
+            batch_size: Maximum rows to delete per table batch.
 
         Returns:
             A dict mapping table name to the number of deleted rows.
         """
+        if retention_days < 1:
+            raise ValueError('retention_days must be >= 1')
+        if batch_size < 1:
+            raise ValueError('batch_size must be >= 1')
+
         cutoff = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) - datetime.timedelta(
             days=retention_days
         )
 
-        tables_and_columns: list[tuple[str, type, sqlalchemy.Column]] = [
+        tables_and_columns: list[tuple[str, type, sqlalchemy.Column, sqlalchemy.Column]] = [
             (
                 'monitoring_messages',
                 persistence_monitoring.MonitoringMessage,
                 persistence_monitoring.MonitoringMessage.timestamp,
+                persistence_monitoring.MonitoringMessage.id,
             ),
             (
                 'monitoring_llm_calls',
                 persistence_monitoring.MonitoringLLMCall,
                 persistence_monitoring.MonitoringLLMCall.timestamp,
+                persistence_monitoring.MonitoringLLMCall.id,
             ),
             (
                 'monitoring_embedding_calls',
                 persistence_monitoring.MonitoringEmbeddingCall,
                 persistence_monitoring.MonitoringEmbeddingCall.timestamp,
+                persistence_monitoring.MonitoringEmbeddingCall.id,
             ),
             (
                 'monitoring_errors',
                 persistence_monitoring.MonitoringError,
                 persistence_monitoring.MonitoringError.timestamp,
+                persistence_monitoring.MonitoringError.id,
             ),
             (
                 'monitoring_sessions',
                 persistence_monitoring.MonitoringSession,
                 persistence_monitoring.MonitoringSession.last_activity,
+                persistence_monitoring.MonitoringSession.session_id,
+            ),
+            (
+                'monitoring_feedback',
+                persistence_monitoring.MonitoringFeedback,
+                persistence_monitoring.MonitoringFeedback.timestamp,
+                persistence_monitoring.MonitoringFeedback.id,
             ),
         ]
 
         deleted_counts: dict[str, int] = {}
 
-        for table_name, model_cls, ts_column in tables_and_columns:
-            result = await self.ap.persistence_mgr.execute_async(sqlalchemy.delete(model_cls).where(ts_column < cutoff))
-            deleted_counts[table_name] = result.rowcount
+        for table_name, model_cls, ts_column, pk_column in tables_and_columns:
+            deleted_counts[table_name] = await self._delete_expired_in_batches(
+                model_cls=model_cls,
+                ts_column=ts_column,
+                pk_column=pk_column,
+                cutoff=cutoff,
+                batch_size=batch_size,
+            )
+
+        if sum(deleted_counts.values()) > 0:
+            await self._release_sqlite_space()
 
         return deleted_counts
+
+    async def _delete_expired_in_batches(
+        self,
+        model_cls: type,
+        ts_column: sqlalchemy.Column,
+        pk_column: sqlalchemy.Column,
+        cutoff: datetime.datetime,
+        batch_size: int,
+    ) -> int:
+        deleted_total = 0
+
+        while True:
+            select_result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(pk_column).where(ts_column < cutoff).limit(batch_size)
+            )
+            pk_values = list(select_result.scalars().all())
+            if not pk_values:
+                break
+
+            delete_result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.delete(model_cls).where(pk_column.in_(pk_values))
+            )
+            deleted = delete_result.rowcount or 0
+            deleted_total += deleted
+
+            if len(pk_values) < batch_size:
+                break
+
+        return deleted_total
+
+    async def _release_sqlite_space(self) -> None:
+        database_type = self.ap.instance_config.data.get('database', {}).get('use', 'sqlite')
+        if database_type != 'sqlite':
+            return
+
+        async with self.ap.persistence_mgr.get_db_engine().connect() as conn:
+            autocommit_conn = await conn.execution_options(isolation_level='AUTOCOMMIT')
+            await autocommit_conn.execute(sqlalchemy.text('PRAGMA wal_checkpoint(TRUNCATE)'))
+            await autocommit_conn.execute(sqlalchemy.text('VACUUM'))
 
     # ========== Recording Methods ==========
 
@@ -415,6 +479,179 @@ class MonitoringService:
             'model_calls': model_calls,
             'success_rate': round(success_rate, 2),
             'active_sessions': active_sessions,
+        }
+
+    async def get_token_statistics(
+        self,
+        bot_ids: list[str] | None = None,
+        pipeline_ids: list[str] | None = None,
+        start_time: datetime.datetime | None = None,
+        end_time: datetime.datetime | None = None,
+        bucket: str = 'hour',
+    ) -> dict:
+        """Get detailed token usage statistics for production observability.
+
+        Returns:
+        - summary: aggregate token counters and call/latency stats over the window
+        - by_model: per-model token + call breakdown (sorted by total tokens desc)
+        - timeseries: token usage bucketed by `bucket` ('hour' or 'day')
+
+        Only successful LLM calls are counted toward token totals; error calls are
+        reported separately so a spike in failures is visible without polluting
+        token accounting.
+        """
+        LLMCall = persistence_monitoring.MonitoringLLMCall
+
+        conditions = []
+        if bot_ids:
+            conditions.append(LLMCall.bot_id.in_(bot_ids))
+        if pipeline_ids:
+            conditions.append(LLMCall.pipeline_id.in_(pipeline_ids))
+        if start_time:
+            conditions.append(LLMCall.timestamp >= start_time)
+        if end_time:
+            conditions.append(LLMCall.timestamp <= end_time)
+
+        def _apply(query):
+            if conditions:
+                query = query.where(sqlalchemy.and_(*conditions))
+            return query
+
+        # ---- Summary aggregates ----
+        summary_query = _apply(
+            sqlalchemy.select(
+                sqlalchemy.func.count(LLMCall.id),
+                sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.input_tokens), 0),
+                sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.output_tokens), 0),
+                sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.total_tokens), 0),
+                sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.duration), 0),
+                sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.cost), 0.0),
+                sqlalchemy.func.sum(sqlalchemy.case((LLMCall.status == 'success', 1), else_=0)),
+                sqlalchemy.func.sum(sqlalchemy.case((LLMCall.status == 'error', 1), else_=0)),
+                # Count of successful calls that nonetheless recorded zero tokens —
+                # a data-quality signal that usage reporting may be broken upstream.
+                sqlalchemy.func.sum(
+                    sqlalchemy.case(
+                        (sqlalchemy.and_(LLMCall.status == 'success', LLMCall.total_tokens == 0), 1),
+                        else_=0,
+                    )
+                ),
+            )
+        )
+        summary_result = await self.ap.persistence_mgr.execute_async(summary_query)
+        row = summary_result.first()
+        (
+            total_calls,
+            total_input_tokens,
+            total_output_tokens,
+            total_tokens,
+            total_duration,
+            total_cost,
+            success_calls,
+            error_calls,
+            zero_token_success_calls,
+        ) = row if row else (0, 0, 0, 0, 0, 0.0, 0, 0, 0)
+
+        total_calls = total_calls or 0
+        success_calls = success_calls or 0
+        error_calls = error_calls or 0
+        zero_token_success_calls = zero_token_success_calls or 0
+
+        summary = {
+            'total_calls': total_calls,
+            'success_calls': success_calls,
+            'error_calls': error_calls,
+            'total_input_tokens': int(total_input_tokens or 0),
+            'total_output_tokens': int(total_output_tokens or 0),
+            'total_tokens': int(total_tokens or 0),
+            'total_cost': round(float(total_cost or 0.0), 6),
+            'avg_tokens_per_call': int((total_tokens or 0) / total_calls) if total_calls > 0 else 0,
+            'avg_duration_ms': int((total_duration or 0) / total_calls) if total_calls > 0 else 0,
+            'avg_tokens_per_second': round((total_output_tokens or 0) / (total_duration / 1000), 2)
+            if total_duration and total_duration > 0
+            else 0,
+            'zero_token_success_calls': zero_token_success_calls,
+        }
+
+        # ---- Per-model breakdown ----
+        by_model_query = _apply(
+            sqlalchemy.select(
+                LLMCall.model_name,
+                sqlalchemy.func.count(LLMCall.id),
+                sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.input_tokens), 0),
+                sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.output_tokens), 0),
+                sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.total_tokens), 0),
+                sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.duration), 0),
+                sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.cost), 0.0),
+                sqlalchemy.func.sum(sqlalchemy.case((LLMCall.status == 'error', 1), else_=0)),
+            ).group_by(LLMCall.model_name)
+        )
+        by_model_result = await self.ap.persistence_mgr.execute_async(by_model_query)
+        by_model = []
+        for mrow in by_model_result.all():
+            (
+                model_name,
+                m_calls,
+                m_in,
+                m_out,
+                m_total,
+                m_duration,
+                m_cost,
+                m_errors,
+            ) = mrow
+            m_calls = m_calls or 0
+            by_model.append(
+                {
+                    'model_name': model_name,
+                    'calls': m_calls,
+                    'error_calls': m_errors or 0,
+                    'input_tokens': int(m_in or 0),
+                    'output_tokens': int(m_out or 0),
+                    'total_tokens': int(m_total or 0),
+                    'cost': round(float(m_cost or 0.0), 6),
+                    'avg_tokens_per_call': int((m_total or 0) / m_calls) if m_calls > 0 else 0,
+                    'avg_duration_ms': int((m_duration or 0) / m_calls) if m_calls > 0 else 0,
+                }
+            )
+        by_model.sort(key=lambda x: x['total_tokens'], reverse=True)
+
+        # ---- Time-bucketed series ----
+        # Use a DB-agnostic bucketing approach: fetch (timestamp, tokens) rows and
+        # aggregate in Python. The window is bounded by the time filter, so this is
+        # cheap for typical dashboard ranges (hours/days).
+        series_query = _apply(
+            sqlalchemy.select(
+                LLMCall.timestamp,
+                LLMCall.input_tokens,
+                LLMCall.output_tokens,
+                LLMCall.total_tokens,
+            ).order_by(LLMCall.timestamp.asc())
+        )
+        series_result = await self.ap.persistence_mgr.execute_async(series_query)
+
+        bucket_fmt = '%Y-%m-%d %H:00' if bucket == 'hour' else '%Y-%m-%d'
+        buckets: dict[str, dict] = {}
+        for srow in series_result.all():
+            ts, s_in, s_out, s_total = srow
+            if ts is None:
+                continue
+            key = ts.strftime(bucket_fmt)
+            b = buckets.setdefault(
+                key,
+                {'bucket': key, 'input_tokens': 0, 'output_tokens': 0, 'total_tokens': 0, 'calls': 0},
+            )
+            b['input_tokens'] += int(s_in or 0)
+            b['output_tokens'] += int(s_out or 0)
+            b['total_tokens'] += int(s_total or 0)
+            b['calls'] += 1
+
+        timeseries = [buckets[k] for k in sorted(buckets.keys())]
+
+        return {
+            'summary': summary,
+            'by_model': by_model,
+            'timeseries': timeseries,
+            'bucket': bucket,
         }
 
     async def get_messages(

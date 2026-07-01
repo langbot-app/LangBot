@@ -109,10 +109,10 @@ export default function MonitoringFilters({
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-6">
+    <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:gap-6">
       {/* Bot Filter */}
       <div className="flex items-center gap-2">
-        <label className="text-sm font-medium text-foreground whitespace-nowrap">
+        <label className="w-20 shrink-0 text-sm font-medium text-foreground sm:w-auto sm:whitespace-nowrap">
           {t('monitoring.filters.bot')}
         </label>
         <Select
@@ -120,7 +120,7 @@ export default function MonitoringFilters({
           onValueChange={handleBotChange}
           disabled={loadingBots}
         >
-          <SelectTrigger className="h-9 w-[140px]">
+          <SelectTrigger className="h-9 w-full sm:w-[140px]">
             <SelectValue
               placeholder={
                 loadingBots
@@ -144,7 +144,7 @@ export default function MonitoringFilters({
 
       {/* Pipeline Filter */}
       <div className="flex items-center gap-2">
-        <label className="text-sm font-medium text-foreground whitespace-nowrap">
+        <label className="w-20 shrink-0 text-sm font-medium text-foreground sm:w-auto sm:whitespace-nowrap">
           {t('monitoring.filters.pipeline')}
         </label>
         <Select
@@ -152,7 +152,7 @@ export default function MonitoringFilters({
           onValueChange={handlePipelineChange}
           disabled={loadingPipelines}
         >
-          <SelectTrigger className="h-9 w-[140px]">
+          <SelectTrigger className="h-9 w-full sm:w-[140px]">
             <SelectValue
               placeholder={
                 loadingPipelines
@@ -176,11 +176,11 @@ export default function MonitoringFilters({
 
       {/* Time Range Filter */}
       <div className="flex items-center gap-2">
-        <label className="text-sm font-medium text-foreground whitespace-nowrap">
+        <label className="w-20 shrink-0 text-sm font-medium text-foreground sm:w-auto sm:whitespace-nowrap">
           {t('monitoring.filters.timeRange')}
         </label>
         <Select value={timeRange} onValueChange={handleTimeRangeChange}>
-          <SelectTrigger className="h-9 w-[150px]">
+          <SelectTrigger className="h-9 w-full sm:w-[150px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

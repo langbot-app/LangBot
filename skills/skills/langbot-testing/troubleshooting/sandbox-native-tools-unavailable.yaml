@@ -1,0 +1,24 @@
+id: sandbox-native-tools-unavailable
+title: "Native sandbox tools are unavailable even though a backend is configured"
+date: 2026-05-18
+symptoms:
+  - "Backend logs show Native sandbox tools (exec/read/write/edit/glob/grep) are NOT available."
+  - "The Box runtime later reports that E2B, nsjail, or Docker is configured."
+  - "Debug Chat does not expose exec, register_skill, or activate as usable tools."
+patterns:
+  - "Native sandbox tools ... are NOT available"
+  - "No sandbox backend (Docker/nsjail/E2B) is ready"
+  - "box.backend is set but /api/v1/box/status backend is unavailable"
+likely_causes:
+  - "Backend status was checked before the Box runtime selected or reselected a backend."
+  - "The configured backend failed availability checks because credentials, binary, Docker daemon, or proxy settings were not ready."
+  - "The runtime cached an unavailable backend state after INIT config changed the backend."
+fix_steps:
+  - "Check /api/v1/box/status and verify backend.name and backend.available."
+  - "Restart LangBot after fixing backend credentials, binary installation, Docker daemon, or proxy settings."
+  - "Ensure the Box runtime reselects a backend when get_backend_info is called and the cached backend is empty."
+  - "For E2B, verify the key without printing it and confirm any required template setting."
+  - "For nsjail, run nsjail --help and confirm the binary is on PATH for the LangBot process."
+verification: "Run sandbox-skill-authoring-e2e. Logs should show Native sandbox tools are available and /api/v1/box/status should report available=true with the expected backend."
+related_cases:
+  - sandbox-skill-authoring-e2e

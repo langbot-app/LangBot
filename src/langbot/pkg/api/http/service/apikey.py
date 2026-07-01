@@ -51,7 +51,27 @@ class ApiKeyService:
         return self.ap.persistence_mgr.serialize_model(apikey.ApiKey, key)
 
     async def verify_api_key(self, key: str) -> bool:
-        """Verify if an API key is valid"""
+        """Verify if an API key is valid.
+
+        A key is accepted if it matches the global API key configured in
+        ``config.yaml`` (``api.global_api_key``) — which requires no login
+        session and no database record — or if it matches a key created via
+        the web UI (stored in the database, prefixed with ``lbk_``).
+        """
+        if not isinstance(key, str) or not key:
+            return False
+
+        # 1. Global API key from config.yaml (no DB lookup, no login state).
+        #    Note: config completion only backfills top-level keys, so existing
+        #    installs may not have this key — access it defensively.
+        global_api_key = self.ap.instance_config.data.get('api', {}).get('global_api_key', '')
+        if global_api_key and secrets.compare_digest(key, global_api_key):
+            return True
+
+        # 2. Web-UI-created keys are stored in the database and prefixed lbk_.
+        if not key.startswith('lbk_'):
+            return False
+
         result = await self.ap.persistence_mgr.execute_async(
             sqlalchemy.select(apikey.ApiKey).where(apikey.ApiKey.key == key)
         )

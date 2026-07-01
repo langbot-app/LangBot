@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import {
   Card,
   CardContent,
@@ -23,8 +24,16 @@ import type { MCPFormHandle } from '@/app/home/mcp/components/mcp-form/MCPForm';
 import { httpClient, systemInfo } from '@/app/infra/http/HttpClient';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { useTranslation } from 'react-i18next';
-import { Trash2 } from 'lucide-react';
+import { Server, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+
+type MCPRuntimeState = 'connected' | 'connecting' | 'error';
+type MCPConnectionState =
+  | 'connected'
+  | 'connecting'
+  | 'error'
+  | 'disabled'
+  | 'disconnected';
 
 export default function MCPDetailContent({ id }: { id: string }) {
   const isCreateMode = id === 'new';
@@ -32,22 +41,26 @@ export default function MCPDetailContent({ id }: { id: string }) {
   const { t } = useTranslation();
   const { refreshMCPServers, mcpServers, setDetailEntityName } =
     useSidebarData();
+  const server = mcpServers.find((s) => s.id === id);
+  const displayName = (server?.name ?? id).replace(/__/g, '/');
 
   // Set breadcrumb entity name
   useEffect(() => {
     if (isCreateMode) {
       setDetailEntityName(t('mcp.createServer'));
     } else {
-      const server = mcpServers.find((s) => s.id === id);
-      setDetailEntityName(server?.name ?? id);
+      setDetailEntityName(displayName);
     }
     return () => setDetailEntityName(null);
-  }, [id, isCreateMode, mcpServers, setDetailEntityName, t]);
+  }, [displayName, isCreateMode, setDetailEntityName, t]);
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Track whether the form has unsaved changes
   const [formDirty, setFormDirty] = useState(false);
+  // True when the form picked stdio mode but Box is disabled/unreachable —
+  // saving would create a server that can never start, so block it.
+  const [saveBlockedByBox, setSaveBlockedByBox] = useState(false);
 
   // Ref to MCPForm for triggering test from header
   const formRef = useRef<MCPFormHandle>(null);
@@ -56,13 +69,55 @@ export default function MCPDetailContent({ id }: { id: string }) {
   // Enable state managed here so the header switch works
   const [serverEnabled, setServerEnabled] = useState(true);
   const [enableLoaded, setEnableLoaded] = useState(false);
+  const [detailRuntimeStatus, setDetailRuntimeStatus] =
+    useState<MCPRuntimeState | null>(null);
+
+  const runtimeStatus = detailRuntimeStatus ?? server?.runtimeStatus;
+
+  const currentConnectionState: MCPConnectionState =
+    (enableLoaded ? serverEnabled : server?.enabled) === false
+      ? 'disabled'
+      : runtimeStatus === 'connected' ||
+          runtimeStatus === 'connecting' ||
+          runtimeStatus === 'error'
+        ? runtimeStatus
+        : 'disconnected';
+
+  const connectionStatusLabel: Record<MCPConnectionState, string> = {
+    connected: t('mcp.statusConnected'),
+    connecting: t('mcp.connecting'),
+    error: t('mcp.statusError'),
+    disabled: t('mcp.statusDisabled'),
+    disconnected: t('mcp.statusDisconnected'),
+  };
+
+  const connectionStatusClassName: Record<MCPConnectionState, string> = {
+    connected:
+      'border-green-200 bg-green-50 text-green-700 dark:border-green-900/70 dark:bg-green-950/40 dark:text-green-300',
+    connecting:
+      'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-300',
+    error:
+      'border-red-200 bg-red-50 text-red-700 dark:border-red-900/70 dark:bg-red-950/40 dark:text-red-300',
+    disabled: 'border-muted-foreground/20 bg-muted text-muted-foreground',
+    disconnected: 'border-muted-foreground/20 bg-muted text-muted-foreground',
+  };
+
+  const connectionDotClassName: Record<MCPConnectionState, string> = {
+    connected: 'bg-green-500',
+    connecting: 'bg-amber-500',
+    error: 'bg-red-500',
+    disabled: 'bg-muted-foreground/50',
+    disconnected: 'bg-muted-foreground/50',
+  };
 
   // Fetch server enable state
   useEffect(() => {
     if (!isCreateMode) {
+      setDetailRuntimeStatus(null);
       httpClient.getMCPServer(id).then((res) => {
         const server = res.server ?? res;
         setServerEnabled(server.enable ?? true);
+        setDetailRuntimeStatus(server.runtime_info?.status ?? null);
         setEnableLoaded(true);
       });
     }
@@ -142,10 +197,24 @@ export default function MCPDetailContent({ id }: { id: string }) {
   if (isCreateMode) {
     return (
       <div className="flex h-full flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between pb-4 shrink-0">
-          <h1 className="text-xl font-semibold">{t('mcp.createServer')}</h1>
-          <div className="flex items-center gap-2">
+        <div className="flex shrink-0 flex-col gap-3 pb-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <h1 className="truncate text-xl font-semibold">
+              {t('mcp.createServer')}
+            </h1>
+            <Badge variant="outline" className="shrink-0 text-[0.7rem]">
+              <Server className="size-3.5" />
+              {t('mcp.title')}
+            </Badge>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => navigate('/home/add-extension')}
+            >
+              {t('common.cancel')}
+            </Button>
             <Button
               type="button"
               variant="outline"
@@ -157,6 +226,7 @@ export default function MCPDetailContent({ id }: { id: string }) {
             <Button
               type="submit"
               form="mcp-form"
+              disabled={saveBlockedByBox}
               onClick={async (e) => {
                 if (!(await checkExtensionsLimit())) {
                   e.preventDefault();
@@ -168,47 +238,99 @@ export default function MCPDetailContent({ id }: { id: string }) {
           </div>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto min-h-0">
-          <div className="mx-auto max-w-3xl pb-8">
-            <MCPForm
-              ref={formRef}
-              initServerName={undefined}
-              onFormSubmit={handleFormSubmit}
-              onNewServerCreated={handleNewServerCreated}
-              onTestingChange={setMcpTesting}
-            />
-          </div>
+        <div className="min-h-0 flex-1">
+          <MCPForm
+            ref={formRef}
+            initServerName={undefined}
+            layout="split"
+            onFormSubmit={handleFormSubmit}
+            onNewServerCreated={handleNewServerCreated}
+            onTestingChange={setMcpTesting}
+            onSaveBlockedChange={setSaveBlockedByBox}
+          />
         </div>
       </div>
     );
   }
 
+  const enableControl = enableLoaded && (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('common.enable')}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center justify-between">
+          <Label
+            htmlFor="mcp-enable-switch"
+            className="cursor-pointer text-sm font-medium"
+          >
+            {t('common.enable')}
+          </Label>
+          <Switch
+            id="mcp-enable-switch"
+            checked={serverEnabled}
+            onCheckedChange={handleEnableToggle}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+
+  const editActions = (
+    <Card className="border-destructive/50">
+      <CardHeader>
+        <CardTitle className="text-destructive">
+          {t('mcp.dangerZone')}
+        </CardTitle>
+        <CardDescription>{t('mcp.dangerZoneDescription')}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <p className="text-sm font-medium">{t('mcp.deleteMCPAction')}</p>
+            <p className="text-sm text-muted-foreground">
+              {t('mcp.deleteMCPHint')}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            onClick={() => setShowDeleteConfirm(true)}
+            className="shrink-0"
+          >
+            <Trash2 className="mr-1.5 size-4" />
+            {t('common.delete')}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
   // ==================== Edit Mode ====================
   return (
     <>
       <div className="flex h-full flex-col">
-        {/* Header: title + enable switch + save button */}
-        <div className="flex items-center justify-between pb-4 shrink-0">
-          <div className="flex items-center gap-4">
-            <h1 className="text-xl font-semibold">{t('mcp.editServer')}</h1>
-            {enableLoaded && (
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="mcp-enable-switch"
-                  checked={serverEnabled}
-                  onCheckedChange={handleEnableToggle}
+        <div className="flex shrink-0 flex-col gap-3 pb-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 space-y-1">
+            <div className="flex min-w-0 items-center gap-3">
+              <h1 className="truncate text-xl font-semibold">{displayName}</h1>
+              <Badge variant="outline" className="shrink-0 text-[0.7rem]">
+                <Server className="size-3.5" />
+                {t('mcp.title')}
+              </Badge>
+              <Badge
+                variant="outline"
+                className={`shrink-0 gap-1.5 text-[0.7rem] ${connectionStatusClassName[currentConnectionState]}`}
+              >
+                <span
+                  className={`size-1.5 rounded-full ${connectionDotClassName[currentConnectionState]}`}
                 />
-                <Label
-                  htmlFor="mcp-enable-switch"
-                  className="text-sm text-muted-foreground cursor-pointer"
-                >
-                  {t('common.enable')}
-                </Label>
-              </div>
-            )}
+                {connectionStatusLabel[currentConnectionState]}
+              </Badge>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button
               type="button"
               variant="outline"
@@ -217,57 +339,32 @@ export default function MCPDetailContent({ id }: { id: string }) {
             >
               {t('common.test')}
             </Button>
-            <Button type="submit" form="mcp-form" disabled={!formDirty}>
+            <Button
+              type="submit"
+              form="mcp-form"
+              disabled={!formDirty || saveBlockedByBox}
+            >
               {t('common.save')}
             </Button>
           </div>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto min-h-0">
-          <div className="mx-auto max-w-3xl space-y-6 pb-8">
-            <MCPForm
-              ref={formRef}
-              initServerName={id}
-              onFormSubmit={handleFormSubmit}
-              onNewServerCreated={handleNewServerCreated}
-              onDirtyChange={setFormDirty}
-              onTestingChange={setMcpTesting}
-            />
-
-            {/* Card: Danger Zone */}
-            <Card className="border-destructive/50">
-              <CardHeader>
-                <CardTitle className="text-destructive">
-                  {t('mcp.dangerZone')}
-                </CardTitle>
-                <CardDescription>
-                  {t('mcp.dangerZoneDescription')}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium">
-                      {t('mcp.deleteMCPAction')}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {t('mcp.deleteMCPHint')}
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => setShowDeleteConfirm(true)}
-                  >
-                    <Trash2 className="size-4 mr-1.5" />
-                    {t('common.delete')}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+        <div className="min-h-0 flex-1">
+          <MCPForm
+            ref={formRef}
+            initServerName={id}
+            layout="split"
+            sideHeader={enableControl}
+            sideFooter={editActions}
+            onFormSubmit={handleFormSubmit}
+            onNewServerCreated={handleNewServerCreated}
+            onDirtyChange={setFormDirty}
+            onTestingChange={setMcpTesting}
+            onSaveBlockedChange={setSaveBlockedByBox}
+            onRuntimeInfoChange={(runtimeInfo) =>
+              setDetailRuntimeStatus(runtimeInfo?.status ?? null)
+            }
+          />
         </div>
       </div>
 

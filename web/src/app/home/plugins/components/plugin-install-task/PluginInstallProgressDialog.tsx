@@ -10,8 +10,8 @@ import { Button } from '@/components/ui/button';
 import {
   Download,
   Package,
-  Settings,
-  Rocket,
+  Server,
+  Sparkles,
   CheckCircle2,
   XCircle,
   Loader2,
@@ -38,16 +38,6 @@ const STAGES: {
     key: InstallStage.INSTALLING_DEPS,
     icon: Package,
     i18nKey: 'plugins.installProgress.installingDeps',
-  },
-  {
-    key: InstallStage.INITIALIZING,
-    icon: Settings,
-    i18nKey: 'plugins.installProgress.initializing',
-  },
-  {
-    key: InstallStage.LAUNCHING,
-    icon: Rocket,
-    i18nKey: 'plugins.installProgress.launching',
   },
 ];
 
@@ -85,7 +75,7 @@ function StageRow({
   return (
     <div
       className={cn(
-        'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-300',
+        'flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 sm:py-2.5 rounded-lg transition-all duration-300',
         isActive &&
           !isError &&
           'bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800',
@@ -154,7 +144,7 @@ function StageRow({
         {detail && (
           <div
             className={cn(
-              'text-xs mt-0.5',
+              'text-xs mt-0.5 break-words',
               isCompleted
                 ? 'text-green-600/70 dark:text-green-400/70'
                 : 'text-blue-600/70 dark:text-blue-400/70',
@@ -182,6 +172,15 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
   const currentStageIndex = getStageIndex(task.stage);
   const isDone = task.stage === InstallStage.DONE;
   const isError = task.stage === InstallStage.ERROR;
+
+  // MCP / Skill don't have the plugin's download + dependency-install stages;
+  // show a single "installing → done/failed" row instead of plugin steps.
+  const isPlugin = task.extensionType === 'plugin';
+  const simpleIcon = task.extensionType === 'mcp' ? Server : Sparkles;
+  const simpleInstallingLabel =
+    task.extensionType === 'mcp'
+      ? t('addExtension.installStage.mcpInstalling')
+      : t('addExtension.installStage.skillInstalling');
 
   /** Build detail node for a stage */
   const getStageDetail = (
@@ -256,7 +255,7 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
             <>
               <span>{parts.join('  ·  ')}</span>
               <br />
-              <span className="opacity-70">{currentDep}</span>
+              <span className="opacity-70 break-words">{currentDep}</span>
             </>
           );
         }
@@ -277,10 +276,10 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
     <div className="space-y-4">
       {/* Overall progress bar — always blue */}
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <span
             className={cn(
-              'text-sm font-medium',
+              'text-sm font-medium shrink-0',
               isDone
                 ? 'text-green-700 dark:text-green-300'
                 : 'text-blue-700 dark:text-blue-300',
@@ -319,49 +318,67 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
 
       {/* Stage display */}
       <div className="space-y-1.5">
-        {isDone
-          ? /* When done: show all stages with completed style */
-            STAGES.map((stageConfig) => (
-              <StageRow
-                key={stageConfig.key}
-                icon={stageConfig.icon}
-                label={t(stageConfig.i18nKey)}
-                isActive={false}
-                isCompleted={true}
-                isError={false}
-                detail={getStageDetail(stageConfig.key, true)}
-              />
-            ))
-          : isError
-            ? /* Error: show the failed stage */
-              currentStageIndex >= 0 && (
-                <StageRow
-                  icon={STAGES[currentStageIndex].icon}
-                  label={t(STAGES[currentStageIndex].i18nKey)}
-                  isActive={true}
-                  isCompleted={false}
-                  isError={true}
-                  detail={task.error}
-                />
-              )
-            : /* In progress: only show the current active stage */
-              currentStageIndex >= 0 && (
-                <StageRow
-                  icon={STAGES[currentStageIndex].icon}
-                  label={t(STAGES[currentStageIndex].i18nKey)}
-                  isActive={true}
-                  isCompleted={false}
-                  isError={false}
-                  detail={getStageDetail(STAGES[currentStageIndex].key, false)}
-                />
-              )}
+        {!isPlugin ? (
+          /* MCP / Skill: single installing → done/failed row */
+          <StageRow
+            icon={simpleIcon}
+            label={
+              isDone
+                ? t('addExtension.installStage.installed')
+                : isError
+                  ? t('plugins.installProgress.failed')
+                  : simpleInstallingLabel
+            }
+            isActive={!isDone}
+            isCompleted={isDone}
+            isError={isError}
+            detail={isError ? task.error : undefined}
+          />
+        ) : isDone ? (
+          /* When done: show all stages with completed style */
+          STAGES.map((stageConfig) => (
+            <StageRow
+              key={stageConfig.key}
+              icon={stageConfig.icon}
+              label={t(stageConfig.i18nKey)}
+              isActive={false}
+              isCompleted={true}
+              isError={false}
+              detail={getStageDetail(stageConfig.key, true)}
+            />
+          ))
+        ) : isError ? (
+          /* Error: show the failed stage */
+          currentStageIndex >= 0 && (
+            <StageRow
+              icon={STAGES[currentStageIndex].icon}
+              label={t(STAGES[currentStageIndex].i18nKey)}
+              isActive={true}
+              isCompleted={false}
+              isError={true}
+              detail={task.error}
+            />
+          )
+        ) : (
+          /* In progress: only show the current active stage */
+          currentStageIndex >= 0 && (
+            <StageRow
+              icon={STAGES[currentStageIndex].icon}
+              label={t(STAGES[currentStageIndex].i18nKey)}
+              isActive={true}
+              isCompleted={false}
+              isError={false}
+              detail={getStageDetail(STAGES[currentStageIndex].key, false)}
+            />
+          )
+        )}
       </div>
 
       {/* Done banner */}
       {isDone && (
         <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900">
-          <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
-          <span className="text-sm text-green-700 dark:text-green-300 font-medium">
+          <CheckCircle2 className="w-5 h-5 shrink-0 text-green-600 dark:text-green-400" />
+          <span className="text-sm text-green-700 dark:text-green-300 font-medium break-words">
             {t('plugins.installProgress.installComplete')}
           </span>
         </div>
@@ -406,13 +423,13 @@ export default function PluginInstallProgressDialog() {
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
       <DialogContent
-        className="w-[460px] max-h-[80vh] p-6 bg-white dark:bg-[#1a1a1e] overflow-y-auto"
+        className="sm:max-w-lg w-[90vw] max-h-[80vh] p-4 sm:p-6 bg-white dark:bg-[#1a1a1e] overflow-y-auto overflow-x-hidden"
         hideCloseButton
       >
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-3">
-            <Download className="size-5" />
-            <span className="truncate">
+          <DialogTitle className="flex items-start gap-3">
+            <Download className="size-5 shrink-0 mt-0.5" />
+            <span className="break-words">
               {selectedTask
                 ? t('plugins.installProgress.title', {
                     name: selectedTask.pluginName,

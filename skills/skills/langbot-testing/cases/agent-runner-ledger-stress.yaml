@@ -1,0 +1,33 @@
+id: agent-runner-ledger-stress
+title: "AgentRunner ledger lightweight stress probe"
+mode: probe
+area: release
+type: regression
+priority: p1
+risk: high
+ci_eligible: true
+tags:
+  - agent-runner
+  - probe
+  - stress
+  - ledger
+skills:
+  - langbot-testing
+env:
+automation: skills/langbot-testing/probes/agent-runner-ledger-stress.mjs
+steps:
+  - "Run `rtk bin/lbs test run agent-runner-ledger-stress --dry-run` first; remove `--dry-run` after checking the planned evidence directory."
+  - "Automation creates 100 queued runs in synchronous SQLite and simulates five runtimes claiming them in priority order."
+checks:
+  - "automation-result.json status is pass."
+  - "probe-stdout.log contains LEDGER_STRESS_OK."
+  - "Every run is claimed once and reaches a terminal completed status."
+evidence_required:
+  - filesystem
+diagnostics:
+  - "This probe is a fast deterministic stress baseline; it does not replace PostgreSQL/async concurrency tests."
+success_patterns:
+  - "LEDGER_STRESS_OK"
+failure_patterns:
+  - "AssertionError"
+  - "ledger stress exited"

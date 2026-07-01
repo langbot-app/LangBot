@@ -1,0 +1,24 @@
+id: socks-proxy-without-socksio
+title: "Python HTTP clients fail when ALL_PROXY uses SOCKS without socksio"
+date: 2026-05-18
+symptoms:
+  - "LangBot startup fails while importing or initializing a provider client."
+  - "The failure happens before sandbox testing begins."
+  - "Clearing ALL_PROXY lets LangBot start, but external HTTP calls may then need another proxy path."
+patterns:
+  - "Using SOCKS proxy, but the 'socksio' package is not installed"
+  - "httpx using SOCKS proxy"
+  - "ALL_PROXY=socks5://"
+likely_causes:
+  - "The process inherited ALL_PROXY or all_proxy with a SOCKS URL."
+  - "A dependency uses httpx without the socks extra installed."
+  - "HTTP_PROXY and HTTPS_PROXY would have been sufficient, but ALL_PROXY took precedence for that client."
+fix_steps:
+  - "Start LangBot with ALL_PROXY and all_proxy unset when SOCKS support is not installed."
+  - "Keep HTTP_PROXY and HTTPS_PROXY set consistently if an HTTP proxy is available."
+  - "Alternatively install the dependency's SOCKS support in the runtime environment."
+  - "Keep NO_PROXY/no_proxy covering localhost, 127.0.0.1, and ::1."
+verification: "LangBot starts cleanly, model provider calls still use the intended proxy path, and sandbox-skill-authoring-e2e can reach the model provider."
+related_cases:
+  - sandbox-skill-authoring-e2e
+  - provider-deepseek

@@ -1,0 +1,31 @@
+id: plugin-runtime-timeout
+title: "Plugin runtime actions time out"
+date: 2026-05-16
+symptoms:
+  - "Debug Chat can send a user message, but no useful Bot response appears."
+  - "The page may show Agent runner temporarily unavailable."
+  - "Installed Plugins may show Plugin System Connection Error."
+  - "Knowledge sidebar or plugin sidebar loading may hang or time out."
+patterns:
+  - "Action list_plugins call timed out"
+  - "Action list_agent_runners call timed out"
+  - "Action invoke_llm_stream call timed out"
+  - "All models failed during streaming setup"
+  - "Failed to fetch plugins for sidebar"
+  - "Failed to fetch knowledge bases for sidebar"
+likely_causes:
+  - "An old langbot_plugin runtime process survived a backend restart."
+  - "Multiple plugin runtime processes are active and the backend is waiting on the wrong one."
+  - "Plugin runtime got a control connection but never finished plugin discovery or launch."
+  - "A disposable test plugin in data/plugins is blocking runtime startup."
+fix_steps:
+  - "Stop the LangBot backend."
+  - "Stop orphaned langbot_plugin.cli runtime processes."
+  - "Confirm the configured backend URL is free or reachable as appropriate."
+  - "Start LangBot again and wait for Connected to plugin runtime plus langbot/local-agent initialization."
+  - "For disposable test data only, move suspected fixture plugins out of data/plugins and restart to isolate plugin discovery failures."
+verification: "Open Installed Plugins and confirm the plugin list loads, then run pipeline-debug-chat and confirm the UI shows a Bot response while backend logs include Streaming completed."
+related_cases:
+  - pipeline-debug-chat
+  - provider-deepseek
+  - langrag-parser-golden-e2e

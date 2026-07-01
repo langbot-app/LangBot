@@ -32,6 +32,18 @@ spec:
       type: webhook-url
       required: false
       default: ""
+    - name: __system.outbound_ips
+      label:
+        en_US: Trusted IPs
+        zh_Hans: 企业可信 IP
+        zh_Hant: 企業可信 IP
+      description:
+        en_US: Add these outbound IPs of the LangBot server to the "Trusted Enterprise IPs" of your app in the WeCom admin console
+        zh_Hans: 请将这些 LangBot 服务器的出网 IP 添加到企业微信管理后台应用详情页的「企业可信 IP」中
+        zh_Hant: 請將這些 LangBot 伺服器的出網 IP 加入企業微信管理後台應用詳情頁的「企業可信 IP」中
+      type: array[string]
+      required: false
+      default: []
     - name: corpid
       label:
         en_US: Corpid

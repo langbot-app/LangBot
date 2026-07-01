@@ -26,10 +26,21 @@ export interface SidebarEntityItem {
   installInfo?: Record<string, unknown>;
   hasUpdate?: boolean;
   debug?: boolean;
+  // Set when this item appears in the unified extensions list
+  extensionType?: 'plugin' | 'mcp' | 'skill';
 }
 
-// Install action types that can be triggered from sidebar
-export type PluginInstallAction = 'local' | 'github' | null;
+// Plugin page registered by a plugin
+export interface PluginPageItem {
+  id: string; // "author/name/pageId"
+  name: string; // display label
+  pluginAuthor: string;
+  pluginName: string;
+  pluginLabel: string; // human-readable plugin display name
+  pluginIconURL: string; // plugin icon URL
+  pageId: string;
+  path: string; // asset path (HTML file)
+}
 
 // Entity lists and refresh functions exposed via context
 export interface SidebarDataContextValue {
@@ -38,18 +49,21 @@ export interface SidebarDataContextValue {
   knowledgeBases: SidebarEntityItem[];
   plugins: SidebarEntityItem[];
   mcpServers: SidebarEntityItem[];
+  skills: SidebarEntityItem[];
+  pluginPages: PluginPageItem[];
   refreshBots: () => Promise<void>;
   refreshPipelines: () => Promise<void>;
   refreshKnowledgeBases: () => Promise<void>;
   refreshPlugins: () => Promise<void>;
   refreshMCPServers: () => Promise<void>;
+  refreshSkills: () => Promise<void>;
   refreshAll: () => Promise<void>;
   // Breadcrumb: entity name shown when viewing a detail page
   detailEntityName: string | null;
   setDetailEntityName: (name: string | null) => void;
-  // Pending plugin install action triggered from sidebar
-  pendingPluginInstallAction: PluginInstallAction;
-  setPendingPluginInstallAction: (action: PluginInstallAction) => void;
+  // Whether the extensions list is grouped by type (shared between page and sidebar)
+  extensionsGroupByType: boolean;
+  setExtensionsGroupByType: (enabled: boolean) => void;
 }
 
 const SidebarDataContext = createContext<SidebarDataContextValue | null>(null);
@@ -64,9 +78,22 @@ export function SidebarDataProvider({
   const [knowledgeBases, setKnowledgeBases] = useState<SidebarEntityItem[]>([]);
   const [plugins, setPlugins] = useState<SidebarEntityItem[]>([]);
   const [mcpServers, setMCPServers] = useState<SidebarEntityItem[]>([]);
+  const [skills, setSkills] = useState<SidebarEntityItem[]>([]);
+  const [pluginPages, setPluginPages] = useState<PluginPageItem[]>([]);
   const [detailEntityName, setDetailEntityName] = useState<string | null>(null);
-  const [pendingPluginInstallAction, setPendingPluginInstallAction] =
-    useState<PluginInstallAction>(null);
+  const [extensionsGroupByType, setExtensionsGroupByTypeState] =
+    useState<boolean>(() => {
+      if (typeof window === 'undefined') return false;
+      return localStorage.getItem('extensions_group_by_type') === 'true';
+    });
+  const setExtensionsGroupByType = useCallback((enabled: boolean) => {
+    setExtensionsGroupByTypeState(enabled);
+    try {
+      localStorage.setItem('extensions_group_by_type', String(enabled));
+    } catch {
+      // ignore
+    }
+  }, []);
 
   const refreshBots = useCallback(async () => {
     try {
@@ -137,33 +164,69 @@ export function SidebarDataProvider({
         }
       }
 
-      setPlugins(
-        pluginsResp.plugins.map((plugin) => {
-          const meta = plugin.manifest.manifest.metadata;
-          const author = meta.author ?? '';
-          const name = meta.name;
-          const compositeKey = `${author}/${name}`;
-          const installedVersion = meta.version ?? '';
+      // Deduplicate plugins by composite key (prefer debug over installed)
+      const pluginMap = new Map<string, SidebarEntityItem>();
+      for (const plugin of pluginsResp.plugins) {
+        const meta = plugin.manifest.manifest.metadata;
+        const author = meta.author ?? '';
+        const name = meta.name;
+        const compositeKey = `${author}/${name}`;
+        const installedVersion = meta.version ?? '';
 
-          let hasUpdate = false;
-          if (plugin.install_source === 'marketplace') {
-            const latestVersion = marketplaceVersions.get(compositeKey);
-            if (latestVersion) {
-              hasUpdate = isNewerVersion(latestVersion, installedVersion);
+        let hasUpdate = false;
+        if (plugin.install_source === 'marketplace') {
+          const latestVersion = marketplaceVersions.get(compositeKey);
+          if (latestVersion) {
+            hasUpdate = isNewerVersion(latestVersion, installedVersion);
+          }
+        }
+
+        const item: SidebarEntityItem = {
+          id: compositeKey,
+          name: extractI18nObject(meta.label),
+          iconURL: httpClient.getPluginIconURL(author, name),
+          installSource: plugin.install_source,
+          installInfo: plugin.install_info,
+          hasUpdate,
+          debug: plugin.debug,
+        };
+
+        // If duplicate, prefer debug version
+        if (!pluginMap.has(compositeKey) || plugin.debug) {
+          pluginMap.set(compositeKey, item);
+        }
+      }
+      setPlugins(Array.from(pluginMap.values()));
+
+      // Extract plugin pages from spec.pages (deduplicate by id)
+      const pages: PluginPageItem[] = [];
+      const seenPageIds = new Set<string>();
+      for (const plugin of pluginsResp.plugins) {
+        const meta = plugin.manifest.manifest.metadata;
+        const author = meta.author ?? '';
+        const name = meta.name;
+        const label = meta.label ? extractI18nObject(meta.label) : name;
+        const spec = plugin.manifest.manifest.spec;
+        if (spec?.pages && Array.isArray(spec.pages)) {
+          for (const page of spec.pages) {
+            const pageId = `${author}/${name}/${page.id}`;
+            if (page.id && page.path && !seenPageIds.has(pageId)) {
+              seenPageIds.add(pageId);
+              pages.push({
+                id: pageId,
+                name: page.label ? extractI18nObject(page.label) : page.id,
+                pluginAuthor: author,
+                pluginName: name,
+                pluginLabel: label,
+                pluginIconURL: httpClient.getPluginIconURL(author, name),
+                pageId: page.id,
+                path: page.path,
+              });
             }
           }
-
-          return {
-            id: compositeKey,
-            name: extractI18nObject(meta.label),
-            iconURL: httpClient.getPluginIconURL(author, name),
-            installSource: plugin.install_source,
-            installInfo: plugin.install_info,
-            hasUpdate,
-            debug: plugin.debug,
-          };
-        }),
-      );
+        }
+      }
+      setPluginPages(pages);
     } catch (error) {
       console.error('Failed to fetch plugins for sidebar:', error);
     }
@@ -174,14 +237,30 @@ export function SidebarDataProvider({
       const resp = await httpClient.getMCPServers();
       setMCPServers(
         resp.servers.map((server) => ({
-          id: server.name,
-          name: server.name,
+          id: server.name, // Keep __ for API calls
+          name: server.name.replace(/__/g, '/'), // Display with / for readability
           enabled: server.enable,
           runtimeStatus: server.runtime_info?.status,
         })),
       );
     } catch (error) {
       console.error('Failed to fetch MCP servers for sidebar:', error);
+    }
+  }, []);
+
+  const refreshSkills = useCallback(async () => {
+    try {
+      const resp = await httpClient.getSkills();
+      setSkills(
+        resp.skills.map((skill) => ({
+          id: skill.name,
+          name: skill.display_name || skill.name,
+          description: skill.description,
+          updatedAt: skill.updated_at,
+        })),
+      );
+    } catch (error) {
+      console.error('Failed to fetch skills for sidebar:', error);
     }
   }, []);
 
@@ -192,6 +271,7 @@ export function SidebarDataProvider({
       refreshKnowledgeBases(),
       refreshPlugins(),
       refreshMCPServers(),
+      refreshSkills(),
     ]);
   }, [
     refreshBots,
@@ -199,6 +279,7 @@ export function SidebarDataProvider({
     refreshKnowledgeBases,
     refreshPlugins,
     refreshMCPServers,
+    refreshSkills,
   ]);
 
   // Fetch all entity lists on mount
@@ -214,16 +295,19 @@ export function SidebarDataProvider({
         knowledgeBases,
         plugins,
         mcpServers,
+        skills,
+        pluginPages,
         refreshBots,
         refreshPipelines,
         refreshKnowledgeBases,
         refreshPlugins,
         refreshMCPServers,
+        refreshSkills,
         refreshAll,
         detailEntityName,
         setDetailEntityName,
-        pendingPluginInstallAction,
-        setPendingPluginInstallAction,
+        extensionsGroupByType,
+        setExtensionsGroupByType,
       }}
     >
       {children}

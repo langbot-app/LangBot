@@ -56,7 +56,16 @@ export function LanguageSelector({
 
     const savedLanguage = localStorage.getItem('langbot_language');
     if (savedLanguage) {
-      i18n.changeLanguage(savedLanguage);
+      // Only switch when the active language actually differs. Calling
+      // i18n.changeLanguage() unconditionally on every mount emits a
+      // `languageChanged` event even when nothing changed, which hands every
+      // useTranslation() consumer a fresh `t` reference and re-runs effects
+      // that depend on `t` (e.g. data refetches). Since this selector mounts
+      // each time the account dropdown opens, that surfaced as a spurious
+      // page "refresh". Guard the call to keep mounts side-effect-free.
+      if (i18n.language !== savedLanguage) {
+        i18n.changeLanguage(savedLanguage);
+      }
       setCurrentLanguage(savedLanguage);
     } else {
       const browserLanguage = navigator.language;

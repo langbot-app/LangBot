@@ -9,11 +9,13 @@ on:
     paths:
       - 'src/langbot/pkg/persistence/**'
       - 'src/langbot/pkg/entity/persistence/**'
+      - 'tests/integration/persistence/**'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'src/langbot/pkg/persistence/**'
       - 'src/langbot/pkg/entity/persistence/**'
+      - 'tests/integration/persistence/**'
 
 jobs:
   test-migrations-sqlite:
@@ -34,52 +36,8 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
-      - name: Test Alembic upgrade (SQLite)
-        run: |
-          uv run python -c "
-          import asyncio
-          from sqlalchemy.ext.asyncio import create_async_engine
-          from langbot.pkg.entity.persistence.base import Base
-          from langbot.pkg.persistence.alembic_runner import run_alembic_upgrade, run_alembic_stamp, get_alembic_current
-
-          async def main():
-              engine = create_async_engine('sqlite+aiosqlite:///test_migrations.db')
-
-              # Create all tables (simulates existing DB)
-              async with engine.begin() as conn:
-                  await conn.run_sync(Base.metadata.create_all)
-
-              # Stamp baseline
-              await run_alembic_stamp(engine, '0001_baseline')
-              rev = await get_alembic_current(engine)
-              assert rev == '0001_baseline', f'Expected 0001_baseline, got {rev}'
-              print(f'Stamped: {rev}')
-
-              # Upgrade to head
-              await run_alembic_upgrade(engine, 'head')
-              rev = await get_alembic_current(engine)
-              print(f'After upgrade: {rev}')
-              assert rev is not None, 'Expected a revision after upgrade'
-
-              # Verify idempotent
-              await run_alembic_upgrade(engine, 'head')
-              rev2 = await get_alembic_current(engine)
-              assert rev2 == rev, f'Expected {rev}, got {rev2}'
-              print(f'Idempotent check passed: {rev2}')
-
-              # Fresh DB: upgrade from scratch
-              engine2 = create_async_engine('sqlite+aiosqlite:///test_migrations_fresh.db')
-              async with engine2.begin() as conn:
-                  await conn.run_sync(Base.metadata.create_all)
-              await run_alembic_upgrade(engine2, 'head')
-              rev3 = await get_alembic_current(engine2)
-              print(f'Fresh DB upgrade: {rev3}')
-              assert rev3 is not None
-
-              print('All SQLite migration tests passed!')
-
-          asyncio.run(main())
-          "
+      - name: Run SQLite migration tests
+        run: uv run pytest tests/integration/persistence/test_migrations.py -q --tb=short
 
   test-migrations-postgres:
     name: Migrations (PostgreSQL)
@@ -114,58 +72,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
-      - name: Test Alembic upgrade (PostgreSQL)
-        run: |
-          uv run python -c "
-          import asyncio
-          from sqlalchemy.ext.asyncio import create_async_engine
-          from langbot.pkg.entity.persistence.base import Base
-          from langbot.pkg.persistence.alembic_runner import run_alembic_upgrade, run_alembic_stamp, get_alembic_current
-
-          DB_URL = 'postgresql+asyncpg://langbot:langbot@localhost:5432/langbot_test'
-
-          async def main():
-              engine = create_async_engine(DB_URL)
-
-              # Create all tables
-              async with engine.begin() as conn:
-                  await conn.run_sync(Base.metadata.create_all)
-
-              # Stamp baseline
-              await run_alembic_stamp(engine, '0001_baseline')
-              rev = await get_alembic_current(engine)
-              assert rev == '0001_baseline', f'Expected 0001_baseline, got {rev}'
-              print(f'Stamped: {rev}')
-
-              # Upgrade to head
-              await run_alembic_upgrade(engine, 'head')
-              rev = await get_alembic_current(engine)
-              print(f'After upgrade: {rev}')
-              assert rev is not None
-
-              # Verify idempotent
-              await run_alembic_upgrade(engine, 'head')
-              rev2 = await get_alembic_current(engine)
-              assert rev2 == rev, f'Expected {rev}, got {rev2}'
-              print(f'Idempotent check passed: {rev2}')
-
-              # Fresh DB: drop all and upgrade from scratch
-              engine2 = create_async_engine(DB_URL.replace('langbot_test', 'langbot_fresh'))
-
-              # Create fresh database
-              from sqlalchemy import text
-              async with engine.connect() as conn:
-                  await conn.execute(text('COMMIT'))
-                  await conn.execute(text('CREATE DATABASE langbot_fresh'))
-
-              async with engine2.begin() as conn:
-                  await conn.run_sync(Base.metadata.create_all)
-              await run_alembic_upgrade(engine2, 'head')
-              rev3 = await get_alembic_current(engine2)
-              print(f'Fresh DB upgrade: {rev3}')
-              assert rev3 is not None
-
-              print('All PostgreSQL migration tests passed!')
-
-          asyncio.run(main())
-          "
+      - name: Run PostgreSQL migration tests
+        env:
+          TEST_POSTGRES_URL: postgresql+asyncpg://langbot:langbot@localhost:5432/langbot_test
+        run: uv run pytest tests/integration/persistence/test_migrations_postgres.py -q --tb=short

@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { BarChart3 } from 'lucide-react';
 import {
   AreaChart,
   Area,
@@ -33,14 +34,16 @@ export default function TrafficChart({
   const { t } = useTranslation();
 
   const chartData = useMemo(() => {
-    if (!messages.length && !llmCalls.length) {
+    const safeMessages = Array.isArray(messages) ? messages : [];
+    const safeLlmCalls = Array.isArray(llmCalls) ? llmCalls : [];
+    if (!safeMessages.length && !safeLlmCalls.length) {
       return [];
     }
 
     // Combine all timestamps and find the range
     const allTimestamps = [
-      ...messages.map((m) => m.timestamp.getTime()),
-      ...llmCalls.map((c) => c.timestamp.getTime()),
+      ...safeMessages.map((m) => m.timestamp.getTime()),
+      ...safeLlmCalls.map((c) => c.timestamp.getTime()),
     ];
 
     if (allTimestamps.length === 0) return [];
@@ -98,7 +101,7 @@ export default function TrafficChart({
     }
 
     // Count messages per bucket
-    messages.forEach((msg) => {
+    safeMessages.forEach((msg) => {
       const bucket =
         Math.floor(msg.timestamp.getTime() / bucketSize) * bucketSize;
       const point = buckets.get(bucket);
@@ -108,7 +111,7 @@ export default function TrafficChart({
     });
 
     // Count LLM calls per bucket
-    llmCalls.forEach((call) => {
+    safeLlmCalls.forEach((call) => {
       const bucket =
         Math.floor(call.timestamp.getTime() / bucketSize) * bucketSize;
       const point = buckets.get(bucket);
@@ -146,14 +149,7 @@ export default function TrafficChart({
           {t('monitoring.trafficChart.title')}
         </h3>
         <div className="h-[300px] flex flex-col items-center justify-center text-muted-foreground gap-2">
-          <svg
-            className="h-[3rem] w-[3rem]"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="currentColor"
-          >
-            <path d="M2 13H8V21H2V13ZM16 8H22V21H16V8ZM9 3H15V21H9V3ZM4 15V19H6V15H4ZM11 5V19H13V5H11ZM18 10V19H20V10H18Z"></path>
-          </svg>
+          <BarChart3 className="h-[3rem] w-[3rem]" />
           <div className="text-sm">{t('monitoring.trafficChart.noData')}</div>
         </div>
       </div>

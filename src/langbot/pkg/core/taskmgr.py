@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import typing
 import datetime
+import time
 
 from . import app
 from . import entities as core_entities
@@ -119,6 +120,7 @@ class TaskWrapper:
         self.label = label if label != '' else name
         self.task.set_name(name)
         self.scopes = scopes
+        self.created_at = time.time()
 
     def assume_exception(self):
         try:
@@ -154,6 +156,7 @@ class TaskWrapper:
             'name': self.name,
             'label': self.label,
             'scopes': [scope.value for scope in self.scopes],
+            'created_at': self.created_at,
             'task_context': self.task_context.to_dict(),
             'runtime': {
                 'done': self.task.done(),
@@ -193,6 +196,8 @@ class AsyncTaskManager:
     ) -> TaskWrapper:
         wrapper = TaskWrapper(self.ap, coro, task_type, kind, name, label, context, scopes)
         self.tasks.append(wrapper)
+        wrapper.task.add_done_callback(lambda _: self._prune_completed_tasks())
+        self._prune_completed_tasks()
         return wrapper
 
     def create_user_task(
@@ -226,6 +231,15 @@ class AsyncTaskManager:
             'id_index': TaskWrapper._id_index,
         }
 
+    def get_stats(self) -> dict:
+        completed = sum(1 for t in self.tasks if t.task.done())
+        return {
+            'total': len(self.tasks),
+            'running': len(self.tasks) - completed,
+            'completed': completed,
+            'id_index': TaskWrapper._id_index,
+        }
+
     def get_task_by_id(self, id: int) -> TaskWrapper | None:
         for t in self.tasks:
             if t.id == id:
@@ -243,3 +257,27 @@ class AsyncTaskManager:
                 if not wrapper.task.done():
                     wrapper.task.cancel()
                 return
+
+    def _prune_completed_tasks(self):
+        completed_limit = (
+            self.ap.instance_config.data.get('system', {})
+            .get('task_retention', {})
+            .get(
+                'completed_limit',
+                200,
+            )
+        )
+        try:
+            completed_limit = int(completed_limit)
+        except (TypeError, ValueError):
+            completed_limit = 200
+        if completed_limit < 1:
+            completed_limit = 1
+
+        completed_tasks = [wrapper for wrapper in self.tasks if wrapper.task.done()]
+        overflow = len(completed_tasks) - completed_limit
+        if overflow <= 0:
+            return
+
+        remove_ids = {wrapper.id for wrapper in completed_tasks[:overflow]}
+        self.tasks = [wrapper for wrapper in self.tasks if wrapper.id not in remove_ids]

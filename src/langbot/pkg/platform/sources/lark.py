@@ -18,21 +18,18 @@ import os
 import mimetypes
 
 from langbot.pkg.utils import httpclient
-from langbot.pkg.platform import custom_events
 import lark_oapi.ws.exception
 import quart
 from lark_oapi.api.im.v1 import *
 import pydantic
 from lark_oapi.api.cardkit.v1 import *
 from lark_oapi.api.auth.v3 import *
-from lark_oapi.api.contact.v3 import GetUserRequest, GetUserResponse
 from lark_oapi.core.model import *
 
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
-import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
 
 
@@ -707,22 +704,9 @@ class LarkEventConverter(abstract_platform_adapter.AbstractEventConverter):
 
     @staticmethod
     async def target2yiri(
-        event: lark_oapi.im.v1.P2ImMessageReceiveV1,
-        api_client: lark_oapi.Client,
-        adapter: LarkAdapter | None = None,
+        event: lark_oapi.im.v1.P2ImMessageReceiveV1, api_client: lark_oapi.Client
     ) -> platform_events.Event:
         message_chain = await LarkMessageConverter.target2yiri(event.event.message, api_client)
-        sender_id = event.event.sender.sender_id
-        sender_open_id = getattr(sender_id, 'open_id', '')
-        sender_union_id = getattr(sender_id, 'union_id', '')
-        sender_user_id = getattr(sender_id, 'user_id', '')
-        sender_primary_id = sender_open_id or sender_user_id or sender_union_id
-        sender_name = sender_union_id or sender_user_id or sender_open_id
-
-        if adapter is not None:
-            resolved_name = await adapter.resolve_event_sender_name(event)
-            if resolved_name:
-                sender_name = resolved_name
 
         # Check for quote/reply message
         # Extract files/images/voice from quote and add them as top-level components
@@ -752,8 +736,8 @@ class LarkEventConverter(abstract_platform_adapter.AbstractEventConverter):
         if event.event.message.chat_type == 'p2p':
             return platform_events.FriendMessage(
                 sender=platform_entities.Friend(
-                    id=sender_primary_id,
-                    nickname=sender_name,
+                    id=event.event.sender.sender_id.open_id,
+                    nickname=event.event.sender.sender_id.union_id,
                     remark='',
                 ),
                 message_chain=message_chain,
@@ -761,21 +745,14 @@ class LarkEventConverter(abstract_platform_adapter.AbstractEventConverter):
                 source_platform_object=event,
             )
         elif event.event.message.chat_type == 'group':
-            group_id = event.event.message.chat_id
-            group_name = ''
-            if adapter is not None:
-                resolved_group_name = await adapter.resolve_chat_name(group_id, event)
-                if resolved_group_name:
-                    group_name = resolved_group_name
-
             return platform_events.GroupMessage(
                 sender=platform_entities.GroupMember(
-                    id=sender_primary_id,
-                    member_name=sender_name,
+                    id=event.event.sender.sender_id.open_id,
+                    member_name=event.event.sender.sender_id.union_id,
                     permission=platform_entities.Permission.Member,
                     group=platform_entities.Group(
-                        id=group_id,
-                        name=group_name,
+                        id=event.event.message.chat_id,
+                        name='',
                         permission=platform_entities.Permission.Member,
                     ),
                     special_title='',
@@ -788,12 +765,6 @@ class LarkEventConverter(abstract_platform_adapter.AbstractEventConverter):
 
 CARD_ID_CACHE_SIZE = 500
 CARD_ID_CACHE_MAX_LIFETIME = 20 * 60  # 20分钟
-USER_NAME_CACHE_SIZE = 2000
-USER_NAME_CACHE_MAX_LIFETIME = 24 * 60 * 60  # 24小时
-CHAT_NAME_CACHE_SIZE = 1000
-CHAT_NAME_CACHE_MAX_LIFETIME = 24 * 60 * 60  # 24小时
-MESSAGE_RECALL_CACHE_SIZE = 4000
-MESSAGE_RECALL_CACHE_MAX_LIFETIME = 24 * 60 * 60
 
 
 class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
@@ -829,33 +800,17 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     app_access_token: str = None  # 商店应用用到
     app_access_token_expire_at: int = None
     tenant_access_tokens: dict[str, dict[str, str]] = {}  # 租户access_token映射
-    user_name_cache: dict[str, dict[str, typing.Any]] = {}
-    chat_name_cache: dict[str, dict[str, typing.Any]] = {}
-    message_recall_cache: dict[str, dict[str, typing.Any]] = {}
 
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger, **kwargs):
         quart_app = quart.Quart(__name__)
 
         async def on_message(event: lark_oapi.im.v1.P2ImMessageReceiveV1):
-            lb_event = await self.event_converter.target2yiri(event, self.api_client, self)
-            self._cache_message_for_recall(lb_event)
+            lb_event = await self.event_converter.target2yiri(event, self.api_client)
 
-            if lb_event.__class__ in self.listeners:
-                await self.listeners[lb_event.__class__](lb_event, self)
-
-        async def on_message_recalled(event: lark_oapi.im.v1.P2ImMessageRecalledV1):
-            recalled_event = self._build_recalled_platform_event(event)
-            if recalled_event is None:
-                return
-
-            if recalled_event.__class__ in self.listeners:
-                await self.listeners[recalled_event.__class__](recalled_event, self)
+            await self.listeners[type(lb_event)](lb_event, self)
 
         def sync_on_message(event: lark_oapi.im.v1.P2ImMessageReceiveV1):
             asyncio.create_task(on_message(event))
-
-        def sync_on_message_recalled(event: lark_oapi.im.v1.P2ImMessageRecalledV1):
-            asyncio.create_task(on_message_recalled(event))
 
         def sync_on_card_action(event):
             try:
@@ -920,14 +875,14 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         event_handler = (
             lark_oapi.EventDispatcherHandler.builder('', '')
             .register_p2_im_message_receive_v1(sync_on_message)
-            .register_p2_im_message_recalled_v1(sync_on_message_recalled)
             .register_p2_card_action_trigger(sync_on_card_action)
             .build()
         )
 
         bot_account_id = config['bot_name']
 
-        bot = lark_oapi.ws.Client(config['app_id'], config['app_secret'], event_handler=event_handler)
+        domain = self._resolve_domain(config)
+        bot = lark_oapi.ws.Client(config['app_id'], config['app_secret'], event_handler=event_handler, domain=domain)
         api_client = self.build_api_client(config)
         cipher = AESCipher(config.get('encrypt-key', ''))
         self.request_app_ticket(api_client, config)
@@ -946,138 +901,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             api_client=api_client,
             bot_account_id=bot_account_id,
             cipher=cipher,
-            user_name_cache={},
-            chat_name_cache={},
-            message_recall_cache={},
             **kwargs,
-        )
-
-    @staticmethod
-    def _get_chat_id_from_source_event(message_event: platform_events.MessageEvent) -> str:
-        source_obj = getattr(message_event, 'source_platform_object', None)
-        if source_obj is None:
-            return ''
-
-        try:
-            return str(source_obj.event.message.chat_id).strip()
-        except Exception:
-            return ''
-
-    def _cleanup_message_recall_cache(self) -> None:
-        now_ts = time.time()
-        expired_keys = [
-            key
-            for key, item in self.message_recall_cache.items()
-            if now_ts - float(item.get('created_at', now_ts)) > MESSAGE_RECALL_CACHE_MAX_LIFETIME
-        ]
-        for key in expired_keys:
-            self.message_recall_cache.pop(key, None)
-
-        if len(self.message_recall_cache) <= MESSAGE_RECALL_CACHE_SIZE:
-            return
-
-        sorted_items = sorted(
-            self.message_recall_cache.items(),
-            key=lambda kv: float(kv[1].get('created_at', now_ts)),
-        )
-        overflow_count = len(self.message_recall_cache) - MESSAGE_RECALL_CACHE_SIZE
-        for key, _ in sorted_items[:overflow_count]:
-            self.message_recall_cache.pop(key, None)
-
-    def _cache_message_for_recall(self, message_event: platform_events.Event) -> None:
-        if not isinstance(message_event, (platform_events.FriendMessage, platform_events.GroupMessage)):
-            return
-
-        message_id = str(message_event.message_chain.message_id).strip()
-        if not message_id or message_id == '-1':
-            return
-
-        if isinstance(message_event, platform_events.GroupMessage):
-            launcher_type = provider_session.LauncherTypes.GROUP
-            launcher_id = message_event.group.id
-            sender_id = message_event.sender.id
-            chat_id = str(message_event.group.id)
-        else:
-            launcher_type = provider_session.LauncherTypes.PERSON
-            launcher_id = message_event.sender.id
-            sender_id = message_event.sender.id
-            chat_id = self._get_chat_id_from_source_event(message_event)
-
-        self.message_recall_cache[message_id] = {
-            'created_at': time.time(),
-            'launcher_type': launcher_type,
-            'launcher_id': str(launcher_id),
-            'sender_id': str(sender_id),
-            'chat_id': chat_id,
-            'message_event': message_event,
-        }
-        self._cleanup_message_recall_cache()
-
-    @staticmethod
-    def _parse_recall_time(recall_time_raw: typing.Any) -> datetime.datetime:
-        recall_time_text = str(recall_time_raw or '').strip()
-        if not recall_time_text:
-            return datetime.datetime.now()
-
-        try:
-            ts = float(recall_time_text)
-            if ts > 1e12:
-                ts = ts / 1000.0
-            return datetime.datetime.fromtimestamp(ts)
-        except Exception:
-            pass
-
-        try:
-            return datetime.datetime.fromisoformat(recall_time_text)
-        except Exception:
-            return datetime.datetime.now()
-
-    def _build_recalled_platform_event(
-        self, recalled_event: lark_oapi.api.im.v1.P2ImMessageRecalledV1
-    ) -> custom_events.MessageRecalled | None:
-        event_data = getattr(recalled_event, 'event', None)
-        if event_data is None:
-            return None
-
-        message_id = str(getattr(event_data, 'message_id', '')).strip()
-        if not message_id:
-            return None
-
-        chat_id = str(getattr(event_data, 'chat_id', '')).strip()
-        cached = self.message_recall_cache.pop(message_id, None)
-        if cached is None and chat_id:
-            fallback_candidates = [
-                item for item in self.message_recall_cache.values() if str(item.get('chat_id', '')).strip() == chat_id
-            ]
-            if fallback_candidates:
-                cached = max(fallback_candidates, key=lambda item: float(item.get('created_at', 0.0)))
-        if cached is None:
-            return None
-
-        recall_time = str(getattr(event_data, 'recall_time', '')).strip()
-        recall_type = str(getattr(event_data, 'recall_type', '')).strip()
-        chat_id = chat_id or str(cached.get('chat_id', '')).strip()
-        recall_dt = self._parse_recall_time(recall_time)
-        recall_chain = platform_message.MessageChain([platform_message.Source(id=message_id, time=recall_dt)])
-
-        launcher_type = cached.get('launcher_type')
-        if not isinstance(launcher_type, provider_session.LauncherTypes):
-            return None
-
-        original_event = cached.get('message_event')
-        if not isinstance(original_event, platform_events.MessageEvent):
-            return None
-
-        return custom_events.MessageRecalled(
-            message_id=message_id,
-            chat_id=chat_id,
-            recall_time=recall_time,
-            recall_type=recall_type,
-            launcher_type=launcher_type,
-            launcher_id=str(cached.get('launcher_id', '')),
-            sender_id=str(cached.get('sender_id', '')),
-            message_event=original_event,
-            message_chain=recall_chain,
         )
 
     def request_app_ticket(self, api_client, config):
@@ -1191,184 +1015,30 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         return None
 
+    @staticmethod
+    def _resolve_domain(config) -> str:
+        domain = config.get('domain', lark_oapi.FEISHU_DOMAIN)
+        if domain == 'custom':
+            domain = config.get('custom_domain', '')
+            if not domain:
+                raise ValueError('Custom domain is required when domain is set to "custom"')
+        return domain.rstrip('/')
+
     def build_api_client(self, config):
         app_id = config['app_id']
         app_secret = config['app_secret']
-        api_client = lark_oapi.Client.builder().app_id(app_id).app_secret(app_secret).build()
+        domain = self._resolve_domain(config)
+        api_client = lark_oapi.Client.builder().app_id(app_id).app_secret(app_secret).domain(domain).build()
         if 'isv' == config.get('app_type', 'self'):
             api_client = (
-                lark_oapi.Client.builder().app_id(app_id).app_secret(app_secret).app_type(lark_oapi.AppType.ISV).build()
+                lark_oapi.Client.builder()
+                .app_id(app_id)
+                .app_secret(app_secret)
+                .app_type(lark_oapi.AppType.ISV)
+                .domain(domain)
+                .build()
             )
         return api_client
-
-    def _get_cached_user_name(self, id_type: str, id_value: str) -> str | None:
-        cache_key = f'{id_type}:{id_value}'
-        cache_item = self.user_name_cache.get(cache_key)
-        if cache_item is None:
-            return None
-
-        expire_at = cache_item.get('expire_at', 0)
-        if int(time.time()) >= expire_at:
-            self.user_name_cache.pop(cache_key, None)
-            return None
-
-        cached_name = cache_item.get('name')
-        if isinstance(cached_name, str) and cached_name:
-            return cached_name
-        return None
-
-    def _set_cached_user_name(self, id_map: dict[str, str], user_name: str):
-        if not user_name:
-            return
-
-        # Avoid unbounded memory growth when running for a long time.
-        if len(self.user_name_cache) > USER_NAME_CACHE_SIZE:
-            self.user_name_cache.clear()
-
-        expire_at = int(time.time()) + USER_NAME_CACHE_MAX_LIFETIME
-        for id_type, id_value in id_map.items():
-            if not isinstance(id_value, str) or not id_value:
-                continue
-            self.user_name_cache[f'{id_type}:{id_value}'] = {
-                'name': user_name,
-                'expire_at': expire_at,
-            }
-
-    def _get_cached_chat_name(self, chat_id: str) -> str | None:
-        cache_item = self.chat_name_cache.get(chat_id)
-        if cache_item is None:
-            return None
-
-        expire_at = cache_item.get('expire_at', 0)
-        if int(time.time()) >= expire_at:
-            self.chat_name_cache.pop(chat_id, None)
-            return None
-
-        cached_name = cache_item.get('name')
-        if isinstance(cached_name, str) and cached_name:
-            return cached_name
-        return None
-
-    def _set_cached_chat_name(self, chat_id: str, chat_name: str):
-        if not chat_id or not chat_name:
-            return
-
-        if len(self.chat_name_cache) > CHAT_NAME_CACHE_SIZE:
-            self.chat_name_cache.clear()
-
-        self.chat_name_cache[chat_id] = {
-            'name': chat_name,
-            'expire_at': int(time.time()) + CHAT_NAME_CACHE_MAX_LIFETIME,
-        }
-
-    def _build_request_option(self, tenant_key: str | None) -> RequestOption:
-        app_access_token = self.get_app_access_token()
-        tenant_access_token = self.get_tenant_access_token(tenant_key)
-        return (
-            RequestOption.builder()
-            .app_ticket(self.app_ticket)
-            .tenant_key(tenant_key)
-            .app_access_token(app_access_token)
-            .tenant_access_token(tenant_access_token)
-            .build()
-        )
-
-    async def resolve_event_sender_name(self, event: lark_oapi.im.v1.P2ImMessageReceiveV1) -> str | None:
-        sender = getattr(getattr(event, 'event', None), 'sender', None)
-        sender_id = getattr(sender, 'sender_id', None)
-        if sender_id is None:
-            return None
-
-        id_map: dict[str, str] = {}
-        for id_type in ('open_id', 'user_id', 'union_id'):
-            value = getattr(sender_id, id_type, None)
-            if isinstance(value, str) and value:
-                id_map[id_type] = value
-
-        if not id_map:
-            return None
-
-        for id_type in ('open_id', 'user_id', 'union_id'):
-            id_value = id_map.get(id_type)
-            if not id_value:
-                continue
-            cached_name = self._get_cached_user_name(id_type, id_value)
-            if cached_name:
-                return cached_name
-
-        tenant_key = getattr(getattr(event, 'header', None), 'tenant_key', None)
-        if not tenant_key:
-            tenant_key = self.lark_tenant_key or self.config.get('lark_tenant_key') or None
-
-        req_opt = self._build_request_option(tenant_key)
-
-        for query_id_type in ('open_id', 'user_id', 'union_id'):
-            query_id = id_map.get(query_id_type)
-            if not query_id:
-                continue
-
-            try:
-                request: GetUserRequest = (
-                    GetUserRequest.builder().user_id_type(query_id_type).user_id(str(query_id)).build()
-                )
-                response: GetUserResponse = self.api_client.contact.v3.user.get(request, req_opt)
-
-                if not response.success():
-                    continue
-
-                user = response.data.user if response.data else None
-                if user is None:
-                    continue
-
-                user_name = (getattr(user, 'name', None) or getattr(user, 'nickname', None) or '').strip()
-                if not user_name:
-                    continue
-
-                resolved_id_map = {
-                    'open_id': getattr(user, 'open_id', None) or id_map.get('open_id', ''),
-                    'user_id': getattr(user, 'user_id', None) or id_map.get('user_id', ''),
-                    'union_id': getattr(user, 'union_id', None) or id_map.get('union_id', ''),
-                }
-                self._set_cached_user_name(resolved_id_map, user_name)
-                return user_name
-            except Exception:
-                continue
-
-        return None
-
-    async def resolve_chat_name(
-        self, chat_id: str, event: lark_oapi.im.v1.P2ImMessageReceiveV1 | None = None
-    ) -> str | None:
-        if not chat_id:
-            return None
-
-        cached_name = self._get_cached_chat_name(chat_id)
-        if cached_name:
-            return cached_name
-
-        tenant_key = None
-        if event is not None:
-            tenant_key = getattr(getattr(event, 'header', None), 'tenant_key', None)
-        if not tenant_key:
-            tenant_key = self.lark_tenant_key or self.config.get('lark_tenant_key') or None
-
-        req_opt = self._build_request_option(tenant_key)
-
-        try:
-            request: GetChatRequest = GetChatRequest.builder().chat_id(str(chat_id)).build()
-            response: GetChatResponse = self.api_client.im.v1.chat.get(request, req_opt)
-            if not response.success():
-                return None
-
-            chat = response.data.chat if response.data else None
-            chat_name = (getattr(chat, 'name', None) or '').strip() if chat else ''
-            if not chat_name:
-                return None
-
-            self._set_cached_chat_name(chat_id, chat_name)
-            return chat_name
-        except Exception:
-            return None
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         # Map generic target types used by plugin/runtime to Lark receive_id_type.
@@ -1392,7 +1062,6 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 f'Supported values: {", ".join(receive_id_type_map.keys())}'
             )
 
-        # Build Lark message payloads with the same converter used by reply paths.
         text_elements, media_items = await self.message_converter.yiri2target(message, self.api_client)
 
         tenant_key = self.lark_tenant_key or self.config.get('lark_tenant_key') or None
@@ -1422,7 +1091,6 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 .build()
             )
 
-            # Use sync SDK call here for compatibility with current lark-oapi usage in this adapter.
             response: CreateMessageResponse = self.api_client.im.v1.message.create(request, req_opt)
             if not response.success():
                 raise Exception(
@@ -1431,9 +1099,10 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     f'{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
                 )
 
-        # Send text payload first.
+        # Send text message if there are text elements
         if text_elements:
             needs_post = any(ele['tag'] == 'at' for paragraph in text_elements for ele in paragraph)
+
             if needs_post:
                 await send_create_message(
                     'post',
@@ -1445,14 +1114,14 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     },
                 )
             else:
-                text_parts = []
+                parts = []
                 for paragraph in text_elements:
                     para_text = ''.join(ele.get('text', '') for ele in paragraph)
                     if para_text:
-                        text_parts.append(para_text)
-                await send_create_message('text', {'text': '\n\n'.join(text_parts)})
+                        parts.append(para_text)
+                await send_create_message('text', {'text': '\n\n'.join(parts)})
 
-        # Send each media payload separately.
+        # Send media messages separately (image, audio, file, etc.)
         for media in media_items:
             await send_create_message(media['msg_type'], media['content'])
 
@@ -1997,7 +1666,6 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             elif 'app_ticket' == type:
                 self.app_ticket = context.event['app_ticket']
             elif 'im.message.receive_v1' == type:
-                event = None
                 try:
                     p2v1 = P2ImMessageReceiveV1()
                     p2v1.header = context.header
@@ -2006,31 +1674,12 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     event.sender = EventSender(context.event['sender'])
                     p2v1.event = event
                     p2v1.schema = context.schema
-                    event = await self.event_converter.target2yiri(p2v1, self.api_client, self)
-                    self._cache_message_for_recall(event)
+                    event = await self.event_converter.target2yiri(p2v1, self.api_client)
                 except Exception:
                     await self.logger.error(f'Error in lark callback: {traceback.format_exc()}')
 
-                if event is not None and event.__class__ in self.listeners:
+                if event.__class__ in self.listeners:
                     await self.listeners[event.__class__](event, self)
-            elif 'im.message.recalled_v1' == type:
-                try:
-                    recalled_event = P2ImMessageRecalledV1()
-                    recalled_event.header = context.header
-                    recalled_data = P2ImMessageRecalledV1Data()
-                    recalled_data.message_id = context.event.get('message_id')
-                    recalled_data.chat_id = context.event.get('chat_id')
-                    recalled_data.recall_time = context.event.get('recall_time')
-                    recalled_data.recall_type = context.event.get('recall_type')
-                    recalled_event.event = recalled_data
-                    recalled_event.schema = context.schema
-
-                    event = self._build_recalled_platform_event(recalled_event)
-                    if event is not None and event.__class__ in self.listeners:
-                        await self.listeners[event.__class__](event, self)
-                except Exception:
-                    await self.logger.error(f'Error in lark callback: {traceback.format_exc()}')
-
             elif 'card.action.trigger' == type:
                 try:
                     event_data = data.get('event', {})

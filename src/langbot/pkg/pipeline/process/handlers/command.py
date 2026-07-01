@@ -4,6 +4,7 @@ import typing
 
 from .. import handler
 from ... import entities
+from ... import plugin_diagnostics
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -52,6 +53,13 @@ class CommandHandler(handler.MessageHandler):
         if event_ctx.is_prevented_default():
             if event_ctx.event.reply_message_chain is not None:
                 mc = event_ctx.event.reply_message_chain
+                plugin_diagnostics.record_pending_plugin_response_source(
+                    query,
+                    mc,
+                    plugin_diagnostics.get_response_sources(event_ctx),
+                    plugin_diagnostics.get_emitted_plugins(event_ctx),
+                    event.event_name,
+                )
 
                 query.resp_messages.append(mc)
 

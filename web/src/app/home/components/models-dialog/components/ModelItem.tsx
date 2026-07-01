@@ -31,6 +31,7 @@ interface ModelItemProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    contextLength?: number | null,
   ) => Promise<void>;
   onTestModel: (
     name: string,
@@ -46,10 +47,25 @@ interface ModelItemProps {
 function convertExtraArgsToArray(extraArgs?: object): ExtraArg[] {
   if (!extraArgs) return [];
   return Object.entries(extraArgs).map(([key, value]) => {
-    let type: 'string' | 'number' | 'boolean' = 'string';
-    if (typeof value === 'number') type = 'number';
-    else if (typeof value === 'boolean') type = 'boolean';
-    return { key, type, value: String(value) };
+    let type: ExtraArg['type'] = 'string';
+    let stringValue: string;
+    if (typeof value === 'number') {
+      type = 'number';
+      stringValue = String(value);
+    } else if (typeof value === 'boolean') {
+      type = 'boolean';
+      stringValue = String(value);
+    } else if (
+      value !== null &&
+      typeof value === 'object' &&
+      !Array.isArray(value)
+    ) {
+      type = 'object';
+      stringValue = JSON.stringify(value, null, 2);
+    } else {
+      stringValue = String(value);
+    }
+    return { key, type, value: stringValue };
   });
 }
 
@@ -77,6 +93,11 @@ export default function ModelItem({
   const [editAbilities, setEditAbilities] = useState<string[]>(
     modelType === 'llm' ? (model as LLMModel).abilities || [] : [],
   );
+  const [editContextLength, setEditContextLength] = useState(
+    modelType === 'llm' && (model as LLMModel).context_length
+      ? String((model as LLMModel).context_length)
+      : '',
+  );
   const [editExtraArgs, setEditExtraArgs] = useState<ExtraArg[]>(
     convertExtraArgsToArray(model.extra_args),
   );
@@ -91,13 +112,27 @@ export default function ModelItem({
       setEditAbilities(
         modelType === 'llm' ? (model as LLMModel).abilities || [] : [],
       );
+      setEditContextLength(
+        modelType === 'llm' && (model as LLMModel).context_length
+          ? String((model as LLMModel).context_length)
+          : '',
+      );
       setEditExtraArgs(convertExtraArgsToArray(model.extra_args));
       onResetTestResult();
     }
   }, [isEditOpen]);
 
   const handleSave = async () => {
-    await onUpdateModel(editName, editAbilities, editExtraArgs);
+    const parsedContextLength =
+      modelType === 'llm' && editContextLength.trim()
+        ? Number(editContextLength.trim())
+        : null;
+    await onUpdateModel(
+      editName,
+      editAbilities,
+      editExtraArgs,
+      parsedContextLength,
+    );
   };
 
   const handleTest = async () => {
@@ -209,7 +244,16 @@ export default function ModelItem({
           )}
         </div>
       </PopoverTrigger>
-      <PopoverContent className="w-80" align="start">
+      <PopoverContent
+        className="w-80 max-h-[70vh] overflow-y-auto overscroll-none focus:outline-none focus-visible:outline-none focus-visible:ring-0"
+        align="start"
+        collisionPadding={16}
+        style={{
+          maxHeight: 'min(70vh, var(--radix-popover-content-available-height))',
+        }}
+        onWheel={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
+      >
         <div className="space-y-3">
           <div className="space-y-2">
             <Label>{t('models.modelName')}</Label>
@@ -260,6 +304,25 @@ export default function ModelItem({
                   </Label>
                 </div>
               </div>
+            </div>
+          )}
+
+          {modelType === 'llm' && (
+            <div className="space-y-2">
+              <Label htmlFor={`edit-context-length-${model.uuid}`}>
+                {t('models.contextLength')}
+              </Label>
+              <Input
+                id={`edit-context-length-${model.uuid}`}
+                type="number"
+                min={1}
+                step={1}
+                inputMode="numeric"
+                placeholder={t('models.contextLengthPlaceholder')}
+                value={editContextLength}
+                disabled={isLangBotModels}
+                onChange={(e) => setEditContextLength(e.target.value)}
+              />
             </div>
           )}
 

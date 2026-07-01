@@ -1,0 +1,23 @@
+id: aiosqlite-connect-hangs
+title: "aiosqlite connect hangs before ledger pytest starts"
+category: env_issue
+symptoms:
+  - "AgentRunner ledger pytest probe times out after collecting tests but before reporting a test result."
+  - "pytest stdout stops at a line like tests/unit_tests/agent/test_run_ledger_store.py."
+  - "A direct aiosqlite.connect(':memory:') script prints its first line and then hangs."
+patterns:
+  - "pytest timed out after"
+  - "tests/unit_tests/agent/test_run_ledger_store.py"
+  - "aiosqlite.connect"
+likely_causes:
+  - "The current execution environment cannot complete aiosqlite connection startup."
+  - "The failure is below LangBot ledger logic when direct aiosqlite connection also hangs."
+  - "Threading and synchronous sqlite can still work, so this is narrower than a general Python or SQLite outage."
+fix_steps:
+  - "Run `rtk bin/lbs test run agent-runner-ledger-invariants` first for fast ledger schema/status coverage that does not use aiosqlite."
+  - "Classify `agent-runner-ledger-concurrency` timeout as env_issue when direct aiosqlite.connect also hangs."
+  - "Retest the async pytest target in an environment where aiosqlite connect completes."
+verification: "A direct aiosqlite.connect(':memory:') script completes, then `rtk bin/lbs test run agent-runner-ledger-concurrency` no longer times out."
+related_cases:
+  - agent-runner-ledger-concurrency
+  - agent-runner-ledger-invariants

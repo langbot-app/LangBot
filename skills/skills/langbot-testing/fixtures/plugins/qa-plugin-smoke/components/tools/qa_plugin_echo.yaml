@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: Tool
+metadata:
+  name: qa_plugin_echo
+  label:
+    en_US: QA Plugin Echo
+    zh_Hans: QA 插件回显
+  description:
+    en_US: Echoes deterministic text with a plugin-specific tool name.
+    zh_Hans: 使用插件专属工具名回显确定性文本。
+spec:
+  parameters:
+    type: object
+    properties:
+      text:
+        type: string
+        description: Text to echo.
+    required:
+      - text
+  llm_prompt: Echo deterministic text with qa-plugin-smoke prefix for plugin tool testing.
+execution:
+  python:
+    path: qa_plugin_echo.py
+    attr: QAPluginEchoTool

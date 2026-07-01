@@ -146,7 +146,12 @@ export default function KBDetailContent({ id }: { id: string }) {
           <h1 className="text-xl font-semibold">
             {t('knowledge.editKnowledgeBase')}
           </h1>
-          <Button type="submit" form="kb-form" disabled={!formDirty}>
+          <Button
+            type="submit"
+            form="kb-form"
+            disabled={!formDirty}
+            className={activeTab !== 'metadata' ? 'invisible' : ''}
+          >
             {t('common.save')}
           </Button>
         </div>

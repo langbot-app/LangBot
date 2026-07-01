@@ -7,6 +7,7 @@ metadata:
     zh_Hans: xAI
   icon: xai.svg
 spec:
+  litellm_provider: openai
   config:
   - name: base_url
     label:
@@ -22,6 +23,7 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "xai xAI x-ai grok Grok 马斯克 musk x.ai 格罗克"
   support_type:
   - llm
   provider_category: manufacturer

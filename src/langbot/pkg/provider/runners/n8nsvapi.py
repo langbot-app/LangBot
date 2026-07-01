@@ -187,6 +187,12 @@ class N8nServiceAPIRunner(runner.RequestRunner):
         if not query.session.using_conversation.uuid:
             query.session.using_conversation.uuid = str(uuid.uuid4())
 
+        # Keep query variables in sync with the generated/new conversation id.
+        # query.variables is later merged into payload and would otherwise
+        # overwrite the generated conversation_id with the stale preprocessor
+        # value (usually None for a new conversation).
+        query.variables['conversation_id'] = query.session.using_conversation.uuid
+
         # 预处理用户消息
         plain_text = await self._preprocess_user_message(query)
 

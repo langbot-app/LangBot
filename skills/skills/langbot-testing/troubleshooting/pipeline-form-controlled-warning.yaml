@@ -1,0 +1,20 @@
+id: pipeline-form-controlled-warning
+title: "Pipeline form input switches from uncontrolled to controlled"
+date: 2026-05-17
+symptoms:
+  - "Browser console shows a React uncontrolled input to controlled input warning."
+  - "The warning appears after opening a pipeline edit page or loading pipeline data."
+patterns:
+  - "A component is changing an uncontrolled input to be controlled"
+  - "PipelineFormComponent"
+likely_causes:
+  - "React Hook Form default values omit string fields that later receive loaded values."
+  - "Input value receives undefined before the backend response arrives."
+fix_steps:
+  - "Initialize pipeline basic fields such as name and description to empty strings."
+  - "When loading backend data, coalesce nullable string values to empty strings."
+  - "Pass value={field.value ?? ''} for text inputs that can render before data loads."
+verification: "Opening the pipeline edit page and AI config produces no uncontrolled/controlled input warning."
+related_cases:
+  - pipeline-debug-chat
+  - local-agent-rag-debug-chat
