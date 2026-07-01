@@ -1,5 +1,5 @@
 id: local-agent-nonstreaming-debug-chat
-title: "Local Agent Debug Chat returns a deterministic non-streaming response"
+title: "Local Agent Debug Chat returns a deterministic response with UI streaming disabled"
 mode: agent-browser
 area: pipeline
 type: regression
@@ -48,14 +48,16 @@ steps:
 checks:
   - "UI: The user message appears in Debug Chat."
   - "UI: A Bot message appears and contains NONSTREAM_OK."
-  - "Logs: Backend completes the request as a normal response rather than only relying on the streaming-completed path."
+  - "UI: The Debug Chat stream switch is disabled for this send path."
+  - "Logs: Backend completes the request without plugin/runtime timeout or frontend streaming UI errors."
   - "Console: No unexpected frontend runtime errors appear during the send/receive path."
 evidence_required:
   - ui
   - console
   - backend_log
 diagnostics:
-  - "If the UI still streams after the switch is disabled, inspect the adapter streaming capability and runner config before diagnosing the model."
+  - "This browser case validates the Debug Chat non-streaming UI delivery path. The runner-internal invoke_llm path is covered by langbot-local-agent component tests using runtime_metadata.streaming_supported=false."
+  - "If the UI still streams after the switch is disabled, inspect the Debug Chat WebSocket stream flag before diagnosing the model."
   - "Use GET /api/v1/pipelines/{uuid} only to confirm the saved runner and model config."
 troubleshooting:
   - local-agent-model-route-unavailable

@@ -18,12 +18,14 @@ import {
   writeResult,
 } from "./lib/langbot-e2e.mjs";
 
-const RUNNER_ID = "local-agent";
+const RUNNER_ID = "plugin:langbot/local-agent/default";
 const SPACE_PROVIDER_UUID = "00000000-0000-0000-0000-000000000000";
 const DEFAULT_PIPELINE_NAME = "Agent QA Local Agent Debug Chat";
 const DEFAULT_LOCAL_PASSWORD = "LangBotE2ELocalPass!2026";
 const DEFAULT_MODEL_TEST_LIMIT = 8;
 const DEFAULT_MODEL_FALLBACK_COUNT = 3;
+const DEFAULT_FAKE_MODEL_UUID = "langbot-e2e-fake-local-agent-model";
+const DEFAULT_FAKE_PROVIDER_NAME = "LangBot E2E Fake OpenAI Provider";
 const caseId = "ensure-local-agent-pipeline";
 
 await loadEnvFiles();
@@ -54,6 +56,7 @@ const result = {
   selected_model_id: "",
   selected_model_name: "",
   fallback_model_ids: [],
+  fake_provider: null,
   model_count: 0,
   space_model_count: 0,
   scanned_space_model_count: 0,
@@ -197,6 +200,20 @@ async function ensureLocalAgentPipeline({
   pipelineName,
   runnerId,
 }) {
+  const fakeProviderBaseUrl =
+    env.LANGBOT_E2E_FAKE_PROVIDER_BASE_URL ||
+    env.LANGBOT_FAKE_PROVIDER_BASE_URL ||
+    "";
+  let fakeModel = null;
+  if (fakeProviderBaseUrl) {
+    fakeModel = await ensureFakeProviderModel({
+      backendUrl,
+      token,
+      baseUrl: fakeProviderBaseUrl,
+    });
+    if (fakeModel.status !== "pass") return fakeModel;
+  }
+
   const [pipelineList, modelList] = await Promise.all([
     apiJson(backendUrl, "/api/v1/pipelines", { token }),
     apiJson(backendUrl, "/api/v1/provider/models/llm", { token }),
@@ -298,10 +315,16 @@ async function ensureLocalAgentPipeline({
       ? pipeline.config
       : {};
   const ai = config.ai && typeof config.ai === "object" ? config.ai : {};
-  const rawExistingLocalAgentConfig =
-    ai["local-agent"] && typeof ai["local-agent"] === "object"
-      ? ai["local-agent"]
+  const runnerConfigs =
+    ai.runner_config && typeof ai.runner_config === "object"
+      ? ai.runner_config
       : {};
+  const rawExistingLocalAgentConfig =
+    runnerConfigs[runnerId] && typeof runnerConfigs[runnerId] === "object"
+      ? runnerConfigs[runnerId]
+      : ai["local-agent"] && typeof ai["local-agent"] === "object"
+        ? ai["local-agent"]
+        : {};
   const existingLocalAgentConfig = rawExistingLocalAgentConfig;
   const existingModel =
     existingLocalAgentConfig.model &&
@@ -310,15 +333,26 @@ async function ensureLocalAgentPipeline({
       : {};
   const requestedModelId =
     env.LANGBOT_LOCAL_AGENT_MODEL_UUID || env.LANGBOT_E2E_MODEL_UUID || "";
-  const selected = await selectWorkingSpaceModel({
-    backendUrl,
-    token,
-    models,
-    skippedModelIds,
-    skippedModelNames,
-    requestedModelId,
-    existingModelId: existingModel.primary || "",
-  });
+  const selected = fakeModel
+    ? {
+        status: "pass",
+        reason: "",
+        selected_model_id: fakeModel.model_uuid,
+        selected_model_name: fakeModel.model_name,
+        fallback_model_ids: [],
+        scanned_space_model_count: 0,
+        tested_model_count: 0,
+        model_tests: [],
+      }
+    : await selectWorkingSpaceModel({
+        backendUrl,
+        token,
+        models,
+        skippedModelIds,
+        skippedModelNames,
+        requestedModelId,
+        existingModelId: existingModel.primary || "",
+      });
   const selectedModelId = selected.selected_model_id || "";
   const localAgentConfig = {
     timeout: 300,
@@ -352,10 +386,12 @@ async function ensureLocalAgentPipeline({
       runner: {
         ...(ai.runner && typeof ai.runner === "object" ? ai.runner : {}),
         id: runnerId,
-        runner: runnerId,
         "expire-time": 0,
       },
-      "local-agent": localAgentConfig,
+      runner_config: {
+        ...runnerConfigs,
+        [runnerId]: localAgentConfig,
+      },
     },
   };
 
@@ -407,8 +443,151 @@ async function ensureLocalAgentPipeline({
     selected_model_id: selectedModelId,
     selected_model_name: selected.selected_model_name,
     fallback_model_ids: selected.fallback_model_ids,
+    fake_provider: fakeModel,
     created,
     updated: true,
+  };
+}
+
+async function ensureFakeProviderModel({ backendUrl, token, baseUrl }) {
+  const modelUuid = env.LANGBOT_E2E_FAKE_MODEL_UUID || DEFAULT_FAKE_MODEL_UUID;
+  const modelName =
+    env.LANGBOT_E2E_FAKE_MODEL_NAME ||
+    env.LANGBOT_FAKE_PROVIDER_MODEL ||
+    env.LANGBOT_FAKE_PROVIDER_MODEL_NAME ||
+    "langbot-e2e-fake-model";
+  const providerName = env.LANGBOT_E2E_FAKE_PROVIDER_NAME || DEFAULT_FAKE_PROVIDER_NAME;
+  const providerRequester = env.LANGBOT_E2E_FAKE_PROVIDER_REQUESTER || "openai-chat-completions";
+  const apiKey = env.LANGBOT_E2E_FAKE_PROVIDER_API_KEY || env.LANGBOT_FAKE_PROVIDER_API_KEY || "fake-key";
+
+  const providersResponse = await apiJson(backendUrl, "/api/v1/provider/providers", { token });
+  if (isApiFailure(providersResponse)) {
+    return {
+      status: "fail",
+      reason: providersResponse.json.msg || "Failed to list providers before creating fake provider.",
+      provider_status: providersResponse.status,
+    };
+  }
+
+  const normalizedBaseUrl = String(baseUrl || "").replace(/\/$/, "");
+  const providers = providersResponse.json.data?.providers || [];
+  let provider = providers.find((item) => item.name === providerName || (
+    item.requester === providerRequester && String(item.base_url || "").replace(/\/$/, "") === normalizedBaseUrl
+  ));
+  const providerBody = {
+    name: providerName,
+    requester: providerRequester,
+    base_url: normalizedBaseUrl,
+    api_keys: [apiKey],
+  };
+
+  if (provider?.uuid) {
+    const updateResponse = await apiJson(backendUrl, `/api/v1/provider/providers/${encodeURIComponent(provider.uuid)}`, {
+      method: "PUT",
+      token,
+      body: providerBody,
+    });
+    if (isApiFailure(updateResponse)) {
+      return {
+        status: "fail",
+        reason: updateResponse.json.msg || "Failed to update fake provider.",
+        provider_status: updateResponse.status,
+      };
+    }
+  } else {
+    const createProviderResponse = await apiJson(backendUrl, "/api/v1/provider/providers", {
+      method: "POST",
+      token,
+      body: providerBody,
+    });
+    if (isApiFailure(createProviderResponse)) {
+      return {
+        status: "fail",
+        reason: createProviderResponse.json.msg || "Failed to create fake provider.",
+        provider_status: createProviderResponse.status,
+      };
+    }
+    provider = { uuid: createProviderResponse.json.data?.uuid || "" };
+  }
+
+  if (!provider?.uuid) {
+    return { status: "fail", reason: "Fake provider did not return a provider uuid." };
+  }
+
+  let resolvedModelUuid = modelUuid;
+  let modelResponse = await apiJson(backendUrl, `/api/v1/provider/models/llm/${encodeURIComponent(modelUuid)}`, {
+    token,
+  });
+  if (modelResponse.status === 404) {
+    const providerModelsResponse = await apiJson(
+      backendUrl,
+      `/api/v1/provider/models/llm?provider_uuid=${encodeURIComponent(provider.uuid)}`,
+      { token },
+    );
+    if (!isApiFailure(providerModelsResponse)) {
+      const existingModel = (providerModelsResponse.json.data?.models || []).find((item) => item.name === modelName);
+      if (existingModel?.uuid) {
+        resolvedModelUuid = existingModel.uuid;
+        modelResponse = await apiJson(backendUrl, `/api/v1/provider/models/llm/${encodeURIComponent(resolvedModelUuid)}`, {
+          token,
+        });
+      }
+    }
+  }
+
+  const modelBody = {
+    name: modelName,
+    provider_uuid: provider.uuid,
+    abilities: ["func_call", "vision"],
+    context_length: 8192,
+    extra_args: {},
+    prefered_ranking: 0,
+  };
+  if (modelResponse.status === 404) {
+    const createModelResponse = await apiJson(backendUrl, "/api/v1/provider/models/llm", {
+      method: "POST",
+      token,
+      body: {
+        uuid: modelUuid,
+        ...modelBody,
+      },
+    });
+    if (isApiFailure(createModelResponse)) {
+      return {
+        status: "fail",
+        reason: createModelResponse.json.msg || "Failed to create fake model.",
+        model_status: createModelResponse.status,
+      };
+    }
+    resolvedModelUuid = createModelResponse.json.data?.uuid || modelUuid;
+  } else if (isApiFailure(modelResponse)) {
+    return {
+      status: "fail",
+      reason: modelResponse.json.msg || "Failed to load fake model.",
+      model_status: modelResponse.status,
+    };
+  } else {
+    const updateModelResponse = await apiJson(backendUrl, `/api/v1/provider/models/llm/${encodeURIComponent(resolvedModelUuid)}`, {
+      method: "PUT",
+      token,
+      body: modelBody,
+    });
+    if (isApiFailure(updateModelResponse)) {
+      return {
+        status: "fail",
+        reason: updateModelResponse.json.msg || "Failed to update fake model.",
+        model_status: updateModelResponse.status,
+      };
+    }
+  }
+
+  return {
+    status: "pass",
+    provider_uuid: provider.uuid,
+    provider_requester: providerRequester,
+    base_url: normalizedBaseUrl,
+    model_uuid: resolvedModelUuid,
+    model_name: modelName,
   };
 }
 

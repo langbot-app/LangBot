@@ -111,13 +111,15 @@ Each probe writes `automation-result.json` and probe logs under
 | Deterministic QA runner install | `agent-runner-live-install` | A local `.lbpkg` AgentRunner package can install and register a runner. |
 | Deterministic QA runner Debug Chat | `agent-runner-qa-debug-chat` | The installed QA runner executes through WebUI Debug Chat without a model provider. |
 | Required runner plugins | `agent-runner-release-preflight` | `langbot/local-agent` and `langbot/acp-agent-runner` are visible to the host. |
-| Required QA plugin tool | `plugin-e2e-smoke`, `agent-runner-release-preflight` | The deterministic `qa_plugin_echo` tool is exposed before tool-loop cases start. |
+| Required QA plugin tools | `plugin-e2e-smoke`, `agent-runner-release-preflight`, `qa-plugin-smoke-live-install` | The deterministic `qa_plugin_echo` and `qa_plugin_fail` tools are exposed before tool-loop and tool-error cases start. |
 | Knowledge base fixture | `langrag-kb-retrieve`, `local-agent-rag-debug-chat` | LangRAG data is queryable and the runner inserts retrieved context. |
 | Effective prompt bridge | `local-agent-effective-prompt-debug-chat` | Host prompt preprocessing reaches the runner. |
 | History and compaction | `local-agent-context-compaction-debug-chat` | Runner-owned history budgeting keeps recoverable older context. |
 | Streaming LLM | `local-agent-basic-debug-chat` | The default streaming path returns a visible answer. |
 | Non-streaming LLM | `local-agent-nonstreaming-debug-chat` | The non-streaming adapter path returns a visible answer. |
 | Plugin tool loop | `local-agent-plugin-tool-call-debug-chat` | Function-call capable models can call host plugin tools through authorization. |
+| Plugin tool error recovery | `local-agent-tool-error-recovery-debug-chat` | Tool execution errors are serialized into model-facing tool results and the model can produce a final answer instead of failing the run. |
+| Parallel plugin tool batch | `local-agent-parallel-tools-rag-compaction-debug-chat` | Local-agent executes multiple same-turn plugin tool calls and returns both results with RAG and compacted history. |
 | MCP registration | `mcp-stdio-register` | The deterministic stdio MCP server is registered and exposes `qa_mcp_echo`. |
 | MCP tool loop | `mcp-stdio-tool-call` | Local-agent can call the registered MCP tool through the same tool loop. |
 | Multimodal input | `local-agent-multimodal-debug-chat` | Image upload and structured input reach the runner. |

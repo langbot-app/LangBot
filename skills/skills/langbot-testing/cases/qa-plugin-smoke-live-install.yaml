@@ -20,14 +20,14 @@ env:
 automation: scripts/e2e/install-qa-plugin-smoke.mjs
 automation_plugin_package: "skills/langbot-testing/fixtures/plugins/qa-plugin-smoke/dist/qa-plugin-smoke-0.1.0.lbpkg"
 automation_expected_plugin_id: "qa/plugin-smoke"
-automation_expected_tool: "qa_plugin_echo"
+automation_expected_tool: "qa_plugin_echo,qa_plugin_fail"
 steps:
   - "Run `rtk bin/lbs test run qa-plugin-smoke-live-install --dry-run` first; remove `--dry-run` only after readiness points at a local test LangBot instance."
   - "Automation authenticates the local test user, uploads the QA plugin smoke .lbpkg package when missing, waits for install, and checks tool exposure."
 checks:
   - "automation-result.json status is pass."
   - "/api/v1/plugins lists qa/plugin-smoke after install."
-  - "/api/v1/tools lists qa_plugin_echo after install."
+  - "/api/v1/tools lists qa_plugin_echo and qa_plugin_fail after install."
 evidence_required:
   - api_diagnostic
   - filesystem
@@ -39,6 +39,7 @@ success_patterns:
 failure_patterns:
   - "Plugin install task did not complete successfully"
   - "qa_plugin_echo is not listed"
+  - "qa_plugin_fail is not listed"
 troubleshooting:
   - plugin-runtime-timeout
   - plugin-dependency-install-offline

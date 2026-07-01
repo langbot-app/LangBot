@@ -125,6 +125,8 @@ function validateCaseItem(root: string, item: StructuredItem, skillNames: Set<st
     ...validateEnvKeyList(item, "setup_provides_env"),
     ...validateEnvKeyScalar(item, "automation_pipeline_url_env"),
     ...validateEnvKeyScalar(item, "automation_pipeline_name_env"),
+    ...validateJsonScalar(item, "automation_runner_config_patch_json"),
+    ...validateJsonScalar(item, "automation_extensions_patch_json"),
     ...validateJsonScalar(item, "automation_filesystem_checks_json"),
     ...validateJsonScalar(item, "metrics_thresholds_json"),
     ...validateJsonScalar(item, "load_profile_json"),

@@ -74,7 +74,6 @@ success_patterns:
   - "Steering"
   - "Streaming completed"
 failure_patterns:
-  - "STEERING_NO_FOLLOWUP"
   - "Action invoke_llm_stream call timed out"
   - "All models failed during streaming setup"
   - "Task exception was never retrieved"

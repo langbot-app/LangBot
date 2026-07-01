@@ -10,7 +10,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CommandContext } from "../src/types.ts";
@@ -56,6 +56,11 @@ import {
   findNewFailureSignal,
   minExpectedOccurrences,
 } from "../scripts/e2e/lib/debug-chat.mjs";
+import {
+  ensureAuthenticatedBrowser,
+  resolveLangBotRepo,
+  scanBrowserDiagnostics,
+} from "../scripts/e2e/lib/langbot-e2e.mjs";
 
 const root = process.cwd();
 
@@ -68,6 +73,148 @@ test("repo root detects the skills tree before generated bin exists", () => {
     writeFileSync(join(tmp, "schemas", "case.schema.json"), "{}");
     assert.equal(repoRoot(join(tmp, "skills", "langbot-testing")), tmp);
   } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("e2e helpers resolve embedded LangBot repo from skills cwd", async () => {
+  const tmp = mkdtempSync(join(tmpdir(), "lbs-langbot-repo-detect-"));
+  try {
+    const repo = join(tmp, "LangBot");
+    const skills = join(repo, "skills");
+    mkdirSync(join(repo, "data"), { recursive: true });
+    mkdirSync(skills, { recursive: true });
+    writeFileSync(
+      join(repo, "data", "config.yaml"),
+      "system:\n  recovery_key: test\n",
+    );
+
+    assert.equal(await resolveLangBotRepo("", skills), repo);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("e2e browser diagnostics fail on console server errors", async () => {
+  const tmp = mkdtempSync(join(tmpdir(), "lbs-browser-diagnostics-"));
+  try {
+    const consoleLog = join(tmp, "console.log");
+    const networkLog = join(tmp, "network.log");
+    writeFileSync(
+      consoleLog,
+      [
+        "[2026-06-30T03:02:49.702+08:00] [error] Failed to load resource: the server responded with a status of 500 ()",
+        "[2026-06-30T03:02:49.703+08:00] [error] Server error: Action list_plugins call timed out",
+      ].join("\n"),
+    );
+    writeFileSync(
+      networkLog,
+      "[2026-06-30T03:02:49.701+08:00] [response] 500 http://127.0.0.1:5300/api/v1/plugins\n",
+    );
+
+    const result = await scanBrowserDiagnostics({ consoleLog, networkLog });
+
+    assert.equal(result.status, "fail");
+    assert.match(result.reason, /Browser diagnostics found/);
+    assert.ok(
+      result.findings.some(
+        (finding: { kind: string }) => finding.kind === "api_server_error",
+      ),
+    );
+    assert.ok(
+      result.findings.some(
+        (finding: { kind: string }) => finding.kind === "http_5xx",
+      ),
+    );
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("e2e helper can inject a local login token into a fresh browser context", async () => {
+  const tmp = mkdtempSync(join(tmpdir(), "lbs-auth-helper-"));
+  const previousFetch = globalThis.fetch;
+  const previousRepo = process.env.LANGBOT_REPO;
+  try {
+    const repo = join(tmp, "LangBot");
+    mkdirSync(join(repo, "data"), { recursive: true });
+    writeFileSync(
+      join(repo, "data", "config.yaml"),
+      "system:\n  recovery_key: recovery-test\n",
+    );
+    process.env.LANGBOT_REPO = repo;
+
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/api/v1/user/reset-password")) {
+        return new Response(JSON.stringify({ code: 0 }), { status: 200 });
+      }
+      if (url.endsWith("/api/v1/user/auth")) {
+        return new Response(
+          JSON.stringify({ code: 0, data: { token: "fresh-token" } }),
+          { status: 200 },
+        );
+      }
+      if (url.endsWith("/api/v1/user/check-token")) {
+        const auth = init?.headers && typeof init.headers === "object"
+          ? (init.headers as Record<string, string>).Authorization
+          : "";
+        return new Response(
+          JSON.stringify({
+            code: auth === "Bearer fresh-token" ? 0 : -1,
+            msg: auth === "Bearer fresh-token" ? "ok" : "missing token",
+          }),
+          { status: auth === "Bearer fresh-token" ? 200 : 401 },
+        );
+      }
+      return new Response(JSON.stringify({ code: -1, msg: "unexpected" }), {
+        status: 404,
+      });
+    }) as typeof fetch;
+
+    let token = "";
+    const page = {
+      addInitScript: async () => {},
+      goto: async () => {},
+      evaluate: async (fn: unknown, arg: string) => {
+        const text = String(fn);
+        if (text.includes("localStorage.setItem")) {
+          token = arg;
+          return undefined;
+        }
+        if (text.includes("localStorage.getItem")) {
+          if (!token) {
+            return {
+              authenticated: false,
+              http_status: 0,
+              code: null,
+              reason: "No localStorage token.",
+            };
+          }
+          return {
+            authenticated: true,
+            http_status: 200,
+            code: 0,
+            reason: "Token accepted by backend.",
+          };
+        }
+        return undefined;
+      },
+    };
+
+    const result = await ensureAuthenticatedBrowser(page, {
+      frontendUrl: "http://127.0.0.1:3000",
+      backendUrl: "http://127.0.0.1:5300",
+      user: "qa@example.invalid",
+      password: "password",
+    });
+
+    assert.equal(result.status, "pass");
+    assert.equal(result.injected, true);
+    assert.equal(token, "fresh-token");
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousRepo === undefined) delete process.env.LANGBOT_REPO;
+    else process.env.LANGBOT_REPO = previousRepo;
     rmSync(tmp, { recursive: true, force: true });
   }
 });
@@ -162,6 +309,88 @@ async function captureAsync(
   } finally {
     console.log = originalLog;
   }
+}
+
+async function startFakeProviderForTest(): Promise<{
+  baseUrl: string;
+  stop: () => Promise<void>;
+}> {
+  const child = spawn(
+    process.execPath,
+    [
+      join(root, "scripts/e2e/fake-openai-provider.mjs"),
+      "--host=127.0.0.1",
+      "--port=0",
+    ],
+    {
+      cwd: root,
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+
+  const started = await new Promise<{ baseUrl: string }>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error("Timed out waiting for fake provider startup."));
+    }, 5000);
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+      const newline = stdout.indexOf("\n");
+      if (newline < 0) return;
+      clearTimeout(timer);
+      try {
+        const payload = JSON.parse(stdout.slice(0, newline));
+        resolve({ baseUrl: payload.base_url });
+      } catch (error) {
+        reject(error);
+      }
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on("exit", (code) => {
+      if (code === null) return;
+      clearTimeout(timer);
+      reject(
+        new Error(`Fake provider exited before startup: ${code}; ${stderr}`),
+      );
+    });
+  });
+
+  return {
+    baseUrl: started.baseUrl,
+    stop: async () => {
+      if (child.exitCode !== null) return;
+      child.kill("SIGTERM");
+      await new Promise<void>((resolve) => child.once("exit", () => resolve()));
+    },
+  };
+}
+
+async function requestFakeProvider(
+  provider: { baseUrl: string },
+  payload: Record<string, unknown>,
+): Promise<Record<string, any>> {
+  const response = await fetch(`${provider.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "langbot-e2e-fake-model",
+      stream: false,
+      ...payload,
+    }),
+  });
+  assert.equal(response.status, 200);
+  return await response.json();
+}
+
+function fakeProviderMessage(json: Record<string, any>): Record<string, any> {
+  return json.choices?.[0]?.message || {};
 }
 
 test("validate accepts the repository assets", () => {
@@ -3208,6 +3437,113 @@ test("local-agent multimodal case exposes image fixture automation defaults", ()
   assert.equal(run.automation.pipeline_env_required, true);
 });
 
+test("fake provider returns IMAGE_OK only when image metadata is present", async () => {
+  const provider = await startFakeProviderForTest();
+  try {
+    const request = async (content: string) => {
+      const json = await requestFakeProvider(provider, {
+        messages: [{ role: "user", content }],
+      });
+      return fakeProviderMessage(json).content;
+    };
+
+    assert.equal(
+      await request(
+        "I attached an image. Reply only IMAGE_OK if you received the image.[Image]",
+      ),
+      "IMAGE_OK",
+    );
+    assert.equal(
+      await request("Say hello for a plain text request."),
+      "OK",
+    );
+  } finally {
+    await provider.stop();
+  }
+});
+
+test("fake provider drives steering through qa_plugin_sleep and follow-up context", async () => {
+  const provider = await startFakeProviderForTest();
+  try {
+    const initial = fakeProviderMessage(
+      await requestFakeProvider(provider, {
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "qa_plugin_sleep",
+              parameters: {
+                type: "object",
+                properties: {
+                  seconds: { type: "number" },
+                  text: { type: "string" },
+                },
+              },
+            },
+          },
+        ],
+        messages: [
+          {
+            role: "user",
+            content:
+              "First call qa_plugin_sleep with text=steering-e2e-anchor. If no follow-up was injected, reply only STEERING_NO_FOLLOWUP.",
+          },
+        ],
+      }),
+    );
+    assert.equal(initial.tool_calls?.[0]?.function?.name, "qa_plugin_sleep");
+    assert.equal(
+      initial.tool_calls?.[0]?.function?.arguments,
+      JSON.stringify({ seconds: 8, text: "steering-e2e-anchor" }),
+    );
+
+    const noFollowup = fakeProviderMessage(
+      await requestFakeProvider(provider, {
+        messages: [
+          {
+            role: "user",
+            content:
+              "First call qa_plugin_sleep with text=steering-e2e-anchor. If no follow-up was injected, reply only STEERING_NO_FOLLOWUP.",
+          },
+          initial,
+          {
+            role: "tool",
+            tool_call_id: "call_qa_plugin_sleep_steering",
+            content: "qa-plugin-smoke:sleep:8:steering-e2e-anchor",
+          },
+        ],
+      }),
+    );
+    assert.equal(noFollowup.content, "STEERING_NO_FOLLOWUP");
+
+    const withFollowup = fakeProviderMessage(
+      await requestFakeProvider(provider, {
+        messages: [
+          {
+            role: "user",
+            content:
+              "First call qa_plugin_sleep with text=steering-e2e-anchor. If no follow-up was injected, reply only STEERING_NO_FOLLOWUP.",
+          },
+          initial,
+          {
+            role: "tool",
+            tool_call_id: "call_qa_plugin_sleep_steering",
+            content: "qa-plugin-smoke:sleep:8:steering-e2e-anchor",
+          },
+          {
+            role: "user",
+            content:
+              "This is a steering follow-up. Return only qa_steering_sentinel_6194.",
+          },
+        ],
+      }),
+    );
+    assert.equal(withFollowup.content, "qa_steering_sentinel_6194");
+  } finally {
+    await provider.stop();
+  }
+});
+
 test("MCP stdio case passes case-specific failure signals to automation defaults", () => {
   const result = capture(() =>
     commandTestRun(
@@ -3227,35 +3563,58 @@ test("MCP stdio case passes case-specific failure signals to automation defaults
 });
 
 test("MCP stdio tool-call case setups pipeline and registered MCP server", () => {
-  const result = capture(() =>
-    commandTestRun(
-      ctx(["test", "run", "mcp-stdio-tool-call", "--dry-run", "--json"]),
-    ),
-  );
-  assert.equal(result.code, 0);
-  const run = JSON.parse(result.output);
-  assert.deepEqual(
-    run.setup_automation.map((item: { entry: string }) => item.entry),
-    [
-      "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env",
-      "case:mcp-stdio-register",
-    ],
-  );
+  withEnv({ LANGBOT_MCP_QA_STDIO_SERVER_UUID: "mcp-server-uuid" }, () => {
+    const result = capture(() =>
+      commandTestRun(
+        ctx(["test", "run", "mcp-stdio-tool-call", "--dry-run", "--json"]),
+      ),
+    );
+    assert.equal(result.code, 0);
+    const run = JSON.parse(result.output);
+    assert.deepEqual(
+      run.setup_automation.map((item: { entry: string }) => item.entry),
+      [
+        "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env",
+        "case:mcp-stdio-register",
+      ],
+    );
+    assert.equal(
+      run.automation.env_defaults.LANGBOT_E2E_EXPECTED_RUNNER_ID,
+      "plugin:langbot/local-agent/default",
+    );
+    assert.equal(run.automation.env_defaults.LANGBOT_E2E_RESET_DEBUG_CHAT, "1");
+    assert.equal(
+      run.automation.env_defaults.LANGBOT_E2E_RESTORE_EXTENSIONS,
+      "1",
+    );
+    assert.deepEqual(
+      JSON.parse(run.automation.env_defaults.LANGBOT_E2E_EXTENSIONS_PATCH_JSON),
+      {
+        enable_all_plugins: false,
+        bound_plugins: [{ author: "langbot", name: "local-agent" }],
+        enable_all_mcp_servers: false,
+        bound_mcp_servers: ["mcp-server-uuid"],
+        enable_all_skills: false,
+        bound_skills: [],
+      },
+    );
 
-  const planResult = capture(() =>
-    commandTestPlan(ctx(["test", "plan", "mcp-stdio-tool-call", "--json"])),
-  );
-  assert.equal(planResult.code, 0);
-  const plan = JSON.parse(planResult.output);
-  assert.deepEqual(plan.setup_provides_env, [
-    "LANGBOT_LOCAL_AGENT_PIPELINE_URL",
-    "LANGBOT_LOCAL_AGENT_PIPELINE_NAME",
-  ]);
-  assert.ok(
-    !plan.preconditions.some((item: string) =>
-      item.includes("points to the local-agent pipeline"),
-    ),
-  );
+    const planResult = capture(() =>
+      commandTestPlan(ctx(["test", "plan", "mcp-stdio-tool-call", "--json"])),
+    );
+    assert.equal(planResult.code, 0);
+    const plan = JSON.parse(planResult.output);
+    assert.deepEqual(plan.setup_provides_env, [
+      "LANGBOT_LOCAL_AGENT_PIPELINE_URL",
+      "LANGBOT_LOCAL_AGENT_PIPELINE_NAME",
+      "LANGBOT_MCP_QA_STDIO_SERVER_UUID",
+    ]);
+    assert.ok(
+      !plan.preconditions.some((item: string) =>
+        item.includes("points to the local-agent pipeline"),
+      ),
+    );
+  });
 });
 
 test("generic pipeline automation can still use the shared pipeline env", () => {

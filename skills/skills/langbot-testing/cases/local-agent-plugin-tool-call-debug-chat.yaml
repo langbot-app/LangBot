@@ -19,6 +19,8 @@ env:
   - LANGBOT_BACKEND_URL
   - LANGBOT_LOCAL_AGENT_PIPELINE_URL
   - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+env_optional:
+  - LANGBOT_E2E_FAKE_PROVIDER_BASE_URL
 automation: scripts/e2e/pipeline-debug-chat.mjs
 automation_env:
   - LANGBOT_FRONTEND_URL
@@ -38,7 +40,7 @@ setup_provides_env:
   - LANGBOT_LOCAL_AGENT_PIPELINE_URL
   - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
 preconditions:
-  - "The selected model route supports function/tool calling."
+  - "The selected model route supports function/tool calling, or LANGBOT_E2E_FAKE_PROVIDER_BASE_URL points to scripts/e2e/fake-openai-provider.mjs."
 steps:
   - "Install or enable the bundled qa-plugin-smoke fixture plugin."
   - "Confirm /api/v1/tools or the plugin detail shows qa_plugin_echo."
@@ -58,6 +60,7 @@ evidence_required:
   - backend_log
   - api_diagnostic
 diagnostics:
+  - "For token-free deterministic UI coverage, start scripts/e2e/fake-openai-provider.mjs and pass LANGBOT_E2E_FAKE_PROVIDER_BASE_URL to this case; setup will bind the local-agent pipeline to that fake OpenAI-compatible model."
   - "If qa_plugin_echo is not listed, rebuild and reinstall the qa-plugin-smoke fixture plugin."
   - "If the selected model returns model_not_found or no available channel only when tools are provided, switch to a known-good function-calling model before diagnosing plugin tools or local-agent."
 troubleshooting:

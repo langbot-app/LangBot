@@ -1,0 +1,103 @@
+id: local-agent-combo-rag-compaction-tool-debug-chat
+title: "Local Agent preserves RAG, compacted history, and plugin tool result in one Debug Chat run"
+mode: agent-browser
+area: pipeline
+type: regression
+priority: p1
+risk: high
+ci_eligible: false
+tags:
+  - local-agent
+  - langrag
+  - context
+  - compaction
+  - plugin
+  - tools
+  - pipeline
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+env_optional:
+  - LANGBOT_E2E_FAKE_PROVIDER_BASE_URL
+automation: scripts/e2e/pipeline-debug-chat.mjs
+automation_env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+  - LANGBOT_LOCAL_AGENT_RAG_KB_UUID
+automation_pipeline_url_env: LANGBOT_LOCAL_AGENT_PIPELINE_URL
+automation_pipeline_name_env: LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_expected_runner_id: "plugin:langbot/local-agent/default"
+automation_runner_config_patch_json: '{"knowledge-bases":["${LANGBOT_LOCAL_AGENT_RAG_KB_UUID}"],"retrieval-top-k":1,"context-window-tokens":650,"context-reserve-tokens":180,"context-keep-recent-tokens":120,"context-summary-tokens":220,"max-tool-iterations":4,"tool-execution-mode":"serial"}'
+automation_extensions_patch_json: '{"enable_all_plugins":false,"bound_plugins":[{"author":"langbot","name":"local-agent"},{"author":"qa","name":"plugin-smoke"}],"enable_all_mcp_servers":false,"bound_mcp_servers":[],"enable_all_skills":false,"bound_skills":[]}'
+automation_restore_runner_config: "1"
+automation_restore_extensions: "1"
+automation_reset_debug_chat: "1"
+automation_debug_chat_session_type: "person"
+automation_expected_text: "COMBO_FINAL qa_combo_compaction_sentinel_2406 azalea-cobalt-7421 qa-plugin-smoke:combo-tool-ok-local-agent"
+automation_response_timeout_ms: "180000"
+automation_prompts_json: '[{"prompt":"请记住这个用于 local-agent 组合回归测试的暗号：qa_combo_compaction_sentinel_2406。请只回复 MEMORY_SET。","expected_text":"MEMORY_SET","response_timeout_ms":"180000"},{"prompt":"下面这轮只用于制造长历史压力，目标标记 RAG_TOOL_COMBO_GOAL 必须被压缩保留。请忽略填充内容，最后只回复 COMBO_CONTEXT_PRESSURE_READY。填充片段 C001 combo context padding. C002 combo context padding. C003 combo context padding. C004 combo context padding. C005 combo context padding. C006 combo context padding. C007 combo context padding. C008 combo context padding. C009 combo context padding. C010 combo context padding. C011 combo context padding. C012 combo context padding. C013 combo context padding. C014 combo context padding. C015 combo context padding. C016 combo context padding. C017 combo context padding. C018 combo context padding. C019 combo context padding. C020 combo context padding. C021 combo context padding. C022 combo context padding. C023 combo context padding. C024 combo context padding. C025 combo context padding. C026 combo context padding. C027 combo context padding. C028 combo context padding. C029 combo context padding. C030 combo context padding. C031 combo context padding. C032 combo context padding. C033 combo context padding. C034 combo context padding. C035 combo context padding. C036 combo context padding. C037 combo context padding. C038 combo context padding. C039 combo context padding. C040 combo context padding.","expected_text":"COMBO_CONTEXT_PRESSURE_READY","response_timeout_ms":"180000"},{"prompt":"qa_combo final check: using the knowledge base, the compacted earlier passcode, and qa_plugin_echo with exactly combo-tool-ok-local-agent, return only COMBO_FINAL plus the passcode, the RAG sentinel, and the plugin tool result.","expected_text":"COMBO_FINAL qa_combo_compaction_sentinel_2406 azalea-cobalt-7421 qa-plugin-smoke:combo-tool-ok-local-agent","response_timeout_ms":"180000"}]'
+setup_automation:
+  - "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env"
+  - "node:scripts/e2e/ensure-langrag-sentinel-kb.mjs --write-env"
+  - "case:qa-plugin-smoke-live-install"
+setup_provides_env:
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+  - LANGBOT_LOCAL_AGENT_RAG_KB_UUID
+preconditions:
+  - "The selected model route supports function/tool calling and deterministic multi-turn answers, or LANGBOT_E2E_FAKE_PROVIDER_BASE_URL points to scripts/e2e/fake-openai-provider.mjs."
+  - "The LangRAG sentinel knowledge base contains azalea-cobalt-7421 and qa-plugin-smoke exposes qa_plugin_echo."
+steps:
+  - "Ensure the local-agent pipeline, LangRAG sentinel KB, and qa-plugin-smoke fixture plugin are available."
+  - "Temporarily bind the LangRAG KB, shrink the runner context budget, and allow serial plugin tool execution."
+  - "Temporarily bind only langbot/local-agent and qa/plugin-smoke; disable MCP servers and skills to isolate the tool surface."
+  - "Reset the person Debug Chat session for the target pipeline."
+  - "Send the passcode memory prompt and wait for MEMORY_SET."
+  - "Send the long pressure prompt and wait for COMBO_CONTEXT_PRESSURE_READY."
+  - "Ask the runner to combine compacted passcode, RAG sentinel, and qa_plugin_echo result in one final answer."
+  - "Restore the original runner config and pipeline extension bindings."
+checks:
+  - "UI: All three user messages appear in Debug Chat."
+  - "UI: The final Bot message contains COMBO_FINAL qa_combo_compaction_sentinel_2406 azalea-cobalt-7421 qa-plugin-smoke:combo-tool-ok-local-agent."
+  - "API diagnostic: pipeline-config-diagnostic.json shows knowledge-bases, context token settings, and tool-loop settings were patched."
+  - "API diagnostic: pipeline-extensions-diagnostic.json shows only langbot/local-agent and qa/plugin-smoke were bound."
+  - "API diagnostic: restore diagnostics show the original runner config and extension bindings were restored."
+  - "Logs: Backend completes RAG retrieval, plugin tool call, and Debug Chat response without runner timeout or model setup failure."
+  - "Console: No unexpected frontend runtime errors appear during the run."
+evidence_required:
+  - ui
+  - screenshot
+  - console
+  - backend_log
+  - api_diagnostic
+diagnostics:
+  - "For token-free deterministic UI coverage, start scripts/e2e/fake-openai-provider.mjs and pass LANGBOT_E2E_FAKE_PROVIDER_BASE_URL to this case."
+  - "The ensure-langrag-sentinel-kb setup script verifies LANGBOT_E2E_RAG_EXPECTED_TEXT, defaulting to azalea-cobalt-7421, while this case's Debug Chat expected text is the full COMBO_FINAL string."
+  - "The fake provider intentionally returns COMBO_MISSING_* if the final model input lacks compacted memory, RAG context, or plugin tool result."
+  - "If the final answer lacks azalea-cobalt-7421, first rerun ensure-langrag-sentinel-kb and local-agent-rag-debug-chat."
+  - "If the final answer lacks qa-plugin-smoke:combo-tool-ok-local-agent, inspect /api/v1/tools and the pipeline extensions diagnostic."
+success_patterns:
+  - "Processing request from person_websocket"
+  - "Streaming completed"
+failure_patterns:
+  - "Action invoke_llm_stream call timed out"
+  - "All models failed during streaming setup"
+  - "Task exception was never retrieved"
+  - "COMBO_MISSING_"
+  - "survey widget blocks debug chat"
+troubleshooting:
+  - local-agent-model-route-unavailable
+  - tool-name-collision-between-mcp-and-plugin
+  - plugin-runtime-timeout
+  - proxy-env-mismatch
+  - survey-widget-blocks-debug-chat
+  - debug-chat-history-contaminates-automation

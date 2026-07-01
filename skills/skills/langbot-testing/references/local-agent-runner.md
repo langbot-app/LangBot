@@ -36,7 +36,7 @@ If the direct MCP fixture passes but `/api/v1/tools` still shows the old MCP nam
 
 For a multimodal check, upload a small image and ask for a deterministic acknowledgement. Prefer the bundled 64x64 red-square fixture over a 1x1 image because some model providers reject tiny images before the runner path is exercised.
 
-For a non-streaming check, disable the Debug Chat stream switch before sending the prompt.
+For a Debug Chat non-streaming delivery check, disable the Debug Chat stream switch before sending the prompt. This validates the UI/adapter delivery path. Runner-internal non-streaming model invocation is covered by component tests that set `runtime_metadata.streaming_supported=false`.
 
 ## Timeout And Tool Regression Checks
 
@@ -53,9 +53,14 @@ Run these cases before saying the pluginized local-agent behavior is healthy:
 - `local-agent-rag-debug-chat`: LangRAG retrieval reaches the runner and affects the answer.
 - `mcp-stdio-tool-call`: MCP tool discovery and local-agent tool loop.
 - `local-agent-plugin-tool-call-debug-chat`: plugin tool discovery and local-agent tool loop.
+- `local-agent-tool-error-recovery-debug-chat`: plugin tool execution errors are returned to the model as tool results and can produce a final recovery answer.
+- `local-agent-tool-loop-limit-debug-chat`: repeated plugin tool requests stop at the configured max tool iteration limit.
+- `local-agent-combo-rag-compaction-tool-debug-chat`: one Debug Chat run combines compacted history, LangRAG context, and a plugin tool result.
+- `local-agent-multitool-rag-compaction-debug-chat`: one Debug Chat run combines compacted history, LangRAG context, and two serial plugin tool calls.
+- `local-agent-parallel-tools-rag-compaction-debug-chat`: one Debug Chat run combines compacted history, LangRAG context, and two same-turn parallel plugin tool calls.
 - `local-agent-multimodal-debug-chat`: uploaded image reaches `ctx.input.contents`.
 - `local-agent-rag-multimodal-debug-chat`: RAG retrieval still works when the same user message carries an image.
-- `local-agent-nonstreaming-debug-chat`: runner works when the host adapter cannot or should not stream.
+- `local-agent-nonstreaming-debug-chat`: Debug Chat still returns a complete visible response when UI streaming is disabled.
 
 ## Pass Criteria
 
