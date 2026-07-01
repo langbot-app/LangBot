@@ -81,6 +81,7 @@ EventGateway / EventRouter 在本文档中描述为 **external EBA branch integr
 | [AGENT_CONTEXT_PROTOCOL.md](./AGENT_CONTEXT_PROTOCOL.md) | Agent-owned context 方向：事件到来时 LangBot 传什么，agent 如何按需拉取更多历史 / state、如何访问 sandbox/workspace 文件，以及如何支持 KV cache 友好的上下文管理。 |
 | [EXTENSION_SCOPE_MATRIX.md](./EXTENSION_SCOPE_MATRIX.md) | AgentRunner 外化与外部 EBA / Agent Platform / Runtime Control Plane 的扩展边界矩阵，说明哪些是本分支底座、哪些由外部分支接入。 |
 | [EVENT_BASED_AGENT.md](./EVENT_BASED_AGENT.md) | EBA 接入边界：事件模型、事件来源、触发绑定、非消息事件如何复用 AgentRunner 调度；完整 EventGateway / EventRouter 由外部 EBA 分支联调。 |
+| [eba-productization-release.md](./eba-productization-release.md) | EBA 适配器与 AgentRunner 插件化合并后的产品化 / 发布计划，说明非技术用户快速上手差距、Bot 与处理器边界、未来 Solution 分发标的，以及多 namespace SaaS 支持要求。 |
 | [RUNTIME_CONTROL_PLANE_V2.md](./RUNTIME_CONTROL_PLANE_V2.md) | Agent Platform v2 / runtime 管控面决策：`AgentRun` / `AgentRunEvent` / run control 已作为 Host 事实源落地，最小 runtime heartbeat/claim lease 已落地；完整 runtime registry / daemon 管控仍是后续可选阶段。 |
 | [OFFICIAL_RUNNER_PLUGINS.md](./OFFICIAL_RUNNER_PLUGINS.md) | 官方 runner 插件迁移，包括 local-agent 和外部 runner。它是下游落地计划，不是 LangBot 基础能力设计的前置约束。 |
 | [RUN_STEERING_AND_CHECKPOINT.md](./RUN_STEERING_AND_CHECKPOINT.md) | 运行中消息注入（steering / follow-up）与压缩摘要持久化（compaction checkpoint）的设计与落地状态记录；schema 仍以 PROTOCOL_V1 为准。 |
