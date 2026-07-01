@@ -87,6 +87,16 @@ vdb:
         database: 'langbot'
         user: 'postgres'
         password: 'postgres'
+    valkey_search:
+        host: 'localhost'
+        port: 6379            # integration tests use 6380 -> valkey/valkey-bundle:9.1.0
+        db: 0
+        password: ''          # optional (toB auth)
+        username: ''          # optional (ACL user, toB)
+        tls: false            # optional (toB/SaaS)
+        index_algorithm: 'HNSW'   # HNSW | FLAT
+        distance_metric: 'COSINE' # COSINE | L2 | IP
+        request_timeout: 5000     # per-request timeout in ms (glide default 250ms is too low for KNN)
 storage:
     use: local
     cleanup:
