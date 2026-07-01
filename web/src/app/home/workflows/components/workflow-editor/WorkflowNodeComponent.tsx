@@ -5,7 +5,6 @@ import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 import {
   PauseCircle,
-  Settings,
   Loader2,
   CheckCircle2,
   XCircle,
@@ -19,21 +18,17 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import {
-  NODE_ICONS,
-  NODE_TYPE_I18N_KEYS,
-  getNodeTypeLabel,
+  CONTROL_SOURCE_HANDLE,
+  CONTROL_TARGET_HANDLE,
   getIconComponent,
 } from './workflow-constants';
-import { resolveI18nLabel, maybeTranslateKey } from './workflow-i18n';
+import { resolveI18nLabel } from './workflow-i18n';
 import type { I18nObject } from '@/app/infra/entities/common';
 
-// Use shared icon mapping
-const nodeIcons = NODE_ICONS;
-
-// Use shared i18n key mapping
-const nodeTypeI18nKeys: Record<string, string> = Object.fromEntries(
-  Object.entries(NODE_TYPE_I18N_KEYS).map(([k, v]) => [k, v.labelKey]),
-);
+const DATA_PORT_INSET = 36;
+const DATA_PORT_GAP = 48;
+const MIN_NODE_WIDTH = 220;
+const MAX_NODE_WIDTH = 320;
 
 // Category colors with improved design
 const categoryColors: Record<
@@ -192,14 +187,6 @@ function getPortLabel(
   return translated === key ? fallbackName : translated;
 }
 
-// Helper function to extract i18n value from I18nObject (delegates to shared utility)
-function extractI18nValue(
-  i18nObj: Record<string, string> | undefined,
-  _t: (key: string) => string,
-): string {
-  return resolveI18nLabel(i18nObj);
-}
-
 // Helper function to get node type description: show the raw type name after the dot
 function getNodeTypeDescription(
   nodeType: string,
@@ -242,6 +229,30 @@ function WorkflowNodeComponent({ data, selected }: NodeProps) {
 
   // Determine if this is a trigger node (no inputs)
   const isTrigger = category === 'trigger';
+  const isTerminal =
+    nodeData.type === 'action.end' || nodeData.type.endsWith('.end');
+
+  const maxDataPortCount = Math.max(
+    isTrigger ? 0 : inputs.length,
+    outputs.length,
+  );
+  const naturalNodeWidth =
+    DATA_PORT_INSET * 2 +
+    Math.max(0, maxDataPortCount - 1) * DATA_PORT_GAP;
+  const nodeWidth = Math.min(
+    MAX_NODE_WIDTH,
+    Math.max(MIN_NODE_WIDTH, naturalNodeWidth),
+  );
+  const dataPortGap =
+    maxDataPortCount > 1
+      ? Math.min(
+          DATA_PORT_GAP,
+          (nodeWidth - DATA_PORT_INSET * 2) / (maxDataPortCount - 1),
+        )
+      : 0;
+  const inputPortLeft = (index: number) => DATA_PORT_INSET + index * dataPortGap;
+  const outputPortRight = (index: number) =>
+    DATA_PORT_INSET + index * dataPortGap;
 
   // Format execution duration
   const formattedDuration = useMemo(() => {
@@ -256,7 +267,7 @@ function WorkflowNodeComponent({ data, selected }: NodeProps) {
     <TooltipProvider>
       <div
         className={cn(
-          'min-w-[200px] max-w-[280px] rounded-xl border-2 shadow-lg transition-all duration-200',
+          'relative min-w-[220px] overflow-visible rounded-xl border-2 shadow-lg transition-all duration-200',
           colors.bg,
           colors.border,
           selected &&
@@ -265,45 +276,104 @@ function WorkflowNodeComponent({ data, selected }: NodeProps) {
           status === 'failed' &&
             'shadow-red-200 dark:shadow-red-900/50 border-red-500',
         )}
+        style={{ width: nodeWidth }}
       >
+        {/* Control flow handles */}
+        {!isTrigger && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Handle
+                type="target"
+                position={Position.Left}
+                id={CONTROL_TARGET_HANDLE}
+                style={{
+                  top: '50%',
+                  background: '#f97316',
+                  width: 16,
+                  height: 16,
+                  borderRadius: 4,
+                  border: '2px solid white',
+                  boxShadow: '0 2px 6px rgba(249,115,22,0.35)',
+                }}
+                className="!transition-transform hover:!scale-125"
+              />
+            </TooltipTrigger>
+            <TooltipContent side="left">
+              <p className="font-medium">
+                {t('workflows.controlInput', { defaultValue: 'Control input' })}
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+
+        {!isTerminal && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Handle
+                type="source"
+                position={Position.Right}
+                id={CONTROL_SOURCE_HANDLE}
+                style={{
+                  top: '50%',
+                  background: '#f97316',
+                  width: 20,
+                  height: 20,
+                  borderRadius: 4,
+                  border: '2px solid white',
+                  boxShadow: '0 2px 6px rgba(249,115,22,0.35)',
+                }}
+              />
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p className="font-medium">
+                {t('workflows.controlOutput', {
+                  defaultValue: 'Control output',
+                })}
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+
         {/* Input handles - only show if not trigger */}
         {!isTrigger &&
-          inputs.map((input, index) => (
-            <Tooltip key={`input-${input.name}`}>
-              <TooltipTrigger asChild>
+          inputs.map((input, index) => {
+            const label = getPortLabel(
+              input.label,
+              input.name,
+              'workflows.nodeInputs',
+              t,
+            );
+
+            return (
+              <div key={`input-${input.name}`}>
+                <span
+                  className="pointer-events-none absolute -top-7 z-10 max-w-20 truncate whitespace-nowrap text-center text-[10px] font-medium text-muted-foreground"
+                  style={{
+                    left: inputPortLeft(index),
+                    transform: 'translateX(-50%)',
+                  }}
+                >
+                  {label}
+                </span>
                 <Handle
                   type="target"
-                  position={Position.Left}
+                  position={Position.Top}
                   id={input.name}
                   style={{
-                    top:
-                      inputs.length === 1
-                        ? '50%'
-                        : `${((index + 1) / (inputs.length + 1)) * 100}%`,
+                    left: inputPortLeft(index),
+                    top: 0,
+                    transform: 'translate(-50%, -50%)',
                     background: colors.handleBg,
-                    width: 12,
-                    height: 12,
+                    width: 10,
+                    height: 10,
                     border: '2px solid white',
                     boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
                   }}
                   className="!transition-transform hover:!scale-125"
                 />
-              </TooltipTrigger>
-              <TooltipContent side="left">
-                <p className="font-medium">
-                  {getPortLabel(
-                    input.label,
-                    input.name,
-                    'workflows.nodeInputs',
-                    t,
-                  )}
-                </p>
-                {input.type && (
-                  <p className="text-xs text-muted-foreground">{input.type}</p>
-                )}
-              </TooltipContent>
-            </Tooltip>
-          ))}
+              </div>
+            );
+          })}
 
         {/* Node content */}
         <div className={cn('p-3 bg-gradient-to-b', colors.gradient)}>
@@ -389,42 +459,45 @@ function WorkflowNodeComponent({ data, selected }: NodeProps) {
         </div>
 
         {/* Output handles */}
-        {outputs.map((output, index) => (
-          <Tooltip key={`output-${output.name}`}>
-            <TooltipTrigger asChild>
+        {outputs.map((output, index) => {
+          const label = getPortLabel(
+            output.label,
+            output.name,
+            'workflows.nodeOutputs',
+            t,
+          );
+
+          return (
+            <div key={`output-${output.name}`}>
+              <span
+                className="pointer-events-none absolute -bottom-7 z-10 max-w-20 truncate whitespace-nowrap text-center text-[10px] font-medium text-muted-foreground"
+                style={{
+                  right: outputPortRight(index),
+                  transform: 'translateX(50%)',
+                }}
+              >
+                {label}
+              </span>
               <Handle
                 type="source"
-                position={Position.Right}
+                position={Position.Bottom}
                 id={output.name}
                 style={{
-                  top:
-                    outputs.length === 1
-                      ? '50%'
-                      : `${((index + 1) / (outputs.length + 1)) * 100}%`,
+                  left: 'auto',
+                  right: outputPortRight(index),
+                  bottom: 0,
+                  transform: 'translate(50%, 50%)',
                   background: colors.handleBg,
-                  width: 12,
-                  height: 12,
+                  width: 10,
+                  height: 10,
                   border: '2px solid white',
                   boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
                 }}
                 className="!transition-transform hover:!scale-125"
               />
-            </TooltipTrigger>
-            <TooltipContent side="right">
-              <p className="font-medium">
-                {getPortLabel(
-                  output.label,
-                  output.name,
-                  'workflows.nodeOutputs',
-                  t,
-                )}
-              </p>
-              {output.type && (
-                <p className="text-xs text-muted-foreground">{output.type}</p>
-              )}
-            </TooltipContent>
-          </Tooltip>
-        ))}
+            </div>
+          );
+        })}
       </div>
     </TooltipProvider>
   );

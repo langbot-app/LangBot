@@ -52,6 +52,7 @@ class EdgeDefinition(pydantic.BaseModel):
     source_port: str = 'output'
     target_node: str
     target_port: str = 'input'
+    edge_type: str = 'legacy'  # control, data, or legacy (old mixed semantics)
     condition: Optional[str] = None  # Optional condition expression
 
 

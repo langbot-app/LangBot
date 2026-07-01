@@ -441,12 +441,7 @@ class DebugWorkflowExecutor(WorkflowExecutor):
             ):
                 continue
 
-            # Check if this node's inputs are ready
-            incoming_nodes = set()
-            for source_id, edges in edge_map.items():
-                for edge in edges:
-                    if edge.target_node == node.id:
-                        incoming_nodes.add(source_id)
+            incoming_nodes = self._incoming_dependency_nodes(node.id, edge_map)
 
             # If no incoming nodes, it's a start node
             if not incoming_nodes:

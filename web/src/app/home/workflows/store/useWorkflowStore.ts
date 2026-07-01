@@ -3,6 +3,7 @@ import {
   Node,
   Edge,
   Connection,
+  MarkerType,
   addEdge,
   applyNodeChanges,
   applyEdgeChanges,
@@ -16,7 +17,14 @@ import {
   WorkflowNodeTypeMetadata,
   WorkflowNodeCategory,
 } from '@/app/infra/entities/api';
-import { getNodeTypeLabel as sharedGetNodeTypeLabel } from '../components/workflow-editor/workflow-constants';
+import {
+  CONTROL_SOURCE_HANDLE,
+  CONTROL_TARGET_HANDLE,
+  WorkflowEdgeType,
+  getNodeTypeLabel as sharedGetNodeTypeLabel,
+  inferWorkflowEdgeType,
+  normalizeWorkflowEdgeType,
+} from '../components/workflow-editor/workflow-constants';
 import { normalizeWorkflowNodeTypeMeta } from '../components/workflow-editor/workflow-node-metadata';
 import i18n from '@/i18n';
 
@@ -34,6 +42,7 @@ export interface WorkflowEdge extends Edge {
   data?: {
     label?: string;
     condition?: string;
+    edgeType?: WorkflowEdgeType;
   };
 }
 
@@ -120,12 +129,13 @@ interface WorkflowState {
   onEdgesChange: (changes: EdgeChange<WorkflowEdge>[]) => void;
   onConnect: (connection: Connection) => void;
 
-  addNode: (type: string, position: { x: number; y: number }) => void;
+  addNode: (type: string, position: { x: number; y: number }) => string;
   updateNodeConfig: (nodeId: string, config: Record<string, unknown>) => void;
   updateNodeLabel: (nodeId: string, label: string) => void;
   deleteNode: (nodeId: string) => void;
 
   // Edge operations
+  addControlEdge: (sourceNodeId: string, targetNodeId: string) => void;
   deleteEdge: (edgeId: string) => void;
   updateEdgeCondition: (edgeId: string, condition: string) => void;
 
@@ -193,6 +203,69 @@ const generateUuidLikeId = () => {
 const generateNodeId = () => `node_${generateUuidLikeId()}`;
 const generateEdgeId = () => `edge_${generateUuidLikeId()}`;
 
+const getWorkflowEdgeType = (edge: WorkflowEdge): WorkflowEdgeType =>
+  normalizeWorkflowEdgeType(edge.data?.edgeType);
+
+const withWorkflowEdgeStyle = (edge: WorkflowEdge): WorkflowEdge => {
+  const edgeType = getWorkflowEdgeType(edge);
+
+  if (edgeType === 'control') {
+    return {
+      ...edge,
+      type: 'smoothstep',
+      animated: false,
+      style: {
+        ...(edge.style || {}),
+        stroke: '#f97316',
+        strokeWidth: 3,
+      },
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        width: 22,
+        height: 22,
+        color: '#f97316',
+      },
+    };
+  }
+
+  if (edgeType === 'data') {
+    return {
+      ...edge,
+      type: 'default',
+      animated: false,
+      style: {
+        ...(edge.style || {}),
+        stroke: '#38bdf8',
+        strokeWidth: 1.5,
+        strokeDasharray: '5 4',
+      },
+      markerEnd: {
+        type: MarkerType.Arrow,
+        width: 16,
+        height: 16,
+        color: '#38bdf8',
+      },
+    };
+  }
+
+  return {
+    ...edge,
+    type: 'default',
+    animated: true,
+    style: {
+      ...(edge.style || {}),
+      stroke: '#94a3b8',
+      strokeWidth: 2,
+    },
+    markerEnd: {
+      type: MarkerType.ArrowClosed,
+      width: 18,
+      height: 18,
+      color: '#94a3b8',
+    },
+  };
+};
+
 const defaultDebugContext: DebugContext = {
   messageContent: '',
   senderId: `user_${Date.now().toString(36)}`,
@@ -254,14 +327,29 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   },
 
   onConnect: (connection) => {
+    const edgeType = inferWorkflowEdgeType(
+      connection.sourceHandle,
+      connection.targetHandle,
+    );
+
+    if (!edgeType) {
+      return;
+    }
+
     const newEdge: WorkflowEdge = {
       ...connection,
       id: generateEdgeId(),
       type: 'default',
+      data: {
+        edgeType,
+      },
     } as WorkflowEdge;
 
     set((state) => ({
-      edges: addEdge(newEdge, state.edges) as WorkflowEdge[],
+      edges: addEdge(
+        withWorkflowEdgeStyle(newEdge),
+        state.edges,
+      ) as WorkflowEdge[],
       isDirty: true,
     }));
     get().pushHistory();
@@ -313,6 +401,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       isDirty: true,
     }));
     get().pushHistory();
+    return newNode.id;
   },
 
   // Update node config
@@ -344,6 +433,41 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       ),
       selectedNodeId:
         state.selectedNodeId === nodeId ? null : state.selectedNodeId,
+      isDirty: true,
+    }));
+    get().pushHistory();
+  },
+
+  // Add a control-flow edge between two nodes
+  addControlEdge: (sourceNodeId, targetNodeId) => {
+    if (!sourceNodeId || !targetNodeId || sourceNodeId === targetNodeId) {
+      return;
+    }
+
+    const existingControlEdge = get().edges.some(
+      (edge) =>
+        edge.source === sourceNodeId &&
+        edge.target === targetNodeId &&
+        normalizeWorkflowEdgeType(edge.data?.edgeType) === 'control',
+    );
+    if (existingControlEdge) {
+      return;
+    }
+
+    const edge = withWorkflowEdgeStyle({
+      id: generateEdgeId(),
+      source: sourceNodeId,
+      target: targetNodeId,
+      sourceHandle: CONTROL_SOURCE_HANDLE,
+      targetHandle: CONTROL_TARGET_HANDLE,
+      type: 'smoothstep',
+      data: {
+        edgeType: 'control',
+      },
+    } as WorkflowEdge);
+
+    set((state) => ({
+      edges: addEdge(edge, state.edges) as WorkflowEdge[],
       isDirty: true,
     }));
     get().pushHistory();
@@ -431,6 +555,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     }));
 
     const workflowEdges: WorkflowEdgeDefinition[] = edges.map((edge) => ({
+      edge_type: getWorkflowEdgeType(edge),
       id: edge.id,
       source: edge.source,
       target: edge.target,
@@ -462,14 +587,19 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       id: edge.id,
       source: edge.source,
       target: edge.target,
-      sourceHandle: edge.source_port,
-      targetHandle: edge.target_port,
+      sourceHandle:
+        edge.source_port ||
+        (edge.edge_type === 'control' ? CONTROL_SOURCE_HANDLE : undefined),
+      targetHandle:
+        edge.target_port ||
+        (edge.edge_type === 'control' ? CONTROL_TARGET_HANDLE : undefined),
       type: 'default',
       data: {
         label: edge.label,
         condition: edge.condition,
+        edgeType: normalizeWorkflowEdgeType(edge.edge_type),
       },
-    }));
+    })).map(withWorkflowEdgeStyle);
 
     set({ nodes, edges, isDirty: false });
     get().pushHistory();

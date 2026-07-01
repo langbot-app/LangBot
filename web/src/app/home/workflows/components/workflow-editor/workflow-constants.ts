@@ -361,6 +361,44 @@ export const CATEGORY_ICONS: Record<string, React.ElementType> = {
   integration: Plug,
 };
 
+// ─── Edge semantics ────────────────────────────────────────────────
+
+export type WorkflowEdgeType = 'control' | 'data' | 'legacy';
+
+export const CONTROL_SOURCE_HANDLE = '__control_out';
+export const CONTROL_TARGET_HANDLE = '__control_in';
+
+export function normalizeWorkflowEdgeType(
+  edgeType: string | undefined,
+): WorkflowEdgeType {
+  if (edgeType === 'control' || edgeType === 'data' || edgeType === 'legacy') {
+    return edgeType;
+  }
+  return 'legacy';
+}
+
+export function isControlHandle(handleId: string | null | undefined): boolean {
+  return handleId === CONTROL_SOURCE_HANDLE || handleId === CONTROL_TARGET_HANDLE;
+}
+
+export function inferWorkflowEdgeType(
+  sourceHandle: string | null | undefined,
+  targetHandle: string | null | undefined,
+): WorkflowEdgeType | null {
+  if (
+    sourceHandle === CONTROL_SOURCE_HANDLE &&
+    targetHandle === CONTROL_TARGET_HANDLE
+  ) {
+    return 'control';
+  }
+
+  if (!isControlHandle(sourceHandle) && !isControlHandle(targetHandle)) {
+    return 'data';
+  }
+
+  return null;
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────
 
 /**

@@ -51,6 +51,11 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
 
 import { resolveI18nLabel, maybeTranslateKey } from './workflow-i18n';
+import {
+  WorkflowEdgeType,
+  isControlHandle,
+  normalizeWorkflowEdgeType,
+} from './workflow-constants';
 
 // Delegate to shared utility
 const translateIfKey = (value: string | undefined): string | undefined => {
@@ -74,6 +79,29 @@ const getTypeLabel = (type: string | undefined): string => {
   const translated = i18n.t(i18nKey);
   // If translation key doesn't exist, return the original type
   return translated === i18nKey ? type : translated;
+};
+
+const getEdgeTypeLabel = (
+  edgeType: WorkflowEdgeType,
+  t: (key: string, options?: { defaultValue: string }) => string,
+): string => {
+  if (edgeType === 'control') {
+    return t('workflows.edgeTypes.control', { defaultValue: 'Control' });
+  }
+  if (edgeType === 'data') {
+    return t('workflows.edgeTypes.data', { defaultValue: 'Data' });
+  }
+  return t('workflows.edgeTypes.legacy', { defaultValue: 'Legacy' });
+};
+
+const getEdgeTypeBadgeClass = (edgeType: WorkflowEdgeType): string => {
+  if (edgeType === 'control') {
+    return 'border-orange-300 bg-orange-50 text-orange-700 dark:border-orange-800 dark:bg-orange-950/40 dark:text-orange-300';
+  }
+  if (edgeType === 'data') {
+    return 'border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-300';
+  }
+  return 'border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300';
 };
 
 interface PropertyPanelProps {
@@ -275,7 +303,11 @@ export default function PropertyPanel({
     }[] = [];
 
     // Find all upstream nodes
-    const incomingEdges = edges.filter((e) => e.target === selectedNode.id);
+    const incomingEdges = edges.filter(
+      (e) =>
+        e.target === selectedNode.id &&
+        normalizeWorkflowEdgeType(e.data?.edgeType) !== 'control',
+    );
     const upstreamNodeIds = incomingEdges.map((e) => e.source);
 
     for (const nodeId of upstreamNodeIds) {
@@ -414,6 +446,17 @@ export default function PropertyPanel({
   if (selectedEdge) {
     const sourceNode = nodes.find((n) => n.id === selectedEdge.source);
     const targetNode = nodes.find((n) => n.id === selectedEdge.target);
+    const edgeType = normalizeWorkflowEdgeType(selectedEdge.data?.edgeType);
+    const isDataLikeEdge = edgeType !== 'control';
+    const isControlLikeEdge = edgeType !== 'data';
+    const sourcePort =
+      selectedEdge.sourceHandle && !isControlHandle(selectedEdge.sourceHandle)
+        ? selectedEdge.sourceHandle
+        : undefined;
+    const targetPort =
+      selectedEdge.targetHandle && !isControlHandle(selectedEdge.targetHandle)
+        ? selectedEdge.targetHandle
+        : undefined;
 
     return (
       <TooltipProvider>
@@ -422,6 +465,12 @@ export default function PropertyPanel({
             <h3 className="font-semibold text-sm flex items-center gap-2">
               <ArrowRight className="size-4" />
               {t('workflows.edgeProperties')}
+              <Badge
+                variant="outline"
+                className={`ml-auto text-xs ${getEdgeTypeBadgeClass(edgeType)}`}
+              >
+                {getEdgeTypeLabel(edgeType, t)}
+              </Badge>
             </h3>
           </div>
 
@@ -444,37 +493,56 @@ export default function PropertyPanel({
                     {targetNode?.data.label || selectedEdge.target}
                   </Badge>
                 </div>
+                {isDataLikeEdge && (
+                  <div className="mt-3 flex items-center gap-2 text-xs min-w-0 w-full overflow-hidden">
+                    <Badge
+                      variant="outline"
+                      className="font-mono text-[11px] truncate max-w-[42%] flex-shrink min-w-0 border-sky-300 text-sky-700 dark:border-sky-800 dark:text-sky-300"
+                    >
+                      {sourcePort || 'output'}
+                    </Badge>
+                    <ArrowRight className="size-3.5 text-sky-500 flex-shrink-0" />
+                    <Badge
+                      variant="outline"
+                      className="font-mono text-[11px] truncate max-w-[42%] flex-shrink min-w-0 border-sky-300 text-sky-700 dark:border-sky-800 dark:text-sky-300"
+                    >
+                      {targetPort || 'input'}
+                    </Badge>
+                  </div>
+                )}
               </div>
 
               {/* Condition */}
-              <CollapsibleSection
-                title={t('workflows.condition')}
-                icon={Code}
-                badge={
-                  selectedEdge.data?.condition ? (
-                    <Badge
-                      variant="secondary"
-                      className="text-xs flex-shrink-0"
-                    >
-                      {t('workflows.hasCondition')}
-                    </Badge>
-                  ) : null
-                }
-              >
-                <div className="space-y-2 w-full overflow-hidden">
-                  <Textarea
-                    value={selectedEdge.data?.condition || ''}
-                    onChange={handleConditionChange}
-                    placeholder={t('workflows.conditionPlaceholder')}
-                    rows={4}
-                    className="font-mono text-sm w-full"
-                  />
-                  <div className="flex items-start gap-2 text-xs text-muted-foreground">
-                    <Info className="size-3.5 mt-0.5 flex-shrink-0" />
-                    <p>{t('workflows.conditionHelp')}</p>
+              {isControlLikeEdge && (
+                <CollapsibleSection
+                  title={t('workflows.condition')}
+                  icon={Code}
+                  badge={
+                    selectedEdge.data?.condition ? (
+                      <Badge
+                        variant="secondary"
+                        className="text-xs flex-shrink-0"
+                      >
+                        {t('workflows.hasCondition')}
+                      </Badge>
+                    ) : null
+                  }
+                >
+                  <div className="space-y-2 w-full overflow-hidden">
+                    <Textarea
+                      value={selectedEdge.data?.condition || ''}
+                      onChange={handleConditionChange}
+                      placeholder={t('workflows.conditionPlaceholder')}
+                      rows={4}
+                      className="font-mono text-sm w-full"
+                    />
+                    <div className="flex items-start gap-2 text-xs text-muted-foreground">
+                      <Info className="size-3.5 mt-0.5 flex-shrink-0" />
+                      <p>{t('workflows.conditionHelp')}</p>
+                    </div>
                   </div>
-                </div>
-              </CollapsibleSection>
+                </CollapsibleSection>
+              )}
 
               <Separator />
 

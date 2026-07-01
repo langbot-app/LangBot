@@ -32,6 +32,7 @@ export interface EdgeDefinition {
   sourceHandle?: string;
   target: string;
   targetHandle?: string;
+  edge_type?: 'control' | 'data' | 'legacy';
   condition?: string;
 }
 

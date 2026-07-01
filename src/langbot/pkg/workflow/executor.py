@@ -390,10 +390,12 @@ class WorkflowExecutor:
             else:
                 inputs[key] = value
 
-        # Get inputs from connected upstream nodes via edges
+        # Get inputs from connected upstream nodes via data edges.
         # Build a reverse map: for each incoming edge to this node, find the
         # source node and the specific source/target port.
         for edge in self._edges:
+            if not self._is_data_edge(edge):
+                continue
             if edge.target_node != node.id:
                 continue
             source_state = context.node_states.get(edge.source_node)
@@ -519,13 +521,8 @@ class WorkflowExecutor:
     async def _inputs_ready(
         self, node: NodeDefinition, edge_map: dict[str, list[EdgeDefinition]], context: ExecutionContext
     ) -> bool:
-        """Check if all inputs for a node are ready"""
-        # Find all edges that connect to this node
-        incoming_nodes = set()
-        for source_id, edges in edge_map.items():
-            for edge in edges:
-                if edge.target_node == node.id:
-                    incoming_nodes.add(source_id)
+        """Check if all control predecessors and data providers are ready."""
+        incoming_nodes = self._incoming_dependency_nodes(node.id, edge_map)
 
         # Check if all incoming nodes have completed
         for source_id in incoming_nodes:
@@ -537,7 +534,7 @@ class WorkflowExecutor:
 
     def _find_start_nodes(self, nodes: list[NodeDefinition], edges: list[EdgeDefinition]) -> list[NodeDefinition]:
         """Find nodes that have no incoming edges (start nodes)"""
-        target_nodes = {edge.target_node for edge in edges}
+        target_nodes = {edge.target_node for edge in edges if self._is_control_edge(edge) or self._is_data_edge(edge)}
         start_nodes = [node for node in nodes if node.id not in target_nodes]
 
         # Also check for trigger nodes
@@ -549,13 +546,42 @@ class WorkflowExecutor:
         return start_nodes
 
     def _build_edge_map(self, edges: list[EdgeDefinition]) -> dict[str, list[EdgeDefinition]]:
-        """Build a map of source node ID to outgoing edges"""
+        """Build a map of source node ID to outgoing control edges."""
         edge_map: dict[str, list[EdgeDefinition]] = {}
         for edge in edges:
+            if not self._is_control_edge(edge):
+                continue
             if edge.source_node not in edge_map:
                 edge_map[edge.source_node] = []
             edge_map[edge.source_node].append(edge)
         return edge_map
+
+    def _edge_type(self, edge: EdgeDefinition) -> str:
+        edge_type = (getattr(edge, 'edge_type', None) or 'legacy').strip().lower()
+        if edge_type not in {'control', 'data', 'legacy'}:
+            return 'legacy'
+        return edge_type
+
+    def _is_control_edge(self, edge: EdgeDefinition) -> bool:
+        return self._edge_type(edge) in {'control', 'legacy'}
+
+    def _is_data_edge(self, edge: EdgeDefinition) -> bool:
+        return self._edge_type(edge) in {'data', 'legacy'}
+
+    def _incoming_dependency_nodes(
+        self, node_id: str, edge_map: dict[str, list[EdgeDefinition]]
+    ) -> set[str]:
+        incoming_nodes: set[str] = set()
+        for source_id, edges in edge_map.items():
+            for edge in edges:
+                if edge.target_node == node_id:
+                    incoming_nodes.add(source_id)
+
+        for edge in self._edges:
+            if self._is_data_edge(edge) and edge.target_node == node_id:
+                incoming_nodes.add(edge.source_node)
+
+        return incoming_nodes
 
     def _record_execution_step(self, node: NodeDefinition, node_state: NodeState, context: ExecutionContext):
         """Record an execution step in the history"""

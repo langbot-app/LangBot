@@ -724,6 +724,7 @@ export interface WorkflowEdgeDefinition {
   target: string;
   source_port?: string;
   target_port?: string;
+  edge_type?: 'control' | 'data' | 'legacy';
   label?: string;
   condition?: string;
 }

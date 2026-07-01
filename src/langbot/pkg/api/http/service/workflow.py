@@ -323,6 +323,7 @@ class WorkflowService:
                     source_port=e.get('source_port', '') or e.get('sourceHandle', 'output'),
                     target_node=e.get('target_node', '') or e.get('target', ''),
                     target_port=e.get('target_port', '') or e.get('targetHandle', 'input'),
+                    edge_type=e.get('edge_type') or (e.get('data', {}) or {}).get('edgeType') or 'legacy',
                     condition=e.get('condition') or (e.get('data', {}) or {}).get('condition'),
                 )
                 for e in definition.get('edges', [])
