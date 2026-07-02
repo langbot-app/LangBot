@@ -2,6 +2,7 @@ from __future__ import annotations
 import typing
 import asyncio
 import traceback
+import uuid
 
 import datetime
 import pydantic
@@ -182,7 +183,28 @@ class WecomCSAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 )
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
-        pass
+        if target_type != 'person':
+            raise ValueError('WeCom customer service only supports sending messages to person targets')
+
+        open_kfid = self.bot_account_id
+        external_userid = target_id
+        if '|' in target_id:
+            open_kfid, external_userid = target_id.split('|', 1)
+        if external_userid.startswith('u'):
+            external_userid = external_userid[1:]
+        if not open_kfid:
+            raise ValueError('WeCom customer service open_kfid is required before sending messages')
+
+        content_list = await WecomMessageConverter.yiri2target(message, self.bot)
+        for content in content_list:
+            msgid = f'langbot_{uuid.uuid4().hex}'
+            if content['type'] == 'text':
+                await self.bot.send_text_msg(
+                    open_kfid=open_kfid,
+                    external_userid=external_userid,
+                    msgid=msgid,
+                    content=content['content'],
+                )
 
     def set_bot_uuid(self, bot_uuid: str):
         """设置 bot UUID（用于生成 webhook URL）"""
