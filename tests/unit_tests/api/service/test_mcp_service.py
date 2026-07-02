@@ -280,6 +280,25 @@ class TestMCPServiceCreateMCPServer:
         assert server_uuid is not None
         assert len(server_uuid) == 36  # UUID format
 
+    async def test_create_mcp_server_duplicate_name_raises(self):
+        """Rejects duplicate MCP server names."""
+        # Setup
+        ap = SimpleNamespace()
+        ap.persistence_mgr = SimpleNamespace()
+        ap.instance_config = SimpleNamespace()
+        ap.instance_config.data = {'system': {'limitation': {'max_extensions': -1}}}
+        ap.tool_mgr = None
+
+        existing_server = _create_mock_mcp_server(name='Existing Server')
+        ap.persistence_mgr.execute_async = AsyncMock(return_value=_create_mock_result(first_item=existing_server))
+        ap.persistence_mgr.serialize_model = Mock(return_value={})
+
+        service = MCPService(ap)
+
+        # Execute & Verify
+        with pytest.raises(ValueError, match='MCP server already exists: Existing Server'):
+            await service.create_mcp_server({'name': 'Existing Server'})
+
     async def test_create_mcp_server_loads_server(self):
         """Loads server into tool_mgr when enabled."""
         # Setup
@@ -301,7 +320,7 @@ class TestMCPServiceCreateMCPServer:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                return _create_mock_result([])  # Empty list for limit check
+                return _create_mock_result([])  # Empty result for duplicate-name check
             elif call_count == 2:
                 return Mock()  # Insert
             return _create_mock_result(first_item=server_entity)  # Select created

@@ -750,6 +750,8 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
     }
     try {
       let serverConfig: MCPServer;
+      const serverName =
+        isEditMode && initServerName ? initServerName : value.name;
 
       if (value.mode === 'remote') {
         const headers: Record<string, string> = {};
@@ -758,7 +760,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
         });
 
         serverConfig = {
-          name: value.name,
+          name: serverName,
           mode: 'remote',
           enable: true,
           extra_args: {
@@ -774,7 +776,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
         });
 
         serverConfig = {
-          name: value.name,
+          name: serverName,
           mode: 'stdio',
           enable: true,
           extra_args: {
@@ -818,6 +820,8 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
       // `uvx` with no package (exit 2 / "Connection closed", no detail).
       // The form values are kept in sync on every edit and on load, so they
       // are always current.
+      const serverName =
+        isEditMode && initServerName ? initServerName : form.getValues('name');
       const formExtraArgs = form.getValues('extra_args') ?? [];
       const formStdioArgs = form.getValues('args') ?? [];
       let extraArgsData: MCPServerExtraArgsRemote | MCPServerExtraArgsStdio;
@@ -841,7 +845,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
       }
 
       const { task_id } = await httpClient.testMCPServer('_', {
-        name: form.getValues('name'),
+        name: serverName,
         mode,
         enable: true,
         extra_args: extraArgsData,
@@ -873,7 +877,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
               });
             } else {
               if (isEditMode) {
-                await loadServerForEdit(form.getValues('name'));
+                await loadServerForEdit(serverName);
               } else {
                 // Create mode has no persisted server to reload tools from.
                 // The backend stashes the discovered runtime info (status +
@@ -1163,11 +1167,14 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
     </Card>
   );
 
+  const persistedServerName =
+    isEditMode && initServerName ? initServerName : form.getValues('name');
+
   const runtimePanel = (
     <RuntimePanel
       mcpTesting={mcpTesting}
       runtimeInfo={runtimeInfo}
-      serverName={form.getValues('name')}
+      serverName={persistedServerName}
       t={t}
     />
   );
@@ -1211,7 +1218,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
         <RuntimePanel
           mcpTesting={mcpTesting}
           runtimeInfo={runtimeInfo}
-          serverName={form.getValues('name')}
+          serverName={persistedServerName}
           content="tools"
           t={t}
         />
@@ -1223,7 +1230,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
         <RuntimePanel
           mcpTesting={mcpTesting}
           runtimeInfo={runtimeInfo}
-          serverName={form.getValues('name')}
+          serverName={persistedServerName}
           content="resources"
           t={t}
         />

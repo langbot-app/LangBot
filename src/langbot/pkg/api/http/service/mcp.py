@@ -48,6 +48,17 @@ class MCPService:
             if total_extensions >= max_extensions:
                 raise ValueError(f'Maximum number of extensions ({max_extensions}) reached')
 
+        server_name = str(server_data.get('name') or '').strip()
+        if not server_name:
+            raise ValueError('MCP server name is required')
+        server_data['name'] = server_name
+
+        existing_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_mcp.MCPServer).where(persistence_mcp.MCPServer.name == server_name)
+        )
+        if existing_result.first() is not None:
+            raise ValueError(f'MCP server already exists: {server_name}')
+
         server_data['uuid'] = str(uuid.uuid4())
         await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_mcp.MCPServer).values(server_data))
 
