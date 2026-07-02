@@ -691,7 +691,6 @@ class AdaptersRouterGroup(group.RouterGroup):
             loop = asyncio.get_running_loop()
             status_dir = os.path.join('data', 'itchat')
             os.makedirs(status_dir, exist_ok=True)
-            default_status_path = os.path.join(status_dir, 'itchat.pkl')
             qr_path = os.path.join(status_dir, f'{session_id}-QR.png')
 
             session = {
@@ -733,19 +732,22 @@ class AdaptersRouterGroup(group.RouterGroup):
                             wxid = ''
                         session['nickname'] = nick
                         session['wxid'] = wxid
-                        session['status'] = 'success'
-                        session['logged_in'].set()
                         print(f'[itchat-login] Login success: {nick}', flush=True)
                         # Dump login status so the adapter can hot-reload it
                         try:
+                            if not wxid:
+                                raise ValueError('Unable to detect WeChat wxid after login')
                             account_status_path = ItchatAdapter.login_status_path_for_account(wxid)
                             _core.dump_login_status(account_status_path)
-                            if account_status_path != default_status_path:
-                                _core.dump_login_status(default_status_path)
                             session['login_status_path'] = account_status_path
+                            session['status'] = 'success'
                             print(f'[itchat-login] Session saved to {account_status_path}', flush=True)
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            session['status'] = 'error'
+                            session['error'] = str(e)
+                            print(f'[itchat-login] Failed to save session: {e}', flush=True)
+                        finally:
+                            session['logged_in'].set()
                         # Stop the message loop - we only needed the session for QR login
                         _core.alive = False
 

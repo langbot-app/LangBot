@@ -624,7 +624,10 @@ export default function DynamicFormComponent({
           onSuccess={(credentials) => {
             for (const [key, value] of Object.entries(credentials)) {
               if (value) {
-                form.setValue(key as keyof FormValues, value as never);
+                form.setValue(key as keyof FormValues, value as never, {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                });
               }
             }
           }}

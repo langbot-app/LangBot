@@ -36,12 +36,14 @@ spec:
         en_US: Bot Account ID
         zh_Hans: 机器人账号标识
         zh_Hant: 機器人帳號標識
+        ja_JP: ボットアカウントID
       description:
-        en_US: Used for @-mention matching in groups. Auto-filled after QR login (wxid). You can change it to match your bot's display nickname if needed.
-        zh_Hans: 用于群聊 @ 检测匹配。扫码登录后自动填入（微信ID），可手动改为机器人昵称
-        zh_Hant: 用於群聊 @ 檢測匹配。掃碼登入後自動填入（微信ID），可手動改為機器人暱稱
+        en_US: Auto-filled after QR login with the WeChat wxid. Used for @-mention matching and to load data/itchat/<account_id>.pkl; do not change it to a nickname.
+        zh_Hans: 扫码登录后自动填入微信 wxid。用于群聊 @ 匹配，并加载 data/itchat/<account_id>.pkl；不要改成昵称。
+        zh_Hant: 掃碼登入後自動填入微信 wxid。用於群聊 @ 匹配，並載入 data/itchat/<account_id>.pkl；不要改成暱稱。
+        ja_JP: QRログイン後にWeChatのwxidが自動入力されます。@メンション判定と data/itchat/<account_id>.pkl の読み込みに使うため、ニックネームへ変更しないでください。
       type: string
-      required: false
+      required: true
       default: ""
     - name: nickname
       label:

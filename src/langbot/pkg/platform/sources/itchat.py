@@ -331,7 +331,7 @@ class ItchatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     def _safe_status_name(value: str) -> str:
         cleaned = re.sub(r'[^A-Za-z0-9_.@-]+', '_', value.strip())
         cleaned = cleaned.strip('._')
-        return cleaned or 'itchat'
+        return cleaned
 
     @staticmethod
     def login_status_dir() -> str:
@@ -340,8 +340,11 @@ class ItchatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         return path
 
     @classmethod
-    def login_status_path_for_account(cls, account_id: str = '') -> str:
-        filename = f'{cls._safe_status_name(account_id)}.pkl' if account_id else 'itchat.pkl'
+    def login_status_path_for_account(cls, account_id: str) -> str:
+        safe_name = cls._safe_status_name(account_id)
+        if not safe_name:
+            raise ValueError('account_id is required for itchat login status')
+        filename = f'{safe_name}.pkl'
         return os.path.join(cls.login_status_dir(), filename)
 
     def _login_status_path(self) -> str:
@@ -350,12 +353,10 @@ class ItchatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             return configured_path
 
         account_id = self.config.get('account_id', '').strip()
-        if account_id:
-            account_path = self.login_status_path_for_account(account_id)
-            if os.path.exists(account_path):
-                return account_path
+        if not account_id:
+            raise ValueError('account_id is required. Please scan the QR code and save this bot first.')
 
-        return self.login_status_path_for_account()
+        return self.login_status_path_for_account(account_id)
 
     def set_bot_uuid(self, bot_uuid: str):
         self._bot_uuid = bot_uuid
@@ -683,8 +684,8 @@ class ItchatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     async def run_async(self):
         """Start the itchat adapter.
 
-        If a cached session file (itchat.pkl) exists from a previous QR login,
-        itchat will reuse it without requiring a new QR scan.
+        If an account-specific cached session file exists from a previous QR login,
+        itchat will reuse data/itchat/<account_id>.pkl without requiring a new QR scan.
         """
         self._loop = asyncio.get_running_loop()
         self._logged_in.clear()
