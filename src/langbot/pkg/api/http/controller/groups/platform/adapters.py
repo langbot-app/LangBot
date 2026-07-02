@@ -1,6 +1,7 @@
 import quart
 import mimetypes
 import asyncio
+import os
 from ... import group
 from langbot.pkg.utils import importutil
 
@@ -688,6 +689,10 @@ class AdaptersRouterGroup(group.RouterGroup):
 
             session_id = str(uuid.uuid4())
             loop = asyncio.get_running_loop()
+            status_dir = os.path.join('data', 'itchat')
+            os.makedirs(status_dir, exist_ok=True)
+            default_status_path = os.path.join(status_dir, 'itchat.pkl')
+            qr_path = os.path.join(status_dir, f'{session_id}-QR.png')
 
             session = {
                 'status': 'pending',
@@ -704,12 +709,11 @@ class AdaptersRouterGroup(group.RouterGroup):
 
             def _run_itchat_login():
                 try:
-                    import os
-
                     from itchat.core import Core
                     from itchat.content import TEXT as _TEXT
+                    from langbot.pkg.platform.sources.itchat import ItchatAdapter
 
-                    for f in ('itchat.pkl', 'QR.png'):
+                    for f in (qr_path,):
                         try:
                             os.remove(f)
                         except OSError:
@@ -722,16 +726,8 @@ class AdaptersRouterGroup(group.RouterGroup):
                         try:
                             _core.get_friends(update=True)
                             user_info = _core.loginInfo.get('User', {})
-                            nick = (
-                                getattr(user_info, 'NickName', '') or user_info.get('NickName', '')
-                                if isinstance(user_info, dict)
-                                else 'unknown'
-                            )
-                            wxid = (
-                                getattr(user_info, 'UserName', '') or user_info.get('UserName', '')
-                                if isinstance(user_info, dict)
-                                else ''
-                            )
+                            nick = ItchatAdapter._get_obj_value(user_info, 'NickName', 'unknown')
+                            wxid = ItchatAdapter._get_obj_value(user_info, 'UserName')
                         except Exception:
                             nick = 'unknown'
                             wxid = ''
@@ -742,8 +738,12 @@ class AdaptersRouterGroup(group.RouterGroup):
                         print(f'[itchat-login] Login success: {nick}', flush=True)
                         # Dump login status so the adapter can hot-reload it
                         try:
-                            _core.dump_login_status('itchat.pkl')
-                            print('[itchat-login] Session saved to itchat.pkl', flush=True)
+                            account_status_path = ItchatAdapter.login_status_path_for_account(wxid)
+                            _core.dump_login_status(account_status_path)
+                            if account_status_path != default_status_path:
+                                _core.dump_login_status(default_status_path)
+                            session['login_status_path'] = account_status_path
+                            print(f'[itchat-login] Session saved to {account_status_path}', flush=True)
                         except Exception:
                             pass
                         # Stop the message loop - we only needed the session for QR login
@@ -813,6 +813,7 @@ class AdaptersRouterGroup(group.RouterGroup):
                         'session_id': session_id,
                         'status': 'success',
                         'nickname': session['nickname'],
+                        'wxid': session.get('wxid', ''),
                     }
                 )
 
@@ -845,8 +846,7 @@ class AdaptersRouterGroup(group.RouterGroup):
             if session['status'] == 'success':
                 data['nickname'] = session.get('nickname', '')
                 data['wxid'] = session.get('wxid', '')
-                # Keep session alive (don't pop) - itchat thread keeps running
-                # so the pickle file is valid for the adapter to reuse
+                _itchat_login_sessions.pop(session_id, None)
             elif session['status'] == 'error':
                 data['error'] = session['error']
                 _itchat_login_sessions.pop(session_id, None)

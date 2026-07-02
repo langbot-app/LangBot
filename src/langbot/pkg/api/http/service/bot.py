@@ -57,6 +57,8 @@ class BotService:
         runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(bot_uuid)
         if runtime_bot is not None:
             adapter_runtime_values['bot_account_id'] = runtime_bot.adapter.bot_account_id
+            if hasattr(runtime_bot.adapter, 'get_runtime_status'):
+                adapter_runtime_values['runtime_status'] = runtime_bot.adapter.get_runtime_status()
 
         # Webhook URL for unified webhook adapters (independent of bot running state)
         if persistence_bot['adapter'] in [

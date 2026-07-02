@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import {
@@ -26,9 +27,79 @@ import type { BotSessionMonitorHandle } from '@/app/home/bots/components/bot-ses
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { useTranslation } from 'react-i18next';
-import { Settings, FileText, Users, RefreshCw, Trash2 } from 'lucide-react';
+import {
+  Settings,
+  FileText,
+  Users,
+  RefreshCw,
+  Trash2,
+  CircleCheck,
+  CircleAlert,
+  Loader2,
+  CircleOff,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import type { Bot, BotAdapterRuntimeStatus } from '@/app/infra/entities/api';
+
+function getBotRuntimeStatus(bot: Bot | null): BotAdapterRuntimeStatus | null {
+  return bot?.adapter_runtime_values?.runtime_status ?? null;
+}
+
+function RuntimeStatusBadge({
+  status,
+}: {
+  status: BotAdapterRuntimeStatus | null;
+}) {
+  const { t } = useTranslation();
+  if (!status) return null;
+
+  const value = status?.connection_status ?? 'disconnected';
+
+  const config = {
+    connected: {
+      label: t('bots.runtimeConnected'),
+      className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700',
+      icon: CircleCheck,
+    },
+    connecting: {
+      label: t('bots.runtimeConnecting'),
+      className: 'border-amber-500/30 bg-amber-500/10 text-amber-700',
+      icon: Loader2,
+    },
+    disconnected: {
+      label: t('bots.runtimeDisconnected'),
+      className: 'border-muted-foreground/20 bg-muted text-muted-foreground',
+      icon: CircleOff,
+    },
+    error: {
+      label: t('bots.runtimeError'),
+      className: 'border-destructive/30 bg-destructive/10 text-destructive',
+      icon: CircleAlert,
+    },
+  }[value];
+
+  const Icon = config.icon;
+
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <Badge
+        variant="outline"
+        className={cn('h-6 gap-1.5 px-2 text-xs', config.className)}
+      >
+        <Icon
+          className={cn('size-3.5', value === 'connecting' && 'animate-spin')}
+        />
+        {config.label}
+      </Badge>
+      {status?.connection_error && (
+        <span className="max-w-[360px] truncate text-xs text-destructive">
+          {status.connection_error}
+        </span>
+      )}
+    </div>
+  );
+}
 
 export default function BotDetailContent({ id }: { id: string }) {
   const isCreateMode = id === 'new';
@@ -58,16 +129,24 @@ export default function BotDetailContent({ id }: { id: string }) {
   // Enable state managed here so the header switch works
   const [botEnabled, setBotEnabled] = useState(true);
   const [enableLoaded, setEnableLoaded] = useState(false);
+  const [botDetail, setBotDetail] = useState<Bot | null>(null);
+
+  const fetchBotDetail = useCallback(async () => {
+    if (isCreateMode) return;
+    const res = await httpClient.getBot(id);
+    setBotDetail(res.bot);
+    setBotEnabled(res.bot.enable ?? true);
+    setEnableLoaded(true);
+  }, [id, isCreateMode]);
 
   // Fetch bot enable state
   useEffect(() => {
     if (!isCreateMode) {
-      httpClient.getBot(id).then((res) => {
-        setBotEnabled(res.bot.enable ?? true);
-        setEnableLoaded(true);
-      });
+      fetchBotDetail();
+      const timer = window.setInterval(fetchBotDetail, 5000);
+      return () => window.clearInterval(timer);
     }
-  }, [id, isCreateMode]);
+  }, [fetchBotDetail, isCreateMode]);
 
   const handleEnableToggle = useCallback(
     async (checked: boolean) => {
@@ -95,9 +174,7 @@ export default function BotDetailContent({ id }: { id: string }) {
 
   function handleFormSubmit() {
     // Re-sync enable state after form save (form may update enable too)
-    httpClient.getBot(id).then((res) => {
-      setBotEnabled(res.bot.enable ?? true);
-    });
+    fetchBotDetail();
     refreshBots();
   }
 
@@ -173,6 +250,7 @@ export default function BotDetailContent({ id }: { id: string }) {
                 </Label>
               </div>
             )}
+            <RuntimeStatusBadge status={getBotRuntimeStatus(botDetail)} />
           </div>
           <Button
             type="submit"

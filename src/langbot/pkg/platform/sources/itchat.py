@@ -12,8 +12,10 @@ from __future__ import annotations
 import asyncio
 import base64
 import os
+import re
 import tempfile
 import threading
+import time
 import traceback
 import typing
 
@@ -228,7 +230,7 @@ class ItchatEventConverter(abstract_platform_adapter.AbstractEventConverter):
 
             return platform_events.GroupMessage(
                 sender=platform_entities.GroupMember(
-                    id=actual_nick or actual_user,  # use nickname for @ mention
+                    id=actual_user or actual_nick,
                     member_name=actual_nick or actual_user,
                     permission=platform_entities.Permission.Member,
                     group=platform_entities.Group(
@@ -285,6 +287,11 @@ class ItchatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     _core: typing.Optional[ItchatCore] = pydantic.PrivateAttr(default=None)
     _bot_nickname: str = pydantic.PrivateAttr(default='')
     _bot_uuid: typing.Optional[str] = pydantic.PrivateAttr(default=None)
+    _startup_error: typing.Optional[str] = pydantic.PrivateAttr(default=None)
+    _connection_status: str = pydantic.PrivateAttr(default='disconnected')
+    _connection_error: str = pydantic.PrivateAttr(default='')
+    _last_connected_at: typing.Optional[float] = pydantic.PrivateAttr(default=None)
+    _last_disconnected_at: typing.Optional[float] = pydantic.PrivateAttr(default=None)
 
     class Config:
         arbitrary_types_allowed = True
@@ -308,6 +315,67 @@ class ItchatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         self._logged_in = threading.Event()
         self._itchat_thread = None
         self._core = ItchatCore()
+        self._startup_error = None
+        self._connection_status = 'disconnected'
+        self._connection_error = ''
+        self._last_connected_at = None
+        self._last_disconnected_at = None
+
+    @staticmethod
+    def _get_obj_value(obj: typing.Any, key: str, default: str = '') -> str:
+        if isinstance(obj, dict):
+            return obj.get(key, default) or default
+        return getattr(obj, key, default) or default
+
+    @staticmethod
+    def _safe_status_name(value: str) -> str:
+        cleaned = re.sub(r'[^A-Za-z0-9_.@-]+', '_', value.strip())
+        cleaned = cleaned.strip('._')
+        return cleaned or 'itchat'
+
+    @staticmethod
+    def login_status_dir() -> str:
+        path = os.path.join('data', 'itchat')
+        os.makedirs(path, exist_ok=True)
+        return path
+
+    @classmethod
+    def login_status_path_for_account(cls, account_id: str = '') -> str:
+        filename = f'{cls._safe_status_name(account_id)}.pkl' if account_id else 'itchat.pkl'
+        return os.path.join(cls.login_status_dir(), filename)
+
+    def _login_status_path(self) -> str:
+        configured_path = self.config.get('login_status_path', '').strip()
+        if configured_path:
+            return configured_path
+
+        account_id = self.config.get('account_id', '').strip()
+        if account_id:
+            account_path = self.login_status_path_for_account(account_id)
+            if os.path.exists(account_path):
+                return account_path
+
+        return self.login_status_path_for_account()
+
+    def set_bot_uuid(self, bot_uuid: str):
+        self._bot_uuid = bot_uuid
+
+    def _set_connection_status(self, status: str, error: str = ''):
+        self._connection_status = status
+        self._connection_error = error
+        now = time.time()
+        if status == 'connected':
+            self._last_connected_at = now
+        elif status in {'disconnected', 'error'}:
+            self._last_disconnected_at = now
+
+    def get_runtime_status(self) -> dict:
+        return {
+            'connection_status': self._connection_status,
+            'connection_error': self._connection_error,
+            'last_connected_at': self._last_connected_at,
+            'last_disconnected_at': self._last_disconnected_at,
+        }
 
     def _on_login(self):
         """Called by itchat after successful QR code login."""
@@ -318,16 +386,8 @@ class ItchatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
             # Get bot's own WeChat info from loginInfo['User']
             user_info = self._core.loginInfo.get('User', {})
-            nick_name = (
-                getattr(user_info, 'NickName', '') or user_info.get('NickName', '')
-                if isinstance(user_info, dict)
-                else ''
-            )
-            user_name = (
-                getattr(user_info, 'UserName', '') or user_info.get('UserName', '')
-                if isinstance(user_info, dict)
-                else ''
-            )
+            nick_name = self._get_obj_value(user_info, 'NickName')
+            user_name = self._get_obj_value(user_info, 'UserName')
 
             # bot_account_id: config override or auto-detected wxid
             # Used by AtBotRule for matching At.target
@@ -336,23 +396,27 @@ class ItchatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             # _bot_nickname: config override or auto-detected nickname
             configured_nick = self.config.get('nickname', '').strip()
             self._bot_nickname = configured_nick or nick_name
+            self._set_connection_status('connected')
 
-            # Log available groups
-            chatrooms = self._core.search_chatrooms()
-            group_names = []
-            for c in chatrooms:
-                name = getattr(c, 'NickName', '') or c.get('NickName', '') if isinstance(c, dict) else str(c)
-                if name:
-                    group_names.append(name)
+            try:
+                chatrooms = self._core.search_chatrooms() or []
+                group_names = []
+                for c in chatrooms:
+                    name = self._get_obj_value(c, 'NickName', str(c))
+                    if name:
+                        group_names.append(name)
 
-            if group_names:
-                self._log_sync(
-                    f'itchat login as {nick_name} ({user_name}) | Groups ({len(group_names)}): {", ".join(group_names[:10])}{"..." if len(group_names) > 10 else ""}'
-                )
-            else:
-                self._log_sync(f'itchat login as {nick_name} ({user_name}) | No groups found')
+                if group_names:
+                    self._log_sync(
+                        f'itchat login as {nick_name} ({user_name}) | Groups ({len(group_names)}): {", ".join(group_names[:10])}{"..." if len(group_names) > 10 else ""}'
+                    )
+                else:
+                    self._log_sync(f'itchat login as {nick_name} ({user_name}) | No groups found')
+            except Exception as e:
+                self._log_sync(f'itchat login as {nick_name} ({user_name}) | Failed to list groups: {e}', 'warning')
         except Exception as e:
             self.bot_account_id = f'WeChat Bot (Error: {e})'
+            self._set_connection_status('error', str(e))
         finally:
             self._logged_in.set()
 
@@ -412,6 +476,7 @@ class ItchatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
     def _on_exit(self):
         """Called by itchat on exit."""
+        self._set_connection_status('disconnected')
         self._log_sync('itchat session exited')
 
     def _register_itchat_handlers(self):
@@ -472,7 +537,7 @@ class ItchatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     self._loop,
                 )
         except Exception:
-            self.logger.error(f'Error dispatching itchat message: {traceback.format_exc()}')
+            self._log_sync(f'Error dispatching itchat message: {traceback.format_exc()}', 'error')
 
     async def send_message(
         self,
@@ -513,7 +578,7 @@ class ItchatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                         await loop.run_in_executor(None, self._core.send, f'@fil@{temp_path}', target_id)
                         self._cleanup_temp(temp_path)
             except Exception:
-                self.logger.error(f'Failed to send itchat message: {traceback.format_exc()}')
+                await self.logger.error(f'Failed to send itchat message: {traceback.format_exc()}')
 
     def _save_to_temp(self, item: dict, prefix: str) -> typing.Optional[str]:
         """Save base64 or URL data to a temp file and return the path."""
@@ -540,7 +605,7 @@ class ItchatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                         f.write(resp.content)
                     return temp_path
         except Exception:
-            self.logger.error(f'Failed to save temp file: {traceback.format_exc()}')
+            self._log_sync(f'Failed to save temp file: {traceback.format_exc()}', 'error')
         return None
 
     def _cleanup_temp(self, path: str):
@@ -550,6 +615,34 @@ class ItchatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 os.remove(path)
         except OSError:
             pass
+
+    def _prepare_reply_message(
+        self,
+        message_source: platform_events.MessageEvent,
+        message: platform_message.MessageChain,
+    ) -> platform_message.MessageChain:
+        """Render group sender mentions with display names while keeping internal IDs stable."""
+        if not isinstance(message_source, platform_events.GroupMessage):
+            return message
+
+        source_msg = message_source.source_platform_object or {}
+        actual_user = source_msg.get('ActualUserName', '')
+        actual_nick = source_msg.get('ActualNickName', '')
+        if not actual_user or not actual_nick:
+            return message
+
+        components: list[platform_message.MessageComponent] = []
+        changed = False
+        for component in message:
+            if isinstance(component, platform_message.At) and str(component.target) == str(actual_user):
+                components.append(platform_message.Plain(text=f'@{actual_nick} '))
+                changed = True
+            else:
+                components.append(component)
+
+        if not changed:
+            return message
+        return platform_message.MessageChain(components)
 
     async def reply_message(
         self,
@@ -567,7 +660,7 @@ class ItchatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if not from_user:
             return
 
-        await self.send_message('friend', from_user, message)
+        await self.send_message('friend', from_user, self._prepare_reply_message(message_source, message))
 
     def register_listener(
         self,
@@ -594,6 +687,9 @@ class ItchatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         itchat will reuse it without requiring a new QR scan.
         """
         self._loop = asyncio.get_running_loop()
+        self._logged_in.clear()
+        self._startup_error = None
+        self._set_connection_status('connecting')
 
         await self.logger.info('itchat adapter starting...')
 
@@ -603,27 +699,45 @@ class ItchatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         # Run itchat in a daemon thread (it blocks)
         def _run_itchat():
             try:
+                status_path = self._login_status_path()
+                if not os.path.exists(status_path):
+                    self._startup_error = (
+                        f'No cached WeChat session found at {status_path}. '
+                        'Please scan the QR code in the bot config page first.'
+                    )
+                    self._set_connection_status('error', self._startup_error)
+                    self._log_sync(self._startup_error, 'error')
+                    self._logged_in.set()
+                    return
+
                 # Use hotReload to reuse the cached session from QR login
                 # If no cache exists, fail fast instead of triggering QR login
                 result = self._core.load_login_status(
-                    'itchat.pkl', loginCallback=self._on_login, exitCallback=self._on_exit
+                    status_path, loginCallback=self._on_login, exitCallback=self._on_exit
                 )
-                if result['BaseResponse']['Ret'] != 0:
-                    self.logger.error(
-                        'No cached WeChat session found. Please scan the QR code in the bot config page first.'
+                if result.get('BaseResponse', {}).get('Ret') != 0:
+                    self._startup_error = (
+                        f'Cached WeChat session at {status_path} is invalid. '
+                        'Please scan the QR code in the bot config page again.'
                     )
+                    self._set_connection_status('error', self._startup_error)
+                    self._log_sync(self._startup_error, 'error')
                     self._logged_in.set()
                     return
 
                 # Session loaded, start message loop
-                self._log_sync('WeChat session loaded from cache')
+                self._log_sync(f'WeChat session loaded from cache: {status_path}')
 
                 # Clear stale messages that itchat fetched during hot-reload
                 self._drain_msglist()
 
                 self._core.run(blockThread=True)
+                self._set_connection_status('disconnected')
+                self._log_sync('itchat message loop stopped', 'error')
             except Exception as e:
-                self._log_sync(f'itchat run error: {e}', 'error')
+                error = f'itchat run error: {e}'
+                self._set_connection_status('error', error)
+                self._log_sync(error, 'error')
                 self._logged_in.set()
 
         self._itchat_thread = threading.Thread(target=_run_itchat, daemon=True, name='itchat-thread')
@@ -634,6 +748,8 @@ class ItchatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         if not self._logged_in.is_set():
             raise RuntimeError('itchat login timed out (300s)')
+        if self._startup_error:
+            raise RuntimeError(self._startup_error)
 
         await self.logger.info(f'itchat adapter running, bot: {self.bot_account_id}')
 
@@ -650,5 +766,6 @@ class ItchatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             self._core.isLogging = False
         except Exception:
             pass
+        self._set_connection_status('disconnected')
         await self.logger.info('itchat adapter stopped')
         return True

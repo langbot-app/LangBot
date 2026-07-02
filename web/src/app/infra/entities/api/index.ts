@@ -179,6 +179,28 @@ export interface ApiRespPlatformBot {
   bot: Bot;
 }
 
+export type BotAdapterConnectionStatus =
+  | 'connecting'
+  | 'connected'
+  | 'disconnected'
+  | 'error';
+
+export interface BotAdapterRuntimeStatus {
+  connection_status?: BotAdapterConnectionStatus;
+  connection_error?: string;
+  last_connected_at?: number | null;
+  last_disconnected_at?: number | null;
+}
+
+export interface BotAdapterRuntimeValues {
+  bot_account_id?: string;
+  webhook_url?: string | null;
+  webhook_full_url?: string | null;
+  extra_webhook_full_url?: string | null;
+  runtime_status?: BotAdapterRuntimeStatus;
+  [key: string]: unknown;
+}
+
 export interface Bot {
   uuid?: string;
   name: string;
@@ -191,7 +213,7 @@ export interface Bot {
   pipeline_routing_rules?: PipelineRoutingRule[];
   created_at?: string;
   updated_at?: string;
-  adapter_runtime_values?: object;
+  adapter_runtime_values?: BotAdapterRuntimeValues;
 }
 
 export type RoutingRuleOperator =
