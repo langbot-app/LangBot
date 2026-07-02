@@ -19,8 +19,28 @@ import QrCodeLoginDialog, {
   QrLoginPlatform,
 } from '@/app/home/components/qrcode-login/QrCodeLoginDialog';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { extractI18nObject } from '@/i18n/I18nProvider';
 import { useTranslation } from 'react-i18next';
+import {
+  resolveI18nLabel,
+  maybeTranslateKey,
+} from '@/app/home/workflows/components/workflow-editor/workflow-i18n';
+import { extractI18nObject } from '@/i18n/I18nProvider';
+
+// Helper function to translate i18n key if the value is an i18n key string
+const translateIfKey = (value: string | undefined): string | undefined => {
+  if (!value) return value;
+  const translated = maybeTranslateKey(value);
+  return translated || value;
+};
+
+// Helper to extract i18n label and translate if it's an i18n key
+const extractAndTranslateI18n = (label: any): string => {
+  if (!label) return '';
+  if (typeof label === 'string') {
+    return translateIfKey(label) || label;
+  }
+  return resolveI18nLabel(label) || '';
+};
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -48,6 +68,9 @@ function resolveShowIfValue(
   externalDependentValues?: Record<string, unknown>,
   systemContext?: Record<string, unknown>,
 ): unknown {
+  if (!field || typeof field !== 'string') {
+    return undefined;
+  }
   if (field.startsWith(SYSTEM_FIELD_PREFIX)) {
     const key = field.slice(SYSTEM_FIELD_PREFIX.length);
     return systemContext?.[key];
@@ -399,8 +422,7 @@ export default function DynamicFormComponent({
   /** Extra variables accessible via the `__system.*` namespace in show_if conditions.
    *  e.g. `{ is_wizard: true }` makes `show_if: { field: "__system.is_wizard", ... }` work. */
   systemContext?: Record<string, unknown>;
-  /** Callback to expose validation function to parent component.
-   *  Parent can call this function to trigger validation and get validity state. */
+  /** Exposes the form validation trigger to parent components. */
   onValidate?: (validateFn: () => Promise<boolean>) => void;
 }) {
   const isInitialMount = useRef(true);
@@ -446,6 +468,39 @@ export default function DynamicFormComponent({
       }
       // Default to a single empty system prompt entry
       return [{ role: 'system', content: '' }];
+    }
+    if (
+      item.type === 'string' ||
+      item.type === 'text' ||
+      item.type === 'secret' ||
+      item.type === 'select' ||
+      item.type === 'llm-model-selector' ||
+      item.type === 'embedding-model-selector' ||
+      item.type === 'rerank-model-selector' ||
+      item.type === 'pipeline-selector' ||
+      item.type === 'knowledge-base-selector' ||
+      item.type === 'bot-selector'
+    ) {
+      return typeof value === 'string' ? value : '';
+    }
+    if (
+      item.type === 'array[string]' ||
+      item.type === 'knowledge-base-multi-selector' ||
+      item.type === 'tools-selector'
+    ) {
+      return Array.isArray(value)
+        ? value.filter((item): item is string => typeof item === 'string')
+        : [];
+    }
+    if (item.type === 'boolean') {
+      return typeof value === 'boolean' ? value : Boolean(value);
+    }
+    if (item.type === 'integer' || item.type === 'float') {
+      return typeof value === 'number' && !Number.isNaN(value)
+        ? value
+        : typeof item.default === 'number'
+          ? item.default
+          : 0;
     }
     return value;
   };
@@ -509,16 +564,9 @@ export default function DynamicFormComponent({
     }, {} as FormValues),
   });
 
-  // Expose validation function to parent component
-  const validate = async (): Promise<boolean> => {
-    // Trigger validation for all fields
-    const result = await form.trigger();
-    return result;
-  };
-
   useEffect(() => {
-    onValidate?.(validate);
-  }, [onValidate]);
+    onValidate?.(() => form.trigger());
+  }, [form, onValidate]);
 
   // 当 initialValues 变化时更新表单值
   // 但要避免因为内部表单更新触发的 onSubmit 导致的 initialValues 变化而重新设置表单
@@ -713,10 +761,10 @@ export default function DynamicFormComponent({
             return (
               <SystemInfoField
                 key={config.id}
-                label={extractI18nObject(config.label)}
+                label={extractAndTranslateI18n(config.label)}
                 description={
                   config.description
-                    ? extractI18nObject(config.description)
+                    ? extractAndTranslateI18n(config.description)
                     : undefined
                 }
                 values={values}
@@ -734,11 +782,15 @@ export default function DynamicFormComponent({
 
             return (
               <WebhookUrlField
-                key={config.id}
-                label={extractI18nObject(config.label)}
+                key={`${config.id}-${config.name}`}
+                label={extractAndTranslateI18n(config.label)}
                 description={
                   config.description
-                    ? extractI18nObject(config.description)
+                    ? typeof config.description === 'string'
+                      ? config.description.startsWith('workflows.')
+                        ? String(t(config.description))
+                        : config.description
+                      : extractAndTranslateI18n(config.description)
                     : undefined
                 }
                 url={webhookUrl}
@@ -766,10 +818,12 @@ export default function DynamicFormComponent({
             return (
               <EmbedCodeField
                 key={config.id}
-                label={extractI18nObject(config.label)}
+                label={extractAndTranslateI18n(config.label)}
                 description={
                   config.description
-                    ? extractI18nObject(config.description)
+                    ? typeof config.description === 'string'
+                      ? translateIfKey(config.description) || config.description
+                      : extractI18nObject(config.description)
                     : undefined
                 }
                 snippet={embedSnippet}
@@ -804,7 +858,7 @@ export default function DynamicFormComponent({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-semibold text-foreground">
-                        {extractI18nObject(config.label)}
+                        {extractAndTranslateI18n(config.label)}
                       </span>
                       <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-primary text-primary-foreground">
                         {t('common.recommend')}
@@ -812,7 +866,7 @@ export default function DynamicFormComponent({
                     </div>
                     {config.description && (
                       <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                        {extractI18nObject(config.description)}
+                        {extractAndTranslateI18n(config.description)}
                       </p>
                     )}
                   </div>
@@ -876,7 +930,7 @@ export default function DynamicFormComponent({
           if (config.type === 'boolean') {
             return (
               <FormField
-                key={config.id}
+                key={`${config.id}-${config.name}`}
                 control={form.control}
                 name={config.name as keyof FormValues}
                 render={({ field }) => (
@@ -889,12 +943,15 @@ export default function DynamicFormComponent({
                     >
                       <div className="min-w-0 space-y-0.5">
                         <FormLabel className="flex min-w-0 items-center gap-1.5 text-base">
-                          {extractI18nObject(config.label)}
+                          {extractAndTranslateI18n(config.label)}
                           {renderDisabledTooltipIcon()}
                         </FormLabel>
                         {config.description && (
                           <p className="text-sm break-words text-muted-foreground">
-                            {extractI18nObject(config.description)}
+                            {typeof config.description === 'string'
+                              ? translateIfKey(config.description) ||
+                                config.description
+                              : extractAndTranslateI18n(config.description)}
                           </p>
                         )}
                       </div>
@@ -918,14 +975,16 @@ export default function DynamicFormComponent({
 
           return (
             <FormField
-              key={config.id}
+              key={`${config.id}-${config.name}`}
               control={form.control}
               name={config.name as keyof FormValues}
               render={({ field }) => (
                 <FormItem className="min-w-0">
                   <FormLabel className="flex min-w-0 items-center gap-1.5">
                     <span className="min-w-0 break-words">
-                      {extractI18nObject(config.label)}{' '}
+                      {(config.label
+                        ? extractAndTranslateI18n(config.label)
+                        : config.name) + ' '}
                       {config.required && (
                         <span className="text-red-500">*</span>
                       )}
@@ -951,7 +1010,10 @@ export default function DynamicFormComponent({
                   </FormControl>
                   {config.description && (
                     <p className="text-sm break-words text-muted-foreground">
-                      {extractI18nObject(config.description)}
+                      {typeof config.description === 'string'
+                        ? translateIfKey(config.description) ||
+                          config.description
+                        : extractAndTranslateI18n(config.description)}
                     </p>
                   )}
                   <FormMessage />

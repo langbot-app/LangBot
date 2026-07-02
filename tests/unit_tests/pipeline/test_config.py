@@ -1,10 +1,10 @@
-"""Unit tests for config_coercion module"""
+"""Unit tests for config module"""
 
 from __future__ import annotations
 
 import pytest
 
-from langbot.pkg.pipeline.config_coercion import _coerce_value, coerce_pipeline_config
+from langbot.pkg.pipeline.config import _coerce_value, coerce_pipeline_config
 
 
 class TestCoerceValue:

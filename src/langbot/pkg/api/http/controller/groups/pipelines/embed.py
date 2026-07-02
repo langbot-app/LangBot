@@ -62,16 +62,24 @@ class EmbedRouterGroup(group.RouterGroup):
         """Resolve *bot_uuid* to ``(runtime_bot, pipeline_uuid)``.
 
         Returns ``(None, None)`` when the bot does not exist, is not a
-        ``web_page_bot``, is disabled, or has no pipeline bound.
+        ``web_page_bot``, is disabled, or has no pipeline/workflow bound.
         """
         for bot in self.ap.platform_mgr.bots:
             if (
                 bot.bot_entity.uuid == bot_uuid
                 and bot.bot_entity.adapter == 'web_page_bot'
                 and bot.bot_entity.enable
-                and bot.bot_entity.use_pipeline_uuid
             ):
-                return bot, bot.bot_entity.use_pipeline_uuid
+                # Check for workflow binding first
+                binding_type = getattr(bot.bot_entity, 'binding_type', 'pipeline') or 'pipeline'
+                binding_uuid = getattr(bot.bot_entity, 'binding_uuid', None)
+
+                if binding_type == 'workflow' and binding_uuid:
+                    # For workflow binding, return workflow UUID
+                    return bot, binding_uuid
+                elif bot.bot_entity.use_pipeline_uuid:
+                    # For pipeline binding, return pipeline UUID
+                    return bot, bot.bot_entity.use_pipeline_uuid
         return None, None
 
     def _get_bot_config(self, bot_uuid: str) -> dict:

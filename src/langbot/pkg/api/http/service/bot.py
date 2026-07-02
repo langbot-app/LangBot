@@ -99,16 +99,23 @@ class BotService:
         # TODO: 检查配置信息格式
         bot_data['uuid'] = str(uuid.uuid4())
 
-        # bind the most recently updated pipeline if any exist
+        # Set default binding_type if not provided
+        if 'binding_type' not in bot_data:
+            bot_data['binding_type'] = 'pipeline'
+
+        # checkout the default pipeline (for backward compatibility)
         result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_pipeline.LegacyPipeline)
-            .order_by(persistence_pipeline.LegacyPipeline.updated_at.desc())
-            .limit(1)
+            sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(
+                persistence_pipeline.LegacyPipeline.is_default == True
+            )
         )
         pipeline = result.first()
         if pipeline is not None:
             bot_data['use_pipeline_uuid'] = pipeline.uuid
             bot_data['use_pipeline_name'] = pipeline.name
+            # Also set binding_uuid for new unified binding model
+            if 'binding_uuid' not in bot_data:
+                bot_data['binding_uuid'] = pipeline.uuid
 
         await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_bot.Bot).values(bot_data))
 
@@ -120,26 +127,45 @@ class BotService:
 
     async def update_bot(self, bot_uuid: str, bot_data: dict) -> None:
         """Update bot"""
-        update_data = bot_data.copy()
+        if 'uuid' in bot_data:
+            del bot_data['uuid']
 
-        if 'uuid' in update_data:
-            del update_data['uuid']
+        # Handle binding_type and binding_uuid for the new unified binding model
+        # If binding_type is explicitly set to 'workflow', skip pipeline validation
+        binding_type = bot_data.get('binding_type')
 
-        # set use_pipeline_name
-        if 'use_pipeline_uuid' in update_data:
+        # set use_pipeline_name (for backward compatibility with 'pipeline' binding_type)
+        # Only validate pipeline when binding_type is 'pipeline' or not set (default to pipeline)
+        if 'use_pipeline_uuid' in bot_data and binding_type != 'workflow':
             result = await self.ap.persistence_mgr.execute_async(
                 sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(
-                    persistence_pipeline.LegacyPipeline.uuid == update_data['use_pipeline_uuid']
+                    persistence_pipeline.LegacyPipeline.uuid == bot_data['use_pipeline_uuid']
                 )
             )
             pipeline = result.first()
             if pipeline is not None:
-                update_data['use_pipeline_name'] = pipeline.name
+                bot_data['use_pipeline_name'] = pipeline.name
+                # Also sync to binding_uuid if binding_type is 'pipeline' or not set
+                if binding_type is None or binding_type == 'pipeline':
+                    bot_data['binding_uuid'] = bot_data['use_pipeline_uuid']
+                    bot_data['binding_type'] = 'pipeline'
             else:
-                raise Exception('Pipeline not found')
+                # Only raise error if binding_type is explicitly 'pipeline' or not set
+                if binding_type is None or binding_type == 'pipeline':
+                    raise Exception('Pipeline not found')
+                # If binding_type is 'workflow', just clear the use_pipeline_uuid
+                bot_data['use_pipeline_uuid'] = None
+                bot_data['use_pipeline_name'] = None
+
+        # If binding_uuid is set directly (for workflow), clear pipeline fields
+        if 'binding_uuid' in bot_data and binding_type == 'workflow':
+            # For workflow binding, clear pipeline-related fields to avoid confusion
+            bot_data['binding_type'] = 'workflow'
+            bot_data['use_pipeline_uuid'] = None
+            bot_data['use_pipeline_name'] = None
 
         await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.update(persistence_bot.Bot).values(update_data).where(persistence_bot.Bot.uuid == bot_uuid)
+            sqlalchemy.update(persistence_bot.Bot).values(bot_data).where(persistence_bot.Bot.uuid == bot_uuid)
         )
         await self.ap.platform_mgr.remove_bot(bot_uuid)
 

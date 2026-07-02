@@ -25,7 +25,7 @@ export interface IDynamicFormItemSchema {
   name: string;
   required: boolean;
   type: DynamicFormItemType;
-  description?: I18nObject;
+  description?: I18nObject | string;
   options?: IDynamicFormItemOption[];
   /** When the condition matches, the field is rendered. Same evaluator as
    *  ``disable_if`` — supports the ``__system.*`` namespace via
@@ -51,6 +51,7 @@ export enum DynamicFormItemType {
   FLOAT = 'float',
   BOOLEAN = 'boolean',
   STRING = 'string',
+  SECRET = 'secret',
   TEXT = 'text',
   STRING_ARRAY = 'array[string]',
   FILE = 'file',
@@ -59,6 +60,8 @@ export enum DynamicFormItemType {
   LLM_MODEL_SELECTOR = 'llm-model-selector',
   EMBEDDING_MODEL_SELECTOR = 'embedding-model-selector',
   RERANK_MODEL_SELECTOR = 'rerank-model-selector',
+  PIPELINE_SELECTOR = 'pipeline-selector',
+  WORKFLOW_SELECTOR = 'workflow-selector',
   MODEL_FALLBACK_SELECTOR = 'model-fallback-selector',
   PROMPT_EDITOR = 'prompt-editor',
   UNKNOWN = 'unknown',

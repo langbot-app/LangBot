@@ -186,3 +186,7 @@
     transform: scale(0.95) rotate(-4deg);
   }
 }
+
+.react-flow__attribution {
+  opacity: 0.2 !important;
+}

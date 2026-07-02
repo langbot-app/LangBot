@@ -81,8 +81,13 @@ class RuntimeProvider:
                 msg, usage_info = result
                 if usage_info:
                     _store_llm_usage(query, usage_info)
-                    input_tokens = usage_info.get('prompt_tokens', 0)
-                    output_tokens = usage_info.get('completion_tokens', 0)
+                    input_tokens = usage_info.get('prompt_tokens', usage_info.get('input_tokens', 0))
+                    output_tokens = usage_info.get('completion_tokens', usage_info.get('output_tokens', 0))
+                    # Attach usage info to message using object.__setattr__ to bypass pydantic validation
+                    try:
+                        object.__setattr__(msg, 'usage', usage_info)
+                    except (AttributeError, TypeError):
+                        pass  # If we can't set it, just skip it
                 return msg
             else:
                 return result
@@ -98,7 +103,7 @@ class RuntimeProvider:
 
                 # Import monitoring helper
                 try:
-                    from ...pipeline import monitoring_helper
+                    from ...pipeline import monitor
 
                     # Get monitoring metadata from query variables
                     if query.variables:
@@ -110,7 +115,7 @@ class RuntimeProvider:
                         pipeline_name = 'Unknown'
                         message_id = None
 
-                    await monitoring_helper.MonitoringHelper.record_llm_call(
+                    await monitor.MonitoringHelper.record_llm_call(
                         ap=self.requester.ap,
                         query=query,
                         bot_id=query.bot_uuid or 'unknown',
@@ -177,7 +182,7 @@ class RuntimeProvider:
 
                 # Import monitoring helper
                 try:
-                    from ...pipeline import monitoring_helper
+                    from ...pipeline import monitor
 
                     # Get monitoring metadata from query variables
                     if query.variables:
@@ -189,7 +194,7 @@ class RuntimeProvider:
                         pipeline_name = 'Unknown'
                         message_id = None
 
-                    await monitoring_helper.MonitoringHelper.record_llm_call(
+                    await monitor.MonitoringHelper.record_llm_call(
                         ap=self.requester.ap,
                         query=query,
                         bot_id=query.bot_uuid or 'unknown',

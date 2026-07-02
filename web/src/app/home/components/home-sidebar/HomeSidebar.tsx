@@ -141,6 +141,7 @@ function DiscordIcon({ className }: { className?: string }) {
 const ENTITY_CATEGORY_IDS = [
   'bots',
   'pipelines',
+  'workflows',
   'knowledge',
   'plugins',
   'mcp',
@@ -152,6 +153,7 @@ type EntityCategoryId = (typeof ENTITY_CATEGORY_IDS)[number];
 const DETAIL_PAGE_CATEGORIES: EntityCategoryId[] = [
   'bots',
   'pipelines',
+  'workflows',
   'knowledge',
   'plugins',
   'mcp',
@@ -162,6 +164,7 @@ const DETAIL_PAGE_CATEGORIES: EntityCategoryId[] = [
 const CREATABLE_CATEGORIES: EntityCategoryId[] = [
   'bots',
   'pipelines',
+  'workflows',
   'knowledge',
   'mcp',
   'skills',
@@ -171,6 +174,7 @@ const CREATABLE_CATEGORIES: EntityCategoryId[] = [
 const COLLAPSIBLE_ONLY_CATEGORIES: EntityCategoryId[] = [
   'bots',
   'pipelines',
+  'workflows',
   'knowledge',
   'mcp',
   'skills',
@@ -183,10 +187,17 @@ function isEntityCategory(id: string): id is EntityCategoryId {
 // Map sidebar config IDs to SidebarDataContext keys
 const ENTITY_KEY_MAP: Record<
   EntityCategoryId,
-  'bots' | 'pipelines' | 'knowledgeBases' | 'plugins' | 'mcpServers' | 'skills'
+  | 'bots'
+  | 'pipelines'
+  | 'workflows'
+  | 'knowledgeBases'
+  | 'plugins'
+  | 'mcpServers'
+  | 'skills'
 > = {
   bots: 'bots',
   pipelines: 'pipelines',
+  workflows: 'workflows',
   knowledge: 'knowledgeBases',
   plugins: 'plugins',
   mcp: 'mcpServers',
@@ -197,6 +208,7 @@ const ENTITY_KEY_MAP: Record<
 const ENTITY_ROUTE_MAP: Record<EntityCategoryId, string> = {
   bots: '/home/bots',
   pipelines: '/home/pipelines',
+  workflows: '/home/workflows',
   knowledge: '/home/knowledge',
   plugins: '/home/extensions',
   mcp: '/home/mcp',
