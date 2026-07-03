@@ -185,6 +185,16 @@ class MCPSessionStatus(enum.Enum):
     ERROR = 'error'
 
 
+class _TransportReconnect(Exception):
+    """Internal signal: the Box stdio WS transport dropped but the managed
+    process is still alive. Triggers a lightweight transport reconnect that
+    reuses the live process, instead of a full process rebuild.
+
+    Reconnect attempts are NOT counted toward the fatal retry budget, so a
+    long-lived session can survive arbitrarily many transient drops.
+    """
+
+
 class RuntimeMCPSession:
     """运行时 MCP 会话"""
 
@@ -254,6 +264,9 @@ class RuntimeMCPSession:
         self._lifecycle_task = None
         self._shutdown_event = asyncio.Event()
         self._ready_event = asyncio.Event()
+        # Set transiently when a WS transport drop should NOT stop the managed
+        # process (it will be re-attached on the next initialize()).
+        self._preserve_managed_process = False
 
         self._box_stdio_runtime = BoxStdioSessionRuntime(self)
         self.box_config = self._box_stdio_runtime.config
@@ -399,6 +412,32 @@ class RuntimeMCPSession:
                     task.cancel()
                 for task in done:
                     if task is monitor_task and not self._shutdown_event.is_set():
+                        # The monitor completed. This is EITHER the managed
+                        # process actually exiting OR just the WS transport
+                        # dropping while the process stays alive in the Box
+                        # runtime. Re-check the real process state so a
+                        # transient transport drop reconnects (reusing the live
+                        # process) instead of tearing the process down and
+                        # running a full rebuild+backoff cycle.
+                        process_still_running = False
+                        try:
+                            process_still_running = (
+                                await self._box_stdio_runtime._managed_process_is_running()
+                            )
+                        except Exception:
+                            process_still_running = False
+                        if process_still_running:
+                            self.ap.logger.info(
+                                f'MCP server {self.server_name}: transport dropped but '
+                                f'managed process is still running; reconnecting transport'
+                            )
+                            self.error_phase = MCPSessionErrorPhase.RELAY_CONNECT
+                            # Preserve the live process across the finally-block
+                            # cleanup: only the WS transport should be torn down.
+                            self._preserve_managed_process = True
+                            raise _TransportReconnect(
+                                'Box managed process transport dropped; reconnecting'
+                            )
                         self.error_phase = MCPSessionErrorPhase.RUNTIME
                         raise Exception('Box managed process exited unexpectedly')
             else:
@@ -424,14 +463,38 @@ class RuntimeMCPSession:
             except Exception as e:
                 self.ap.logger.error(f'Error cleaning up MCP session {self.server_name}: {e}\n{traceback.format_exc()}')
             finally:
-                await self._cleanup_box_stdio_session()
+                # On a transport-only reconnect the managed process is healthy
+                # and will be re-attached on the next initialize(); do NOT stop
+                # it. Any other exit path fully tears the session down.
+                if getattr(self, '_preserve_managed_process', False):
+                    self._preserve_managed_process = False
+                else:
+                    await self._cleanup_box_stdio_session()
 
     async def _lifecycle_loop_with_retry(self):
         """Wrap _lifecycle_loop with retry and exponential backoff."""
-        for attempt in range(self._MAX_RETRIES + 1):
+        attempt = 0
+        while attempt <= self._MAX_RETRIES:
             try:
                 await self._lifecycle_loop()
                 return  # Normal shutdown, don't retry
+            except _TransportReconnect as e:
+                # Transient WS transport drop while the managed process is still
+                # alive. Reconnect promptly WITHOUT consuming the fatal retry
+                # budget and WITHOUT stopping the process — initialize() will
+                # re-attach to the live process. This is what lets a long-lived
+                # stdio MCP survive repeated brief event-loop stalls / pings.
+                if self._shutdown_event.is_set():
+                    return
+                self.ap.logger.info(
+                    f'MCP session {self.server_name}: reconnecting transport '
+                    f'({self._describe_exception(e)})'
+                )
+                self.status = MCPSessionStatus.CONNECTING
+                self.error_message = None
+                self.error_phase = None
+                await asyncio.sleep(1)
+                continue
             except Exception as e:
                 self.retry_count = attempt + 1
                 if self._shutdown_event.is_set():
@@ -460,6 +523,7 @@ class RuntimeMCPSession:
                 self.error_message = None
                 self.error_phase = None
                 await asyncio.sleep(delay)
+                attempt += 1
 
     @staticmethod
     def _describe_exception(exc: BaseException) -> str:

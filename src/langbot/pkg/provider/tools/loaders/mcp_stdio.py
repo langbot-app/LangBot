@@ -173,25 +173,36 @@ class BoxStdioSessionRuntime:
                     stderr_preview = (result.stderr or '')[:500]
                     raise Exception(f'Dependency install failed (exit code {result.exit_code}): {stderr_preview}')
 
-        try:
-            process_workspace = (
-                self._build_workspace(host_path=host_path, workdir=process_cwd, mount_path=process_cwd)
-                if host_path
-                else workspace
+        # Reuse an already-running managed process instead of rebuilding it.
+        # The Box runtime keeps the managed process alive across a transient
+        # WebSocket transport drop, so on a reconnect we only need to re-attach
+        # the WS below. Rebuilding here would needlessly stop a healthy process
+        # and re-run the (slow, network-touching) dependency bootstrap.
+        if not await self._managed_process_is_running():
+            try:
+                process_workspace = (
+                    self._build_workspace(host_path=host_path, workdir=process_cwd, mount_path=process_cwd)
+                    if host_path
+                    else workspace
+                )
+                payload = process_workspace.build_process_payload(
+                    self.server_config['command'],
+                    self.server_config.get('args', []),
+                    env=self.server_config.get('env', {}),
+                    cwd=process_cwd,
+                )
+                if install_cmd:
+                    payload = self._wrap_process_payload_with_python_env(payload, process_cwd)
+                payload['process_id'] = self.process_id
+                await workspace.box_service.start_managed_process(workspace.session_id, payload)
+            except Exception:
+                self.owner.error_phase = MCPSessionErrorPhase.PROCESS_START
+                raise
+        else:
+            self.ap.logger.info(
+                f'MCP server {self.server_name}: reusing live managed process '
+                f'process_id={self.process_id} (transport reconnect)'
             )
-            payload = process_workspace.build_process_payload(
-                self.server_config['command'],
-                self.server_config.get('args', []),
-                env=self.server_config.get('env', {}),
-                cwd=process_cwd,
-            )
-            if install_cmd:
-                payload = self._wrap_process_payload_with_python_env(payload, process_cwd)
-            payload['process_id'] = self.process_id
-            await workspace.box_service.start_managed_process(workspace.session_id, payload)
-        except Exception:
-            self.owner.error_phase = MCPSessionErrorPhase.PROCESS_START
-            raise
 
         try:
             websocket_url = workspace.get_managed_process_websocket_url(self.process_id)
@@ -235,6 +246,23 @@ class BoxStdioSessionRuntime:
                 if consecutive_errors >= self.owner._MONITOR_MAX_CONSECUTIVE_ERRORS:
                     return
             await asyncio.sleep(self.owner._MONITOR_POLL_INTERVAL)
+
+    async def _managed_process_is_running(self) -> bool:
+        """Return True if this server's managed process exists and is running.
+
+        Used to decide whether initialize() must (re)start the process or can
+        simply re-attach the WebSocket transport to a process the Box runtime
+        kept alive across a transient transport drop.
+        """
+        from langbot_plugin.box.models import BoxManagedProcessStatus
+
+        workspace = self._build_workspace()
+        try:
+            info = await workspace.get_managed_process(self.process_id)
+        except Exception:
+            return False
+        status = info.get('status', '') if isinstance(info, dict) else getattr(info, 'status', '')
+        return status in (BoxManagedProcessStatus.RUNNING.value, BoxManagedProcessStatus.RUNNING)
 
     async def _stage_host_path_to_shared_workspace(self, host_path: str) -> str:
         source_path = normalize_host_path(host_path)
