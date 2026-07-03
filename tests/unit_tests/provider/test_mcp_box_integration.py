@@ -829,3 +829,94 @@ async def test_init_box_stdio_server_stages_host_path_in_shared_workspace(mcp_mo
     assert process_payload['command'] == 'python'
     assert process_payload['args'] == ['/workspace/.mcp/u1/workspace/server.py']
     assert process_payload['cwd'] == '/workspace/.mcp/u1/workspace'
+
+
+@pytest.mark.asyncio
+async def test_stdio_handshake_retries_during_cold_start(mcp_module, tmp_path, monkeypatch):
+    """A slow (npx-style) cold start: the first handshake attempts fail while
+    the process is still starting, but the managed process is NOT exited, so
+    the handshake retry loop keeps trying and succeeds once the process is
+    ready — rather than raising and letting the outer loop churn the process."""
+    import asyncio as _asyncio
+    from contextlib import asynccontextmanager
+
+    mcp_stdio_module = sys.modules['langbot.pkg.provider.tools.loaders.mcp_stdio']
+
+    calls = {'init': 0}
+
+    class FlakyClientSession:
+        def __init__(self, *_args):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def initialize(self):
+            calls['init'] += 1
+            # Fail the first two attempts (process still cold-starting),
+            # succeed on the third.
+            if calls['init'] < 3:
+                raise Exception('Connection closed')
+            return None
+
+    @asynccontextmanager
+    async def fake_websocket_client(_url: str):
+        yield ('read-stream', 'write-stream')
+
+    monkeypatch.setattr(mcp_stdio_module, 'ClientSession', FlakyClientSession)
+    monkeypatch.setattr(mcp_stdio_module, 'websocket_client', fake_websocket_client)
+    # Make the retry loop fast.
+    monkeypatch.setattr(mcp_stdio_module, '_HANDSHAKE_ATTEMPT_TIMEOUT_SEC', 1.0, raising=False)
+
+    ap = _make_ap()
+    ap.box_service.available = True
+    ap.box_service.create_session = AsyncMock(return_value={})
+    ap.box_service.start_managed_process = AsyncMock(return_value={})
+    ap.box_service.get_managed_process_websocket_url = Mock(return_value='ws://box/p')
+
+    session = _make_session(
+        mcp_module,
+        {
+            'name': 'slow',
+            'uuid': 'slow-uuid',
+            'mode': 'stdio',
+            'command': 'npx',
+            'args': ['-y', 'some-mcp'],
+        },
+        ap=ap,
+    )
+
+    # The process never reports 'exited' during the cold start.
+    async def _not_exited():
+        return False
+
+    session._box_stdio_runtime._managed_process_has_exited = _not_exited
+    # First check (is it already running for reuse?) -> False so we start it.
+    running_flags = iter([False])
+
+    async def _is_running():
+        try:
+            return next(running_flags)
+        except StopIteration:
+            return True
+
+    session._box_stdio_runtime._managed_process_is_running = _is_running
+
+    # Speed up the inter-attempt sleep.
+    orig_sleep = _asyncio.sleep
+
+    async def _fast_sleep(_s):
+        await orig_sleep(0)
+
+    monkeypatch.setattr(mcp_stdio_module.asyncio, 'sleep', _fast_sleep)
+
+    await session._init_box_stdio_server()
+    await session.exit_stack.aclose()
+
+    # Handshake was retried until success (3 initialize calls) and the process
+    # was started exactly once (never rebuilt).
+    assert calls['init'] == 3
+    assert ap.box_service.start_managed_process.await_count == 1
