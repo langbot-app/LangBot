@@ -41,6 +41,7 @@ import {
 } from '@/components/ui/card';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import MCPLogs from '@/app/home/mcp/components/mcp-form/MCPLogs';
 import MCPReadme from '@/app/home/mcp/components/mcp-form/MCPReadme';
 import {
   MCPServerRuntimeInfo,
