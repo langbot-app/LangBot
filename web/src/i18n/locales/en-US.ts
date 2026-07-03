@@ -832,7 +832,8 @@ const enUS = {
     logsLevelAll: 'All levels',
     logsRefresh: 'Refresh',
     logsAutoRefresh: 'Auto refresh',
-    logsEmpty: 'No logs yet. Runtime logs from the MCP server will appear here.',
+    logsEmpty:
+      'No logs yet. Runtime logs from the MCP server will appear here.',
     noReadme: 'No documentation available',
     parseResultFailed: 'Failed to parse test result',
     noResultReturned: 'Test returned no result',

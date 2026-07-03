@@ -836,7 +836,8 @@ const viVN = {
     logsLevelAll: 'Tất cả cấp độ',
     logsRefresh: 'Làm mới',
     logsAutoRefresh: 'Tự động làm mới',
-    logsEmpty: 'Chưa có nhật ký. Nhật ký chạy của MCP Server sẽ hiển thị ở đây.',
+    logsEmpty:
+      'Chưa có nhật ký. Nhật ký chạy của MCP Server sẽ hiển thị ở đây.',
     noReadme: 'Không có tài liệu',
     parseResultFailed: 'Phân tích kết quả kiểm tra thất bại',
     noResultReturned: 'Kiểm tra không trả về kết quả',

@@ -846,7 +846,8 @@ const esES = {
     logsLevelAll: 'Todos los niveles',
     logsRefresh: 'Actualizar',
     logsAutoRefresh: 'Actualización automática',
-    logsEmpty: 'Aún no hay registros. Los registros de ejecución del servidor MCP aparecerán aquí.',
+    logsEmpty:
+      'Aún no hay registros. Los registros de ejecución del servidor MCP aparecerán aquí.',
     noReadme: 'No hay documentación disponible',
     parseResultFailed: 'Error al analizar el resultado de la prueba',
     noResultReturned: 'La prueba no devolvió resultados',
