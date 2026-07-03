@@ -439,6 +439,12 @@ class RuntimeMCPSession:
             else:
                 await self._shutdown_event.wait()
 
+        except _ColdStartRetry:
+            # Cold-start in progress: set the preserve flag BEFORE the finally
+            # block runs so it does not stop the live managed process. The outer
+            # _lifecycle_loop_with_retry will reuse it on the next attempt.
+            self._preserve_managed_process = True
+            raise
         except Exception as e:
             self.status = MCPSessionStatus.ERROR
             self.error_message = str(e)
