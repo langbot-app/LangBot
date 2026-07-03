@@ -421,9 +421,7 @@ class RuntimeMCPSession:
                         # running a full rebuild+backoff cycle.
                         process_still_running = False
                         try:
-                            process_still_running = (
-                                await self._box_stdio_runtime._managed_process_is_running()
-                            )
+                            process_still_running = await self._box_stdio_runtime._managed_process_is_running()
                         except Exception:
                             process_still_running = False
                         if process_still_running:
@@ -435,9 +433,7 @@ class RuntimeMCPSession:
                             # Preserve the live process across the finally-block
                             # cleanup: only the WS transport should be torn down.
                             self._preserve_managed_process = True
-                            raise _TransportReconnect(
-                                'Box managed process transport dropped; reconnecting'
-                            )
+                            raise _TransportReconnect('Box managed process transport dropped; reconnecting')
                         self.error_phase = MCPSessionErrorPhase.RUNTIME
                         raise Exception('Box managed process exited unexpectedly')
             else:
@@ -487,8 +483,7 @@ class RuntimeMCPSession:
                 if self._shutdown_event.is_set():
                     return
                 self.ap.logger.info(
-                    f'MCP session {self.server_name}: reconnecting transport '
-                    f'({self._describe_exception(e)})'
+                    f'MCP session {self.server_name}: reconnecting transport ({self._describe_exception(e)})'
                 )
                 self.status = MCPSessionStatus.CONNECTING
                 self.error_message = None
