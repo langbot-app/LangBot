@@ -1238,13 +1238,8 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
           t={t}
         />
       </TabsContent>
-      <TabsContent
-        value="logs"
-        className="mt-4 min-h-0 flex-1 overflow-y-auto"
-      >
-        {persistedServerName && (
-          <MCPLogs serverName={persistedServerName} />
-        )}
+      <TabsContent value="logs" className="mt-4 min-h-0 flex-1 overflow-y-auto">
+        {persistedServerName && <MCPLogs serverName={persistedServerName} />}
       </TabsContent>
     </Tabs>
   ) : (
