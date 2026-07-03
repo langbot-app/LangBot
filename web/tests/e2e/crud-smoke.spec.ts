@@ -88,6 +88,31 @@ test.describe('frontend CRUD smoke flows', () => {
     ).toBeVisible();
   });
 
+  test('opens pipeline AI capabilities with malformed model options', async ({
+    page,
+  }) => {
+    await installLangBotApiMocks(page, { authenticated: true });
+
+    await page.goto('/home/pipelines?id=pipeline-ai');
+
+    await expect(page.locator('input[name="basic.name"]')).toBeVisible();
+    await page.getByRole('button', { name: /^AI$/ }).click();
+
+    await expect(page.getByText('Runtime')).toBeVisible();
+    await expect(
+      page.locator('[data-slot="card-title"]').filter({
+        hasText: 'Built-in Agent',
+      }),
+    ).toBeVisible();
+    await expect(
+      page.locator('label').filter({
+        hasText: 'Model',
+      }),
+    ).toBeVisible();
+    await expect(page.getByText('A <Select.Item')).toHaveCount(0);
+    await expect(page.getByText('500')).toHaveCount(0);
+  });
+
   test('creates, edits, and deletes a knowledge base', async ({ page }) => {
     await installLangBotApiMocks(page, { authenticated: true });
 

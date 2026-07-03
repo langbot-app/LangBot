@@ -21,7 +21,7 @@ class AiocqhttpAdapter(AiocqhttpAPIMixin, abstract_platform_adapter.AbstractPlat
     bot: aiocqhttp.CQHttp = pydantic.Field(exclude=True)
 
     message_converter: AiocqhttpMessageConverter = AiocqhttpMessageConverter()
-    event_converter: AiocqhttpEventConverter = AiocqhttpEventConverter()
+    event_converter: AiocqhttpEventConverter = pydantic.Field(default_factory=AiocqhttpEventConverter)
 
     config: dict
     listeners: dict[

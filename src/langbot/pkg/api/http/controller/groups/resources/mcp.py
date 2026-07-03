@@ -29,11 +29,11 @@ class MCPRouterGroup(group.RouterGroup):
                     traceback.print_exc()
                     return self.http_status(500, -1, f'Failed to create MCP server: {str(e)}')
 
-        @self.route('/servers/<server_name>', methods=['GET', 'PUT', 'DELETE'], auth_type=group.AuthType.USER_TOKEN)
+        @self.route(
+            '/servers/<path:server_name>', methods=['GET', 'PUT', 'DELETE'], auth_type=group.AuthType.USER_TOKEN
+        )
         async def _(server_name: str) -> str:
             """获取、更新或删除MCP服务器配置"""
-            from urllib.parse import unquote
-
             server_name = unquote(server_name)
 
             server_data = await self.ap.mcp_service.get_mcp_server_by_name(server_name)
@@ -58,17 +58,15 @@ class MCPRouterGroup(group.RouterGroup):
                 except Exception as e:
                     return self.http_status(500, -1, f'Failed to delete MCP server: {str(e)}')
 
-        @self.route('/servers/<server_name>/test', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
+        @self.route('/servers/<path:server_name>/test', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
         async def _(server_name: str) -> str:
             """测试MCP服务器连接"""
-            from urllib.parse import unquote
-
             server_name = unquote(server_name)
             server_data = await quart.request.json
             task_id = await self.ap.mcp_service.test_mcp_server(server_name=server_name, server_data=server_data)
             return self.success(data={'task_id': task_id})
 
-        @self.route('/servers/<server_name>/resources', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
+        @self.route('/servers/<path:server_name>/resources', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
         async def _(server_name: str) -> str:
             """Get resources from an MCP server"""
             server_name = unquote(server_name)
@@ -86,7 +84,9 @@ class MCPRouterGroup(group.RouterGroup):
             except Exception as e:
                 return self.http_status(500, -1, f'Failed to get resources: {str(e)}')
 
-        @self.route('/servers/<server_name>/resource-templates', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
+        @self.route(
+            '/servers/<path:server_name>/resource-templates', methods=['GET'], auth_type=group.AuthType.USER_TOKEN
+        )
         async def _(server_name: str) -> str:
             """Get resource templates from an MCP server"""
             server_name = unquote(server_name)
@@ -96,7 +96,20 @@ class MCPRouterGroup(group.RouterGroup):
             except Exception as e:
                 return self.http_status(500, -1, f'Failed to get resource templates: {str(e)}')
 
-        @self.route('/servers/<server_name>/resources/read', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
+        @self.route('/servers/<path:server_name>/logs', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
+        async def _(server_name: str) -> str:
+            """Get logs from an MCP server"""
+            server_name = unquote(server_name)
+            try:
+                limit = int(quart.request.args.get('limit', 200))
+            except (TypeError, ValueError):
+                limit = 200
+            limit = min(limit, 500)
+            level = quart.request.args.get('level') or None
+            logs = await self.ap.mcp_service.get_mcp_server_logs(server_name, limit=limit, level=level)
+            return self.success(data={'logs': logs})
+
+        @self.route('/servers/<path:server_name>/resources/read', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
         async def _(server_name: str) -> str:
             """Read a resource from an MCP server"""
             server_name = unquote(server_name)

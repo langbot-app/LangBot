@@ -243,6 +243,15 @@ async def test_wecomcs_send_reply_and_platform_api_use_underlying_client():
     assert (open_kfid, external_userid, content) == ('kf-1', 'external-1', 'hello')
     assert msgid.startswith('lb-')
 
+    await adapter.send_message('person', 'kf-explicit|uexternal-legacy', message)
+    open_kfid, external_userid, _, content = adapter.bot.send_text_msg.await_args.args
+    assert (open_kfid, external_userid, content) == ('kf-explicit', 'external-legacy', 'hello')
+
+    adapter.bot_account_id = 'kf-default'
+    await adapter.send_message('person', 'uexternal-default', message)
+    open_kfid, external_userid, _, content = adapter.bot.send_text_msg.await_args.args
+    assert (open_kfid, external_userid, content) == ('kf-default', 'external-default', 'hello')
+
     image = platform_message.MessageChain([platform_message.Image(base64='data:image/png;base64,AAAA')])
     await adapter.send_message('person', 'external-1|kf-1', image)
     adapter.bot.send_image_msg.assert_awaited_once()

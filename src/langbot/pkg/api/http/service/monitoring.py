@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 import datetime
+import json
 import sqlalchemy
 
 from ....core import app
@@ -49,6 +50,12 @@ class MonitoringService:
                 persistence_monitoring.MonitoringLLMCall,
                 persistence_monitoring.MonitoringLLMCall.timestamp,
                 persistence_monitoring.MonitoringLLMCall.id,
+            ),
+            (
+                'monitoring_tool_calls',
+                persistence_monitoring.MonitoringToolCall,
+                persistence_monitoring.MonitoringToolCall.timestamp,
+                persistence_monitoring.MonitoringToolCall.id,
             ),
             (
                 'monitoring_embedding_calls',
@@ -130,6 +137,68 @@ class MonitoringService:
             autocommit_conn = await conn.execution_options(isolation_level='AUTOCOMMIT')
             await autocommit_conn.execute(sqlalchemy.text('PRAGMA wal_checkpoint(TRUNCATE)'))
             await autocommit_conn.execute(sqlalchemy.text('VACUUM'))
+
+    def _serialize_tool_payload(self, payload: object, max_length: int = 20000) -> str | None:
+        """Serialize tool arguments/results for monitoring storage."""
+        if payload is None:
+            return None
+
+        if isinstance(payload, str):
+            text = payload
+        else:
+            try:
+                text = json.dumps(payload, ensure_ascii=False, default=str)
+            except Exception:
+                text = str(payload)
+
+        if len(text) <= max_length:
+            return text
+
+        return f'{text[:max_length]}... [truncated {len(text) - max_length} chars]'
+
+    async def _get_message_for_tool_context(
+        self,
+        message_id: str | None = None,
+        session_id: str | None = None,
+    ):
+        if message_id:
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(persistence_monitoring.MonitoringMessage).where(
+                    persistence_monitoring.MonitoringMessage.id == message_id
+                )
+            )
+            row = result.first()
+            if row:
+                return row[0]
+
+        if not session_id:
+            return None
+
+        user_query = (
+            sqlalchemy.select(persistence_monitoring.MonitoringMessage)
+            .where(
+                sqlalchemy.and_(
+                    persistence_monitoring.MonitoringMessage.session_id == session_id,
+                    persistence_monitoring.MonitoringMessage.role == 'user',
+                )
+            )
+            .order_by(persistence_monitoring.MonitoringMessage.timestamp.desc())
+            .limit(1)
+        )
+        result = await self.ap.persistence_mgr.execute_async(user_query)
+        row = result.first()
+        if row:
+            return row[0]
+
+        any_query = (
+            sqlalchemy.select(persistence_monitoring.MonitoringMessage)
+            .where(persistence_monitoring.MonitoringMessage.session_id == session_id)
+            .order_by(persistence_monitoring.MonitoringMessage.timestamp.desc())
+            .limit(1)
+        )
+        result = await self.ap.persistence_mgr.execute_async(any_query)
+        row = result.first()
+        return row[0] if row else None
 
     # ========== Recording Methods ==========
 
@@ -216,6 +285,57 @@ class MonitoringService:
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.insert(persistence_monitoring.MonitoringLLMCall).values(call_data)
+        )
+
+        return call_id
+
+    async def record_tool_call(
+        self,
+        tool_name: str,
+        tool_source: str,
+        duration: int,
+        status: str = 'success',
+        bot_id: str | None = None,
+        bot_name: str | None = None,
+        pipeline_id: str | None = None,
+        pipeline_name: str | None = None,
+        session_id: str | None = None,
+        message_id: str | None = None,
+        arguments: object | None = None,
+        result: object | None = None,
+        error_message: str | None = None,
+    ) -> str:
+        """Record a tool call."""
+        context_message = await self._get_message_for_tool_context(message_id=message_id, session_id=session_id)
+        if context_message:
+            bot_id = bot_id or context_message.bot_id
+            bot_name = bot_name or context_message.bot_name
+            pipeline_id = pipeline_id or context_message.pipeline_id
+            pipeline_name = pipeline_name or context_message.pipeline_name
+            session_id = session_id or context_message.session_id
+            message_id = message_id or context_message.id
+
+        call_id = str(uuid.uuid4())
+        call_data = {
+            'id': call_id,
+            'timestamp': datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
+            'tool_name': tool_name,
+            'tool_source': tool_source,
+            'duration': max(0, duration),
+            'status': status,
+            'bot_id': bot_id or 'unknown',
+            'bot_name': bot_name or 'Unknown',
+            'pipeline_id': pipeline_id or 'unknown',
+            'pipeline_name': pipeline_name or 'Unknown',
+            'session_id': session_id,
+            'message_id': message_id,
+            'arguments': self._serialize_tool_payload(arguments),
+            'result': self._serialize_tool_payload(result),
+            'error_message': self._serialize_tool_payload(error_message),
+        }
+
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.insert(persistence_monitoring.MonitoringToolCall).values(call_data)
         )
 
         return call_id
@@ -749,6 +869,58 @@ class MonitoringService:
             total,
         )
 
+    async def get_tool_calls(
+        self,
+        bot_ids: list[str] | None = None,
+        pipeline_ids: list[str] | None = None,
+        session_ids: list[str] | None = None,
+        start_time: datetime.datetime | None = None,
+        end_time: datetime.datetime | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[list[dict], int]:
+        """Get tool calls with filters"""
+        conditions = []
+
+        if bot_ids:
+            conditions.append(persistence_monitoring.MonitoringToolCall.bot_id.in_(bot_ids))
+        if pipeline_ids:
+            conditions.append(persistence_monitoring.MonitoringToolCall.pipeline_id.in_(pipeline_ids))
+        if session_ids:
+            conditions.append(persistence_monitoring.MonitoringToolCall.session_id.in_(session_ids))
+        if start_time:
+            conditions.append(persistence_monitoring.MonitoringToolCall.timestamp >= start_time)
+        if end_time:
+            conditions.append(persistence_monitoring.MonitoringToolCall.timestamp <= end_time)
+
+        count_query = sqlalchemy.select(sqlalchemy.func.count(persistence_monitoring.MonitoringToolCall.id))
+        if conditions:
+            count_query = count_query.where(sqlalchemy.and_(*conditions))
+
+        count_result = await self.ap.persistence_mgr.execute_async(count_query)
+        total = count_result.scalar() or 0
+
+        query = sqlalchemy.select(persistence_monitoring.MonitoringToolCall).order_by(
+            persistence_monitoring.MonitoringToolCall.timestamp.desc()
+        )
+        if conditions:
+            query = query.where(sqlalchemy.and_(*conditions))
+
+        query = query.limit(limit).offset(offset)
+
+        result = await self.ap.persistence_mgr.execute_async(query)
+        tool_calls_rows = result.all()
+
+        return (
+            [
+                self.ap.persistence_mgr.serialize_model(
+                    persistence_monitoring.MonitoringToolCall, row[0] if isinstance(row, tuple) else row
+                )
+                for row in tool_calls_rows
+            ],
+            total,
+        )
+
     async def get_embedding_calls(
         self,
         start_time: datetime.datetime | None = None,
@@ -971,6 +1143,34 @@ class MonitoringService:
             else:
                 error_llm_calls += 1
 
+        # Get tool calls for this session
+        tool_query = (
+            sqlalchemy.select(persistence_monitoring.MonitoringToolCall)
+            .where(persistence_monitoring.MonitoringToolCall.session_id == session_id)
+            .order_by(persistence_monitoring.MonitoringToolCall.timestamp.asc())
+        )
+        tool_result = await self.ap.persistence_mgr.execute_async(tool_query)
+        tool_rows = tool_result.all()
+
+        tool_calls = [
+            self.ap.persistence_mgr.serialize_model(
+                persistence_monitoring.MonitoringToolCall, row[0] if isinstance(row, tuple) else row
+            )
+            for row in tool_rows
+        ]
+
+        total_tool_calls = len(tool_rows)
+        success_tool_calls = 0
+        error_tool_calls = 0
+        total_tool_duration = 0
+        for row in tool_rows:
+            tool_call = row[0] if isinstance(row, tuple) else row
+            total_tool_duration += tool_call.duration
+            if tool_call.status == 'success':
+                success_tool_calls += 1
+            else:
+                error_tool_calls += 1
+
         # Get errors for this session
         error_query = (
             sqlalchemy.select(persistence_monitoring.MonitoringError)
@@ -1013,6 +1213,14 @@ class MonitoringService:
                 'total_output_tokens': total_output_tokens,
                 'total_tokens': total_tokens,
                 'average_duration_ms': int(total_duration / total_llm_calls) if total_llm_calls > 0 else 0,
+            },
+            'tool_calls': tool_calls,
+            'tool_stats': {
+                'total_calls': total_tool_calls,
+                'success_calls': success_tool_calls,
+                'error_calls': error_tool_calls,
+                'total_duration_ms': total_tool_duration,
+                'average_duration_ms': int(total_tool_duration / total_tool_calls) if total_tool_calls > 0 else 0,
             },
             'errors': errors,
             'session_duration_seconds': session_duration_seconds,

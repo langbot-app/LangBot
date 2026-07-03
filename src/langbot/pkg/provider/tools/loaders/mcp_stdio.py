@@ -6,7 +6,7 @@ import os
 import shutil
 import shlex
 import threading
-from contextlib import suppress
+from contextlib import suppress, AsyncExitStack
 from typing import TYPE_CHECKING, Any
 
 import pydantic
@@ -72,6 +72,35 @@ class MCPServerBoxConfig(pydantic.BaseModel):
     read_only_rootfs: bool | None = None
 
     model_config = pydantic.ConfigDict(extra='ignore')
+
+
+_HANDSHAKE_ATTEMPT_TIMEOUT_SEC = 10.0
+
+
+class _TransferredStack:
+    """Adapts an already-populated AsyncExitStack into an async context manager
+    so ownership of its resources can be transferred into another exit stack.
+    Entering is a no-op; exiting closes the wrapped stack (and thus the live WS
+    transport + ClientSession) when the owning session shuts down."""
+
+    def __init__(self, stack: AsyncExitStack):
+        self._stack = stack
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        await self._stack.aclose()
+        return False
+
+
+class _ColdStartRetry(Exception):
+    """Signal: the managed process is alive but not yet answering the MCP
+    handshake because it is still cold-starting (e.g. `npx -y <pkg>` is still
+    installing). The outer lifecycle retry treats this like a transient
+    reconnect: it reuses the live process and does not count toward the fatal
+    retry budget, so a slow cold start is waited out rather than failing.
+    """
 
 
 class BoxStdioSessionRuntime:
@@ -173,28 +202,55 @@ class BoxStdioSessionRuntime:
                     stderr_preview = (result.stderr or '')[:500]
                     raise Exception(f'Dependency install failed (exit code {result.exit_code}): {stderr_preview}')
 
-        try:
-            process_workspace = (
-                self._build_workspace(host_path=host_path, workdir=process_cwd, mount_path=process_cwd)
-                if host_path
-                else workspace
+        # Reuse an already-running managed process instead of rebuilding it.
+        # The Box runtime keeps the managed process alive across a transient
+        # WebSocket transport drop, so on a reconnect we only need to re-attach
+        # the WS below. Rebuilding here would needlessly stop a healthy process
+        # and re-run the (slow, network-touching) dependency bootstrap.
+        if not await self._managed_process_is_running():
+            try:
+                process_workspace = (
+                    self._build_workspace(host_path=host_path, workdir=process_cwd, mount_path=process_cwd)
+                    if host_path
+                    else workspace
+                )
+                payload = process_workspace.build_process_payload(
+                    self.server_config['command'],
+                    self.server_config.get('args', []),
+                    env=self.server_config.get('env', {}),
+                    cwd=process_cwd,
+                )
+                if install_cmd:
+                    payload = self._wrap_process_payload_with_python_env(payload, process_cwd)
+                payload['process_id'] = self.process_id
+                await workspace.box_service.start_managed_process(workspace.session_id, payload)
+            except Exception:
+                self.owner.error_phase = MCPSessionErrorPhase.PROCESS_START
+                raise
+        else:
+            self.ap.logger.info(
+                f'MCP server {self.server_name}: reusing live managed process '
+                f'process_id={self.process_id} (transport reconnect)'
             )
-            payload = process_workspace.build_process_payload(
-                self.server_config['command'],
-                self.server_config.get('args', []),
-                env=self.server_config.get('env', {}),
-                cwd=process_cwd,
-            )
-            if install_cmd:
-                payload = self._wrap_process_payload_with_python_env(payload, process_cwd)
-            payload['process_id'] = self.process_id
-            await workspace.box_service.start_managed_process(workspace.session_id, payload)
-        except Exception:
-            self.owner.error_phase = MCPSessionErrorPhase.PROCESS_START
-            raise
 
+        websocket_url = workspace.get_managed_process_websocket_url(self.process_id)
+
+        # Attach the WS transport + MCP session ONCE, on the owner's exit stack,
+        # in the same task as the serve loop that follows. websocket_client and
+        # ClientSession use anyio task groups whose cancel scope is bound to the
+        # frame/stack that entered them, so they must live on the owner exit
+        # stack (not a deferred/transferred one) or the streams close the moment
+        # initialize() returns and the next request fails with "Connection
+        # closed".
+        #
+        # A slow (`npx -y <pkg>`) cold start makes this single attempt fail
+        # while the process is still alive — the package is still installing and
+        # cannot answer the handshake. We surface that to the outer retry loop
+        # as a _ColdStartRetry: it must NOT stop the process (it is healthy and
+        # will be reused) and must NOT consume the fatal retry budget. The next
+        # attempt re-attaches to the same live process; once it has finished
+        # cold start the handshake succeeds and stays healthy.
         try:
-            websocket_url = workspace.get_managed_process_websocket_url(self.process_id)
             transport = await self.owner.exit_stack.enter_async_context(websocket_client(websocket_url))
             read_stream, write_stream = transport
             self.owner.session = await self.owner.exit_stack.enter_async_context(
@@ -202,12 +258,19 @@ class BoxStdioSessionRuntime:
             )
         except Exception:
             self.owner.error_phase = MCPSessionErrorPhase.RELAY_CONNECT
+            if not await self._managed_process_has_exited():
+                # Process is alive but not yet serving (cold start) — reconnect.
+                raise _ColdStartRetry(f'{self.server_name}: transport not ready during cold start')
             raise
 
         try:
-            await self.owner.session.initialize()
-        except Exception:
+            await asyncio.wait_for(self.owner.session.initialize(), timeout=_HANDSHAKE_ATTEMPT_TIMEOUT_SEC)
+        except Exception as exc:
             self.owner.error_phase = MCPSessionErrorPhase.MCP_INIT
+            if not await self._managed_process_has_exited():
+                raise _ColdStartRetry(
+                    f'{self.server_name}: handshake not ready during cold start ({type(exc).__name__})'
+                )
             raise
 
     async def monitor_process_health(self) -> None:
@@ -234,7 +297,73 @@ class BoxStdioSessionRuntime:
                 )
                 if consecutive_errors >= self.owner._MONITOR_MAX_CONSECUTIVE_ERRORS:
                     return
+
+            # Capture stderr logs from the managed process
+            if isinstance(info, dict):
+                stderr_text = info.get('stderr', '') or info.get('stderr_preview', '')
+            else:
+                stderr_text = getattr(info, 'stderr', '') or getattr(info, 'stderr_preview', '')
+
+            if stderr_text and stderr_text != self.owner._last_stderr_text:
+                # Find new lines not in the previous snapshot
+                old_lines = set(self.owner._last_stderr_text.splitlines()) if self.owner._last_stderr_text else set()
+                new_lines = [l for l in stderr_text.splitlines() if l and l not in old_lines]
+                self.owner._last_stderr_text = stderr_text
+
+                import time as _time
+
+                for line in new_lines:
+                    level = (
+                        'error'
+                        if any(k in line.upper() for k in ('ERROR', 'CRITICAL'))
+                        else 'warning'
+                        if 'WARNING' in line.upper()
+                        else 'debug'
+                        if 'DEBUG' in line.upper()
+                        else 'info'
+                    )
+                    self.owner._log_buffer.append({'ts': _time.time(), 'level': level, 'text': line})
+
             await asyncio.sleep(self.owner._MONITOR_POLL_INTERVAL)
+
+    async def _managed_process_is_running(self) -> bool:
+        """Return True if this server's managed process exists and is running.
+
+        Used to decide whether initialize() must (re)start the process or can
+        simply re-attach the WebSocket transport to a process the Box runtime
+        kept alive across a transient transport drop.
+        """
+        from langbot_plugin.box.models import BoxManagedProcessStatus
+
+        workspace = self._build_workspace()
+        try:
+            info = await workspace.get_managed_process(self.process_id)
+        except Exception:
+            return False
+        status = info.get('status', '') if isinstance(info, dict) else getattr(info, 'status', '')
+        return status in (BoxManagedProcessStatus.RUNNING.value, BoxManagedProcessStatus.RUNNING)
+
+    async def _managed_process_has_exited(self) -> bool:
+        """Return True only if the process is DEFINITIVELY gone (reports EXITED).
+
+        Distinct from ``not _managed_process_is_running()``: a process that has
+        just been spawned may not yet report RUNNING, and a transient query
+        error is not proof of exit. During the cold-start handshake retry we
+        must NOT treat 'not yet running' or 'query failed' as a terminal
+        failure, or we bail out to the outer rebuild path and churn the
+        process (relay then rejects the early re-attach with HTTP 400). Only a
+        successful query that reports EXITED stops the retry loop.
+        """
+        from langbot_plugin.box.models import BoxManagedProcessStatus
+
+        workspace = self._build_workspace()
+        try:
+            info = await workspace.get_managed_process(self.process_id)
+        except Exception:
+            # Unknown — treat as 'still coming up', not exited.
+            return False
+        status = info.get('status', '') if isinstance(info, dict) else getattr(info, 'status', '')
+        return status in (BoxManagedProcessStatus.EXITED.value, BoxManagedProcessStatus.EXITED)
 
     async def _stage_host_path_to_shared_workspace(self, host_path: str) -> str:
         source_path = normalize_host_path(host_path)
@@ -342,16 +471,20 @@ class BoxStdioSessionRuntime:
 
         workspace = self._build_workspace(host_path=None)
 
-        # Transient test sessions own their isolated Box session, so tear the
-        # whole session down rather than leaking it. This cannot affect live
-        # servers because they live in the separate shared session.
+        # Transient config-page tests now share the same 'mcp-shared' Box
+        # session as live servers, so we must NOT tear the session down here —
+        # that would kill every other MCP server in the container. A test is
+        # isolated at the process level: it ran under its own process_id, so we
+        # stop only that process, exactly like a live server does below. The
+        # shared session and all other servers' live processes are untouched.
+        # (Staged per-test workspace files are still cleaned up.)
         if getattr(self.owner, 'is_transient', False):
             try:
-                await workspace.cleanup()
+                await workspace.stop_managed_process(self.process_id)
             except Exception as exc:
                 self.ap.logger.warning(
-                    f'MCP server {self.server_name}: failed to delete transient test session '
-                    f'{self.owner._build_box_session_id()}: {type(exc).__name__}: {exc}'
+                    f'MCP server {self.server_name}: failed to stop transient test process '
+                    f'process_id={self.process_id}: {type(exc).__name__}: {exc}'
                 )
             await self._cleanup_staged_workspace()
             return

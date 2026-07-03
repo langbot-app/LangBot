@@ -243,6 +243,7 @@ class MaintenanceService:
         tables = {
             'messages': persistence_monitoring.MonitoringMessage.id,
             'llm_calls': persistence_monitoring.MonitoringLLMCall.id,
+            'tool_calls': persistence_monitoring.MonitoringToolCall.id,
             'embedding_calls': persistence_monitoring.MonitoringEmbeddingCall.id,
             'errors': persistence_monitoring.MonitoringError.id,
             'sessions': persistence_monitoring.MonitoringSession.session_id,

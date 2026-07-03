@@ -41,6 +41,7 @@ import {
 } from '@/components/ui/card';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import MCPLogs from '@/app/home/mcp/components/mcp-form/MCPLogs';
 import MCPReadme from '@/app/home/mcp/components/mcp-form/MCPReadme';
 import {
   MCPServerRuntimeInfo,
@@ -487,6 +488,7 @@ interface MCPFormProps {
   onDirtyChange?: (dirty: boolean) => void;
   onTestingChange?: (testing: boolean) => void;
   onRuntimeInfoChange?: (runtimeInfo: MCPServerRuntimeInfo | null) => void;
+  onPersistedTestComplete?: (serverName: string) => void | Promise<void>;
   /** Reported when the form cannot be saved because the current mode is
    * ``stdio`` and the Box sandbox is disabled/unavailable. Parents that
    * render the Save button outside this component should disable it. */
@@ -511,6 +513,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
     onDirtyChange,
     onTestingChange,
     onRuntimeInfoChange,
+    onPersistedTestComplete,
     onSaveBlockedChange,
     layout = 'stacked',
     sideHeader,
@@ -750,6 +753,8 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
     }
     try {
       let serverConfig: MCPServer;
+      const serverName =
+        isEditMode && initServerName ? initServerName : value.name;
 
       if (value.mode === 'remote') {
         const headers: Record<string, string> = {};
@@ -758,7 +763,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
         });
 
         serverConfig = {
-          name: value.name,
+          name: serverName,
           mode: 'remote',
           enable: true,
           extra_args: {
@@ -774,7 +779,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
         });
 
         serverConfig = {
-          name: value.name,
+          name: serverName,
           mode: 'stdio',
           enable: true,
           extra_args: {
@@ -818,6 +823,10 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
       // `uvx` with no package (exit 2 / "Connection closed", no detail).
       // The form values are kept in sync on every edit and on load, so they
       // are always current.
+      const serverName =
+        isEditMode && initServerName ? initServerName : form.getValues('name');
+      const shouldTestPersistedServer =
+        isEditMode && !!initServerName && !form.formState.isDirty;
       const formExtraArgs = form.getValues('extra_args') ?? [];
       const formStdioArgs = form.getValues('args') ?? [];
       let extraArgsData: MCPServerExtraArgsRemote | MCPServerExtraArgsStdio;
@@ -840,12 +849,20 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
         };
       }
 
-      const { task_id } = await httpClient.testMCPServer('_', {
-        name: form.getValues('name'),
-        mode,
-        enable: true,
-        extra_args: extraArgsData,
-      } as MCPServer);
+      const testTarget = shouldTestPersistedServer ? serverName : '_';
+      const testPayload = shouldTestPersistedServer
+        ? {}
+        : ({
+            name: serverName,
+            mode,
+            enable: true,
+            extra_args: extraArgsData,
+          } as MCPServer);
+
+      const { task_id } = await httpClient.testMCPServer(
+        testTarget,
+        testPayload,
+      );
 
       if (!task_id) {
         throw new Error(t('mcp.noTaskId'));
@@ -871,14 +888,18 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
                 resource_count: 0,
                 resources: [],
               });
+              if (shouldTestPersistedServer) {
+                await onPersistedTestComplete?.(serverName);
+              }
             } else {
-              if (isEditMode) {
-                await loadServerForEdit(form.getValues('name'));
+              if (shouldTestPersistedServer) {
+                await loadServerForEdit(serverName);
+                await onPersistedTestComplete?.(serverName);
               } else {
-                // Create mode has no persisted server to reload tools from.
+                // Transient tests have no persisted server to reload tools from.
                 // The backend stashes the discovered runtime info (status +
-                // tools) in the test task's metadata before tearing the
-                // transient session down — surface it so a successful test
+                // tools) in the task metadata before tearing the transient
+                // session down — surface it so a successful test
                 // shows the tool list instead of "no tools found".
                 const runtimeInfoFromTest = taskResp.task_context?.metadata
                   ?.runtime_info as MCPServerRuntimeInfo | undefined;
@@ -1163,11 +1184,14 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
     </Card>
   );
 
+  const persistedServerName =
+    isEditMode && initServerName ? initServerName : form.getValues('name');
+
   const runtimePanel = (
     <RuntimePanel
       mcpTesting={mcpTesting}
       runtimeInfo={runtimeInfo}
-      serverName={form.getValues('name')}
+      serverName={persistedServerName}
       t={t}
     />
   );
@@ -1200,6 +1224,9 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
         <TabsTrigger value="resources" className="flex-none px-4">
           {resourcesTabLabel}
         </TabsTrigger>
+        <TabsTrigger value="logs" className="flex-none px-4">
+          {t('mcp.tabLogs')}
+        </TabsTrigger>
       </TabsList>
       <TabsContent value="docs" className="mt-4 min-h-0 flex-1 overflow-y-auto">
         <MCPReadme readme={readme} />
@@ -1211,7 +1238,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
         <RuntimePanel
           mcpTesting={mcpTesting}
           runtimeInfo={runtimeInfo}
-          serverName={form.getValues('name')}
+          serverName={persistedServerName}
           content="tools"
           t={t}
         />
@@ -1223,10 +1250,13 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
         <RuntimePanel
           mcpTesting={mcpTesting}
           runtimeInfo={runtimeInfo}
-          serverName={form.getValues('name')}
+          serverName={persistedServerName}
           content="resources"
           t={t}
         />
+      </TabsContent>
+      <TabsContent value="logs" className="mt-4 min-h-0 flex-1 overflow-y-auto">
+        {persistedServerName && <MCPLogs serverName={persistedServerName} />}
       </TabsContent>
     </Tabs>
   ) : (

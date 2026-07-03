@@ -81,6 +81,7 @@ def fake_monitoring_app():
     )
     app.monitoring_service.get_messages = AsyncMock(return_value=([{'id': 'msg-1', 'content': 'test'}], 100))
     app.monitoring_service.get_llm_calls = AsyncMock(return_value=([{'id': 'llm-1'}], 50))
+    app.monitoring_service.get_tool_calls = AsyncMock(return_value=([{'id': 'tool-1'}], 5))
     app.monitoring_service.get_embedding_calls = AsyncMock(return_value=([{'id': 'emb-1'}], 10))
     app.monitoring_service.get_sessions = AsyncMock(return_value=([{'session_id': 'sess-1'}], 20))
     app.monitoring_service.get_errors = AsyncMock(return_value=([{'id': 'err-1'}], 2))

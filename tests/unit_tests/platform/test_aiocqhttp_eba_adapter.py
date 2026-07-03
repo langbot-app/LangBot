@@ -283,8 +283,51 @@ async def test_aiocqhttp_event_converter_maps_private_and_group_messages():
     assert isinstance(group_event.message_chain[1], platform_message.At)
 
 
-def test_aiocqhttp_event_converter_maps_notice_and_request_events():
-    deleted = AiocqhttpEventConverter.notice_to_eba(
+@pytest.mark.asyncio
+async def test_aiocqhttp_event_converter_enriches_group_message_metadata():
+    class Bot:
+        group_info_calls = 0
+        member_info_calls = 0
+
+        async def get_group_info(self, group_id):
+            self.group_info_calls += 1
+            return {'group_id': group_id, 'group_name': 'Test Group'}
+
+        async def get_group_member_info(self, group_id, user_id):
+            self.member_info_calls += 1
+            return {'group_id': group_id, 'user_id': user_id, 'card': 'Group Card', 'nickname': 'QQ Nickname'}
+
+    group = onebot_event(
+        {
+            'post_type': 'message',
+            'message_type': 'group',
+            'sub_type': 'normal',
+            'time': 1710000000,
+            'self_id': 999,
+            'message_id': 12,
+            'group_id': 20002,
+            'user_id': 10002,
+            'message': [{'type': 'text', 'data': {'text': 'hello'}}],
+            'raw_message': 'hello',
+            'sender': {'user_id': 10002, 'nickname': '', 'card': '', 'role': 'member'},
+        }
+    )
+
+    bot = Bot()
+    first = await AiocqhttpEventConverter.target2yiri(group, bot)
+    second = await AiocqhttpEventConverter.target2yiri(group, bot)
+
+    assert first.group.name == 'Test Group'
+    assert first.sender.nickname == 'Group Card'
+    assert first.sender.remark == 'Group Card'
+    assert second.group.name == 'Test Group'
+    assert bot.group_info_calls == 1
+    assert bot.member_info_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_aiocqhttp_event_converter_maps_notice_and_request_events():
+    deleted = await AiocqhttpEventConverter.notice_to_eba(
         onebot_event(
             {
                 'post_type': 'notice',
@@ -301,7 +344,7 @@ def test_aiocqhttp_event_converter_maps_notice_and_request_events():
     assert isinstance(deleted, platform_events.MessageDeletedEvent)
     assert deleted.message_id == 33
 
-    joined = AiocqhttpEventConverter.notice_to_eba(
+    joined = await AiocqhttpEventConverter.notice_to_eba(
         onebot_event(
             {
                 'post_type': 'notice',
@@ -319,7 +362,7 @@ def test_aiocqhttp_event_converter_maps_notice_and_request_events():
     assert isinstance(joined, platform_events.MemberJoinedEvent)
     assert joined.join_type == 'invite'
 
-    bot_muted = AiocqhttpEventConverter.notice_to_eba(
+    bot_muted = await AiocqhttpEventConverter.notice_to_eba(
         onebot_event(
             {
                 'post_type': 'notice',
@@ -338,7 +381,7 @@ def test_aiocqhttp_event_converter_maps_notice_and_request_events():
     assert isinstance(bot_muted, platform_events.BotMutedEvent)
     assert bot_muted.duration == 60
 
-    friend_request = AiocqhttpEventConverter.request_to_eba(
+    friend_request = await AiocqhttpEventConverter.request_to_eba(
         onebot_event(
             {
                 'post_type': 'request',
@@ -354,7 +397,7 @@ def test_aiocqhttp_event_converter_maps_notice_and_request_events():
     assert isinstance(friend_request, platform_events.FriendRequestReceivedEvent)
     assert friend_request.request_id == 'flag-1'
 
-    group_invite = AiocqhttpEventConverter.request_to_eba(
+    group_invite = await AiocqhttpEventConverter.request_to_eba(
         onebot_event(
             {
                 'post_type': 'request',
@@ -371,7 +414,7 @@ def test_aiocqhttp_event_converter_maps_notice_and_request_events():
     assert isinstance(group_invite, platform_events.BotInvitedToGroupEvent)
     assert group_invite.request_id == 'group-flag'
 
-    member_left = AiocqhttpEventConverter.notice_to_eba(
+    member_left = await AiocqhttpEventConverter.notice_to_eba(
         onebot_event(
             {
                 'post_type': 'notice',
@@ -389,7 +432,7 @@ def test_aiocqhttp_event_converter_maps_notice_and_request_events():
     assert isinstance(member_left, platform_events.MemberLeftEvent)
     assert member_left.is_kicked is True
 
-    friend_added = AiocqhttpEventConverter.notice_to_eba(
+    friend_added = await AiocqhttpEventConverter.notice_to_eba(
         onebot_event(
             {
                 'post_type': 'notice',

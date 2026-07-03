@@ -18,59 +18,11 @@ import { ExportDropdown } from './components/ExportDropdown';
 import { useMonitoringFilters } from './hooks/useMonitoringFilters';
 import { useMonitoringData } from './hooks/useMonitoringData';
 import { useFeedbackData } from './hooks/useFeedbackData';
-import { MessageDetailsCard } from './components/MessageDetailsCard';
-import { MessageContentRenderer } from './components/MessageContentRenderer';
+import { ConversationTurnList } from './components/ConversationTurnList';
 import { FeedbackStatsCards } from './components/FeedbackCard';
 import { FeedbackList } from './components/FeedbackList';
-import { MessageDetails } from './types/monitoring';
-import { httpClient } from '@/app/infra/http/HttpClient';
+import { buildConversationTurns } from './utils/conversationTurns';
 import { LoadingSpinner, LoadingPage } from '@/components/ui/loading-spinner';
-
-interface RawMessageData {
-  id: string;
-  timestamp: string;
-  bot_id: string;
-  bot_name: string;
-  pipeline_id: string;
-  pipeline_name: string;
-  message_content: string;
-  session_id: string;
-  status: string;
-  level: string;
-  platform: string;
-  user_id: string;
-  runner_name: string;
-  variables: Record<string, unknown>;
-}
-
-interface RawLLMCallData {
-  id: string;
-  timestamp: string;
-  model_name: string;
-  status: string;
-  duration: number;
-  error_message: string | null;
-  input_tokens: number;
-  output_tokens: number;
-  total_tokens: number;
-}
-
-interface RawLLMStatsData {
-  total_calls: number;
-  total_input_tokens: number;
-  total_output_tokens: number;
-  total_tokens: number;
-  total_duration_ms: number;
-  average_duration_ms: number;
-}
-
-interface RawErrorData {
-  id: string;
-  timestamp: string;
-  error_type: string;
-  error_message: string;
-  stack_trace: string | null;
-}
 
 function MonitoringPageContent() {
   const { t } = useTranslation();
@@ -146,115 +98,37 @@ function MonitoringPageContent() {
     setFeedbackRefreshKey((k) => k + 1);
   }, [refetch]);
 
-  const [expandedMessageId, setExpandedMessageId] = useState<string | null>(
-    null,
-  );
-  const [messageDetails, setMessageDetails] = useState<
-    Record<string, MessageDetails>
-  >({});
-  const [loadingDetails, setLoadingDetails] = useState<Record<string, boolean>>(
-    {},
+  const conversationTurns = useMemo(
+    () =>
+      buildConversationTurns(
+        data?.messages || [],
+        data?.llmCalls || [],
+        data?.errors || [],
+        data?.toolCalls || [],
+      ),
+    [data?.messages, data?.llmCalls, data?.errors, data?.toolCalls],
   );
 
   // State for expanded errors
   const [expandedErrorId, setExpandedErrorId] = useState<string | null>(null);
+  const [expandedTurnId, setExpandedTurnId] = useState<string | null>(null);
 
   // State for controlled tabs
   const [activeTab, setActiveTab] = useState<string>('messages');
 
   // Function to jump to a message record
-  const jumpToMessage = async (messageId: string) => {
+  const jumpToMessage = (messageId: string) => {
     setActiveTab('messages');
-    // Small delay to ensure tab switch completes
     setTimeout(() => {
-      toggleMessageExpand(messageId);
+      const turn = conversationTurns.find((item) =>
+        item.messages.some((message) => message.id === messageId),
+      );
+      setExpandedTurnId(turn?.id ?? messageId);
     }, 100);
   };
 
-  const toggleMessageExpand = async (messageId: string) => {
-    if (expandedMessageId === messageId) {
-      // Collapse
-      setExpandedMessageId(null);
-    } else {
-      // Expand
-      setExpandedMessageId(messageId);
-
-      // Fetch details if not already loaded
-      if (!messageDetails[messageId]) {
-        setLoadingDetails({ ...loadingDetails, [messageId]: true });
-        try {
-          // httpClient.get() returns the inner data directly (response.data.data)
-          const result = await httpClient.get<{
-            message_id: string;
-            found: boolean;
-            message: RawMessageData | null;
-            llm_calls: RawLLMCallData[];
-            llm_stats: RawLLMStatsData;
-            errors: RawErrorData[];
-          }>(`/api/v1/monitoring/messages/${messageId}/details`);
-
-          if (result) {
-            setMessageDetails((prev) => ({
-              ...prev,
-              [messageId]: {
-                messageId: result.message_id,
-                found: result.found,
-                message: result.message
-                  ? {
-                      id: result.message.id,
-                      timestamp: new Date(result.message.timestamp),
-                      botId: result.message.bot_id,
-                      botName: result.message.bot_name,
-                      pipelineId: result.message.pipeline_id,
-                      pipelineName: result.message.pipeline_name,
-                      messageContent: result.message.message_content,
-                      sessionId: result.message.session_id,
-                      status: result.message.status,
-                      level: result.message.level,
-                      platform: result.message.platform,
-                      userId: result.message.user_id,
-                      runnerName: result.message.runner_name,
-                      variables: result.message.variables,
-                    }
-                  : undefined,
-                llmCalls: result.llm_calls.map((call: RawLLMCallData) => ({
-                  id: call.id,
-                  timestamp: new Date(call.timestamp),
-                  modelName: call.model_name,
-                  status: call.status,
-                  duration: call.duration,
-                  errorMessage: call.error_message,
-                  tokens: {
-                    input: call.input_tokens || 0,
-                    output: call.output_tokens || 0,
-                    total: call.total_tokens || 0,
-                  },
-                })),
-                errors: result.errors.map((error: RawErrorData) => ({
-                  id: error.id,
-                  timestamp: new Date(error.timestamp),
-                  errorType: error.error_type,
-                  errorMessage: error.error_message,
-                  stackTrace: error.stack_trace,
-                })),
-                llmStats: {
-                  totalCalls: result.llm_stats.total_calls,
-                  totalInputTokens: result.llm_stats.total_input_tokens,
-                  totalOutputTokens: result.llm_stats.total_output_tokens,
-                  totalTokens: result.llm_stats.total_tokens,
-                  totalDurationMs: result.llm_stats.total_duration_ms,
-                  averageDurationMs: result.llm_stats.average_duration_ms,
-                },
-              } as MessageDetails,
-            }));
-          }
-        } catch (error) {
-          console.error('Failed to fetch message details:', error);
-        } finally {
-          setLoadingDetails({ ...loadingDetails, [messageId]: false });
-        }
-      }
-    }
+  const toggleTurnExpand = (turnId: string) => {
+    setExpandedTurnId((current) => (current === turnId ? null : turnId));
   };
 
   const toggleErrorExpand = (errorId: string) => {
@@ -342,127 +216,22 @@ function MonitoringPageContent() {
                   </div>
                 )}
 
-                {!loading &&
-                  data &&
-                  data.messages &&
-                  data.messages.length > 0 && (
-                    <div className="space-y-4">
-                      {data.messages
-                        .filter((msg) => {
-                          // Filter out messages with empty content
-                          const content = msg.messageContent?.trim();
-                          return (
-                            content && content !== '[]' && content !== '""'
-                          );
-                        })
-                        .map((msg) => (
-                          <div
-                            key={msg.id}
-                            className="border rounded-xl overflow-hidden transition-all duration-200"
-                          >
-                            {/* Message Header - Always Visible */}
-                            <div
-                              className="p-3 cursor-pointer hover:bg-accent transition-colors sm:p-5"
-                              onClick={() => toggleMessageExpand(msg.id)}
-                            >
-                              <div className="flex items-start justify-between">
-                                <div className="flex items-start flex-1">
-                                  {/* Expand Icon */}
-                                  <div className="mr-3 mt-0.5">
-                                    {expandedMessageId === msg.id ? (
-                                      <ChevronDown className="w-5 h-5 text-muted-foreground" />
-                                    ) : (
-                                      <ChevronRight className="w-5 h-5 text-muted-foreground" />
-                                    )}
-                                  </div>
+                {!loading && data && conversationTurns.length > 0 && (
+                  <ConversationTurnList
+                    turns={conversationTurns}
+                    expandedTurnId={expandedTurnId}
+                    onToggleTurn={toggleTurnExpand}
+                  />
+                )}
 
-                                  {/* Message Info */}
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <span className="text-xs text-muted-foreground font-mono">
-                                        ID: {msg.id}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-2 mb-2">
-                                      <span className="font-medium text-sm text-foreground">
-                                        {msg.botName}
-                                      </span>
-                                      <span className="text-muted-foreground">
-                                        →
-                                      </span>
-                                      <span className="text-sm text-muted-foreground">
-                                        {msg.pipelineName}
-                                      </span>
-                                      {msg.runnerName && (
-                                        <>
-                                          <span className="text-muted-foreground">
-                                            →
-                                          </span>
-                                          <span className="text-sm text-muted-foreground">
-                                            {msg.runnerName}
-                                          </span>
-                                        </>
-                                      )}
-                                    </div>
-                                    <div className="text-base text-foreground">
-                                      <MessageContentRenderer
-                                        content={msg.messageContent}
-                                        maxLines={3}
-                                      />
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {/* Status and Timestamp */}
-                                <div className="flex flex-col items-end gap-2 ml-4">
-                                  <span className="text-xs text-muted-foreground whitespace-nowrap">
-                                    {msg.timestamp.toLocaleString()}
-                                  </span>
-                                  <span
-                                    className={`text-xs px-2 py-1 rounded ${
-                                      msg.level === 'error'
-                                        ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                                        : msg.level === 'warning'
-                                          ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-                                          : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                                    }`}
-                                  >
-                                    {msg.level}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Expanded Details */}
-                            {expandedMessageId === msg.id && (
-                              <div className="border-t p-4 bg-muted">
-                                {loadingDetails[msg.id] && (
-                                  <div className="py-4 flex justify-center">
-                                    <LoadingSpinner size="sm" text="" />
-                                  </div>
-                                )}
-                                {!loadingDetails[msg.id] &&
-                                  messageDetails[msg.id] && (
-                                    <MessageDetailsCard
-                                      details={messageDetails[msg.id]}
-                                    />
-                                  )}
-                              </div>
-                            )}
-                          </div>
-                        ))}
+                {!loading && (!data || conversationTurns.length === 0) && (
+                  <div className="flex flex-col items-center justify-center text-muted-foreground py-16 gap-2">
+                    <MessageSquare className="h-[3rem] w-[3rem]" />
+                    <div className="text-sm">
+                      {t('monitoring.messageList.noMessages')}
                     </div>
-                  )}
-
-                {!loading &&
-                  (!data || !data.messages || data.messages.length === 0) && (
-                    <div className="flex flex-col items-center justify-center text-muted-foreground py-16 gap-2">
-                      <MessageSquare className="h-[3rem] w-[3rem]" />
-                      <div className="text-sm">
-                        {t('monitoring.messageList.noMessages')}
-                      </div>
-                    </div>
-                  )}
+                  </div>
+                )}
               </div>
             </TabsContent>
 

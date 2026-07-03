@@ -105,6 +105,16 @@ function SelectOptionContent({
   );
 }
 
+function hasUsableUuid<T extends { uuid?: string | null }>(
+  item: T,
+): item is T & { uuid: string } {
+  return typeof item.uuid === 'string' && item.uuid.trim().length > 0;
+}
+
+function hasUsableOptionName(option: { name?: string | null }): boolean {
+  return typeof option.name === 'string' && option.name.trim().length > 0;
+}
+
 export default function DynamicFormItemComponent({
   config,
   field,
@@ -142,7 +152,7 @@ export default function DynamicFormItemComponent({
     httpClient
       .getProviderLLMModels()
       .then((resp) => {
-        setLlmModels(resp.models);
+        setLlmModels(resp.models.filter(hasUsableUuid));
       })
       .catch((err) => {
         toast.error(t('models.getModelListError') + err.msg);
@@ -153,7 +163,7 @@ export default function DynamicFormItemComponent({
     httpClient
       .getProviderEmbeddingModels()
       .then((resp) => {
-        setEmbeddingModels(resp.models);
+        setEmbeddingModels(resp.models.filter(hasUsableUuid));
       })
       .catch((err) => {
         toast.error(t('embedding.getModelListError') + err.msg);
@@ -164,7 +174,7 @@ export default function DynamicFormItemComponent({
     httpClient
       .getProviderRerankModels()
       .then((resp) => {
-        setRerankModels(resp.models);
+        setRerankModels(resp.models.filter(hasUsableUuid));
       })
       .catch((err) => {
         toast.error('Failed to load rerank models: ' + err.msg);
@@ -268,7 +278,7 @@ export default function DynamicFormItemComponent({
       httpClient
         .getKnowledgeBases()
         .then((resp) => {
-          setKnowledgeBases(resp.bases);
+          setKnowledgeBases(resp.bases.filter(hasUsableUuid));
         })
         .catch((err) => {
           toast.error(t('knowledge.getKnowledgeBaseListError') + err.msg);
@@ -281,7 +291,7 @@ export default function DynamicFormItemComponent({
       httpClient
         .getBots()
         .then((resp) => {
-          setBots(resp.bots);
+          setBots(resp.bots.filter(hasUsableUuid));
         })
         .catch((err) => {
           toast.error(t('bots.getBotListError') + err.msg);
@@ -461,7 +471,7 @@ export default function DynamicFormItemComponent({
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              {config.options?.map((option) => (
+              {config.options?.filter(hasUsableOptionName).map((option) => (
                 <SelectItem
                   key={option.name}
                   value={option.name}
@@ -1252,7 +1262,8 @@ export default function DynamicFormItemComponent({
 
     case DynamicFormItemType.KNOWLEDGE_BASE_SELECTOR:
       // Group KBs by Knowledge Engine name
-      const kbsByEngine = knowledgeBases.reduce(
+      const validKnowledgeBases = knowledgeBases.filter(hasUsableUuid);
+      const kbsByEngine = validKnowledgeBases.reduce(
         (acc, kb) => {
           const engineName = kb.knowledge_engine?.name
             ? extractI18nObject(kb.knowledge_engine.name)
@@ -1263,7 +1274,7 @@ export default function DynamicFormItemComponent({
           acc[engineName].push(kb);
           return acc;
         },
-        {} as Record<string, typeof knowledgeBases>,
+        {} as Record<string, typeof validKnowledgeBases>,
       );
 
       return (
@@ -1271,7 +1282,7 @@ export default function DynamicFormItemComponent({
           <SelectTrigger className="min-w-0 bg-[#ffffff] dark:bg-[#2a2a2e]">
             {field.value && field.value !== '__none__' ? (
               (() => {
-                const selectedKb = knowledgeBases.find(
+                const selectedKb = validKnowledgeBases.find(
                   (kb) => kb.uuid === field.value,
                 );
                 return (
@@ -1300,7 +1311,7 @@ export default function DynamicFormItemComponent({
               <SelectGroup key={engineName}>
                 <SelectLabel>{engineName}</SelectLabel>
                 {kbs.map((base) => (
-                  <SelectItem key={base.uuid} value={base.uuid ?? ''}>
+                  <SelectItem key={base.uuid} value={base.uuid}>
                     <div className="flex items-center gap-2">
                       {base.emoji && (
                         <span className="text-sm shrink-0">{base.emoji}</span>
@@ -1317,7 +1328,8 @@ export default function DynamicFormItemComponent({
 
     case DynamicFormItemType.KNOWLEDGE_BASE_MULTI_SELECTOR:
       // Group KBs by Knowledge Engine name for multi-selector
-      const multiKbsByEngine = knowledgeBases.reduce(
+      const validMultiKnowledgeBases = knowledgeBases.filter(hasUsableUuid);
+      const multiKbsByEngine = validMultiKnowledgeBases.reduce(
         (acc, kb) => {
           const engineName = kb.knowledge_engine?.name
             ? extractI18nObject(kb.knowledge_engine.name)
@@ -1328,7 +1340,7 @@ export default function DynamicFormItemComponent({
           acc[engineName].push(kb);
           return acc;
         },
-        {} as Record<string, typeof knowledgeBases>,
+        {} as Record<string, typeof validMultiKnowledgeBases>,
       );
 
       return (
@@ -1337,7 +1349,7 @@ export default function DynamicFormItemComponent({
             {field.value && field.value.length > 0 ? (
               <div className="min-w-0 space-y-2">
                 {field.value.map((kbId: string) => {
-                  const currentKb = knowledgeBases.find(
+                  const currentKb = validMultiKnowledgeBases.find(
                     (base) => base.uuid === kbId,
                   );
                   if (!currentKb) return null;
@@ -1423,15 +1435,13 @@ export default function DynamicFormItemComponent({
                       {engineName}
                     </div>
                     {kbs.map((base) => {
-                      const isSelected = tempSelectedKBIds.includes(
-                        base.uuid ?? '',
-                      );
+                      const isSelected = tempSelectedKBIds.includes(base.uuid);
                       return (
                         <div
                           key={base.uuid}
                           className="flex items-center gap-3 rounded-lg border p-3 hover:bg-accent cursor-pointer"
                           onClick={() => {
-                            const kbId = base.uuid ?? '';
+                            const kbId = base.uuid;
                             setTempSelectedKBIds((prev) =>
                               prev.includes(kbId)
                                 ? prev.filter((id) => id !== kbId)
@@ -1493,8 +1503,8 @@ export default function DynamicFormItemComponent({
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              {bots.map((bot) => (
-                <SelectItem key={bot.uuid} value={bot.uuid ?? ''}>
+              {bots.filter(hasUsableUuid).map((bot) => (
+                <SelectItem key={bot.uuid} value={bot.uuid}>
                   {bot.name}
                 </SelectItem>
               ))}

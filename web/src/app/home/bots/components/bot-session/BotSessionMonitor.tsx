@@ -3,6 +3,7 @@ import React, {
   useEffect,
   useRef,
   useCallback,
+  useMemo,
   forwardRef,
   useImperativeHandle,
 } from 'react';
@@ -15,11 +16,14 @@ import {
   Bot,
   Copy,
   Check,
+  ChevronDown,
+  ChevronRight,
   Workflow,
   ThumbsUp,
   ThumbsDown,
   ShieldCheck,
   ShieldOff,
+  Wrench,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import BotAdminsDialog, {
@@ -76,6 +80,35 @@ interface SessionFeedback {
   stream_id?: string | null;
 }
 
+interface SessionToolCall {
+  id: string;
+  timestamp: string;
+  tool_name: string;
+  tool_source: string;
+  duration: number;
+  status: string;
+  message_id?: string | null;
+  arguments?: string | null;
+  result?: string | null;
+  error_message?: string | null;
+}
+
+type SessionTimelineItem =
+  | {
+      id: string;
+      type: 'message';
+      timestamp: number;
+      order: number;
+      message: SessionMessage;
+    }
+  | {
+      id: string;
+      type: 'tool';
+      timestamp: number;
+      order: number;
+      toolCall: SessionToolCall;
+    };
+
 export interface BotSessionMonitorHandle {
   refreshSessions: () => Promise<void>;
 }
@@ -99,6 +132,10 @@ const BotSessionMonitor = forwardRef<
   const [copiedUserId, setCopiedUserId] = useState(false);
   const [feedbackMap, setFeedbackMap] = useState<
     Record<string, SessionFeedback>
+  >({});
+  const [toolCalls, setToolCalls] = useState<SessionToolCall[]>([]);
+  const [expandedToolCallIds, setExpandedToolCallIds] = useState<
+    Record<string, boolean>
   >({});
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const { admins, reload: reloadAdmins } = useBotAdmins(botId);
@@ -189,6 +226,7 @@ const BotSessionMonitor = forwardRef<
   const loadMessages = useCallback(
     async (sessionId: string) => {
       setLoadingMessages(true);
+      setExpandedToolCallIds({});
       try {
         const messagesRes = await httpClient.getSessionMessages(sessionId);
         const sorted = (messagesRes.messages ?? []).sort(
@@ -196,6 +234,18 @@ const BotSessionMonitor = forwardRef<
             new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
         );
         setMessages(sorted);
+
+        try {
+          const analysisRes = await httpClient.get<{
+            tool_calls?: SessionToolCall[];
+          }>(
+            `/api/v1/monitoring/sessions/${encodeURIComponent(sessionId)}/analysis`,
+          );
+          setToolCalls(analysisRes?.tool_calls ?? []);
+        } catch (analysisError) {
+          console.error('Failed to load session tool calls:', analysisError);
+          setToolCalls([]);
+        }
 
         // Collect user message IDs for feedback matching
         const userMsgIds = new Set(
@@ -240,11 +290,14 @@ const BotSessionMonitor = forwardRef<
       loadMessages(selectedSessionId);
     } else {
       setMessages([]);
+      setToolCalls([]);
+      setExpandedToolCallIds({});
+      setFeedbackMap({});
     }
   }, [selectedSessionId, loadMessages]);
 
   useEffect(() => {
-    if (messages.length === 0) return;
+    if (messages.length === 0 && toolCalls.length === 0) return;
     // Wait for DOM to render the new messages before scrolling
     requestAnimationFrame(() => {
       const container = messagesContainerRef.current;
@@ -256,7 +309,7 @@ const BotSessionMonitor = forwardRef<
         scrollTarget.scrollTop = scrollTarget.scrollHeight;
       }
     });
-  }, [messages]);
+  }, [messages, toolCalls]);
 
   const parseMessageChain = (content: string): MessageChainComponent[] => {
     try {
@@ -430,6 +483,71 @@ const BotSessionMonitor = forwardRef<
     if (diffHours < 24) return `${diffHours}h`;
     return `${diffDays}d`;
   };
+
+  const formatDuration = (durationMs: number): string => {
+    if (!durationMs) return '0ms';
+    if (durationMs < 1000) return `${durationMs}ms`;
+    return `${(durationMs / 1000).toFixed(2)}s`;
+  };
+
+  const truncateToolDetail = (value?: string | null): string => {
+    if (!value) return '';
+    return value.length > 600 ? `${value.slice(0, 600)}...` : value;
+  };
+
+  const toggleToolCallDetails = (toolCallId: string) => {
+    setExpandedToolCallIds((previous) => ({
+      ...previous,
+      [toolCallId]: !previous[toolCallId],
+    }));
+  };
+
+  const feedbackByMessageId = useMemo(() => {
+    const map: Record<string, SessionFeedback> = {};
+
+    for (let index = 0; index < messages.length; index++) {
+      const msg = messages[index];
+      if (isUserMessage(msg)) continue;
+
+      for (let previousIndex = index - 1; previousIndex >= 0; previousIndex--) {
+        const previousMessage = messages[previousIndex];
+        if (isUserMessage(previousMessage)) {
+          const feedback = feedbackMap[previousMessage.id];
+          if (feedback) {
+            map[msg.id] = feedback;
+          }
+          break;
+        }
+      }
+    }
+
+    return map;
+  }, [feedbackMap, messages]);
+
+  const timelineItems = useMemo<SessionTimelineItem[]>(() => {
+    const messageItems: SessionTimelineItem[] = messages.map(
+      (message, index) => ({
+        id: `message-${message.id}`,
+        type: 'message',
+        timestamp: parseTimestamp(message.timestamp).getTime(),
+        order: index * 2,
+        message,
+      }),
+    );
+    const toolItems: SessionTimelineItem[] = toolCalls.map(
+      (toolCall, index) => ({
+        id: `tool-${toolCall.id}`,
+        type: 'tool',
+        timestamp: parseTimestamp(toolCall.timestamp).getTime(),
+        order: index * 2 + 1,
+        toolCall,
+      }),
+    );
+
+    return [...messageItems, ...toolItems].sort(
+      (a, b) => a.timestamp - b.timestamp || a.order - b.order,
+    );
+  }, [messages, toolCalls]);
 
   const selectedSession = sessions.find(
     (s) => s.session_id === selectedSessionId,
@@ -612,29 +730,162 @@ const BotSessionMonitor = forwardRef<
                     <div className="text-center text-muted-foreground py-12 text-sm">
                       {t('bots.sessionMonitor.loading')}
                     </div>
-                  ) : messages.length === 0 ? (
+                  ) : timelineItems.length === 0 ? (
                     <div className="text-center text-muted-foreground py-12 text-sm">
                       {t('bots.sessionMonitor.noMessages')}
                     </div>
                   ) : (
-                    messages.map((msg, msgIndex) => {
+                    timelineItems.map((item) => {
+                      if (item.type === 'tool') {
+                        const call = item.toolCall;
+                        const hasToolDetails = Boolean(
+                          call.arguments || call.result || call.error_message,
+                        );
+                        const expandedToolCall = Boolean(
+                          expandedToolCallIds[call.id],
+                        );
+                        const detailsId = `tool-call-details-${call.id}`;
+                        return (
+                          <div key={item.id} className="flex justify-start">
+                            <div className="max-w-2xl rounded-xl rounded-bl-sm border border-border/60 bg-muted/25 px-2.5 py-1.5 text-xs text-muted-foreground">
+                              <button
+                                type="button"
+                                className={cn(
+                                  'flex w-full items-center justify-between gap-3 rounded-md text-left outline-none transition-colors',
+                                  hasToolDetails &&
+                                    'cursor-pointer hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring',
+                                )}
+                                aria-expanded={
+                                  hasToolDetails ? expandedToolCall : undefined
+                                }
+                                aria-controls={
+                                  hasToolDetails ? detailsId : undefined
+                                }
+                                aria-disabled={!hasToolDetails}
+                                onClick={() =>
+                                  hasToolDetails &&
+                                  toggleToolCallDetails(call.id)
+                                }
+                              >
+                                <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                                  {hasToolDetails &&
+                                    (expandedToolCall ? (
+                                      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+                                    ) : (
+                                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+                                    ))}
+                                  <Wrench className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+                                  <span className="min-w-0 max-w-[18rem] truncate text-[13px] font-medium text-foreground/75">
+                                    {call.tool_name}
+                                  </span>
+                                  <span className="rounded border border-border/50 bg-background/60 px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
+                                    {call.tool_source}
+                                  </span>
+                                  <span
+                                    className={cn(
+                                      'rounded px-1.5 py-0.5 text-[10px] font-medium leading-none',
+                                      call.status === 'success'
+                                        ? 'bg-green-100/70 text-green-700 dark:bg-green-950/60 dark:text-green-300'
+                                        : 'bg-red-100/70 text-red-700 dark:bg-red-950/60 dark:text-red-300',
+                                    )}
+                                  >
+                                    {call.status}
+                                  </span>
+                                </div>
+                                <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/80">
+                                  {formatDuration(call.duration)}
+                                </span>
+                              </button>
+
+                              {hasToolDetails && expandedToolCall && (
+                                <div
+                                  id={detailsId}
+                                  className="mt-2 space-y-1.5"
+                                >
+                                  {(call.arguments || call.result) && (
+                                    <div className="space-y-1.5">
+                                      {call.arguments && (
+                                        <div>
+                                          <div className="mb-1 text-[11px] font-medium text-muted-foreground">
+                                            {t(
+                                              'monitoring.toolCalls.arguments',
+                                              {
+                                                defaultValue: '参数',
+                                              },
+                                            )}
+                                          </div>
+                                          <pre className="whitespace-pre-wrap break-words rounded bg-background/80 p-2 font-mono text-[11px] leading-4 text-muted-foreground">
+                                            {truncateToolDetail(call.arguments)}
+                                          </pre>
+                                        </div>
+                                      )}
+                                      {call.result && (
+                                        <div>
+                                          <div className="mb-1 text-[11px] font-medium text-muted-foreground">
+                                            {t('monitoring.toolCalls.result', {
+                                              defaultValue: '结果',
+                                            })}
+                                          </div>
+                                          <pre className="whitespace-pre-wrap break-words rounded bg-background/80 p-2 font-mono text-[11px] leading-4 text-muted-foreground">
+                                            {truncateToolDetail(call.result)}
+                                          </pre>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {call.error_message && (
+                                    <div className="whitespace-pre-wrap break-words rounded bg-red-50 p-2 text-[11px] text-red-600 dark:bg-red-950/40 dark:text-red-400">
+                                      {call.error_message}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                                <span>
+                                  {t('monitoring.toolCalls.title', {
+                                    defaultValue: '工具调用',
+                                  })}
+                                </span>
+                                <span className="tabular-nums">
+                                  {formatTime(call.timestamp)}
+                                </span>
+                                {hasToolDetails && (
+                                  <>
+                                    <span>·</span>
+                                    <span>
+                                      {expandedToolCall
+                                        ? t(
+                                            'monitoring.toolCalls.hideDetails',
+                                            {
+                                              defaultValue: '隐藏详情',
+                                            },
+                                          )
+                                        : t(
+                                            'monitoring.toolCalls.showDetails',
+                                            {
+                                              defaultValue: '查看详情',
+                                            },
+                                          )}
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      const msg = item.message;
                       const isUser = isUserMessage(msg);
                       const isDiscarded =
                         msg.status === 'discarded' ||
                         msg.pipeline_id === PIPELINE_DISCARD;
-                      // For bot replies, find feedback linked to the preceding user message
-                      let msgFeedback: SessionFeedback | undefined;
-                      if (!isUser) {
-                        for (let i = msgIndex - 1; i >= 0; i--) {
-                          if (isUserMessage(messages[i])) {
-                            msgFeedback = feedbackMap[messages[i].id];
-                            break;
-                          }
-                        }
-                      }
+                      const msgFeedback = feedbackByMessageId[msg.id];
                       return (
                         <div
-                          key={msg.id}
+                          key={item.id}
                           className={cn(
                             'flex',
                             isUser ? 'justify-end' : 'justify-start',

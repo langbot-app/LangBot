@@ -11,8 +11,10 @@ export interface MonitoringMessage {
   level: 'info' | 'warning' | 'error' | 'debug';
   platform?: string;
   userId?: string;
+  userName?: string;
   runnerName?: string;
   variables?: string;
+  role?: 'user' | 'assistant' | string;
 }
 
 export interface LLMCall {
@@ -31,8 +33,27 @@ export interface LLMCall {
   botName: string;
   pipelineId: string;
   pipelineName: string;
+  sessionId?: string;
   errorMessage?: string;
   messageId?: string;
+}
+
+export interface ToolCall {
+  id: string;
+  timestamp: Date;
+  toolName: string;
+  toolSource: 'native' | 'plugin' | 'mcp' | 'skill' | string;
+  duration: number;
+  status: 'success' | 'error';
+  botId: string;
+  botName: string;
+  pipelineId: string;
+  pipelineName: string;
+  sessionId?: string;
+  messageId?: string;
+  arguments?: string;
+  result?: string;
+  errorMessage?: string;
 }
 
 export interface EmbeddingCall {
@@ -199,6 +220,7 @@ export interface MonitoringData {
   overview: OverviewMetrics;
   messages: MonitoringMessage[];
   llmCalls: LLMCall[];
+  toolCalls: ToolCall[];
   embeddingCalls: EmbeddingCall[];
   modelCalls: ModelCall[];
   sessions: SessionInfo[];
@@ -208,6 +230,7 @@ export interface MonitoringData {
   totalCount: {
     messages: number;
     llmCalls: number;
+    toolCalls?: number;
     embeddingCalls: number;
     sessions: number;
     errors: number;

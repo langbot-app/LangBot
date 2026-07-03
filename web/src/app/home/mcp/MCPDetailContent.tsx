@@ -157,6 +157,10 @@ export default function MCPDetailContent({ id }: { id: string }) {
     navigate(`/home/mcp?id=${encodeURIComponent(serverName)}`);
   }
 
+  const handlePersistedTestComplete = useCallback(async () => {
+    await refreshMCPServers();
+  }, [refreshMCPServers]);
+
   function confirmDelete() {
     httpClient
       .deleteMCPServer(id)
@@ -364,6 +368,7 @@ export default function MCPDetailContent({ id }: { id: string }) {
             onRuntimeInfoChange={(runtimeInfo) =>
               setDetailRuntimeStatus(runtimeInfo?.status ?? null)
             }
+            onPersistedTestComplete={handlePersistedTestComplete}
           />
         </div>
       </div>

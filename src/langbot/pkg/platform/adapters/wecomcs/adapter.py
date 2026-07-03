@@ -101,11 +101,13 @@ class WecomCSAdapter(WecomCSAPIMixin, abstract_platform_adapter.AbstractPlatform
         if target_type not in ('person', 'private'):
             raise NotSupportedError(f'send_message:{target_type}')
 
-        external_userid, open_kfid = parse_private_chat_id(target_id)
+        external_userid, open_kfid = parse_private_chat_id(target_id, self.bot_account_id)
         content_list = await WecomCSMessageConverter.yiri2target(message, self.bot)
         raw_results = []
         for content in content_list:
-            raw_results.append(await self._send_content(open_kfid, external_userid, self._make_outbound_msgid(), content))
+            raw_results.append(
+                await self._send_content(open_kfid, external_userid, self._make_outbound_msgid(), content)
+            )
         return platform_events.MessageResult(raw={'results': raw_results})
 
     async def reply_message(

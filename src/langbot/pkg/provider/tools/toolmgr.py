@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import typing
+import time
 from typing import TYPE_CHECKING
 
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
@@ -175,21 +176,130 @@ class ToolManager:
 
         return tools
 
+    def _get_query_session_id(self, query: pipeline_query.Query) -> str | None:
+        launcher_type = getattr(query, 'launcher_type', None)
+        launcher_id = getattr(query, 'launcher_id', None)
+        if launcher_type is None or launcher_id is None:
+            return None
+
+        launcher_type_value = launcher_type.value if hasattr(launcher_type, 'value') else launcher_type
+        return f'{launcher_type_value}_{launcher_id}'
+
+    async def _record_tool_call(
+        self,
+        *,
+        name: str,
+        source: str,
+        parameters: dict,
+        query: pipeline_query.Query,
+        duration_ms: int,
+        status: str,
+        result: typing.Any = None,
+        error_message: str | None = None,
+    ) -> None:
+        monitoring_service = getattr(self.ap, 'monitoring_service', None)
+        if not monitoring_service:
+            return
+
+        variables = getattr(query, 'variables', {}) or {}
+        message_id = variables.get('_monitoring_message_id') if isinstance(variables, dict) else None
+        bot_name = variables.get('_monitoring_bot_name') if isinstance(variables, dict) else None
+        pipeline_name = variables.get('_monitoring_pipeline_name') if isinstance(variables, dict) else None
+
+        try:
+            await monitoring_service.record_tool_call(
+                tool_name=name,
+                tool_source=source,
+                duration=duration_ms,
+                status=status,
+                bot_id=getattr(query, 'bot_uuid', None),
+                bot_name=bot_name,
+                pipeline_name=pipeline_name,
+                session_id=self._get_query_session_id(query),
+                message_id=message_id,
+                arguments=parameters,
+                result=result,
+                error_message=error_message,
+            )
+        except Exception as e:
+            self.ap.logger.warning(f'Failed to record tool call: {e}')
+
+    async def _invoke_tool_with_monitoring(
+        self,
+        *,
+        source: str,
+        name: str,
+        parameters: dict,
+        query: pipeline_query.Query,
+        invoke: typing.Callable[[], typing.Awaitable[typing.Any]],
+    ) -> typing.Any:
+        start_time = time.perf_counter()
+        try:
+            result = await invoke()
+        except Exception as e:
+            duration_ms = int((time.perf_counter() - start_time) * 1000)
+            await self._record_tool_call(
+                name=name,
+                source=source,
+                parameters=parameters,
+                query=query,
+                duration_ms=duration_ms,
+                status='error',
+                error_message=str(e),
+            )
+            raise
+
+        duration_ms = int((time.perf_counter() - start_time) * 1000)
+        await self._record_tool_call(
+            name=name,
+            source=source,
+            parameters=parameters,
+            query=query,
+            duration_ms=duration_ms,
+            status='success',
+            result=result,
+        )
+        return result
+
     async def execute_func_call(self, name: str, parameters: dict, query: pipeline_query.Query) -> typing.Any:
         from langbot.pkg.telemetry import features as telemetry_features
 
         if await self.native_tool_loader.has_tool(name):
             telemetry_features.increment(query, 'tool_calls', 'native')
-            return await self.native_tool_loader.invoke_tool(name, parameters, query)
+            return await self._invoke_tool_with_monitoring(
+                source='native',
+                name=name,
+                parameters=parameters,
+                query=query,
+                invoke=lambda: self.native_tool_loader.invoke_tool(name, parameters, query),
+            )
         if await self.plugin_tool_loader.has_tool(name):
             telemetry_features.increment(query, 'tool_calls', 'plugin')
-            return await self.plugin_tool_loader.invoke_tool(name, parameters, query)
+            return await self._invoke_tool_with_monitoring(
+                source='plugin',
+                name=name,
+                parameters=parameters,
+                query=query,
+                invoke=lambda: self.plugin_tool_loader.invoke_tool(name, parameters, query),
+            )
         if await self.mcp_tool_loader.has_tool(name):
             telemetry_features.increment(query, 'tool_calls', 'mcp')
-            return await self.mcp_tool_loader.invoke_tool(name, parameters, query)
+            return await self._invoke_tool_with_monitoring(
+                source='mcp',
+                name=name,
+                parameters=parameters,
+                query=query,
+                invoke=lambda: self.mcp_tool_loader.invoke_tool(name, parameters, query),
+            )
         if await self.skill_tool_loader.has_tool(name):
             telemetry_features.increment(query, 'tool_calls', 'skill')
-            return await self.skill_tool_loader.invoke_tool(name, parameters, query)
+            return await self._invoke_tool_with_monitoring(
+                source='skill',
+                name=name,
+                parameters=parameters,
+                query=query,
+                invoke=lambda: self.skill_tool_loader.invoke_tool(name, parameters, query),
+            )
         raise ToolNotFoundError(name)
 
     async def shutdown(self):

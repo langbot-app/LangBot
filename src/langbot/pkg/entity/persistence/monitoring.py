@@ -49,6 +49,28 @@ class MonitoringLLMCall(Base):
     message_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)  # Associated message ID
 
 
+class MonitoringToolCall(Base):
+    """Tool call records"""
+
+    __tablename__ = 'monitoring_tool_calls'
+
+    id = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True)
+    timestamp = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, index=True)
+    tool_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
+    tool_source = sqlalchemy.Column(sqlalchemy.String(50), nullable=False)  # native, plugin, mcp, skill
+    duration = sqlalchemy.Column(sqlalchemy.Integer, nullable=False)  # milliseconds
+    status = sqlalchemy.Column(sqlalchemy.String(50), nullable=False)  # success, error
+    bot_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=False, index=True)
+    bot_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
+    pipeline_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=False, index=True)
+    pipeline_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
+    session_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
+    message_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
+    arguments = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+    result = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+    error_message = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+
+
 class MonitoringSession(Base):
     """Session tracking records"""
 

@@ -268,6 +268,48 @@ function saveListExpansionState(state: SidebarListExpansionState) {
 
 // Maximum number of entity sub-items visible before "More" toggle
 const MAX_VISIBLE_ITEMS = 5;
+const MCP_REFRESH_POLL_INTERVAL_MS = 1000;
+const MCP_REFRESH_TIMEOUT_MS = 60000;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForMCPRefreshTask(taskId: number) {
+  const deadline = Date.now() + MCP_REFRESH_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    const task = await httpClient.getAsyncTask(taskId);
+    if (task.runtime.done) return task;
+    await sleep(MCP_REFRESH_POLL_INTERVAL_MS);
+  }
+
+  throw new Error(`Timed out waiting for MCP refresh task ${taskId}`);
+}
+
+async function refreshEnabledMCPConnections() {
+  const resp = await httpClient.getMCPServers();
+  const enabledServers = resp.servers.filter((server) => server.enable);
+  if (enabledServers.length === 0) return;
+
+  const taskResults = await Promise.allSettled(
+    enabledServers.map((server) => httpClient.testMCPServer(server.name, {})),
+  );
+  const taskIds: number[] = [];
+
+  for (const result of taskResults) {
+    if (
+      result.status === 'fulfilled' &&
+      typeof result.value.task_id === 'number'
+    ) {
+      taskIds.push(result.value.task_id);
+    } else if (result.status === 'rejected') {
+      console.error('Failed to start MCP refresh task:', result.reason);
+    }
+  }
+
+  await Promise.allSettled(taskIds.map(waitForMCPRefreshTask));
+}
 
 // Sort entity items by updatedAt descending (most recent first), items without updatedAt go last
 function sortByRecent(items: SidebarEntityItem[]): SidebarEntityItem[] {
@@ -356,11 +398,19 @@ function NavItems({
     if (extRefreshing) return;
     setExtRefreshing(true);
     try {
-      await Promise.all([
+      const results = await Promise.allSettled([
         sidebarData.refreshPlugins(),
-        sidebarData.refreshMCPServers(),
         sidebarData.refreshSkills(),
+        refreshEnabledMCPConnections(),
       ]);
+      const mcpRefreshResult = results[2];
+      if (mcpRefreshResult.status === 'rejected') {
+        console.error(
+          'Failed to refresh MCP connections:',
+          mcpRefreshResult.reason,
+        );
+      }
+      await sidebarData.refreshMCPServers();
     } finally {
       setExtRefreshing(false);
     }

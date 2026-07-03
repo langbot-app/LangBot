@@ -72,7 +72,11 @@ interface LangBotApiMockState {
   counters: Record<string, number>;
   knowledgeBases: KnowledgeBaseMock[];
   mcpServers: MCPServerMock[];
+  monitoringData: unknown;
+  monitoringSessions: unknown[];
   pipelines: PipelineMock[];
+  sessionAnalyses: Record<string, unknown>;
+  sessionMessages: Record<string, unknown[]>;
   skills: SkillMock[];
 }
 
@@ -122,12 +126,14 @@ function emptyMonitoringData() {
     },
     messages: [],
     llmCalls: [],
+    toolCalls: [],
     embeddingCalls: [],
     sessions: [],
     errors: [],
     totalCount: {
       messages: 0,
       llmCalls: 0,
+      toolCalls: 0,
       embeddingCalls: 0,
       sessions: 0,
       errors: 0,
@@ -185,6 +191,102 @@ function makePipeline(
     emoji: String(data.emoji || '⚙️'),
     is_default: false,
     updated_at: now(),
+  };
+}
+
+function pipelineMetadata() {
+  return {
+    configs: [
+      {
+        name: 'ai',
+        label: {
+          en_US: 'AI Capabilities',
+          zh_Hans: 'AI 能力',
+        },
+        stages: [
+          {
+            name: 'runner',
+            label: {
+              en_US: 'Runtime',
+              zh_Hans: '运行方式',
+            },
+            config: [
+              {
+                id: 'runner',
+                name: 'runner',
+                label: {
+                  en_US: 'Runner',
+                  zh_Hans: '运行器',
+                },
+                type: 'select',
+                required: true,
+                default: 'local-agent',
+                options: [
+                  {
+                    name: 'local-agent',
+                    label: {
+                      en_US: 'Built-in Agent',
+                      zh_Hans: '内置 Agent',
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            name: 'local-agent',
+            label: {
+              en_US: 'Built-in Agent',
+              zh_Hans: '内置 Agent',
+            },
+            config: [
+              {
+                id: 'model',
+                name: 'model',
+                label: {
+                  en_US: 'Model',
+                  zh_Hans: '模型',
+                },
+                type: 'model-fallback-selector',
+                required: true,
+                default: {
+                  primary: 'llm-valid',
+                  fallbacks: [],
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function providerModelList() {
+  return {
+    models: [
+      {
+        uuid: '',
+        name: 'Broken Empty UUID Model',
+        provider_uuid: 'provider-empty',
+        provider: {
+          uuid: 'provider-empty',
+          name: 'Broken Provider',
+          requester: 'mock-provider',
+        },
+      },
+      {
+        uuid: 'llm-valid',
+        name: 'Valid Mock Model',
+        provider_uuid: 'provider-valid',
+        provider: {
+          uuid: 'provider-valid',
+          name: 'Mock Provider',
+          requester: 'mock-provider',
+        },
+        abilities: ['func_call'],
+      },
+    ],
   };
 }
 
@@ -389,8 +491,20 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
     });
   }
 
+  if (path === '/api/v1/provider/models/llm') {
+    return fulfillJson(route, providerModelList());
+  }
+
+  if (path === '/api/v1/provider/models/embedding') {
+    return fulfillJson(route, { models: [] });
+  }
+
+  if (path === '/api/v1/provider/models/rerank') {
+    return fulfillJson(route, { models: [] });
+  }
+
   if (path === '/api/v1/pipelines/_/metadata') {
-    return fulfillJson(route, { configs: [] });
+    return fulfillJson(route, pipelineMetadata());
   }
 
   if (path === '/api/v1/pipelines') {
@@ -689,11 +803,43 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
   }
 
   if (path === '/api/v1/monitoring/data') {
-    return fulfillJson(route, emptyMonitoringData());
+    return fulfillJson(route, state.monitoringData);
+  }
+
+  if (path === '/api/v1/monitoring/sessions') {
+    return fulfillJson(route, {
+      sessions: state.monitoringSessions,
+      total: state.monitoringSessions.length,
+    });
+  }
+
+  if (path === '/api/v1/monitoring/messages') {
+    const sessionId = url.searchParams.get('sessionId') || '';
+    const messages = state.sessionMessages[sessionId] || [];
+    return fulfillJson(route, {
+      messages,
+      total: messages.length,
+    });
+  }
+
+  const sessionAnalysisMatch = path.match(
+    /^\/api\/v1\/monitoring\/sessions\/([^/]+)\/analysis$/,
+  );
+  if (sessionAnalysisMatch) {
+    const sessionId = decodeURIComponent(sessionAnalysisMatch[1]);
+    return fulfillJson(
+      route,
+      state.sessionAnalyses[sessionId] || {
+        session_id: sessionId,
+        found: true,
+        tool_calls: [],
+      },
+    );
   }
 
   if (path === '/api/v1/monitoring/overview') {
-    return fulfillJson(route, emptyMonitoringData().overview);
+    const data = state.monitoringData as { overview?: unknown };
+    return fulfillJson(route, data.overview || emptyMonitoringData().overview);
   }
 
   if (path === '/api/v1/monitoring/token-statistics') {
@@ -798,15 +944,33 @@ async function handleCloudApi(route: Route) {
 
 export async function installLangBotApiMocks(
   page: Page,
-  options: { authenticated?: boolean; storage?: JsonRecord } = {},
+  options: {
+    authenticated?: boolean;
+    monitoringData?: unknown;
+    monitoringSessions?: unknown[];
+    sessionAnalyses?: Record<string, unknown>;
+    sessionMessages?: Record<string, unknown[]>;
+    storage?: JsonRecord;
+  } = {},
 ) {
-  const { authenticated = false, storage = {} } = options;
+  const {
+    authenticated = false,
+    monitoringData,
+    monitoringSessions,
+    sessionAnalyses,
+    sessionMessages,
+    storage = {},
+  } = options;
   const state: LangBotApiMockState = {
     bots: [],
     counters: {},
     knowledgeBases: [],
     mcpServers: [],
+    monitoringData: monitoringData || emptyMonitoringData(),
+    monitoringSessions: monitoringSessions || [],
     pipelines: [],
+    sessionAnalyses: sessionAnalyses || {},
+    sessionMessages: sessionMessages || {},
     skills: [],
   };
 

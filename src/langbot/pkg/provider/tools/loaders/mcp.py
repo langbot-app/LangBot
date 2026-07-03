@@ -25,7 +25,7 @@ from ....core import app
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 from ....entity.persistence import mcp as persistence_mcp
-from .mcp_stdio import BoxStdioSessionRuntime, MCPServerBoxConfig, MCPSessionErrorPhase  # noqa: F401
+from .mcp_stdio import BoxStdioSessionRuntime, MCPServerBoxConfig, MCPSessionErrorPhase, _ColdStartRetry  # noqa: F401
 
 # Synthesized LLM tools for MCP resources (not from server tools/list).
 # Dispatched in MCPLoader.invoke_tool; placeholder func on LLMTool is never used.
@@ -185,6 +185,16 @@ class MCPSessionStatus(enum.Enum):
     ERROR = 'error'
 
 
+class _TransportReconnect(Exception):
+    """Internal signal: the Box stdio WS transport dropped but the managed
+    process is still alive. Triggers a lightweight transport reconnect that
+    reuses the live process, instead of a full process rebuild.
+
+    Reconnect attempts are NOT counted toward the fatal retry budget, so a
+    long-lived session can survive arbitrarily many transient drops.
+    """
+
+
 class RuntimeMCPSession:
     """运行时 MCP 会话"""
 
@@ -254,6 +264,16 @@ class RuntimeMCPSession:
         self._lifecycle_task = None
         self._shutdown_event = asyncio.Event()
         self._ready_event = asyncio.Event()
+        # Set transiently when a WS transport drop should NOT stop the managed
+        # process (it will be re-attached on the next initialize()).
+        self._preserve_managed_process = False
+
+        # Log buffer for capturing stderr from Box managed process (maxlen=500 keeps
+        # recent lines without unbounded memory growth)
+        import collections as _collections
+
+        self._log_buffer: _collections.deque = _collections.deque(maxlen=500)
+        self._last_stderr_text: str = ''
 
         self._box_stdio_runtime = BoxStdioSessionRuntime(self)
         self.box_config = self._box_stdio_runtime.config
@@ -399,11 +419,39 @@ class RuntimeMCPSession:
                     task.cancel()
                 for task in done:
                     if task is monitor_task and not self._shutdown_event.is_set():
+                        # The monitor completed. This is EITHER the managed
+                        # process actually exiting OR just the WS transport
+                        # dropping while the process stays alive in the Box
+                        # runtime. Re-check the real process state so a
+                        # transient transport drop reconnects (reusing the live
+                        # process) instead of tearing the process down and
+                        # running a full rebuild+backoff cycle.
+                        process_still_running = False
+                        try:
+                            process_still_running = await self._box_stdio_runtime._managed_process_is_running()
+                        except Exception:
+                            process_still_running = False
+                        if process_still_running:
+                            self.ap.logger.info(
+                                f'MCP server {self.server_name}: transport dropped but '
+                                f'managed process is still running; reconnecting transport'
+                            )
+                            self.error_phase = MCPSessionErrorPhase.RELAY_CONNECT
+                            # Preserve the live process across the finally-block
+                            # cleanup: only the WS transport should be torn down.
+                            self._preserve_managed_process = True
+                            raise _TransportReconnect('Box managed process transport dropped; reconnecting')
                         self.error_phase = MCPSessionErrorPhase.RUNTIME
                         raise Exception('Box managed process exited unexpectedly')
             else:
                 await self._shutdown_event.wait()
 
+        except _ColdStartRetry:
+            # Cold-start in progress: set the preserve flag BEFORE the finally
+            # block runs so it does not stop the live managed process. The outer
+            # _lifecycle_loop_with_retry will reuse it on the next attempt.
+            self._preserve_managed_process = True
+            raise
         except Exception as e:
             self.status = MCPSessionStatus.ERROR
             self.error_message = str(e)
@@ -424,14 +472,55 @@ class RuntimeMCPSession:
             except Exception as e:
                 self.ap.logger.error(f'Error cleaning up MCP session {self.server_name}: {e}\n{traceback.format_exc()}')
             finally:
-                await self._cleanup_box_stdio_session()
+                # On a transport-only reconnect the managed process is healthy
+                # and will be re-attached on the next initialize(); do NOT stop
+                # it. Any other exit path fully tears the session down.
+                if getattr(self, '_preserve_managed_process', False):
+                    self._preserve_managed_process = False
+                else:
+                    await self._cleanup_box_stdio_session()
 
     async def _lifecycle_loop_with_retry(self):
         """Wrap _lifecycle_loop with retry and exponential backoff."""
-        for attempt in range(self._MAX_RETRIES + 1):
+        attempt = 0
+        while attempt <= self._MAX_RETRIES:
             try:
                 await self._lifecycle_loop()
                 return  # Normal shutdown, don't retry
+            except _TransportReconnect as e:
+                # Transient WS transport drop while the managed process is still
+                # alive. Reconnect promptly WITHOUT consuming the fatal retry
+                # budget and WITHOUT stopping the process — initialize() will
+                # re-attach to the live process. This is what lets a long-lived
+                # stdio MCP survive repeated brief event-loop stalls / pings.
+                if self._shutdown_event.is_set():
+                    return
+                self.ap.logger.info(
+                    f'MCP session {self.server_name}: reconnecting transport ({self._describe_exception(e)})'
+                )
+                self.status = MCPSessionStatus.CONNECTING
+                self.error_message = None
+                self.error_phase = None
+                await asyncio.sleep(1)
+                continue
+            except _ColdStartRetry as e:
+                # The managed process is alive but still cold-starting (e.g.
+                # `npx -y <pkg>` is still installing) and cannot yet answer the
+                # handshake. Reuse the live process and retry the attach WITHOUT
+                # consuming the fatal retry budget or stopping the process, so a
+                # slow cold start is waited out instead of failing. Preserve the
+                # process across the finally-block cleanup.
+                if self._shutdown_event.is_set():
+                    return
+                self._preserve_managed_process = True
+                self.ap.logger.debug(
+                    f'MCP session {self.server_name}: waiting for cold start ({self._describe_exception(e)})'
+                )
+                self.status = MCPSessionStatus.CONNECTING
+                self.error_message = None
+                self.error_phase = None
+                await asyncio.sleep(2)
+                continue
             except Exception as e:
                 self.retry_count = attempt + 1
                 if self._shutdown_event.is_set():
@@ -460,6 +549,7 @@ class RuntimeMCPSession:
                 self.error_message = None
                 self.error_phase = None
                 await asyncio.sleep(delay)
+                attempt += 1
 
     @staticmethod
     def _describe_exception(exc: BaseException) -> str:
@@ -927,11 +1017,14 @@ class RuntimeMCPSession:
         return self._box_stdio_runtime.uses_box_stdio()
 
     def _build_box_session_id(self) -> str:
-        # Transient test sessions get their own isolated Box session so a
-        # failing/short-lived test can never disturb the shared session that
-        # hosts live, already-connected MCP servers.
-        if self.is_transient:
-            return f'mcp-test-{self.server_uuid}'
+        # Both live servers and transient config-page tests share ONE Box
+        # session ('mcp-shared'). A test therefore reuses the already-running
+        # container (and, for an existing server, its live managed process)
+        # instead of paying a full per-test session cold-start + dependency
+        # bootstrap. Isolation between a test and the live servers is provided
+        # at the *process* level: each server/test has its own process_id and a
+        # test only ever stops its own process_id (see cleanup_session), so it
+        # never disturbs another server's process or the shared session itself.
         return 'mcp-shared'
 
     def _rewrite_path(self, path: str, host_path: str | None) -> str:
