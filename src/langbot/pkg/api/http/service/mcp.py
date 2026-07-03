@@ -188,10 +188,22 @@ class MCPService:
             persisted_session = runtime_mcp_session
 
             async def _refresh_and_report() -> None:
-                if persisted_session.status == MCPSessionStatus.ERROR:
+                # Testing a persisted server should REUSE its live shared-session
+                # process, not rebuild it. Try a lightweight refresh (a real
+                # list_tools probe over the existing connection) first; only fall
+                # back to a full start() when the session has no live connection
+                # to probe (never connected, or the process is actually gone).
+                needs_start = persisted_session.status == MCPSessionStatus.ERROR or persisted_session.session is None
+                if needs_start:
                     await persisted_session.start()
                 else:
-                    await persisted_session.refresh()
+                    try:
+                        await persisted_session.refresh()
+                    except Exception:
+                        # The live connection was stale/dropped: reconnect once
+                        # (reusing the live managed process where possible) and
+                        # re-probe, instead of reporting a false failure.
+                        await persisted_session.start()
                 # Surface the discovered tools so the config page can render them
                 # even for an already-hosted server.
                 ctx.metadata['runtime_info'] = persisted_session.get_runtime_info_dict()

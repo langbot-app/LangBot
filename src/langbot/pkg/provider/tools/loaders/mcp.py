@@ -986,11 +986,14 @@ class RuntimeMCPSession:
         return self._box_stdio_runtime.uses_box_stdio()
 
     def _build_box_session_id(self) -> str:
-        # Transient test sessions get their own isolated Box session so a
-        # failing/short-lived test can never disturb the shared session that
-        # hosts live, already-connected MCP servers.
-        if self.is_transient:
-            return f'mcp-test-{self.server_uuid}'
+        # Both live servers and transient config-page tests share ONE Box
+        # session ('mcp-shared'). A test therefore reuses the already-running
+        # container (and, for an existing server, its live managed process)
+        # instead of paying a full per-test session cold-start + dependency
+        # bootstrap. Isolation between a test and the live servers is provided
+        # at the *process* level: each server/test has its own process_id and a
+        # test only ever stops its own process_id (see cleanup_session), so it
+        # never disturbs another server's process or the shared session itself.
         return 'mcp-shared'
 
     def _rewrite_path(self, path: str, host_path: str | None) -> str:

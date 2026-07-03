@@ -370,16 +370,20 @@ class BoxStdioSessionRuntime:
 
         workspace = self._build_workspace(host_path=None)
 
-        # Transient test sessions own their isolated Box session, so tear the
-        # whole session down rather than leaking it. This cannot affect live
-        # servers because they live in the separate shared session.
+        # Transient config-page tests now share the same 'mcp-shared' Box
+        # session as live servers, so we must NOT tear the session down here —
+        # that would kill every other MCP server in the container. A test is
+        # isolated at the process level: it ran under its own process_id, so we
+        # stop only that process, exactly like a live server does below. The
+        # shared session and all other servers' live processes are untouched.
+        # (Staged per-test workspace files are still cleaned up.)
         if getattr(self.owner, 'is_transient', False):
             try:
-                await workspace.cleanup()
+                await workspace.stop_managed_process(self.process_id)
             except Exception as exc:
                 self.ap.logger.warning(
-                    f'MCP server {self.server_name}: failed to delete transient test session '
-                    f'{self.owner._build_box_session_id()}: {type(exc).__name__}: {exc}'
+                    f'MCP server {self.server_name}: failed to stop transient test process '
+                    f'process_id={self.process_id}: {type(exc).__name__}: {exc}'
                 )
             await self._cleanup_staged_workspace()
             return
