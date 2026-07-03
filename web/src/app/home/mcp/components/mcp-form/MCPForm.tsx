@@ -488,6 +488,7 @@ interface MCPFormProps {
   onDirtyChange?: (dirty: boolean) => void;
   onTestingChange?: (testing: boolean) => void;
   onRuntimeInfoChange?: (runtimeInfo: MCPServerRuntimeInfo | null) => void;
+  onPersistedTestComplete?: (serverName: string) => void | Promise<void>;
   /** Reported when the form cannot be saved because the current mode is
    * ``stdio`` and the Box sandbox is disabled/unavailable. Parents that
    * render the Save button outside this component should disable it. */
@@ -512,6 +513,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
     onDirtyChange,
     onTestingChange,
     onRuntimeInfoChange,
+    onPersistedTestComplete,
     onSaveBlockedChange,
     layout = 'stacked',
     sideHeader,
@@ -823,6 +825,8 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
       // are always current.
       const serverName =
         isEditMode && initServerName ? initServerName : form.getValues('name');
+      const shouldTestPersistedServer =
+        isEditMode && !!initServerName && !form.formState.isDirty;
       const formExtraArgs = form.getValues('extra_args') ?? [];
       const formStdioArgs = form.getValues('args') ?? [];
       let extraArgsData: MCPServerExtraArgsRemote | MCPServerExtraArgsStdio;
@@ -845,12 +849,20 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
         };
       }
 
-      const { task_id } = await httpClient.testMCPServer('_', {
-        name: serverName,
-        mode,
-        enable: true,
-        extra_args: extraArgsData,
-      } as MCPServer);
+      const testTarget = shouldTestPersistedServer ? serverName : '_';
+      const testPayload = shouldTestPersistedServer
+        ? {}
+        : ({
+            name: serverName,
+            mode,
+            enable: true,
+            extra_args: extraArgsData,
+          } as MCPServer);
+
+      const { task_id } = await httpClient.testMCPServer(
+        testTarget,
+        testPayload,
+      );
 
       if (!task_id) {
         throw new Error(t('mcp.noTaskId'));
@@ -876,14 +888,18 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
                 resource_count: 0,
                 resources: [],
               });
+              if (shouldTestPersistedServer) {
+                await onPersistedTestComplete?.(serverName);
+              }
             } else {
-              if (isEditMode) {
+              if (shouldTestPersistedServer) {
                 await loadServerForEdit(serverName);
+                await onPersistedTestComplete?.(serverName);
               } else {
-                // Create mode has no persisted server to reload tools from.
+                // Transient tests have no persisted server to reload tools from.
                 // The backend stashes the discovered runtime info (status +
-                // tools) in the test task's metadata before tearing the
-                // transient session down — surface it so a successful test
+                // tools) in the task metadata before tearing the transient
+                // session down — surface it so a successful test
                 // shows the tool list instead of "no tools found".
                 const runtimeInfoFromTest = taskResp.task_context?.metadata
                   ?.runtime_info as MCPServerRuntimeInfo | undefined;
