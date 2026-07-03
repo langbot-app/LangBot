@@ -1207,6 +1207,9 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
         <TabsTrigger value="resources" className="flex-none px-4">
           {resourcesTabLabel}
         </TabsTrigger>
+        <TabsTrigger value="logs" className="flex-none px-4">
+          {t('mcp.tabLogs')}
+        </TabsTrigger>
       </TabsList>
       <TabsContent value="docs" className="mt-4 min-h-0 flex-1 overflow-y-auto">
         <MCPReadme readme={readme} />
@@ -1234,6 +1237,14 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
           content="resources"
           t={t}
         />
+      </TabsContent>
+      <TabsContent
+        value="logs"
+        className="mt-4 min-h-0 flex-1 overflow-y-auto"
+      >
+        {persistedServerName && (
+          <MCPLogs serverName={persistedServerName} />
+        )}
       </TabsContent>
     </Tabs>
   ) : (

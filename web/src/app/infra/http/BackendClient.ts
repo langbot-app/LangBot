@@ -671,6 +671,21 @@ export class BackendClient extends BaseHttpClient {
     );
   }
 
+  public getMcpServerLogs(
+    serverName: string,
+    limit: number = 200,
+    level?: string,
+  ): Promise<{ logs: PluginLogEntry[] }> {
+    const params = new URLSearchParams();
+    params.set('limit', String(limit));
+    if (level) {
+      params.set('level', level);
+    }
+    return this.get(
+      `/api/v1/mcp/servers/${encodeURIComponent(serverName)}/logs?${params.toString()}`,
+    );
+  }
+
   public getPluginAssetURL(
     author: string,
     name: string,
