@@ -25,7 +25,7 @@ from ....core import app
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 from ....entity.persistence import mcp as persistence_mcp
-from .mcp_stdio import BoxStdioSessionRuntime, MCPServerBoxConfig, MCPSessionErrorPhase  # noqa: F401
+from .mcp_stdio import BoxStdioSessionRuntime, MCPServerBoxConfig, MCPSessionErrorPhase, _ColdStartRetry  # noqa: F401
 
 # Synthesized LLM tools for MCP resources (not from server tools/list).
 # Dispatched in MCPLoader.invoke_tool; placeholder func on LLMTool is never used.
@@ -489,6 +489,24 @@ class RuntimeMCPSession:
                 self.error_message = None
                 self.error_phase = None
                 await asyncio.sleep(1)
+                continue
+            except _ColdStartRetry as e:
+                # The managed process is alive but still cold-starting (e.g.
+                # `npx -y <pkg>` is still installing) and cannot yet answer the
+                # handshake. Reuse the live process and retry the attach WITHOUT
+                # consuming the fatal retry budget or stopping the process, so a
+                # slow cold start is waited out instead of failing. Preserve the
+                # process across the finally-block cleanup.
+                if self._shutdown_event.is_set():
+                    return
+                self._preserve_managed_process = True
+                self.ap.logger.debug(
+                    f'MCP session {self.server_name}: waiting for cold start ({self._describe_exception(e)})'
+                )
+                self.status = MCPSessionStatus.CONNECTING
+                self.error_message = None
+                self.error_phase = None
+                await asyncio.sleep(2)
                 continue
             except Exception as e:
                 self.retry_count = attempt + 1

@@ -94,6 +94,15 @@ class _TransferredStack:
         return False
 
 
+class _ColdStartRetry(Exception):
+    """Signal: the managed process is alive but not yet answering the MCP
+    handshake because it is still cold-starting (e.g. `npx -y <pkg>` is still
+    installing). The outer lifecycle retry treats this like a transient
+    reconnect: it reuses the live process and does not count toward the fatal
+    retry budget, so a slow cold start is waited out rather than failing.
+    """
+
+
 class BoxStdioSessionRuntime:
     """Encapsulate Box-backed stdio MCP session orchestration."""
 
@@ -226,63 +235,43 @@ class BoxStdioSessionRuntime:
 
         websocket_url = workspace.get_managed_process_websocket_url(self.process_id)
 
-        # A freshly started stdio process may be slow to become ready — an
-        # `npx -y <pkg>` cold start downloads+installs the package before the
-        # server can answer the MCP handshake (measured ~27s for a simple
-        # server; more for heavier ones). Attaching the WS and calling
-        # initialize() immediately therefore fails with "Connection closed"
-        # even though the process is fine. The WS relay tolerates the silent
-        # cold-start window, so we retry the handshake (attach -> ClientSession
-        # -> initialize) within the startup budget, tearing down the failed
-        # transport between attempts, until the process is ready or we time out.
-        deadline = asyncio.get_running_loop().time() + max(float(self.config.startup_timeout_sec or 120), 1.0)
-        attempt = 0
-        while True:
-            attempt += 1
-            handshake_stack = AsyncExitStack()
-            try:
-                transport = await handshake_stack.enter_async_context(websocket_client(websocket_url))
-                read_stream, write_stream = transport
-                session = await handshake_stack.enter_async_context(ClientSession(read_stream, write_stream))
-                # Bound each handshake attempt: a process still in cold start
-                # will not answer, so time out and retry rather than hang until
-                # the transport eventually drops with 'Connection closed'.
-                await asyncio.wait_for(session.initialize(), timeout=_HANDSHAKE_ATTEMPT_TIMEOUT_SEC)
-                # Success: hand the live transport/session over to the owner's
-                # exit stack so it lives for the session's lifetime.
-                self.owner.session = session
-                await self.owner.exit_stack.enter_async_context(_TransferredStack(handshake_stack))
-                if attempt > 1:
-                    self.ap.logger.info(
-                        f'MCP server {self.server_name}: handshake succeeded on attempt {attempt} '
-                        f'(process finished cold start)'
-                    )
-                break
-            except Exception as exc:
-                # Tear down this attempt's half-open transport before retrying.
-                try:
-                    await handshake_stack.aclose()
-                except Exception:
-                    pass
-                # Stop retrying ONLY if the process has definitively exited —
-                # a just-spawned process that is not yet RUNNING, or a transient
-                # box query error, must NOT abort the cold-start wait.
-                if await self._managed_process_has_exited():
-                    self.owner.error_phase = MCPSessionErrorPhase.MCP_INIT
-                    raise
-                if asyncio.get_running_loop().time() >= deadline:
-                    self.owner.error_phase = MCPSessionErrorPhase.MCP_INIT
-                    raise Exception(
-                        f'MCP handshake did not complete within '
-                        f'{int(self.config.startup_timeout_sec or 120)}s '
-                        f'({attempt} attempts): {type(exc).__name__}: {exc}'
-                    )
-                # Back off briefly and retry — the process is still coming up.
-                self.ap.logger.debug(
-                    f'MCP server {self.server_name}: handshake attempt {attempt} not ready yet '
-                    f'({type(exc).__name__}); retrying while process starts'
+        # Attach the WS transport + MCP session ONCE, on the owner's exit stack,
+        # in the same task as the serve loop that follows. websocket_client and
+        # ClientSession use anyio task groups whose cancel scope is bound to the
+        # frame/stack that entered them, so they must live on the owner exit
+        # stack (not a deferred/transferred one) or the streams close the moment
+        # initialize() returns and the next request fails with "Connection
+        # closed".
+        #
+        # A slow (`npx -y <pkg>`) cold start makes this single attempt fail
+        # while the process is still alive — the package is still installing and
+        # cannot answer the handshake. We surface that to the outer retry loop
+        # as a _ColdStartRetry: it must NOT stop the process (it is healthy and
+        # will be reused) and must NOT consume the fatal retry budget. The next
+        # attempt re-attaches to the same live process; once it has finished
+        # cold start the handshake succeeds and stays healthy.
+        try:
+            transport = await self.owner.exit_stack.enter_async_context(websocket_client(websocket_url))
+            read_stream, write_stream = transport
+            self.owner.session = await self.owner.exit_stack.enter_async_context(
+                ClientSession(read_stream, write_stream)
+            )
+        except Exception:
+            self.owner.error_phase = MCPSessionErrorPhase.RELAY_CONNECT
+            if not await self._managed_process_has_exited():
+                # Process is alive but not yet serving (cold start) — reconnect.
+                raise _ColdStartRetry(f'{self.server_name}: transport not ready during cold start')
+            raise
+
+        try:
+            await asyncio.wait_for(self.owner.session.initialize(), timeout=_HANDSHAKE_ATTEMPT_TIMEOUT_SEC)
+        except Exception as exc:
+            self.owner.error_phase = MCPSessionErrorPhase.MCP_INIT
+            if not await self._managed_process_has_exited():
+                raise _ColdStartRetry(
+                    f'{self.server_name}: handshake not ready during cold start ({type(exc).__name__})'
                 )
-                await asyncio.sleep(2)
+            raise
 
     async def monitor_process_health(self) -> None:
         from langbot_plugin.box.models import BoxManagedProcessStatus
