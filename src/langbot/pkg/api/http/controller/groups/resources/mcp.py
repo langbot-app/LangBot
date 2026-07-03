@@ -96,6 +96,19 @@ class MCPRouterGroup(group.RouterGroup):
             except Exception as e:
                 return self.http_status(500, -1, f'Failed to get resource templates: {str(e)}')
 
+        @self.route('/servers/<path:server_name>/logs', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
+        async def _(server_name: str) -> str:
+            """Get logs from an MCP server"""
+            server_name = unquote(server_name)
+            try:
+                limit = int(quart.request.args.get('limit', 200))
+            except (TypeError, ValueError):
+                limit = 200
+            limit = min(limit, 500)
+            level = quart.request.args.get('level') or None
+            logs = await self.ap.mcp_service.get_mcp_server_logs(server_name, limit=limit, level=level)
+            return self.success(data={'logs': logs})
+
         @self.route('/servers/<path:server_name>/resources/read', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
         async def _(server_name: str) -> str:
             """Read a resource from an MCP server"""

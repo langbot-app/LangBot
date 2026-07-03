@@ -297,6 +297,33 @@ class BoxStdioSessionRuntime:
                 )
                 if consecutive_errors >= self.owner._MONITOR_MAX_CONSECUTIVE_ERRORS:
                     return
+
+            # Capture stderr logs from the managed process
+            if isinstance(info, dict):
+                stderr_text = info.get('stderr', '') or info.get('stderr_preview', '')
+            else:
+                stderr_text = getattr(info, 'stderr', '') or getattr(info, 'stderr_preview', '')
+
+            if stderr_text and stderr_text != self.owner._last_stderr_text:
+                # Find new lines not in the previous snapshot
+                old_lines = set(self.owner._last_stderr_text.splitlines()) if self.owner._last_stderr_text else set()
+                new_lines = [l for l in stderr_text.splitlines() if l and l not in old_lines]
+                self.owner._last_stderr_text = stderr_text
+
+                import time as _time
+
+                for line in new_lines:
+                    level = (
+                        'error'
+                        if any(k in line.upper() for k in ('ERROR', 'CRITICAL'))
+                        else 'warning'
+                        if 'WARNING' in line.upper()
+                        else 'debug'
+                        if 'DEBUG' in line.upper()
+                        else 'info'
+                    )
+                    self.owner._log_buffer.append({'ts': _time.time(), 'level': level, 'text': line})
+
             await asyncio.sleep(self.owner._MONITOR_POLL_INTERVAL)
 
     async def _managed_process_is_running(self) -> bool:

@@ -244,3 +244,19 @@ class MCPService:
             context=ctx,
         )
         return wrapper.id
+
+    async def get_mcp_server_logs(self, server_name: str, limit: int = 200, level: str | None = None) -> list[dict]:
+        """Get recent log lines captured from the MCP server's stderr."""
+        session = self.ap.tool_mgr.mcp_tool_loader.get_session(server_name)
+        if not session:
+            return []
+
+        # Get logs from the session's buffer
+        logs = list(session._log_buffer)
+
+        # Filter by level if specified
+        if level:
+            logs = [log for log in logs if log.get('level') == level]
+
+        # Return the most recent 'limit' logs
+        return logs[-limit:]

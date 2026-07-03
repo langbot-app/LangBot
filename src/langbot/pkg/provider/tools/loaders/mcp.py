@@ -268,6 +268,13 @@ class RuntimeMCPSession:
         # process (it will be re-attached on the next initialize()).
         self._preserve_managed_process = False
 
+        # Log buffer for capturing stderr from Box managed process (maxlen=500 keeps
+        # recent lines without unbounded memory growth)
+        import collections as _collections
+
+        self._log_buffer: _collections.deque = _collections.deque(maxlen=500)
+        self._last_stderr_text: str = ''
+
         self._box_stdio_runtime = BoxStdioSessionRuntime(self)
         self.box_config = self._box_stdio_runtime.config
 
