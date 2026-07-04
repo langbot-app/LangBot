@@ -417,7 +417,7 @@ class TestBuildBoxSessionPayload:
         payload = s._build_box_session_payload('session-123')
         assert payload['image'] == 'node:20'
         assert payload['cpus'] == 2.0
-        assert payload['memory_mb'] == 1024
+        assert payload["memory_mb"] == 1024
         assert payload['pids_limit'] == 256
 
     def test_none_fields_excluded(self, mcp_module):

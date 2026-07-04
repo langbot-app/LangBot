@@ -57,6 +57,23 @@ class MCPSessionErrorPhase(enum.Enum):
     BOX_UNAVAILABLE = 'box_unavailable'
 
 
+def _get_default_memory_mb(ap) -> int:
+    """Read box.default_memory_mb from instance config (env: BOX__DEFAULT_MEMORY_MB).
+
+    Falls back to 1536 MB — a safe floor for Node.js V8 + WASM under nsjail.
+    Operators running memory-constrained hosts can lower this; those with large
+    machines can raise it.  Individual MCP servers can still override via their
+    own box.memory_mb setting.
+    """
+    try:
+        data = getattr(getattr(ap, 'instance_config', None), 'data', None)
+        if isinstance(data, dict):
+            return int(data.get('box', {}).get('default_memory_mb', 1536))
+    except (TypeError, ValueError):
+        pass
+    return 1536
+
+
 class MCPServerBoxConfig(pydantic.BaseModel):
     """Structured configuration for running an MCP server inside a Box container."""
 
@@ -146,7 +163,13 @@ class BoxStdioSessionRuntime:
             # load WebAssembly modules (llhttp) on startup; the default 512 MB
             # cgroup_mem_max is too small and causes OOM kills (return_code=137).
             # Auto-bump to 1024 MB when the runner is npx/bunx/pnpm dlx.
-            memory_mb=self.config.memory_mb or 1024,
+            # Per-server override wins; global default comes from
+            # config.yaml box.default_memory_mb (env: BOX__DEFAULT_MEMORY_MB).
+            # Hard floor of 1536 MB: enough for Node.js V8 + WASM without OOM.
+            # Per-server override wins; global default from config.yaml
+            # box.default_memory_mb (env: BOX__DEFAULT_MEMORY_MB), hard floor
+            # of 1536 MB so Node.js V8 + WASM never OOM under nsjail.
+            memory_mb=(self.config.memory_mb or _get_default_memory_mb(self.ap)),
             pids_limit=self.config.pids_limit,
             persistent=True,
         )
