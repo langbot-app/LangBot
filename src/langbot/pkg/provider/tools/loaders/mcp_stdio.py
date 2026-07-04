@@ -146,11 +146,7 @@ class BoxStdioSessionRuntime:
             # load WebAssembly modules (llhttp) on startup; the default 512 MB
             # cgroup_mem_max is too small and causes OOM kills (return_code=137).
             # Auto-bump to 1024 MB when the runner is npx/bunx/pnpm dlx.
-            memory_mb=(
-                (self.config.memory_mb or 1024)
-                if self.server_config.get('command', '') in ('npx', 'bunx', 'pnpm')
-                else self.config.memory_mb
-            ),
+            memory_mb=self.config.memory_mb or 1024,
             pids_limit=self.config.pids_limit,
             persistent=True,
         )
