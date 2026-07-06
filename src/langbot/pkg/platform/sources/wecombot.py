@@ -5,6 +5,7 @@ import time
 import traceback
 
 import datetime
+
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
@@ -335,6 +336,68 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             listeners={},
             _stream_to_monitoring_msg={},
         )
+
+    @staticmethod
+    def _join_text_components(items: list[dict]) -> str:
+        """Concatenate ``text`` items in order, leaving media items alone."""
+        return ''.join(item['text'] for item in items if item.get('type') == 'text')
+
+    @staticmethod
+    def _iter_media_components(items: list[dict]):
+        """Yield non-text items in order."""
+        for item in items:
+            if item.get('type') in {'image', 'voice', 'file'}:
+                yield item
+
+    @staticmethod
+    async def _send_media(
+        bot,
+        req_id: str,
+        item: dict,
+    ) -> bool:
+        """Upload *item* to the WeCom AI Bot CDN and send it as a media reply.
+
+        Returns True on success. Falls back to a no-op (with a warning log)
+        if the SDK does not yet implement ``upload_media`` /
+        ``reply_image`` / ``reply_file`` / ``reply_voice`` — the framework
+        will keep working, just without image delivery.
+        """
+        kind = item.get('type')
+        upload = getattr(bot, 'upload_media', None)
+        if upload is None:
+            return False
+        b64_text = item.get('base64') or ''
+        if not b64_text:
+            return False
+        if b64_text.startswith('data:') and ',' in b64_text:
+            b64_text = b64_text.split(',', 1)[1]
+        try:
+            data = base64.b64decode(b64_text, validate=False)
+        except Exception:
+            return False
+        if not data:
+            return False
+        try:
+            upload_result = await upload(data, item.get('name') or f'attachment.{kind}', media_type=kind)
+        except Exception:
+            return False
+        media_id = getattr(upload_result, 'media_id', None) or (
+            isinstance(upload_result, dict) and upload_result.get('media_id')
+        )
+        if not media_id:
+            return False
+        reply_fn = {
+            'image': getattr(bot, 'reply_image', None),
+            'file': getattr(bot, 'reply_file', None),
+            'voice': getattr(bot, 'reply_voice', None),
+        }.get(kind)
+        if reply_fn is None:
+            return False
+        try:
+            await reply_fn(req_id, media_id)
+            return True
+        except Exception:
+            return False
 
     async def reply_message(
         self,

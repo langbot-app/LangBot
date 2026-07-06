@@ -34,6 +34,14 @@ CMD_RESPOND_MSG = 'aibot_respond_msg'
 CMD_RESPOND_WELCOME = 'aibot_respond_welcome_msg'
 CMD_RESPOND_UPDATE = 'aibot_respond_update_msg'
 CMD_SEND_MSG = 'aibot_send_msg'
+# Media upload protocol (3 steps: init -> chunk * N -> finish). The
+# command names below match the WeCom AI Bot long-connection protocol.
+CMD_UPLOAD_INIT = 'aibot_upload_media_init'
+CMD_UPLOAD_CHUNK = 'aibot_upload_media_chunk'
+CMD_UPLOAD_FINISH = 'aibot_upload_media_finish'
+
+# Default upload chunk size: 512 KB before base64 encoding.
+_UPLOAD_CHUNK_SIZE = 512 * 1024
 
 
 def _generate_req_id(prefix: str) -> str:
@@ -257,6 +265,146 @@ class WecomBotWsClient:
         elif msgtype == 'text':
             body['text'] = {'content': content}
         return await self._send_reply(req_id, body, cmd=CMD_SEND_MSG)
+
+    # ------------------------------------------------------------------
+    # Media upload (image / voice / file)
+    # ------------------------------------------------------------------
+
+    async def upload_media(
+        self,
+        data: bytes,
+        filename: str = 'attachment',
+        media_type: str = 'file',
+    ) -> Optional[dict]:
+        """Upload *data* to the WeCom AI Bot CDN and return the parsed ACK.
+
+        Implements the three-step protocol documented for the WeCom
+        AI Bot:
+
+        1. ``aibot_upload_media_init`` — declare media type, file name,
+           size, MD5 and chunk count; receive ``upload_id``.
+        2. ``aibot_upload_media_chunk`` — send each chunk (base64-encoded
+           bytes) until done; receive per-chunk ACK.
+        3. ``aibot_upload_media_finish`` — finalize the upload; receive
+           ``media_id``.
+
+        Returns a dict with the final ``media_id`` (and the raw
+        ``finish`` ACK) on success, or ``None`` on any failure. The
+        caller is expected to ignore the result and continue
+        gracefully — the framework will keep working without media
+        delivery.
+        """
+        import base64 as _b64
+        import hashlib as _hl
+
+        if not data:
+            return None
+
+        file_size = len(data)
+        file_md5 = _hl.md5(data).hexdigest()
+        total_chunks = (file_size + _UPLOAD_CHUNK_SIZE - 1) // _UPLOAD_CHUNK_SIZE
+        if total_chunks == 0:
+            total_chunks = 1
+
+        # Step 1: init.
+        init_req_id = _generate_req_id(CMD_UPLOAD_INIT)
+        init_body = {
+            'type': media_type,
+            'filename': filename,
+            'total_size': file_size,
+            'total_chunks': total_chunks,
+            'md5': file_md5,
+        }
+        init_ack = await self._send_reply(
+            init_req_id,
+            init_body,
+            cmd=CMD_UPLOAD_INIT,
+        )
+        if not init_ack or init_ack.get('errcode', 0) != 0:
+            await self.logger.warning(f'upload_media init failed: ack={init_ack!r}')
+            return None
+        upload_id = (
+            init_ack.get('upload_id')
+            or init_ack.get('body', {}).get('upload_id')
+            or init_ack.get('data', {}).get('upload_id')
+        )
+        if not upload_id:
+            await self.logger.warning(f'upload_media init returned no upload_id: ack={init_ack!r}')
+            return None
+
+        # Step 2: chunks.
+        for index in range(total_chunks):
+            start = index * _UPLOAD_CHUNK_SIZE
+            end = min(start + _UPLOAD_CHUNK_SIZE, file_size)
+            chunk_bytes = data[start:end]
+            chunk_req_id = _generate_req_id(CMD_UPLOAD_CHUNK)
+            chunk_body = {
+                'upload_id': upload_id,
+                'chunk_index': index,
+                'base64_data': _b64.b64encode(chunk_bytes).decode('ascii'),
+            }
+            chunk_ack = await self._send_reply(
+                chunk_req_id,
+                chunk_body,
+                cmd=CMD_UPLOAD_CHUNK,
+            )
+            if not chunk_ack or chunk_ack.get('errcode', 0) != 0:
+                await self.logger.warning(f'upload_media chunk {index} failed: ack={chunk_ack!r}')
+                return None
+
+        # Step 3: finish.
+        finish_req_id = _generate_req_id(CMD_UPLOAD_FINISH)
+        finish_body = {'upload_id': upload_id}
+        finish_ack = await self._send_reply(
+            finish_req_id,
+            finish_body,
+            cmd=CMD_UPLOAD_FINISH,
+        )
+        if not finish_ack or finish_ack.get('errcode', 0) != 0:
+            await self.logger.warning(f'upload_media finish failed: ack={finish_ack!r}')
+            return None
+
+        media_id = (
+            finish_ack.get('media_id')
+            or finish_ack.get('body', {}).get('media_id')
+            or finish_ack.get('data', {}).get('media_id')
+        )
+        if not media_id:
+            await self.logger.warning(f'upload_media finish returned no media_id: ack={finish_ack!r}')
+            return None
+        await self.logger.info(f'upload_media OK: filename={filename!r} media_id={media_id!r}')
+        return {'media_id': media_id, 'ack': finish_ack}
+
+    async def _reply_media(
+        self,
+        req_id: str,
+        media_id: str,
+        kind: str,
+    ) -> Optional[dict]:
+        """Send a media reply (image / voice / file) referencing *media_id*.
+
+        ``kind`` is one of ``'image'``, ``'voice'``, ``'file'``. Uses
+        the standard ``aibot_respond_msg`` command with a per-kind
+        body key (matches the convention documented for the WeCom
+        AI Bot SDK).
+        """
+        if kind not in {'image', 'voice', 'file'}:
+            await self.logger.warning(f'_reply_media called with unknown kind={kind!r}')
+            return None
+        body = {
+            'msgtype': kind,
+            kind: {'media_id': media_id},
+        }
+        return await self._send_reply(req_id, body, cmd=CMD_RESPOND_MSG)
+
+    async def reply_image(self, req_id: str, media_id: str) -> Optional[dict]:
+        return await self._reply_media(req_id, media_id, 'image')
+
+    async def reply_file(self, req_id: str, media_id: str) -> Optional[dict]:
+        return await self._reply_media(req_id, media_id, 'file')
+
+    async def reply_voice(self, req_id: str, media_id: str) -> Optional[dict]:
+        return await self._reply_media(req_id, media_id, 'voice')
 
     async def push_stream_chunk(self, msg_id: str, content: str, is_final: bool = False) -> bool:
         """Push a streaming chunk for a given message ID.
