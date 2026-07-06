@@ -67,6 +67,18 @@ import SettingsDialog, {
 import ToolResourceSelectors from '@/app/home/components/dynamic-form/ToolResourceSelectors';
 import { LANGBOT_MODELS_PROVIDER_REQUESTER } from '@/app/home/components/models-dialog/types';
 
+const EMPTY_SELECT_ITEM_VALUE = '__langbot_empty_select_item_value__';
+
+function toSelectValue(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function hasNonEmptyUuid<T extends { uuid?: string | null }>(
+  item: T,
+): item is T & { uuid: string } {
+  return typeof item.uuid === 'string' && item.uuid.length > 0;
+}
+
 export default function DynamicFormItemComponent({
   config,
   field,
@@ -380,19 +392,33 @@ export default function DynamicFormItemComponent({
         </div>
       );
 
-    case DynamicFormItemType.SELECT:
+    case DynamicFormItemType.SELECT: {
+      const hasEmptyOption =
+        config.options?.some((option) => option.name === '') ?? false;
+      const selectValue =
+        hasEmptyOption && field.value === ''
+          ? EMPTY_SELECT_ITEM_VALUE
+          : toSelectValue(field.value);
+
       return (
-        <Select value={field.value} onValueChange={field.onChange}>
+        <Select
+          value={selectValue}
+          onValueChange={(value) =>
+            field.onChange(value === EMPTY_SELECT_ITEM_VALUE ? '' : value)
+          }
+        >
           <SelectTrigger className="w-full max-w-md bg-[#ffffff] dark:bg-[#2a2a2e]">
             <SelectValue placeholder={t('common.select')} />
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              {config.options?.map((option) => (
+              {config.options?.map((option, index) => (
                 <SelectItem
-                  key={option.name}
-                  value={option.name}
-                  description={option.name}
+                  key={`${option.name}-${index}`}
+                  value={
+                    option.name === '' ? EMPTY_SELECT_ITEM_VALUE : option.name
+                  }
+                  description={option.name || undefined}
                 >
                   {extractI18nObject(option.label)}
                 </SelectItem>
@@ -401,6 +427,7 @@ export default function DynamicFormItemComponent({
           </SelectContent>
         </Select>
       );
+    }
 
     case DynamicFormItemType.LLM_MODEL_SELECTOR:
       // Separate space models from regular models
@@ -455,7 +482,7 @@ export default function DynamicFormItemComponent({
                 {Object.entries(groupedModels).map(([providerName, models]) => (
                   <SelectGroup key={providerName}>
                     <SelectLabel>{providerName}</SelectLabel>
-                    {models.map((model) => (
+                    {models.filter(hasNonEmptyUuid).map((model) => (
                       <SelectItem key={model.uuid} value={model.uuid}>
                         <span className="inline-flex items-center gap-1">
                           {model.name}
@@ -559,7 +586,7 @@ export default function DynamicFormItemComponent({
                             {providerName}
                           </span>
                         </SelectLabel>
-                        {models.map((model) => (
+                        {models.filter(hasNonEmptyUuid).map((model) => (
                           <SelectItem key={model.uuid} value={model.uuid}>
                             <span className="inline-flex items-center gap-1">
                               {model.name}
@@ -656,7 +683,7 @@ export default function DynamicFormItemComponent({
                   ([providerName, models]) => (
                     <SelectGroup key={providerName}>
                       <SelectLabel>{providerName}</SelectLabel>
-                      {models.map((model) => (
+                      {models.filter(hasNonEmptyUuid).map((model) => (
                         <SelectItem key={model.uuid} value={model.uuid}>
                           {model.name}
                         </SelectItem>
@@ -748,7 +775,7 @@ export default function DynamicFormItemComponent({
                             {providerName}
                           </span>
                         </SelectLabel>
-                        {models.map((model) => (
+                        {models.filter(hasNonEmptyUuid).map((model) => (
                           <SelectItem key={model.uuid} value={model.uuid}>
                             {model.name}
                           </SelectItem>
@@ -813,7 +840,7 @@ export default function DynamicFormItemComponent({
                 ([providerName, models]) => (
                   <SelectGroup key={providerName}>
                     <SelectLabel>{providerName}</SelectLabel>
-                    {models.map((model) => (
+                    {models.filter(hasNonEmptyUuid).map((model) => (
                       <SelectItem key={model.uuid} value={model.uuid}>
                         {model.name}
                       </SelectItem>
@@ -908,7 +935,7 @@ export default function DynamicFormItemComponent({
               ([providerName, models]) => (
                 <SelectGroup key={providerName}>
                   <SelectLabel>{providerName}</SelectLabel>
-                  {models.map((model) => (
+                  {models.filter(hasNonEmptyUuid).map((model) => (
                     <SelectItem key={model.uuid} value={model.uuid}>
                       <span className="inline-flex items-center gap-1">
                         {model.name}
@@ -1013,7 +1040,7 @@ export default function DynamicFormItemComponent({
                         {providerName}
                       </span>
                     </SelectLabel>
-                    {models.map((model) => (
+                    {models.filter(hasNonEmptyUuid).map((model) => (
                       <SelectItem key={model.uuid} value={model.uuid}>
                         <span className="inline-flex items-center gap-1">
                           {model.name}
@@ -1223,8 +1250,8 @@ export default function DynamicFormItemComponent({
             {Object.entries(kbsByEngine).map(([engineName, kbs]) => (
               <SelectGroup key={engineName}>
                 <SelectLabel>{engineName}</SelectLabel>
-                {kbs.map((base) => (
-                  <SelectItem key={base.uuid} value={base.uuid ?? ''}>
+                {kbs.filter(hasNonEmptyUuid).map((base) => (
+                  <SelectItem key={base.uuid} value={base.uuid}>
                     <div className="flex items-center gap-2">
                       {base.emoji && (
                         <span className="text-sm shrink-0">{base.emoji}</span>
@@ -1417,8 +1444,8 @@ export default function DynamicFormItemComponent({
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              {bots.map((bot) => (
-                <SelectItem key={bot.uuid} value={bot.uuid ?? ''}>
+              {bots.filter(hasNonEmptyUuid).map((bot) => (
+                <SelectItem key={bot.uuid} value={bot.uuid}>
                   {bot.name}
                 </SelectItem>
               ))}
