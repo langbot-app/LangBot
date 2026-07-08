@@ -1,0 +1,241 @@
+import { PluginCardVO } from '@/app/home/plugins/components/plugin-installed/PluginCardVO';
+import { useState } from 'react';
+import { Badge } from '@/components/ui/badge';
+import { useTranslation } from 'react-i18next';
+import { BugIcon, ExternalLink, Ellipsis, Trash, ArrowUp } from 'lucide-react';
+import { getCloudServiceClientSync, systemInfo } from '@/app/infra/http';
+import { httpClient } from '@/app/infra/http/HttpClient';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import PluginComponentList from '@/app/home/plugins/components/plugin-installed/PluginComponentList';
+
+export default function PluginCardComponent({
+  cardVO,
+  onCardClick,
+  onDeleteClick,
+  onUpgradeClick,
+}: {
+  cardVO: PluginCardVO;
+  onCardClick: () => void;
+  onDeleteClick: (cardVO: PluginCardVO) => void;
+  onUpgradeClick: (cardVO: PluginCardVO) => void;
+}) {
+  const { t } = useTranslation();
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  return (
+    <>
+      <div
+        className="w-[100%] h-[10rem] bg-white rounded-[10px] border border-[#e4e4e7] dark:border-[#27272a] p-[1.2rem] cursor-pointer dark:bg-[#1f1f22] relative transition-all duration-200 hover:border-[#a1a1aa] dark:hover:border-[#3f3f46]"
+        onClick={() => onCardClick()}
+      >
+        <div className="w-full h-full flex flex-row items-start justify-start gap-[1.2rem]">
+          {/* Icon - fixed width */}
+          <img
+            src={httpClient.getPluginIconURL(cardVO.author, cardVO.name)}
+            alt="plugin icon"
+            className="w-16 h-16 rounded-[8%] flex-shrink-0"
+          />
+
+          {/* Content area - flexible width with min-width to prevent overflow */}
+          <div className="flex-1 min-w-0 h-full flex flex-col items-start justify-between gap-[0.6rem]">
+            {/* Top content area - allows overflow with max height */}
+            <div className="flex flex-col items-start justify-start w-full min-w-0 flex-1 overflow-hidden">
+              <div className="flex flex-col items-start justify-start w-full min-w-0">
+                <div className="text-[0.7rem] text-[#666] dark:text-[#999] truncate w-full">
+                  {cardVO.author} / {cardVO.name}
+                </div>
+                <div className="flex flex-row items-center justify-start gap-[0.4rem] flex-wrap max-w-full">
+                  <div className="text-[1.2rem] text-black dark:text-[#f0f0f0] truncate max-w-[10rem]">
+                    {cardVO.label}
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className="text-[0.7rem] flex-shrink-0"
+                  >
+                    v{cardVO.version}
+                  </Badge>
+                  {cardVO.type && (
+                    <Badge
+                      variant="outline"
+                      className={`text-[0.7rem] flex-shrink-0 ${
+                        cardVO.type === 'mcp'
+                          ? 'border-sky-500 text-sky-600 dark:border-sky-400 dark:text-sky-300'
+                          : cardVO.type === 'skill'
+                            ? 'border-emerald-500 text-emerald-600 dark:border-emerald-400 dark:text-emerald-300'
+                            : 'border-violet-500 text-violet-600 dark:border-violet-400 dark:text-violet-300'
+                      }`}
+                    >
+                      {cardVO.type === 'mcp'
+                        ? 'MCP'
+                        : cardVO.type === 'skill'
+                          ? t('common.skill')
+                          : t('market.typePlugin')}
+                    </Badge>
+                  )}
+                  {cardVO.debug && (
+                    <Badge
+                      variant="outline"
+                      className="text-[0.7rem] border-orange-400 text-orange-400 flex-shrink-0"
+                    >
+                      <BugIcon className="w-4 h-4" />
+                      {t('plugins.debugging')}
+                    </Badge>
+                  )}
+                  {!cardVO.debug && (
+                    <>
+                      {cardVO.install_source === 'github' && (
+                        <Badge
+                          variant="outline"
+                          className="text-[0.7rem] border-blue-400 text-blue-400 flex-shrink-0"
+                        >
+                          {t('plugins.fromGithub')}
+                        </Badge>
+                      )}
+                      {cardVO.install_source === 'local' && (
+                        <Badge
+                          variant="outline"
+                          className="text-[0.7rem] border-green-400 text-green-400 flex-shrink-0"
+                        >
+                          {t('plugins.fromLocal')}
+                        </Badge>
+                      )}
+                      {cardVO.install_source === 'marketplace' && (
+                        <Badge
+                          variant="outline"
+                          className="text-[0.7rem] border-purple-400 text-purple-400 flex-shrink-0"
+                        >
+                          {t('plugins.fromMarketplace')}
+                        </Badge>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="text-[0.8rem] text-[#666] line-clamp-2 dark:text-[#999] w-full">
+                {cardVO.description}
+              </div>
+            </div>
+
+            {/* Components list - fixed at bottom */}
+            <div className="w-full flex flex-row items-start justify-start gap-[0.6rem] flex-shrink-0 min-h-[1.5rem]">
+              <PluginComponentList
+                components={(() => {
+                  const componentKindCount: Record<string, number> = {};
+                  for (const component of cardVO.components) {
+                    const kind = component.manifest.manifest.kind;
+                    if (componentKindCount[kind]) {
+                      componentKindCount[kind]++;
+                    } else {
+                      componentKindCount[kind] = 1;
+                    }
+                  }
+                  return componentKindCount;
+                })()}
+                showComponentName={false}
+                showTitle={true}
+                useBadge={false}
+                t={t}
+              />
+            </div>
+          </div>
+
+          {/* Menu button - fixed width and position */}
+          <div
+            className="flex flex-col items-center justify-between h-full relative z-20 flex-shrink-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-center"></div>
+
+            <div className="flex items-center justify-center">
+              <DropdownMenu
+                open={dropdownOpen}
+                onOpenChange={(open) => {
+                  setDropdownOpen(open);
+                }}
+              >
+                <DropdownMenuTrigger asChild>
+                  <div className="relative">
+                    <Button
+                      variant="ghost"
+                      className="bg-white dark:bg-[#1f1f22] hover:bg-gray-100 dark:hover:bg-[#2a2a2d]"
+                    >
+                      <Ellipsis className="w-4 h-4" />
+                    </Button>
+                    {cardVO.hasUpdate && (
+                      <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-[#1f1f22]"></div>
+                    )}
+                  </div>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  {/**upgrade */}
+                  {cardVO.install_source === 'marketplace' && (
+                    <DropdownMenuItem
+                      className="flex flex-row items-center justify-start gap-[0.4rem] cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onUpgradeClick(cardVO);
+                        setDropdownOpen(false);
+                      }}
+                    >
+                      <ArrowUp className="w-4 h-4" />
+                      <span>{t('plugins.update')}</span>
+                      {cardVO.hasUpdate && (
+                        <Badge className="ml-auto bg-red-500 hover:bg-red-500 text-white text-[0.6rem] px-1.5 py-0 h-4">
+                          {t('plugins.new')}
+                        </Badge>
+                      )}
+                    </DropdownMenuItem>
+                  )}
+                  {/**view source */}
+                  {(cardVO.install_source === 'github' ||
+                    cardVO.install_source === 'marketplace') && (
+                    <DropdownMenuItem
+                      className="flex flex-row items-center justify-start gap-[0.4rem] cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (cardVO.install_source === 'github') {
+                          window.open(cardVO.install_info.github_url, '_blank');
+                        } else if (cardVO.install_source === 'marketplace') {
+                          window.open(
+                            getCloudServiceClientSync().getPluginMarketplaceURL(
+                              systemInfo.cloud_service_url,
+                              cardVO.author,
+                              cardVO.name,
+                            ),
+                            '_blank',
+                          );
+                        }
+                        setDropdownOpen(false);
+                      }}
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      <span>{t('plugins.viewSource')}</span>
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem
+                    className="flex flex-row items-center justify-start gap-[0.4rem] cursor-pointer text-red-600 focus:text-red-600"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteClick(cardVO);
+                      setDropdownOpen(false);
+                    }}
+                  >
+                    <Trash className="w-4 h-4" />
+                    <span>{t('plugins.delete')}</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}

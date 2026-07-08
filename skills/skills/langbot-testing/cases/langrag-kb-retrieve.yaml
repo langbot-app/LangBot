@@ -1,0 +1,57 @@
+id: langrag-kb-retrieve
+title: "LangRAG knowledge base ingests and retrieves a sentinel document"
+mode: agent-browser
+area: knowledge
+type: feature
+priority: p1
+risk: medium
+ci_eligible: false
+tags:
+  - langrag
+  - knowledge
+  - rag
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+automation: scripts/e2e/langrag-kb-retrieve.mjs
+automation_env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+automation_env_any:
+  - LANGBOT_LOCAL_AGENT_RAG_KB_UUID|LANGBOT_RAG_KB_UUID
+automation_expected_text: "azalea-cobalt-7421"
+preconditions:
+  - "LangRAG is installed and initialized in the active LangBot instance."
+  - "A working embedding model is available, preferably chroma-all-MiniLM-L6-v2 for local repeatability."
+  - "LANGBOT_LOCAL_AGENT_RAG_KB_UUID points to a LangRAG knowledge base containing azalea-cobalt-7421."
+steps:
+  - "Open LANGBOT_FRONTEND_URL."
+  - "Navigate to Knowledge."
+  - "Create a knowledge base with engine LangRAG."
+  - "Select a working embedding model, preferably local Chroma embedding model chroma-all-MiniLM-L6-v2."
+  - "Upload skills/langbot-testing/fixtures/rag/sentinel-doc.txt."
+  - "Wait until the document row status is Completed."
+  - "Open Retrieve Test and query: What is the local agent runner retrieval sentinel?"
+checks:
+  - "UI: The knowledge base appears in the Knowledge sidebar."
+  - "UI: The uploaded document status becomes Completed."
+  - "UI: Retrieve Test shows the uploaded document content."
+  - "UI: Retrieve Test result contains azalea-cobalt-7421."
+  - "Console: No unexpected frontend errors appear during creation, upload, or retrieve."
+evidence_required:
+  - ui
+  - screenshot
+  - console
+  - backend_log
+diagnostics:
+  - "If no LangRAG engine is available, check /api/v1/knowledge/engines and install langbot-team/LangRAG."
+  - "If the embedding selector does not show a local Chroma model, confirm the model exists under embedding_models, not llm_models."
+troubleshooting:
+  - marketplace-network-flaky
+  - dynamic-form-missing-config-id
+  - pipeline-form-controlled-warning

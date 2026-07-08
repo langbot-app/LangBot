@@ -1,0 +1,35 @@
+id: agent-runner-fixture-contract
+title: "QA AgentRunner fixture contract probe"
+mode: probe
+area: release
+type: regression
+priority: p0
+risk: high
+ci_eligible: true
+tags:
+  - agent-runner
+  - probe
+  - fixture
+  - deterministic-runner
+skills:
+  - langbot-testing
+env:
+automation: skills/langbot-testing/probes/agent-runner-fixture-contract.mjs
+steps:
+  - "Run `rtk bin/lbs test run agent-runner-fixture-contract --dry-run` first; remove `--dry-run` after checking the planned evidence directory."
+  - "Automation imports the QA AgentRunner fixture source and executes normal, streaming, and controlled-failure paths with SDK entities."
+checks:
+  - "automation-result.json status is pass."
+  - "probe-stdout.log contains QA_AGENT_RUNNER_FIXTURE_CONTRACT_OK."
+  - "Normal input returns QA_AGENT_RUNNER_OK:<input>."
+  - "Streaming input emits message.delta chunks and completes."
+  - "Failure input returns QA_AGENT_RUNNER_CONTROLLED_FAILURE."
+evidence_required:
+  - filesystem
+diagnostics:
+  - "This validates the deterministic fixture source contract. It does not prove the plugin package is installed in a live LangBot instance."
+success_patterns:
+  - "QA_AGENT_RUNNER_FIXTURE_CONTRACT_OK"
+failure_patterns:
+  - "AssertionError"
+  - "fixture contract exited"

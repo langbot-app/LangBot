@@ -1,0 +1,78 @@
+name: Test Migrations
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - dev
+    paths:
+      - 'src/langbot/pkg/persistence/**'
+      - 'src/langbot/pkg/entity/persistence/**'
+      - 'tests/integration/persistence/**'
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'src/langbot/pkg/persistence/**'
+      - 'src/langbot/pkg/entity/persistence/**'
+      - 'tests/integration/persistence/**'
+
+jobs:
+  test-migrations-sqlite:
+    name: Migrations (SQLite)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run SQLite migration tests
+        run: uv run pytest tests/integration/persistence/test_migrations.py -q --tb=short
+
+  test-migrations-postgres:
+    name: Migrations (PostgreSQL)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: langbot
+          POSTGRES_PASSWORD: langbot
+          POSTGRES_DB: langbot_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U langbot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run PostgreSQL migration tests
+        env:
+          TEST_POSTGRES_URL: postgresql+asyncpg://langbot:langbot@localhost:5432/langbot_test
+        run: uv run pytest tests/integration/persistence/test_migrations_postgres.py -q --tb=short

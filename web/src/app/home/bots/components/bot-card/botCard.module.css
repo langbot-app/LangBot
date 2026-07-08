@@ -1,0 +1,151 @@
+.cardContainer {
+  width: 100%;
+  height: 10rem;
+  background-color: #fff;
+  border-radius: 10px;
+  border: 1px solid #e4e4e7;
+  padding: 1.2rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+:global(.dark) .cardContainer {
+  background-color: #1f1f22;
+  border-color: #27272a;
+}
+
+.cardContainer:hover {
+  border-color: #a1a1aa;
+}
+
+:global(.dark) .cardContainer:hover {
+  border-color: #3f3f46;
+}
+
+.iconBasicInfoContainer {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: row;
+  gap: 0.8rem;
+  user-select: none;
+}
+
+.iconImage {
+  width: 4rem;
+  height: 4rem;
+  margin: 0.2rem;
+  border-radius: 8%;
+}
+
+.basicInfoContainer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  width: 100%;
+}
+
+.basicInfoNameContainer {
+  display: flex;
+  flex-direction: column;
+}
+
+.basicInfoName {
+  font-size: 1.4rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #1a1a1a;
+}
+
+:global(.dark) .basicInfoName {
+  color: #f0f0f0;
+}
+
+.basicInfoDescription {
+  font-size: 1rem;
+  font-weight: 300;
+  color: #b1b1b1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:global(.dark) .basicInfoDescription {
+  color: #888888;
+}
+
+.basicInfoAdapterContainer {
+  display: flex;
+  flex-direction: row;
+  gap: 0.4rem;
+}
+
+.basicInfoAdapterIcon {
+  width: 1.2rem;
+  height: 1.2rem;
+  margin-top: 0.2rem;
+  color: #626262;
+}
+
+:global(.dark) .basicInfoAdapterIcon {
+  color: #a0a0a0;
+}
+
+.basicInfoAdapterLabel {
+  font-size: 1.2rem;
+  font-weight: 500;
+  color: #626262;
+}
+
+:global(.dark) .basicInfoAdapterLabel {
+  color: #a0a0a0;
+}
+
+.basicInfoPipelineContainer {
+  display: flex;
+  flex-direction: row;
+  gap: 0.4rem;
+}
+
+.basicInfoPipelineIcon {
+  width: 1.2rem;
+  height: 1.2rem;
+  color: #626262;
+  margin-top: 0.2rem;
+}
+
+:global(.dark) .basicInfoPipelineIcon {
+  color: #a0a0a0;
+}
+
+.basicInfoPipelineLabel {
+  font-size: 1.2rem;
+  font-weight: 500;
+  color: #626262;
+}
+
+:global(.dark) .basicInfoPipelineLabel {
+  color: #a0a0a0;
+}
+
+.bigText {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 1.4rem;
+  font-weight: bold;
+  max-width: 100%;
+}
+
+.botOperationContainer {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  height: 100%;
+  width: 3rem;
+  gap: 0.4rem;
+}

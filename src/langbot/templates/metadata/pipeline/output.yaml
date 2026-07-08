@@ -1,0 +1,148 @@
+name: output
+label:
+  en_US: Output Processing
+  zh_Hans: 输出处理
+stages:
+  - name: long-text-processing
+    label:
+      en_US: Long Text Processing
+      zh_Hans: 长文本处理
+    config:
+      - name: threshold
+        label:
+          en_US: Threshold
+          zh_Hans: 阈值
+        description:
+          en_US: The threshold of the long text
+          zh_Hans: 超过此长度的文本将被处理
+        type: integer
+        required: true
+        default: 1000
+      - name: strategy
+        label:
+          en_US: Strategy
+          zh_Hans: 策略
+        description:
+          en_US: The strategy of the long text
+          zh_Hans: 长文本的处理策略
+        type: select
+        required: true
+        default: none
+        options:
+          - name: forward
+            label:
+              en_US: Forward Message Component
+              zh_Hans: 转换为转发消息组件（部分平台不支持）
+          - name: image
+            label:
+              en_US: Convert to Image
+              zh_Hans: 转换为图片
+          - name: none
+            label:
+              en_US: None
+              zh_Hans: 不处理
+      - name: font-path
+        label:
+          en_US: Font Path
+          zh_Hans: 字体路径
+        description:
+          en_US: The path of the font to be used when converting to image
+          zh_Hans: 选用转换为图片时，所使用的字体路径
+        type: string
+        required: false
+        default: ''
+  - name: force-delay
+    label:
+      en_US: Force Delay
+      zh_Hans: 强制延迟
+    description:
+      en_US: Force the output to be delayed for a while
+      zh_Hans: 强制延迟一段时间后再回复给用户
+    config:
+      - name: min
+        label:
+          en_US: Min Seconds
+          zh_Hans: 最小秒数
+        type: integer
+        required: true
+        default: 0
+      - name: max
+        label:
+          en_US: Max Seconds
+          zh_Hans: 最大秒数
+        type: integer
+        required: true
+        default: 0
+  - name: misc
+    label:
+      en_US: Misc
+      zh_Hans: 杂项
+    config:
+      - name: exception-handling
+        label:
+          en_US: Exception Handling Strategy
+          zh_Hans: 异常处理策略
+        description:
+          en_US: Controls how error messages are displayed to the user when an AI request fails
+          zh_Hans: 控制 AI 请求失败时向用户展示错误信息的方式
+        type: select
+        required: true
+        default: show-hint
+        options:
+          - name: show-error
+            label:
+              en_US: Show Full Error
+              zh_Hans: 显示完整报错信息
+          - name: show-hint
+            label:
+              en_US: Show Failure Hint
+              zh_Hans: 仅文字提示
+          - name: hide
+            label:
+              en_US: Hide All
+              zh_Hans: 不显示任何异常信息
+      - name: failure-hint
+        label:
+          en_US: Failure Hint Text
+          zh_Hans: 失败提示文本
+        description:
+          en_US: The text to display when a request fails. Only effective when Exception Handling Strategy is set to "Show Failure Hint"
+          zh_Hans: 请求失败时显示的提示文本，仅在异常处理策略设置为"仅文字提示"时生效
+        type: string
+        required: false
+        default: 'Request failed.'
+      - name: at-sender
+        label:
+          en_US: At Sender
+          zh_Hans: 在群聊回复中@发送者
+        type: boolean
+        required: true
+        default: true
+      - name: quote-origin
+        label:
+          en_US: Quote Origin Message
+          zh_Hans: 引用原消息
+        type: boolean
+        required: true
+        default: false
+      - name: track-function-calls
+        label:
+          en_US: Track Function Calls
+          zh_Hans: 跟踪函数调用
+        description:
+          en_US: If enabled, the function calls will be tracked and output to the user
+          zh_Hans: 启用后，Agent 每次调用工具时都会输出一个提示给用户
+        type: boolean
+        required: true
+        default: false
+      - name: remove-think
+        label:
+          en_US: Remove CoT
+          zh_Hans: 删除思维链
+        description:
+          en_US: 'If enabled, LangBot will remove the LLM thought content in response. Note: When using streaming response, removing CoT may cause the first token to wait for a long time.'
+          zh_Hans: '如果启用，将自动删除大模型回复中的模型思考内容。注意：当您使用流式响应时，删除思维链可能会导致首个 Token 的等待时间过长'
+        type: boolean
+        required: true
+        default: false
+

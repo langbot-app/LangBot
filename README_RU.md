@@ -1,0 +1,197 @@
+<p align="center">
+<a href="https://langbot.app">
+<img width="130" src="res/logo-blue.png" alt="LangBot"/>
+</a>
+
+<div align="center">
+
+<a href="https://www.producthunt.com/products/langbot/launches/langbot?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-langbot" target="_blank" rel="noopener noreferrer"><img alt="LangBot - Easy-to-use global IM bot platform designed for the LLM era | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=979554&amp;theme=light&amp;t=1782822143403"></a>
+
+<h3>Платформа производственного уровня для создания агентных IM-ботов.</h3>
+<h4>Быстро создавайте, отлаживайте и развертывайте ИИ-ботов в Slack, Discord, Telegram, WeChat и других платформах.</h4>
+
+[English](README.md) / [简体中文](README_CN.md) / [繁體中文](README_TW.md) / [日本語](README_JP.md) / [Español](README_ES.md) / [Français](README_FR.md) / [한국어](README_KO.md) / Русский / [Tiếng Việt](README_VI.md)
+
+[![Discord](https://img.shields.io/discord/1335141740050649118?logo=discord&labelColor=%20%235462eb&logoColor=%20%23f5f5f5&color=%20%235462eb)](https://discord.gg/wdNEHETs87)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/langbot-app/LangBot)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/langbot-app/LangBot)](https://github.com/langbot-app/LangBot/releases/latest)
+<img src="https://img.shields.io/badge/python-3.10 ~ 3.13 -blue.svg" alt="python">
+[![GitHub stars](https://img.shields.io/github/stars/langbot-app/LangBot?style=social)](https://github.com/langbot-app/LangBot/stargazers)
+
+<a href="https://langbot.app">Главная</a> ｜
+<a href="https://link.langbot.app/en/docs/features">Возможности</a> ｜
+<a href="https://link.langbot.app/en/docs/guide">Документация</a> ｜
+<a href="https://link.langbot.app/en/docs/api">API</a> ｜
+<a href="https://space.langbot.app">Магазин плагинов</a> ｜
+<a href="https://langbot.featurebase.app/roadmap">Дорожная карта</a>
+
+</div>
+
+</p>
+
+---
+
+## Что такое LangBot?
+
+LangBot — это **платформа с открытым исходным кодом производственного уровня** для создания ИИ-ботов в мессенджерах. Она связывает большие языковые модели (LLM) с любой чат-платформой, позволяя создавать интеллектуальных агентов, которые могут вести диалоги, выполнять задачи и интегрироваться с вашими существующими рабочими процессами.
+
+<p align="center">
+<img src="res/dashboard-overview.png" alt="Панель веб-управления LangBot — мониторинг объёма сообщений, вызовов моделей, успешности и активных сессий в реальном времени" width="720"/>
+</p>
+
+### Ключевые возможности
+
+- **ИИ-диалоги и агенты** — Многораундовые диалоги, вызов инструментов, мультимодальная поддержка, потоковый вывод. Встроенная реализация RAG (база знаний) с глубокой интеграцией в [Dify](https://dify.ai), [Coze](https://coze.com), [n8n](https://n8n.io), [Langflow](https://langflow.org), [Deerflow](https://deerflow.tech), [Weknora](https://weknora.weixin.qq.com).
+- **Универсальная поддержка IM-платформ** — Единая кодовая база для Discord, Telegram, Slack, LINE, QQ, WeChat, WeCom, Lark, DingTalk, KOOK.
+- **Готовность к продакшену** — Контроль доступа, ограничение скорости, фильтрация чувствительных слов, комплексный мониторинг и обработка исключений. Проверено в корпоративной среде.
+- **Экосистема плагинов** — Сотни плагинов, событийно-ориентированная архитектура, расширения компонентов и поддержка [протокола MCP](https://modelcontextprotocol.io/).
+- **Веб-панель управления** — Настраивайте, управляйте и мониторьте ваших ботов через интуитивный браузерный интерфейс. Ручное редактирование YAML не требуется.
+- **Мультиконвейерная архитектура** — Разные боты для разных сценариев с комплексным мониторингом и обработкой исключений.
+
+[→ Подробнее обо всех возможностях](https://link.langbot.app/en/docs/features)
+
+📍 Практические руководства: [развернуть мультиплатформенного ИИ-бота за 5 минут](https://blog.langbot.app/en/blog/deploy-ai-bot-in-5-minutes/), [подключить DeepSeek к WeChat, Discord и Telegram](https://blog.langbot.app/en/blog/connect-deepseek-to-wechat/), [запустить Dify Agent в Discord, Telegram и Slack](https://blog.langbot.app/en/blog/dify-agent-discord-telegram-slack/) и [создать чат-бота на n8n](https://blog.langbot.app/en/blog/n8n-multi-platform-ai-chatbot/).
+
+---
+
+## 😎 Оставайтесь в курсе
+
+Нажмите кнопки Star и Watch в правом верхнем углу репозитория, чтобы получать последние обновления.
+
+![star gif](https://langbot.app/star.gif)
+
+## Быстрый старт
+
+### ☁️ LangBot Cloud (Рекомендуется)
+
+**[LangBot Cloud](https://space.langbot.app/cloud)** — Без развёртывания, готово к использованию.
+
+### Запуск одной командой
+
+```bash
+uvx langbot
+```
+
+> Требуется [uv](https://docs.astral.sh/uv/getting-started/installation/). Откройте http://localhost:5300 — готово.
+
+### Docker Compose
+
+```bash
+git clone https://github.com/langbot-app/LangBot
+cd LangBot/docker
+docker compose --profile all up -d
+```
+
+### Облачное развертывание одним кликом
+
+[![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/en-US/templates/ZKTBDH)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
+
+**Другие варианты:** [Docker](https://link.langbot.app/en/docs/docker) · [Ручная установка](https://link.langbot.app/en/docs/manual-deploy) · [BTPanel](https://link.langbot.app/en/docs/bt-panel) · [Kubernetes](https://docs.langbot.app/en/deploy/langbot/kubernetes)
+
+---
+
+## Поддерживаемые платформы
+
+| Платформа | Статус | Примечания |
+|-----------|--------|------------|
+| Discord | ✅ | Официальный |
+| Telegram | ✅ | Официальный |
+| Slack | ✅ | Официальный |
+| LINE | ✅ | Официальный |
+| QQ | ✅ | Личный и официальный API (Канал, ЛС, Группа) |
+| WeCom | ✅ | Корпоративный WeChat, внешний CS, AI-бот |
+| WeChat | ✅ | Личный и официальный аккаунт |
+| Lark | ✅ | Официальный |
+| DingTalk | ✅ | Официальный |
+| KOOK | ✅ | Официальный |
+| Satori | ✅ |  |
+| Email | ✅ | Matrix, Satori |
+| Matrix | ✅ | Поддерживает несколько платформ через мосты, включая Signal, WhatsApp, Messenger, iMessage, Mattermost, Google Chat, IRC, XMPP, Zulip и другие |
+
+---
+
+## Поддерживаемые LLM и интеграции
+
+| Провайдер | Тип | Статус |
+|-----------|-----|--------|
+| [OpenAI](https://platform.openai.com/) | LLM | ✅ |
+| [Anthropic](https://www.anthropic.com/) | LLM | ✅ |
+| [DeepSeek](https://www.deepseek.com/) | LLM | ✅ |
+| [Google Gemini](https://aistudio.google.com/prompts/new_chat) | LLM | ✅ |
+| [xAI](https://x.ai/) | LLM | ✅ |
+| [Moonshot](https://www.moonshot.cn/) | LLM | ✅ |
+| [Zhipu AI](https://open.bigmodel.cn/) | LLM | ✅ |
+| [Ollama](https://ollama.com/) | Локальный LLM | ✅ |
+| [LM Studio](https://lmstudio.ai/) | Локальный LLM | ✅ |
+| [Dify](https://dify.ai) | LLMOps | ✅ |
+| [MCP](https://modelcontextprotocol.io/) | Протокол | ✅ |
+| [SiliconFlow](https://siliconflow.cn/) | Шлюз | ✅ |
+| [Aliyun Bailian](https://bailian.console.aliyun.com/) | Шлюз | ✅ |
+| [Volc Engine Ark](https://console.volcengine.com/ark/region:ark+cn-beijing/model?vendor=Bytedance&view=LIST_VIEW) | Шлюз | ✅ |
+| [ModelScope](https://modelscope.cn/docs/model-service/API-Inference/intro) | Шлюз | ✅ |
+| [GiteeAI](https://ai.gitee.com/) | Шлюз | ✅ |
+| [302.AI](https://share.302ai.cn/SuTG99) | Шлюз | ✅ |
+| [接口 AI](https://jiekou.ai/) | Шлюз | ✅ |
+| [CompShare](https://www.compshare.cn/?ytag=GPU_YY-gh_langbot) | Платформа GPU | ✅ |
+| [PPIO](https://ppinfra.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | Платформа GPU | ✅ |
+| [ShengSuanYun](https://www.shengsuanyun.com/?from=CH_KYIPP758) | Платформа GPU | ✅ |
+| [Qiniu](https://www.qiniu.com/ai/agent) | Шлюз | ✅ |
+
+[→ Смотреть все интеграции](https://link.langbot.app/en/docs/features)
+
+---
+
+## Почему LangBot?
+
+| Сценарий использования | Как помогает LangBot |
+|------------------------|----------------------|
+| **Поддержка клиентов** | Разверните ИИ-агентов в Slack/Discord/Telegram, которые отвечают на вопросы, используя вашу базу знаний |
+| **Внутренние инструменты** | Подключите рабочие процессы n8n/Dify к WeCom/DingTalk для автоматизации бизнес-процессов |
+| **Управление сообществом** | Модерируйте группы QQ/Discord с помощью ИИ-фильтрации контента и взаимодействия |
+| **Мультиплатформенное присутствие** | Один бот — все платформы. Управляйте из единой панели |
+
+---
+
+## Демо
+
+**Попробуйте прямо сейчас:** https://demo.langbot.dev/
+- Email: `demo@langbot.app`
+- Пароль: `langbot123456`
+
+*Примечание: Публичная демо-среда. Не вводите конфиденциальную информацию.*
+
+## Создано для ИИ-агентов 🤖
+
+LangBot **дружелюбен к агентам по своей архитектуре** —— ваши кодинг-агенты (Claude Code, Codex, Copilot, Cursor и др.) могут управлять, расширять и развёртывать LangBot с первоклассной поддержкой:
+
+- **MCP-сервер** —— LangBot предоставляет встроенную конечную точку [Model Context Protocol](https://modelcontextprotocol.io/) по адресу `/mcp`, зеркалирующую HTTP API, чтобы агент мог программно управлять ботами, пайплайнами, плагинами и моделями. Аутентификация той же API-ключом (задайте глобальный ключ в `config.yaml` или используйте пользовательский ключ) —— без процедуры входа. Настраивается на вкладке **API & MCP** веб-панели.
+- **Skills в репозитории** —— Каталог [`skills/`](skills/) является **единственным источником истины** для работы с LangBot: разработка плагинов, разработка ядра, сквозное тестирование, развёртывание и работа с MCP-серверами LangBot / LangBot Space. Направьте агента в этот каталог, и он будет знать, как собирать.
+- **AGENTS.md** —— Каждый репозиторий содержит [`AGENTS.md`](AGENTS.md) (символическая ссылка на `CLAUDE.md`), описывающий архитектуру, соглашения и правило: изменения API должны синхронизировать MCP-сервер и skills.
+- **`llms.txt`** —— Машиночитаемый контекст проекта для LLM опубликован на сайте.
+
+> **Облако / Маркетплейс:** [LangBot Space](https://space.langbot.app) также предоставляет MCP-сервер, чтобы агенты могли искать и просматривать маркетплейс плагинов / MCP / skills, аутентифицируясь с помощью Personal Access Token.
+
+---
+
+## Сообщество
+
+[![Discord](https://img.shields.io/discord/1335141740050649118?logo=discord&label=Discord)](https://discord.gg/wdNEHETs87)
+
+- [Сообщество Discord](https://discord.gg/wdNEHETs87)
+
+---
+
+## История Stars
+
+[![Star History Chart](https://api.star-history.com/svg?repos=langbot-app/LangBot&type=Date)](https://star-history.com/#langbot-app/LangBot&Date)
+
+---
+
+## Участники
+
+Спасибо всем [участникам](https://github.com/langbot-app/LangBot/graphs/contributors), которые помогли сделать LangBot лучше:
+
+<a href="https://github.com/langbot-app/LangBot/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=langbot-app/LangBot" />
+</a>

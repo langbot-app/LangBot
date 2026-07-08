@@ -1,0 +1,109 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: dingtalk
+  label:
+    en_US: DingTalk
+    zh_Hans: 钉钉
+    zh_Hant: 釘釘
+  description:
+    en_US: DingTalk Adapter
+    zh_Hans: 钉钉适配器，请查看文档了解使用方式
+    zh_Hant: 釘釘適配器，請查看文件了解使用方式
+  icon: dingtalk.svg
+spec:
+  categories:
+    - china
+  help_links:
+    zh: https://link.langbot.app/zh/platforms/dingtalk
+    en: https://link.langbot.app/en/platforms/dingtalk
+    ja: https://link.langbot.app/ja/platforms/dingtalk
+  config:
+    - name: one-click-create
+      label:
+        en_US: One-Click Create App
+        zh_Hans: 一键创建应用
+        zh_Hant: 一鍵建立應用
+      description:
+        en_US: "Scan QR code with DingTalk to automatically create an app and fill in credentials. Note: Robot Code cannot be obtained automatically, you need to copy it from the DingTalk Developer Backend manually."
+        zh_Hans: "使用钉钉扫码自动创建应用并填写凭据。注意：机器人代码无法自动获取，需前往钉钉开发者后台手动复制。"
+        zh_Hant: "使用釘釘掃碼自動建立應用並填寫憑證。注意：機器人代碼無法自動取得，需前往釘釘開發者後台手動複製。"
+      type: qr-code-login
+      login_platform: dingtalk
+      required: false
+    - name: client_id
+      label:
+        en_US: Client ID
+        zh_Hans: 客户端ID
+        zh_Hant: 用戶端ID
+      type: string
+      required: true
+      default: ""
+    - name: client_secret
+      label:
+        en_US: Client Secret
+        zh_Hans: 客户端密钥
+        zh_Hant: 用戶端密鑰
+      type: string
+      required: true
+      default: ""
+    - name: robot_code
+      label:
+        en_US: Robot Code
+        zh_Hans: 机器人代码
+        zh_Hant: 機器人代碼
+      description:
+        en_US: "Required for image recognition, file upload and other features. Get it from DingTalk Developer Backend > Robot Configuration."
+        zh_Hans: "识图、上传文件等功能必填。请前往钉钉开发者后台 > 机器人配置中获取。"
+        zh_Hant: "識圖、上傳檔案等功能必填。請前往釘釘開發者後台 > 機器人設定中取得。"
+      type: string
+      required: true
+      default: ""
+    - name: robot_name
+      label:
+        en_US: Robot Name
+        zh_Hans: 机器人名称
+        zh_Hant: 機器人名稱
+      type: string
+      required: true
+      default: ""
+    - name: markdown_card
+      label:
+        en_US: Markdown Card
+        zh_Hans: 是否使用 Markdown 卡片
+        zh_Hant: 是否使用 Markdown 卡片
+      type: boolean
+      required: false
+      default: true
+    - name: enable-stream-reply
+      label:
+        en_US: Enable Stream Reply Mode
+        zh_Hans: 启用钉钉卡片流式回复模式
+        zh_Hant: 啟用釘釘卡片串流回覆模式
+      description:
+        en_US: If enabled, the bot will use the stream of lark reply mode
+        zh_Hans: 如果启用，将使用钉钉卡片流式方式来回复内容
+        zh_Hant: 如果啟用，將使用釘釘卡片串流方式來回覆內容
+      type: boolean
+      required: true
+      default: false
+    - name: card_auto_layout
+      label:
+        en_US: Card Auto Layout
+        zh_Hans: 卡片宽屏自动布局
+        zh_Hant: 卡片寬螢幕自動佈局
+      type: boolean
+      required: false
+      default: false
+    - name: card_template_id
+      label:
+        en_US: card template id
+        zh_Hans: 卡片模板ID
+        zh_Hant: 卡片範本ID
+      type: string
+      required: true
+      default: "填写你的卡片template_id"
+execution:
+  python:
+    path: ./dingtalk.py
+    attr: DingTalkAdapter

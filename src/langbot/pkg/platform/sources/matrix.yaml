@@ -1,0 +1,123 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: matrix
+  label:
+    en_US: Matrix
+    zh_Hans: Matrix
+    zh_Hant: Matrix
+    ja_JP: Matrix
+    th_TH: Matrix
+    vi_VN: Matrix
+    es_ES: Matrix
+  description:
+    en_US: Matrix protocol adapter, supports self-hosted Synapse servers and any Matrix-compatible homeserver
+    zh_Hans: Matrix 协议适配器，支持自建 Synapse 服务器及任何 Matrix 兼容的 Homeserver
+    zh_Hant: Matrix 協議適配器，支持自建 Synapse 伺服器及任何 Matrix 相容的 Homeserver
+    ja_JP: Matrix プロトコルアダプター、セルフホストの Synapse サーバーおよび Matrix 互換のホームサーバーをサポート
+    th_TH: อะแดปเตอร์โปรโตคอล Matrix รองรับเซิร์ฟเวอร์ Synapse ที่โฮสต์เองและ Homeserver ที่เข้ากันได้กับ Matrix
+    vi_VN: Bộ điều hợp giao thức Matrix, hỗ trợ máy chủ Synapse tự lưu trữ và bất kỳ Homeserver tương thích Matrix nào
+    es_ES: Adaptador del protocolo Matrix, compatible con servidores Synapse autoalojados y cualquier Homeserver compatible con Matrix
+  icon: matrix.png
+spec:
+  categories:
+    - global
+    - protocol
+  config:
+    - name: homeserver_url
+      label:
+        en_US: Homeserver URL
+        zh_Hans: Homeserver 地址
+        zh_Hant: Homeserver 地址
+        ja_JP: Homeserver URL
+        th_TH: URL ของ Homeserver
+        vi_VN: URL Homeserver
+        es_ES: URL del Homeserver
+      description:
+        en_US: "The URL of the Matrix homeserver, e.g. http://localhost:8008"
+        zh_Hans: "Matrix Homeserver 的地址，例如 http://localhost:8008"
+      type: string
+      required: true
+      default: "http://localhost:8008"
+    - name: user_id
+      label:
+        en_US: Bot User ID
+        zh_Hans: 机器人用户 ID
+        zh_Hant: 機器人用戶 ID
+        ja_JP: ボットユーザー ID
+        th_TH: ID ผู้ใช้บอท
+        vi_VN: ID người dùng bot
+        es_ES: ID de usuario del bot
+      description:
+        en_US: "The full Matrix user ID, e.g. @bot:localhost"
+        zh_Hans: "完整的 Matrix 用户 ID，例如 @bot:localhost"
+      type: string
+      required: true
+      default: "@langbot:localhost"
+    - name: access_token
+      label:
+        en_US: Access Token
+        zh_Hans: 访问令牌
+        zh_Hant: 訪問令牌
+        ja_JP: アクセストークン
+        th_TH: โทเค็นการเข้าถึง
+        vi_VN: Mã truy cập
+        es_ES: Token de acceso
+      description:
+        en_US: "Access token obtained by logging in via the Matrix client API"
+        zh_Hans: "通过 Matrix Client API 登录获取的访问令牌"
+      type: string
+      required: true
+      default: ""
+    - name: bridge_user_id
+      label:
+        en_US: Bridge Bot User ID (single bridge, legacy)
+        zh_Hans: 桥机器人用户 ID（单桥兼容）
+      description:
+        en_US: "Single bridge bot user ID (legacy). Prefer 'bridges' for multi-bridge. e.g. @discordbot:localhost"
+        zh_Hans: "单桥机器人用户 ID（旧格式兼容）。推荐使用 bridges 配置多桥。例如 @discordbot:localhost"
+      type: string
+      required: false
+      default: ""
+    - name: bridge_login_command
+      label:
+        en_US: Bridge Login Command (single bridge, legacy)
+        zh_Hans: 桥登录命令（单桥兼容）
+      description:
+        en_US: "Login command for single bridge (legacy). e.g. !discord login"
+        zh_Hans: "单桥登录命令（旧格式兼容）。例如 !discord login"
+      type: string
+      required: false
+      default: ""
+    - name: bridge_login_success_keyword
+      label:
+        en_US: Bridge Login Success Keyword (single bridge, legacy)
+        zh_Hans: 桥登录成功关键词（单桥兼容）
+      description:
+        en_US: "Success keyword for single bridge (legacy). e.g. Successfully logged in"
+        zh_Hans: "单桥登录成功关键词（旧格式兼容）。例如 Successfully logged in"
+      type: string
+      required: false
+      default: "Successfully logged in"
+    - name: bridges
+      label:
+        en_US: Bridges Config (Multi-bridge)
+        zh_Hans: 桥配置（多桥）
+      description:
+        en_US: >
+          JSON array of bridge configs. Each bridge: {"user_id": "@bot:host", "login_command": "!xx login",
+          "success_keyword": "logged in", "check_command": "!xx ping"}.
+          Example: [{"user_id":"@discordbot:localhost","login_command":"!discord login","success_keyword":"logged in"},
+          {"user_id":"@telegrambot:localhost","login_command":"!tg login","success_keyword":"logged in"}]
+        zh_Hans: >
+          JSON 数组格式的多桥配置。每个桥: {"user_id": "@bot:host", "login_command": "!xx login",
+          "success_keyword": "logged in", "check_command": "!xx ping"}。
+          示例: [{"user_id":"@discordbot:localhost","login_command":"!discord login","success_keyword":"logged in"},
+          {"user_id":"@telegrambot:localhost","login_command":"!tg login","success_keyword":"logged in"}]
+      type: string
+      required: false
+      default: ""
+execution:
+  python:
+    path: ./matrix.py
+    attr: MatrixAdapter

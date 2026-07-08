@@ -1,0 +1,196 @@
+from __future__ import annotations
+
+import asyncio
+import os
+
+import quart
+import quart_cors
+from werkzeug.exceptions import RequestEntityTooLarge
+
+from ....core import app, entities as core_entities
+from ....utils import importutil
+
+from . import groups
+from . import group
+from .groups import provider as groups_provider
+from .groups import platform as groups_platform
+from .groups import pipelines as groups_pipelines
+from .groups import knowledge as groups_knowledge
+from .groups import resources as groups_resources
+from ...mcp.mount import MCPMount
+
+importutil.import_modules_in_pkg(groups)
+importutil.import_modules_in_pkg(groups_provider)
+importutil.import_modules_in_pkg(groups_platform)
+importutil.import_modules_in_pkg(groups_pipelines)
+importutil.import_modules_in_pkg(groups_knowledge)
+importutil.import_modules_in_pkg(groups_resources)
+
+
+class HTTPController:
+    ap: app.Application
+
+    quart_app: quart.Quart
+
+    def __init__(self, ap: app.Application) -> None:
+        self.ap = ap
+        self.quart_app = quart.Quart(__name__)
+        quart_cors.cors(self.quart_app, allow_origin='*')
+
+        # Set maximum content length to prevent large file uploads
+        self.quart_app.config['MAX_CONTENT_LENGTH'] = group.MAX_FILE_SIZE
+
+        # MCP server (mounted at /mcp, see ..mcp.mount). Built lazily in
+        # initialize() so the service layer is ready.
+        self.mcp_mount: MCPMount | None = None
+
+    async def initialize(self) -> None:
+        # Register custom error handler for file size limit
+        @self.quart_app.errorhandler(RequestEntityTooLarge)
+        async def handle_request_entity_too_large(e):
+            return quart.jsonify(
+                {
+                    'code': 400,
+                    'msg': 'File size exceeds 10MB limit. Please split large files into smaller parts.',
+                }
+            ), 400
+
+        await self.register_routes()
+
+        # Build the MCP server and start its session-manager lifespan in the
+        # background so the streamable-HTTP transport is ready to serve.
+        self.mcp_mount = MCPMount(self.ap)
+        await self.mcp_mount.start_session_manager()
+        self.ap.logger.info('LangBot MCP server mounted at /mcp (API-key authenticated).')
+
+    async def run(self) -> None:
+        if True:
+
+            async def shutdown_trigger_placeholder():
+                while True:
+                    await asyncio.sleep(1)
+
+            async def exception_handler(*args, **kwargs):
+                try:
+                    await self._run_task(*args, **kwargs)
+                except Exception as e:
+                    self.ap.logger.error(f'Failed to start HTTP service: {e}')
+
+            self.ap.task_mgr.create_task(
+                exception_handler(
+                    host='0.0.0.0',
+                    port=self.ap.instance_config.data['api']['port'],
+                    shutdown_trigger=shutdown_trigger_placeholder,
+                ),
+                name='http-api-quart',
+                scopes=[core_entities.LifecycleControlScope.APPLICATION],
+            )
+
+            # await asyncio.sleep(5)
+
+    async def _run_task(self, host: str, port: int, shutdown_trigger) -> None:
+        """Serve the Quart app, fronted by the MCP dispatcher at /mcp.
+
+        Mirrors Quart.run_task() but wraps the ASGI app so MCP requests are
+        intercepted before Quart's router. Falls back to plain Quart if the
+        MCP mount failed to build for any reason.
+        """
+        from hypercorn.config import Config as HyperConfig
+        from hypercorn.asyncio import serve as hypercorn_serve
+
+        config = HyperConfig()
+        config.access_log_format = '%(h)s %(r)s %(s)s %(b)s %(D)s'
+        config.accesslog = '-'
+        config.bind = [f'{host}:{port}']
+        config.errorlog = config.accesslog
+
+        asgi_app = self.quart_app
+        if self.mcp_mount is not None:
+            asgi_app = self.mcp_mount.wrap(self.quart_app)
+
+        await hypercorn_serve(asgi_app, config, shutdown_trigger=shutdown_trigger)
+
+    async def register_routes(self) -> None:
+        @self.quart_app.route('/healthz')
+        async def healthz():
+            return {'code': 0, 'msg': 'ok'}
+
+        for g in group.preregistered_groups:
+            ginst = g(self.ap, self.quart_app)
+            await ginst.initialize()
+
+        from ....utils import paths
+
+        frontend_path = paths.get_frontend_path()
+
+        @self.quart_app.route('/')
+        async def index():
+            response = await quart.send_from_directory(frontend_path, 'index.html', mimetype='text/html')
+            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+            return response
+
+        @self.quart_app.route('/<path:path>')
+        async def static_file(path: str):
+            if not (
+                os.path.exists(os.path.join(frontend_path, path)) and os.path.isfile(os.path.join(frontend_path, path))
+            ):
+                if os.path.exists(os.path.join(frontend_path, path + '.html')):
+                    path += '.html'
+                elif not path.startswith('api/'):
+                    # SPA fallback: serve index.html for all non-API, non-static routes
+                    # so that React Router can handle client-side routing (Vite SPA).
+                    # For /home/* sub-routes, first try parent .html files (pre-rendered pages).
+                    if path.startswith('home/'):
+                        segments = path.rstrip('/').split('/')
+                        for i in range(len(segments) - 1, 0, -1):
+                            parent_path = '/'.join(segments[:i]) + '.html'
+                            if os.path.exists(os.path.join(frontend_path, parent_path)):
+                                response = await quart.send_from_directory(
+                                    frontend_path, parent_path, mimetype='text/html'
+                                )
+                                response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                                response.headers['Pragma'] = 'no-cache'
+                                response.headers['Expires'] = '0'
+                                return response
+
+                    # Fallback to index.html for SPA client-side routing
+                    response = await quart.send_from_directory(frontend_path, 'index.html', mimetype='text/html')
+                    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                    response.headers['Pragma'] = 'no-cache'
+                    response.headers['Expires'] = '0'
+                    return response
+                else:
+                    return await quart.send_from_directory(frontend_path, '404.html')
+
+            mimetype = None
+
+            if path.endswith('.html'):
+                mimetype = 'text/html'
+            elif path.endswith('.js'):
+                mimetype = 'application/javascript'
+            elif path.endswith('.css'):
+                mimetype = 'text/css'
+            elif path.endswith('.png'):
+                mimetype = 'image/png'
+            elif path.endswith('.jpg'):
+                mimetype = 'image/jpeg'
+            elif path.endswith('.jpeg'):
+                mimetype = 'image/jpeg'
+            elif path.endswith('.gif'):
+                mimetype = 'image/gif'
+            elif path.endswith('.svg'):
+                mimetype = 'image/svg+xml'
+            elif path.endswith('.ico'):
+                mimetype = 'image/x-icon'
+            elif path.endswith('.json'):
+                mimetype = 'application/json'
+            elif path.endswith('.txt'):
+                mimetype = 'text/plain'
+
+            response = await quart.send_from_directory(frontend_path, path, mimetype=mimetype)
+            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+            return response

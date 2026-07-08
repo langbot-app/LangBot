@@ -1,0 +1,69 @@
+from __future__ import annotations
+
+import abc
+import typing
+from typing import TYPE_CHECKING
+
+from langbot_plugin.api.definition.components.manifest import ComponentManifest
+from langbot_plugin.api.entities.events import pipeline_query
+import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
+
+if TYPE_CHECKING:
+    from ...core import app
+
+ToolLookupResult = resource_tool.LLMTool | ComponentManifest
+
+
+preregistered_loaders: list[typing.Type[ToolLoader]] = []
+
+
+def loader_class(name: str):
+    """注册一个工具加载器"""
+
+    def decorator(cls: typing.Type[ToolLoader]) -> typing.Type[ToolLoader]:
+        cls.name = name
+        preregistered_loaders.append(cls)
+        return cls
+
+    return decorator
+
+
+class ToolLoader(abc.ABC):
+    """工具加载器"""
+
+    name: str = None
+
+    ap: app.Application
+
+    def __init__(self, ap: app.Application):
+        self.ap = ap
+
+    async def initialize(self):
+        pass
+
+    @abc.abstractmethod
+    async def get_tools(self, bound_plugins: list[str] | None = None) -> list[resource_tool.LLMTool]:
+        """获取所有工具"""
+        pass
+
+    async def get_tool(self, name: str) -> ToolLookupResult | None:
+        """Get one tool by name."""
+        for tool in await self.get_tools():
+            if tool.name == name:
+                return tool
+        return None
+
+    @abc.abstractmethod
+    async def has_tool(self, name: str) -> bool:
+        """检查工具是否存在"""
+        pass
+
+    @abc.abstractmethod
+    async def invoke_tool(self, name: str, parameters: dict, query: pipeline_query.Query) -> typing.Any:
+        """执行工具调用"""
+        pass
+
+    @abc.abstractmethod
+    async def shutdown(self):
+        """关闭工具"""
+        pass

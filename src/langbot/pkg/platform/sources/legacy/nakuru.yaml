@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: nakuru
+  label:
+    en_US: Nakuru
+    zh_Hans: Nakuru
+  description:
+    en_US: Nakuru Adapter
+    zh_Hans: Nakuru 适配器(go-cqhttp)，请查看文档了解使用方式
+  icon: nakuru.png
+spec:
+  config:
+    - name: host
+      label:
+        en_US: Host
+        zh_Hans: 主机
+      type: string
+      required: true
+      default: "127.0.0.1"
+    - name: http_port
+      label:
+        en_US: HTTP Port
+        zh_Hans: HTTP端口
+      type: integer
+      required: true
+      default: 5700
+    - name: ws_port
+      label:
+        en_US: WebSocket Port
+        zh_Hans: WebSocket端口
+      type: integer
+      required: true
+      default: 8080
+    - name: token
+      label:
+        en_US: Token
+        zh_Hans: 令牌
+      type: string
+      required: true
+      default: ""
+execution:
+  python:
+    path: ./nakuru.py
+    attr: NakuruAdapter

@@ -1,0 +1,75 @@
+name: safety
+label:
+  en_US: Safety Control
+  zh_Hans: 安全控制
+stages:
+  - name: content-filter
+    label:
+      en_US: Content Filter
+      zh_Hans: 内容过滤
+    config:
+      - name: scope
+        label:
+          en_US: Scope
+          zh_Hans: 检查范围
+        type: select
+        required: true
+        default: all
+        options:
+          - name: all
+            label:
+              en_US: All
+              zh_Hans: 全部
+          - name: income-msg
+            label:
+              en_US: Income Message
+              zh_Hans: 传入消息（用户消息）
+          - name: output-msg
+            label:
+              en_US: Output Message
+              zh_Hans: 传出消息（机器人消息）
+      - name: check-sensitive-words
+        label:
+          en_US: Check Sensitive Words
+          zh_Hans: 检查敏感词
+        description:
+          en_US: Sensitive words can be configured in data/metadata/sensitive-words.json
+          zh_Hans: 敏感词内容可以在 data/metadata/sensitive-words.json 中配置
+        type: boolean
+        required: true
+        default: false
+  - name: rate-limit
+    label:
+      en_US: Rate Limit
+      zh_Hans: 速率限制
+    config:
+      - name: window-length
+        label:
+          en_US: Window Length
+          zh_Hans: 窗口长度（秒）
+        type: integer
+        required: true
+        default: 60
+      - name: limitation
+        label:
+          en_US: Limitation
+          zh_Hans: 限制次数
+        type: integer
+        required: true
+        default: 60
+      - name: strategy
+        label:
+          en_US: Strategy
+          zh_Hans: 策略
+        type: select
+        required: true
+        default: drop
+        options:
+          - name: drop
+            label:
+              en_US: Drop
+              zh_Hans: 丢弃
+          - name: wait
+            label:
+              en_US: Wait
+              zh_Hans: 等待

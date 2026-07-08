@@ -1,0 +1,8 @@
+.github
+.venv
+.vscode
+.data
+.temp
+web/.next
+web/node_modules
+web/.env

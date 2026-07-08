@@ -1,0 +1,1304 @@
+import React, {
+  type ReactNode,
+  useState,
+  useEffect,
+  useRef,
+  forwardRef,
+  useImperativeHandle,
+} from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
+import { Braces, Loader2, Trash2, Wrench, XCircle } from 'lucide-react';
+import { Resolver, useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { toast } from 'sonner';
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { httpClient } from '@/app/infra/http/HttpClient';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import MCPLogs from '@/app/home/mcp/components/mcp-form/MCPLogs';
+import MCPReadme from '@/app/home/mcp/components/mcp-form/MCPReadme';
+import {
+  MCPServerRuntimeInfo,
+  MCPTool,
+  MCPResource,
+  MCPResourceContent,
+  MCPServer,
+  MCPSessionStatus,
+  MCPServerExtraArgsRemote,
+  MCPServerExtraArgsStdio,
+} from '@/app/infra/entities/api';
+import { CustomApiError } from '@/app/infra/entities/common';
+import { BoxUnavailableNotice } from '@/app/home/components/BoxUnavailableNotice';
+import { useBoxStatus } from '@/app/infra/hooks/useBoxStatus';
+
+function StatusDisplay({
+  testing,
+  runtimeInfo,
+  t,
+}: {
+  testing: boolean;
+  runtimeInfo: MCPServerRuntimeInfo;
+  t: TFunction;
+}) {
+  if (testing) {
+    return (
+      <div className="flex items-center gap-2 text-blue-600">
+        <Loader2 className="size-5 animate-spin" />
+        <span className="font-medium">{t('mcp.testing')}</span>
+      </div>
+    );
+  }
+
+  // CONNECTING, or any not-yet-resolved status (initial/null while the box is
+  // still bringing the session up) — show "connecting" rather than failing.
+  if (
+    runtimeInfo.status === MCPSessionStatus.CONNECTING ||
+    (runtimeInfo.status !== MCPSessionStatus.ERROR &&
+      runtimeInfo.error_phase !== 'box_unavailable')
+  ) {
+    return (
+      <div className="flex items-center gap-2 text-blue-600">
+        <Loader2 className="size-5 animate-spin" />
+        <span className="font-medium">{t('mcp.connecting')}</span>
+      </div>
+    );
+  }
+
+  // Stdio MCP refused because Box is disabled / unreachable. The backend
+  // marks the phase so we can show a localized, actionable message instead
+  // of the raw "box_disabled_in_config" / "box_unavailable" marker.
+  if (runtimeInfo.error_phase === 'box_unavailable') {
+    const isDisabledByConfig =
+      runtimeInfo.error_message === 'box_disabled_in_config';
+    return (
+      <div className="space-y-1">
+        <div className="flex items-center gap-2 text-red-600">
+          <XCircle className="size-5" />
+          <span className="font-medium">{t('mcp.connectionFailed')}</span>
+        </div>
+        <div className="pl-7 text-sm text-red-500 space-y-0.5">
+          <div>
+            {isDisabledByConfig
+              ? t('mcp.boxDisabledStdioRefused')
+              : t('mcp.boxUnavailableStdioRefused')}
+          </div>
+          <div className="text-muted-foreground">
+            {t('mcp.boxStdioRefusedSuggestion')}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-2 text-red-600">
+        <XCircle className="size-5" />
+        <span className="font-medium">{t('mcp.connectionFailed')}</span>
+      </div>
+      {runtimeInfo.error_message && (
+        <div className="pl-7 text-sm text-red-500">
+          {runtimeInfo.error_message}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type ToolParameter = {
+  name: string;
+  type?: string;
+  description?: string;
+  required?: boolean;
+};
+
+function getToolParameters(parameters?: object): ToolParameter[] {
+  if (!parameters || typeof parameters !== 'object') return [];
+
+  const schema = parameters as {
+    properties?: Record<
+      string,
+      { type?: string; description?: string; title?: string }
+    >;
+    required?: string[];
+  };
+
+  if (schema.properties && typeof schema.properties === 'object') {
+    const required = new Set(schema.required ?? []);
+    return Object.entries(schema.properties).map(([name, parameter]) => ({
+      name,
+      type: parameter?.type,
+      description: parameter?.description || parameter?.title,
+      required: required.has(name),
+    }));
+  }
+
+  return Object.keys(parameters).map((name) => ({ name }));
+}
+
+function ToolsList({ tools, t }: { tools: MCPTool[]; t: TFunction }) {
+  return (
+    <div className="grid gap-3 pb-6 xl:grid-cols-2">
+      {tools.map((tool, index) => {
+        const parameters = getToolParameters(tool.parameters);
+        const visibleParameters = parameters.slice(0, 4);
+        const hiddenParameterCount =
+          parameters.length - visibleParameters.length;
+
+        return (
+          <div
+            key={`${tool.name}-${index}`}
+            className="rounded-lg border bg-background p-4 transition-colors hover:border-primary/40 hover:bg-muted/20"
+          >
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                <Wrench className="size-4" />
+              </div>
+              <div className="min-w-0 flex-1 space-y-3">
+                <div className="min-w-0 space-y-1">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="truncate font-mono text-sm font-semibold">
+                      {tool.name}
+                    </span>
+                    <Badge variant="secondary" className="h-5 shrink-0 px-1.5">
+                      #{index + 1}
+                    </Badge>
+                  </div>
+                  <p className="line-clamp-4 text-xs leading-relaxed text-muted-foreground">
+                    {tool.description || t('market.noDescription')}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                    <Braces className="size-3.5" />
+                    <span>
+                      {t('mcp.parameterCount', {
+                        count: parameters.length,
+                      })}
+                    </span>
+                  </div>
+
+                  {visibleParameters.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {visibleParameters.map((parameter) => (
+                        <span
+                          key={parameter.name}
+                          title={parameter.description || parameter.name}
+                          className="inline-flex max-w-full items-center gap-1 rounded-md border bg-muted/40 px-2 py-1 text-xs"
+                        >
+                          <span className="truncate font-mono">
+                            {parameter.name}
+                          </span>
+                          {parameter.type && (
+                            <span className="shrink-0 text-muted-foreground">
+                              {parameter.type}
+                            </span>
+                          )}
+                          {parameter.required && (
+                            <span className="shrink-0 text-destructive">*</span>
+                          )}
+                        </span>
+                      ))}
+                      {hiddenParameterCount > 0 && (
+                        <span className="inline-flex items-center rounded-md border bg-muted/40 px-2 py-1 text-xs text-muted-foreground">
+                          +{hiddenParameterCount}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-muted-foreground">
+                      {t('mcp.noParameters')}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ResourcesList({
+  resources,
+  serverName,
+  t,
+}: {
+  resources: MCPResource[];
+  serverName: string;
+  t: (key: string) => string;
+}) {
+  const [expandedUri, setExpandedUri] = React.useState<string | null>(null);
+  const [resourceContent, setResourceContent] =
+    React.useState<MCPResourceContent | null>(null);
+  const [loadingContent, setLoadingContent] = React.useState(false);
+
+  const handleToggleResource = async (uri: string) => {
+    if (expandedUri === uri) {
+      setExpandedUri(null);
+      setResourceContent(null);
+      return;
+    }
+
+    setExpandedUri(uri);
+    setResourceContent(null);
+    setLoadingContent(true);
+
+    try {
+      const resp = await httpClient.readMCPServerResource(
+        serverName,
+        uri,
+        65536,
+      );
+      if (resp.contents && resp.contents.length > 0) {
+        setResourceContent(resp.contents[0]);
+      }
+    } catch {
+      setResourceContent(null);
+    } finally {
+      setLoadingContent(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2 pb-6">
+      {resources.map((resource, index) => (
+        <Card key={index} className="py-3 shadow-none">
+          <CardHeader
+            className="cursor-pointer"
+            onClick={() => handleToggleResource(resource.uri)}
+          >
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm">{resource.name}</CardTitle>
+              {resource.mime_type && (
+                <span className="text-xs text-muted-foreground font-mono">
+                  {resource.mime_type}
+                </span>
+              )}
+            </div>
+            {resource.description && (
+              <CardDescription className="text-xs">
+                {resource.description}
+              </CardDescription>
+            )}
+            <div className="text-xs text-muted-foreground font-mono break-all">
+              {resource.uri}
+            </div>
+          </CardHeader>
+          {expandedUri === resource.uri && (
+            <CardContent>
+              {loadingContent ? (
+                <div className="text-xs text-muted-foreground">
+                  {t('mcp.loading')}
+                </div>
+              ) : resourceContent?.type === 'text' && resourceContent.text ? (
+                <div className="space-y-2">
+                  <pre className="text-xs bg-muted p-3 rounded-md overflow-auto max-h-[200px] whitespace-pre-wrap break-all">
+                    {resourceContent.text}
+                  </pre>
+                  {resourceContent.truncated && (
+                    <div className="text-xs text-muted-foreground">
+                      {t('mcp.resourceTruncated')}
+                    </div>
+                  )}
+                </div>
+              ) : resourceContent?.type === 'blob' ? (
+                <div className="text-xs text-muted-foreground">
+                  {resourceContent.binary_omitted
+                    ? t('mcp.resourceBinaryOmitted')
+                    : t('mcp.resourceBinaryContent')}
+                </div>
+              ) : (
+                <div className="text-xs text-muted-foreground">
+                  {t('mcp.resourceReadFailed')}
+                </div>
+              )}
+            </CardContent>
+          )}
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+type RuntimePanelContent = 'all' | 'tools' | 'resources';
+
+function RuntimePanel({
+  mcpTesting,
+  runtimeInfo,
+  serverName,
+  content = 'all',
+  t,
+}: {
+  mcpTesting: boolean;
+  runtimeInfo: MCPServerRuntimeInfo | null;
+  serverName: string;
+  content?: RuntimePanelContent;
+  t: TFunction;
+}) {
+  // Show tools whenever we have runtime info — either an edit-mode server or a
+  // create-mode test result captured from the transient session. Only fall back
+  // to the placeholder when there is genuinely nothing to show.
+  if (!runtimeInfo) {
+    return (
+      <div className="flex min-h-[280px] items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
+        {content === 'resources'
+          ? t('mcp.noResourcesFound')
+          : t('mcp.noToolsFound')}
+      </div>
+    );
+  }
+
+  const isConnected =
+    !mcpTesting && runtimeInfo.status === MCPSessionStatus.CONNECTED;
+  const tools = runtimeInfo.tools || [];
+  const resources = runtimeInfo.resources || [];
+  const showTools = content === 'all' || content === 'tools';
+  const showResources = content === 'all' || content === 'resources';
+  const empty =
+    content === 'tools'
+      ? tools.length === 0
+      : content === 'resources'
+        ? resources.length === 0
+        : tools.length === 0 && resources.length === 0;
+
+  return (
+    <section className="space-y-4">
+      {!isConnected && (
+        <div className="rounded-md bg-muted/40 p-3">
+          <StatusDisplay testing={mcpTesting} runtimeInfo={runtimeInfo} t={t} />
+        </div>
+      )}
+
+      {isConnected && showTools && tools.length > 0 && (
+        <ToolsList tools={tools} t={t} />
+      )}
+
+      {isConnected && showResources && resources.length > 0 && (
+        <div className="space-y-2">
+          {content === 'all' && (
+            <div className="text-sm font-medium">
+              {t('mcp.resourceCount', { count: resources.length })}
+            </div>
+          )}
+          <ResourcesList resources={resources} serverName={serverName} t={t} />
+        </div>
+      )}
+
+      {isConnected && empty && (
+        <div className="flex min-h-[220px] items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
+          {content === 'resources'
+            ? t('mcp.noResourcesFound')
+            : t('mcp.noToolsFound')}
+        </div>
+      )}
+    </section>
+  );
+}
+
+const getFormSchema = (t: TFunction) =>
+  z
+    .object({
+      name: z
+        .string({ required_error: t('mcp.nameRequired') })
+        .min(1, { message: t('mcp.nameRequired') }),
+      mode: z.enum(['stdio', 'remote']),
+      timeout: z
+        .number({ invalid_type_error: t('mcp.timeoutMustBeNumber') })
+        .positive({ message: t('mcp.timeoutMustBePositive') })
+        .default(30),
+      ssereadtimeout: z
+        .number({ invalid_type_error: t('mcp.sseTimeoutMustBeNumber') })
+        .positive({ message: t('mcp.timeoutMustBePositive') })
+        .default(300),
+      url: z.string().optional(),
+      command: z.string().optional(),
+      args: z.array(z.object({ value: z.string() })).optional(),
+      extra_args: z
+        .array(
+          z.object({
+            key: z.string(),
+            type: z.enum(['string', 'number', 'boolean']),
+            value: z.string(),
+          }),
+        )
+        .optional(),
+    })
+    .superRefine((data, ctx) => {
+      if (data.mode === 'remote') {
+        if (!data.url || data.url.length === 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: t('mcp.urlRequired'),
+            path: ['url'],
+          });
+        }
+      } else if (data.mode === 'stdio') {
+        if (!data.command || data.command.length === 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: t('mcp.commandRequired'),
+            path: ['command'],
+          });
+        }
+      }
+    });
+
+type FormValues = z.infer<ReturnType<typeof getFormSchema>> & {
+  timeout: number;
+  ssereadtimeout: number;
+};
+
+export type MCPFormDraft = Partial<FormValues>;
+
+interface MCPFormProps {
+  initServerName?: string;
+  initialDraft?: MCPFormDraft;
+  onFormSubmit: () => void;
+  onNewServerCreated: (serverName: string) => void;
+  onDraftChange?: (draft: MCPFormDraft) => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  onTestingChange?: (testing: boolean) => void;
+  onRuntimeInfoChange?: (runtimeInfo: MCPServerRuntimeInfo | null) => void;
+  onPersistedTestComplete?: (serverName: string) => void | Promise<void>;
+  /** Reported when the form cannot be saved because the current mode is
+   * ``stdio`` and the Box sandbox is disabled/unavailable. Parents that
+   * render the Save button outside this component should disable it. */
+  onSaveBlockedChange?: (blocked: boolean) => void;
+  layout?: 'stacked' | 'split';
+  sideHeader?: ReactNode;
+  sideFooter?: ReactNode;
+}
+
+export interface MCPFormHandle {
+  testMcp: () => void;
+  isTesting: boolean;
+}
+
+const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
+  {
+    initServerName,
+    initialDraft,
+    onFormSubmit,
+    onNewServerCreated,
+    onDraftChange,
+    onDirtyChange,
+    onTestingChange,
+    onRuntimeInfoChange,
+    onPersistedTestComplete,
+    onSaveBlockedChange,
+    layout = 'stacked',
+    sideHeader,
+    sideFooter,
+  },
+  ref,
+) {
+  const { t } = useTranslation();
+  const formSchema = getFormSchema(t);
+  const isEditMode = !!initServerName;
+  const initialDraftRef = useRef(initialDraft);
+
+  const form = useForm<FormValues>({
+    resolver: zodResolver(formSchema) as unknown as Resolver<FormValues>,
+    defaultValues: {
+      name: '',
+      mode: 'remote',
+      url: '',
+      command: '',
+      args: [],
+      timeout: 30,
+      ssereadtimeout: 300,
+      extra_args: [],
+      ...initialDraftRef.current,
+    },
+  });
+
+  const isInitializing = useRef(true);
+  const [extraArgs, setExtraArgs] = useState<
+    { key: string; type: 'string' | 'number' | 'boolean'; value: string }[]
+  >([]);
+  const [stdioArgs, setStdioArgs] = useState<{ value: string }[]>([]);
+  const [mcpTesting, setMcpTesting] = useState(false);
+  const [runtimeInfo, setRuntimeInfo] = useState<MCPServerRuntimeInfo | null>(
+    null,
+  );
+  // README markdown captured from LangBot Space at install time, surfaced in
+  // the Docs tab of the detail panel. Empty for manually-created servers.
+  const [readme, setReadme] = useState<string>('');
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const watchMode = form.watch('mode');
+  const {
+    available: boxAvailable,
+    hint: boxHint,
+    reason: boxReason,
+  } = useBoxStatus();
+  // stdio mode requires the Box sandbox at runtime. If the user picks
+  // stdio while Box is disabled / unreachable, the server would refuse
+  // to start anyway — block creation upfront so they aren't surprised
+  // by an immediate "Connection failed" on the detail page.
+  const stdioBlockedByBox = watchMode === 'stdio' && !boxAvailable;
+
+  const { isDirty } = form.formState;
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
+
+  useEffect(() => {
+    onSaveBlockedChange?.(stdioBlockedByBox);
+  }, [stdioBlockedByBox, onSaveBlockedChange]);
+
+  useEffect(() => {
+    onTestingChange?.(mcpTesting);
+  }, [mcpTesting, onTestingChange]);
+
+  useEffect(() => {
+    onRuntimeInfoChange?.(runtimeInfo);
+  }, [onRuntimeInfoChange, runtimeInfo]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      testMcp: () => testMcp(),
+      isTesting: mcpTesting,
+    }),
+    // testMcp now reads everything via form.getValues(), so it does not need
+    // the latest stdioArgs/extraArgs closure — but keep mcpTesting so the
+    // exposed isTesting flag stays accurate.
+    [mcpTesting],
+  );
+
+  useEffect(() => {
+    isInitializing.current = true;
+    if (isEditMode && initServerName) {
+      loadServerForEdit(initServerName).finally(() => {
+        isInitializing.current = false;
+      });
+    } else {
+      form.reset({
+        name: '',
+        mode: 'remote',
+        url: '',
+        command: '',
+        args: [],
+        timeout: 30,
+        ssereadtimeout: 300,
+        extra_args: [],
+        ...initialDraftRef.current,
+      });
+      setExtraArgs(initialDraftRef.current?.extra_args ?? []);
+      setStdioArgs(initialDraftRef.current?.args ?? []);
+      setRuntimeInfo(null);
+      isInitializing.current = false;
+    }
+
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+  }, [initServerName]);
+
+  useEffect(() => {
+    if (!onDraftChange || isEditMode) return;
+
+    const subscription = form.watch((values) => {
+      onDraftChange({
+        ...values,
+        extra_args: extraArgs,
+        args: stdioArgs,
+      } as MCPFormDraft);
+    });
+
+    return () => subscription.unsubscribe();
+  }, [form, isEditMode, onDraftChange, extraArgs, stdioArgs]);
+
+  useEffect(() => {
+    if (
+      !isEditMode ||
+      !initServerName ||
+      !runtimeInfo ||
+      runtimeInfo.status !== MCPSessionStatus.CONNECTING
+    ) {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      return;
+    }
+
+    if (!pollingIntervalRef.current) {
+      pollingIntervalRef.current = setInterval(() => {
+        loadServerForEdit(initServerName);
+      }, 3000);
+    }
+
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+  }, [isEditMode, initServerName, runtimeInfo?.status]);
+
+  async function loadServerForEdit(serverName: string) {
+    try {
+      const resp = await httpClient.getMCPServer(serverName);
+      const server = resp.server ?? resp;
+
+      // Transport selection collapsed to two modes: 'stdio' (local) and
+      // 'remote' (URL, auto-detected transport). Servers persisted under the
+      // legacy 'sse'/'http' modes are surfaced as 'remote' so they remain
+      // editable; saving rewrites them to 'remote'.
+      const isRemote = server.mode !== 'stdio';
+
+      const formValues: FormValues = {
+        name: server.name.replace(/__/g, '/'),
+        mode: isRemote ? 'remote' : 'stdio',
+        url: '',
+        command: '',
+        args: [],
+        timeout: 30,
+        ssereadtimeout: 300,
+        extra_args: [],
+      };
+
+      let newExtraArgs: {
+        key: string;
+        type: 'string' | 'number' | 'boolean';
+        value: string;
+      }[] = [];
+      let newStdioArgs: { value: string }[] = [];
+
+      if (isRemote) {
+        formValues.url = server.extra_args.url;
+        if (typeof server.extra_args.timeout === 'number') {
+          formValues.timeout = server.extra_args.timeout;
+        }
+
+        if (server.extra_args.headers) {
+          newExtraArgs = Object.entries(server.extra_args.headers).map(
+            ([key, value]) => ({
+              key,
+              type: 'string' as const,
+              value: String(value),
+            }),
+          );
+          formValues.extra_args = newExtraArgs;
+        }
+      } else {
+        formValues.command = server.extra_args.command;
+        newStdioArgs = (server.extra_args.args || []).map((arg: string) => ({
+          value: arg,
+        }));
+        formValues.args = newStdioArgs;
+
+        if (server.extra_args.env) {
+          newExtraArgs = Object.entries(server.extra_args.env).map(
+            ([key, value]) => ({
+              key,
+              type: 'string' as const,
+              value: String(value),
+            }),
+          );
+          formValues.extra_args = newExtraArgs;
+        }
+      }
+
+      setExtraArgs(newExtraArgs);
+      setStdioArgs(newStdioArgs);
+      form.reset(formValues);
+      setRuntimeInfo(server.runtime_info ?? null);
+      setReadme(server.readme ?? '');
+    } catch (error) {
+      console.error('Failed to load server:', error);
+      toast.error(t('mcp.loadFailed'));
+    }
+  }
+
+  async function handleFormSubmit(value: z.infer<typeof formSchema>) {
+    // Belt-and-suspenders: even though the Save button is disabled when
+    // stdio is unselectable, intercept programmatic submits too.
+    if (value.mode === 'stdio' && !boxAvailable) {
+      toast.error(t('mcp.stdioBlockedByBoxToast'));
+      return;
+    }
+    try {
+      let serverConfig: MCPServer;
+      const serverName =
+        isEditMode && initServerName ? initServerName : value.name;
+
+      if (value.mode === 'remote') {
+        const headers: Record<string, string> = {};
+        value.extra_args?.forEach((arg) => {
+          headers[arg.key] = String(arg.value);
+        });
+
+        serverConfig = {
+          name: serverName,
+          mode: 'remote',
+          enable: true,
+          extra_args: {
+            url: value.url!,
+            headers,
+            timeout: value.timeout,
+          },
+        };
+      } else {
+        const env: Record<string, string> = {};
+        value.extra_args?.forEach((arg) => {
+          env[arg.key] = String(arg.value);
+        });
+
+        serverConfig = {
+          name: serverName,
+          mode: 'stdio',
+          enable: true,
+          extra_args: {
+            command: value.command!,
+            args: value.args?.map((arg) => arg.value) || [],
+            env,
+          },
+        };
+      }
+
+      if (isEditMode && initServerName) {
+        await httpClient.updateMCPServer(initServerName, serverConfig);
+        toast.success(t('mcp.updateSuccess'));
+        form.reset(form.getValues());
+        onFormSubmit();
+      } else {
+        await httpClient.createMCPServer(serverConfig);
+        toast.success(t('mcp.createSuccess'));
+        onNewServerCreated(value.name);
+      }
+    } catch (error) {
+      console.error('Failed to save MCP server:', error);
+      const errMsg = (error as CustomApiError).msg || '';
+      toast.error(
+        (isEditMode ? t('mcp.updateFailed') : t('mcp.createFailed')) + errMsg,
+      );
+    }
+  }
+
+  async function testMcp() {
+    setMcpTesting(true);
+
+    try {
+      const mode = form.getValues('mode');
+      // Read every field via form.getValues() rather than the captured
+      // `stdioArgs` / `extraArgs` state. testMcp() is invoked through an
+      // imperative handle (formRef.current.testMcp()) whose closure is only
+      // refreshed when [mcpTesting] changes, so reading the React state here
+      // would use a stale snapshot — on the detail page that snapshot is the
+      // empty initial [], which dropped stdio args entirely and launched
+      // `uvx` with no package (exit 2 / "Connection closed", no detail).
+      // The form values are kept in sync on every edit and on load, so they
+      // are always current.
+      const serverName =
+        isEditMode && initServerName ? initServerName : form.getValues('name');
+      const shouldTestPersistedServer =
+        isEditMode && !!initServerName && !form.formState.isDirty;
+      const formExtraArgs = form.getValues('extra_args') ?? [];
+      const formStdioArgs = form.getValues('args') ?? [];
+      let extraArgsData: MCPServerExtraArgsRemote | MCPServerExtraArgsStdio;
+
+      if (mode === 'remote') {
+        extraArgsData = {
+          url: form.getValues('url')!,
+          timeout: form.getValues('timeout'),
+          headers: Object.fromEntries(
+            formExtraArgs.map((arg) => [arg.key, arg.value]),
+          ),
+        };
+      } else {
+        extraArgsData = {
+          command: form.getValues('command')!,
+          args: formStdioArgs.map((arg) => arg.value),
+          env: Object.fromEntries(
+            formExtraArgs.map((arg) => [arg.key, arg.value]),
+          ),
+        };
+      }
+
+      const testTarget = shouldTestPersistedServer ? serverName : '_';
+      const testPayload = shouldTestPersistedServer
+        ? {}
+        : ({
+            name: serverName,
+            mode,
+            enable: true,
+            extra_args: extraArgsData,
+          } as MCPServer);
+
+      const { task_id } = await httpClient.testMCPServer(
+        testTarget,
+        testPayload,
+      );
+
+      if (!task_id) {
+        throw new Error(t('mcp.noTaskId'));
+      }
+
+      const interval = setInterval(async () => {
+        try {
+          const taskResp = await httpClient.getAsyncTask(task_id);
+
+          if (taskResp.runtime?.done) {
+            clearInterval(interval);
+            setMcpTesting(false);
+
+            if (taskResp.runtime.exception) {
+              const errorMsg =
+                taskResp.runtime.exception || t('mcp.unknownError');
+              toast.error(`${t('mcp.testError')}: ${errorMsg}`);
+              setRuntimeInfo({
+                status: MCPSessionStatus.ERROR,
+                error_message: errorMsg,
+                tool_count: 0,
+                tools: [],
+                resource_count: 0,
+                resources: [],
+              });
+              if (shouldTestPersistedServer) {
+                await onPersistedTestComplete?.(serverName);
+              }
+            } else {
+              if (shouldTestPersistedServer) {
+                await loadServerForEdit(serverName);
+                await onPersistedTestComplete?.(serverName);
+              } else {
+                // Transient tests have no persisted server to reload tools from.
+                // The backend stashes the discovered runtime info (status +
+                // tools) in the task metadata before tearing the transient
+                // session down — surface it so a successful test
+                // shows the tool list instead of "no tools found".
+                const runtimeInfoFromTest = taskResp.task_context?.metadata
+                  ?.runtime_info as MCPServerRuntimeInfo | undefined;
+                if (runtimeInfoFromTest) {
+                  setRuntimeInfo(runtimeInfoFromTest);
+                }
+              }
+              toast.success(t('mcp.testSuccess'));
+            }
+          }
+        } catch (err) {
+          clearInterval(interval);
+          setMcpTesting(false);
+          const errorMsg =
+            (err as CustomApiError).msg || t('mcp.getTaskFailed');
+          toast.error(`${t('mcp.testError')}: ${errorMsg}`);
+        }
+      }, 1000);
+    } catch (err) {
+      setMcpTesting(false);
+      const errorMsg = (err as Error).message || t('mcp.unknownError');
+      toast.error(`${t('mcp.testError')}: ${errorMsg}`);
+    }
+  }
+
+  const addExtraArg = () => {
+    const newArgs = [
+      ...extraArgs,
+      { key: '', type: 'string' as const, value: '' },
+    ];
+    setExtraArgs(newArgs);
+    form.setValue('extra_args', newArgs, {
+      shouldDirty: !isInitializing.current,
+    });
+  };
+
+  const removeExtraArg = (index: number) => {
+    const newArgs = extraArgs.filter((_, i) => i !== index);
+    setExtraArgs(newArgs);
+    form.setValue('extra_args', newArgs, {
+      shouldDirty: !isInitializing.current,
+    });
+  };
+
+  const updateExtraArg = (
+    index: number,
+    field: 'key' | 'type' | 'value',
+    value: string,
+  ) => {
+    const newArgs = [...extraArgs];
+    newArgs[index] = { ...newArgs[index], [field]: value };
+    setExtraArgs(newArgs);
+    form.setValue('extra_args', newArgs, {
+      shouldDirty: !isInitializing.current,
+    });
+  };
+
+  const addStdioArg = () => {
+    const newArgs = [...stdioArgs, { value: '' }];
+    setStdioArgs(newArgs);
+    form.setValue('args', newArgs, { shouldDirty: !isInitializing.current });
+  };
+
+  const removeStdioArg = (index: number) => {
+    const newArgs = stdioArgs.filter((_, i) => i !== index);
+    setStdioArgs(newArgs);
+    form.setValue('args', newArgs, { shouldDirty: !isInitializing.current });
+  };
+
+  const updateStdioArg = (index: number, value: string) => {
+    const newArgs = [...stdioArgs];
+    newArgs[index] = { value };
+    setStdioArgs(newArgs);
+    form.setValue('args', newArgs, { shouldDirty: !isInitializing.current });
+  };
+
+  const configSection = (
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          {isEditMode ? t('mcp.editServer') : t('mcp.createServer')}
+        </CardTitle>
+        <CardDescription>{t('mcp.extraParametersDescription')}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <FormField
+          control={form.control}
+          name="name"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>
+                {t('mcp.name')}
+                <span className="text-destructive">*</span>
+              </FormLabel>
+              <FormControl>
+                <Input {...field} disabled={isEditMode} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="mode"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t('mcp.serverMode')}</FormLabel>
+              <Select
+                onValueChange={field.onChange}
+                defaultValue={field.value}
+                value={field.value}
+              >
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder={t('mcp.selectMode')} />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value="remote">{t('mcp.remote')}</SelectItem>
+                  <SelectItem value="stdio" disabled={!boxAvailable}>
+                    {t('mcp.local')}
+                    {!boxAvailable && (
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        ({t('mcp.boxRequired')})
+                      </span>
+                    )}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <FormDescription>
+                {watchMode === 'stdio'
+                  ? t('mcp.localModeDescription')
+                  : t('mcp.remoteModeDescription')}
+              </FormDescription>
+              {stdioBlockedByBox && (
+                <BoxUnavailableNotice
+                  hint={boxHint}
+                  reason={boxReason}
+                  className="mt-2"
+                />
+              )}
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        {watchMode === 'remote' && (
+          <>
+            <FormField
+              control={form.control}
+              name="url"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    {t('mcp.url')}
+                    <span className="text-destructive">*</span>
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder={t('mcp.remoteUrlPlaceholder')}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t('mcp.remoteUrlDescription')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="timeout"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('mcp.timeout')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      placeholder={t('mcp.timeout')}
+                      {...field}
+                      onChange={(e) => field.onChange(Number(e.target.value))}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </>
+        )}
+
+        {watchMode === 'stdio' && (
+          <>
+            <FormField
+              control={form.control}
+              name="command"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    {t('mcp.command')}
+                    <span className="text-destructive">*</span>
+                  </FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormItem>
+              <FormLabel>{t('mcp.args')}</FormLabel>
+              <div className="space-y-2">
+                {stdioArgs.map((arg, index) => (
+                  <div key={index} className="flex gap-2">
+                    <Input
+                      placeholder={t('mcp.args')}
+                      value={arg.value}
+                      onChange={(e) => updateStdioArg(index, e.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="shrink-0 text-red-500 hover:text-red-600"
+                      onClick={() => removeStdioArg(index)}
+                    >
+                      <Trash2 className="size-5" />
+                    </Button>
+                  </div>
+                ))}
+                <Button type="button" variant="outline" onClick={addStdioArg}>
+                  {t('mcp.addArgument')}
+                </Button>
+              </div>
+            </FormItem>
+          </>
+        )}
+
+        <FormItem>
+          <FormLabel>
+            {watchMode === 'remote' ? t('mcp.headers') : t('mcp.env')}
+          </FormLabel>
+          <div className="space-y-2">
+            {extraArgs.map((arg, index) => (
+              <div key={index} className="flex gap-2">
+                <Input
+                  placeholder={t('models.keyName')}
+                  value={arg.key}
+                  onChange={(e) => updateExtraArg(index, 'key', e.target.value)}
+                />
+                <Input
+                  placeholder={t('models.value')}
+                  value={arg.value}
+                  onChange={(e) =>
+                    updateExtraArg(index, 'value', e.target.value)
+                  }
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0 text-red-500 hover:text-red-600"
+                  onClick={() => removeExtraArg(index)}
+                >
+                  <Trash2 className="size-5" />
+                </Button>
+              </div>
+            ))}
+            <Button type="button" variant="outline" onClick={addExtraArg}>
+              {watchMode === 'remote' ? t('mcp.addHeader') : t('mcp.addEnvVar')}
+            </Button>
+          </div>
+          <FormDescription>
+            {t('mcp.extraParametersDescription')}
+          </FormDescription>
+          <FormMessage />
+        </FormItem>
+      </CardContent>
+    </Card>
+  );
+
+  const persistedServerName =
+    isEditMode && initServerName ? initServerName : form.getValues('name');
+
+  const runtimePanel = (
+    <RuntimePanel
+      mcpTesting={mcpTesting}
+      runtimeInfo={runtimeInfo}
+      serverName={persistedServerName}
+      t={t}
+    />
+  );
+
+  // In edit mode the right side shows a tablist switching between the live
+  // Tools/resources lists and the Docs (README captured from LangBot Space at install).
+  // Create mode has neither, so it falls back to the bare runtime placeholder.
+  // Counts live in the tab labels (only when connected); the panel
+  // body itself no longer repeats a title/subtitle.
+  const runtimeConnected =
+    !mcpTesting && runtimeInfo?.status === MCPSessionStatus.CONNECTED;
+  const toolsCount = runtimeInfo?.tools?.length ?? 0;
+  const resourcesCount = runtimeInfo?.resources?.length ?? 0;
+  const toolsTabLabel = runtimeConnected
+    ? `${t('mcp.tabTools')} ${toolsCount}`
+    : t('mcp.tabTools');
+  const resourcesTabLabel = runtimeConnected
+    ? `${t('mcp.tabResources')} ${resourcesCount}`
+    : t('mcp.tabResources');
+
+  const detailPanel = isEditMode ? (
+    <Tabs defaultValue="tools" className="flex h-full min-h-0 flex-col">
+      <TabsList>
+        <TabsTrigger value="docs" className="flex-none px-4">
+          {t('mcp.tabDocs')}
+        </TabsTrigger>
+        <TabsTrigger value="tools" className="flex-none px-4">
+          {toolsTabLabel}
+        </TabsTrigger>
+        <TabsTrigger value="resources" className="flex-none px-4">
+          {resourcesTabLabel}
+        </TabsTrigger>
+        <TabsTrigger value="logs" className="flex-none px-4">
+          {t('mcp.tabLogs')}
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value="docs" className="mt-4 min-h-0 flex-1 overflow-y-auto">
+        <MCPReadme readme={readme} />
+      </TabsContent>
+      <TabsContent
+        value="tools"
+        className="mt-4 min-h-0 flex-1 overflow-y-auto"
+      >
+        <RuntimePanel
+          mcpTesting={mcpTesting}
+          runtimeInfo={runtimeInfo}
+          serverName={persistedServerName}
+          content="tools"
+          t={t}
+        />
+      </TabsContent>
+      <TabsContent
+        value="resources"
+        className="mt-4 min-h-0 flex-1 overflow-y-auto"
+      >
+        <RuntimePanel
+          mcpTesting={mcpTesting}
+          runtimeInfo={runtimeInfo}
+          serverName={persistedServerName}
+          content="resources"
+          t={t}
+        />
+      </TabsContent>
+      <TabsContent value="logs" className="mt-4 min-h-0 flex-1 overflow-y-auto">
+        {persistedServerName && <MCPLogs serverName={persistedServerName} />}
+      </TabsContent>
+    </Tabs>
+  ) : (
+    runtimePanel
+  );
+
+  if (layout === 'split') {
+    return (
+      <Form {...form}>
+        <form
+          id="mcp-form"
+          onSubmit={form.handleSubmit(handleFormSubmit)}
+          className="flex h-full min-h-0 max-w-full flex-col gap-6 overflow-y-auto lg:flex-row lg:overflow-hidden"
+        >
+          <div className="space-y-5 pb-6 lg:min-h-0 lg:w-[360px] lg:flex-shrink-0 lg:overflow-y-auto lg:overflow-x-hidden xl:w-[400px]">
+            {sideHeader}
+            {configSection}
+            {sideFooter}
+          </div>
+          <div className="hidden w-px shrink-0 bg-border lg:block" />
+          <div className="min-w-0 flex-1 pb-6 lg:min-h-0 lg:overflow-y-auto lg:overflow-x-hidden">
+            {detailPanel}
+          </div>
+        </form>
+      </Form>
+    );
+  }
+
+  return (
+    <Form {...form}>
+      <form
+        id="mcp-form"
+        onSubmit={form.handleSubmit(handleFormSubmit)}
+        className="space-y-5"
+      >
+        {sideHeader}
+        {detailPanel}
+        {configSection}
+        {sideFooter}
+      </form>
+    </Form>
+  );
+});
+
+export default MCPForm;

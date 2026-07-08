@@ -1,0 +1,29 @@
+{
+  "private": true,
+  "type": "module",
+  "bin": {
+    "lbs": "./bin/lbs"
+  },
+  "scripts": {
+    "bootstrap": "node scripts/bootstrap-lbs.mjs",
+    "prepare": "node scripts/bootstrap-lbs.mjs",
+    "prevalidate": "node scripts/bootstrap-lbs.mjs",
+    "preindex": "node scripts/bootstrap-lbs.mjs",
+    "preindex:check": "node scripts/bootstrap-lbs.mjs",
+    "pretest": "node scripts/bootstrap-lbs.mjs",
+    "precheck": "node scripts/bootstrap-lbs.mjs",
+    "lbs": "node src/lbs.ts",
+    "test": "node test/lbs-cli.test.ts",
+    "validate": "node src/lbs.ts validate",
+    "index": "node src/lbs.ts index",
+    "index:check": "node src/lbs.ts index --check",
+    "check:syntax": "find src test scripts -type f \\( -name '*.ts' -o -name '*.mjs' \\) -print0 | xargs -0 -n1 node --check",
+    "check": "npm run check:syntax && npm run validate && npm test"
+  },
+  "engines": {
+    "node": ">=22.6"
+  },
+  "devDependencies": {
+    "playwright": "^1.60.0"
+  }
+}

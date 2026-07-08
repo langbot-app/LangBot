@@ -1,0 +1,153 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: wecombot
+  label:
+    en_US: WeComBot
+    zh_Hans: 企业微信智能机器人
+    zh_Hant: 企業微信智慧機器人
+  description:
+    en_US: WeComBot Adapter
+    zh_Hans: 企业微信智能机器人，支持长连接和 Webhook 两种接入方式，请查看文档了解使用方式
+    zh_Hant: 企業微信智慧機器人，支援長連線和 Webhook 兩種接入方式，請查看文件了解使用方式
+  icon: wecombot.png
+spec:
+  categories:
+    - china
+  help_links:
+    zh: https://link.langbot.app/zh/platforms/wecombot
+    en: https://link.langbot.app/en/platforms/wecombot
+    ja: https://link.langbot.app/ja/platforms/wecombot
+  config:
+    - name: one-click-create
+      label:
+        en_US: One-Click Create Bot
+        zh_Hans: 一键创建机器人
+        zh_Hant: 一鍵建立機器人
+      description:
+        en_US: "Scan QR code with WeCom to automatically create a bot and fill in BotId and Secret. Note: Robot Name needs to be filled in manually."
+        zh_Hans: "使用企业微信扫码自动创建机器人并填写 BotId 和 Secret。注意：机器人名称需手动填写。"
+        zh_Hant: "使用企業微信掃碼自動建立機器人並填寫 BotId 和 Secret。注意：機器人名稱需手動填寫。"
+      type: qr-code-login
+      login_platform: wecombot
+      required: false
+    - name: BotId
+      label:
+        en_US: BotId
+        zh_Hans: 机器人ID (BotId)
+        zh_Hant: 機器人ID (BotId)
+      type: string
+      required: true
+      default: ""
+    - name: robot_name
+      label:
+        en_US: Robot Name
+        zh_Hans: 机器人名称
+        zh_Hant: 機器人名稱
+      type: string
+      required: true
+      default: ""
+    - name: enable-webhook
+      label:
+        en_US: Enable Webhook Mode
+        zh_Hans: 启用Webhook模式
+        zh_Hant: 啟用 Webhook 模式
+      description:
+        en_US: If enabled, the bot will use webhook mode to receive messages. Otherwise, it will use WS long connection mode
+        zh_Hans: 如果启用，机器人将使用 Webhook 模式接收消息。否则，将使用 WS 长连接模式
+        zh_Hant: 如果啟用，機器人將使用 Webhook 模式接收訊息。否則，將使用 WS 長連線模式
+      type: boolean
+      required: true
+      default: false
+    - name: webhook_url
+      label:
+        en_US: Webhook Callback URL
+        zh_Hans: Webhook 回调地址
+        zh_Hant: Webhook 回調地址
+      description:
+        en_US: Copy this URL and paste it into your WeComBot webhook configuration
+        zh_Hans: 复制此地址并粘贴到企业微信智能机器人的 Webhook 配置中
+        zh_Hant: 複製此地址並貼到企業微信智慧機器人的 Webhook 設定中
+      type: webhook-url
+      required: false
+      default: ""
+      show_if:
+        field: enable-webhook
+        operator: eq
+        value: true
+    - name: __system.outbound_ips
+      label:
+        en_US: Trusted IPs
+        zh_Hans: 企业可信 IP
+        zh_Hant: 企業可信 IP
+      description:
+        en_US: Add these outbound IPs of the LangBot server to the "Trusted Enterprise IPs" of the bot configuration in the WeCom admin console
+        zh_Hans: 请将这些 LangBot 服务器的出网 IP 添加到企业微信管理后台智能机器人配置的「企业可信 IP」中
+        zh_Hant: 請將這些 LangBot 伺服器的出網 IP 加入企業微信管理後台智慧機器人設定的「企業可信 IP」中
+      type: array[string]
+      required: false
+      default: []
+    - name: Secret
+      label:
+        en_US: Secret
+        zh_Hans: 机器人密钥 (Secret)
+        zh_Hant: 機器人密鑰 (Secret)
+      description:
+        en_US: Required for WebSocket long connection mode
+        zh_Hans: 使用 WS 长连接模式时必填
+        zh_Hant: 使用 WS 長連線模式時必填
+      type: string
+      required: false
+      default: ""
+    - name: Corpid
+      label:
+        en_US: Corpid
+        zh_Hans: 企业ID
+        zh_Hant: 企業ID
+      description:
+        en_US: Required for Webhook mode
+        zh_Hans: 使用 Webhook 模式时必填
+        zh_Hant: 使用 Webhook 模式時必填
+      type: string
+      required: false
+      default: ""
+    - name: Token
+      label:
+        en_US: Token
+        zh_Hans: 令牌 (Token)
+        zh_Hant: 令牌 (Token)
+      description:
+        en_US: Required for Webhook mode
+        zh_Hans: 使用 Webhook 模式时必填
+        zh_Hant: 使用 Webhook 模式時必填
+      type: string
+      required: false
+      default: ""
+    - name: EncodingAESKey
+      label:
+        en_US: EncodingAESKey
+        zh_Hans: 消息加解密密钥 (EncodingAESKey)
+        zh_Hant: 訊息加解密密鑰 (EncodingAESKey)
+      description:
+        en_US: Required for Webhook mode. Optional for WebSocket mode (used for file decryption)
+        zh_Hans: 使用 Webhook 模式时必填。WebSocket 模式下可选（用于文件解密）
+        zh_Hant: 使用 Webhook 模式時必填。WebSocket 模式下可選（用於檔案解密）
+      type: string
+      required: false
+      default: ""
+    - name: enable-stream-reply
+      label:
+        en_US: Enable Stream Reply
+        zh_Hans: 启用流式回复
+        zh_Hant: 啟用串流回覆
+      description:
+        en_US: If enabled, the bot will use streaming mode to reply messages
+        zh_Hans: 如果启用，机器人将使用流式模式回复消息
+        zh_Hant: 如果啟用，機器人將使用串流模式回覆訊息
+      type: boolean
+      required: false
+      default: true
+execution:
+  python:
+    path: ./wecombot.py
+    attr: WecomBotAdapter

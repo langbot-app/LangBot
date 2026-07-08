@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: LLMAPIRequester
+metadata:
+  name: bailian-chat-completions
+  label:
+    en_US: Aliyun Bailian
+    zh_Hans: 阿里云百炼
+  icon: bailian.png
+spec:
+  litellm_provider: openai
+  config:
+  - name: base_url
+    label:
+      en_US: Base URL
+      zh_Hans: 基础 URL
+    type: string
+    required: true
+    default: https://dashscope.aliyuncs.com/compatible-mode/v1
+  - name: timeout
+    label:
+      en_US: Timeout
+      zh_Hans: 超时时间
+    type: integer
+    required: true
+    default: 120
+  alias: "bailian 百炼 阿里 阿里云 aliyun alibaba dashscope 通义 通义千问 qwen Qwen tongyi gte-rerank text-embedding-v"
+  support_type:
+  - llm
+  - text-embedding
+  - rerank
+  provider_category: maas
+execution:
+  python:
+    path: ./bailianchatcmpl.py
+    attr: BailianChatCompletions

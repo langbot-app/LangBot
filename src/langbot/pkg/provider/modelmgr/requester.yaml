@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ComponentTemplate
+metadata:
+  name: LLMAPIRequester
+  label:
+    en_US: LLM API Requester
+    zh_Hans: LLM API 请求器
+spec:
+  type:
+    - python
+execution:
+  python:
+    path: ./requester.py
+    attr: LLMAPIRequester

@@ -1,0 +1,21 @@
+id: local-agent-gate
+title: "Local Agent runner regression gate"
+description: "High-signal local-agent runner checks covering prompt bridge, RAG, context compaction, plugin tools, MCP tools, non-streaming, and multimodal paths."
+type: regression
+priority: p1
+tags:
+  - local-agent
+  - agent-runner
+  - regression
+cases:
+  - local-agent-basic-debug-chat
+  - qa-plugin-smoke-live-install
+  - local-agent-effective-prompt-debug-chat
+  - local-agent-context-compaction-debug-chat
+  - local-agent-rag-debug-chat
+  - local-agent-plugin-tool-call-debug-chat
+  - local-agent-steering-debug-chat
+  - mcp-stdio-tool-call
+  - local-agent-nonstreaming-debug-chat
+  - local-agent-multimodal-debug-chat
+  - local-agent-rag-multimodal-debug-chat

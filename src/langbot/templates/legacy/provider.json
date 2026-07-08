@@ -1,0 +1,161 @@
+{
+    "enable-chat": true,
+    "enable-vision": true,
+    "keys": {
+        "openai": [
+            "sk-1234567890"
+        ],
+        "anthropic": [
+            "sk-1234567890"
+        ],
+        "moonshot": [
+            "sk-1234567890"
+        ],
+        "deepseek": [
+            "sk-1234567890"
+        ],
+        "gitee-ai": [
+            "XXXXX"
+        ],
+        "xai": [
+            "xai-1234567890"
+        ],
+        "zhipuai": [
+            "xxxxxxx"
+        ],
+        "siliconflow": [
+            "xxxxxxx"
+        ],
+        "bailian": [
+            "sk-xxxxxxx"
+        ],
+        "volcark": [
+            "xxxxxxxx"
+        ],
+        "modelscope": [
+            "xxxxxxxx"
+        ],
+        "ppio": [
+            "xxxxxxxx"
+        ]
+    },
+    "requester": {
+        "openai-chat-completions": {
+            "base-url": "https://api.openai.com/v1",
+            "args": {},
+            "timeout": 120
+        },
+        "anthropic-messages": {
+            "base-url": "https://api.anthropic.com",
+            "args": {
+                "max_tokens": 1024
+            },
+            "timeout": 120
+        },
+        "moonshot-chat-completions": {
+            "base-url": "https://api.moonshot.cn/v1",
+            "args": {},
+            "timeout": 120
+        },
+        "deepseek-chat-completions": {
+            "base-url": "https://api.deepseek.com",
+            "args": {},
+            "timeout": 120
+        },
+        "ollama-chat": {
+            "base-url": "http://127.0.0.1:11434",
+            "args": {},
+            "timeout": 600
+        },
+        "gitee-ai-chat-completions": {
+            "base-url": "https://ai.gitee.com/v1",
+            "args": {},
+            "timeout": 120
+        },
+        "xai-chat-completions": {
+            "base-url": "https://api.x.ai/v1",
+            "args": {},
+            "timeout": 120
+        },
+        "zhipuai-chat-completions": {
+            "base-url": "https://open.bigmodel.cn/api/paas/v4",
+            "args": {},
+            "timeout": 120
+        },
+        "lmstudio-chat-completions": {
+            "base-url": "http://127.0.0.1:1234/v1",
+            "args": {},
+            "timeout": 120
+        },
+        "siliconflow-chat-completions": {
+            "base-url": "https://api.siliconflow.cn/v1",
+            "args": {},
+            "timeout": 120
+        },
+        "bailian-chat-completions": {
+            "args": {},
+            "base-url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "timeout": 120
+        },
+        "volcark-chat-completions": {
+            "args": {},
+            "base-url": "https://ark.cn-beijing.volces.com/api/v3",
+            "timeout": 120
+        },
+        "modelscope-chat-completions": {
+            "base-url": "https://api-inference.modelscope.cn/v1",
+            "args": {},
+            "timeout": 120
+        },
+        "ppio-chat-completions": {
+            "base-url": "https://api.ppinfra.com/v3/openai",
+            "args": {},
+            "timeout": 120
+        }
+    },
+    "model": "gpt-4o",
+    "prompt-mode": "normal",
+    "prompt": {
+        "default": "You are a helpful assistant."
+    },
+    "runner": "local-agent",
+    "dify-service-api": {
+        "base-url": "https://api.dify.ai/v1",
+        "app-type": "chat",
+        "options": {
+            "convert-thinking-tips": "plain"
+        },
+        "chat": {
+            "api-key": "app-1234567890",
+            "timeout": 120
+        },
+        "agent": {
+            "api-key": "app-1234567890",
+            "timeout": 120
+        },
+        "workflow": {
+            "api-key": "app-1234567890",
+            "output-key": "summary",
+            "timeout": 120
+        }
+    },
+    "dashscope-app-api": {
+        "app-type": "agent",
+        "api-key": "sk-1234567890",
+        "agent": {
+            "app-id": "Your_app_id",
+            "references_quote": "参考资料来自:"
+        },
+        "workflow": {
+            "app-id": "Your_app_id",
+            "references_quote": "参考资料来自:",
+            "biz_params": {  
+                "city": "北京",
+                "date": "2023-08-10"
+            }
+        }
+    },
+    "mcp": {
+        "servers": []
+    }
+}

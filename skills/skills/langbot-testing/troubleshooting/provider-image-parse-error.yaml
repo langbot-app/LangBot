@@ -1,0 +1,23 @@
+id: provider-image-parse-error
+title: "Model provider rejects the uploaded image before runner behavior is exercised"
+date: 2026-05-17
+symptoms:
+  - "Debug Chat shows Agent runner temporarily unavailable after an image upload."
+  - "Backend logs include image_parse_error or unsupported image from the model provider."
+  - "The upload endpoint succeeds, but the LLM request fails before a useful model response is returned."
+patterns:
+  - "image_parse_error"
+  - "unsupported image"
+  - "You uploaded an unsupported image"
+  - "runner.llm_error"
+likely_causes:
+  - "The fixture image is too small or otherwise rejected by the active model provider."
+  - "The selected model or provider route does not support image input even though the WebUI upload succeeded."
+  - "The provider reports image validation errors as rate-limit or requester errors."
+fix_steps:
+  - "Retest with a normal-sized PNG such as the bundled 64x64 red-square fixture."
+  - "Switch to a model route known to accept image input before diagnosing local-agent multimodal handling."
+  - "Use backend logs to separate provider image parsing failure from runner context or message-building failure."
+verification: "The same Debug Chat image prompt reaches the model without image_parse_error; if semantic vision is unreliable, treat UI image visibility plus message-building tests as the runner coverage signal."
+related_cases:
+  - local-agent-multimodal-debug-chat

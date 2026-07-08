@@ -1,0 +1,3 @@
+dist/*
+!dist/
+!dist/qa-plugin-smoke-0.1.0.lbpkg

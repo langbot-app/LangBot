@@ -1,0 +1,25 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Ruff version.
+    rev: v0.11.7
+    hooks:
+      # Run the linter of backend.
+      - id: ruff
+        args: [--fix]
+      # Run the formatter of backend.
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: prettier
+        name: prettier
+        entry: npx --prefix web prettier --write --ignore-unknown
+        language: system
+        types_or: [javascript, jsx, ts, tsx, css, scss]
+
+      - id: lint-staged
+        name: lint-staged
+        entry: cd web && pnpm lint-staged
+        language: system
+        types: [javascript, jsx, ts, tsx]
+        pass_filenames: false

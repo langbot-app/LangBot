@@ -1,0 +1,47 @@
+name: Build Docker Image
+on:
+  ## 发布release的时候会自动构建
+  release:
+    types: [published]
+jobs:
+  publish-docker-image:
+    runs-on: ubuntu-latest
+    name: Build image
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+
+      - name: judge has env GITHUB_REF  # 如果没有GITHUB_REF环境变量，则把github.ref变量赋值给GITHUB_REF
+        run: |
+          if [ -z "$GITHUB_REF" ]; then
+            export GITHUB_REF=${{ github.ref }}
+            echo $GITHUB_REF
+          fi
+      - name: Check version
+        id: check_version
+        run: |
+          echo $GITHUB_REF
+          # 如果是tag，则去掉refs/tags/前缀
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            echo "It's a tag"
+            echo $GITHUB_REF
+            echo $GITHUB_REF | awk -F '/' '{print $3}'
+            echo ::set-output name=version::$(echo $GITHUB_REF | awk -F '/' '{print $3}')
+          else
+            echo "It's not a tag"
+            echo $GITHUB_REF
+            echo ::set-output name=version::${GITHUB_REF}
+          fi
+      - name: Login to Registry
+        run: docker login --username=${{ secrets.DOCKER_USERNAME }} --password ${{ secrets.DOCKER_PASSWORD }}
+      - name: Create Buildx
+        run: docker buildx create --name mybuilder --use
+      - name: Build for Release # only relase, exlude pre-release
+        if: ${{ github.event.release.prerelease == false }}
+        run: docker buildx build --platform linux/arm64,linux/amd64 -t rockchin/langbot:${{ steps.check_version.outputs.version }} -t rockchin/langbot:latest . --push
+      - name: Build for Pre-release # no update for latest tag
+        if: ${{ github.event.release.prerelease == true }}
+        run: docker buildx build --platform linux/arm64,linux/amd64 -t rockchin/langbot:${{ steps.check_version.outputs.version }} . --push

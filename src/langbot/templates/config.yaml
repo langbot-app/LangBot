@@ -1,0 +1,179 @@
+api:
+    port: 5300
+    webhook_prefix: 'http://127.0.0.1:5300'
+    extra_webhook_prefix: ''
+    # Global API key for the HTTP service API and the MCP server. When set to a
+    # non-empty string, this key is accepted anywhere a web-UI-created API key is
+    # accepted (X-API-Key header or "Authorization: Bearer <key>"), WITHOUT any
+    # login session and without a database record. Leave empty to disable.
+    # Keep this value secret; only enable it on trusted/internal deployments.
+    global_api_key: ''
+command:
+    enable: true
+    prefix:
+    - '!'
+    - ！
+    privilege: {}
+concurrency:
+    pipeline: 20
+    session: 1
+proxy:
+    http: ''
+    https: ''
+system:
+    instance_id: ''
+    edition: community
+    recovery_key: ''
+    allow_modify_login_info: true
+    disabled_adapters: []
+    # Public outbound IP addresses of this LangBot deployment. Some platforms
+    # (e.g. WeCom, WeChat Official Account, QQ Official API) require the
+    # caller's IPs to be added to their trusted-IP / IP-whitelist settings.
+    # When set, the web UI shows these IPs on the bot config form of such
+    # adapters. Also settable via the SYSTEM__OUTBOUND_IPS env var
+    # (comma-separated). Empty list = hidden in the web UI.
+    outbound_ips: []
+    limitation:
+        max_bots: -1
+        max_pipelines: -1
+        max_extensions: -1
+        # When set to a non-empty string, every pipeline is forced to use this
+        # Box sandbox-scope template regardless of its own configuration, and
+        # the per-pipeline "Sandbox Scope" selector is locked in the web UI.
+        # Used by SaaS deployments to confine a tenant to a single shared
+        # sandbox (set to '{global}'). Empty string = no restriction.
+        force_box_session_id_template: ''
+    task_retention:
+        # Keep at most this many completed async task records in memory
+        completed_limit: 200
+    jwt:
+        expire: 604800
+        secret: ''
+database:
+    use: sqlite
+    sqlite:
+        path: 'data/langbot.db'
+    postgresql:
+        host: '127.0.0.1'
+        port: 5432
+        user: 'postgres'
+        password: 'postgres'
+        database: 'postgres'
+vdb:
+    use: chroma
+    qdrant:
+        url: ''
+        host: localhost
+        port: 6333
+        api_key: ''
+    seekdb:
+        mode: embedded  # 'embedded' or 'server'
+        # Embedded mode options:
+        path: './data/seekdb'
+        database: 'langbot'
+        # Server mode options (used when mode='server'):
+        host: 'localhost'
+        port: 2881
+        user: 'root'
+        password: ''
+        tenant: ''  # Optional, for OceanBase server
+    milvus:
+        uri: 'http://127.0.0.1:19530'
+        token: ''
+        db_name: ''
+    pgvector:
+        host: '127.0.0.1'
+        port: 5433
+        database: 'langbot'
+        user: 'postgres'
+        password: 'postgres'
+    valkey_search:
+        host: 'localhost'
+        port: 6379            # integration tests use 6380 -> valkey/valkey-bundle:9.1.0
+        db: 0
+        password: ''          # optional (toB auth)
+        username: ''          # optional (ACL user, toB)
+        tls: false            # optional (toB/SaaS)
+        index_algorithm: 'HNSW'   # HNSW | FLAT
+        distance_metric: 'COSINE' # COSINE | L2 | IP
+        request_timeout: 5000     # per-request timeout in ms (glide default 250ms is too low for KNN)
+storage:
+    use: local
+    cleanup:
+        # Enable periodic cleanup of local/S3 uploaded files and old log files
+        enabled: true
+        # Cleanup check interval in hours
+        check_interval_hours: 1
+        # Root-level uploaded files older than this will be deleted
+        uploaded_file_retention_days: 7
+        # LangBot log files older than this many days will be deleted
+        log_retention_days: 3
+    s3:
+        endpoint_url: ''
+        access_key_id: ''
+        secret_access_key: ''
+        region: 'us-east-1'
+        bucket: 'langbot-storage'
+plugin:
+    enable: true
+    runtime_ws_url: 'ws://langbot_plugin_runtime:5400/control/ws'
+    enable_marketplace: true
+    display_plugin_debug_url: 'ws://localhost:5401/plugin/debug/ws'
+    binary_storage:
+        # Max bytes for a single plugin binary storage value
+        max_value_bytes: 10485760
+monitoring:
+    auto_cleanup:
+        # Enable automatic cleanup of expired monitoring records
+        enabled: true
+        # Retention period in days, records older than this will be deleted
+        retention_days: 30
+        # Cleanup check interval in hours
+        check_interval_hours: 1
+        # Number of expired rows to delete per table batch
+        delete_batch_size: 1000
+box:
+    # Master switch for the Box sandbox runtime. When false, LangBot does NOT
+    # attempt to connect to a remote Box runtime nor start a local stdio Box
+    # subprocess. Disabling Box also disables every feature that depends on it:
+    # the native sandbox tools (exec/read/write/edit/glob/grep), the activate
+    # skill tool, skill add/edit, and stdio-mode MCP servers. Skills can still
+    # be listed read-only and http/sse MCP servers continue to work.
+    enabled: true
+    backend: 'local'  # 'local' (Docker/nsjail), 'docker', 'nsjail', or 'e2b'. Can be written via BOX__BACKEND.
+    runtime:
+        endpoint: ''  # External Box Runtime base URL, e.g. 'ws://127.0.0.1:5410'. Leave empty for local auto-managed runtime.
+    local:
+        profile: 'default'
+        image: ''  # Custom local sandbox image. Leave empty to use the profile default.
+        host_root: './data/box'  # Base host directory for local workspace mounts. Docker deployments should override this with an absolute host path.
+        default_workspace: ''  # Defaults to '<host_root>/default'. Relative paths are resolved under host_root.
+        skills_root: 'skills'  # Box-owned skill package directory. Relative paths are resolved under host_root.
+        allowed_mount_roots:  # Defaults to ['<host_root>'] when left empty.
+            - './data/box'
+            - '/tmp'
+        workspace_quota_mb: null  # Optional disk quota override (>= 0). null = profile default.
+    # Default nsjail cgroup memory limit for each MCP stdio server process, in MB.
+    # Node.js MCP servers (npx/bunx) need more memory than Python ones because V8
+    # and WebAssembly modules (e.g. undici llhttp) reserve large virtual address
+    # space at startup. Setting this too low causes processes to be killed with
+    # return_code=137 (OOM kill); the symptom is "Box managed process exited
+    # unexpectedly" in the logs.  Raise on machines with ample RAM; lower only if
+    # you run exclusively Python (uvx) MCP servers.
+    # Can also be set via BOX__DEFAULT_MEMORY_MB. Default: 1536.
+    default_memory_mb: 1536
+    docker:
+        cpu_limit_enabled: true  # When false, Docker sandbox containers are started without --cpus. Memory and PID limits still apply.
+    e2b:
+        api_key: ''  # Can also be set via E2B_API_KEY env var.
+        api_url: ''  # Custom API URL for self-hosted deployments.
+        template: ''  # Default template ID (e.g. 'base', 'python-3.11').
+space:
+    # Space service URL for OAuth and API
+    url: 'https://space.langbot.app'
+    # Space API URL for model requests (MaaS)
+    models_gateway_api_url: 'https://api.langbot.cloud/v1'
+    # OAuth authorization page URL (user will be redirected here)
+    oauth_authorize_url: 'https://space.langbot.app/auth/authorize'
+    disable_models_service: false
+    disable_telemetry: false

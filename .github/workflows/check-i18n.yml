@@ -1,0 +1,25 @@
+name: Check i18n Keys
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  check-i18n:
+    name: Check i18n Key Consistency
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check i18n keys against en-US reference
+        run: node web/scripts/check-i18n.mjs

@@ -1,0 +1,15 @@
+.configPageContainer {
+  width: 100%;
+  height: 100%;
+}
+
+.knowledgeListContainer {
+  width: 100%;
+  padding-left: 0.8rem;
+  padding-right: 0.8rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(24rem, 1fr));
+  gap: 2rem;
+  justify-items: stretch;
+  align-items: start;
+}

@@ -1,0 +1,46 @@
+id: agent-runner-live-install
+title: "QA AgentRunner package installs and registers in LangBot"
+mode: probe
+area: release
+type: regression
+priority: p0
+risk: high
+ci_eligible: false
+tags:
+  - agent-runner
+  - plugin
+  - local-install
+  - fixture
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_REPO
+  - LANGBOT_E2E_LOGIN_USER
+automation: scripts/e2e/install-qa-plugin-smoke.mjs
+automation_plugin_package: "skills/langbot-testing/fixtures/plugins/qa-agent-runner/dist/qa-agent-runner-0.1.0.lbpkg"
+automation_expected_plugin_id: "qa/agent-runner"
+automation_expected_tool: ""
+automation_expected_runner_id: "plugin:qa/agent-runner/default"
+steps:
+  - "Run `rtk bin/lbs test run agent-runner-live-install --dry-run` first; remove `--dry-run` only after readiness points at a local test LangBot instance."
+  - "Automation authenticates the local test user, uploads the QA AgentRunner .lbpkg package, waits for the install task, and reads pipeline metadata."
+checks:
+  - "automation-result.json status is pass."
+  - "/api/v1/plugins lists qa/agent-runner after install."
+  - "/api/v1/pipelines/_/metadata lists plugin:qa/agent-runner/default as an available runner."
+evidence_required:
+  - api_diagnostic
+  - filesystem
+diagnostics:
+  - "This proves the deterministic package installs and registers a runner. It does not prove Debug Chat execution; use a later browser case for that."
+  - "If installation fails during dependencies, inspect plugin runtime logs and plugin-dependency-install-offline."
+success_patterns:
+  - "qa/agent-runner is installed."
+failure_patterns:
+  - "Plugin install task did not complete successfully"
+  - "plugin:qa/agent-runner/default is not listed"
+troubleshooting:
+  - plugin-runtime-timeout
+  - plugin-dependency-install-offline

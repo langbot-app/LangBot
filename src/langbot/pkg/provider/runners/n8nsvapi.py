@@ -1,0 +1,277 @@
+from __future__ import annotations
+
+import typing
+import json
+import uuid
+import aiohttp
+
+from langbot.pkg.utils import httpclient
+
+from .. import runner
+from ...core import app
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+import langbot_plugin.api.entities.builtin.provider.message as provider_message
+
+
+class N8nAPIError(Exception):
+    """N8n API 请求失败"""
+
+    def __init__(self, message: str):
+        self.message = message
+        super().__init__(self.message)
+
+
+@runner.runner_class('n8n-service-api')
+class N8nServiceAPIRunner(runner.RequestRunner):
+    """N8n Service API 工作流请求器"""
+
+    def __init__(self, ap: app.Application, pipeline_config: dict):
+        self.ap = ap
+        self.pipeline_config = pipeline_config
+
+        # 获取webhook URL
+        self.webhook_url = self.pipeline_config['ai']['n8n-service-api']['webhook-url']
+
+        # 获取超时设置，默认为120秒
+        self.timeout = self.pipeline_config['ai']['n8n-service-api'].get('timeout', 120)
+
+        # 获取输出键名，默认为response
+        self.output_key = self.pipeline_config['ai']['n8n-service-api'].get('output-key', 'response')
+
+        # 获取认证类型，默认为none
+        self.auth_type = self.pipeline_config['ai']['n8n-service-api'].get('auth-type', 'none')
+
+        # 根据认证类型获取相应的认证信息
+        if self.auth_type == 'basic':
+            self.basic_username = self.pipeline_config['ai']['n8n-service-api'].get('basic-username', '')
+            self.basic_password = self.pipeline_config['ai']['n8n-service-api'].get('basic-password', '')
+        elif self.auth_type == 'jwt':
+            self.jwt_secret = self.pipeline_config['ai']['n8n-service-api'].get('jwt-secret', '')
+            self.jwt_algorithm = self.pipeline_config['ai']['n8n-service-api'].get('jwt-algorithm', 'HS256')
+        elif self.auth_type == 'header':
+            self.header_name = self.pipeline_config['ai']['n8n-service-api'].get('header-name', '')
+            self.header_value = self.pipeline_config['ai']['n8n-service-api'].get('header-value', '')
+
+    async def _preprocess_user_message(self, query: pipeline_query.Query) -> str:
+        """预处理用户消息，提取纯文本
+
+        Returns:
+            str: 纯文本消息
+        """
+        plain_text = ''
+
+        if isinstance(query.user_message.content, list):
+            for ce in query.user_message.content:
+                if ce.type == 'text':
+                    plain_text += ce.text
+                # 注意：n8n webhook目前不支持直接处理图片，如需支持可在此扩展
+        elif isinstance(query.user_message.content, str):
+            plain_text = query.user_message.content
+
+        return plain_text
+
+    async def _process_response(
+        self, response: aiohttp.ClientResponse
+    ) -> typing.AsyncGenerator[provider_message.Message, None]:
+        """处理响应——支持流式格式和普通 JSON 格式"""
+        full_content = ''
+        full_text = ''
+        chunk_idx = 0
+        is_final = False
+        message_idx = 0
+
+        buffer = ''
+        decoder = json.JSONDecoder()
+
+        async for raw_chunk in response.content.iter_chunked(1024):
+            if not raw_chunk:
+                continue
+
+            try:
+                # 将 bytes 解码为字符串（容忍错误）
+                if isinstance(raw_chunk, (bytes, bytearray)):
+                    chunk_str = raw_chunk.decode('utf-8', errors='replace')
+                else:
+                    chunk_str = str(raw_chunk)
+
+                full_text += chunk_str
+                buffer += chunk_str
+
+                # 尝试从 buffer 中循环解析出 JSON 对象（处理多个对象或部分对象）
+                while buffer:
+                    buffer = buffer.lstrip()
+                    if not buffer:
+                        break
+                    try:
+                        obj, idx = decoder.raw_decode(buffer)
+                        buffer = buffer[idx:]
+
+                        if not isinstance(obj, dict):
+                            # 忽略非字典类型的顶级 JSON
+                            continue
+
+                        if obj.get('type') == 'item' and 'content' in obj:
+                            chunk_idx += 1
+                            content = obj['content']
+                            full_content += content
+                        elif obj.get('type') == 'end':
+                            is_final = True
+
+                        if is_final or (chunk_idx > 0 and chunk_idx % 8 == 0):
+                            message_idx += 1
+                            yield provider_message.MessageChunk(
+                                role='assistant',
+                                content=full_content,
+                                is_final=is_final,
+                                msg_sequence=message_idx,
+                            )
+                    except json.JSONDecodeError:
+                        # buffer 末尾可能是一个不完整的 JSON，等待更多数据
+                        break
+            except Exception as e:
+                # 记录解析失败并继续接收后续 chunk
+                try:
+                    preview = chunk_str[:200]
+                except Exception:
+                    preview = '<unavailable>'
+                self.ap.logger.warning(f'Failed to process chunk: {e}; chunk preview: {preview}')
+
+        # 流结束后，尝试解析残余 buffer
+        if buffer:
+            try:
+                buffer = buffer.strip()
+                if buffer:
+                    obj, _ = decoder.raw_decode(buffer)
+                    if isinstance(obj, dict):
+                        if obj.get('type') == 'item' and 'content' in obj:
+                            chunk_idx += 1
+                            full_content += obj['content']
+                        elif obj.get('type') == 'end':
+                            is_final = True
+                    message_idx += 1
+                    yield provider_message.MessageChunk(
+                        role='assistant',
+                        content=full_content,
+                        is_final=is_final,
+                        msg_sequence=message_idx,
+                    )
+            except Exception as e:
+                preview = buffer[:200]
+                self.ap.logger.warning(f'Failed to parse remaining buffer: {e}; buffer preview: {preview}')
+
+        # n8n 返回普通 JSON 格式（无任何流式 type:item 内容）
+        if chunk_idx == 0:
+            output_content = ''
+            try:
+                response_data = json.loads(full_text.strip())
+                if isinstance(response_data, dict):
+                    if self.output_key in response_data:
+                        output_content = response_data[self.output_key]
+                    else:
+                        output_content = json.dumps(response_data, ensure_ascii=False)
+                else:
+                    output_content = full_text
+            except json.JSONDecodeError:
+                output_content = full_text
+            self.ap.logger.debug(f'n8n webhook response (non-stream): {full_text[:200]}')
+            yield provider_message.MessageChunk(
+                role='assistant',
+                content=output_content,
+                is_final=True,
+                msg_sequence=message_idx + 1,
+            )
+
+    async def _call_webhook(self, query: pipeline_query.Query) -> typing.AsyncGenerator[provider_message.Message, None]:
+        """调用n8n webhook"""
+        # 生成会话ID（如果不存在）
+        if not query.session.using_conversation.uuid:
+            query.session.using_conversation.uuid = str(uuid.uuid4())
+
+        # Keep query variables in sync with the generated/new conversation id.
+        # query.variables is later merged into payload and would otherwise
+        # overwrite the generated conversation_id with the stale preprocessor
+        # value (usually None for a new conversation).
+        query.variables['conversation_id'] = query.session.using_conversation.uuid
+
+        # 预处理用户消息
+        plain_text = await self._preprocess_user_message(query)
+
+        # 准备请求数据
+        payload = {
+            # 基本消息内容
+            'chatInput': plain_text,  # 考虑到之前用户直接用的message model这里添加新键
+            'message': plain_text,
+            'user_message_text': plain_text,
+            'conversation_id': query.session.using_conversation.uuid,
+            'session_id': query.variables.get('session_id', ''),
+            'user_id': f'{query.session.launcher_type.value}_{query.session.launcher_id}',
+            'msg_create_time': query.variables.get('msg_create_time', ''),
+        }
+
+        # 添加所有变量到payload
+        payload.update(query.variables)
+
+        try:
+            is_stream = await query.adapter.is_stream_output_supported()
+        except AttributeError:
+            is_stream = False
+
+        try:
+            # 准备请求头和认证信息
+            headers = {}
+            auth = None
+
+            # 根据认证类型设置相应的认证信息
+            if self.auth_type == 'basic':
+                # 使用Basic认证
+                auth = aiohttp.BasicAuth(self.basic_username, self.basic_password)
+                self.ap.logger.debug(f'using basic auth: {self.basic_username}')
+            elif self.auth_type == 'jwt':
+                # 使用JWT认证
+                import jwt
+                import time
+
+                # 创建JWT令牌
+                payload_jwt = {
+                    'exp': int(time.time()) + 3600,  # 1小时过期
+                    'iat': int(time.time()),
+                    'sub': 'n8n-webhook',
+                }
+                token = jwt.encode(payload_jwt, self.jwt_secret, algorithm=self.jwt_algorithm)
+
+                # 添加到Authorization头
+                headers['Authorization'] = f'Bearer {token}'
+                self.ap.logger.debug('using jwt auth')
+            elif self.auth_type == 'header':
+                # 使用自定义请求头认证
+                headers[self.header_name] = self.header_value
+                self.ap.logger.debug(f'using header auth: {self.header_name}')
+            else:
+                self.ap.logger.debug('no auth')
+
+            # 调用webhook
+            session = httpclient.get_session()
+            async with session.post(
+                self.webhook_url, json=payload, headers=headers, auth=auth, timeout=self.timeout
+            ) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    self.ap.logger.error(f'n8n webhook call failed: {response.status}, {error_text}')
+                    raise Exception(f'n8n webhook call failed: {response.status}, {error_text}')
+
+                async for chunk in self._process_response(response):
+                    if is_stream:
+                        yield chunk
+                    elif chunk.is_final:
+                        yield provider_message.Message(
+                            role='assistant',
+                            content=chunk.content,
+                        )
+        except Exception as e:
+            self.ap.logger.error(f'n8n webhook call exception: {str(e)}')
+            raise N8nAPIError(f'n8n webhook call exception: {str(e)}')
+
+    async def run(self, query: pipeline_query.Query) -> typing.AsyncGenerator[provider_message.Message, None]:
+        """运行请求"""
+        async for msg in self._call_webhook(query):
+            yield msg

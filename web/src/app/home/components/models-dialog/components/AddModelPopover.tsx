@@ -1,0 +1,590 @@
+import { useState, useEffect, useRef } from 'react';
+import {
+  Plus,
+  MessageSquareText,
+  Cpu,
+  ArrowUpDown,
+  Eye,
+  Wrench,
+  Check,
+  RefreshCw,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useTranslation } from 'react-i18next';
+import { ScannedProviderModel } from '@/app/infra/entities/api';
+import {
+  ExtraArg,
+  ModelType,
+  ScanModelsResult,
+  SelectedScannedModel,
+  TestResult,
+} from '../types';
+import ExtraArgsEditor from './ExtraArgsEditor';
+
+interface AddModelPopoverProps {
+  isOpen: boolean;
+  initialMode?: 'manual' | 'scan';
+  trigger?: React.ReactNode;
+  supportTypes?: string[];
+  onOpen: () => void;
+  onClose: () => void;
+  onAddModel: (
+    modelType: ModelType,
+    name: string,
+    abilities: string[],
+    extraArgs: ExtraArg[],
+    contextLength?: number | null,
+  ) => Promise<void>;
+  onScanModels: (modelType?: ModelType) => Promise<ScanModelsResult>;
+  onAddScannedModels: (
+    modelType: ModelType,
+    models: SelectedScannedModel[],
+  ) => Promise<void>;
+  onTestModel: (
+    name: string,
+    modelType: ModelType,
+    abilities: string[],
+    extraArgs: ExtraArg[],
+  ) => Promise<void>;
+  isSubmitting: boolean;
+  isTesting: boolean;
+  testResult: TestResult | null;
+  onResetTestResult: () => void;
+}
+
+export default function AddModelPopover({
+  isOpen,
+  initialMode = 'manual',
+  trigger,
+  supportTypes,
+  onOpen,
+  onClose,
+  onAddModel,
+  onScanModels,
+  onAddScannedModels,
+  onTestModel,
+  isSubmitting,
+  isTesting,
+  testResult,
+  onResetTestResult,
+}: AddModelPopoverProps) {
+  const { t } = useTranslation();
+  const prevIsOpenRef = useRef(false);
+
+  // Map manifest support_type values to UI tab values.
+  // Manifest uses 'text-embedding'; the UI tab uses 'embedding'.
+  const tabSupport: Record<ModelType, string> = {
+    llm: 'llm',
+    embedding: 'text-embedding',
+    rerank: 'rerank',
+  };
+  const allTabs: ModelType[] = ['llm', 'embedding', 'rerank'];
+  // When supportTypes is undefined (unknown requester), show all tabs for
+  // backward compatibility. Otherwise only show supported tabs.
+  const visibleTabs: ModelType[] = supportTypes
+    ? allTabs.filter((tabKey) => supportTypes.includes(tabSupport[tabKey]))
+    : allTabs;
+  const defaultTab: ModelType = visibleTabs[0] ?? 'llm';
+
+  const [tab, setTab] = useState<ModelType>(defaultTab);
+  const [mode, setMode] = useState<'manual' | 'scan'>('manual');
+  const [name, setName] = useState('');
+  const [abilities, setAbilities] = useState<string[]>([]);
+  const [contextLength, setContextLength] = useState('');
+  const [extraArgs, setExtraArgs] = useState<ExtraArg[]>([]);
+  const [scanLoading, setScanLoading] = useState(false);
+  const [scannedModels, setScannedModels] = useState<ScannedProviderModel[]>(
+    [],
+  );
+  const [selectedScannedModels, setSelectedScannedModels] = useState<
+    Record<string, SelectedScannedModel>
+  >({});
+  const [scanQuery, setScanQuery] = useState('');
+
+  useEffect(() => {
+    const wasOpen = prevIsOpenRef.current;
+    if (isOpen && !wasOpen) {
+      setTab(defaultTab);
+      setMode(initialMode);
+      setName('');
+      setAbilities([]);
+      setContextLength('');
+      setExtraArgs([]);
+      setScanLoading(false);
+      setScannedModels([]);
+      setSelectedScannedModels({});
+      setScanQuery('');
+      onResetTestResult();
+      if (initialMode === 'scan') {
+        handleScan();
+      }
+    }
+    prevIsOpenRef.current = isOpen;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, onResetTestResult]);
+
+  useEffect(() => {
+    setScannedModels([]);
+    setSelectedScannedModels({});
+    setScanQuery('');
+  }, [tab, mode]);
+
+  const handleAdd = async () => {
+    const parsedContextLength =
+      tab === 'llm' && contextLength.trim()
+        ? Number(contextLength.trim())
+        : null;
+    await onAddModel(tab, name, abilities, extraArgs, parsedContextLength);
+  };
+
+  const handleTest = async () => {
+    await onTestModel(name, tab, tab === 'llm' ? abilities : [], extraArgs);
+  };
+
+  const handleScan = async () => {
+    setScanLoading(true);
+    try {
+      const result = await onScanModels(trigger ? undefined : tab);
+      setScannedModels(result.models);
+      setSelectedScannedModels({});
+    } finally {
+      setScanLoading(false);
+    }
+  };
+
+  const handleAddScanned = async () => {
+    const selectedModels = Object.values(selectedScannedModels);
+    if (selectedModels.length === 0) return;
+    await onAddScannedModels(tab, selectedModels);
+  };
+
+  const toggleAbility = (ability: string, checked: boolean) => {
+    if (checked) {
+      setAbilities([...abilities, ability]);
+    } else {
+      setAbilities(abilities.filter((a) => a !== ability));
+    }
+  };
+
+  const toggleScannedModel = (
+    model: ScannedProviderModel,
+    checked: boolean,
+  ) => {
+    setSelectedScannedModels((prev) => {
+      const next = { ...prev };
+      if (checked) {
+        next[model.id] = {
+          model,
+          abilities:
+            model.type === 'llm'
+              ? prev[model.id]?.abilities || model.abilities || []
+              : [],
+        };
+      } else {
+        delete next[model.id];
+      }
+      return next;
+    });
+  };
+
+  const toggleScannedModelAbility = (
+    modelId: string,
+    ability: string,
+    checked: boolean,
+  ) => {
+    setSelectedScannedModels((prev) => {
+      const current = prev[modelId];
+      if (!current) return prev;
+
+      const nextAbilities = checked
+        ? [...current.abilities, ability]
+        : current.abilities.filter((item) => item !== ability);
+
+      return {
+        ...prev,
+        [modelId]: {
+          ...current,
+          abilities: nextAbilities,
+        },
+      };
+    });
+  };
+
+  const filteredScannedModels = scannedModels.filter((model) =>
+    model.name.toLowerCase().includes(scanQuery.trim().toLowerCase()),
+  );
+
+  const selectableModels = filteredScannedModels.filter(
+    (m) => !m.already_added,
+  );
+  const allSelected =
+    selectableModels.length > 0 &&
+    selectableModels.every((m) => Boolean(selectedScannedModels[m.id]));
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedScannedModels({});
+    } else {
+      const next: Record<string, SelectedScannedModel> = {};
+      for (const model of selectableModels) {
+        next[model.id] = {
+          model,
+          abilities: model.type === 'llm' ? model.abilities || [] : [],
+        };
+      }
+      setSelectedScannedModels(next);
+    }
+  };
+
+  return (
+    <Popover
+      open={isOpen}
+      onOpenChange={(open) => (open ? onOpen() : onClose())}
+    >
+      <PopoverTrigger asChild>
+        {trigger || (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 text-xs"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Plus className="h-3 w-3 mr-1" />
+            {t('models.addModel')}
+          </Button>
+        )}
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-[min(24rem,calc(100vw-2rem))] max-h-[calc(100vh-8rem)] flex flex-col overflow-hidden"
+        align="end"
+        side="bottom"
+        sideOffset={8}
+        collisionPadding={16}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Tabs
+          value={tab}
+          onValueChange={(v) => setTab(v as ModelType)}
+          className="flex flex-col min-h-0 flex-1"
+        >
+          <div className="flex-shrink-0">
+            {!(trigger && initialMode === 'scan') && visibleTabs.length > 1 && (
+              <TabsList
+                className="grid w-full"
+                style={{
+                  gridTemplateColumns: `repeat(${visibleTabs.length}, minmax(0, 1fr))`,
+                }}
+              >
+                {visibleTabs.includes('llm') && (
+                  <TabsTrigger value="llm">
+                    <MessageSquareText className="h-4 w-4 mr-1" />
+                    {t('models.chat')}
+                  </TabsTrigger>
+                )}
+                {visibleTabs.includes('embedding') && (
+                  <TabsTrigger value="embedding">
+                    <Cpu className="h-4 w-4 mr-1" />
+                    {t('models.embedding')}
+                  </TabsTrigger>
+                )}
+                {visibleTabs.includes('rerank') && (
+                  <TabsTrigger value="rerank">
+                    <ArrowUpDown className="h-4 w-4 mr-1" />
+                    {t('models.rerank')}
+                  </TabsTrigger>
+                )}
+              </TabsList>
+            )}
+          </div>
+
+          <div className="overflow-y-auto flex-1 min-h-0">
+            {mode === 'manual' ? (
+              <div className="mt-3">
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label>{t('models.modelName')}</Label>
+                    <Input
+                      placeholder={t('models.modelName')}
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                    />
+                  </div>
+
+                  {tab === 'llm' && (
+                    <div className="space-y-2">
+                      <Label>{t('models.abilities')}</Label>
+                      <div className="flex gap-4">
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id="add-vision"
+                            checked={abilities.includes('vision')}
+                            onCheckedChange={(checked) =>
+                              toggleAbility('vision', checked as boolean)
+                            }
+                          />
+                          <Label htmlFor="add-vision" className="text-sm">
+                            <Eye className="h-3 w-3 inline mr-1" />
+                            {t('models.visionAbility')}
+                          </Label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id="add-func-call"
+                            checked={abilities.includes('func_call')}
+                            onCheckedChange={(checked) =>
+                              toggleAbility('func_call', checked as boolean)
+                            }
+                          />
+                          <Label htmlFor="add-func-call" className="text-sm">
+                            <Wrench className="h-3 w-3 inline mr-1" />
+                            {t('models.functionCallAbility')}
+                          </Label>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {tab === 'llm' && (
+                    <div className="space-y-2">
+                      <Label htmlFor="add-context-length">
+                        {t('models.contextLength')}
+                      </Label>
+                      <Input
+                        id="add-context-length"
+                        type="number"
+                        min={1}
+                        step={1}
+                        inputMode="numeric"
+                        placeholder={t('models.contextLengthPlaceholder')}
+                        value={contextLength}
+                        onChange={(e) => setContextLength(e.target.value)}
+                      />
+                    </div>
+                  )}
+
+                  <ExtraArgsEditor
+                    args={extraArgs}
+                    onChange={setExtraArgs}
+                    modelType={tab}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      className="flex-1"
+                      size="sm"
+                      onClick={handleAdd}
+                      disabled={isSubmitting || isTesting}
+                    >
+                      {isSubmitting ? t('common.saving') : t('common.add')}
+                    </Button>
+                    <Button
+                      className="flex-1"
+                      size="sm"
+                      variant="outline"
+                      onClick={handleTest}
+                      disabled={isSubmitting || isTesting}
+                    >
+                      {isTesting ? (
+                        t('common.loading')
+                      ) : testResult?.success ? (
+                        <>
+                          <Check className="h-4 w-4 mr-1 text-green-500" />
+                          {(testResult.duration / 1000).toFixed(1)}s
+                        </>
+                      ) : (
+                        t('common.test')
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2 mt-3">
+                {scanLoading ? (
+                  <div className="flex items-center justify-center py-4">
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">
+                      {t('models.scanModels')}...
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <Input
+                        placeholder={t('models.searchScannedModels')}
+                        value={scanQuery}
+                        onChange={(e) => setScanQuery(e.target.value)}
+                        disabled={scannedModels.length === 0}
+                      />
+                      {selectableModels.length > 0 && (
+                        <div className="flex items-center gap-2 pt-1">
+                          <Checkbox
+                            id="scan-select-all"
+                            checked={allSelected}
+                            onCheckedChange={toggleSelectAll}
+                          />
+                          <Label
+                            htmlFor="scan-select-all"
+                            className="text-sm font-medium"
+                          >
+                            {t('models.selectAll')}
+                            <span className="text-muted-foreground ml-1">
+                              ({Object.keys(selectedScannedModels).length}/
+                              {selectableModels.length})
+                            </span>
+                          </Label>
+                        </div>
+                      )}
+                    </div>
+
+                    <div
+                      className="h-64 overflow-y-auto overscroll-contain rounded-md border"
+                      onWheel={(e) => e.stopPropagation()}
+                    >
+                      <div className="p-3 space-y-2">
+                        {filteredScannedModels.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">
+                            {scannedModels.length === 0
+                              ? t('models.noScannedModels')
+                              : t('models.noScannedModelsMatch')}
+                          </p>
+                        ) : (
+                          filteredScannedModels.map((model) => {
+                            const isSelected = Boolean(
+                              selectedScannedModels[model.id],
+                            );
+                            const selectedAbilities =
+                              selectedScannedModels[model.id]?.abilities || [];
+                            return (
+                              <div
+                                key={model.id}
+                                className="rounded-md border p-3 space-y-2"
+                              >
+                                <div className="flex items-start gap-3">
+                                  <Checkbox
+                                    checked={isSelected || model.already_added}
+                                    disabled={model.already_added}
+                                    onCheckedChange={(checked) =>
+                                      toggleScannedModel(
+                                        model,
+                                        checked as boolean,
+                                      )
+                                    }
+                                  />
+                                  <div className="min-w-0 flex-1">
+                                    <div className="text-sm font-medium break-all">
+                                      {model.name}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {model.already_added
+                                        ? t('models.alreadyAdded')
+                                        : model.type === 'llm'
+                                          ? t('models.chat')
+                                          : model.type === 'embedding'
+                                            ? t('models.embedding')
+                                            : t('models.rerank')}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {model.type === 'llm' &&
+                                  isSelected &&
+                                  !model.already_added && (
+                                    <div className="flex gap-4 pl-7">
+                                      <div className="flex items-center gap-2">
+                                        <Checkbox
+                                          id={`scan-vision-${model.id}`}
+                                          checked={selectedAbilities.includes(
+                                            'vision',
+                                          )}
+                                          onCheckedChange={(checked) =>
+                                            toggleScannedModelAbility(
+                                              model.id,
+                                              'vision',
+                                              checked as boolean,
+                                            )
+                                          }
+                                        />
+                                        <Label
+                                          htmlFor={`scan-vision-${model.id}`}
+                                          className="text-sm"
+                                        >
+                                          <Eye className="h-3 w-3 inline mr-1" />
+                                          {t('models.visionAbility')}
+                                        </Label>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <Checkbox
+                                          id={`scan-func-${model.id}`}
+                                          checked={selectedAbilities.includes(
+                                            'func_call',
+                                          )}
+                                          onCheckedChange={(checked) =>
+                                            toggleScannedModelAbility(
+                                              model.id,
+                                              'func_call',
+                                              checked as boolean,
+                                            )
+                                          }
+                                        />
+                                        <Label
+                                          htmlFor={`scan-func-${model.id}`}
+                                          className="text-sm"
+                                        >
+                                          <Wrench className="h-3 w-3 inline mr-1" />
+                                          {t('models.functionCallAbility')}
+                                        </Label>
+                                      </div>
+                                    </div>
+                                  )}
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                <div className="flex gap-2">
+                  <Button
+                    className="flex-1"
+                    size="sm"
+                    onClick={handleAddScanned}
+                    disabled={
+                      isSubmitting ||
+                      scanLoading ||
+                      Object.keys(selectedScannedModels).length === 0
+                    }
+                  >
+                    {isSubmitting
+                      ? t('common.saving')
+                      : t('models.addSelectedModels')}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleScan}
+                    disabled={scanLoading || isSubmitting}
+                  >
+                    <RefreshCw
+                      className={`h-3.5 w-3.5 ${scanLoading ? 'animate-spin' : ''}`}
+                    />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </Tabs>
+      </PopoverContent>
+    </Popover>
+  );
+}

@@ -1,0 +1,39 @@
+name: 漏洞反馈
+description: 【供中文用户】报错或漏洞请使用这个模板创建，不使用此模板创建的异常、漏洞相关issue将被直接关闭。由于自己操作不当/不甚了解所用技术栈引起的网络连接问题恕无法解决，请勿提 issue。容器间网络连接问题，参考文档 https://link.langbot.app/zh/docs/network  
+title: "[Bug]: "
+labels: ["bug?"]
+body:
+  - type: input
+    attributes:
+      label: 运行环境
+      description: LangBot 版本、操作系统、系统架构、**Python版本**、**主机地理位置**
+      placeholder: 例如：v3.3.0、CentOS x64 Python 3.10.3、Docker
+    validations:
+      required: true
+  - type: dropdown
+    attributes:
+      label: 部署版本
+      description: 请选择您使用的 LangBot 部署版本。
+      options:
+        - 社区版
+        - 云服务
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 异常情况
+      description: 完整描述异常情况，什么时候发生的、发生了什么。**请附带日志信息。** 
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 复现步骤
+      description: 提供越多信息，我们会越快解决问题，建议多提供配置截图；**如果涉及 Dify、n8n、Langflow 等外部平台，请提供应用的导出文件（如 Dify 应用的 DSL），我们将更快回复您。**
+    validations:
+      required: false
+  - type: textarea
+    attributes:
+      label: 启用的插件
+      description: 有些情况可能和插件功能有关，建议提供插件启用情况。
+    validations:
+      required: false
