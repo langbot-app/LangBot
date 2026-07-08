@@ -38,6 +38,10 @@ class BotsRouterGroup(group.RouterGroup):
             logs, total_count = await self.ap.bot_service.list_event_logs(bot_uuid, from_index, max_count)
             return self.success(data={'logs': logs, 'total_count': total_count})
 
+        @self.route('/<bot_uuid>/event-routes/status', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
+        async def _(bot_uuid: str) -> str:
+            return self.success(data=await self.ap.bot_service.list_event_route_statuses(bot_uuid))
+
         async def _dry_run_event_route(bot_uuid: str) -> str:
             json_data = await quart.request.json
             if not isinstance(json_data, dict):

@@ -399,6 +399,16 @@ const jaJP = {
     advancedEventValues: '高度なイベント値',
     eventGroup: 'グループ',
     testRoute: 'ルートをテスト',
+    refreshRouteStatus: '状態を更新',
+    routeStatusIdle: '実行記録なし',
+    routeStatusRefreshFailed: 'ルート状態の更新に失敗しました。',
+    routeStatus: {
+      matched: '一致',
+      delivered: '配信済み',
+      discarded: '破棄済み',
+      failed: '失敗',
+      not_matched: '未一致',
+    },
     dryRunTitle: 'イベントルートをテスト',
     dryRunDescription:
       'イベントとサンプルペイロードを指定し、現在のルート設定でどのプロセッサーに送られるか確認します。',

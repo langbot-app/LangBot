@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { UseFormReturn } from 'react-hook-form';
@@ -19,6 +19,7 @@ import {
   ListChecks,
   Plus,
   Play,
+  RefreshCw,
   Trash2,
   Workflow,
   XCircle,
@@ -79,6 +80,7 @@ import {
   EventBinding,
   Agent,
   BotRouteDryRunResult,
+  BotEventRouteStatus,
 } from '@/app/infra/entities/api';
 import { backendClient } from '@/app/infra/http';
 
@@ -211,6 +213,36 @@ function targetTypeLabel(
   if (type === 'pipeline') return t('bots.targetPipeline');
   if (type === 'discard') return t('bots.targetDiscard');
   return t('bots.targetAgent');
+}
+
+function routeStatusLabel(
+  status: BotEventRouteStatus['last_status'] | undefined,
+  t: TFunction,
+) {
+  if (!status) return t('bots.routeStatusIdle');
+  const key = `bots.routeStatus.${status}`;
+  const label = t(key);
+  return label === key ? String(status) : label;
+}
+
+function routeStatusBadgeClass(
+  status: BotEventRouteStatus['last_status'] | undefined,
+) {
+  if (status === 'delivered') {
+    return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300';
+  }
+  if (status === 'matched' || status === 'discarded') {
+    return 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/40 dark:bg-sky-950/30 dark:text-sky-300';
+  }
+  if (status === 'failed' || status === 'not_matched') {
+    return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300';
+  }
+  return 'border-border bg-muted/40 text-muted-foreground';
+}
+
+function formatRouteStatusTime(timestamp: number | null | undefined) {
+  if (!timestamp) return '';
+  return new Date(timestamp * 1000).toLocaleString();
 }
 
 // ── target combobox (type + target merged, with search + groups) ───────────────
@@ -843,6 +875,7 @@ function RouteDryRunDialog({
 interface BindingCardProps {
   binding: EventBinding;
   globalIndex: number;
+  routeStatus?: BotEventRouteStatus;
   eventOptions: string[];
   agentOptions: Agent[];
   expandedIds: Set<string>;
@@ -856,6 +889,7 @@ interface BindingCardProps {
 function BindingCardContent({
   binding,
   globalIndex,
+  routeStatus,
   eventOptions,
   agentOptions,
   expandedIds,
@@ -870,6 +904,7 @@ function BindingCardContent({
   const isExpanded = expandedIds.has(id);
   const filterCount = (binding.filters as FilterRow[] | undefined)?.length ?? 0;
   const pipelineAllowed = isMessageEventPattern(binding.event_pattern);
+  const statusTime = formatRouteStatusTime(routeStatus?.timestamp);
 
   return (
     <div className="rounded-lg border bg-card">
@@ -956,6 +991,23 @@ function BindingCardContent({
           onUpdate={(patch) => onUpdate(globalIndex, patch)}
         />
 
+        <div className="hidden min-w-[132px] max-w-[220px] flex-col items-end gap-1 lg:flex">
+          <Badge
+            variant="outline"
+            className={`rounded-md px-2 py-0.5 text-[10px] font-medium ${routeStatusBadgeClass(
+              routeStatus?.last_status,
+            )}`}
+          >
+            {routeStatusLabel(routeStatus?.last_status, t)}
+          </Badge>
+          <span
+            className="max-w-full truncate text-[11px] text-muted-foreground"
+            title={routeStatus?.reason || routeStatus?.message || statusTime}
+          >
+            {routeStatus?.failure_code || routeStatus?.reason || statusTime}
+          </span>
+        </div>
+
         {!pipelineAllowed && binding.target_type === 'pipeline' && (
           <span className="text-xs text-destructive shrink-0">
             {t('bots.unsupportedPipelineEvent')}
@@ -982,6 +1034,23 @@ function BindingCardContent({
         >
           <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
         </Button>
+      </div>
+
+      <div className="flex items-center gap-2 border-t px-3 py-1.5 lg:hidden">
+        <Badge
+          variant="outline"
+          className={`rounded-md px-2 py-0.5 text-[10px] font-medium ${routeStatusBadgeClass(
+            routeStatus?.last_status,
+          )}`}
+        >
+          {routeStatusLabel(routeStatus?.last_status, t)}
+        </Badge>
+        <span
+          className="min-w-0 truncate text-[11px] text-muted-foreground"
+          title={routeStatus?.reason || routeStatus?.message || statusTime}
+        >
+          {routeStatus?.failure_code || routeStatus?.reason || statusTime}
+        </span>
       </div>
 
       {/* conditions panel */}
@@ -1035,6 +1104,9 @@ export default function EventBindingsEditor({
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [disabledSectionOpen, setDisabledSectionOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [routeStatuses, setRouteStatuses] = useState<BotEventRouteStatus[]>([]);
+  const [routeStatusLoading, setRouteStatusLoading] = useState(false);
+  const [routeStatusError, setRouteStatusError] = useState<string | null>(null);
 
   // stable ids for dnd
   const nextId = useRef(0);
@@ -1058,6 +1130,36 @@ export default function EventBindingsEditor({
     () => (supportedEvents.length > 0 ? supportedEvents : DEFAULT_EVENTS),
     [supportedEvents],
   );
+  const routeStatusByBinding = useMemo(() => {
+    const map = new Map<string, BotEventRouteStatus>();
+    routeStatuses.forEach((status) => {
+      if (status.binding_id) map.set(String(status.binding_id), status);
+    });
+    return map;
+  }, [routeStatuses]);
+
+  const refreshRouteStatuses = useCallback(async () => {
+    if (!botId) {
+      setRouteStatuses([]);
+      setRouteStatusError(null);
+      return;
+    }
+    setRouteStatusLoading(true);
+    setRouteStatusError(null);
+    try {
+      const response = await backendClient.getBotEventRouteStatuses(botId);
+      setRouteStatuses(response.routes || []);
+    } catch (error) {
+      const err = error as { msg?: string };
+      setRouteStatusError(err.msg || t('bots.routeStatusRefreshFailed'));
+    } finally {
+      setRouteStatusLoading(false);
+    }
+  }, [botId, t]);
+
+  useEffect(() => {
+    refreshRouteStatuses();
+  }, [refreshRouteStatuses]);
 
   function updateBindings(next: EventBinding[]) {
     form.setValue('event_bindings', next, { shouldDirty: true });
@@ -1179,6 +1281,11 @@ export default function EventBindingsEditor({
                   key={idsRef.current[sortIdx]}
                   binding={binding}
                   globalIndex={globalIdx}
+                  routeStatus={
+                    binding.id
+                      ? routeStatusByBinding.get(String(binding.id))
+                      : undefined
+                  }
                   eventOptions={eventOptions}
                   agentOptions={agentOptions}
                   expandedIds={expandedIds}
@@ -1195,6 +1302,11 @@ export default function EventBindingsEditor({
             <BindingCardContent
               binding={activeBinding}
               globalIndex={activeGlobalIdx}
+              routeStatus={
+                activeBinding.id
+                  ? routeStatusByBinding.get(String(activeBinding.id))
+                  : undefined
+              }
               eventOptions={eventOptions}
               agentOptions={agentOptions}
               expandedIds={expandedIds}
@@ -1218,7 +1330,22 @@ export default function EventBindingsEditor({
           eventOptions={dryRunEventOptions}
           agentOptions={agentOptions}
         />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={refreshRouteStatuses}
+          disabled={!botId || routeStatusLoading}
+        >
+          <RefreshCw
+            className={`h-4 w-4 mr-1 ${routeStatusLoading ? 'animate-spin' : ''}`}
+          />
+          {t('bots.refreshRouteStatus')}
+        </Button>
       </div>
+      {routeStatusError && (
+        <p className="text-xs text-destructive">{routeStatusError}</p>
+      )}
 
       {/* disabled section */}
       {disabledBindings.length > 0 && (
@@ -1245,6 +1372,9 @@ export default function EventBindingsEditor({
                   key={b.id ?? i}
                   binding={b}
                   globalIndex={i}
+                  routeStatus={
+                    b.id ? routeStatusByBinding.get(String(b.id)) : undefined
+                  }
                   eventOptions={eventOptions}
                   agentOptions={agentOptions}
                   expandedIds={expandedIds}

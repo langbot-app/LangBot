@@ -41,6 +41,9 @@ class EventLog(pydantic.BaseModel):
     message_session_id: typing.Optional[str] = None
     """消息会话ID，仅收发消息事件有值"""
 
+    metadata: typing.Optional[dict[str, typing.Any]] = None
+    """Structured machine-readable metadata for product surfaces."""
+
     def to_json(self) -> dict:
         return {
             'seq_id': self.seq_id,
@@ -49,6 +52,7 @@ class EventLog(pydantic.BaseModel):
             'text': self.text,
             'images': self.images,
             'message_session_id': self.message_session_id,
+            'metadata': self.metadata,
         }
 
 
@@ -131,6 +135,7 @@ class EventLogger(abstract_platform_event_logger.AbstractEventLogger):
         images: typing.Optional[list[platform_message.Image]] = None,
         message_session_id: typing.Optional[str] = None,
         no_throw: bool = True,
+        metadata: typing.Optional[dict[str, typing.Any]] = None,
     ):
         try:
             image_keys = []
@@ -161,6 +166,7 @@ class EventLogger(abstract_platform_event_logger.AbstractEventLogger):
                     text=text,
                     images=image_keys,
                     message_session_id=message_session_id,
+                    metadata=metadata,
                 )
             )
             self.seq_id_inc += 1
@@ -179,6 +185,7 @@ class EventLogger(abstract_platform_event_logger.AbstractEventLogger):
         images: typing.Optional[list[platform_message.Image]] = None,
         message_session_id: typing.Optional[str] = None,
         no_throw: bool = True,
+        metadata: typing.Optional[dict[str, typing.Any]] = None,
     ):
         await self._add_log(
             level=EventLogLevel.INFO,
@@ -186,6 +193,7 @@ class EventLogger(abstract_platform_event_logger.AbstractEventLogger):
             images=images,
             message_session_id=message_session_id,
             no_throw=no_throw,
+            metadata=metadata,
         )
 
     async def debug(
@@ -194,6 +202,7 @@ class EventLogger(abstract_platform_event_logger.AbstractEventLogger):
         images: typing.Optional[list[platform_message.Image]] = None,
         message_session_id: typing.Optional[str] = None,
         no_throw: bool = True,
+        metadata: typing.Optional[dict[str, typing.Any]] = None,
     ):
         await self._add_log(
             level=EventLogLevel.DEBUG,
@@ -201,6 +210,7 @@ class EventLogger(abstract_platform_event_logger.AbstractEventLogger):
             images=images,
             message_session_id=message_session_id,
             no_throw=no_throw,
+            metadata=metadata,
         )
 
     async def warning(
@@ -209,6 +219,7 @@ class EventLogger(abstract_platform_event_logger.AbstractEventLogger):
         images: typing.Optional[list[platform_message.Image]] = None,
         message_session_id: typing.Optional[str] = None,
         no_throw: bool = True,
+        metadata: typing.Optional[dict[str, typing.Any]] = None,
     ):
         await self._add_log(
             level=EventLogLevel.WARNING,
@@ -216,6 +227,7 @@ class EventLogger(abstract_platform_event_logger.AbstractEventLogger):
             images=images,
             message_session_id=message_session_id,
             no_throw=no_throw,
+            metadata=metadata,
         )
 
     async def error(
@@ -224,6 +236,7 @@ class EventLogger(abstract_platform_event_logger.AbstractEventLogger):
         images: typing.Optional[list[platform_message.Image]] = None,
         message_session_id: typing.Optional[str] = None,
         no_throw: bool = True,
+        metadata: typing.Optional[dict[str, typing.Any]] = None,
     ):
         await self._add_log(
             level=EventLogLevel.ERROR,
@@ -231,4 +244,5 @@ class EventLogger(abstract_platform_event_logger.AbstractEventLogger):
             images=images,
             message_session_id=message_session_id,
             no_throw=no_throw,
+            metadata=metadata,
         )

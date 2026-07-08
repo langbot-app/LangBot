@@ -3,7 +3,9 @@ RuntimeBot.resolve_pipeline_uuid and _match_operator unit tests
 """
 
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
+
+import pytest
 
 
 class TestMatchOperator:
@@ -52,6 +54,90 @@ class TestMatchOperator:
     def test_unknown_operator(self):
         cls = self._get_class()
         assert cls._match_operator('hello', 'unknown_op', 'hello') is False
+
+
+class TestEventRouteTrace:
+    """Test structured event route trace logging."""
+
+    @staticmethod
+    def _make_bot(event_bindings: list[dict]):
+        from langbot.pkg.platform.botmgr import RuntimeBot
+
+        bot = object.__new__(RuntimeBot)
+        bot.bot_entity = SimpleNamespace(uuid='bot-1', event_bindings=event_bindings)
+        bot.logger = SimpleNamespace(
+            info=AsyncMock(),
+            warning=AsyncMock(),
+            error=AsyncMock(),
+        )
+        return bot
+
+    @pytest.mark.asyncio
+    async def test_dispatch_no_matching_route_records_trace(self):
+        """A route miss is visible as structured route trace metadata."""
+        bot = self._make_bot([])
+
+        await bot._dispatch_eba_event_to_agent(SimpleNamespace(type='platform.member.joined'), Mock())
+
+        bot.logger.info.assert_awaited_once()
+        _, kwargs = bot.logger.info.await_args
+        metadata = kwargs['metadata']
+        assert metadata['kind'] == 'event_route_trace'
+        assert metadata['event_type'] == 'platform.member.joined'
+        assert metadata['status'] == 'not_matched'
+        assert metadata['failure_code'] == 'route_not_found'
+
+    @pytest.mark.asyncio
+    async def test_record_event_route_trace_includes_binding_and_target(self):
+        """Trace metadata preserves binding and processor identifiers."""
+        bot = self._make_bot([])
+
+        await bot._record_event_route_trace(
+            event_type='platform.member.joined',
+            status='failed',
+            level='warning',
+            binding={
+                'id': 'binding-1',
+                'event_pattern': 'platform.member.*',
+                'target_type': 'agent',
+                'target_uuid': 'agent-1',
+            },
+            failure_code='processor_disabled',
+            reason='Agent target is disabled',
+            text='disabled',
+        )
+
+        bot.logger.warning.assert_awaited_once()
+        _, kwargs = bot.logger.warning.await_args
+        metadata = kwargs['metadata']
+        assert metadata['binding_id'] == 'binding-1'
+        assert metadata['event_pattern'] == 'platform.member.*'
+        assert metadata['target_type'] == 'agent'
+        assert metadata['target_uuid'] == 'agent-1'
+        assert metadata['status'] == 'failed'
+
+
+class TestEventLoggerMetadata:
+    """Test platform EventLogger metadata compatibility."""
+
+    @pytest.mark.asyncio
+    async def test_metadata_is_serialized_without_breaking_no_throw_position(self):
+        """Metadata is optional and no_throw remains the fourth positional argument."""
+        from langbot.pkg.platform.logger import EventLogger
+
+        logger = EventLogger(name='test', ap=SimpleNamespace())
+
+        await logger.info('plain log', None, None, False)
+        await logger.info(
+            'route trace',
+            metadata={'kind': 'event_route_trace', 'status': 'matched'},
+        )
+
+        assert logger.logs[0].to_json()['metadata'] is None
+        assert logger.logs[1].to_json()['metadata'] == {
+            'kind': 'event_route_trace',
+            'status': 'matched',
+        }
 
 
 class TestResolvePipelineUuid:

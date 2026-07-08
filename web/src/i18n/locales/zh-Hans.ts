@@ -377,6 +377,16 @@ const zhHans = {
     advancedEventValues: '高级事件值',
     eventGroup: '事件组',
     testRoute: '测试路由',
+    refreshRouteStatus: '刷新状态',
+    routeStatusIdle: '暂无运行记录',
+    routeStatusRefreshFailed: '刷新路由状态失败。',
+    routeStatus: {
+      matched: '已命中',
+      delivered: '已投递',
+      discarded: '已丢弃',
+      failed: '失败',
+      not_matched: '未命中',
+    },
     dryRunTitle: '测试事件路由',
     dryRunDescription:
       '选择一个事件并提供示例载荷，检查当前路由配置会命中哪个处理器。',
