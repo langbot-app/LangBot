@@ -97,6 +97,27 @@ def fake_bot_app():
     app.bot_service.update_bot = AsyncMock(return_value={})
     app.bot_service.delete_bot = AsyncMock()
     app.bot_service.list_event_logs = AsyncMock(return_value=([{'uuid': 'log-1', 'message': 'test log'}], 1))
+    app.bot_service.dry_run_event_route = AsyncMock(
+        return_value={
+            'matched': True,
+            'binding_id': 'binding-1',
+            'matched_binding_id': 'binding-1',
+            'matched_binding_index': 0,
+            'event_pattern': 'platform.member.joined',
+            'target_type': 'agent',
+            'target_uuid': 'agent-1',
+            'target': {
+                'target_type': 'agent',
+                'target_uuid': 'agent-1',
+                'target_name': 'Member Agent',
+                'kind': 'agent',
+            },
+            'reason': 'Event route matched agent target',
+            'failure_code': None,
+            'diagnostic_steps': ['Route 1 (platform.member.joined) selected: Selected by priority and order'],
+            'diagnostic_details': [{'step': 'evaluate_binding', 'binding_id': 'binding-1', 'matched': True}],
+        }
+    )
     app.bot_service.send_message = AsyncMock()
 
     # Platform manager
@@ -197,6 +218,54 @@ class TestBotLogsEndpoint:
         assert data['code'] == 0
         assert 'logs' in data['data']
         assert 'total_count' in data['data']
+
+
+@pytest.mark.usefixtures('mock_circular_import_chain')
+class TestBotEventRouteDryRunEndpoint:
+    """Tests for bot event route dry-run endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_dry_run_event_route_success(self, quart_test_client, fake_bot_app):
+        """POST dry_run returns route diagnostics."""
+        response = await quart_test_client.post(
+            '/api/v1/platform/bots/test-bot-uuid/event-routes/dry-run',
+            headers={'Authorization': 'Bearer test_token'},
+            json={
+                'event_type': 'platform.member.joined',
+                'payload': {'room': {'id': 'room-1'}},
+                'context': {'source': 'ui'},
+                'event_bindings': [
+                    {
+                        'id': 'binding-1',
+                        'event_pattern': 'platform.member.joined',
+                        'target_type': 'agent',
+                        'target_uuid': 'agent-1',
+                    }
+                ],
+            },
+        )
+
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert data['code'] == 0
+        assert data['data']['matched'] is True
+        assert data['data']['binding_id'] == 'binding-1'
+        assert data['data']['target']['target_name'] == 'Member Agent'
+        assert data['data']['diagnostic_steps'][0].startswith('Route 1')
+        fake_bot_app.bot_service.dry_run_event_route.assert_awaited_with(
+            bot_uuid='test-bot-uuid',
+            event_type='platform.member.joined',
+            event_data={'room': {'id': 'room-1'}},
+            context={'source': 'ui'},
+            event_bindings=[
+                {
+                    'id': 'binding-1',
+                    'event_pattern': 'platform.member.joined',
+                    'target_type': 'agent',
+                    'target_uuid': 'agent-1',
+                }
+            ],
+        )
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')

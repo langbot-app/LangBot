@@ -246,6 +246,34 @@ export interface EventBinding {
   order?: number;
 }
 
+export interface BotRouteDryRunRequest {
+  event_type: string;
+  payload?: Record<string, unknown>;
+  event_bindings?: EventBinding[];
+}
+
+export interface BotRouteDryRunTarget {
+  target_type: EventBinding['target_type'];
+  target_uuid?: string | null;
+  target_name?: string | null;
+  kind?: AgentKind | 'discard' | null;
+}
+
+export interface BotRouteDryRunResult {
+  matched: boolean;
+  target?: BotRouteDryRunTarget | null;
+  binding_id?: string | null;
+  event_pattern?: string | null;
+  target_type?: EventBinding['target_type'] | null;
+  target_uuid?: string | null;
+  reason?: string | null;
+  failure_code?: string | null;
+  diagnostic_steps: string[];
+  diagnostic_details?: Array<Record<string, unknown>>;
+  matched_binding_id?: string | null;
+  matched_binding_index?: number | null;
+}
+
 export interface ApiRespKnowledgeBases {
   bases: KnowledgeBase[];
 }

@@ -15,6 +15,12 @@ class BotService:
     """Bot service"""
 
     ap: app.Application
+    FAILURE_ROUTE_NOT_FOUND = 'route_not_found'
+    FAILURE_PROCESSOR_DISABLED = 'processor_disabled'
+    FAILURE_PROCESSOR_NOT_FOUND = 'processor_not_found'
+    FAILURE_PROCESSOR_INCOMPATIBLE = 'processor_incompatible'
+    FAILURE_INVALID_EVENT = 'invalid_event'
+
     BOT_FIELDS = {
         'uuid',
         'name',
@@ -67,6 +73,384 @@ class BotService:
     def _agent_supports_event_pattern(cls, supported_patterns: list[str] | None, event_pattern: str) -> bool:
         patterns = supported_patterns or ['*']
         return any(cls._event_pattern_covers(pattern, event_pattern) for pattern in patterns)
+
+    @staticmethod
+    def _format_diagnostic_step(step: dict[str, typing.Any]) -> str:
+        step_name = step.get('step') or 'diagnostic'
+        reason = step.get('reason') or step.get('failure_code') or 'No reason provided'
+
+        if step_name == 'evaluate_binding':
+            route_number = step.get('binding_index')
+            if not isinstance(route_number, int):
+                route_number = step.get('order')
+            route_label = f'Route {int(route_number) + 1}' if isinstance(route_number, int) else 'Route'
+            event_pattern = step.get('event_pattern') or '*'
+            if step.get('selected'):
+                return f'{route_label} ({event_pattern}) selected: {reason}'
+            if step.get('matched'):
+                return f'{route_label} ({event_pattern}) matched: {reason}'
+            return f'{route_label} ({event_pattern}) skipped: {reason}'
+
+        if step_name == 'validate_processor':
+            target_type = step.get('target_type') or 'processor'
+            target_uuid = step.get('target_uuid') or ''
+            suffix = f' {target_uuid}' if target_uuid else ''
+            return f'Validate {target_type}{suffix}: {reason}'
+
+        return str(reason)
+
+    @classmethod
+    def _format_diagnostic_steps(cls, diagnostic_details: list[dict[str, typing.Any]] | None) -> list[str]:
+        return [cls._format_diagnostic_step(step) for step in diagnostic_details or []]
+
+    @staticmethod
+    def _target_kind(target_type: typing.Any, target_kind: str | None = None) -> str | None:
+        if target_kind:
+            return target_kind
+        if target_type == 'discard':
+            return 'discard'
+        if target_type in {'agent', 'pipeline'}:
+            return str(target_type)
+        return None
+
+    @classmethod
+    def _diagnostic_result(
+        cls,
+        *,
+        matched: bool,
+        failure_code: str | None = None,
+        reason: str = '',
+        binding: dict[str, typing.Any] | None = None,
+        diagnostic_steps: list[dict[str, typing.Any]] | None = None,
+        target_name: str | None = None,
+        target_kind: str | None = None,
+    ) -> dict[str, typing.Any]:
+        binding = binding or {}
+        target_type = binding.get('target_type')
+        target_uuid = binding.get('target_uuid') or ''
+        matched_binding_index = binding.get('_dry_run_index')
+        if not isinstance(matched_binding_index, int):
+            matched_binding_index = binding.get('order')
+        if not isinstance(matched_binding_index, int):
+            matched_binding_index = None
+        target = None
+        if target_type:
+            target = {
+                'target_type': target_type,
+                'target_uuid': target_uuid or None,
+                'target_name': target_name,
+                'kind': cls._target_kind(target_type, target_kind),
+            }
+        return {
+            'matched': matched,
+            'binding_id': binding.get('id'),
+            'matched_binding_id': binding.get('id'),
+            'matched_binding_index': matched_binding_index,
+            'event_pattern': binding.get('event_pattern'),
+            'target_type': binding.get('target_type'),
+            'target_uuid': target_uuid,
+            'target': target,
+            'reason': reason,
+            'failure_code': failure_code,
+            'diagnostic_steps': cls._format_diagnostic_steps(diagnostic_steps),
+            'diagnostic_details': diagnostic_steps or [],
+        }
+
+    @staticmethod
+    def _build_dry_run_event(event_type: str, event_data: typing.Any, context: typing.Any) -> dict[str, typing.Any]:
+        event: dict[str, typing.Any] = {}
+        if isinstance(event_data, dict):
+            event.update(event_data)
+        elif event_data is not None:
+            raise ValueError('event_data must be an object')
+        event['type'] = event_type
+
+        if context is None:
+            return event
+        if not isinstance(context, dict):
+            raise ValueError('context must be an object')
+        event['context'] = context
+        return event
+
+    @staticmethod
+    def _normalize_dry_run_bindings(bindings: typing.Any) -> list[dict[str, typing.Any]]:
+        if bindings is None:
+            return []
+        if not isinstance(bindings, list):
+            raise ValueError('event_bindings must be an array')
+
+        normalized: list[dict[str, typing.Any]] = []
+        for index, raw_binding in enumerate(bindings):
+            if not isinstance(raw_binding, dict):
+                continue
+            event_pattern = str(raw_binding.get('event_pattern') or '').strip()
+            target_type = str(raw_binding.get('target_type') or '').strip()
+            if not event_pattern or not target_type:
+                continue
+
+            try:
+                priority = int(raw_binding.get('priority') or 0)
+            except (TypeError, ValueError):
+                priority = 0
+
+            target_uuid = str(raw_binding.get('target_uuid') or '').strip()
+            if target_type == 'discard':
+                target_uuid = ''
+
+            filters = raw_binding.get('filters') if isinstance(raw_binding.get('filters'), list) else []
+            normalized.append(
+                {
+                    'id': raw_binding.get('id'),
+                    'event_pattern': event_pattern,
+                    'target_type': target_type,
+                    'target_uuid': target_uuid,
+                    'filters': filters,
+                    'priority': priority,
+                    'enabled': bool(raw_binding.get('enabled', True)),
+                    # For draft bindings, current array order is the effective order
+                    # that would be persisted on save.
+                    'order': index,
+                    '_dry_run_index': index,
+                }
+            )
+        return normalized
+
+    @staticmethod
+    def _index_event_bindings(bindings: list[dict[str, typing.Any]]) -> list[dict[str, typing.Any]]:
+        indexed: list[dict[str, typing.Any]] = []
+        for index, binding in enumerate(bindings):
+            copied = binding.copy()
+            copied.setdefault('_dry_run_index', index)
+            indexed.append(copied)
+        return indexed
+
+    async def _get_pipeline_entity(self, pipeline_uuid: str) -> persistence_pipeline.LegacyPipeline | None:
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(
+                persistence_pipeline.LegacyPipeline.uuid == pipeline_uuid
+            )
+        )
+        return result.first()
+
+    async def _get_agent_entity(self, agent_uuid: str) -> persistence_agent.Agent | None:
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_agent.Agent).where(persistence_agent.Agent.uuid == agent_uuid)
+        )
+        return result.first()
+
+    async def dry_run_event_route(
+        self,
+        bot_uuid: str,
+        event_type: str,
+        event_data: dict[str, typing.Any] | None = None,
+        context: dict[str, typing.Any] | None = None,
+        event_bindings: list[dict[str, typing.Any]] | None = None,
+    ) -> dict[str, typing.Any]:
+        """Diagnose Bot event routing without dispatching to Agent, Pipeline, or platform actions."""
+        from ....platform.botmgr import RuntimeBot
+
+        event_type = str(event_type or '').strip()
+        if not event_type:
+            return self._diagnostic_result(
+                matched=False,
+                failure_code=self.FAILURE_INVALID_EVENT,
+                reason='event_type is required',
+                diagnostic_steps=[
+                    {
+                        'step': 'validate_event',
+                        'matched': False,
+                        'failure_code': self.FAILURE_INVALID_EVENT,
+                        'reason': 'event_type is required',
+                    }
+                ],
+            )
+
+        bot = await self.get_bot(bot_uuid, include_secret=False)
+        if bot is None:
+            raise Exception('Bot not found')
+
+        try:
+            event = self._build_dry_run_event(event_type, event_data, context)
+            bindings = (
+                self._normalize_dry_run_bindings(event_bindings)
+                if event_bindings is not None
+                else self._index_event_bindings(
+                    RuntimeBot._get_event_bindings_from_value(bot.get('event_bindings') or [])
+                )
+            )
+        except ValueError as exc:
+            return self._diagnostic_result(
+                matched=False,
+                failure_code=self.FAILURE_INVALID_EVENT,
+                reason=str(exc),
+                diagnostic_steps=[
+                    {
+                        'step': 'validate_event',
+                        'matched': False,
+                        'failure_code': self.FAILURE_INVALID_EVENT,
+                        'reason': str(exc),
+                    }
+                ],
+            )
+
+        selected_binding, diagnostic_steps = RuntimeBot._evaluate_eba_event_bindings(
+            bindings,
+            event,
+            event_type,
+        )
+        if selected_binding is None:
+            return self._diagnostic_result(
+                matched=False,
+                failure_code=self.FAILURE_ROUTE_NOT_FOUND,
+                reason='No enabled event binding matched event_type and filters',
+                diagnostic_steps=diagnostic_steps,
+            )
+
+        target_type = selected_binding.get('target_type')
+        target_uuid = str(selected_binding.get('target_uuid') or '')
+
+        if target_type == 'discard':
+            return self._diagnostic_result(
+                matched=True,
+                binding=selected_binding,
+                reason='Event route matched discard target',
+                diagnostic_steps=diagnostic_steps,
+            )
+
+        if target_type == 'pipeline':
+            if not RuntimeBot._is_message_event_type(event_type):
+                return self._diagnostic_result(
+                    matched=False,
+                    binding=selected_binding,
+                    failure_code=self.FAILURE_PROCESSOR_INCOMPATIBLE,
+                    reason='Pipeline targets only support message events',
+                    diagnostic_steps=diagnostic_steps
+                    + [
+                        {
+                            'step': 'validate_processor',
+                            'binding_id': selected_binding.get('id'),
+                            'target_type': target_type,
+                            'target_uuid': target_uuid,
+                            'matched': False,
+                            'failure_code': self.FAILURE_PROCESSOR_INCOMPATIBLE,
+                            'reason': 'Pipeline targets only support message events',
+                        }
+                    ],
+                )
+            pipeline = await self._get_pipeline_entity(target_uuid) if target_uuid else None
+            if pipeline is None:
+                return self._diagnostic_result(
+                    matched=False,
+                    binding=selected_binding,
+                    failure_code=self.FAILURE_PROCESSOR_NOT_FOUND,
+                    reason='Pipeline target not found',
+                    diagnostic_steps=diagnostic_steps
+                    + [
+                        {
+                            'step': 'validate_processor',
+                            'binding_id': selected_binding.get('id'),
+                            'target_type': target_type,
+                            'target_uuid': target_uuid,
+                            'matched': False,
+                            'failure_code': self.FAILURE_PROCESSOR_NOT_FOUND,
+                            'reason': 'Pipeline target not found',
+                        }
+                    ],
+                )
+            return self._diagnostic_result(
+                matched=True,
+                binding=selected_binding,
+                target_name=getattr(pipeline, 'name', None),
+                reason='Event route matched pipeline target',
+                diagnostic_steps=diagnostic_steps,
+            )
+
+        if target_type == 'agent':
+            agent = await self._get_agent_entity(target_uuid)
+            if agent is None or getattr(agent, 'kind', 'agent') != 'agent':
+                return self._diagnostic_result(
+                    matched=False,
+                    binding=selected_binding,
+                    failure_code=self.FAILURE_PROCESSOR_NOT_FOUND,
+                    reason='Agent target not found',
+                    diagnostic_steps=diagnostic_steps
+                    + [
+                        {
+                            'step': 'validate_processor',
+                            'binding_id': selected_binding.get('id'),
+                            'target_type': target_type,
+                            'target_uuid': target_uuid,
+                            'matched': False,
+                            'failure_code': self.FAILURE_PROCESSOR_NOT_FOUND,
+                            'reason': 'Agent target not found',
+                        }
+                    ],
+                )
+            if not getattr(agent, 'enabled', True):
+                return self._diagnostic_result(
+                    matched=False,
+                    binding=selected_binding,
+                    failure_code=self.FAILURE_PROCESSOR_DISABLED,
+                    reason='Agent target is disabled',
+                    diagnostic_steps=diagnostic_steps
+                    + [
+                        {
+                            'step': 'validate_processor',
+                            'binding_id': selected_binding.get('id'),
+                            'target_type': target_type,
+                            'target_uuid': target_uuid,
+                            'matched': False,
+                            'failure_code': self.FAILURE_PROCESSOR_DISABLED,
+                            'reason': 'Agent target is disabled',
+                        }
+                    ],
+            )
+            if not RuntimeBot._agent_supports_event_type(getattr(agent, 'supported_event_patterns', None), event_type):
+                return self._diagnostic_result(
+                    matched=False,
+                    binding=selected_binding,
+                    failure_code=self.FAILURE_PROCESSOR_INCOMPATIBLE,
+                    reason='Agent target does not support this event type',
+                    diagnostic_steps=diagnostic_steps
+                    + [
+                        {
+                            'step': 'validate_processor',
+                            'binding_id': selected_binding.get('id'),
+                            'target_type': target_type,
+                            'target_uuid': target_uuid,
+                            'matched': False,
+                            'failure_code': self.FAILURE_PROCESSOR_INCOMPATIBLE,
+                            'reason': 'Agent target does not support this event type',
+                        }
+                    ],
+                )
+            return self._diagnostic_result(
+                matched=True,
+                binding=selected_binding,
+                target_name=getattr(agent, 'name', None),
+                target_kind=getattr(agent, 'kind', None),
+                reason='Event route matched agent target',
+                diagnostic_steps=diagnostic_steps,
+            )
+
+        return self._diagnostic_result(
+            matched=False,
+            binding=selected_binding,
+            failure_code=self.FAILURE_PROCESSOR_INCOMPATIBLE,
+            reason=f'Unsupported event binding target type: {target_type}',
+            diagnostic_steps=diagnostic_steps
+            + [
+                {
+                    'step': 'validate_processor',
+                    'binding_id': selected_binding.get('id'),
+                    'target_type': target_type,
+                    'target_uuid': target_uuid,
+                    'matched': False,
+                    'failure_code': self.FAILURE_PROCESSOR_INCOMPATIBLE,
+                    'reason': f'Unsupported event binding target type: {target_type}',
+                }
+            ],
+        )
 
     async def _normalize_event_bindings(self, bindings: list[dict] | None) -> list[dict]:
         """Validate and normalize Bot event bindings."""
