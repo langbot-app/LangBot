@@ -20,6 +20,7 @@ class BotService:
     FAILURE_PROCESSOR_NOT_FOUND = 'processor_not_found'
     FAILURE_PROCESSOR_INCOMPATIBLE = 'processor_incompatible'
     FAILURE_INVALID_EVENT = 'invalid_event'
+    ROUTE_TRACE_KIND = 'event_route_trace'
 
     BOT_FIELDS = {
         'uuid',
@@ -102,6 +103,41 @@ class BotService:
     @classmethod
     def _format_diagnostic_steps(cls, diagnostic_details: list[dict[str, typing.Any]] | None) -> list[str]:
         return [cls._format_diagnostic_step(step) for step in diagnostic_details or []]
+
+    @classmethod
+    def _event_route_status_from_log(cls, log: typing.Any) -> dict[str, typing.Any] | None:
+        if hasattr(log, 'to_json'):
+            log_data = log.to_json()
+        elif isinstance(log, dict):
+            log_data = log
+        else:
+            log_data = {
+                'seq_id': getattr(log, 'seq_id', None),
+                'timestamp': getattr(log, 'timestamp', None),
+                'level': getattr(getattr(log, 'level', None), 'value', getattr(log, 'level', None)),
+                'text': getattr(log, 'text', None),
+                'metadata': getattr(log, 'metadata', None),
+            }
+
+        metadata = log_data.get('metadata')
+        if not isinstance(metadata, dict) or metadata.get('kind') != cls.ROUTE_TRACE_KIND:
+            return None
+
+        return {
+            'binding_id': metadata.get('binding_id'),
+            'event_pattern': metadata.get('event_pattern'),
+            'event_type': metadata.get('event_type'),
+            'target_type': metadata.get('target_type'),
+            'target_uuid': metadata.get('target_uuid') or '',
+            'last_status': metadata.get('status'),
+            'failure_code': metadata.get('failure_code'),
+            'reason': metadata.get('reason') or log_data.get('text') or '',
+            'run_id': metadata.get('run_id'),
+            'timestamp': log_data.get('timestamp'),
+            'seq_id': log_data.get('seq_id'),
+            'level': log_data.get('level'),
+            'message': log_data.get('text') or '',
+        }
 
     @staticmethod
     def _target_kind(target_type: typing.Any, target_kind: str | None = None) -> str | None:
@@ -643,6 +679,71 @@ class BotService:
         logs, total_count = await runtime_bot.logger.get_logs(from_index, max_count)
 
         return [log.to_json() for log in logs], total_count
+
+    async def list_event_route_statuses(self, bot_uuid: str) -> dict[str, typing.Any]:
+        """Return recent runtime status for Bot event routes from in-memory Bot logs."""
+        from ....platform.botmgr import RuntimeBot
+
+        runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(bot_uuid)
+        if runtime_bot is None:
+            raise Exception('Bot not found')
+
+        latest_by_binding: dict[str, dict[str, typing.Any]] = {}
+        unmatched_events: list[dict[str, typing.Any]] = []
+        for log in getattr(runtime_bot.logger, 'logs', []):
+            status = self._event_route_status_from_log(log)
+            if status is None:
+                continue
+            binding_id = status.get('binding_id')
+            if binding_id:
+                latest_by_binding[str(binding_id)] = status
+            else:
+                unmatched_events.append(status)
+
+        raw_bindings = getattr(getattr(runtime_bot, 'bot_entity', None), 'event_bindings', [])
+        bindings = RuntimeBot._get_event_bindings_from_value(raw_bindings)
+        routes: list[dict[str, typing.Any]] = []
+        current_binding_ids: set[str] = set()
+        for index, binding in enumerate(bindings):
+            binding_id = binding.get('id')
+            if binding_id:
+                current_binding_ids.add(str(binding_id))
+            route_status = {
+                'binding_id': binding_id,
+                'event_pattern': binding.get('event_pattern'),
+                'event_type': None,
+                'target_type': binding.get('target_type'),
+                'target_uuid': binding.get('target_uuid') or '',
+                'last_status': None,
+                'failure_code': None,
+                'reason': None,
+                'run_id': None,
+                'timestamp': None,
+                'seq_id': None,
+                'level': None,
+                'message': '',
+                'order': binding.get('order', index),
+                'enabled': binding.get('enabled', True),
+                'current': True,
+            }
+            if binding_id and str(binding_id) in latest_by_binding:
+                route_status.update(latest_by_binding[str(binding_id)])
+                route_status['order'] = binding.get('order', index)
+                route_status['enabled'] = binding.get('enabled', True)
+                route_status['current'] = True
+            routes.append(route_status)
+
+        stale_routes = [
+            {**status, 'current': False}
+            for binding_id, status in latest_by_binding.items()
+            if binding_id not in current_binding_ids
+        ]
+
+        return {
+            'routes': routes,
+            'unmatched_events': unmatched_events[-10:],
+            'stale_routes': stale_routes,
+        }
 
     async def send_message(self, bot_uuid: str, target_type: str, target_id: str, message_chain_data: dict) -> None:
         """Send message to a specific target via bot

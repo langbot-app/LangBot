@@ -274,6 +274,38 @@ export interface BotRouteDryRunResult {
   matched_binding_index?: number | null;
 }
 
+export interface BotEventRouteStatus {
+  binding_id?: string | null;
+  event_pattern?: string | null;
+  event_type?: string | null;
+  target_type?: EventBinding['target_type'] | string | null;
+  target_uuid?: string | null;
+  last_status?:
+    | 'matched'
+    | 'delivered'
+    | 'discarded'
+    | 'failed'
+    | 'not_matched'
+    | string
+    | null;
+  failure_code?: string | null;
+  reason?: string | null;
+  run_id?: string | null;
+  timestamp?: number | null;
+  seq_id?: number | null;
+  level?: string | null;
+  message?: string | null;
+  order?: number | null;
+  enabled?: boolean;
+  current?: boolean;
+}
+
+export interface BotEventRouteStatusResponse {
+  routes: BotEventRouteStatus[];
+  unmatched_events: BotEventRouteStatus[];
+  stale_routes: BotEventRouteStatus[];
+}
+
 export interface ApiRespKnowledgeBases {
   bases: KnowledgeBase[];
 }

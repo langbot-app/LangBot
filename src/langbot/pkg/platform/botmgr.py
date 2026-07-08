@@ -305,6 +305,37 @@ class RuntimeBot:
         """Return the selected event binding plus per-binding diagnostic steps."""
         return self._evaluate_eba_event_bindings(self._get_event_bindings(), event, event_type)
 
+    async def _record_event_route_trace(
+        self,
+        *,
+        event_type: str,
+        status: str,
+        text: str,
+        level: str = 'info',
+        binding: dict[str, typing.Any] | None = None,
+        target_type: str | None = None,
+        target_uuid: str | None = None,
+        failure_code: str | None = None,
+        reason: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        """Record structured event routing state while preserving the human log."""
+        binding = binding or {}
+        metadata = {
+            'kind': 'event_route_trace',
+            'event_type': event_type,
+            'status': status,
+            'binding_id': binding.get('id'),
+            'event_pattern': binding.get('event_pattern'),
+            'target_type': target_type or binding.get('target_type'),
+            'target_uuid': target_uuid or binding.get('target_uuid') or '',
+            'failure_code': failure_code,
+            'reason': reason or text,
+            'run_id': run_id,
+        }
+        log_method = getattr(self.logger, level, self.logger.info)
+        await log_method(text, metadata=metadata)
+
     def get_pipeline_target_for_event_type(self, event_type: str = 'message.received') -> str | None:
         """Return the first Pipeline target configured for an event type."""
         matched: list[tuple[int, int, str]] = []
@@ -773,10 +804,24 @@ class RuntimeBot:
 
         event_binding = self._resolve_eba_event_binding(event, event_type)
         if event_binding is None:
-            await self.logger.info(f'Platform event {event_type} ignored: no event route matched')
+            await self._record_event_route_trace(
+                event_type=event_type,
+                status='not_matched',
+                failure_code='route_not_found',
+                reason='No event route matched',
+                text=f'Platform event {event_type} ignored: no event route matched',
+            )
             return
 
         target_type = event_binding.get('target_type')
+        await self._record_event_route_trace(
+            event_type=event_type,
+            status='matched',
+            binding=event_binding,
+            target_type=target_type,
+            target_uuid=event_binding.get('target_uuid'),
+            text=f'EBA event {event_type} matched route {event_binding.get("id") or ""}'.strip(),
+        )
         if target_type == 'discard':
             if isinstance(event, platform_events.MessageReceivedEvent):
                 await self._dispatch_eba_message_to_pipeline(
@@ -785,12 +830,35 @@ class RuntimeBot:
                     pipeline_uuid=self.PIPELINE_DISCARD,
                     routed_by_event_binding=True,
                 )
+                await self._record_event_route_trace(
+                    event_type=event_type,
+                    status='discarded',
+                    binding=event_binding,
+                    target_type=target_type,
+                    text=f'EBA event {event_type} discarded by event binding',
+                )
                 return
-            await self.logger.info(f'EBA event {event_type} discarded by event binding')
+            await self._record_event_route_trace(
+                event_type=event_type,
+                status='discarded',
+                binding=event_binding,
+                target_type=target_type,
+                text=f'EBA event {event_type} discarded by event binding',
+            )
             return
         if target_type == 'pipeline':
             if not self._is_message_event_type(event_type):
-                await self.logger.warning(f'EBA event {event_type} ignored Pipeline target for non-message event')
+                await self._record_event_route_trace(
+                    event_type=event_type,
+                    status='failed',
+                    level='warning',
+                    binding=event_binding,
+                    target_type=target_type,
+                    target_uuid=event_binding.get('target_uuid'),
+                    failure_code='processor_incompatible',
+                    reason='Pipeline targets only support message events',
+                    text=f'EBA event {event_type} ignored Pipeline target for non-message event',
+                )
                 return
             await self._dispatch_eba_message_to_pipeline(
                 event,
@@ -798,26 +866,82 @@ class RuntimeBot:
                 pipeline_uuid=event_binding.get('target_uuid'),
                 routed_by_event_binding=True,
             )
+            await self._record_event_route_trace(
+                event_type=event_type,
+                status='delivered',
+                binding=event_binding,
+                target_type=target_type,
+                target_uuid=event_binding.get('target_uuid'),
+                text=f'EBA event {event_type} delivered to Pipeline {event_binding.get("target_uuid") or ""}'.strip(),
+            )
             return
         if target_type != 'agent':
-            await self.logger.warning(f'EBA event {event_type} ignored unsupported target type {target_type}')
+            await self._record_event_route_trace(
+                event_type=event_type,
+                status='failed',
+                level='warning',
+                binding=event_binding,
+                target_type=target_type,
+                target_uuid=event_binding.get('target_uuid'),
+                failure_code='processor_incompatible',
+                reason=f'Unsupported event binding target type: {target_type}',
+                text=f'EBA event {event_type} ignored unsupported target type {target_type}',
+            )
             return
 
         target_uuid = event_binding.get('target_uuid')
         agent = await self.ap.agent_service.get_agent(target_uuid)
         if not agent or agent.get('kind') != 'agent':
-            await self.logger.warning(f'EBA event {event_type} target agent not found: {target_uuid}')
+            await self._record_event_route_trace(
+                event_type=event_type,
+                status='failed',
+                level='warning',
+                binding=event_binding,
+                target_type=target_type,
+                target_uuid=target_uuid,
+                failure_code='processor_not_found',
+                reason='Agent target not found',
+                text=f'EBA event {event_type} target agent not found: {target_uuid}',
+            )
             return
         if not agent.get('enabled', True):
-            await self.logger.info(f'EBA event {event_type} target agent disabled: {target_uuid}')
+            await self._record_event_route_trace(
+                event_type=event_type,
+                status='failed',
+                binding=event_binding,
+                target_type=target_type,
+                target_uuid=target_uuid,
+                failure_code='processor_disabled',
+                reason='Agent target is disabled',
+                text=f'EBA event {event_type} target agent disabled: {target_uuid}',
+            )
             return
         if not self._agent_supports_event_type(agent.get('supported_event_patterns'), event_type):
-            await self.logger.info(f'EBA event {event_type} target agent does not support this event: {target_uuid}')
+            await self._record_event_route_trace(
+                event_type=event_type,
+                status='failed',
+                binding=event_binding,
+                target_type=target_type,
+                target_uuid=target_uuid,
+                failure_code='processor_incompatible',
+                reason='Agent target does not support this event type',
+                text=f'EBA event {event_type} target agent does not support this event: {target_uuid}',
+            )
             return
 
         binding = self._agent_product_to_binding(agent, event_binding, event_type, self.bot_entity.uuid)
         if binding is None:
-            await self.logger.warning(f'EBA event {event_type} target agent has no runner: {target_uuid}')
+            await self._record_event_route_trace(
+                event_type=event_type,
+                status='failed',
+                level='warning',
+                binding=event_binding,
+                target_type=target_type,
+                target_uuid=target_uuid,
+                failure_code='processor_not_found',
+                reason='Agent target has no runner',
+                text=f'EBA event {event_type} target agent has no runner: {target_uuid}',
+            )
             return
 
         envelope = self._eba_event_to_agent_envelope(event, adapter)
@@ -826,15 +950,42 @@ class RuntimeBot:
             async for output in self.ap.agent_run_orchestrator.run(envelope, binding):
                 outputs.append(output)
         except Exception:
-            await self.logger.error(f'Failed to run Agent for EBA event {event_type}: {traceback.format_exc()}')
+            await self._record_event_route_trace(
+                event_type=event_type,
+                status='failed',
+                level='error',
+                binding=event_binding,
+                target_type=target_type,
+                target_uuid=target_uuid,
+                failure_code='runner_failed',
+                reason='Agent runner failed',
+                text=f'Failed to run Agent for EBA event {event_type}: {traceback.format_exc()}',
+            )
             return
 
         try:
             await self._deliver_agent_outputs(envelope, outputs)
         except Exception:
-            await self.logger.error(
-                f'Failed to deliver Agent output for EBA event {event_type}: {traceback.format_exc()}'
+            await self._record_event_route_trace(
+                event_type=event_type,
+                status='failed',
+                level='error',
+                binding=event_binding,
+                target_type=target_type,
+                target_uuid=target_uuid,
+                failure_code='delivery_failed',
+                reason='Agent output delivery failed',
+                text=f'Failed to deliver Agent output for EBA event {event_type}: {traceback.format_exc()}',
             )
+            return
+        await self._record_event_route_trace(
+            event_type=event_type,
+            status='delivered',
+            binding=event_binding,
+            target_type=target_type,
+            target_uuid=target_uuid,
+            text=f'EBA event {event_type} delivered to Agent {target_uuid}',
+        )
 
     async def _record_discarded_message(
         self,

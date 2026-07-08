@@ -97,6 +97,27 @@ def fake_bot_app():
     app.bot_service.update_bot = AsyncMock(return_value={})
     app.bot_service.delete_bot = AsyncMock()
     app.bot_service.list_event_logs = AsyncMock(return_value=([{'uuid': 'log-1', 'message': 'test log'}], 1))
+    app.bot_service.list_event_route_statuses = AsyncMock(
+        return_value={
+            'routes': [
+                {
+                    'binding_id': 'binding-1',
+                    'event_pattern': 'platform.member.joined',
+                    'event_type': 'platform.member.joined',
+                    'target_type': 'agent',
+                    'target_uuid': 'agent-1',
+                    'last_status': 'delivered',
+                    'failure_code': None,
+                    'reason': 'delivered',
+                    'timestamp': 100,
+                    'seq_id': 1,
+                    'current': True,
+                }
+            ],
+            'unmatched_events': [],
+            'stale_routes': [],
+        }
+    )
     app.bot_service.dry_run_event_route = AsyncMock(
         return_value={
             'matched': True,
@@ -266,6 +287,26 @@ class TestBotEventRouteDryRunEndpoint:
                 }
             ],
         )
+
+
+@pytest.mark.usefixtures('mock_circular_import_chain')
+class TestBotEventRouteStatusEndpoint:
+    """Tests for bot event route runtime status endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_get_event_route_status_success(self, quart_test_client, fake_bot_app):
+        """GET event route status returns recent route traces."""
+        response = await quart_test_client.get(
+            '/api/v1/platform/bots/test-bot-uuid/event-routes/status',
+            headers={'Authorization': 'Bearer test_token'},
+        )
+
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert data['code'] == 0
+        assert data['data']['routes'][0]['binding_id'] == 'binding-1'
+        assert data['data']['routes'][0]['last_status'] == 'delivered'
+        fake_bot_app.bot_service.list_event_route_statuses.assert_awaited_with('test-bot-uuid')
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')

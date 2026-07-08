@@ -997,6 +997,134 @@ class TestBotServiceListEventLogs:
         assert total == 5
 
 
+class TestBotServiceEventRouteStatuses:
+    """Tests for event route runtime status aggregation."""
+
+    async def test_list_event_route_statuses_bot_not_found_raises(self):
+        """Raises Exception when runtime bot not found."""
+        ap = SimpleNamespace()
+        ap.platform_mgr = SimpleNamespace()
+        ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=None)
+
+        service = BotService(ap)
+
+        with pytest.raises(Exception, match='Bot not found'):
+            await service.list_event_route_statuses('missing-bot')
+
+    async def test_list_event_route_statuses_merges_latest_trace_by_binding(self):
+        """Current route definitions are enriched with the latest trace log."""
+        ap = SimpleNamespace()
+        ap.platform_mgr = SimpleNamespace()
+
+        runtime_bot = SimpleNamespace()
+        runtime_bot.bot_entity = SimpleNamespace(
+            event_bindings=[
+                {
+                    'id': 'binding-1',
+                    'event_pattern': 'platform.member.joined',
+                    'target_type': 'agent',
+                    'target_uuid': 'agent-1',
+                    'enabled': True,
+                    'order': 0,
+                },
+                {
+                    'id': 'binding-2',
+                    'event_pattern': 'message.received',
+                    'target_type': 'pipeline',
+                    'target_uuid': 'pipeline-1',
+                    'enabled': False,
+                    'order': 1,
+                },
+            ]
+        )
+        runtime_bot.logger = SimpleNamespace(
+            logs=[
+                SimpleNamespace(
+                    to_json=Mock(
+                        return_value={
+                            'seq_id': 1,
+                            'timestamp': 100,
+                            'level': 'info',
+                            'text': 'old matched',
+                            'metadata': {
+                                'kind': 'event_route_trace',
+                                'binding_id': 'binding-1',
+                                'event_pattern': 'platform.member.joined',
+                                'event_type': 'platform.member.joined',
+                                'target_type': 'agent',
+                                'target_uuid': 'agent-1',
+                                'status': 'matched',
+                                'failure_code': None,
+                                'reason': 'matched',
+                                'run_id': None,
+                            },
+                        }
+                    )
+                ),
+                SimpleNamespace(
+                    to_json=Mock(
+                        return_value={
+                            'seq_id': 2,
+                            'timestamp': 120,
+                            'level': 'error',
+                            'text': 'runner failed',
+                            'metadata': {
+                                'kind': 'event_route_trace',
+                                'binding_id': 'binding-1',
+                                'event_pattern': 'platform.member.joined',
+                                'event_type': 'platform.member.joined',
+                                'target_type': 'agent',
+                                'target_uuid': 'agent-1',
+                                'status': 'failed',
+                                'failure_code': 'runner_failed',
+                                'reason': 'Agent runner failed',
+                                'run_id': None,
+                            },
+                        }
+                    )
+                ),
+                SimpleNamespace(
+                    to_json=Mock(
+                        return_value={
+                            'seq_id': 3,
+                            'timestamp': 130,
+                            'level': 'info',
+                            'text': 'no route',
+                            'metadata': {
+                                'kind': 'event_route_trace',
+                                'binding_id': None,
+                                'event_pattern': None,
+                                'event_type': 'platform.member.left',
+                                'target_type': None,
+                                'target_uuid': '',
+                                'status': 'not_matched',
+                                'failure_code': 'route_not_found',
+                                'reason': 'No event route matched',
+                                'run_id': None,
+                            },
+                        }
+                    )
+                ),
+            ]
+        )
+        ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=runtime_bot)
+
+        service = BotService(ap)
+        result = await service.list_event_route_statuses('bot-1')
+
+        assert len(result['routes']) == 2
+        assert result['routes'][0]['binding_id'] == 'binding-1'
+        assert result['routes'][0]['last_status'] == 'failed'
+        assert result['routes'][0]['failure_code'] == 'runner_failed'
+        assert result['routes'][0]['timestamp'] == 120
+        assert result['routes'][0]['current'] is True
+        assert result['routes'][1]['binding_id'] == 'binding-2'
+        assert result['routes'][1]['last_status'] is None
+        assert result['routes'][1]['enabled'] is False
+        assert result['unmatched_events'][0]['event_type'] == 'platform.member.left'
+        assert result['unmatched_events'][0]['failure_code'] == 'route_not_found'
+
+
 class TestBotServiceSendMessage:
     """Tests for send_message method."""
 

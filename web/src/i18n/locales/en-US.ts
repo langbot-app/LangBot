@@ -392,6 +392,16 @@ const enUS = {
     advancedEventValues: 'Advanced event values',
     eventGroup: 'Group',
     testRoute: 'Test route',
+    refreshRouteStatus: 'Refresh status',
+    routeStatusIdle: 'No run yet',
+    routeStatusRefreshFailed: 'Failed to refresh route status.',
+    routeStatus: {
+      matched: 'Matched',
+      delivered: 'Delivered',
+      discarded: 'Discarded',
+      failed: 'Failed',
+      not_matched: 'Not matched',
+    },
     dryRunTitle: 'Test event route',
     dryRunDescription:
       'Choose an event and provide a sample payload to see which processor the current route setup will use.',
