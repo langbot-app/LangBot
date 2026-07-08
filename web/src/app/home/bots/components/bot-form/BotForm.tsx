@@ -460,6 +460,7 @@ export default function BotForm({
             <CardContent>
               <EventBindingsEditor
                 form={form}
+                botId={initBotId}
                 supportedEvents={adapterSupportedEvents[currentAdapter] || []}
                 agentOptions={agentNameList}
               />

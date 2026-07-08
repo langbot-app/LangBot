@@ -59,6 +59,8 @@ import {
   Skill,
   ApiRespSkills,
   ApiRespSkill,
+  BotRouteDryRunRequest,
+  BotRouteDryRunResult,
 } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
 import type { PluginLogEntry } from '@/app/infra/entities/plugin';
@@ -452,6 +454,16 @@ export class BackendClient extends BaseHttpClient {
 
   public updateBot(uuid: string, bot: Bot): Promise<object> {
     return this.put(`/api/v1/platform/bots/${uuid}`, bot);
+  }
+
+  public dryRunBotEventRoute(
+    botId: string,
+    request: BotRouteDryRunRequest,
+  ): Promise<BotRouteDryRunResult> {
+    return this.post(
+      `/api/v1/platform/bots/${botId}/event-routes/dry-run`,
+      request,
+    );
   }
 
   public deleteBot(uuid: string): Promise<object> {

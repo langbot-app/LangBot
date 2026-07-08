@@ -1,21 +1,27 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { UseFormReturn } from 'react-hook-form';
 import {
+  Activity,
+  AlertCircle,
   ArrowRight,
   Ban,
   Bot,
   Check,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   ChevronsUpDown,
   GripVertical,
+  ListChecks,
   Plus,
+  Play,
   Trash2,
   Workflow,
+  XCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -40,6 +46,15 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
   DndContext,
   DragOverlay,
   closestCenter,
@@ -59,7 +74,13 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Input } from '@/components/ui/input';
-import { EventBinding, Agent } from '@/app/infra/entities/api';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  EventBinding,
+  Agent,
+  BotRouteDryRunResult,
+} from '@/app/infra/entities/api';
+import { backendClient } from '@/app/infra/http';
 
 export const PIPELINE_DISCARD = '__discard__';
 
@@ -67,6 +88,7 @@ export const PIPELINE_DISCARD = '__discard__';
 
 interface EventBindingsEditorProps {
   form: UseFormReturn<any>;
+  botId?: string;
   supportedEvents: string[];
   agentOptions: Agent[];
 }
@@ -170,8 +192,25 @@ function eventLabel(event: string, t: TFunction) {
   return label === key ? event : label;
 }
 
+function eventDescription(event: string, t: TFunction) {
+  if (event === '*') return t('bots.eventDescriptions.all');
+  if (event.endsWith('.*')) return t('bots.eventDescriptions.namespace');
+  const key = `bots.eventDescriptions.${event.replace(/\./g, '_')}`;
+  const description = t(key);
+  return description === key ? t('bots.eventDescriptions.custom') : description;
+}
+
 function targetLabel(agent: Agent) {
   return `${agent.emoji ? `${agent.emoji} ` : ''}${agent.name}`;
+}
+
+function targetTypeLabel(
+  type: EventBinding['target_type'] | undefined,
+  t: TFunction,
+) {
+  if (type === 'pipeline') return t('bots.targetPipeline');
+  if (type === 'discard') return t('bots.targetDiscard');
+  return t('bots.targetAgent');
 }
 
 // ── target combobox (type + target merged, with search + groups) ───────────────
@@ -464,6 +503,341 @@ function FilterConditionsPanel({
   );
 }
 
+// ── adapter capability summary ────────────────────────────────────────────────
+
+function AdapterCapabilitySummary({
+  supportedEvents,
+  eventOptions,
+}: {
+  supportedEvents: string[];
+  eventOptions: string[];
+}) {
+  const { t } = useTranslation();
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const concreteEvents =
+    supportedEvents.length > 0 ? supportedEvents : DEFAULT_EVENTS;
+  const previewEvents = concreteEvents.slice(0, 4);
+
+  return (
+    <div className="rounded-lg border bg-muted/20 p-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-background text-primary shadow-xs">
+              <Activity className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-medium">
+                {t('bots.adapterEventsTitle')}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {t('bots.adapterEventsDescription', {
+                  count: concreteEvents.length,
+                })}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {previewEvents.map((event) => (
+              <Badge
+                key={event}
+                variant="secondary"
+                className="max-w-full rounded-md px-2 py-0.5 font-normal"
+                title={event}
+              >
+                <span className="truncate">{eventLabel(event, t)}</span>
+              </Badge>
+            ))}
+            {concreteEvents.length > previewEvents.length && (
+              <Badge variant="outline" className="rounded-md px-2 py-0.5">
+                {t('bots.adapterEventsMore', {
+                  count: concreteEvents.length - previewEvents.length,
+                })}
+              </Badge>
+            )}
+          </div>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-8 shrink-0 px-2 text-xs"
+          onClick={() => setAdvancedOpen((v) => !v)}
+        >
+          {advancedOpen ? (
+            <ChevronDown className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5" />
+          )}
+          {t('bots.advancedEventValues')}
+        </Button>
+      </div>
+      {advancedOpen && (
+        <div className="mt-3 grid gap-2 border-t pt-3 sm:grid-cols-2">
+          {eventOptions.map((event) => (
+            <div key={event} className="min-w-0 rounded-md bg-background p-2">
+              <div className="flex min-w-0 items-center justify-between gap-2">
+                <span className="truncate text-xs font-medium">
+                  {eventLabel(event, t)}
+                </span>
+                {event.endsWith('.*') && (
+                  <Badge variant="outline" className="shrink-0 text-[10px]">
+                    {t('bots.eventGroup')}
+                  </Badge>
+                )}
+              </div>
+              <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-muted-foreground">
+                {eventDescription(event, t)}
+              </p>
+              <code className="mt-1 block truncate text-[11px] text-muted-foreground">
+                {event}
+              </code>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── route dry-run dialog ─────────────────────────────────────────────────────
+
+function RouteDryRunDialog({
+  botId,
+  bindings,
+  eventOptions,
+  agentOptions,
+}: {
+  botId?: string;
+  bindings: EventBinding[];
+  eventOptions: string[];
+  agentOptions: Agent[];
+}) {
+  const { t } = useTranslation();
+  const firstEvent = eventOptions[0] ?? DEFAULT_EVENTS[0];
+  const [open, setOpen] = useState(false);
+  const [eventType, setEventType] = useState(firstEvent);
+  const [payloadText, setPayloadText] = useState('{\n  "message_text": ""\n}');
+  const [isRunning, setIsRunning] = useState(false);
+  const [payloadError, setPayloadError] = useState<string | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
+  const [result, setResult] = useState<BotRouteDryRunResult | null>(null);
+
+  useEffect(() => {
+    if (!eventOptions.includes(eventType)) {
+      setEventType(firstEvent);
+    }
+  }, [eventOptions, eventType, firstEvent]);
+
+  function resolveTargetName(resultTarget?: BotRouteDryRunResult['target']) {
+    if (!resultTarget) return '';
+    if (resultTarget.target_name) return resultTarget.target_name;
+    if (resultTarget.target_type === 'discard') return t('bots.targetDiscard');
+    const agent = agentOptions.find((a) => a.uuid === resultTarget.target_uuid);
+    return agent ? targetLabel(agent) : (resultTarget.target_uuid ?? '');
+  }
+
+  async function runDryRun() {
+    setPayloadError(null);
+    setRunError(null);
+    setResult(null);
+
+    let payload: Record<string, unknown> = {};
+    if (payloadText.trim()) {
+      try {
+        const parsed = JSON.parse(payloadText);
+        if (
+          parsed === null ||
+          typeof parsed !== 'object' ||
+          Array.isArray(parsed)
+        ) {
+          setPayloadError(t('bots.dryRunPayloadObjectError'));
+          return;
+        }
+        payload = parsed as Record<string, unknown>;
+      } catch {
+        setPayloadError(t('bots.dryRunPayloadJsonError'));
+        return;
+      }
+    }
+
+    if (!botId) {
+      setRunError(t('bots.dryRunNeedsSavedBot'));
+      return;
+    }
+
+    setIsRunning(true);
+    try {
+      const dryRunResult = await backendClient.dryRunBotEventRoute(botId, {
+        event_type: eventType,
+        payload,
+        event_bindings: bindings,
+      });
+      setResult({
+        ...dryRunResult,
+        diagnostic_steps: dryRunResult.diagnostic_steps ?? [],
+      });
+    } catch (error) {
+      const err = error as { msg?: string };
+      setRunError(err.msg || t('bots.dryRunFailed'));
+    } finally {
+      setIsRunning(false);
+    }
+  }
+
+  const targetName = result ? resolveTargetName(result.target) : '';
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => setOpen(true)}
+      >
+        <Play className="h-4 w-4 mr-1" />
+        {t('bots.testRoute')}
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{t('bots.dryRunTitle')}</DialogTitle>
+            <DialogDescription>{t('bots.dryRunDescription')}</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-[220px_1fr]">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">
+                  {t('bots.dryRunEventType')}
+                </label>
+                <Select value={eventType} onValueChange={setEventType}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {eventOptions.map((event) => (
+                      <SelectItem key={event} value={event}>
+                        {eventLabel(event, t)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">
+                  {t('bots.dryRunPayload')}
+                </label>
+                <Textarea
+                  value={payloadText}
+                  onChange={(e) => setPayloadText(e.target.value)}
+                  className="min-h-[118px] font-mono text-xs"
+                  spellCheck={false}
+                  placeholder='{"message_text": "hello"}'
+                />
+                {payloadError ? (
+                  <p className="text-xs text-destructive">{payloadError}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    {t('bots.dryRunPayloadHint')}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {runError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{runError}</AlertDescription>
+              </Alert>
+            )}
+
+            {result && (
+              <div className="rounded-lg border p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  {result.matched ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                  ) : (
+                    <XCircle className="h-4 w-4 text-muted-foreground" />
+                  )}
+                  <span className="text-sm font-medium">
+                    {result.matched
+                      ? t('bots.dryRunMatched')
+                      : t('bots.dryRunNotMatched')}
+                  </span>
+                  {result.failure_code && (
+                    <Badge variant="outline" className="font-mono text-[10px]">
+                      {result.failure_code}
+                    </Badge>
+                  )}
+                </div>
+
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-md bg-muted/40 p-2">
+                    <p className="text-xs text-muted-foreground">
+                      {t('bots.dryRunTarget')}
+                    </p>
+                    <p className="mt-1 truncate text-sm font-medium">
+                      {result.target
+                        ? `${targetTypeLabel(result.target.target_type, t)}${
+                            targetName ? ` · ${targetName}` : ''
+                          }`
+                        : t('bots.dryRunNoTarget')}
+                    </p>
+                  </div>
+                  <div className="rounded-md bg-muted/40 p-2">
+                    <p className="text-xs text-muted-foreground">
+                      {t('bots.dryRunMatchedRule')}
+                    </p>
+                    <p className="mt-1 truncate text-sm font-medium">
+                      {result.matched_binding_index !== undefined &&
+                      result.matched_binding_index !== null
+                        ? t('bots.dryRunRuleIndex', {
+                            index: result.matched_binding_index + 1,
+                          })
+                        : result.matched_binding_id || t('bots.dryRunNoRule')}
+                    </p>
+                  </div>
+                </div>
+
+                {result.diagnostic_steps.length > 0 && (
+                  <div className="mt-3">
+                    <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                      <ListChecks className="h-3.5 w-3.5" />
+                      {t('bots.dryRunDiagnostics')}
+                    </div>
+                    <ol className="space-y-1 pl-5 text-xs text-muted-foreground">
+                      {result.diagnostic_steps.map((step, index) => (
+                        <li key={`${index}:${step}`} className="list-decimal">
+                          {step}
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOpen(false)}
+            >
+              {t('common.close')}
+            </Button>
+            <Button type="button" onClick={runDryRun} disabled={isRunning}>
+              <Play className="h-4 w-4 mr-1" />
+              {isRunning ? t('bots.dryRunRunning') : t('bots.dryRunAction')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 // ── single binding card ───────────────────────────────────────────────────────
 
 interface BindingCardProps {
@@ -543,11 +917,9 @@ function BindingCardContent({
                 <SelectItem key={event} value={event}>
                   <span className="flex flex-col">
                     <span>{label}</span>
-                    {label !== event && (
-                      <span className="text-[11px] text-muted-foreground font-mono">
-                        {event}
-                      </span>
-                    )}
+                    <span className="text-[11px] text-muted-foreground">
+                      {eventDescription(event, t)}
+                    </span>
                   </span>
                 </SelectItem>
               );
@@ -654,6 +1026,7 @@ function SortableBindingCard(props: BindingCardProps) {
 
 export default function EventBindingsEditor({
   form,
+  botId,
   supportedEvents,
   agentOptions,
 }: EventBindingsEditorProps) {
@@ -681,6 +1054,10 @@ export default function EventBindingsEditor({
       (e, i, a) => a.indexOf(e) === i,
     );
   }, [supportedEvents]);
+  const dryRunEventOptions = useMemo(
+    () => (supportedEvents.length > 0 ? supportedEvents : DEFAULT_EVENTS),
+    [supportedEvents],
+  );
 
   function updateBindings(next: EventBinding[]) {
     form.setValue('event_bindings', next, { shouldDirty: true });
@@ -769,6 +1146,11 @@ export default function EventBindingsEditor({
 
   return (
     <div className="space-y-3">
+      <AdapterCapabilitySummary
+        supportedEvents={supportedEvents}
+        eventOptions={eventOptions}
+      />
+
       {/* enabled section */}
       <DndContext
         sensors={sensors}
@@ -821,10 +1203,18 @@ export default function EventBindingsEditor({
         </DragOverlay>
       </DndContext>
 
-      <Button type="button" variant="outline" size="sm" onClick={addBinding}>
-        <Plus className="h-4 w-4 mr-1" />
-        {t('bots.addEventBinding')}
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="outline" size="sm" onClick={addBinding}>
+          <Plus className="h-4 w-4 mr-1" />
+          {t('bots.addEventBinding')}
+        </Button>
+        <RouteDryRunDialog
+          botId={botId}
+          bindings={bindings}
+          eventOptions={dryRunEventOptions}
+          agentOptions={agentOptions}
+        />
+      </div>
 
       {/* disabled section */}
       {disabledBindings.length > 0 && (

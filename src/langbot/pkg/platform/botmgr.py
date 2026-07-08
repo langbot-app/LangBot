@@ -208,8 +208,9 @@ class RuntimeBot:
             if isinstance(event_filter, dict)
         )
 
-    def _get_event_bindings(self) -> list[dict[str, typing.Any]]:
-        raw_bindings = self.bot_entity.event_bindings or []
+    @staticmethod
+    def _get_event_bindings_from_value(raw_bindings: typing.Any) -> list[dict[str, typing.Any]]:
+        raw_bindings = raw_bindings or []
         if isinstance(raw_bindings, str):
             try:
                 raw_bindings = json.loads(raw_bindings)
@@ -219,32 +220,90 @@ class RuntimeBot:
             return []
         return [binding for binding in raw_bindings if isinstance(binding, dict)]
 
+    def _get_event_bindings(self) -> list[dict[str, typing.Any]]:
+        return self._get_event_bindings_from_value(self.bot_entity.event_bindings)
+
+    @classmethod
+    def _evaluate_eba_event_bindings(
+        cls,
+        bindings: list[dict[str, typing.Any]],
+        event: platform_events.EBAEvent,
+        event_type: str,
+    ) -> tuple[dict[str, typing.Any] | None, list[dict[str, typing.Any]]]:
+        """Evaluate Bot event bindings with the same precedence used at runtime."""
+        matched: list[tuple[int, int, dict[str, typing.Any], dict[str, typing.Any]]] = []
+        diagnostic_steps: list[dict[str, typing.Any]] = []
+
+        for index, binding in enumerate(bindings):
+            event_pattern = str(binding.get('event_pattern') or '')
+            priority = int(binding.get('priority') or 0)
+            order = int(binding.get('order', index))
+            step = {
+                'step': 'evaluate_binding',
+                'binding_id': binding.get('id'),
+                'event_pattern': event_pattern,
+                'target_type': binding.get('target_type'),
+                'target_uuid': binding.get('target_uuid') or '',
+                'enabled': binding.get('enabled', True),
+                'priority': priority,
+                'order': order,
+                'matched': False,
+                'failure_code': None,
+                'reason': '',
+            }
+
+            if not binding.get('enabled', True):
+                step['failure_code'] = 'binding_disabled'
+                step['reason'] = 'Binding is disabled'
+                diagnostic_steps.append(step)
+                continue
+
+            if not cls._match_event_pattern(event_type, event_pattern):
+                step['failure_code'] = 'event_pattern_mismatch'
+                step['reason'] = 'Event type does not match binding event_pattern'
+                diagnostic_steps.append(step)
+                continue
+            if not cls._match_event_filters(event, binding.get('filters')):
+                step['failure_code'] = 'filters_mismatch'
+                step['reason'] = 'Event data does not satisfy binding filters'
+                diagnostic_steps.append(step)
+                continue
+
+            step['matched'] = True
+            step['reason'] = 'Binding matched event pattern and filters'
+            diagnostic_steps.append(step)
+            matched.append((priority, -order, binding, step))
+
+        if not matched:
+            return None, diagnostic_steps
+
+        matched.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        selected_binding = matched[0][2]
+        selected_step = matched[0][3]
+        selected_step['selected'] = True
+        selected_step['reason'] = 'Selected by priority and order'
+        for _, _, _, step in matched[1:]:
+            step['selected'] = False
+            step['failure_code'] = 'lower_priority'
+            step['reason'] = 'Another matching binding has higher priority or earlier order'
+        return selected_binding, diagnostic_steps
+
     def _resolve_eba_event_binding(
         self,
         event: platform_events.EBAEvent,
         event_type: str,
     ) -> dict[str, typing.Any] | None:
         """Resolve the highest priority Bot event binding for a platform event."""
-        matched: list[tuple[int, int, dict[str, typing.Any]]] = []
-        for index, binding in enumerate(self._get_event_bindings()):
-            if not binding.get('enabled', True):
-                continue
+        selected, _ = self._evaluate_eba_event_bindings(self._get_event_bindings(), event, event_type)
+        return selected
 
-            event_pattern = str(binding.get('event_pattern') or '')
-            if not self._match_event_pattern(event_type, event_pattern):
-                continue
-            if not self._match_event_filters(event, binding.get('filters')):
-                continue
-
-            priority = int(binding.get('priority') or 0)
-            order = int(binding.get('order', index))
-            matched.append((priority, -order, binding))
-
-        if not matched:
-            return None
-
-        matched.sort(key=lambda item: (item[0], item[1]), reverse=True)
-        return matched[0][2]
+    def diagnose_eba_event_binding(
+        self,
+        event: platform_events.EBAEvent,
+        event_type: str,
+    ) -> tuple[dict[str, typing.Any] | None, list[dict[str, typing.Any]]]:
+        """Return the selected event binding plus per-binding diagnostic steps."""
+        return self._evaluate_eba_event_bindings(self._get_event_bindings(), event, event_type)
 
     def get_pipeline_target_for_event_type(self, event_type: str = 'message.received') -> str | None:
         """Return the first Pipeline target configured for an event type."""

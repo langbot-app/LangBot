@@ -624,6 +624,299 @@ class TestBotServiceEventBindings:
         assert other_session.using_conversation.bot_uuid == 'other-bot'
 
 
+class TestBotServiceEventRouteDryRun:
+    """Tests for dry-run Bot event route diagnostics."""
+
+    @staticmethod
+    def _make_service(
+        event_bindings: list[dict],
+        *,
+        bot_uuid: str = 'bot-1',
+        persistence_results: list[Mock] | None = None,
+    ) -> BotService:
+        ap = SimpleNamespace()
+        ap.persistence_mgr = SimpleNamespace()
+        ap.persistence_mgr.execute_async = AsyncMock(side_effect=persistence_results or [])
+        service = BotService(ap)
+        service.get_bot = AsyncMock(
+            return_value={
+                'uuid': bot_uuid,
+                'name': 'Dry Run Bot',
+                'event_bindings': event_bindings,
+            }
+        )
+        return service
+
+    async def test_dry_run_event_route_matches_agent(self):
+        """Matching Agent routes return the selected binding without running the Agent."""
+        service = self._make_service(
+            [
+                {
+                    'id': 'agent-binding',
+                    'enabled': True,
+                    'event_pattern': 'platform.member.*',
+                    'target_type': 'agent',
+                    'target_uuid': 'agent-1',
+                    'filters': [{'field': 'room.id', 'operator': 'eq', 'value': 'room-1'}],
+                    'priority': 5,
+                    'order': 0,
+                }
+            ],
+            persistence_results=[
+                _create_mock_result(
+                    first_item=SimpleNamespace(
+                        uuid='agent-1',
+                        kind='agent',
+                        enabled=True,
+                        supported_event_patterns=['platform.member.*'],
+                    )
+                )
+            ],
+        )
+
+        result = await service.dry_run_event_route(
+            'bot-1',
+            'platform.member.joined',
+            event_data={'room': {'id': 'room-1'}},
+        )
+
+        assert result['matched'] is True
+        assert result['binding_id'] == 'agent-binding'
+        assert result['event_pattern'] == 'platform.member.*'
+        assert result['target_type'] == 'agent'
+        assert result['target_uuid'] == 'agent-1'
+        assert result['target']['target_uuid'] == 'agent-1'
+        assert result['target']['target_name'] is None
+        assert result['failure_code'] is None
+        assert result['matched_binding_id'] == 'agent-binding'
+        assert result['matched_binding_index'] == 0
+        assert result['diagnostic_details'][0]['selected'] is True
+        assert result['diagnostic_steps'][0].startswith('Route 1')
+
+    async def test_dry_run_event_route_matches_discard(self):
+        """Discard routes are terminal dry-run matches and do not query processors."""
+        service = self._make_service(
+            [
+                {
+                    'id': 'discard-binding',
+                    'enabled': True,
+                    'event_pattern': '*',
+                    'target_type': 'discard',
+                    'target_uuid': '',
+                    'priority': 0,
+                    'order': 0,
+                }
+            ]
+        )
+
+        result = await service.dry_run_event_route('bot-1', 'platform.member.left')
+
+        assert result['matched'] is True
+        assert result['binding_id'] == 'discard-binding'
+        assert result['target_type'] == 'discard'
+        assert result['target']['kind'] == 'discard'
+        assert result['failure_code'] is None
+        service.ap.persistence_mgr.execute_async.assert_not_awaited()
+
+    async def test_dry_run_event_route_returns_route_not_found_when_no_binding_matches(self):
+        """Pattern/filter misses return route_not_found."""
+        service = self._make_service(
+            [
+                {
+                    'id': 'wrong-event',
+                    'enabled': True,
+                    'event_pattern': 'message.received',
+                    'target_type': 'agent',
+                    'target_uuid': 'agent-1',
+                    'priority': 0,
+                    'order': 0,
+                }
+            ]
+        )
+
+        result = await service.dry_run_event_route('bot-1', 'platform.member.joined')
+
+        assert result['matched'] is False
+        assert result['binding_id'] is None
+        assert result['failure_code'] == 'route_not_found'
+        assert result['target'] is None
+        assert result['diagnostic_details'][0]['failure_code'] == 'event_pattern_mismatch'
+        assert 'skipped' in result['diagnostic_steps'][0]
+        service.ap.persistence_mgr.execute_async.assert_not_awaited()
+
+    async def test_dry_run_event_route_reports_disabled_binding_without_matching(self):
+        """Disabled bindings are diagnosed but never selected."""
+        service = self._make_service(
+            [
+                {
+                    'id': 'disabled-binding',
+                    'enabled': False,
+                    'event_pattern': 'platform.member.joined',
+                    'target_type': 'agent',
+                    'target_uuid': 'agent-1',
+                    'priority': 100,
+                    'order': 0,
+                }
+            ]
+        )
+
+        result = await service.dry_run_event_route('bot-1', 'platform.member.joined')
+
+        assert result['matched'] is False
+        assert result['failure_code'] == 'route_not_found'
+        assert result['diagnostic_details'][0]['binding_id'] == 'disabled-binding'
+        assert result['diagnostic_details'][0]['failure_code'] == 'binding_disabled'
+        service.ap.persistence_mgr.execute_async.assert_not_awaited()
+
+    async def test_dry_run_event_route_rejects_pipeline_for_non_message_event(self):
+        """Pipeline targets cannot dry-run match non-message events."""
+        service = self._make_service(
+            [
+                {
+                    'id': 'pipeline-binding',
+                    'enabled': True,
+                    'event_pattern': 'platform.member.joined',
+                    'target_type': 'pipeline',
+                    'target_uuid': 'pipeline-1',
+                    'priority': 0,
+                    'order': 0,
+                }
+            ]
+        )
+
+        result = await service.dry_run_event_route('bot-1', 'platform.member.joined')
+
+        assert result['matched'] is False
+        assert result['binding_id'] == 'pipeline-binding'
+        assert result['target_type'] == 'pipeline'
+        assert result['failure_code'] == 'processor_incompatible'
+        assert result['diagnostic_details'][-1]['step'] == 'validate_processor'
+        service.ap.persistence_mgr.execute_async.assert_not_awaited()
+
+    async def test_dry_run_event_route_rejects_incompatible_agent(self):
+        """Agent targets must support the incoming event type."""
+        service = self._make_service(
+            [
+                {
+                    'id': 'agent-binding',
+                    'enabled': True,
+                    'event_pattern': 'platform.member.joined',
+                    'target_type': 'agent',
+                    'target_uuid': 'agent-1',
+                    'priority': 0,
+                    'order': 0,
+                }
+            ],
+            persistence_results=[
+                _create_mock_result(
+                    first_item=SimpleNamespace(
+                        uuid='agent-1',
+                        kind='agent',
+                        enabled=True,
+                        supported_event_patterns=['message.*'],
+                    )
+                )
+            ],
+        )
+
+        result = await service.dry_run_event_route('bot-1', 'platform.member.joined')
+
+        assert result['matched'] is False
+        assert result['binding_id'] == 'agent-binding'
+        assert result['target_type'] == 'agent'
+        assert result['failure_code'] == 'processor_incompatible'
+        assert result['diagnostic_details'][-1]['failure_code'] == 'processor_incompatible'
+
+    async def test_dry_run_event_route_reports_disabled_agent(self):
+        """Disabled Agent targets return processor_disabled."""
+        service = self._make_service(
+            [
+                {
+                    'id': 'agent-binding',
+                    'enabled': True,
+                    'event_pattern': 'platform.member.joined',
+                    'target_type': 'agent',
+                    'target_uuid': 'agent-1',
+                    'priority': 0,
+                    'order': 0,
+                }
+            ],
+            persistence_results=[
+                _create_mock_result(
+                    first_item=SimpleNamespace(
+                        uuid='agent-1',
+                        kind='agent',
+                        enabled=False,
+                        supported_event_patterns=['*'],
+                    )
+                )
+            ],
+        )
+
+        result = await service.dry_run_event_route('bot-1', 'platform.member.joined')
+
+        assert result['matched'] is False
+        assert result['failure_code'] == 'processor_disabled'
+        assert result['diagnostic_details'][-1]['failure_code'] == 'processor_disabled'
+
+    async def test_dry_run_event_route_reports_missing_pipeline(self):
+        """Missing Pipeline targets return processor_not_found."""
+        service = self._make_service(
+            [
+                {
+                    'id': 'pipeline-binding',
+                    'enabled': True,
+                    'event_pattern': 'message.received',
+                    'target_type': 'pipeline',
+                    'target_uuid': 'pipeline-1',
+                    'priority': 0,
+                    'order': 0,
+                }
+            ],
+            persistence_results=[_create_mock_result(first_item=None)],
+        )
+
+        result = await service.dry_run_event_route('bot-1', 'message.received')
+
+        assert result['matched'] is False
+        assert result['failure_code'] == 'processor_not_found'
+        assert result['diagnostic_details'][-1]['failure_code'] == 'processor_not_found'
+
+    async def test_dry_run_event_route_uses_draft_event_bindings(self):
+        """Draft bindings from the UI can be tested before saving the bot."""
+        service = self._make_service(
+            [
+                {
+                    'id': 'saved-binding',
+                    'enabled': True,
+                    'event_pattern': 'message.received',
+                    'target_type': 'discard',
+                    'priority': 0,
+                    'order': 0,
+                }
+            ]
+        )
+
+        result = await service.dry_run_event_route(
+            'bot-1',
+            'platform.member.joined',
+            event_bindings=[
+                {
+                    'id': 'draft-binding',
+                    'event_pattern': 'platform.member.joined',
+                    'target_type': 'discard',
+                    'enabled': True,
+                    'priority': 0,
+                }
+            ],
+        )
+
+        assert result['matched'] is True
+        assert result['binding_id'] == 'draft-binding'
+        assert result['matched_binding_index'] == 0
+        assert result['target']['kind'] == 'discard'
+
+
 class TestBotServiceDeleteBot:
     """Tests for delete_bot method."""
 
