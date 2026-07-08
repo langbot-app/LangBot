@@ -4,6 +4,7 @@ import base64
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
+import httpx
 import pytest
 from mcp import types as mcp_types
 
@@ -52,6 +53,50 @@ def _connected_session(
 
 def _query() -> SimpleNamespace:
     return SimpleNamespace(variables={})
+
+
+def _http_status_error(status_code: int) -> httpx.HTTPStatusError:
+    request = httpx.Request('POST', 'https://example.com/mcp')
+    response = httpx.Response(status_code, request=request)
+    return httpx.HTTPStatusError(f'HTTP {status_code}', request=request, response=response)
+
+
+@pytest.mark.asyncio
+async def test_remote_transport_falls_back_to_sse_for_compatible_http_status_in_exception_group():
+    session = RuntimeMCPSession(
+        'remote',
+        {'uuid': 'srv-1', 'mode': 'remote', 'url': 'https://example.com/mcp'},
+        True,
+        _app(),
+    )
+    session._init_streamable_http_server = AsyncMock(
+        side_effect=ExceptionGroup('transport failed', [_http_status_error(405)])
+    )
+    session._init_sse_server = AsyncMock()
+
+    await session._init_remote_server()
+
+    session._init_streamable_http_server.assert_awaited_once()
+    session._init_sse_server.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_remote_transport_does_not_fallback_for_auth_http_status():
+    session = RuntimeMCPSession(
+        'remote',
+        {'uuid': 'srv-1', 'mode': 'remote', 'url': 'https://example.com/mcp'},
+        True,
+        _app(),
+    )
+    error = _http_status_error(403)
+    session._init_streamable_http_server = AsyncMock(side_effect=error)
+    session._init_sse_server = AsyncMock()
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await session._init_remote_server()
+
+    session._init_streamable_http_server.assert_awaited_once()
+    session._init_sse_server.assert_not_awaited()
 
 
 @pytest.mark.asyncio

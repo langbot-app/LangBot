@@ -366,9 +366,15 @@ class RuntimeMCPSession:
             await self._init_streamable_http_server()
             return
         except Exception as e:
+            if not self._should_fallback_to_sse(e):
+                self.ap.logger.info(
+                    f'MCP server {self.server_name}: Streamable HTTP transport failed '
+                    f'({self._describe_exception(e)}); not falling back to SSE'
+                )
+                raise
             self.ap.logger.info(
-                f'MCP server {self.server_name}: Streamable HTTP transport failed '
-                f'({self._describe_exception(e)}), falling back to SSE'
+                f'MCP server {self.server_name}: Streamable HTTP initialize failed with a compatible HTTP status '
+                f'({self._describe_exception(e)}), falling back to legacy SSE'
             )
 
         # The Streamable HTTP attempt may have partially entered the transport /
@@ -574,6 +580,33 @@ class RuntimeMCPSession:
         seen: set[str] = set()
         unique = [m for m in leaves if not (m in seen or seen.add(m))]
         return '; '.join(unique) if unique else f'{type(exc).__name__}: {exc}'
+
+    @staticmethod
+    def _iter_exception_leaves(exc: BaseException) -> typing.Iterator[BaseException]:
+        sub = getattr(exc, 'exceptions', None)
+        if sub:  # ExceptionGroup / BaseExceptionGroup
+            for child in sub:
+                yield from RuntimeMCPSession._iter_exception_leaves(child)
+        else:
+            yield exc
+
+    @staticmethod
+    def _should_fallback_to_sse(exc: BaseException) -> bool:
+        """Whether a Streamable HTTP failure matches MCP legacy-SSE fallback.
+
+        The MCP backwards-compatibility path falls back when the initialize POST
+        fails with a 4xx. Treat authentication failures as terminal: retrying as
+        SSE would hide a bad token/header behind a second, noisier failure.
+        """
+        fallback_statuses = {400, 404, 405, 406, 415}
+        for leaf in RuntimeMCPSession._iter_exception_leaves(exc):
+            if isinstance(leaf, httpx.HTTPStatusError):
+                status_code = leaf.response.status_code
+                if status_code in fallback_statuses:
+                    return True
+                if 400 <= status_code < 500 and status_code not in {401, 403}:
+                    return True
+        return False
 
     _MONITOR_POLL_INTERVAL = 5
     _MONITOR_MAX_CONSECUTIVE_ERRORS = 3
