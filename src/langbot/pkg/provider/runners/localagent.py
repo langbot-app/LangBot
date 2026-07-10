@@ -490,7 +490,6 @@ class LocalAgentRunner(runner.RequestRunner):
             final_msg = stream_accumulator.final_message()
 
         pending_tool_calls = final_msg.tool_calls
-        first_content = final_msg.content
         if isinstance(final_msg, provider_message.MessageChunk):
             first_end_sequence = final_msg.msg_sequence
 
@@ -573,9 +572,13 @@ class LocalAgentRunner(runner.RequestRunner):
             )
 
             if is_stream:
+                # Do NOT re-seed the accumulator with first_content:
+                # the previous round's text was already pushed to the
+                # platform adapter. Re-seeding would cause every
+                # subsequent round to repeat the entire opening line,
+                # which the platform then forwards as a duplicate message.
                 stream_accumulator = _StreamAccumulator(
                     msg_sequence=first_end_sequence,
-                    initial_content=first_content,
                 )
 
                 tool_stream_src = use_llm_model.provider.invoke_llm_stream(
