@@ -24,7 +24,8 @@ class _ThinkStripState:
     buffer for the next call.
     """
 
-    _OPEN_TAG: str = '</think>'
+    _OPEN_TAG: str = '<think>'
+    _CLOSE_TAG: str = '</think>'
     _LEGACY_OPEN: str = 'CRETIRE_REASONING_BEGINk'
     _LEGACY_CLOSE: str = 'CRETIRE_REASONING_ENDk'
 
