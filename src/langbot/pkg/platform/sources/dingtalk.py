@@ -1,6 +1,7 @@
 import asyncio
 import json
 import pathlib
+import re
 import traceback
 import typing
 import uuid
@@ -168,6 +169,261 @@ class DingTalkEventConverter(abstract_platform_adapter.AbstractEventConverter):
             )
 
 
+def _dingtalk_input_hint_lines(form_data: dict) -> list[str]:
+    lines: list[str] = []
+    current_field = str(form_data.get('_current_input_field') or '').strip()
+    for field in form_data.get('input_defs') or []:
+        field_name = str(field.get('output_variable_name') or '').strip()
+        field_type = str(field.get('type') or 'text').strip().lower()
+        if current_field and field_name != current_field:
+            continue
+        if not field_name:
+            continue
+        if field_type == 'select':
+            source = field.get('option_source') or {}
+            options = source.get('value') if isinstance(source, dict) else []
+            if isinstance(options, list) and options:
+                option_text = ', '.join(f'{idx}. {option}' for idx, option in enumerate(options, start=1))
+                lines.append(f'- {field_name}: {option_text}')
+            else:
+                lines.append(f'- {field_name}: choose one option')
+        elif field_type in {'file', 'file-list'}:
+            limit = field.get('number_limits') if field_type == 'file-list' else 1
+            allowed_types = ', '.join(field.get('allowed_file_types') or [])
+            suffix = f', up to {limit}' if field_type == 'file-list' and limit else ''
+            allowed = f' ({allowed_types})' if allowed_types else ''
+            lines.append(f'- {field_name}: upload file(s){allowed}{suffix} or reply `{field_name}: <url>`')
+        else:
+            lines.append(f'- {field_name}: reply `{field_name}: <value>`')
+    return lines
+
+
+def _dingtalk_pending_input_defs(form_data: dict) -> list[dict]:
+    if form_data.get('_action_select_only'):
+        return []
+    inputs = form_data.get('inputs') or {}
+    pending = []
+    for field in form_data.get('input_defs') or []:
+        field_name = str(field.get('output_variable_name') or '').strip()
+        if not field_name:
+            continue
+        if inputs.get(field_name) in (None, '', []):
+            pending.append(field)
+    return pending
+
+
+def _dingtalk_clean_form_content(form_data: dict) -> str:
+    content = form_data.get('raw_form_content') or form_data.get('form_content') or ''
+    field_names = {
+        str(field.get('output_variable_name') or '').strip()
+        for field in _dingtalk_form_input_defs(form_data)
+        if str(field.get('output_variable_name') or '').strip()
+    }
+    kept_lines: list[str] = []
+    for line in str(content).splitlines():
+        placeholder = re.fullmatch(r'\s*\{\{#\$output\.([^#{}]+)#\}\}\s*', line)
+        if placeholder and placeholder.group(1) in field_names:
+            continue
+        kept_lines.append(line)
+    return re.sub(r'\n{3,}', '\n\n', '\n'.join(kept_lines).strip())
+
+
+def _dingtalk_form_input_defs(form_data: dict) -> list[dict]:
+    return list(form_data.get('all_input_defs') or form_data.get('input_defs') or [])
+
+
+def _dingtalk_display_input_value(field: dict, value: typing.Any) -> str:
+    field_type = _dingtalk_field_type(field)
+    if field_type == 'file':
+        if isinstance(value, dict):
+            return value.get('url') or value.get('upload_file_id') or '1 file'
+        return str(value)
+    if field_type == 'file-list':
+        if isinstance(value, list):
+            return f'{len(value)} file(s)'
+        return str(value)
+    return str(value)
+
+
+def _dingtalk_completed_input_lines(form_data: dict) -> list[str]:
+    inputs = form_data.get('inputs') or {}
+    if not isinstance(inputs, dict):
+        return []
+
+    lines: list[str] = []
+    for field in _dingtalk_form_input_defs(form_data):
+        field_name = _dingtalk_field_name(field)
+        if not field_name:
+            continue
+        value = inputs.get(field_name)
+        if value in (None, '', []):
+            continue
+        field_type = _dingtalk_field_type(field)
+        display_value = _dingtalk_display_input_value(field, value)
+        if field_type == 'select':
+            lines.append(f'✅ 已选择 {field_name}：**{display_value}**')
+        elif field_type in {'file', 'file-list'}:
+            lines.append(f'✅ 已上传 {field_name}：**{display_value}**')
+        else:
+            lines.append(f'✅ 已填写 {field_name}：**{display_value}**')
+    return lines
+
+
+def _dingtalk_supports_native_field(form_data: dict) -> bool:
+    current_name = str(form_data.get('_current_input_field') or '').strip()
+    if not current_name or form_data.get('_action_select_only'):
+        return False
+    for field in _dingtalk_form_input_defs(form_data):
+        if str(field.get('output_variable_name') or '').strip() != current_name:
+            continue
+        return str(field.get('type') or 'text').strip().lower() not in {'file', 'file-list'}
+    return False
+
+
+def _dingtalk_field_name(field: dict) -> str:
+    return str(field.get('output_variable_name') or field.get('name') or field.get('id') or '').strip()
+
+
+def _dingtalk_field_type(field: dict) -> str:
+    return str(field.get('type') or 'text').strip().lower()
+
+
+def _dingtalk_select_options(field: dict) -> list[str]:
+    source = field.get('option_source') or {}
+    value = source.get('value') if isinstance(source, dict) else None
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    if isinstance(value, str):
+        return [part.strip() for part in value.splitlines() if part.strip()]
+    options = field.get('options')
+    if isinstance(options, list):
+        result = []
+        for item in options:
+            if isinstance(item, dict):
+                result.append(str(item.get('label') or item.get('value') or ''))
+            else:
+                result.append(str(item))
+        return [item for item in result if item]
+    return []
+
+
+def _dingtalk_select_block_options(options: list[str]) -> list[dict]:
+    """Build the option shape consumed by DingTalk SelectBlock templates."""
+    locales = (
+        'zh_CN',
+        'zh_TW',
+        'en_US',
+        'ja_JP',
+        'vi_VN',
+        'th_TH',
+        'id_ID',
+        'ne_NP',
+        'ms_MY',
+        'ko_KR',
+        'ru_RU',
+        'es_EA',
+        'tr_TR',
+        'fr_FR',
+        'pt_BR',
+    )
+    return [{'value': option, 'text': {locale: option for locale in locales}} for option in options]
+
+
+def _dingtalk_current_input_field(form_data: dict) -> dict | None:
+    current_name = str(form_data.get('_current_input_field') or '').strip()
+    if not current_name or form_data.get('_action_select_only'):
+        return None
+    for field in _dingtalk_form_input_defs(form_data):
+        if _dingtalk_field_name(field) == current_name:
+            return field
+    return None
+
+
+def _dingtalk_form_component_params(form_data: dict) -> dict:
+    field = _dingtalk_current_input_field(form_data)
+    params = {
+        'input_visible': '',
+        'input_title': '',
+        'input_placeholder': '',
+        'input_value': '',
+        'select_visible': '',
+        'select_placeholder': '',
+        'select_options': [],
+        'index_o': [],
+        'test_index': [],
+        'select_index': -1,
+    }
+    if not field:
+        return params
+
+    field_name = _dingtalk_field_name(field)
+    field_type = _dingtalk_field_type(field)
+    value = form_data.get('inputs', {}).get(field_name, '')
+    if field_type == 'select':
+        options = _dingtalk_select_options(field)
+        selected_index = -1
+        if value not in (None, ''):
+            try:
+                selected_index = options.index(str(value))
+            except ValueError:
+                selected_index = -1
+        params.update(
+            {
+                'select_visible': 'true',
+                'select_placeholder': field_name or 'Select',
+                'select_options': options,
+                'index_o': _dingtalk_select_block_options(options),
+                'test_index': _dingtalk_select_block_options(options),
+                'select_index': selected_index,
+            }
+        )
+    elif field_type not in {'file', 'file-list'}:
+        params.update(
+            {
+                'input_visible': 'true',
+                'input_title': field_name or 'Input',
+                'input_placeholder': field_name or 'Input',
+                'input_value': '' if value is None else str(value),
+            }
+        )
+    return params
+
+
+def _dingtalk_empty_form_component_params() -> dict:
+    return _dingtalk_form_component_params({})
+
+
+def _dingtalk_extract_component_inputs(params: dict) -> dict:
+    """Normalize DingTalk native Input/SelectBlock callback payloads."""
+    if not isinstance(params, dict):
+        return {}
+
+    result = {}
+    input_value = params.get('input')
+    if input_value in (None, ''):
+        input_result = params.get('inputResult')
+        if isinstance(input_result, dict):
+            input_value = input_result.get('value') or input_result.get('input')
+        elif input_result not in (None, ''):
+            input_value = input_result
+    if input_value not in (None, ''):
+        result['input'] = input_value
+
+    select_value = params.get('select')
+    if select_value in (None, ''):
+        for key in ('selectResult', 'select_result', '__built_in_selectResult__'):
+            candidate = params.get(key)
+            if candidate not in (None, ''):
+                select_value = candidate
+                break
+    if isinstance(select_value, dict):
+        select_value = select_value.get('value') or select_value.get('label') or select_value.get('index')
+    if select_value not in (None, ''):
+        result['select'] = select_value
+
+    return result
+
+
 class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     bot: DingTalkClient
     bot_account_id: str
@@ -329,8 +585,12 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                                 content=content,
                                 btns='[]',
                                 flowStatus='3' if is_final else '1',
+                                **_dingtalk_empty_form_component_params(),
                             ),
                         )
+                        session_key = self._session_key_from_event(message_source)
+                        if session_key:
+                            self.active_turn_text[session_key] = content
                     except Exception:
                         if self.ap is not None:
                             self.ap.logger.exception('DingTalk: update card content failed')
@@ -343,7 +603,10 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     try:
                         await self.bot.update_card_data(
                             out_track_id=card_instance_id,
-                            card_param_map=self._card_params(flowStatus='3'),
+                            card_param_map=self._card_params(
+                                flowStatus='3',
+                                **_dingtalk_empty_form_component_params(),
+                            ),
                         )
                     except Exception:
                         pass
@@ -396,7 +659,12 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     out_track_id=out_track_id,
                     open_space_id=open_space_id,
                     is_group=is_group,
-                    card_param_map=self._card_params(content='', btns='[]', flowStatus='1'),
+                    card_param_map=self._card_params(
+                        content='',
+                        btns='[]',
+                        flowStatus='1',
+                        **_dingtalk_empty_form_component_params(),
+                    ),
                     callback_type='STREAM',
                 )
             except Exception:
@@ -606,7 +874,15 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         """Update an existing card's content + buttons for human-input."""
         actions = list(form_data.get('actions') or [])
         node_title = form_data.get('node_title', '') or 'Human Input Required'
-        form_content = form_data.get('form_content', '') or ''
+        form_content = _dingtalk_clean_form_content(form_data)
+        should_show_actions = not _dingtalk_pending_input_defs(form_data)
+        component_params = _dingtalk_form_component_params(form_data)
+        native_field = _dingtalk_supports_native_field(form_data)
+        if self.ap is not None and component_params.get('select_visible'):
+            self.ap.logger.info(
+                f'DingTalk form select params: field={form_data.get("_current_input_field", "")!r} '
+                f'options={len(component_params.get("select_options") or [])}'
+            )
 
         # Record form state for the click-handler.
         launcher_type, launcher_id, sender_user_id = self._derive_session_descriptor(message_source)
@@ -617,12 +893,16 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             'sender_user_id': sender_user_id,
             'form_token': form_data.get('form_token', ''),
             'workflow_run_id': form_data.get('workflow_run_id', ''),
-            'actions': actions,
+            'actions': actions if should_show_actions else [],
+            'all_actions': actions,
             'node_title': node_title,
             'form_content': form_content,
+            'current_input_field': str(form_data.get('_current_input_field') or ''),
+            'input_defs': _dingtalk_form_input_defs(form_data),
+            'inputs': form_data.get('inputs') or {},
         }
 
-        btns = self._build_btns(actions, out_track_id)
+        btns = self._build_btns(actions if should_show_actions else [], out_track_id)
         parts: list[str] = []
         prior = self.active_turn_text.get(session_key, '') if session_key else ''
         if prior.strip():
@@ -636,6 +916,14 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             parts.append(f'**{node_title}**')
         if form_content:
             parts.append(form_content)
+        completed_lines = _dingtalk_completed_input_lines(form_data)
+        if completed_lines:
+            parts.append('<hr>' + '<br>'.join(completed_lines))
+        input_hint_lines = [] if native_field else _dingtalk_input_hint_lines(form_data)
+        if input_hint_lines:
+            parts.append('Fill these fields in chat before choosing an action:<br>' + '<br>'.join(input_hint_lines))
+        elif should_show_actions and actions:
+            parts.append('Choose an action to continue.')
         display_content = '<br><br>'.join(parts) or '请选择一个操作以继续。'
 
         try:
@@ -645,6 +933,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     content=display_content,
                     btns=json.dumps(btns, ensure_ascii=False),
                     flowStatus='3',
+                    **component_params,
                 ),
             )
         except Exception:
@@ -652,9 +941,6 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 self.ap.logger.exception('DingTalk: paint form on card failed')
             await self.send_message_text_form(message_source, form_data)
             return
-
-        if session_key:
-            self.active_turn_text[session_key] = display_content
 
     @staticmethod
     def _build_btns(actions: list, out_track_id: str) -> list:
@@ -699,7 +985,15 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         actions = list(form_data.get('actions') or [])
         node_title = form_data.get('node_title', '') or 'Human Input Required'
-        form_content = form_data.get('form_content', '') or ''
+        form_content = _dingtalk_clean_form_content(form_data)
+        should_show_actions = not _dingtalk_pending_input_defs(form_data)
+        component_params = _dingtalk_form_component_params(form_data)
+        native_field = _dingtalk_supports_native_field(form_data)
+        if self.ap is not None and component_params.get('select_visible'):
+            self.ap.logger.info(
+                f'DingTalk form select params: field={form_data.get("_current_input_field", "")!r} '
+                f'options={len(component_params.get("select_options") or [])}'
+            )
 
         self.card_state[out_track_id] = {
             'session_key': session_key,
@@ -708,9 +1002,13 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             'sender_user_id': sender_user_id,
             'form_token': form_data.get('form_token', ''),
             'workflow_run_id': form_data.get('workflow_run_id', ''),
-            'actions': actions,
+            'actions': actions if should_show_actions else [],
+            'all_actions': actions,
             'node_title': node_title,
             'form_content': form_content,
+            'current_input_field': str(form_data.get('_current_input_field') or ''),
+            'input_defs': _dingtalk_form_input_defs(form_data),
+            'inputs': form_data.get('inputs') or {},
             'open_space_id': open_space_id,
             'is_group': is_group,
         }
@@ -720,33 +1018,17 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             parts.append(f'**{node_title}**')
         if form_content:
             parts.append(form_content)
+        completed_lines = _dingtalk_completed_input_lines(form_data)
+        if completed_lines:
+            parts.append('<hr>' + '<br>'.join(completed_lines))
+        input_hint_lines = [] if native_field else _dingtalk_input_hint_lines(form_data)
+        if input_hint_lines:
+            parts.append('Fill these fields in chat before choosing an action:<br>' + '<br>'.join(input_hint_lines))
+        elif should_show_actions and actions:
+            parts.append('Choose an action to continue.')
         display_content = '<br><br>'.join(parts) or '请选择一个操作以继续。'
 
-        btns = []
-        for idx, action in enumerate(actions):
-            action_id = str(action.get('id') or '')
-            title = str(action.get('title') or action_id or f'选项 {idx + 1}')
-            style = (action.get('button_style') or '').lower()
-            if style == 'primary' or (style == '' and idx == 0):
-                color = 'blue'
-            elif style == 'danger':
-                color = 'red'
-            else:
-                color = 'gray'
-            btns.append(
-                {
-                    'text': title,
-                    'color': color,
-                    'status': 'normal',
-                    'event': {
-                        'type': 'sendCardRequest',
-                        'params': {
-                            'actionId': action_id,
-                            'params': {'action_id': action_id, 'out_track_id': out_track_id},
-                        },
-                    },
-                }
-            )
+        btns = self._build_btns(actions if should_show_actions else [], out_track_id)
 
         try:
             if self.ap is not None:
@@ -763,6 +1045,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     content=display_content,
                     btns=json.dumps(btns, ensure_ascii=False),
                     flowStatus='3',
+                    **component_params,
                 ),
                 callback_type='STREAM',
             )
@@ -790,7 +1073,12 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         out_track_id = uuid.uuid4().hex
         open_space_id, is_group = self._derive_open_space(message_source)
         if form_template_id:
-            card_param_map = self._card_params(content='', btns='[]', flowStatus='1')
+            card_param_map = self._card_params(
+                content='',
+                btns='[]',
+                flowStatus='1',
+                **_dingtalk_empty_form_component_params(),
+            )
             card_data_config = None
         else:
             # Legacy chat-card template doesn't carry a `bot_avatar`
@@ -829,11 +1117,21 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         form_data: dict,
     ) -> None:
         """Fallback: send the human-input prompt as plain text."""
-        display_text = _format_human_input_text(
-            form_data.get('node_title', ''),
-            form_data.get('form_content', ''),
-            form_data.get('actions', []) or [],
-        )
+        if form_data.get('_current_input_field') and not form_data.get('_action_select_only'):
+            parts = []
+            node_title = form_data.get('node_title', '')
+            if node_title:
+                parts.append(f'[Human Input Required] {node_title}')
+            form_content = form_data.get('form_content') or ''
+            if form_content:
+                parts.append(form_content)
+            display_text = '\n\n'.join(parts)
+        else:
+            display_text = _format_human_input_text(
+                form_data.get('node_title', ''),
+                form_data.get('form_content', ''),
+                form_data.get('actions', []) or [],
+            )
         await self._send_proactive_to_event(message_source, display_text)
 
     async def _send_proactive_to_event(
@@ -891,16 +1189,21 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             or (params.get('actionId') or '').strip()
             or (params.get('id') or '').strip()
         )
-        if not raw_action_id:
-            await self.logger.warning(f'DingTalk: card action with no action_id, payload={payload}')
-            return
-
         state = self.card_state.get(out_track_id)
         if state is None:
             await self.logger.warning(f'DingTalk: card action received for unknown out_track_id={out_track_id}')
             return
 
         actions = state.get('actions', []) or []
+        known_action_ids = {str(action.get('id', '')) for action in actions}
+        component_inputs = _dingtalk_extract_component_inputs(params)
+        if component_inputs and (not raw_action_id or raw_action_id not in known_action_ids):
+            await self._enqueue_card_form_progress(payload, state, component_inputs)
+            return
+        if not raw_action_id:
+            await self.logger.warning(f'DingTalk: card action with no action_id, payload={payload}')
+            return
+
         action_id = raw_action_id
         action_title = raw_action_id
         for action in actions:
@@ -1002,6 +1305,8 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 action_title,
                 node_title=state.get('node_title', ''),
                 form_content=state.get('form_content', ''),
+                input_defs=state.get('input_defs') or [],
+                inputs=state.get('inputs') or {},
             )
         )
 
@@ -1018,6 +1323,94 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         # Once consumed, drop the state — the runner clears _PENDING_FORMS too.
         self.card_state.pop(out_track_id, None)
 
+    async def _enqueue_card_form_progress(
+        self,
+        payload: dict,
+        state: dict,
+        component_inputs: dict,
+    ) -> None:
+        out_track_id = payload.get('out_track_id') or ''
+        launcher_type = (
+            provider_session.LauncherTypes.GROUP
+            if state.get('launcher_type') == provider_session.LauncherTypes.GROUP.value
+            else provider_session.LauncherTypes.PERSON
+        )
+        launcher_id = state.get('launcher_id', '')
+        sender_user_id = state.get('sender_user_id') or payload.get('user_id') or launcher_id
+        form_action_data = {
+            'form_token': state.get('form_token', ''),
+            'workflow_run_id': state.get('workflow_run_id', ''),
+            'action_id': '',
+            'action_title': '',
+            'node_title': state.get('node_title', ''),
+            'user': f'{launcher_type.value}_{launcher_id}',
+            'inputs': component_inputs,
+            '_current_input_field': state.get('current_input_field', ''),
+            '_input_progress': True,
+        }
+        message_chain = platform_message.MessageChain([platform_message.Plain(text='[Form Input]')])
+
+        if launcher_type == provider_session.LauncherTypes.GROUP:
+            synthetic_event = platform_events.GroupMessage(
+                sender=platform_entities.GroupMember(
+                    id=sender_user_id,
+                    member_name='',
+                    permission=platform_entities.Permission.Member,
+                    group=platform_entities.Group(
+                        id=launcher_id,
+                        name='',
+                        permission=platform_entities.Permission.Member,
+                    ),
+                    special_title='',
+                ),
+                message_chain=message_chain,
+                time=int(datetime.datetime.now().timestamp()),
+                source_platform_object=None,
+            )
+        else:
+            synthetic_event = platform_events.FriendMessage(
+                sender=platform_entities.Friend(
+                    id=sender_user_id,
+                    nickname='',
+                    remark='',
+                ),
+                message_chain=message_chain,
+                time=int(datetime.datetime.now().timestamp()),
+                source_platform_object=None,
+            )
+
+        if self.ap is None:
+            return
+
+        bot_uuid = ''
+        pipeline_uuid = None
+        for bot in self.ap.platform_mgr.bots:
+            if bot.adapter is self:
+                bot_uuid = bot.bot_entity.uuid
+                pipeline_uuid = bot.bot_entity.use_pipeline_uuid
+                break
+        try:
+            await self.ap.query_pool.add_query(
+                bot_uuid=bot_uuid,
+                launcher_type=launcher_type,
+                launcher_id=launcher_id,
+                sender_id=sender_user_id,
+                message_event=synthetic_event,
+                message_chain=message_chain,
+                adapter=self,
+                pipeline_uuid=pipeline_uuid,
+                variables={
+                    '_dify_form_action': form_action_data,
+                    '_routed_by_rule': True,
+                },
+            )
+            self.ap.logger.info(
+                f'DingTalk card form input enqueued: out_track_id={out_track_id} '
+                f'field={state.get("current_input_field", "")!r}'
+            )
+        except Exception:
+            self.ap.logger.exception('DingTalk: enqueue form input query failed')
+
     async def _mark_card_resolved(
         self,
         out_track_id: str,
@@ -1025,6 +1418,8 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         *,
         node_title: str = '',
         form_content: str = '',
+        input_defs: list | None = None,
+        inputs: dict | None = None,
     ) -> None:
         """Update the form card to acknowledge the user's selection.
 
@@ -1037,6 +1432,14 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             parts.append(f'**{node_title}**')
         if form_content:
             parts.append(form_content)
+        completed_lines = _dingtalk_completed_input_lines(
+            {
+                'input_defs': input_defs or [],
+                'inputs': inputs or {},
+            }
+        )
+        if completed_lines:
+            parts.append('<hr>' + '<br>'.join(completed_lines))
         parts.append(f'<hr>✅ 已选择：**{action_title}**')
         content = '<br><br>'.join(parts)
         if self.ap is not None:
@@ -1048,6 +1451,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     content=content,
                     btns='[]',
                     flowStatus='3',
+                    **_dingtalk_empty_form_component_params(),
                 ),
             )
         except Exception:

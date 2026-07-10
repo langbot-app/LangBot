@@ -833,11 +833,46 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
 
         node_title = form_data.get('node_title') or 'Confirmation needed'
         form_content = form_data.get('form_content') or ''
+        is_field_step = bool(form_data.get('_current_input_field')) and not form_data.get('_action_select_only')
         parts = [f'### {node_title}']
         if form_content.strip():
             parts.append(form_content.strip())
         parts.append('请点击下方按钮选择：')
         markdown_content = '\n\n'.join(parts)
+
+        if is_field_step:
+            field_parts = parts[:-1] if len(parts) > 1 else parts
+            text_msg = platform_message.MessageChain([platform_message.Plain(text='\n\n'.join(field_parts))])
+            try:
+                await self.reply_message(message_source, text_msg)
+            except Exception:
+                await self.logger.error(f'QQ Official: field-step text send failed: {traceback.format_exc()}')
+                return
+
+            sender_id = ''
+            if source is not None:
+                sender_id = (
+                    getattr(source, 'user_openid', None)
+                    or getattr(source, 'member_openid', None)
+                    or getattr(source, 'd_author_id', None)
+                    or ''
+                )
+            if not sender_id and message_source.sender is not None:
+                sender_id = str(getattr(message_source.sender, 'id', '') or '')
+            self._pending_forms[session_key] = {
+                'form_data': form_data,
+                'msg_id': msg_id,
+                'sender_id': sender_id,
+                'target_type': target_type,
+                'target_id': target_id,
+                'source_event_t': source.t if source is not None else None,
+                'posted_at': time.time(),
+            }
+            await self.logger.info(
+                f'QQ Official: form field step posted session={session_key} '
+                f'field={form_data.get("_current_input_field")!r}'
+            )
+            return
 
         keyboard = build_keyboard_from_form(form_data, buttons_per_row=2)
         if not keyboard.get('content', {}).get('rows'):

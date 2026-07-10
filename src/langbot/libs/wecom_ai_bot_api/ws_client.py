@@ -23,9 +23,15 @@ from langbot.libs.wecom_ai_bot_api import wecombotevent
 from langbot.libs.wecom_ai_bot_api.api import (
     parse_wecom_bot_message,
     StreamSession,
-    build_button_interaction_payload,
+    build_human_input_template_card_payload,
+    build_human_input_text_prompt,
     build_button_interaction_update_card,
+    build_multiple_interaction_update_card,
     extract_template_card_action,
+    extract_template_card_event_payload,
+    extract_template_card_selections,
+    extract_wecom_event_type,
+    parse_select_button_action,
 )
 from langbot.pkg.platform.logger import EventLogger
 
@@ -47,6 +53,10 @@ def _generate_req_id(prefix: str) -> str:
     ts = int(time.time() * 1000)
     rand = secrets.token_hex(4)
     return f'{prefix}_{ts}_{rand}'
+
+
+def _frame_snippet(frame: dict, limit: int = 1000) -> str:
+    return json.dumps(frame, ensure_ascii=False, default=str)[:limit]
 
 
 class WecomBotWsClient:
@@ -334,6 +344,21 @@ class WecomBotWsClient:
             task_id = f'dify-{secrets.token_hex(12)}'
 
         session_info = self._stream_sessions.get(msg_id) or {}
+        text_prompt = build_human_input_text_prompt(form_data)
+        if text_prompt:
+            try:
+                ack = await self.reply_text(req_id, text_prompt)
+                if ack is None:
+                    return False, stream_id, None
+            except Exception:
+                await self.logger.error(f'Failed to send human-input text prompt: {traceback.format_exc()}')
+                return False, stream_id, None
+
+            self._stream_ids.pop(msg_id, None)
+            self._stream_last_content.pop(msg_id, None)
+            self._stream_sessions.pop(msg_id, None)
+            return True, stream_id, None
+
         self._pending_forms_by_task[task_id] = {
             'form_data': form_data,
             'msg_id': msg_id,
@@ -344,7 +369,12 @@ class WecomBotWsClient:
         }
         self._task_id_by_msg[msg_id] = task_id
 
-        card_payload = build_button_interaction_payload(form_data, task_id, source=self.card_source)
+        card_payload = build_human_input_template_card_payload(
+            form_data,
+            task_id,
+            source=self.card_source,
+            select_as_buttons=True,
+        )
         try:
             await self.reply_template_card(req_id, card_payload)
         except Exception:
@@ -421,8 +451,19 @@ class WecomBotWsClient:
             return False
         req_id, stream_id = key.split('|', 1)
         try:
+            previous_content = self._stream_last_content.get(msg_id, '')
+            if previous_content and content.startswith(previous_content):
+                delta_content = content[len(previous_content) :]
+                next_content = content
+            elif previous_content and not content:
+                delta_content = ''
+                next_content = previous_content
+            else:
+                delta_content = content
+                next_content = previous_content + content if previous_content else content
+
             # Skip sending if content hasn't changed (e.g. during tool call argument streaming)
-            if not is_final and content == self._stream_last_content.get(msg_id):
+            if not is_final and not delta_content:
                 return True
 
             # Skip empty/whitespace-only chunks — the runner injects a
@@ -435,7 +476,7 @@ class WecomBotWsClient:
             if not is_final:
                 import re as _re
 
-                if not _re.sub(r'[\s​‌‍﻿]', '', content):
+                if not _re.sub(r'[\s​‌‍﻿]', '', delta_content):
                     return True
 
             # Generate feedback_id for final chunk
@@ -448,8 +489,8 @@ class WecomBotWsClient:
                 if session_info:
                     self._feedback_sessions[feedback_id] = session_info
 
-            await self.reply_stream(req_id, stream_id, content, finish=is_final, feedback_id=feedback_id)
-            self._stream_last_content[msg_id] = content
+            await self.reply_stream(req_id, stream_id, delta_content, finish=is_final, feedback_id=feedback_id)
+            self._stream_last_content[msg_id] = next_content
             if is_final:
                 self._stream_ids.pop(msg_id, None)
                 self._stream_last_content.pop(msg_id, None)
@@ -623,13 +664,20 @@ class WecomBotWsClient:
             return
 
         # Unknown frame
-        await self.logger.warning(f'Unknown frame: {json.dumps(frame, ensure_ascii=False)[:200]}')
+        await self.logger.warning(f'Unknown frame: {_frame_snippet(frame)}')
 
     async def _handle_message_callback(self, frame: dict):
         """Handle an incoming message callback frame."""
         try:
             body = frame.get('body', {})
             req_id = frame.get('headers', {}).get('req_id', '')
+
+            event_type = extract_wecom_event_type(body)
+            if event_type == 'template_card_event':
+                await self._handle_template_card_event_frame(frame, body)
+                return
+            if event_type:
+                await self.logger.debug(f'Received msg_callback event_type={event_type}: {_frame_snippet(frame)}')
 
             # Parse message using shared logic
             message_data = await parse_wecom_bot_message(body, self.encoding_aes_key, self.logger)
@@ -664,8 +712,12 @@ class WecomBotWsClient:
             body = frame.get('body', {})
             req_id = frame.get('headers', {}).get('req_id', '')
 
-            event_info = body.get('event', {})
-            event_type = event_info.get('eventtype', '')
+            event_info = body.get('event', {}) if isinstance(body.get('event'), dict) else body
+            event_type = extract_wecom_event_type(body)
+            if not event_type:
+                await self.logger.warning(f'Received event_callback without event_type: {_frame_snippet(frame)}')
+            else:
+                await self.logger.debug(f'Received event_callback event_type={event_type}')
 
             message_data = {
                 'msgtype': 'event',
@@ -727,64 +779,7 @@ class WecomBotWsClient:
                 return
 
             if event_type == 'template_card_event':
-                tce = event_info.get('template_card_event', {})
-                task_id, event_key, card_type = extract_template_card_action(tce)
-                await self.logger.info(
-                    f'收到按钮点击 (ws): task_id={task_id} event_key={event_key!r} card_type={card_type}'
-                )
-                pending = self._pending_forms_by_task.get(task_id)
-                if pending is None:
-                    await self.logger.warning(f'未找到 task_id={task_id} 对应的 pending_form (ws)，按钮点击被丢弃')
-                else:
-                    # Update the card in-place to show which button was clicked.
-                    # Must happen within 5s of the event, using the same req_id.
-                    req_id_for_update = frame.get('headers', {}).get('req_id', '')
-                    form_data = pending.get('form_data', {}) or {}
-                    action_title = event_key
-                    node_title = form_data.get('node_title', '') or ''
-                    main_title_text = f'{node_title} - 已选择' if node_title else '已选择'
-                    main_title_desc = f'✅ {action_title}'
-                    update_card = {
-                        'card_type': 'button_interaction',
-                        'main_title': {
-                            'title': main_title_text,
-                            'desc': main_title_desc,
-                        },
-                        'button_list': [],
-                        'task_id': task_id,
-                    }
-                    if self.card_source:
-                        update_card['source'] = self.card_source
-                    update_card = build_button_interaction_update_card(
-                        form_data,
-                        task_id,
-                        event_key,
-                        source=self.card_source,
-                    )
-                    try:
-                        await self.update_template_card(req_id_for_update, update_card)
-                    except Exception:
-                        await self.logger.warning(f'更新卡片失败 (ws): {traceback.format_exc()}')
-
-                    if self._card_action_callback is not None:
-                        try:
-                            session = StreamSession(
-                                stream_id=pending.get('stream_id', ''),
-                                msg_id=pending.get('msg_id', ''),
-                                chat_id=pending.get('chat_id') or None,
-                                user_id=pending.get('user_id') or None,
-                            )
-                            session.pending_form = pending.get('form_data')
-                            session.pending_form_task_id = task_id
-                            await self._card_action_callback(session, event_key, task_id, body)
-                        except Exception:
-                            await self.logger.error(f'card action callback raised (ws): {traceback.format_exc()}')
-                    # Consume — drop bookkeeping so a stale click can't re-fire.
-                    self._pending_forms_by_task.pop(task_id, None)
-                    msg_id = pending.get('msg_id', '')
-                    if msg_id:
-                        self._task_id_by_msg.pop(msg_id, None)
-                        self._stream_sessions.pop(msg_id, None)
+                await self._handle_template_card_event_frame(frame, body)
                 return
 
             event = wecombotevent.WecomBotEvent(message_data)
@@ -799,6 +794,72 @@ class WecomBotWsClient:
 
         except Exception:
             await self.logger.error(f'Error in event callback: {traceback.format_exc()}')
+
+    async def _handle_template_card_event_frame(self, frame: dict, body: dict):
+        """Handle template_card_event frames from event_callback or msg_callback."""
+        tce = extract_template_card_event_payload(body)
+        task_id, event_key, card_type = extract_template_card_action(tce)
+        await self.logger.info(
+            f'Received template_card_event (ws): task_id={task_id} event_key={event_key!r} card_type={card_type}'
+        )
+
+        pending = self._pending_forms_by_task.get(task_id)
+        if pending is None:
+            await self.logger.warning(f'No pending_form found for task_id={task_id} (ws); card event ignored')
+            return
+
+        req_id_for_update = frame.get('headers', {}).get('req_id', '')
+        form_data = pending.get('form_data', {}) or {}
+        selections = extract_template_card_selections(tce, form_data)
+        if not selections:
+            selections = parse_select_button_action(event_key, form_data)
+        if card_type == 'multiple_interaction' and not selections:
+            await self.logger.warning(
+                f'multiple_interaction callback has no parseable selections (ws): raw={str(tce)[:1000]}'
+            )
+            self._drop_pending_form_task(task_id, pending)
+            return
+
+        update_card = build_button_interaction_update_card(
+            form_data,
+            task_id,
+            event_key,
+            source=self.card_source,
+        )
+        if card_type == 'multiple_interaction' or selections:
+            update_card = build_multiple_interaction_update_card(
+                form_data,
+                task_id,
+                selections,
+                source=self.card_source,
+            )
+        try:
+            await self.update_template_card(req_id_for_update, update_card)
+        except Exception:
+            await self.logger.warning(f'Failed to update template card (ws): {traceback.format_exc()}')
+
+        if self._card_action_callback is not None:
+            try:
+                session = StreamSession(
+                    stream_id=pending.get('stream_id', ''),
+                    msg_id=pending.get('msg_id', ''),
+                    chat_id=pending.get('chat_id') or None,
+                    user_id=pending.get('user_id') or None,
+                )
+                session.pending_form = pending.get('form_data')
+                session.pending_form_task_id = task_id
+                await self._card_action_callback(session, event_key, task_id, body)
+            except Exception:
+                await self.logger.error(f'card action callback raised (ws): {traceback.format_exc()}')
+
+        self._drop_pending_form_task(task_id, pending)
+
+    def _drop_pending_form_task(self, task_id: str, pending: dict) -> None:
+        self._pending_forms_by_task.pop(task_id, None)
+        msg_id = pending.get('msg_id', '')
+        if msg_id:
+            self._task_id_by_msg.pop(msg_id, None)
+            self._stream_sessions.pop(msg_id, None)
 
     async def _dispatch_event(self, event: wecombotevent.WecomBotEvent):
         """Dispatch a message event to registered handlers with deduplication."""

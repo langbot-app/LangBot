@@ -6,12 +6,16 @@ import time
 import uuid
 import base64
 import mimetypes
+import os
+import re
 from collections import OrderedDict
+from urllib.parse import urlparse
 
 
 from langbot.pkg.provider import runner
 from langbot.pkg.core import app
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
 from langbot.pkg.utils import image
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 from langbot.libs.dify_service_api.v1 import client, errors
@@ -24,6 +28,7 @@ import httpx
 # Dify workflows to be paused simultaneously for the same session.
 _PENDING_FORMS: dict[str, 'OrderedDict[str, dict[str, typing.Any]]'] = {}
 _PENDING_FORM_DEFAULT_TTL = 30 * 60  # 30 minutes safety cap
+_STREAM_FORM_PLACEHOLDER = '\u200b'
 
 
 def _session_key_from_query(query: pipeline_query.Query) -> str:
@@ -118,23 +123,437 @@ def _format_human_input_text(
     node_title: str,
     form_content: str,
     actions: list[dict[str, typing.Any]],
+    input_defs: list[dict[str, typing.Any]] | None = None,
 ) -> str:
     """Render a paused-workflow human-input prompt as plain text.
 
     Used by adapters without rich UI (no buttons/cards) so users can reply
     with the option number or the option title to resume the workflow.
     """
+    input_defs = input_defs or []
+    form_content = _strip_form_field_placeholders(form_content, input_defs)
     lines: list[str] = [f'[Human Input Required] {node_title or ""}'.rstrip()]
     if form_content:
         lines.append('')
         lines.append(form_content)
+    field_help = _format_human_input_fields_text(input_defs)
+    if field_help:
+        lines.append('')
+        lines.append(field_help)
     if actions:
         lines.append('')
-        lines.append('Reply with the number or title to continue:')
+        if input_defs:
+            lines.append('Reply with action plus field values to continue:')
+            lines.append('  action: <number or title>')
+        else:
+            lines.append('Reply with the number or title to continue:')
         for idx, action in enumerate(actions, start=1):
             title = action.get('title') or action.get('id') or ''
             lines.append(f'  {idx}. {title}')
     return '\n'.join(lines)
+
+
+def _normalize_form_input_defs(raw_inputs: typing.Any) -> list[dict[str, typing.Any]]:
+    if not isinstance(raw_inputs, list):
+        return []
+    normalized: list[dict[str, typing.Any]] = []
+    for item in raw_inputs:
+        if not isinstance(item, dict):
+            continue
+        field = dict(item)
+        name = str(
+            field.get('output_variable_name') or field.get('variable') or field.get('name') or field.get('id') or ''
+        ).strip()
+        if not name:
+            continue
+        field['output_variable_name'] = name
+        normalized.append(field)
+    return normalized
+
+
+def _field_name(field: dict[str, typing.Any]) -> str:
+    return str(field.get('output_variable_name') or '').strip()
+
+
+def _field_type(field: dict[str, typing.Any]) -> str:
+    return str(field.get('type') or 'text').strip().lower()
+
+
+def _select_options(field: dict[str, typing.Any]) -> list[str]:
+    source = field.get('option_source') or {}
+    value = source.get('value') if isinstance(source, dict) else None
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    if isinstance(value, str):
+        return [part.strip() for part in value.splitlines() if part.strip()]
+    options = field.get('options')
+    if isinstance(options, list):
+        result: list[str] = []
+        for item in options:
+            if isinstance(item, dict):
+                result.append(str(item.get('label') or item.get('value') or ''))
+            else:
+                result.append(str(item))
+        return [item for item in result if item]
+    return []
+
+
+def _default_field_value(field: dict[str, typing.Any]) -> typing.Any:
+    default = field.get('default')
+    if isinstance(default, dict):
+        if default.get('type') == 'constant':
+            return default.get('value')
+        if 'value' in default:
+            return default.get('value')
+    return default
+
+
+def _initial_form_inputs(
+    input_defs: list[dict[str, typing.Any]],
+    resolved_default_values: typing.Any = None,
+) -> dict[str, typing.Any]:
+    inputs: dict[str, typing.Any] = {}
+    if isinstance(resolved_default_values, dict):
+        inputs.update(resolved_default_values)
+    for field in input_defs:
+        name = _field_name(field)
+        if not name or name in inputs:
+            continue
+        value = _default_field_value(field)
+        if value not in (None, ''):
+            inputs[name] = value
+    return inputs
+
+
+def _format_human_input_fields_text(input_defs: list[dict[str, typing.Any]]) -> str:
+    if not input_defs:
+        return ''
+
+    lines = ['Fields:']
+    for field in input_defs:
+        name = _field_name(field)
+        typ = _field_type(field)
+        if typ == 'select':
+            options = _select_options(field)
+            option_text = ', '.join(f'{idx}. {value}' for idx, value in enumerate(options, start=1))
+            lines.append(f'  - {name} (select): {option_text or "choose one option"}')
+        elif typ in {'file', 'file-list'}:
+            limit = field.get('number_limits') if typ == 'file-list' else 1
+            allowed_types = ', '.join(field.get('allowed_file_types') or [])
+            suffix = f', up to {limit}' if typ == 'file-list' and limit else ''
+            allowed = f' ({allowed_types})' if allowed_types else ''
+            lines.append(f'  - {name} ({typ}{allowed}{suffix}): upload file(s) or reply "{name}: <url>"')
+        else:
+            lines.append(f'  - {name} ({typ}): reply "{name}: <value>"')
+
+    lines.append('You can reply with one or more lines like "field_name: value".')
+    return '\n'.join(lines)
+
+
+def _format_human_input_actions_text(actions: list[dict[str, typing.Any]], require_action_key: bool = False) -> str:
+    if not actions:
+        return ''
+    lines: list[str] = []
+    if require_action_key:
+        lines.append('Actions: reply with "action: <number or title>" plus field values.')
+    else:
+        lines.append('Actions:')
+    for idx, action in enumerate(actions, start=1):
+        title = action.get('title') or action.get('id') or ''
+        lines.append(f'  {idx}. {title}')
+    return '\n'.join(lines)
+
+
+def _strip_form_field_placeholders(form_content: str, input_defs: list[dict[str, typing.Any]]) -> str:
+    if not form_content:
+        return ''
+
+    field_names = {_field_name(field) for field in input_defs if _field_name(field)}
+    kept_lines: list[str] = []
+    for line in form_content.splitlines():
+        placeholder = re.fullmatch(r'\s*\{\{#\$output\.([^#{}]+)#\}\}\s*', line)
+        if placeholder and placeholder.group(1) in field_names:
+            continue
+        kept_lines.append(line)
+
+    cleaned = '\n'.join(kept_lines).strip()
+    return re.sub(r'\n{3,}', '\n\n', cleaned)
+
+
+def _form_content_for_platform(
+    form_content: str,
+    input_defs: list[dict[str, typing.Any]],
+    actions: list[dict[str, typing.Any]],
+) -> str:
+    del actions
+    form_content = _strip_form_field_placeholders(form_content, input_defs)
+    field_help = _format_human_input_fields_text(input_defs)
+    parts = [part for part in (form_content, field_help) if part]
+    if not parts:
+        return form_content
+    return '\n\n'.join(parts)
+
+
+def _extract_form_snapshot(
+    workflow_run_id: str,
+    reason: dict[str, typing.Any],
+    user: str,
+) -> tuple[dict[str, typing.Any], str, list[dict[str, typing.Any]], str]:
+    raw_form_content = reason.get('form_content', '') or ''
+    input_defs = _normalize_form_input_defs(reason.get('inputs', []))
+    actions = reason.get('actions', [])
+    display_form_content = _form_content_for_platform(raw_form_content, input_defs, actions)
+    snapshot = {
+        'workflow_run_id': workflow_run_id,
+        'form_id': reason.get('form_id'),
+        'form_token': reason.get('form_token'),
+        'node_id': reason.get('node_id'),
+        'node_title': reason.get('node_title', ''),
+        'form_content': display_form_content,
+        'raw_form_content': raw_form_content,
+        'input_defs': input_defs,
+        'inputs': _initial_form_inputs(input_defs, reason.get('resolved_default_values')),
+        'actions': actions,
+        'expiration_time': reason.get('expiration_time'),
+        'user': user,
+    }
+    return snapshot, raw_form_content, input_defs, display_form_content
+
+
+def _extract_key_value_inputs(text: str) -> dict[str, str]:
+    stripped = text.strip()
+    if not stripped:
+        return {}
+    try:
+        parsed = json.loads(stripped)
+    except json.JSONDecodeError:
+        parsed = None
+    if isinstance(parsed, dict):
+        return {str(k).strip(): str(v).strip() for k, v in parsed.items() if str(k).strip()}
+
+    values: dict[str, str] = {}
+    for line in stripped.splitlines():
+        if ':' in line:
+            key, value = line.split(':', 1)
+        elif '=' in line:
+            key, value = line.split('=', 1)
+        else:
+            continue
+        key = key.strip()
+        if key:
+            values[key] = value.strip()
+    return values
+
+
+def _extract_urls(text: str) -> list[str]:
+    return re.findall(r'https?://[^\s,，]+', text or '')
+
+
+def _file_type_from_mime(content_type: str) -> str:
+    if content_type and content_type.startswith('image/'):
+        return 'image'
+    if content_type and content_type.startswith('audio/'):
+        return 'audio'
+    if content_type and content_type.startswith('video/'):
+        return 'video'
+    return 'document'
+
+
+def _format_partial_form_notice(pending_form: dict[str, typing.Any]) -> str:
+    actions = pending_form.get('actions') or []
+    lines = ['Received the form value(s).']
+    action_help = _format_human_input_actions_text(actions, require_action_key=True)
+    if action_help:
+        lines.append('')
+        lines.append(action_help)
+    return '\n'.join(lines)
+
+
+def _next_missing_form_field(form: dict[str, typing.Any], inputs: dict[str, typing.Any] | None = None) -> dict | None:
+    values = inputs if inputs is not None else form.get('inputs') or {}
+    for field in form.get('input_defs') or []:
+        name = _field_name(field)
+        if not name:
+            continue
+        if values.get(name) in (None, '', []):
+            return field
+    return None
+
+
+def _format_single_form_field_text(field: dict[str, typing.Any]) -> str:
+    name = _field_name(field)
+    typ = _field_type(field)
+    if typ == 'select':
+        options = _select_options(field)
+        option_text = ', '.join(f'{idx}. {value}' for idx, value in enumerate(options, start=1))
+        return f'{name} (select): {option_text or "choose one option"}'
+    if typ in {'file', 'file-list'}:
+        limit = field.get('number_limits') if typ == 'file-list' else 1
+        allowed_types = ', '.join(field.get('allowed_file_types') or [])
+        suffix = f', up to {limit}' if typ == 'file-list' and limit else ''
+        allowed = f' ({allowed_types})' if allowed_types else ''
+        return f'{name} ({typ}{allowed}{suffix}): upload file(s) or reply "{name}: <url>"'
+    return f'{name} ({typ}): reply "{name}: <value>"'
+
+
+def _field_input_form_data(pending_form: dict[str, typing.Any], field: dict[str, typing.Any] | None) -> dict | None:
+    if not field:
+        return None
+    return {
+        'form_content': _format_single_form_field_text(field),
+        'raw_form_content': pending_form.get('raw_form_content') or pending_form.get('form_content') or '',
+        'input_defs': pending_form.get('input_defs') or [],
+        'all_input_defs': pending_form.get('input_defs') or [],
+        'inputs': pending_form.get('inputs', {}),
+        'actions': pending_form.get('actions') or [],
+        'node_title': pending_form.get('node_title', ''),
+        'workflow_run_id': pending_form.get('workflow_run_id', ''),
+        'form_token': pending_form.get('form_token', ''),
+        '_current_input_field': _field_name(field),
+    }
+
+
+def _action_select_form_data(pending_form: dict[str, typing.Any]) -> dict[str, typing.Any] | None:
+    actions = pending_form.get('actions') or []
+    if not actions:
+        return None
+    form_content = pending_form.get('raw_form_content') or pending_form.get('form_content') or ''
+    return {
+        'form_content': _strip_form_field_placeholders(form_content, pending_form.get('input_defs') or []),
+        'raw_form_content': form_content,
+        'input_defs': [],
+        'all_input_defs': pending_form.get('input_defs') or [],
+        'inputs': pending_form.get('inputs', {}),
+        'actions': actions,
+        'node_title': pending_form.get('node_title', ''),
+        'workflow_run_id': pending_form.get('workflow_run_id', ''),
+        'form_token': pending_form.get('form_token', ''),
+        '_action_select_only': True,
+    }
+
+
+def _initial_interactive_form_data(pending_form: dict[str, typing.Any]) -> dict[str, typing.Any] | None:
+    next_field = _next_missing_form_field(pending_form)
+    pending_form['current_input_field'] = _field_name(next_field) if next_field else ''
+    if next_field:
+        return _field_input_form_data(pending_form, next_field)
+    return _action_select_form_data(pending_form)
+
+
+def _attach_partial_form_data(message: typing.Any, form_action: dict[str, typing.Any]) -> typing.Any:
+    form_data = form_action.get('_form_data')
+    if form_data:
+        message._form_data = form_data
+    return message
+
+
+def _missing_required_form_fields(form: dict[str, typing.Any], inputs: dict[str, typing.Any]) -> list[str]:
+    missing: list[str] = []
+    for field in form.get('input_defs') or []:
+        name = _field_name(field)
+        if not name:
+            continue
+        value = inputs.get(name)
+        if value in (None, '', []):
+            missing.append(name)
+    return missing
+
+
+def _format_missing_form_inputs_notice(form: dict[str, typing.Any], missing: list[str]) -> str:
+    lines = ['Some required form fields are still missing.']
+    if missing:
+        lines.append('')
+        lines.append('Missing fields: ' + ', '.join(missing))
+    field_help = _format_human_input_fields_text(
+        [field for field in form.get('input_defs') or [] if _field_name(field) in set(missing)]
+    )
+    if field_help:
+        lines.append('')
+        lines.append(field_help)
+    action_help = _format_human_input_actions_text(form.get('actions') or [], require_action_key=True)
+    if action_help:
+        lines.append('')
+        lines.append(action_help)
+    return '\n'.join(lines)
+
+
+def _normalize_form_action_inputs(
+    pending_form: dict[str, typing.Any],
+    raw_inputs: dict[str, typing.Any],
+) -> dict[str, typing.Any]:
+    if not raw_inputs:
+        return {}
+    fields = {_field_name(field): field for field in pending_form.get('input_defs') or [] if _field_name(field)}
+    normalized = dict(raw_inputs)
+    for name, value in list(normalized.items()):
+        field = fields.get(name)
+        if not field or _field_type(field) != 'select':
+            continue
+        selected = value
+        if isinstance(value, str):
+            stripped = value.strip()
+            try:
+                parsed = json.loads(stripped)
+            except json.JSONDecodeError:
+                parsed = None
+            if isinstance(parsed, dict):
+                selected = parsed.get('value', selected)
+            elif stripped.isdigit():
+                options = _select_options(field)
+                index = int(stripped)
+                if 0 <= index < len(options):
+                    selected = options[index]
+                elif 1 <= index <= len(options):
+                    selected = options[index - 1]
+        normalized[name] = selected
+    return normalized
+
+
+def _build_input_progress_action(
+    pending_form: dict[str, typing.Any],
+    inputs: dict[str, typing.Any],
+    *,
+    force_partial: bool = False,
+) -> dict[str, typing.Any]:
+    """Update a pending form after collecting field values.
+
+    `force_partial` is used by native card controls (for example DingTalk
+    Input/SelectBlock): those callbacks mean "store this field value and
+    render the next step", not "submit a workflow action" unless there is a
+    single action and no further choice is required.
+    """
+    actions = pending_form.get('actions') or []
+    pending_form['inputs'] = inputs
+    next_field = _next_missing_form_field(pending_form, inputs)
+    pending_form['current_input_field'] = _field_name(next_field) if next_field else ''
+    form_data = (
+        _field_input_form_data(pending_form, next_field) if next_field else _action_select_form_data(pending_form)
+    )
+
+    if force_partial or len(actions) > 1 or next_field:
+        return {
+            '_partial': True,
+            'form_token': pending_form.get('form_token', ''),
+            'workflow_run_id': pending_form.get('workflow_run_id', ''),
+            'node_title': pending_form.get('node_title', ''),
+            'inputs': inputs,
+            'user': pending_form.get('user', ''),
+            'notice': (
+                form_data.get('form_content') if next_field and form_data else _format_partial_form_notice(pending_form)
+            ),
+            '_form_data': form_data,
+        }
+
+    action = actions[0] if actions else {}
+    return {
+        'form_token': pending_form.get('form_token', ''),
+        'workflow_run_id': pending_form.get('workflow_run_id', ''),
+        'action_id': action.get('id', ''),
+        'action_title': action.get('title', action.get('id', '')),
+        'node_title': pending_form.get('node_title', ''),
+        'inputs': inputs,
+        'user': pending_form.get('user', ''),
+    }
 
 
 @runner.runner_class('dify-service-api')
@@ -291,6 +710,168 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         return plain_text, upload_files
 
+    async def _upload_file_bytes_for_user(
+        self, file_name: str, file_bytes: bytes, content_type: str, user: str
+    ) -> dict:
+        file_name = file_name or 'file'
+        content_type = content_type or 'application/octet-stream'
+        resp = await self.dify_client.upload_file((file_name, file_bytes, content_type), user)
+        return {
+            'type': _file_type_from_mime(content_type),
+            'transfer_method': 'local_file',
+            'upload_file_id': resp['id'],
+        }
+
+    async def _download_file_for_form(self, file_url: str) -> tuple[bytes, str, str]:
+        async with httpx.AsyncClient() as client_session:
+            resp = await client_session.get(file_url)
+            resp.raise_for_status()
+            content_type = (
+                resp.headers.get('content-type') or mimetypes.guess_type(file_url)[0] or 'application/octet-stream'
+            )
+            parsed = urlparse(file_url)
+            file_name = os.path.basename(parsed.path) or 'file'
+            return resp.content, content_type, file_name
+
+    async def _platform_file_to_dify(self, item: typing.Any, user: str) -> dict | None:
+        try:
+            if isinstance(item, platform_message.Image):
+                file_bytes, content_type = await item.get_bytes()
+                ext = (content_type or 'image/jpeg').split('/')[-1] or 'jpg'
+                return await self._upload_file_bytes_for_user(f'image.{ext}', file_bytes, content_type, user)
+            if isinstance(item, platform_message.File):
+                file_name = item.name or 'file'
+                if item.base64:
+                    header, b64_data = item.base64.split(',', 1) if ',' in item.base64 else ('', item.base64)
+                    content_type = 'application/octet-stream'
+                    if header.startswith('data:') and ';' in header:
+                        content_type = header.split(';', 1)[0][5:] or content_type
+                    return await self._upload_file_bytes_for_user(
+                        file_name,
+                        base64.b64decode(b64_data),
+                        content_type,
+                        user,
+                    )
+                if item.path:
+                    with open(item.path, 'rb') as f:
+                        file_bytes = f.read()
+                    content_type = mimetypes.guess_type(str(item.path))[0] or 'application/octet-stream'
+                    file_name = item.name or os.path.basename(str(item.path)) or 'file'
+                    return await self._upload_file_bytes_for_user(file_name, file_bytes, content_type, user)
+                if item.url:
+                    file_bytes, content_type, downloaded_name = await self._download_file_for_form(item.url)
+                    return await self._upload_file_bytes_for_user(
+                        file_name or downloaded_name,
+                        file_bytes,
+                        content_type,
+                        user,
+                    )
+        except Exception as e:
+            self.ap.logger.warning(f'dify human-input file upload failed: {e}')
+        return None
+
+    async def _collect_form_inputs_from_query(
+        self,
+        query: pipeline_query.Query,
+        pending_form: dict,
+        user_text: str,
+    ) -> dict[str, typing.Any]:
+        input_defs = pending_form.get('input_defs') or []
+        if not input_defs:
+            return dict(pending_form.get('inputs') or {})
+
+        values = dict(pending_form.get('inputs') or {})
+        keyed_values = _extract_key_value_inputs(user_text)
+        user = pending_form.get('user') or _session_key_from_query(query)
+        current_field_name = str(pending_form.get('current_input_field') or '').strip()
+
+        file_fields = [field for field in input_defs if _field_type(field) in {'file', 'file-list'}]
+        uploaded_files: list[dict] = []
+        if file_fields:
+            for component in query.message_chain:
+                if isinstance(component, (platform_message.Image, platform_message.File)):
+                    uploaded = await self._platform_file_to_dify(component, user)
+                    if uploaded:
+                        uploaded_files.append(uploaded)
+
+        for field in input_defs:
+            name = _field_name(field)
+            typ = _field_type(field)
+            if not name:
+                continue
+
+            raw_value = keyed_values.get(name)
+            if raw_value is None and current_field_name == name and user_text.strip():
+                raw_value = user_text.strip()
+            if raw_value is None and current_field_name == name and typ in {'file', 'file-list'} and uploaded_files:
+                raw_value = ''
+            if raw_value is None:
+                continue
+
+            if typ == 'select':
+                options = _select_options(field)
+                selected = raw_value.strip()
+                if selected.isdigit() and 1 <= int(selected) <= len(options):
+                    selected = options[int(selected) - 1]
+                elif options:
+                    lowered = selected.lower()
+                    selected = next((option for option in options if option.lower() == lowered), selected)
+                values[name] = selected
+            elif typ == 'file':
+                urls = _extract_urls(raw_value)
+                if urls:
+                    values[name] = {
+                        'type': _file_type_from_mime(mimetypes.guess_type(urls[0])[0] or ''),
+                        'transfer_method': 'remote_url',
+                        'url': urls[0],
+                    }
+                elif uploaded_files:
+                    values[name] = uploaded_files.pop(0)
+            elif typ == 'file-list':
+                urls = _extract_urls(raw_value)
+                file_values = [
+                    {
+                        'type': _file_type_from_mime(mimetypes.guess_type(url)[0] or ''),
+                        'transfer_method': 'remote_url',
+                        'url': url,
+                    }
+                    for url in urls
+                ]
+                if uploaded_files:
+                    file_values.extend(uploaded_files)
+                    uploaded_files = []
+                limit = field.get('number_limits')
+                if isinstance(limit, int) and limit > 0:
+                    file_values = file_values[:limit]
+                if file_values:
+                    values[name] = file_values
+            else:
+                values[name] = raw_value
+
+        for field in file_fields:
+            if not uploaded_files:
+                break
+            name = _field_name(field)
+            if not name or values.get(name):
+                continue
+            if _field_type(field) == 'file-list':
+                limit = field.get('number_limits')
+                count = limit if isinstance(limit, int) and limit > 0 else len(uploaded_files)
+                values[name] = uploaded_files[:count]
+                uploaded_files = uploaded_files[count:]
+            else:
+                values[name] = uploaded_files.pop(0)
+
+        text_field_names = [
+            _field_name(field)
+            for field in input_defs
+            if _field_type(field) not in {'file', 'file-list', 'select'} and _field_name(field)
+        ]
+        if not current_field_name and not keyed_values and len(text_field_names) == 1 and user_text.strip():
+            values[text_field_names[0]] = user_text.strip()
+
+        return values
+
     async def _chat_messages(
         self, query: pipeline_query.Query
     ) -> typing.AsyncGenerator[provider_message.Message, None]:
@@ -302,9 +883,15 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         if form_action_raw:
             form_action = self._merge_pending_form_action(session_key, form_action_raw)
         else:
-            form_action = self._match_pending_form_action(session_key, str(query.message_chain))
+            form_action = await self._match_pending_form_action(query, session_key, str(query.message_chain))
 
         if form_action:
+            if form_action.get('_partial'):
+                yield _attach_partial_form_data(
+                    provider_message.Message(role='assistant', content=form_action.get('notice', 'Received.')),
+                    form_action,
+                )
+                return
             _clear_pending_form(session_key, form_action.get('form_token') or None)
             async for msg in self._submit_workflow_form_blocking(form_action):
                 yield msg
@@ -354,33 +941,25 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                     for reason in reasons:
                         if reason.get('TYPE') != 'human_input_required':
                             continue
-                        form_content = reason.get('form_content', '')
-                        actions = reason.get('actions', [])
-                        node_title = reason.get('node_title', '')
-
-                        _set_pending_form(
-                            _session_key_from_query(query),
-                            {
-                                'workflow_run_id': workflow_run_id,
-                                'form_id': reason.get('form_id'),
-                                'form_token': reason.get('form_token'),
-                                'node_id': reason.get('node_id'),
-                                'node_title': node_title,
-                                'form_content': form_content,
-                                'inputs': reason.get('inputs', {}),
-                                'actions': actions,
-                                'expiration_time': reason.get('expiration_time'),
-                                'user': f'{query.session.launcher_type.value}_{query.session.launcher_id}',
-                            },
+                        user = f'{query.session.launcher_type.value}_{query.session.launcher_id}'
+                        form_snapshot, raw_form_content, input_defs, _ = _extract_form_snapshot(
+                            workflow_run_id,
+                            reason,
+                            user,
                         )
+                        actions = form_snapshot.get('actions', [])
+                        node_title = form_snapshot.get('node_title', '')
+
+                        _set_pending_form(_session_key_from_query(query), form_snapshot)
 
                         query.variables['_dify_form_render'] = {
-                            'form_content': form_content,
+                            'form_content': raw_form_content,
+                            'input_defs': input_defs,
                             'actions': actions,
                             'node_title': node_title,
                         }
 
-                        display_text = _format_human_input_text(node_title, form_content, actions)
+                        display_text = _format_human_input_text(node_title, raw_form_content, actions, input_defs)
                         yield provider_message.Message(
                             role='assistant',
                             content=display_text,
@@ -547,28 +1126,22 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 for reason in reasons:
                     if reason.get('TYPE') != 'human_input_required':
                         continue
-                    form_content = reason.get('form_content', '')
-                    actions = reason.get('actions', [])
-                    paused_node_title = reason.get('node_title', '')
-                    raw_inputs = reason.get('inputs', {})
-
-                    _set_pending_form(
+                    form_snapshot, raw_form_content, input_defs, _ = _extract_form_snapshot(
+                        new_run_id,
+                        reason,
                         user,
-                        {
-                            'workflow_run_id': new_run_id,
-                            'form_id': reason.get('form_id'),
-                            'form_token': reason.get('form_token'),
-                            'node_id': reason.get('node_id'),
-                            'node_title': paused_node_title,
-                            'form_content': form_content,
-                            'inputs': raw_inputs if isinstance(raw_inputs, dict) else {},
-                            'actions': actions,
-                            'expiration_time': reason.get('expiration_time'),
-                            'user': user,
-                        },
                     )
+                    actions = form_snapshot.get('actions', [])
+                    paused_node_title = form_snapshot.get('node_title', '')
 
-                    display_text = _format_human_input_text(paused_node_title, form_content, actions)
+                    _set_pending_form(user, form_snapshot)
+
+                    display_text = _format_human_input_text(
+                        paused_node_title,
+                        raw_form_content,
+                        actions,
+                        input_defs,
+                    )
                     yield provider_message.Message(
                         role='assistant',
                         content=display_text,
@@ -615,9 +1188,36 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             merged_action['workflow_run_id'] = merged_action.get('workflow_run_id') or pending_form.get(
                 'workflow_run_id', ''
             )
-            merged_action.setdefault('inputs', pending_form.get('inputs', {}))
+            inputs = dict(pending_form.get('inputs') or {})
+            component_inputs = merged_action.get('inputs') or {}
+            current_field_name = str(
+                merged_action.pop('_current_input_field', None) or pending_form.get('current_input_field') or ''
+            ).strip()
+            if current_field_name and current_field_name not in component_inputs:
+                for component_key in ('input', 'select'):
+                    if component_key in component_inputs:
+                        component_inputs[current_field_name] = component_inputs.pop(component_key)
+                        break
+            component_inputs = _normalize_form_action_inputs(pending_form, component_inputs)
+            inputs.update(component_inputs)
+            merged_action['inputs'] = inputs
             merged_action.setdefault('user', pending_form.get('user', ''))
             merged_action.setdefault('node_title', pending_form.get('node_title', ''))
+            if merged_action.pop('_input_progress', False):
+                return _build_input_progress_action(pending_form, inputs, force_partial=True)
+            missing_fields = _missing_required_form_fields(pending_form, inputs)
+            if missing_fields:
+                pending_form['inputs'] = inputs
+                next_field = _next_missing_form_field(pending_form, inputs)
+                pending_form['current_input_field'] = _field_name(next_field) if next_field else ''
+                form_data = (
+                    _field_input_form_data(pending_form, next_field)
+                    if next_field
+                    else _action_select_form_data(pending_form)
+                )
+                merged_action['_partial'] = True
+                merged_action['notice'] = _format_missing_form_inputs_notice(pending_form, missing_fields)
+                merged_action['_form_data'] = form_data
 
             # Resolve clicked action's display title from the stored actions list
             if 'action_title' not in merged_action:
@@ -629,7 +1229,12 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         return merged_action
 
-    def _match_pending_form_action(self, session_key: str, user_text: str) -> dict | None:
+    async def _match_pending_form_action(
+        self,
+        query: pipeline_query.Query,
+        session_key: str,
+        user_text: str,
+    ) -> dict | None:
         """Match plain text replies against pending Dify form actions.
 
         Resolution order:
@@ -641,8 +1246,26 @@ class DifyServiceAPIRunner(runner.RequestRunner):
            two forms share a button label the newer one resolves.
         """
         normalized_text = user_text.strip().lower()
-        if not normalized_text:
+        latest_form = _get_latest_pending_form(session_key)
+        has_file_upload = bool(
+            latest_form
+            and latest_form.get('input_defs')
+            and any(_field_type(field) in {'file', 'file-list'} for field in latest_form.get('input_defs') or [])
+            and any(
+                isinstance(component, (platform_message.Image, platform_message.File))
+                for component in query.message_chain
+            )
+        )
+        if not normalized_text and not has_file_upload:
             return None
+        keyed_values = _extract_key_value_inputs(user_text)
+        requested_action = (
+            keyed_values.get('action')
+            or keyed_values.get('Action')
+            or keyed_values.get('action_id')
+            or keyed_values.get('actionId')
+        )
+        normalized_action = requested_action.strip().lower() if requested_action else ''
 
         def _build(pending_form: dict, action: dict) -> dict:
             return {
@@ -655,13 +1278,34 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 'user': pending_form.get('user', ''),
             }
 
-        if normalized_text.isdigit():
-            position = int(normalized_text)
-            latest_form = _get_latest_pending_form(session_key)
+        if latest_form and latest_form.get('current_input_field') and not normalized_action:
+            inputs = await self._collect_form_inputs_from_query(query, latest_form, user_text)
+            if inputs != (latest_form.get('inputs') or {}):
+                return _build_input_progress_action(latest_form, inputs)
+
+        if latest_form and latest_form.get('input_defs') and not normalized_action:
+            current_inputs = dict(latest_form.get('inputs') or {})
+            missing_fields = _missing_required_form_fields(latest_form, current_inputs)
+            if missing_fields:
+                next_field = _next_missing_form_field(latest_form, current_inputs)
+                if next_field:
+                    latest_form['current_input_field'] = _field_name(next_field)
+                inputs = await self._collect_form_inputs_from_query(query, latest_form, user_text)
+                if inputs != current_inputs:
+                    return _build_input_progress_action(latest_form, inputs)
+
+        if normalized_text.isdigit() or normalized_action.isdigit():
+            position = int(normalized_action or normalized_text)
             if latest_form is not None:
                 actions = latest_form.get('actions', [])
                 if 1 <= position <= len(actions):
-                    return _build(latest_form, actions[position - 1])
+                    form_action = _build(latest_form, actions[position - 1])
+                    form_action['inputs'] = await self._collect_form_inputs_from_query(
+                        query,
+                        latest_form,
+                        user_text,
+                    )
+                    return form_action
 
         for pending_form in _iter_pending_forms(session_key):
             for action in pending_form.get('actions', []):
@@ -669,8 +1313,19 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                     str(action.get('title', '')).strip().lower(),
                     str(action.get('id', '')).strip().lower(),
                 }
-                if normalized_text in titles:
-                    return _build(pending_form, action)
+                if normalized_text in titles or (normalized_action and normalized_action in titles):
+                    form_action = _build(pending_form, action)
+                    form_action['inputs'] = await self._collect_form_inputs_from_query(
+                        query,
+                        pending_form,
+                        user_text,
+                    )
+                    return form_action
+
+        if latest_form and latest_form.get('input_defs'):
+            inputs = await self._collect_form_inputs_from_query(query, latest_form, user_text)
+            if inputs != (latest_form.get('inputs') or {}):
+                return _build_input_progress_action(latest_form, inputs)
 
         return None
 
@@ -686,9 +1341,15 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         if form_action_raw:
             form_action = self._merge_pending_form_action(session_key, form_action_raw)
         else:
-            form_action = self._match_pending_form_action(session_key, str(query.message_chain))
+            form_action = await self._match_pending_form_action(query, session_key, str(query.message_chain))
 
         if form_action:
+            if form_action.get('_partial'):
+                yield _attach_partial_form_data(
+                    provider_message.Message(role='assistant', content=form_action.get('notice', 'Received.')),
+                    form_action,
+                )
+                return
             _clear_pending_form(session_key, form_action.get('form_token') or None)
             async for msg in self._submit_workflow_form_blocking(form_action):
                 yield msg
@@ -737,33 +1398,25 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 workflow_run_id = chunk['data'].get('workflow_run_id', '')
                 for reason in reasons:
                     if reason.get('TYPE') == 'human_input_required':
-                        form_content = reason.get('form_content', '')
-                        actions = reason.get('actions', [])
-                        node_title = reason.get('node_title', '')
-
-                        _set_pending_form(
-                            _session_key_from_query(query),
-                            {
-                                'workflow_run_id': workflow_run_id,
-                                'form_id': reason.get('form_id'),
-                                'form_token': reason.get('form_token'),
-                                'node_id': reason.get('node_id'),
-                                'node_title': node_title,
-                                'form_content': form_content,
-                                'inputs': reason.get('inputs', {}),
-                                'actions': actions,
-                                'expiration_time': reason.get('expiration_time'),
-                                'user': f'{query.session.launcher_type.value}_{query.session.launcher_id}',
-                            },
+                        user = f'{query.session.launcher_type.value}_{query.session.launcher_id}'
+                        form_snapshot, raw_form_content, input_defs, _ = _extract_form_snapshot(
+                            workflow_run_id,
+                            reason,
+                            user,
                         )
+                        actions = form_snapshot.get('actions', [])
+                        node_title = form_snapshot.get('node_title', '')
+
+                        _set_pending_form(_session_key_from_query(query), form_snapshot)
 
                         query.variables['_dify_form_render'] = {
-                            'form_content': form_content,
+                            'form_content': raw_form_content,
+                            'input_defs': input_defs,
                             'actions': actions,
                             'node_title': node_title,
                         }
 
-                        display_text = _format_human_input_text(node_title, form_content, actions)
+                        display_text = _format_human_input_text(node_title, raw_form_content, actions, input_defs)
 
                         human_input_yielded = True
                         yield provider_message.Message(
@@ -817,9 +1470,19 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         if form_action_raw:
             form_action = self._merge_pending_form_action(session_key, form_action_raw)
         else:
-            form_action = self._match_pending_form_action(session_key, str(query.message_chain))
+            form_action = await self._match_pending_form_action(query, session_key, str(query.message_chain))
 
         if form_action:
+            if form_action.get('_partial'):
+                yield _attach_partial_form_data(
+                    provider_message.MessageChunk(
+                        role='assistant',
+                        content=form_action.get('notice', 'Received.'),
+                        is_final=True,
+                    ),
+                    form_action,
+                )
+                return
             _clear_pending_form(session_key, form_action.get('form_token') or None)
             async for msg in self._submit_workflow_form(form_action):
                 yield msg
@@ -855,7 +1518,6 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         yielded_final = False
         human_input_yielded = False
         pending_form_data = None
-        display_text = ''
 
         remove_think = self.pipeline_config['output'].get('misc', {}).get('remove-think')
 
@@ -910,34 +1572,24 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 for reason in reasons:
                     if reason.get('TYPE') != 'human_input_required':
                         continue
-                    form_content = reason.get('form_content', '')
-                    actions = reason.get('actions', [])
-                    node_title = reason.get('node_title', '')
-
-                    raw_inputs = reason.get('inputs', {})
-                    _set_pending_form(
-                        _session_key_from_query(query),
-                        {
-                            'workflow_run_id': workflow_run_id,
-                            'form_id': reason.get('form_id'),
-                            'form_token': reason.get('form_token'),
-                            'node_id': reason.get('node_id'),
-                            'node_title': node_title,
-                            'form_content': form_content,
-                            'inputs': raw_inputs if isinstance(raw_inputs, dict) else {},
-                            'actions': actions,
-                            'expiration_time': reason.get('expiration_time'),
-                            'user': f'{query.session.launcher_type.value}_{query.session.launcher_id}',
-                        },
+                    user = f'{query.session.launcher_type.value}_{query.session.launcher_id}'
+                    form_snapshot, raw_form_content, input_defs, display_form_content = _extract_form_snapshot(
+                        workflow_run_id,
+                        reason,
+                        user,
                     )
+                    actions = form_snapshot.get('actions', [])
+                    node_title = form_snapshot.get('node_title', '')
+
+                    _set_pending_form(_session_key_from_query(query), form_snapshot)
 
                     query.variables['_dify_form_render'] = {
-                        'form_content': form_content,
+                        'form_content': raw_form_content,
+                        'input_defs': input_defs,
                         'actions': actions,
                         'node_title': node_title,
                     }
 
-                    display_text = _format_human_input_text(node_title, form_content, actions)
                     # Use a zero-width space so ResponseWrapper lets the chunk
                     # propagate to SendResponseBackStage, but the adapter
                     # detects _form_data and renders buttons instead of the
@@ -945,8 +1597,11 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                     if not basic_mode_pending_chunk:
                         basic_mode_pending_chunk = '​'
 
-                    pending_form_data = {
-                        'form_content': form_content,
+                    pending_form_data = _initial_interactive_form_data(form_snapshot) or {
+                        'form_content': display_form_content,
+                        'raw_form_content': raw_form_content,
+                        'input_defs': input_defs,
+                        'inputs': form_snapshot.get('inputs', {}),
                         'actions': actions,
                         'node_title': node_title,
                         'workflow_run_id': workflow_run_id,
@@ -984,7 +1639,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         if human_input_yielded and not yielded_final:
             msg = provider_message.MessageChunk(
                 role='assistant',
-                content=basic_mode_pending_chunk or display_text,
+                content=basic_mode_pending_chunk or '',
                 is_final=True,
             )
             msg._form_data = pending_form_data
@@ -1163,35 +1818,24 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 for reason in reasons:
                     if reason.get('TYPE') != 'human_input_required':
                         continue
-                    form_content = reason.get('form_content', '')
-                    actions = reason.get('actions', [])
+                    form_snapshot, raw_form_content, input_defs, display_form_content = _extract_form_snapshot(
+                        new_run_id,
+                        reason,
+                        user,
+                    )
+                    actions = form_snapshot.get('actions', [])
                     # Use a distinct name — `node_title` (the just-resolved step)
                     # must keep its value so the resume notice on the previous
                     # card still shows which step the user acted on.
-                    paused_node_title = reason.get('node_title', '')
-                    raw_inputs = reason.get('inputs', {})
+                    paused_node_title = form_snapshot.get('node_title', '')
 
-                    _set_pending_form(
-                        # Use the same session-key format as
-                        # _session_key_from_query (launcher_type_launcher_id).
-                        # The 'user' field is set by adapters in this format.
-                        user,
-                        {
-                            'workflow_run_id': new_run_id,
-                            'form_id': reason.get('form_id'),
-                            'form_token': reason.get('form_token'),
-                            'node_id': reason.get('node_id'),
-                            'node_title': paused_node_title,
-                            'form_content': form_content,
-                            'inputs': raw_inputs if isinstance(raw_inputs, dict) else {},
-                            'actions': actions,
-                            'expiration_time': reason.get('expiration_time'),
-                            'user': user,
-                        },
-                    )
+                    _set_pending_form(user, form_snapshot)
 
-                    repause_form_data = {
-                        'form_content': form_content,
+                    repause_form_data = _initial_interactive_form_data(form_snapshot) or {
+                        'form_content': display_form_content,
+                        'raw_form_content': raw_form_content,
+                        'input_defs': input_defs,
+                        'inputs': form_snapshot.get('inputs', {}),
                         'actions': actions,
                         'node_title': paused_node_title,
                         'workflow_run_id': new_run_id,
@@ -1284,9 +1928,19 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         if form_action_raw:
             form_action = self._merge_pending_form_action(session_key, form_action_raw)
         else:
-            form_action = self._match_pending_form_action(session_key, str(query.message_chain))
+            form_action = await self._match_pending_form_action(query, session_key, str(query.message_chain))
 
         if form_action:
+            if form_action.get('_partial'):
+                yield _attach_partial_form_data(
+                    provider_message.MessageChunk(
+                        role='assistant',
+                        content=form_action.get('notice', 'Received.'),
+                        is_final=True,
+                    ),
+                    form_action,
+                )
+                return
             _clear_pending_form(session_key, form_action.get('form_token') or None)
             # Resume paused workflow via submit endpoint
             async for msg in self._submit_workflow_form(form_action):
@@ -1330,7 +1984,6 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         # Saved form data to attach to the final MessageChunk so the adapter
         # can detect it when is_final=True and render buttons.
         pending_form_data = None
-        display_text = ''
 
         remove_think = self.pipeline_config['output'].get('misc', {}).get('remove-think')
         async for chunk in self.dify_client.workflow_run(
@@ -1350,45 +2003,35 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 workflow_run_id = chunk['data'].get('workflow_run_id', workflow_run_id)
                 for reason in reasons:
                     if reason.get('TYPE') == 'human_input_required':
-                        form_content = reason.get('form_content', '')
-                        actions = reason.get('actions', [])
-                        node_title = reason.get('node_title', '')
-
-                        # Persist form state in module-level store keyed by session
-                        raw_inputs = reason.get('inputs', {})
-                        _set_pending_form(
-                            _session_key_from_query(query),
-                            {
-                                'workflow_run_id': workflow_run_id,
-                                'form_id': reason.get('form_id'),
-                                'form_token': reason.get('form_token'),
-                                'node_id': reason.get('node_id'),
-                                'node_title': node_title,
-                                'form_content': form_content,
-                                'inputs': raw_inputs if isinstance(raw_inputs, dict) else {},
-                                'actions': actions,
-                                'expiration_time': reason.get('expiration_time'),
-                                'user': f'{query.session.launcher_type.value}_{query.session.launcher_id}',
-                            },
+                        user = f'{query.session.launcher_type.value}_{query.session.launcher_id}'
+                        form_snapshot, raw_form_content, input_defs, display_form_content = _extract_form_snapshot(
+                            workflow_run_id,
+                            reason,
+                            user,
                         )
+                        actions = form_snapshot.get('actions', [])
+                        node_title = form_snapshot.get('node_title', '')
+
+                        _set_pending_form(_session_key_from_query(query), form_snapshot)
 
                         # Pass form render metadata to downstream stages
                         query.variables['_dify_form_render'] = {
-                            'form_content': form_content,
+                            'form_content': raw_form_content,
+                            'input_defs': input_defs,
                             'actions': actions,
                             'node_title': node_title,
                         }
-
-                        display_text = _format_human_input_text(node_title, form_content, actions)
-                        workflow_contents += display_text + '\n'
 
                         # Save form data to attach to the final chunk later.
                         # We do NOT yield here — the form content will be sent
                         # as the final MessageChunk (with is_final=True and
                         # _form_data) so the adapter can update the card and
                         # add buttons in one pass.
-                        pending_form_data = {
-                            'form_content': form_content,
+                        pending_form_data = _initial_interactive_form_data(form_snapshot) or {
+                            'form_content': display_form_content,
+                            'raw_form_content': raw_form_content,
+                            'input_defs': input_defs,
+                            'inputs': form_snapshot.get('inputs', {}),
                             'actions': actions,
                             'node_title': node_title,
                             'workflow_run_id': workflow_run_id,
@@ -1443,7 +2086,11 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 yield msg
 
             if messsage_idx % 8 == 0 or is_final:
-                final_content = workflow_contents if workflow_contents.strip() else ''
+                final_content = (
+                    workflow_contents
+                    if workflow_contents.strip()
+                    else (_STREAM_FORM_PLACEHOLDER if is_final and pending_form_data else '')
+                )
                 msg = provider_message.MessageChunk(
                     role='assistant',
                     content=final_content,
@@ -1461,7 +2108,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         if human_input_yielded and not is_final:
             msg = provider_message.MessageChunk(
                 role='assistant',
-                content=workflow_contents or display_text,
+                content=workflow_contents if workflow_contents.strip() else _STREAM_FORM_PLACEHOLDER,
                 is_final=True,
             )
             msg._form_data = pending_form_data

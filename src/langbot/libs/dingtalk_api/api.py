@@ -23,6 +23,26 @@ _stdout_logger = logging.getLogger('langbot.dingtalk_api')
 DINGTALK_OPENAPI_BASE = 'https://api.dingtalk.com'
 
 
+def _stringify_card_param_map(card_param_map: Optional[dict]) -> dict:
+    """DingTalk cardParamMap only accepts string values.
+
+    Keep callers free to pass structured values for template variables such
+    as button groups or select options, then encode them once at the API
+    boundary.
+    """
+    if not card_param_map:
+        return {}
+    result = {}
+    for key, value in card_param_map.items():
+        if value is None:
+            result[key] = ''
+        elif isinstance(value, str):
+            result[key] = value
+        else:
+            result[key] = json.dumps(value, ensure_ascii=False)
+    return result
+
+
 class DingTalkClient:
     def __init__(
         self,
@@ -608,7 +628,7 @@ class DingTalkClient:
         if not await self.check_access_token():
             await self.get_access_token()
 
-        cardData: dict = {'cardParamMap': card_param_map or {}}
+        cardData: dict = {'cardParamMap': _stringify_card_param_map(card_param_map)}
         if card_data_config is not None:
             cardData['config'] = json.dumps(card_data_config)
 
@@ -732,7 +752,7 @@ class DingTalkClient:
 
         body: dict = {
             'outTrackId': out_track_id,
-            'cardData': {'cardParamMap': card_param_map or {}},
+            'cardData': {'cardParamMap': _stringify_card_param_map(card_param_map)},
         }
         if private_data:
             body['privateData'] = private_data
@@ -746,7 +766,7 @@ class DingTalkClient:
             _stdout_logger.info(
                 'DingTalk update_card_data request: out_track_id=%s body=%s',
                 out_track_id,
-                json.dumps(body, ensure_ascii=False)[:500],
+                json.dumps(body, ensure_ascii=False)[:1500],
             )
             async with httpx.AsyncClient() as client:
                 response = await client.put(url, headers=headers, json=body, timeout=30.0)

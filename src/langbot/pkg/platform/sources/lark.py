@@ -34,6 +34,163 @@ import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 
 
+def _lark_form_component_name(prefix: str, field_name: str, index: int) -> str:
+    safe_name = re.sub(r'[^A-Za-z0-9_]', '_', field_name)[:8] or 'field'
+    digest = hashlib.sha1(field_name.encode('utf-8')).hexdigest()[:6]
+    return f'{prefix}_{index}_{safe_name}_{digest}'[:32]
+
+
+def _dify_field_name(field: dict) -> str:
+    return str(field.get('output_variable_name') or field.get('name') or field.get('id') or '').strip()
+
+
+def _dify_field_type(field: dict) -> str:
+    return str(field.get('type') or 'text').strip().lower()
+
+
+def _dify_select_options(field: dict) -> list[str]:
+    source = field.get('option_source') or {}
+    value = source.get('value') if isinstance(source, dict) else None
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    if isinstance(value, str):
+        return [part.strip() for part in value.splitlines() if part.strip()]
+    options = field.get('options')
+    if isinstance(options, list):
+        result: list[str] = []
+        for item in options:
+            if isinstance(item, dict):
+                result.append(str(item.get('label') or item.get('value') or ''))
+            else:
+                result.append(str(item))
+        return [item for item in result if item]
+    return []
+
+
+def _dify_default_value(field: dict) -> str:
+    default = field.get('default')
+    if isinstance(default, dict):
+        value = default.get('value') if default.get('type') == 'constant' or 'value' in default else ''
+    else:
+        value = default
+    return '' if value is None else str(value)
+
+
+def _lark_clean_form_content(form_content: str, input_defs: list[dict]) -> str:
+    field_names = {_dify_field_name(field) for field in input_defs if _dify_field_name(field)}
+    kept_lines: list[str] = []
+    for line in (form_content or '').splitlines():
+        placeholder = re.fullmatch(r'\s*\{\{#\$output\.([^#{}]+)#\}\}\s*', line)
+        if placeholder and placeholder.group(1) in field_names:
+            continue
+        kept_lines.append(line)
+    return re.sub(r'\n{3,}', '\n\n', '\n'.join(kept_lines).strip())
+
+
+def _lark_form_input_defs(form_data: dict) -> list[dict]:
+    return list(form_data.get('all_input_defs') or form_data.get('input_defs') or [])
+
+
+def _lark_display_input_value(field: dict, value: typing.Any) -> str:
+    field_type = _dify_field_type(field)
+    if field_type == 'file':
+        if isinstance(value, dict):
+            return value.get('url') or value.get('upload_file_id') or '1 file'
+        return str(value)
+    if field_type == 'file-list':
+        if isinstance(value, list):
+            return f'{len(value)} file(s)'
+        return str(value)
+    if isinstance(value, dict):
+        if 'value' in value and value.get('value') not in (None, ''):
+            return str(value.get('value'))
+        text = value.get('text')
+        if isinstance(text, dict):
+            content = text.get('content')
+            if content not in (None, ''):
+                return str(content)
+        if text not in (None, ''):
+            return str(text)
+    if isinstance(value, list):
+        return ', '.join(_lark_display_input_value(field, item) for item in value if item not in (None, ''))
+    return str(value)
+
+
+def _lark_completed_input_lines(form_data: dict) -> list[str]:
+    inputs = form_data.get('inputs') or {}
+    if not isinstance(inputs, dict):
+        return []
+
+    lines: list[str] = []
+    for field in _lark_form_input_defs(form_data):
+        field_name = _dify_field_name(field)
+        if not field_name:
+            continue
+        value = inputs.get(field_name)
+        if value in (None, '', []):
+            continue
+        display_value = _lark_display_input_value(field, value)
+        field_type = _dify_field_type(field)
+        if field_type == 'select':
+            lines.append(f'✅ 已选择 {field_name}：**{display_value}**')
+        elif field_type in {'file', 'file-list'}:
+            lines.append(f'✅ 已上传 {field_name}：**{display_value}**')
+        else:
+            lines.append(f'✅ 已填写 {field_name}：**{display_value}**')
+    return lines
+
+
+def _lark_mapping_from_value(value: typing.Any) -> dict:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def _lark_action_attr(action: typing.Any, name: str) -> typing.Any:
+    if isinstance(action, dict):
+        return action.get(name)
+    return getattr(action, name, None)
+
+
+def _lark_extract_action_form_inputs(action: typing.Any, action_value_obj: dict) -> dict:
+    input_name_map = action_value_obj.get('input_name_map', {})
+    if not isinstance(input_name_map, dict):
+        input_name_map = {}
+
+    form_value = _lark_mapping_from_value(_lark_action_attr(action, 'form_value'))
+    if not form_value:
+        for key in ('form_value', 'formValue', 'form_values', 'formValues'):
+            form_value = _lark_mapping_from_value(action_value_obj.get(key))
+            if form_value:
+                break
+
+    if not form_value:
+        action_name = _lark_action_attr(action, 'name')
+        input_value = _lark_action_attr(action, 'input_value')
+        option_value = _lark_action_attr(action, 'option')
+        if action_name and input_value not in (None, ''):
+            form_value = {action_name: input_value}
+        elif action_name and option_value not in (None, ''):
+            form_value = {action_name: option_value}
+
+    form_inputs = {}
+    for component_name, value in form_value.items():
+        field_name = input_name_map.get(component_name)
+        if not field_name and isinstance(component_name, str) and '.' in component_name:
+            field_name = input_name_map.get(component_name.rsplit('.', 1)[-1], component_name)
+        if not field_name:
+            field_name = component_name
+        if field_name and value not in (None, '', []):
+            form_inputs[str(field_name)] = value
+    return form_inputs
+
+
 class AESCipher(object):
     def __init__(self, key):
         self.bs = AES.block_size
@@ -804,6 +961,9 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     card_pre_pause_text: dict[str, str]
     # card_id → form_content captured when the form is first shown (for resume notice)
     card_form_content: dict[str, str]
+    # card_id → input_defs / inputs captured for the selected-action notice
+    card_form_input_defs: dict[str, list[dict]]
+    card_form_inputs: dict[str, dict]
     # set of card_ids that have already transitioned from "buttons visible" to "resume layout"
     card_resume_transitioned: set[str]
     _MONITORING_MAPPING_TTL = 600  # 10 minutes
@@ -834,13 +994,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             try:
                 action_value_raw = getattr(getattr(event.event, 'action', None), 'value', {})
                 # Parse JSON string values (from form action buttons)
-                if isinstance(action_value_raw, str):
-                    try:
-                        action_value_obj = json.loads(action_value_raw)
-                    except (json.JSONDecodeError, TypeError):
-                        action_value_obj = {}
-                else:
-                    action_value_obj = action_value_raw if isinstance(action_value_raw, dict) else {}
+                action_value_obj = _lark_mapping_from_value(action_value_raw)
                 action_value = action_value_obj.get('feedback', '') if isinstance(action_value_obj, dict) else ''
 
                 # Handle Dify form action button clicks
@@ -849,6 +1003,8 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     workflow_run_id = action_value_obj.get('workflow_run_id', '')
                     action_id = action_value_obj.get('action_id', '')
                     session_key = action_value_obj.get('session_key', '')
+                    action = getattr(event.event, 'action', None)
+                    form_inputs = _lark_extract_action_form_inputs(action, action_value_obj)
 
                     if session_key.startswith('group_') or session_key.startswith('g:'):
                         launcher_type = provider_session.LauncherTypes.GROUP
@@ -879,11 +1035,26 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                         'workflow_run_id': workflow_run_id,
                         'action_id': action_id,
                         'user': f'{launcher_type.value}_{launcher_id}',
-                        'inputs': {},
+                        'inputs': form_inputs,
                     }
 
                     context = getattr(event.event, 'context', None)
                     open_message_id = getattr(context, 'open_message_id', None)
+                    if open_message_id and form_inputs:
+                        card_id = self.reply_message_card_ids.get(str(open_message_id))
+                    else:
+                        card_id = None
+                    if not card_id:
+                        card_id = str(action_value_obj.get('card_id') or '')
+                    if card_id and form_inputs:
+                        cached_inputs = dict(self.card_form_inputs.get(card_id) or {})
+                        cached_inputs.update(form_inputs)
+                        self.card_form_inputs[card_id] = cached_inputs
+                        if self.ap is not None:
+                            self.ap.logger.info(
+                                f'Lark form action inputs cached: card_id={card_id} '
+                                f'open_message_id={open_message_id} keys={list(form_inputs.keys())}'
+                            )
                     source_time = datetime.datetime.now()
                     event_time = source_time.timestamp()
                     action_text = action_value_obj.get('action_id', 'confirm')
@@ -1033,6 +1204,8 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             card_streaming_text={},
             card_pre_pause_text={},
             card_form_content={},
+            card_form_input_defs={},
+            card_form_inputs={},
             card_resume_transitioned=set(),
             seq=1,
             listeners={},
@@ -1299,6 +1472,8 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         self.card_streaming_text.pop(card_id, None)
         self.card_pre_pause_text.pop(card_id, None)
         self.card_form_content.pop(card_id, None)
+        self.card_form_input_defs.pop(card_id, None)
+        self.card_form_inputs.pop(card_id, None)
         self.card_resume_transitioned.discard(card_id)
 
     async def create_card_id(self, message_id):
@@ -1809,6 +1984,14 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             stored_form_content = self.card_form_content.get(card_id, '')
             if stored_form_content:
                 notice_parts.append(stored_form_content)
+            completed_lines = _lark_completed_input_lines(
+                {
+                    'input_defs': self.card_form_input_defs.get(card_id, []),
+                    'inputs': self.card_form_inputs.get(card_id, {}),
+                }
+            )
+            if completed_lines:
+                notice_parts.append('---\n' + '\n'.join(completed_lines))
             notice_parts.append(f'---\n✅ 已选择：**{action_title}**')
             selected_notice = '\n\n'.join(notice_parts)
         else:
@@ -1937,6 +2120,8 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                         self.card_streaming_text.pop(card_id, None)
                         self.card_pre_pause_text.pop(card_id, None)
                         self.card_form_content.pop(card_id, None)
+                        self.card_form_input_defs.pop(card_id, None)
+                        self.card_form_inputs.pop(card_id, None)
                     else:
                         # The old card is now a frozen snapshot; let go of its
                         # streaming-side state but keep its source registrations
@@ -1945,6 +2130,8 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                         self.card_streaming_text.pop(card_id, None)
                         self.card_pre_pause_text.pop(card_id, None)
                         self.card_form_content.pop(card_id, None)
+                        self.card_form_input_defs.pop(card_id, None)
+                        self.card_form_inputs.pop(card_id, None)
                         self.card_resume_transitioned.discard(card_id)
                 else:
                     # Initial pause path: render prompt + buttons in place on
@@ -1962,8 +2149,14 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     # transitions to resume mode.
                     self.card_pre_pause_text[card_id] = self.card_streaming_text.get(card_id, '')
                     self.card_streaming_text[card_id] = ''
-                    # Store form_content for the resume notice
-                    self.card_form_content[card_id] = form_data.get('form_content', '') if form_data else ''
+                    # Store cleaned form state for the resume notice.
+                    input_defs = _lark_form_input_defs(form_data)
+                    self.card_form_content[card_id] = _lark_clean_form_content(
+                        form_data.get('raw_form_content') or form_data.get('form_content', ''),
+                        input_defs,
+                    )
+                    self.card_form_input_defs[card_id] = _lark_form_input_defs(form_data)
+                    self.card_form_inputs[card_id] = dict(form_data.get('inputs') or {})
             else:
                 # Normal finish: keep pre-pause + resume content visible,
                 # remove buttons/notice, drop the resume placeholder.
@@ -2040,6 +2233,78 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             form_data=None,
         )
 
+    def _build_lark_form_field_elements(self, form_data: dict) -> tuple[list[dict], dict[str, str], list[str]]:
+        elements: list[dict] = []
+        input_name_map: dict[str, str] = {}
+        file_help_lines: list[str] = []
+
+        for idx, field in enumerate(form_data.get('input_defs') or [], start=1):
+            field_name = _dify_field_name(field)
+            if not field_name:
+                continue
+            field_type = _dify_field_type(field)
+
+            if field_type == 'select':
+                options = _dify_select_options(field)
+                component_name = _lark_form_component_name('Select', field_name, idx)
+                input_name_map[component_name] = field_name
+                elements.append(
+                    {
+                        'tag': 'select_static',
+                        'name': component_name,
+                        'label': {'tag': 'plain_text', 'content': field_name},
+                        'placeholder': {'tag': 'plain_text', 'content': '请选择'},
+                        'options': [
+                            {
+                                'text': {'tag': 'plain_text', 'content': option},
+                                'value': option,
+                            }
+                            for option in options
+                        ],
+                        'type': 'default',
+                        'width': 'fill',
+                        'required': False,
+                    }
+                )
+            elif field_type in {'file', 'file-list'}:
+                allowed_types = ', '.join(field.get('allowed_file_types') or [])
+                allowed = f' ({allowed_types})' if allowed_types else ''
+                if field_type == 'file-list':
+                    limit = field.get('number_limits')
+                    suffix = f', up to {limit}' if limit else ''
+                    file_help_lines.append(
+                        f'- {field_name}: upload file(s){allowed}{suffix} in chat or reply `{field_name}: <url>`'
+                    )
+                else:
+                    file_help_lines.append(
+                        f'- {field_name}: upload a file{allowed} in chat or reply `{field_name}: <url>`'
+                    )
+            else:
+                component_name = _lark_form_component_name('Input', field_name, idx)
+                input_name_map[component_name] = field_name
+                is_multiline = field_type in {'paragraph', 'long_text', 'multiline_text', 'textarea'}
+                input_element = {
+                    'tag': 'input',
+                    'name': component_name,
+                    'label': {'tag': 'plain_text', 'content': field_name},
+                    'placeholder': {'tag': 'plain_text', 'content': '请输入'},
+                    'default_value': _dify_default_value(field),
+                    'width': 'fill',
+                    'required': False,
+                }
+                if is_multiline:
+                    input_element.update(
+                        {
+                            'input_type': 'multiline_text',
+                            'rows': 3,
+                            'auto_resize': True,
+                            'max_rows': 6,
+                        }
+                    )
+                elements.append(input_element)
+
+        return elements, input_name_map, file_help_lines
+
     async def _update_card_layout(
         self,
         card_id: str,
@@ -2063,6 +2328,8 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         workflow_run_id = form_data.get('workflow_run_id', '')
         node_title = form_data.get('node_title', '') or 'Human Input Required'
         form_content = form_data.get('form_content', '')
+        raw_form_content = form_data.get('raw_form_content') or form_content
+        input_defs = _lark_form_input_defs(form_data)
 
         # When form_data is set, the visible content is rendered inside the
         # interactive container, so the top streaming text should stay empty
@@ -2083,6 +2350,13 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         # Build button elements matching the existing card template's thumbsup/down format
         action_buttons = []
+        form_field_elements, input_name_map, file_help_lines = self._build_lark_form_field_elements(form_data)
+        uses_form_container = bool(form_field_elements or input_name_map)
+        if form_data:
+            form_content = _lark_clean_form_content(raw_form_content, input_defs)
+            self.card_form_content[card_id] = form_content
+            self.card_form_input_defs[card_id] = input_defs
+            self.card_form_inputs[card_id] = dict(form_data.get('inputs') or {})
         for action in actions:
             action_id = action.get('id', '')
             action_title = action.get('title', action_id)
@@ -2095,29 +2369,33 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             else:
                 lark_button_type = 'default'
 
-            action_buttons.append(
-                {
-                    'tag': 'button',
-                    'text': {'tag': 'plain_text', 'content': action_title},
-                    'type': lark_button_type,
-                    'width': 'fill',
-                    'size': 'medium',
-                    'hover_tips': {'tag': 'plain_text', 'content': action_title},
-                    'behaviors': [
-                        {
-                            'type': 'callback',
-                            'value': {
-                                'form_action': True,
-                                'form_token': form_token,
-                                'workflow_run_id': workflow_run_id,
-                                'action_id': action_id,
-                                'session_key': session_key,
-                            },
-                        }
-                    ],
-                    'margin': '0px 0px 0px 0px',
-                }
-            )
+            button = {
+                'tag': 'button',
+                'text': {'tag': 'plain_text', 'content': action_title},
+                'type': lark_button_type,
+                'width': 'fill',
+                'size': 'medium',
+                'hover_tips': {'tag': 'plain_text', 'content': action_title},
+                'behaviors': [
+                    {
+                        'type': 'callback',
+                        'value': {
+                            'form_action': True,
+                            'form_token': form_token,
+                            'workflow_run_id': workflow_run_id,
+                            'action_id': action_id,
+                            'session_key': session_key,
+                            'card_id': card_id,
+                            'input_name_map': input_name_map,
+                        },
+                    }
+                ],
+                'margin': '0px 0px 0px 0px',
+            }
+            if uses_form_container:
+                button['name'] = _lark_form_component_name('Button', action_id or action_title, len(action_buttons) + 1)
+                button['form_action_type'] = 'submit'
+            action_buttons.append(button)
 
         interactive_elements = []
         if form_data:
@@ -2141,38 +2419,84 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                             'margin': '0px 0px 8px 0px',
                         }
                     )
-            interactive_elements.append(
-                {
-                    'tag': 'column_set',
-                    'horizontal_spacing': '8px',
-                    'horizontal_align': 'left',
-                    'margin': '0px 0px 0px 0px',
-                    'columns': [
+                completed_lines = _lark_completed_input_lines(
+                    {
+                        'input_defs': input_defs,
+                        'inputs': form_data.get('inputs') or {},
+                    }
+                )
+                if completed_lines:
+                    interactive_elements.append(
                         {
-                            'tag': 'column',
-                            'width': 'weighted',
-                            'elements': [btn],
-                            'padding': '0px 0px 0px 0px',
+                            'tag': 'markdown',
+                            'content': '---\n' + '\n'.join(completed_lines),
+                            'text_align': 'left',
+                            'text_size': 'normal',
+                            'margin': '0px 0px 8px 0px',
                         }
-                        for btn in action_buttons
-                    ],
-                }
-            )
+                    )
+                if file_help_lines and uses_form_container:
+                    interactive_elements.append(
+                        {
+                            'tag': 'markdown',
+                            'content': '\n'.join(file_help_lines),
+                            'text_align': 'left',
+                            'text_size': 'normal',
+                            'text_color': 'grey',
+                            'margin': '0px 0px 8px 0px',
+                        }
+                    )
+            if action_buttons:
+                interactive_elements.append(
+                    {
+                        'tag': 'column_set',
+                        'horizontal_spacing': '8px',
+                        'horizontal_align': 'left',
+                        'margin': '0px 0px 0px 0px',
+                        'columns': [
+                            {
+                                'tag': 'column',
+                                'width': 'weighted',
+                                'elements': [btn],
+                                'padding': '0px 0px 0px 0px',
+                            }
+                            for btn in action_buttons
+                        ],
+                    }
+                )
 
         # Build the full card JSON with buttons, same structure as create_card_id
         # ── mid_section: either form buttons, resume notice, or empty ──
         mid_section_elements = []
         if form_data:
-            mid_section_elements = [
-                {
-                    'tag': 'interactive_container',
-                    'margin': '12px 0px 8px 0px',
-                    'padding': '12px 12px 12px 12px',
-                    'has_border': True,
-                    'elements': interactive_elements,
-                },
-                {'tag': 'hr', 'margin': '0px 0px 0px 0px'},
-            ]
+            if uses_form_container:
+                form_elements = interactive_elements[:-1] if action_buttons else interactive_elements[:]
+                form_elements.extend(form_field_elements)
+                if action_buttons:
+                    form_elements.append(interactive_elements[-1])
+                mid_section_elements = [
+                    {
+                        'tag': 'form',
+                        'name': _lark_form_component_name('Form', form_token or workflow_run_id or card_id, 1),
+                        'direction': 'vertical',
+                        'vertical_spacing': '12px',
+                        'margin': '12px 0px 8px 0px',
+                        'padding': '12px 12px 12px 12px',
+                        'elements': form_elements,
+                    },
+                    {'tag': 'hr', 'margin': '0px 0px 0px 0px'},
+                ]
+            else:
+                mid_section_elements = [
+                    {
+                        'tag': 'interactive_container',
+                        'margin': '12px 0px 8px 0px',
+                        'padding': '12px 12px 12px 12px',
+                        'has_border': True,
+                        'elements': interactive_elements,
+                    },
+                    {'tag': 'hr', 'margin': '0px 0px 0px 0px'},
+                ]
         elif notice_text:
             mid_section_elements = [
                 {
@@ -2442,8 +2766,120 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     action = event_data.get('action', {})
                     context_data = event_data.get('context', {})
 
-                    action_value_obj = action.get('value', {})
+                    action_value_obj = _lark_mapping_from_value(action.get('value', {}))
                     action_value = action_value_obj.get('feedback', '') if isinstance(action_value_obj, dict) else ''
+
+                    if isinstance(action_value_obj, dict) and action_value_obj.get('form_action'):
+                        form_token = action_value_obj.get('form_token', '')
+                        workflow_run_id = action_value_obj.get('workflow_run_id', '')
+                        action_id = action_value_obj.get('action_id', '')
+                        session_key = action_value_obj.get('session_key', '')
+                        form_inputs = _lark_extract_action_form_inputs(action, action_value_obj)
+
+                        if session_key.startswith('group_') or session_key.startswith('g:'):
+                            launcher_type = provider_session.LauncherTypes.GROUP
+                            launcher_id = (
+                                session_key.split(':', 1)[1]
+                                if session_key.startswith('g:')
+                                else session_key[len('group_') :]
+                            )
+                        else:
+                            launcher_type = provider_session.LauncherTypes.PERSON
+                            launcher_id = (
+                                session_key.split(':', 1)[1]
+                                if session_key.startswith('p:')
+                                else session_key[len('person_') :]
+                            )
+
+                        form_action_data = {
+                            'form_token': form_token,
+                            'workflow_run_id': workflow_run_id,
+                            'action_id': action_id,
+                            'user': f'{launcher_type.value}_{launcher_id}',
+                            'inputs': form_inputs,
+                        }
+
+                        open_message_id = context_data.get('open_message_id')
+                        card_id = self.reply_message_card_ids.get(str(open_message_id)) if open_message_id else None
+                        if not card_id:
+                            card_id = str(action_value_obj.get('card_id') or '')
+                        if card_id and form_inputs:
+                            cached_inputs = dict(self.card_form_inputs.get(card_id) or {})
+                            cached_inputs.update(form_inputs)
+                            self.card_form_inputs[card_id] = cached_inputs
+                            if self.ap is not None:
+                                self.ap.logger.info(
+                                    f'Lark form action inputs cached: card_id={card_id} '
+                                    f'open_message_id={open_message_id} keys={list(form_inputs.keys())}'
+                                )
+
+                        source_time = datetime.datetime.now()
+                        message_chain = platform_message.MessageChain(
+                            [platform_message.Plain(text=f'[Form Action: {action_id or "confirm"}]')]
+                        )
+                        if open_message_id:
+                            message_chain.insert(
+                                0,
+                                platform_message.Source(
+                                    id=open_message_id,
+                                    time=source_time,
+                                ),
+                            )
+
+                        user_id = operator.get('open_id') or operator.get('user_id') or str(launcher_id)
+                        event_time = source_time.timestamp()
+                        if launcher_type == provider_session.LauncherTypes.GROUP:
+                            synthetic_event = platform_events.GroupMessage(
+                                sender=platform_entities.GroupMember(
+                                    id=user_id,
+                                    member_name='',
+                                    permission=platform_entities.Permission.Member,
+                                    group=platform_entities.Group(
+                                        id=launcher_id,
+                                        name='',
+                                        permission=platform_entities.Permission.Member,
+                                    ),
+                                ),
+                                message_chain=message_chain,
+                                time=event_time,
+                                source_platform_object=data,
+                            )
+                        else:
+                            synthetic_event = platform_events.FriendMessage(
+                                sender=platform_entities.Friend(
+                                    id=user_id,
+                                    nickname='',
+                                    remark='',
+                                ),
+                                message_chain=message_chain,
+                                time=event_time,
+                                source_platform_object=data,
+                            )
+
+                        bot_uuid = ''
+                        pipeline_uuid = None
+                        for bot in self.ap.platform_mgr.bots:
+                            if bot.adapter is self:
+                                bot_uuid = bot.bot_entity.uuid
+                                pipeline_uuid = bot.bot_entity.use_pipeline_uuid
+                                break
+
+                        await self.ap.query_pool.add_query(
+                            bot_uuid=bot_uuid,
+                            launcher_type=launcher_type,
+                            launcher_id=launcher_id,
+                            sender_id=user_id,
+                            message_event=synthetic_event,
+                            message_chain=message_chain,
+                            adapter=self,
+                            pipeline_uuid=pipeline_uuid,
+                            variables={
+                                '_dify_form_action': form_action_data,
+                                '_routed_by_rule': True,
+                            },
+                        )
+
+                        return {'toast': {'type': 'success', 'content': '操作成功'}}
 
                     if action_value == '有帮助':
                         feedback_type = 1

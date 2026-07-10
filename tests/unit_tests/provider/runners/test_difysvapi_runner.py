@@ -6,6 +6,9 @@ Tests the helper methods that don't require real Dify API calls.
 from __future__ import annotations
 
 import pytest
+from unittest.mock import AsyncMock, MagicMock
+
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
 
 
 class TestDifyExtractTextOutput:
@@ -26,7 +29,7 @@ class TestDifyExtractTextOutput:
                     'base-url': 'https://api.dify.ai',
                 }
             },
-            'output': {'misc': {}}
+            'output': {'misc': {}},
         }
 
         runner = DifyServiceAPIRunner(mock_app, pipeline_config)
@@ -111,7 +114,7 @@ class TestDifyRunnerConfigValidation:
                     'base-url': 'https://api.dify.ai',
                 }
             },
-            'output': {'misc': {}}
+            'output': {'misc': {}},
         }
 
         with pytest.raises(DifyAPIError, match='不支持'):
@@ -134,7 +137,7 @@ class TestDifyRunnerConfigValidation:
                         'base-url': 'https://api.dify.ai',
                     }
                 },
-                'output': {'misc': {}}
+                'output': {'misc': {}},
             }
 
             runner = DifyServiceAPIRunner(mock_app, pipeline_config)
@@ -160,10 +163,509 @@ class TestDifyRunnerInit:
                     'base-url': 'https://api.dify.ai',
                 }
             },
-            'output': {'misc': {}}
+            'output': {'misc': {}},
         }
 
         runner = DifyServiceAPIRunner(mock_app, pipeline_config)
 
         assert runner.pipeline_config == pipeline_config
         assert runner.ap == mock_app
+
+
+class TestDifyHumanInputForms:
+    """Tests for Dify human-input form helpers."""
+
+    def _create_runner(self):
+        from langbot.pkg.provider.runners.difysvapi import DifyServiceAPIRunner
+
+        mock_app = MagicMock()
+        mock_app.logger = MagicMock()
+        pipeline_config = {
+            'ai': {
+                'dify-service-api': {
+                    'app-type': 'workflow',
+                    'api-key': 'test-key',
+                    'base-url': 'https://api.dify.ai',
+                    'base-prompt': '',
+                }
+            },
+            'output': {'misc': {}},
+        }
+        runner = DifyServiceAPIRunner(mock_app, pipeline_config)
+        runner.dify_client = MagicMock()
+        runner.dify_client.upload_file = AsyncMock(return_value={'id': 'upload-1'})
+        return runner
+
+    def test_format_human_input_text_includes_field_help(self):
+        from langbot.pkg.provider.runners.difysvapi import _format_human_input_text
+
+        text = _format_human_input_text(
+            'Manual Review',
+            'Please fill fields.',
+            [{'id': 'yes', 'title': 'Yes'}],
+            [
+                {'output_variable_name': 'comment', 'type': 'paragraph'},
+                {
+                    'output_variable_name': 'choice',
+                    'type': 'select',
+                    'option_source': {'type': 'constant', 'value': ['A', 'B']},
+                },
+                {'output_variable_name': 'attachment', 'type': 'file-list', 'number_limits': 2},
+            ],
+        )
+
+        assert 'comment: <value>' in text
+        assert 'choice (select): 1. A, 2. B' in text
+        assert 'attachment (file-list' in text
+        assert 'action: <number or title>' in text
+
+    def test_form_snapshot_for_platform_omits_action_text_and_placeholders(self):
+        from langbot.pkg.provider.runners.difysvapi import _extract_form_snapshot
+
+        snapshot, _, _, display_form_content = _extract_form_snapshot(
+            'run-1',
+            {
+                'form_token': 'token-1',
+                'node_title': 'Manual Review',
+                'form_content': 'Hello\n\n{{#$output.comment#}}\n\n{{#$output.choice#}}\n',
+                'inputs': [
+                    {'output_variable_name': 'comment', 'type': 'paragraph'},
+                    {
+                        'output_variable_name': 'choice',
+                        'type': 'select',
+                        'option_source': {'type': 'constant', 'value': ['A', 'B']},
+                    },
+                ],
+                'actions': [{'id': 'yes', 'title': 'Yes'}],
+            },
+            'person_user-1',
+        )
+
+        assert '{{#$output.comment#}}' not in display_form_content
+        assert 'Actions:' not in display_form_content
+        assert 'comment (paragraph)' in display_form_content
+        assert snapshot['form_content'] == display_form_content
+
+    @pytest.mark.asyncio
+    async def test_match_pending_form_collects_select_and_text_inputs(self):
+        from langbot.pkg.provider.runners import difysvapi
+
+        runner = self._create_runner()
+        session_key = 'person_user-1'
+        difysvapi._PENDING_FORMS.clear()
+        difysvapi._set_pending_form(
+            session_key,
+            {
+                'form_token': 'token-1',
+                'workflow_run_id': 'run-1',
+                'node_title': 'Manual Review',
+                'actions': [{'id': 'yes', 'title': 'Yes'}],
+                'input_defs': [
+                    {'output_variable_name': 'comment', 'type': 'paragraph'},
+                    {
+                        'output_variable_name': 'choice',
+                        'type': 'select',
+                        'option_source': {'type': 'constant', 'value': ['A', 'B']},
+                    },
+                ],
+                'inputs': {},
+                'user': session_key,
+            },
+        )
+        query = MagicMock()
+        query.message_chain = platform_message.MessageChain([platform_message.Plain(text='')])
+
+        action = await runner._match_pending_form_action(
+            query,
+            session_key,
+            'action: yes\ncomment: looks good\nchoice: 2',
+        )
+
+        assert action['action_id'] == 'yes'
+        assert action['inputs'] == {'comment': 'looks good', 'choice': 'B'}
+
+    @pytest.mark.asyncio
+    async def test_collect_form_inputs_uploads_files(self):
+        runner = self._create_runner()
+        image = platform_message.Image(base64='data:image/png;base64,aGVsbG8=')
+        query = MagicMock()
+        query.message_chain = platform_message.MessageChain([image])
+
+        inputs = await runner._collect_form_inputs_from_query(
+            query,
+            {
+                'input_defs': [{'output_variable_name': 'photo', 'type': 'file'}],
+                'inputs': {},
+                'user': 'person_user-1',
+            },
+            '',
+        )
+
+        assert inputs['photo'] == {
+            'type': 'image',
+            'transfer_method': 'local_file',
+            'upload_file_id': 'upload-1',
+        }
+
+    @pytest.mark.asyncio
+    async def test_partial_input_with_multiple_actions_waits_for_missing_fields(self):
+        from langbot.pkg.provider.runners import difysvapi
+
+        runner = self._create_runner()
+        session_key = 'person_user-1'
+        difysvapi._PENDING_FORMS.clear()
+        difysvapi._set_pending_form(
+            session_key,
+            {
+                'form_token': 'token-1',
+                'workflow_run_id': 'run-1',
+                'node_title': 'Manual Review',
+                'actions': [{'id': 'yes', 'title': 'Yes'}, {'id': 'no', 'title': 'No'}],
+                'input_defs': [
+                    {'output_variable_name': 'comment', 'type': 'paragraph'},
+                    {
+                        'output_variable_name': 'choice',
+                        'type': 'select',
+                        'option_source': {'type': 'constant', 'value': ['A', 'B']},
+                    },
+                ],
+                'inputs': {},
+                'user': session_key,
+            },
+        )
+        query = MagicMock()
+        query.message_chain = platform_message.MessageChain([platform_message.Plain(text='')])
+
+        action = await runner._match_pending_form_action(query, session_key, 'comment: ready')
+
+        assert action['_partial'] is True
+        assert action['inputs'] == {'comment': 'ready'}
+        assert action['_form_data']['_current_input_field'] == 'choice'
+        assert 'choice (select)' in action['notice']
+        assert difysvapi._get_latest_pending_form(session_key)['inputs'] == {'comment': 'ready'}
+
+    @pytest.mark.asyncio
+    async def test_complete_partial_input_with_multiple_actions_renders_action_form(self):
+        from langbot.pkg.provider.runners import difysvapi
+
+        runner = self._create_runner()
+        session_key = 'person_user-1'
+        difysvapi._PENDING_FORMS.clear()
+        difysvapi._set_pending_form(
+            session_key,
+            {
+                'form_token': 'token-1',
+                'workflow_run_id': 'run-1',
+                'node_title': 'Manual Review',
+                'raw_form_content': 'Please review\n\n{{#$output.comment#}}\n',
+                'form_content': 'Please review\n\nFields:\n  - comment (paragraph): reply "comment: <value>"',
+                'actions': [{'id': 'yes', 'title': 'Yes'}, {'id': 'no', 'title': 'No'}],
+                'input_defs': [{'output_variable_name': 'comment', 'type': 'paragraph'}],
+                'inputs': {},
+                'user': session_key,
+            },
+        )
+        query = MagicMock()
+        query.message_chain = platform_message.MessageChain([platform_message.Plain(text='')])
+
+        action = await runner._match_pending_form_action(query, session_key, 'comment: ready')
+
+        assert action['_partial'] is True
+        assert action['inputs'] == {'comment': 'ready'}
+        assert 'action: <number or title>' in action['notice']
+        assert action['_form_data']['_action_select_only'] is True
+        assert action['_form_data']['input_defs'] == []
+        assert action['_form_data']['actions'] == [{'id': 'yes', 'title': 'Yes'}, {'id': 'no', 'title': 'No'}]
+        assert '{{#$output.comment#}}' not in action['_form_data']['form_content']
+        assert difysvapi._get_latest_pending_form(session_key)['inputs'] == {'comment': 'ready'}
+
+    @pytest.mark.asyncio
+    async def test_sequential_field_collection_advances_one_field_at_a_time(self):
+        from langbot.pkg.provider.runners import difysvapi
+
+        runner = self._create_runner()
+        session_key = 'person_user-1'
+        difysvapi._PENDING_FORMS.clear()
+        difysvapi._set_pending_form(
+            session_key,
+            {
+                'form_token': 'token-1',
+                'workflow_run_id': 'run-1',
+                'node_title': 'Manual Review',
+                'actions': [{'id': 'yes', 'title': 'Yes'}, {'id': 'no', 'title': 'No'}],
+                'input_defs': [
+                    {'output_variable_name': 'comment', 'type': 'paragraph'},
+                    {
+                        'output_variable_name': 'choice',
+                        'type': 'select',
+                        'option_source': {'type': 'constant', 'value': ['A', 'B']},
+                    },
+                ],
+                'inputs': {},
+                'current_input_field': 'comment',
+                'user': session_key,
+            },
+        )
+        query = MagicMock()
+        query.message_chain = platform_message.MessageChain([platform_message.Plain(text='')])
+
+        first = await runner._match_pending_form_action(query, session_key, 'looks good')
+
+        assert first['_partial'] is True
+        assert first['inputs'] == {'comment': 'looks good'}
+        assert first['_form_data']['_current_input_field'] == 'choice'
+        assert first['_form_data']['input_defs'][0]['output_variable_name'] == 'comment'
+        assert 'choice (select)' in first['_form_data']['form_content']
+
+        second = await runner._match_pending_form_action(query, session_key, '2')
+
+        assert second['_partial'] is True
+        assert second['inputs'] == {'comment': 'looks good', 'choice': 'B'}
+        assert second['_form_data']['_action_select_only'] is True
+
+    @pytest.mark.asyncio
+    async def test_digit_reply_fills_missing_select_before_matching_action_number(self):
+        from langbot.pkg.provider.runners import difysvapi
+
+        runner = self._create_runner()
+        session_key = 'person_user-1'
+        difysvapi._PENDING_FORMS.clear()
+        difysvapi._set_pending_form(
+            session_key,
+            {
+                'form_token': 'token-1',
+                'workflow_run_id': 'run-1',
+                'node_title': 'Manual Review',
+                'actions': [
+                    {'id': 'yes', 'title': 'yes'},
+                    {'id': 'no', 'title': 'no'},
+                    {'id': 'or', 'title': 'or'},
+                    {'id': 'but', 'title': 'but'},
+                ],
+                'input_defs': [
+                    {'output_variable_name': 'us_input', 'type': 'paragraph'},
+                    {
+                        'output_variable_name': 'xiala',
+                        'type': 'select',
+                        'option_source': {'type': 'constant', 'value': ['1', '2']},
+                    },
+                ],
+                'inputs': {'us_input': 'hello'},
+                'user': session_key,
+            },
+        )
+        query = MagicMock()
+        query.message_chain = platform_message.MessageChain([platform_message.Plain(text='')])
+
+        action = await runner._match_pending_form_action(query, session_key, '2')
+
+        assert action['_partial'] is True
+        assert action['inputs'] == {'us_input': 'hello', 'xiala': '2'}
+        assert action['_form_data']['_action_select_only'] is True
+
+    @pytest.mark.asyncio
+    async def test_workflow_pause_without_text_yields_form_chunk(self):
+        from langbot.pkg.provider.runners import difysvapi
+
+        async def workflow_run(**kwargs):
+            del kwargs
+            yield {
+                'event': 'workflow_started',
+                'data': {'workflow_run_id': 'run-1'},
+            }
+            yield {
+                'event': 'workflow_paused',
+                'data': {
+                    'workflow_run_id': 'run-1',
+                    'reasons': [
+                        {
+                            'TYPE': 'human_input_required',
+                            'form_token': 'token-1',
+                            'node_title': 'Manual Review',
+                            'form_content': 'Please review\n\n{{#$output.comment#}}\n',
+                            'inputs': [{'output_variable_name': 'comment', 'type': 'paragraph'}],
+                            'actions': [{'id': 'yes', 'title': 'Yes'}],
+                        }
+                    ],
+                },
+            }
+
+        runner = self._create_runner()
+        runner.dify_client.workflow_run = workflow_run
+        query = MagicMock()
+        query.session.launcher_type.value = 'person'
+        query.session.launcher_id = 'user-1'
+        query.session.using_conversation.uuid = 'conversation-1'
+        query.variables = {
+            'session_id': 'session-1',
+            'conversation_id': 'conversation-1',
+            'msg_create_time': '0',
+        }
+        query.message_chain = platform_message.MessageChain([platform_message.Plain(text='hello')])
+
+        difysvapi._PENDING_FORMS.clear()
+        chunks = [chunk async for chunk in runner._workflow_messages_chunk(query)]
+
+        assert chunks[-1].is_final is True
+        assert chunks[-1].content == difysvapi._STREAM_FORM_PLACEHOLDER
+        assert chunks[-1]._form_data['form_token'] == 'token-1'
+        assert chunks[-1]._form_data['_current_input_field'] == 'comment'
+
+    @pytest.mark.asyncio
+    async def test_action_after_partial_input_reuses_saved_inputs(self):
+        from langbot.pkg.provider.runners import difysvapi
+
+        runner = self._create_runner()
+        session_key = 'person_user-1'
+        difysvapi._PENDING_FORMS.clear()
+        difysvapi._set_pending_form(
+            session_key,
+            {
+                'form_token': 'token-1',
+                'workflow_run_id': 'run-1',
+                'node_title': 'Manual Review',
+                'actions': [{'id': 'yes', 'title': 'Yes'}, {'id': 'no', 'title': 'No'}],
+                'input_defs': [{'output_variable_name': 'comment', 'type': 'paragraph'}],
+                'inputs': {},
+                'user': session_key,
+            },
+        )
+        query = MagicMock()
+        query.message_chain = platform_message.MessageChain([platform_message.Plain(text='')])
+
+        await runner._match_pending_form_action(query, session_key, 'comment: ready')
+        action = await runner._match_pending_form_action(query, session_key, 'action: yes')
+
+        assert action.get('_partial') is not True
+        assert action['action_id'] == 'yes'
+        assert action['inputs'] == {'comment': 'ready'}
+
+    def test_form_action_merges_card_inputs_with_saved_inputs(self):
+        from langbot.pkg.provider.runners import difysvapi
+
+        runner = self._create_runner()
+        session_key = 'person_user-1'
+        difysvapi._PENDING_FORMS.clear()
+        difysvapi._set_pending_form(
+            session_key,
+            {
+                'form_token': 'token-1',
+                'workflow_run_id': 'run-1',
+                'actions': [{'id': 'yes', 'title': 'Yes'}],
+                'input_defs': [
+                    {'output_variable_name': 'comment', 'type': 'paragraph'},
+                    {'output_variable_name': 'photo', 'type': 'file'},
+                ],
+                'inputs': {'photo': {'type': 'image', 'transfer_method': 'local_file', 'upload_file_id': 'upload-1'}},
+                'user': session_key,
+            },
+        )
+
+        action = runner._merge_pending_form_action(
+            session_key,
+            {
+                'form_token': 'token-1',
+                'workflow_run_id': 'run-1',
+                'action_id': 'yes',
+                'inputs': {'comment': 'ready'},
+            },
+        )
+
+        assert action['inputs'] == {
+            'comment': 'ready',
+            'photo': {'type': 'image', 'transfer_method': 'local_file', 'upload_file_id': 'upload-1'},
+        }
+
+    def test_form_action_with_missing_required_file_fields_stays_partial(self):
+        from langbot.pkg.provider.runners import difysvapi
+
+        runner = self._create_runner()
+        session_key = 'person_user-1'
+        difysvapi._PENDING_FORMS.clear()
+        difysvapi._set_pending_form(
+            session_key,
+            {
+                'form_token': 'token-1',
+                'workflow_run_id': 'run-1',
+                'actions': [{'id': 'yes', 'title': 'Yes'}],
+                'input_defs': [
+                    {'output_variable_name': 'comment', 'type': 'paragraph'},
+                    {'output_variable_name': 'file', 'type': 'file'},
+                    {'output_variable_name': 'files', 'type': 'file-list', 'number_limits': 5},
+                ],
+                'inputs': {},
+                'user': session_key,
+            },
+        )
+
+        action = runner._merge_pending_form_action(
+            session_key,
+            {
+                'form_token': 'token-1',
+                'workflow_run_id': 'run-1',
+                'action_id': 'yes',
+                'inputs': {'comment': 'ready'},
+            },
+        )
+
+        assert action['_partial'] is True
+        assert action['inputs'] == {'comment': 'ready'}
+        assert 'file, files' in action['notice']
+        assert action['_form_data']['_current_input_field'] == 'file'
+        assert action['_form_data']['input_defs'][1]['output_variable_name'] == 'file'
+
+    def test_card_component_input_progress_maps_to_current_field(self):
+        from langbot.pkg.provider.runners import difysvapi
+
+        runner = self._create_runner()
+        session_key = 'person_user-1'
+        difysvapi._PENDING_FORMS.clear()
+        difysvapi._set_pending_form(
+            session_key,
+            {
+                'form_token': 'token-1',
+                'workflow_run_id': 'run-1',
+                'actions': [{'id': 'yes', 'title': 'Yes'}, {'id': 'no', 'title': 'No'}],
+                'input_defs': [
+                    {'output_variable_name': 'comment', 'type': 'paragraph'},
+                    {
+                        'output_variable_name': 'choice',
+                        'type': 'select',
+                        'option_source': {'type': 'constant', 'value': ['A', 'B']},
+                    },
+                ],
+                'inputs': {},
+                'current_input_field': 'comment',
+                'user': session_key,
+            },
+        )
+
+        first = runner._merge_pending_form_action(
+            session_key,
+            {
+                'form_token': 'token-1',
+                'workflow_run_id': 'run-1',
+                'inputs': {'input': 'looks good'},
+                '_current_input_field': 'comment',
+                '_input_progress': True,
+            },
+        )
+
+        assert first['_partial'] is True
+        assert first['inputs'] == {'comment': 'looks good'}
+        assert first['_form_data']['_current_input_field'] == 'choice'
+
+        second = runner._merge_pending_form_action(
+            session_key,
+            {
+                'form_token': 'token-1',
+                'workflow_run_id': 'run-1',
+                'inputs': {'select': '{"index": 1, "value": "B"}'},
+                '_current_input_field': 'choice',
+                '_input_progress': True,
+            },
+        )
+
+        assert second['_partial'] is True
+        assert second['inputs'] == {'comment': 'looks good', 'choice': 'B'}
+        assert second['_form_data']['_action_select_only'] is True

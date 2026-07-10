@@ -11,7 +11,13 @@ import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 from ..logger import EventLogger
 from langbot.libs.wecom_ai_bot_api.wecombotevent import WecomBotEvent
-from langbot.libs.wecom_ai_bot_api.api import WecomBotClient
+from langbot.libs.wecom_ai_bot_api.api import (
+    WecomBotClient,
+    extract_template_card_action,
+    extract_template_card_event_payload,
+    extract_template_card_selections,
+    parse_select_button_action,
+)
 from langbot.libs.wecom_ai_bot_api.ws_client import WecomBotWsClient
 
 
@@ -511,18 +517,25 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             object.__setattr__(self, '_synthetic_buffers', {})
         buffers: dict[str, str] = self._synthetic_buffers
         if content and not form_data:
-            buffers[buf_key] = buffers.get(buf_key, '') + content
+            previous = buffers.get(buf_key, '')
+            if previous and content.startswith(previous):
+                buffers[buf_key] = content
+            elif previous and previous.endswith(content):
+                buffers[buf_key] = previous
+            else:
+                buffers[buf_key] = previous + content
 
         if not is_final:
             return {'stream': True, 'synthetic': True, 'buffered': True}
 
         final_content = buffers.pop(buf_key, '')
-        if content and final_content.startswith(content):
-            # is_final chunk re-emitted the full accumulated text — keep
-            # whichever is longer.
-            final_content = final_content if len(final_content) >= len(content) else content
-        elif content and not final_content:
-            final_content = content
+        if content:
+            if final_content and content.startswith(final_content):
+                final_content = content
+            elif final_content and final_content.endswith(content):
+                pass
+            else:
+                final_content = final_content + content
 
         if not ws_mode:
             await self.logger.warning(
@@ -575,12 +588,17 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         need the task_id registered so button clicks find pending_form.
         For ws mode we stash it directly on the ws_client's pending dict.
         """
-        from langbot.libs.wecom_ai_bot_api.api import build_button_interaction_payload
+        from langbot.libs.wecom_ai_bot_api.api import build_human_input_template_card_payload
         import secrets as _secrets
 
         task_id = f'dify-{_secrets.token_hex(12)}'
         source = getattr(self.bot, 'card_source', None)
-        payload = build_button_interaction_payload(form_data, task_id, source=source)
+        payload = build_human_input_template_card_payload(
+            form_data,
+            task_id,
+            source=source,
+            select_as_buttons=not self.config.get('enable-webhook', False),
+        )
 
         # Register task_id → form_data so the click callback can find it.
         # user_id / chat_id are required so _on_card_action can route the
@@ -766,12 +784,86 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         )
 
         actions = form.get('actions') or []
-        clean_action_id = (action_id or '').strip()
+        tce = extract_template_card_event_payload(raw_event) if isinstance(raw_event, dict) else {}
+        _, _, card_type = extract_template_card_action(tce)
+        selections = extract_template_card_selections(tce, form)
+        if not selections:
+            selections = parse_select_button_action(action_id, form)
+        await self.logger.info(
+            f'WeComBot template_card selections: task_id={task_id} card_type={card_type} selections={selections}'
+        )
+        if card_type == 'multiple_interaction' and not selections:
+            await self.logger.warning(
+                f'WeComBot: multiple_interaction callback has no parseable selections; raw={str(tce)[:1000]}'
+            )
+            return
+        is_select_submit = card_type == 'multiple_interaction' or bool(selections)
+
+        clean_action_id = '' if is_select_submit else (action_id or '').strip()
         action_title = clean_action_id
         for a in actions:
             if str(a.get('id', '')) == clean_action_id:
                 action_title = a.get('title') or clean_action_id
                 break
+
+        inputs = dict(form.get('inputs') or {})
+        inputs.update(selections)
+
+        def _missing_fields_after_select() -> list[str]:
+            missing: list[str] = []
+            for field in form.get('input_defs') or form.get('all_input_defs') or []:
+                field_name = str(field.get('output_variable_name') or '').strip()
+                if not field_name:
+                    continue
+                if inputs.get(field_name) in (None, '', []):
+                    missing.append(field_name)
+            return missing
+
+        input_progress = False
+        if is_select_submit:
+            missing_fields = _missing_fields_after_select()
+            if not missing_fields and len(actions) == 1:
+                action = actions[0]
+                clean_action_id = str(action.get('id') or '').strip()
+                action_title = action.get('title') or clean_action_id
+            elif not missing_fields and len(actions) > 1:
+                if not self.config.get('enable-webhook', False):
+                    action_form_data = {
+                        'form_content': form.get('raw_form_content') or form.get('form_content') or '',
+                        'raw_form_content': form.get('raw_form_content') or form.get('form_content') or '',
+                        'input_defs': [],
+                        'all_input_defs': form.get('all_input_defs') or form.get('input_defs') or [],
+                        'inputs': inputs,
+                        'actions': actions,
+                        'node_title': form.get('node_title', ''),
+                        'workflow_run_id': form.get('workflow_run_id', ''),
+                        'form_token': form.get('form_token', ''),
+                        '_action_select_only': True,
+                    }
+                    target_chat_id = session.chat_id or session.user_id or ''
+                    try:
+                        payload = self._build_button_interaction_payload_from_form(
+                            action_form_data,
+                            user_id=session.user_id or '',
+                            chat_id=session.chat_id or '',
+                        )
+                        await self.bot.send_template_card(target_chat_id, payload)
+                        await self.logger.info(
+                            f'WeComBot: sent action-select button card after select submit '
+                            f'task_id={task_id} action_count={len(actions)}'
+                        )
+                    except Exception:
+                        await self.logger.error(
+                            f'WeComBot: failed to send action-select button card: {traceback.format_exc()}'
+                        )
+                    return
+                await self.logger.warning(
+                    'WeComBot webhook mode cannot proactively send action-select button card after select submit'
+                )
+                return
+            else:
+                input_progress = True
+                action_title = 'Submit'
 
         launcher_id = session.user_id or session.chat_id or ''
         sender_user_id = session.user_id or launcher_id
@@ -791,8 +883,10 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             'action_title': action_title,
             'node_title': form.get('node_title', ''),
             'user': f'{launcher_type.value}_{launcher_id}',
-            'inputs': {},
+            'inputs': inputs,
         }
+        if input_progress:
+            form_action_data['_input_progress'] = True
 
         message_chain = platform_message.MessageChain([platform_message.Plain(text=f'[Form Action: {action_title}]')])
 

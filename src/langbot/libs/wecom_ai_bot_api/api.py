@@ -779,6 +779,308 @@ def _wecom_button_style(action: dict, *, selected: bool = False) -> int:
     return 1
 
 
+def _wecom_field_display_name(field: dict, fallback: str = '') -> str:
+    label = (
+        field.get('label') or field.get('title') or field.get('name') or field.get('output_variable_name') or fallback
+    )
+    return str(label or fallback).strip()
+
+
+def _wecom_input_hint_lines(form_data: dict) -> list[str]:
+    lines: list[str] = []
+    current_field = str(form_data.get('_current_input_field') or '').strip()
+    for field in form_data.get('input_defs') or []:
+        field_name = str(field.get('output_variable_name') or '').strip()
+        field_type = str(field.get('type') or 'text').strip().lower()
+        field_label = _wecom_field_display_name(field, field_name)
+        if current_field and field_name != current_field:
+            continue
+        if not field_name:
+            continue
+        if field_type == 'select':
+            source = field.get('option_source') or {}
+            options = source.get('value') if isinstance(source, dict) else []
+            if isinstance(options, list) and options:
+                option_text = ', '.join(f'{idx}. {option}' for idx, option in enumerate(options, start=1))
+                lines.append(f'- {field_label}: {option_text}')
+            else:
+                lines.append(f'- {field_label}: choose one option')
+        elif field_type in {'file', 'file-list'}:
+            limit = field.get('number_limits') if field_type == 'file-list' else 1
+            allowed_types = ', '.join(field.get('allowed_file_types') or [])
+            suffix = f', up to {limit}' if field_type == 'file-list' and limit else ''
+            allowed = f' ({allowed_types})' if allowed_types else ''
+            lines.append(f'- {field_label}: upload file(s){allowed}{suffix} or reply `{field_name}: <url>`')
+        else:
+            lines.append(f'请直接回复：{field_label}')
+    return lines
+
+
+def _wecom_pending_input_defs(form_data: dict) -> list[dict]:
+    if form_data.get('_action_select_only'):
+        return []
+    inputs = form_data.get('inputs') or {}
+    current_field = str(form_data.get('_current_input_field') or '').strip()
+    pending = []
+    for field in form_data.get('input_defs') or []:
+        field_name = str(field.get('output_variable_name') or '').strip()
+        if not field_name:
+            continue
+        if current_field and field_name != current_field:
+            continue
+        if str(field.get('type') or '').strip().lower() in {'file', 'file-list'}:
+            continue
+        if inputs.get(field_name) in (None, '', []):
+            pending.append(field)
+    return pending
+
+
+def _wecom_select_options(field: dict) -> list[str]:
+    source = field.get('option_source') or {}
+    options = source.get('value') if isinstance(source, dict) else []
+    if not isinstance(options, list):
+        return []
+    return [str(option) for option in options]
+
+
+def _wecom_select_option_id(index: int) -> str:
+    return f'opt_{index + 1}'
+
+
+def _wecom_pending_select_defs(form_data: dict) -> list[dict]:
+    return [
+        field
+        for field in _wecom_pending_input_defs(form_data)
+        if str(field.get('type') or '').strip().lower() == 'select' and _wecom_select_options(field)
+    ]
+
+
+def _wecom_field_title(field: dict, fallback: str) -> str:
+    title = _wecom_field_display_name(field, fallback)
+    return str(title or fallback).strip()[:13] or fallback
+
+
+def _wecom_form_desc(form_data: dict) -> str:
+    current_field = str(form_data.get('_current_input_field') or '').strip()
+    if current_field:
+        for field in form_data.get('input_defs') or form_data.get('all_input_defs') or []:
+            if str(field.get('output_variable_name') or '').strip() != current_field:
+                continue
+            field_type = str(field.get('type') or 'text').strip().lower()
+            if field_type != 'select':
+                return f'请直接回复：{_wecom_field_display_name(field, current_field)}'
+    form_content = _wecom_clean_form_content(form_data)
+    if form_content:
+        return form_content[:512]
+    return 'Please choose an option to continue.'
+
+
+def build_human_input_text_prompt(form_data: dict) -> Optional[str]:
+    """Build a plain-text prompt for a current non-select input field."""
+
+    current_field = str(form_data.get('_current_input_field') or '').strip()
+    if not current_field:
+        return None
+    for field in form_data.get('input_defs') or form_data.get('all_input_defs') or []:
+        if str(field.get('output_variable_name') or '').strip() != current_field:
+            continue
+        field_type = str(field.get('type') or 'text').strip().lower()
+        if field_type == 'select':
+            return None
+        label = _wecom_field_display_name(field, current_field)
+        return f'{str(form_data.get("node_title") or "人工介入").strip()}\n\n请直接回复：{label}'
+    return None
+
+
+def build_multiple_interaction_payload(
+    form_data: dict,
+    task_id: str,
+    *,
+    source: Optional[dict] = None,
+) -> dict[str, Any]:
+    """Build a WeCom multiple_interaction card for pending select fields."""
+
+    select_fields = _wecom_pending_select_defs(form_data)
+    node_title = (form_data.get('node_title') or '').strip() or 'Human Input'
+    inputs = form_data.get('inputs') or {}
+
+    select_list = []
+    for field_index, field in enumerate(select_fields[:10]):
+        field_name = str(field.get('output_variable_name') or '').strip()
+        if not field_name:
+            continue
+        options = _wecom_select_options(field)[:10]
+        option_list = [
+            {
+                'id': _wecom_select_option_id(idx),
+                'text': option_text[:10] or _wecom_select_option_id(idx),
+            }
+            for idx, option_text in enumerate(options)
+        ]
+        selected_id = _wecom_select_option_id(0)
+        current_value = inputs.get(field_name)
+        if current_value not in (None, '', []):
+            for idx, option_text in enumerate(options):
+                if str(current_value) == option_text:
+                    selected_id = _wecom_select_option_id(idx)
+                    break
+        select_list.append(
+            {
+                'question_key': field_name,
+                'title': _wecom_field_title(field, f'Select {field_index + 1}'),
+                'selected_id': selected_id,
+                'option_list': option_list,
+            }
+        )
+
+    card: dict[str, Any] = {
+        'card_type': 'multiple_interaction',
+        'main_title': {
+            'title': node_title,
+            'desc': _wecom_form_desc(form_data),
+        },
+        'select_list': select_list,
+        'submit_button': {
+            'text': 'Submit',
+            'key': 'submit_human_input',
+        },
+        'task_id': task_id,
+    }
+    if source:
+        card['source'] = source
+    return {
+        'msgtype': 'template_card',
+        'template_card': card,
+    }
+
+
+_SELECT_BUTTON_KEY_PREFIX = '__dify_select__'
+
+
+def _encode_select_button_key(field_name: str, option_index: int) -> str:
+    data = json.dumps({'f': field_name, 'i': option_index}, ensure_ascii=False, separators=(',', ':'))
+    encoded = base64.urlsafe_b64encode(data.encode('utf-8')).decode('ascii').rstrip('=')
+    return f'{_SELECT_BUTTON_KEY_PREFIX}:{encoded}'
+
+
+def parse_select_button_action(action_id: str, form_data: dict) -> dict[str, str]:
+    """Decode a select option represented as a button_interaction click."""
+
+    action_id = str(action_id or '').strip()
+    prefix = f'{_SELECT_BUTTON_KEY_PREFIX}:'
+    if not action_id.startswith(prefix):
+        return {}
+    encoded = action_id[len(prefix) :]
+    try:
+        padded = encoded + '=' * (-len(encoded) % 4)
+        data = json.loads(base64.urlsafe_b64decode(padded.encode('ascii')).decode('utf-8'))
+    except Exception:
+        return {}
+    field_name = str(data.get('f') or '').strip()
+    option_index = data.get('i')
+    if not field_name or not isinstance(option_index, int):
+        return {}
+    for field in form_data.get('input_defs') or form_data.get('all_input_defs') or []:
+        if str(field.get('output_variable_name') or '').strip() != field_name:
+            continue
+        options = _wecom_select_options(field)
+        if 0 <= option_index < len(options):
+            return {field_name: options[option_index]}
+    return {}
+
+
+def build_select_button_interaction_payload(
+    form_data: dict,
+    task_id: str,
+    *,
+    source: Optional[dict] = None,
+) -> dict[str, Any]:
+    """Build a button_interaction card that emulates a select field.
+
+    WeCom AI Bot long-connection callbacks are reliable for button clicks, so
+    this is used as a fallback when multiple_interaction submit callbacks are
+    not delivered by the platform.
+    """
+
+    select_fields = _wecom_pending_select_defs(form_data)
+    field = select_fields[0] if select_fields else {}
+    field_name = str(field.get('output_variable_name') or '').strip()
+    options = _wecom_select_options(field)[:10] if field else []
+    visible_options = options[:6]
+    overflow_options = options[6:]
+
+    node_title = (form_data.get('node_title') or '').strip() or 'Human Input'
+    field_title = _wecom_field_title(field, field_name or 'Select') if field else 'Select'
+    form_content = _wecom_clean_form_content(form_data)
+
+    sub_title_parts: list[str] = []
+    if form_content:
+        sub_title_parts.append(form_content)
+    sub_title_parts.append(f'Choose {field_title}.')
+    if overflow_options:
+        extra_lines = [f'  - {idx + 7}. {option}' for idx, option in enumerate(overflow_options)]
+        sub_title_parts.append(
+            'More options can be entered by replying with the option text:\n' + '\n'.join(extra_lines)
+        )
+
+    button_list = [
+        {
+            'text': option_text[:10] or f'Option {idx + 1}',
+            'style': 2 if idx == 0 else 0,
+            'key': _encode_select_button_key(field_name, idx),
+        }
+        for idx, option_text in enumerate(visible_options)
+    ]
+
+    card: dict[str, Any] = {
+        'card_type': 'button_interaction',
+        'main_title': {
+            'title': node_title,
+        },
+        'sub_title_text': '\n\n'.join(sub_title_parts),
+        'button_list': button_list,
+        'task_id': task_id,
+    }
+    if source:
+        card['source'] = source
+    return {
+        'msgtype': 'template_card',
+        'template_card': card,
+    }
+
+
+def build_human_input_template_card_payload(
+    form_data: dict,
+    task_id: str,
+    *,
+    source: Optional[dict] = None,
+    select_as_buttons: bool = False,
+) -> dict[str, Any]:
+    """Build the best WeCom template card for a Dify human-input form."""
+
+    if _wecom_pending_select_defs(form_data):
+        if select_as_buttons:
+            return build_select_button_interaction_payload(form_data, task_id, source=source)
+        return build_multiple_interaction_payload(form_data, task_id, source=source)
+    return build_button_interaction_payload(form_data, task_id, source=source)
+
+
+def _wecom_clean_form_content(form_data: dict) -> str:
+    content = form_data.get('raw_form_content') or form_data.get('form_content') or ''
+    field_names = {
+        str(field.get('output_variable_name') or '').strip()
+        for field in form_data.get('input_defs') or []
+        if str(field.get('output_variable_name') or '').strip()
+    }
+    kept_lines: list[str] = []
+    for line in str(content).splitlines():
+        placeholder = re.fullmatch(r'\s*\{\{#\$output\.([^#{}]+)#\}\}\s*', line)
+        if placeholder and placeholder.group(1) in field_names:
+            continue
+        kept_lines.append(line)
+    return re.sub(r'\n{3,}', '\n\n', '\n'.join(kept_lines).strip())
+
+
 def build_button_interaction_payload(
     form_data: dict,
     task_id: str,
@@ -815,14 +1117,20 @@ def build_button_interaction_payload(
     """
     actions = list(form_data.get('actions') or [])
     node_title = (form_data.get('node_title') or '').strip() or '人工介入'
-    form_content = (form_data.get('form_content') or '').strip()
+    form_content = _wecom_clean_form_content(form_data)
+    should_show_actions = not _wecom_pending_input_defs(form_data)
 
-    visible_actions = actions[:6]
-    overflow = actions[6:]
+    visible_actions = actions[:6] if should_show_actions else []
+    overflow = actions[6:] if should_show_actions else []
 
     sub_title_parts: list[str] = []
     if form_content:
         sub_title_parts.append(form_content)
+    input_hint_lines = _wecom_input_hint_lines(form_data)
+    if input_hint_lines:
+        sub_title_parts.append('Fill these fields in chat before choosing an action:\n' + '\n'.join(input_hint_lines))
+    elif should_show_actions and actions:
+        sub_title_parts.append('Choose an action to continue.')
     if overflow:
         extra_lines = [f'  - {a.get("title") or a.get("id") or ""} (回复 id: {a.get("id") or ""})' for a in overflow]
         sub_title_parts.append(f'另有 {len(overflow)} 个选项不在按钮列表中，可直接回复 id：\n' + '\n'.join(extra_lines))
@@ -844,6 +1152,7 @@ def build_button_interaction_payload(
         'card_type': 'button_interaction',
         'main_title': {
             'title': node_title,
+            'desc': _wecom_form_desc(form_data),
         },
         'sub_title_text': sub_title_text,
         'button_list': button_list,
@@ -888,6 +1197,224 @@ def extract_template_card_action(tce: dict[str, Any]) -> tuple[str, str, str]:
             break
 
     return str(task_id or ''), str(event_key or ''), str(card_type or '')
+
+
+def extract_wecom_event_type(payload: dict[str, Any]) -> str:
+    """Extract eventtype from common WeCom callback wrapper shapes."""
+
+    event = payload.get('event') if isinstance(payload, dict) else {}
+    if not isinstance(event, dict):
+        event = {}
+    event_type = (
+        event.get('eventtype')
+        or event.get('event_type')
+        or event.get('eventType')
+        or event.get('EventType')
+        or payload.get('eventtype')
+        or payload.get('event_type')
+        or payload.get('eventType')
+        or payload.get('EventType')
+        or ''
+    )
+    if event_type:
+        return str(event_type)
+
+    tce = extract_template_card_event_payload(payload)
+    task_id, event_key, card_type = extract_template_card_action(tce)
+    if task_id or event_key or card_type or extract_template_card_selections(tce):
+        return 'template_card_event'
+    return ''
+
+
+def extract_template_card_event_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Extract template_card_event from common WeCom callback wrapper shapes."""
+
+    if not isinstance(payload, dict):
+        return {}
+    event = payload.get('event') if isinstance(payload.get('event'), dict) else {}
+    candidates = (
+        event.get('template_card_event'),
+        event.get('templateCardEvent'),
+        event.get('TemplateCardEvent'),
+        event.get('template_card'),
+        payload.get('template_card_event'),
+        payload.get('templateCardEvent'),
+        payload.get('TemplateCardEvent'),
+        payload.get('template_card'),
+    )
+    for candidate in candidates:
+        if isinstance(candidate, dict):
+            return candidate
+    if any(
+        key in payload
+        for key in (
+            'TaskId',
+            'task_id',
+            'taskId',
+            'EventKey',
+            'event_key',
+            'eventKey',
+            'CardType',
+            'card_type',
+            'cardType',
+            'ResponseData',
+            'response_data',
+            'select_list',
+            'SelectList',
+        )
+    ):
+        return payload
+    if any(
+        key in event
+        for key in (
+            'TaskId',
+            'task_id',
+            'taskId',
+            'EventKey',
+            'event_key',
+            'eventKey',
+            'CardType',
+            'card_type',
+            'cardType',
+            'ResponseData',
+            'response_data',
+            'select_list',
+            'SelectList',
+        )
+    ):
+        return event
+    return {}
+
+
+def extract_template_card_selections(tce: dict[str, Any], form_data: Optional[dict] = None) -> dict[str, str]:
+    """Extract multiple_interaction select values from a WeCom callback.
+
+    WeCom callback examples differ between webhook and websocket docs, so this
+    parser accepts common snake_case/camelCase/PascalCase variants and maps the
+    selected option id back to the Dify select option text when form_data is
+    available.
+    """
+
+    fields_by_name: dict[str, dict] = {}
+    if form_data:
+        for field in form_data.get('input_defs') or form_data.get('all_input_defs') or []:
+            field_name = str(field.get('output_variable_name') or '').strip()
+            if field_name:
+                fields_by_name[field_name] = field
+
+    def _maybe_decode_json(value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        text = value.strip()
+        if not text or text[0] not in '[{':
+            return value
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            return value
+
+    def _walk(value: Any) -> list[dict]:
+        value = _maybe_decode_json(value)
+        found: list[dict] = []
+        if isinstance(value, dict):
+            found.append(value)
+            for child in value.values():
+                found.extend(_walk(child))
+        elif isinstance(value, list):
+            for child in value:
+                found.extend(_walk(child))
+        return found
+
+    def _lookup(item: dict, *keys: str) -> Any:
+        for key in keys:
+            if key in item:
+                return item.get(key)
+        lower_map = {str(key).lower(): value for key, value in item.items()}
+        for key in keys:
+            lowered = key.lower()
+            if lowered in lower_map:
+                return lower_map[lowered]
+        return ''
+
+    def _normalise_selected_value(question_key: str, selected: Any) -> str:
+        selected = _maybe_decode_json(selected)
+        if isinstance(selected, dict):
+            selected = _lookup(
+                selected,
+                'selected_id',
+                'SelectedId',
+                'selected_option_id',
+                'SelectedOptionId',
+                'option_id',
+                'OptionId',
+                'id',
+                'Id',
+                'value',
+                'Value',
+            )
+        selected_id = str(selected or '').strip()
+        if not selected_id:
+            return ''
+        selected_value = selected_id
+        field = fields_by_name.get(question_key)
+        if field:
+            options = _wecom_select_options(field)
+            for idx, option_text in enumerate(options):
+                if selected_id in {_wecom_select_option_id(idx), option_text}:
+                    selected_value = option_text
+                    break
+        return selected_value
+
+    selections: dict[str, str] = {}
+    for item in _walk(tce):
+        question_key = _lookup(
+            item,
+            'question_key',
+            'questionKey',
+            'QuestionKey',
+            'question',
+            'Question',
+            'key',
+            'Key',
+        )
+        selected_id = _lookup(
+            item,
+            'selected_id',
+            'selectedId',
+            'SelectedId',
+            'selected_option_id',
+            'selectedOptionId',
+            'SelectedOptionId',
+            'option_id',
+            'optionId',
+            'OptionId',
+            'value',
+            'Value',
+        )
+        question_key = str(question_key or '').strip()
+        selected_id = str(selected_id or '').strip()
+        if question_key not in fields_by_name or not selected_id:
+            continue
+
+        selected_value = _normalise_selected_value(question_key, selected_id)
+        if not selected_value:
+            continue
+        selections[question_key] = selected_value
+
+    # Some WeCom callbacks encode ResponseData as a direct mapping:
+    # {"xiala": "id_two"} rather than a select_list item array.
+    for item in _walk(tce):
+        if not isinstance(item, dict):
+            continue
+        for question_key, selected in item.items():
+            question_key = str(question_key or '').strip()
+            if question_key not in fields_by_name or question_key in selections:
+                continue
+            selected_value = _normalise_selected_value(question_key, selected)
+            if selected_value:
+                selections[question_key] = selected_value
+
+    return selections
 
 
 def resolve_form_action_title(form_data: dict, action_id: str) -> str:
@@ -954,6 +1481,73 @@ def build_button_interaction_update_card(
     return card
 
 
+def build_multiple_interaction_update_card(
+    form_data: dict,
+    task_id: str,
+    selections: Optional[dict[str, str]] = None,
+    source: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """Build an update card that freezes submitted select values."""
+
+    node_title = str(form_data.get('node_title') or '').strip() or 'Human Input'
+    selected_values = dict(form_data.get('inputs') or {})
+    selected_values.update(selections or {})
+
+    select_list = []
+    fields = _wecom_pending_select_defs(form_data)
+    if not fields:
+        fields = [
+            field
+            for field in (form_data.get('input_defs') or form_data.get('all_input_defs') or [])
+            if str(field.get('type') or '').strip().lower() == 'select'
+        ]
+    for field_index, field in enumerate(fields[:10]):
+        field_name = str(field.get('output_variable_name') or '').strip()
+        if not field_name:
+            continue
+        options = _wecom_select_options(field)[:10]
+        option_list = [
+            {
+                'id': _wecom_select_option_id(idx),
+                'text': option_text[:10] or _wecom_select_option_id(idx),
+            }
+            for idx, option_text in enumerate(options)
+        ]
+        selected_id = _wecom_select_option_id(0)
+        current_value = selected_values.get(field_name)
+        if current_value not in (None, '', []):
+            for idx, option_text in enumerate(options):
+                if str(current_value) == option_text or str(current_value) == _wecom_select_option_id(idx):
+                    selected_id = _wecom_select_option_id(idx)
+                    break
+        select_list.append(
+            {
+                'question_key': field_name,
+                'title': _wecom_field_title(field, f'Select {field_index + 1}'),
+                'disable': True,
+                'selected_id': selected_id,
+                'option_list': option_list,
+            }
+        )
+
+    card: dict[str, Any] = {
+        'card_type': 'multiple_interaction',
+        'main_title': {
+            'title': node_title,
+            'desc': 'Submitted',
+        },
+        'select_list': select_list,
+        'submit_button': {
+            'text': 'Submitted',
+            'key': 'submit_human_input',
+        },
+        'task_id': task_id,
+    }
+    if source:
+        card['source'] = source
+    return card
+
+
 class WecomBotClient:
     def __init__(
         self,
@@ -1000,6 +1594,7 @@ class WecomBotClient:
 
         self._feedback_callback: Optional[Callable] = None
         self._card_action_callback: Optional[Callable] = None
+        self._stream_last_content: dict[str, str] = {}
         # Optional `source` block injected into every interactive template_card
         # the client builds. Set via `set_card_source` from the adapter after
         # reading config. Format: {icon_url, desc, desc_color}.
@@ -1065,7 +1660,7 @@ class WecomBotClient:
         """Class-level shim — delegates to module-level builder and auto-
         injects the client's configured `source` block so every card emitted
         through this client carries the LangBot header."""
-        return build_button_interaction_payload(form_data, task_id, source=self.card_source)
+        return build_human_input_template_card_payload(form_data, task_id, source=self.card_source)
 
     async def _encrypt_and_reply(self, payload: dict[str, Any], nonce: str) -> tuple[Response, int]:
         """对响应进行加密封装并返回给企业微信。
@@ -1277,8 +1872,7 @@ class WecomBotClient:
 
         msg_json = json.loads(decrypted_xml)
 
-        event = msg_json.get('event', {})
-        event_type = event.get('eventtype', '')
+        event_type = extract_wecom_event_type(msg_json)
 
         if event_type == 'feedback_event':
             return await self._handle_feedback_event(msg_json, nonce)
@@ -1302,7 +1896,7 @@ class WecomBotClient:
         the button's ``key`` (which we set to the Dify ``action_id``).
         """
         try:
-            tce = msg_json.get('event', {}).get('template_card_event', {})
+            tce = extract_template_card_event_payload(msg_json)
             task_id, event_key, card_type = extract_template_card_action(tce)
 
             await self.logger.info(f'收到按钮点击: task_id={task_id} event_key={event_key!r} card_type={card_type}')
@@ -1428,9 +2022,25 @@ class WecomBotClient:
         if not stream_id:
             return False
 
-        chunk = StreamChunk(content=content, is_final=is_final)
+        previous_content = self._stream_last_content.get(msg_id, '')
+        if previous_content and content.startswith(previous_content):
+            delta_content = content[len(previous_content) :]
+            next_content = content
+        elif previous_content and not content:
+            delta_content = ''
+            next_content = previous_content
+        else:
+            delta_content = content
+            next_content = previous_content + content if previous_content else content
+
+        if not is_final and not delta_content:
+            return True
+
+        chunk = StreamChunk(content=delta_content, is_final=is_final)
         await self.stream_sessions.publish(stream_id, chunk)
+        self._stream_last_content[msg_id] = next_content
         if is_final:
+            self._stream_last_content.pop(msg_id, None)
             self.stream_sessions.mark_finished(stream_id)
         return True
 

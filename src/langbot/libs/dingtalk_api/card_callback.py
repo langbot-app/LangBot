@@ -29,6 +29,7 @@ _PARAM_PATHS = (
     ('params',),
     ('cardPrivateData', 'params'),
     ('userPrivateData', 'params'),
+    ('actionData', 'cardPrivateData', 'params'),
 )
 
 
@@ -48,6 +49,14 @@ def _extract_params(content: dict) -> dict:
     return {}
 
 
+def _merge_params(*sources: dict) -> dict:
+    merged = {}
+    for source in sources:
+        if isinstance(source, dict):
+            merged.update(source)
+    return merged
+
+
 class DingTalkCardActionHandler(dingtalk_stream.CallbackHandler):
     def __init__(
         self,
@@ -61,12 +70,13 @@ class DingTalkCardActionHandler(dingtalk_stream.CallbackHandler):
     async def process(self, callback: dingtalk_stream.CallbackMessage):
         try:
             message = CardCallbackMessage.from_dict(callback.data)
-            params = _extract_params(message.content if isinstance(message.content, dict) else {})
+            content = message.content if isinstance(message.content, dict) else {}
 
             # `CardCallbackMessage.from_dict` does not surface `actionId` (the
             # top-level field that ButtonGroup's sendCardRequest event puts
             # there). Pull it from the raw callback.data instead.
             raw = callback.data if isinstance(callback.data, dict) else {}
+            params = _merge_params(_extract_params(content), _extract_params(raw))
             action_id = raw.get('actionId') or ''
             if not action_id:
                 # Some templates nest it under actionData / cardPrivateData.
