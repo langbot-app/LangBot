@@ -158,6 +158,16 @@ class ResponseWrapper(stage.PipelineStage):
                                 result_type=entities.ResultType.CONTINUE,
                                 new_query=query,
                             )
+                    elif self._is_final_assistant_message(result):
+                        # Final streaming chunk with no text content but
+                        # possibly carrying sandbox outbox attachments.
+                        reply_chain = platform_message.MessageChain([])
+                        await self._append_outbound_attachments(query, reply_chain)
+                        query.resp_message_chain.append(reply_chain)
+                        yield entities.StageProcessResult(
+                            result_type=entities.ResultType.CONTINUE,
+                            new_query=query,
+                        )
 
                     if result.tool_calls is not None and len(result.tool_calls) > 0:  # 有函数调用
                         function_names = [tc.function.name for tc in result.tool_calls]
