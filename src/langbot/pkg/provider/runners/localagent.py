@@ -47,14 +47,28 @@ def _model_has_ability(model: modelmgr_requester.RuntimeLLMModel, ability: str) 
 
 
 class _StreamAccumulator:
-    """Accumulate streamed content and fragmented OpenAI-style tool calls."""
+    """Accumulate streamed content and fragmented OpenAI-style tool calls.
 
-    def __init__(self, msg_sequence: int = 0, initial_content: str | None = None):
+    When ``remove_think`` is enabled, the accumulator performs a final pass
+    over the accumulated content to strip chain-of-thought blocks as a
+    safety net. The upstream LLM requester is expected to have already
+    stripped its own streaming chunks, but the local agent runner can
+    re-invoke the LLM after tool calls and that second pass may produce
+    content that has not been filtered yet.
+    """
+
+    def __init__(
+        self,
+        msg_sequence: int = 0,
+        initial_content: str | None = None,
+        remove_think: bool = False,
+    ):
         self.tool_calls_map: dict[str, provider_message.ToolCall] = {}
         self.msg_idx = 0
         self.accumulated_content = initial_content or ''
         self.last_role = 'assistant'
         self.msg_sequence = msg_sequence
+        self.remove_think = remove_think
 
     def add(self, msg: provider_message.MessageChunk) -> provider_message.MessageChunk | None:
         self.msg_idx += 1
@@ -83,7 +97,7 @@ class _StreamAccumulator:
             self.msg_sequence += 1
             return provider_message.MessageChunk(
                 role=self.last_role,
-                content=self.accumulated_content,
+                content=self._maybe_strip(self.accumulated_content),
                 tool_calls=list(self.tool_calls_map.values()) if (self.tool_calls_map and msg.is_final) else None,
                 is_final=msg.is_final,
                 msg_sequence=self.msg_sequence,
@@ -94,10 +108,17 @@ class _StreamAccumulator:
     def final_message(self) -> provider_message.MessageChunk:
         return provider_message.MessageChunk(
             role=self.last_role,
-            content=self.accumulated_content,
+            content=self._maybe_strip(self.accumulated_content),
             tool_calls=list(self.tool_calls_map.values()) if self.tool_calls_map else None,
             msg_sequence=self.msg_sequence,
         )
+
+    def _maybe_strip(self, content: str) -> str:
+        if not self.remove_think or not content:
+            return content
+        from ..modelmgr.requesters.litellmchat import LiteLLMRequester
+
+        return LiteLLMRequester._strip_think(content)
 
 
 @runner.runner_class('local-agent')
@@ -448,7 +469,9 @@ class LocalAgentRunner(runner.RequestRunner):
         except AttributeError:
             is_stream = False
 
-        remove_think = query.pipeline_config['output'].get('misc', '').get('remove-think')
+        # Safely resolve the "remove think blocks" toggle. ``output.misc``
+        # is not guaranteed to exist on every pipeline configuration.
+        remove_think = ((query.pipeline_config.get('output') or {}).get('misc') or {}).get('remove-think', False)
 
         # Build ordered candidate list (primary + fallbacks)
         candidates = await self._get_model_candidates(query)
@@ -472,7 +495,7 @@ class LocalAgentRunner(runner.RequestRunner):
             final_msg = msg
         else:
             # Streaming: invoke with fallback
-            stream_accumulator = _StreamAccumulator(msg_sequence=1)
+            stream_accumulator = _StreamAccumulator(msg_sequence=1, remove_think=remove_think)
 
             stream_src, use_llm_model = await self._invoke_stream_with_fallback(
                 query,
@@ -576,6 +599,7 @@ class LocalAgentRunner(runner.RequestRunner):
                 stream_accumulator = _StreamAccumulator(
                     msg_sequence=first_end_sequence,
                     initial_content=first_content,
+                    remove_think=remove_think,
                 )
 
                 tool_stream_src = use_llm_model.provider.invoke_llm_stream(

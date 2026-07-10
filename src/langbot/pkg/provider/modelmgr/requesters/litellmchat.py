@@ -13,6 +13,135 @@ import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
 
+class _ThinkStripState:
+    """Stateful filter that drops ```` think blocks across chunk boundaries.
+
+    The think tag (and the legacy CRETIRE_* marker) can straddle two or
+    more streaming chunks.  A naive per-chunk regex either fails to match
+    (when split mid-tag) or leaks the tag into user-visible output.  This
+    state machine tracks the longest suffix of the consumed input that is
+    also a prefix of any known tag, and keeps that suffix in an internal
+    buffer for the next call.
+    """
+
+    _OPEN_TAG: str = '</think>'
+    _LEGACY_OPEN: str = 'CRETIRE_REASONING_BEGINk'
+    _LEGACY_CLOSE: str = 'CRETIRE_REASONING_ENDk'
+
+    def __init__(self) -> None:
+        self._tags: tuple[str, ...] = (
+            self._OPEN_TAG,
+            self._CLOSE_TAG,
+            self._LEGACY_OPEN,
+            self._LEGACY_CLOSE,
+        )
+        self._max_tag_len: int = max(len(t) for t in self._tags)
+        self._buf: str = ''
+        self._buf_inside: bool = False
+
+    def feed(self, chunk: str) -> str:
+        """Feed a streaming delta; return the portion that should be emitted."""
+        if not chunk:
+            return chunk
+
+        if self._buf_inside:
+            text = self._buf + chunk
+            for close_tag in (self._CLOSE_TAG, self._LEGACY_CLOSE):
+                idx = text.find(close_tag)
+                if idx != -1:
+                    self._buf = ''
+                    self._buf_inside = False
+                    return self._process(text[idx + len(close_tag) :])
+            keep = 0
+            for tag in (self._CLOSE_TAG, self._LEGACY_CLOSE):
+                _, k = self._split_for_close_prefix(text, 0, tag)
+                if k > keep:
+                    keep = k
+            self._buf = text[len(text) - keep :]
+            return ''
+
+        return self._process(chunk)
+
+    def _process(self, chunk: str) -> str:
+        text = self._buf + chunk
+
+        out: list[str] = []
+        i = 0
+        n = len(text)
+        while i < n:
+            open_idx, open_tag = self._find_open(text, i)
+            if open_idx == -1:
+                emit_end, _keep = self._split_for_tag_prefix(text, i)
+                out.append(text[i:emit_end])
+                self._buf = text[emit_end:]
+                self._buf_inside = False
+                return ''.join(out)
+
+            if open_idx > i:
+                out.append(text[i:open_idx])
+            block_start = open_idx + len(open_tag)
+            close_tag = self._LEGACY_CLOSE if open_tag == self._LEGACY_OPEN else self._CLOSE_TAG
+            close_idx = text.find(close_tag, block_start)
+            if close_idx == -1:
+                emit_end, _keep = self._split_for_close_prefix(text, block_start, close_tag)
+                self._buf = text[emit_end:]
+                self._buf_inside = True
+                return ''.join(out)
+            i = close_idx + len(close_tag)
+
+        emit_end, _keep = self._split_for_tag_prefix(text, i)
+        out.append(text[i:emit_end])
+        self._buf = text[emit_end:]
+        self._buf_inside = False
+        return ''.join(out)
+
+    def flush(self) -> str:
+        """Release any text still held in the internal buffer."""
+        pending, self._buf = self._buf, ''
+        inside, self._buf_inside = self._buf_inside, False
+        if inside:
+            return ''
+        return pending
+
+    def _find_open(self, text: str, start: int) -> tuple[int, str]:
+        best_idx = -1
+        best_tag = ''
+        for tag in (self._OPEN_TAG, self._LEGACY_OPEN):
+            idx = text.find(tag, start)
+            if idx != -1 and (best_idx == -1 or idx < best_idx):
+                best_idx = idx
+                best_tag = tag
+        return best_idx, best_tag
+
+    def _split_for_tag_prefix(self, text: str, start: int) -> tuple[int, int]:
+        suffix = text[start:]
+        best_keep = 0
+        for tag in (self._OPEN_TAG, self._LEGACY_OPEN):
+            idx = suffix.find(tag)
+            if idx != -1:
+                candidate = len(suffix) - idx
+                if candidate > best_keep:
+                    best_keep = candidate
+        if best_keep == 0:
+            limit = min(len(suffix), self._max_tag_len - 1)
+            for k in range(limit, 0, -1):
+                tail = suffix[-k:]
+                if any(tag.startswith(tail) for tag in self._tags):
+                    best_keep = k
+                    break
+        return len(text) - best_keep, best_keep
+
+    def _split_for_close_prefix(self, text: str, start: int, close_tag: str) -> tuple[int, int]:
+        suffix = text[start:]
+        best_keep = 0
+        limit = min(len(suffix), len(close_tag) - 1)
+        for k in range(limit, 0, -1):
+            if close_tag.startswith(suffix[-k:]):
+                best_keep = k
+                break
+        return len(text) - best_keep, best_keep
+
+
 class LiteLLMRequester(requester.ProviderAPIRequester):
     """LiteLLM unified API requester supporting chat, embedding, and rerank."""
 
@@ -237,6 +366,25 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
         return req_messages
 
+    # Patterns covering chain-of-thought markers emitted by various
+    # OpenAI-compatible providers (DeepSeek, MiniMax-M3, etc.) as well
+    # as an internal private marker.
+    _THINK_PATTERNS: tuple[str, ...] = (
+        r'</think>',
+        r'CRETIRE_REASONING_BEGINk.*?CRETIRE_REASONING_ENDk',
+    )
+
+    @classmethod
+    def _strip_think(cls, content: str) -> str:
+        """Strip chain-of-thought blocks from ``content``."""
+        if not content:
+            return content
+        import re
+
+        for pattern in cls._THINK_PATTERNS:
+            content = re.sub(pattern, '', content, flags=re.DOTALL)
+        return content.strip()
+
     def _process_thinking_content(self, content: str, reasoning_content: str | None, remove_think: bool) -> str:
         """Process thinking/reasoning content.
 
@@ -248,16 +396,12 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         Returns:
             Processed content string
         """
-        # Extract and handle thinking tags
-        if content and 'CRETIRE_REASONING_BEGINk' in content and 'CRETIRE_REASONING_ENDk' in content:
-            import re
-
-            think_pattern = r'CRETIRE_REASONING_BEGINk(.*?)CRETIRE_REASONING_ENDk'
-
-            if remove_think:
-                # Remove thinking tags and their content from output
-                content = re.sub(think_pattern, '', content, flags=re.DOTALL).strip()
-            # else: preserve thinking content as-is
+        # Strip chain-of-thought blocks when requested. The think pattern is
+        # the public convention used by DeepSeek, MiniMax-M3 and other
+        # OpenAI-compatible providers that emit raw reasoning text in the
+        # content field. The CRETIRE_* pattern is an internal marker.
+        if remove_think and content:
+            content = self._strip_think(content)
 
         # Handle separate reasoning_content field
         # Currently we don't include reasoning_content in user-facing output regardless of remove_think
@@ -571,6 +715,13 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         role = 'assistant'
         tool_call_state: dict[int, dict[str, typing.Any]] = {}
 
+        # Stream-level state for `` stripping. `` tags can straddle
+        # chunk boundaries, so use a stateful filter.
+        if remove_think:
+            think_state = _ThinkStripState()
+        else:
+            think_state = None
+
         try:
             response = await acompletion(**args)
             async for chunk in response:
@@ -612,6 +763,14 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                     else:
                         # Use reasoning_content as the displayed content
                         delta_content = reasoning_content
+
+                # Strip `` tags from the delta when remove_think is set.
+                # Think blocks can straddle chunks, so use a stateful filter.
+                if think_state is not None and delta_content:
+                    delta_content = think_state.feed(delta_content)
+                    if not delta_content:
+                        chunk_idx += 1
+                        continue
 
                 tool_calls = self._normalize_stream_tool_calls(delta.get('tool_calls'), tool_call_state)
 
