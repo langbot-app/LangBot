@@ -389,8 +389,8 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             if item.get('type') in {'image', 'voice', 'file'}:
                 yield item
 
-    @staticmethod
     async def _send_media(
+        self,
         bot,
         req_id: str,
         item: dict,
@@ -405,26 +405,32 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         kind = item.get('type')
         upload = getattr(bot, 'upload_media', None)
         if upload is None:
+            await self.logger.warning(f'_send_media: bot has no upload_media method, kind={kind}')
             return False
         b64_text = item.get('base64') or ''
         if not b64_text:
+            await self.logger.warning(f'_send_media: empty base64 for kind={kind}')
             return False
         if b64_text.startswith('data:') and ',' in b64_text:
             b64_text = b64_text.split(',', 1)[1]
         try:
             data = base64.b64decode(b64_text, validate=False)
-        except Exception:
+        except Exception as e:
+            await self.logger.warning(f'_send_media: base64 decode failed: {e}')
             return False
         if not data:
+            await self.logger.warning(f'_send_media: decoded data is empty, kind={kind}')
             return False
         try:
             upload_result = await upload(data, item.get('name') or f'attachment.{kind}', media_type=kind)
-        except Exception:
+        except Exception as e:
+            await self.logger.warning(f'_send_media: upload_media raised: {e}')
             return False
         media_id = getattr(upload_result, 'media_id', None) or (
             isinstance(upload_result, dict) and upload_result.get('media_id')
         )
         if not media_id:
+            await self.logger.warning(f'_send_media: no media_id in upload result: {upload_result!r}')
             return False
         reply_fn = {
             'image': getattr(bot, 'reply_image', None),
@@ -432,11 +438,14 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             'voice': getattr(bot, 'reply_voice', None),
         }.get(kind)
         if reply_fn is None:
+            await self.logger.warning(f'_send_media: no reply_{kind} method on bot')
             return False
         try:
             await reply_fn(req_id, media_id)
+            await self.logger.info(f'_send_media: sent {kind} media_id={media_id} req_id={req_id}')
             return True
-        except Exception:
+        except Exception as e:
+            await self.logger.warning(f'_send_media: reply_{kind} raised: {e}')
             return False
 
     async def reply_message(
