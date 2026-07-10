@@ -430,7 +430,11 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     ):
         items = await self.message_converter.yiri2target(message)
         text = self._join_text_components(items)
+        media_items = list(self._iter_media_components(items))
         _ws_mode = not self.config.get('enable-webhook', False)
+        await self.logger.info(
+            f'reply_message: items={[i.get("type") for i in items]}, media_count={len(media_items)}, ws_mode={_ws_mode}'
+        )
 
         if _ws_mode:
             event = message_source.source_platform_object
@@ -440,7 +444,7 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     await self.bot.reply_text(req_id, text)
                 else:
                     await self.bot.set_message(event.message_id, text)
-            for item in self._iter_media_components(items):
+            for item in media_items:
                 await self._send_media(self.bot, req_id, item)
         else:
             await self.bot.set_message(message_source.source_platform_object.message_id, text)
@@ -455,8 +459,13 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     ):
         items = await self.message_converter.yiri2target(message)
         text = self._join_text_components(items)
+        media_items = list(self._iter_media_components(items))
         msg_id = message_source.source_platform_object.message_id
         _ws_mode = not self.config.get('enable-webhook', False)
+        await self.logger.info(
+            f'reply_message_chunk: is_final={is_final}, items={[i.get("type") for i in items]}, '
+            f'media_count={len(media_items)}, text_len={len(text)}, ws_mode={_ws_mode}'
+        )
 
         if _ws_mode:
             success = await self.bot.push_stream_chunk(msg_id, text, is_final=is_final)
@@ -468,7 +477,8 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             if is_final:
                 event = message_source.source_platform_object
                 req_id = event.get('req_id', '')
-                for item in self._iter_media_components(items):
+                await self.logger.info(f'reply_message_chunk: sending {len(media_items)} media items, req_id={req_id}')
+                for item in media_items:
                     await self._send_media(self.bot, req_id, item)
             return {'stream': success}
         else:

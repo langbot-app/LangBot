@@ -50,16 +50,23 @@ class ResponseWrapper(stage.PipelineStage):
         raises into the pipeline — attachment delivery is best-effort.
         """
         if query.variables.get('_sandbox_outbound_collected'):
+            self.ap.logger.info('outbox: already collected for this query, skipping')
             return
         box_service = getattr(self.ap, 'box_service', None)
         if box_service is None or not getattr(box_service, 'available', False):
+            self.ap.logger.info(
+                f'outbox: box_service unavailable (service={box_service is not None}, available={getattr(box_service, "available", False) if box_service else False})'
+            )
             return
         query.variables['_sandbox_outbound_collected'] = True
         try:
             attachments = await box_service.collect_outbound_attachments(query)
         except Exception as e:
-            self.ap.logger.warning(f'Outbound attachment collection failed: {e}')
+            self.ap.logger.warning(f'outbox: collection failed: {e}')
             return
+        self.ap.logger.info(
+            f'outbox: collected {len(attachments)} attachments: {[att.get("type") for att in attachments]}'
+        )
         for att in attachments:
             att_type = att.get('type')
             if att_type == 'Image':
@@ -105,6 +112,13 @@ class ResponseWrapper(stage.PipelineStage):
 
                     reply_text = ''
 
+                    is_final = self._is_final_assistant_message(result)
+                    is_chunk = isinstance(result, provider_message.MessageChunk)
+                    self.ap.logger.info(
+                        f'wrapper: assistant chunk, content={result.content is not None and len(str(result.content)) > 0}, '
+                        f'is_chunk={is_chunk}, is_final={is_final}, tool_calls={len(result.tool_calls) if result.tool_calls else 0}'
+                    )
+
                     if result.content:  # 有内容
                         reply_text = str(result.get_content_platform_message_chain())
 
@@ -144,6 +158,9 @@ class ResponseWrapper(stage.PipelineStage):
                             # outbox, but only on the terminal assistant message.
                             if self._is_final_assistant_message(result):
                                 await self._append_outbound_attachments(query, reply_chain)
+                                self.ap.logger.info(
+                                    f'wrapper: reply_chain has {len(reply_chain)} components after outbox append'
+                                )
 
                             query.resp_message_chain.append(reply_chain)
                             if is_plugin_reply:
@@ -161,8 +178,12 @@ class ResponseWrapper(stage.PipelineStage):
                     elif self._is_final_assistant_message(result):
                         # Final streaming chunk with no text content but
                         # possibly carrying sandbox outbox attachments.
+                        self.ap.logger.info('wrapper: final chunk with empty content, collecting outbox')
                         reply_chain = platform_message.MessageChain([])
                         await self._append_outbound_attachments(query, reply_chain)
+                        self.ap.logger.info(
+                            f'wrapper: reply_chain has {len(reply_chain)} components after outbox (empty content path)'
+                        )
                         query.resp_message_chain.append(reply_chain)
                         yield entities.StageProcessResult(
                             result_type=entities.ResultType.CONTINUE,

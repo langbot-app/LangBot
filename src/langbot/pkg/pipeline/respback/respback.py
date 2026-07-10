@@ -43,9 +43,19 @@ class SendResponseBackStage(stage.PipelineStage):
         response_index = len(query.resp_message_chain) - 1
         message_chain = query.resp_message_chain[-1]
 
+        # Log what we're about to send
+        component_types = [type(msg).__name__ for msg in message_chain]
+        self.ap.logger.info(
+            f'respback: has_chunks={has_chunks}, '
+            f'stream_supported={await query.adapter.is_stream_output_supported()}, '
+            f'chain_components={component_types}, '
+            f'resp_message_chain_count={len(query.resp_message_chain)}'
+        )
+
         try:
             if await query.adapter.is_stream_output_supported() and has_chunks:
                 is_final = [msg.is_final for msg in query.resp_messages][0]
+                self.ap.logger.info(f'respback: calling reply_message_chunk, is_final={is_final}')
                 await query.adapter.reply_message_chunk(
                     message_source=query.message_event,
                     bot_message=query.resp_messages[-1],
