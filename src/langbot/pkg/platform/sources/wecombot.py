@@ -3,6 +3,7 @@ import typing
 import asyncio
 import time
 import traceback
+import base64
 
 import datetime
 
@@ -19,11 +20,24 @@ from langbot.libs.wecom_ai_bot_api.ws_client import WecomBotWsClient
 class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     @staticmethod
     async def yiri2target(message_chain: platform_message.MessageChain):
-        content = ''
+        """Convert a MessageChain into a list of component dicts.
+
+        Each dict has a ``type`` key (``'text'``, ``'image'``,
+        ``'voice'``, ``'file'``). Text items carry ``text``; media
+        items carry ``base64`` (may include a ``data:...;base64,``
+        prefix) and optionally ``name``.
+        """
+        items: list[dict] = []
         for msg in message_chain:
             if type(msg) is platform_message.Plain:
-                content += msg.text
-        return content
+                items.append({'type': 'text', 'text': msg.text})
+            elif type(msg) is platform_message.Image:
+                items.append({'type': 'image', 'base64': msg.base64 or ''})
+            elif type(msg) is platform_message.Voice:
+                items.append({'type': 'voice', 'base64': msg.base64 or ''})
+            elif type(msg) is platform_message.File:
+                items.append({'type': 'file', 'base64': msg.base64 or '', 'name': msg.name or ''})
+        return items
 
     @staticmethod
     async def target2yiri(event: WecomBotEvent, bot_name: str = ''):
@@ -405,18 +419,22 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         message: platform_message.MessageChain,
         quote_origin: bool = False,
     ):
-        content = await self.message_converter.yiri2target(message)
+        items = await self.message_converter.yiri2target(message)
+        text = self._join_text_components(items)
         _ws_mode = not self.config.get('enable-webhook', False)
 
         if _ws_mode:
             event = message_source.source_platform_object
             req_id = event.get('req_id', '')
-            if req_id:
-                await self.bot.reply_text(req_id, content)
-            else:
-                await self.bot.set_message(event.message_id, content)
+            if text:
+                if req_id:
+                    await self.bot.reply_text(req_id, text)
+                else:
+                    await self.bot.set_message(event.message_id, text)
+            for item in self._iter_media_components(items):
+                await self._send_media(self.bot, req_id, item)
         else:
-            await self.bot.set_message(message_source.source_platform_object.message_id, content)
+            await self.bot.set_message(message_source.source_platform_object.message_id, text)
 
     async def reply_message_chunk(
         self,
@@ -426,22 +444,28 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         quote_origin: bool = False,
         is_final: bool = False,
     ):
-        content = await self.message_converter.yiri2target(message)
+        items = await self.message_converter.yiri2target(message)
+        text = self._join_text_components(items)
         msg_id = message_source.source_platform_object.message_id
         _ws_mode = not self.config.get('enable-webhook', False)
 
         if _ws_mode:
-            success = await self.bot.push_stream_chunk(msg_id, content, is_final=is_final)
+            success = await self.bot.push_stream_chunk(msg_id, text, is_final=is_final)
             if not success and is_final:
                 event = message_source.source_platform_object
                 req_id = event.get('req_id', '')
                 if req_id:
-                    await self.bot.reply_text(req_id, content)
+                    await self.bot.reply_text(req_id, text)
+            if is_final:
+                event = message_source.source_platform_object
+                req_id = event.get('req_id', '')
+                for item in self._iter_media_components(items):
+                    await self._send_media(self.bot, req_id, item)
             return {'stream': success}
         else:
-            success = await self.bot.push_stream_chunk(msg_id, content, is_final=is_final)
+            success = await self.bot.push_stream_chunk(msg_id, text, is_final=is_final)
             if not success and is_final:
-                await self.bot.set_message(msg_id, content)
+                await self.bot.set_message(msg_id, text)
             return {'stream': success}
 
     async def is_stream_output_supported(self) -> bool:
@@ -451,8 +475,9 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     async def send_message(self, target_type, target_id, message):
         _ws_mode = not self.config.get('enable-webhook', False)
         if _ws_mode:
-            content = await self.message_converter.yiri2target(message)
-            await self.bot.send_message(target_id, content)
+            items = await self.message_converter.yiri2target(message)
+            text = self._join_text_components(items)
+            await self.bot.send_message(target_id, text)
         else:
             pass
 

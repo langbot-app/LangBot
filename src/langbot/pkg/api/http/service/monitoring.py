@@ -167,9 +167,9 @@ class MonitoringService:
                     persistence_monitoring.MonitoringMessage.id == message_id
                 )
             )
-            row = result.first()
-            if row:
-                return row[0]
+            obj = result.scalars().first()
+            if obj:
+                return obj
 
         if not session_id:
             return None
@@ -186,9 +186,9 @@ class MonitoringService:
             .limit(1)
         )
         result = await self.ap.persistence_mgr.execute_async(user_query)
-        row = result.first()
-        if row:
-            return row[0]
+        obj = result.scalars().first()
+        if obj:
+            return obj
 
         any_query = (
             sqlalchemy.select(persistence_monitoring.MonitoringMessage)
@@ -197,8 +197,7 @@ class MonitoringService:
             .limit(1)
         )
         result = await self.ap.persistence_mgr.execute_async(any_query)
-        row = result.first()
-        return row[0] if row else None
+        return result.scalars().first()
 
     # ========== Recording Methods ==========
 
