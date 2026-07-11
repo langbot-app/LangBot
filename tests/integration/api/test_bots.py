@@ -139,6 +139,18 @@ def fake_bot_app():
             'diagnostic_details': [{'step': 'evaluate_binding', 'binding_id': 'binding-1', 'matched': True}],
         }
     )
+    app.bot_service.dispatch_test_event_route = AsyncMock(
+        return_value={
+            'dispatched': True,
+            'event_type': 'message.received',
+            'suppressed_outputs': [],
+            'route_status': {
+                'routes': [],
+                'unmatched_events': [],
+                'stale_routes': [],
+            },
+        }
+    )
     app.bot_service.send_message = AsyncMock()
 
     # Platform manager
@@ -307,6 +319,34 @@ class TestBotEventRouteStatusEndpoint:
         assert data['data']['routes'][0]['binding_id'] == 'binding-1'
         assert data['data']['routes'][0]['last_status'] == 'delivered'
         fake_bot_app.bot_service.list_event_route_statuses.assert_awaited_with('test-bot-uuid')
+
+
+@pytest.mark.usefixtures('mock_circular_import_chain')
+class TestBotEventRouteTestEndpoint:
+    """Tests for bot event route synthetic dispatch endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_dispatch_test_event_route_success(self, quart_test_client, fake_bot_app):
+        """POST test route dispatches a synthetic event."""
+        response = await quart_test_client.post(
+            '/api/v1/platform/bots/test-bot-uuid/event-routes/test',
+            headers={'Authorization': 'Bearer test_token'},
+            json={
+                'event_type': 'message.received',
+                'payload': {'message_text': 'hello'},
+            },
+        )
+
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert data['code'] == 0
+        assert data['data']['dispatched'] is True
+        assert data['data']['event_type'] == 'message.received'
+        fake_bot_app.bot_service.dispatch_test_event_route.assert_awaited_with(
+            bot_uuid='test-bot-uuid',
+            event_type='message.received',
+            payload={'message_text': 'hello'},
+        )
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')

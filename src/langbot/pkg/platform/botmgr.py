@@ -42,6 +42,224 @@ from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput
 from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
 
 
+class SyntheticRouteTestAdapter:
+    """Adapter wrapper that suppresses outbound platform delivery for test events."""
+
+    SIDE_EFFECT_API_NAMES = {
+        'send_message',
+        'reply_message',
+        'reply_message_chunk',
+        'create_message_card',
+        'edit_message',
+        'delete_message',
+        'forward_message',
+        'set_group_name',
+        'mute_member',
+        'unmute_member',
+        'kick_member',
+        'leave_group',
+        'approve_friend_request',
+        'approve_group_invite',
+        'upload_file',
+        'call_platform_api',
+    }
+
+    def __init__(self, source: abstract_platform_adapter.AbstractMessagePlatformAdapter):
+        self.source = source
+        self.bot_account_id = getattr(source, 'bot_account_id', '')
+        self.config = getattr(source, 'config', {})
+        self.logger = getattr(source, 'logger', None)
+        self.suppressed_outputs: list[dict[str, typing.Any]] = []
+
+    @staticmethod
+    def _message_to_payload(message: platform_message.MessageChain) -> typing.Any:
+        return message.model_dump() if hasattr(message, 'model_dump') else str(message)
+
+    def _suppress(self, method: str, **payload: typing.Any) -> None:
+        self.suppressed_outputs.append({'method': method, **payload})
+
+    def __getattr__(self, name: str) -> typing.Any:
+        return getattr(self.source, name)
+
+    def get_supported_apis(self) -> list[str]:
+        get_supported_apis = getattr(self.source, 'get_supported_apis', None)
+        if not callable(get_supported_apis):
+            return []
+        return [api_name for api_name in get_supported_apis() if api_name not in self.SIDE_EFFECT_API_NAMES]
+
+    async def send_message(
+        self,
+        target_type: str,
+        target_id: str,
+        message: platform_message.MessageChain,
+    ) -> dict[str, typing.Any]:
+        self._suppress(
+            'send_message',
+            target_type=target_type,
+            target_id=target_id,
+            message=self._message_to_payload(message),
+        )
+        return {'suppressed': True}
+
+    async def reply_message(
+        self,
+        message_source: platform_events.MessageEvent,
+        message: platform_message.MessageChain,
+        quote_origin: bool = False,
+    ) -> dict[str, typing.Any]:
+        self._suppress(
+            'reply_message',
+            message=self._message_to_payload(message),
+            quote_origin=quote_origin,
+        )
+        return {'suppressed': True}
+
+    async def reply_message_chunk(
+        self,
+        message_source: platform_events.MessageEvent,
+        bot_message: dict,
+        message: platform_message.MessageChain,
+        quote_origin: bool = False,
+        is_final: bool = False,
+    ) -> dict[str, typing.Any]:
+        self._suppress(
+            'reply_message_chunk',
+            message=self._message_to_payload(message),
+            quote_origin=quote_origin,
+            is_final=is_final,
+        )
+        return {'suppressed': True}
+
+    async def create_message_card(
+        self,
+        message_id: str | int,
+        event: platform_events.MessageEvent,
+    ) -> bool:
+        self._suppress('create_message_card', message_id=str(message_id))
+        return False
+
+    async def is_stream_output_supported(self) -> bool:
+        return False
+
+    async def edit_message(
+        self,
+        chat_type: str,
+        chat_id: typing.Union[int, str],
+        message_id: typing.Union[int, str],
+        new_content: platform_message.MessageChain,
+    ) -> None:
+        self._suppress(
+            'edit_message',
+            chat_type=str(chat_type),
+            chat_id=str(chat_id),
+            message_id=str(message_id),
+            new_content=self._message_to_payload(new_content),
+        )
+
+    async def delete_message(
+        self,
+        chat_type: str,
+        chat_id: typing.Union[int, str],
+        message_id: typing.Union[int, str],
+    ) -> None:
+        self._suppress(
+            'delete_message',
+            chat_type=str(chat_type),
+            chat_id=str(chat_id),
+            message_id=str(message_id),
+        )
+
+    async def forward_message(
+        self,
+        from_chat_type: str,
+        from_chat_id: typing.Union[int, str],
+        message_id: typing.Union[int, str],
+        to_chat_type: str,
+        to_chat_id: typing.Union[int, str],
+    ) -> platform_events.MessageResult:
+        self._suppress(
+            'forward_message',
+            from_chat_type=str(from_chat_type),
+            from_chat_id=str(from_chat_id),
+            message_id=str(message_id),
+            to_chat_type=str(to_chat_type),
+            to_chat_id=str(to_chat_id),
+        )
+        return platform_events.MessageResult(raw={'suppressed': True})
+
+    async def set_group_name(
+        self,
+        group_id: typing.Union[int, str],
+        name: str,
+    ) -> None:
+        self._suppress('set_group_name', group_id=str(group_id), name=name)
+
+    async def mute_member(
+        self,
+        group_id: typing.Union[int, str],
+        user_id: typing.Union[int, str],
+        duration: int = 0,
+    ) -> None:
+        self._suppress(
+            'mute_member',
+            group_id=str(group_id),
+            user_id=str(user_id),
+            duration=duration,
+        )
+
+    async def unmute_member(
+        self,
+        group_id: typing.Union[int, str],
+        user_id: typing.Union[int, str],
+    ) -> None:
+        self._suppress('unmute_member', group_id=str(group_id), user_id=str(user_id))
+
+    async def kick_member(
+        self,
+        group_id: typing.Union[int, str],
+        user_id: typing.Union[int, str],
+    ) -> None:
+        self._suppress('kick_member', group_id=str(group_id), user_id=str(user_id))
+
+    async def leave_group(
+        self,
+        group_id: typing.Union[int, str],
+    ) -> None:
+        self._suppress('leave_group', group_id=str(group_id))
+
+    async def approve_friend_request(
+        self,
+        request_id: typing.Union[int, str],
+        approve: bool = True,
+        remark: str | None = None,
+    ) -> None:
+        self._suppress(
+            'approve_friend_request',
+            request_id=str(request_id),
+            approve=approve,
+            remark=remark,
+        )
+
+    async def approve_group_invite(
+        self,
+        request_id: typing.Union[int, str],
+        approve: bool = True,
+    ) -> None:
+        self._suppress(
+            'approve_group_invite',
+            request_id=str(request_id),
+            approve=approve,
+        )
+
+    async def upload_file(self, file_data: bytes, filename: str) -> str:
+        self._suppress('upload_file', filename=filename, size=len(file_data))
+        return f'suppressed:{filename}'
+
+    async def call_platform_api(self, action: str, params: dict | None = None) -> dict:
+        self._suppress('call_platform_api', action=action, params=params or {})
+        return {'suppressed': True}
+
+
 class RuntimeBot:
     """运行时机器人"""
 
@@ -53,7 +271,7 @@ class RuntimeBot:
 
     adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter
 
-    task_wrapper: taskmgr.TaskWrapper
+    task_wrapper: taskmgr.TaskWrapper | None
 
     task_context: taskmgr.TaskContext
 
@@ -70,6 +288,7 @@ class RuntimeBot:
         self.bot_entity = bot_entity
         self.enable = bot_entity.enable
         self.adapter = adapter
+        self.task_wrapper = None
         self.task_context = taskmgr.TaskContext()
         self.logger = logger
 
@@ -305,6 +524,126 @@ class RuntimeBot:
         """Return the selected event binding plus per-binding diagnostic steps."""
         return self._evaluate_eba_event_bindings(self._get_event_bindings(), event, event_type)
 
+    @staticmethod
+    def _build_test_platform_event(
+        event_type: str,
+        payload: dict[str, typing.Any] | None = None,
+    ) -> platform_events.EBAEvent:
+        """Build a synthetic platform event for route validation."""
+        payload = payload or {}
+        now = time.time()
+        common = {
+            'type': event_type,
+            'timestamp': payload.get('timestamp') or now,
+            'adapter_name': payload.get('adapter_name') or 'test-event',
+            'source_platform_object': {'synthetic': True, 'payload': payload},
+        }
+
+        user_id = str(payload.get('user_id') or payload.get('sender_id') or 'test-user')
+        user_name = str(payload.get('user_name') or payload.get('sender_name') or 'Test User')
+        group_id = str(payload.get('group_id') or payload.get('chat_id') or 'test-group')
+        group_name = str(payload.get('group_name') or 'Test Group')
+
+        if event_type == 'message.received':
+            chat_type_value = str(payload.get('chat_type') or 'private')
+            chat_type = (
+                platform_entities.ChatType.GROUP
+                if chat_type_value == platform_entities.ChatType.GROUP.value
+                else platform_entities.ChatType.PRIVATE
+            )
+            chat_id = str(
+                payload.get('chat_id') or (group_id if chat_type == platform_entities.ChatType.GROUP else user_id)
+            )
+            message_text = str(payload.get('message_text') or payload.get('text') or '')
+            message_chain_data = payload.get('message_chain')
+            if message_chain_data is None:
+                message_chain = platform_message.MessageChain([platform_message.Plain(text=message_text)])
+            else:
+                message_chain = platform_message.MessageChain.model_validate(message_chain_data)
+            group = (
+                platform_entities.UserGroup(id=chat_id, name=group_name)
+                if chat_type == platform_entities.ChatType.GROUP
+                else None
+            )
+            return platform_events.MessageReceivedEvent(
+                **common,
+                message_id=str(payload.get('message_id') or f'test-message:{uuid.uuid4()}'),
+                message_chain=message_chain,
+                sender=platform_entities.User(id=user_id, nickname=user_name),
+                chat_type=chat_type,
+                chat_id=chat_id,
+                group=group,
+            )
+
+        if event_type == 'group.member_joined':
+            return platform_events.MemberJoinedEvent(
+                **common,
+                group=platform_entities.UserGroup(id=group_id, name=group_name),
+                member=platform_entities.User(id=user_id, nickname=user_name),
+                inviter=platform_entities.User(
+                    id=str(payload.get('inviter_id')),
+                    nickname=str(payload.get('inviter_name') or ''),
+                )
+                if payload.get('inviter_id')
+                else None,
+                join_type=payload.get('join_type'),
+            )
+
+        if event_type == 'group.member_left':
+            return platform_events.MemberLeftEvent(
+                **common,
+                group=platform_entities.UserGroup(id=group_id, name=group_name),
+                member=platform_entities.User(id=user_id, nickname=user_name),
+                is_kicked=bool(payload.get('is_kicked', False)),
+                operator=platform_entities.User(
+                    id=str(payload.get('operator_id')),
+                    nickname=str(payload.get('operator_name') or ''),
+                )
+                if payload.get('operator_id')
+                else None,
+            )
+
+        if event_type == 'platform.specific':
+            return platform_events.PlatformSpecificEvent(
+                **common,
+                action=str(payload.get('action') or 'test'),
+                data=payload.get('data') if isinstance(payload.get('data'), dict) else payload,
+            )
+
+        return platform_events.EBAEvent(**common)
+
+    async def dispatch_test_event(
+        self,
+        event_type: str,
+        payload: dict[str, typing.Any] | None = None,
+    ) -> dict[str, typing.Any]:
+        """Dispatch a synthetic event through the real runtime route path."""
+        event_type = str(event_type or '').strip()
+        if not event_type:
+            raise ValueError('event_type is required')
+
+        event = self._build_test_platform_event(event_type, payload)
+        await self._record_event_route_trace(
+            event_type=event_type,
+            status='test_started',
+            reason='Synthetic test event dispatched from control plane',
+            text=f'Test event {event_type} dispatched from control plane',
+        )
+        test_adapter = SyntheticRouteTestAdapter(self.adapter)
+        outcome = await self._dispatch_eba_event_to_agent(
+            event,
+            typing.cast(abstract_platform_adapter.AbstractMessagePlatformAdapter, test_adapter),
+        )
+        return {
+            'event_type': event_type,
+            'dispatched': outcome['status'] in {'delivered', 'discarded'},
+            'status': outcome['status'],
+            'binding_id': outcome.get('binding_id'),
+            'failure_code': outcome.get('failure_code'),
+            'reason': outcome.get('reason'),
+            'suppressed_outputs': test_adapter.suppressed_outputs,
+        }
+
     async def _record_event_route_trace(
         self,
         *,
@@ -318,7 +657,7 @@ class RuntimeBot:
         failure_code: str | None = None,
         reason: str | None = None,
         run_id: str | None = None,
-    ) -> None:
+    ) -> dict[str, typing.Any]:
         """Record structured event routing state while preserving the human log."""
         binding = binding or {}
         metadata = {
@@ -335,6 +674,7 @@ class RuntimeBot:
         }
         log_method = getattr(self.logger, level, self.logger.info)
         await log_method(text, metadata=metadata)
+        return metadata
 
     def get_pipeline_target_for_event_type(self, event_type: str = 'message.received') -> str | None:
         """Return the first Pipeline target configured for an event type."""
@@ -752,6 +1092,7 @@ class RuntimeBot:
         self,
         envelope: AgentEventEnvelope,
         outputs: list[provider_message.Message | provider_message.MessageChunk],
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter | SyntheticRouteTestAdapter | None = None,
     ) -> None:
         if not outputs or not envelope.delivery.reply_target:
             return
@@ -773,7 +1114,8 @@ class RuntimeBot:
         if not final_text:
             return
 
-        await self.adapter.send_message(
+        delivery_adapter = adapter or self.adapter
+        await delivery_adapter.send_message(
             str(target_type),
             str(target_id),
             platform_message.MessageChain([platform_message.Plain(text=final_text)]),
@@ -799,19 +1141,18 @@ class RuntimeBot:
         self,
         event: platform_events.EBAEvent,
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
-    ) -> None:
+    ) -> dict[str, typing.Any]:
         event_type = getattr(event, 'type', None) or event.__class__.__name__
 
         event_binding = self._resolve_eba_event_binding(event, event_type)
         if event_binding is None:
-            await self._record_event_route_trace(
+            return await self._record_event_route_trace(
                 event_type=event_type,
                 status='not_matched',
                 failure_code='route_not_found',
                 reason='No event route matched',
                 text=f'Platform event {event_type} ignored: no event route matched',
             )
-            return
 
         target_type = event_binding.get('target_type')
         await self._record_event_route_trace(
@@ -830,25 +1171,23 @@ class RuntimeBot:
                     pipeline_uuid=self.PIPELINE_DISCARD,
                     routed_by_event_binding=True,
                 )
-                await self._record_event_route_trace(
+                return await self._record_event_route_trace(
                     event_type=event_type,
                     status='discarded',
                     binding=event_binding,
                     target_type=target_type,
                     text=f'EBA event {event_type} discarded by event binding',
                 )
-                return
-            await self._record_event_route_trace(
+            return await self._record_event_route_trace(
                 event_type=event_type,
                 status='discarded',
                 binding=event_binding,
                 target_type=target_type,
                 text=f'EBA event {event_type} discarded by event binding',
             )
-            return
         if target_type == 'pipeline':
             if not self._is_message_event_type(event_type):
-                await self._record_event_route_trace(
+                return await self._record_event_route_trace(
                     event_type=event_type,
                     status='failed',
                     level='warning',
@@ -859,14 +1198,13 @@ class RuntimeBot:
                     reason='Pipeline targets only support message events',
                     text=f'EBA event {event_type} ignored Pipeline target for non-message event',
                 )
-                return
             await self._dispatch_eba_message_to_pipeline(
                 event,
                 adapter,
                 pipeline_uuid=event_binding.get('target_uuid'),
                 routed_by_event_binding=True,
             )
-            await self._record_event_route_trace(
+            return await self._record_event_route_trace(
                 event_type=event_type,
                 status='delivered',
                 binding=event_binding,
@@ -874,9 +1212,8 @@ class RuntimeBot:
                 target_uuid=event_binding.get('target_uuid'),
                 text=f'EBA event {event_type} delivered to Pipeline {event_binding.get("target_uuid") or ""}'.strip(),
             )
-            return
         if target_type != 'agent':
-            await self._record_event_route_trace(
+            return await self._record_event_route_trace(
                 event_type=event_type,
                 status='failed',
                 level='warning',
@@ -887,12 +1224,11 @@ class RuntimeBot:
                 reason=f'Unsupported event binding target type: {target_type}',
                 text=f'EBA event {event_type} ignored unsupported target type {target_type}',
             )
-            return
 
         target_uuid = event_binding.get('target_uuid')
         agent = await self.ap.agent_service.get_agent(target_uuid)
         if not agent or agent.get('kind') != 'agent':
-            await self._record_event_route_trace(
+            return await self._record_event_route_trace(
                 event_type=event_type,
                 status='failed',
                 level='warning',
@@ -903,9 +1239,8 @@ class RuntimeBot:
                 reason='Agent target not found',
                 text=f'EBA event {event_type} target agent not found: {target_uuid}',
             )
-            return
         if not agent.get('enabled', True):
-            await self._record_event_route_trace(
+            return await self._record_event_route_trace(
                 event_type=event_type,
                 status='failed',
                 binding=event_binding,
@@ -915,9 +1250,8 @@ class RuntimeBot:
                 reason='Agent target is disabled',
                 text=f'EBA event {event_type} target agent disabled: {target_uuid}',
             )
-            return
         if not self._agent_supports_event_type(agent.get('supported_event_patterns'), event_type):
-            await self._record_event_route_trace(
+            return await self._record_event_route_trace(
                 event_type=event_type,
                 status='failed',
                 binding=event_binding,
@@ -927,11 +1261,10 @@ class RuntimeBot:
                 reason='Agent target does not support this event type',
                 text=f'EBA event {event_type} target agent does not support this event: {target_uuid}',
             )
-            return
 
         binding = self._agent_product_to_binding(agent, event_binding, event_type, self.bot_entity.uuid)
         if binding is None:
-            await self._record_event_route_trace(
+            return await self._record_event_route_trace(
                 event_type=event_type,
                 status='failed',
                 level='warning',
@@ -942,7 +1275,6 @@ class RuntimeBot:
                 reason='Agent target has no runner',
                 text=f'EBA event {event_type} target agent has no runner: {target_uuid}',
             )
-            return
 
         envelope = self._eba_event_to_agent_envelope(event, adapter)
         outputs: list[provider_message.Message | provider_message.MessageChunk] = []
@@ -950,7 +1282,7 @@ class RuntimeBot:
             async for output in self.ap.agent_run_orchestrator.run(envelope, binding):
                 outputs.append(output)
         except Exception:
-            await self._record_event_route_trace(
+            return await self._record_event_route_trace(
                 event_type=event_type,
                 status='failed',
                 level='error',
@@ -961,12 +1293,11 @@ class RuntimeBot:
                 reason='Agent runner failed',
                 text=f'Failed to run Agent for EBA event {event_type}: {traceback.format_exc()}',
             )
-            return
 
         try:
-            await self._deliver_agent_outputs(envelope, outputs)
+            await self._deliver_agent_outputs(envelope, outputs, adapter=adapter)
         except Exception:
-            await self._record_event_route_trace(
+            return await self._record_event_route_trace(
                 event_type=event_type,
                 status='failed',
                 level='error',
@@ -977,8 +1308,7 @@ class RuntimeBot:
                 reason='Agent output delivery failed',
                 text=f'Failed to deliver Agent output for EBA event {event_type}: {traceback.format_exc()}',
             )
-            return
-        await self._record_event_route_trace(
+        return await self._record_event_route_trace(
             event_type=event_type,
             status='delivered',
             binding=event_binding,
@@ -1244,7 +1574,9 @@ class RuntimeBot:
     async def shutdown(self):
         await self.adapter.kill()
 
-        self.ap.task_mgr.cancel_task(self.task_wrapper.id)
+        if self.task_wrapper is not None:
+            self.ap.task_mgr.cancel_task(self.task_wrapper.id)
+            self.task_wrapper = None
 
 
 # 控制QQ消息输入输出的类

@@ -440,7 +440,7 @@ class BotService:
                             'reason': 'Agent target is disabled',
                         }
                     ],
-            )
+                )
             if not RuntimeBot._agent_supports_event_type(getattr(agent, 'supported_event_patterns', None), event_type):
                 return self._diagnostic_result(
                     matched=False,
@@ -636,7 +636,9 @@ class BotService:
 
         bot = await self.get_bot(bot_data['uuid'])
 
-        await self.ap.platform_mgr.load_bot(bot)
+        runtime_bot = await self.ap.platform_mgr.load_bot(bot)
+        if runtime_bot.enable:
+            await runtime_bot.run()
 
         return bot_data['uuid']
 
@@ -743,6 +745,58 @@ class BotService:
             'routes': routes,
             'unmatched_events': unmatched_events[-10:],
             'stale_routes': stale_routes,
+        }
+
+    async def dispatch_test_event_route(
+        self,
+        bot_uuid: str,
+        event_type: str,
+        payload: dict[str, typing.Any] | None = None,
+    ) -> dict[str, typing.Any]:
+        """Dispatch a synthetic event through the saved Bot runtime route configuration."""
+        event_type = str(event_type or '').strip()
+        if not event_type:
+            return {
+                'dispatched': False,
+                'event_type': '',
+                'failure_code': self.FAILURE_INVALID_EVENT,
+                'reason': 'event_type is required',
+                'suppressed_outputs': [],
+                'route_status': {
+                    'routes': [],
+                    'unmatched_events': [],
+                    'stale_routes': [],
+                },
+            }
+        if payload is not None and not isinstance(payload, dict):
+            return {
+                'dispatched': False,
+                'event_type': event_type,
+                'failure_code': self.FAILURE_INVALID_EVENT,
+                'reason': 'payload must be an object',
+                'suppressed_outputs': [],
+                'route_status': {
+                    'routes': [],
+                    'unmatched_events': [],
+                    'stale_routes': [],
+                },
+            }
+
+        runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(bot_uuid)
+        if runtime_bot is None:
+            raise Exception('Bot not found')
+
+        dispatch_result = await runtime_bot.dispatch_test_event(event_type, payload or {})
+        route_status = await self.list_event_route_statuses(bot_uuid)
+        return {
+            'dispatched': bool(dispatch_result.get('dispatched')),
+            'event_type': event_type,
+            'status': dispatch_result.get('status'),
+            'binding_id': dispatch_result.get('binding_id'),
+            'failure_code': dispatch_result.get('failure_code'),
+            'reason': dispatch_result.get('reason'),
+            'suppressed_outputs': dispatch_result.get('suppressed_outputs', []),
+            'route_status': route_status,
         }
 
     async def send_message(self, bot_uuid: str, target_type: str, target_id: str, message_chain_data: dict) -> None:
