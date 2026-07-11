@@ -1834,7 +1834,7 @@ const jaJP = {
     next: '次へ',
     finish: '作成＆デプロイ',
     confirmCreateBot: '確定、ボットを作成',
-    createSuccess: 'パイプラインが作成され、ボットにリンクされました！',
+    createSuccess: 'プロセッサーが作成され、ボットにリンクされました！',
     botCreateSuccess: 'ボットが正常に作成されました！',
     botSaveSuccess: 'ボット設定が保存され、有効になりました！',
     createError: 'リソースの作成に失敗しました',
@@ -1843,14 +1843,40 @@ const jaJP = {
     completeSaveError: '完了状態の保存に失敗しました。もう一度お試しください。',
     step: {
       platform: 'プラットフォーム',
+      scenarioChannel: 'シナリオとチャンネル',
       botConfig: 'ボット設定',
       aiEngine: 'AIエンジン',
       done: '完了',
     },
-    platform: {
-      title: 'プラットフォームを選択',
+    scenario: {
+      title: 'このボットで何を実現しますか？',
       description:
-        'ボットが接続するメッセージングプラットフォームを選択してください。',
+        'まず主要な動作を1つ選びます。作成後に他の動作も追加できます。',
+      messageReply: '受信メッセージに返信',
+      messageReplyDescription:
+        'AI Pipeline でプライベートまたはグループメッセージに返信します。',
+      welcomeMembers: '新しいメンバーを歓迎',
+      welcomeMembersDescription:
+        'メンバーがグループに参加したときに Agent を実行します。',
+      handleDepartures: 'メンバーの退出を処理',
+      handleDeparturesDescription:
+        'メンバーが退出または削除されたときに Agent を実行します。',
+      reviewFriendRequests: '友だち申請を確認',
+      reviewFriendRequestsDescription:
+        '新しい申請の処理方法を Agent に判断させます。',
+      handleModeration: 'モデレーションイベントを処理',
+      handleModerationDescription:
+        'グループメンバーが制限されたときに Agent を実行します。',
+      pipelineBadge: 'Pipeline',
+      agentBadge: 'Agent',
+    },
+    platform: {
+      title: 'チャンネルを選択',
+      description: '選択したシナリオに対応するチャンネルのみ表示されます。',
+      chooseScenarioFirst:
+        'シナリオを選択すると、対応するチャンネルが表示されます。',
+      noCompatiblePlatforms:
+        '現在インストールされているチャンネルはこのシナリオに対応していません。',
     },
     botConfig: {
       title: 'ボットを設定',
@@ -1884,7 +1910,7 @@ const jaJP = {
     done: {
       title: '完了しました！',
       description:
-        'ボットが作成され、AIパイプラインに接続されました。ワークベンチから管理できます。',
+        'ボットが作成され、プロセッサーに接続されました。ワークベンチから管理できます。',
       backToWorkbench: 'ワークベンチに戻る',
     },
   },

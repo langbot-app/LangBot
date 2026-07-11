@@ -1913,7 +1913,7 @@ const enUS = {
     next: 'Next',
     finish: 'Create & Deploy',
     confirmCreateBot: 'Confirm, Create Bot',
-    createSuccess: 'Pipeline created and linked to bot successfully!',
+    createSuccess: 'Processor created and linked to the bot successfully!',
     botCreateSuccess: 'Bot created successfully!',
     botSaveSuccess: 'Bot configuration saved and enabled!',
     createError: 'Failed to create resources',
@@ -1922,13 +1922,39 @@ const enUS = {
     completeSaveError: 'Failed to save completion status. Please try again.',
     step: {
       platform: 'Platform',
+      scenarioChannel: 'Scenario & Channel',
       botConfig: 'Bot Setup',
       aiEngine: 'AI Engine',
       done: 'Done',
     },
+    scenario: {
+      title: 'What should this bot do?',
+      description:
+        'Start with one outcome. You can add more behaviors after the bot is created.',
+      messageReply: 'Reply to messages',
+      messageReplyDescription:
+        'Answer incoming private or group messages with an AI Pipeline.',
+      welcomeMembers: 'Welcome new members',
+      welcomeMembersDescription: 'Run an Agent when someone joins a group.',
+      handleDepartures: 'Handle member departures',
+      handleDeparturesDescription:
+        'Run an Agent when someone leaves or is removed.',
+      reviewFriendRequests: 'Review friend requests',
+      reviewFriendRequestsDescription:
+        'Let an Agent decide how to handle new friend requests.',
+      handleModeration: 'Handle moderation events',
+      handleModerationDescription:
+        'Run an Agent when a group member is restricted.',
+      pipelineBadge: 'Pipeline',
+      agentBadge: 'Agent',
+    },
     platform: {
-      title: 'Select a Platform',
-      description: 'Choose the messaging platform your bot will connect to.',
+      title: 'Select a Channel',
+      description:
+        'Only channels that support the selected scenario are shown.',
+      chooseScenarioFirst: 'Choose a scenario to see compatible channels.',
+      noCompatiblePlatforms:
+        'No installed channel currently supports this scenario.',
     },
     botConfig: {
       title: 'Configure Your Bot',
@@ -1961,7 +1987,7 @@ const enUS = {
     done: {
       title: 'All Set!',
       description:
-        'Your bot has been created and connected to the AI pipeline. You can now manage it from the workbench.',
+        'Your bot has been created and connected to its processor. You can now manage it from the workbench.',
       backToWorkbench: 'Back to Workbench',
     },
   },

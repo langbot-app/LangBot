@@ -1072,6 +1072,7 @@ export class BackendClient extends BaseHttpClient {
 
   public saveWizardProgress(progress: {
     step: number;
+    selected_scenario?: string | null;
     selected_adapter: string | null;
     created_bot_uuid: string | null;
     bot_saved: boolean;
