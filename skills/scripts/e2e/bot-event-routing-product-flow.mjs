@@ -20,6 +20,10 @@ await loadEnvFiles();
 const paths = evidencePaths(caseId);
 await ensureEvidence(paths);
 const mobileScreenshot = paths.screenshot.replace(/\.png$/, "-mobile.png");
+const scenarioMenuScreenshot = paths.screenshot.replace(
+  /\.png$/,
+  "-scenario-menu.png",
+);
 
 const startedAt = new Date();
 const frontendUrl = process.env.LANGBOT_FRONTEND_URL || "";
@@ -50,6 +54,7 @@ const result = {
     network_log: paths.networkLog,
     screenshot: paths.screenshot,
     mobile_screenshot: mobileScreenshot,
+    scenario_menu_screenshot: scenarioMenuScreenshot,
     automation_result_json: paths.automationResultJson,
     result_json: paths.resultJson,
   },
@@ -93,10 +98,23 @@ try {
     .getByText(/Event Routing|事件路由|イベントルーティング/)
     .first()
     .waitFor();
+  const addBehavior = page.getByRole("button", {
+    name: /Add behavior|添加行为|動作を追加/,
+  });
+  await addBehavior.waitFor();
+  await addBehavior.click();
+  const messageBehavior = page.getByRole("menuitem", {
+    name: /Reply to messages|回复收到的消息|受信メッセージに返信/,
+  });
+  await messageBehavior.waitFor();
+  await page.waitForTimeout(250);
+  await safeScreenshot(page, scenarioMenuScreenshot);
+  await messageBehavior.click();
   await page
-    .getByRole("button", { name: /Add Route|添加路由|ルートを追加/ })
+    .getByText(/Message received|收到消息|メッセージを受信/)
+    .first()
     .waitFor();
-  result.visible_signals.push("create-mode-routing");
+  result.visible_signals.push("create-mode-routing", "scenario-route-added");
 
   const create = await apiJson(backendUrl, "/api/v1/platform/bots", {
     method: "POST",

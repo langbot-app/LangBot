@@ -367,6 +367,25 @@ const enUS = {
       'Choose which processor handles each event received by this bot. Edit the processing logic on the Agent page. Pipelines only support message events.',
     eventBindings: 'Event Routes',
     addEventBinding: 'Add Route',
+    addBehavior: 'Add behavior',
+    behaviorReplyMessages: 'Reply to messages',
+    behaviorReplyMessagesDescription:
+      'Send incoming messages to an Agent or Pipeline.',
+    behaviorWelcomeMembers: 'Welcome new members',
+    behaviorWelcomeMembersDescription:
+      'Run an Agent when someone joins a group.',
+    behaviorHandleDepartures: 'Handle member departures',
+    behaviorHandleDeparturesDescription:
+      'Run an Agent when someone leaves or is removed.',
+    behaviorReviewFriendRequests: 'Review friend requests',
+    behaviorReviewFriendRequestsDescription:
+      'Let an Agent decide how to handle a new request.',
+    behaviorHandleModeration: 'Handle moderation events',
+    behaviorHandleModerationDescription:
+      'Run an Agent when a group member is restricted.',
+    behaviorCustom: 'Configure another event',
+    behaviorCustomDescription:
+      'Add a route and choose from every event supported by this adapter.',
     eventPattern: 'Event',
     eventPatternPlaceholder: 'Select event',
     targetType: 'Target Type',

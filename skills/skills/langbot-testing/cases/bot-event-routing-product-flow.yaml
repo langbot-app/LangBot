@@ -27,7 +27,7 @@ automation_env:
 preconditions:
   - "The target is a local test instance where a temporary HTTP Bot may be created and deleted."
 steps:
-  - "Open Create Bot, choose HTTP Bot, and confirm event routing can be configured before the first save."
+  - "Open Create Bot, choose HTTP Bot, and add a message-reply behavior before the first save."
   - "Create a temporary HTTP Bot with a saved message.received route to the discard processor."
   - "Open the Bot configuration in the WebUI."
   - "Confirm the adapter capability summary, friendly event name, target, and route status are visible."
@@ -36,7 +36,7 @@ steps:
   - "Run the saved runtime route with a synthetic event."
   - "Close the dialog and confirm the route card shows the latest discarded status."
 checks:
-  - "UI: A user can choose a channel and add event routes during initial Bot creation."
+  - "UI: A user can choose a channel and add a scenario-labeled behavior during initial Bot creation."
   - "UI: Event routing uses user-facing labels and does not require the raw event name in the primary route card."
   - "UI: Definite route shadowing and unmatched-event fallback behavior are visible without opening raw logs."
   - "UI: Dry-run visibly reports that the route matched the discard processor."

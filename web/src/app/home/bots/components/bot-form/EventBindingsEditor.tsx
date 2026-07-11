@@ -18,10 +18,15 @@ import {
   GripVertical,
   Info,
   ListChecks,
+  MessageSquare,
   Plus,
   Play,
   RefreshCw,
+  Shield,
   Trash2,
+  UserCheck,
+  UserMinus,
+  UserPlus,
   Workflow,
   XCircle,
 } from 'lucide-react';
@@ -56,6 +61,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   DndContext,
   DragOverlay,
@@ -144,6 +156,39 @@ const ELEMENTS = [
 // Adapters that don't declare `supported_events` (e.g. legacy adapters)
 // only emit message.received, so that's the sole fallback option.
 const DEFAULT_EVENTS = ['message.received'];
+
+const BEHAVIOR_PRESETS = [
+  {
+    eventType: 'message.received',
+    labelKey: 'bots.behaviorReplyMessages',
+    descriptionKey: 'bots.behaviorReplyMessagesDescription',
+    icon: MessageSquare,
+  },
+  {
+    eventType: 'group.member_joined',
+    labelKey: 'bots.behaviorWelcomeMembers',
+    descriptionKey: 'bots.behaviorWelcomeMembersDescription',
+    icon: UserPlus,
+  },
+  {
+    eventType: 'group.member_left',
+    labelKey: 'bots.behaviorHandleDepartures',
+    descriptionKey: 'bots.behaviorHandleDeparturesDescription',
+    icon: UserMinus,
+  },
+  {
+    eventType: 'friend.request_received',
+    labelKey: 'bots.behaviorReviewFriendRequests',
+    descriptionKey: 'bots.behaviorReviewFriendRequestsDescription',
+    icon: UserCheck,
+  },
+  {
+    eventType: 'group.member_banned',
+    labelKey: 'bots.behaviorHandleModeration',
+    descriptionKey: 'bots.behaviorHandleModerationDescription',
+    icon: Shield,
+  },
+];
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -1451,6 +1496,13 @@ export default function EventBindingsEditor({
     () => findCatchAllRouteIndex(bindings),
     [bindings],
   );
+  const behaviorPresets = useMemo(
+    () =>
+      BEHAVIOR_PRESETS.filter((preset) =>
+        dryRunEventOptions.includes(preset.eventType),
+      ),
+    [dryRunEventOptions],
+  );
 
   const refreshRouteStatuses = useCallback(async () => {
     if (!botId) {
@@ -1479,11 +1531,11 @@ export default function EventBindingsEditor({
     form.setValue('event_bindings', next, { shouldDirty: true });
   }
 
-  function addBinding() {
+  function addBinding(eventPattern = 'message.received') {
     updateBindings([
       ...bindings,
       {
-        event_pattern: 'message.received',
+        event_pattern: eventPattern,
         target_type: 'agent',
         target_uuid: '',
         priority: 0,
@@ -1673,10 +1725,48 @@ export default function EventBindingsEditor({
       </DndContext>
 
       <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="outline" size="sm" onClick={addBinding}>
-          <Plus className="h-4 w-4 mr-1" />
-          {t('bots.addEventBinding')}
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" variant="outline" size="sm">
+              <Plus className="h-4 w-4 mr-1" />
+              {t('bots.addBehavior')}
+              <ChevronDown className="ml-1 h-3.5 w-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-[300px] max-w-[90vw]">
+            {behaviorPresets.map((preset) => {
+              const Icon = preset.icon;
+              return (
+                <DropdownMenuItem
+                  key={preset.eventType}
+                  className="items-start gap-2 py-2"
+                  onClick={() => addBinding(preset.eventType)}
+                >
+                  <Icon className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span>{t(preset.labelKey)}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {t(preset.descriptionKey)}
+                    </span>
+                  </span>
+                </DropdownMenuItem>
+              );
+            })}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="items-start gap-2 py-2"
+              onClick={() => addBinding(dryRunEventOptions[0])}
+            >
+              <Workflow className="mt-0.5 h-4 w-4 shrink-0" />
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span>{t('bots.behaviorCustom')}</span>
+                <span className="text-xs text-muted-foreground">
+                  {t('bots.behaviorCustomDescription')}
+                </span>
+              </span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <RouteDryRunDialog
           botId={botId}
           bindings={bindings}
