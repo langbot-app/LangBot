@@ -1453,7 +1453,7 @@ class DiscordAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             # Already responded somehow — proceed regardless.
             pass
 
-        pending = self._pending_forms.pop(session_key, None)
+        pending = self._pending_forms.get(session_key)
         if not pending:
             if self.ap is not None:
                 self.ap.logger.warning(
@@ -1462,24 +1462,33 @@ class DiscordAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             await self._lock_view_message(interaction, view, action_title, stale=True)
             return
 
-        # Lock the buttons in place: disable everything, mark chosen one.
-        await self._lock_view_message(interaction, view, action_title)
-
         form_data: dict = pending.get('form_data') or {}
         guild_id = pending.get('guild_id', '')
         channel_id = pending.get('channel_id', '')
-        sender_id = pending.get('sender_id', '')
+        initiator_id = str(pending.get('sender_id', '') or '')
+        actor_id = str(interaction.user.id) if interaction.user is not None else initiator_id
+        if not guild_id and initiator_id and actor_id != initiator_id:
+            if self.ap is not None:
+                self.ap.logger.warning(
+                    f'Discord: user {actor_id} cannot act on private form created for {initiator_id}'
+                )
+            await self._lock_view_message(interaction, view, action_title, stale=True)
+            return
 
-        # In group context the launcher is the CHANNEL (not the user who
-        # clicked) — matches how the original message was routed through
-        # the pipeline. Using the clicker's user id would mismatch the
-        # Dify session and produce "Workflow run not found".
+        self._pending_forms.pop(session_key, None)
+
+        # Lock the buttons in place: disable everything, mark chosen one.
+        await self._lock_view_message(interaction, view, action_title)
+
+        # In group context the launcher remains the channel so Dify resumes
+        # the original group session. The synthetic sender is still the real
+        # clicker, preserving actor identity for auditing and routing rules.
         if guild_id:
             launcher_type = provider_session.LauncherTypes.GROUP
             launcher_id = channel_id
         else:
             launcher_type = provider_session.LauncherTypes.PERSON
-            launcher_id = sender_id or str(interaction.user.id)
+            launcher_id = initiator_id or actor_id
 
         form_action_data = {
             'form_token': form_data.get('form_token', ''),
@@ -1500,7 +1509,7 @@ class DiscordAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if launcher_type == provider_session.LauncherTypes.GROUP:
             synthetic_event: platform_events.MessageEvent = platform_events.GroupMessage(
                 sender=platform_entities.GroupMember(
-                    id=sender_id,
+                    id=actor_id,
                     member_name=interaction.user.display_name if interaction.user else '',
                     permission='MEMBER',
                     group=platform_entities.Group(
@@ -1517,7 +1526,7 @@ class DiscordAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         else:
             synthetic_event = platform_events.FriendMessage(
                 sender=platform_entities.Friend(
-                    id=sender_id,
+                    id=actor_id,
                     nickname=interaction.user.display_name if interaction.user else '',
                     remark='',
                 ),
@@ -1553,7 +1562,7 @@ class DiscordAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 bot_uuid=bot_uuid,
                 launcher_type=launcher_type,
                 launcher_id=launcher_id,
-                sender_id=sender_id,
+                sender_id=actor_id,
                 message_event=synthetic_event,
                 message_chain=message_chain,
                 adapter=self,
@@ -1565,7 +1574,8 @@ class DiscordAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             )
             if self.ap is not None:
                 self.ap.logger.info(
-                    f'Discord: button-click query enqueued action_id={action_id!r} session={session_key}'
+                    f'Discord: button-click query enqueued action_id={action_id!r} '
+                    f'session={session_key} actor_id={actor_id}'
                 )
         except Exception:
             if self.ap is not None:

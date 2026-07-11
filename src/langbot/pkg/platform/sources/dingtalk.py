@@ -1203,6 +1203,11 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if not raw_action_id:
             await self.logger.warning(f'DingTalk: card action with no action_id, payload={payload}')
             return
+        if raw_action_id not in known_action_ids:
+            await self.logger.warning(
+                f'DingTalk: card action_id={raw_action_id!r} is not present on out_track_id={out_track_id}'
+            )
+            return
 
         action_id = raw_action_id
         action_title = raw_action_id
@@ -1217,7 +1222,17 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             else provider_session.LauncherTypes.PERSON
         )
         launcher_id = state.get('launcher_id', '')
-        sender_user_id = state.get('sender_user_id') or payload.get('user_id') or launcher_id
+        initiator_user_id = str(state.get('sender_user_id') or '')
+        actor_user_id = str(payload.get('user_id') or initiator_user_id or launcher_id)
+        if (
+            launcher_type == provider_session.LauncherTypes.PERSON
+            and initiator_user_id
+            and actor_user_id != initiator_user_id
+        ):
+            await self.logger.warning(
+                f'DingTalk: user {actor_user_id} cannot act on private form created for {initiator_user_id}'
+            )
+            return
 
         form_action_data = {
             'form_token': state.get('form_token', ''),
@@ -1234,7 +1249,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if launcher_type == provider_session.LauncherTypes.GROUP:
             synthetic_event = platform_events.GroupMessage(
                 sender=platform_entities.GroupMember(
-                    id=sender_user_id,
+                    id=actor_user_id,
                     member_name='',
                     permission=platform_entities.Permission.Member,
                     group=platform_entities.Group(
@@ -1251,7 +1266,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         else:
             synthetic_event = platform_events.FriendMessage(
                 sender=platform_entities.Friend(
-                    id=sender_user_id,
+                    id=actor_user_id,
                     nickname='',
                     remark='',
                 ),
@@ -1273,13 +1288,14 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 self.ap.logger.info(
                     f'DingTalk _on_card_action enqueuing form action: action_id={action_id!r} '
                     f'action_title={action_title!r} launcher_type={launcher_type.value} '
-                    f'launcher_id={launcher_id} bot_uuid={bot_uuid} pipeline_uuid={pipeline_uuid}'
+                    f'launcher_id={launcher_id} actor_user_id={actor_user_id} '
+                    f'bot_uuid={bot_uuid} pipeline_uuid={pipeline_uuid}'
                 )
                 await self.ap.query_pool.add_query(
                     bot_uuid=bot_uuid,
                     launcher_type=launcher_type,
                     launcher_id=launcher_id,
-                    sender_id=sender_user_id,
+                    sender_id=actor_user_id,
                     message_event=synthetic_event,
                     message_chain=message_chain,
                     adapter=self,
@@ -1336,7 +1352,17 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             else provider_session.LauncherTypes.PERSON
         )
         launcher_id = state.get('launcher_id', '')
-        sender_user_id = state.get('sender_user_id') or payload.get('user_id') or launcher_id
+        initiator_user_id = str(state.get('sender_user_id') or '')
+        actor_user_id = str(payload.get('user_id') or initiator_user_id or launcher_id)
+        if (
+            launcher_type == provider_session.LauncherTypes.PERSON
+            and initiator_user_id
+            and actor_user_id != initiator_user_id
+        ):
+            await self.logger.warning(
+                f'DingTalk: user {actor_user_id} cannot update private form created for {initiator_user_id}'
+            )
+            return
         form_action_data = {
             'form_token': state.get('form_token', ''),
             'workflow_run_id': state.get('workflow_run_id', ''),
@@ -1353,7 +1379,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if launcher_type == provider_session.LauncherTypes.GROUP:
             synthetic_event = platform_events.GroupMessage(
                 sender=platform_entities.GroupMember(
-                    id=sender_user_id,
+                    id=actor_user_id,
                     member_name='',
                     permission=platform_entities.Permission.Member,
                     group=platform_entities.Group(
@@ -1370,7 +1396,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         else:
             synthetic_event = platform_events.FriendMessage(
                 sender=platform_entities.Friend(
-                    id=sender_user_id,
+                    id=actor_user_id,
                     nickname='',
                     remark='',
                 ),
@@ -1394,7 +1420,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 bot_uuid=bot_uuid,
                 launcher_type=launcher_type,
                 launcher_id=launcher_id,
-                sender_id=sender_user_id,
+                sender_id=actor_user_id,
                 message_event=synthetic_event,
                 message_chain=message_chain,
                 adapter=self,

@@ -12,6 +12,78 @@ import traceback
 from cryptography.hazmat.primitives.asymmetric import ed25519
 
 
+QQ_SELECT_ACTION_PREFIX = '__langbot_select__:'
+
+
+def get_select_field_options(form_data: dict) -> tuple[str, list[str]]:
+    """Return the active select field name and its display/submission values."""
+    field_name = str(form_data.get('_current_input_field') or '').strip()
+    if not field_name:
+        return '', []
+
+    field = next(
+        (
+            item
+            for item in form_data.get('input_defs') or []
+            if str(item.get('output_variable_name') or '').strip() == field_name
+        ),
+        None,
+    )
+    if not field or str(field.get('type') or '').strip().lower() != 'select':
+        return '', []
+
+    source = field.get('option_source') or {}
+    source_value = source.get('value') if isinstance(source, dict) else None
+    if isinstance(source_value, list):
+        return field_name, [str(item) for item in source_value]
+    if isinstance(source_value, str):
+        return field_name, [part.strip() for part in source_value.splitlines() if part.strip()]
+
+    options = field.get('options')
+    if not isinstance(options, list):
+        return field_name, []
+    values = []
+    for item in options:
+        if isinstance(item, dict):
+            values.append(str(item.get('label') or item.get('value') or ''))
+        else:
+            values.append(str(item))
+    return field_name, [value for value in values if value]
+
+
+def build_keyboard_from_select_field(form_data: dict, *, buttons_per_row: int | None = None) -> dict:
+    """Build callback buttons for the currently active Dify select field."""
+    _, options = get_select_field_options(form_data)
+    visible_options = options[:25]
+    if buttons_per_row is None:
+        # Keep small choices readable while fitting up to QQ's 5x5 limit.
+        buttons_per_row = min(5, max(2, (len(visible_options) + 4) // 5))
+    selection_actions = [
+        {
+            'id': f'{QQ_SELECT_ACTION_PREFIX}{idx}',
+            'title': option,
+            'button_style': 'secondary',
+        }
+        for idx, option in enumerate(visible_options)
+    ]
+    return build_keyboard_from_form({'actions': selection_actions}, buttons_per_row=buttons_per_row)
+
+
+def resolve_select_button_action(form_data: dict, action_id: str) -> tuple[str, str] | None:
+    """Resolve a select-button callback to ``(field_name, option_value)``."""
+    if not action_id.startswith(QQ_SELECT_ACTION_PREFIX):
+        return None
+    try:
+        option_index = int(action_id[len(QQ_SELECT_ACTION_PREFIX) :])
+    except ValueError:
+        return None
+
+    field_name, options = get_select_field_options(form_data)
+    if not field_name or option_index < 0 or option_index >= len(options) or option_index >= 25:
+        return None
+    return field_name, options[option_index]
+
+
 def build_keyboard_from_form(form_data: dict, *, buttons_per_row: int = 2) -> dict:
     """Build a QQ keyboard JSON payload from a Dify human-input form_data.
 

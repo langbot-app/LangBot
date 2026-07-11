@@ -128,7 +128,7 @@ class TestDifyRunnerConfigValidation:
 
         mock_app = MagicMock()
 
-        for app_type in ['chat', 'agent', 'workflow']:
+        for app_type in ['chat', 'agent', 'workflow', 'chatflow']:
             pipeline_config = {
                 'ai': {
                     'dify-service-api': {
@@ -669,3 +669,205 @@ class TestDifyHumanInputForms:
         assert second['_partial'] is True
         assert second['inputs'] == {'comment': 'looks good', 'choice': 'B'}
         assert second['_form_data']['_action_select_only'] is True
+
+    @pytest.mark.asyncio
+    async def test_blocking_resume_uses_chatflow_answer_node_output(self):
+        runner = self._create_runner()
+
+        async def workflow_submit(**kwargs):
+            del kwargs
+            yield {'event': 'message', 'answer': 'partial'}
+            yield {
+                'event': 'node_finished',
+                'data': {
+                    'node_type': 'answer',
+                    'outputs': {'answer': {'content': 'Final chatflow answer'}},
+                },
+            }
+            yield {'event': 'workflow_finished', 'data': {'error': None, 'outputs': {}}}
+
+        runner.dify_client.workflow_submit = workflow_submit
+
+        messages = [
+            message
+            async for message in runner._submit_workflow_form_blocking(
+                {
+                    'form_token': 'token-1',
+                    'workflow_run_id': 'run-1',
+                    'user': 'person_user-1',
+                    'action_id': 'yes',
+                    'inputs': {},
+                }
+            )
+        ]
+
+        assert [message.content for message in messages] == ['Final chatflow answer']
+
+    @pytest.mark.asyncio
+    async def test_successful_blocking_resume_clears_pending_form(self):
+        from langbot.pkg.provider.runners import difysvapi
+
+        runner = self._create_runner()
+        session_key = 'person_user-1'
+        difysvapi._PENDING_FORMS.clear()
+        difysvapi._set_pending_form(
+            session_key,
+            {
+                'form_token': 'token-1',
+                'workflow_run_id': 'run-1',
+                'actions': [{'id': 'yes', 'title': 'Yes'}],
+                'inputs': {},
+                'user': session_key,
+            },
+        )
+
+        async def workflow_submit(**kwargs):
+            del kwargs
+            yield {
+                'event': 'workflow_finished',
+                'data': {'error': None, 'outputs': {'summary': 'Completed'}},
+            }
+
+        runner.dify_client.workflow_submit = workflow_submit
+        query = MagicMock()
+        query.session.launcher_type.value = 'person'
+        query.session.launcher_id = 'user-1'
+        query.variables = {
+            '_dify_form_action': {
+                'form_token': 'token-1',
+                'workflow_run_id': 'run-1',
+                'action_id': 'yes',
+                'user': session_key,
+                'inputs': {},
+            }
+        }
+
+        messages = [message async for message in runner._workflow_messages(query)]
+
+        assert [message.content for message in messages] == ['Completed']
+        assert difysvapi._get_pending_form_by_token(session_key, 'token-1') is None
+
+    @pytest.mark.asyncio
+    async def test_failed_blocking_resume_keeps_pending_form_for_retry(self):
+        from langbot.libs.dify_service_api.v1.errors import DifyAPIError
+        from langbot.pkg.provider.runners import difysvapi
+
+        runner = self._create_runner()
+        session_key = 'person_user-1'
+        difysvapi._PENDING_FORMS.clear()
+        difysvapi._set_pending_form(
+            session_key,
+            {
+                'form_token': 'token-1',
+                'workflow_run_id': 'run-1',
+                'actions': [{'id': 'yes', 'title': 'Yes'}],
+                'inputs': {},
+                'user': session_key,
+            },
+        )
+
+        async def workflow_submit(**kwargs):
+            del kwargs
+            raise DifyAPIError('temporary failure')
+            yield
+
+        runner.dify_client.workflow_submit = workflow_submit
+        query = MagicMock()
+        query.session.launcher_type.value = 'person'
+        query.session.launcher_id = 'user-1'
+        query.variables = {
+            '_dify_form_action': {
+                'form_token': 'token-1',
+                'workflow_run_id': 'run-1',
+                'action_id': 'yes',
+                'user': session_key,
+                'inputs': {},
+            }
+        }
+
+        with pytest.raises(DifyAPIError, match='temporary failure'):
+            _ = [message async for message in runner._workflow_messages(query)]
+
+        assert difysvapi._get_pending_form_by_token(session_key, 'token-1') is not None
+        difysvapi._PENDING_FORMS.clear()
+
+
+class TestDifyCumulativeStreaming:
+    def _create_runner(self, *, remove_think: bool = False):
+        from langbot.pkg.provider.runners.difysvapi import DifyServiceAPIRunner
+
+        mock_app = MagicMock()
+        mock_app.logger = MagicMock()
+        runner = DifyServiceAPIRunner(
+            mock_app,
+            {
+                'ai': {
+                    'dify-service-api': {
+                        'app-type': 'chat',
+                        'api-key': 'test-key',
+                        'base-url': 'https://api.dify.ai',
+                        'base-prompt': '',
+                    }
+                },
+                'output': {'misc': {'remove-think': remove_think}},
+            },
+        )
+        runner.dify_client = MagicMock()
+        return runner
+
+    @staticmethod
+    def _query():
+        query = MagicMock()
+        query.session.launcher_type.value = 'person'
+        query.session.launcher_id = 'user-1'
+        query.session.using_conversation.uuid = 'conversation-1'
+        query.variables = {}
+        query.user_message.content = 'hello'
+        return query
+
+    def test_merge_stream_text_accepts_deltas_and_snapshots(self):
+        from langbot.pkg.provider.runners.difysvapi import _merge_stream_text
+
+        assert _merge_stream_text('Hello', ' world') == 'Hello world'
+        assert _merge_stream_text('<think>one', '<think>one two') == '<think>one two'
+        assert _merge_stream_text('ha', 'ha') == 'haha'
+
+    @pytest.mark.asyncio
+    async def test_chat_stream_deduplicates_cumulative_snapshots(self):
+        runner = self._create_runner()
+        snapshots = [f'<think>Reasoning{"." * idx}' for idx in range(1, 10)]
+        snapshots.append(f'{snapshots[-1]}</think>\nHello!')
+
+        async def chat_messages(**kwargs):
+            del kwargs
+            for snapshot in snapshots:
+                yield {'event': 'message', 'answer': snapshot, 'conversation_id': 'conversation-2'}
+            yield {'event': 'message_end', 'conversation_id': 'conversation-2'}
+
+        runner.dify_client.chat_messages = chat_messages
+
+        chunks = [chunk async for chunk in runner._chat_messages_chunk(self._query())]
+
+        assert chunks[-1].content == snapshots[-1]
+        assert chunks[-1].content.count('<think>') == 1
+
+    @pytest.mark.asyncio
+    async def test_chat_stream_removes_think_from_cumulative_snapshots(self):
+        runner = self._create_runner(remove_think=True)
+
+        async def chat_messages(**kwargs):
+            del kwargs
+            yield {'event': 'message', 'answer': '<think>Reasoning', 'conversation_id': 'conversation-2'}
+            yield {
+                'event': 'message',
+                'answer': '<think>Reasoning complete</think>\nHello!',
+                'conversation_id': 'conversation-2',
+            }
+            yield {'event': 'message_end', 'conversation_id': 'conversation-2'}
+
+        runner.dify_client.chat_messages = chat_messages
+
+        chunks = [chunk async for chunk in runner._chat_messages_chunk(self._query())]
+
+        assert chunks[-1].content == 'Hello!'
+        assert all('<think>' not in chunk.content for chunk in chunks if isinstance(chunk.content, str))

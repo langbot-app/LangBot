@@ -1,6 +1,12 @@
 """Tests for DingTalk adapter helper behavior."""
 
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from langbot.pkg.platform.sources.dingtalk import (
+    DingTalkAdapter,
     _dingtalk_clean_form_content,
     _dingtalk_completed_input_lines,
     _dingtalk_extract_component_inputs,
@@ -102,3 +108,69 @@ def test_dingtalk_clean_form_content_uses_all_input_defs():
     )
 
     assert content == 'Hello'
+
+
+def _build_card_action_adapter() -> DingTalkAdapter:
+    adapter = DingTalkAdapter.model_construct(
+        card_state={
+            'card-1': {
+                'session_key': 'group_group-1',
+                'launcher_type': 'group',
+                'launcher_id': 'group-1',
+                'sender_user_id': 'initiator-1',
+                'form_token': 'token-1',
+                'workflow_run_id': 'run-1',
+                'actions': [{'id': 'approve', 'title': 'Approve'}],
+                'node_title': 'Review',
+                'form_content': 'Please review',
+                'input_defs': [],
+                'inputs': {},
+            }
+        },
+        active_turn_card={},
+        active_turn_text={},
+    )
+    adapter.logger = AsyncMock()
+    adapter.ap = MagicMock()
+    adapter.ap.platform_mgr.bots = []
+    adapter.ap.query_pool.add_query = AsyncMock()
+    return adapter
+
+
+@pytest.mark.asyncio
+async def test_dingtalk_group_card_action_uses_clicker_as_sender():
+    adapter = _build_card_action_adapter()
+
+    with patch.object(DingTalkAdapter, '_mark_card_resolved', new=AsyncMock()) as mark_resolved:
+        await adapter._on_card_action(
+            {
+                'out_track_id': 'card-1',
+                'user_id': 'reviewer-2',
+                'action_id': 'approve',
+                'params': {},
+            }
+        )
+        await asyncio.sleep(0)
+
+    call = adapter.ap.query_pool.add_query.await_args
+    assert call.kwargs['launcher_id'] == 'group-1'
+    assert call.kwargs['sender_id'] == 'reviewer-2'
+    assert call.kwargs['message_event'].sender.id == 'reviewer-2'
+    mark_resolved.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_dingtalk_unknown_card_action_is_rejected():
+    adapter = _build_card_action_adapter()
+
+    await adapter._on_card_action(
+        {
+            'out_track_id': 'card-1',
+            'user_id': 'reviewer-2',
+            'action_id': 'not-on-card',
+            'params': {},
+        }
+    )
+
+    adapter.ap.query_pool.add_query.assert_not_awaited()
+    adapter.logger.warning.assert_awaited_once()

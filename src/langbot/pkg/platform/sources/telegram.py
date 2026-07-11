@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import telegram
 import telegram.ext
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import ForceReply, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CallbackQueryHandler, filters
 import telegramify_markdown
 import typing
@@ -18,6 +18,61 @@ import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
+
+
+def _telegram_select_field_options(form_data: dict) -> tuple[str, list[str]]:
+    """Return the active select field and its option values."""
+    field_name = str(form_data.get('_current_input_field') or '').strip()
+    if not field_name:
+        return '', []
+    field = next(
+        (
+            item
+            for item in form_data.get('input_defs') or []
+            if str(item.get('output_variable_name') or '').strip() == field_name
+        ),
+        None,
+    )
+    if not field or str(field.get('type') or '').strip().lower() != 'select':
+        return '', []
+
+    source = field.get('option_source') or {}
+    source_value = source.get('value') if isinstance(source, dict) else None
+    if isinstance(source_value, list):
+        return field_name, [str(item) for item in source_value]
+    if isinstance(source_value, str):
+        return field_name, [part.strip() for part in source_value.splitlines() if part.strip()]
+
+    options = field.get('options')
+    if not isinstance(options, list):
+        return field_name, []
+    values = []
+    for item in options:
+        if isinstance(item, dict):
+            values.append(str(item.get('label') or item.get('value') or ''))
+        else:
+            values.append(str(item))
+    return field_name, [value for value in values if value]
+
+
+def _telegram_form_action_from_callback(data: dict) -> dict | None:
+    """Translate compact Telegram callback data into a runner form action."""
+    if 'x' not in data:
+        return {
+            'action_id': str(data.get('action_id') or data.get('a') or ''),
+            'inputs': {},
+        }
+    try:
+        option_index = int(data['x'])
+    except (TypeError, ValueError):
+        return None
+    if option_index < 0:
+        return None
+    return {
+        'action_id': '',
+        'inputs': {'select': str(option_index)},
+        '_input_progress': True,
+    }
 
 
 class TelegramMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
@@ -205,7 +260,7 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         typing.Callable[[platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None],
     ] = {}
 
-    _form_action_titles: typing.Dict[str, str] = {}  # action_id -> action_title mapping
+    _form_action_titles: typing.Dict[str, str] = {}  # callback_data -> display title
 
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger):
         async def telegram_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -240,11 +295,13 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     # for Telegram's 64-byte limit). Only w_suffix is sent;
                     # the runner resolves the full run id from _PENDING_FORMS.
                     w_suffix = data.get('w', '')
-                    action_id = data.get('action_id') or data.get('a', '')
                     session_key = data.get('session_key') or data.get('s', '')
-
+                    callback_action = _telegram_form_action_from_callback(data)
+                    if callback_action is None or query.data not in self._form_action_titles:
+                        await self.logger.warning(f'Invalid or stale Telegram form callback: {query.data!r}')
+                        return
                     # Show selected action feedback by editing the original message
-                    action_title = self._form_action_titles.get(action_id, action_id)
+                    action_title = self._form_action_titles[query.data]
                     try:
                         original_text = query.message.text or ''
                         selected_text = f'{original_text}\n\n✅ Selected: {action_title}'
@@ -254,7 +311,7 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                         pass
                     finally:
                         # Clean up the stored title
-                        self._form_action_titles.pop(action_id, None)
+                        self._form_action_titles.pop(query.data, None)
 
                     if session_key.startswith('group_') or session_key.startswith('g:'):
                         launcher_type = provider_session.LauncherTypes.GROUP
@@ -286,13 +343,13 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                         # workflow_run_id is intentionally omitted; the runner
                         # resolves it from w_suffix via _PENDING_FORMS.
                         'w_suffix': w_suffix,
-                        'action_id': action_id,
                         'user': f'{launcher_type.value}_{launcher_id}',
-                        'inputs': {},
+                        **callback_action,
                     }
 
+                    event_label = 'Form Select' if callback_action.get('_input_progress') else 'Form Action'
                     message_chain = platform_message.MessageChain(
-                        [platform_message.Plain(text=f'[Form Action: {action_id}]')]
+                        [platform_message.Plain(text=f'[{event_label}: {action_title}]')]
                     )
 
                     if launcher_type == provider_session.LauncherTypes.GROUP:
@@ -578,7 +635,7 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         form_data: dict,
         edit_message_id: int | None = None,
     ):
-        """Send inline keyboard buttons for Dify human_input_required form actions."""
+        """Send inline keyboard buttons for Dify form fields or actions."""
         actions = form_data.get('actions', [])
         node_title = form_data.get('node_title', '')
         form_content = form_data.get('form_content', '')
@@ -593,47 +650,85 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         else:
             session_key = f'p:{message_source.sender.id}'
 
+        current_field = str(form_data.get('_current_input_field') or '').strip()
+        is_field_step = bool(current_field) and not form_data.get('_action_select_only')
+        select_field, select_options = _telegram_select_field_options(form_data)
+        is_select_field = bool(select_field and select_options)
+        if is_select_field:
+            choices = [(option, {'x': idx}) for idx, option in enumerate(select_options)]
+        elif is_field_step:
+            choices = []
+        else:
+            choices = [(action.get('title', action.get('id', '')), {'a': action.get('id', '')}) for action in actions]
+
         keyboard = []
+        pending_title_mappings: dict[str, str] = {}
         oversized = False
-        for action in actions:
-            action_id = action.get('id', '')
-            action_title = action.get('title', action_id)
-            # Store action_id -> title mapping for displaying selection feedback
-            self._form_action_titles[action_id] = action_title
-            callback_payload = {'f': 1, 'a': action_id, 's': session_key}
+        buttons_per_row = 2 if is_select_field else 1
+        current_row = []
+        for title, choice_data in choices:
+            callback_payload = {'f': 1, **choice_data, 's': session_key}
             if w_suffix:
                 callback_payload['w'] = w_suffix
             callback_data = json.dumps(callback_payload, separators=(',', ':'))
             if len(callback_data.encode('utf-8')) > 64:
                 oversized = True
                 break
-            keyboard.append([InlineKeyboardButton(action_title, callback_data=callback_data)])
+            pending_title_mappings[callback_data] = str(title)
+            current_row.append(InlineKeyboardButton(str(title), callback_data=callback_data))
+            if len(current_row) == buttons_per_row:
+                keyboard.append(current_row)
+                current_row = []
+        if current_row and not oversized:
+            keyboard.append(current_row)
 
         update = message_source.source_platform_object
         chat_id = update.effective_chat.id
         effective_message = update.effective_message
         message_thread_id = getattr(effective_message, 'message_thread_id', None) if effective_message else None
 
-        text_lines = [f'[{node_title}] Please select an action:']
+        if is_select_field:
+            prompt = f'Please select {select_field}:'
+        elif is_field_step:
+            prompt = f'Please reply with a value for {current_field}.'
+        else:
+            prompt = 'Please select an action:'
+        text_lines = [f'[{node_title}] {prompt}']
         if form_content:
             text_lines.insert(0, form_content)
 
         if oversized:
             # callback_data exceeds Telegram's 64-byte limit — fall back to
             # a plain-text numbered list so the user can reply by number.
-            for idx, action in enumerate(actions, start=1):
-                title = action.get('title') or action.get('id') or ''
+            for idx, (title, _) in enumerate(choices, start=1):
                 text_lines.append(f'  {idx}. {title}')
             args = {
                 'chat_id': chat_id,
                 'text': '\n\n'.join(text_lines),
             }
-        else:
+        elif keyboard:
+            self._form_action_titles.update(pending_title_mappings)
             reply_markup = InlineKeyboardMarkup(keyboard)
             args = {
                 'chat_id': chat_id,
                 'text': '\n\n'.join(text_lines),
                 'reply_markup': reply_markup,
+            }
+        elif is_field_step:
+            args = {
+                'chat_id': chat_id,
+                'text': '\n\n'.join(text_lines),
+                # Telegram privacy-mode bots receive replies to ForceReply
+                # prompts even when they cannot read ordinary group messages.
+                'reply_markup': ForceReply(
+                    selective=False,
+                    input_field_placeholder=f'Enter {current_field}',
+                ),
+            }
+        else:
+            args = {
+                'chat_id': chat_id,
+                'text': '\n\n'.join(text_lines),
             }
 
         if message_thread_id:
@@ -645,8 +740,7 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 'message_id': edit_message_id,
                 'text': args['text'],
             }
-            if 'reply_markup' in args:
-                edit_args['reply_markup'] = args['reply_markup']
+            edit_args['reply_markup'] = args.get('reply_markup')
             try:
                 await self.bot.edit_message_text(**edit_args)
                 return

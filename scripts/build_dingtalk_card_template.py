@@ -68,6 +68,210 @@ def markdown_block(node_id, variable='content'):
     }
 
 
+def _dynamic_string_var(variable):
+    return {'type': 'dynamicString', 'content': '', 'i18n': False, 'variable': variable, 'variableType': 'global'}
+
+
+def _dynamic_visible_var(variable):
+    return {
+        'type': 'dynamicVisible',
+        'value': True,
+        'valueType': 'variable',
+        'variable': variable,
+        'variableType': 'global',
+        'condition': {'op': 'and', 'conditions': []},
+    }
+
+
+SELECT_OPTION_LOCALES = (
+    'zh_CN',
+    'zh_TW',
+    'en_US',
+    'ja_JP',
+    'vi_VN',
+    'th_TH',
+    'id_ID',
+    'ne_NP',
+    'ms_MY',
+    'ko_KR',
+    'ru_RU',
+    'es_EA',
+    'tr_TR',
+    'fr_FR',
+    'pt_BR',
+)
+
+
+def _empty_select_option():
+    return {'value': '', 'text': {locale: '' for locale in SELECT_OPTION_LOCALES}}
+
+
+def _select_options_variable():
+    return {
+        'name': 'index_o',
+        'private': False,
+        'type': 'selectOptions',
+        'id': 'index_o',
+        'description': 'Select options',
+        'editorVarType': 'variables',
+        'disabled': False,
+        'schema': [
+            {
+                'id': 'index_o.value',
+                'type': 'string',
+                'name': 'value',
+                'private': False,
+                'editorVarType': 'variables',
+                'disabled': True,
+                'description': '',
+            },
+            {
+                'id': 'index_o.text',
+                'type': 'object',
+                'name': 'text',
+                'private': False,
+                'editorVarType': 'variables',
+                'disabled': True,
+                'description': '',
+                'schema': [
+                    {
+                        'id': f'index_o.{locale}',
+                        'type': 'string',
+                        'name': locale,
+                        'private': False,
+                        'editorVarType': 'variables',
+                        'disabled': True,
+                        'description': '',
+                    }
+                    for locale in SELECT_OPTION_LOCALES
+                ],
+            },
+        ],
+    }
+
+
+def input_block(node_id):
+    return {
+        'componentName': 'Input',
+        'id': node_id,
+        'props': {
+            'placeholder': _dynamic_string_var('input_placeholder'),
+            'currentValue': _dynamic_string_var('input_value'),
+            'message': _dynamic_string_var('input_placeholder'),
+            'title': _dynamic_string_var('input_title'),
+            'id': {'type': 'dynamicString', 'content': 'input', 'i18n': False},
+            'params': [
+                {
+                    'type': 'builtIn',
+                    'variable': '',
+                    'value': '',
+                    'name': 'input',
+                    'variableType': 'global',
+                    'id': '__built_in_inputResult__',
+                }
+            ],
+            'visible': _dynamic_visible_var('input_visible'),
+            'status': {
+                'type': 'dynamicSelect',
+                'valueType': 'fixed',
+                'value': 'normal',
+                'variable': '',
+                'variableType': 'global',
+            },
+            'actionType': 'request',
+            'localVarAction': {'type': 'variableValue', 'variableType': 'global', 'variable': ''},
+            'keyOfDynamicObject': {'type': 'dynamicString', 'content': '', 'i18n': False},
+            'inlineMode': False,
+            'textArea': True,
+            'minRows': {
+                'type': 'dynamicNumber',
+                'valueType': 'fixed',
+                'value': 2,
+                'variable': '',
+                'variableType': 'global',
+            },
+            'maxRows': {
+                'type': 'dynamicNumber',
+                'valueType': 'fixed',
+                'value': 6,
+                'variable': '',
+                'variableType': 'global',
+            },
+            'marginLeft': 12,
+            'marginRight': 12,
+            'marginTop': 6,
+            'marginBottom': 6,
+            'margin': 12,
+            'innerOffset': 0,
+        },
+        'title': 'Text input',
+        'hidden': False,
+        'isLocked': False,
+        'condition': True,
+        'conditionGroup': '',
+    }
+
+
+def select_block(node_id):
+    return {
+        'componentName': 'SelectBlock',
+        'id': node_id,
+        'props': {
+            'id': {'type': 'dynamicString', 'content': 'select', 'i18n': False},
+            'placeholder': _dynamic_string_var('select_placeholder'),
+            'currentIndex': {
+                'type': 'dynamicNumber',
+                'valueType': 'variable',
+                'value': -1,
+                'variable': 'select_index',
+                'variableType': 'global',
+            },
+            'options': {
+                'type': 'dynamicSelectOptions',
+                'valueType': 'variable',
+                'value': [],
+                'variable': 'index_o',
+                'variableType': 'global',
+            },
+            'optionLabelMaxLines': 3,
+            'params': [
+                {
+                    'type': 'builtIn',
+                    'variable': '',
+                    'value': '{"index": ${index}, "value": "${value}"}',
+                    'name': 'select',
+                    'variableType': 'global',
+                    'id': '__built_in_selectResult__',
+                }
+            ],
+            'actionType': 'request',
+            'localVarAction': {'type': 'variableValue', 'variableType': 'global', 'variable': ''},
+            'keyOfDynamicObject': {'type': 'dynamicString', 'content': '', 'i18n': False},
+            'status': {
+                'type': 'dynamicSelect',
+                'valueType': 'fixed',
+                'value': 'normal',
+                'variable': '',
+                'variableType': 'global',
+            },
+            'visible': _dynamic_visible_var('select_visible'),
+            'marginLeft': 12,
+            'marginRight': 12,
+            'marginTop': 6,
+            'marginBottom': 6,
+            'pullOptionsWhileOpen': False,
+            'pullOptionsRequestParams': [],
+            'margin': 12,
+            'innerOffset': 0,
+        },
+        'title': 'Select',
+        'hidden': False,
+        'isLocked': False,
+        'condition': True,
+        'conditionGroup': '',
+    }
+
+
 def text_block(
     node_id,
     text,
@@ -280,6 +484,8 @@ def build_editor_data():
         'ButtonGroup',
         'MarkdownBlock',
         'Avatar',
+        'Input',
+        'SelectBlock',
     ]
     components_map = [
         {
@@ -396,6 +602,8 @@ def build_editor_data():
                 'conditionGroup': '',
                 'children': [
                     avatar('node_avatar', name='LangBot'),
+                    input_block('node_input'),
+                    select_block('node_select'),
                     markdown_block('node_text_content', variable='content'),
                     button_group('node_btn_group'),
                 ],
@@ -716,6 +924,15 @@ def build_editor_data():
             'cardData': {
                 'flowStatus': 3,
                 'content': '请审核以下报销申请：\n\n- 申请人：张三\n- 金额：¥1,200\n- 类别：差旅',
+                'input_visible': '',
+                'input_title': '',
+                'input_placeholder': '',
+                'input_value': '',
+                'select_visible': '',
+                'select_placeholder': '',
+                'index_o': [_empty_select_option()],
+                'select_options': [],
+                'select_index': -1,
                 'btns': [
                     {
                         'text': '通过',
@@ -779,6 +996,79 @@ def build_editor_data():
                 'type': 'string',
                 'name': 'bot_avatar',
                 'description': '机器人头像 DingTalk 媒体 ID（@xxx 格式，启动时由 /media/upload 拿到）',
+                'private': False,
+                'editorVarType': 'variables',
+                'disabled': False,
+            },
+            {
+                'id': 'input_visible',
+                'type': 'string',
+                'name': 'input_visible',
+                'description': 'Whether to show the text input component',
+                'private': False,
+                'editorVarType': 'variables',
+                'disabled': False,
+            },
+            {
+                'id': 'input_title',
+                'type': 'string',
+                'name': 'input_title',
+                'description': 'Text input title',
+                'private': False,
+                'editorVarType': 'variables',
+                'disabled': False,
+            },
+            {
+                'id': 'input_placeholder',
+                'type': 'string',
+                'name': 'input_placeholder',
+                'description': 'Text input placeholder',
+                'private': False,
+                'editorVarType': 'variables',
+                'disabled': False,
+            },
+            {
+                'id': 'input_value',
+                'type': 'string',
+                'name': 'input_value',
+                'description': 'Text input current value',
+                'private': False,
+                'editorVarType': 'variables',
+                'disabled': False,
+            },
+            {
+                'id': 'select_visible',
+                'type': 'string',
+                'name': 'select_visible',
+                'description': 'Whether to show the select component',
+                'private': False,
+                'editorVarType': 'variables',
+                'disabled': False,
+            },
+            {
+                'id': 'select_placeholder',
+                'type': 'string',
+                'name': 'select_placeholder',
+                'description': 'Select placeholder',
+                'private': False,
+                'editorVarType': 'variables',
+                'disabled': False,
+            },
+            _select_options_variable(),
+            {
+                'id': 'select_options',
+                'type': 'array',
+                'name': 'select_options',
+                'description': 'Legacy select options',
+                'private': False,
+                'editorVarType': 'variables',
+                'disabled': False,
+            },
+            {
+                'id': 'select_index',
+                'type': 'number',
+                'name': 'select_index',
+                'description': 'Current select index',
                 'private': False,
                 'editorVarType': 'variables',
                 'disabled': False,

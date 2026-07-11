@@ -31,6 +31,18 @@ _PENDING_FORM_DEFAULT_TTL = 30 * 60  # 30 minutes safety cap
 _STREAM_FORM_PLACEHOLDER = '\u200b'
 
 
+def _merge_stream_text(accumulated: str, incoming: typing.Any) -> str:
+    """Merge either a delta chunk or a cumulative stream snapshot."""
+    incoming_text = '' if incoming is None else str(incoming)
+    if not incoming_text:
+        return accumulated
+    if not accumulated:
+        return incoming_text
+    if len(incoming_text) > len(accumulated) and incoming_text.startswith(accumulated):
+        return incoming_text
+    return accumulated + incoming_text
+
+
 def _session_key_from_query(query: pipeline_query.Query) -> str:
     return f'{query.session.launcher_type.value}_{query.session.launcher_id}'
 
@@ -892,9 +904,9 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                     form_action,
                 )
                 return
-            _clear_pending_form(session_key, form_action.get('form_token') or None)
             async for msg in self._submit_workflow_form_blocking(form_action):
                 yield msg
+            _clear_pending_form(session_key, form_action.get('form_token') or None)
             return
 
         cov_id = query.session.using_conversation.uuid or None
@@ -977,7 +989,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                         )
             elif mode == 'basic':
                 if chunk['event'] == 'message':
-                    basic_mode_pending_chunk += chunk['answer']
+                    basic_mode_pending_chunk = _merge_stream_text(basic_mode_pending_chunk, chunk['answer'])
                 elif chunk['event'] == 'message_end':
                     content, _ = self._process_thinking_content(basic_mode_pending_chunk)
                     yield provider_message.Message(
@@ -1034,7 +1046,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 continue
 
             if chunk['event'] == 'agent_message' or chunk['event'] == 'message':
-                pending_agent_message += chunk['answer']
+                pending_agent_message = _merge_stream_text(pending_agent_message, chunk['answer'])
             else:
                 if pending_agent_message.strip() != '':
                     pending_agent_message = pending_agent_message.replace('</details>Action:', '</details>')
@@ -1099,6 +1111,9 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         user = form_action['user']
         action_id = form_action.get('action_id', '')
         inputs = form_action.get('inputs', {})
+        pending_content = ''
+        saw_event = False
+        answer_node_seen = False
 
         async for chunk in self.dify_client.workflow_submit(
             form_token=form_token,
@@ -1108,21 +1123,49 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             action=action_id,
             timeout=120,
         ):
+            saw_event = True
             self.ap.logger.debug('dify-workflow-submit-chunk: ' + str(chunk))
+            event = chunk.get('event')
 
-            if chunk['event'] == 'workflow_finished':
-                if chunk['data'].get('error'):
-                    raise errors.DifyAPIError(chunk['data']['error'])
-                content, _ = self._process_thinking_content(chunk['data']['outputs']['summary'])
+            if event == 'error':
+                raise errors.DifyAPIError(chunk.get('message') or 'Dify workflow resume failed')
+
+            if event in ('message', 'agent_message') and not answer_node_seen:
+                pending_content = _merge_stream_text(
+                    pending_content,
+                    self._extract_dify_text_output(chunk.get('answer')),
+                )
+
+            if event == 'text_chunk':
+                pending_content = _merge_stream_text(
+                    pending_content,
+                    self._extract_dify_text_output(chunk.get('data', {}).get('text')),
+                )
+
+            if event == 'node_finished' and chunk.get('data', {}).get('node_type') == 'answer':
+                answer = self._extract_dify_text_output(chunk.get('data', {}).get('outputs', {}).get('answer'))
+                if answer:
+                    # Answer-node output is the complete answer and may duplicate
+                    # preceding message events, so prefer it over the accumulator.
+                    pending_content = answer
+                    answer_node_seen = True
+
+            if event == 'workflow_finished':
+                data = chunk.get('data', {})
+                if data.get('error'):
+                    raise errors.DifyAPIError(data['error'])
+                if not pending_content:
+                    pending_content = self._extract_dify_text_output(data.get('outputs', {}).get('summary'))
+                content, _ = self._process_thinking_content(pending_content)
                 yield provider_message.Message(
                     role='assistant',
                     content=content,
                 )
                 return
 
-            if chunk['event'] == 'workflow_paused':
-                reasons = chunk['data'].get('reasons', [])
-                new_run_id = chunk['data'].get('workflow_run_id', workflow_run_id)
+            if event == 'workflow_paused':
+                reasons = chunk.get('data', {}).get('reasons', [])
+                new_run_id = chunk.get('data', {}).get('workflow_run_id', workflow_run_id)
                 for reason in reasons:
                     if reason.get('TYPE') != 'human_input_required':
                         continue
@@ -1147,6 +1190,12 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                         content=display_text,
                     )
                     return
+
+        if not saw_event:
+            raise errors.DifyAPIError('Dify API did not return any workflow resume events')
+        if pending_content:
+            content, _ = self._process_thinking_content(pending_content)
+            yield provider_message.Message(role='assistant', content=content)
 
     def _resolve_pending_form(self, session_key: str, form_action: dict) -> dict | None:
         """Locate the pending form this action targets.
@@ -1350,9 +1399,9 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                     form_action,
                 )
                 return
-            _clear_pending_form(session_key, form_action.get('form_token') or None)
             async for msg in self._submit_workflow_form_blocking(form_action):
                 yield msg
+            _clear_pending_form(session_key, form_action.get('form_token') or None)
             return
 
         if not query.session.using_conversation.uuid:
@@ -1483,9 +1532,9 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                     form_action,
                 )
                 return
-            _clear_pending_form(session_key, form_action.get('form_token') or None)
             async for msg in self._submit_workflow_form(form_action):
                 yield msg
+            _clear_pending_form(session_key, form_action.get('form_token') or None)
             return
 
         cov_id = query.session.using_conversation.uuid or None
@@ -1513,13 +1562,18 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         chunk = None  # 初始化chunk变量，防止在没有响应时引用错误
 
         is_final = False
-        think_start = False
-        think_end = False
         yielded_final = False
         human_input_yielded = False
         pending_form_data = None
 
         remove_think = self.pipeline_config['output'].get('misc', {}).get('remove-think')
+
+        def visible_content(content: str) -> str:
+            if not remove_think:
+                return content
+            if '<think>' in content and '</think>' not in content:
+                return content.split('<think>', 1)[0].rstrip()
+            return self._process_thinking_content(content)[0]
 
         async for chunk in self.dify_client.chat_messages(
             inputs=inputs,
@@ -1539,23 +1593,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
             if chunk['event'] == 'message':
                 message_idx += 1
-                if remove_think:
-                    if '<think>' in chunk['answer'] and not think_start:
-                        think_start = True
-                        continue
-                    if '</think>' in chunk['answer'] and not think_end:
-                        import re
-
-                        content = re.sub(r'^\n</think>', '', chunk['answer'])
-                        basic_mode_pending_chunk += content
-                        think_end = True
-                    elif think_end:
-                        basic_mode_pending_chunk += chunk['answer']
-                    if think_start:
-                        continue
-
-                else:
-                    basic_mode_pending_chunk += chunk['answer']
+                basic_mode_pending_chunk = _merge_stream_text(basic_mode_pending_chunk, chunk['answer'])
 
             if chunk['event'] == 'message_end':
                 is_final = True
@@ -1620,7 +1658,11 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 and (is_final or message_idx % 8 == 0)
                 and (basic_mode_pending_chunk != '' or is_final)
             ):
-                final_content = basic_mode_pending_chunk if basic_mode_pending_chunk.strip() else ''
+                final_content = visible_content(basic_mode_pending_chunk)
+                if not final_content.strip() and is_final and pending_form_data:
+                    final_content = _STREAM_FORM_PLACEHOLDER
+                if not final_content and not is_final:
+                    continue
                 msg = provider_message.MessageChunk(
                     role='assistant',
                     content=final_content,
@@ -1637,9 +1679,10 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         # workflow_finished event, yield a final chunk so the adapter
         # can update the card and add buttons.
         if human_input_yielded and not yielded_final:
+            final_content = visible_content(basic_mode_pending_chunk)
             msg = provider_message.MessageChunk(
                 role='assistant',
-                content=basic_mode_pending_chunk or '',
+                content=final_content or _STREAM_FORM_PLACEHOLDER,
                 is_final=True,
             )
             msg._form_data = pending_form_data
@@ -1708,15 +1751,15 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                         import re
 
                         content = re.sub(r'^\n</think>', '', chunk['answer'])
-                        pending_agent_message += content
+                        pending_agent_message = _merge_stream_text(pending_agent_message, content)
                         think_end = True
                     elif think_end or not think_start:
-                        pending_agent_message += chunk['answer']
+                        pending_agent_message = _merge_stream_text(pending_agent_message, chunk['answer'])
                     if think_start and not think_end:
                         continue
 
                 else:
-                    pending_agent_message += chunk['answer']
+                    pending_agent_message = _merge_stream_text(pending_agent_message, chunk['answer'])
             elif chunk['event'] == 'message_end':
                 is_final = True
             else:
@@ -1865,11 +1908,11 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                         workflow_contents += content
                         think_end = True
                     elif think_end:
-                        workflow_contents += chunk['data']['text']
+                        workflow_contents = _merge_stream_text(workflow_contents, chunk['data']['text'])
                     if think_start:
                         continue
                 else:
-                    workflow_contents += chunk['data']['text']
+                    workflow_contents = _merge_stream_text(workflow_contents, chunk['data']['text'])
                 if messsage_idx % 8 == 0:
                     yield_this_iteration = True
 
@@ -1890,11 +1933,11 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                             workflow_contents += content
                             think_end = True
                         elif think_end:
-                            workflow_contents += answer
+                            workflow_contents = _merge_stream_text(workflow_contents, answer)
                         if think_start:
                             continue
                     else:
-                        workflow_contents += answer
+                        workflow_contents = _merge_stream_text(workflow_contents, answer)
                     if messsage_idx % 8 == 0:
                         yield_this_iteration = True
 
@@ -1941,10 +1984,10 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                     form_action,
                 )
                 return
-            _clear_pending_form(session_key, form_action.get('form_token') or None)
             # Resume paused workflow via submit endpoint
             async for msg in self._submit_workflow_form(form_action):
                 yield msg
+            _clear_pending_form(session_key, form_action.get('form_token') or None)
             return
 
         if not query.session.using_conversation.uuid:
@@ -2057,12 +2100,12 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                         workflow_contents += content
                         think_end = True
                     elif think_end:
-                        workflow_contents += chunk['data']['text']
+                        workflow_contents = _merge_stream_text(workflow_contents, chunk['data']['text'])
                     if think_start:
                         continue
 
                 else:
-                    workflow_contents += chunk['data']['text']
+                    workflow_contents = _merge_stream_text(workflow_contents, chunk['data']['text'])
 
             if chunk['event'] == 'node_started':
                 if chunk['data']['node_type'] == 'start' or chunk['data']['node_type'] == 'end':

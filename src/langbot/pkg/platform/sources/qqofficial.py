@@ -11,7 +11,13 @@ import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platf
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
-from langbot.libs.qq_official_api.api import QQOfficialClient, build_keyboard_from_form
+from langbot.libs.qq_official_api.api import (
+    QQ_SELECT_ACTION_PREFIX,
+    QQOfficialClient,
+    build_keyboard_from_form,
+    build_keyboard_from_select_field,
+    resolve_select_button_action,
+)
 from langbot.libs.qq_official_api.qqofficialevent import QQOfficialEvent
 from ...utils import image
 from ..logger import EventLogger
@@ -840,7 +846,8 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
         parts.append('请点击下方按钮选择：')
         markdown_content = '\n\n'.join(parts)
 
-        if is_field_step:
+        keyboard = build_keyboard_from_select_field(form_data) if is_field_step else None
+        if is_field_step and not keyboard.get('content', {}).get('rows'):
             field_parts = parts[:-1] if len(parts) > 1 else parts
             text_msg = platform_message.MessageChain([platform_message.Plain(text='\n\n'.join(field_parts))])
             try:
@@ -874,7 +881,8 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
             )
             return
 
-        keyboard = build_keyboard_from_form(form_data, buttons_per_row=2)
+        if keyboard is None:
+            keyboard = build_keyboard_from_form(form_data, buttons_per_row=2)
         if not keyboard.get('content', {}).get('rows'):
             # No actions to render — fall back to plain text.
             text_msg = platform_message.MessageChain([platform_message.Plain(text=markdown_content)])
@@ -1018,7 +1026,7 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
         session_key = f'{target_type}_{target_id}'
 
         self._prune_pending_forms()
-        pending = self._pending_forms.pop(session_key, None)
+        pending = self._pending_forms.get(session_key)
         if not pending:
             await self.logger.warning(
                 f'QQ Official: no pending form for session {session_key}; click ignored (action_id={action_id!r})'
@@ -1046,13 +1054,27 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
 
         form_data: dict = pending.get('form_data') or {}
         actions = form_data.get('actions') or []
-        matched = next(
-            (a for a in actions if str(a.get('id', '')) == action_id),
-            None,
-        )
-        action_title = (matched or {}).get('title') or action_id
+        select_choice = resolve_select_button_action(form_data, action_id)
+        if action_id.startswith(QQ_SELECT_ACTION_PREFIX) and select_choice is None:
+            await self.logger.warning(f'QQ Official: invalid select action_id={action_id!r} for {session_key}')
+            return
 
-        sender_id = pending.get('sender_id') or event_data.get('user_openid') or event_data.get('member_openid') or ''
+        matched = None
+        if select_choice is None:
+            matched = next(
+                (a for a in actions if str(a.get('id', '')) == action_id),
+                None,
+            )
+            if matched is None:
+                await self.logger.warning(
+                    f'QQ Official: action_id={action_id!r} is not present on pending form for {session_key}'
+                )
+                return
+        self._pending_forms.pop(session_key, None)
+        action_title = select_choice[1] if select_choice else matched.get('title') or action_id
+
+        initiator_id = str(pending.get('sender_id') or '')
+        actor_id = str(event_data.get('member_openid') or event_data.get('user_openid') or initiator_id)
 
         # Build resume payload matching the shape every other adapter uses
         # (DingTalk / Lark / Telegram / WeCom). The runner's
@@ -1062,24 +1084,28 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
             launcher_id = target_id
         else:
             launcher_type = provider_session.LauncherTypes.PERSON
-            launcher_id = sender_id or target_id
+            launcher_id = target_id
 
         form_action_data = {
             'form_token': form_data.get('form_token', ''),
             'workflow_run_id': form_data.get('workflow_run_id', ''),
-            'action_id': action_id,
+            'action_id': '' if select_choice else action_id,
             'action_title': action_title,
             'node_title': form_data.get('node_title', ''),
             'user': f'{launcher_type.value}_{launcher_id}',
-            'inputs': {},
+            'inputs': {'select': select_choice[1]} if select_choice else {},
         }
+        if select_choice:
+            form_action_data['_current_input_field'] = select_choice[0]
+            form_action_data['_input_progress'] = True
 
-        message_chain = platform_message.MessageChain([platform_message.Plain(text=f'[Form Action: {action_title}]')])
+        event_label = 'Form Select' if select_choice else 'Form Action'
+        message_chain = platform_message.MessageChain([platform_message.Plain(text=f'[{event_label}: {action_title}]')])
 
         if launcher_type == provider_session.LauncherTypes.GROUP:
             synthetic_event: platform_events.MessageEvent = platform_events.GroupMessage(
                 sender=platform_entities.GroupMember(
-                    id=sender_id or launcher_id,
+                    id=actor_id or launcher_id,
                     member_name='',
                     permission='MEMBER',
                     group=platform_entities.Group(
@@ -1096,7 +1122,7 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
         else:
             synthetic_event = platform_events.FriendMessage(
                 sender=platform_entities.Friend(
-                    id=sender_id or launcher_id,
+                    id=actor_id or launcher_id,
                     nickname='',
                     remark='',
                 ),
@@ -1122,7 +1148,7 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
                 bot_uuid=bot_uuid,
                 launcher_type=launcher_type,
                 launcher_id=launcher_id,
-                sender_id=sender_id or launcher_id,
+                sender_id=actor_id or launcher_id,
                 message_event=synthetic_event,
                 message_chain=message_chain,
                 adapter=self,
@@ -1133,7 +1159,8 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
                 },
             )
             await self.logger.info(
-                f'QQ Official: button-click query enqueued action_id={action_id!r} session={session_key}'
+                f'QQ Official: button-click query enqueued action_id={action_id!r} '
+                f'session={session_key} actor_id={actor_id}'
             )
         except Exception:
             await self.logger.error(f'QQ Official: enqueue button-click query failed: {traceback.format_exc()}')
