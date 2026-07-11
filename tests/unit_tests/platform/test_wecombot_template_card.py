@@ -169,11 +169,12 @@ def test_build_payload_can_emulate_select_as_buttons_for_wecombot_ws():
     assert parse_select_button_action(card['button_list'][1]['key'], form_data) == {'choice': 'B'}
 
 
-def test_text_input_card_shows_direct_reply_prompt():
+def test_text_input_card_uses_current_stage_content_without_direct_reply_prompt():
     payload = build_human_input_template_card_payload(
         {
             'node_title': '人工介入',
-            'form_content': '请输入你的问题\n\n{{#$output.us_input#}}',
+            'form_content': '11\n请输入你的问题\n\n{{#$output.us_input#}}',
+            'raw_form_content': ('11\n请输入你的问题\n{{#$output.us_input#}}\n请选择你的答案\n{{#$output.xiala#}}'),
             'input_defs': [
                 {
                     'output_variable_name': 'us_input',
@@ -189,8 +190,8 @@ def test_text_input_card_shows_direct_reply_prompt():
     )
 
     card = payload['template_card']
-    assert card['main_title']['desc'] == '请直接回复：请输入你的问题'
-    assert '请直接回复：请输入你的问题' in card['sub_title_text']
+    assert 'desc' not in card['main_title']
+    assert card['sub_title_text'] == '11\n请输入你的问题'
     assert card['button_list'] == []
 
 
@@ -198,6 +199,8 @@ def test_build_human_input_text_prompt_for_current_text_field():
     prompt = build_human_input_text_prompt(
         {
             'node_title': '人工介入',
+            'form_content': '11\n请输入你的问题\n{{#$output.us_input#}}',
+            'raw_form_content': ('11\n请输入你的问题\n{{#$output.us_input#}}\n请选择你的答案\n{{#$output.xiala#}}'),
             'input_defs': [
                 {
                     'output_variable_name': 'us_input',
@@ -209,7 +212,7 @@ def test_build_human_input_text_prompt_for_current_text_field():
         }
     )
 
-    assert prompt == '人工介入\n\n请直接回复：请输入你的问题'
+    assert prompt == '人工介入\n\n11\n请输入你的问题'
 
 
 @pytest.mark.asyncio
@@ -229,6 +232,8 @@ async def test_ws_push_form_pause_sends_text_prompt_without_empty_card():
         'msg-1',
         {
             'node_title': '人工介入',
+            'form_content': '11\n请输入你的问题\n{{#$output.us_input#}}',
+            'raw_form_content': ('11\n请输入你的问题\n{{#$output.us_input#}}\n请选择你的答案\n{{#$output.xiala#}}'),
             'input_defs': [
                 {
                     'output_variable_name': 'us_input',
@@ -243,7 +248,7 @@ async def test_ws_push_form_pause_sends_text_prompt_without_empty_card():
     assert ok is True
     assert stream_id == 'stream-1'
     assert task_id is None
-    assert sent == [('req-1', '人工介入\n\n请直接回复：请输入你的问题')]
+    assert sent == [('req-1', '人工介入\n\n11\n请输入你的问题')]
     assert client._pending_forms_by_task == {}
     assert 'msg-1' not in client._stream_ids
 
@@ -363,10 +368,12 @@ def test_extract_template_card_selections_reads_response_data_direct_mapping():
     assert selections == {'choice': 'B'}
 
 
-def test_build_multiple_interaction_update_card_disables_submitted_select():
+def test_build_multiple_interaction_update_card_disables_selected_value_without_submitted_text():
     card = build_multiple_interaction_update_card(
         {
             'node_title': 'Manual Review',
+            'form_content': 'Choose a label\n{{#$output.choice#}}',
+            'raw_form_content': 'Choose a label\n{{#$output.choice#}}',
             'input_defs': [
                 {
                     'output_variable_name': 'choice',
@@ -374,12 +381,73 @@ def test_build_multiple_interaction_update_card_disables_submitted_select():
                     'option_source': {'type': 'constant', 'value': ['A', 'B']},
                 }
             ],
+            '_current_input_field': 'choice',
         },
         task_id='task-1',
         selections={'choice': 'B'},
     )
 
     assert card['card_type'] == 'multiple_interaction'
-    assert card['main_title']['desc'] == 'Submitted'
+    assert card['main_title']['desc'] == 'Choose a label\n✅ choice：B'
+    assert card['submit_button']['text'] == '✅'
     assert card['select_list'][0]['disable'] is True
     assert card['select_list'][0]['selected_id'] == 'opt_2'
+
+
+def test_select_stage_only_shows_current_prompt_in_a_separate_message():
+    raw_content = '11\n请输入你的问题\n{{#$output.us_input#}}\n请选择你的答案\n{{#$output.xiala#}}'
+    payload = build_human_input_template_card_payload(
+        {
+            'node_title': '人工介入',
+            'form_content': '请选择你的答案\n{{#$output.xiala#}}',
+            'raw_form_content': raw_content,
+            'input_defs': [
+                {
+                    'output_variable_name': 'xiala',
+                    'type': 'select',
+                    'option_source': {'type': 'constant', 'value': ['1', '2']},
+                }
+            ],
+            'all_input_defs': [
+                {'output_variable_name': 'us_input', 'type': 'paragraph'},
+                {
+                    'output_variable_name': 'xiala',
+                    'type': 'select',
+                    'option_source': {'type': 'constant', 'value': ['1', '2']},
+                },
+            ],
+            'inputs': {'us_input': '你叫啥'},
+            '_current_input_field': 'xiala',
+        },
+        task_id='task-1',
+    )
+
+    assert payload['template_card']['main_title']['desc'] == '请选择你的答案'
+
+
+def test_action_stage_only_shows_content_after_fields_without_placeholders():
+    raw_content = '11\n请输入你的问题\n{{#$output.us_input#}}\n请选择你的答案\n{{#$output.xiala#}}\n请选择操作'
+    payload = build_human_input_template_card_payload(
+        {
+            'node_title': '人工介入',
+            'form_content': raw_content,
+            'raw_form_content': raw_content,
+            'input_defs': [],
+            'all_input_defs': [
+                {'output_variable_name': 'us_input', 'type': 'paragraph'},
+                {'output_variable_name': 'xiala', 'type': 'select'},
+            ],
+            'inputs': {'us_input': '你叫啥', 'xiala': '2'},
+            'actions': [
+                {'id': 'yes', 'title': 'yes'},
+                {'id': 'no', 'title': 'no'},
+            ],
+            '_action_select_only': True,
+        },
+        task_id='task-1',
+    )
+
+    card = payload['template_card']
+    assert card['sub_title_text'] == '请选择操作'
+    assert '{{#$output.' not in card['sub_title_text']
+    assert [button['text'] for button in card['button_list']] == ['yes', 'no']

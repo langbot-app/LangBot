@@ -797,22 +797,12 @@ def _wecom_input_hint_lines(form_data: dict) -> list[str]:
             continue
         if not field_name:
             continue
-        if field_type == 'select':
-            source = field.get('option_source') or {}
-            options = source.get('value') if isinstance(source, dict) else []
-            if isinstance(options, list) and options:
-                option_text = ', '.join(f'{idx}. {option}' for idx, option in enumerate(options, start=1))
-                lines.append(f'- {field_label}: {option_text}')
-            else:
-                lines.append(f'- {field_label}: choose one option')
-        elif field_type in {'file', 'file-list'}:
+        if field_type in {'file', 'file-list'}:
             limit = field.get('number_limits') if field_type == 'file-list' else 1
             allowed_types = ', '.join(field.get('allowed_file_types') or [])
             suffix = f', up to {limit}' if field_type == 'file-list' and limit else ''
             allowed = f' ({allowed_types})' if allowed_types else ''
             lines.append(f'- {field_label}: upload file(s){allowed}{suffix} or reply `{field_name}: <url>`')
-        else:
-            lines.append(f'请直接回复：{field_label}')
     return lines
 
 
@@ -861,18 +851,8 @@ def _wecom_field_title(field: dict, fallback: str) -> str:
 
 
 def _wecom_form_desc(form_data: dict) -> str:
-    current_field = str(form_data.get('_current_input_field') or '').strip()
-    if current_field:
-        for field in form_data.get('input_defs') or form_data.get('all_input_defs') or []:
-            if str(field.get('output_variable_name') or '').strip() != current_field:
-                continue
-            field_type = str(field.get('type') or 'text').strip().lower()
-            if field_type != 'select':
-                return f'请直接回复：{_wecom_field_display_name(field, current_field)}'
     form_content = _wecom_clean_form_content(form_data)
-    if form_content:
-        return form_content[:512]
-    return 'Please choose an option to continue.'
+    return form_content[:512] if form_content else ''
 
 
 def build_human_input_text_prompt(form_data: dict) -> Optional[str]:
@@ -887,8 +867,11 @@ def build_human_input_text_prompt(form_data: dict) -> Optional[str]:
         field_type = str(field.get('type') or 'text').strip().lower()
         if field_type == 'select':
             return None
-        label = _wecom_field_display_name(field, current_field)
-        return f'{str(form_data.get("node_title") or "人工介入").strip()}\n\n请直接回复：{label}'
+        form_content = _wecom_clean_form_content(form_data)
+        if not form_content:
+            form_content = _wecom_field_display_name(field, current_field)
+        node_title = str(form_data.get('node_title') or '人工介入').strip()
+        return f'{node_title}\n\n{form_content}' if form_content else node_title
     return None
 
 
@@ -1010,13 +993,11 @@ def build_select_button_interaction_payload(
     overflow_options = options[6:]
 
     node_title = (form_data.get('node_title') or '').strip() or 'Human Input'
-    field_title = _wecom_field_title(field, field_name or 'Select') if field else 'Select'
     form_content = _wecom_clean_form_content(form_data)
 
     sub_title_parts: list[str] = []
     if form_content:
         sub_title_parts.append(form_content)
-    sub_title_parts.append(f'Choose {field_title}.')
     if overflow_options:
         extra_lines = [f'  - {idx + 7}. {option}' for idx, option in enumerate(overflow_options)]
         sub_title_parts.append(
@@ -1066,19 +1047,55 @@ def build_human_input_template_card_payload(
 
 
 def _wecom_clean_form_content(form_data: dict) -> str:
-    content = form_data.get('raw_form_content') or form_data.get('form_content') or ''
-    field_names = {
-        str(field.get('output_variable_name') or '').strip()
-        for field in form_data.get('input_defs') or []
+    is_field_step = bool(form_data.get('_current_input_field')) and not form_data.get('_action_select_only')
+    raw_content = str(form_data.get('raw_form_content') or '')
+    content = form_data.get('form_content') or raw_content
+    input_defs = list(form_data.get('all_input_defs') or form_data.get('input_defs') or [])
+    fields = {
+        str(field.get('output_variable_name') or '').strip(): field
+        for field in input_defs
         if str(field.get('output_variable_name') or '').strip()
     }
+
+    if form_data.get('_action_select_only') and raw_content:
+        placeholders = [
+            match
+            for match in re.finditer(r'\{\{#\$output\.([^#{}]+)#\}\}', raw_content)
+            if match.group(1).strip() in fields
+        ]
+        if placeholders:
+            content = raw_content[placeholders[-1].end() :]
+
+    if is_field_step:
+        inputs = form_data.get('inputs') or {}
+
+        def replace_placeholder(match: re.Match[str]) -> str:
+            field_name = match.group(1).strip()
+            field = fields.get(field_name)
+            value = inputs.get(field_name)
+            if not field or value in (None, '', []):
+                return ''
+            return f'✅ {field_name}：{_wecom_display_input_value(field, value)}'
+
+        content = re.sub(r'\{\{#\$output\.([^#{}]+)#\}\}', replace_placeholder, str(content))
+
     kept_lines: list[str] = []
     for line in str(content).splitlines():
         placeholder = re.fullmatch(r'\s*\{\{#\$output\.([^#{}]+)#\}\}\s*', line)
-        if placeholder and placeholder.group(1) in field_names:
+        if placeholder and placeholder.group(1).strip() in fields:
             continue
         kept_lines.append(line)
     return re.sub(r'\n{3,}', '\n\n', '\n'.join(kept_lines).strip())
+
+
+def _wecom_display_input_value(field: dict, value: Any) -> str:
+    field_type = str(field.get('type') or 'text').strip().lower()
+    if field_type == 'file':
+        if isinstance(value, dict):
+            return str(value.get('url') or value.get('upload_file_id') or '1 file')
+    elif field_type == 'file-list' and isinstance(value, list):
+        return f'{len(value)} file(s)'
+    return str(value)
 
 
 def build_button_interaction_payload(
@@ -1150,7 +1167,6 @@ def build_button_interaction_payload(
         'card_type': 'button_interaction',
         'main_title': {
             'title': node_title,
-            'desc': _wecom_form_desc(form_data),
         },
         'sub_title_text': sub_title_text,
         'button_list': button_list,
@@ -1434,7 +1450,7 @@ def build_button_interaction_update_card(
     """Build the template_card body used to update a clicked form card."""
 
     node_title = str(form_data.get('node_title') or '').strip() or '人工介入'
-    form_content = str(form_data.get('form_content') or '').strip()
+    form_content = _wecom_clean_form_content(form_data)
     action_title = resolve_form_action_title(form_data, action_id)
     clean_action_id = str(action_id or '').strip()
 
@@ -1528,15 +1544,19 @@ def build_multiple_interaction_update_card(
             }
         )
 
+    display_form_data = dict(form_data)
+    display_form_data['inputs'] = selected_values
+    form_content = _wecom_clean_form_content(display_form_data)
+
     card: dict[str, Any] = {
         'card_type': 'multiple_interaction',
         'main_title': {
             'title': node_title,
-            'desc': 'Submitted',
+            'desc': form_content,
         },
         'select_list': select_list,
         'submit_button': {
-            'text': 'Submitted',
+            'text': '✅',
             'key': 'submit_human_input',
         },
         'task_id': task_id,
