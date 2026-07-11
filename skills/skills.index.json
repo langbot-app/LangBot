@@ -151,6 +151,7 @@
         "agent-runner-qa-debug-chat",
         "agent-runner-release-preflight",
         "agent-runner-runtime-chaos",
+        "bot-event-routing-product-flow",
         "dify-agent-debug-chat",
         "langbot-fake-provider-debug-chat-cross-pipeline-isolation",
         "langbot-fake-provider-debug-chat-fault-recovery",
@@ -480,6 +481,31 @@
           "setup_provides_env": [],
           "evidence_required": [
             "filesystem"
+          ]
+        },
+        {
+          "id": "bot-event-routing-product-flow",
+          "title": "Bot event routing can be configured and tested from the WebUI",
+          "mode": "agent-browser",
+          "area": "bot",
+          "type": "feature",
+          "priority": "p0",
+          "risk": "medium",
+          "ci_eligible": false,
+          "tags": [
+            "bot",
+            "eba",
+            "event-routing",
+            "productization"
+          ],
+          "automation": "scripts/e2e/bot-event-routing-product-flow.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "console",
+            "api_diagnostic"
           ]
         },
         {
