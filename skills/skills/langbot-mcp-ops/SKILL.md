@@ -58,6 +58,7 @@ The tools wrap the LangBot service layer. Current tools (v1):
 | --- | --- |
 | `get_system_info` | Version, edition, instance id |
 | `list_bots` / `get_bot` / `create_bot` / `update_bot` / `delete_bot` | Manage messaging-platform bots (secrets redacted on read) |
+| `list_bot_event_route_statuses` / `test_bot_event_route` | Inspect bot event-route runtime status and dispatch a synthetic test event through saved routes without sending real outbound platform messages |
 | `list_agents` / `get_agent` / `create_agent` / `update_agent` / `delete_agent` | Manage the Agent product surface, including Agent orchestrations and Pipelines |
 | `list_pipelines` / `get_pipeline` / `create_pipeline` / `update_pipeline` / `delete_pipeline` | Manage pipelines |
 | `list_llm_models` / `get_llm_model` / `list_embedding_models` / `list_model_providers` | Inspect models & providers |
@@ -68,6 +69,12 @@ The tools wrap the LangBot service layer. Current tools (v1):
 Mutating tools (`create_*`, `update_*`) take a JSON object matching the same
 shape as the corresponding HTTP API request body. Discover resources with the
 `list_*` / `get_*` tools before mutating; identifiers are UUIDs.
+
+`test_bot_event_route` uses the bot's saved runtime route table, injects a
+synthetic event such as `message.received`, and suppresses platform delivery.
+It still executes the selected processor, so tools and external services may
+have side effects. Use `payload` for sample event fields, for example
+`{"message_text": "hello", "chat_type": "private", "chat_id": "u1"}`.
 
 ## How to use
 

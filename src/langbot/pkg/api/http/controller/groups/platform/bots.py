@@ -69,6 +69,18 @@ class BotsRouterGroup(group.RouterGroup):
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
         )(_dry_run_event_route)
 
+        @self.route('/<bot_uuid>/event-routes/test', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
+        async def _(bot_uuid: str) -> str:
+            json_data = await quart.request.json
+            if not isinstance(json_data, dict):
+                return self.http_status(400, -1, 'invalid request body')
+            result = await self.ap.bot_service.dispatch_test_event_route(
+                bot_uuid=bot_uuid,
+                event_type=json_data.get('event_type'),
+                payload=json_data.get('event_data', json_data.get('payload')),
+            )
+            return self.success(data=result)
+
         @self.route('/<bot_uuid>/send_message', methods=['POST'], auth_type=group.AuthType.API_KEY)
         async def _(bot_uuid: str) -> str:
             json_data = await quart.request.json

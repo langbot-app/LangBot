@@ -61,6 +61,8 @@ import {
   ApiRespSkill,
   BotRouteDryRunRequest,
   BotRouteDryRunResult,
+  BotRouteTestRequest,
+  BotRouteTestResult,
   BotEventRouteStatusResponse,
 } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
@@ -471,6 +473,16 @@ export class BackendClient extends BaseHttpClient {
     botId: string,
   ): Promise<BotEventRouteStatusResponse> {
     return this.get(`/api/v1/platform/bots/${botId}/event-routes/status`);
+  }
+
+  public testBotEventRoute(
+    botId: string,
+    request: BotRouteTestRequest,
+  ): Promise<BotRouteTestResult> {
+    return this.post(
+      `/api/v1/platform/bots/${botId}/event-routes/test`,
+      request,
+    );
   }
 
   public deleteBot(uuid: string): Promise<object> {

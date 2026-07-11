@@ -252,6 +252,11 @@ export interface BotRouteDryRunRequest {
   event_bindings?: EventBinding[];
 }
 
+export interface BotRouteTestRequest {
+  event_type: string;
+  payload?: Record<string, unknown>;
+}
+
 export interface BotRouteDryRunTarget {
   target_type: EventBinding['target_type'];
   target_uuid?: string | null;
@@ -304,6 +309,17 @@ export interface BotEventRouteStatusResponse {
   routes: BotEventRouteStatus[];
   unmatched_events: BotEventRouteStatus[];
   stale_routes: BotEventRouteStatus[];
+}
+
+export interface BotRouteTestResult {
+  dispatched: boolean;
+  event_type: string;
+  status?: BotEventRouteStatus['last_status'];
+  binding_id?: string | null;
+  failure_code?: string | null;
+  reason?: string | null;
+  suppressed_outputs: Array<Record<string, unknown>>;
+  route_status: BotEventRouteStatusResponse;
 }
 
 export interface ApiRespKnowledgeBases {

@@ -377,6 +377,8 @@ export default function BotForm({
         description: form.getValues().description ?? '',
         adapter: form.getValues().adapter,
         adapter_config: form.getValues().adapter_config,
+        enable: form.getValues().enable,
+        event_bindings: form.getValues().event_bindings ?? [],
       };
       httpClient
         .createBot(newBot)
@@ -444,27 +446,7 @@ export default function BotForm({
           </CardContent>
         </Card>
 
-        {/* Card 2: Event Routing (edit mode only) */}
-        {initBotId && (
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('bots.eventRouting')}</CardTitle>
-              <CardDescription>
-                {t('bots.eventRoutingDescription')}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <EventBindingsEditor
-                form={form}
-                botId={initBotId}
-                supportedEvents={adapterSupportedEvents[currentAdapter] || []}
-                agentOptions={agentNameList}
-              />
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Card 4: Adapter Configuration */}
+        {/* Card 2: Adapter Configuration */}
         <Card>
           <CardHeader>
             <CardTitle>{t('bots.adapterConfig')}</CardTitle>
@@ -668,6 +650,26 @@ export default function BotForm({
             )}
           </CardContent>
         </Card>
+
+        {/* Card 3: Event Routing */}
+        {currentAdapter && (
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('bots.eventRouting')}</CardTitle>
+              <CardDescription>
+                {t('bots.eventRoutingDescription')}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <EventBindingsEditor
+                form={form}
+                botId={initBotId}
+                supportedEvents={adapterSupportedEvents[currentAdapter] || []}
+                agentOptions={agentNameList}
+              />
+            </CardContent>
+          </Card>
+        )}
       </form>
     </Form>
   );

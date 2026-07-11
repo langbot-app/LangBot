@@ -54,11 +54,7 @@ def _create_mock_result(items: list = None, first_item=None):
 
 def _compiled_update_values(statement):
     """Return update values without SQLAlchemy WHERE bind params."""
-    return {
-        key: value
-        for key, value in statement.compile().params.items()
-        if not key.startswith('uuid_')
-    }
+    return {key: value for key, value in statement.compile().params.items() if not key.startswith('uuid_')}
 
 
 def _create_mock_discover(adapter_webhook_flags: dict[str, bool] = None):
@@ -363,7 +359,8 @@ class TestBotServiceCreateBot:
             }
         }
         ap.platform_mgr = SimpleNamespace()
-        ap.platform_mgr.load_bot = AsyncMock()
+        runtime_bot = SimpleNamespace(enable=True, run=AsyncMock())
+        ap.platform_mgr.load_bot = AsyncMock(return_value=runtime_bot)
 
         # Mock pipeline query
         pipeline_result = Mock()
@@ -394,6 +391,7 @@ class TestBotServiceCreateBot:
         # Verify
         assert bot_uuid is not None
         assert len(bot_uuid) == 36  # UUID format
+        runtime_bot.run.assert_awaited_once()
 
 
 class TestBotServiceUpdateBot:
@@ -1123,6 +1121,64 @@ class TestBotServiceEventRouteStatuses:
         assert result['routes'][1]['enabled'] is False
         assert result['unmatched_events'][0]['event_type'] == 'platform.member.left'
         assert result['unmatched_events'][0]['failure_code'] == 'route_not_found'
+
+
+class TestBotServiceDispatchTestEventRoute:
+    """Tests for synthetic Bot route test dispatch."""
+
+    async def test_dispatch_test_event_route_rejects_invalid_event_type(self):
+        """Missing event_type returns a non-dispatched test result."""
+        service = BotService(SimpleNamespace())
+
+        result = await service.dispatch_test_event_route('bot-1', '', {})
+
+        assert result['dispatched'] is False
+        assert result['failure_code'] == 'invalid_event'
+        assert result['reason'] == 'event_type is required'
+        assert result['route_status']['routes'] == []
+
+    async def test_dispatch_test_event_route_rejects_non_object_payload(self):
+        """Payload must be a JSON object."""
+        service = BotService(SimpleNamespace())
+
+        result = await service.dispatch_test_event_route('bot-1', 'message.received', [])  # type: ignore[arg-type]
+
+        assert result['dispatched'] is False
+        assert result['failure_code'] == 'invalid_event'
+        assert result['reason'] == 'payload must be an object'
+        assert result['route_status']['routes'] == []
+
+    async def test_dispatch_test_event_route_calls_runtime_and_returns_status(self):
+        """Synthetic route tests run against the runtime bot and return route status."""
+        ap = SimpleNamespace()
+        ap.platform_mgr = SimpleNamespace()
+        runtime_bot = SimpleNamespace()
+        runtime_bot.dispatch_test_event = AsyncMock(
+            return_value={
+                'event_type': 'message.received',
+                'dispatched': True,
+                'status': 'delivered',
+                'binding_id': 'binding-1',
+                'failure_code': None,
+                'reason': 'Delivered to processor',
+                'suppressed_outputs': [{'method': 'send_message'}],
+            }
+        )
+        runtime_bot.bot_entity = SimpleNamespace(event_bindings=[])
+        runtime_bot.logger = SimpleNamespace(logs=[])
+        ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=runtime_bot)
+
+        service = BotService(ap)
+        result = await service.dispatch_test_event_route('bot-1', 'message.received', {'message_text': 'hello'})
+
+        runtime_bot.dispatch_test_event.assert_awaited_once_with('message.received', {'message_text': 'hello'})
+        assert result['dispatched'] is True
+        assert result['status'] == 'delivered'
+        assert result['binding_id'] == 'binding-1'
+        assert result['reason'] == 'Delivered to processor'
+        assert result['event_type'] == 'message.received'
+        assert result['suppressed_outputs'] == [{'method': 'send_message'}]
+        assert result['route_status']['routes'] == []
 
 
 class TestBotServiceSendMessage:

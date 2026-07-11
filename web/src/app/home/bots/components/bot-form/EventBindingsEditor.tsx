@@ -81,6 +81,7 @@ import {
   Agent,
   BotRouteDryRunResult,
   BotEventRouteStatus,
+  BotRouteTestResult,
 } from '@/app/infra/entities/api';
 import { backendClient } from '@/app/infra/http';
 
@@ -240,9 +241,96 @@ function routeStatusBadgeClass(
   return 'border-border bg-muted/40 text-muted-foreground';
 }
 
+function localizedFailureReason(
+  failureCode: string | null | undefined,
+  fallback: string | null | undefined,
+  t: TFunction,
+) {
+  if (!failureCode) return fallback || '';
+  const key = `bots.routeFailure.${failureCode}`;
+  const label = t(key);
+  return label === key ? fallback || failureCode : label;
+}
+
+function routeStatusDetail(
+  status: BotEventRouteStatus | undefined,
+  t: TFunction,
+) {
+  if (!status) return '';
+  if (status.failure_code) {
+    return localizedFailureReason(status.failure_code, status.reason, t);
+  }
+  if (status.last_status) {
+    const key = `bots.routeStatusDetail.${status.last_status}`;
+    const label = t(key);
+    if (label !== key) return label;
+  }
+  return status.reason || formatRouteStatusTime(status.timestamp);
+}
+
+function diagnosticDetailLabel(
+  detail: Record<string, unknown>,
+  fallbackIndex: number,
+  t: TFunction,
+) {
+  const order =
+    typeof detail.binding_index === 'number'
+      ? detail.binding_index
+      : typeof detail.order === 'number'
+        ? detail.order
+        : fallbackIndex;
+  const route = t('bots.dryRunRuleIndex', { index: order + 1 });
+  if (detail.selected) {
+    return t('bots.dryRunDiagnosticSelected', { route });
+  }
+  const failureCode =
+    typeof detail.failure_code === 'string' ? detail.failure_code : null;
+  const reason = localizedFailureReason(
+    failureCode,
+    typeof detail.reason === 'string' ? detail.reason : null,
+    t,
+  );
+  if (detail.matched) {
+    return t('bots.dryRunDiagnosticMatched', { route, reason });
+  }
+  return t('bots.dryRunDiagnosticSkipped', { route, reason });
+}
+
 function formatRouteStatusTime(timestamp: number | null | undefined) {
   if (!timestamp) return '';
   return new Date(timestamp * 1000).toLocaleString();
+}
+
+function samplePayloadForEvent(eventType: string): Record<string, unknown> {
+  if (eventType === 'message.received') {
+    return {
+      message_text: 'Hello',
+      chat_type: 'private',
+      chat_id: 'test-user',
+      user_id: 'test-user',
+    };
+  }
+  if (eventType === 'group.member_joined') {
+    return {
+      group_id: 'test-group',
+      group_name: 'Test Group',
+      user_id: 'test-user',
+      user_name: 'Test User',
+    };
+  }
+  if (eventType === 'group.member_left') {
+    return {
+      group_id: 'test-group',
+      group_name: 'Test Group',
+      user_id: 'test-user',
+      user_name: 'Test User',
+      is_kicked: false,
+    };
+  }
+  if (eventType === 'platform.specific') {
+    return { action: 'test', data: {} };
+  }
+  return {};
 }
 
 // ── target combobox (type + target merged, with search + groups) ───────────────
@@ -639,27 +727,42 @@ function RouteDryRunDialog({
   bindings,
   eventOptions,
   agentOptions,
+  onRouteStatusUpdate,
 }: {
   botId?: string;
   bindings: EventBinding[];
   eventOptions: string[];
   agentOptions: Agent[];
+  onRouteStatusUpdate?: (statuses: BotEventRouteStatus[]) => void;
 }) {
   const { t } = useTranslation();
   const firstEvent = eventOptions[0] ?? DEFAULT_EVENTS[0];
   const [open, setOpen] = useState(false);
   const [eventType, setEventType] = useState(firstEvent);
-  const [payloadText, setPayloadText] = useState('{\n  "message_text": ""\n}');
+  const [payloadText, setPayloadText] = useState(() =>
+    JSON.stringify(samplePayloadForEvent(firstEvent), null, 2),
+  );
+  const [advancedPayloadOpen, setAdvancedPayloadOpen] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
+  const [isDispatching, setIsDispatching] = useState(false);
   const [payloadError, setPayloadError] = useState<string | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const [result, setResult] = useState<BotRouteDryRunResult | null>(null);
+  const [dispatchResult, setDispatchResult] =
+    useState<BotRouteTestResult | null>(null);
 
   useEffect(() => {
     if (!eventOptions.includes(eventType)) {
       setEventType(firstEvent);
     }
   }, [eventOptions, eventType, firstEvent]);
+
+  useEffect(() => {
+    setPayloadText(JSON.stringify(samplePayloadForEvent(eventType), null, 2));
+    setPayloadError(null);
+    setResult(null);
+    setDispatchResult(null);
+  }, [eventType]);
 
   function resolveTargetName(resultTarget?: BotRouteDryRunResult['target']) {
     if (!resultTarget) return '';
@@ -669,11 +772,8 @@ function RouteDryRunDialog({
     return agent ? targetLabel(agent) : (resultTarget.target_uuid ?? '');
   }
 
-  async function runDryRun() {
+  function parsePayload(): Record<string, unknown> | null {
     setPayloadError(null);
-    setRunError(null);
-    setResult(null);
-
     let payload: Record<string, unknown> = {};
     if (payloadText.trim()) {
       try {
@@ -684,14 +784,24 @@ function RouteDryRunDialog({
           Array.isArray(parsed)
         ) {
           setPayloadError(t('bots.dryRunPayloadObjectError'));
-          return;
+          return null;
         }
         payload = parsed as Record<string, unknown>;
       } catch {
         setPayloadError(t('bots.dryRunPayloadJsonError'));
-        return;
+        return null;
       }
     }
+    return payload;
+  }
+
+  async function runDryRun() {
+    setRunError(null);
+    setResult(null);
+    setDispatchResult(null);
+
+    const payload = parsePayload();
+    if (payload === null) return;
 
     if (!botId) {
       setRunError(t('bots.dryRunNeedsSavedBot'));
@@ -717,6 +827,43 @@ function RouteDryRunDialog({
     }
   }
 
+  async function dispatchTestEvent() {
+    setRunError(null);
+    setDispatchResult(null);
+
+    const payload = parsePayload();
+    if (payload === null) return;
+
+    if (!botId) {
+      setRunError(t('bots.dryRunNeedsSavedBot'));
+      return;
+    }
+
+    setIsDispatching(true);
+    try {
+      const testResult = await backendClient.testBotEventRoute(botId, {
+        event_type: eventType,
+        payload,
+      });
+      setDispatchResult(testResult);
+      onRouteStatusUpdate?.(testResult.route_status?.routes || []);
+      if (!testResult.dispatched) {
+        setRunError(
+          localizedFailureReason(
+            testResult.failure_code,
+            testResult.reason,
+            t,
+          ) || t('bots.routeTestFailed'),
+        );
+      }
+    } catch (error) {
+      const err = error as { msg?: string };
+      setRunError(err.msg || t('bots.routeTestFailed'));
+    } finally {
+      setIsDispatching(false);
+    }
+  }
+
   const targetName = result ? resolveTargetName(result.target) : '';
 
   return (
@@ -738,7 +885,7 @@ function RouteDryRunDialog({
           </DialogHeader>
 
           <div className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-[220px_1fr]">
+            <div className="space-y-3">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">
                   {t('bots.dryRunEventType')}
@@ -756,23 +903,55 @@ function RouteDryRunDialog({
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">
-                  {t('bots.dryRunPayload')}
-                </label>
-                <Textarea
-                  value={payloadText}
-                  onChange={(e) => setPayloadText(e.target.value)}
-                  className="min-h-[118px] font-mono text-xs"
-                  spellCheck={false}
-                  placeholder='{"message_text": "hello"}'
-                />
-                {payloadError ? (
-                  <p className="text-xs text-destructive">{payloadError}</p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    {t('bots.dryRunPayloadHint')}
-                  </p>
+              <div className="rounded-md border bg-muted/20 px-3 py-2.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">
+                      {t('bots.dryRunSampleReady')}
+                    </p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                      {t('bots.dryRunSampleDescription', {
+                        event: eventLabel(eventType, t),
+                      })}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 shrink-0 px-2 text-xs"
+                    onClick={() => setAdvancedPayloadOpen((value) => !value)}
+                  >
+                    {advancedPayloadOpen ? (
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    ) : (
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    )}
+                    {advancedPayloadOpen
+                      ? t('bots.dryRunHidePayload')
+                      : t('bots.dryRunEditPayload')}
+                  </Button>
+                </div>
+                {advancedPayloadOpen && (
+                  <div className="mt-3 space-y-1.5 border-t pt-3">
+                    <label className="text-xs font-medium">
+                      {t('bots.dryRunPayload')}
+                    </label>
+                    <Textarea
+                      value={payloadText}
+                      onChange={(e) => setPayloadText(e.target.value)}
+                      className="min-h-[118px] font-mono text-xs"
+                      spellCheck={false}
+                      placeholder='{"message_text": "hello"}'
+                    />
+                    {payloadError ? (
+                      <p className="text-xs text-destructive">{payloadError}</p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        {t('bots.dryRunPayloadHint')}
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -832,23 +1011,54 @@ function RouteDryRunDialog({
                   </div>
                 </div>
 
-                {result.diagnostic_steps.length > 0 && (
+                {(result.diagnostic_details?.length ||
+                  result.diagnostic_steps.length > 0) && (
                   <div className="mt-3">
                     <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                       <ListChecks className="h-3.5 w-3.5" />
                       {t('bots.dryRunDiagnostics')}
                     </div>
                     <ol className="space-y-1 pl-5 text-xs text-muted-foreground">
-                      {result.diagnostic_steps.map((step, index) => (
-                        <li key={`${index}:${step}`} className="list-decimal">
-                          {step}
-                        </li>
-                      ))}
+                      {result.diagnostic_details?.length
+                        ? result.diagnostic_details.map((detail, index) => (
+                            <li
+                              key={`${index}:${String(detail.binding_id ?? '')}`}
+                              className="list-decimal"
+                            >
+                              {diagnosticDetailLabel(detail, index, t)}
+                            </li>
+                          ))
+                        : result.diagnostic_steps.map((step, index) => (
+                            <li
+                              key={`${index}:${step}`}
+                              className="list-decimal"
+                            >
+                              {step}
+                            </li>
+                          ))}
                     </ol>
                   </div>
                 )}
               </div>
             )}
+
+            {dispatchResult?.dispatched && (
+              <Alert>
+                <CheckCircle2 className="h-4 w-4" />
+                <AlertDescription>
+                  {t('bots.routeTestDispatched', {
+                    count: dispatchResult.suppressed_outputs?.length || 0,
+                  })}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <Alert className="border-amber-200 bg-amber-50/60 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                {t('bots.routeTestSideEffectWarning')}
+              </AlertDescription>
+            </Alert>
           </div>
 
           <DialogFooter>
@@ -859,9 +1069,24 @@ function RouteDryRunDialog({
             >
               {t('common.close')}
             </Button>
-            <Button type="button" onClick={runDryRun} disabled={isRunning}>
+            <Button
+              type="button"
+              onClick={runDryRun}
+              disabled={isRunning || isDispatching}
+            >
               <Play className="h-4 w-4 mr-1" />
               {isRunning ? t('bots.dryRunRunning') : t('bots.dryRunAction')}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={dispatchTestEvent}
+              disabled={isRunning || isDispatching}
+            >
+              <Activity className="h-4 w-4 mr-1" />
+              {isDispatching
+                ? t('bots.routeTestRunning')
+                : t('bots.routeTestAction')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -905,6 +1130,7 @@ function BindingCardContent({
   const filterCount = (binding.filters as FilterRow[] | undefined)?.length ?? 0;
   const pipelineAllowed = isMessageEventPattern(binding.event_pattern);
   const statusTime = formatRouteStatusTime(routeStatus?.timestamp);
+  const statusDetail = routeStatusDetail(routeStatus, t);
 
   return (
     <div className="rounded-lg border bg-card">
@@ -1002,9 +1228,11 @@ function BindingCardContent({
           </Badge>
           <span
             className="max-w-full truncate text-[11px] text-muted-foreground"
-            title={routeStatus?.reason || routeStatus?.message || statusTime}
+            title={
+              statusTime ? `${statusDetail} · ${statusTime}` : statusDetail
+            }
           >
-            {routeStatus?.failure_code || routeStatus?.reason || statusTime}
+            {statusDetail || statusTime}
           </span>
         </div>
 
@@ -1329,6 +1557,7 @@ export default function EventBindingsEditor({
           bindings={bindings}
           eventOptions={dryRunEventOptions}
           agentOptions={agentOptions}
+          onRouteStatusUpdate={setRouteStatuses}
         />
         <Button
           type="button"

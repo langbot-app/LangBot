@@ -1,59 +1,9 @@
-"""
-RuntimeBot.resolve_pipeline_uuid and _match_operator unit tests
-"""
+"""RuntimeBot event binding and route observability unit tests."""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-
-
-class TestMatchOperator:
-    """Test the _match_operator static method."""
-
-    @staticmethod
-    def _get_class():
-        from langbot.pkg.platform.botmgr import RuntimeBot
-
-        return RuntimeBot
-
-    def test_eq(self):
-        cls = self._get_class()
-        assert cls._match_operator('hello', 'eq', 'hello') is True
-        assert cls._match_operator('hello', 'eq', 'world') is False
-
-    def test_neq(self):
-        cls = self._get_class()
-        assert cls._match_operator('hello', 'neq', 'world') is True
-        assert cls._match_operator('hello', 'neq', 'hello') is False
-
-    def test_contains(self):
-        cls = self._get_class()
-        assert cls._match_operator('hello world', 'contains', 'world') is True
-        assert cls._match_operator('hello world', 'contains', 'xyz') is False
-
-    def test_not_contains(self):
-        cls = self._get_class()
-        assert cls._match_operator('hello world', 'not_contains', 'xyz') is True
-        assert cls._match_operator('hello world', 'not_contains', 'world') is False
-
-    def test_starts_with(self):
-        cls = self._get_class()
-        assert cls._match_operator('hello world', 'starts_with', 'hello') is True
-        assert cls._match_operator('hello world', 'starts_with', 'world') is False
-
-    def test_regex(self):
-        cls = self._get_class()
-        assert cls._match_operator('hello123', 'regex', r'\d+') is True
-        assert cls._match_operator('hello', 'regex', r'\d+') is False
-
-    def test_regex_invalid_pattern(self):
-        cls = self._get_class()
-        assert cls._match_operator('hello', 'regex', r'[invalid') is False
-
-    def test_unknown_operator(self):
-        cls = self._get_class()
-        assert cls._match_operator('hello', 'unknown_op', 'hello') is False
 
 
 class TestEventRouteTrace:
@@ -116,6 +66,176 @@ class TestEventRouteTrace:
         assert metadata['target_uuid'] == 'agent-1'
         assert metadata['status'] == 'failed'
 
+    @pytest.mark.asyncio
+    async def test_dispatch_test_event_suppresses_agent_output_delivery(self):
+        """Synthetic test dispatch runs the route but does not call the real adapter."""
+        import langbot_plugin.api.entities.builtin.provider.message as provider_message
+
+        async def fake_run(envelope, binding):
+            yield provider_message.Message(role='assistant', content='test response')
+
+        bot = self._make_bot(
+            [
+                {
+                    'id': 'agent-binding',
+                    'enabled': True,
+                    'event_pattern': 'message.received',
+                    'target_type': 'agent',
+                    'target_uuid': 'agent-1',
+                    'priority': 0,
+                    'order': 0,
+                }
+            ]
+        )
+        bot.ap = SimpleNamespace(
+            agent_service=SimpleNamespace(
+                get_agent=AsyncMock(
+                    return_value={
+                        'uuid': 'agent-1',
+                        'kind': 'agent',
+                        'enabled': True,
+                        'supported_event_patterns': ['message.received'],
+                        'config': {'runner': {'id': 'runner-1'}, 'runner_config': {'runner-1': {}}},
+                    }
+                )
+            ),
+            agent_run_orchestrator=SimpleNamespace(run=fake_run),
+        )
+        bot.adapter = SimpleNamespace(
+            bot_account_id='bot-account',
+            config={},
+            logger=bot.logger,
+            send_message=AsyncMock(),
+        )
+
+        result = await bot.dispatch_test_event('message.received', {'chat_id': 'user-1', 'message_text': 'hello'})
+
+        bot.adapter.send_message.assert_not_awaited()
+        assert result['dispatched'] is True
+        assert result['status'] == 'delivered'
+        assert result['suppressed_outputs'][0]['method'] == 'send_message'
+
+    @pytest.mark.asyncio
+    async def test_dispatch_test_event_pipeline_receives_synthetic_adapter(self):
+        """Pipeline route tests enqueue queries with the no-op adapter."""
+        bot = self._make_bot(
+            [
+                {
+                    'id': 'pipeline-binding',
+                    'enabled': True,
+                    'event_pattern': 'message.received',
+                    'target_type': 'pipeline',
+                    'target_uuid': 'pipeline-1',
+                    'priority': 0,
+                    'order': 0,
+                }
+            ]
+        )
+        bot.ap = SimpleNamespace(
+            msg_aggregator=SimpleNamespace(add_message=AsyncMock()),
+        )
+        bot.adapter = SimpleNamespace(
+            bot_account_id='bot-account',
+            config={},
+            logger=bot.logger,
+            send_message=AsyncMock(),
+        )
+
+        result = await bot.dispatch_test_event(
+            'message.received',
+            {'chat_id': 'user-1', 'message_text': 'hello'},
+        )
+
+        bot.adapter.send_message.assert_not_awaited()
+        bot.ap.msg_aggregator.add_message.assert_awaited_once()
+        _, kwargs = bot.ap.msg_aggregator.add_message.await_args
+        query_adapter = kwargs['adapter']
+        assert query_adapter is not bot.adapter
+        assert getattr(query_adapter, 'source') is bot.adapter
+        assert result['dispatched'] is True
+        assert result['status'] == 'delivered'
+        assert result['suppressed_outputs'] == []
+
+    @pytest.mark.asyncio
+    async def test_dispatch_test_event_reports_unmatched_route_as_failure(self):
+        """Synthetic dispatch does not report success when no saved route matches."""
+        bot = self._make_bot([])
+        bot.adapter = SimpleNamespace(
+            bot_account_id='bot-account',
+            config={},
+            logger=bot.logger,
+        )
+
+        result = await bot.dispatch_test_event(
+            'message.received',
+            {'chat_id': 'user-1', 'message_text': 'hello'},
+        )
+
+        assert result['dispatched'] is False
+        assert result['status'] == 'not_matched'
+        assert result['failure_code'] == 'route_not_found'
+        assert result['reason'] == 'No event route matched'
+
+    @pytest.mark.asyncio
+    async def test_synthetic_adapter_suppresses_platform_side_effect_apis(self):
+        """Synthetic adapter blocks optional platform APIs that mutate external state."""
+        from langbot.pkg.platform.botmgr import SyntheticRouteTestAdapter
+        import langbot_plugin.api.entities.builtin.platform.message as platform_message
+
+        source = SimpleNamespace(
+            bot_account_id='bot-account',
+            config={},
+            logger=Mock(),
+            get_supported_apis=Mock(
+                return_value=[
+                    'send_message',
+                    'delete_message',
+                    'get_group_info',
+                    'call_platform_api',
+                ]
+            ),
+            delete_message=AsyncMock(),
+            call_platform_api=AsyncMock(),
+        )
+        adapter = SyntheticRouteTestAdapter(source)
+
+        await adapter.delete_message('group', 'group-1', 'message-1')
+        await adapter.call_platform_api('set_title', {'name': 'New Title'})
+        upload_result = await adapter.upload_file(b'data', 'test.txt')
+
+        source.delete_message.assert_not_awaited()
+        source.call_platform_api.assert_not_awaited()
+        assert upload_result == 'suppressed:test.txt'
+        assert [item['method'] for item in adapter.suppressed_outputs] == [
+            'delete_message',
+            'call_platform_api',
+            'upload_file',
+        ]
+        assert adapter.get_supported_apis() == ['get_group_info']
+        assert adapter._message_to_payload(platform_message.MessageChain([platform_message.Plain(text='ok')]))
+
+    def test_build_test_platform_event_message_received_uses_payload(self):
+        """Synthetic message events preserve common route filter fields."""
+        from langbot.pkg.platform.botmgr import RuntimeBot
+
+        event = RuntimeBot._build_test_platform_event(
+            'message.received',
+            {
+                'chat_type': 'group',
+                'chat_id': 'group-1',
+                'group_name': 'QA Group',
+                'user_id': 'user-1',
+                'user_name': 'QA User',
+                'message_text': 'hello',
+            },
+        )
+
+        assert event.type == 'message.received'
+        assert str(event.chat_id) == 'group-1'
+        assert event.group.name == 'QA Group'
+        assert event.sender.nickname == 'QA User'
+        assert str(event.message_chain) == 'hello'
+
 
 class TestEventLoggerMetadata:
     """Test platform EventLogger metadata compatibility."""
@@ -140,231 +260,26 @@ class TestEventLoggerMetadata:
         }
 
 
-class TestResolvePipelineUuid:
-    """Test the resolve_pipeline_uuid method."""
+class TestRuntimeBotLifecycle:
+    """Test RuntimeBot startup and shutdown lifecycle edges."""
 
-    @staticmethod
-    def _make_bot(default_pipeline: str, rules: list):
+    @pytest.mark.asyncio
+    async def test_shutdown_before_run_is_idempotent(self):
+        """A newly loaded Bot can be removed even before its task starts."""
         from langbot.pkg.platform.botmgr import RuntimeBot
 
-        bot_entity = Mock()
-        bot_entity.use_pipeline_uuid = default_pipeline
-        bot_entity.pipeline_routing_rules = rules
+        task_mgr = SimpleNamespace(cancel_task=Mock())
+        bot = RuntimeBot(
+            ap=SimpleNamespace(task_mgr=task_mgr),
+            bot_entity=SimpleNamespace(enable=True),
+            adapter=SimpleNamespace(kill=AsyncMock()),
+            logger=Mock(),
+        )
 
-        bot = object.__new__(RuntimeBot)
-        bot.bot_entity = bot_entity
-        return bot
+        await bot.shutdown()
 
-    def test_no_rules_returns_default(self):
-        bot = self._make_bot('default-uuid', [])
-        uuid, routed = bot.resolve_pipeline_uuid('person', '123', 'hi')
-        assert uuid == 'default-uuid'
-        assert routed is False
-
-    def test_none_rules_returns_default(self):
-        bot = self._make_bot('default-uuid', None)
-        uuid, routed = bot.resolve_pipeline_uuid('person', '123', 'hi')
-        assert uuid == 'default-uuid'
-        assert routed is False
-
-    def test_launcher_type_match(self):
-        rules = [
-            {
-                'type': 'launcher_type',
-                'operator': 'eq',
-                'value': 'group',
-                'pipeline_uuid': 'group-pipeline',
-            }
-        ]
-        bot = self._make_bot('default-uuid', rules)
-
-        uuid, routed = bot.resolve_pipeline_uuid('group', '123', 'hi')
-        assert uuid == 'group-pipeline'
-        assert routed is True
-
-        uuid, routed = bot.resolve_pipeline_uuid('person', '123', 'hi')
-        assert uuid == 'default-uuid'
-        assert routed is False
-
-    def test_launcher_id_match(self):
-        rules = [
-            {
-                'type': 'launcher_id',
-                'operator': 'eq',
-                'value': '12345',
-                'pipeline_uuid': 'vip-pipeline',
-            }
-        ]
-        bot = self._make_bot('default-uuid', rules)
-
-        uuid, routed = bot.resolve_pipeline_uuid('person', '12345', 'hi')
-        assert uuid == 'vip-pipeline'
-        assert routed is True
-
-        uuid, routed = bot.resolve_pipeline_uuid('person', '99999', 'hi')
-        assert uuid == 'default-uuid'
-        assert routed is False
-
-    def test_message_content_contains(self):
-        rules = [
-            {
-                'type': 'message_content',
-                'operator': 'contains',
-                'value': '紧急',
-                'pipeline_uuid': 'urgent-pipeline',
-            }
-        ]
-        bot = self._make_bot('default-uuid', rules)
-
-        uuid, routed = bot.resolve_pipeline_uuid('person', '123', '这是紧急消息')
-        assert uuid == 'urgent-pipeline'
-        assert routed is True
-
-        uuid, routed = bot.resolve_pipeline_uuid('person', '123', '普通消息')
-        assert uuid == 'default-uuid'
-        assert routed is False
-
-    def test_message_content_regex(self):
-        rules = [
-            {
-                'type': 'message_content',
-                'operator': 'regex',
-                'value': r'^/admin\b',
-                'pipeline_uuid': 'admin-pipeline',
-            }
-        ]
-        bot = self._make_bot('default-uuid', rules)
-
-        uuid, routed = bot.resolve_pipeline_uuid('person', '123', '/admin help')
-        assert uuid == 'admin-pipeline'
-        assert routed is True
-
-        uuid, routed = bot.resolve_pipeline_uuid('person', '123', 'hello /admin')
-        assert uuid == 'default-uuid'
-        assert routed is False
-
-    def test_message_has_element_eq(self):
-        rules = [
-            {
-                'type': 'message_has_element',
-                'operator': 'eq',
-                'value': 'Image',
-                'pipeline_uuid': 'image-pipeline',
-            }
-        ]
-        bot = self._make_bot('default-uuid', rules)
-
-        uuid, routed = bot.resolve_pipeline_uuid('person', '123', 'hi', ['Plain', 'Image'])
-        assert uuid == 'image-pipeline'
-        assert routed is True
-
-        uuid, routed = bot.resolve_pipeline_uuid('person', '123', 'hi', ['Plain'])
-        assert uuid == 'default-uuid'
-        assert routed is False
-
-    def test_message_has_element_neq(self):
-        rules = [
-            {
-                'type': 'message_has_element',
-                'operator': 'neq',
-                'value': 'Image',
-                'pipeline_uuid': 'text-only-pipeline',
-            }
-        ]
-        bot = self._make_bot('default-uuid', rules)
-
-        uuid, routed = bot.resolve_pipeline_uuid('person', '123', 'hi', ['Plain'])
-        assert uuid == 'text-only-pipeline'
-        assert routed is True
-
-        uuid, routed = bot.resolve_pipeline_uuid('person', '123', 'hi', ['Plain', 'Image'])
-        assert uuid == 'default-uuid'
-        assert routed is False
-
-    def test_message_has_element_no_types_provided(self):
-        """When element types are not provided, should not match."""
-        rules = [
-            {
-                'type': 'message_has_element',
-                'operator': 'eq',
-                'value': 'Image',
-                'pipeline_uuid': 'image-pipeline',
-            }
-        ]
-        bot = self._make_bot('default-uuid', rules)
-
-        uuid, routed = bot.resolve_pipeline_uuid('person', '123', 'hi')
-        assert uuid == 'default-uuid'
-        assert routed is False
-
-    def test_first_match_wins(self):
-        rules = [
-            {
-                'type': 'launcher_type',
-                'operator': 'eq',
-                'value': 'group',
-                'pipeline_uuid': 'first-pipeline',
-            },
-            {
-                'type': 'launcher_type',
-                'operator': 'eq',
-                'value': 'group',
-                'pipeline_uuid': 'second-pipeline',
-            },
-        ]
-        bot = self._make_bot('default-uuid', rules)
-
-        uuid, routed = bot.resolve_pipeline_uuid('group', '123', 'hi')
-        assert uuid == 'first-pipeline'
-        assert routed is True
-
-    def test_skip_invalid_rules(self):
-        rules = [
-            {'type': '', 'operator': 'eq', 'value': 'x', 'pipeline_uuid': 'p1'},
-            {'type': 'launcher_type', 'operator': 'eq', 'value': 'person', 'pipeline_uuid': ''},
-            {'type': 'launcher_type', 'operator': 'eq', 'value': 'person', 'pipeline_uuid': 'valid'},
-        ]
-        bot = self._make_bot('default-uuid', rules)
-
-        uuid, routed = bot.resolve_pipeline_uuid('person', '123', 'hi')
-        assert uuid == 'valid'
-        assert routed is True
-
-    def test_default_operator_is_eq(self):
-        rules = [
-            {
-                'type': 'launcher_type',
-                'value': 'person',
-                'pipeline_uuid': 'person-pipeline',
-            }
-        ]
-        bot = self._make_bot('default-uuid', rules)
-
-        uuid, routed = bot.resolve_pipeline_uuid('person', '123', 'hi')
-        assert uuid == 'person-pipeline'
-        assert routed is True
-
-    def test_discard_pipeline(self):
-        """When pipeline_uuid is __discard__, the message should be discarded."""
-        from langbot.pkg.platform.botmgr import RuntimeBot
-
-        rules = [
-            {
-                'type': 'message_content',
-                'operator': 'contains',
-                'value': 'spam',
-                'pipeline_uuid': RuntimeBot.PIPELINE_DISCARD,
-            }
-        ]
-        bot = self._make_bot('default-uuid', rules)
-
-        uuid, routed = bot.resolve_pipeline_uuid('person', '123', 'this is spam')
-        assert uuid == RuntimeBot.PIPELINE_DISCARD
-        assert routed is True
-
-        uuid, routed = bot.resolve_pipeline_uuid('person', '123', 'normal message')
-        assert uuid == 'default-uuid'
-        assert routed is False
+        bot.adapter.kill.assert_awaited_once()
+        task_mgr.cancel_task.assert_not_called()
 
 
 class TestEBAEventBindings:
