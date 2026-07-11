@@ -1,6 +1,7 @@
 import {
   AppWindow,
   AudioWaveform,
+  Bot,
   Book,
   FileText,
   Hash,
@@ -15,4 +16,5 @@ export const pluginComponentIconMap: Record<string, LucideIcon> = {
   KnowledgeEngine: Book,
   Parser: FileText,
   Page: AppWindow,
+  AgentRunner: Bot,
 };
