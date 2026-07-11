@@ -213,12 +213,45 @@ def _dingtalk_pending_input_defs(form_data: dict) -> list[dict]:
 
 
 def _dingtalk_clean_form_content(form_data: dict) -> str:
-    content = form_data.get('raw_form_content') or form_data.get('form_content') or ''
-    field_names = {
-        str(field.get('output_variable_name') or '').strip()
-        for field in _dingtalk_form_input_defs(form_data)
-        if str(field.get('output_variable_name') or '').strip()
-    }
+    is_field_step = bool(form_data.get('_current_input_field')) and not form_data.get('_action_select_only')
+    raw_content = str(form_data.get('raw_form_content') or '')
+    content = raw_content or form_data.get('form_content') or ''
+    input_defs = _dingtalk_form_input_defs(form_data)
+    field_names = {_dingtalk_field_name(field) for field in input_defs if _dingtalk_field_name(field)}
+
+    if is_field_step and raw_content:
+        current_field = str(form_data.get('_current_input_field') or '').strip()
+        current_placeholder = next(
+            (
+                match
+                for match in re.finditer(r'\{\{#\$output\.([^#{}]+)#\}\}', raw_content)
+                if match.group(1).strip() == current_field
+            ),
+            None,
+        )
+        content = (
+            raw_content[: current_placeholder.end()] if current_placeholder else form_data.get('form_content') or ''
+        )
+
+    if form_data.get('_action_select_only') or is_field_step:
+        fields = {_dingtalk_field_name(field): field for field in input_defs if _dingtalk_field_name(field)}
+        inputs = form_data.get('inputs') or {}
+
+        def replace_placeholder(match: re.Match[str]) -> str:
+            field_name = match.group(1).strip()
+            field = fields.get(field_name)
+            if not field or inputs.get(field_name) in (None, '', []):
+                return ''
+            lines = _dingtalk_completed_input_lines(
+                {
+                    'input_defs': [field],
+                    'inputs': {field_name: inputs[field_name]},
+                }
+            )
+            return lines[0] if lines else ''
+
+        content = re.sub(r'\{\{#\$output\.([^#{}]+)#\}\}', replace_placeholder, str(content))
+
     kept_lines: list[str] = []
     for line in str(content).splitlines():
         placeholder = re.fullmatch(r'\s*\{\{#\$output\.([^#{}]+)#\}\}\s*', line)
@@ -226,6 +259,11 @@ def _dingtalk_clean_form_content(form_data: dict) -> str:
             continue
         kept_lines.append(line)
     return re.sub(r'\n{3,}', '\n\n', '\n'.join(kept_lines).strip())
+
+
+def _dingtalk_card_markdown(content: str) -> str:
+    """Preserve line breaks inside DingTalk card-template markdown slots."""
+    return '<br>'.join(str(content or '').splitlines())
 
 
 def _dingtalk_form_input_defs(form_data: dict) -> list[dict]:
@@ -261,11 +299,11 @@ def _dingtalk_completed_input_lines(form_data: dict) -> list[str]:
         field_type = _dingtalk_field_type(field)
         display_value = _dingtalk_display_input_value(field, value)
         if field_type == 'select':
-            lines.append(f'✅ 已选择 {field_name}：**{display_value}**')
+            lines.append(f'✅ 已选择 {field_name}：{display_value}')
         elif field_type in {'file', 'file-list'}:
-            lines.append(f'✅ 已上传 {field_name}：**{display_value}**')
+            lines.append(f'✅ 已上传 {field_name}：{display_value}')
         else:
-            lines.append(f'✅ 已填写 {field_name}：**{display_value}**')
+            lines.append(f'✅ 已填写 {field_name}：{display_value}')
     return lines
 
 
@@ -915,9 +953,9 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if node_title:
             parts.append(f'**{node_title}**')
         if form_content:
-            parts.append(form_content)
+            parts.append(_dingtalk_card_markdown(form_content))
         completed_lines = _dingtalk_completed_input_lines(form_data)
-        if completed_lines:
+        if completed_lines and not all(line in form_content for line in completed_lines):
             parts.append('<hr>' + '<br>'.join(completed_lines))
         input_hint_lines = [] if native_field else _dingtalk_input_hint_lines(form_data)
         if input_hint_lines:
@@ -1017,9 +1055,9 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if node_title:
             parts.append(f'**{node_title}**')
         if form_content:
-            parts.append(form_content)
+            parts.append(_dingtalk_card_markdown(form_content))
         completed_lines = _dingtalk_completed_input_lines(form_data)
-        if completed_lines:
+        if completed_lines and not all(line in form_content for line in completed_lines):
             parts.append('<hr>' + '<br>'.join(completed_lines))
         input_hint_lines = [] if native_field else _dingtalk_input_hint_lines(form_data)
         if input_hint_lines:
@@ -1457,14 +1495,14 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if node_title:
             parts.append(f'**{node_title}**')
         if form_content:
-            parts.append(form_content)
+            parts.append(_dingtalk_card_markdown(form_content))
         completed_lines = _dingtalk_completed_input_lines(
             {
                 'input_defs': input_defs or [],
                 'inputs': inputs or {},
             }
         )
-        if completed_lines:
+        if completed_lines and not all(line in form_content for line in completed_lines):
             parts.append('<hr>' + '<br>'.join(completed_lines))
         parts.append(f'<hr>✅ 已选择：**{action_title}**')
         content = '<br><br>'.join(parts)

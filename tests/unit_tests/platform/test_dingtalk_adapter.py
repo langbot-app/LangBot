@@ -7,6 +7,7 @@ import pytest
 
 from langbot.pkg.platform.sources.dingtalk import (
     DingTalkAdapter,
+    _dingtalk_card_markdown,
     _dingtalk_clean_form_content,
     _dingtalk_completed_input_lines,
     _dingtalk_extract_component_inputs,
@@ -92,7 +93,7 @@ def test_dingtalk_completed_input_lines_include_text_and_select_values():
         }
     )
 
-    assert lines == ['✅ 已填写 comment：**looks good**', '✅ 已选择 choice：**B**']
+    assert lines == ['✅ 已填写 comment：looks good', '✅ 已选择 choice：B']
 
 
 def test_dingtalk_clean_form_content_uses_all_input_defs():
@@ -108,6 +109,49 @@ def test_dingtalk_clean_form_content_uses_all_input_defs():
     )
 
     assert content == 'Hello'
+
+
+def test_dingtalk_field_stage_keeps_prior_prompts_and_completed_values():
+    content = _dingtalk_clean_form_content(
+        {
+            '_current_input_field': 'choice',
+            'raw_form_content': ('Question\n{{#$output.comment#}}\nChoose an answer\n{{#$output.choice#}}'),
+            'form_content': 'Choose an answer',
+            'input_defs': [
+                {'output_variable_name': 'comment', 'type': 'paragraph'},
+                {'output_variable_name': 'choice', 'type': 'select'},
+            ],
+            'inputs': {'comment': 'hello'},
+        }
+    )
+
+    assert '{{#$output.' not in content
+    assert content.index('Question') < content.index('comment')
+    assert content.index('comment') < content.index('Choose an answer')
+
+
+def test_dingtalk_final_action_stage_interleaves_prompts_and_completed_values():
+    content = _dingtalk_clean_form_content(
+        {
+            '_action_select_only': True,
+            'raw_form_content': ('11\nQuestion\n{{#$output.comment#}}\nChoose an answer\n{{#$output.choice#}}'),
+            'all_input_defs': [
+                {'output_variable_name': 'comment', 'type': 'paragraph'},
+                {'output_variable_name': 'choice', 'type': 'select'},
+            ],
+            'inputs': {'comment': 'hello', 'choice': 'B'},
+        }
+    )
+
+    assert '{{#$output.' not in content
+    assert content.startswith('11\nQuestion')
+    assert content.index('Question') < content.index('comment')
+    assert content.index('comment') < content.index('Choose an answer')
+    assert content.index('Choose an answer') < content.index('choice')
+
+
+def test_dingtalk_card_markdown_preserves_internal_line_breaks():
+    assert _dingtalk_card_markdown('11\nQuestion\nCompleted') == '11<br>Question<br>Completed'
 
 
 def _build_card_action_adapter() -> DingTalkAdapter:

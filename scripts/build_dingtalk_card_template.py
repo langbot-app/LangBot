@@ -602,9 +602,9 @@ def build_editor_data():
                 'conditionGroup': '',
                 'children': [
                     avatar('node_avatar', name='LangBot'),
+                    markdown_block('node_text_content', variable='content'),
                     input_block('node_input'),
                     select_block('node_select'),
-                    markdown_block('node_text_content', variable='content'),
                     button_group('node_btn_group'),
                 ],
             }
