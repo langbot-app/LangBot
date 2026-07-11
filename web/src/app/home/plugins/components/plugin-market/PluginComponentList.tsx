@@ -1,6 +1,14 @@
 import { Fragment } from 'react';
 import { TFunction } from 'i18next';
-import { Wrench, AudioWaveform, Hash, Book, FileText } from 'lucide-react';
+import {
+  Wrench,
+  AudioWaveform,
+  Hash,
+  Book,
+  FileText,
+  PanelTop,
+  Bot,
+} from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 export default function PluginComponentList({
@@ -24,6 +32,8 @@ export default function PluginComponentList({
     Command: <Hash className="w-5 h-5" />,
     KnowledgeEngine: <Book className="w-5 h-5" />,
     Parser: <FileText className="w-5 h-5" />,
+    Page: <PanelTop className="w-5 h-5" />,
+    AgentRunner: <Bot className="w-5 h-5" />,
   };
 
   const componentKindList = Object.keys(components || {});
