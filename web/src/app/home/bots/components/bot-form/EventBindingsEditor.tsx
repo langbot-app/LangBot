@@ -16,6 +16,7 @@ import {
   ChevronRight,
   ChevronsUpDown,
   GripVertical,
+  Info,
   ListChecks,
   Plus,
   Play,
@@ -159,6 +160,90 @@ function eventPatternCovers(sup: string, bind: string) {
     return bind === `${ns}.*` || bind.startsWith(`${ns}.`);
   }
   return false;
+}
+
+interface RouteConflict {
+  winnerIndex: number;
+  shadowedIndex: number;
+}
+
+function bindingFilters(binding: EventBinding) {
+  return binding.filters ?? [];
+}
+
+function filtersEqual(a: EventBinding, b: EventBinding) {
+  return (
+    JSON.stringify(bindingFilters(a)) === JSON.stringify(bindingFilters(b))
+  );
+}
+
+function routePrecedes(
+  a: EventBinding,
+  aIndex: number,
+  b: EventBinding,
+  bIndex: number,
+) {
+  const aPriority = Number.isFinite(a.priority) ? a.priority : 0;
+  const bPriority = Number.isFinite(b.priority) ? b.priority : 0;
+  return aPriority === bPriority ? aIndex < bIndex : aPriority > bPriority;
+}
+
+function findRouteConflicts(bindings: EventBinding[]): RouteConflict[] {
+  const enabled = bindings
+    .map((binding, index) => ({ binding, index }))
+    .filter(({ binding }) => binding.enabled ?? true);
+  const conflicts: RouteConflict[] = [];
+
+  for (let left = 0; left < enabled.length; left += 1) {
+    for (let right = left + 1; right < enabled.length; right += 1) {
+      const a = enabled[left];
+      const b = enabled[right];
+      const [winner, shadowed] = routePrecedes(
+        a.binding,
+        a.index,
+        b.binding,
+        b.index,
+      )
+        ? [a, b]
+        : [b, a];
+
+      if (
+        !eventPatternCovers(
+          winner.binding.event_pattern,
+          shadowed.binding.event_pattern,
+        )
+      ) {
+        continue;
+      }
+
+      if (
+        bindingFilters(winner.binding).length === 0 ||
+        filtersEqual(winner.binding, shadowed.binding)
+      ) {
+        conflicts.push({
+          winnerIndex: winner.index,
+          shadowedIndex: shadowed.index,
+        });
+      }
+    }
+  }
+
+  return conflicts;
+}
+
+function findCatchAllRouteIndex(bindings: EventBinding[]) {
+  const candidates = bindings
+    .map((binding, index) => ({ binding, index }))
+    .filter(
+      ({ binding }) =>
+        (binding.enabled ?? true) &&
+        binding.event_pattern === '*' &&
+        bindingFilters(binding).length === 0,
+    );
+  candidates.sort((a, b) =>
+    routePrecedes(a.binding, a.index, b.binding, b.index) ? -1 : 1,
+  );
+  return candidates[0]?.index ?? -1;
 }
 
 function agentSupportsEventPattern(agent: Agent, pattern: string) {
@@ -1135,7 +1220,7 @@ function BindingCardContent({
   return (
     <div className="rounded-lg border bg-card">
       {/* main row */}
-      <div className="flex items-center gap-2 p-2.5">
+      <div className="flex flex-wrap items-center gap-2 p-2.5">
         {isEnabled && (
           <button
             type="button"
@@ -1145,6 +1230,14 @@ function BindingCardContent({
             <GripVertical className="h-4 w-4" />
           </button>
         )}
+
+        <Badge
+          variant="secondary"
+          className="h-5 min-w-5 shrink-0 justify-center px-1 text-[10px]"
+          title={t('bots.dryRunRuleIndex', { index: globalIndex + 1 })}
+        >
+          {globalIndex + 1}
+        </Badge>
 
         <Select
           value={binding.event_pattern}
@@ -1162,7 +1255,7 @@ function BindingCardContent({
             onUpdate(globalIndex, patch);
           }}
         >
-          <SelectTrigger className="h-8 flex-1 min-w-0 text-sm">
+          <SelectTrigger className="h-8 min-w-[150px] flex-1 text-sm">
             {binding.event_pattern ? (
               <span className="truncate">
                 {eventLabel(binding.event_pattern, t)}
@@ -1217,54 +1310,37 @@ function BindingCardContent({
           onUpdate={(patch) => onUpdate(globalIndex, patch)}
         />
 
-        <div className="hidden min-w-[132px] max-w-[220px] flex-col items-end gap-1 lg:flex">
-          <Badge
-            variant="outline"
-            className={`rounded-md px-2 py-0.5 text-[10px] font-medium ${routeStatusBadgeClass(
-              routeStatus?.last_status,
-            )}`}
-          >
-            {routeStatusLabel(routeStatus?.last_status, t)}
-          </Badge>
-          <span
-            className="max-w-full truncate text-[11px] text-muted-foreground"
-            title={
-              statusTime ? `${statusDetail} · ${statusTime}` : statusDetail
-            }
-          >
-            {statusDetail || statusTime}
-          </span>
-        </div>
-
         {!pipelineAllowed && binding.target_type === 'pipeline' && (
           <span className="text-xs text-destructive shrink-0">
             {t('bots.unsupportedPipelineEvent')}
           </span>
         )}
 
-        {/* disable/enable toggle */}
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-8 px-2 text-xs text-muted-foreground shrink-0"
-          onClick={() => onUpdate(globalIndex, { enabled: !isEnabled })}
-        >
-          {isEnabled ? t('bots.disable') : t('bots.enable')}
-        </Button>
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          {/* disable/enable toggle */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 px-2 text-xs text-muted-foreground"
+            onClick={() => onUpdate(globalIndex, { enabled: !isEnabled })}
+          >
+            {isEnabled ? t('bots.disable') : t('bots.enable')}
+          </Button>
 
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 shrink-0"
-          onClick={() => onRemove(globalIndex)}
-        >
-          <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
-        </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => onRemove(globalIndex)}
+          >
+            <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+          </Button>
+        </div>
       </div>
 
-      <div className="flex items-center gap-2 border-t px-3 py-1.5 lg:hidden">
+      <div className="flex items-center gap-2 border-t px-3 py-1.5">
         <Badge
           variant="outline"
           className={`rounded-md px-2 py-0.5 text-[10px] font-medium ${routeStatusBadgeClass(
@@ -1275,9 +1351,9 @@ function BindingCardContent({
         </Badge>
         <span
           className="min-w-0 truncate text-[11px] text-muted-foreground"
-          title={routeStatus?.reason || routeStatus?.message || statusTime}
+          title={statusTime ? `${statusDetail} · ${statusTime}` : statusDetail}
         >
-          {routeStatus?.failure_code || routeStatus?.reason || statusTime}
+          {statusDetail || statusTime}
         </span>
       </div>
 
@@ -1328,7 +1404,9 @@ export default function EventBindingsEditor({
   agentOptions,
 }: EventBindingsEditorProps) {
   const { t } = useTranslation();
-  const bindings: EventBinding[] = form.watch('event_bindings') || [];
+  const watchedBindings: EventBinding[] | undefined =
+    form.watch('event_bindings');
+  const bindings = useMemo(() => watchedBindings ?? [], [watchedBindings]);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [disabledSectionOpen, setDisabledSectionOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -1365,6 +1443,14 @@ export default function EventBindingsEditor({
     });
     return map;
   }, [routeStatuses]);
+  const routeConflicts = useMemo(
+    () => findRouteConflicts(bindings),
+    [bindings],
+  );
+  const catchAllRouteIndex = useMemo(
+    () => findCatchAllRouteIndex(bindings),
+    [bindings],
+  );
 
   const refreshRouteStatuses = useCallback(async () => {
     if (!botId) {
@@ -1400,7 +1486,7 @@ export default function EventBindingsEditor({
         event_pattern: 'message.received',
         target_type: 'agent',
         target_uuid: '',
-        priority: bindings.length,
+        priority: 0,
         enabled: true,
         description: '',
         filters: [],
@@ -1484,6 +1570,49 @@ export default function EventBindingsEditor({
         supportedEvents={supportedEvents}
         eventOptions={eventOptions}
       />
+
+      {routeConflicts.length > 0 && (
+        <Alert className="border-amber-200 bg-amber-50/60 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            <p className="font-medium">{t('bots.routeConflictTitle')}</p>
+            <ul className="mt-1 space-y-1 text-xs">
+              {routeConflicts.slice(0, 3).map((conflict) => (
+                <li key={`${conflict.winnerIndex}:${conflict.shadowedIndex}`}>
+                  {t('bots.routeConflictShadowed', {
+                    winner: t('bots.dryRunRuleIndex', {
+                      index: conflict.winnerIndex + 1,
+                    }),
+                    shadowed: t('bots.dryRunRuleIndex', {
+                      index: conflict.shadowedIndex + 1,
+                    }),
+                  })}
+                </li>
+              ))}
+            </ul>
+            {routeConflicts.length > 3 && (
+              <p className="mt-1 text-xs">
+                {t('bots.routeConflictMore', {
+                  count: routeConflicts.length - 3,
+                })}
+              </p>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <Alert>
+        <Info className="h-4 w-4" />
+        <AlertDescription>
+          {catchAllRouteIndex >= 0
+            ? t('bots.routeFallbackCatchAll', {
+                route: t('bots.dryRunRuleIndex', {
+                  index: catchAllRouteIndex + 1,
+                }),
+              })
+            : t('bots.routeFallbackIgnored')}
+        </AlertDescription>
+      </Alert>
 
       {/* enabled section */}
       <DndContext

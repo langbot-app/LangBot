@@ -376,6 +376,14 @@ const zhHans = {
     adapterEventsMore: '另有 {{count}} 类',
     advancedEventValues: '高级事件值',
     eventGroup: '事件组',
+    routeConflictTitle: '部分路由存在覆盖冲突',
+    routeConflictShadowed:
+      '{{shadowed}} 可能永远不会运行，因为 {{winner}} 会先处理相同事件。',
+    routeConflictMore: '另有 {{count}} 个路由冲突需要处理。',
+    routeFallbackCatchAll:
+      '{{route}} 是全局兜底路由，优先级更高的路由会先运行。',
+    routeFallbackIgnored:
+      '未命中任何路由的事件会被忽略。只有需要为每个事件指定结果时，才添加全局兜底路由。',
     testRoute: '测试路由',
     refreshRouteStatus: '刷新状态',
     routeStatusIdle: '暂无运行记录',
