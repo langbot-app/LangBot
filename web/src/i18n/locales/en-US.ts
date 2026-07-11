@@ -391,6 +391,14 @@ const enUS = {
     adapterEventsMore: '{{count}} more',
     advancedEventValues: 'Advanced event values',
     eventGroup: 'Group',
+    routeConflictTitle: 'Some routes overlap',
+    routeConflictShadowed:
+      '{{shadowed}} may never run because {{winner}} handles the same events first.',
+    routeConflictMore: '{{count}} more route conflicts need attention.',
+    routeFallbackCatchAll:
+      '{{route}} is the catch-all route. Routes with higher priority run first.',
+    routeFallbackIgnored:
+      'Events that match no route are ignored. Add a catch-all route only when every event needs an explicit outcome.',
     testRoute: 'Test route',
     refreshRouteStatus: 'Refresh status',
     routeStatusIdle: 'No run yet',

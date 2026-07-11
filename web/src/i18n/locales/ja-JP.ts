@@ -398,6 +398,14 @@ const jaJP = {
     adapterEventsMore: 'ほか {{count}} 件',
     advancedEventValues: '高度なイベント値',
     eventGroup: 'グループ',
+    routeConflictTitle: '一部のルートが重複しています',
+    routeConflictShadowed:
+      '{{winner}} が同じイベントを先に処理するため、{{shadowed}} は実行されない可能性があります。',
+    routeConflictMore: 'ほか {{count}} 件のルート競合を確認してください。',
+    routeFallbackCatchAll:
+      '{{route}} はすべてのイベントを受けるフォールバックです。優先度の高いルートが先に実行されます。',
+    routeFallbackIgnored:
+      'どのルートにも一致しないイベントは無視されます。すべてのイベントに明示的な結果が必要な場合のみ、フォールバックを追加してください。',
     testRoute: 'ルートをテスト',
     refreshRouteStatus: '状態を更新',
     routeStatusIdle: '実行記録なし',

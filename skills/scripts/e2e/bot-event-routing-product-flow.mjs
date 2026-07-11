@@ -19,6 +19,7 @@ const caseId = "bot-event-routing-product-flow";
 await loadEnvFiles();
 const paths = evidencePaths(caseId);
 await ensureEvidence(paths);
+const mobileScreenshot = paths.screenshot.replace(/\.png$/, "-mobile.png");
 
 const startedAt = new Date();
 const frontendUrl = process.env.LANGBOT_FRONTEND_URL || "";
@@ -48,6 +49,7 @@ const result = {
     console_log: paths.consoleLog,
     network_log: paths.networkLog,
     screenshot: paths.screenshot,
+    mobile_screenshot: mobileScreenshot,
     automation_result_json: paths.automationResultJson,
     result_json: paths.resultJson,
   },
@@ -125,6 +127,17 @@ try {
           description: "Discard the deterministic QA event",
           order: 0,
         },
+        {
+          id: "qa-message-discard-shadowed",
+          event_pattern: "message.received",
+          target_type: "discard",
+          target_uuid: "",
+          filters: [],
+          priority: 0,
+          enabled: true,
+          description: "Verify visible route conflict guidance",
+          order: 1,
+        },
       ],
     },
   });
@@ -158,10 +171,22 @@ try {
     .getByText(/Message received|收到消息|メッセージを受信/)
     .first()
     .waitFor();
+  await page
+    .getByText(
+      /Some routes overlap|部分路由存在覆盖冲突|一部のルートが重複しています/,
+    )
+    .waitFor();
+  await page
+    .getByText(
+      /Events that match no route are ignored|未命中任何路由的事件会被忽略|どのルートにも一致しないイベントは無視されます/,
+    )
+    .waitFor();
   result.visible_signals.push(
     "event-routing",
     "adapter-capabilities",
     "friendly-event-name",
+    "route-conflict-guidance",
+    "fallback-guidance",
   );
 
   await page
@@ -234,6 +259,23 @@ try {
   }
 
   await safeScreenshot(page, paths.screenshot);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(250);
+  const horizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - window.innerWidth,
+  );
+  if (horizontalOverflow > 1) {
+    throw new Error(
+      `The mobile route editor overflows horizontally by ${horizontalOverflow}px.`,
+    );
+  }
+  await page
+    .getByText(
+      /Some routes overlap|部分路由存在覆盖冲突|一部のルートが重複しています/,
+    )
+    .waitFor();
+  await safeScreenshot(page, mobileScreenshot);
+  result.visible_signals.push("mobile-layout");
   result.diagnostics = await scanBrowserDiagnostics(paths);
   if (result.diagnostics.status !== "pass") {
     throw new Error(result.diagnostics.reason);
