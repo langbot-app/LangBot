@@ -22,11 +22,11 @@ from langbot.libs.dify_service_api.v1 import client, errors
 import httpx
 
 
-# Module-level store for paused-workflow form state, keyed by session key
-# (launcher_type_value + "_" + launcher_id). Each session holds an
-# insertion-ordered dict of form_token -> form_data, allowing multiple
-# Dify workflows to be paused simultaneously for the same session.
-_PENDING_FORMS: dict[str, 'OrderedDict[str, dict[str, typing.Any]]'] = {}
+# Module-level store for paused-workflow form state. The key isolates the bot,
+# pipeline, adapter, and launcher; each value holds an insertion-ordered map of
+# form_token -> form_data so one conversation can pause multiple workflows.
+PendingFormKey = tuple[str, str, str, str, str]
+_PENDING_FORMS: dict[PendingFormKey, 'OrderedDict[str, dict[str, typing.Any]]'] = {}
 _PENDING_FORM_DEFAULT_TTL = 30 * 60  # 30 minutes safety cap
 _STREAM_FORM_PLACEHOLDER = '\u200b'
 
@@ -43,8 +43,21 @@ def _merge_stream_text(accumulated: str, incoming: typing.Any) -> str:
     return accumulated + incoming_text
 
 
-def _session_key_from_query(query: pipeline_query.Query) -> str:
+def _dify_user_from_query(query: pipeline_query.Query) -> str:
     return f'{query.session.launcher_type.value}_{query.session.launcher_id}'
+
+
+def _session_key_from_query(query: pipeline_query.Query) -> PendingFormKey:
+    """Build a process-local pending-form key isolated by bot and pipeline."""
+    adapter = getattr(query, 'adapter', None)
+    adapter_type = f'{type(adapter).__module__}.{type(adapter).__qualname__}'
+    return (
+        str(getattr(query, 'bot_uuid', '') or ''),
+        str(getattr(query, 'pipeline_uuid', '') or ''),
+        adapter_type,
+        str(query.session.launcher_type.value),
+        str(query.session.launcher_id),
+    )
 
 
 def _prune_pending_forms(now: float | None = None) -> None:
@@ -59,7 +72,7 @@ def _prune_pending_forms(now: float | None = None) -> None:
             _PENDING_FORMS.pop(session_key, None)
 
 
-def _set_pending_form(session_key: str, form_data: dict[str, typing.Any]) -> None:
+def _set_pending_form(session_key: PendingFormKey, form_data: dict[str, typing.Any]) -> None:
     _prune_pending_forms()
     stored = dict(form_data)
     expiration_time = stored.get('expiration_time')
@@ -75,7 +88,7 @@ def _set_pending_form(session_key: str, form_data: dict[str, typing.Any]) -> Non
     forms[form_token] = stored
 
 
-def _get_pending_form_by_token(session_key: str, form_token: str) -> dict[str, typing.Any] | None:
+def _get_pending_form_by_token(session_key: PendingFormKey, form_token: str) -> dict[str, typing.Any] | None:
     _prune_pending_forms()
     forms = _PENDING_FORMS.get(session_key)
     if not forms or not form_token:
@@ -83,7 +96,7 @@ def _get_pending_form_by_token(session_key: str, form_token: str) -> dict[str, t
     return forms.get(form_token)
 
 
-def _get_pending_form_by_w_suffix(session_key: str, w_suffix: str) -> dict[str, typing.Any] | None:
+def _get_pending_form_by_w_suffix(session_key: PendingFormKey, w_suffix: str) -> dict[str, typing.Any] | None:
     """Look up a pending form whose workflow_run_id ends with the given suffix.
 
     Used by adapters (e.g. Telegram) whose callback payload is too small to
@@ -100,7 +113,7 @@ def _get_pending_form_by_w_suffix(session_key: str, w_suffix: str) -> dict[str, 
     return None
 
 
-def _get_latest_pending_form(session_key: str) -> dict[str, typing.Any] | None:
+def _get_latest_pending_form(session_key: PendingFormKey) -> dict[str, typing.Any] | None:
     _prune_pending_forms()
     forms = _PENDING_FORMS.get(session_key)
     if not forms:
@@ -108,7 +121,7 @@ def _get_latest_pending_form(session_key: str) -> dict[str, typing.Any] | None:
     return forms[next(reversed(forms))]
 
 
-def _iter_pending_forms(session_key: str) -> typing.Iterator[dict[str, typing.Any]]:
+def _iter_pending_forms(session_key: PendingFormKey) -> typing.Iterator[dict[str, typing.Any]]:
     """Iterate pending forms for a session, newest-first."""
     _prune_pending_forms()
     forms = _PENDING_FORMS.get(session_key)
@@ -118,7 +131,7 @@ def _iter_pending_forms(session_key: str) -> typing.Iterator[dict[str, typing.An
         yield forms[token]
 
 
-def _clear_pending_form(session_key: str, form_token: str | None = None) -> None:
+def _clear_pending_form(session_key: PendingFormKey, form_token: str | None = None) -> None:
     """Clear one specific pending form (by token) or all forms for the session."""
     forms = _PENDING_FORMS.get(session_key)
     if not forms:
@@ -683,7 +696,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         """
         plain_text = ''
         upload_files: list[dict] = []
-        user_tag = f'{query.session.launcher_type.value}_{query.session.launcher_id}'
+        user_tag = _dify_user_from_query(query)
 
         async def upload_file_bytes(file_name: str, file_bytes: bytes, content_type: str) -> str:
             file_name = file_name or 'file'
@@ -823,7 +836,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         values = dict(pending_form.get('inputs') or {})
         keyed_values = _extract_key_value_inputs(user_text)
-        user = pending_form.get('user') or _session_key_from_query(query)
+        user = pending_form.get('user') or _dify_user_from_query(query)
         current_field_name = str(pending_form.get('current_input_field') or '').strip()
 
         file_fields = [field for field in input_defs if _field_type(field) in {'file', 'file-list'}]
@@ -933,7 +946,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                     form_action,
                 )
                 return
-            async for msg in self._submit_workflow_form_blocking(form_action):
+            async for msg in self._submit_workflow_form_blocking(form_action, session_key):
                 yield msg
             _clear_pending_form(session_key, form_action.get('form_token') or None)
             return
@@ -965,7 +978,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         async for chunk in self.dify_client.chat_messages(
             inputs=inputs,
             query=plain_text,
-            user=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
+            user=_dify_user_from_query(query),
             conversation_id=cov_id,
             files=files,
             timeout=120,
@@ -982,7 +995,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                     for reason in reasons:
                         if reason.get('TYPE') != 'human_input_required':
                             continue
-                        user = f'{query.session.launcher_type.value}_{query.session.launcher_id}'
+                        user = _dify_user_from_query(query)
                         form_snapshot, raw_form_content, input_defs, _ = _extract_form_snapshot(
                             workflow_run_id,
                             reason,
@@ -1063,7 +1076,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         async for chunk in self.dify_client.chat_messages(
             inputs=inputs,
             query=plain_text,
-            user=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
+            user=_dify_user_from_query(query),
             response_mode='streaming',
             conversation_id=cov_id,
             files=files,
@@ -1131,7 +1144,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         query.session.using_conversation.uuid = chunk['conversation_id']
 
     async def _submit_workflow_form_blocking(
-        self, form_action: dict
+        self, form_action: dict, session_key: PendingFormKey
     ) -> typing.AsyncGenerator[provider_message.Message, None]:
         """Submit human input to resume a paused Dify workflow (non-streaming)."""
 
@@ -1206,7 +1219,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                     actions = form_snapshot.get('actions', [])
                     paused_node_title = form_snapshot.get('node_title', '')
 
-                    _set_pending_form(user, form_snapshot)
+                    _set_pending_form(session_key, form_snapshot)
 
                     display_text = _format_human_input_text(
                         paused_node_title,
@@ -1226,7 +1239,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             content, _ = self._process_thinking_content(pending_content)
             yield provider_message.Message(role='assistant', content=content)
 
-    def _resolve_pending_form(self, session_key: str, form_action: dict) -> dict | None:
+    def _resolve_pending_form(self, session_key: PendingFormKey, form_action: dict) -> dict | None:
         """Locate the pending form this action targets.
 
         Tries identifiers in order of specificity: form_token, full
@@ -1253,7 +1266,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         return _get_latest_pending_form(session_key)
 
-    def _merge_pending_form_action(self, session_key: str, form_action: dict | None) -> dict | None:
+    def _merge_pending_form_action(self, session_key: PendingFormKey, form_action: dict | None) -> dict | None:
         """Backfill resume fields from the matching pending form."""
         if not form_action:
             return None
@@ -1310,7 +1323,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
     async def _match_pending_form_action(
         self,
         query: pipeline_query.Query,
-        session_key: str,
+        session_key: PendingFormKey,
         user_text: str,
     ) -> dict | None:
         """Match plain text replies against pending Dify form actions.
@@ -1428,7 +1441,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                     form_action,
                 )
                 return
-            async for msg in self._submit_workflow_form_blocking(form_action):
+            async for msg in self._submit_workflow_form_blocking(form_action, session_key):
                 yield msg
             _clear_pending_form(session_key, form_action.get('form_token') or None)
             return
@@ -1463,7 +1476,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         async for chunk in self.dify_client.workflow_run(
             inputs=inputs,
-            user=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
+            user=_dify_user_from_query(query),
             files=files,
             timeout=120,
         ):
@@ -1476,7 +1489,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 workflow_run_id = chunk['data'].get('workflow_run_id', '')
                 for reason in reasons:
                     if reason.get('TYPE') == 'human_input_required':
-                        user = f'{query.session.launcher_type.value}_{query.session.launcher_id}'
+                        user = _dify_user_from_query(query)
                         form_snapshot, raw_form_content, input_defs, _ = _extract_form_snapshot(
                             workflow_run_id,
                             reason,
@@ -1561,7 +1574,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                     form_action,
                 )
                 return
-            async for msg in self._submit_workflow_form(form_action):
+            async for msg in self._submit_workflow_form(form_action, session_key):
                 yield msg
             _clear_pending_form(session_key, form_action.get('form_token') or None)
             return
@@ -1607,7 +1620,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         async for chunk in self.dify_client.chat_messages(
             inputs=inputs,
             query=plain_text,
-            user=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
+            user=_dify_user_from_query(query),
             conversation_id=cov_id,
             files=files,
             timeout=120,
@@ -1639,7 +1652,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 for reason in reasons:
                     if reason.get('TYPE') != 'human_input_required':
                         continue
-                    user = f'{query.session.launcher_type.value}_{query.session.launcher_id}'
+                    user = _dify_user_from_query(query)
                     form_snapshot, raw_form_content, input_defs, display_form_content = _extract_form_snapshot(
                         workflow_run_id,
                         reason,
@@ -1759,7 +1772,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         async for chunk in self.dify_client.chat_messages(
             inputs=inputs,
             query=plain_text,
-            user=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
+            user=_dify_user_from_query(query),
             response_mode='streaming',
             conversation_id=cov_id,
             files=files,
@@ -1846,7 +1859,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         query.session.using_conversation.uuid = chunk['conversation_id']
 
     async def _submit_workflow_form(
-        self, form_action: dict
+        self, form_action: dict, session_key: PendingFormKey
     ) -> typing.AsyncGenerator[provider_message.MessageChunk, None]:
         """Submit human input to resume a paused Dify workflow."""
 
@@ -1901,7 +1914,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                     # card still shows which step the user acted on.
                     paused_node_title = form_snapshot.get('node_title', '')
 
-                    _set_pending_form(user, form_snapshot)
+                    _set_pending_form(session_key, form_snapshot)
 
                     repause_form_data = _initial_interactive_form_data(form_snapshot) or {
                         'form_content': display_form_content,
@@ -2014,7 +2027,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 )
                 return
             # Resume paused workflow via submit endpoint
-            async for msg in self._submit_workflow_form(form_action):
+            async for msg in self._submit_workflow_form(form_action, session_key):
                 yield msg
             _clear_pending_form(session_key, form_action.get('form_token') or None)
             return
@@ -2060,7 +2073,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         remove_think = self.pipeline_config['output'].get('misc', {}).get('remove-think')
         async for chunk in self.dify_client.workflow_run(
             inputs=inputs,
-            user=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
+            user=_dify_user_from_query(query),
             files=files,
             timeout=120,
         ):
@@ -2075,7 +2088,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 workflow_run_id = chunk['data'].get('workflow_run_id', workflow_run_id)
                 for reason in reasons:
                     if reason.get('TYPE') == 'human_input_required':
-                        user = f'{query.session.launcher_type.value}_{query.session.launcher_id}'
+                        user = _dify_user_from_query(query)
                         form_snapshot, raw_form_content, input_defs, display_form_content = _extract_form_snapshot(
                             workflow_run_id,
                             reason,

@@ -196,6 +196,49 @@ class TestDifyHumanInputForms:
         runner.dify_client.upload_file = AsyncMock(return_value={'id': 'upload-1'})
         return runner
 
+    def test_pending_forms_are_isolated_by_bot_and_pipeline(self):
+        from langbot.pkg.provider.runners import difysvapi
+
+        query_a = MagicMock()
+        query_a.bot_uuid = 'bot-a'
+        query_a.pipeline_uuid = 'pipeline-a'
+        query_a.session.launcher_type.value = 'person'
+        query_a.session.launcher_id = 'shared-user'
+
+        query_b = MagicMock()
+        query_b.bot_uuid = 'bot-b'
+        query_b.pipeline_uuid = 'pipeline-a'
+        query_b.session.launcher_type.value = 'person'
+        query_b.session.launcher_id = 'shared-user'
+
+        query_c = MagicMock()
+        query_c.bot_uuid = 'bot-a'
+        query_c.pipeline_uuid = 'pipeline-b'
+        query_c.session.launcher_type.value = 'person'
+        query_c.session.launcher_id = 'shared-user'
+
+        key_a = difysvapi._session_key_from_query(query_a)
+        key_b = difysvapi._session_key_from_query(query_b)
+        key_c = difysvapi._session_key_from_query(query_c)
+        difysvapi._PENDING_FORMS.clear()
+        difysvapi._set_pending_form(key_a, {'form_token': 'token-a', 'workflow_run_id': 'run-a'})
+        difysvapi._set_pending_form(key_b, {'form_token': 'token-b', 'workflow_run_id': 'run-b'})
+        difysvapi._set_pending_form(key_c, {'form_token': 'token-c', 'workflow_run_id': 'run-c'})
+
+        assert key_a != key_b
+        assert key_a != key_c
+        assert difysvapi._get_pending_form_by_token(key_a, 'token-a') is not None
+        assert difysvapi._get_pending_form_by_token(key_a, 'token-b') is None
+        assert difysvapi._get_pending_form_by_token(key_a, 'token-c') is None
+        assert difysvapi._get_pending_form_by_token(key_b, 'token-b') is not None
+        assert difysvapi._get_pending_form_by_token(key_c, 'token-c') is not None
+        assert difysvapi._get_latest_pending_form(key_a)['workflow_run_id'] == 'run-a'
+        assert difysvapi._get_latest_pending_form(key_b)['workflow_run_id'] == 'run-b'
+        assert difysvapi._get_latest_pending_form(key_c)['workflow_run_id'] == 'run-c'
+        assert difysvapi._dify_user_from_query(query_a) == difysvapi._dify_user_from_query(query_b)
+        assert difysvapi._dify_user_from_query(query_a) == difysvapi._dify_user_from_query(query_c)
+        difysvapi._PENDING_FORMS.clear()
+
     def test_format_human_input_text_includes_field_help(self):
         from langbot.pkg.provider.runners.difysvapi import _format_human_input_text
 
@@ -737,7 +780,8 @@ class TestDifyHumanInputForms:
                     'user': 'person_user-1',
                     'action_id': 'yes',
                     'inputs': {},
-                }
+                },
+                ('bot-1', 'pipeline-1', 'adapter.Type', 'person', 'user-1'),
             )
         ]
 
@@ -748,18 +792,7 @@ class TestDifyHumanInputForms:
         from langbot.pkg.provider.runners import difysvapi
 
         runner = self._create_runner()
-        session_key = 'person_user-1'
         difysvapi._PENDING_FORMS.clear()
-        difysvapi._set_pending_form(
-            session_key,
-            {
-                'form_token': 'token-1',
-                'workflow_run_id': 'run-1',
-                'actions': [{'id': 'yes', 'title': 'Yes'}],
-                'inputs': {},
-                'user': session_key,
-            },
-        )
 
         async def workflow_submit(**kwargs):
             del kwargs
@@ -772,12 +805,25 @@ class TestDifyHumanInputForms:
         query = MagicMock()
         query.session.launcher_type.value = 'person'
         query.session.launcher_id = 'user-1'
+        query.bot_uuid = 'bot-1'
+        query.pipeline_uuid = 'pipeline-1'
+        session_key = difysvapi._session_key_from_query(query)
+        difysvapi._set_pending_form(
+            session_key,
+            {
+                'form_token': 'token-1',
+                'workflow_run_id': 'run-1',
+                'actions': [{'id': 'yes', 'title': 'Yes'}],
+                'inputs': {},
+                'user': 'person_user-1',
+            },
+        )
         query.variables = {
             '_dify_form_action': {
                 'form_token': 'token-1',
                 'workflow_run_id': 'run-1',
                 'action_id': 'yes',
-                'user': session_key,
+                'user': 'person_user-1',
                 'inputs': {},
             }
         }
@@ -793,18 +839,7 @@ class TestDifyHumanInputForms:
         from langbot.pkg.provider.runners import difysvapi
 
         runner = self._create_runner()
-        session_key = 'person_user-1'
         difysvapi._PENDING_FORMS.clear()
-        difysvapi._set_pending_form(
-            session_key,
-            {
-                'form_token': 'token-1',
-                'workflow_run_id': 'run-1',
-                'actions': [{'id': 'yes', 'title': 'Yes'}],
-                'inputs': {},
-                'user': session_key,
-            },
-        )
 
         async def workflow_submit(**kwargs):
             del kwargs
@@ -815,12 +850,25 @@ class TestDifyHumanInputForms:
         query = MagicMock()
         query.session.launcher_type.value = 'person'
         query.session.launcher_id = 'user-1'
+        query.bot_uuid = 'bot-1'
+        query.pipeline_uuid = 'pipeline-1'
+        session_key = difysvapi._session_key_from_query(query)
+        difysvapi._set_pending_form(
+            session_key,
+            {
+                'form_token': 'token-1',
+                'workflow_run_id': 'run-1',
+                'actions': [{'id': 'yes', 'title': 'Yes'}],
+                'inputs': {},
+                'user': 'person_user-1',
+            },
+        )
         query.variables = {
             '_dify_form_action': {
                 'form_token': 'token-1',
                 'workflow_run_id': 'run-1',
                 'action_id': 'yes',
-                'user': session_key,
+                'user': 'person_user-1',
                 'inputs': {},
             }
         }
