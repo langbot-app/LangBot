@@ -373,6 +373,25 @@ const jaJP = {
       'このボットが受信した各イベントをどのプロセッサーに渡すかを選択します。処理ロジックは Agent ページで編集します。Pipeline はメッセージイベントのみ対応します。',
     eventBindings: 'イベントルート',
     addEventBinding: 'ルートを追加',
+    addBehavior: '動作を追加',
+    behaviorReplyMessages: '受信メッセージに返信',
+    behaviorReplyMessagesDescription:
+      '受信メッセージを Agent または Pipeline で処理します。',
+    behaviorWelcomeMembers: '新しいメンバーを歓迎',
+    behaviorWelcomeMembersDescription:
+      'メンバーがグループに参加したときに Agent を実行します。',
+    behaviorHandleDepartures: 'メンバーの退出を処理',
+    behaviorHandleDeparturesDescription:
+      'メンバーが退出または削除されたときに Agent を実行します。',
+    behaviorReviewFriendRequests: '友だち申請を確認',
+    behaviorReviewFriendRequestsDescription:
+      '新しい申請の処理方法を Agent に判断させます。',
+    behaviorHandleModeration: 'モデレーションイベントを処理',
+    behaviorHandleModerationDescription:
+      'グループメンバーが制限されたときに Agent を実行します。',
+    behaviorCustom: '別のイベントを設定',
+    behaviorCustomDescription:
+      'ルートを追加し、このアダプターが対応する全イベントから選択します。',
     eventPattern: 'イベント',
     eventPatternPlaceholder: 'イベントを選択',
     targetType: 'ターゲットタイプ',
