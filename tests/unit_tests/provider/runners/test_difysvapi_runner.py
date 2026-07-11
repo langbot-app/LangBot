@@ -603,6 +603,42 @@ class TestDifyHumanInputForms:
         assert action['_form_data']['_action_select_only'] is True
 
     @pytest.mark.asyncio
+    async def test_invalid_select_reply_keeps_the_current_form_field(self):
+        from langbot.pkg.provider.runners import difysvapi
+
+        runner = self._create_runner()
+        session_key = 'person_user-1'
+        difysvapi._PENDING_FORMS.clear()
+        difysvapi._set_pending_form(
+            session_key,
+            {
+                'form_token': 'token-1',
+                'workflow_run_id': 'run-1',
+                'actions': [{'id': 'yes', 'title': 'Yes'}],
+                'input_defs': [
+                    {
+                        'output_variable_name': 'choice',
+                        'type': 'select',
+                        'option_source': {'type': 'constant', 'value': ['A', 'B']},
+                    }
+                ],
+                'inputs': {},
+                'current_input_field': 'choice',
+                'user': session_key,
+            },
+        )
+        query = MagicMock()
+        query.message_chain = platform_message.MessageChain([platform_message.Plain(text='')])
+
+        action = await runner._match_pending_form_action(query, session_key, 'C')
+
+        assert action['_partial'] is True
+        assert action['inputs'] == {}
+        assert action['_form_data']['_current_input_field'] == 'choice'
+        assert 'choice: 1. A, 2. B' in action['notice']
+        assert difysvapi._get_latest_pending_form(session_key)['inputs'] == {}
+
+    @pytest.mark.asyncio
     async def test_workflow_pause_without_text_yields_form_chunk(self):
         from langbot.pkg.provider.runners import difysvapi
 
@@ -808,6 +844,60 @@ class TestDifyHumanInputForms:
         assert second['_partial'] is True
         assert second['inputs'] == {'comment': 'looks good', 'choice': 'B'}
         assert second['_form_data']['_action_select_only'] is True
+
+    def test_card_select_preserves_numeric_option_values(self):
+        from langbot.pkg.provider.runners import difysvapi
+
+        runner = self._create_runner()
+        session_key = 'person_user-1'
+        difysvapi._PENDING_FORMS.clear()
+        difysvapi._set_pending_form(
+            session_key,
+            {
+                'form_token': 'token-1',
+                'workflow_run_id': 'run-1',
+                'actions': [{'id': 'yes', 'title': 'Yes'}],
+                'input_defs': [
+                    {
+                        'output_variable_name': 'choice',
+                        'type': 'select',
+                        'option_source': {'type': 'constant', 'value': ['1', '2']},
+                    }
+                ],
+                'inputs': {},
+                'current_input_field': 'choice',
+                'user': session_key,
+            },
+        )
+
+        action = runner._merge_pending_form_action(
+            session_key,
+            {
+                'form_token': 'token-1',
+                'workflow_run_id': 'run-1',
+                'inputs': {'select': '1'},
+                '_current_input_field': 'choice',
+                '_input_progress': True,
+            },
+        )
+
+        assert action['_partial'] is True
+        assert action['inputs'] == {'choice': '1'}
+
+    def test_invalid_card_select_value_is_not_saved(self):
+        from langbot.pkg.provider.runners import difysvapi
+
+        form = {
+            'input_defs': [
+                {
+                    'output_variable_name': 'choice',
+                    'type': 'select',
+                    'option_source': {'type': 'constant', 'value': ['A', 'B']},
+                }
+            ]
+        }
+
+        assert difysvapi._normalize_form_action_inputs(form, {'choice': 'C'}) == {}
 
     @pytest.mark.asyncio
     async def test_blocking_resume_uses_chatflow_answer_node_output(self):

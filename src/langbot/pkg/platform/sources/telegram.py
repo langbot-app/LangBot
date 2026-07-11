@@ -72,7 +72,7 @@ def _telegram_form_action_from_callback(data: dict) -> dict | None:
         return None
     return {
         'action_id': '',
-        'inputs': {'select': str(option_index)},
+        'inputs': {'select': {'index': option_index}},
         '_input_progress': True,
     }
 

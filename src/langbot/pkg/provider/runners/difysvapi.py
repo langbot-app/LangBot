@@ -223,6 +223,57 @@ def _select_options(field: dict[str, typing.Any]) -> list[str]:
     return []
 
 
+def _normalize_select_value(
+    value: typing.Any,
+    options: list[str],
+    *,
+    allow_legacy_zero_based_index: bool = False,
+    allow_one_based_index: bool = False,
+) -> tuple[bool, typing.Any]:
+    """Resolve a select input without confusing numeric values with indexes."""
+    if not options:
+        return True, value
+
+    parsed = value
+    if isinstance(value, str):
+        stripped = value.strip()
+        try:
+            json_value = json.loads(stripped)
+        except json.JSONDecodeError:
+            json_value = None
+        if isinstance(json_value, dict):
+            parsed = json_value
+        else:
+            parsed = stripped
+
+    if isinstance(parsed, dict):
+        explicit_value = parsed.get('value')
+        if explicit_value not in (None, ''):
+            candidate = str(explicit_value).strip()
+            match = next((option for option in options if option.casefold() == candidate.casefold()), None)
+            return (True, match) if match is not None else (False, value)
+        explicit_index = parsed.get('index')
+        if isinstance(explicit_index, int) and not isinstance(explicit_index, bool):
+            if 0 <= explicit_index < len(options):
+                return True, options[explicit_index]
+            return False, value
+        return False, value
+
+    candidate = str(parsed).strip()
+    match = next((option for option in options if option.casefold() == candidate.casefold()), None)
+    if match is not None:
+        return True, match
+
+    if candidate.isdigit():
+        index = int(candidate)
+        if allow_one_based_index and 1 <= index <= len(options):
+            return True, options[index - 1]
+        if allow_legacy_zero_based_index and 0 <= index < len(options):
+            return True, options[index]
+
+    return False, value
+
+
 def _default_field_value(field: dict[str, typing.Any]) -> typing.Any:
     default = field.get('default')
     if isinstance(default, dict):
@@ -531,6 +582,42 @@ def _format_missing_form_inputs_notice(form: dict[str, typing.Any], missing: lis
     return '\n'.join(lines)
 
 
+def _invalid_select_inputs(form: dict[str, typing.Any], user_text: str) -> list[str]:
+    keyed_values = _extract_key_value_inputs(user_text)
+    current_field_name = str(form.get('current_input_field') or '').strip()
+    invalid: list[str] = []
+    for field in form.get('input_defs') or []:
+        if _field_type(field) != 'select':
+            continue
+        name = _field_name(field)
+        raw_value = keyed_values.get(name)
+        if raw_value is None and not keyed_values and current_field_name == name and user_text.strip():
+            raw_value = user_text.strip()
+        if raw_value is None:
+            continue
+        valid, _ = _normalize_select_value(
+            raw_value,
+            _select_options(field),
+            allow_one_based_index=True,
+        )
+        if not valid:
+            invalid.append(name)
+    return invalid
+
+
+def _format_invalid_select_notice(form: dict[str, typing.Any], invalid: list[str]) -> str:
+    lines = ['Invalid select value.']
+    invalid_names = set(invalid)
+    for field in form.get('input_defs') or []:
+        name = _field_name(field)
+        if name not in invalid_names:
+            continue
+        options = _select_options(field)
+        choices = ', '.join(f'{index}. {option}' for index, option in enumerate(options, start=1))
+        lines.append(f'{name}: {choices or "choose one of the available options"}')
+    return '\n'.join(lines)
+
+
 def _normalize_form_action_inputs(
     pending_form: dict[str, typing.Any],
     raw_inputs: dict[str, typing.Any],
@@ -543,23 +630,15 @@ def _normalize_form_action_inputs(
         field = fields.get(name)
         if not field or _field_type(field) != 'select':
             continue
-        selected = value
-        if isinstance(value, str):
-            stripped = value.strip()
-            try:
-                parsed = json.loads(stripped)
-            except json.JSONDecodeError:
-                parsed = None
-            if isinstance(parsed, dict):
-                selected = parsed.get('value', selected)
-            elif stripped.isdigit():
-                options = _select_options(field)
-                index = int(stripped)
-                if 0 <= index < len(options):
-                    selected = options[index]
-                elif 1 <= index <= len(options):
-                    selected = options[index - 1]
-        normalized[name] = selected
+        valid, selected = _normalize_select_value(
+            value,
+            _select_options(field),
+            allow_legacy_zero_based_index=True,
+        )
+        if valid:
+            normalized[name] = selected
+        else:
+            normalized.pop(name, None)
     return normalized
 
 
@@ -855,7 +934,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 continue
 
             raw_value = keyed_values.get(name)
-            if raw_value is None and current_field_name == name and user_text.strip():
+            if raw_value is None and not keyed_values and current_field_name == name and user_text.strip():
                 raw_value = user_text.strip()
             if raw_value is None and current_field_name == name and typ in {'file', 'file-list'} and uploaded_files:
                 raw_value = ''
@@ -864,13 +943,13 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
             if typ == 'select':
                 options = _select_options(field)
-                selected = raw_value.strip()
-                if selected.isdigit() and 1 <= int(selected) <= len(options):
-                    selected = options[int(selected) - 1]
-                elif options:
-                    lowered = selected.lower()
-                    selected = next((option for option in options if option.lower() == lowered), selected)
-                values[name] = selected
+                valid, selected = _normalize_select_value(
+                    raw_value,
+                    options,
+                    allow_one_based_index=True,
+                )
+                if valid:
+                    values[name] = selected
             elif typ == 'file':
                 urls = _extract_urls(raw_value)
                 if urls:
@@ -1366,6 +1445,14 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 'inputs': pending_form.get('inputs', {}),
                 'user': pending_form.get('user', ''),
             }
+
+        if latest_form:
+            invalid_selects = _invalid_select_inputs(latest_form, user_text)
+            if invalid_selects:
+                inputs = await self._collect_form_inputs_from_query(query, latest_form, user_text)
+                form_action = _build_input_progress_action(latest_form, inputs, force_partial=True)
+                form_action['notice'] = _format_invalid_select_notice(latest_form, invalid_selects)
+                return form_action
 
         if latest_form and latest_form.get('current_input_field') and not normalized_action:
             inputs = await self._collect_form_inputs_from_query(query, latest_form, user_text)

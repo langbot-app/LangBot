@@ -36,7 +36,7 @@ def test_telegram_select_field_options_are_extracted():
 def test_telegram_select_callback_becomes_input_progress():
     assert _telegram_form_action_from_callback({'f': 1, 'x': 1}) == {
         'action_id': '',
-        'inputs': {'select': '1'},
+        'inputs': {'select': {'index': 1}},
         '_input_progress': True,
     }
 
