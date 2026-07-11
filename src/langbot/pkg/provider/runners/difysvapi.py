@@ -1235,9 +1235,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         if not saw_event:
             raise errors.DifyAPIError('Dify API did not return any workflow resume events')
-        if pending_content:
-            content, _ = self._process_thinking_content(pending_content)
-            yield provider_message.Message(role='assistant', content=content)
+        raise errors.DifyAPIError('Dify workflow resume stream ended before a terminal event')
 
     def _resolve_pending_form(self, session_key: PendingFormKey, form_action: dict) -> dict | None:
         """Locate the pending form this action targets.
@@ -2000,6 +1998,8 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 yield msg
                 if is_final:
                     return
+
+        raise errors.DifyAPIError('Dify workflow resume stream ended before a terminal event')
 
     async def _workflow_messages_chunk(
         self, query: pipeline_query.Query

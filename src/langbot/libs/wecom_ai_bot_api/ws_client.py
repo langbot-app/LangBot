@@ -453,20 +453,17 @@ class WecomBotWsClient:
         try:
             previous_content = self._stream_last_content.get(msg_id, '')
             if previous_content and content.startswith(previous_content):
-                delta_content = content[len(previous_content) :]
                 next_content = content
             elif previous_content and not content:
-                delta_content = ''
                 next_content = previous_content
             else:
-                delta_content = content
                 next_content = previous_content + content if previous_content else content
 
             # Skip sending if content hasn't changed (e.g. during tool call argument streaming)
-            if not is_final and not delta_content:
+            if not is_final and next_content == previous_content:
                 return True
 
-            # Skip empty/whitespace-only chunks — the runner injects a
+            # Skip empty/whitespace-only snapshots — the runner injects a
             # zero-width space ('​') as a pass-through when workflow_paused
             # fires without any preceding LLM output.  WeCom renders that
             # as an empty bubble that sits before the form card; skip it.
@@ -476,7 +473,7 @@ class WecomBotWsClient:
             if not is_final:
                 import re as _re
 
-                if not _re.sub(r'[\s​‌‍﻿]', '', delta_content):
+                if not _re.sub(r'[\s​‌‍﻿]', '', next_content):
                     return True
 
             # Generate feedback_id for final chunk
@@ -489,7 +486,9 @@ class WecomBotWsClient:
                 if session_info:
                     self._feedback_sessions[feedback_id] = session_info
 
-            await self.reply_stream(req_id, stream_id, delta_content, finish=is_final, feedback_id=feedback_id)
+            # WeCom replaces the displayed stream content on each refresh, so
+            # every frame must contain the complete snapshot, not only a delta.
+            await self.reply_stream(req_id, stream_id, next_content, finish=is_final, feedback_id=feedback_id)
             self._stream_last_content[msg_id] = next_content
             if is_final:
                 self._stream_ids.pop(msg_id, None)

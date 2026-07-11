@@ -10,6 +10,8 @@ import typing
 import traceback
 import json
 import base64
+import time
+import uuid
 import pydantic
 
 from langbot.pkg.utils import httpclient
@@ -260,7 +262,38 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         typing.Callable[[platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None],
     ] = {}
 
-    _form_action_titles: typing.Dict[str, str] = {}  # callback_data -> display title
+    _FORM_ACTION_CACHE_TTL = 30 * 60
+    # callback_data -> (display title, expiration monotonic time, form group id)
+    _form_action_titles: typing.Dict[str, tuple[str, float, str]] = {}
+
+    def _prune_form_action_titles(self, now: float | None = None) -> None:
+        now = time.monotonic() if now is None else now
+        expired = [key for key, (_, expires_at, _) in self._form_action_titles.items() if expires_at <= now]
+        for key in expired:
+            self._form_action_titles.pop(key, None)
+
+    def _cache_form_action_titles(self, mappings: dict[str, str], now: float | None = None) -> None:
+        now = time.monotonic() if now is None else now
+        self._prune_form_action_titles(now)
+        group_id = uuid.uuid4().hex
+        expires_at = now + self._FORM_ACTION_CACHE_TTL
+        self._form_action_titles.update(
+            {callback_data: (title, expires_at, group_id) for callback_data, title in mappings.items()}
+        )
+
+    def _take_form_action_title(self, callback_data: str, now: float | None = None) -> str | None:
+        """Consume a callback and invalidate every button from the same form."""
+        self._prune_form_action_titles(now)
+        entry = self._form_action_titles.get(callback_data)
+        if entry is None:
+            return None
+        title, _, group_id = entry
+        group_keys = [
+            key for key, (_, _, cached_group_id) in self._form_action_titles.items() if cached_group_id == group_id
+        ]
+        for key in group_keys:
+            self._form_action_titles.pop(key, None)
+        return title
 
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger):
         async def telegram_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -297,11 +330,11 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     w_suffix = data.get('w', '')
                     session_key = data.get('session_key') or data.get('s', '')
                     callback_action = _telegram_form_action_from_callback(data)
-                    if callback_action is None or query.data not in self._form_action_titles:
+                    action_title = self._take_form_action_title(query.data) if callback_action is not None else None
+                    if callback_action is None or action_title is None:
                         await self.logger.warning(f'Invalid or stale Telegram form callback: {query.data!r}')
                         return
                     # Show selected action feedback by editing the original message
-                    action_title = self._form_action_titles[query.data]
                     try:
                         original_text = query.message.text or ''
                         selected_text = f'{original_text}\n\n✅ {action_title}'
@@ -309,9 +342,6 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     except Exception:
                         # If edit fails (e.g. message too long), just pass
                         pass
-                    finally:
-                        # Clean up the stored title
-                        self._form_action_titles.pop(query.data, None)
 
                     if session_key.startswith('group_') or session_key.startswith('g:'):
                         launcher_type = provider_session.LauncherTypes.GROUP
@@ -702,7 +732,7 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 'text': '\n\n'.join(text_lines),
             }
         elif keyboard:
-            self._form_action_titles.update(pending_title_mappings)
+            self._cache_form_action_titles(pending_title_mappings)
             reply_markup = InlineKeyboardMarkup(keyboard)
             args = {
                 'chat_id': chat_id,

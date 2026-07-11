@@ -2042,19 +2042,18 @@ class WecomBotClient:
 
         previous_content = self._stream_last_content.get(msg_id, '')
         if previous_content and content.startswith(previous_content):
-            delta_content = content[len(previous_content) :]
             next_content = content
         elif previous_content and not content:
-            delta_content = ''
             next_content = previous_content
         else:
-            delta_content = content
             next_content = previous_content + content if previous_content else content
 
-        if not is_final and not delta_content:
+        if not is_final and next_content == previous_content:
             return True
 
-        chunk = StreamChunk(content=delta_content, is_final=is_final)
+        # Follow-up responses replace the displayed stream body in WeCom.
+        # Publish the complete snapshot so earlier chunks remain visible.
+        chunk = StreamChunk(content=next_content, is_final=is_final)
         await self.stream_sessions.publish(stream_id, chunk)
         self._stream_last_content[msg_id] = next_content
         if is_final:

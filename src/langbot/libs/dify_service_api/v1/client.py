@@ -156,9 +156,10 @@ class AsyncDifyServiceClient:
                 headers={'Authorization': f'Bearer {self.api_key}'},
                 params={'user': user},
             ) as r:
+                if r.status_code != 200:
+                    body = (await r.aread()).decode(errors='replace')
+                    raise DifyAPIError(f'{r.status_code} {body}')
                 async for chunk in r.aiter_lines():
-                    if r.status_code != 200:
-                        raise DifyAPIError(f'{r.status_code} {chunk}')
                     if chunk.strip() == '':
                         continue
                     if chunk.startswith('data:'):

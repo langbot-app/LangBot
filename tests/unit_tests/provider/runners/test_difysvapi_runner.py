@@ -11,6 +11,62 @@ from unittest.mock import AsyncMock, MagicMock
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 
 
+class TestDifyWorkflowSubmitClient:
+    @pytest.mark.asyncio
+    async def test_rejects_empty_error_response_before_iterating_sse(self, monkeypatch):
+        from langbot.libs.dify_service_api.v1 import client, errors
+
+        class FakeResponse:
+            status_code = 503
+
+            async def aread(self):
+                return b''
+
+            async def aiter_lines(self):
+                raise AssertionError('error responses must not enter the SSE loop')
+                yield
+
+        class FakeStreamContext:
+            async def __aenter__(self):
+                return FakeResponse()
+
+            async def __aexit__(self, exc_type, exc, traceback):
+                return False
+
+        class FakeClient:
+            def __init__(self, **kwargs):
+                del kwargs
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, traceback):
+                return False
+
+            async def post(self, *args, **kwargs):
+                del args, kwargs
+                response = MagicMock()
+                response.status_code = 200
+                return response
+
+            def stream(self, *args, **kwargs):
+                del args, kwargs
+                return FakeStreamContext()
+
+        monkeypatch.setattr(client.httpx, 'AsyncClient', FakeClient)
+        dify_client = client.AsyncDifyServiceClient('test-key', 'https://dify.example/v1')
+
+        with pytest.raises(errors.DifyAPIError, match='503'):
+            await anext(
+                dify_client.workflow_submit(
+                    form_token='token-1',
+                    workflow_run_id='run-1',
+                    inputs={},
+                    user='person_user-1',
+                )
+            )
+
+
 class TestDifyExtractTextOutput:
     """Tests for _extract_dify_text_output method."""
 
@@ -834,7 +890,7 @@ class TestDifyHumanInputForms:
         assert difysvapi._get_pending_form_by_token(session_key, 'token-1') is None
 
     @pytest.mark.asyncio
-    async def test_failed_blocking_resume_keeps_pending_form_for_retry(self):
+    async def test_incomplete_blocking_resume_keeps_pending_form_for_retry(self):
         from langbot.libs.dify_service_api.v1.errors import DifyAPIError
         from langbot.pkg.provider.runners import difysvapi
 
@@ -843,8 +899,7 @@ class TestDifyHumanInputForms:
 
         async def workflow_submit(**kwargs):
             del kwargs
-            raise DifyAPIError('temporary failure')
-            yield
+            yield {'event': 'message', 'answer': 'partial answer'}
 
         runner.dify_client.workflow_submit = workflow_submit
         query = MagicMock()
@@ -873,8 +928,53 @@ class TestDifyHumanInputForms:
             }
         }
 
-        with pytest.raises(DifyAPIError, match='temporary failure'):
+        with pytest.raises(DifyAPIError, match='before a terminal event'):
             _ = [message async for message in runner._workflow_messages(query)]
+
+        assert difysvapi._get_pending_form_by_token(session_key, 'token-1') is not None
+        difysvapi._PENDING_FORMS.clear()
+
+    @pytest.mark.asyncio
+    async def test_incomplete_streaming_resume_keeps_pending_form_for_retry(self):
+        from langbot.libs.dify_service_api.v1.errors import DifyAPIError
+        from langbot.pkg.provider.runners import difysvapi
+
+        runner = self._create_runner()
+        query = MagicMock()
+        query.session.launcher_type.value = 'person'
+        query.session.launcher_id = 'user-1'
+        query.bot_uuid = 'bot-1'
+        query.pipeline_uuid = 'pipeline-1'
+        query.variables = {
+            '_dify_form_action': {
+                'form_token': 'token-1',
+                'workflow_run_id': 'run-1',
+                'action_id': 'yes',
+                'user': 'person_user-1',
+                'inputs': {},
+            }
+        }
+        session_key = difysvapi._session_key_from_query(query)
+        difysvapi._PENDING_FORMS.clear()
+        difysvapi._set_pending_form(
+            session_key,
+            {
+                'form_token': 'token-1',
+                'workflow_run_id': 'run-1',
+                'actions': [{'id': 'yes', 'title': 'Yes'}],
+                'inputs': {},
+                'user': 'person_user-1',
+            },
+        )
+
+        async def workflow_submit(**kwargs):
+            del kwargs
+            yield {'event': 'text_chunk', 'data': {'text': 'partial answer'}}
+
+        runner.dify_client.workflow_submit = workflow_submit
+
+        with pytest.raises(DifyAPIError, match='before a terminal event'):
+            _ = [message async for message in runner._workflow_messages_chunk(query)]
 
         assert difysvapi._get_pending_form_by_token(session_key, 'token-1') is not None
         difysvapi._PENDING_FORMS.clear()

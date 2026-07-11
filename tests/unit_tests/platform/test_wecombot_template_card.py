@@ -9,6 +9,7 @@ logger_module.EventLogger = object
 sys.modules.setdefault('langbot.pkg.platform.logger', logger_module)
 
 from langbot.libs.wecom_ai_bot_api.api import (  # noqa: E402
+    WecomBotClient,
     build_button_interaction_payload,
     build_human_input_template_card_payload,
     build_button_interaction_update_card,
@@ -254,7 +255,7 @@ async def test_ws_push_form_pause_sends_text_prompt_without_empty_card():
 
 
 @pytest.mark.asyncio
-async def test_ws_stream_sends_delta_chunks_to_wecom():
+async def test_ws_stream_sends_cumulative_snapshots_to_wecom():
     client = WecomBotWsClient('bot-id', 'secret', object())
     client._stream_ids['msg-1'] = 'req-1|stream-1'
     client._stream_sessions['msg-1'] = {}
@@ -272,8 +273,29 @@ async def test_ws_stream_sends_delta_chunks_to_wecom():
 
     assert sent == [
         ('req-1', 'stream-1', '你', False),
-        ('req-1', 'stream-1', '好', False),
-        ('req-1', 'stream-1', '', True),
+        ('req-1', 'stream-1', '你好', False),
+        ('req-1', 'stream-1', '你好', True),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_webhook_stream_queues_cumulative_snapshots_for_followups():
+    client = WecomBotClient('', '', '', object(), unified_mode=True)
+    session, _ = client.stream_sessions.create_or_get({'msgid': 'msg-1', 'chatid': '', 'from': {'userid': 'user-1'}})
+
+    assert await client.push_stream_chunk('msg-1', '你', is_final=False)
+    assert await client.push_stream_chunk('msg-1', '你好', is_final=False)
+    assert await client.push_stream_chunk('msg-1', '你好', is_final=True)
+
+    chunks = [
+        await client.stream_sessions.consume(session.stream_id),
+        await client.stream_sessions.consume(session.stream_id),
+        await client.stream_sessions.consume(session.stream_id),
+    ]
+    assert [(chunk.content, chunk.is_final) for chunk in chunks] == [
+        ('你', False),
+        ('你好', False),
+        ('你好', True),
     ]
 
 

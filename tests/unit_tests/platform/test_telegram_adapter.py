@@ -53,6 +53,26 @@ def test_telegram_invalid_select_callback_is_rejected():
     assert _telegram_form_action_from_callback({'f': 1, 'x': 'invalid'}) is None
 
 
+def test_telegram_form_callback_cache_consumes_the_whole_form_group():
+    adapter = TelegramAdapter.model_construct()
+    adapter._form_action_titles = {}
+    adapter._cache_form_action_titles({'callback-a': 'A', 'callback-b': 'B'}, now=100.0)
+
+    assert adapter._take_form_action_title('callback-a', now=101.0) == 'A'
+    assert adapter._take_form_action_title('callback-a', now=101.0) is None
+    assert adapter._take_form_action_title('callback-b', now=101.0) is None
+    assert adapter._form_action_titles == {}
+
+
+def test_telegram_form_callback_cache_prunes_expired_entries():
+    adapter = TelegramAdapter.model_construct()
+    adapter._form_action_titles = {}
+    adapter._cache_form_action_titles({'callback-a': 'A'}, now=100.0)
+
+    assert adapter._take_form_action_title('callback-a', now=100.0 + adapter._FORM_ACTION_CACHE_TTL) is None
+    assert adapter._form_action_titles == {}
+
+
 @pytest.mark.asyncio
 async def test_telegram_select_field_sends_two_column_inline_keyboard():
     bot = MagicMock()
