@@ -304,7 +304,7 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     action_title = self._form_action_titles[query.data]
                     try:
                         original_text = query.message.text or ''
-                        selected_text = f'{original_text}\n\n✅ Selected: {action_title}'
+                        selected_text = f'{original_text}\n\n✅ {action_title}'
                         await query.edit_message_text(text=selected_text, reply_markup=None)
                     except Exception:
                         # If edit fails (e.g. message too long), just pass
@@ -687,15 +687,10 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         effective_message = update.effective_message
         message_thread_id = getattr(effective_message, 'message_thread_id', None) if effective_message else None
 
-        if is_select_field:
-            prompt = f'Please select {select_field}:'
-        elif is_field_step:
-            prompt = f'Please reply with a value for {current_field}.'
-        else:
-            prompt = 'Please select an action:'
-        text_lines = [f'[{node_title}] {prompt}']
+        heading = f'[{node_title}]'
+        text_lines = [heading]
         if form_content:
-            text_lines.insert(0, form_content)
+            text_lines.append(form_content)
 
         if oversized:
             # callback_data exceeds Telegram's 64-byte limit — fall back to
@@ -722,7 +717,7 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 # prompts even when they cannot read ordinary group messages.
                 'reply_markup': ForceReply(
                     selective=False,
-                    input_field_placeholder=f'Enter {current_field}',
+                    input_field_placeholder=current_field,
                 ),
             }
         else:

@@ -842,51 +842,22 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
         form_content = form_data.get('form_content') or ''
         is_field_step = bool(form_data.get('_current_input_field')) and not form_data.get('_action_select_only')
         parts = [f'### {node_title}']
+        plain_parts = [node_title]
         if form_content.strip():
             parts.append(form_content.strip())
-        parts.append('请点击下方按钮选择：')
+            plain_parts.append(form_content.strip())
         markdown_content = '\n\n'.join(parts)
+        plain_content = '\n\n'.join(plain_parts)
 
         keyboard = build_keyboard_from_select_field(form_data) if is_field_step else None
-        if is_field_step and not keyboard.get('content', {}).get('rows'):
-            field_parts = parts[:-1] if len(parts) > 1 else parts
-            text_msg = platform_message.MessageChain([platform_message.Plain(text='\n\n'.join(field_parts))])
-            try:
-                await self.reply_message(message_source, text_msg)
-            except Exception:
-                await self.logger.error(f'QQ Official: field-step text send failed: {traceback.format_exc()}')
-                return
-
-            sender_id = ''
-            if source is not None:
-                sender_id = (
-                    getattr(source, 'user_openid', None)
-                    or getattr(source, 'member_openid', None)
-                    or getattr(source, 'd_author_id', None)
-                    or ''
-                )
-            if not sender_id and message_source.sender is not None:
-                sender_id = str(getattr(message_source.sender, 'id', '') or '')
-            self._pending_forms[session_key] = {
-                'form_data': form_data,
-                'msg_id': msg_id,
-                'sender_id': sender_id,
-                'target_type': target_type,
-                'target_id': target_id,
-                'source_event_t': source.t if source is not None else None,
-                'posted_at': time.time(),
-            }
-            await self.logger.info(
-                f'QQ Official: form field step posted session={session_key} '
-                f'field={form_data.get("_current_input_field")!r}'
-            )
-            return
-
-        if keyboard is None:
+        is_text_field_step = is_field_step and not keyboard.get('content', {}).get('rows')
+        if is_text_field_step:
+            keyboard = None
+        if keyboard is None and not is_text_field_step:
             keyboard = build_keyboard_from_form(form_data, buttons_per_row=2)
-        if not keyboard.get('content', {}).get('rows'):
+        if keyboard is not None and not keyboard.get('content', {}).get('rows') and not is_text_field_step:
             # No actions to render — fall back to plain text.
-            text_msg = platform_message.MessageChain([platform_message.Plain(text=markdown_content)])
+            text_msg = platform_message.MessageChain([platform_message.Plain(text=plain_content)])
             try:
                 await self.reply_message(message_source, text_msg)
             except Exception:
@@ -935,7 +906,7 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
             await self.logger.error(
                 f'QQ Official: send_markdown_keyboard failed, falling back to text: {traceback.format_exc()}'
             )
-            text_msg = platform_message.MessageChain([platform_message.Plain(text=markdown_content)])
+            text_msg = platform_message.MessageChain([platform_message.Plain(text=plain_content)])
             try:
                 await self.reply_message(message_source, text_msg)
             except Exception:

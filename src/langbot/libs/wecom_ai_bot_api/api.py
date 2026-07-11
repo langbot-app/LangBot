@@ -1129,12 +1129,10 @@ def build_button_interaction_payload(
     input_hint_lines = _wecom_input_hint_lines(form_data)
     if input_hint_lines:
         sub_title_parts.append('Fill these fields in chat before choosing an action:\n' + '\n'.join(input_hint_lines))
-    elif should_show_actions and actions:
-        sub_title_parts.append('Choose an action to continue.')
     if overflow:
         extra_lines = [f'  - {a.get("title") or a.get("id") or ""} (回复 id: {a.get("id") or ""})' for a in overflow]
         sub_title_parts.append(f'另有 {len(overflow)} 个选项不在按钮列表中，可直接回复 id：\n' + '\n'.join(extra_lines))
-    sub_title_text = '\n\n'.join(sub_title_parts) or '请选择一个操作以继续。'
+    sub_title_text = '\n\n'.join(sub_title_parts)
 
     button_list = []
     for idx, action in enumerate(visible_actions):
@@ -1452,8 +1450,8 @@ def build_button_interaction_update_card(
         }
         if action_key == clean_action_id:
             button['style'] = _wecom_button_style(action, selected=True)
-            button['text'] = f'已选择：{button_title}'
-            button['replace_text'] = f'已选择：{button_title}'
+            button['text'] = f'✅ {button_title}'
+            button['replace_text'] = f'✅ {button_title}'
             matched = True
         button_list.append(button)
 
@@ -1463,7 +1461,7 @@ def build_button_interaction_update_card(
                 'text': action_title or clean_action_id,
                 'style': 1,
                 'key': clean_action_id,
-                'replace_text': f'已选择：{action_title or clean_action_id}',
+                'replace_text': f'✅ {action_title or clean_action_id}',
             }
         )
 

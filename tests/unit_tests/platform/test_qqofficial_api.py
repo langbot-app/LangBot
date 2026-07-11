@@ -75,6 +75,7 @@ def _stream_test_adapter():
     adapter.logger = AsyncMock()
     adapter.bot = MagicMock()
     adapter.bot.send_stream_msg = AsyncMock(return_value={'id': 'stream-1'})
+    adapter.bot.send_markdown_keyboard = AsyncMock(return_value={'id': 'message-1'})
     adapter.ap = None
     adapter._stream_ctx = {}
     adapter._stream_ctx_ts = {}
@@ -140,6 +141,36 @@ async def test_qq_non_streaming_fallback_keeps_latest_snapshot_only():
 
     sent_chain = reply_message.await_args.args[1]
     assert str(sent_chain) == 'Hello'
+
+
+@pytest.mark.asyncio
+async def test_qq_text_field_prompt_keeps_form_content():
+    from langbot.pkg.platform.sources.qqofficial import QQOfficialAdapter
+
+    adapter = _stream_test_adapter()
+    adapter._pending_forms = {}
+    adapter._session_event_ids = {}
+    adapter._anchor_msg_seq = {}
+    source = MagicMock()
+    source.d_id = 'source-1'
+    source.t = 'C2C_MESSAGE_CREATE'
+    event = MagicMock()
+    event.source_platform_object = source
+    event.sender.id = 'user-1'
+    form_data = {
+        '_current_input_field': 'us_input',
+        'node_title': 'Manual input',
+        'form_content': '1234\nEnter your question',
+        'input_defs': [{'output_variable_name': 'us_input', 'type': 'paragraph'}],
+        'actions': [{'id': 'yes', 'title': 'yes'}],
+    }
+
+    with patch.object(QQOfficialAdapter, '_resolve_target_from_event', return_value=('c2c', 'user-1')):
+        await adapter._handle_form_chunk(event, platform_message.MessageChain([]), form_data)
+
+    send_call = adapter.bot.send_markdown_keyboard.await_args.kwargs
+    assert send_call['markdown_content'] == '### Manual input\n\n1234\nEnter your question'
+    assert send_call['keyboard'] is None
 
 
 @pytest.mark.asyncio

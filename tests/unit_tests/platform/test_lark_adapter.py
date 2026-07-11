@@ -109,9 +109,9 @@ def test_lark_completed_input_lines_include_text_select_and_files():
     )
 
     assert lines == [
-        '✅ 已填写 us_input：**你好**',
-        '✅ 已选择 xiala：**or**',
-        '✅ 已上传 files：**2 file(s)**',
+        '✅ us_input：你好',
+        '✅ xiala：or',
+        '✅ files：2 file(s)',
     ]
 
 
@@ -193,4 +193,4 @@ def test_lark_completed_input_lines_display_select_value_from_object():
         }
     )
 
-    assert lines == ['✅ 已选择 xiala：**B**']
+    assert lines == ['✅ xiala：B']

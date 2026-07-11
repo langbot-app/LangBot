@@ -116,5 +116,8 @@ async def test_telegram_text_field_does_not_show_action_buttons():
     args = bot.send_message.await_args.kwargs
     assert isinstance(args['reply_markup'], ForceReply)
     assert args['reply_markup'].selective is False
-    assert 'Please reply with a value for us_input.' in args['text']
+    assert args['reply_markup'].input_field_placeholder == 'us_input'
+    assert 'Please reply' not in args['text']
+    assert args['text'].startswith('[人工介入]')
+    assert 'us_input (paragraph)' in args['text']
     assert adapter._form_action_titles == {}

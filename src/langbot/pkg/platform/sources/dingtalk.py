@@ -296,14 +296,8 @@ def _dingtalk_completed_input_lines(form_data: dict) -> list[str]:
         value = inputs.get(field_name)
         if value in (None, '', []):
             continue
-        field_type = _dingtalk_field_type(field)
         display_value = _dingtalk_display_input_value(field, value)
-        if field_type == 'select':
-            lines.append(f'✅ 已选择 {field_name}：{display_value}')
-        elif field_type in {'file', 'file-list'}:
-            lines.append(f'✅ 已上传 {field_name}：{display_value}')
-        else:
-            lines.append(f'✅ 已填写 {field_name}：{display_value}')
+        lines.append(f'✅ {field_name}：{display_value}')
     return lines
 
 
@@ -960,9 +954,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         input_hint_lines = [] if native_field else _dingtalk_input_hint_lines(form_data)
         if input_hint_lines:
             parts.append('Fill these fields in chat before choosing an action:<br>' + '<br>'.join(input_hint_lines))
-        elif should_show_actions and actions:
-            parts.append('Choose an action to continue.')
-        display_content = '<br><br>'.join(parts) or '请选择一个操作以继续。'
+        display_content = '<br><br>'.join(parts)
 
         try:
             await self.bot.update_card_data(
@@ -1062,9 +1054,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         input_hint_lines = [] if native_field else _dingtalk_input_hint_lines(form_data)
         if input_hint_lines:
             parts.append('Fill these fields in chat before choosing an action:<br>' + '<br>'.join(input_hint_lines))
-        elif should_show_actions and actions:
-            parts.append('Choose an action to continue.')
-        display_content = '<br><br>'.join(parts) or '请选择一个操作以继续。'
+        display_content = '<br><br>'.join(parts)
 
         btns = self._build_btns(actions if should_show_actions else [], out_track_id)
 
@@ -1100,7 +1090,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         """Create a new card for resumed-workflow streaming output.
 
         Used after a button click triggers a synthetic event — the form
-        card stays put with the "已选择" notice, and a fresh card is
+        card stays put with the selection notice, and a fresh card is
         spawned here for the LLM reply to stream into.
         """
         form_template_id = (self.config.get('human_input_card_template_id') or '').strip()
@@ -1349,7 +1339,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 return
 
         # Visual feedback on the form card itself: keep the prompt visible,
-        # add a "已选择" line, remove the buttons. The resumed-workflow
+        # add a selection line, remove the buttons. The resumed-workflow
         # output lives on a separate new card (lazy-created in
         # reply_message_chunk on the synthetic event), so the form card
         # stays put as a record of the user's selection.
@@ -1367,7 +1357,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         # Crucial: do NOT leave the form card's out_track_id in
         # active_turn_card — otherwise create_message_card for the
         # synthetic event would reuse it for the resume output, painting
-        # the LLM reply on top of the "已选择" notice. Clear it so the
+        # the LLM reply on top of the selection notice. Clear it so the
         # resume goes through the lazy-create path and spawns a fresh card.
         session_key = state.get('session_key', '')
         if session_key and self.active_turn_card.get(session_key) == out_track_id:
@@ -1487,7 +1477,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     ) -> None:
         """Update the form card to acknowledge the user's selection.
 
-        Keeps the original prompt visible, adds a "已选择: X" notice, and
+        Keeps the original prompt visible, adds a selection notice, and
         clears the buttons. The card stays as a permanent record of the
         choice; the resumed workflow's output goes to a separate new card.
         """
@@ -1504,7 +1494,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         )
         if completed_lines and not all(line in form_content for line in completed_lines):
             parts.append('<hr>' + '<br>'.join(completed_lines))
-        parts.append(f'<hr>✅ 已选择：**{action_title}**')
+        parts.append(f'<hr>✅ {action_title}')
         content = '<br><br>'.join(parts)
         if self.ap is not None:
             self.ap.logger.info(f'DingTalk _mark_card_resolved: out_track_id={out_track_id} action={action_title!r}')

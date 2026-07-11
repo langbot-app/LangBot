@@ -693,7 +693,7 @@ class QQOfficialClient:
         target_type: str,
         target_id: str,
         markdown_content: str,
-        keyboard: dict,
+        keyboard: Optional[dict] = None,
         msg_id: Optional[str] = None,
         event_id: Optional[str] = None,
         msg_seq: int = 1,
@@ -734,9 +734,10 @@ class QQOfficialClient:
         body: dict[str, Any] = {
             'msg_type': 2,
             'markdown': {'content': markdown_content},
-            'keyboard': keyboard,
             'msg_seq': msg_seq,
         }
+        if keyboard and keyboard.get('content', {}).get('rows'):
+            body['keyboard'] = keyboard
         if msg_id:
             body['msg_id'] = msg_id
         if event_id:

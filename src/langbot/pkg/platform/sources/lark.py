@@ -187,13 +187,7 @@ def _lark_completed_input_lines(form_data: dict) -> list[str]:
         if value in (None, '', []):
             continue
         display_value = _lark_display_input_value(field, value)
-        field_type = _dify_field_type(field)
-        if field_type == 'select':
-            lines.append(f'✅ 已选择 {field_name}：**{display_value}**')
-        elif field_type in {'file', 'file-list'}:
-            lines.append(f'✅ 已上传 {field_name}：**{display_value}**')
-        else:
-            lines.append(f'✅ 已填写 {field_name}：**{display_value}**')
+        lines.append(f'✅ {field_name}：{display_value}')
     return lines
 
 
@@ -2014,7 +2008,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         Supports Dify form-action resume:  when the runner yields a chunk with
         ``_resume_from_form=True``, the card transitions from buttons to a
-        grey "已选择" notice and a new ``streaming_txt_resume`` element is added
+        grey selection notice and a new ``streaming_txt_resume`` element is added
         for subsequent resume chunks to stream into.
 
         When ``_open_new_card=True`` on the final chunk, the existing card is
@@ -2051,7 +2045,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             )
             if completed_lines and not all(line in stored_form_content for line in completed_lines):
                 notice_parts.append('---\n' + '\n'.join(completed_lines))
-            notice_parts.append(f'---\n✅ 已选择：**{action_title}**')
+            notice_parts.append(f'---\n✅ {action_title}')
             selected_notice = '\n\n'.join(notice_parts)
         else:
             selected_notice = ''
@@ -2379,7 +2373,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         """Update the entire card layout.
 
         • form_data → show interactive buttons (initial Dify pause)
-        • notice_text → replace buttons with a grey "已选择" notice (resume transition)
+        • notice_text → replace buttons with a grey selection notice (resume transition)
         • resume_placeholder_text → add a streaming_txt_resume markdown element
         """
         form_data = form_data or {}

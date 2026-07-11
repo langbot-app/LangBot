@@ -93,7 +93,7 @@ def test_dingtalk_completed_input_lines_include_text_and_select_values():
         }
     )
 
-    assert lines == ['✅ 已填写 comment：looks good', '✅ 已选择 choice：B']
+    assert lines == ['✅ comment：looks good', '✅ choice：B']
 
 
 def test_dingtalk_clean_form_content_uses_all_input_defs():

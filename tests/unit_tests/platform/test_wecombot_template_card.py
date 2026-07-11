@@ -81,10 +81,10 @@ def test_build_button_interaction_update_card_marks_clicked_button():
     assert card['sub_title_text'] == 'Please choose one action.'
     assert card['button_list'][0] == {'text': 'Approve', 'style': 2, 'key': 'approve'}
     assert card['button_list'][1] == {
-        'text': '已选择：Reject',
+        'text': '✅ Reject',
         'style': 1,
         'key': 'reject',
-        'replace_text': '已选择：Reject',
+        'replace_text': '✅ Reject',
     }
     assert card['source'] == {'desc': 'LangBot'}
 

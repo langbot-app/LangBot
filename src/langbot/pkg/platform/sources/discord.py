@@ -1396,7 +1396,6 @@ class DiscordAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         body_parts: list[str] = []
         if form_content:
             body_parts.append(form_content)
-        body_parts.append('Please select an option below:')
         embed_body = '\n\n'.join(body_parts)
         # Discord embed.description has a 4096 char limit — defensive trim.
         if len(embed_body) > 4000:
@@ -1589,7 +1588,7 @@ class DiscordAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         stale: bool = False,
     ) -> None:
         """Disable all buttons on the form view and annotate the chosen
-        one — mirrors DingTalk/Lark's in-card 已选择 feedback."""
+        one — mirrors DingTalk/Lark's in-card selection feedback."""
         try:
             for child in view.children:
                 if not isinstance(child, discord_ui.Button):
