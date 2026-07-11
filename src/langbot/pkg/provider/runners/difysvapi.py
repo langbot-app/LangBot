@@ -408,11 +408,40 @@ def _format_single_form_field_text(field: dict[str, typing.Any]) -> str:
     return f'{name} ({typ}): reply "{name}: <value>"'
 
 
+def _form_content_placeholder_matches(form_content: str) -> list[re.Match[str]]:
+    return list(re.finditer(r'\{\{#\$output\.([^#{}]+)#\}\}', form_content or ''))
+
+
+def _form_content_for_field(form_content: str, field: dict[str, typing.Any]) -> str:
+    """Return the template section immediately preceding a field placeholder."""
+    field_name = _field_name(field)
+    matches = _form_content_placeholder_matches(form_content)
+    for index, match in enumerate(matches):
+        if match.group(1).strip() != field_name:
+            continue
+        start = matches[index - 1].end() if index else 0
+        return form_content[start : match.start()].strip()
+    return ''
+
+
+def _form_content_for_actions(form_content: str, input_defs: list[dict[str, typing.Any]]) -> str:
+    """Return content after the last form-field placeholder for the action step."""
+    field_names = {_field_name(field) for field in input_defs if _field_name(field)}
+    matches = [
+        match for match in _form_content_placeholder_matches(form_content) if match.group(1).strip() in field_names
+    ]
+    if not matches:
+        return _strip_form_field_placeholders(form_content, input_defs)
+    return form_content[matches[-1].end() :].strip()
+
+
 def _field_input_form_data(pending_form: dict[str, typing.Any], field: dict[str, typing.Any] | None) -> dict | None:
     if not field:
         return None
+    raw_form_content = pending_form.get('raw_form_content') or ''
+    field_content = _form_content_for_field(raw_form_content, field)
     return {
-        'form_content': _format_single_form_field_text(field),
+        'form_content': field_content or _format_single_form_field_text(field),
         'raw_form_content': pending_form.get('raw_form_content') or pending_form.get('form_content') or '',
         'input_defs': pending_form.get('input_defs') or [],
         'all_input_defs': pending_form.get('input_defs') or [],
@@ -431,7 +460,7 @@ def _action_select_form_data(pending_form: dict[str, typing.Any]) -> dict[str, t
         return None
     form_content = pending_form.get('raw_form_content') or pending_form.get('form_content') or ''
     return {
-        'form_content': _strip_form_field_placeholders(form_content, pending_form.get('input_defs') or []),
+        'form_content': _form_content_for_actions(form_content, pending_form.get('input_defs') or []),
         'raw_form_content': form_content,
         'input_defs': [],
         'all_input_defs': pending_form.get('input_defs') or [],

@@ -246,6 +246,46 @@ class TestDifyHumanInputForms:
         assert 'comment (paragraph)' in display_form_content
         assert snapshot['form_content'] == display_form_content
 
+    def test_interactive_form_content_is_split_by_field_placeholders(self):
+        from langbot.pkg.provider.runners.difysvapi import (
+            _action_select_form_data,
+            _field_input_form_data,
+        )
+
+        input_defs = [
+            {'output_variable_name': 'us_input', 'type': 'paragraph'},
+            {
+                'output_variable_name': 'xiala',
+                'type': 'select',
+                'option_source': {'type': 'constant', 'value': ['1', '2']},
+            },
+        ]
+        pending_form = {
+            'raw_form_content': (
+                '1\n请输入你的问题\n{{#$output.us_input#}}\n请选择你的答案\n{{#$output.xiala#}}\n提交前请确认'
+            ),
+            'input_defs': input_defs,
+            'actions': [{'id': 'yes', 'title': 'yes'}],
+            'inputs': {},
+        }
+
+        first_step = _field_input_form_data(pending_form, input_defs[0])
+        second_step = _field_input_form_data(pending_form, input_defs[1])
+        action_step = _action_select_form_data(pending_form)
+
+        assert first_step['form_content'] == '1\n请输入你的问题'
+        assert second_step['form_content'] == '请选择你的答案'
+        assert action_step['form_content'] == '提交前请确认'
+
+    def test_interactive_form_content_without_placeholder_uses_compatibility_fallback(self):
+        from langbot.pkg.provider.runners.difysvapi import _field_input_form_data
+
+        field = {'output_variable_name': 'comment', 'type': 'paragraph'}
+
+        form_data = _field_input_form_data({'raw_form_content': 'Please review', 'input_defs': [field]}, field)
+
+        assert form_data['form_content'] == 'comment (paragraph): reply "comment: <value>"'
+
     @pytest.mark.asyncio
     async def test_match_pending_form_collects_select_and_text_inputs(self):
         from langbot.pkg.provider.runners import difysvapi

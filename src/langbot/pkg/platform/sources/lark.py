@@ -91,6 +91,28 @@ def _lark_form_input_defs(form_data: dict) -> list[dict]:
     return list(form_data.get('all_input_defs') or form_data.get('input_defs') or [])
 
 
+def _lark_current_input_defs(form_data: dict) -> list[dict]:
+    """Return only the field that belongs to the current interactive step."""
+    if form_data.get('_action_select_only'):
+        return []
+    input_defs = list(form_data.get('input_defs') or [])
+    current_field = str(form_data.get('_current_input_field') or '').strip()
+    if not current_field:
+        return input_defs
+    return [field for field in input_defs if _dify_field_name(field) == current_field]
+
+
+def _lark_should_update_stream_element(
+    *,
+    resume_from: bool,
+    form_data: dict | None,
+    msg_seq: int,
+    is_final: bool,
+) -> bool:
+    """Return whether the still-open streaming element should be updated."""
+    return not resume_from and not form_data and (msg_seq % 8 == 0 or is_final)
+
+
 def _lark_display_input_value(field: dict, value: typing.Any) -> str:
     field_type = _dify_field_type(field)
     if field_type == 'file':
@@ -114,6 +136,41 @@ def _lark_display_input_value(field: dict, value: typing.Any) -> str:
     if isinstance(value, list):
         return ', '.join(_lark_display_input_value(field, item) for item in value if item not in (None, ''))
     return str(value)
+
+
+def _lark_visible_form_content(form_data: dict) -> str:
+    """Return stage content with completed values interleaved for final actions."""
+    source_content = form_data.get('form_content') or ''
+    if form_data.get('_action_select_only'):
+        source_content = form_data.get('raw_form_content') or source_content
+
+        fields = {
+            _dify_field_name(field): field for field in _lark_form_input_defs(form_data) if _dify_field_name(field)
+        }
+        inputs = form_data.get('inputs') or {}
+
+        def replace_placeholder(match: re.Match[str]) -> str:
+            field_name = match.group(1).strip()
+            field = fields.get(field_name)
+            if not field or inputs.get(field_name) in (None, '', []):
+                return ''
+            lines = _lark_completed_input_lines(
+                {
+                    'input_defs': [field],
+                    'inputs': {field_name: inputs[field_name]},
+                }
+            )
+            return lines[0] if lines else ''
+
+        source_content = re.sub(
+            r'\{\{#\$output\.([^#{}]+)#\}\}',
+            replace_placeholder,
+            str(source_content),
+        )
+    return _lark_clean_form_content(
+        str(source_content),
+        _lark_form_input_defs(form_data),
+    )
 
 
 def _lark_completed_input_lines(form_data: dict) -> list[str]:
@@ -1037,6 +1094,8 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                         'user': f'{launcher_type.value}_{launcher_id}',
                         'inputs': form_inputs,
                     }
+                    if action_value_obj.get('_input_progress'):
+                        form_action_data['_input_progress'] = True
 
                     context = getattr(event.event, 'context', None)
                     open_message_id = getattr(context, 'open_message_id', None)
@@ -1990,7 +2049,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     'inputs': self.card_form_inputs.get(card_id, {}),
                 }
             )
-            if completed_lines:
+            if completed_lines and not all(line in stored_form_content for line in completed_lines):
                 notice_parts.append('---\n' + '\n'.join(completed_lines))
             notice_parts.append(f'---\n✅ 已选择：**{action_title}**')
             selected_notice = '\n\n'.join(notice_parts)
@@ -2067,7 +2126,12 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 return
 
         # ── NORMAL streaming (non-resume): update streaming_txt in-place ──────
-        if not resume_from and (msg_seq % 8 == 0 or is_final):
+        if _lark_should_update_stream_element(
+            resume_from=resume_from,
+            form_data=form_data,
+            msg_seq=msg_seq,
+            is_final=is_final,
+        ):
             cached = self.card_streaming_text.get(card_id)
             if text_message != cached:
                 self.card_streaming_text[card_id] = text_message
@@ -2150,11 +2214,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     self.card_pre_pause_text[card_id] = self.card_streaming_text.get(card_id, '')
                     self.card_streaming_text[card_id] = ''
                     # Store cleaned form state for the resume notice.
-                    input_defs = _lark_form_input_defs(form_data)
-                    self.card_form_content[card_id] = _lark_clean_form_content(
-                        form_data.get('raw_form_content') or form_data.get('form_content', ''),
-                        input_defs,
-                    )
+                    self.card_form_content[card_id] = _lark_visible_form_content(form_data)
                     self.card_form_input_defs[card_id] = _lark_form_input_defs(form_data)
                     self.card_form_inputs[card_id] = dict(form_data.get('inputs') or {})
             else:
@@ -2238,7 +2298,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         input_name_map: dict[str, str] = {}
         file_help_lines: list[str] = []
 
-        for idx, field in enumerate(form_data.get('input_defs') or [], start=1):
+        for idx, field in enumerate(_lark_current_input_defs(form_data), start=1):
             field_name = _dify_field_name(field)
             if not field_name:
                 continue
@@ -2328,7 +2388,6 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         workflow_run_id = form_data.get('workflow_run_id', '')
         node_title = form_data.get('node_title', '') or 'Human Input Required'
         form_content = form_data.get('form_content', '')
-        raw_form_content = form_data.get('raw_form_content') or form_content
         input_defs = _lark_form_input_defs(form_data)
 
         # When form_data is set, the visible content is rendered inside the
@@ -2353,10 +2412,17 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         form_field_elements, input_name_map, file_help_lines = self._build_lark_form_field_elements(form_data)
         uses_form_container = bool(form_field_elements or input_name_map)
         if form_data:
-            form_content = _lark_clean_form_content(raw_form_content, input_defs)
+            form_content = _lark_visible_form_content(form_data)
             self.card_form_content[card_id] = form_content
             self.card_form_input_defs[card_id] = input_defs
             self.card_form_inputs[card_id] = dict(form_data.get('inputs') or {})
+        is_field_step = bool(form_data.get('_current_input_field')) and not form_data.get('_action_select_only')
+        if is_field_step:
+            actions = (
+                [{'_input_progress': True, 'id': '', 'title': 'Next', 'button_style': 'primary'}]
+                if uses_form_container
+                else []
+            )
         for action in actions:
             action_id = action.get('id', '')
             action_title = action.get('title', action_id)
@@ -2387,6 +2453,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                             'session_key': session_key,
                             'card_id': card_id,
                             'input_name_map': input_name_map,
+                            '_input_progress': bool(action.get('_input_progress')),
                         },
                     }
                 ],
@@ -2419,11 +2486,15 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                             'margin': '0px 0px 8px 0px',
                         }
                     )
-                completed_lines = _lark_completed_input_lines(
-                    {
-                        'input_defs': input_defs,
-                        'inputs': form_data.get('inputs') or {},
-                    }
+                completed_lines = (
+                    []
+                    if form_data.get('_action_select_only')
+                    else _lark_completed_input_lines(
+                        {
+                            'input_defs': input_defs,
+                            'inputs': form_data.get('inputs') or {},
+                        }
+                    )
                 )
                 if completed_lines:
                     interactive_elements.append(
@@ -2435,7 +2506,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                             'margin': '0px 0px 8px 0px',
                         }
                     )
-                if file_help_lines and uses_form_container:
+                if file_help_lines:
                     interactive_elements.append(
                         {
                             'tag': 'markdown',
@@ -2798,6 +2869,8 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                             'user': f'{launcher_type.value}_{launcher_id}',
                             'inputs': form_inputs,
                         }
+                        if action_value_obj.get('_input_progress'):
+                            form_action_data['_input_progress'] = True
 
                         open_message_id = context_data.get('open_message_id')
                         card_id = self.reply_message_card_ids.get(str(open_message_id)) if open_message_id else None

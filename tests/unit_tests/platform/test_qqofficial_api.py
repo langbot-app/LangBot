@@ -2,9 +2,11 @@
 
 import asyncio
 import time
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
 
 from langbot.libs.qq_official_api.api import (
     QQ_SELECT_ACTION_PREFIX,
@@ -64,6 +66,80 @@ def test_qq_non_select_field_does_not_build_keyboard():
     }
 
     assert build_keyboard_from_select_field(form_data)['content']['rows'] == []
+
+
+def _stream_test_adapter():
+    from langbot.pkg.platform.sources.qqofficial import QQOfficialAdapter
+
+    adapter = QQOfficialAdapter.model_construct()
+    adapter.logger = AsyncMock()
+    adapter.bot = MagicMock()
+    adapter.bot.send_stream_msg = AsyncMock(return_value={'id': 'stream-1'})
+    adapter.ap = None
+    adapter._stream_ctx = {}
+    adapter._stream_ctx_ts = {}
+    adapter._fallback_text = {}
+    adapter._fallback_text_ts = {}
+    return adapter
+
+
+@pytest.mark.asyncio
+async def test_qq_stream_uses_cumulative_chunks_as_snapshots():
+    adapter = _stream_test_adapter()
+    adapter._stream_ctx['message-1'] = {
+        'user_openid': 'user-1',
+        'msg_id': 'source-1',
+        'stream_msg_id': None,
+        'msg_seq': 1,
+        'index': 0,
+        'last_update_ts': 0,
+        'accumulated_text': '',
+        'sent_length': 0,
+        'session_started': False,
+    }
+    adapter._stream_ctx_ts['message-1'] = time.time()
+    source = MagicMock()
+
+    await adapter.reply_message_chunk(
+        source,
+        {'resp_message_id': 'message-1'},
+        platform_message.MessageChain([platform_message.Plain(text='<think>one')]),
+    )
+    await adapter.reply_message_chunk(
+        source,
+        {'resp_message_id': 'message-1'},
+        platform_message.MessageChain([platform_message.Plain(text='<think>one two')]),
+        is_final=True,
+    )
+
+    assert [call.kwargs['content'] for call in adapter.bot.send_stream_msg.await_args_list] == [
+        '<think>one',
+        ' two',
+    ]
+
+
+@pytest.mark.asyncio
+async def test_qq_non_streaming_fallback_keeps_latest_snapshot_only():
+    from langbot.pkg.platform.sources.qqofficial import QQOfficialAdapter
+
+    adapter = _stream_test_adapter()
+    source = MagicMock()
+
+    with patch.object(QQOfficialAdapter, 'reply_message', new=AsyncMock()) as reply_message:
+        await adapter.reply_message_chunk(
+            source,
+            {'resp_message_id': 'message-1'},
+            platform_message.MessageChain([platform_message.Plain(text='Hel')]),
+        )
+        await adapter.reply_message_chunk(
+            source,
+            {'resp_message_id': 'message-1'},
+            platform_message.MessageChain([platform_message.Plain(text='Hello')]),
+            is_final=True,
+        )
+
+    sent_chain = reply_message.await_args.args[1]
+    assert str(sent_chain) == 'Hello'
 
 
 @pytest.mark.asyncio

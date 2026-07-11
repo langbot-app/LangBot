@@ -576,7 +576,8 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
         if not message_id or message_id not in self._stream_ctx:
             # 非流式场景（如群聊不支持流式），累积文本后一次性回复
             if chunk_text:
-                self._fallback_text[message_id] = self._fallback_text.get(message_id, '') + chunk_text
+                # Chunks carry the latest full snapshot, not a text delta.
+                self._fallback_text[message_id] = chunk_text
                 self._fallback_text_ts[message_id] = time.time()
             if is_final:
                 full_text = self._fallback_text.pop(message_id, '')
@@ -589,7 +590,7 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
 
         # 累积文本
         if chunk_text:
-            ctx['accumulated_text'] += chunk_text
+            ctx['accumulated_text'] = chunk_text
 
         # 未启动会话时，等第一个有内容的 chunk 来建立会话
         if not ctx['session_started']:
