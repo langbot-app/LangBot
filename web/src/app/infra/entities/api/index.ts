@@ -445,6 +445,7 @@ export interface SystemLimitation {
 
 export interface WizardProgress {
   step: number;
+  selected_scenario?: string | null;
   selected_adapter: string | null;
   created_bot_uuid: string | null;
   bot_saved: boolean;

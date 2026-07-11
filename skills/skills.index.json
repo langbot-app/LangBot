@@ -190,7 +190,8 @@
         "sandbox-skill-authoring-e2e",
         "sandbox-skill-authoring-edit-existing-e2e",
         "skill-discovery-via-mcp-gateway",
-        "webui-login-state"
+        "webui-login-state",
+        "wizard-scenario-routing"
       ],
       "case_summaries": [
         {
@@ -1646,6 +1647,31 @@
             "ui",
             "screenshot",
             "console"
+          ]
+        },
+        {
+          "id": "wizard-scenario-routing",
+          "title": "Quick Start filters channels by the selected bot scenario",
+          "mode": "agent-browser",
+          "area": "wizard",
+          "type": "feature",
+          "priority": "p0",
+          "risk": "medium",
+          "ci_eligible": false,
+          "tags": [
+            "wizard",
+            "eba",
+            "event-routing",
+            "productization"
+          ],
+          "automation": "scripts/e2e/wizard-scenario-routing.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "console",
+            "api_diagnostic"
           ]
         }
       ],
