@@ -6,7 +6,7 @@ import json
 import re
 import time
 import typing
-from contextlib import AsyncExitStack
+from contextlib import AsyncExitStack, asynccontextmanager
 import traceback
 from langbot_plugin.api.entities.events import pipeline_query
 import sqlalchemy
@@ -18,6 +18,7 @@ from mcp import ClientSession, StdioServerParameters, types as mcp_types
 from mcp.client.stdio import stdio_client
 from mcp.client.sse import sse_client
 from mcp.client.streamable_http import streamable_http_client
+from mcp.shared.exceptions import McpError
 from pydantic import AnyUrl
 
 from .. import loader
@@ -335,23 +336,34 @@ class RuntimeMCPSession:
 
         await self.session.initialize()
 
-    async def _init_streamable_http_server(self):
-        transport = await self.exit_stack.enter_async_context(
-            streamable_http_client(
+    @asynccontextmanager
+    async def _streamable_http_session(self) -> typing.AsyncIterator[ClientSession]:
+        """Enter a fully initialized Streamable HTTP session as one context.
+
+        Initialization must happen inside the same context manager that owns the
+        MCP transport. The SDK reports request failures by cancelling the host
+        task and raises the real HTTP error from its TaskGroup during context
+        exit. Keeping these nested contexts together guarantees a failed
+        ``__aenter__`` unwinds immediately, so callers see the HTTPStatusError
+        instead of a detached CancelledError. It also owns the injected HTTPX
+        client, which the MCP SDK deliberately does not close for callers.
+        """
+        async with httpx.AsyncClient(
+            headers=self.server_config.get('headers', {}),
+            timeout=self.server_config.get('timeout', 10),
+            follow_redirects=True,
+        ) as http_client:
+            async with streamable_http_client(
                 self.server_config['url'],
-                http_client=httpx.AsyncClient(
-                    headers=self.server_config.get('headers', {}),
-                    timeout=self.server_config.get('timeout', 10),
-                    follow_redirects=True,
-                ),
-            )
-        )
+                http_client=http_client,
+            ) as transport:
+                read, write, _ = transport
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    yield session
 
-        read, write, _ = transport
-
-        self.session = await self.exit_stack.enter_async_context(ClientSession(read, write))
-
-        await self.session.initialize()
+    async def _init_streamable_http_server(self):
+        self.session = await self.exit_stack.enter_async_context(self._streamable_http_session())
 
     async def _init_remote_server(self):
         """Connect to a remote MCP server, auto-detecting the transport.
@@ -592,20 +604,23 @@ class RuntimeMCPSession:
 
     @staticmethod
     def _should_fallback_to_sse(exc: BaseException) -> bool:
-        """Whether a Streamable HTTP failure matches MCP legacy-SSE fallback.
+        """Whether a Streamable HTTP failure matches legacy-SSE fallback.
 
-        The MCP backwards-compatibility path falls back when the initialize POST
-        fails with a 4xx. Treat authentication failures as terminal: retrying as
-        SSE would hide a bad token/header behind a second, noisier failure.
+        Only protocol-compatibility responses trigger fallback. Authentication,
+        authorization, throttling, and server failures must remain visible
+        instead of being retried against a different transport.
+
+        MCP SDK 1.26 translates an HTTP 404 initialize response into a synthetic
+        ``McpError(32600, 'Session terminated')`` rather than preserving the
+        HTTPStatusError, so recognize that exact SDK sentinel as 404-compatible.
         """
-        fallback_statuses = {400, 404, 405, 406, 415}
+        fallback_statuses = {400, 404, 405}
         for leaf in RuntimeMCPSession._iter_exception_leaves(exc):
             if isinstance(leaf, httpx.HTTPStatusError):
-                status_code = leaf.response.status_code
-                if status_code in fallback_statuses:
+                if leaf.response.status_code in fallback_statuses:
                     return True
-                if 400 <= status_code < 500 and status_code not in {401, 403}:
-                    return True
+            elif isinstance(leaf, McpError) and leaf.error.code == 32600 and leaf.error.message == 'Session terminated':
+                return True
         return False
 
     _MONITOR_POLL_INTERVAL = 5
