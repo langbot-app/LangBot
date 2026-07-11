@@ -1855,12 +1855,16 @@ const zhHans = {
       messageReplyDescription: '使用 AI Pipeline 回复私聊或群聊消息。',
       welcomeMembers: '欢迎新成员',
       welcomeMembersDescription: '有人加入群组时运行 Agent。',
+      welcomeMembersPrompt:
+        '用简短、友好的消息欢迎新群成员。有成员和群组上下文时请合理使用，不要提及内部事件名称或系统细节。',
       handleDepartures: '处理成员离群',
       handleDeparturesDescription: '有人离开或被移出群组时运行 Agent。',
-      reviewFriendRequests: '审核好友请求',
-      reviewFriendRequestsDescription: '让 Agent 决定如何处理新的好友请求。',
+      handleDeparturesPrompt:
+        '当适合公开回应时，用简短、尊重的消息处理群成员离开。不要猜测成员离开的原因，也不要提及内部事件名称。',
       handleModeration: '处理群管理事件',
       handleModerationDescription: '群成员受到限制时运行 Agent。',
+      handleModerationPrompt:
+        '仅根据现有上下文，写一条简洁、中立的群管理通知，说明成员受到的限制。不要编造细节或提及内部事件名称。',
       pipelineBadge: 'Pipeline',
       agentBadge: 'Agent',
     },

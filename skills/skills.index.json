@@ -191,6 +191,7 @@
         "sandbox-skill-authoring-edit-existing-e2e",
         "skill-discovery-via-mcp-gateway",
         "webui-login-state",
+        "wizard-onebot-agent-runtime",
         "wizard-scenario-routing"
       ],
       "case_summaries": [
@@ -1650,6 +1651,32 @@
           ]
         },
         {
+          "id": "wizard-onebot-agent-runtime",
+          "title": "Quick Start runs a real OneBot member event through an Agent",
+          "mode": "agent-browser",
+          "area": "wizard",
+          "type": "feature",
+          "priority": "p0",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "wizard",
+            "eba",
+            "onebot",
+            "agent-runner",
+            "release-gate"
+          ],
+          "automation": "scripts/e2e/wizard-onebot-agent-runtime.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "console",
+            "api_diagnostic"
+          ]
+        },
+        {
           "id": "wizard-scenario-routing",
           "title": "Quick Start filters channels by the selected bot scenario",
           "mode": "agent-browser",
@@ -1678,6 +1705,7 @@
       "suites": [
         "agent-runner-release-gate",
         "core-smoke",
+        "eba-release-gate",
         "langbot-debug-chat-isolation-gate",
         "langbot-debug-chat-load-gate",
         "langbot-live-backend-gate",
@@ -1749,6 +1777,24 @@
             "webui-login-state",
             "pipeline-debug-chat",
             "local-agent-basic-debug-chat"
+          ]
+        },
+        {
+          "id": "eba-release-gate",
+          "title": "Event-based bot product release gate",
+          "description": "Browser and runtime gate for scenario onboarding, route diagnostics, and real platform-to-Agent execution.",
+          "type": "release_gate",
+          "priority": "p0",
+          "tags": [
+            "eba",
+            "event-routing",
+            "wizard",
+            "release-gate"
+          ],
+          "cases": [
+            "wizard-scenario-routing",
+            "bot-event-routing-product-flow",
+            "wizard-onebot-agent-runtime"
           ]
         },
         {

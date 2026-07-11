@@ -1858,15 +1858,18 @@ const jaJP = {
       welcomeMembers: '新しいメンバーを歓迎',
       welcomeMembersDescription:
         'メンバーがグループに参加したときに Agent を実行します。',
+      welcomeMembersPrompt:
+        '新しいグループメンバーを短く親しみやすいメッセージで歓迎してください。利用可能なメンバーとグループの情報を活用し、内部イベント名やシステムの詳細には言及しないでください。',
       handleDepartures: 'メンバーの退出を処理',
       handleDeparturesDescription:
         'メンバーが退出または削除されたときに Agent を実行します。',
-      reviewFriendRequests: '友だち申請を確認',
-      reviewFriendRequestsDescription:
-        '新しい申請の処理方法を Agent に判断させます。',
+      handleDeparturesPrompt:
+        '公開の応答が適切な場合に、メンバーの退出へ短く敬意のあるメッセージで対応してください。退出理由を推測したり、内部イベント名に言及したりしないでください。',
       handleModeration: 'モデレーションイベントを処理',
       handleModerationDescription:
         'グループメンバーが制限されたときに Agent を実行します。',
+      handleModerationPrompt:
+        '利用可能な情報だけを使い、メンバーへの制限について簡潔で中立的なグループ通知を書いてください。詳細を作り上げたり、内部イベント名に言及したりしないでください。',
       pipelineBadge: 'Pipeline',
       agentBadge: 'Agent',
     },

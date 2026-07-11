@@ -1936,15 +1936,18 @@ const enUS = {
         'Answer incoming private or group messages with an AI Pipeline.',
       welcomeMembers: 'Welcome new members',
       welcomeMembersDescription: 'Run an Agent when someone joins a group.',
+      welcomeMembersPrompt:
+        'Welcome new group members with a short, friendly message. Use the available member and group context when present. Do not mention internal event names or system details.',
       handleDepartures: 'Handle member departures',
       handleDeparturesDescription:
         'Run an Agent when someone leaves or is removed.',
-      reviewFriendRequests: 'Review friend requests',
-      reviewFriendRequestsDescription:
-        'Let an Agent decide how to handle new friend requests.',
+      handleDeparturesPrompt:
+        'Respond to group member departures with a brief, respectful message when a public response is appropriate. Do not speculate about why the member left or mention internal event names.',
       handleModeration: 'Handle moderation events',
       handleModerationDescription:
         'Run an Agent when a group member is restricted.',
+      handleModerationPrompt:
+        'Write a concise, neutral group notice about the member restriction using only the available context. Do not invent details or mention internal event names.',
       pipelineBadge: 'Pipeline',
       agentBadge: 'Agent',
     },
