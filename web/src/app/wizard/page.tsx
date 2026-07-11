@@ -14,7 +14,6 @@ import {
   Loader2,
   MessageSquare,
   ShieldCheck,
-  UserCheck,
   UserMinus,
   UserPlus,
   X,
@@ -34,7 +33,10 @@ import {
   Pipeline,
   WizardProgress,
 } from '@/app/infra/entities/api';
-import { IDynamicFormItemSchema } from '@/app/infra/entities/form/dynamic';
+import {
+  DynamicFormItemType,
+  IDynamicFormItemSchema,
+} from '@/app/infra/entities/form/dynamic';
 import {
   PipelineConfigTab,
   PipelineConfigStage,
@@ -84,8 +86,13 @@ type WizardScenarioId =
   | 'message_reply'
   | 'welcome_members'
   | 'handle_departures'
-  | 'review_friend_requests'
   | 'handle_moderation';
+
+const WIZARD_SCENARIO_PROMPT_KEYS: Partial<Record<WizardScenarioId, string>> = {
+  welcome_members: 'wizard.scenario.welcomeMembersPrompt',
+  handle_departures: 'wizard.scenario.handleDeparturesPrompt',
+  handle_moderation: 'wizard.scenario.handleModerationPrompt',
+};
 
 const WIZARD_SCENARIOS = [
   {
@@ -114,15 +121,6 @@ const WIZARD_SCENARIOS = [
     descriptionKey: 'wizard.scenario.handleDeparturesDescription',
     icon: UserMinus,
     emoji: '👤',
-  },
-  {
-    id: 'review_friend_requests' as const,
-    eventType: 'friend.request_received',
-    processorKind: 'agent' as const,
-    labelKey: 'wizard.scenario.reviewFriendRequests',
-    descriptionKey: 'wizard.scenario.reviewFriendRequestsDescription',
-    icon: UserCheck,
-    emoji: '✅',
   },
   {
     id: 'handle_moderation' as const,
@@ -371,10 +369,20 @@ export default function WizardPage() {
     (runner: string) => {
       setSelectedRunner(runner);
       const configStage = aiConfigTab?.stages.find((s) => s.name === runner);
-      setRunnerConfig(configStage ? getDefaultValues(configStage.config) : {});
+      const defaults = configStage ? getDefaultValues(configStage.config) : {};
+      const promptKey = selectedScenario
+        ? WIZARD_SCENARIO_PROMPT_KEYS[selectedScenario]
+        : undefined;
+      const supportsPromptEditor = configStage?.config.some(
+        (item) => item.type === DynamicFormItemType.PROMPT_EDITOR,
+      );
+      if (promptKey && supportsPromptEditor) {
+        defaults.prompt = [{ role: 'system', content: t(promptKey) }];
+      }
+      setRunnerConfig(defaults);
       saveProgress({ step: 2, selected_runner: runner });
     },
-    [aiConfigTab, saveProgress],
+    [aiConfigTab, saveProgress, selectedScenario, t],
   );
 
   // ---- Navigation helpers ----
@@ -989,7 +997,7 @@ function StepPlatform({
             {t('wizard.scenario.description')}
           </p>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           {WIZARD_SCENARIOS.map((scenario) => {
             const Icon = scenario.icon;
             const isSelected = selectedScenario === scenario.id;
